@@ -25,6 +25,8 @@ from torchcst._backends.cuda.algorithms.linear.regular_grid_h.algorithm import (
     InputOwnedHAlgorithm,
     OnchipHAlgorithm,
     OutputOwnedHAlgorithm,
+    OwnerBatchHAlgorithm,
+    OwnerBatchStreamingHAlgorithm,
     ParallelReusedHAlgorithm,
     PreparedReusedHAlgorithm,
     RegularFactorAlgorithm,
@@ -39,6 +41,8 @@ from torchcst._backends.cuda.algorithms.linear.regular_grid_h.recipe import (
     InputOwnedHRecipe,
     OnchipHRecipe,
     OutputOwnedHRecipe,
+    OwnerBatchHRecipe,
+    OwnerBatchStreamingHRecipe,
     ParallelReusedHRecipe,
     PreparedReusedHRecipe,
     ReusedHRecipe,
@@ -68,6 +72,8 @@ def selector(route="onchip", **settings):
         "input32": InputOwnedHAlgorithm,
         "stream16": StreamingInputHAlgorithm,
         "stream32": StreamingInputHAlgorithm,
+        "owner_batch": OwnerBatchHAlgorithm,
+        "owner_batch_stream": OwnerBatchStreamingHAlgorithm,
         "site16": SiteRoutedHAlgorithm,
         "site32": SiteRoutedHAlgorithm,
         "site_stream16": SiteRoutedStreamingHAlgorithm,
@@ -95,6 +101,8 @@ def selector(route="onchip", **settings):
         "stream32": lambda **kw: StreamingInputHRecipe(
             h_batch=32, g_batch=kw.pop("g_batch", max(8, kw.get("batch_tile", 8))), **kw
         ),
+        "owner_batch": OwnerBatchHRecipe,
+        "owner_batch_stream": OwnerBatchStreamingHRecipe,
         "site16": lambda **kw: SiteRoutedHRecipe(h_batch=16, **kw),
         "site32": lambda **kw: SiteRoutedHRecipe(h_batch=32, **kw),
         "site_stream16": lambda **kw: SiteRoutedStreamingHRecipe(
@@ -136,6 +144,7 @@ def model(
             "output_group",
             "input_tile",
             "g_batch",
+            "owner_batch_tile",
         )
     }
     layer = BASE_MODEL(
@@ -164,6 +173,8 @@ def model(
         "input32",
         "stream16",
         "stream32",
+        "owner_batch",
+        "owner_batch_stream",
         "site16",
         "site32",
         "site_stream16",
@@ -219,6 +230,8 @@ def test_metadata_roundtrip_scope_and_no_gpu_import(route):
         "input32",
         "stream16",
         "stream32",
+        "owner_batch",
+        "owner_batch_stream",
         "site16",
         "site32",
         "site_stream16",
@@ -277,6 +290,8 @@ assert not any(n.endswith(('regular_grid_h.executor','regular_grid_h.kernels')) 
         "input32",
         "stream16",
         "stream32",
+        "owner_batch",
+        "owner_batch_stream",
         "site16",
         "site32",
         "site_stream16",
@@ -357,6 +372,8 @@ def test_alternative_explicit_tiles(route, settings):
         "input32",
         "stream16",
         "stream32",
+        "owner_batch",
+        "owner_batch_stream",
         "site16",
         "site32",
         "site_stream16",
@@ -386,6 +403,8 @@ def test_product_floor_and_singleton_gradients(route, monkeypatch, case):
         "input32",
         "stream16",
         "stream32",
+        "owner_batch",
+        "owner_batch_stream",
         "site16",
         "site32",
         "site_stream16",
@@ -418,6 +437,8 @@ def test_zero_atoms_and_requested_gradients(route, monkeypatch, count, need_x, n
         "input32",
         "stream16",
         "stream32",
+        "owner_batch",
+        "owner_batch_stream",
         "site16",
         "site32",
         "site_stream16",
@@ -467,6 +488,8 @@ def test_retained_forward_snapshots_before_live_parameter_width_and_chart_update
         "input32",
         "stream16",
         "stream32",
+        "owner_batch",
+        "owner_batch_stream",
         "site16",
         "site32",
         "site_stream16",
@@ -507,6 +530,8 @@ def test_no_full_h_g_saved_and_backward_recomputation(
         "input32",
         "stream16",
         "stream32",
+        "owner_batch",
+        "owner_batch_stream",
         "site16",
         "site32",
         "site_stream16",
@@ -548,6 +573,8 @@ def test_twenty_graph_replays_public_optimizer_live_width_and_all_task_gradients
         "input32",
         "stream16",
         "stream32",
+        "owner_batch",
+        "owner_batch_stream",
         "site16",
         "site32",
         "site_stream16",
@@ -583,6 +610,8 @@ def test_reject_invalid_output_tile(tile):
         "input32",
         "stream16",
         "stream32",
+        "owner_batch",
+        "owner_batch_stream",
         "site16",
         "site32",
         "site_stream16",
@@ -630,6 +659,8 @@ def test_output_owner_partial_tile_seam_cluster_and_no_fixed_capacity(
         ("stream32", 32),
         ("site16", 16),
         ("site32", 32),
+        ("owner_batch", 32),
+        ("owner_batch_stream", 32),
         ("site_stream16", 16),
         ("site_stream32", 32),
     ],
@@ -749,6 +780,8 @@ def test_aggregation_probes_real_formula_partial_chunks_and_census(
         "input32",
         "stream16",
         "stream32",
+        "owner_batch",
+        "owner_batch_stream",
         "site16",
         "site32",
         "site_stream16",
@@ -789,6 +822,8 @@ def test_prepared_reuse_zero_forward_preserves_nonzero_derivative(route, zero):
         "input32",
         "stream16",
         "stream32",
+        "owner_batch",
+        "owner_batch_stream",
         "site16",
         "site32",
         "site_stream16",
@@ -997,7 +1032,9 @@ def test_site_routed_recipes_are_distinct():
 
 
 @GPU
-@pytest.mark.parametrize("route", ["site32", "site_stream32"])
+@pytest.mark.parametrize(
+    "route", ["site32", "site_stream32", "owner_batch", "owner_batch_stream"]
+)
 @pytest.mark.parametrize("tile", [8, 16, 64])
 @pytest.mark.parametrize(
     "shape,sigma,offset",
@@ -1057,3 +1094,122 @@ def test_site_prefix_circular_candidates_cover_prepared_support(
                 assert atom in picked_set
     input_prefix = prepare_routing(packed, sizes, recipe, output=False, tile=8)[1]
     assert input_prefix.numel() == (ni + 7) // 8 + 1
+
+
+@pytest.mark.parametrize(
+    "recipe_cls,algorithm_cls,parent",
+    [
+        (OwnerBatchHRecipe, OwnerBatchHAlgorithm, SiteRoutedHRecipe),
+        (
+            OwnerBatchStreamingHRecipe,
+            OwnerBatchStreamingHAlgorithm,
+            SiteRoutedStreamingHRecipe,
+        ),
+    ],
+)
+def test_owner_batch_metadata(recipe_cls, algorithm_cls, parent):
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h.output_owner import (
+        active_owner_tiles,
+        allocate_h,
+        h_capacity,
+        owner_batch_tile,
+        uses_site_routing,
+    )
+
+    registry = Registry()
+    algorithm = algorithm_cls()
+    registry.register(algorithm)
+    with pytest.raises(TypeError):
+        algorithm.validate_recipe(parent())
+    for bad in (True, 8, 32):
+        with pytest.raises(ValueError):
+            recipe_cls(owner_batch_tile=bad)
+    with pytest.raises(ValueError):
+        recipe_cls(batch_tile=16)
+    for cap in (16, 32):
+        recipe = recipe_cls(h_batch=cap)
+        plan = ExecutionPlan(algorithm.id, algorithm.revision, recipe)
+        assert registry.loads_plan(registry.dumps_plan(plan)) == plan
+        assert uses_site_routing(recipe)
+        assert h_capacity(recipe) == cap and owner_batch_tile(recipe) == 16
+        h = allocate_h(torch.empty(0), 17, recipe)
+        assert h.shape == (cap // 8, 17, 8)
+        for batch in (1, 3, 15, 17, 32, 33, 64):
+            for start in range(0, batch, cap):
+                assert (
+                    active_owner_tiles(h, batch, start, recipe)
+                    == (min(cap, batch - start) + 15) // 16
+                )
+
+
+@GPU
+@pytest.mark.parametrize("route", ["owner_batch", "owner_batch_stream"])
+@pytest.mark.parametrize("cap", [16, 32])
+@pytest.mark.parametrize("batch", [1, 3, 15, 17, 32, 33, 64])
+def test_owner_batch_slabs_strides_all_gradients_and_graph(route, cap, batch):
+    layer = model(periodic.parameters(17), route, h_batch=cap, sigma=0.7, device="cuda")
+    x = torch.randn(batch, 130, device="cuda")[:, ::2].detach().requires_grad_()
+    dy = torch.randn(33, batch, device="cuda").T
+    expected = periodic.oracle(layer, x, dy)
+
+    def call():
+        y = layer(x)
+        return (y, *torch.autograd.grad(y, (x, layer.atoms.p), dy))
+
+    periodic.gate(call(), expected)
+    stream = torch.cuda.Stream()
+    stream.wait_stream(torch.cuda.current_stream())
+    with torch.cuda.stream(stream):
+        call()
+    torch.cuda.current_stream().wait_stream(stream)
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph, stream=stream):
+        actual = call()
+    for _ in range(3):
+        graph.replay()
+        periodic.gate(actual, expected)
+
+
+def test_owner_batch_catalog_plans():
+    from benchmarks.cuda.linear.manifest import REGISTRY
+    from benchmarks.cuda.linear.periodic_comparison import bind_plan
+
+    for kind, recipe_cls in [
+        ("site-owner-bm16-h16", OwnerBatchHRecipe),
+        ("site-owner-bm16-h32", OwnerBatchHRecipe),
+        ("site-owner-bm16-stream-g8-h16", OwnerBatchStreamingHRecipe),
+        ("site-owner-bm16-stream-g8-h32", OwnerBatchStreamingHRecipe),
+    ]:
+        plan = REGISTRY.load_plan(bind_plan(model(periodic.parameters(1)), kind))
+        assert type(plan.recipe) is recipe_cls
+        assert plan.recipe.batch_tile == 8
+        assert plan.recipe.owner_batch_tile == 16
+        assert plan.recipe.h_batch == int(kind[-2:])
+
+
+@pytest.mark.parametrize(
+    "site_routed,bounds,distance,expected",
+    [
+        # N=5, tile=2: owners [0,1],[2,3],[4]; one atom at each site.
+        (True, [0, 1, 2, 3, 4, 5], 0, (5, 3, 9)),
+        # Expanded periodic intervals have 4,4,3 atoms, including seam wrap.
+        (True, [0, 1, 2, 3, 4, 5], 1, (11, 7, 19)),
+        # Full-axis clamp visits each atom once per owner.
+        (True, [0, 1, 2, 3, 4, 5], 5, (15, 9, 25)),
+        # Coarse short-final-bin guard visits all three bins for every owner.
+        (False, [0, 2, 4, 5], 0, (15, 9, 25)),
+    ],
+)
+def test_owner_stage_routing_census(site_routed, bounds, distance, expected):
+    from benchmarks.cuda.linear.periodic_comparison import routing_bounds_census
+
+    result = routing_bounds_census(
+        bounds, distance, sites=5, tile=2, group=2, site_routed=site_routed
+    )
+    assert (
+        result["candidate_atom_visits"],
+        result["atom_group_iterations"],
+        result["candidate_live_site_checks"],
+    ) == expected
+    assert result["prefix_entries"] == len(bounds)
+    assert result["guarded_max_distance"] == distance

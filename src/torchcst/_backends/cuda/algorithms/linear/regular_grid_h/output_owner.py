@@ -47,15 +47,27 @@ def prepare_routing(packed, sizes, recipe, *, output=True, tile=None):
 
 
 def uses_site_routing(recipe):
-    from .recipe import SiteRoutedHRecipe, SiteRoutedStreamingHRecipe
+    from .recipe import (
+        OwnerBatchHRecipe,
+        OwnerBatchStreamingHRecipe,
+        SiteRoutedHRecipe,
+        SiteRoutedStreamingHRecipe,
+    )
 
-    return type(recipe) in (SiteRoutedHRecipe, SiteRoutedStreamingHRecipe)
+    return type(recipe) in (
+        SiteRoutedHRecipe,
+        SiteRoutedStreamingHRecipe,
+        OwnerBatchHRecipe,
+        OwnerBatchStreamingHRecipe,
+    )
 
 
 def h_capacity(recipe):
     from .recipe import (
         GroupedOutputHRecipe,
         InputOwnedHRecipe,
+        OwnerBatchHRecipe,
+        OwnerBatchStreamingHRecipe,
         ParallelReusedHRecipe,
         PreparedReusedHRecipe,
         SiteRoutedHRecipe,
@@ -70,7 +82,9 @@ def h_capacity(recipe):
             GroupedOutputHRecipe,
             InputOwnedHRecipe,
             SiteRoutedHRecipe,
+            OwnerBatchHRecipe,
             SiteRoutedStreamingHRecipe,
+            OwnerBatchStreamingHRecipe,
             StreamingInputHRecipe,
             ParallelReusedHRecipe,
             PreparedReusedHRecipe,
@@ -83,6 +97,8 @@ def allocate_h(x, atom_count, recipe):
     from .recipe import (
         GroupedOutputHRecipe,
         InputOwnedHRecipe,
+        OwnerBatchHRecipe,
+        OwnerBatchStreamingHRecipe,
         ParallelReusedHRecipe,
         PreparedReusedHRecipe,
         SiteRoutedHRecipe,
@@ -94,7 +110,9 @@ def allocate_h(x, atom_count, recipe):
         GroupedOutputHRecipe,
         InputOwnedHRecipe,
         SiteRoutedHRecipe,
+        OwnerBatchHRecipe,
         SiteRoutedStreamingHRecipe,
+        OwnerBatchStreamingHRecipe,
         StreamingInputHRecipe,
         ParallelReusedHRecipe,
         PreparedReusedHRecipe,
@@ -166,6 +184,17 @@ def prepare_output_fields(packed, routing, *, output=True):
     return hot, unsafe
 
 
+def owner_batch_tile(recipe):
+    return getattr(recipe, "owner_batch_tile", recipe.batch_tile)
+
+
+def active_owner_tiles(h, batch, batch_start, recipe):
+    capacity = (h.shape[0] if h.ndim == 3 else 1) * recipe.batch_tile
+    return (
+        min(capacity, batch - batch_start) + owner_batch_tile(recipe) - 1
+    ) // owner_batch_tile(recipe)
+
+
 def aggregate_chunk(
     x, packed, sizes, recipe, routing, y, *, h=None, batch_start=0, hot=None
 ):
@@ -176,9 +205,9 @@ def aggregate_chunk(
     b, ni, no, li, lo, oi, oo = sizes
     a = packed.shape[1]
     tiles = (
-        tr.cdiv(b, recipe.batch_tile)
+        tr.cdiv(b, owner_batch_tile(recipe))
         if h is None
-        else active_h_tiles(h, b, batch_start, recipe.batch_tile)
+        else active_owner_tiles(h, b, batch_start, recipe)
     )
     args = (
         x,
@@ -194,7 +223,7 @@ def aggregate_chunk(
         oi,
         oo,
         *x.stride(),
-        recipe.batch_tile,
+        owner_batch_tile(recipe),
         recipe.patch_sites,
         getattr(recipe, "output_group", recipe.atom_group),
         recipe.output_tile,
@@ -203,6 +232,7 @@ def aggregate_chunk(
         "H": h,
         "BSTART": batch_start,
         "SITE_ROUTING": uses_site_routing(recipe),
+        "H_BM": recipe.batch_tile if hasattr(recipe, "owner_batch_tile") else 0,
         "num_warps": 4,
         "enable_fp_fusion": False,
     }
@@ -225,6 +255,8 @@ def forward_output_owned(x, packed, sizes, recipe):
     from .recipe import (
         GroupedOutputHRecipe,
         InputOwnedHRecipe,
+        OwnerBatchHRecipe,
+        OwnerBatchStreamingHRecipe,
         ParallelReusedHRecipe,
         PreparedReusedHRecipe,
         ReusedHRecipe,
@@ -246,7 +278,9 @@ def forward_output_owned(x, packed, sizes, recipe):
             GroupedOutputHRecipe,
             InputOwnedHRecipe,
             SiteRoutedHRecipe,
+            OwnerBatchHRecipe,
             SiteRoutedStreamingHRecipe,
+            OwnerBatchStreamingHRecipe,
             StreamingInputHRecipe,
             PreparedReusedHRecipe,
         )
@@ -256,7 +290,9 @@ def forward_output_owned(x, packed, sizes, recipe):
         GroupedOutputHRecipe,
         InputOwnedHRecipe,
         SiteRoutedHRecipe,
+        OwnerBatchHRecipe,
         SiteRoutedStreamingHRecipe,
+        OwnerBatchStreamingHRecipe,
         StreamingInputHRecipe,
         ReusedHRecipe,
         ParallelReusedHRecipe,

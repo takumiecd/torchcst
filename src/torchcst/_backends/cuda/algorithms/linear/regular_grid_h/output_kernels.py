@@ -68,6 +68,7 @@ def output_owned(
     PREPARED: tl.constexpr = False,
     PROFILE_OUTPUT: tl.constexpr = True,
     SITE_ROUTING: tl.constexpr = False,
+    H_BM: tl.constexpr = 0,
 ):
     owner = tl.program_id(0)
     rows = BSTART + tl.program_id(1) * BM + tl.arange(0, BM)
@@ -121,10 +122,18 @@ def output_owned(
             if CACHED:
                 # H is stored by sorted position, so owners load consecutive
                 # atom/batch values without another original-ID gather.
+                if H_BM:
+                    # Owner rows cross producer slabs. H remains [slab,A,H_BM].
+                    local_rows = tl.program_id(1) * BM + tl.arange(0, BM)
+                    offsets = (
+                        local_rows[None, :] // H_BM * A + pos[:, None]
+                    ) * H_BM + local_rows[None, :] % H_BM
+                else:
+                    offsets = (tl.program_id(1) * A + pos[:, None]) * BM + tl.arange(
+                        0, BM
+                    )[None, :]
                 h = tl.load(
-                    H
-                    + (tl.program_id(1) * A + pos[:, None]) * BM
-                    + tl.arange(0, BM)[None, :],
+                    H + offsets,
                     contributes[:, None] & (rows[None, :] < B),
                     0.0,
                 )
@@ -250,6 +259,7 @@ def prepared_output_owned(
     FALLBACK: tl.constexpr,
     PROFILE_OUTPUT: tl.constexpr = True,
     SITE_ROUTING: tl.constexpr = False,
+    H_BM: tl.constexpr = 0,
 ):
     # Separate specializations keep the original-ID/division path out of the
     # fast kernel's register schedule. Only one of the two launches writes Y.
@@ -282,4 +292,5 @@ def prepared_output_owned(
             PREPARED=not FALLBACK,
             PROFILE_OUTPUT=PROFILE_OUTPUT,
             SITE_ROUTING=SITE_ROUTING,
+            H_BM=H_BM,
         )

@@ -51,8 +51,12 @@ KINDS = (
     "stream-g8-h32",
     "site-routed-h16",
     "site-routed-h32",
+    "site-owner-bm16-h16",
+    "site-owner-bm16-h32",
     "site-stream-g8-h16",
     "site-stream-g8-h32",
+    "site-owner-bm16-stream-g8-h16",
+    "site-owner-bm16-stream-g8-h32",
 )
 REGULAR_PRIMARY = ("matrix-torch", "factor", "onchip-h", "dense")
 PRIMARY = ("matrix-torch", "factor", "dense")
@@ -148,6 +152,8 @@ def bind_plan(model, kind):
             InputOwnedHRecipe,
             OnchipHRecipe,
             OutputOwnedHRecipe,
+            OwnerBatchHRecipe,
+            OwnerBatchStreamingHRecipe,
             ParallelReusedHRecipe,
             PreparedReusedHRecipe,
             ReusedHRecipe,
@@ -173,8 +179,12 @@ def bind_plan(model, kind):
             "stream-g8-h32": "research_cuda_regular_grid_streaming_input_h",
             "site-routed-h16": "research_cuda_regular_grid_site_routed_h",
             "site-routed-h32": "research_cuda_regular_grid_site_routed_h",
+            "site-owner-bm16-h16": "research_cuda_regular_grid_site_owner_batch_h",
+            "site-owner-bm16-h32": "research_cuda_regular_grid_site_owner_batch_h",
             "site-stream-g8-h16": "research_cuda_regular_grid_site_routed_streaming_h",
             "site-stream-g8-h32": "research_cuda_regular_grid_site_routed_streaming_h",
+            "site-owner-bm16-stream-g8-h16": "research_cuda_regular_grid_site_owner_batch_streaming_h",
+            "site-owner-bm16-stream-g8-h32": "research_cuda_regular_grid_site_owner_batch_streaming_h",
         }.get(kind, "research_cuda_regular_grid_matrix")
         expected_recipe = (
             {
@@ -193,8 +203,14 @@ def bind_plan(model, kind):
                 "stream-g8-h32": lambda: StreamingInputHRecipe(h_batch=32),
                 "site-routed-h16": lambda: SiteRoutedHRecipe(h_batch=16),
                 "site-routed-h32": lambda: SiteRoutedHRecipe(h_batch=32),
+                "site-owner-bm16-h16": lambda: OwnerBatchHRecipe(h_batch=16),
+                "site-owner-bm16-h32": OwnerBatchHRecipe,
                 "site-stream-g8-h16": lambda: SiteRoutedStreamingHRecipe(h_batch=16),
                 "site-stream-g8-h32": lambda: SiteRoutedStreamingHRecipe(h_batch=32),
+                "site-owner-bm16-stream-g8-h16": lambda: OwnerBatchStreamingHRecipe(
+                    h_batch=16
+                ),
+                "site-owner-bm16-stream-g8-h32": OwnerBatchStreamingHRecipe,
             }[kind]()
             if kind
             in (
@@ -213,8 +229,12 @@ def bind_plan(model, kind):
                 "stream-g8-h32",
                 "site-routed-h16",
                 "site-routed-h32",
+                "site-owner-bm16-h16",
+                "site-owner-bm16-h32",
                 "site-stream-g8-h16",
                 "site-stream-g8-h32",
+                "site-owner-bm16-stream-g8-h16",
+                "site-owner-bm16-stream-g8-h32",
             )
             else PeriodicRecipe(gemm="triton" if kind == "matrix-triton" else "torch")
         )
@@ -454,8 +474,12 @@ def forward_stages(step, kind):
         "stream-g8-h32",
         "site-routed-h16",
         "site-routed-h32",
+        "site-owner-bm16-h16",
+        "site-owner-bm16-h32",
         "site-stream-g8-h16",
         "site-stream-g8-h32",
+        "site-owner-bm16-stream-g8-h16",
+        "site-owner-bm16-stream-g8-h32",
     ):
         return output_owner_stages(
             step,
@@ -473,14 +497,19 @@ def forward_stages(step, kind):
                 "stream-g8-h32": 32,
                 "site-routed-h16": 16,
                 "site-routed-h32": 32,
+                "site-owner-bm16-h16": 16,
+                "site-owner-bm16-h32": 32,
                 "site-stream-g8-h16": 16,
                 "site-stream-g8-h32": 32,
+                "site-owner-bm16-stream-g8-h16": 16,
+                "site-owner-bm16-stream-g8-h32": 32,
             }.get(kind),
             prepared=kind.startswith(("prepared-", "input-owned-", "stream-", "site-")),
             grouped=kind.startswith(
                 ("prepared-g32-", "input-owned-", "stream-", "site-")
             ),
             site_routed=kind.startswith("site-"),
+            owner_bm16=kind.startswith("site-owner-bm16-"),
         )
     if kind == "onchip-h":
         return onchip_stages(step)
@@ -621,8 +650,67 @@ def onchip_stages(step, *, output_owned=False):
     }
 
 
+def routing_bounds_census(bounds, distance, *, sites, tile, group, site_routed):
+    """CPU counts of actual candidate ranges; no positive-support or traffic claim."""
+    from itertools import pairwise
+
+    bins = (sites + tile - 1) // tile
+    visits = iterations = checks = 0
+    coarse_iterations = [0]
+    if not site_routed:
+        for left, right in pairwise(bounds):
+            coarse_iterations.append(
+                coarse_iterations[-1] + (right - left + group - 1) // group
+            )
+    for owner in range(bins):
+        start = owner * tile
+        width = min(tile, sites - start)
+        if site_routed:
+            count = min(width + 2 * distance, sites)
+            first = 0 if count == sites else (start - distance) % sites
+            end = first + count
+            ranges = [(first, min(end, sites))]
+            if end > sites:
+                ranges.append((0, end - sites))
+        else:
+            radius = (distance + tile - 1) // tile + int(sites % tile != 0)
+            count = min(2 * radius + 1, bins)
+            first = 0 if count == bins else (owner - radius) % bins
+            end = first + count
+            ranges = [(first, min(end, bins))]
+            if end > bins:
+                ranges.append((0, end - bins))
+        owner_visits = 0
+        for low, high in ranges:
+            size = bounds[high] - bounds[low]
+            owner_visits += size
+            iterations += (
+                (size + group - 1) // group
+                if site_routed
+                else coarse_iterations[high] - coarse_iterations[low]
+            )
+        visits += owner_visits
+        checks += width * owner_visits
+    return {
+        "scope": "candidate ranges over output owners; excludes batch multiplicity and padded lanes",
+        "prefix_entries": len(bounds),
+        "guarded_max_distance": distance,
+        "atom_group": group,
+        "candidate_atom_visits": visits,
+        "atom_group_iterations": iterations,
+        "candidate_live_site_checks": checks,
+    }
+
+
 def output_owner_stages(
-    step, *, reused, h_batch=None, prepared=False, grouped=False, site_routed=False
+    step,
+    *,
+    reused,
+    h_batch=None,
+    prepared=False,
+    grouped=False,
+    site_routed=False,
+    owner_bm16=False,
 ):
     """Timestamp the actual staged forward on a fixed post24 copy.
 
@@ -637,6 +725,7 @@ def output_owner_stages(
         aggregate_chunk,
         allocate_h,
         h_capacity,
+        owner_batch_tile,
         prepare_output_fields,
         prepare_routing,
         produce_h_chunk,
@@ -644,6 +733,7 @@ def output_owner_stages(
     from torchcst._backends.cuda.algorithms.linear.regular_grid_h.recipe import (
         GroupedOutputHRecipe,
         OutputOwnedHRecipe,
+        OwnerBatchHRecipe,
         ParallelReusedHRecipe,
         PreparedReusedHRecipe,
         ReusedHRecipe,
@@ -656,7 +746,9 @@ def output_owner_stages(
     sizes = (len(x), n, n, float(n), float(n), 0.0, 0.0)
     recipe = (
         (
-            SiteRoutedHRecipe
+            OwnerBatchHRecipe
+            if owner_bm16
+            else SiteRoutedHRecipe
             if site_routed
             else GroupedOutputHRecipe
             if grouped
@@ -674,6 +766,8 @@ def output_owner_stages(
         for _ in range(3 + offset + (2 * len(chunks) if reused else 1))
     ]
 
+    observed = {}
+
     def call():
         events[0].record()
         packed = _prepare(p.contiguous().clone(), model.kernel, sizes, recipe)
@@ -683,6 +777,8 @@ def output_owner_stages(
         h = allocate_h(x, len(p), recipe) if reused else None
         events[2].record()
         hot = prepare_output_fields(packed, routing) if prepared else None
+        observed["routing"] = routing
+        observed["hot"] = hot
         if prepared:
             events[3].record()
         if reused:
@@ -754,7 +850,43 @@ def output_owner_stages(
     # Independently compare the instrumented schedule to its uninstrumented
     # forward on the same immutable snapshot, outside all timing intervals.
     torch.testing.assert_close(y, model(x), rtol=4e-4, atol=4e-4)
+    # Read the exact routing produced by the captured diagnostic call only
+    # after all event samples. These copies are outside primary graphs/peaks.
+    routing, hot = observed["routing"], observed["hot"]
+    unsafe = bool(hot[1].detach().cpu().item()) if hot is not None else False
+    group = (
+        recipe.atom_group
+        if unsafe
+        else getattr(recipe, "output_group", recipe.atom_group)
+    )
+    census = routing_bounds_census(
+        routing[1].detach().cpu().tolist(),
+        int(routing[2].detach().cpu().item()),
+        sites=n,
+        tile=recipe.output_tile,
+        group=group,
+        site_routed=site_routed,
+    )
+    batch_ctas = (
+        sum(
+            (min(h_capacity(recipe), len(x) - start) + owner_batch_tile(recipe) - 1)
+            // owner_batch_tile(recipe)
+            for start in chunks
+        )
+        if reused
+        else (len(x) + owner_batch_tile(recipe) - 1) // owner_batch_tile(recipe)
+    )
+    census.update(
+        unsafe_beta_fallback=unsafe,
+        owner_batch_tile=owner_batch_tile(recipe),
+        batch_ctas_per_output_owner=batch_ctas,
+        active_y_ctas=batch_ctas * ((n + recipe.output_tile - 1) // recipe.output_tile),
+        launched_y_ctas=(2 if prepared else 1)
+        * batch_ctas
+        * ((n + recipe.output_tile - 1) // recipe.output_tile),
+    )
     return {
+        "routing_census": census,
         "scope": "fixed post24 forward copy; no optimizer; nonadditive to primary step",
         "candidate_scope": (
             "site-key prefix construction; conservative ranges; exact support checks in Y kernel"
@@ -769,7 +901,8 @@ def output_owner_stages(
         "output_fields_bytes": 12 * len(p) + 4 if prepared else 0,
         "H_scratch_bytes": 4 * len(p) * h_capacity(recipe) if reused else 0,
         "H_batch_capacity": h_capacity(recipe) if reused else 0,
-        "Y_batch_tile": recipe.batch_tile,
+        "H_producer_batch_tile": recipe.batch_tile,
+        "Y_batch_tile": owner_batch_tile(recipe),
         "parameters_unchanged": tensor_hash(p) == tensor_hash(step.model.atoms.p),
         "same_uninstrumented_forward": True,
     }
@@ -1261,8 +1394,12 @@ def main():
                 "stream-g8-h32",
                 "site-routed-h16",
                 "site-routed-h32",
+                "site-owner-bm16-h16",
+                "site-owner-bm16-h32",
                 "site-stream-g8-h16",
                 "site-stream-g8-h32",
+                "site-owner-bm16-stream-g8-h16",
+                "site-owner-bm16-stream-g8-h32",
                 "dense",
             ]
             if args.regular_grid
@@ -1286,8 +1423,12 @@ def main():
             "stream-g8-h32",
             "site-routed-h16",
             "site-routed-h32",
+            "site-owner-bm16-h16",
+            "site-owner-bm16-h32",
             "site-stream-g8-h16",
             "site-stream-g8-h32",
+            "site-owner-bm16-stream-g8-h16",
+            "site-owner-bm16-stream-g8-h32",
         )
         or any(
             kind in args.plans
@@ -1307,8 +1448,12 @@ def main():
                 "stream-g8-h32",
                 "site-routed-h16",
                 "site-routed-h32",
+                "site-owner-bm16-h16",
+                "site-owner-bm16-h32",
                 "site-stream-g8-h16",
                 "site-stream-g8-h32",
+                "site-owner-bm16-stream-g8-h16",
+                "site-owner-bm16-stream-g8-h32",
             )
         )
     ):

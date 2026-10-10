@@ -270,3 +270,35 @@ sort/searchとprefixの準備費用、atom加算順の変更、Graph両peakを�
 FP32 delta=nextafter(512,0)では、delta/L+0.5が1へ丸まり、現行wrapは-512になる。
 単純なdelta>=512比較では正側に残り、広い支持の中心微分を変える場合がある。
 今回はその近似を混ぜず、既存の距離式とnorm/VJPを保つ。
+
+### H生成幅とY担当batch幅を分ける候補（2026-10-11）
+
+centre-site prefixの後、H producerのBM8・tile-major配置を維持し、
+Y ownerだけBM16へ広げる。独立した `OwnerBatchHRecipe` と
+`OwnerBatchStreamingHRecipe` を用い、既存recipeの意味を変更しない。
+後者はG8、入力側coarse routing、physical部分和の再利用を維持する。
+
+owner内のlocal batch rowを r、sorted atom positionを pos とすると、
+Hの読出しoffsetは `((r // 8) * A + pos) * 8 + r % 8`。
+Hは引き続き `[Hcap/8, A, 8]`、Hcapは16または32。
+actual batch rowでmaskし、最後のchunkやbatch33/64でも保存範囲を越えない。
+H/Gをbackwardへ追加保存せず、raw profile・一つのjoint L2 floor・
+Unsafe beta時の元の演算順序を変えない。
+
+B32のY担当CTAは各output ownerにつき4から2になる。
+profileとroutingのbatch間の重複を減らす一方、GROUP32×BO16×BM16の
+中間値はBM8の倍であり、register圧力・spill・実測時間の悪化はあり得る。
+追加global scratchは必要ないが、総allocator peakの同等は実測で確認する。
+H16/H32×通常/G8の4候補を同じ条件で比較し、未計装完全stepと
+allocated/reserved総peakの両方で判断する。
+
+post24の実routing prefixから、guarded距離・候補atom訪問数・
+実GROUP別の反復数・live grid site候補検査数をCPUで数える。
+時刻計測後の診断内でのみコピーし、primary graph/peakに入れない。
+候補数は正支持数や物理memory trafficではなく、batch多重度と
+padded laneを除く値。Yのactive/launch CTA数も別に記録する。
+
+raw UのPhi16表を持つ案は次段階に置く。正確な支持envelopeによる
+span検査とbroad fallbackが必要で、H32をH16へ縮めても表の転送や
+追加metadata・Graph poolのreservedが費用になる。まずscratchを
+増やさないbatch共有を切り分ける。

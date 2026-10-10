@@ -1599,3 +1599,12 @@ Y集約の段階時間の減少は確認できるが、hardware cache/stallは�
 `site-routing-final-pool-status.json`と`site-routing-final-stop-lifecycle.log`。
 次の候補はH producer BM8を保ち、Y ownerだけBM16へ広げる。
 H16/H32と通常/G8を同じ条件で比較し、未実施の性能を改善と呼ばない。
+
+### Owner BM16の事前方針
+
+Astraのpatchと独立レビューを採用して実装した。CPU1699 passed /3408
+skipped、Ruff・catalog24 plansの宣言検査をPASS。regular-gridの研究Caseは
+既存 `periodic_comparison.load_case` でrho3/8を照合した（標準Linear Caseとは
+schemaが異なる）。GPU数値・性能・メモリはこの時点で未実施。
+source固定後、全840 regular-grid/periodic GPU contract testsを予定し、
+PASSした場合だけ同条件の14-route比較へ進む。source-scopedな結果は追記する。

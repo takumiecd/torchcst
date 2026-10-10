@@ -97,3 +97,35 @@ class SiteRoutedHRecipe(GroupedOutputHRecipe):
 @dataclass(frozen=True)
 class SiteRoutedStreamingHRecipe(StreamingInputHRecipe):
     """Site-routed forward H; streaming G retains coarse input routing."""
+
+
+@dataclass(frozen=True)
+class OwnerBatchHRecipe(SiteRoutedHRecipe):
+    """BM16 output owner over BM8 H slabs; backward scheduling unchanged."""
+
+    h_batch: int = 32
+    owner_batch_tile: int = 16
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.batch_tile != 8:
+            raise ValueError("owner BM16 requires producer batch_tile=8")
+        if type(self.owner_batch_tile) is not int or self.owner_batch_tile != 16:
+            raise ValueError("owner_batch_tile must be 16")
+
+
+@dataclass(frozen=True)
+class OwnerBatchStreamingHRecipe(SiteRoutedStreamingHRecipe):
+    """BM16 output owner over BM8 H slabs; backward scheduling unchanged."""
+
+    h_batch: int = 32
+    owner_batch_tile: int = 16
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.batch_tile != 8:
+            raise ValueError("owner BM16 requires producer batch_tile=8")
+        if type(self.owner_batch_tile) is not int or self.owner_batch_tile != 16:
+            raise ValueError("owner_batch_tile must be 16")
+        if self.g_batch != 8:
+            raise ValueError("owner BM16 streaming requires g_batch=8")

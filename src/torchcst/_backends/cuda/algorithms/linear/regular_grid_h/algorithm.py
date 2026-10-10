@@ -14,6 +14,8 @@ from .recipe import (
     InputOwnedHRecipe,
     OnchipHRecipe,
     OutputOwnedHRecipe,
+    OwnerBatchHRecipe,
+    OwnerBatchStreamingHRecipe,
     ParallelReusedHRecipe,
     PreparedReusedHRecipe,
     ReusedHRecipe,
@@ -209,3 +211,25 @@ class SiteRoutedStreamingHAlgorithm(OutputOwnedHAlgorithm):
         if type(recipe) is not SiteRoutedStreamingHRecipe:
             raise TypeError("requires SiteRoutedStreamingHRecipe")
         SiteRoutedStreamingHRecipe(**asdict(recipe))
+
+
+@dataclass(frozen=True)
+class OwnerBatchHAlgorithm(OutputOwnedHAlgorithm):
+    id: str = "research_cuda_regular_grid_site_owner_batch_h"
+    recipe_type: type = OwnerBatchHRecipe
+
+    def validate_recipe(self, recipe):
+        if type(recipe) is not OwnerBatchHRecipe:
+            raise TypeError("requires OwnerBatchHRecipe")
+        OwnerBatchHRecipe(**asdict(recipe))
+
+
+@dataclass(frozen=True)
+class OwnerBatchStreamingHAlgorithm(OutputOwnedHAlgorithm):
+    id: str = "research_cuda_regular_grid_site_owner_batch_streaming_h"
+    recipe_type: type = OwnerBatchStreamingHRecipe
+
+    def validate_recipe(self, recipe):
+        if type(recipe) is not OwnerBatchStreamingHRecipe:
+            raise TypeError("requires OwnerBatchStreamingHRecipe")
+        OwnerBatchStreamingHRecipe(**asdict(recipe))

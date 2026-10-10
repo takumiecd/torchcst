@@ -14,6 +14,8 @@ def forward_contraction(x, packed, sizes, recipe):
         GroupedOutputHRecipe,
         InputOwnedHRecipe,
         OutputOwnedHRecipe,
+        OwnerBatchHRecipe,
+        OwnerBatchStreamingHRecipe,
         ParallelReusedHRecipe,
         PreparedReusedHRecipe,
         ReusedHRecipe,
@@ -26,7 +28,9 @@ def forward_contraction(x, packed, sizes, recipe):
         GroupedOutputHRecipe,
         InputOwnedHRecipe,
         SiteRoutedHRecipe,
+        OwnerBatchHRecipe,
         SiteRoutedStreamingHRecipe,
+        OwnerBatchStreamingHRecipe,
         StreamingInputHRecipe,
         OutputOwnedHRecipe,
         ParallelReusedHRecipe,
@@ -84,6 +88,7 @@ class _OnchipH(torch.autograd.Function):
         from . import kernels
         from .recipe import (
             InputOwnedHRecipe,
+            OwnerBatchStreamingHRecipe,
             SiteRoutedStreamingHRecipe,
             StreamingInputHRecipe,
         )
@@ -96,7 +101,12 @@ class _OnchipH(torch.autograd.Function):
         dp = torch.empty_like(source) if need_p else None
         tiles = tr.cdiv(b, recipe.batch_tile)
         streamed = (
-            type(recipe) in (StreamingInputHRecipe, SiteRoutedStreamingHRecipe)
+            type(recipe)
+            in (
+                StreamingInputHRecipe,
+                SiteRoutedStreamingHRecipe,
+                OwnerBatchStreamingHRecipe,
+            )
             and need_x
         )
         partial_tiles = (
@@ -111,6 +121,7 @@ class _OnchipH(torch.autograd.Function):
                     InputOwnedHRecipe,
                     StreamingInputHRecipe,
                     SiteRoutedStreamingHRecipe,
+                    OwnerBatchStreamingHRecipe,
                 )
                 and need_x
             ):
