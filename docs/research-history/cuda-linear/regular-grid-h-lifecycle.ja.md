@@ -1351,3 +1351,11 @@ https://github.com/takumiecd/torchcst/actions/runs/38069619720 。
 このPASS後にN2048 rho3/8の12方式paired cohortを提出した。前の10 controlsに
 stream G8/H16・G8/H32を加える。Case・独立process・24更新・21 replay samples・全atom oracle・
 allocated/reserved両peak<=denseは同じ。結果を確認するまで採用とはしない。
+
+streaming rho3 jobは全12 workersとresult download/manifest照合を完了した後、
+poolのremote cleanup `exec --timeout30` がhost側180sでtimeoutした。
+supervisorは以後のdispatchを止め、所有VM `cst-pool-4f11afbc85b7-1` を停止し、
+serverの `No active sessions found` を確認して終了した。rho3 jobはsucceededのまま保全する。
+`streaming-interrupted-stop-lifecycle.log` と、再開前に取った `streaming-interrupted-status.json` を
+ignored evidenceへ保存した。queuedのrho8のみ新しいsupervisorへ引き継ぐ。
+計算のretry・再budget・好ましい結果の選択は行わない。
