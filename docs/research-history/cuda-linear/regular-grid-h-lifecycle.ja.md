@@ -995,3 +995,117 @@ overflow時の空/非空支持Y/dX/all dPの有限性・旧順序とのbitwise�
 `cudaErrorStreamCaptureImplicit`。runtimeを変えず、期待値と実測をdetachしてgraphを解放し、
 warmup/captureを同じ明示streamへ統一する。新sourceで600秒の全GPU検証を一度実施し、
 全部PASS後に前述4Caseを測る。失敗job/log/source/result hashは保持する。
+
+
+## β先行計算・整列情報・範囲guardの結果（2026-10-11）
+
+実装・検証・通常4Caseの比較を完了した。最終計算sourceは `3dc762d8639caec388f0de3ed0baf52023faa5be`。
+実行kernelは `bb379a27` と同一で、`3dc762d8` は追加capture testの修正だけ。
+初回 `dc635793` の通常4Case／範囲probe、失敗した `bb379a27` のcapture jobも別cohortとして保持し、
+以下の最終数値へ混ぜていない。βはamp/Su、Hは(qv/Sv)Xで、Sv Suはjoint L2／単一floorのD。
+3項目12A bytesと4-byte flagはforwardだけに保持する。backward保存TensorはX、元Parameter、
+amplitude_max、元13項目PのままでH／新情報を保存しない。
+
+L4（Torch2.11.0+cu130、CUDA13.0、Triton3.6.0、driver580.82.07）一台を共有poolで使用した。
+N1024/2048×rho3/8、B32、5%atoms、seed41、FP32/TF32off、公開fused AdamW＋Polar、24 real updates。
+各Case一度の独立job内で8方式を別process測定。各方式21時間sampleを21独立runとは数えない。
+初期／post24のY・dX・全atom dPをCPU FP64別processで検査し、32 workers／56 snapshotsすべてPASS。
+すべてのworker source hash、Case/Plan、初期入力／Parameter、runtime一致をassessで確認した。
+メモリはcapture/replay込みのallocated/reservedで、GPU process usage／physical DRAM trafficは未測定。
+
+GPU環境の全検証は316 PASS、2 warnings（初回cuBLAS context、追加testのcapture外stream警告）。
+全勾配、floor、空／単一／狭／広支持、seam、stride、端数H上書き、retained backward、
+20 eager／Graph公開optimizer更新、非finite β fallback、同じGraphで通常振幅へ戻す検査を含む。
+極端な非空・大振幅で元経路も絶対FP64誤差gateに失敗する既存precision limitは解決したと扱わない。
+その領域の追加checkは元順序とのbitwise一致・有限性であり、通常FP64 gateは一切変更していない。
+CPU全suite1661 PASS／2922 skip／18 warnings。計算sourceのGitHub CPU validation（wheel/sdist含む）成功：
+https://github.com/takumiecd/torchcst/actions/runs/38062440077
+
+### 完全step（ms）
+
+以下は最終cohortの未計装capture/replay中央値。diagnostic stageを足し引きした値ではない。
+
+| N / rho | W＋torch GEMM | saved factor | onchip H | H16旧 | H16新 | H32旧 | H32新 | dense |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1024 / 3 | 0.4004 | 1.2939 | 1.1840 | 3.3775 | 2.0708 | 3.3287 | 1.9535 | 0.0877 |
+| 2048 / 3 | 1.3152 | 5.1602 | 4.5359 | 13.3422 | 8.6758 | 12.1451 | 8.1090 | 0.5944 |
+| 1024 / 8 | 0.8807 | 2.7511 | 2.7178 | 4.2539 | 3.0237 | 4.1305 | 2.7970 | 0.0874 |
+| 2048 / 8 | 3.3805 | 11.6054 | 9.9586 | 16.5095 | 11.8624 | 15.0133 | 11.1010 | 0.5961 |
+
+| N / rho | H16短縮 | H32短縮 | メモリ内で最速のCST |
+| --- | ---: | ---: | --- |
+| 1024 / 3 | 38.7% | 41.3% | onchip-h |
+| 2048 / 3 | 35.0% | 33.2% | prepared-h32 |
+| 1024 / 8 | 28.9% | 32.3% | onchip-h |
+| 2048 / 8 | 28.1% | 26.1% | prepared-h32 |
+
+### 完全step peak（MiB、allocated / reserved）
+
+同一Nではrho3/8とも同じpeakを観測した。新H16/H32の全8比較でdenseの両peak以下。
+新情報を追加したためallocatedは旧Hより増えており、「メモリ無料の高速化」とは扱わない。
+H16のpeakはbackwardとの寿命重なりにも左右され、12A bytesをpeak差分と同一視しない。
+
+| N | W＋GEMM | saved factor | onchip H | H16旧 | H16新 | H32旧 | H32新 | dense |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1024 | 48.67 / 116 | 20.96 / 36 | 10.84 / 36 | 10.84 / 36 | 11.32 / 36 | 13.92 / 36 | 14.52 / 36 | 33.00 / 86 |
+| 2048 | 96.16 / 142 | 83.11 / 130 | 42.87 / 114 | 43.26 / 102 | 44.22 / 102 | 55.02 / 104 | 57.42 / 104 | 81.75 / 106 |
+
+### 分離したforward診断（H32、ms）
+
+固定post24 copyの別Graph、5 samplesの中央値。候補indexは粗いbin構築だけで、
+正確な支持checkはY集約に含む。field準備にはflag初期化・非finite検出も含め、
+Y集約にはguardの両launchを含む。各phaseは完全stepと非加算的。
+
+| N / rho | candidate index | 3項目＋flag準備 | H生成 | Y旧 | Y新 | forward/loss新 | backward新 | optimizer新 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1024 / 3 | 0.0461 | 0.0102 | 0.1085 | 2.3542 | 1.0465 | 1.2841 | 0.5151 | 0.1475 |
+| 2048 / 3 | 0.0717 | 0.0307 | 0.5192 | 7.9319 | 4.0151 | 4.2322 | 1.9487 | 0.3410 |
+| 1024 / 8 | 0.0461 | 0.0092 | 0.1505 | 2.3634 | 1.0783 | 1.3548 | 1.2892 | 0.1475 |
+| 2048 / 8 | 0.0737 | 0.0307 | 0.7332 | 8.0292 | 4.2322 | 4.7800 | 4.4237 | 0.3523 |
+
+Y集約は旧H32より約47〜56%短縮し、候補index／H生成／backwardは大筋同じ。
+rho3ではYが依然forward最大の処理、rho8ではforwardとbackwardが近い大きさになった。
+次の切り分けはY内の候補走査・U評価・H load・積和/reductionと、rho8 backward内訳。
+物理cache/stall counterが取得できたとは扱わず、今回のallocator peaksから推測しない。
+fine routingのindex容量・構築費用と支持check減少を比較する余地はあるが、今回CSRは追加していない。
+
+### 判断と保全
+
+このsourceのprepared H32は、N2048の両rhoでdense両peak以下のCST候補中最速。
+N1024はonchip Hが最速。H16も低メモリ選択肢として残す。W＋GEMMは速いが両Nでdenseを
+メモリ超過するので、今回の低メモリ選択から外れる。denseの速度には全Caseで未到達。
+一つのL4 cohort／D2 FlatTorus Triweightの結果で、別GPU、高次元実行、実DB、
+独立confirmatory cohort、公開dispatcherへの採用は未実施。Draft PR #100に記録しresearch経路に留める。
+
+最終5 jobsのsource/result archive、全1627 source file hashes、result manifest、56 snapshot hashes、
+実行workerのsource hashesとlocal runtime bytesを検証し、各job一式をignored
+`output/regular-grid-h/prepared-guard-evidence/`へ保存した。初回通常比較と2範囲probeは
+`prepared-evidence/`、capture failureは`prepared-guard-evidence/`内の別jobとして保持する。
+すべてbounded job、timeoutなし、source修正前後の結果を上書きしていない。
+最終的に全slot stopped、所有VM terminated、server active sessionなしをpoolで確認し、
+`pool-final-status.json`と`final-stop-lifecycle.log`を保存した。
+
+| 最終job | scope | source archive SHA256 | result archive SHA256 |
+| --- | --- | --- | --- |
+| l4job-1433115f757c44eb8566bdf75587874c | 316 tests | 4eb10ae2b277d2e7089bcd651ab054ef22e370d3cc39d20f2e4aaf33566afd46 | b8041af1c48085e4e4d10281c30fcc7fc161b0129828a1a90da10ba77c49295a |
+| l4job-2ec72a5d8e9543818332207ef070e7a2 | N1024/rho3 | 06886e58d4173af4141d70006143c08f69542c713bcf9e2005c8220d20f47931 | 17e512238b8d51804ee8f0ff46cb84c4a247efd4a113d861433840d3621ea142 |
+| l4job-392cc69de78a4d78933f0a8472ceab8b | N2048/rho3 | dcfbb76d633915dc505cd73a8cb1f5164c64e2ea0f754c21a56aefde399b7159 | bbb2e8881d007caee53400c8b6ce0abe9159ecba273c3ea176352c37cb69008d |
+| l4job-8b89a14501b3449d9f4736750d86bf01 | N1024/rho8 | 878cd90553e0ff924800b561da257af705b9a13b9f78e75696078b9bd5cc301a | 9332e506771c6b4988080a129bbb69d100004641f37d070be5f94660e7a2c85c |
+| l4job-4a63256dcbe641199109b718dbb1e210 | N2048/rho8 | c4e8d0a06d05c03cff836da545503633954afb19eff9a3b2e59e844d088f266b | 41319e34ecdb79e1311e4025fa36fb9aa1b1504a4a4dd8c51d7e8d4b0eddb4fc |
+
+範囲probe jobs：`l4job-7707cd6f969b4b0ca9042e16b2f6915a`（通常振幅全PASS）、
+`l4job-40d06253d10f4c69a5036ba60038c010`（旧順序の非空極端値precision FAILを含むexit1）。
+修正前capture failure：`l4job-132f9d1b2b1a49079766918bd3cfd8cd`（315 PASS／1 harness FAIL）。
+初回通常4 jobs：`l4job-98dcae3f557e479eadd1ff1f349b1532`、
+`l4job-28c9b44194cf447d97cc38cb4a77818f`、`l4job-a4e1bdcf996a4dd093bfec7bfb54836b`、
+`l4job-634846cd09b9426c8c431f90ec6ee6ed`。hashは各evidenceのverified JSONへ保存。
+
+再現は計算sourceで（各Caseを一度、rhoとNだけ変更）：
+
+```bash
+PYTHONPATH=src:. python -m pytest -q tests/test_regular_grid_h_cuda.py tests/test_periodic_cuda.py
+PYTHONPATH=src:. python -m benchmarks.cuda.linear.periodic_comparison \
+  --case benchmarks/cuda/linear/cases/regular-grid-h-2048-rho3.json \
+  --plans matrix-torch factor onchip-h reused-h16 reused-h32 prepared-h16 prepared-h32 dense \
+  --isolated-oracle --phases --output output/regular-grid-h-prepared-final.json
+```

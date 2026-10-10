@@ -9,7 +9,9 @@ Chartの公開契約は[RegularGridの仕様](regular-grid.ja.md)、実装・登
 [kernel開発ガイド](kernel-development.ja.md)、既存の測定は
 [PeriodicGridの比較](periodic-comparison.ja.md)を参照する。
 この文書は実行方式の設計方針であり、KernelSpecの数学や公開dispatcherを変更しない。
-RegularGridの宣言・Torch参照は実装済み。以下の新しい融合・集約方式のGPU性能は未検証。
+RegularGridの宣言・Torch参照は実装済み。D2 FlatTorusの初期kernelをL4で検証・比較し、
+[研究ノート](research-history/cuda-linear/regular-grid-h-lifecycle.ja.md)へ記録した。
+以下の設計を高次元・別geometry・別GPUへ広げた性能は未検証。
 
 ## 決めたことと計測で決めること
 
@@ -187,3 +189,31 @@ scopeを固定し、メモリ条件を満たさない研究候補の記録も保
 診断用の各stage時間を足して完全step時間の代用にしない。
 allocatorのpeakは物理DRAM転送量やL2 hit率ではない。cache/atomicの物理的な原因は
 必要なtrace・counterで確認し、未測定の部分を確定した理由として書かない。
+
+## D2実装での正規化配分とforward scale
+
+現在のRegularGrid/Triweight D2実装は、raw入力・出力profileをqv、quとして、
+
+\[
+D=\max(\|q_v\|_2\|q_u\|_2,\epsilon),\qquad
+(S_v,S_u)=\begin{cases}
+(\|q_v\|_2,\|q_u\|_2) & \|q_v\|_2\|q_u\|_2\ge\epsilon,\\
+(\sqrt\epsilon,\sqrt\epsilon) & \text{otherwise}.
+\end{cases}
+\]
+
+したがってSv Su=Dであり、各軸へ独立にfloorを適用する方式ではない。
+この配分で `H=(qv/Sv)X`、`β=amp/Su`、`Y=sum_a qu*β*H` と計算する。
+新しいprepared H経路のβはamp/D全体ではなく、出力側分母Suの先行計算である。
+Hの生成方法・backwardの正規化微分は元の配分を維持する。
+
+β・inverse width・output centreだけをHのsorted positionへ置く。値は12A bytesで、
+forward中のすべての小batchに再利用する。βの非finite検出用flagは4 bytes。
+flag、3項目、routing、Hはいずれもbackwardへ保存せず、次forwardで更新状態から再生成する。
+backwardには元のforward snapshotとnorm/VJP情報を残す。ゼロ振幅からの割算復元は使わない。
+
+FP32ではamp/Suだけがoverflowしても、(qu/Su)*ampが有限になる場合がある。
+非finite βでは元の演算順序を使い、通常βではsorted positionから積和する。
+この選択はGPU flagで行い、host同期を入れない。guard用の準備と空launchも完全step費用に含める。
+候補数、H容量、3項目の保持量、backward再計算は別々に評価し、
+[実測と範囲regression](research-history/cuda-linear/regular-grid-h-lifecycle.ja.md)を残す。
