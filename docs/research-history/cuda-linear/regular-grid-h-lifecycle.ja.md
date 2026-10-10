@@ -1271,3 +1271,18 @@ python -m benchmarks.cuda.linear.periodic_comparison \
 GPU回帰testは `python -m pytest -q tests/test_regular_grid_h_cuda.py tests/test_periodic_cuda.py`。
 raw evidenceは全jobの凍結source・結果archive・manifest付きで
 `output/regular-grid-h/overnight-evidence/` に保全した。
+
+input-owner計算source `e2a4984d` はGPU環境で全478 testsをPASS（324.30s、2 warnings）。
+CPUは1677 passed /3068 skipped /18 warnings。GPUではGの同一buffer上書き、input tile8/16/32/64、
+partial batch、dX-only/parameter-only分岐、retained snapshots、empty/single/floor/広い支持、
+β overflow fallback、20 eager/Graph更新を含む既存全契約を確認した。
+検証job `l4job-09b05c9b286941d1abf98c2b336cad51`、source archive
+`042dc58fc7d6a36fd2ba65a4fd709927e5544f5c03d9733207f530ae1a3f474a`、result archive
+`cb71347441e2bbd2e2815477eb222029ef2f0b82382d458efadd15a6b138b311`。
+1629 source filesと全result manifestを照合済み。GitHub CPU validationも`e2a4984d`をPASS：
+https://github.com/takumiecd/torchcst/actions/runs/38067291396 。
+
+この検証後にN2048/rho3・8の2 comparison jobを提出した。source hintは計算checkpoint
+`e2a4984d` とし、現在の追加commitは研究ノートだけでruntime/runner bytesは同じ。
+各Caseで10 workers（Wtorch/factor/onchip、prepared H16/32、group32 H16/32、input-owner16/32、dense）を
+独立processで比較する。GPU correctness PASSだけで速度・memoryの採用判断はしない。
