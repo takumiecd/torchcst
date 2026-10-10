@@ -106,13 +106,14 @@ N8192 corrected-clock job6f83d08dcb974a9387ddb7a2b314910d has the same corrected
 The new research algorithm `research_regular_product_matrix_free_fused/v1` fuses
 H and Hci into one input loop in the source VJP. It preserves the forward13-field
 snapshot, whole-product floor, support/overflow and canonical order. Output G/Gco
-and owner dX are unchanged. Singleton input retains H and has Hci=0; amplitude0
+and owner dX are unchanged. Norm-active singleton input retains H and has Hci=0;
+when the whole-product floor binds, singleton raw-profile derivatives retain floor scaling. Amplitude0
 still retains dAmp. Scratch allocation stays the same to isolate the fusion.
 
 N2048 measured sourcee774c6e63093b5637d265ceeb79c515b0f793c3d, job
 `l4job-b3fe515dd7724868944c05226cf16c86`:225 GPU-host tests passed/no skips,
-including51 fused GPU cases and existing regressions. Two autograd stream-mismatch
-warnings are retained. Full initial and observed24-update gates pass for all4
+including51 fused GPU cases and existing regressions. Two warnings are retained:
+one cuBLAS CUDA-context initialization and one AccumulateGrad stream mismatch. Full initial and observed24-update gates pass for all4
 plans; no tolerance or oracle sampling change. Host1442 PASS/2738 skipped,
 Ruff check, declaration checks, wheel/sdist and runtime byte verification passed.
 A later formatting-only commitf9483cd468232951667027bda4b7d576d01112b3 adds two
@@ -137,8 +138,7 @@ verified result archive8dabee4572784b2e3e73a03d46f7371888d36ac982e1e226fa8fc8590
 All1601 tracked files equal the measured commit, with only the pool driver extra.
 GPU gate146.35s, benchmark65.26s, format submission check2.07s; total driver224.48s
 within1200s. The N8192 comparison joba0d6cbd5035c4e97a3a278357cdf289b uses source
-f9483cd4,1800s deadline, unchanged parameters/driver and no new tuning. Its outcome
-is recorded separately after retrieval.
+f9483cd4,1800s deadline, unchanged parameters/driver and no new tuning. Its completed outcome is recorded below.
 
 The supplemental evolving-state oracle uses loss `(Y*target).sum()/(B*N)` in
 separate model/optimizer instances. It verifies the full VJP at the state after24
@@ -146,3 +146,52 @@ updates, rather than claiming the primary benchmark's final state or learning
 quality. Primary complete-step timing uses the existing benchmark loss and52
 actual updates. Floating reduction orders may yield different final Parameter
 hashes while remaining within the unchanged numerical gates.
+
+## Fused source backward: large result and final disposition
+
+N8192 sourcef9483cd468232951667027bda4b7d576d01112b3, job
+`l4job-a0d6cbd5035c4e97a3a278357cdf289b`, same L4/Torch/CUDA/Triton versions and
+fixed Case/recipe/optimizer/precision. All4 initial full-site/all-atom oracles and
+all4 supplemental oracles pass at observed AdamW clock24. Every one of3355443
+widths changes. Worst across all updated plans: Ymaxabs2.147650e-4, dX7.004511e-10,
+dP2.762317e-11 and relative-L2<=1.487454e-6, below both unchanged4e-4 gates.
+Fused-specific updated Ymaxabs2.188853e-5 and relative-L2<=2.673746e-7.
+
+| Route | Complete Graph step ms | Peak allocated bytes | Peak reserved bytes |
+| --- | ---: | ---: | ---: |
+| native-g8-p8 | 42.803069 | 1041040896 | 2501902336 |
+| torch-g8-p8 | 40.215558 | 1075119616 | 2522873856 |
+| csr-c256k | 53.690391 | 580723200 | 1495269376 |
+| fused-c256k | 48.455082 | 580723200 | 1495269376 |
+| dense | 11.700642 | 1112017408 | 1642070016 |
+
+Fusion improves the complete step9.75% versus same-run CSR256, with unchanged
+peak. Against native/Torch it is13.20%/20.49% slower and44.22%/45.99% lower
+allocated. Both time regressions exceed3%: REJECT. Against dense it takes4.14x
+the step time with47.78% lower allocated, a separate parameterization comparison.
+Both V1 chunks and this fused candidate fail the predeclared joint gate. No
+reverse-order performance confirmation or unchanged-source favorable retry is
+justified; there is one independent timing run per size for each experiment.
+
+Separate backward diagnostics CSR28.700672 to fused25.285631ms; forward21.919744
+to19.941376ms despite unchanged forward source, optimizer2.765824 to2.790400ms.
+These phases use a separate continuing-width graph. Do not sum them into primary
+time or attribute their differences to physical cache/DRAM/register effects.
+
+Driver994.96s within1800s; benchmark589.63s and submission validation2.12s.
+Source archive51765c72d7f166c8f694a2c32e1c49f6b68ed0cfde578372cdb2b3da6be63981;
+verified result archived4cc2afdcc68d30bf5b3677b29f13fba34ba36833e61aedf6c6e014e7796e856.
+All1601 tracked files equal measuredf9483cd4, only `__pool_driver__.py` extra.
+Every extracted manifest hash matches. Source/receipt/build/audit companions and
+all raw failures/successes remain in ignored output and pool job directories.
+
+Final disposition: preserve the implementation and tests on named research
+branches; integrate results and clock corrections through a docs-only PR. Public
+dispatch and existing runtime stay unchanged. This confirms exact support arithmetic
+and substantial memory savings, but not a faster complete-step replacement.
+
+Reproduce on `kernel/product-fused-backward` atf9483cd4 with catalog
+`benchmarks/cuda/linear/plans-regular-product-fused.json`, cases
+`regular-product-fused-{2048,8192}-rho3.json` and the same runner command above.
+The exact corrected24-update driver is in both frozen source archives. Later
+research-note edits do not relabel either measured runtime/source.
