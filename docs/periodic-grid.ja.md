@@ -1,5 +1,8 @@
 # 等間隔の平坦なTorus chart
 
+weight軸ごとの格子指定とscalar/軸別spacingには
+[RegularGridChartのAPI](regular-grid.ja.md)を使える。以下は既存PeriodicGridの契約である。
+
 `chart_presets.periodic_grid` は、独立した周期軸を持つ単一chartを宣言する。
 既存の3D埋め込みTorusとは距離が異なるため、Geometry IDは`flat_torus`、
 chart kindは`periodic_grid`、対応するprofile productはkernel revision 3とする。

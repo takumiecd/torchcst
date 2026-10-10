@@ -101,6 +101,19 @@ derivatives remain coupled. Whole-operator L2 normalization uses one global
 floor. Intrinsic/ambient centres and eager geometry-aware Polar updates use the
 Torch reference; CUDA fusion and captured Torus updates are not yet available.
 
+`chart_presets.regular_grid(((16, 16), (128,)), spacing=0.1)` declares an
+implicit Euclidean grid with weight shape `[256, 128]`: two grid coordinates
+for weight axis 0 and one for axis 1. No `shape` or `output_dims` is required.
+Scalar `spacing` applies to every coordinate; `(0.1, 0.2, 0.3)` specifies them
+individually. Coordinates are generated from indices without a site table.
+Pass `geometry="flat_torus"` to derive periods as count times spacing, or pass
+a concrete Euclidean/FlatTorus geometry. Use `polar_profile_product` for Euclidean
+and `polar_periodic_profile_product` for shortest wrapped coordinate distances.
+The chart supports arbitrary grid dimension/grouping; `CSTLinear` requires two
+weight axes. Torch factored/materialized execution is available. Existing
+research CUDA routes still require `PeriodicGridChartSpec`; the new chart has no
+CUDA performance claim. See [the API and geometry contract](docs/regular-grid.ja.md).
+
 `chart_presets.periodic_grid((16, 32, 64), periods=(1.0, 2.0, 4.0),
 output_dims=2)` declares one equally spaced flat periodic chart with shape
 `[512, 64]`. It stores only per-axis origins/periods; spacing is period/count.
