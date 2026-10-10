@@ -148,6 +148,11 @@ CUDA FULL/WINDOWもその純粋metadata処理を再利用する。具体的な�
 区別し、Triton というだけの理由で複数の計算方式を一つのファイルへ集めない。
 未実装のディレクトリや空の雛形は作らない。
 
+RegularGridのprofile-product Linearでは
+[Hの生成・再利用・寿命の設計方針](../../../docs/h-lifecycle-kernel-design.ja.md)を使い、
+具体的な分割・融合・routing・保存／再計算はAlgorithm/Recipeの実行方式として扱う。
+この実行方針をChartSpecやKernelSpecの数学的な意味へ混ぜない。
+
 検証は `tests/`、継続する正しさ・時間・メモリ測定は `benchmarks/` に置く。
 未採用方式は独立した研究 branch で扱い、本体ツリーへ試作ディレクトリを残さない。
 過去の採否は `docs/research-history/` に保存する。登録、対応判定、承認、既定 dispatch への採用は別の段階とする。

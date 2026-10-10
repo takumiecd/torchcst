@@ -7,6 +7,11 @@
 所有者のGPU・研究worktreeの運用規則は [研究環境の運用規則](research-operations.ja.md)に置く。
 この文書は実装・登録・検証の詳細を扱う。
 
+RegularGrid上のprofile-product Linearを新規実装・最適化する場合は、
+[Hの生成・再利用・寿命を軸にしたkernel設計](h-lifecycle-kernel-design.ja.md)を参照する。
+X→Hの読み取り共有、H→Yの局所集約、backwardまでの保存／再計算を同じ実行計画で扱い、
+候補の処理単位・保存量・完全step時間をその方針に沿って説明する。
+
 ## 追加する種類と変更箇所
 
 ここでのCUDA kernelは計算実装を指す。数学的なKernelSpecを追加する場合は、
