@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "plans": [
+    {
+      "id": "matrix-torch",
+      "plan": {
+        "algorithm_id": "research_cuda_periodic_grouped_matrix",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_group": 8,
+          "gemm": "torch",
+          "patch_sites": 8,
+          "prep_group": 16,
+          "prep_sites": 16
+        },
+        "schema_version": 1
+      }
+    },
+    {
+      "id": "matrix-triton",
+      "plan": {
+        "algorithm_id": "research_cuda_periodic_grouped_matrix",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_group": 8,
+          "gemm": "triton",
+          "patch_sites": 8,
+          "prep_group": 16,
+          "prep_sites": 16
+        },
+        "schema_version": 1
+      }
+    },
+    {
+      "id": "factor",
+      "plan": {
+        "algorithm_id": "research_cuda_periodic_prepared_factor",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_group": 8,
+          "gemm": "torch",
+          "patch_sites": 8,
+          "prep_group": 16,
+          "prep_sites": 16
+        },
+        "schema_version": 1
+      }
+    }
+  ]
+}
