@@ -590,3 +590,60 @@ def test_prepared_reuse_zero_forward_preserves_nonzero_derivative(route, zero):
     assert torch.count_nonzero(y) == 0
     derivative = actual[1] if zero == "input" else actual[2][:, 0]
     assert torch.count_nonzero(derivative) > 0
+
+
+@GPU
+@pytest.mark.parametrize("route", ["prepared16", "prepared32"])
+@pytest.mark.parametrize("sigma", [0.01, 0.25000006])
+def test_prepared_nonfinite_scale_preserves_original_order_and_graph(route, sigma):
+    # amp/Su can overflow while (raw_U/Su)*amp remains finite. The empty
+    # atom also has an independent FP64 zero oracle. For the extreme nonempty
+    # case retain the original floating order bitwise, without relaxing its
+    # ordinary-sized FP64 gate or claiming a new precision guarantee.
+    p = torch.tensor([[0.2, 1.2, 0.25, 0.25]])
+    settings = {
+        "shape": (2, 2),
+        "periods": (2.0, 2.0),
+        "origin": (0.0, 0.0),
+        "sigma": sigma,
+        "floor": 1e-40,
+        "device": "cuda",
+    }
+    candidate = model(p, route, **settings)
+    control = model(
+        p, "parallel16" if route == "prepared16" else "parallel32", **settings
+    )
+    for layer in (candidate, control):
+        layer.kernel.amplitude_max.fill_(1e30)
+    x = torch.tensor([[0.3, -0.5]], device="cuda", requires_grad=True)
+    dy = torch.tensor([[0.2, -0.7]], device="cuda")
+    expected_y = control(x)
+    expected = (expected_y, *torch.autograd.grad(expected_y, (x, control.atoms.p), dy))
+
+    def call():
+        y = candidate(x)
+        return (y, *torch.autograd.grad(y, (x, candidate.atoms.p), dy))
+
+    actual = call()
+    if sigma == 0.01:
+        periodic.gate(actual, periodic.oracle(candidate, x, dy))
+    for a, e in zip(actual, expected, strict=True):
+        assert a.isfinite().all() and e.isfinite().all()
+        torch.testing.assert_close(a, e, rtol=0, atol=0)
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        replay = call()
+    for _ in range(3):
+        graph.replay()
+        for a, e in zip(replay, expected, strict=True):
+            torch.testing.assert_close(a, e, rtol=0, atol=0)
+    # The guard must be rebuilt after live values return to the finite route.
+    candidate.kernel.amplitude_max.fill_(1.0)
+    control.kernel.amplitude_max.fill_(1.0)
+    cy = control(x)
+    finite_expected = (cy, *torch.autograd.grad(cy, (x, control.atoms.p), dy))
+    if sigma == 0.01:
+        periodic.gate(call(), periodic.oracle(candidate, x, dy))
+    graph.replay()
+    for a, e in zip(replay, finite_expected, strict=True):
+        torch.testing.assert_close(a, e, rtol=4e-4, atol=4e-4)

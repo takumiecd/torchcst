@@ -939,10 +939,11 @@ https://github.com/takumiecd/torchcst/actions/runs/38058918855/job/114232988065
 ## β先行計算と3項目整列の実行candidate（事前方針）
 
 2026-10-10、原因調査を受けたユーザー指示により実行経路を追加する。
-`PreparedReusedHRecipe(h_batch=16/32)` は一度だけ `β=amp/D` をexact FP32除算し、
+`PreparedReusedHRecipe(h_batch=16/32)` は一度だけ `β=amp/Su` をexact FP32除算し、
 β・inverse width・output centreだけをHと同じsorted positionへ置く（12A bytes）。
 Y ownerはoriginal IDを読まず、`coefficient=raw_U*β` で集約する。
-Hはraw V Xのまま小batchで上書き。新3項目・routing・Hはforwardだけの寿命で、
+既存preparationは `Sv*Su=max(||raw V||₂||raw U||₂, floor)` に分母を配分しており、
+Hは `(raw V/Sv)X` のまま小batchで上書き。新3項目・routing・Hはforwardだけの寿命で、
 backwardはforward時の元13項目snapshotから再計算する。joint L2単一floorは維持する。
 数学的には同一だがFP32演算順序が変わるため、数値一致を仮定せず検査する。
 
@@ -961,3 +962,29 @@ forward診断ではcandidate index、3項目準備、H生成、Y集約を分離�
 既存診断の旧数値とは混ぜず、新cohort内で比較する。raw evidenceはignored outputに保存し、
 source/result/file/snapshot hashを検証する。NCU counter追加、fine site routing、CSR化は今回に含めない。
 公開dispatchへの採用は別判断、retry・gate緩和・有利なsampleの選択はしない。
+
+### 先行βの浮動小数点範囲guard（追検証方針）
+
+最初のsource `dc635793` は通常4Caseと312 testsを通ったが、追加範囲probeで
+floor=1e-40、amplitude_max=1e30、空支持の組合せを検査すると、元H経路は独立FP64の
+Y/dX/all dPと一致し、新経路だけYがNaNとなった（`amp/Su` がoverflow）。
+これは数学契約の追加ではなく、新演算順序の数値regressionなので修正する。
+極端に狭い非空支持では元経路も従来の絶対FP64誤差gateに失敗したが有限だった。
+そのprecision failureは保持し、gateを緩和した採用主張は行わない。
+初回の小floor/通常振幅probeは全PASS。追加の大振幅probeはbaseline非空精度gateの
+失敗を含みdriver exit1となった。いずれもarchive、log、4通常Caseを保存する。
+
+準備kernelで非finite βを検出した場合のみforward flagを立てる。通常βのkernelと
+元演算順序のkernelを別specializationで起動し、flagに合う一方だけがYへ書く。
+これによりnormal pathのregister scheduleにoriginal ID／除算を含めず、host同期も不要。
+flagは4 bytes、新情報の値は引き続き3項目12A bytes、すべてforward寿命。
+通常時の余分なflag初期化／空launchもstep費用とピークに含めて測る。
+
+sourceを再commit固定し、同じ共有L4／600秒の全検証jobを一度追加する。
+追加4checksは空支持の独立FP64 Y/dX/all dP、元演算順序とのbitwise一致、
+非空極端値の有限性／元経路bitwise一致、Graph replay、live振幅を通常値へ戻したforwardを検査。
+通常precision gateは変更しない。成功後、同じ4Case／8worker比較を各一度900秒で再実行し、
+修正版と旧H経路を同じ新source cohort内で比較する。前sourceの速度を修正版へ流用しない。
+旧結果の選別retryではなく、範囲regression修正による新sourceの検証である。
+記録の式も実装へ合わせる：βはamp/D全体ではなくamp/Su、Hはraw V Xではなく
+(raw V/Sv)Xである。joint floor一つという数学契約は同じで、両側のfloor独立適用はしていない。

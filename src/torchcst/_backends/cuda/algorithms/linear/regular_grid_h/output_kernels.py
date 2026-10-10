@@ -173,7 +173,7 @@ def produce_h(
 
 
 @tr.jit
-def prepare_output_fields(P, Order, Hot, A: tl.constexpr, BLOCK: tl.constexpr):
+def prepare_output_fields(P, Order, Hot, Unsafe, A: tl.constexpr, BLOCK: tl.constexpr):
     """Ephemeral SoA beta/inverse-width/centre, sorted identically to raw H."""
     pos = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     valid = pos < A
@@ -182,6 +182,71 @@ def prepare_output_fields(P, Order, Hot, A: tl.constexpr, BLOCK: tl.constexpr):
     norm = tl.load(P + 5 * A + a, valid, 1)
     inv = tl.load(P + A + a, valid, 1)
     co = tl.load(P + 3 * A + a, valid, 0)
-    tl.store(Hot + pos, tl.div_rn(amp, norm), valid)
+    beta = tl.div_rn(amp, norm)
+    unsafe = tl.max((valid & ~(tl.abs(beta) < float("inf"))).to(tl.int32), 0)
+    # No atomic is issued on ordinary finite scales. One forward flag covers
+    # exceptional atoms without adding fields or per-owner ID dependencies.
+    tl.atomic_or(Unsafe, unsafe, unsafe != 0, sem="relaxed")
+    tl.store(Hot + pos, beta, valid)
     tl.store(Hot + A + pos, inv, valid)
     tl.store(Hot + 2 * A + pos, co, valid)
+
+
+@tr.jit
+def prepared_output_owned(
+    X,
+    P,
+    Order,
+    Bounds,
+    MaxDistance,
+    Y,
+    A: tl.constexpr,
+    B: tl.constexpr,
+    NI: tl.constexpr,
+    NO: tl.constexpr,
+    LI: tl.constexpr,
+    LO: tl.constexpr,
+    OI: tl.constexpr,
+    OO: tl.constexpr,
+    X0: tl.constexpr,
+    X1: tl.constexpr,
+    BM: tl.constexpr,
+    BK: tl.constexpr,
+    GROUP: tl.constexpr,
+    BO: tl.constexpr,
+    H,
+    Hot,
+    Unsafe,
+    BSTART: tl.constexpr,
+    FALLBACK: tl.constexpr,
+):
+    # Separate specializations keep the original-ID/division path out of the
+    # fast kernel's register schedule. Only one of the two launches writes Y.
+    if (tl.load(Unsafe) != 0) == FALLBACK:
+        output_owned(
+            X,
+            P,
+            Order,
+            Bounds,
+            MaxDistance,
+            Y,
+            A,
+            B,
+            NI,
+            NO,
+            LI,
+            LO,
+            OI,
+            OO,
+            X0,
+            X1,
+            BM,
+            BK,
+            GROUP,
+            BO,
+            H=H,
+            BSTART=BSTART,
+            CACHED=True,
+            Hot=Hot,
+            PREPARED=not FALLBACK,
+        )

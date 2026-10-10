@@ -106,10 +106,11 @@ def prepare_output_fields(packed, routing):
 
     a = packed.shape[1]
     hot = packed.new_empty((3, a))
+    unsafe = torch.zeros((), device=packed.device, dtype=torch.int32)
     kernels.prepare_output_fields[(tr.cdiv(a, 256),)](
-        packed, routing[0], hot, a, 256, num_warps=4, enable_fp_fusion=False
+        packed, routing[0], hot, unsafe, a, 256, num_warps=4, enable_fp_fusion=False
     )
-    return hot
+    return hot, unsafe
 
 
 def aggregate_chunk(
@@ -126,7 +127,7 @@ def aggregate_chunk(
         if h is None
         else active_h_tiles(h, b, batch_start, recipe.batch_tile)
     )
-    kernels.output_owned[(tr.cdiv(no, recipe.output_tile), tiles)](
+    args = (
         x,
         packed,
         *routing,
@@ -144,14 +145,18 @@ def aggregate_chunk(
         recipe.patch_sites,
         recipe.atom_group,
         recipe.output_tile,
-        H=h,
-        BSTART=batch_start,
-        CACHED=h is not None,
-        Hot=hot,
-        PREPARED=hot is not None,
-        num_warps=4,
-        enable_fp_fusion=False,
     )
+    options = {"H": h, "BSTART": batch_start, "num_warps": 4, "enable_fp_fusion": False}
+    grid = (tr.cdiv(no, recipe.output_tile), tiles)
+    if hot is None:
+        kernels.output_owned[grid](*args, CACHED=h is not None, **options)
+    else:
+        if h is None:
+            raise ValueError("prepared output ownership requires a cached H chunk")
+        for fallback in (False, True):
+            kernels.prepared_output_owned[grid](
+                *args, Hot=hot[0], Unsafe=hot[1], FALLBACK=fallback, **options
+            )
 
 
 def forward_output_owned(x, packed, sizes, recipe):

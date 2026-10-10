@@ -678,7 +678,7 @@ def output_owner_stages(step, *, reused, h_batch=None, prepared=False):
         "candidate_scope": "coarse index construction; exact support checks in Y kernel",
         "samples_ms": phases,
         "per_chunk_samples_ms": per_chunk,
-        "output_fields_bytes": 12 * len(p) if prepared else 0,
+        "output_fields_bytes": 12 * len(p) + 4 if prepared else 0,
         "H_scratch_bytes": 4 * len(p) * h_capacity(recipe) if reused else 0,
         "H_batch_capacity": h_capacity(recipe) if reused else 0,
         "Y_batch_tile": recipe.batch_tile,

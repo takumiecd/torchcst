@@ -48,4 +48,4 @@ class ParallelReusedHRecipe(ReusedHRecipe):
 
 @dataclass(frozen=True)
 class PreparedReusedHRecipe(ParallelReusedHRecipe):
-    """Three sorted output fields; joint normalization divided once per atom."""
+    """Three sorted output fields; finite output scale divided once per atom."""
