@@ -40,6 +40,32 @@ native-g8-p8 + dense 比較を `tools.kernel_dev prepare/check` で宣言検査�
 raw log と比較 snapshot は研究 worktree の ignored `output/regular-product-*`
 に保存する。この追記では GPU の正しさ・性能・メモリを新たに測定していない。
 
+### Product 支持キャッシュの実測と次の対象
+
+その後の [支持保存量の比較](20261010-product-bounded-support.md) では、
+N2048/N8192・batch32・5% atom・初期rho3・live幅更新を使い、再計算と
+無損失キャッシュ圧縮を同じ native/Torch matrix control と比較した。
+初期と24更新後の全atom・全site FP64 oracle、dX/全4atom勾配を通過した。
+最後の監査修正は GPU-host157 tests、研究sourceの CPU1412 passed /
+2700 skipped、wheel/sdist build を通過した。
+
+N8192のTorch比較では、再計算は allocated peak14.86%減 / step14.84%遅延、
+キャッシュ圧縮は5.79%減 / 3.47%遅延だった。nativeも同じ採用条件に未達。
+「peak5%以上減・step悪化3%以下」を維持して両方式を見送り、runtimeは
+`kernel/product-bounded-support` に保全する。mainへ追加するのは結果・方針のみ。
+N2048ではどちらも遅くpeakも増えたため、全サイズ共通の高速routeとはしない。
+
+次の実装対象は、FP32正規化値と整数支持区間をVJPで直接読み、13fieldの
+展開scratchとdecode launchを除く一案に固定する。whole-product floor、
+forward専用snapshot、全寄与とcanonical optimizer stateを維持する。
+現matrix control・今回のcache・denseを同じ条件で測り、合格後に独立確認する。
+今回の負結果を再測定や閾値変更で成功へ読み替えない。
+
+さらに大きなメモリ削減は、W/dW全保持をbounded H/Gと規則格子owner消費へ
+置き換える別段階とする。atom区間からowner membershipを直接作り、
+K×ownersの全表を避ける。構築・重複・並べ替え・exact overflow・再計算を
+完全stepに含める。既存prepared/H-Gへ切り替えるだけでは改善としない。
+
 ## 元の Sphere 計画
 
 2026-10-10。起点は main `5755a1b5`。この文書は今後の研究計画であり、
