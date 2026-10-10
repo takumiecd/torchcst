@@ -690,6 +690,7 @@ def worker(
     verify_only=False,
     regular_grid=False,
     oracle_directory=None,
+    aggregation_diagnostics=False,
 ):
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
@@ -849,6 +850,27 @@ def worker(
         result["forward_stage_diagnostics"] = (
             forward_stages(step, kind) if phases else None
         )
+        if aggregation_diagnostics and kind in ("reused-h16", "reused-h32"):
+            stage = "separate-aggregation-diagnostics"
+            from benchmarks.cuda.linear.aggregation_diagnostics import (
+                snapshot_diagnostics,
+            )
+            from torchcst._backends.cuda.algorithms.linear.regular_grid_h.recipe import (
+                ParallelReusedHRecipe,
+            )
+
+            diagnostic_recipe = ParallelReusedHRecipe(
+                h_batch=16 if kind == "reused-h16" else 32
+            )
+            result["aggregation_diagnostics"] = {
+                label: snapshot_diagnostics(
+                    oracle_directory / f"{label}.pt",
+                    diagnostic_recipe,
+                    directory=oracle_directory / (label + "-aggregation"),
+                    timing=label == "post24",
+                )
+                for label in ("initial", "post24")
+            }
         result["verify_only"] = verify_only
         result["status"] = "PASS"
     except torch.cuda.OutOfMemoryError as error:
@@ -1045,6 +1067,7 @@ def main():
     parser.add_argument("--oracle-snapshot", type=Path)
     parser.add_argument("--state-gate", action="store_true")
     parser.add_argument("--phases", action="store_true")
+    parser.add_argument("--aggregation-diagnostics", action="store_true")
     parser.add_argument("--verify-only", action="store_true")
     parser.add_argument("--reverse", action="store_true")
     parser.add_argument("--worker-timeout", type=int, default=900)
@@ -1101,6 +1124,10 @@ def main():
     primary = REGULAR_PRIMARY if args.regular_grid else PRIMARY
     if args.isolated_oracle and not args.regular_grid:
         parser.error("isolated oracle snapshot currently requires --regular-grid")
+    if args.aggregation_diagnostics and (
+        not args.regular_grid or not args.isolated_oracle
+    ):
+        parser.error("aggregation diagnostics require regular grid and isolated oracle")
     args.output.parent.mkdir(parents=True, exist_ok=True)
     if args.state_gate:
         result = state_gate(regular_grid=args.regular_grid)
@@ -1110,6 +1137,7 @@ def main():
             args.rho,
             args.worker,
             phases=args.phases,
+            aggregation_diagnostics=args.aggregation_diagnostics,
             verify_only=args.verify_only,
             regular_grid=args.regular_grid,
             oracle_directory=(
@@ -1146,6 +1174,8 @@ def main():
                 command.append("--isolated-oracle")
             if args.phases:
                 command.append("--phases")
+            if args.aggregation_diagnostics:
+                command.append("--aggregation-diagnostics")
             if args.verify_only:
                 command.append("--verify-only")
             try:

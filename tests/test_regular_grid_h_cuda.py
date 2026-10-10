@@ -404,3 +404,48 @@ def test_reused_recipes_are_distinct():
         ReusedHAlgorithm().validate_recipe(ParallelReusedHRecipe())
     with pytest.raises(TypeError):
         ParallelReusedHAlgorithm().validate_recipe(ReusedHRecipe())
+
+
+@GPU
+@pytest.mark.parametrize("capacity", [16, 32])
+@pytest.mark.parametrize("shape,sigma", [((33, 65), 0.7), ((17, 19), 9.0)])
+def test_aggregation_probes_real_formula_partial_chunks_and_census(
+    tmp_path, capacity, shape, sigma
+):
+    from benchmarks.cuda.linear.aggregation_diagnostics import aggregation_probes
+
+    layer = model(
+        periodic.parameters(17),
+        "parallel16" if capacity == 16 else "parallel32",
+        shape=shape,
+        sigma=sigma,
+        device="cuda",
+    )
+    x = torch.randn(19, shape[1] * 2, device="cuda")[:, ::2].detach().requires_grad_()
+    dy = torch.randn(shape[0], 19, device="cuda").T
+    result = aggregation_probes(
+        layer,
+        x,
+        ParallelReusedHRecipe(h_batch=capacity),
+        expected=periodic.oracle(layer, x, dy)[0],
+        directory=tmp_path,
+        samples=3,
+    )
+    assert result["status"] == "PASS"
+    assert result["census"]["cpu_enumeration_match"]
+    assert set(result["median_ms"]) == {
+        "runtime-full",
+        "full",
+        "scale-first",
+        "sorted-p",
+        "sorted-p-scale-first",
+        "support-unit",
+        "synthetic-h",
+        "gather-reduce",
+        "index-walk",
+    }
+    assert [chunk["batch_start"] for chunk in result["per_chunk"]] == list(
+        range(0, 19, capacity)
+    )
+    assert result["H_bytes"] == 17 * capacity * 4
+    assert all(v > 0 for v in result["median_ms"].values())

@@ -551,3 +551,34 @@ CPU CI: https://github.com/takumiecd/torchcst/actions/runs/38052982366/job/11421
 
 全pool slotのstopped、所有sessionのterminated、serverのactive sessionなしを確認した。
 停止ログとpool-final-status.jsonも同じignored evidence directoryへ保存した。
+
+
+## Y集約の内訳調査（事前方針）
+
+H容量比較に続き、kernelを変更せず、既存workerの初期／post24 snapshotに対する診断を追加する。
+既存periodic_comparisonの `--aggregation-diagnostics` がH16／H32のoracle完了後に実行する。
+主測定の完全step・Graphメモリpeakには診断を含めない。新runner／公開Planは追加しない。
+診断GPUコードはregular_grid_h/diagnostic_kernels.py、host orchestrationはbenchmark側に置く。
+
+候補bin数、8atom group反復数、検査atom数、Uが正のatom数／site pair数、振幅fieldの
+groupごとの32byte address-sector数を数える。全ownerを独立CPU FP32列挙と照合する。
+このsector数は論理addressの数で、実transaction数やL2 miss counterとは区別する。
+
+同一のH、routing、prepared metadataを固定し、H生成をY-onlyの測定区間から外す。
+容量16ではchunkごとに同じH bufferを生成／上書きしてからYのみをGraph計測し、
+各sample内のchunk時間を合計する。buffer配置、batch tile=8、output tile=16、atom group=8を固定。
+9probe（runtimeそのもの、同じ式のclone、amp/normを先に求めるscale-first、
+Hの順に13-field metadataを並べるsorted-P、両方、binary support coefficient、
+synthetic H、synthetic coefficientでのgather/reduce、index walk checksum）を比較する。
+数学を保つ4probeは初期とpost24の全Yを独立FP64と4e-4 gateで照合し、clone／sorted-Pは
+runtimeとbitwise一致も要求する。残りは出力を変える診断で、採用候補／完全step改善とは扱わない。
+
+21回の外部Event測定は順序をrotation／reverseして、Eventをaggregation Graph内へ入れない。
+sorted metadata作成のindex_select時間と明示scratch bytesを別途記録する。
+PTX、compiler registers／spills／shared memory、static instruction数も保存する。
+static codeとruntime resource metadataはphysical stall／cache counterの代わりにはしない。
+処理を除いた時間の差はcompiler／register／parallelismの相互作用を含むため、内訳として加算しない。
+
+GPU診断テストを1job（600秒）、その後既存4Case × 全9controlを同一sourceで各1cohort、
+各job600秒の事前上限で測定する。主controlの全勾配・正規化gateは従来どおり。
+GPU測定の成功／失敗とarchive hashesを保存し、retryで都合のよい結果を選ばない。
