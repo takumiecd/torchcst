@@ -155,3 +155,87 @@ raw原本・失敗logsは共有poolの各job directoryに保管する。
 成功2jobのsource/results/receipt copyとdriverは、このworktreeのignored
 `output/regular-grid-h/measured-81761251/`と`output/regular-grid-h/driver.py`に保存する。
 所有L4は停止確認済み。branch・worktree・失敗原本は削除しない。
+
+
+## Kernel時間とallocator内訳の追加診断
+
+2048/rho8、同じsource/runtime/初期値/24更新/FP64 gateで、試作・全H保存factor・denseを
+独立processに分けて診断した。allocator historyはprimary capture開始から測定境界まで。
+主測定後の別状態copyで1 warm replay＋3 replayをTorch profilerへ記録し、
+別に1 eager traceも保存した。この計装runのstep時間は主測定の代替に使わない。
+
+Graph traceのCUDA kernel時間では、試作の`forward`が45.01%、`backward`が47.78%、
+`prepare`が3.51%、`reduce_parameters`が0.31%だった。
+3 replayのkernel一回平均はそれぞれ4.009ms、4.256ms、0.312ms、0.028ms。
+これはdevice kernel時間に対する割合で、CPU同期・launch gapを含む完全step時間の割合ではない。
+全H保存factorではYとdXの`axis_scatter`合計が68.85%、`factor_vjp`が14.11%、
+HとGの`axis_contract`合計が11.33%、`prepare`が2.86%だった。
+
+**次の速度候補は加算の集約から比較する。**
+全H保存controlでscatterの費用が大きいこと、試作でも縮約＋scatterを融合した
+二kernelに約93%のdevice時間が集中することが根拠である。
+ただしatomic命令のstall、非連続load、register spillのどれが支配的かは未測定。
+「atomic競合が93%」とは解釈しない。まず出力支持groupingと局所Y部分和を一候補として
+完全stepで比較し、入力共有／dX側のgroupingは次の独立候補とする。
+
+primary測定境界のsnapshotは以下。MiB、currentはsnapshot時点、peakはcapture/replay込み。
+
+| 方式 | allocated peak | reserved peak | default pool reserved / active | Graph pool reserved / active |
+| --- | --- | --- | --- | --- |
+| CTA内H/G | 59.12 | 154 | 104 / 29.81 | 50 / 3.70 |
+| 全H保存factor | 99.36 | 170 | 84 / 29.81 | 82 / 3.70 |
+| dense | 81.75 | 106 | 88 / 65.00 | 18 / 16.50 |
+
+試作のsnapshot時のinactive領域はdefault 74.19MiB、Graph 46.30MiB。
+defaultでは完全にinactiveなsegmentが20MiB、active blockと同居するinactiveが54.19MiB。
+Graphのinactiveにはreplayで再利用する一時bufferが含まれ、単純なリーク／不要領域ではない。
+全H保存factorはcurrent reserved166MiB、peak170MiBで、表のpool内訳はcurrentの合計。
+
+H/Gの非保存によってGraph poolは82→50MiBへ減った。一方defaultは84→104MiBで、
+完全にinactiveな20MiB segmentが試作側に残る。したがって次のメモリ候補は、
+warmupからcaptureまでの割当順序、固定形状bufferの再利用、optimizer stateとの同居・
+一時bufferの寿命を確認する。`empty_cache`だけではactive blockに挟まれた領域は回収できず、
+Graphが再利用する一時領域を削除する対策にもならない。
+比較gateは変更せず、allocator設定／capture手順を変える候補はdenseを含め同条件で再測定する。
+
+診断sourceは`82e2f830f9ecefff6e451283dc324b356cfaa1ba`（測定source81761251とruntimeは同じ）。
+job `l4job-3963762d8d694cf29f132c964b054021`、三controlとも初期／24更新後gate PASS。
+source archive SHA256 `16dae9d74817fc5a3cdf963f0a08aceafb0a8b66f08c4f10ec4996dde706e083`、
+result archive SHA256 `2a30d4914eeda232a72f821b9962a599472aa6c04dd8d9f51b48bde4bfa532d0`。
+再現driverはignored `output/regular-grid-h/diagnostic.py`、集計は
+`output/regular-grid-h/analyze-diagnostic.py`。Chrome trace、stats/snapshot、原本JSONを保存する。
+
+
+### 測定境界の注意と次の比較順序
+
+allocator historyをfixture作成前から有効にした追跡では、試作のdefault poolに残る
+8.125MiB blockの一つの確保元は初期FP64 `oracle_vjp`のGEMM
+（`periodic_profile_product.py:108`）だった。同じサイズの別blockにはPython frameがなく、
+その確保元は未特定。denseにも8.125MiB blockが二つあり、一つはeager warmupのLinear
+（`torch/nn/modules/linear.py:134`）に由来する。
+試作側は二つの20MiB segment、dense側は同じ20MiB segmentに両blockがある。
+この差は検証側の割当順序がreservedへ残る影響を示す。
+これらがGEMMのlibrary workspaceであることはサイズ・確保箇所からの推定で、
+全blockの所有者をstackだけで確定したとは扱わない。
+
+元結果の`memory_scope`は「oracle/diagnostic scratch excluded」と記すが、
+**検証が作った持続的割当まで除外できているわけではなかった。**
+表とraw JSONは固定した境界で得た事実として保管し、値を書き換えない。
+現境界のreserved gateは未達だが、これだけで本番kernel固有の必要量とは断定しない。
+次のメモリ比較はoracleを別processに分離し、同一source・初期状態・24更新後snapshotを
+独立oracleで検査し、性能processへ検証の割当を持ち込まない方式を全controlへ適用する。
+正規化・数値gate・optimizer・更新回数・dense以下条件は維持し、旧測定と別protocolの結果として記録する。
+その後に必要量が残れば、warmup/captureの割当寿命と固定bufferの再利用を変える候補を比較する。
+
+速度の次の比較は出力支持grouping＋局所Y集約を一つずつ加え、
+並べ替え・index mapping・全backward・更新・両memory peak込みで評価する。
+register spill／atomic stall／DRAM transactionのcounterは未取得なので、
+この候補が勝つことを先取りしない。今の試作を比較基準として保持する。
+
+追跡job `l4job-f88b5554d81a468aa337a9034ee40b94`、試作とdenseの二processともPASS。
+source archive SHA256 `303753e3307bbbbb44690472451c945642f8c9a99919ec958f27f7f5fd3a5894`、
+result archive SHA256 `a366e47d2b898fdba3024cbac82ee7b3fe56dbb09d594e1a5b5a80a27a3ca89f`。
+再現driverはignored `output/regular-grid-h/allocation-origin.py`。
+二diagnostic jobのsource/result archive・全source file・全result manifestを再照合し、
+raw原本とlocal copyを`output/regular-grid-h/diagnostic-82e2f830/`へ保存した。
+runtimeとbenchmark sourceのhashはlocalに一致する。所有L4は停止確認済み。
