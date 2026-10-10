@@ -455,3 +455,99 @@ allocated/reserved peakを判定に使う。post24コピーで候補index、H生
 まずGPU回帰検証を1job（600秒上限）、その後各Case1cohortずつ（480秒上限）実行する。
 失敗・timeoutを自動retryせず、仕様・source・結果archive・oracle snapshotを保存する。
 小さい改善だけなら独立確認が必要で、公開dispatchへの採用はこの比較と分けて判断する。
+
+
+### H容量分離の測定結果・採否
+
+測定sourceは `d14fdaf48dba884c090e67bb7ac1b6a8c6c14764`。
+CPU 1659 passed / 2850 skipped、Plan 8件往復、Ruff、diff check、
+CPU CI（wheel/sdist含む）PASS。L4は250 passed / skipなし。
+追加したH16／H32はstrides、全勾配、joint floor、zero amp、空atom、保持snapshot、
+20 eager／Graph更新を通過。B37の端数chunk検査では使用後のbufferをNaNで埋め、
+H8は開始0/8/16/24/32、H16は0/16/32、H32は0/32で同じbufferを上書きして
+Y/dX/全dPがoracleと一致することを確認した。Hはbackwardへ保存しない。
+
+4Case × 9 control = 36 workerは全PASS。初期とpost24の64個の全軸・全atom FP64
+snapshotも変更していない4e-4 gateをPASSした。
+全誤差の最大max_abs=0.00033597983959943178、最大relative_l2=1.0063558715220024e-06。
+各Case/controlは1cohort、21timing sampleであり、21回の独立runではない。
+source、fixture、B32、5% atoms、seed41、FP32設定、optimizer、24実更新を揃えている。
+旧7controlの過去cohortとは混ぜず、以下の新しい同一cohort内で比較する。
+
+各セルは **完全step中央値ms / allocated MiB / reserved MiB**。
+
+| N / rho | W＋Torch | W＋Triton | 全H保存factor | atom担当H/G | 出力所有・H再計算 | H8再利用 | H16再利用 | H32再利用 | dense |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1024 / 3 | 0.395 / 48.67 / 116 | 0.468 / 16.17 / 36 | 1.286 / 20.96 / 36 | 1.186 / 10.84 / 36 | 2.030 / 10.84 / 36 | 5.427 / 10.84 / 36 | 3.346 / 10.84 / 36 | 3.291 / 13.92 / 36 | 0.086 / 33.00 / 86 |
+| 1024 / 8 | 0.876 / 48.67 / 116 | 0.943 / 16.17 / 36 | 2.745 / 20.96 / 36 | 2.717 / 10.84 / 36 | 3.227 / 10.84 / 36 | 6.281 / 10.84 / 36 | 4.220 / 10.84 / 36 | 4.190 / 13.92 / 36 | 0.085 / 33.00 / 86 |
+| 2048 / 3 | 1.317 / 96.16 / 142 | 1.502 / 63.11 / 122 | 5.252 / 83.11 / 130 | 4.636 / 42.87 / 114 | 8.488 / 42.87 / 114 | 13.578 / 42.87 / 114 | 13.375 / 43.26 / 102 | 12.118 / 55.02 / 104 | 0.594 / 81.75 / 106 |
+| 2048 / 8 | 3.313 / 96.16 / 142 | 3.544 / 63.11 / 122 | 11.661 / 83.11 / 130 | 10.214 / 42.87 / 114 | 13.486 / 42.87 / 114 | 16.745 / 42.87 / 114 | 16.642 / 43.26 / 102 | 15.165 / 55.02 / 104 | 0.594 / 81.75 / 106 |
+
+次は固定post24コピー・外部CUDA Eventの5sample中央値ms。
+各sample内のchunk時間を合計してから中央値を取る。H8/16/32でYのbatch tileは8、
+output tileは16、atom groupは8のまま。H生成／Y集約を実行するchunk数は4/2/1。
+粗い索引構築は別区間で、候補loopと支持正値チェックはY集約に含む。
+主測定にEventはなく、以下の時間を足し合わせて完全step時間にしない。
+計装したforwardと未計装forwardの一致、Parameter不変も全variantで確認した。
+
+| N / rho | H容量 | 準備 | 粗い候補索引 | H生成 | Y集約・候補走査・支持確認 |
+| --- | --- | --- | --- | --- | --- |
+| 1024 / 3 | 8 | 0.074 | 0.045 | 0.117 | 4.543 |
+| 1024 / 3 | 16 | 0.073 | 0.045 | 0.116 | 2.452 |
+| 1024 / 3 | 32 | 0.074 | 0.045 | 0.110 | 2.344 |
+| 1024 / 8 | 8 | 0.085 | 0.045 | 0.171 | 4.551 |
+| 1024 / 8 | 16 | 0.084 | 0.045 | 0.158 | 2.469 |
+| 1024 / 8 | 32 | 0.084 | 0.045 | 0.148 | 2.356 |
+| 2048 / 3 | 8 | 0.270 | 0.061 | 0.469 | 9.954 |
+| 2048 / 3 | 16 | 0.276 | 0.062 | 0.479 | 9.713 |
+| 2048 / 3 | 32 | 0.288 | 0.070 | 0.515 | 8.081 |
+| 2048 / 8 | 8 | 0.315 | 0.061 | 0.663 | 10.102 |
+| 2048 / 8 | 16 | 0.328 | 0.065 | 0.693 | 9.891 |
+| 2048 / 8 | 32 | 0.336 | 0.072 | 0.727 | 8.222 |
+
+N1024ではH16がH8より約33〜38%速く、両peakは10.84／36MiBで同じ。
+H32のH16に対する上積みは約0.7〜1.7%だけで、allocatedは13.92MiBへ増える。
+小差を確定した勝者とはせず、追加の独立確認なしにH32を採用しない。
+N2048ではH32の短縮幅がH16より大きいが、Y集約は依然支配的。
+小shapeのH生成はほぼ同じで、大shapeではやや増えた。並列batch tile／launch数を
+変えたscheduleの主な短縮はY区間にあった。cache miss／stall／spill counterは取得しておらず、機構の内訳は未確定。
+
+明示H scratchはH8/16/32で、N1024が約1.6/3.2/6.4MiB、N2048が6.4/12.8/25.6MiB。
+H16／H32のN2048 allocatedは43.26／55.02MiBに増える一方、reservedは102／104MiBと、
+H8の114MiBより小さかった。これはGraph capture/replayを含むallocator実測であり、
+H tensor自体の容量が減ったという意味ではない。allocator配置の原因は未検証。
+新2候補は全4Caseでdense両peak gateを満たした。ただし全CaseでH再計算controlより
+遅く、denseよりも遅い。メモリ条件内で最速のCSTはN1024がTriton W、N2048がH32。
+この条件依存の候補としてH16／H32を研究branchへ保持する。公開dispatchへの採用・
+main統合は行わず、Draft PR #100を維持する。
+
+次の優先対象はH容量をさらに増やすことではなく、Y側の候補走査・U評価・H参照の構造。
+小shapeではH16を、largeではH32を対照として使えるが、実行時自動dispatchは実装していない。
+H寿命を軸にした設計は保ち、候補indexとY内の探索費用を区別して次のablationを決める。
+
+| scope | job | source archive SHA256 | result archive SHA256 |
+| --- | --- | --- | --- |
+| 250 checks | `l4job-6c417b7df62c427d802d789bb2983ed9` | `93287869ef3eeca4728f0777c63ee64a30f1958ae283c1d5d352d88b76e2ab93` | `368c1bf8e67bc3e57c34ca2585714f87767d95cb8811846c746944abc300eb27` |
+| n1024-rho3 / 9 workers | `l4job-51877bc13edb45caa58c87ff4194ec1a` | `3b1859483fe476d24efa6634e25ad186251589e0bc949a9d2cceb0ff38834685` | `e7ea2af6e624842ce9ac5944da70a825df0d81fae9b348da00ce9dd576745d29` |
+| n2048-rho3 / 9 workers | `l4job-88a5e9fa6022447c8960cca4fe050995` | `65a842c16d17811f17b3ea0c703facfdf8251aee9771ac48a51fa1adbfd1c512` | `2c367cd58377d90126cfabf49387b7007678b286e5d91f6575b299c183ce8555` |
+| n1024-rho8 / 9 workers | `l4job-52747b918e564940a18ccb386e708a76` | `6eec6dfde2606ed6df7ca41d93d844166b1fcc6c26c23579ce90e5bae3c7e921` | `ea56085b16e755401d1cb78569efa7ad8b29db57fad294cb4393d02213f2f5c7` |
+| n2048-rho8 / 9 workers | `l4job-dc790d9d866c456fbe30104ae9788ead` | `a003cf91fefaad5a9f47c290537856545e22c44af2449d2b2443872d66f16706` | `18acba578a591858c790e430437b35e340ed8f0acf043ff92c18fe0ee3122e75` |
+
+NVIDIA L4、driver580.82.07、Torch2.11.0+cu130、CUDA13.0、Triton3.6.0、Python3.13.15。
+検証／4比較jobの全sourceはdriverを除き同一で、全source/result archive・file manifest・
+64 snapshot・runtime/benchmark source hashを照合した。失敗・timeout・retryなし。
+ignored `output/regular-grid-h/parallel-h-evidence/`へ全jobとverified-summary.jsonを保存した。
+再現driverは`parallel-validate-driver.py`、`parallel-measure-{N}-rho{rho}.py`。
+source commit上の以下のコマンドは新9controlを実行する。
+
+```bash
+PYTHONPATH=src:. python -m benchmarks.cuda.linear.periodic_comparison \
+  --case benchmarks/cuda/linear/cases/regular-grid-h-2048-rho8.json \
+  --isolated-oracle --phases --output output/regular-grid-h-parallel.json
+```
+
+CPU CI: https://github.com/takumiecd/torchcst/actions/runs/38052982366/job/114215711769
+実DB、別GPU、高次元CUDA、独立confirmatory run、physical counterは未検証。
+
+全pool slotのstopped、所有sessionのterminated、serverのactive sessionなしを確認した。
+停止ログとpool-final-status.jsonも同じignored evidence directoryへ保存した。
