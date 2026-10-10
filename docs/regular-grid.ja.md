@@ -3,6 +3,9 @@
 `chart_presets.regular_grid`は、格子の点配置とgeometryを分けて宣言する。
 点数・間隔・原点から必要な座標だけを生成し、全siteの座標表やindex表を保存しない。
 
+このchartを使うprofile-product kernelの今後の最適化は、
+[Hの生成・再利用・寿命を軸にした設計方針](h-lifecycle-kernel-design.ja.md)を参照する。
+
 ```python
 import torch
 from torchcst import BandwidthBounds, CSTLinear, TriweightSpec, presets
