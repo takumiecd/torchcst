@@ -11,7 +11,9 @@ Research algorithm: `research_regular_product_matrix_free_fused/v1`.
 For normalized input/output factors vn and un, retain the exact forward snapshot.
 Compute H=sum_j X_j vn_j and Hci=sum_j X_j d(vn_j)/dci from the same X load.
 Then dAmp=sum_b H_b G_b, dCo=amp sum_b H_b Gco_b and
-dCi=amp sum_b Hci_b G_b. Singleton input factors retain H and have Hci=0.
+dCi=amp sum_b Hci_b G_b. Norm-active singleton input factors retain H and have
+Hci=0. When the whole-product floor binds, singleton raw-profile derivatives
+retain floor scaling; the saved active/singleton flags already make this distinction.
 Whole-product floor D=max(||u|| ||v||,floor), detached live task widths and all
 four canonical Polar cotangents keep their existing mathematical contract.
 
@@ -27,6 +29,11 @@ fused capturable AdamW lr1e-4/wd.01, public Polar update, warmup5/rounds21.
 Primary Graph timing includes forward, backward and optimizer. Separate phase
 diagnostics continue evolving widths and are not summed into the primary timing.
 Report capture/replay allocated and reserved peaks; process memory is unmeasured.
+
+The supplemental evolving-state oracle uses `(Y*target).sum()/(B*N)` in separate
+model/optimizer instances. It verifies the full VJP at that24-update state, rather
+than the primary benchmark's final state or training quality. This clarification
+does not change the frozen driver, runtime, cases or acceptance gates.
 
 Full-site FP64 Y/dX/all-atom/all-four dP checks require maxabs AND relative-L2
 <=4e-4, initially and after24 real updates. The supplemental driver performs one
