@@ -195,3 +195,88 @@ def test_sharp_wrapper_calls_unchanged_worker_with_explicit_plan(
     )
     with pytest.raises(SystemExit):
         wrapper.main()
+
+
+def test_precision_wrapper_rejects_legacy_plan_before_running_worker(
+    tmp_path, monkeypatch
+):
+    from benchmarks.cuda.linear import precision_adaptive_comparison as wrapper
+
+    old = load_run(
+        LINEAR / "cases/sphere-support-adaptive-1024-sigma1_25.json",
+        LINEAR / "plans-sphere-support-adaptive.json",
+    )
+    plan_file = tmp_path / "legacy.json"
+    plan_file.write_text(wrapper.REGISTRY.dumps_plan(old.entry("compact-weight").plan))
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("legacy route must not execute as corrected precision")
+
+    monkeypatch.setattr(wrapper, "worker", forbidden)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "precision-wrapper",
+            "--size",
+            "1024",
+            "--sigma",
+            "1.25",
+            "--mode",
+            "research_graph",
+            "--linear-plan",
+            str(plan_file),
+            "--output",
+            str(tmp_path / "result.json"),
+        ],
+    )
+    with pytest.raises(SystemExit):
+        wrapper.main()
+
+def test_route_diagnostics_are_candidate_only_and_after_primary(tmp_path, monkeypatch):
+    from benchmarks.cuda.linear import precision_adaptive_comparison as wrapper
+
+    run = load_run(
+        LINEAR / "cases/sphere-precision-adaptive-1024-sigma1_25.json", CATALOG
+    )
+    plan_file, output = tmp_path / "plan.json", tmp_path / "result.json"
+    plan_file.write_text(wrapper.REGISTRY.dumps_plan(run.entry(CANDIDATE).plan))
+    calls = []
+    monkeypatch.setattr(
+        wrapper,
+        "worker",
+        lambda *a, **kw: calls.append("primary") or {"status": "PASS"},
+    )
+    monkeypatch.setattr(
+        wrapper,
+        "route_diagnostics",
+        lambda *a: calls.append("diagnostics") or {"scope": "independent"},
+    )
+    args = [
+        "wrapper",
+        "--size",
+        "1024",
+        "--sigma",
+        "1.25",
+        "--mode",
+        "research_graph",
+        "--linear-plan",
+        str(plan_file),
+        "--output",
+        str(output),
+        "--route-diagnostics",
+    ]
+    monkeypatch.setattr(sys, "argv", args)
+    wrapper.main()
+    assert calls == ["primary", "diagnostics"]
+    assert json.loads(output.read_text())["route_diagnostics"] == {
+        "scope": "independent"
+    }
+    monkeypatch.setattr(sys, "argv", [*args, "--verify-only"])
+    with pytest.raises(SystemExit):
+        wrapper.main()
+    assert calls == ["primary", "diagnostics"]
+    plan_file.write_text(wrapper.REGISTRY.dumps_plan(run.entry("precision-corrected-compact").plan))
+    monkeypatch.setattr(sys, "argv", args)
+    with pytest.raises(SystemExit):
+        wrapper.main()
