@@ -18,6 +18,8 @@ from .charts import (
     ChartState,
     ExplicitChartSpec,
     ExplicitChartState,
+    PeriodicGridChartSpec,
+    PeriodicGridChartState,
     ProductChartSpec,
     ProductChartState,
     StripChartSpec,
@@ -27,6 +29,7 @@ from .charts import (
 from .charts import presets as chart_presets
 from .geometry import (
     EuclideanGeometrySpec,
+    FlatTorusGeometrySpec,
     GeometrySpec,
     GeometryState,
     SphereGeometrySpec,
@@ -53,8 +56,8 @@ from .kernels import (
 )
 from .nn import CSTConv2d, CSTLinear, CSTModule
 from .operators import ChartPairSpec, Operator, OperatorSpec, SingleChartSpec
-from .operators.execution import LinearBinding, LinearInputs
 from .operators.atom_update import AtomUpdateBinding, AtomUpdateInputs
+from .operators.execution import LinearBinding, LinearInputs
 from .optim import CSTOptimizer, OptimizerStateAdapter
 from .patterns import (
     GridPatternSpec,
@@ -71,6 +74,8 @@ __all__ = [
     "AmpWidthSpec",
     "AtomOptimizerState",
     "AtomState",
+    "AtomUpdateBinding",
+    "AtomUpdateInputs",
     "Atoms",
     "BandwidthBounds",
     "BiweightSpec",
@@ -91,6 +96,7 @@ __all__ = [
     "ExplicitChartState",
     "FixedSelector",
     "FixedWidthSpec",
+    "FlatTorusGeometrySpec",
     "GaussianSpec",
     "GeometrySpec",
     "GeometryState",
@@ -109,10 +115,10 @@ __all__ = [
     "OrderedSelector",
     "PatternSpec",
     "PatternState",
+    "PeriodicGridChartSpec",
+    "PeriodicGridChartState",
     "PointsPatternSpec",
     "PolarAmpWidthSpec",
-    "AtomUpdateBinding",
-    "AtomUpdateInputs",
     "ProductChartSpec",
     "ProductChartState",
     "ProfileBinding",

@@ -8,6 +8,7 @@ charts/
   base.py       ChartSpec / ChartState の ABC、共通 metadata と所有の契約
   explicit.py   ExplicitChartSpec / ExplicitChartState
   product.py    ProductChartSpec / ProductChartState
+  periodic_grid.py PeriodicGridChartSpec / PeriodicGridChartState
   strip.py      StripChartSpec / StripChartState
   presets.py    純粋な宣言の組み立て
   __init__.py   公開型、compile_chart
@@ -26,6 +27,7 @@ _backends/torch/charts/
 | ChartSpec（ABC） | geometry, shape, revision | 空間、論理 shape、意味の版 |
 | ExplicitChartSpec | coordinates, trainable, spacing | ambient 座標表、学習の有無、任意の間隔 metadata |
 | ProductChartSpec | axes | 各論理軸の Pattern。最後の軸を最速にして平坦化 |
+| PeriodicGridChartSpec | grid_shape, output_dims, origin | FlatTorus上の等間隔D次元格子を単一[out,in]へ割当 |
 | StripChartSpec | axes, tile_shape, axis, tile_pitch | Pattern、tile の論理 shape、Strip 軸、物理 pitch |
 
 kind は各具体型の固定 ID で、constructor には渡さない。Product / Strip の点配置は固定。
@@ -118,3 +120,6 @@ closed な compile_chart と backend は、具体 Spec / State の組と revisio
 Strip の tile_pitch は実際の点配置であり、GPU block/window/warp 設定ではない。
 部分端 tile、disjoint な物理 interval、Torus の一周未満の配置制約を維持する。
 Sphere / Torus の metric と representation は Geometry の宣言に従う。
+
+PeriodicGridChartStateは各軸の原点とGeometryの周期だけを持ち、spacingはperiod/countから
+導出する。全site表やPatternStateを持たない。[API・数学・計算方式](../../../docs/periodic-grid.ja.md)。

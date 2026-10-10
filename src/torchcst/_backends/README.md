@@ -19,7 +19,7 @@ Inputs・Context・Registry・Dispatcherの境界は
 torchcst/
   geometry/
     spec.py / presets.py       空間・metric の不変な宣言と構築
-    state.py                   GeometryState の scalar と checkpoint
+    state.py                   GeometryState の scalar/vector と checkpoint
   patterns/
     spec.py / presets.py       軸の Line / Grid / Points 宣言と構築
     state.py                   PatternState の bounded な Tensor 状態
@@ -27,6 +27,7 @@ torchcst/
     base.py                    ChartSpec / ChartState の ABC
     explicit.py                ExplicitChartSpec / ExplicitChartState
     product.py                 ProductChartSpec / ProductChartState
+    periodic_grid.py           PeriodicGridChartSpec / PeriodicGridChartState
     strip.py                   StripChartSpec / StripChartState
     presets.py / __init__.py    純粋な宣言構築・compile_chart
   kernels/

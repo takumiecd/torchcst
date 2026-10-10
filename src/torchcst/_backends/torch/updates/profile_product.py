@@ -1,4 +1,4 @@
-"""Reuse the Polar law with one Euclidean center vector per atom."""
+"""Reuse the Polar law with one geometry-owned center vector per atom."""
 
 import math
 

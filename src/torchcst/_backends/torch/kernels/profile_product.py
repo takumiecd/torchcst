@@ -1,13 +1,14 @@
-"""Reference axis contractions for a single Euclidean Product/Strip chart."""
+"""Reference axis contractions for a single Cartesian profile-product chart."""
 
 import math
 
 import torch
 
 from torchcst._backends.torch.charts import execution as _charts
+from torchcst._backends.torch.geometry.flat_torus import wrap_delta
 from torchcst._backends.torch.parameterizations import profile_product as _coordinates
 from torchcst._backends.torch.profiles import execution as _profile
-from torchcst.charts import StripChartState
+from torchcst.charts import PeriodicGridChartState, StripChartState
 
 
 def initialize(state, chart, atoms, *, mode):
@@ -27,6 +28,11 @@ def lower_half_amplitude(state):
 
 def _axis_positions(chart):
     """Independent vectors, including Strip's physical pitch and partial end."""
+    if type(chart) is PeriodicGridChartState:
+        from torchcst._backends.torch.charts.periodic_grid import axis_positions
+
+        yield from axis_positions(chart)
+        return
     for logical_axis, pattern in enumerate(chart.axes):
         for local_axis, size in enumerate(pattern.spec.shape):
             indices = torch.arange(size, device=chart.device)
@@ -67,7 +73,14 @@ def factors(state, chart, p):
         _profile.shape_function(
             profile,
             "unnormalized_from_squared",
-            (positions[:, None] - centers[None, :, dim]).square(),
+            (
+                wrap_delta(
+                    positions[:, None] - centers[None, :, dim],
+                    chart.geometry.periods[dim],
+                )
+                if state.spec.revision == 3
+                else positions[:, None] - centers[None, :, dim]
+            ).square(),
             precision,
         )
         for dim, (positions, profile) in enumerate(
@@ -83,7 +96,9 @@ def factors(state, chart, p):
     for value in axes:
         norm = norm * torch.linalg.vector_norm(value.to(norm_dtype), dim=0)
     denominator = norm.clamp_min(state.spec.normalization.floor)
-    output_dims = chart.axes[0].spec.dim
+    output_dims = (
+        chart.output_dims if state.spec.revision == 3 else chart.axes[0].spec.dim
+    )
     # Split the denominator so half precision does not form amp/floor > 65504
     # and then multiply an empty profile by infinity. The complete product and
     # one global floor are unchanged. Keep norms in FP32 for low-precision inputs.

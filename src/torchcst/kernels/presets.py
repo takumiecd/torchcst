@@ -308,3 +308,14 @@ NORMALIZED_RADIAL_TRIWEIGHT = KernelSpec(
     initialization=StatePolicySpec(id="provided_atoms"),
     update=StatePolicySpec(id="euclidean"),
 )
+
+
+def polar_periodic_profile_product(*, profiles, **kwargs):
+    """Coordinate-wise profiles on a flat periodic grid (revision 3).
+
+    Shared live activity width, task width stop-gradient, and one full-domain
+    discrete-L2 normalization floor match the Polar product contract.
+    """
+    from dataclasses import replace
+
+    return replace(polar_profile_product(profiles=profiles, **kwargs), revision=3)

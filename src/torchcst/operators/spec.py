@@ -106,10 +106,21 @@ class OperatorSpec:
 
 def validate_profile_product_layout(chart, kernel):
     """Validate coordinate/fibre products using declarations only."""
-    from torchcst.charts import ProductChartSpec, StripChartSpec
+    from torchcst.charts import PeriodicGridChartSpec, ProductChartSpec, StripChartSpec
     from torchcst.geometry.spec import EuclideanGeometrySpec, TorusGeometrySpec
     from torchcst.patterns.spec import GridPatternSpec, LinePatternSpec
 
+    if kernel.revision == 3:
+        if (
+            type(chart) is not PeriodicGridChartSpec
+            or chart.revision != 1
+            or chart.geometry.revision != 1
+            or len(kernel.profiles) != chart.geometry.intrinsic_dim
+        ):
+            raise ValueError(
+                "revision 3 requires a PeriodicGrid chart and one profile per coordinate"
+            )
+        return
     if (
         type(chart) not in (ProductChartSpec, StripChartSpec)
         or chart.revision != 1
@@ -120,9 +131,7 @@ def validate_profile_product_layout(chart, kernel):
             for a in chart.axes
         )
     ):
-        raise ValueError(
-            "profile_product requires a Product/Strip grid chart"
-        )
+        raise ValueError("profile_product requires a Product/Strip grid chart")
     if kernel.revision == 2:
         from torchcst.charts.base import _circle_axis
 

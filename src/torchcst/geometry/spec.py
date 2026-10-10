@@ -101,3 +101,26 @@ class TorusGeometrySpec(GeometrySpec):
             "center_parameter_dim",
             self.intrinsic_dim + (self.representation == "ambient"),
         )
+
+
+@dataclass(frozen=True, kw_only=True)
+class FlatTorusGeometrySpec(GeometrySpec):
+    """Independent periodic coordinates, with shortest wrapped Euclidean metric."""
+
+    periods: tuple[float, ...]
+    id: str = field(default="flat_torus", init=False)
+    metric: str = field(default="periodic_euclidean", init=False)
+
+    def __post_init__(self):
+        super().__post_init__()
+        if (
+            not isinstance(self.periods, tuple)
+            or len(self.periods) != self.intrinsic_dim
+        ):
+            raise ValueError(
+                "periods must be an immutable tuple matching intrinsic_dim"
+            )
+        for period in self.periods:
+            _positive(period, "period")
+        object.__setattr__(self, "embedding_dim", self.intrinsic_dim)
+        object.__setattr__(self, "center_parameter_dim", self.intrinsic_dim)
