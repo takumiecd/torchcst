@@ -1,5 +1,47 @@
 # 大型 Linear の研究方針
 
+## 追記: 規則格子 Product を主対象にする
+
+2026-10-10 の追加方針。以降の大型化は、単一の 2 軸 Euclidean Product
+Chart と Triweight profile product を主対象にする。両軸は LinePattern、
+正の等間隔、当面は両軸で同じ spacing を使う。Sphere 固有の計画・数値契約を
+この Product に読み替えない。下記の元計画と参照 protocol JSON は Sphere の
+計画として保存し、この追記が今後の主対象と作業順序を更新する。
+
+既存の `_candidate_span` を使い、中心・支持半径・原点・spacing から
+候補区間を直接計算する。丸めを含む保守的候補に元の positive-support 判定を
+適用する。入力・出力の区間は独立に求め、支持全体の norm と既存の
+whole-product floor を維持する。Sphere の per-chart floor へ置き換えない。
+
+既存 `research_profile_product_large_prepared` と
+`research_profile_product_large_matrix` は N8192・atom4194304 までを宣言し、
+既存の支持区間・方向別実行配置・forward 保存状態を使う。まずこの実装と
+既存 Case/catalog を比較基準にする。宣言上の上限は新たな性能検証ではない。
+
+1. dispatch の対応条件を確立する。Product + 2 Line 軸 + 正の同一 spacing
+   を metadata から判定し、退化 spacing と軸間 spacing 不一致を拒否する。
+   有効な宣言で候補が非対応なら自動選択は同じ意味の Torch fallback、強制 Plan は
+   実行前に拒否する。Points 軸・Explicit chart は既存 profile_product の宣言検査で
+   拒否される。不正な数学宣言を fallback で隠さない。
+2. 支持区間を用いる既存大型ルートで、全量独立 FP64 oracle と Y/dX/全 atom
+   勾配を確認する。全 FP64 runtime の完成を最適化の必須前段にはしない。
+3. 支持・H/G・VJP の保存量を chunk で制限し、既存 matrix 経路と比較する。
+   支持数分類は live sigma から毎 forward 更新し、dispatch key に持ち込まない。
+4. N1024/2048 から 4096/8192 へ進め、構築・配置・backward・optimizer・Graph
+   込みの時間と allocated/reserved peak を比較する。並べ替えは費用込みで判定する。
+
+Chart の live start/spacing 変更は宣言 cache を更新し、exact dispatch 条件も
+変える。Graph は更新後に再 capture する。公開既定 dispatcher への採用は
+研究 Registry での正しさ・性能確認後に判断する。
+
+今回の対応条件修正は CPU 1406 passed / 2644 skipped、関連回帰 89 passed /
+53 skipped、Ruff、wheel/sdist build を通過した。N2048/rho3 の既存 prepared と
+native-g8-p8 + dense 比較を `tools.kernel_dev prepare/check` で宣言検査した。
+raw log と比較 snapshot は研究 worktree の ignored `output/regular-product-*`
+に保存する。この追記では GPU の正しさ・性能・メモリを新たに測定していない。
+
+## 元の Sphere 計画
+
 2026-10-10。起点は main `5755a1b5`。この文書は今後の研究計画であり、
 未実装方式の精度・性能・メモリ改善を示す結果ではない。
 
