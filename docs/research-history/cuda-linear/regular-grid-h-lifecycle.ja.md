@@ -1501,3 +1501,101 @@ group32 H16/32、stream G8/H16/32、新site H16/32、新site stream G8/H16/32、
 旧prepared/旧input-ownerの不採用記録は残し、今回再実行しない。
 24実更新、21 samples、全atom FP64 initial/post24 gate4e-4、allocated/reserved両peak<=denseは不変更。
 診断はsnapshot/prep、candidate index、3項目prep、H生成、Y集約を分け、完全stepへ加減算しない。
+
+### Centre-site prefixのpaired結果（2026-10-11）
+
+計算source `93ffcb2b`。Astraが実装し、独立レビューでcircular interval・
+H layout・入力側のcoarse routing維持を確認した。CPU1690 passed /3298 skipped、
+L4全721 contract tests、GitHub CPU validationをPASS。
+GPU検証job `l4job-50c3bd96dd95480dbabd8ad1fb4f07ca`、source `80d68d53afafec83474d8a1095cdd22dc42dc95831d4c0a73b18d844c6a8f66f`、
+result `4182cece4a2af9cb00714503c31b47a90b1bcc48f9eae62e607ba9c21256afd0`。
+
+rho3/8の12-worker比較で44 full initial/post24 FP64 oracleをPASS。
+同cohortの入力・初期Parameter・Case/catalog・runtime/sourceと、実測時の
+current runtime/runner bytesを照合してから次の変更へ進んだ。
+
+
+N2048 / B32 / rho3.0 / A209715、24更新。
+
+| route | 完全step median [ms] | allocated / reserved [MiB] | 両peak≤dense |
+| --- | ---: | ---: | --- |
+| matrix-torch | 1.2978 | 96.16 / 142 | FAIL |
+| factor | 5.1366 | 83.11 / 130 | FAIL |
+| onchip-h | 4.3900 | 42.87 / 114 | FAIL |
+| prepared-g32-h16 | 5.4835 | 44.22 / 102 | PASS |
+| prepared-g32-h32 | 5.7074 | 57.42 / 104 | PASS |
+| stream-g8-h16 | 6.5210 | 47.12 / 102 | PASS |
+| stream-g8-h32 | 6.2027 | 57.42 / 104 | PASS |
+| site-routed-h16 | 4.8192 | 44.23 / 102 | PASS |
+| site-routed-h32 | 4.8714 | 57.43 / 104 | PASS |
+| site-stream-g8-h16 | 5.2653 | 47.12 / 102 | PASS |
+| site-stream-g8-h32 | 5.4040 | 57.43 / 104 | PASS |
+| dense | 0.5932 | 81.75 / 106 | PASS |
+
+このcohortで条件を満たすCSTの最速は `site-routed-h16`。独立runは各Case1回、各route21 replay samples。denseは依然比較基準。
+
+別Graphによる段階診断。完全step時間へ加減算しない。
+| route | 候補index | H生成 | Y集約 | forward/loss | backward | optimizer |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| prepared-g32-h16 | 0.0645 | 0.4803 | 2.2292 | 2.8764 | 1.8749 | 0.2990 |
+| prepared-g32-h32 | 0.0666 | 0.4987 | 1.8985 | 2.5559 | 1.9087 | 0.3144 |
+| stream-g8-h16 | 0.0655 | 0.4813 | 2.2620 | 2.8743 | 2.3644 | 0.2959 |
+| stream-g8-h32 | 0.0655 | 0.4987 | 1.8842 | 2.5600 | 2.3921 | 0.3123 |
+| site-routed-h16 | 0.0768 | 0.4997 | 1.2390 | 1.9558 | 1.8780 | 0.2939 |
+| site-routed-h32 | 0.0809 | 0.5233 | 1.1684 | 1.8012 | 1.9077 | 0.3082 |
+| site-stream-g8-h16 | 0.0696 | 0.4915 | 1.1971 | 1.9558 | 2.3675 | 0.2980 |
+| site-stream-g8-h32 | 0.0809 | 0.5192 | 1.1356 | 1.8074 | 2.3951 | 0.3092 |
+
+job `l4job-7e7dee9222694e7092b697f08eb49553`
+source archive `4682964312adb670453797912aad87276a206f07d7bd01b99dcb7ae41d5c9701`
+result archive `4896a3731d811767b0275759fec695c2c5fc60e538d435fccfa44e3e37474977`
+全source 1629 files、result manifest、worker source hashes、initial/post24 snapshotsを検証し、raw archivesをignored `output/regular-grid-h/overnight-evidence/`へ保全。
+
+
+N2048 / B32 / rho8.0 / A209715、24更新。
+
+| route | 完全step median [ms] | allocated / reserved [MiB] | 両peak≤dense |
+| --- | ---: | ---: | --- |
+| matrix-torch | 3.2550 | 96.16 / 142 | FAIL |
+| factor | 11.4027 | 83.11 / 130 | FAIL |
+| onchip-h | 9.8300 | 42.87 / 114 | FAIL |
+| prepared-g32-h16 | 9.1094 | 44.22 / 102 | PASS |
+| prepared-g32-h32 | 8.8334 | 57.42 / 104 | PASS |
+| stream-g8-h16 | 7.7099 | 47.12 / 102 | PASS |
+| stream-g8-h32 | 8.0402 | 57.42 / 104 | PASS |
+| site-routed-h16 | 8.6029 | 44.23 / 102 | PASS |
+| site-routed-h32 | 8.3209 | 57.43 / 104 | PASS |
+| site-stream-g8-h16 | 7.8260 | 47.12 / 102 | PASS |
+| site-stream-g8-h32 | 6.8709 | 57.43 / 104 | PASS |
+| dense | 0.5920 | 81.75 / 106 | PASS |
+
+このcohortで条件を満たすCSTの最速は `site-stream-g8-h32`。独立runは各Case1回、各route21 replay samples。denseは依然比較基準。
+
+別Graphによる段階診断。完全step時間へ加減算しない。
+| route | 候補index | H生成 | Y集約 | forward/loss | backward | optimizer |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| prepared-g32-h16 | 0.0655 | 0.6932 | 2.2774 | 3.1293 | 4.3807 | 0.3195 |
+| prepared-g32-h32 | 0.0696 | 0.7137 | 2.0296 | 3.1150 | 4.5588 | 0.3267 |
+| stream-g8-h16 | 0.0707 | 0.7076 | 2.5027 | 3.2686 | 3.5062 | 0.3041 |
+| stream-g8-h32 | 0.0645 | 0.7066 | 1.8237 | 2.9604 | 3.5441 | 0.3195 |
+| site-routed-h16 | 0.0799 | 0.7332 | 1.8893 | 2.6378 | 4.2189 | 0.2949 |
+| site-routed-h32 | 0.0778 | 0.7332 | 1.5135 | 2.6225 | 4.5588 | 0.3287 |
+| site-stream-g8-h16 | 0.0829 | 0.7270 | 1.8340 | 2.6368 | 3.6465 | 0.3215 |
+| site-stream-g8-h32 | 0.0840 | 0.7475 | 1.6548 | 2.4228 | 3.4970 | 0.3103 |
+
+job `l4job-c1c751b8527d423ebf62f90f66363810`
+source archive `54245e87ea891f134afbbe62ab7ea4d6cd55b2e05080b81b66b9c63d0c12e5c1`
+result archive `ec1ab0637f5e26bc728393641298c023b5a55d2238070b79303d7fffac536a88`
+全source 1629 files、result manifest、worker source hashes、initial/post24 snapshotsを検証し、raw archivesをignored `output/regular-grid-h/overnight-evidence/`へ保全。
+
+同H32のcoarse→site比較は、rho3が5.7074→4.8714ms、rho8のG8が8.0402→6.8709ms。
+後者の総peakは57.43/104MiB、dense81.75/106MiB。
+rho3のH16/32は4.8192/4.8714msで近く、保存幅の順位は確定させない。
+rho8のG8/H16は7.7099→7.8260msで改善しなかった。
+方式全体の普遍的な勝ちや公開dispatcherへの採用は主張しない。
+Y集約の段階時間の減少は確認できるが、hardware cache/stallは測っていない。
+
+両jobの回収・SHA検証後にpool全slotのstoppedを確認した。証拠は
+`site-routing-final-pool-status.json`と`site-routing-final-stop-lifecycle.log`。
+次の候補はH producer BM8を保ち、Y ownerだけBM16へ広げる。
+H16/H32と通常/G8を同じ条件で比較し、未実施の性能を改善と呼ばない。
