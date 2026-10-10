@@ -45,3 +45,11 @@ while the independently declared8192 memory objective remains meaningful.
 
 Raw drivers, logs, source and pool receipts are retained under ignored output;
 record measured source/result hashes and disposition here after retrieval.
+
+Initial gate job `l4job-bdfab467e1ab460d890423ec572dbbcf` at source2dc2d1a
+stopped after124 passed/1 failed: the retained-forward test changed only input
+bandwidth scalars and the existing KernelSpec correctly rejected the second
+forward's unequal input/output bounds. Correct the test to update both sides
+equally, retaining changes to every decoder scalar. No executor/kernel or
+tolerance changes; preserve this failed gate, and run the corrected source with
+the same1000s job budget before any performance claim.

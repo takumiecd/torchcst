@@ -138,6 +138,10 @@ def test_old_forward_retains_all_decoder_scalars_and_lattice():
             "sigma_birth_input",
             "sigma_max_input",
             "upper_floor_input",
+            "sigma_min_output",
+            "sigma_birth_output",
+            "sigma_max_output",
+            "upper_floor_output",
         ):
             layer.kernel.scalar(name).mul_(0.7)
         layer.chart.axes[0].start.add_(0.25)
