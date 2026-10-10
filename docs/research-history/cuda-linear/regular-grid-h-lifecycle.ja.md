@@ -786,3 +786,152 @@ SASSのloop内にdivisionを残したことを確認し、PTX／cubin／SASSと�
 clock64はこのmicrokernelの経過SM cycleであり、CSTのstall counterや完全step時間ではない。
 1固定job180秒、retryなし。この結果でCSTへのゼロ精密除算回避の影響を説明し、
 physical cache/stall counterを取得したとは扱わない。
+
+
+## 原因を切り分けた結果（2026-10-10）
+
+最適化実装へ進む前に、metadataの並び／ID参照、精密除算のoperand、compiler codeを分けて調査した。
+L4・N2048/rho3/B32/H32・post24、seed41、5% atoms、FP32/TF32 off、既存fused AdamW＋Polar更新。
+今回の大きな知見は、**ゼロnumeratorへのexact divideに、命令数では説明できない実行費用がある**こと。
+支持範囲外の大量のU=0へ `U / norm` を実行していたことが、Y集約の大きな原因の一つだった。
+全費用がこの一因だけで説明できた、hardware stallの割合まで確定した、という意味ではない。
+
+### metadataの並びとID参照の分離
+
+source `e2513cf4` の1cohortで、同式clone7.752ms → sorted-P＋identity ID7.176ms →
+ID参照を省くsorted-P6.143ms。前二者は**cubin hashもSASSも完全同一**で、
+input metadata／ID値とアドレス配置だけが違う。約7.4%の差は同じ命令列で生じる。
+並び替えの効果を全部cacheへ帰属したり、全部ID load除去へ帰属したりしない。
+ID load除去の追加短縮は約14.4%だが、load命令数／依存鎖／compiler編成の変化を含む。
+先行計算では5.002ms → sorted＋ID保持5.032ms → ID除去4.077msだった。
+ID保持での0.6%差は勝敗を確定する小差として扱わない。
+
+### zero numerator回避の対照
+
+source `c51d1dfbbe75cd05950f597997c307e08e071c4d` の別1cohortで、下記を同時測定した。
+前cohortと混ぜず、同式cloneを比較基準とする。runtime kernelそのものは8.068msで、
+cloneは7.877ms。差を隠さず、probe間の機構比較には同じprobe関数のcloneを使う。
+値は固定post24のY-only外部Event中央値ms。H生成／sortingを含まず、完全stepへ加算しない。
+
+| probe | ms | scope |
+| --- | --- | --- |
+| full | 7.877 | 同式clone |
+| scale-first | 5.117 | amp/norm先行 |
+| sorted-p-with-id | 7.280 | 並び替え・ID保持 |
+| sorted-p | 6.289 | 並び替え・ID除去 |
+| sorted-p-scale-first-with-id | 5.137 | 先行＋並び替え・ID保持 |
+| sorted-p-scale-first | 4.173 | 先行＋並び替え・ID除去 |
+| norm-one | 7.405 | norm=1、出力を変える下限 |
+| sorted-p-norm-one | 6.126 | norm=1＋並び替え、出力を変える下限 |
+| safe-numerator | 6.063 | zero divide入力を安全値に置換・商を0へ復元 |
+| sorted-p-safe-numerator | 4.449 | zero入力回避＋並び替え・ID除去 |
+| synthetic-h | 8.098 | H readを置換、出力を変える診断 |
+
+`safe-numerator`はfinite positive normかつU=0の場合だけ、divide入力を1へ置換し、
+商を0へ戻してampを掛ける。非ゼロU／invalid normは元の演算を保つ。
+このcaseと4 GPU testsの全Yがruntimeとbitwise一致し、独立FP64 gateもPASS。
+これだけで7.877→6.063ms、約23.0%短縮。先行計算は約35.0%短縮で、
+zero入力回避だけでその全効果を説明できたとは言えない。追加mask／register／layoutと
+依存順も変わるため、残差を単独要因の時間として引き算しない。
+
+元のcloneと先行計算とsafe-numeratorはPTX div32、SASS MUFU.RCP9、FCHK32、LDG74で同じ。
+norm=1はPTX div32を残したが、SASS MUFU.RCPが9→1、LDGが74→66になった。
+その時間は7.405msで、約6.0%だけ短縮。精密divideの命令数／reciprocal数／norm loadの
+数だけが支配因という説明は不十分。先行／safeのregistersは128/127で、元の114より多い。
+先行はcompiler spills2、SASS STL/LDLが各2あるが速い。static spillコードから実traffic量は推定しない。
+SASSに `FCHK` と `__cuda_sm3x_div_rn_noftz_f32_slowpath` の条件付きCALLを確認した。
+zero値でどのdynamic pathが何回実行されたかはcounter未取得であり、静的存在だけで断定しない。
+
+### 同一cubin・operandだけを変えるmicro対照
+
+source `397f8f59`。128CTA×128thread、positive denominator2をGPU loadし、
+non-pure inline exact divideを256回反復。同じcubin hashを3operandで要求し、
+結果0/128は誤差0で一致。外部Event Graph21sampleを回転／逆順で計測した。
+SM clock64は256反復＋結果store発行までの経過cycleで、純粋なdivide1個のlatencyやstall counterではない。
+
+| numerator | kernel ms | median SM cycles |
+| --- | --- | --- |
+| one | 0.025856 | 18734 |
+| zero | 0.051904 | 74298 |
+| mixed | 0.054336 | 79167 |
+
+zeroは非ゼロの約3.97倍のSM cycles、kernel時間約2.01倍。warp内0/1混在も約4.23倍で遅い。
+SASSを手動確認: UR4=0x100で反復初期化、loop `.L_x_2` のMUFU.RCPがPC00f0、
+FCHKが0130、slowpath CALLが01b0、FADDが01d0、01e0からloopへbackward branch。
+begin/end clockは00e0/0220で、divisionはhoistされず反復区間に残る。
+同一registers22/spills0/shared0の同一命令列でoperandだけを変え、zero入力の実行費用を確認した。
+精度例外分岐／helper処理という説明と整合するが、FCHKの非公開predicateの真偽を直接計測したわけではない。
+Graph時間とSM cycleの比が違うため、microの4倍をそのままCST全体へ適用しない。
+
+これを、実CSTのzero入力回避23%短縮・bitwise同一Y・大量の支持外zeroという観測と合わせると、
+zeroへの精密除算は実装上の確定した改善対象になる。前節の「依存順の変更が有力」という説明を
+更新し、operandに依存する精度処理の費用も大きな要因として含める。まだ35%の先行計算効果の
+全てをzero slowpathで説明したとは扱わない。
+
+### counter取得の境界
+
+前回ProfilerStart/Stop＋name filterで空reportだったため、source22971b63の追加jobで
+準備tensorをCPUファイルへexportし、子プロセスはtransferと対象2launchだけにした。
+profile-from-start on、filterなし、skip1/count1でもCLI exit0・counter0行だった。
+さらにsourcee2513cf4のgeneric torch.sin対照は、config off／filter・skipなし／basic metricsで
+2launchの出力PASSだったが、同様にcounter0行。研究kernelの特性だけでは説明できず、
+profiling環境／interceptionの問題が残る。permission拒否logはなく原因は未確定。
+これ以上同じ空reportを繰り返さず、counter取得を止め、SASSと同一cubin operand対照を使った。
+NVIDIA公式CLIのlaunch filter／開始区間の意味も確認した:
+https://docs.nvidia.com/nsight-compute/NsightComputeCli/
+cache hit率、bandwidth、warp stall、dynamic helper実行回数は依然未取得。
+
+### 検証と次の優先順位
+
+CPU suite1659 passed / 2854 skipped、18既存warning。sourcee2513cf4の追加GPU checksは
+4 passed / 170 deselected、sourcec51d1dfbでも4 passed / 170 deselected。
+各focused workerは既存baseline完全step／Y,dX,全atom勾配のFP64 gate・24実更新がPASS。
+追加Y gateは初期／post24で14＋18件PASS、全owner CPU census一致。新safe variantは
+full runtimeとbitwise一致。microは3operandの正確性／同一cubin gateをPASS。
+別sourceの同じ4 checksは独立な新test case数へ加算せず、各sourceでの検証と記載する。
+各cohortの21sampleは独立21runではない。
+
+sourcec51d1dfbでのbaseline完全stepは11.514ms、allocated 55.02MiB / reserved 104MiB。
+
+これはsafe／sorted candidateの完全step／peakではない。今回candidateのbackward／optimizer／
+メモリpeakは未実装・未検証で、公開dispatchへの採用はしない。
+
+次の第一候補は、`beta=amp/D` をprepared metadataの寿命で一度計算し、
+Y内では `raw U * beta * H` とすること。大量のzero Uへdivideを繰り返さず、
+beta/center/invだけをH順に置いてID依存も省く。元のjoint L2 norm＋一度のfloorは保つ。
+ampが0の場合も勾配を捨てず、dX／全atom／norm微分を既存数学契約で検証する。
+全13fieldコピーの10.4MiBをそのまま持たず、必要なfieldsの約2.4MiBというtensor案を、
+実際のcapture/replay両peakで検査する（reservedの余裕は小さく、容量だけでは合格を保証しない）。
+候補indexを細かくする変更は別に検査し、支持外zeroの検査自体を減らす。
+Hの小batch寿命・Y ownership・正規化を軸にする方針は維持し、Draft PR #100へ研究診断として保持する。
+
+### frozen sourceとevidence
+
+| scope | job | source archive SHA256 | result archive SHA256 |
+| --- | --- | --- | --- |
+| isolated ncu unavailable | `l4job-e8bb18e1a95a4fa0ba75269496db3167` | `9b42671a1e321da22ba96017036736e98167b30d0c49265772f96394bd43d42b` | `e1fe698bacead9bc8d8b1aa8a5716208a0de198422364f11accee0378db1bab7` |
+| ID/norm controlled probes | `l4job-f8d578a27a964093b1df1996a1d5abba` | `052160de31bacd3624c3865d76ada37ecbe293d7f0377d1e8c3274fdd5015245` | `d8757a08a674d78e1da47ad6156a06ebba853916c0ba536a4508be35f64c75d6` |
+| zero input exact probes | `l4job-3c9fe2e892fd4cfc8ea0b69097b6dec1` | `729e23772365ec0bc6520b8c2b33c68513439e9daefe8367e86d69c39b06d49d` | `2bea62e8b254c747a8dbf2b86c4ccdd73cf66620eef05dc05f6db90459a8158f` |
+| same-cubin division operands | `l4job-0e5c2c25935e4cc6befdda5906a686aa` | `5f18721b90d50ca5e9fed1638fb0906af180db0db84aaac40964fe90c6fe9861` | `5bf10c6289a9800b7eb3aa9a5b4dfd949a9626eb383c19a2e058a3e239a2ce04` |
+
+全source archive／result archive／全file manifest／worker source hashes／全6 worker snapshot／
+全PTX,cubin,SASS hashを照合した。sourceは診断追加ごとに別commitとし、同一sourceと偽らない。
+各job失敗／timeout／自動retryなし。NCUはdriver自体成功でも「counter unavailable」と記載する。
+ignored `output/regular-grid-h/cause-evidence/`へ全jobとverified-summary、SASS summary、
+predeclared protocol、停止ログを保存した。全slot stopped／所有VM terminated／server active sessionなしを確認済み。
+
+既存runnerでfocused probeを再現するコマンド（sourcec51d1dfb以降）は以下。
+
+```bash
+PYTHONPATH=src:. python -m benchmarks.cuda.linear.periodic_comparison \
+  --case benchmarks/cuda/linear/cases/regular-grid-h-2048-rho3.json \
+  --worker reused-h32 --isolated-oracle --phases --aggregation-diagnostics \
+  --output output/regular-grid-y-cause.json
+```
+
+同一cubin operand対照はignored `division-operand-driver.py` とbackend `division_latency_probe`。
+raw exact divideは`is_pure=False`で固定し、cubin一致、SASS loop review、exact出力gateを省かない。
+別GPU、別precision、独立confirmatory run、high-D chart CUDA、実DB、candidate完全stepは未検証。
+
+診断source397f8f59のCPU CIもSUCCESS:
+https://github.com/takumiecd/torchcst/actions/runs/38058918855/job/114232988065
