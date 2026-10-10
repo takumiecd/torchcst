@@ -1608,3 +1608,141 @@ skipped、Ruff・catalog24 plansの宣言検査をPASS。regular-gridの研究Ca
 schemaが異なる）。GPU数値・性能・メモリはこの時点で未実施。
 source固定後、全840 regular-grid/periodic GPU contract testsを予定し、
 PASSした場合だけ同条件の14-route比較へ進む。source-scopedな結果は追記する。
+
+
+## Owner BM16の同条件比較（2026-10-11）
+
+source `971031b4` を固定し、GPU840 passed /2 warnings（511.52秒）、
+CPU1699 passed /3408 skipped、Ruff、24 plansの宣言検査をPASS。
+GPU検証job `l4job-28da8eb627b04f8381952ba28ef36e7b`、source archive
+`8b896d31719a81c0a01269e4b4beecc10c71cc8adaa9402d1af78b3dc70b6c25`、
+result archive `6583d6680aa3c1f6ed79e4d52dbc3f9e5c973f268ccfa16b26b8f88b0d4c0ac8`。
+GPU起動前のsource hint指定ミスでqueued validator `l4job-3d90fe1e2f2648d09b90af75f56ead8e`
+をcancelした履歴も保存した。これは実行済み検証・性能測定のretryではない。
+
+L4 / Torch2.11.0+cu130 / CUDA13.0 / Triton3.6.0 / FP32・TF32無効。
+各Case14 routes、各CSTのinitial/post24でfull FP64全atom oracleをPASS（計52 gates）。
+fixture・初期Parameter・Case・runtime・catalog・323 runtime/benchmark source hashesを
+各cohort内で照合し、両cohortを現在のsource bytesとも照合した。
+
+N2048 / B32 / rho3.0 / A209715、24更新。
+
+| route | 完全step median [ms] | allocated / reserved [MiB] | 両peak≤dense |
+| --- | ---: | ---: | --- |
+| matrix-torch | 1.2954 | 96.16 / 142 | FAIL |
+| factor | 5.0255 | 83.11 / 130 | FAIL |
+| onchip-h | 4.5091 | 42.87 / 114 | FAIL |
+| prepared-g32-h32 | 5.8463 | 57.42 / 104 | PASS |
+| stream-g8-h32 | 6.2957 | 57.42 / 104 | PASS |
+| site-routed-h16 | 4.8666 | 44.23 / 102 | PASS |
+| site-routed-h32 | 4.6859 | 57.43 / 104 | PASS |
+| site-stream-g8-h16 | 5.4612 | 47.12 / 102 | PASS |
+| site-stream-g8-h32 | 4.6623 | 57.43 / 104 | PASS |
+| site-owner-bm16-h16 | 4.5394 | 44.23 / 102 | PASS |
+| site-owner-bm16-h32 | 4.3743 | 57.43 / 104 | PASS |
+| site-owner-bm16-stream-g8-h16 | 5.0600 | 47.12 / 102 | PASS |
+| site-owner-bm16-stream-g8-h32 | 5.1034 | 57.43 / 104 | PASS |
+| dense | 0.5939 | 81.75 / 106 | PASS |
+
+このcohortで条件を満たすCSTの最速は `site-owner-bm16-h32`。独立runは各Case1回、各route21 replay samples。denseは依然比較基準。
+
+別Graphによる段階診断。完全step時間へ加減算しない。
+| route | 候補index | H生成 | Y集約 | forward/loss | backward | optimizer |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| prepared-g32-h32 | 0.0748 | 0.5089 | 2.0593 | 2.5416 | 1.9036 | 0.3082 |
+| stream-g8-h32 | 0.0707 | 0.5007 | 1.9937 | 2.5457 | 2.4494 | 0.3246 |
+| site-routed-h16 | 0.0788 | 0.5079 | 1.3097 | 1.9579 | 1.8780 | 0.2980 |
+| site-routed-h32 | 0.0748 | 0.5120 | 1.0465 | 1.8033 | 1.9098 | 0.3092 |
+| site-stream-g8-h16 | 0.0707 | 0.4905 | 1.2032 | 1.9671 | 2.3962 | 0.3011 |
+| site-stream-g8-h32 | 0.0788 | 0.5202 | 1.1397 | 1.8084 | 2.4371 | 0.3113 |
+| site-owner-bm16-h16 | 0.0717 | 0.4946 | 0.8376 | 1.6261 | 1.8903 | 0.2970 |
+| site-owner-bm16-h32 | 0.0717 | 0.5140 | 0.6308 | 1.4674 | 1.9251 | 0.3092 |
+| site-owner-bm16-stream-g8-h16 | 0.0696 | 0.4895 | 0.8192 | 1.6394 | 2.4136 | 0.3011 |
+| site-owner-bm16-stream-g8-h32 | 0.0809 | 0.5212 | 0.6984 | 1.4643 | 2.4402 | 0.3123 |
+
+実routingの候補census（batch多重度とpadded laneを除く論理量）：
+| route | guarded D | prefix | atom訪問 | GROUP反復 | live-site検査 | batch CTA/owner |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| prepared-g32-h32 | 5 | 129 | 629145 | 19857 | 10066320 | 4 |
+| stream-g8-h32 | 5 | 129 | 629145 | 19857 | 10066320 | 4 |
+| site-routed-h16 | 5 | 2049 | 340445 | 10701 | 5447120 | 4 |
+| site-routed-h32 | 5 | 2049 | 340445 | 10701 | 5447120 | 4 |
+| site-stream-g8-h16 | 5 | 2049 | 340445 | 10701 | 5447120 | 4 |
+| site-stream-g8-h32 | 5 | 2049 | 340445 | 10701 | 5447120 | 4 |
+| site-owner-bm16-h16 | 5 | 2049 | 340445 | 10701 | 5447120 | 2 |
+| site-owner-bm16-h32 | 5 | 2049 | 340445 | 10701 | 5447120 | 2 |
+| site-owner-bm16-stream-g8-h16 | 5 | 2049 | 340445 | 10701 | 5447120 | 2 |
+| site-owner-bm16-stream-g8-h32 | 5 | 2049 | 340445 | 10701 | 5447120 | 2 |
+
+job `l4job-6dfa29991c344230b63ef67266883f1d`
+source archive `7af53f766b5698bd0f6413420081e4bd90af2fde567fe7a1742731035d2dc536`
+result archive `8bc93fbb65eceb29cdc51e3128203f80362d3611e15876f515efcd76cb5b5c7c`
+全source 1629 files、result manifest、worker source hashes、initial/post24 snapshotsを検証し、raw archivesをignored `output/regular-grid-h/overnight-evidence/`へ保全。
+
+
+N2048 / B32 / rho8.0 / A209715、24更新。
+
+| route | 完全step median [ms] | allocated / reserved [MiB] | 両peak≤dense |
+| --- | ---: | ---: | --- |
+| matrix-torch | 3.2543 | 96.16 / 142 | FAIL |
+| factor | 11.4291 | 83.11 / 130 | FAIL |
+| onchip-h | 9.9420 | 42.87 / 114 | FAIL |
+| prepared-g32-h32 | 8.6400 | 57.42 / 104 | PASS |
+| stream-g8-h32 | 8.1146 | 57.42 / 104 | PASS |
+| site-routed-h16 | 8.5378 | 44.23 / 102 | PASS |
+| site-routed-h32 | 8.4355 | 57.43 / 104 | PASS |
+| site-stream-g8-h16 | 7.3342 | 47.12 / 102 | PASS |
+| site-stream-g8-h32 | 7.6668 | 57.43 / 104 | PASS |
+| site-owner-bm16-h16 | 8.0169 | 44.23 / 102 | PASS |
+| site-owner-bm16-h32 | 7.8349 | 57.43 / 104 | PASS |
+| site-owner-bm16-stream-g8-h16 | 6.6225 | 47.12 / 102 | PASS |
+| site-owner-bm16-stream-g8-h32 | 6.9904 | 57.43 / 104 | PASS |
+| dense | 0.5941 | 81.75 / 106 | PASS |
+
+このcohortで条件を満たすCSTの最速は `site-owner-bm16-stream-g8-h16`。独立runは各Case1回、各route21 replay samples。denseは依然比較基準。
+
+別Graphによる段階診断。完全step時間へ加減算しない。
+| route | 候補index | H生成 | Y集約 | forward/loss | backward | optimizer |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| prepared-g32-h32 | 0.0758 | 0.7219 | 2.0879 | 2.8058 | 4.2179 | 0.3133 |
+| stream-g8-h32 | 0.0707 | 0.7137 | 1.9753 | 2.9983 | 3.7007 | 0.3328 |
+| site-routed-h16 | 0.0686 | 0.6994 | 1.6138 | 2.7167 | 4.2824 | 0.3052 |
+| site-routed-h32 | 0.0788 | 0.7311 | 1.5432 | 2.4279 | 4.2220 | 0.3113 |
+| site-stream-g8-h16 | 0.0768 | 0.7168 | 1.8115 | 2.6890 | 3.4939 | 0.3021 |
+| site-stream-g8-h32 | 0.0840 | 0.7393 | 1.6292 | 2.4187 | 3.4918 | 0.3133 |
+| site-owner-bm16-h16 | 0.0778 | 0.7209 | 1.1909 | 2.1443 | 4.5158 | 0.3185 |
+| site-owner-bm16-h32 | 0.0860 | 0.7598 | 1.0496 | 1.9517 | 4.5066 | 0.3328 |
+| site-owner-bm16-stream-g8-h16 | 0.0829 | 0.7444 | 1.2769 | 2.1381 | 3.4847 | 0.2990 |
+| site-owner-bm16-stream-g8-h32 | 0.0799 | 0.7393 | 0.9759 | 1.9538 | 3.5103 | 0.3113 |
+
+実routingの候補census（batch多重度とpadded laneを除く論理量）：
+| route | guarded D | prefix | atom訪問 | GROUP反復 | live-site検査 | batch CTA/owner |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| prepared-g32-h32 | 10 | 129 | 629145 | 19851 | 10066320 | 4 |
+| stream-g8-h32 | 10 | 129 | 629145 | 19851 | 10066320 | 4 |
+| site-routed-h16 | 10 | 2049 | 471947 | 14808 | 7551152 | 4 |
+| site-routed-h32 | 10 | 2049 | 471947 | 14808 | 7551152 | 4 |
+| site-stream-g8-h16 | 10 | 2049 | 471947 | 14808 | 7551152 | 4 |
+| site-stream-g8-h32 | 10 | 2049 | 471947 | 14808 | 7551152 | 4 |
+| site-owner-bm16-h16 | 10 | 2049 | 471947 | 14808 | 7551152 | 2 |
+| site-owner-bm16-h32 | 10 | 2049 | 471947 | 14808 | 7551152 | 2 |
+| site-owner-bm16-stream-g8-h16 | 10 | 2049 | 471947 | 14808 | 7551152 | 2 |
+| site-owner-bm16-stream-g8-h32 | 10 | 2049 | 471947 | 14808 | 7551152 | 2 |
+
+job `l4job-fb22baf263fc4c1f9599fe7b8856ef03`
+source archive `329a9b540b153f5305d2b615ae676c0cdaacca5b8ea8625a1a422c2b36467646`
+result archive `43993a0fe9b666c851975cac9fa28b5a40f2b890b0638ff6f490a17f726b7c44`
+全source 1629 files、result manifest、worker source hashes、initial/post24 snapshotsを検証し、raw archivesをignored `output/regular-grid-h/overnight-evidence/`へ保全。
+
+同じH32・通常backwardではBM8→16でrho3が4.6859→4.3743ms、rho8が8.4355→7.8349ms。
+同じH32・G8ではrho3が4.6623→5.1034msと悪化し、rho8が7.6668→6.9904msと改善した。
+Y段階は4組とも短縮したが、完全stepの改善を一律には主張しない。
+H16/G8のrho8も7.3342→6.6225ms、47.12/102MiBで両peakがdense以下。
+一つのcohortの順位だけでH16/H32や通常/G8を固定しない。
+21 replay内に時間の上昇があり、clock・thermal・hardware stallの原因は未測定。
+後続のbackward段階診断cohortで有望な対応組を独立に確認する。
+
+候補atom訪問はcoarse629145からsiteでrho3は340445、rho8は471947へ減った。
+BM16は同じ候補を使いbatch CTAを4→2へ減らす。これは論理量で、物理trafficではない。
+両jobの保全後、全pool slotがstoppedであることとserver停止を確認した。
+証拠は `owner-bm16-final-pool-status.json` と `owner-bm16-final-stop-lifecycle.log`。
