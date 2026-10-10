@@ -40,6 +40,30 @@ def prepare_routing(packed, sizes, recipe):
     return order, boundaries, max_distance
 
 
+def h_capacity(recipe):
+    from .recipe import ParallelReusedHRecipe
+
+    return (
+        recipe.h_batch if type(recipe) is ParallelReusedHRecipe else recipe.batch_tile
+    )
+
+
+def allocate_h(x, atom_count, recipe):
+    from .recipe import ParallelReusedHRecipe
+
+    if type(recipe) is ParallelReusedHRecipe:
+        # Tile-major: each atom × batch_tile slab matches the H8 baseline.
+        return x.new_empty(
+            (recipe.h_batch // recipe.batch_tile, atom_count, recipe.batch_tile)
+        )
+    return x.new_empty((atom_count, recipe.batch_tile))
+
+
+def active_h_tiles(h, batch, batch_start, batch_tile):
+    capacity = h.shape[0] if h.ndim == 3 else 1
+    return min(capacity, (batch - batch_start + batch_tile - 1) // batch_tile)
+
+
 def produce_h_chunk(x, packed, sizes, recipe, routing, h, batch_start):
     import triton as tr
 
@@ -47,7 +71,12 @@ def produce_h_chunk(x, packed, sizes, recipe, routing, h, batch_start):
 
     b, ni, _, li, _, oi, _ = sizes
     a = packed.shape[1]
-    kernels.produce_h[(tr.cdiv(a, recipe.atom_group),)](
+    kernels.produce_h[
+        (
+            tr.cdiv(a, recipe.atom_group),
+            active_h_tiles(h, b, batch_start, recipe.batch_tile),
+        )
+    ](
         x,
         packed,
         routing[0],
@@ -74,7 +103,11 @@ def aggregate_chunk(x, packed, sizes, recipe, routing, y, *, h=None, batch_start
 
     b, ni, no, li, lo, oi, oo = sizes
     a = packed.shape[1]
-    tiles = tr.cdiv(b, recipe.batch_tile) if h is None else 1
+    tiles = (
+        tr.cdiv(b, recipe.batch_tile)
+        if h is None
+        else active_h_tiles(h, b, batch_start, recipe.batch_tile)
+    )
     kernels.output_owned[(tr.cdiv(no, recipe.output_tile), tiles)](
         x,
         packed,
@@ -102,7 +135,7 @@ def aggregate_chunk(x, packed, sizes, recipe, routing, y, *, h=None, batch_start
 
 
 def forward_output_owned(x, packed, sizes, recipe):
-    from .recipe import ReusedHRecipe
+    from .recipe import ParallelReusedHRecipe, ReusedHRecipe
 
     b, _, no, *_ = sizes
     a = packed.shape[1]
@@ -110,11 +143,11 @@ def forward_output_owned(x, packed, sizes, recipe):
         return x.new_zeros((b, no))
     y = x.new_empty((b, no))
     routing = prepare_routing(packed, sizes, recipe)
-    if type(recipe) is ReusedHRecipe:
+    if type(recipe) in (ReusedHRecipe, ParallelReusedHRecipe):
         # One allocation and sequential same-stream reuse across all chunks.
         # Scratch is not saved for backward and does not scale with full batch.
-        h = x.new_empty((a, recipe.batch_tile))
-        for batch_start in range(0, b, recipe.batch_tile):
+        h = allocate_h(x, a, recipe)
+        for batch_start in range(0, b, h_capacity(recipe)):
             produce_h_chunk(x, packed, sizes, recipe, routing, h, batch_start)
             aggregate_chunk(
                 x, packed, sizes, recipe, routing, y, h=h, batch_start=batch_start

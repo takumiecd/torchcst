@@ -9,7 +9,12 @@ from torchcst.geometry.spec import FlatTorusGeometrySpec
 from torchcst.kernels import PolarAmpWidthSpec, TriweightSpec
 
 from ..periodic_product.algorithm import PeriodicMatrixAlgorithm
-from .recipe import OnchipHRecipe, OutputOwnedHRecipe, ReusedHRecipe
+from .recipe import (
+    OnchipHRecipe,
+    OutputOwnedHRecipe,
+    ParallelReusedHRecipe,
+    ReusedHRecipe,
+)
 
 
 def regular_spec(operator):
@@ -121,3 +126,14 @@ class ReusedHAlgorithm(OutputOwnedHAlgorithm):
         if type(recipe) is not ReusedHRecipe:
             raise TypeError("requires ReusedHRecipe")
         ReusedHRecipe(**asdict(recipe))
+
+
+@dataclass(frozen=True)
+class ParallelReusedHAlgorithm(OutputOwnedHAlgorithm):
+    id: str = "research_cuda_regular_grid_parallel_reused_h"
+    recipe_type: type = ParallelReusedHRecipe
+
+    def validate_recipe(self, recipe):
+        if type(recipe) is not ParallelReusedHRecipe:
+            raise TypeError("requires ParallelReusedHRecipe")
+        ParallelReusedHRecipe(**asdict(recipe))

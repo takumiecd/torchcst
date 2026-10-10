@@ -431,3 +431,27 @@ ignored `output/regular-grid-h/reused-h-evidence/`へ全job、失敗証拠、集
 既存runnerの前節の`--isolated-oracle --phases`コマンドは今回の7controlを実行する。
 比較終了後は全pool slotがstoppedで、lifecycleにはsession terminatedと
 serverのactive sessionなしを確認した。実DB取込／別GPU／高次元CUDAは未検証。
+
+
+## H容量とY計算tileを分離する比較（事前方針）
+
+前節のH8再利用は4chunkを直列に実行し、Y側の並列度が小さくなった。
+この説明は仮説であり、次の比較ではYのbatch tile=8、output tile=16、atom group=8、
+支持・正規化・backwardを固定したまま、H容量だけ16／32batchへ増やす。
+Hは `(capacity / batch_tile, atoms, batch_tile)` のtile順配置にして、各tile内の
+atom/batch連続アクセスをH8と揃える。H生成・Y集約とも容量内のbatch tileを
+同じlaunchで並列に実行し、次chunkでは同じbufferを上書きする。backwardへは保存しない。
+
+新候補は `reused-h16` / `reused-h32`、新Algorithmは
+`research_cuda_regular_grid_parallel_reused_h`、recipeは `h_batch=16/32`。
+従来のReusedHRecipeとPlanは維持する。sort/searchsortedの内部workspace上限は未確定なので
+workspace_boundはNoneのままとする。明示H scratchは `4 * atoms * h_batch` bytes。
+
+測定条件は既存4Case（N=1024/2048、初期rho=3/8、B=32）とisolated-oracle-v2を維持し、
+各Caseで従来7control＋新2候補を独立processで同じsourceから測る。
+初期・24更新後のY/dX/全dP oracle、21個の未計装Graph完全step sample、capture/replayの
+allocated/reserved peakを判定に使う。post24コピーで候補index、H生成、支持検査込みY集約を
+各5sample記録する。これら診断時間は完全stepと加算しない。
+まずGPU回帰検証を1job（600秒上限）、その後各Case1cohortずつ（480秒上限）実行する。
+失敗・timeoutを自動retryせず、仕様・source・結果archive・oracle snapshotを保存する。
+小さい改善だけなら独立確認が必要で、公開dispatchへの採用はこの比較と分けて判断する。

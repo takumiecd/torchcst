@@ -34,7 +34,14 @@ from benchmarks.cuda.linear.scaling_comparison import (
 from torchcst import CSTOptimizer
 
 LEGACY_KINDS = ("matrix-torch", "matrix-triton", "factor", "torch-factored", "dense")
-KINDS = (*LEGACY_KINDS, "onchip-h", "output-owned-h", "reused-h")
+KINDS = (
+    *LEGACY_KINDS,
+    "onchip-h",
+    "output-owned-h",
+    "reused-h",
+    "reused-h16",
+    "reused-h32",
+)
 REGULAR_PRIMARY = ("matrix-torch", "factor", "onchip-h", "dense")
 PRIMARY = ("matrix-torch", "factor", "dense")
 CATALOG = Path(__file__).with_name("plans-periodic-profile-product.json")
@@ -127,6 +134,7 @@ def bind_plan(model, kind):
         from torchcst._backends.cuda.algorithms.linear.regular_grid_h.recipe import (
             OnchipHRecipe,
             OutputOwnedHRecipe,
+            ParallelReusedHRecipe,
             ReusedHRecipe,
         )
 
@@ -135,14 +143,19 @@ def bind_plan(model, kind):
             "onchip-h": "research_cuda_regular_grid_onchip_h",
             "output-owned-h": "research_cuda_regular_grid_output_owned_h",
             "reused-h": "research_cuda_regular_grid_reused_h",
+            "reused-h16": "research_cuda_regular_grid_parallel_reused_h",
+            "reused-h32": "research_cuda_regular_grid_parallel_reused_h",
         }.get(kind, "research_cuda_regular_grid_matrix")
         expected_recipe = (
             {
                 "onchip-h": OnchipHRecipe,
                 "output-owned-h": OutputOwnedHRecipe,
                 "reused-h": ReusedHRecipe,
+                "reused-h16": lambda: ParallelReusedHRecipe(h_batch=16),
+                "reused-h32": lambda: ParallelReusedHRecipe(h_batch=32),
             }[kind]()
-            if kind in ("onchip-h", "output-owned-h", "reused-h")
+            if kind
+            in ("onchip-h", "output-owned-h", "reused-h", "reused-h16", "reused-h32")
             else PeriodicRecipe(gemm="triton" if kind == "matrix-triton" else "torch")
         )
     else:
@@ -366,8 +379,12 @@ def state_gate(*, device="cuda", steps=20, regular_grid=False):
 
 def forward_stages(step, kind):
     """Fixed post-primary forward copy; these stages are not a training-step sum."""
-    if kind in ("output-owned-h", "reused-h"):
-        return output_owner_stages(step, reused=kind == "reused-h")
+    if kind in ("output-owned-h", "reused-h", "reused-h16", "reused-h32"):
+        return output_owner_stages(
+            step,
+            reused=kind != "output-owned-h",
+            h_batch={"reused-h16": 16, "reused-h32": 32}.get(kind),
+        )
     if kind == "onchip-h":
         return onchip_stages(step)
     if kind not in ("matrix-torch", "matrix-triton", "factor"):
@@ -507,7 +524,7 @@ def onchip_stages(step, *, output_owned=False):
     }
 
 
-def output_owner_stages(step, *, reused):
+def output_owner_stages(step, *, reused, h_batch=None):
     """Timestamp the actual staged forward on a fixed post24 copy.
 
     Candidate-index construction is separate. Exact support checks remain in
@@ -519,11 +536,14 @@ def output_owner_stages(step, *, reused):
     )
     from torchcst._backends.cuda.algorithms.linear.regular_grid_h.output_owner import (
         aggregate_chunk,
+        allocate_h,
+        h_capacity,
         prepare_routing,
         produce_h_chunk,
     )
     from torchcst._backends.cuda.algorithms.linear.regular_grid_h.recipe import (
         OutputOwnedHRecipe,
+        ParallelReusedHRecipe,
         ReusedHRecipe,
     )
 
@@ -531,8 +551,12 @@ def output_owner_stages(step, *, reused):
     x, p = step.x.detach().clone(), model.atoms.p.detach()
     n = model.in_features
     sizes = (len(x), n, n, float(n), float(n), 0.0, 0.0)
-    recipe = ReusedHRecipe() if reused else OutputOwnedHRecipe()
-    chunks = list(range(0, len(x), recipe.batch_tile)) if reused else [0]
+    recipe = (
+        ParallelReusedHRecipe(h_batch=h_batch)
+        if h_batch is not None
+        else (ReusedHRecipe() if reused else OutputOwnedHRecipe())
+    )
+    chunks = list(range(0, len(x), h_capacity(recipe))) if reused else [0]
     events = [
         torch.cuda.Event(enable_timing=True, external=True)
         for _ in range(3 + (2 * len(chunks) if reused else 1))
@@ -544,7 +568,7 @@ def output_owner_stages(step, *, reused):
         events[1].record()
         y = x.new_empty((len(x), n))
         routing = prepare_routing(packed, sizes, recipe)
-        h = x.new_empty((len(p), recipe.batch_tile)) if reused else None
+        h = allocate_h(x, len(p), recipe) if reused else None
         events[2].record()
         if reused:
             for i, start in enumerate(chunks):
@@ -604,7 +628,9 @@ def output_owner_stages(step, *, reused):
         "candidate_scope": "coarse index construction; exact support checks in Y kernel",
         "samples_ms": phases,
         "per_chunk_samples_ms": per_chunk,
-        "H_scratch_bytes": 4 * len(p) * recipe.batch_tile if reused else 0,
+        "H_scratch_bytes": 4 * len(p) * h_capacity(recipe) if reused else 0,
+        "H_batch_capacity": h_capacity(recipe) if reused else 0,
+        "Y_batch_tile": recipe.batch_tile,
         "parameters_unchanged": tensor_hash(p) == tensor_hash(step.model.atoms.p),
         "same_uninstrumented_forward": True,
     }
@@ -1050,15 +1076,25 @@ def main():
                 "onchip-h",
                 "output-owned-h",
                 "reused-h",
+                "reused-h16",
+                "reused-h32",
                 "dense",
             ]
             if args.regular_grid
             else list(LEGACY_KINDS)
         )
     if not args.regular_grid and (
-        args.worker in ("onchip-h", "output-owned-h", "reused-h")
+        args.worker
+        in ("onchip-h", "output-owned-h", "reused-h", "reused-h16", "reused-h32")
         or any(
-            kind in args.plans for kind in ("onchip-h", "output-owned-h", "reused-h")
+            kind in args.plans
+            for kind in (
+                "onchip-h",
+                "output-owned-h",
+                "reused-h",
+                "reused-h16",
+                "reused-h32",
+            )
         )
     ):
         parser.error("H recipes require --regular-grid")

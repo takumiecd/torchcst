@@ -93,7 +93,9 @@ def output_owned(
                 # H is stored by sorted position, so owners load consecutive
                 # atom/batch values without another original-ID gather.
                 h = tl.load(
-                    H + pos[:, None] * BM + tl.arange(0, BM)[None, :],
+                    H
+                    + (tl.program_id(1) * A + pos[:, None]) * BM
+                    + tl.arange(0, BM)[None, :],
                     contributes[:, None] & (rows[None, :] < B),
                     0.0,
                 )
@@ -147,9 +149,13 @@ def produce_h(
     pos = tl.program_id(0) * GROUP + tl.arange(0, GROUP)
     a = tl.load(Order + pos, pos < A, 0).to(tl.int32)
     local_rows = tl.arange(0, BM)
-    rows = BSTART + local_rows
+    rows = BSTART + tl.program_id(1) * BM + local_rows
     h, _ = _contract(
         X, P, a, rows, pos < A, A, B, NI, LI, OI, X0, X1, False, False, BM, BK, GROUP
     )
     # Every buffer element is overwritten each chunk, including padded rows.
-    tl.store(H + pos[:, None] * BM + local_rows[None, :], h, pos[:, None] < A)
+    tl.store(
+        H + (tl.program_id(1) * A + pos[:, None]) * BM + local_rows[None, :],
+        h,
+        pos[:, None] < A,
+    )

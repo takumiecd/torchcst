@@ -30,3 +30,17 @@ class OutputOwnedHRecipe(OnchipHRecipe):
 @dataclass(frozen=True)
 class ReusedHRecipe(OutputOwnedHRecipe):
     """One atom × batch_tile scratch buffer, reused across output owners."""
+
+
+@dataclass(frozen=True)
+class ParallelReusedHRecipe(ReusedHRecipe):
+    """Independent H batch capacity; preserve batch_tile compute/layout."""
+
+    h_batch: int = 16
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.h_batch) is not int or self.h_batch not in (16, 32):
+            raise ValueError("h_batch must be 16 or 32")
+        if self.h_batch < self.batch_tile or self.h_batch % self.batch_tile:
+            raise ValueError("h_batch must be a multiple of batch_tile")

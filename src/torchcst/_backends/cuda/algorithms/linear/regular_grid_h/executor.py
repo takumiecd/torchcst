@@ -10,9 +10,9 @@ def forward_contraction(x, packed, sizes, recipe):
     import triton as tr
 
     from . import kernels
-    from .recipe import OutputOwnedHRecipe, ReusedHRecipe
+    from .recipe import OutputOwnedHRecipe, ParallelReusedHRecipe, ReusedHRecipe
 
-    if type(recipe) in (OutputOwnedHRecipe, ReusedHRecipe):
+    if type(recipe) in (OutputOwnedHRecipe, ParallelReusedHRecipe, ReusedHRecipe):
         from .output_owner import forward_output_owned
 
         return forward_output_owned(x, packed, sizes, recipe)
