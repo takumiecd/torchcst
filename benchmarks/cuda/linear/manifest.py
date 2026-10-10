@@ -63,6 +63,7 @@ from torchcst._backends.cuda.algorithms.linear.profile_product_matrix.square_str
 )
 from torchcst._backends.cuda.algorithms.linear.regular_grid_h.algorithm import (
     GroupedOutputHAlgorithm,
+    InputOwnedHAlgorithm,
     OnchipHAlgorithm,
     OutputOwnedHAlgorithm,
     ParallelReusedHAlgorithm,
@@ -163,6 +164,7 @@ REGISTRY.register(ReusedHAlgorithm())
 REGISTRY.register(ParallelReusedHAlgorithm())
 REGISTRY.register(PreparedReusedHAlgorithm())
 REGISTRY.register(GroupedOutputHAlgorithm())
+REGISTRY.register(InputOwnedHAlgorithm())
 REGISTRY.register(ProductAlgorithm())
 REGISTRY.register(StripProductAlgorithm())
 REGISTRY.register(GlobalProductAlgorithm())

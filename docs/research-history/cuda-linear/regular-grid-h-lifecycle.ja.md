@@ -1185,3 +1185,21 @@ H生成/backwardのatom_group8は維持し、output_group32のみ別Recipe/Algor
 rho8ではinput-onlyがfullに近く、dXを作る経路の改善が次の構造的候補になる。
 atomic競合の物理stallを確認したわけではなく、G・profile評価・scatterを含む経路の診断。
 これらの時間は加減算しない。
+
+### 入力site担当のbackward候補
+
+group32実装source `7fcf7fe3` はGPU394 testsをPASS（272.10s、2 warnings）。
+CPU1669 passed /2992 skipped。検証job `l4job-409ac26d0c7344cbba5a13c1abb87842`、
+source `ab894e81257df2a74db3be8a40d050e969d0ff69bcb210b3723ea39f0bd4723e`、
+result `5c36b462953cb8a4f6cf74d664a5c9e4e990f3975fe164093ce2638f74cc80e7`。
+この固定sourceで4条件の完全step比較を提出した後、別の候補としてinput-ownerを追加する。
+
+input-ownerは既存G contractionをinput中心順に実行し、Gとparameter partialを作る。
+そのGからdXを入力site担当で集約する。G容量16/32、input tile8、output group32を固定する。
+新規support ID list/CSR、forward H/G保存、正規化やoracle条件の変更は行わない。
+parameter-onlyの場合は従来のkernelを使う。partialは元のatom IDへ書く。
+
+全GPU契約テストとGのchunk上書き・部分入力tileを検証してから、N2048 rho3/8に対し
+同じsource内でgroup32 control・input-owner candidate・既存方式・denseを比較する。
+時間は21サンプル、24実更新、全atom/全siteのinitial/post24 oracle、両allocator peak<=dense。
+試作が遅い／メモリ条件を外れる場合も結果を保全し、条件を変えて採用扱いにしない。

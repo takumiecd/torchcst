@@ -61,3 +61,15 @@ class GroupedOutputHRecipe(PreparedReusedHRecipe):
         super().__post_init__()
         if type(self.output_group) is not int or self.output_group not in (16, 32):
             raise ValueError("output_group must be 16 or 32")
+
+
+@dataclass(frozen=True)
+class InputOwnedHRecipe(GroupedOutputHRecipe):
+    """Symmetric input-owner backward with one ephemeral G batch chunk."""
+
+    input_tile: int = 8
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.input_tile) is not int or self.input_tile not in (8, 16, 32, 64):
+            raise ValueError("input_tile must be 8, 16, 32 or 64")

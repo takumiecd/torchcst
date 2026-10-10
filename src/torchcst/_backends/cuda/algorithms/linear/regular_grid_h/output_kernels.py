@@ -18,16 +18,17 @@ def routing_keys(
     OO: tl.constexpr,
     BO: tl.constexpr,
     BLOCK: tl.constexpr,
+    OUTPUT: tl.constexpr = True,
 ):
     a = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     valid = a < A
-    co = tl.load(P + 3 * A + a, valid, OO)
+    co = tl.load(P + (3 if OUTPUT else 2) * A + a, valid, OO)
     phase = co - OO - LO * tl.floor(tl.div_rn(co - OO, LO))
     site = tl.minimum(tl.maximum(tl.floor(tl.div_rn(phase, LO / NO)), 0), NO - 1).to(
         tl.int32
     )
-    low = tl.load(P + 11 * A + a, valid, 0).to(tl.int32)
-    high = tl.load(P + 12 * A + a, valid, 0).to(tl.int32)
+    low = tl.load(P + (11 if OUTPUT else 9) * A + a, valid, 0).to(tl.int32)
+    high = tl.load(P + (12 if OUTPUT else 10) * A + a, valid, 0).to(tl.int32)
     # Bound distance to every prepared unwrapped support site. Unlike a fixed
     # sigma cap this remains exact for live/broad/fallback supports, including
     # precision guards. Empty supports need no routing radius.
@@ -64,6 +65,7 @@ def output_owned(
     CACHED: tl.constexpr = False,
     Hot=None,
     PREPARED: tl.constexpr = False,
+    PROFILE_OUTPUT: tl.constexpr = True,
 ):
     owner = tl.program_id(0)
     rows = BSTART + tl.program_id(1) * BM + tl.arange(0, BM)
@@ -90,9 +92,9 @@ def output_owned(
                 beta = tl.load(Hot + pos, valid, 0)
             else:
                 a = tl.load(Order + pos, valid, 0).to(tl.int32)
-                co = tl.load(P + 3 * A + a, valid, OO)
+                co = tl.load(P + (3 if PROFILE_OUTPUT else 2) * A + a, valid, OO)
                 inv = tl.load(P + A + a, valid, 1)
-                norm = tl.load(P + 5 * A + a, valid, 1)
+                norm = tl.load(P + (5 if PROFILE_OUTPUT else 4) * A + a, valid, 1)
                 amp = tl.load(P + a, valid, 0)
             u, _ = _periodic_raw(sites[None, :], co[:, None], inv[:, None], OO, LO, NO)
             u = tl.where(valid[:, None] & (sites[None, :] < NO), u, 0.0)
@@ -173,15 +175,23 @@ def produce_h(
 
 
 @tr.jit
-def prepare_output_fields(P, Order, Hot, Unsafe, A: tl.constexpr, BLOCK: tl.constexpr):
+def prepare_output_fields(
+    P,
+    Order,
+    Hot,
+    Unsafe,
+    A: tl.constexpr,
+    BLOCK: tl.constexpr,
+    OUTPUT: tl.constexpr = True,
+):
     """Ephemeral SoA beta/inverse-width/centre, sorted identically to raw H."""
     pos = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     valid = pos < A
     a = tl.load(Order + pos, valid, 0).to(tl.int32)
     amp = tl.load(P + a, valid, 0)
-    norm = tl.load(P + 5 * A + a, valid, 1)
+    norm = tl.load(P + (5 if OUTPUT else 4) * A + a, valid, 1)
     inv = tl.load(P + A + a, valid, 1)
-    co = tl.load(P + 3 * A + a, valid, 0)
+    co = tl.load(P + (3 if OUTPUT else 2) * A + a, valid, 0)
     beta = tl.div_rn(amp, norm)
     unsafe = tl.max((valid & ~(tl.abs(beta) < float("inf"))).to(tl.int32), 0)
     # No atomic is issued on ordinary finite scales. One forward flag covers
@@ -219,6 +229,7 @@ def prepared_output_owned(
     Unsafe,
     BSTART: tl.constexpr,
     FALLBACK: tl.constexpr,
+    PROFILE_OUTPUT: tl.constexpr = True,
 ):
     # Separate specializations keep the original-ID/division path out of the
     # fast kernel's register schedule. Only one of the two launches writes Y.
@@ -249,4 +260,5 @@ def prepared_output_owned(
             CACHED=True,
             Hot=Hot,
             PREPARED=not FALLBACK,
+            PROFILE_OUTPUT=PROFILE_OUTPUT,
         )

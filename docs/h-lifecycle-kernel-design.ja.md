@@ -217,3 +217,27 @@ FP32ではamp/Suだけがoverflowしても、(qu/Su)*ampが有限になる場合
 この選択はGPU flagで行い、host同期を入れない。guard用の準備と空launchも完全step費用に含める。
 候補数、H容量、3項目の保持量、backward再計算は別々に評価し、
 [実測と範囲regression](research-history/cuda-linear/regular-grid-h-lifecycle.ja.md)を残す。
+
+## 出力の束と対称なG寿命
+
+H生成のatom groupと、出力集約のatom groupは同じにする必要はない。
+Hは8 atomずつ生成し、H→Yは32 atomずつ束ねる研究Planを追加した。
+Hのbatch容量、3項目の保持量、forward snapshotの保存量は増えない。
+広い束のreduction順序とGPU register配置は変わるので、全勾配oracleと完全stepで検証する。
+
+backwardの対称候補では `G[b,a]=sum_j dY[b,j]*qu[a,j]/Su[a]` を作り、
+`dX[b,i]=sum_a G[b,a]*amp[a]*qv[a,i]/Sv[a]` を入力site担当で集める。
+Gをinput中心で整列したpositionに置き、同じ小batch内で再利用する。
+G・routing・inputの3項目はbackward内だけで寿命を終え、次chunkで上書きする。
+forwardからH/Gを保存せず、必要なparameter partialは元のatom IDへ一度ずつ書く。
+
+`damp=sum_b H*G`、`dci=amp*sum_b G*dH`、`dco=amp*sum_b H*dG` とし、
+正規化微分・単一siteの微分flag・Polarのsource VJPは既存と同じ。
+G/dGとH/dHはforward時点のpacked情報から計算し、live Parameterやchartを読み直さない。
+dXが不要なら従来のparameter-only計算を使い、G用routing/bufferを作らない。
+
+G担当方式では入力owner tile8、forward出力tile16を最初の比較条件にする。
+両方向のsupportを連結するCSRは作らず、中心binのprefixと支持のexact評価を使う。
+βinput=amp/Svの範囲guard、routing構築、G生成、dX集約、全parameter partial/reductionも
+完全stepに含める。atomicを消すだけで速くなるとは仮定せず、allocated/reserved総peakが
+dense以内かを含めて従来のatom-owned backwardと比較する。

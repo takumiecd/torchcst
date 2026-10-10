@@ -12,6 +12,7 @@ def forward_contraction(x, packed, sizes, recipe):
     from . import kernels
     from .recipe import (
         GroupedOutputHRecipe,
+        InputOwnedHRecipe,
         OutputOwnedHRecipe,
         ParallelReusedHRecipe,
         PreparedReusedHRecipe,
@@ -20,6 +21,7 @@ def forward_contraction(x, packed, sizes, recipe):
 
     if type(recipe) in (
         GroupedOutputHRecipe,
+        InputOwnedHRecipe,
         OutputOwnedHRecipe,
         ParallelReusedHRecipe,
         PreparedReusedHRecipe,
@@ -74,6 +76,7 @@ class _OnchipH(torch.autograd.Function):
         import triton as tr
 
         from . import kernels
+        from .recipe import InputOwnedHRecipe
 
         x, source, amplitude_max, packed = ctx.saved_tensors
         b, ni, no, li, lo, oi, oo = ctx.sizes
@@ -84,30 +87,37 @@ class _OnchipH(torch.autograd.Function):
         tiles = tr.cdiv(b, recipe.batch_tile)
         partial = x.new_empty((tiles, 3, a)) if need_p else None
         if a and (need_x or need_p):
-            kernels.backward[(tr.cdiv(a, recipe.atom_group), tiles)](
-                x,
-                dy,
-                packed,
-                dx,
-                partial,
-                a,
-                b,
-                ni,
-                no,
-                li,
-                lo,
-                oi,
-                oo,
-                *x.stride(),
-                *dy.stride(),
-                need_x,
-                need_p,
-                recipe.batch_tile,
-                recipe.patch_sites,
-                recipe.atom_group,
-                num_warps=4,
-                enable_fp_fusion=False,
-            )
+            if type(recipe) is InputOwnedHRecipe and need_x:
+                from .input_owner import input_owned_backward
+
+                input_owned_backward(
+                    x, dy, packed, ctx.sizes, recipe, dx, partial, need_p
+                )
+            else:
+                kernels.backward[(tr.cdiv(a, recipe.atom_group), tiles)](
+                    x,
+                    dy,
+                    packed,
+                    dx,
+                    partial,
+                    a,
+                    b,
+                    ni,
+                    no,
+                    li,
+                    lo,
+                    oi,
+                    oo,
+                    *x.stride(),
+                    *dy.stride(),
+                    need_x,
+                    need_p,
+                    recipe.batch_tile,
+                    recipe.patch_sites,
+                    recipe.atom_group,
+                    num_warps=4,
+                    enable_fp_fusion=False,
+                )
             if need_p:
                 kernels.reduce_parameters[(tr.cdiv(a, recipe.prep_group),)](
                     partial,

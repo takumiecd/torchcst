@@ -8,15 +8,18 @@ for backward, which still uses the original atom-owned contractions.
 import torch
 
 
-def prepare_routing(packed, sizes, recipe):
+def prepare_routing(packed, sizes, recipe, *, output=True, tile=None):
     """Build the same coarse candidate index for fused and reusable-H routes."""
     import triton as tr
 
     from . import output_kernels as kernels
 
-    _, _, no, _, lo, _, oo = sizes
+    _, ni, no, li, lo, oi, oo = sizes
+    if not output:
+        no, lo, oo = ni, li, oi
+    bo = recipe.output_tile if tile is None else tile
     a = packed.shape[1]
-    bins = tr.cdiv(no, recipe.output_tile)
+    bins = tr.cdiv(no, bo)
     keys = torch.empty(a, device=packed.device, dtype=torch.int32)
     distances = torch.empty(tr.cdiv(a, 256), device=packed.device, dtype=torch.int32)
     kernels.routing_keys[(tr.cdiv(a, 256),)](
@@ -27,8 +30,9 @@ def prepare_routing(packed, sizes, recipe):
         no,
         lo,
         oo,
-        recipe.output_tile,
+        bo,
         256,
+        OUTPUT=output,
         num_warps=4,
         enable_fp_fusion=False,
     )
@@ -43,6 +47,7 @@ def prepare_routing(packed, sizes, recipe):
 def h_capacity(recipe):
     from .recipe import (
         GroupedOutputHRecipe,
+        InputOwnedHRecipe,
         ParallelReusedHRecipe,
         PreparedReusedHRecipe,
     )
@@ -50,7 +55,12 @@ def h_capacity(recipe):
     return (
         recipe.h_batch
         if type(recipe)
-        in (GroupedOutputHRecipe, ParallelReusedHRecipe, PreparedReusedHRecipe)
+        in (
+            GroupedOutputHRecipe,
+            InputOwnedHRecipe,
+            ParallelReusedHRecipe,
+            PreparedReusedHRecipe,
+        )
         else recipe.batch_tile
     )
 
@@ -58,12 +68,14 @@ def h_capacity(recipe):
 def allocate_h(x, atom_count, recipe):
     from .recipe import (
         GroupedOutputHRecipe,
+        InputOwnedHRecipe,
         ParallelReusedHRecipe,
         PreparedReusedHRecipe,
     )
 
     if type(recipe) in (
         GroupedOutputHRecipe,
+        InputOwnedHRecipe,
         ParallelReusedHRecipe,
         PreparedReusedHRecipe,
     ):
@@ -111,7 +123,7 @@ def produce_h_chunk(x, packed, sizes, recipe, routing, h, batch_start):
     )
 
 
-def prepare_output_fields(packed, routing):
+def prepare_output_fields(packed, routing, *, output=True):
     """Only the three output fields survive across H chunks, never backward."""
     import triton as tr
 
@@ -121,7 +133,15 @@ def prepare_output_fields(packed, routing):
     hot = packed.new_empty((3, a))
     unsafe = torch.zeros((), device=packed.device, dtype=torch.int32)
     kernels.prepare_output_fields[(tr.cdiv(a, 256),)](
-        packed, routing[0], hot, unsafe, a, 256, num_warps=4, enable_fp_fusion=False
+        packed,
+        routing[0],
+        hot,
+        unsafe,
+        a,
+        256,
+        OUTPUT=output,
+        num_warps=4,
+        enable_fp_fusion=False,
     )
     return hot, unsafe
 
@@ -178,6 +198,7 @@ def aggregate_chunk(
 def forward_output_owned(x, packed, sizes, recipe):
     from .recipe import (
         GroupedOutputHRecipe,
+        InputOwnedHRecipe,
         ParallelReusedHRecipe,
         PreparedReusedHRecipe,
         ReusedHRecipe,
@@ -191,11 +212,13 @@ def forward_output_owned(x, packed, sizes, recipe):
     routing = prepare_routing(packed, sizes, recipe)
     hot = (
         prepare_output_fields(packed, routing)
-        if type(recipe) in (GroupedOutputHRecipe, PreparedReusedHRecipe)
+        if type(recipe)
+        in (GroupedOutputHRecipe, InputOwnedHRecipe, PreparedReusedHRecipe)
         else None
     )
     if type(recipe) in (
         GroupedOutputHRecipe,
+        InputOwnedHRecipe,
         ReusedHRecipe,
         ParallelReusedHRecipe,
         PreparedReusedHRecipe,

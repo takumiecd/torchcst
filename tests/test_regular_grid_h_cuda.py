@@ -22,6 +22,7 @@ from torchcst._backends.cuda.algorithms.linear.periodic_product.recipe import (
 )
 from torchcst._backends.cuda.algorithms.linear.regular_grid_h.algorithm import (
     GroupedOutputHAlgorithm,
+    InputOwnedHAlgorithm,
     OnchipHAlgorithm,
     OutputOwnedHAlgorithm,
     ParallelReusedHAlgorithm,
@@ -32,6 +33,7 @@ from torchcst._backends.cuda.algorithms.linear.regular_grid_h.algorithm import (
 )
 from torchcst._backends.cuda.algorithms.linear.regular_grid_h.recipe import (
     GroupedOutputHRecipe,
+    InputOwnedHRecipe,
     OnchipHRecipe,
     OutputOwnedHRecipe,
     ParallelReusedHRecipe,
@@ -56,6 +58,8 @@ def selector(route="onchip", **settings):
         "prepared32": PreparedReusedHAlgorithm,
         "grouped16": GroupedOutputHAlgorithm,
         "grouped32": GroupedOutputHAlgorithm,
+        "input16": InputOwnedHAlgorithm,
+        "input32": InputOwnedHAlgorithm,
         "matrix": RegularMatrixAlgorithm,
         "factor": RegularFactorAlgorithm,
     }[route]()
@@ -71,6 +75,8 @@ def selector(route="onchip", **settings):
         "prepared32": lambda **kw: PreparedReusedHRecipe(h_batch=32, **kw),
         "grouped16": lambda **kw: GroupedOutputHRecipe(h_batch=16, **kw),
         "grouped32": lambda **kw: GroupedOutputHRecipe(h_batch=32, **kw),
+        "input16": lambda **kw: InputOwnedHRecipe(h_batch=16, **kw),
+        "input32": lambda **kw: InputOwnedHRecipe(h_batch=32, **kw),
     }.get(route, PeriodicRecipe)(**settings)
     plan = ExecutionPlan(algorithm.id, algorithm.revision, recipe)
     registry.validate_plan(plan)
@@ -102,6 +108,7 @@ def model(
             "output_tile",
             "h_batch",
             "output_group",
+            "input_tile",
         )
     }
     layer = BASE_MODEL(
@@ -126,6 +133,8 @@ def model(
         "prepared32",
         "grouped16",
         "grouped32",
+        "input16",
+        "input32",
     ],
 )
 def test_metadata_roundtrip_scope_and_no_gpu_import(route):
@@ -173,6 +182,8 @@ def test_metadata_roundtrip_scope_and_no_gpu_import(route):
         "prepared32",
         "grouped16",
         "grouped32",
+        "input16",
+        "input32",
     ):
         assert algorithm.workspace_bound(context, plan.recipe) is None
     if route == "onchip":
@@ -223,6 +234,8 @@ assert not any(n.endswith(('regular_grid_h.executor','regular_grid_h.kernels')) 
         "prepared32",
         "grouped16",
         "grouped32",
+        "input16",
+        "input32",
     ],
 )
 @pytest.mark.parametrize(
@@ -254,6 +267,8 @@ def test_full_atom_oracle_strides_batch_tiles_seams_and_broad(
         "prepared32",
         "grouped16",
         "grouped32",
+        "input16",
+        "input32",
     ],
 )
 @pytest.mark.parametrize(
@@ -287,6 +302,8 @@ def test_alternative_explicit_tiles(route, settings):
         "prepared32",
         "grouped16",
         "grouped32",
+        "input16",
+        "input32",
     ],
 )
 @pytest.mark.parametrize("case", ["empty", "singleton", "below", "equal", "above"])
@@ -308,6 +325,8 @@ def test_product_floor_and_singleton_gradients(route, monkeypatch, case):
         "prepared32",
         "grouped16",
         "grouped32",
+        "input16",
+        "input32",
     ],
 )
 @pytest.mark.parametrize("count", [0, 17])
@@ -332,6 +351,8 @@ def test_zero_atoms_and_requested_gradients(route, monkeypatch, count, need_x, n
         "prepared32",
         "grouped16",
         "grouped32",
+        "input16",
+        "input32",
     ],
 )
 def test_retained_forward_snapshots_before_live_parameter_width_and_chart_updates(
@@ -373,6 +394,8 @@ def test_retained_forward_snapshots_before_live_parameter_width_and_chart_update
         "prepared32",
         "grouped16",
         "grouped32",
+        "input16",
+        "input32",
     ],
 )
 def test_no_full_h_g_saved_and_backward_recomputation(
@@ -405,6 +428,8 @@ def test_no_full_h_g_saved_and_backward_recomputation(
         "prepared32",
         "grouped16",
         "grouped32",
+        "input16",
+        "input32",
     ],
 )
 def test_twenty_graph_replays_public_optimizer_live_width_and_all_task_gradients(
@@ -438,6 +463,8 @@ def test_twenty_graph_replays_public_optimizer_live_width_and_all_task_gradients
         "prepared32",
         "grouped16",
         "grouped32",
+        "input16",
+        "input32",
     ],
 )
 def test_twenty_public_eager_updates(route, monkeypatch):
@@ -465,6 +492,8 @@ def test_reject_invalid_output_tile(tile):
         "prepared32",
         "grouped16",
         "grouped32",
+        "input16",
+        "input32",
     ],
 )
 @pytest.mark.parametrize("tile", [8, 16, 32, 64])
@@ -502,6 +531,8 @@ def test_output_owner_partial_tile_seam_cluster_and_no_fixed_capacity(
         ("prepared32", 32),
         ("grouped16", 16),
         ("grouped32", 32),
+        ("input16", 16),
+        ("input32", 32),
     ],
 )
 def test_reused_h_overwrites_one_buffer_for_every_partial_batch_chunk(
@@ -609,7 +640,8 @@ def test_aggregation_probes_real_formula_partial_chunks_and_census(
 
 @GPU
 @pytest.mark.parametrize(
-    "route", ["prepared16", "prepared32", "grouped16", "grouped32"]
+    "route",
+    ["prepared16", "prepared32", "grouped16", "grouped32", "input16", "input32"],
 )
 @pytest.mark.parametrize("zero", ["amplitude", "input"])
 def test_prepared_reuse_zero_forward_preserves_nonzero_derivative(route, zero):
@@ -635,7 +667,8 @@ def test_prepared_reuse_zero_forward_preserves_nonzero_derivative(route, zero):
 
 @GPU
 @pytest.mark.parametrize(
-    "route", ["prepared16", "prepared32", "grouped16", "grouped32"]
+    "route",
+    ["prepared16", "prepared32", "grouped16", "grouped32", "input16", "input32"],
 )
 @pytest.mark.parametrize("sigma", [0.01, 0.25000006])
 def test_prepared_nonfinite_scale_preserves_original_order_and_graph(route, sigma):
@@ -744,3 +777,56 @@ def test_grouped_output_recipe_is_distinct_and_keeps_h_group():
         PreparedReusedHAlgorithm().validate_recipe(recipe)
     with pytest.raises(TypeError):
         GroupedOutputHAlgorithm().validate_recipe(PreparedReusedHRecipe())
+
+
+@pytest.mark.parametrize("tile", [True, 0, 4, 17, 128])
+def test_reject_invalid_input_tile(tile):
+    with pytest.raises(ValueError):
+        InputOwnedHRecipe(input_tile=tile)
+
+
+def test_input_owner_recipe_is_distinct():
+    with pytest.raises(TypeError):
+        GroupedOutputHAlgorithm().validate_recipe(InputOwnedHRecipe())
+    with pytest.raises(TypeError):
+        InputOwnedHAlgorithm().validate_recipe(GroupedOutputHRecipe())
+
+
+@GPU
+@pytest.mark.parametrize("capacity", [16, 32])
+@pytest.mark.parametrize("tile", [8, 16, 32, 64])
+def test_input_owner_one_g_buffer_overwritten_before_next_chunk(
+    monkeypatch, capacity, tile
+):
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h import input_kernels
+
+    calls = []
+    original = input_kernels.produce_g_parameters
+
+    class Capture:
+        def __getitem__(self, grid):
+            launch = original[grid]
+
+            def call(*args, **kwargs):
+                calls.append((args[19], args[4].data_ptr(), tuple(args[4].shape)))
+                return launch(*args, **kwargs)
+
+            return call
+
+    monkeypatch.setattr(input_kernels, "produce_g_parameters", Capture())
+    layer = model(
+        periodic.parameters(129),
+        "input16" if capacity == 16 else "input32",
+        input_tile=tile,
+        device="cuda",
+    )
+    x = torch.randn(37, 65, device="cuda", requires_grad=True)
+    dy = torch.randn(37, 33, device="cuda")
+    y = layer(x)
+    periodic.gate(
+        (y, *torch.autograd.grad(y, (x, layer.atoms.p), dy)),
+        periodic.oracle(layer, x, dy),
+    )
+    assert [c[0] for c in calls] == list(range(0, 37, capacity))
+    assert len({c[1] for c in calls}) == 1
+    assert all(c[2] == (capacity // 8, 129, 8) for c in calls)

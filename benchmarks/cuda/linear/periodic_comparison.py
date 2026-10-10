@@ -45,6 +45,8 @@ KINDS = (
     "prepared-h32",
     "prepared-g32-h16",
     "prepared-g32-h32",
+    "input-owned-h16",
+    "input-owned-h32",
 )
 REGULAR_PRIMARY = ("matrix-torch", "factor", "onchip-h", "dense")
 PRIMARY = ("matrix-torch", "factor", "dense")
@@ -137,6 +139,7 @@ def bind_plan(model, kind):
     if regular_grid:
         from torchcst._backends.cuda.algorithms.linear.regular_grid_h.recipe import (
             GroupedOutputHRecipe,
+            InputOwnedHRecipe,
             OnchipHRecipe,
             OutputOwnedHRecipe,
             ParallelReusedHRecipe,
@@ -155,6 +158,8 @@ def bind_plan(model, kind):
             "prepared-h32": "research_cuda_regular_grid_prepared_reused_h",
             "prepared-g32-h16": "research_cuda_regular_grid_grouped_output_h",
             "prepared-g32-h32": "research_cuda_regular_grid_grouped_output_h",
+            "input-owned-h16": "research_cuda_regular_grid_input_owned_h",
+            "input-owned-h32": "research_cuda_regular_grid_input_owned_h",
         }.get(kind, "research_cuda_regular_grid_matrix")
         expected_recipe = (
             {
@@ -167,6 +172,8 @@ def bind_plan(model, kind):
                 "prepared-h32": lambda: PreparedReusedHRecipe(h_batch=32),
                 "prepared-g32-h16": lambda: GroupedOutputHRecipe(h_batch=16),
                 "prepared-g32-h32": lambda: GroupedOutputHRecipe(h_batch=32),
+                "input-owned-h16": lambda: InputOwnedHRecipe(h_batch=16),
+                "input-owned-h32": lambda: InputOwnedHRecipe(h_batch=32),
             }[kind]()
             if kind
             in (
@@ -179,6 +186,8 @@ def bind_plan(model, kind):
                 "prepared-h32",
                 "prepared-g32-h16",
                 "prepared-g32-h32",
+                "input-owned-h16",
+                "input-owned-h32",
             )
             else PeriodicRecipe(gemm="triton" if kind == "matrix-triton" else "torch")
         )
@@ -412,6 +421,8 @@ def forward_stages(step, kind):
         "prepared-h32",
         "prepared-g32-h16",
         "prepared-g32-h32",
+        "input-owned-h16",
+        "input-owned-h32",
     ):
         return output_owner_stages(
             step,
@@ -423,9 +434,11 @@ def forward_stages(step, kind):
                 "prepared-h32": 32,
                 "prepared-g32-h16": 16,
                 "prepared-g32-h32": 32,
+                "input-owned-h16": 16,
+                "input-owned-h32": 32,
             }.get(kind),
-            prepared=kind.startswith("prepared-"),
-            grouped=kind.startswith("prepared-g32-"),
+            prepared=kind.startswith(("prepared-", "input-owned-")),
+            grouped=kind.startswith(("prepared-g32-", "input-owned-")),
         )
     if kind == "onchip-h":
         return onchip_stages(step)
@@ -1188,6 +1201,8 @@ def main():
                 "prepared-h32",
                 "prepared-g32-h16",
                 "prepared-g32-h32",
+                "input-owned-h16",
+                "input-owned-h32",
                 "dense",
             ]
             if args.regular_grid
@@ -1205,6 +1220,8 @@ def main():
             "prepared-h32",
             "prepared-g32-h16",
             "prepared-g32-h32",
+            "input-owned-h16",
+            "input-owned-h32",
         )
         or any(
             kind in args.plans
@@ -1218,6 +1235,8 @@ def main():
                 "prepared-h32",
                 "prepared-g32-h16",
                 "prepared-g32-h32",
+                "input-owned-h16",
+                "input-owned-h32",
             )
         )
     ):
