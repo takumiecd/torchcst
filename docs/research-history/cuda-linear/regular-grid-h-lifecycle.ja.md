@@ -988,3 +988,10 @@ sourceを再commit固定し、同じ共有L4／600秒の全検証jobを一度追
 旧結果の選別retryではなく、範囲regression修正による新sourceの検証である。
 記録の式も実装へ合わせる：βはamp/D全体ではなくamp/Su、Hはraw V Xではなく
 (raw V/Sv)Xである。joint floor一つという数学契約は同じで、両側のfloor独立適用はしていない。
+
+修正版source `bb379a27` の全GPU検証は315 PASS／追加capture test 1 FAIL。
+overflow時の空/非空支持Y/dX/all dPの有限性・旧順序とのbitwise一致は通り、既存の20回
+公開Graph更新もすべてPASS。失敗は新testがcapture前のeager autograd graphを保持していた
+`cudaErrorStreamCaptureImplicit`。runtimeを変えず、期待値と実測をdetachしてgraphを解放し、
+warmup/captureを同じ明示streamへ統一する。新sourceで600秒の全GPU検証を一度実施し、
+全部PASS後に前述4Caseを測る。失敗job/log/source/result hashは保持する。

@@ -618,20 +618,32 @@ def test_prepared_nonfinite_scale_preserves_original_order_and_graph(route, sigm
     x = torch.tensor([[0.3, -0.5]], device="cuda", requires_grad=True)
     dy = torch.tensor([[0.2, -0.7]], device="cuda")
     expected_y = control(x)
-    expected = (expected_y, *torch.autograd.grad(expected_y, (x, control.atoms.p), dy))
+    expected = tuple(
+        t.detach().clone()
+        for t in (
+            expected_y,
+            *torch.autograd.grad(expected_y, (x, control.atoms.p), dy),
+        )
+    )
+    del expected_y
 
     def call():
         y = candidate(x)
         return (y, *torch.autograd.grad(y, (x, candidate.atoms.p), dy))
 
-    actual = call()
+    actual = tuple(t.detach().clone() for t in call())
     if sigma == 0.01:
         periodic.gate(actual, periodic.oracle(candidate, x, dy))
     for a, e in zip(actual, expected, strict=True):
         assert a.isfinite().all() and e.isfinite().all()
         torch.testing.assert_close(a, e, rtol=0, atol=0)
+    capture_stream = torch.cuda.Stream()
+    capture_stream.wait_stream(torch.cuda.current_stream())
+    with torch.cuda.stream(capture_stream):
+        call()  # Warmup and capture share a stream; no eager graph is retained.
+    torch.cuda.current_stream().wait_stream(capture_stream)
     graph = torch.cuda.CUDAGraph()
-    with torch.cuda.graph(graph):
+    with torch.cuda.graph(graph, stream=capture_stream):
         replay = call()
     for _ in range(3):
         graph.replay()
