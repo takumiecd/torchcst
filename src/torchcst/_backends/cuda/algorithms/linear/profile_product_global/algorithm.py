@@ -24,11 +24,16 @@ def product_spec(operator, *, max_sites=1024):
     if (
         type(chart) is not ProductChartSpec
         or type(chart.geometry) is not EuclideanGeometrySpec
+        or len(chart.axes) != 2
         or kernel.composition != "profile_product"
         or type(kernel.parameterization) is not PolarAmpWidthSpec
         or len(kernel.profiles) != 2
         or any(type(p.profile) is not TriweightSpec for p in kernel.profiles)
         or any(type(p) is not LinePatternSpec for p in chart.axes)
+        # A spacing annotation on explicit points is not a lattice contract.
+        # Line axes guarantee the positions; positive spacing makes their
+        # coordinate-to-index divisions valid, including the support route.
+        or any(p.spacing[0] <= 0 for p in chart.axes)
         or chart.axes[0].spacing != chart.axes[1].spacing
         or any(not 2 <= n <= max_sites for n in chart.shape)
     ):
