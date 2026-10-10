@@ -45,7 +45,9 @@ raw log と比較 snapshot は研究 worktree の ignored `output/regular-produc
 その後の [支持保存量の比較](20261010-product-bounded-support.md) では、
 N2048/N8192・batch32・5% atom・初期rho3・live幅更新を使い、再計算と
 無損失キャッシュ圧縮を同じ native/Torch matrix control と比較した。
-初期と24更新後の全atom・全site FP64 oracle、dX/全4atom勾配を通過した。
+初期と23実更新後の全atom・全site FP64 oracle、dX/全4atom勾配を通過した。
+旧driverは24と誤記していたため、[clock監査](20261010-product-matrix-free-results.md)
+で訂正する。計画の24更新gateへ到達した証拠とは扱わない。
 最後の監査修正は GPU-host157 tests、研究sourceの CPU1412 passed /
 2700 skipped、wheel/sdist build を通過した。
 
@@ -55,7 +57,7 @@ N8192のTorch比較では、再計算は allocated peak14.86%減 / step14.84%遅
 `kernel/product-bounded-support` に保全する。mainへ追加するのは結果・方針のみ。
 N2048ではどちらも遅くpeakも増えたため、全サイズ共通の高速routeとはしない。
 
-次の実装対象は、FP32正規化値と整数支持区間をVJPで直接読み、13fieldの
+この時点の次候補は、FP32正規化値と整数支持区間をVJPで直接読み、13fieldの
 展開scratchとdecode launchを除く一案に固定する。whole-product floor、
 forward専用snapshot、全寄与とcanonical optimizer stateを維持する。
 現matrix control・今回のcache・denseを同じ条件で測り、合格後に独立確認する。
@@ -65,6 +67,51 @@ forward専用snapshot、全寄与とcanonical optimizer stateを維持する。
 置き換える別段階とする。atom区間からowner membershipを直接作り、
 K×ownersの全表を避ける。構築・重複・並べ替え・exact overflow・再計算を
 完全stepに含める。既存prepared/H-Gへ切り替えるだけでは改善としない。
+
+### bounded CSR と source VJP 融合の実測
+
+後続の [matrix-free 比較](20261010-product-matrix-free-results.md) では、
+正支持区間を保存し、W/dW と全KのH/Gを bounded chunk/owner消費へ置き換えた。
+さらにbackwardのH/Hciを同じ入力ループで計算する融合を一案として測定した。
+両方式はN2048/N8192の全site・全atom・全4dP検証を通過した。
+補助driverの旧24表記は実23更新だったため訂正し、CSR版は別のoracle-only
+jobでoptimizer clockを読んだ実24更新検証を通した。性能の再測定で置換しない。
+融合版は最初から実clock24をassertする。GPU-host225 tests、CPU1442 passed /
+2738 skipped、wheel/sdist、独立source/result監査も通過した。
+
+N8192では融合CSRが53.69→48.46ms、同allocated peak 580,723,200 bytes。
+同runのTorch controlは40.22ms /1,075,119,616 bytesなので、peak45.99%減に対し
+step20.49%遅い。nativeも13.20%遅く、共同条件に未達。N2048も未達。
+規則格子の支持算術と大幅なメモリ削減は成立したが、高速置換としては見送る。
+runtimeは `kernel/product-support-direct` / `kernel/product-fused-backward`、
+raw jobsとignored outputは保全し、mainには結果と方針のみ統合する。
+
+入出力の支持区間はforwardからbackwardで再利用する。ただしforwardは出力owner、
+dXは入力ownerを消費するため、CSR一覧をそのまま共有することはできない。
+両方向一覧の全K保存やstepをまたぐキャッシュを無条件に追加しない。
+owner-listの構築費と保存費、live幅・中心の更新を含めた採否が必要である。
+
+### 次の構造候補（未実装・性能未検証）
+
+探索省略とsnapshot再利用を保ち、次は「入力の正支持が16-site owner
+ひとつに収まるatom」のB32処理を一案として検討する。rho閾値で捨てず、
+保存した正支持区間から毎forward分類する。対象割合は実測してから費用を
+判断する。全atomを並べ替える方式は今回の無条件の次候補にしない。
+
+そのatomのowner内でH/Hciと完全出力支持のG/Gcoを計算し、同じGで
+dXと全4canonical dPを処理する。B32全体とatomのdPを一つのCTAが所有して
+重複store/浮動atomicsを避ける。振幅を含まないinput factorを保持し、
+振幅0でもdAmpを残す。norm-active singletonはHを保持・Hci=0、floorで下限を
+かける場合はraw profileの微分をwhole-floorでscaleする。whole-product floorと
+forward snapshotは維持する。跨ぎ・empty・wide・他batchは厳密な既存fallback。
+
+G scratchがfallbackに必要なため全廃と主張しない。owner分類/CSR/追加X・DY
+読出し/zero padding/register/overflowの全費用を完全stepに含める。
+logical bytes/FLOPsの見積りはHBM/cache実測ではない。対象率・spill・実トラフィック
+を測らず速度向上と断定しない。まず独立初期/実24更新Y/dX/all4dPを通し、
+同じnative/Torchと融合CSRcontrolに対する完全step/allocated/reservedを検証する。
+無変更の負結果再測定や閾値緩和はしない。具体的source/Case/deadlineは実装前に
+別protocolとして凍結する。
 
 ## 元の Sphere 計画
 

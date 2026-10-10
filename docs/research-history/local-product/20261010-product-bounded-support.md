@@ -59,7 +59,7 @@ the same1000s job budget before any performance claim.
 
 Corrected gate `l4job-7926548caf5a41539762fafc998b9150` passed125 tests and
 the complete2048 comparison. Initial full-site oracle plus both candidates'
-all209715-atom oracle after24 captured updates passed. The recompute variants
+all209715-atom oracle after23 actual updates passed (raw driver labeled24). The recompute variants
 lost: native1.118382→1.377347ms and Torch0.941928→1.200411ms; allocated peaks
 66493952→67336704 and99735040→100577792 bytes. C262144 exceeds this K, so this
 case has no chunk-bound storage reduction. The already declared8192 study is
@@ -119,7 +119,7 @@ Triton3.6.0. Reproduce a candidate with the committed catalog/case via
 `python -m benchmarks.cuda.linear.run --plans <catalog> --case <case>
 --polar-update fused --phase-diagnostics --source-commit <explicit-commit>
 --output <ignored-output-path>`. The frozen pool driver in each source archive
-also preserves the independent gate and supplemental24-update oracle.
+also preserves the independent gate and supplemental23-update oracle (raw label24).
 
 
 ## Arithmetic support and retained mathematical state
@@ -154,7 +154,7 @@ norm, omit positive sites, or freeze subsequent forwards' live widths.
 
 Job `l4job-dfd73c99fb604a46b4487c8a858b77fb` succeeded: all four initial
 complete FP64 oracles plus both updated candidate oracles passed. Both updated
-candidates changed all3355443 widths in24 updates; worst updated Y maxabs was
+candidates changed all3355443 widths in23 actual updates (raw label24); worst updated Y maxabs was
 2.180e-4, dX8.162e-10 and dP3.087e-11, all below the predeclared4e-4 gates.
 Submission validation also passed. Native/Torch controls and candidates use the
 same source b469c48 and inputs; this is one independent run with21 timed replays.
@@ -184,7 +184,7 @@ for public dispatch adoption. The cache candidate is evaluated separately.
 
 Job `l4job-98aa5d354344453494c60c70be55bccf` passed156 tests, including
 exact-numeric compact-layout roundtrip. All four initial FP64 oracle checks and both
-24-update candidate full-atom oracles passed; each candidate changed all209715
+23-update candidate full-atom oracles passed (raw label24); each candidate changed all209715
 widths, and the final Parameter hashes match the v1 updated oracle. This checks
 live updates without interpreting21 timed replays as independent runs.
 
@@ -240,7 +240,7 @@ its snapshot is retained and it supplies no GPU measurement.
 ## v2/8192 result: reject cache expansion cost
 
 Job `l4job-5621868602464459b95173474dd48dea` passed all four initial
-complete FP64 checks and both candidate full-atom checks after24 live updates.
+complete FP64 checks and both candidate full-atom checks after23 actual updates (raw label24).
 All3355443 widths changed; worst updated errors were Y2.180e-4, dX8.162e-10,
 dP3.087e-11. Both candidates' final Parameter hash matches v1/8192. Submission
 validation passed. No tolerance change, support approximation or sample oracle.
@@ -299,7 +299,7 @@ owner-index performance result is claimed here.
 
 Final source `3144e4490be8f16c284c2e96e274955f155190ef` passed157 GPU-host
 tests, including int32-view bitwise layout/negative-zero/end8192/sentinel checks,
-and initial plus24-update2048 full oracles. Local CPU1412 passed /2700 skipped
+and initial plus23-update2048 full oracles (raw label24). Local CPU1412 passed /2700 skipped
 and wheel/sdist build passed for the runtime-offset correction; the final
 bitwise-only test change also passed the6 metadata tests /56 GPU skips locally.
 Final GPU job `l4job-f8cb4f1364ca4ba79e8b5184f7059ee0` succeeded. Its driver
@@ -326,3 +326,19 @@ Raw source archives, receipts and results remain under
 ignored `output/product-support-evidence-manifest.json`. The measured-source
 proofs and driver are preserved in that worktree's ignored output. No worktree
 or evidence deletion is part of this checkpoint.
+
+
+## Supplemental update-clock erratum
+
+The planned24-update gate above was missed by one update in the frozen drivers.
+Each executed one eager step and22 Graph replays, but counted Graph recording as
+another update and hard-coded24 in JSON. Recording did not execute that update.
+Those historical supplemental checks therefore certify23 actual updates. Raw
+source/JSON, final Parameter hashes and unfavorable timing/peak outcomes are
+retained; initial independent oracles and primary measurements are unaffected.
+No old performance is repeated or relabeled.
+
+The subsequent matrix-free driver uses23 replays plus one eager step and reads
+and asserts the AdamW step counter24. See the [matrix-free result and clock
+audit](20261010-product-matrix-free-results.md) for corrected oracle-only jobs,
+exact source/driver/result provenance and the scope of this correction.
