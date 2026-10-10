@@ -52,3 +52,20 @@ controls must be reported. A qualifying result receives one independent reverse
 plan-order run with the same cases, controls, oracle and deadline. No promotion
 from isolated phase timing or from tensor budgets; unchanged source comparisons
 use explicit full Git SHA. Record raw job/source hashes and disposition before PR.
+
+## Compile repair checkpoint
+
+Initial source `e6c2c62a4eef903487be6c18079134c39b43623e`, job
+`l4job-82bb69dcd1e743bbb77f042cd77f4406`: GPU gate failed in83.17s,40 failures
+from one Triton scalar-pointer/vector-store compile error;111 tests passed.
+No performance stage ran. Raw logs/source remain in the pool job directory.
+The overflow counter's block reservation is now one scalar integer atomic add
+plus per-lane inclusive prefix sum. This preserves every wide atom exactly once
+and supplies a vector destination to store. No mathematical formula, tolerance,
+case, candidate or deadline changed. The repaired source receives a new job; the
+failed freeze is never relabeled as passing.
+
+The initial runner already records full-site FP64 maxabs/relative-L2 metrics.
+The driver now additionally rejects any recorded metric >4e-4 (both gates); the
+first compile-only job never reached this stage. After24 updates the driver checks
+both criteria for all four plans, including both controls.

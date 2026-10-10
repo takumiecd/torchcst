@@ -28,7 +28,10 @@ def count_members(
     first, last = lo // 16, tl.cdiv(hi, 16)
     active = valid & (ihi > ilo) & (ohi > olo)
     wide = active & (last - first > CAP)
-    slot = tl.atomic_add(Counts + OWNERS, 1, wide)
+    # Reserve one contiguous block; a scalar atomic result alone has no lane shape.
+    wide_count = wide.to(tl.int32)
+    base = tl.atomic_add(Counts + OWNERS, tl.sum(wide_count))
+    slot = base + tl.cumsum(wide_count) - 1
     tl.store(Overflow + slot, a, wide)
     for j in tl.static_range(CAP):
         owner = first + j
