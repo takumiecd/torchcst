@@ -41,6 +41,8 @@ KINDS = (
     "reused-h",
     "reused-h16",
     "reused-h32",
+    "prepared-h16",
+    "prepared-h32",
 )
 REGULAR_PRIMARY = ("matrix-torch", "factor", "onchip-h", "dense")
 PRIMARY = ("matrix-torch", "factor", "dense")
@@ -135,6 +137,7 @@ def bind_plan(model, kind):
             OnchipHRecipe,
             OutputOwnedHRecipe,
             ParallelReusedHRecipe,
+            PreparedReusedHRecipe,
             ReusedHRecipe,
         )
 
@@ -145,6 +148,8 @@ def bind_plan(model, kind):
             "reused-h": "research_cuda_regular_grid_reused_h",
             "reused-h16": "research_cuda_regular_grid_parallel_reused_h",
             "reused-h32": "research_cuda_regular_grid_parallel_reused_h",
+            "prepared-h16": "research_cuda_regular_grid_prepared_reused_h",
+            "prepared-h32": "research_cuda_regular_grid_prepared_reused_h",
         }.get(kind, "research_cuda_regular_grid_matrix")
         expected_recipe = (
             {
@@ -153,9 +158,19 @@ def bind_plan(model, kind):
                 "reused-h": ReusedHRecipe,
                 "reused-h16": lambda: ParallelReusedHRecipe(h_batch=16),
                 "reused-h32": lambda: ParallelReusedHRecipe(h_batch=32),
+                "prepared-h16": lambda: PreparedReusedHRecipe(h_batch=16),
+                "prepared-h32": lambda: PreparedReusedHRecipe(h_batch=32),
             }[kind]()
             if kind
-            in ("onchip-h", "output-owned-h", "reused-h", "reused-h16", "reused-h32")
+            in (
+                "onchip-h",
+                "output-owned-h",
+                "reused-h",
+                "reused-h16",
+                "reused-h32",
+                "prepared-h16",
+                "prepared-h32",
+            )
             else PeriodicRecipe(gemm="triton" if kind == "matrix-triton" else "torch")
         )
     else:
@@ -379,11 +394,24 @@ def state_gate(*, device="cuda", steps=20, regular_grid=False):
 
 def forward_stages(step, kind):
     """Fixed post-primary forward copy; these stages are not a training-step sum."""
-    if kind in ("output-owned-h", "reused-h", "reused-h16", "reused-h32"):
+    if kind in (
+        "output-owned-h",
+        "reused-h",
+        "reused-h16",
+        "reused-h32",
+        "prepared-h16",
+        "prepared-h32",
+    ):
         return output_owner_stages(
             step,
             reused=kind != "output-owned-h",
-            h_batch={"reused-h16": 16, "reused-h32": 32}.get(kind),
+            h_batch={
+                "reused-h16": 16,
+                "reused-h32": 32,
+                "prepared-h16": 16,
+                "prepared-h32": 32,
+            }.get(kind),
+            prepared=kind.startswith("prepared-"),
         )
     if kind == "onchip-h":
         return onchip_stages(step)
@@ -524,7 +552,7 @@ def onchip_stages(step, *, output_owned=False):
     }
 
 
-def output_owner_stages(step, *, reused, h_batch=None):
+def output_owner_stages(step, *, reused, h_batch=None, prepared=False):
     """Timestamp the actual staged forward on a fixed post24 copy.
 
     Candidate-index construction is separate. Exact support checks remain in
@@ -538,12 +566,14 @@ def output_owner_stages(step, *, reused, h_batch=None):
         aggregate_chunk,
         allocate_h,
         h_capacity,
+        prepare_output_fields,
         prepare_routing,
         produce_h_chunk,
     )
     from torchcst._backends.cuda.algorithms.linear.regular_grid_h.recipe import (
         OutputOwnedHRecipe,
         ParallelReusedHRecipe,
+        PreparedReusedHRecipe,
         ReusedHRecipe,
     )
 
@@ -552,14 +582,15 @@ def output_owner_stages(step, *, reused, h_batch=None):
     n = model.in_features
     sizes = (len(x), n, n, float(n), float(n), 0.0, 0.0)
     recipe = (
-        ParallelReusedHRecipe(h_batch=h_batch)
+        (PreparedReusedHRecipe if prepared else ParallelReusedHRecipe)(h_batch=h_batch)
         if h_batch is not None
         else (ReusedHRecipe() if reused else OutputOwnedHRecipe())
     )
     chunks = list(range(0, len(x), h_capacity(recipe))) if reused else [0]
+    offset = int(prepared)
     events = [
         torch.cuda.Event(enable_timing=True, external=True)
-        for _ in range(3 + (2 * len(chunks) if reused else 1))
+        for _ in range(3 + offset + (2 * len(chunks) if reused else 1))
     ]
 
     def call():
@@ -570,14 +601,25 @@ def output_owner_stages(step, *, reused, h_batch=None):
         routing = prepare_routing(packed, sizes, recipe)
         h = allocate_h(x, len(p), recipe) if reused else None
         events[2].record()
+        hot = prepare_output_fields(packed, routing) if prepared else None
+        if prepared:
+            events[3].record()
         if reused:
             for i, start in enumerate(chunks):
                 produce_h_chunk(x, packed, sizes, recipe, routing, h, start)
-                events[3 + 2 * i].record()
+                events[3 + offset + 2 * i].record()
                 aggregate_chunk(
-                    x, packed, sizes, recipe, routing, y, h=h, batch_start=start
+                    x,
+                    packed,
+                    sizes,
+                    recipe,
+                    routing,
+                    y,
+                    h=h,
+                    batch_start=start,
+                    hot=hot,
                 )
-                events[4 + 2 * i].record()
+                events[4 + offset + 2 * i].record()
         else:
             aggregate_chunk(x, packed, sizes, recipe, routing, y)
             events[3].record()
@@ -591,6 +633,8 @@ def output_owner_stages(step, *, reused, h_batch=None):
     graph.replay()
     torch.cuda.synchronize()
     phases = {"snapshot_and_preparation": [], "candidate_index": []}
+    if prepared:
+        phases["output_fields_preparation"] = []
     if reused:
         phases.update(H_generation=[], Y_aggregation_with_support_checks=[])
     else:
@@ -601,14 +645,20 @@ def output_owner_stages(step, *, reused, h_batch=None):
         torch.cuda.synchronize()
         phases["snapshot_and_preparation"].append(events[0].elapsed_time(events[1]))
         phases["candidate_index"].append(events[1].elapsed_time(events[2]))
+        if prepared:
+            phases["output_fields_preparation"].append(
+                events[2].elapsed_time(events[3])
+            )
         if reused:
             sample = [
                 {
                     "batch_start": start,
-                    "H_generation": events[2 + 2 * i].elapsed_time(events[3 + 2 * i]),
-                    "Y_aggregation_with_support_checks": events[3 + 2 * i].elapsed_time(
-                        events[4 + 2 * i]
+                    "H_generation": events[2 + offset + 2 * i].elapsed_time(
+                        events[3 + offset + 2 * i]
                     ),
+                    "Y_aggregation_with_support_checks": events[
+                        3 + offset + 2 * i
+                    ].elapsed_time(events[4 + offset + 2 * i]),
                 }
                 for i, start in enumerate(chunks)
             ]
@@ -628,6 +678,7 @@ def output_owner_stages(step, *, reused, h_batch=None):
         "candidate_scope": "coarse index construction; exact support checks in Y kernel",
         "samples_ms": phases,
         "per_chunk_samples_ms": per_chunk,
+        "output_fields_bytes": 12 * len(p) if prepared else 0,
         "H_scratch_bytes": 4 * len(p) * h_capacity(recipe) if reused else 0,
         "H_batch_capacity": h_capacity(recipe) if reused else 0,
         "Y_batch_tile": recipe.batch_tile,
@@ -1101,6 +1152,8 @@ def main():
                 "reused-h",
                 "reused-h16",
                 "reused-h32",
+                "prepared-h16",
+                "prepared-h32",
                 "dense",
             ]
             if args.regular_grid
@@ -1108,7 +1161,15 @@ def main():
         )
     if not args.regular_grid and (
         args.worker
-        in ("onchip-h", "output-owned-h", "reused-h", "reused-h16", "reused-h32")
+        in (
+            "onchip-h",
+            "output-owned-h",
+            "reused-h",
+            "reused-h16",
+            "reused-h32",
+            "prepared-h16",
+            "prepared-h32",
+        )
         or any(
             kind in args.plans
             for kind in (
@@ -1117,6 +1178,8 @@ def main():
                 "reused-h",
                 "reused-h16",
                 "reused-h32",
+                "prepared-h16",
+                "prepared-h32",
             )
         )
     ):

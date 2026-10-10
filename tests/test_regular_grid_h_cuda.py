@@ -24,6 +24,7 @@ from torchcst._backends.cuda.algorithms.linear.regular_grid_h.algorithm import (
     OnchipHAlgorithm,
     OutputOwnedHAlgorithm,
     ParallelReusedHAlgorithm,
+    PreparedReusedHAlgorithm,
     RegularFactorAlgorithm,
     RegularMatrixAlgorithm,
     ReusedHAlgorithm,
@@ -32,6 +33,7 @@ from torchcst._backends.cuda.algorithms.linear.regular_grid_h.recipe import (
     OnchipHRecipe,
     OutputOwnedHRecipe,
     ParallelReusedHRecipe,
+    PreparedReusedHRecipe,
     ReusedHRecipe,
 )
 from torchcst._backends.registry import Registry
@@ -48,6 +50,8 @@ def selector(route="onchip", **settings):
         "reuse": ReusedHAlgorithm,
         "parallel16": ParallelReusedHAlgorithm,
         "parallel32": ParallelReusedHAlgorithm,
+        "prepared16": PreparedReusedHAlgorithm,
+        "prepared32": PreparedReusedHAlgorithm,
         "matrix": RegularMatrixAlgorithm,
         "factor": RegularFactorAlgorithm,
     }[route]()
@@ -59,6 +63,8 @@ def selector(route="onchip", **settings):
         "reuse": ReusedHRecipe,
         "parallel16": lambda **kw: ParallelReusedHRecipe(h_batch=16, **kw),
         "parallel32": lambda **kw: ParallelReusedHRecipe(h_batch=32, **kw),
+        "prepared16": lambda **kw: PreparedReusedHRecipe(h_batch=16, **kw),
+        "prepared32": lambda **kw: PreparedReusedHRecipe(h_batch=32, **kw),
     }.get(route, PeriodicRecipe)(**settings)
     plan = ExecutionPlan(algorithm.id, algorithm.revision, recipe)
     registry.validate_plan(plan)
@@ -101,7 +107,17 @@ def model(
 
 @pytest.mark.parametrize(
     "route",
-    ["matrix", "factor", "onchip", "owner", "reuse", "parallel16", "parallel32"],
+    [
+        "matrix",
+        "factor",
+        "onchip",
+        "owner",
+        "reuse",
+        "parallel16",
+        "parallel32",
+        "prepared16",
+        "prepared32",
+    ],
 )
 def test_metadata_roundtrip_scope_and_no_gpu_import(route):
     _, plan, registry = selector(route)
@@ -139,7 +155,14 @@ def test_metadata_roundtrip_scope_and_no_gpu_import(route):
             ),
         )
         assert not algorithm.supports(fault, plan.recipe).supported
-    if route in ("owner", "reuse", "parallel16", "parallel32"):
+    if route in (
+        "owner",
+        "reuse",
+        "parallel16",
+        "parallel32",
+        "prepared16",
+        "prepared32",
+    ):
         assert algorithm.workspace_bound(context, plan.recipe) is None
     if route == "onchip":
         assert algorithm.workspace_bound(context, plan.recipe) == 4 * (
@@ -177,7 +200,17 @@ assert not any(n.endswith(('regular_grid_h.executor','regular_grid_h.kernels')) 
 @GPU
 @pytest.mark.parametrize(
     "route",
-    ["matrix", "factor", "onchip", "owner", "reuse", "parallel16", "parallel32"],
+    [
+        "matrix",
+        "factor",
+        "onchip",
+        "owner",
+        "reuse",
+        "parallel16",
+        "parallel32",
+        "prepared16",
+        "prepared32",
+    ],
 )
 @pytest.mark.parametrize(
     "batch,count,sigma", [(1, 17, 0.7), (3, 129, 0.7), (32, 17, 4.0), (64, 9, 0.7)]
@@ -197,7 +230,16 @@ def test_full_atom_oracle_strides_batch_tiles_seams_and_broad(
 
 @GPU
 @pytest.mark.parametrize(
-    "route", ["onchip", "owner", "reuse", "parallel16", "parallel32"]
+    "route",
+    [
+        "onchip",
+        "owner",
+        "reuse",
+        "parallel16",
+        "parallel32",
+        "prepared16",
+        "prepared32",
+    ],
 )
 @pytest.mark.parametrize(
     "settings",
@@ -219,7 +261,16 @@ def test_alternative_explicit_tiles(route, settings):
 
 @GPU
 @pytest.mark.parametrize(
-    "route", ["onchip", "owner", "reuse", "parallel16", "parallel32"]
+    "route",
+    [
+        "onchip",
+        "owner",
+        "reuse",
+        "parallel16",
+        "parallel32",
+        "prepared16",
+        "prepared32",
+    ],
 )
 @pytest.mark.parametrize("case", ["empty", "singleton", "below", "equal", "above"])
 def test_product_floor_and_singleton_gradients(route, monkeypatch, case):
@@ -229,7 +280,16 @@ def test_product_floor_and_singleton_gradients(route, monkeypatch, case):
 
 @GPU
 @pytest.mark.parametrize(
-    "route", ["onchip", "owner", "reuse", "parallel16", "parallel32"]
+    "route",
+    [
+        "onchip",
+        "owner",
+        "reuse",
+        "parallel16",
+        "parallel32",
+        "prepared16",
+        "prepared32",
+    ],
 )
 @pytest.mark.parametrize("count", [0, 17])
 @pytest.mark.parametrize("need_x,need_p", [(True, False), (False, True), (True, True)])
@@ -242,7 +302,16 @@ def test_zero_atoms_and_requested_gradients(route, monkeypatch, count, need_x, n
 
 @GPU
 @pytest.mark.parametrize(
-    "route", ["onchip", "owner", "reuse", "parallel16", "parallel32"]
+    "route",
+    [
+        "onchip",
+        "owner",
+        "reuse",
+        "parallel16",
+        "parallel32",
+        "prepared16",
+        "prepared32",
+    ],
 )
 def test_retained_forward_snapshots_before_live_parameter_width_and_chart_updates(
     route,
@@ -272,7 +341,16 @@ def test_retained_forward_snapshots_before_live_parameter_width_and_chart_update
 
 @GPU
 @pytest.mark.parametrize(
-    "route", ["onchip", "owner", "reuse", "parallel16", "parallel32"]
+    "route",
+    [
+        "onchip",
+        "owner",
+        "reuse",
+        "parallel16",
+        "parallel32",
+        "prepared16",
+        "prepared32",
+    ],
 )
 def test_no_full_h_g_saved_and_backward_recomputation(
     route,
@@ -293,7 +371,16 @@ def test_no_full_h_g_saved_and_backward_recomputation(
 
 @GPU
 @pytest.mark.parametrize(
-    "route", ["onchip", "owner", "reuse", "parallel16", "parallel32"]
+    "route",
+    [
+        "onchip",
+        "owner",
+        "reuse",
+        "parallel16",
+        "parallel32",
+        "prepared16",
+        "prepared32",
+    ],
 )
 def test_twenty_graph_replays_public_optimizer_live_width_and_all_task_gradients(
     route,
@@ -315,7 +402,16 @@ def test_twenty_graph_replays_public_optimizer_live_width_and_all_task_gradients
 
 @GPU
 @pytest.mark.parametrize(
-    "route", ["onchip", "owner", "reuse", "parallel16", "parallel32"]
+    "route",
+    [
+        "onchip",
+        "owner",
+        "reuse",
+        "parallel16",
+        "parallel32",
+        "prepared16",
+        "prepared32",
+    ],
 )
 def test_twenty_public_eager_updates(route, monkeypatch):
     monkeypatch.setattr(periodic, "model", model)
@@ -331,7 +427,9 @@ def test_reject_invalid_output_tile(tile):
 
 
 @GPU
-@pytest.mark.parametrize("route", ["owner", "reuse", "parallel16", "parallel32"])
+@pytest.mark.parametrize(
+    "route", ["owner", "reuse", "parallel16", "parallel32", "prepared16", "prepared32"]
+)
 @pytest.mark.parametrize("tile", [8, 16, 32, 64])
 @pytest.mark.parametrize("broad", [False, True])
 def test_output_owner_partial_tile_seam_cluster_and_no_fixed_capacity(
@@ -358,7 +456,14 @@ def test_output_owner_partial_tile_seam_cluster_and_no_fixed_capacity(
 
 @GPU
 @pytest.mark.parametrize(
-    "route,capacity", [("reuse", 8), ("parallel16", 16), ("parallel32", 32)]
+    "route,capacity",
+    [
+        ("reuse", 8),
+        ("parallel16", 16),
+        ("parallel32", 32),
+        ("prepared16", 16),
+        ("prepared32", 32),
+    ],
 )
 def test_reused_h_overwrites_one_buffer_for_every_partial_batch_chunk(
     monkeypatch, route, capacity
@@ -397,9 +502,15 @@ def test_reused_h_overwrites_one_buffer_for_every_partial_batch_chunk(
 def test_reject_invalid_h_capacity(capacity):
     with pytest.raises(ValueError):
         ParallelReusedHRecipe(h_batch=capacity)
+    with pytest.raises(ValueError):
+        PreparedReusedHRecipe(h_batch=capacity)
 
 
 def test_reused_recipes_are_distinct():
+    with pytest.raises(TypeError):
+        ParallelReusedHAlgorithm().validate_recipe(PreparedReusedHRecipe())
+    with pytest.raises(TypeError):
+        PreparedReusedHAlgorithm().validate_recipe(ParallelReusedHRecipe())
     with pytest.raises(TypeError):
         ReusedHAlgorithm().validate_recipe(ParallelReusedHRecipe())
     with pytest.raises(TypeError):
@@ -455,3 +566,27 @@ def test_aggregation_probes_real_formula_partial_chunks_and_census(
     )
     assert result["H_bytes"] == 17 * capacity * 4
     assert all(v > 0 for v in result["median_ms"].values())
+
+
+@GPU
+@pytest.mark.parametrize("route", ["prepared16", "prepared32"])
+@pytest.mark.parametrize("zero", ["amplitude", "input"])
+def test_prepared_reuse_zero_forward_preserves_nonzero_derivative(route, zero):
+    # Moving normalization before multiplication must not erase dX at X=0,
+    # or the polar-amplitude derivative at a zero amplitude parameter.
+    p = periodic.parameters(17)
+    if zero == "amplitude":
+        p[:, 0] = 0
+    layer = model(p, route, device="cuda")
+    x = torch.randn(37, 130, device="cuda")[:, ::2].detach()
+    if zero == "input":
+        x.zero_()
+    x.requires_grad_()
+    dy = torch.randn(33, 37, device="cuda").T
+    y = layer(x)
+    actual = (y, *torch.autograd.grad(y, (x, layer.atoms.p), dy))
+    expected = periodic.oracle(layer, x, dy)
+    periodic.gate(actual, expected)
+    assert torch.count_nonzero(y) == 0
+    derivative = actual[1] if zero == "input" else actual[2][:, 0]
+    assert torch.count_nonzero(derivative) > 0

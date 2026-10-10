@@ -131,6 +131,42 @@
           "h_batch": 32
         }
       }
+    },
+    {
+      "id": "prepared-h16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_regular_grid_prepared_reused_h",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_group": 8,
+          "gemm": "torch",
+          "patch_sites": 8,
+          "prep_group": 16,
+          "prep_sites": 16,
+          "batch_tile": 8,
+          "output_tile": 16,
+          "h_batch": 16
+        }
+      }
+    },
+    {
+      "id": "prepared-h32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_regular_grid_prepared_reused_h",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_group": 8,
+          "gemm": "torch",
+          "patch_sites": 8,
+          "prep_group": 16,
+          "prep_sites": 16,
+          "batch_tile": 8,
+          "output_tile": 16,
+          "h_batch": 32
+        }
+      }
     }
   ]
 }

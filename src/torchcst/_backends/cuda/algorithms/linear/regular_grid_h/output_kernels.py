@@ -62,6 +62,8 @@ def output_owned(
     H=None,
     BSTART: tl.constexpr = 0,
     CACHED: tl.constexpr = False,
+    Hot=None,
+    PREPARED: tl.constexpr = False,
 ):
     owner = tl.program_id(0)
     rows = BSTART + tl.program_id(1) * BM + tl.arange(0, BM)
@@ -80,12 +82,18 @@ def output_owned(
         high = tl.load(Bounds + bucket + 1).to(tl.int32)
         for start in range(low, high, GROUP):
             pos = start + lane
-            a = tl.load(Order + pos, pos < high, 0).to(tl.int32)
             valid = pos < high
-            co = tl.load(P + 3 * A + a, valid, OO)
-            inv = tl.load(P + A + a, valid, 1)
-            norm = tl.load(P + 5 * A + a, valid, 1)
-            amp = tl.load(P + a, valid, 0)
+            if PREPARED:
+                # Same position as H: no original-ID dependency in the owner.
+                co = tl.load(Hot + 2 * A + pos, valid, OO)
+                inv = tl.load(Hot + A + pos, valid, 1)
+                beta = tl.load(Hot + pos, valid, 0)
+            else:
+                a = tl.load(Order + pos, valid, 0).to(tl.int32)
+                co = tl.load(P + 3 * A + a, valid, OO)
+                inv = tl.load(P + A + a, valid, 1)
+                norm = tl.load(P + 5 * A + a, valid, 1)
+                amp = tl.load(P + a, valid, 0)
             u, _ = _periodic_raw(sites[None, :], co[:, None], inv[:, None], OO, LO, NO)
             u = tl.where(valid[:, None] & (sites[None, :] < NO), u, 0.0)
             contributes = valid & (tl.max(u, 1) > 0)
@@ -119,7 +127,10 @@ def output_owned(
                     BK,
                     GROUP,
                 )
-            coefficient = tl.div_rn(u, norm[:, None]) * amp[:, None]
+            if PREPARED:
+                coefficient = u * beta[:, None]
+            else:
+                coefficient = tl.div_rn(u, norm[:, None]) * amp[:, None]
             accumulator += tl.sum(h[:, :, None] * coefficient[:, None, :], 0)
     tl.store(
         Y + rows[:, None] * NO + sites[None, :],
@@ -159,3 +170,18 @@ def produce_h(
         h,
         pos[:, None] < A,
     )
+
+
+@tr.jit
+def prepare_output_fields(P, Order, Hot, A: tl.constexpr, BLOCK: tl.constexpr):
+    """Ephemeral SoA beta/inverse-width/centre, sorted identically to raw H."""
+    pos = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    valid = pos < A
+    a = tl.load(Order + pos, valid, 0).to(tl.int32)
+    amp = tl.load(P + a, valid, 0)
+    norm = tl.load(P + 5 * A + a, valid, 1)
+    inv = tl.load(P + A + a, valid, 1)
+    co = tl.load(P + 3 * A + a, valid, 0)
+    tl.store(Hot + pos, tl.div_rn(amp, norm), valid)
+    tl.store(Hot + A + pos, inv, valid)
+    tl.store(Hot + 2 * A + pos, co, valid)

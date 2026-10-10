@@ -935,3 +935,29 @@ raw exact divideは`is_pure=False`で固定し、cubin一致、SASS loop review�
 
 診断source397f8f59のCPU CIもSUCCESS:
 https://github.com/takumiecd/torchcst/actions/runs/38058918855/job/114232988065
+
+## β先行計算と3項目整列の実行candidate（事前方針）
+
+2026-10-10、原因調査を受けたユーザー指示により実行経路を追加する。
+`PreparedReusedHRecipe(h_batch=16/32)` は一度だけ `β=amp/D` をexact FP32除算し、
+β・inverse width・output centreだけをHと同じsorted positionへ置く（12A bytes）。
+Y ownerはoriginal IDを読まず、`coefficient=raw_U*β` で集約する。
+Hはraw V Xのまま小batchで上書き。新3項目・routing・Hはforwardだけの寿命で、
+backwardはforward時の元13項目snapshotから再計算する。joint L2単一floorは維持する。
+数学的には同一だがFP32演算順序が変わるため、数値一致を仮定せず検査する。
+
+測定前にsourceをcommit固定する。共有L4一台でGPU検証jobを一度（600秒）実行し、
+regular-grid全経路の独立FP64 Y/dX/all dP、空・単一・floor、狭/広支持・seam・stride、
+B37端数buffer再利用、retained backward、20 eager/Graph公開optimizer更新を要求する。
+振幅0／X=0でも残る非zero導関数を追加検査する。失敗時はtimingに進まない。
+
+検証成功後、既存4Case（N1024/2048×rho3/8、B32、5%atoms、seed41、FP32/TF32off）を
+各一度の独立job（各900秒）で測る。各Caseの同一source・入力に対し、matrix-torch、factor、
+onchip-h、reused-h16/32、prepared-h16/32、denseを別worker processで実行する。
+初期／24 real updates後の独立CPU FP64 oracle、21完全step samples、capture/replay込みの
+allocated/reserved peaksを要求する。既存runnerの`--isolated-oracle --phases`を使い、
+forward診断ではcandidate index、3項目準備、H生成、Y集約を分離する。
+別Graphのphase時間は完全stepへ加減算しない。denseの両allocator peak以内を採用前提とする。
+既存診断の旧数値とは混ぜず、新cohort内で比較する。raw evidenceはignored outputに保存し、
+source/result/file/snapshot hashを検証する。NCU counter追加、fine site routing、CSR化は今回に含めない。
+公開dispatchへの採用は別判断、retry・gate緩和・有利なsampleの選択はしない。

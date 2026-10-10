@@ -44,3 +44,8 @@ class ParallelReusedHRecipe(ReusedHRecipe):
             raise ValueError("h_batch must be 16 or 32")
         if self.h_batch < self.batch_tile or self.h_batch % self.batch_tile:
             raise ValueError("h_batch must be a multiple of batch_tile")
+
+
+@dataclass(frozen=True)
+class PreparedReusedHRecipe(ParallelReusedHRecipe):
+    """Three sorted output fields; joint normalization divided once per atom."""

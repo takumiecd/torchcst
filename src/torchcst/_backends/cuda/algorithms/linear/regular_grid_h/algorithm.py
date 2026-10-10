@@ -13,6 +13,7 @@ from .recipe import (
     OnchipHRecipe,
     OutputOwnedHRecipe,
     ParallelReusedHRecipe,
+    PreparedReusedHRecipe,
     ReusedHRecipe,
 )
 
@@ -137,3 +138,14 @@ class ParallelReusedHAlgorithm(OutputOwnedHAlgorithm):
         if type(recipe) is not ParallelReusedHRecipe:
             raise TypeError("requires ParallelReusedHRecipe")
         ParallelReusedHRecipe(**asdict(recipe))
+
+
+@dataclass(frozen=True)
+class PreparedReusedHAlgorithm(OutputOwnedHAlgorithm):
+    id: str = "research_cuda_regular_grid_prepared_reused_h"
+    recipe_type: type = PreparedReusedHRecipe
+
+    def validate_recipe(self, recipe):
+        if type(recipe) is not PreparedReusedHRecipe:
+            raise TypeError("requires PreparedReusedHRecipe")
+        PreparedReusedHRecipe(**asdict(recipe))

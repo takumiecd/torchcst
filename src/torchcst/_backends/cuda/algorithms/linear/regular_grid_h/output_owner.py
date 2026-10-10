@@ -41,17 +41,19 @@ def prepare_routing(packed, sizes, recipe):
 
 
 def h_capacity(recipe):
-    from .recipe import ParallelReusedHRecipe
+    from .recipe import ParallelReusedHRecipe, PreparedReusedHRecipe
 
     return (
-        recipe.h_batch if type(recipe) is ParallelReusedHRecipe else recipe.batch_tile
+        recipe.h_batch
+        if type(recipe) in (ParallelReusedHRecipe, PreparedReusedHRecipe)
+        else recipe.batch_tile
     )
 
 
 def allocate_h(x, atom_count, recipe):
-    from .recipe import ParallelReusedHRecipe
+    from .recipe import ParallelReusedHRecipe, PreparedReusedHRecipe
 
-    if type(recipe) is ParallelReusedHRecipe:
+    if type(recipe) in (ParallelReusedHRecipe, PreparedReusedHRecipe):
         # Tile-major: each atom × batch_tile slab matches the H8 baseline.
         return x.new_empty(
             (recipe.h_batch // recipe.batch_tile, atom_count, recipe.batch_tile)
@@ -96,7 +98,23 @@ def produce_h_chunk(x, packed, sizes, recipe, routing, h, batch_start):
     )
 
 
-def aggregate_chunk(x, packed, sizes, recipe, routing, y, *, h=None, batch_start=0):
+def prepare_output_fields(packed, routing):
+    """Only the three output fields survive across H chunks, never backward."""
+    import triton as tr
+
+    from . import output_kernels as kernels
+
+    a = packed.shape[1]
+    hot = packed.new_empty((3, a))
+    kernels.prepare_output_fields[(tr.cdiv(a, 256),)](
+        packed, routing[0], hot, a, 256, num_warps=4, enable_fp_fusion=False
+    )
+    return hot
+
+
+def aggregate_chunk(
+    x, packed, sizes, recipe, routing, y, *, h=None, batch_start=0, hot=None
+):
     import triton as tr
 
     from . import output_kernels as kernels
@@ -129,13 +147,15 @@ def aggregate_chunk(x, packed, sizes, recipe, routing, y, *, h=None, batch_start
         H=h,
         BSTART=batch_start,
         CACHED=h is not None,
+        Hot=hot,
+        PREPARED=hot is not None,
         num_warps=4,
         enable_fp_fusion=False,
     )
 
 
 def forward_output_owned(x, packed, sizes, recipe):
-    from .recipe import ParallelReusedHRecipe, ReusedHRecipe
+    from .recipe import ParallelReusedHRecipe, PreparedReusedHRecipe, ReusedHRecipe
 
     b, _, no, *_ = sizes
     a = packed.shape[1]
@@ -143,14 +163,27 @@ def forward_output_owned(x, packed, sizes, recipe):
         return x.new_zeros((b, no))
     y = x.new_empty((b, no))
     routing = prepare_routing(packed, sizes, recipe)
-    if type(recipe) in (ReusedHRecipe, ParallelReusedHRecipe):
+    hot = (
+        prepare_output_fields(packed, routing)
+        if type(recipe) is PreparedReusedHRecipe
+        else None
+    )
+    if type(recipe) in (ReusedHRecipe, ParallelReusedHRecipe, PreparedReusedHRecipe):
         # One allocation and sequential same-stream reuse across all chunks.
         # Scratch is not saved for backward and does not scale with full batch.
         h = allocate_h(x, a, recipe)
         for batch_start in range(0, b, h_capacity(recipe)):
             produce_h_chunk(x, packed, sizes, recipe, routing, h, batch_start)
             aggregate_chunk(
-                x, packed, sizes, recipe, routing, y, h=h, batch_start=batch_start
+                x,
+                packed,
+                sizes,
+                recipe,
+                routing,
+                y,
+                h=h,
+                batch_start=batch_start,
+                hot=hot,
             )
     else:
         aggregate_chunk(x, packed, sizes, recipe, routing, y)
