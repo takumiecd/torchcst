@@ -3,12 +3,14 @@
 from . import presets
 from .base import ChartSpec, ChartState
 from .explicit import ExplicitChartSpec, ExplicitChartState
+from .periodic_grid import PeriodicGridChartSpec, PeriodicGridChartState
 from .product import ProductChartSpec, ProductChartState
 from .strip import StripChartSpec, StripChartState
 
 _STATES = {
     ExplicitChartSpec: ExplicitChartState,
     ProductChartSpec: ProductChartState,
+    PeriodicGridChartSpec: PeriodicGridChartState,
     StripChartSpec: StripChartState,
 }
 
@@ -26,6 +28,8 @@ __all__ = [
     "ChartState",
     "ExplicitChartSpec",
     "ExplicitChartState",
+    "PeriodicGridChartSpec",
+    "PeriodicGridChartState",
     "ProductChartSpec",
     "ProductChartState",
     "StripChartSpec",

@@ -5,6 +5,8 @@ from importlib import import_module
 from torchcst.charts import (
     ExplicitChartSpec,
     ExplicitChartState,
+    PeriodicGridChartSpec,
+    PeriodicGridChartState,
     ProductChartSpec,
     ProductChartState,
     StripChartSpec,
@@ -14,6 +16,7 @@ from torchcst.charts import (
 _TYPES = {
     ExplicitChartState: (ExplicitChartSpec, "explicit"),
     ProductChartState: (ProductChartSpec, "product"),
+    PeriodicGridChartState: (PeriodicGridChartSpec, "periodic_grid"),
     StripChartState: (StripChartSpec, "strip"),
 }
 

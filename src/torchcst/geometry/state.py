@@ -1,4 +1,4 @@
-"""Own scalar tensors of Geometry declarations; no geometric computations."""
+"""Own scalar/vector tensors of Geometry declarations; no geometric computations."""
 
 from dataclasses import asdict, replace
 
@@ -9,6 +9,7 @@ from torchcst._coordinate_state import _floating_dtype, _validate_loaded_state
 
 from .spec import (
     EuclideanGeometrySpec,
+    FlatTorusGeometrySpec,
     GeometrySpec,
     SphereGeometrySpec,
     TorusGeometrySpec,
@@ -16,13 +17,18 @@ from .spec import (
 
 
 class GeometryState(nn.Module):
-    """Own fixed scalar tensors, while the immutable spec defines their meaning."""
+    """Own fixed scalar/vector tensors, while the immutable spec defines their meaning."""
 
     def __init__(self, spec: GeometrySpec, *, device=None, dtype=None):
         super().__init__()
         if (
             type(spec)
-            not in (EuclideanGeometrySpec, SphereGeometrySpec, TorusGeometrySpec)
+            not in (
+                EuclideanGeometrySpec,
+                FlatTorusGeometrySpec,
+                SphereGeometrySpec,
+                TorusGeometrySpec,
+            )
             or spec.revision != 1
         ):
             raise ValueError("unsupported geometry declaration or revision")
@@ -35,7 +41,13 @@ class GeometryState(nn.Module):
         self.representation = getattr(spec, "representation", "ambient")
         self.circle_axis = getattr(spec, "circle_axis", None)
         self.max_arc_step = getattr(spec, "max_arc_step", None)
-        for name in ("radius", "major_radius", "minor_radius", "chart_margin"):
+        for name in (
+            "radius",
+            "major_radius",
+            "minor_radius",
+            "chart_margin",
+            "periods",
+        ):
             if hasattr(spec, name):
                 self.register_buffer(
                     name,
@@ -51,7 +63,9 @@ class GeometryState(nn.Module):
         return replace(
             self.spec,
             **{
-                name: float(value.detach())
+                name: tuple(value.detach().cpu().tolist())
+                if name == "periods"
+                else float(value.detach())
                 for name, value in self.named_buffers(recurse=False)
             },
         )

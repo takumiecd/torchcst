@@ -101,6 +101,17 @@ derivatives remain coupled. Whole-operator L2 normalization uses one global
 floor. Intrinsic/ambient centres and eager geometry-aware Polar updates use the
 Torch reference; CUDA fusion and captured Torus updates are not yet available.
 
+`chart_presets.periodic_grid((16, 32, 64), periods=(1.0, 2.0, 4.0),
+output_dims=2)` declares one equally spaced flat periodic chart with shape
+`[512, 64]`. It stores only per-axis origins/periods; spacing is period/count.
+Use `presets.polar_periodic_profile_product(profiles=(TriweightSpec(),) * 3,
+amplitude_max=1.0, bounds=bandwidth_bounds, w_c=0.1)` for shortest wrapped
+coordinate distances and one full-product L2 floor. Kernel revision 3 and
+`FlatTorusGeometrySpec` distinguish this metric from the embedded Torus above.
+D >= 2 is supported, including higher-dimensional grids. Torch factored/materialized
+execution and eager periodic center updates are available; GPU performance and
+Graph updates remain unvalidated. See [the API and computation choices](docs/periodic-grid.ja.md).
+
 ## Checkpoint
 
 ```python

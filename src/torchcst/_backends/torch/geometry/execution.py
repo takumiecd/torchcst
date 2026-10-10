@@ -4,6 +4,7 @@ from importlib import import_module
 
 from torchcst.geometry.spec import (
     EuclideanGeometrySpec,
+    FlatTorusGeometrySpec,
     SphereGeometrySpec,
     TorusGeometrySpec,
 )
@@ -15,6 +16,7 @@ def _evaluate(state, operation, *args, **kwargs):
         raise ValueError("unsupported geometry state or revision")
     family = {
         EuclideanGeometrySpec: "euclidean",
+        FlatTorusGeometrySpec: "flat_torus",
         SphereGeometrySpec: "sphere",
         TorusGeometrySpec: "torus",
     }.get(type(state.spec))
