@@ -11,6 +11,42 @@ from ..periodic_product.kernels import _periodic_raw
 
 
 @tr.jit
+def division_latency_probe(
+    Numerator,
+    Denominator,
+    Result,
+    Cycles,
+    BLOCK: tl.constexpr,
+    ITERATIONS: tl.constexpr,
+):
+    """Same cubin, controlled operands; diagnostic only, not CST or a Plan."""
+    j = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    numerator = tl.load(Numerator + j)
+    denominator = tl.load(Denominator + j)
+    begin = tl.inline_asm_elementwise(
+        "mov.u64 $0, %clock64;", "=l", [], tl.int64, is_pure=False, pack=1
+    )
+    total = tl.full((BLOCK,), 0.0, tl.float32)
+    for _ in range(ITERATIONS):
+        # Non-pure prevents loop-invariant division elimination/hoisting.
+        quotient = tl.inline_asm_elementwise(
+            "div.rn.f32 $0, $1, $2;",
+            "=f,f,f",
+            [numerator, denominator],
+            tl.float32,
+            is_pure=False,
+            pack=1,
+        )
+        total += quotient
+    # Keep the result observable before the end clock, not after timing.
+    tl.store(Result + j, total)
+    end = tl.inline_asm_elementwise(
+        "mov.u64 $0, %clock64;", "=l", [], tl.int64, is_pure=False, pack=1
+    )
+    tl.store(Cycles + j, end - begin)
+
+
+@tr.jit
 def aggregation_probe(
     P,
     Order,

@@ -776,3 +776,13 @@ physical counter、SASS、時間の3種類を照合し、断定できる範囲�
 初期／post24・21sample、一度だけ測定する（600秒固定job）。SASSも保存する。
 前の診断値と混ぜず、新cohort内のclone／先行計算／IDあり／IDなしと比較する。
 この追加はzero入力仮説を検証するためで、失敗／測定値を選ぶretryではない。
+
+最後にzero operand仮説を、CSTと独立の同一cubinで検査する。backend診断kernelで
+GPU入力のnumerator 0 / 1 / warp内0・1混在と、positive denominator 2を使用する。
+non-pure inline exact `div.rn.f32`を256反復し、loop invariant hoistingを禁止。
+結果をstoreしてからclock64を読む。BLOCK128、128CTA、同一launch／cubin、外部Eventの
+21 Graph sample（回転順）、各sampleのSM cyclesも記録する。出力は厳密な0/128を要求。
+SASSのloop内にdivisionを残したことを確認し、PTX／cubin／SASSと全operand hashを保存。
+clock64はこのmicrokernelの経過SM cycleであり、CSTのstall counterや完全step時間ではない。
+1固定job180秒、retryなし。この結果でCSTへのゼロ精密除算回避の影響を説明し、
+physical cache/stall counterを取得したとは扱わない。
