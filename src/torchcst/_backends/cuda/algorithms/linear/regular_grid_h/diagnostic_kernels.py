@@ -221,3 +221,80 @@ def work_census(
     tl.store(Counts + offset + 4, pairs)
     tl.store(Counts + offset + 5, sectors)
     tl.store(Counts + offset + 6, sorted_sectors)
+
+
+@tr.jit
+def prepared_aggregation_probe(
+    Hot,
+    Bounds,
+    MaxDistance,
+    H,
+    Y,
+    A: tl.constexpr,
+    B: tl.constexpr,
+    NO: tl.constexpr,
+    LO: tl.constexpr,
+    OO: tl.constexpr,
+    BM: tl.constexpr,
+    GROUP: tl.constexpr,
+    BO: tl.constexpr,
+    BSTART: tl.constexpr,
+    MODE: tl.constexpr = "full",
+    SPLITS: tl.constexpr = 1,
+):
+    """Prepared formula or explicit lower bound; split partials have no atomics."""
+    owner, batch_tile, part = tl.program_id(0), tl.program_id(1), tl.program_id(2)
+    rows = BSTART + batch_tile * BM + tl.arange(0, BM)
+    sites = owner * BO + tl.arange(0, BO)
+    bins: tl.constexpr = tr.cdiv(NO, BO)
+    radius = (tl.load(MaxDistance) + BO - 1) // BO + (1 if NO % BO else 0)
+    count = tl.minimum(2 * radius + 1, bins)
+    first = tl.where(count == bins, 0, owner - radius)
+    acc = tl.full((BM, BO), 0, tl.float32)
+    lane = tl.arange(0, GROUP)
+    for neighbor in range(count):
+        bucket = ((first + neighbor) % bins + bins) % bins
+        begin = tl.load(Bounds + bucket).to(tl.int32)
+        end = tl.load(Bounds + bucket + 1).to(tl.int32)
+        # Partition GROUP-aligned chunks without duplication or dropped atoms.
+        groups = tr.cdiv(end - begin, GROUP)
+        low = begin + (groups * part // SPLITS) * GROUP
+        high = tl.minimum(begin + (groups * (part + 1) // SPLITS) * GROUP, end)
+        for start in range(low, high, GROUP):
+            pos = start + lane
+            valid = pos < high
+            if MODE == "index-only":
+                acc += tl.sum(tl.where(valid, pos + 1, 0), 0).to(tl.float32)
+            else:
+                beta = tl.load(Hot + pos, valid, 0)
+                if MODE == "cheap-profile":
+                    # Shape/reduction retained, expensive geometry removed.
+                    u = ((pos[:, None] & 7) + 1).to(tl.float32) * 0.01 + sites[
+                        None, :
+                    ].to(tl.float32) * 0.00001
+                    contributes = valid
+                else:
+                    co = tl.load(Hot + 2 * A + pos, valid, OO)
+                    inv = tl.load(Hot + A + pos, valid, 1)
+                    u, _ = _periodic_raw(
+                        sites[None, :], co[:, None], inv[:, None], OO, LO, NO
+                    )
+                    u = tl.where(valid[:, None] & (sites[None, :] < NO), u, 0.0)
+                    contributes = valid & (tl.max(u, 1) > 0)
+                if MODE == "synthetic-h":
+                    h = (pos[:, None] + rows[None, :] + 1).to(tl.float32) * 0.00001
+                    h = tl.where(contributes[:, None] & (rows[None, :] < B), h, 0.0)
+                else:
+                    h = tl.load(
+                        H
+                        + (batch_tile * A + pos[:, None]) * BM
+                        + tl.arange(0, BM)[None, :],
+                        contributes[:, None] & (rows[None, :] < B),
+                        0.0,
+                    )
+                acc += tl.sum(h[:, :, None] * (u * beta[:, None])[:, None, :], 0)
+    tl.store(
+        Y + part * B * NO + rows[:, None] * NO + sites[None, :],
+        acc,
+        (rows[:, None] < B) & (sites[None, :] < NO),
+    )

@@ -659,3 +659,30 @@ def test_prepared_nonfinite_scale_preserves_original_order_and_graph(route, sigm
     graph.replay()
     for a, e in zip(replay, finite_expected, strict=True):
         torch.testing.assert_close(a, e, rtol=4e-4, atol=4e-4)
+
+
+@GPU
+@pytest.mark.parametrize("shape,sigma", [((33, 65), 0.7), ((17, 19), 9.0)])
+def test_prepared_probes_split_partial_chunks_and_backward_controls(
+    tmp_path, shape, sigma
+):
+    from benchmarks.cuda.linear.aggregation_diagnostics import prepared_probes
+
+    layer = model(
+        periodic.parameters(17), "prepared16", shape=shape, sigma=sigma, device="cuda"
+    )
+    x = torch.randn(19, shape[1] * 2, device="cuda")[:, ::2].detach().requires_grad_()
+    dy = torch.randn(shape[0], 19, device="cuda").T
+    result = prepared_probes(
+        layer,
+        x,
+        dy,
+        PreparedReusedHRecipe(h_batch=16),
+        expected=periodic.oracle(layer, x, dy),
+        directory=tmp_path,
+        samples=3,
+    )
+    assert result["status"] == "PASS" and result["same_runtime_bitwise"]
+    assert len(result["checks"]) == 5
+    assert result["backward"]["same_partial_bitwise"]
+    assert result["split_scratch_bytes"]["split4"] == 4 * 19 * shape[0] * 4

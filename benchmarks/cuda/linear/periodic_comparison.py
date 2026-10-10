@@ -901,20 +901,31 @@ def worker(
         result["forward_stage_diagnostics"] = (
             forward_stages(step, kind) if phases else None
         )
-        if aggregation_diagnostics and kind in ("reused-h16", "reused-h32"):
+        if aggregation_diagnostics and kind in (
+            "reused-h16",
+            "reused-h32",
+            "prepared-h16",
+            "prepared-h32",
+        ):
             stage = "separate-aggregation-diagnostics"
             from benchmarks.cuda.linear.aggregation_diagnostics import (
+                prepared_snapshot_diagnostics,
                 snapshot_diagnostics,
             )
             from torchcst._backends.cuda.algorithms.linear.regular_grid_h.recipe import (
                 ParallelReusedHRecipe,
+                PreparedReusedHRecipe,
             )
 
-            diagnostic_recipe = ParallelReusedHRecipe(
-                h_batch=16 if kind == "reused-h16" else 32
+            prepared = kind.startswith("prepared-")
+            diagnostic_recipe = (
+                PreparedReusedHRecipe if prepared else ParallelReusedHRecipe
+            )(h_batch=16 if kind.endswith("16") else 32)
+            diagnose = (
+                prepared_snapshot_diagnostics if prepared else snapshot_diagnostics
             )
             result["aggregation_diagnostics"] = {
-                label: snapshot_diagnostics(
+                label: diagnose(
                     oracle_directory / f"{label}.pt",
                     diagnostic_recipe,
                     directory=oracle_directory / (label + "-aggregation"),

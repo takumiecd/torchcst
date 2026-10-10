@@ -397,3 +397,306 @@ def snapshot_diagnostics(path, recipe, *, directory, timing):
     )
     result["snapshot_sha256"] = hashlib.sha256(Path(path).read_bytes()).hexdigest()
     return result
+
+
+def timed_calls(calls, samples):
+    """Rotate/reverse independent diagnostic graphs; no attribution by subtraction."""
+    graphs = {name: graph_timer(call) for name, call in calls.items()}
+    values = {name: [] for name in calls}
+    names = list(calls)
+    events = [torch.cuda.Event(enable_timing=True) for _ in range(2)]
+    for sample in range(samples):
+        order = names[sample % len(names) :] + names[: sample % len(names)]
+        if sample % 2:
+            order.reverse()
+        for name in order:
+            events[0].record()
+            graphs[name].replay()
+            events[1].record()
+            events[1].synchronize()
+            values[name].append(events[0].elapsed_time(events[1]))
+    return values
+
+
+def prepared_probes(
+    model, x, dy, recipe, *, expected, directory, samples=21, timing=True
+):
+    """Actual prepared formula, parallel reduction candidates and backward controls."""
+    import triton as tr
+
+    from benchmarks.cuda.linear.scaling_comparison import finite_error, require_finite
+    from torchcst._backends.cuda.algorithms.linear.periodic_product.executor import (
+        _prepare,
+    )
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h import (
+        diagnostic_kernels,
+        kernels,
+    )
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h.output_owner import (
+        active_h_tiles,
+        aggregate_chunk,
+        allocate_h,
+        h_capacity,
+        prepare_output_fields,
+        prepare_routing,
+        produce_h_chunk,
+    )
+
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    x, dy = x.detach(), dy.detach()
+    p = model.atoms.p.detach().contiguous().clone()
+    ampmax = model.kernel.scalar("amplitude_max").clone()
+    b, ni, no = len(x), model.in_features, model.out_features
+    chart = model.chart
+    sizes = (
+        b,
+        ni,
+        no,
+        float(chart.geometry.periods[1]),
+        float(chart.geometry.periods[0]),
+        float(chart.origin[1]),
+        float(chart.origin[0]),
+    )
+    packed = _prepare(p, model.kernel, sizes, recipe)
+    a = len(p)
+    routing = prepare_routing(packed, sizes, recipe)
+    hot = prepare_output_fields(packed, routing)
+    torch.cuda.synchronize()
+    if int(hot[1]):
+        raise ValueError(
+            "prepared diagnostics require finite beta; runtime fallback tested separately"
+        )
+    h = allocate_h(x, a, recipe)
+    variants = {
+        "full": ("full", 8, 1),
+        "synthetic-h": ("synthetic-h", 8, 1),
+        "cheap-profile": ("cheap-profile", 8, 1),
+        "index-only": ("index-only", 8, 1),
+        "group32": ("full", 32, 1),
+        "split4": ("full", 8, 4),
+        "split8": ("full", 8, 8),
+        "group32-split4": ("full", 32, 4),
+    }
+    actual = x.new_empty((b, no))
+    outputs = {name: x.new_empty((b, no)) for name in variants}
+    scratch = {
+        name: x.new_empty((splits, b, no))
+        for name, (_, _, splits) in variants.items()
+        if splits > 1
+    }
+    compiler, chunks = {}, []
+    _, _, _, _, lo, _, oo = sizes
+
+    def call(name, start):
+        if name == "runtime":
+            aggregate_chunk(
+                x,
+                packed,
+                sizes,
+                recipe,
+                routing,
+                actual,
+                h=h,
+                batch_start=start,
+                hot=hot,
+            )
+            return None
+        mode, group, splits = variants[name]
+        compiled = diagnostic_kernels.prepared_aggregation_probe[
+            (
+                tr.cdiv(no, recipe.output_tile),
+                active_h_tiles(h, b, start, recipe.batch_tile),
+                splits,
+            )
+        ](
+            hot[0],
+            routing[1],
+            routing[2],
+            h,
+            scratch.get(name, outputs[name]),
+            a,
+            b,
+            no,
+            lo,
+            oo,
+            recipe.batch_tile,
+            group,
+            recipe.output_tile,
+            start,
+            mode,
+            splits,
+            num_warps=4,
+            enable_fp_fusion=False,
+        )
+        if splits > 1:
+            end = min(start + h_capacity(recipe), b)
+            torch.sum(scratch[name][:, start:end], dim=0, out=outputs[name][start:end])
+        return compiled
+
+    starts = list(range(0, b, h_capacity(recipe)))
+    for start in starts:
+        produce_h_chunk(x, packed, sizes, recipe, routing, h, start)
+        call("runtime", start)
+        for name in variants:
+            compiled = call(name, start)
+            if start == 0:
+                compiler[name] = compiler_record(compiled, directory, name)
+    torch.cuda.synchronize()
+    assert torch.equal(actual, outputs["full"]), (
+        "prepared clone differs from actual guarded runtime"
+    )
+    checks = {}
+    valid = ["full", "group32", "split4", "split8", "group32-split4"]
+    for name in variants:
+        require_finite(name, outputs[name])
+        if name in valid:
+            metric = finite_error(name, outputs[name], expected[0].to(x.device))
+            if metric["max_abs"] > 4e-4 or metric["relative_l2"] > 4e-4:
+                raise AssertionError((name, metric))
+            checks[name] = metric
+    if timing:
+        for start in starts:
+            produce_h_chunk(x, packed, sizes, recipe, routing, h, start)
+            chunks.append(
+                timed_calls(
+                    {
+                        name: lambda name=name, start=start: call(name, start)
+                        for name in ("runtime", *variants)
+                    },
+                    samples,
+                )
+            )
+    totals = (
+        {
+            name: [sum(chunk[name][i] for chunk in chunks) for i in range(samples)]
+            for name in ("runtime", *variants)
+        }
+        if timing
+        else {}
+    )
+
+    # Existing backward specializations: no timing subtraction or stall claims.
+    # Parameter-only still computes G/dG; input-only computes G without dG/H.
+    tiles = tr.cdiv(b, recipe.batch_tile)
+    dx = {name: torch.empty_like(x) for name in ("full", "input-only")}
+    partial = {name: x.new_empty((tiles, 3, a)) for name in ("full", "parameter-only")}
+    dp = torch.empty_like(p)
+    back_compiler = {}
+
+    def backward_call(name):
+        nx, np = name != "parameter-only", name != "input-only"
+        if nx:
+            dx[name].zero_()
+        return kernels.backward[(tr.cdiv(a, recipe.atom_group), tiles)](
+            x,
+            dy,
+            packed,
+            dx.get(name),
+            partial.get(name),
+            a,
+            *sizes,
+            *x.stride(),
+            *dy.stride(),
+            nx,
+            np,
+            recipe.batch_tile,
+            recipe.patch_sites,
+            recipe.atom_group,
+            num_warps=4,
+            enable_fp_fusion=False,
+        )
+
+    def reduce():
+        return kernels.reduce_parameters[(tr.cdiv(a, recipe.prep_group),)](
+            partial["full"],
+            dp,
+            p,
+            ampmax,
+            a,
+            tiles,
+            tr.next_power_of_2(tiles),
+            recipe.prep_group,
+            num_warps=4,
+            enable_fp_fusion=False,
+        )
+
+    for name in ("full", "input-only", "parameter-only"):
+        back_compiler[name] = compiler_record(
+            backward_call(name), directory, "backward-" + name
+        )
+    reduce()
+    torch.cuda.synchronize()
+    torch.testing.assert_close(dx["input-only"], dx["full"], rtol=4e-4, atol=4e-4)
+    torch.testing.assert_close(
+        partial["parameter-only"], partial["full"], rtol=0, atol=0
+    )
+    back_checks = {}
+    for name, actual_t, expected_t in (
+        ("dX", dx["full"], expected[1]),
+        ("all_dP", dp, expected[2]),
+    ):
+        metric = finite_error(name, actual_t, expected_t.to(x.device))
+        if metric["max_abs"] > 4e-4 or metric["relative_l2"] > 4e-4:
+            raise AssertionError((name, metric))
+        back_checks[name] = metric
+    back_samples = (
+        timed_calls(
+            {
+                **{
+                    name: lambda name=name: backward_call(name)
+                    for name in ("full", "input-only", "parameter-only")
+                },
+                "parameter-reduction": reduce,
+            },
+            samples,
+        )
+        if timing
+        else {}
+    )
+    return {
+        "status": "PASS",
+        "scope": "fixed snapshot diagnostics; excluded from complete-step and allocator peaks; independent graphs nonadditive",
+        "checks": checks,
+        "same_runtime_bitwise": True,
+        "valid_forward_formulas": valid,
+        "lower_bounds_change_output": ["synthetic-h", "cheap-profile", "index-only"],
+        "samples_ms": totals,
+        "median_ms": {k: statistics.median(v) for k, v in totals.items()},
+        "split_scratch_bytes": {
+            name: tensor.numel() * tensor.element_size()
+            for name, tensor in scratch.items()
+        },
+        "compiler": compiler,
+        "backward": {
+            "checks": back_checks,
+            "same_partial_bitwise": True,
+            "input_only_matches": True,
+            "samples_ms": back_samples,
+            "median_ms": {k: statistics.median(v) for k, v in back_samples.items()},
+            "compiler": back_compiler,
+            "scope": "existing backward specializations; input-only includes G and dX zero/scatter; parameter-only includes G/dG/H/dH and partial stores; not additive attribution; changed compiler scheduling",
+        },
+    }
+
+
+def prepared_snapshot_diagnostics(path, recipe, *, directory, timing):
+    from benchmarks.cuda.linear import periodic_profile_product as fixture
+
+    data = torch.load(path, map_location="cpu", weights_only=True)
+    model = fixture.fixture(
+        data["size"],
+        data["rho"],
+        atoms=len(data["model"]["atom_state.atoms.p"]),
+        regular_grid=True,
+    ).cuda()
+    model.load_state_dict(data["model"])
+    x, dy = data["x"].cuda(), data["dy"].cuda()
+    expected = fixture.oracle_vjp(model, x, dy)
+    gc.collect()
+    torch.cuda.empty_cache()
+    result = prepared_probes(
+        model, x, dy, recipe, expected=expected, directory=directory, timing=timing
+    )
+    result["snapshot_sha256"] = hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    return result
