@@ -14,6 +14,8 @@
     "product_denominator": "max(norm_input,floor)*max(norm_output,floor)"
   },
   "precision": {
+    "scope": "new physical-reference CST route only",
+    "comparators": "compact retains inherited FP32; dense standard FP32 IEEE; common external FP32/TF32 policy; internal precision differences explicitly reported",
     "external_dtype": "float32",
     "physical_geometry_profiles_jacobian": "float64",
     "contraction_reduction": "float64",
@@ -124,7 +126,7 @@
     "bounded_execution": "same support and arithmetic; isolated chunk/storage/fusion mechanism",
     "larger_sizes": "4096 then8192 only after preceding complete gates; separately declared domain and full-oracle budgets based on measured cost",
     "performance_qualification": ">3% complete-step speed improvement OR >=5% allocated reduction with <=3% time regression against valid matched CST control; independent complete reverse confirmation",
-    "dense_reporting": "always report same-shape/batch/task/precision/AdamW engineering ratios; no identical parameterization or learning-quality claim",
+    "dense_reporting": "always report same-shape/batch/task/external FP32 and TF32 policy/AdamW engineering ratios; internal precision differences explicitly reported; no identical parameterization or learning-quality claim",
     "fixed_K_control": "K209715 at2048/4096/8192 for mechanism attribution only; not a replacement for 5% primary series"
   }
 }

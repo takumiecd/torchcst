@@ -152,7 +152,9 @@ FP32 出力への cast error も診断に記録するが、誤差 gate は緩め
 seed41、batch32、K=floor(.05*N²)、共有 X/target/dY、初期 P/site/radius/scalar
 hash を固定する。loss は MSE、fused AdamW は lr1e-4、weight-decay0.01、
 betas=(0.9,0.999)、eps1e-8、amsgrad=false。FP32 IEEE 入出力、TF32/autocast
-無効、Triton FP fusion 無効、参照内部 FP64 とする。共有入力の RNG stream と
+無効、Triton FP fusion 無効とする。新しい物理参照の内部計算のみ FP64 とし、
+既存 compact と standard dense は内部 FP32 を保持する。外部の FP32/TF32 方針を
+揃え、内部精度の違いは比較結果に明記する。共有入力の RNG stream と
 model 初期化 stream は既存 fixture と同様に分ける。標準 dense の weight 初期値
 は別の固定 seed41 stream を持ち、CST の初期 P と同じ値とは主張しない。
 
@@ -210,7 +212,7 @@ A/B の実測費用から、次サイズの全量検査と測定の job 分割�
 実行不能なら、そのサイズは未検証/実行不能として残し、原因を次の研究へ渡す。
 
 同サイズ・同 K・同 batch・同初期状態・同 optimizer の有効な CST control を
-保持する。standard dense も同サイズ/batch/task/precision/loss/AdamW 設定で
+保持する。standard dense も同サイズ/batch/task/外部 FP32・TF32 方針/loss/AdamW 設定で
 保持する。CST control が実行不能なら、CST に対する速度比は
 未測定とする。dense は異なる parameterization/update 則の工学的比較であり、
 同じ optimizer 軌跡や学習品質を意味しない。
