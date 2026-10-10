@@ -81,6 +81,19 @@ def aggregation_probe(
                         u = (u > 0).to(tl.float32)
                     if SCALE_FIRST:
                         coefficient = u * tl.div_rn(amp, norm)[:, None]
+                    elif MODE == "safe-numerator":
+                        # Preserve the real coefficient, including zero*amp.
+                        # Change only zero inputs to exact division; restore
+                        # zero before multiplication. Invalid norms retain
+                        # the original arithmetic and NaN propagation.
+                        zero = (
+                            (u == 0)
+                            & (norm[:, None] > 0)
+                            & (norm[:, None] < float("inf"))
+                        )
+                        safe_u = tl.where(zero, 1.0, u)
+                        quotient = tl.div_rn(safe_u, norm[:, None])
+                        coefficient = tl.where(zero, 0.0, quotient) * amp[:, None]
                     else:
                         coefficient = tl.div_rn(u, norm[:, None]) * amp[:, None]
                 if MODE == "synthetic-h":

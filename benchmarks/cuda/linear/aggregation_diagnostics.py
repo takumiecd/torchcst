@@ -21,6 +21,8 @@ VARIANTS = {
     "sorted-p-scale-first-with-id": (True, True, "full"),
     "norm-one": (False, False, "norm-one"),
     "sorted-p-norm-one": (True, False, "norm-one"),
+    "safe-numerator": (False, False, "safe-numerator"),
+    "sorted-p-safe-numerator": (True, False, "safe-numerator"),
     "support-unit": (False, False, "support-unit"),
     "synthetic-h": (False, False, "synthetic-h"),
     "gather-reduce": (False, False, "gather-reduce"),
@@ -33,6 +35,8 @@ EXACT_FORMULA = {
     "sorted-p-scale-first",
     "sorted-p-with-id",
     "sorted-p-scale-first-with-id",
+    "safe-numerator",
+    "sorted-p-safe-numerator",
 }
 COUNT_FIELDS = (
     "bins",
@@ -259,6 +263,11 @@ def aggregation_probes(
     assert torch.equal(
         outputs["sorted-p-scale-first"], outputs["sorted-p-scale-first-with-id"]
     ), "identity ID indirection changes scale-first results"
+    for name in ("safe-numerator", "sorted-p-safe-numerator"):
+        assert torch.equal(outputs["runtime-full"], outputs[name]), (
+            "changing zero division inputs changes the real coefficient",
+            name,
+        )
     checks = {}
     for name, output in outputs.items():
         require_finite(name, output)

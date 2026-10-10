@@ -443,6 +443,8 @@ def test_aggregation_probes_real_formula_partial_chunks_and_census(
         "sorted-p-scale-first-with-id",
         "norm-one",
         "sorted-p-norm-one",
+        "safe-numerator",
+        "sorted-p-safe-numerator",
         "support-unit",
         "synthetic-h",
         "gather-reduce",

@@ -766,3 +766,13 @@ CPU suite、既存4 GPU診断テスト（狭支持／全周支持、端数chunk�
 初期／24実更新、同一FP64 gate、21外部Event sampleで一度測る。GPU job上限600秒、retryなし。
 取得経路の結果に応じて、同じpost24状態で新controlled variantのhardware counterを一度採取する。
 physical counter、SASS、時間の3種類を照合し、断定できる範囲と残る仮説を分ける。
+
+最初のcontrolled probe sourceでSASSのMUFU.RCP、FCHK、精度例外helperへのCALLを確認した。
+除算命令の数だけでなく、U=0への精度維持除算が例外経路へ入る仮説を追加する。
+`safe-numerator`では、finite positive normかつU=0の入力を1へ置換して同じexact divideを
+実行し、商を0へ戻してampを掛ける。U非ゼロとinvalid normは元の式を保つ。
+数学を保つprobeとしてruntimeとのbitwise一致とFP64 gateを要求する。
+元P／sorted Pの2variantを、新sourceで既存4 GPU checks後にN2048/rho3/H32の既存workerで
+初期／post24・21sample、一度だけ測定する（600秒固定job）。SASSも保存する。
+前の診断値と混ぜず、新cohort内のclone／先行計算／IDあり／IDなしと比較する。
+この追加はzero入力仮説を検証するためで、失敗／測定値を選ぶretryではない。
