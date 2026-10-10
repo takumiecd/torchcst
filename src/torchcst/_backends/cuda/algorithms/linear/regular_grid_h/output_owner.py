@@ -41,19 +41,32 @@ def prepare_routing(packed, sizes, recipe):
 
 
 def h_capacity(recipe):
-    from .recipe import ParallelReusedHRecipe, PreparedReusedHRecipe
+    from .recipe import (
+        GroupedOutputHRecipe,
+        ParallelReusedHRecipe,
+        PreparedReusedHRecipe,
+    )
 
     return (
         recipe.h_batch
-        if type(recipe) in (ParallelReusedHRecipe, PreparedReusedHRecipe)
+        if type(recipe)
+        in (GroupedOutputHRecipe, ParallelReusedHRecipe, PreparedReusedHRecipe)
         else recipe.batch_tile
     )
 
 
 def allocate_h(x, atom_count, recipe):
-    from .recipe import ParallelReusedHRecipe, PreparedReusedHRecipe
+    from .recipe import (
+        GroupedOutputHRecipe,
+        ParallelReusedHRecipe,
+        PreparedReusedHRecipe,
+    )
 
-    if type(recipe) in (ParallelReusedHRecipe, PreparedReusedHRecipe):
+    if type(recipe) in (
+        GroupedOutputHRecipe,
+        ParallelReusedHRecipe,
+        PreparedReusedHRecipe,
+    ):
         # Tile-major: each atom × batch_tile slab matches the H8 baseline.
         return x.new_empty(
             (recipe.h_batch // recipe.batch_tile, atom_count, recipe.batch_tile)
@@ -143,7 +156,7 @@ def aggregate_chunk(
         *x.stride(),
         recipe.batch_tile,
         recipe.patch_sites,
-        recipe.atom_group,
+        getattr(recipe, "output_group", recipe.atom_group),
         recipe.output_tile,
     )
     options = {"H": h, "BSTART": batch_start, "num_warps": 4, "enable_fp_fusion": False}
@@ -154,13 +167,21 @@ def aggregate_chunk(
         if h is None:
             raise ValueError("prepared output ownership requires a cached H chunk")
         for fallback in (False, True):
+            fallback_args = (
+                (*args[:-2], recipe.atom_group, args[-1]) if fallback else args
+            )
             kernels.prepared_output_owned[grid](
-                *args, Hot=hot[0], Unsafe=hot[1], FALLBACK=fallback, **options
+                *fallback_args, Hot=hot[0], Unsafe=hot[1], FALLBACK=fallback, **options
             )
 
 
 def forward_output_owned(x, packed, sizes, recipe):
-    from .recipe import ParallelReusedHRecipe, PreparedReusedHRecipe, ReusedHRecipe
+    from .recipe import (
+        GroupedOutputHRecipe,
+        ParallelReusedHRecipe,
+        PreparedReusedHRecipe,
+        ReusedHRecipe,
+    )
 
     b, _, no, *_ = sizes
     a = packed.shape[1]
@@ -170,10 +191,15 @@ def forward_output_owned(x, packed, sizes, recipe):
     routing = prepare_routing(packed, sizes, recipe)
     hot = (
         prepare_output_fields(packed, routing)
-        if type(recipe) is PreparedReusedHRecipe
+        if type(recipe) in (GroupedOutputHRecipe, PreparedReusedHRecipe)
         else None
     )
-    if type(recipe) in (ReusedHRecipe, ParallelReusedHRecipe, PreparedReusedHRecipe):
+    if type(recipe) in (
+        GroupedOutputHRecipe,
+        ReusedHRecipe,
+        ParallelReusedHRecipe,
+        PreparedReusedHRecipe,
+    ):
         # One allocation and sequential same-stream reuse across all chunks.
         # Scratch is not saved for backward and does not scale with full batch.
         h = allocate_h(x, a, recipe)

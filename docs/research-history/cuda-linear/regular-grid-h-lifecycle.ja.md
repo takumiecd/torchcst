@@ -1143,3 +1143,45 @@ GPUは共有poolのL4を1台使用し、NCUの空counter報告を繰り返さな
 誤ったsource hintを指定したqueued job `l4job-2c8fcb06b2e646928ae3d7a3e52e7551` は
 実行前にcancelし、正しいhintで別jobを提出した。失敗archiveは
 ignored `output/regular-grid-h/overnight-evidence/` にhash照合して保全した。
+
+修正後job `l4job-78d759e05dfe4cdc95dce0bb34933680` は小fixture 2検証と
+N2048/rho3・8のfull oracle、24更新、initial/post24診断をPASSした。
+source archive SHA256 `d580e562577cf1b385148c268dfe7c9e49326ee780cfe06be0ce0a3648a8c251`、
+result archive SHA256 `851249f2e0ec72a3a6bc96fe9768f343ae153a1b5c19e2b8772f4d39140d47c4`。
+1627 source files、result manifest、worker source hashes、snapshot hashesを照合済み。
+実機はL4 / driver580.82.07 / Torch2.11.0+cu130 / Triton3.6.0。
+
+| post24 Y-only診断 [ms] | rho3 | rho8 |
+| --- | ---: | ---: |
+| 実runtime | 4.088 | 4.156 |
+| prepared clone | 4.018 | 4.087 |
+| Hを合成値へ置換（出力変更） | 3.816 | 3.857 |
+| profileを簡単な係数へ置換（出力変更） | 0.629 | 0.637 |
+| index-only（出力変更） | 0.093 | 0.095 |
+| output group32 | 2.085 | 2.107 |
+| split4＋最終加算 | 3.564 | 3.614 |
+| split8＋最終加算 | 3.507 | 3.554 |
+| group32＋split4＋最終加算 | 1.912 | 1.932 |
+
+prepared cloneは実runtimeとbitwise一致。5つのexact式は全Yの既存oracle gateをPASS。
+各時間は21サンプル中央値で1独立job。profile置換はmetadata load、support mask、
+compiler配置も変えるため「profile命令だけの費用」やcache miss率ではない。
+H読取りを外す差は小さい。group32はgroup8よりregistersが128→217、shared128→1024 bytesへ
+増えたがspillsはいずれも0。occupancy/stall counterは測っていない。
+
+追加scratchなしで約半減したgroup32を研究候補へ進める。split4/8のみは今回不採用。
+group32+split4の追加効果は小さく、部分Y・加算launchが増えるので今回の候補から外す。
+H生成/backwardのatom_group8は維持し、output_group32のみ別Recipe/Algorithm/Planにする。
+β overflow fallbackは元のgroup8・演算順序を使う。
+
+| post24 backward診断 [ms] | rho3 | rho8 |
+| --- | ---: | ---: |
+| full | 2.222 | 4.836 |
+| input-only（G＋dX zero/scatter） | 1.884 | 4.637 |
+| parameter-only（G/dG/H/dH＋partial） | 1.474 | 1.908 |
+| parameter reduction | 0.044 | 0.042 |
+
+共通dXは既存gateで一致、parameter partialはbitwise一致、full dX/all_dPもoracle PASS。
+rho8ではinput-onlyがfullに近く、dXを作る経路の改善が次の構造的候補になる。
+atomic競合の物理stallを確認したわけではなく、G・profile評価・scatterを含む経路の診断。
+これらの時間は加減算しない。

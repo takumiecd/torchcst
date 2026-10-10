@@ -10,6 +10,7 @@ from torchcst.kernels import PolarAmpWidthSpec, TriweightSpec
 
 from ..periodic_product.algorithm import PeriodicMatrixAlgorithm
 from .recipe import (
+    GroupedOutputHRecipe,
     OnchipHRecipe,
     OutputOwnedHRecipe,
     ParallelReusedHRecipe,
@@ -149,3 +150,14 @@ class PreparedReusedHAlgorithm(OutputOwnedHAlgorithm):
         if type(recipe) is not PreparedReusedHRecipe:
             raise TypeError("requires PreparedReusedHRecipe")
         PreparedReusedHRecipe(**asdict(recipe))
+
+
+@dataclass(frozen=True)
+class GroupedOutputHAlgorithm(OutputOwnedHAlgorithm):
+    id: str = "research_cuda_regular_grid_grouped_output_h"
+    recipe_type: type = GroupedOutputHRecipe
+
+    def validate_recipe(self, recipe):
+        if type(recipe) is not GroupedOutputHRecipe:
+            raise TypeError("requires GroupedOutputHRecipe")
+        GroupedOutputHRecipe(**asdict(recipe))

@@ -49,3 +49,15 @@ class ParallelReusedHRecipe(ReusedHRecipe):
 @dataclass(frozen=True)
 class PreparedReusedHRecipe(ParallelReusedHRecipe):
     """Three sorted output fields; finite output scale divided once per atom."""
+
+
+@dataclass(frozen=True)
+class GroupedOutputHRecipe(PreparedReusedHRecipe):
+    """Wider output atom reduction; H generation/backward keep atom_group."""
+
+    output_group: int = 32
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.output_group) is not int or self.output_group not in (16, 32):
+            raise ValueError("output_group must be 16 or 32")

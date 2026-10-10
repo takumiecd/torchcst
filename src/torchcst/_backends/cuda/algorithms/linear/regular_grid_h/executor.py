@@ -11,6 +11,7 @@ def forward_contraction(x, packed, sizes, recipe):
 
     from . import kernels
     from .recipe import (
+        GroupedOutputHRecipe,
         OutputOwnedHRecipe,
         ParallelReusedHRecipe,
         PreparedReusedHRecipe,
@@ -18,6 +19,7 @@ def forward_contraction(x, packed, sizes, recipe):
     )
 
     if type(recipe) in (
+        GroupedOutputHRecipe,
         OutputOwnedHRecipe,
         ParallelReusedHRecipe,
         PreparedReusedHRecipe,

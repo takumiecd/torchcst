@@ -43,6 +43,8 @@ KINDS = (
     "reused-h32",
     "prepared-h16",
     "prepared-h32",
+    "prepared-g32-h16",
+    "prepared-g32-h32",
 )
 REGULAR_PRIMARY = ("matrix-torch", "factor", "onchip-h", "dense")
 PRIMARY = ("matrix-torch", "factor", "dense")
@@ -134,6 +136,7 @@ def bind_plan(model, kind):
     plan = next(entry.plan for entry in entries if entry.id == kind)
     if regular_grid:
         from torchcst._backends.cuda.algorithms.linear.regular_grid_h.recipe import (
+            GroupedOutputHRecipe,
             OnchipHRecipe,
             OutputOwnedHRecipe,
             ParallelReusedHRecipe,
@@ -150,6 +153,8 @@ def bind_plan(model, kind):
             "reused-h32": "research_cuda_regular_grid_parallel_reused_h",
             "prepared-h16": "research_cuda_regular_grid_prepared_reused_h",
             "prepared-h32": "research_cuda_regular_grid_prepared_reused_h",
+            "prepared-g32-h16": "research_cuda_regular_grid_grouped_output_h",
+            "prepared-g32-h32": "research_cuda_regular_grid_grouped_output_h",
         }.get(kind, "research_cuda_regular_grid_matrix")
         expected_recipe = (
             {
@@ -160,6 +165,8 @@ def bind_plan(model, kind):
                 "reused-h32": lambda: ParallelReusedHRecipe(h_batch=32),
                 "prepared-h16": lambda: PreparedReusedHRecipe(h_batch=16),
                 "prepared-h32": lambda: PreparedReusedHRecipe(h_batch=32),
+                "prepared-g32-h16": lambda: GroupedOutputHRecipe(h_batch=16),
+                "prepared-g32-h32": lambda: GroupedOutputHRecipe(h_batch=32),
             }[kind]()
             if kind
             in (
@@ -170,6 +177,8 @@ def bind_plan(model, kind):
                 "reused-h32",
                 "prepared-h16",
                 "prepared-h32",
+                "prepared-g32-h16",
+                "prepared-g32-h32",
             )
             else PeriodicRecipe(gemm="triton" if kind == "matrix-triton" else "torch")
         )
@@ -401,6 +410,8 @@ def forward_stages(step, kind):
         "reused-h32",
         "prepared-h16",
         "prepared-h32",
+        "prepared-g32-h16",
+        "prepared-g32-h32",
     ):
         return output_owner_stages(
             step,
@@ -410,8 +421,11 @@ def forward_stages(step, kind):
                 "reused-h32": 32,
                 "prepared-h16": 16,
                 "prepared-h32": 32,
+                "prepared-g32-h16": 16,
+                "prepared-g32-h32": 32,
             }.get(kind),
             prepared=kind.startswith("prepared-"),
+            grouped=kind.startswith("prepared-g32-"),
         )
     if kind == "onchip-h":
         return onchip_stages(step)
@@ -552,7 +566,7 @@ def onchip_stages(step, *, output_owned=False):
     }
 
 
-def output_owner_stages(step, *, reused, h_batch=None, prepared=False):
+def output_owner_stages(step, *, reused, h_batch=None, prepared=False, grouped=False):
     """Timestamp the actual staged forward on a fixed post24 copy.
 
     Candidate-index construction is separate. Exact support checks remain in
@@ -571,6 +585,7 @@ def output_owner_stages(step, *, reused, h_batch=None, prepared=False):
         produce_h_chunk,
     )
     from torchcst._backends.cuda.algorithms.linear.regular_grid_h.recipe import (
+        GroupedOutputHRecipe,
         OutputOwnedHRecipe,
         ParallelReusedHRecipe,
         PreparedReusedHRecipe,
@@ -582,7 +597,13 @@ def output_owner_stages(step, *, reused, h_batch=None, prepared=False):
     n = model.in_features
     sizes = (len(x), n, n, float(n), float(n), 0.0, 0.0)
     recipe = (
-        (PreparedReusedHRecipe if prepared else ParallelReusedHRecipe)(h_batch=h_batch)
+        (
+            GroupedOutputHRecipe
+            if grouped
+            else PreparedReusedHRecipe
+            if prepared
+            else ParallelReusedHRecipe
+        )(h_batch=h_batch)
         if h_batch is not None
         else (ReusedHRecipe() if reused else OutputOwnedHRecipe())
     )
@@ -1165,6 +1186,8 @@ def main():
                 "reused-h32",
                 "prepared-h16",
                 "prepared-h32",
+                "prepared-g32-h16",
+                "prepared-g32-h32",
                 "dense",
             ]
             if args.regular_grid
@@ -1180,6 +1203,8 @@ def main():
             "reused-h32",
             "prepared-h16",
             "prepared-h32",
+            "prepared-g32-h16",
+            "prepared-g32-h32",
         )
         or any(
             kind in args.plans
@@ -1191,6 +1216,8 @@ def main():
                 "reused-h32",
                 "prepared-h16",
                 "prepared-h32",
+                "prepared-g32-h16",
+                "prepared-g32-h32",
             )
         )
     ):
