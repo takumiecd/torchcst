@@ -1,5 +1,14 @@
 # 大型 Linear の研究方針
 
+## 最新方針: N次元の平坦な周期格子
+
+2026-10-10。利用者はさらに、独立した周期軸・等間隔配置を持つ平坦なTorusと
+profile productを新しい設計方向として選んだ。
+[配置・数式・支持・診断計画](20261010-flat-periodic-grid-design.ja.md)を参照。
+以下のEuclidean Product/Sphere計画と結果は、それぞれの以前の研究契約として
+保存する。新しい周期演算へ測定結果・optimizer・距離を読み替えない。
+既存の速い実行方式は再利用候補であり、新方向の公開runtime/GPU性能は未検証。
+
 ## 追記: 規則格子 Product を主対象にする
 
 2026-10-10 の追加方針。以降の大型化は、単一の 2 軸 Euclidean Product
