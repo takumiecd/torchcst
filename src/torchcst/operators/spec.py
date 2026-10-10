@@ -106,10 +106,32 @@ class OperatorSpec:
 
 def validate_profile_product_layout(chart, kernel):
     """Validate coordinate/fibre products using declarations only."""
-    from torchcst.charts import PeriodicGridChartSpec, ProductChartSpec, StripChartSpec
-    from torchcst.geometry.spec import EuclideanGeometrySpec, TorusGeometrySpec
+    from torchcst.charts import (
+        PeriodicGridChartSpec,
+        ProductChartSpec,
+        RegularGridChartSpec,
+        StripChartSpec,
+    )
+    from torchcst.geometry.spec import (
+        EuclideanGeometrySpec,
+        FlatTorusGeometrySpec,
+        TorusGeometrySpec,
+    )
     from torchcst.patterns.spec import GridPatternSpec, LinePatternSpec
 
+    if type(chart) is RegularGridChartSpec:
+        expected_revision = 3 if type(chart.geometry) is FlatTorusGeometrySpec else 1
+        if (
+            len(chart.shape) != 2
+            or chart.revision != 1
+            or chart.geometry.revision != 1
+            or kernel.revision != expected_revision
+            or len(kernel.profiles) != chart.geometry.intrinsic_dim
+        ):
+            raise ValueError(
+                "regular_grid requires two weight axes and matching geometry/profile revision"
+            )
+        return
     if kernel.revision == 3:
         if (
             type(chart) is not PeriodicGridChartSpec

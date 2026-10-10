@@ -9,6 +9,8 @@ from torchcst.charts import (
     PeriodicGridChartState,
     ProductChartSpec,
     ProductChartState,
+    RegularGridChartSpec,
+    RegularGridChartState,
     StripChartSpec,
     StripChartState,
 )
@@ -16,6 +18,7 @@ from torchcst.charts import (
 _TYPES = {
     ExplicitChartState: (ExplicitChartSpec, "explicit"),
     ProductChartState: (ProductChartSpec, "product"),
+    RegularGridChartState: (RegularGridChartSpec, "regular_grid"),
     PeriodicGridChartState: (PeriodicGridChartSpec, "periodic_grid"),
     StripChartState: (StripChartSpec, "strip"),
 }

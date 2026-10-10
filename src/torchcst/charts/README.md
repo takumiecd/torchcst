@@ -9,6 +9,7 @@ charts/
   explicit.py   ExplicitChartSpec / ExplicitChartState
   product.py    ProductChartSpec / ProductChartState
   periodic_grid.py PeriodicGridChartSpec / PeriodicGridChartState
+  regular_grid.py RegularGridChartSpec / RegularGridChartState
   strip.py      StripChartSpec / StripChartState
   presets.py    純粋な宣言の組み立て
   __init__.py   公開型、compile_chart
@@ -28,6 +29,7 @@ _backends/torch/charts/
 | ExplicitChartSpec | coordinates, trainable, spacing | ambient 座標表、学習の有無、任意の間隔 metadata |
 | ProductChartSpec | axes | 各論理軸の Pattern。最後の軸を最速にして平坦化 |
 | PeriodicGridChartSpec | grid_shape, output_dims, origin | FlatTorus上の等間隔D次元格子を単一[out,in]へ割当 |
+| RegularGridChartSpec | grid_shape, spacing, origin | weight各軸に対応する格子を宣言しshapeを導出。Euclidean/FlatTorus |
 | StripChartSpec | axes, tile_shape, axis, tile_pitch | Pattern、tile の論理 shape、Strip 軸、物理 pitch |
 
 kind は各具体型の固定 ID で、constructor には渡さない。Product / Strip の点配置は固定。
@@ -123,3 +125,11 @@ Sphere / Torus の metric と representation は Geometry の宣言に従う。
 
 PeriodicGridChartStateは各軸の原点とGeometryの周期だけを持ち、spacingはperiod/countから
 導出する。全site表やPatternStateを持たない。[API・数学・計算方式](../../../docs/periodic-grid.ja.md)。
+
+RegularGridChartStateは座標軸ごとのorigin/spacingを持ち、geometryは独立して所有する。
+`presets.regular_grid(((16,16),(128,)), spacing=0.1)`はshape `(256,128)`、
+座標3次元を宣言する。各tupleがweightの一軸に対応し、各tuple内とweight軸間は
+最後の軸が最速。scalarのspacing/originは全座標軸へbroadcastする。
+宣言型にはcanonicalなtupleを保存し、shapeはgrid_shapeから導出する。
+全site表・PatternState・全siteのindex表を持たない。
+[API・geometry・checkpoint契約](../../../docs/regular-grid.ja.md)。
