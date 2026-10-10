@@ -90,7 +90,7 @@ Both V1 archives contain identical1594 file hashes, including290 `src/` files. T
 | l4job-b6d848f6362d4833b7f78f3c43b3b415 | 5034a1c02d4a80b72ec264e415734295ad31befb99dfb5cd820a86f2631ac959 | 490131545df73d2ab91f29af9a7cf6db409f650ed5059a1f69bb13f983f0969e | completed returncode0, timed_outfalse |
 | l4job-adfcb15929574cc3877db8dbd8742f09 | d737af1d50c6e75f7c2e699992603a38473e05cbe71537b0896ccf0689fd77fa | d4d69a5f26f77956da46603dec32f27b2eb0283787bce99fee45dc64e271b876 | completed returncode0, timed_outfalse |
 | l4job-2cddd6e7dedc492e9e746f39741e683b | ae9439a565fc2cdc15111f96bbf332636749fc938a5af78b60ad58cb11dd69c3 | 936e67a104d5cb7efe6febbdc94b9e8fd5642432cc6320838abab589c3bb5981 | completed returncode0, timed_outfalse |
-| l4job-6f83d08dcb974a9387ddb7a2b314910d | 698c31af4900089c50938eb8da7bbfb44dcd7719eba0d07cd369a97435e8f3c1 | not yet available | no retrieved result yet; no PASS claim |
+| l4job-6f83d08dcb974a9387ddb7a2b314910d | 698c31af4900089c50938eb8da7bbfb44dcd7719eba0d07cd369a97435e8f3c1 | 546a160cdedf610f3d7884069402b96c60e40ab1cf110761432b6c44c8b7f5a6 | completed returncode0, timed_outfalse |
 
 All available result archive hashes match receipts; every extracted result manifest file hash matches its on-disk bytes. Archive source hashes match spec and result metadata. Raw JSON retains its original hard-coded24 fields and original finalParameter hashes.
 
@@ -98,5 +98,5 @@ All available result archive hashes match receipts; every extracted result manif
 
 N2048 job2cddd6e7dedc492e9e746f39741e683b runs `--oracle-only`: no timing or memory comparison was rerun. All4 plans pass full-site Y/dX/all209715 atom cotangents with observed AdamW clock24; all209715 widths changed. Maximum Ymaxabs across plans4.4800361038710435e-05, dX7.586370937375832e-10, dP9.625540528480567e-11, and max relativeL2 7.574498944926368e-07, all below the unchanged maxabs AND relativeL2 gate4e-4.
 
-N8192 job6f83d08dcb974a9387ddb7a2b314910d has the same corrected driver and1593 unchanged non-driver hashes. No retrieved result existed at this audit;24-update large correctness remains pending. Its eventual result must be appended independently, without replacing either V1 timing run.
+N8192 corrected-clock job6f83d08dcb974a9387ddb7a2b314910d has the same corrected driver and1593 unchanged non-driver hashes. It passes all4 full-site/all3355443-atom gates at observed AdamW clock24, with every width changed. Worst Ymaxabs across controls/candidates is2.147650e-4, dX7.004511e-10, dP2.762317e-11; worst relative-L2 is1.487472e-6. Every criterion is below4e-4. Driver time427.85s, no timeout. Receipt/archive and all extracted manifest hashes match; no timing is repeated or overwritten.
 
