@@ -180,7 +180,7 @@ for public dispatch adoption. The cache candidate is evaluated separately.
 ## v2/2048 gate and small-size rejection
 
 Job `l4job-98aa5d354344453494c60c70be55bccf` passed156 tests, including
-bitwise compact-layout roundtrip. All four initial FP64 oracle checks and both
+exact-numeric compact-layout roundtrip. All four initial FP64 oracle checks and both
 24-update candidate full-atom oracles passed; each candidate changed all209715
 widths, and the final Parameter hashes match the v1 updated oracle. This checks
 live updates without interpreting21 timed replays as independent runs.
@@ -223,3 +223,12 @@ test to N8192 endpoints, empty/zero-amplitude atoms and distinct nonzero offsets
 validate untouched prefix/suffix sentinels and exact field copies, in addition to
 encode/decode equality. Targeted CPU validation is6 passed /56 skipped; the
 GPU gate must run on the separately frozen correction before any new claim.
+
+
+The follow-up audit confirms Triton3.6 integer specialization groups normal
+START offsets into one i32/16-divisible class, so runtime START eliminates
+O(chunks) value-specific variants. It also distinguishes exact numeric equality
+from bit identity: the final layout test compares FP32 int32 views, including
+negative zero. The queued gate `l4job-e60a5704381b4e9bbabe0853d85a101b` was
+cancelled before execution and replaced with this stronger test/source freeze;
+its snapshot is retained and it supplies no GPU measurement.

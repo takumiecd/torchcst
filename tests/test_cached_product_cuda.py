@@ -49,6 +49,7 @@ def test_compact_support_roundtrip_is_bitwise_lossless(ni, no, offset):
     p[:, 2] = torch.linspace(-4, no + 4, a, device="cuda")
     p[:, 3] = torch.linspace(-4, ni + 4, a, device="cuda")
     p[0, :2] = 0
+    p[0, 0] = -0.0
     p[1, 2], p[1, 3] = no - 0.25, ni - 0.25
     layer = cases.scenarios.model(p, "global", n=ni, out=no, device="cuda")
     packed = p.new_empty((13, a))
@@ -74,7 +75,10 @@ def test_compact_support_roundtrip_is_bitwise_lossless(ni, no, offset):
         assert (ends[:, untouched] == -32768).all()
         assert (flags[untouched] == 255).all()
     torch.testing.assert_close(
-        factors[:, offset : offset + a], packed[[1, 4, 5, 6, 7]], rtol=0, atol=0
+        factors[:, offset : offset + a].view(torch.int32),
+        packed[[1, 4, 5, 6, 7]].view(torch.int32),
+        rtol=0,
+        atol=0,
     )
     torch.testing.assert_close(
         ends[:, offset : offset + a], packed[9:13].to(torch.int16), rtol=0, atol=0
@@ -94,7 +98,9 @@ def test_compact_support_roundtrip_is_bitwise_lossless(ni, no, offset):
         256,
         enable_fp_fusion=False,
     )
-    torch.testing.assert_close(decoded, packed, rtol=0, atol=0)
+    torch.testing.assert_close(
+        decoded.view(torch.int32), packed.view(torch.int32), rtol=0, atol=0
+    )
 
 
 class TestCached:
