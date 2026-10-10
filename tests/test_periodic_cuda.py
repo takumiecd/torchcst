@@ -547,7 +547,9 @@ def test_twenty_eager_public_adamw_updates_match_reference_and_live_width(route)
 
 @GPU
 @pytest.mark.parametrize("route", ROUTES)
-def test_twenty_graph_replays_same_cotangent_public_clock_moments_and_live_sigma(route):
+def test_twenty_graph_replays_same_cotangent_public_clock_moments_and_live_sigma(
+    route, *, public_fused=False
+):
     from torchcst._backends.torch.algorithms.polar_update.executor import graph_update
 
     p = parameters(9, periods=(1.5, 2.75), origin=(0.0, 0.0))
@@ -562,7 +564,11 @@ def test_twenty_graph_replays_same_cotangent_public_clock_moments_and_live_sigma
     )
     public = CSTOptimizer(
         torch.optim.AdamW(
-            reference.parameters(), lr=0.01, weight_decay=0.01, foreach=False
+            reference.parameters(),
+            lr=0.01,
+            weight_decay=0.01,
+            foreach=False,
+            fused=public_fused,
         ),
         model=reference,
     )

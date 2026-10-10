@@ -262,7 +262,7 @@ def test_twenty_graph_replays_public_optimizer_live_width_and_all_task_gradients
 
     monkeypatch.setattr(periodic, "model", graph_model)
     periodic.test_twenty_graph_replays_same_cotangent_public_clock_moments_and_live_sigma(
-        "onchip"
+        "onchip", public_fused=True
     )
 
 
