@@ -128,7 +128,7 @@ def test_sharp_wrapper_calls_unchanged_worker_with_explicit_plan(
 
     def worker(*args, **kwargs):
         calls.append((args, kwargs))
-        return dict(status="PASS", size=size, sigma_initial=sigma)
+        return {"status": "PASS", "size": size, "sigma_initial": sigma}
 
     monkeypatch.setattr(wrapper, "worker", worker)
     monkeypatch.setattr(
@@ -153,7 +153,11 @@ def test_sharp_wrapper_calls_unchanged_worker_with_explicit_plan(
     assert calls == [
         (
             ("sphere", size, sigma, "research_graph"),
-            dict(plan=run.entry("compact-weight").plan, verify_only=True, phases=False),
+            {
+                "plan": run.entry("compact-weight").plan,
+                "verify_only": True,
+                "phases": False,
+            },
         )
     ]
     result = json.loads(output.read_text())
@@ -191,12 +195,12 @@ def test_route_diagnostics_are_candidate_only_and_after_primary(tmp_path, monkey
     monkeypatch.setattr(
         wrapper,
         "worker",
-        lambda *a, **kw: calls.append("primary") or dict(status="PASS"),
+        lambda *a, **kw: calls.append("primary") or {"status": "PASS"},
     )
     monkeypatch.setattr(
         wrapper,
         "route_diagnostics",
-        lambda *a: calls.append("diagnostics") or dict(scope="independent"),
+        lambda *a: calls.append("diagnostics") or {"scope": "independent"},
     )
     args = [
         "wrapper",
