@@ -25,3 +25,8 @@ class OutputOwnedHRecipe(OnchipHRecipe):
         super().__post_init__()
         if type(self.output_tile) is not int or self.output_tile not in (8, 16, 32, 64):
             raise ValueError("output_tile must be 8, 16, 32 or 64")
+
+
+@dataclass(frozen=True)
+class ReusedHRecipe(OutputOwnedHRecipe):
+    """One atom × batch_tile scratch buffer, reused across output owners."""

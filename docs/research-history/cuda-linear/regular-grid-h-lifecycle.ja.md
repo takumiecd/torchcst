@@ -338,3 +338,20 @@ trace／結果を回収できておらず、GPU実行の完了も確認できな
 自動再実行は行わない。終了後、slot1のlifecycleでsession terminatedと
 server上のactive sessionなしを確認し、全pool slotは`stopped`。
 失敗job、transport／lifecycle logもignored evidenceへ保存した。
+
+## 次の比較：小batchのHを一度生成して出力所有で再利用
+
+`research_cuda_regular_grid_reused_h` / `ReusedHRecipe`は、既存の粗い出力索引を使い、
+各batch8ごとに全atomのHを一度生成する。Hはsorted atom position × batch8の
+FP32 bufferへ置く。各Y所有区間が同じbufferを読み、全Y所有区間の処理終了後に
+次のbatch8で上書きする。振幅はY集約時にUと掛け、Hへ入れない。
+H scratchは4K×8 byteで、全batch32分を保存せず、backwardへも残さない。
+元のsource/prepared snapshotとbackwardのH/G再計算、dX atomicは維持する。
+
+比較は同じ4case・isolated-oracle-v2・24更新・dense両peak条件で行う。
+出力所有／再利用候補は同一sourceで粗い索引構築を独立CUDA Event区間として計測する。
+再利用候補では各batch区間のH生成とY集約にもEventを置く。
+支持正値の最終候補確認はY集約へ含む。元の融合候補のH/Yは分割できないため、
+その融合区間を一つの指標とし、他方式の時間の差し引きでHの費用を推定しない。
+Eventのある固定post24 forwardは診断用の別copyであり、主測定の完全stepにはEventを入れない。
+性能／memoryの採否は実測後に記録する。

@@ -66,6 +66,7 @@ from torchcst._backends.cuda.algorithms.linear.regular_grid_h.algorithm import (
     OutputOwnedHAlgorithm,
     RegularFactorAlgorithm,
     RegularMatrixAlgorithm,
+    ReusedHAlgorithm,
 )
 from torchcst._backends.cuda.algorithms.linear.sphere_polar.algorithm import (
     SphereAlgorithm,
@@ -155,6 +156,7 @@ REGISTRY.register(RegularMatrixAlgorithm())
 REGISTRY.register(RegularFactorAlgorithm())
 REGISTRY.register(OnchipHAlgorithm())
 REGISTRY.register(OutputOwnedHAlgorithm())
+REGISTRY.register(ReusedHAlgorithm())
 REGISTRY.register(ProductAlgorithm())
 REGISTRY.register(StripProductAlgorithm())
 REGISTRY.register(GlobalProductAlgorithm())

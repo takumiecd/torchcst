@@ -59,9 +59,12 @@ def output_owned(
     BK: tl.constexpr,
     GROUP: tl.constexpr,
     BO: tl.constexpr,
+    H=None,
+    BSTART: tl.constexpr = 0,
+    CACHED: tl.constexpr = False,
 ):
     owner = tl.program_id(0)
-    rows = tl.program_id(1) * BM + tl.arange(0, BM)
+    rows = BSTART + tl.program_id(1) * BM + tl.arange(0, BM)
     sites = owner * BO + tl.arange(0, BO)
     bins: tl.constexpr = tr.cdiv(NO, BO)
     distance = tl.load(MaxDistance)
@@ -86,25 +89,34 @@ def output_owned(
             u, _ = _periodic_raw(sites[None, :], co[:, None], inv[:, None], OO, LO, NO)
             u = tl.where(valid[:, None] & (sites[None, :] < NO), u, 0.0)
             contributes = valid & (tl.max(u, 1) > 0)
-            h, _ = _contract(
-                X,
-                P,
-                a,
-                rows,
-                contributes,
-                A,
-                B,
-                NI,
-                LI,
-                OI,
-                X0,
-                X1,
-                False,
-                False,
-                BM,
-                BK,
-                GROUP,
-            )
+            if CACHED:
+                # H is stored by sorted position, so owners load consecutive
+                # atom/batch values without another original-ID gather.
+                h = tl.load(
+                    H + pos[:, None] * BM + tl.arange(0, BM)[None, :],
+                    contributes[:, None] & (rows[None, :] < B),
+                    0.0,
+                )
+            else:
+                h, _ = _contract(
+                    X,
+                    P,
+                    a,
+                    rows,
+                    contributes,
+                    A,
+                    B,
+                    NI,
+                    LI,
+                    OI,
+                    X0,
+                    X1,
+                    False,
+                    False,
+                    BM,
+                    BK,
+                    GROUP,
+                )
             coefficient = tl.div_rn(u, norm[:, None]) * amp[:, None]
             accumulator += tl.sum(h[:, :, None] * coefficient[:, None, :], 0)
     tl.store(
@@ -112,3 +124,32 @@ def output_owned(
         accumulator,
         (rows[:, None] < B) & (sites[None, :] < NO),
     )
+
+
+@tr.jit
+def produce_h(
+    X,
+    P,
+    Order,
+    H,
+    A: tl.constexpr,
+    B: tl.constexpr,
+    NI: tl.constexpr,
+    LI: tl.constexpr,
+    OI: tl.constexpr,
+    X0: tl.constexpr,
+    X1: tl.constexpr,
+    BSTART: tl.constexpr,
+    BM: tl.constexpr,
+    BK: tl.constexpr,
+    GROUP: tl.constexpr,
+):
+    pos = tl.program_id(0) * GROUP + tl.arange(0, GROUP)
+    a = tl.load(Order + pos, pos < A, 0).to(tl.int32)
+    local_rows = tl.arange(0, BM)
+    rows = BSTART + local_rows
+    h, _ = _contract(
+        X, P, a, rows, pos < A, A, B, NI, LI, OI, X0, X1, False, False, BM, BK, GROUP
+    )
+    # Every buffer element is overwritten each chunk, including padded rows.
+    tl.store(H + pos[:, None] * BM + local_rows[None, :], h, pos[:, None] < A)

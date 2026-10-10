@@ -34,7 +34,7 @@ from benchmarks.cuda.linear.scaling_comparison import (
 from torchcst import CSTOptimizer
 
 LEGACY_KINDS = ("matrix-torch", "matrix-triton", "factor", "torch-factored", "dense")
-KINDS = (*LEGACY_KINDS, "onchip-h", "output-owned-h")
+KINDS = (*LEGACY_KINDS, "onchip-h", "output-owned-h", "reused-h")
 REGULAR_PRIMARY = ("matrix-torch", "factor", "onchip-h", "dense")
 PRIMARY = ("matrix-torch", "factor", "dense")
 CATALOG = Path(__file__).with_name("plans-periodic-profile-product.json")
@@ -127,16 +127,22 @@ def bind_plan(model, kind):
         from torchcst._backends.cuda.algorithms.linear.regular_grid_h.recipe import (
             OnchipHRecipe,
             OutputOwnedHRecipe,
+            ReusedHRecipe,
         )
 
         expected_id = {
             "factor": "research_cuda_regular_grid_saved_factor",
             "onchip-h": "research_cuda_regular_grid_onchip_h",
             "output-owned-h": "research_cuda_regular_grid_output_owned_h",
+            "reused-h": "research_cuda_regular_grid_reused_h",
         }.get(kind, "research_cuda_regular_grid_matrix")
         expected_recipe = (
-            {"onchip-h": OnchipHRecipe, "output-owned-h": OutputOwnedHRecipe}[kind]()
-            if kind in ("onchip-h", "output-owned-h")
+            {
+                "onchip-h": OnchipHRecipe,
+                "output-owned-h": OutputOwnedHRecipe,
+                "reused-h": ReusedHRecipe,
+            }[kind]()
+            if kind in ("onchip-h", "output-owned-h", "reused-h")
             else PeriodicRecipe(gemm="triton" if kind == "matrix-triton" else "torch")
         )
     else:
@@ -360,8 +366,10 @@ def state_gate(*, device="cuda", steps=20, regular_grid=False):
 
 def forward_stages(step, kind):
     """Fixed post-primary forward copy; these stages are not a training-step sum."""
-    if kind in ("onchip-h", "output-owned-h"):
-        return onchip_stages(step, output_owned=kind == "output-owned-h")
+    if kind in ("output-owned-h", "reused-h"):
+        return output_owner_stages(step, reused=kind == "reused-h")
+    if kind == "onchip-h":
+        return onchip_stages(step)
     if kind not in ("matrix-torch", "matrix-triton", "factor"):
         return None
     import triton as tr
@@ -496,6 +504,109 @@ def onchip_stages(step, *, output_owned=False):
         "scope": "fixed post24 forward copy; nonadditive diagnostic; fused H/Y unsplit",
         "samples_ms": phases,
         "parameters_unchanged": tensor_hash(p) == tensor_hash(step.model.atoms.p),
+    }
+
+
+def output_owner_stages(step, *, reused):
+    """Timestamp the actual staged forward on a fixed post24 copy.
+
+    Candidate-index construction is separate. Exact support checks remain in
+    the Y kernel; the fused control cannot separate H work from Y aggregation.
+    Diagnostic event nodes are absent from the primary complete-step graph.
+    """
+    from torchcst._backends.cuda.algorithms.linear.periodic_product.executor import (
+        _prepare,
+    )
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h.output_owner import (
+        aggregate_chunk,
+        prepare_routing,
+        produce_h_chunk,
+    )
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h.recipe import (
+        OutputOwnedHRecipe,
+        ReusedHRecipe,
+    )
+
+    model = copy.deepcopy(step.model)
+    x, p = step.x.detach().clone(), model.atoms.p.detach()
+    n = model.in_features
+    sizes = (len(x), n, n, float(n), float(n), 0.0, 0.0)
+    recipe = ReusedHRecipe() if reused else OutputOwnedHRecipe()
+    chunks = list(range(0, len(x), recipe.batch_tile)) if reused else [0]
+    events = [
+        torch.cuda.Event(enable_timing=True, external=True)
+        for _ in range(3 + (2 * len(chunks) if reused else 1))
+    ]
+
+    def call():
+        events[0].record()
+        packed = _prepare(p.contiguous().clone(), model.kernel, sizes, recipe)
+        events[1].record()
+        y = x.new_empty((len(x), n))
+        routing = prepare_routing(packed, sizes, recipe)
+        h = x.new_empty((len(p), recipe.batch_tile)) if reused else None
+        events[2].record()
+        if reused:
+            for i, start in enumerate(chunks):
+                produce_h_chunk(x, packed, sizes, recipe, routing, h, start)
+                events[3 + 2 * i].record()
+                aggregate_chunk(
+                    x, packed, sizes, recipe, routing, y, h=h, batch_start=start
+                )
+                events[4 + 2 * i].record()
+        else:
+            aggregate_chunk(x, packed, sizes, recipe, routing, y)
+            events[3].record()
+        return y
+
+    call()
+    torch.cuda.synchronize()
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        y = call()
+    graph.replay()
+    torch.cuda.synchronize()
+    phases = {"snapshot_and_preparation": [], "candidate_index": []}
+    if reused:
+        phases.update(H_generation=[], Y_aggregation_with_support_checks=[])
+    else:
+        phases["fused_H_and_Y_with_support_checks"] = []
+    per_chunk = []
+    for _ in range(5):
+        graph.replay()
+        torch.cuda.synchronize()
+        phases["snapshot_and_preparation"].append(events[0].elapsed_time(events[1]))
+        phases["candidate_index"].append(events[1].elapsed_time(events[2]))
+        if reused:
+            sample = [
+                {
+                    "batch_start": start,
+                    "H_generation": events[2 + 2 * i].elapsed_time(events[3 + 2 * i]),
+                    "Y_aggregation_with_support_checks": events[3 + 2 * i].elapsed_time(
+                        events[4 + 2 * i]
+                    ),
+                }
+                for i, start in enumerate(chunks)
+            ]
+            per_chunk.append(sample)
+            for name in ("H_generation", "Y_aggregation_with_support_checks"):
+                phases[name].append(sum(chunk[name] for chunk in sample))
+        else:
+            phases["fused_H_and_Y_with_support_checks"].append(
+                events[2].elapsed_time(events[3])
+            )
+    require_finite("output-owner-stage Y", y)
+    # Independently compare the instrumented schedule to its uninstrumented
+    # forward on the same immutable snapshot, outside all timing intervals.
+    torch.testing.assert_close(y, model(x), rtol=4e-4, atol=4e-4)
+    return {
+        "scope": "fixed post24 forward copy; no optimizer; nonadditive to primary step",
+        "candidate_scope": "coarse index construction; exact support checks in Y kernel",
+        "samples_ms": phases,
+        "per_chunk_samples_ms": per_chunk,
+        "H_scratch_bytes": 4 * len(p) * recipe.batch_tile if reused else 0,
+        "parameters_unchanged": tensor_hash(p) == tensor_hash(step.model.atoms.p),
+        "same_uninstrumented_forward": True,
     }
 
 
@@ -938,14 +1049,17 @@ def main():
                 "factor",
                 "onchip-h",
                 "output-owned-h",
+                "reused-h",
                 "dense",
             ]
             if args.regular_grid
             else list(LEGACY_KINDS)
         )
     if not args.regular_grid and (
-        args.worker in ("onchip-h", "output-owned-h")
-        or any(kind in args.plans for kind in ("onchip-h", "output-owned-h"))
+        args.worker in ("onchip-h", "output-owned-h", "reused-h")
+        or any(
+            kind in args.plans for kind in ("onchip-h", "output-owned-h", "reused-h")
+        )
     ):
         parser.error("H recipes require --regular-grid")
     primary = REGULAR_PRIMARY if args.regular_grid else PRIMARY
