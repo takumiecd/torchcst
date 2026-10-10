@@ -1,4 +1,5 @@
 """One input pass for H and its center derivative in the source VJP."""
+
 from dataclasses import dataclass
 
 from .recipe import MatrixFreeProductRecipe

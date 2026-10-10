@@ -1,4 +1,5 @@
 """Explicit fused source-VJP research plan; public selection is unchanged."""
+
 from dataclasses import asdict, dataclass
 
 from .algorithm import MatrixFreeProductAlgorithm
