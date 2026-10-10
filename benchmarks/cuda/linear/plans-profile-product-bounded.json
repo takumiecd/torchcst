@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "plans": [
+    {
+      "id": "native-g8-p8",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_profile_product_large_matrix",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "preparation": "support",
+          "prep_group": 16,
+          "prep_sites": 16,
+          "patch_sites": 8,
+          "gemm": "triton",
+          "atom_group": 8
+        }
+      }
+    },
+    {
+      "id": "torch-g8-p8",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_profile_product_large_matrix",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "preparation": "support",
+          "prep_group": 16,
+          "prep_sites": 16,
+          "patch_sites": 8,
+          "gemm": "torch",
+          "atom_group": 8
+        }
+      }
+    },
+    {
+      "id": "bounded-triton",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_profile_product_bounded_matrix",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "preparation": "support",
+          "prep_group": 16,
+          "prep_sites": 16,
+          "patch_sites": 8,
+          "gemm": "triton",
+          "atom_group": 8,
+          "atom_chunk": 262144
+        }
+      }
+    },
+    {
+      "id": "bounded-torch",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_profile_product_bounded_matrix",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "preparation": "support",
+          "prep_group": 16,
+          "prep_sites": 16,
+          "patch_sites": 8,
+          "gemm": "torch",
+          "atom_group": 8,
+          "atom_chunk": 262144
+        }
+      }
+    }
+  ]
+}
