@@ -9,7 +9,7 @@ from torchcst.geometry.spec import FlatTorusGeometrySpec
 from torchcst.kernels import PolarAmpWidthSpec, TriweightSpec
 
 from ..periodic_product.algorithm import PeriodicMatrixAlgorithm
-from .recipe import OnchipHRecipe
+from .recipe import OnchipHRecipe, OutputOwnedHRecipe
 
 
 def regular_spec(operator):
@@ -95,3 +95,18 @@ class OnchipHAlgorithm(RegularMatrixAlgorithm):
         )
         with torch.cuda.device(x.device):
             return onchip_h(x, p, operator.kernel, sizes, state.recipe)
+
+
+@dataclass(frozen=True)
+class OutputOwnedHAlgorithm(OnchipHAlgorithm):
+    id: str = "research_cuda_regular_grid_output_owned_h"
+    recipe_type: type = OutputOwnedHRecipe
+
+    def validate_recipe(self, recipe):
+        if type(recipe) is not OutputOwnedHRecipe:
+            raise TypeError("requires OutputOwnedHRecipe")
+        OutputOwnedHRecipe(**asdict(recipe))
+
+    def workspace_bound(self, context, recipe):
+        # torch.sort/searchsorted library workspace is not bounded here.
+        return None

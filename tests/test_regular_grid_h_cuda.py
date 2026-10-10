@@ -22,11 +22,13 @@ from torchcst._backends.cuda.algorithms.linear.periodic_product.recipe import (
 )
 from torchcst._backends.cuda.algorithms.linear.regular_grid_h.algorithm import (
     OnchipHAlgorithm,
+    OutputOwnedHAlgorithm,
     RegularFactorAlgorithm,
     RegularMatrixAlgorithm,
 )
 from torchcst._backends.cuda.algorithms.linear.regular_grid_h.recipe import (
     OnchipHRecipe,
+    OutputOwnedHRecipe,
 )
 from torchcst._backends.registry import Registry
 from torchcst._backends.schema import DeviceInfo, ExecutionPlan
@@ -38,14 +40,15 @@ BASE_MODEL = periodic.model
 def selector(route="onchip", **settings):
     algorithm = {
         "onchip": OnchipHAlgorithm,
+        "owner": OutputOwnedHAlgorithm,
         "matrix": RegularMatrixAlgorithm,
         "factor": RegularFactorAlgorithm,
     }[route]()
     registry = Registry()
     registry.register(algorithm)
-    recipe = (
-        OnchipHRecipe(**settings) if route == "onchip" else PeriodicRecipe(**settings)
-    )
+    recipe = {"onchip": OnchipHRecipe, "owner": OutputOwnedHRecipe}.get(
+        route, PeriodicRecipe
+    )(**settings)
     plan = ExecutionPlan(algorithm.id, algorithm.revision, recipe)
     registry.validate_plan(plan)
     return FixedSelector(plan, registry=registry), plan, registry
@@ -73,6 +76,7 @@ def model(
             "atom_group",
             "patch_sites",
             "batch_tile",
+            "output_tile",
         )
     }
     layer = BASE_MODEL(
@@ -83,7 +87,7 @@ def model(
     return layer
 
 
-@pytest.mark.parametrize("route", ["matrix", "factor", "onchip"])
+@pytest.mark.parametrize("route", ["matrix", "factor", "onchip", "owner"])
 def test_metadata_roundtrip_scope_and_no_gpu_import(route):
     _, plan, registry = selector(route)
     assert registry.loads_plan(registry.dumps_plan(plan)) == plan
@@ -120,6 +124,8 @@ def test_metadata_roundtrip_scope_and_no_gpu_import(route):
             ),
         )
         assert not algorithm.supports(fault, plan.recipe).supported
+    if route == "owner":
+        assert algorithm.workspace_bound(context, plan.recipe) is None
     if route == "onchip":
         assert algorithm.workspace_bound(context, plan.recipe) == 4 * (
             (17 + 3) * 17 + 1
@@ -154,7 +160,7 @@ assert not any(n.endswith(('regular_grid_h.executor','regular_grid_h.kernels')) 
 
 
 @GPU
-@pytest.mark.parametrize("route", ["matrix", "factor", "onchip"])
+@pytest.mark.parametrize("route", ["matrix", "factor", "onchip", "owner"])
 @pytest.mark.parametrize(
     "batch,count,sigma", [(1, 17, 0.7), (3, 129, 0.7), (32, 17, 4.0), (64, 9, 0.7)]
 )
@@ -172,6 +178,7 @@ def test_full_atom_oracle_strides_batch_tiles_seams_and_broad(
 
 
 @GPU
+@pytest.mark.parametrize("route", ["onchip", "owner"])
 @pytest.mark.parametrize(
     "settings",
     [
@@ -179,8 +186,8 @@ def test_full_atom_oracle_strides_batch_tiles_seams_and_broad(
         {"batch_tile": 16, "atom_group": 4, "patch_sites": 16},
     ],
 )
-def test_alternative_explicit_tiles(settings):
-    layer = model(periodic.parameters(17), "onchip", device="cuda", **settings)
+def test_alternative_explicit_tiles(route, settings):
+    layer = model(periodic.parameters(17), route, device="cuda", **settings)
     x = torch.randn(19, 65, device="cuda", requires_grad=True)
     dy = torch.randn(19, 33, device="cuda")
     y = layer(x)
@@ -191,25 +198,30 @@ def test_alternative_explicit_tiles(settings):
 
 
 @GPU
+@pytest.mark.parametrize("route", ["onchip", "owner"])
 @pytest.mark.parametrize("case", ["empty", "singleton", "below", "equal", "above"])
-def test_product_floor_and_singleton_gradients(monkeypatch, case):
+def test_product_floor_and_singleton_gradients(route, monkeypatch, case):
     monkeypatch.setattr(periodic, "model", model)
-    periodic.test_whole_atom_floor_and_singleton_support_derivatives("onchip", case)
+    periodic.test_whole_atom_floor_and_singleton_support_derivatives(route, case)
 
 
 @GPU
+@pytest.mark.parametrize("route", ["onchip", "owner"])
 @pytest.mark.parametrize("count", [0, 17])
 @pytest.mark.parametrize("need_x,need_p", [(True, False), (False, True), (True, True)])
-def test_zero_atoms_and_requested_gradients(monkeypatch, count, need_x, need_p):
+def test_zero_atoms_and_requested_gradients(route, monkeypatch, count, need_x, need_p):
     monkeypatch.setattr(periodic, "model", model)
     periodic.test_zero_atoms_and_requested_gradient_branches(
-        "onchip", count, need_x, need_p
+        route, count, need_x, need_p
     )
 
 
 @GPU
-def test_retained_forward_snapshots_before_live_parameter_width_and_chart_updates():
-    layer = model(periodic.parameters(17), "onchip", live=True, device="cuda")
+@pytest.mark.parametrize("route", ["onchip", "owner"])
+def test_retained_forward_snapshots_before_live_parameter_width_and_chart_updates(
+    route,
+):
+    layer = model(periodic.parameters(17), route, live=True, device="cuda")
     x = torch.randn(11, 65, device="cuda", requires_grad=True)
     dy = torch.randn(11, 33, device="cuda")
     expected = periodic.oracle(layer, x, dy)
@@ -233,8 +245,11 @@ def test_retained_forward_snapshots_before_live_parameter_width_and_chart_update
 
 
 @GPU
-def test_no_full_h_g_saved_and_backward_recomputation():
-    layer = model(periodic.parameters(129), "onchip", device="cuda")
+@pytest.mark.parametrize("route", ["onchip", "owner"])
+def test_no_full_h_g_saved_and_backward_recomputation(
+    route,
+):
+    layer = model(periodic.parameters(129), route, device="cuda")
     x = torch.randn(19, 65, device="cuda", requires_grad=True)
     saved = []
 
@@ -249,7 +264,9 @@ def test_no_full_h_g_saved_and_backward_recomputation():
 
 
 @GPU
+@pytest.mark.parametrize("route", ["onchip", "owner"])
 def test_twenty_graph_replays_public_optimizer_live_width_and_all_task_gradients(
+    route,
     monkeypatch,
 ):
     monkeypatch.setattr(periodic, "model", model)
@@ -262,13 +279,43 @@ def test_twenty_graph_replays_public_optimizer_live_width_and_all_task_gradients
 
     monkeypatch.setattr(periodic, "model", graph_model)
     periodic.test_twenty_graph_replays_same_cotangent_public_clock_moments_and_live_sigma(
-        "onchip", public_fused=True
+        route, public_fused=True
     )
 
 
 @GPU
-def test_twenty_public_eager_updates(monkeypatch):
+@pytest.mark.parametrize("route", ["onchip", "owner"])
+def test_twenty_public_eager_updates(route, monkeypatch):
     monkeypatch.setattr(periodic, "model", model)
     periodic.test_twenty_eager_public_adamw_updates_match_reference_and_live_width(
-        "onchip"
+        route
+    )
+
+
+@pytest.mark.parametrize("tile", [True, 1, 0, 128])
+def test_reject_invalid_output_tile(tile):
+    with pytest.raises(ValueError):
+        OutputOwnedHRecipe(output_tile=tile)
+
+
+@GPU
+@pytest.mark.parametrize("tile", [8, 16, 32, 64])
+@pytest.mark.parametrize("broad", [False, True])
+def test_output_owner_partial_tile_seam_cluster_and_no_fixed_capacity(tile, broad):
+    p = periodic.parameters(257)
+    p[:, 2] = torch.linspace(-0.35, 0.15, len(p))  # Cluster around the seam.
+    layer = model(
+        p,
+        "owner",
+        shape=(37, 19),
+        output_tile=tile,
+        sigma=9.0 if broad else 0.7,
+        device="cuda",
+    )
+    x = torch.randn(7, 38, device="cuda")[:, ::2].detach().requires_grad_()
+    dy = torch.randn(37, 7, device="cuda").T
+    y = layer(x)
+    periodic.gate(
+        (y, *torch.autograd.grad(y, (x, layer.atoms.p), dy)),
+        periodic.oracle(layer, x, dy),
     )

@@ -34,7 +34,7 @@ from benchmarks.cuda.linear.scaling_comparison import (
 from torchcst import CSTOptimizer
 
 LEGACY_KINDS = ("matrix-torch", "matrix-triton", "factor", "torch-factored", "dense")
-KINDS = (*LEGACY_KINDS, "onchip-h")
+KINDS = (*LEGACY_KINDS, "onchip-h", "output-owned-h")
 REGULAR_PRIMARY = ("matrix-torch", "factor", "onchip-h", "dense")
 PRIMARY = ("matrix-torch", "factor", "dense")
 CATALOG = Path(__file__).with_name("plans-periodic-profile-product.json")
@@ -126,15 +126,17 @@ def bind_plan(model, kind):
     if regular_grid:
         from torchcst._backends.cuda.algorithms.linear.regular_grid_h.recipe import (
             OnchipHRecipe,
+            OutputOwnedHRecipe,
         )
 
         expected_id = {
             "factor": "research_cuda_regular_grid_saved_factor",
             "onchip-h": "research_cuda_regular_grid_onchip_h",
+            "output-owned-h": "research_cuda_regular_grid_output_owned_h",
         }.get(kind, "research_cuda_regular_grid_matrix")
         expected_recipe = (
-            OnchipHRecipe()
-            if kind == "onchip-h"
+            {"onchip-h": OnchipHRecipe, "output-owned-h": OutputOwnedHRecipe}[kind]()
+            if kind in ("onchip-h", "output-owned-h")
             else PeriodicRecipe(gemm="triton" if kind == "matrix-triton" else "torch")
         )
     else:
@@ -203,6 +205,70 @@ def oracle_check(model, x, dy):
     return {
         "status": "PASS",
         "scope": "independent FP64 complete axes/all atoms/all four cotangents",
+        "errors": errors,
+    }
+
+
+def isolated_oracle_check(model, x, dy, *, size, rho, directory, label):
+    """Validate exact CPU snapshots in a separate, untimed CUDA process."""
+    xx = x.detach().clone().requires_grad_()
+    y = model(xx)
+    gx, gp = torch.autograd.grad(y, (xx, model.atoms.p), dy)
+    snapshot = {
+        "size": size,
+        "rho": rho,
+        "model": {
+            key: (
+                value.detach().cpu()
+                if isinstance(value, torch.Tensor)
+                else copy.deepcopy(value)
+            )
+            for key, value in model.state_dict().items()
+        },
+        "x": x.detach().cpu(),
+        "dy": dy.detach().cpu(),
+        "actual": [value.detach().cpu() for value in (y, gx, gp)],
+    }
+    directory.mkdir(parents=True, exist_ok=True)
+    path, result = directory / f"{label}.pt", directory / f"{label}.json"
+    torch.save(snapshot, path)
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "benchmarks.cuda.linear.periodic_comparison",
+            "--oracle-snapshot",
+            str(path),
+            "--output",
+            str(result),
+        ],
+        check=True,
+        timeout=180,
+    )
+    record = json.loads(result.read_text())
+    if record["status"] != "PASS":
+        raise AssertionError(record)
+    record["snapshot_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return record
+
+
+def oracle_snapshot(path):
+    """Independent FP64 whole-axis/all-atom truth; no candidate execution."""
+    data = torch.load(path, map_location="cpu", weights_only=True)
+    model = fixture.fixture(data["size"], data["rho"], regular_grid=True).cuda()
+    model.load_state_dict(data["model"])
+    expected = fixture.oracle_vjp(model, data["x"].cuda(), data["dy"].cuda())
+    errors = {}
+    for name, actual, truth in zip(
+        ("Y", "dX", "all_dP"), data["actual"], expected, strict=True
+    ):
+        metric = finite_error(name, actual, truth.detach().cpu())
+        if metric["max_abs"] > 4e-4 or metric["relative_l2"] > 4e-4:
+            raise AssertionError((name, metric))
+        errors[name] = metric
+    return {
+        "status": "PASS",
+        "scope": "isolated FP64 complete axes/all atoms/all four cotangents",
         "errors": errors,
     }
 
@@ -289,8 +355,8 @@ def state_gate(*, device="cuda", steps=20, regular_grid=False):
 
 def forward_stages(step, kind):
     """Fixed post-primary forward copy; these stages are not a training-step sum."""
-    if kind == "onchip-h":
-        return onchip_stages(step)
+    if kind in ("onchip-h", "output-owned-h"):
+        return onchip_stages(step, output_owned=kind == "output-owned-h")
     if kind not in ("matrix-torch", "matrix-triton", "factor"):
         return None
     import triton as tr
@@ -371,7 +437,7 @@ def forward_stages(step, kind):
     }
 
 
-def onchip_stages(step):
+def onchip_stages(step, *, output_owned=False):
     """Fused H-to-Y cannot be decomposed by timestamps inside one kernel."""
     from torchcst._backends.cuda.algorithms.linear.periodic_product.executor import (
         _prepare,
@@ -381,12 +447,14 @@ def onchip_stages(step):
     )
     from torchcst._backends.cuda.algorithms.linear.regular_grid_h.recipe import (
         OnchipHRecipe,
+        OutputOwnedHRecipe,
     )
 
     model = copy.deepcopy(step.model)
     x, p = step.x.detach().clone(), model.atoms.p.detach()
     n = model.in_features
-    sizes, recipe = (len(x), n, n, float(n), float(n), 0.0, 0.0), OnchipHRecipe()
+    sizes = (len(x), n, n, float(n), float(n), 0.0, 0.0)
+    recipe = OutputOwnedHRecipe() if output_owned else OnchipHRecipe()
     events = [torch.cuda.Event(enable_timing=True, external=True) for _ in range(3)]
 
     def call():
@@ -405,7 +473,13 @@ def onchip_stages(step):
     graph.replay()
     torch.cuda.synchronize()
     phases = {
-        name: [] for name in ("snapshot_and_preparation", "Y_zero_and_fused_H_to_Y")
+        name: []
+        for name in (
+            "snapshot_and_preparation",
+            "routing_and_output_owned_H_to_Y"
+            if output_owned
+            else "Y_zero_and_fused_H_to_Y",
+        )
     }
     for _ in range(5):
         graph.replay()
@@ -465,7 +539,16 @@ def phase_diagnostics(step):
     }
 
 
-def worker(size, rho, kind, *, phases=False, verify_only=False, regular_grid=False):
+def worker(
+    size,
+    rho,
+    kind,
+    *,
+    phases=False,
+    verify_only=False,
+    regular_grid=False,
+    oracle_directory=None,
+):
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
     torch.set_float32_matmul_precision("highest")
@@ -479,6 +562,9 @@ def worker(size, rho, kind, *, phases=False, verify_only=False, regular_grid=Fal
         "seed": 41,
         "atoms": None if kind == "dense" else int(0.05 * size * size),
         **source_metadata(),
+        "measurement_protocol": (
+            "isolated-oracle-v2" if oracle_directory else "inprocess-oracle-v1"
+        ),
     }
     case = case_definition(size, rho, regular_grid=regular_grid)
     result["case_definition"] = case
@@ -518,7 +604,21 @@ def worker(size, rho, kind, *, phases=False, verify_only=False, regular_grid=Fal
         }
         width0 = None if dense else fixture.widths(model).detach().cpu()
         stage = "initial-full-oracle"
-        result["initial_oracle"] = None if dense else oracle_check(model, x, dy)
+
+        def check(label):
+            if oracle_directory is not None:
+                return isolated_oracle_check(
+                    model,
+                    x,
+                    dy,
+                    size=size,
+                    rho=rho,
+                    directory=oracle_directory,
+                    label=label,
+                )
+            return oracle_check(model, x, dy)
+
+        result["initial_oracle"] = None if dense else check("initial")
         step = TrainingStep(model, x, target, dense=dense)
         model.zero_grad(set_to_none=True)
         x.grad = None
@@ -578,10 +678,14 @@ def worker(size, rho, kind, *, phases=False, verify_only=False, regular_grid=Fal
                 "capturable": True,
             },
             gpu_process_bytes=None,
-            memory_scope="own model/optimizer/X/target/dy; capture/replay included; oracle/diagnostic scratch excluded",
+            memory_scope=(
+                "own model/optimizer/X/target/dy and candidate warmup allocations; capture/replay included; FP64 oracle in separate process"
+                if oracle_directory
+                else "own model/optimizer/X/target/dy; capture/replay included; oracle/diagnostic scratch excluded; persistent library allocations may remain"
+            ),
         )
         stage = "updated-full-oracle"
-        result["updated_oracle"] = None if dense else oracle_check(model, x, dy)
+        result["updated_oracle"] = None if dense else check("post24")
         if int(step.opt.state[next(model.parameters())]["step"]) != 24:
             raise AssertionError("correctness reads changed the primary clock")
         if not dense:
@@ -701,6 +805,8 @@ def assess(records):
     ):
         if len({json.dumps(r[key], sort_keys=True) for r in valid}) != 1:
             raise AssertionError(f"unmatched {key}")
+    if len({r.get("measurement_protocol", "inprocess-oracle-v1") for r in valid}) != 1:
+        raise AssertionError("unmatched measurement protocol")
     cst = [r for r in valid if r["kind"] != "dense"]
     for key in ("declaration_sha256", "tensor_hashes", "tensor_specs"):
         if len({json.dumps(r["fixture"][key], sort_keys=True) for r in cst}) != 1:
@@ -793,6 +899,8 @@ def main():
     parser.add_argument("--plans", nargs="+", choices=KINDS, default=None)
     parser.add_argument("--worker", choices=KINDS)
     parser.add_argument("--regular-grid", action="store_true")
+    parser.add_argument("--isolated-oracle", action="store_true")
+    parser.add_argument("--oracle-snapshot", type=Path)
     parser.add_argument("--state-gate", action="store_true")
     parser.add_argument("--phases", action="store_true")
     parser.add_argument("--verify-only", action="store_true")
@@ -800,6 +908,12 @@ def main():
     parser.add_argument("--worker-timeout", type=int, default=900)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
+    if args.oracle_snapshot:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(
+            json.dumps(oracle_snapshot(args.oracle_snapshot), indent=2)
+        )
+        return
     if args.case:
         case = load_case(args.case)
         args.regular_grid = "grid_shape" in case
@@ -813,15 +927,25 @@ def main():
         args.rho = 3 if args.rho is None else args.rho
     if args.plans is None:
         args.plans = (
-            ["matrix-torch", "matrix-triton", "factor", "onchip-h", "dense"]
+            [
+                "matrix-torch",
+                "matrix-triton",
+                "factor",
+                "onchip-h",
+                "output-owned-h",
+                "dense",
+            ]
             if args.regular_grid
             else list(LEGACY_KINDS)
         )
     if not args.regular_grid and (
-        args.worker == "onchip-h" or "onchip-h" in args.plans
+        args.worker in ("onchip-h", "output-owned-h")
+        or any(kind in args.plans for kind in ("onchip-h", "output-owned-h"))
     ):
-        parser.error("onchip-h requires --regular-grid")
+        parser.error("H recipes require --regular-grid")
     primary = REGULAR_PRIMARY if args.regular_grid else PRIMARY
+    if args.isolated_oracle and not args.regular_grid:
+        parser.error("isolated oracle snapshot currently requires --regular-grid")
     args.output.parent.mkdir(parents=True, exist_ok=True)
     if args.state_gate:
         result = state_gate(regular_grid=args.regular_grid)
@@ -833,6 +957,11 @@ def main():
             phases=args.phases,
             verify_only=args.verify_only,
             regular_grid=args.regular_grid,
+            oracle_directory=(
+                args.output.parent / f"{args.output.stem}-oracle"
+                if args.isolated_oracle
+                else None
+            ),
         )
         validate_record(result)
     else:
@@ -858,6 +987,8 @@ def main():
             ]
             if args.regular_grid:
                 command.append("--regular-grid")
+            if args.isolated_oracle:
+                command.append("--isolated-oracle")
             if args.phases:
                 command.append("--phases")
             if args.verify_only:

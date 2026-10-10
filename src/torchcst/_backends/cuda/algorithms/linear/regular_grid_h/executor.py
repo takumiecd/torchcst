@@ -10,6 +10,12 @@ def forward_contraction(x, packed, sizes, recipe):
     import triton as tr
 
     from . import kernels
+    from .recipe import OutputOwnedHRecipe
+
+    if type(recipe) is OutputOwnedHRecipe:
+        from .output_owner import forward_output_owned
+
+        return forward_output_owned(x, packed, sizes, recipe)
 
     b, ni, no, li, lo, oi, oo = sizes
     a = packed.shape[1]

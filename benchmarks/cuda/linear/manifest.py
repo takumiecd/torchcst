@@ -63,6 +63,7 @@ from torchcst._backends.cuda.algorithms.linear.profile_product_matrix.square_str
 )
 from torchcst._backends.cuda.algorithms.linear.regular_grid_h.algorithm import (
     OnchipHAlgorithm,
+    OutputOwnedHAlgorithm,
     RegularFactorAlgorithm,
     RegularMatrixAlgorithm,
 )
@@ -153,6 +154,7 @@ REGISTRY.register(PeriodicFactorAlgorithm())
 REGISTRY.register(RegularMatrixAlgorithm())
 REGISTRY.register(RegularFactorAlgorithm())
 REGISTRY.register(OnchipHAlgorithm())
+REGISTRY.register(OutputOwnedHAlgorithm())
 REGISTRY.register(ProductAlgorithm())
 REGISTRY.register(StripProductAlgorithm())
 REGISTRY.register(GlobalProductAlgorithm())

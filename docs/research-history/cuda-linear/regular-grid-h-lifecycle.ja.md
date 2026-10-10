@@ -239,3 +239,27 @@ result archive SHA256 `a366e47d2b898fdba3024cbac82ee7b3fe56dbb09d594e1a5b5a80a27
 二diagnostic jobのsource/result archive・全source file・全result manifestを再照合し、
 raw原本とlocal copyを`output/regular-grid-h/diagnostic-82e2f830/`へ保存した。
 runtimeとbenchmark sourceのhashはlocalに一致する。所有L4は停止確認済み。
+
+## 次の候補：出力区間を所有するforward
+
+`research_cuda_regular_grid_output_owned_h` / `OutputOwnedHRecipe`を追加する。
+batch8×出力16siteを一CTAが所有し、区間への全寄与をFP32で累積してYへ一度storeする。
+forwardのY初期化・Y atomicは不要。Hはatom8×batch8ずつ生成し、使ったら上書きする。
+支持が複数の出力区間へ重なるatomは各区間でHを再生成する。全Hは保存しない。
+
+毎forward、準備snapshotの出力中心を粗い区間のkeyへ変換し、`torch.sort`で並べる。
+`searchsorted`で各中心区間の開始／終了を作る。siteごとのCSR／支持index表や固定容量bucketは作らない。
+候補探索の半径は、実際の準備済み支持区間の端から中心keyまでの距離の全atom最大値を
+GPU上で求める。live幅の定数上限を仮定せず、広い／fallback支持でも全寄与を拾う。
+半径が全区間へ及べば全atomを一度ずつ処理する。周期wrapで同じ区間を重複しない。
+末尾の短い出力区間には追加の候補区間を含め、全候補で実profileの正値を検査してHを生成する。
+全正規化・norm微分は元のprepareを使う。
+
+routingは毎forward再構築し、retained backwardへ保存しない。元atomのidentityは保ったまま、
+backwardは既存のatom担当H/G再計算・dX atomic・batch別Parameter部分和を使う。
+これはforwardの所有方式だけの比較であり、dXまでatomicを消した候補ではない。
+
+routingの明示Tensorはkeys4K、sorted keys4K、order8K、区間境界8(T+1)、
+距離部分和4ceil(K/256)、最大距離4byte。sort/searchsortedの内部workspaceは別であり、
+Algorithmのworkspace_boundは`None`とする。routing費用とallocator/Graph poolを測定へ含める。
+検証と性能processを分離した比較protocolで全controlを測り直し、旧表の数値とは混ぜない。
