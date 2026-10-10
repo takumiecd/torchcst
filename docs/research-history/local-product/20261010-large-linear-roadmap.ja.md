@@ -45,7 +45,9 @@ raw log と比較 snapshot は研究 worktree の ignored `output/regular-produc
 その後の [支持保存量の比較](20261010-product-bounded-support.md) では、
 N2048/N8192・batch32・5% atom・初期rho3・live幅更新を使い、再計算と
 無損失キャッシュ圧縮を同じ native/Torch matrix control と比較した。
-初期と24更新後の全atom・全site FP64 oracle、dX/全4atom勾配を通過した。
+初期と23実更新後の全atom・全site FP64 oracle、dX/全4atom勾配を通過した。
+旧driverは24と誤記していたため、[clock監査](20261010-product-matrix-free-results.md)
+で訂正する。計画の24更新gateへ到達した証拠とは扱わない。
 最後の監査修正は GPU-host157 tests、研究sourceの CPU1412 passed /
 2700 skipped、wheel/sdist build を通過した。
 
