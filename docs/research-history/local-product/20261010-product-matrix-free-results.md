@@ -100,3 +100,49 @@ N2048 job2cddd6e7dedc492e9e746f39741e683b runs `--oracle-only`: no timing or mem
 
 N8192 corrected-clock job6f83d08dcb974a9387ddb7a2b314910d has the same corrected driver and1593 unchanged non-driver hashes. It passes all4 full-site/all3355443-atom gates at observed AdamW clock24, with every width changed. Worst Ymaxabs across controls/candidates is2.147650e-4, dX7.004511e-10, dP2.762317e-11; worst relative-L2 is1.487472e-6. Every criterion is below4e-4. Driver time427.85s, no timeout. Receipt/archive and all extracted manifest hashes match; no timing is repeated or overwritten.
 
+
+## Fused source backward: small checkpoint
+
+The new research algorithm `research_regular_product_matrix_free_fused/v1` fuses
+H and Hci into one input loop in the source VJP. It preserves the forward13-field
+snapshot, whole-product floor, support/overflow and canonical order. Output G/Gco
+and owner dX are unchanged. Singleton input retains H and has Hci=0; amplitude0
+still retains dAmp. Scratch allocation stays the same to isolate the fusion.
+
+N2048 measured sourcee774c6e63093b5637d265ceeb79c515b0f793c3d, job
+`l4job-b3fe515dd7724868944c05226cf16c86`:225 GPU-host tests passed/no skips,
+including51 fused GPU cases and existing regressions. Two autograd stream-mismatch
+warnings are retained. Full initial and observed24-update gates pass for all4
+plans; no tolerance or oracle sampling change. Host1442 PASS/2738 skipped,
+Ruff check, declaration checks, wheel/sdist and runtime byte verification passed.
+A later formatting-only commitf9483cd468232951667027bda4b7d576d01112b3 adds two
+blank lines to declarations; AST and all kernel bytes are unchanged, format passes.
+
+| Route | Complete Graph step ms | Peak allocated bytes | Peak reserved bytes |
+| --- | ---: | ---: | ---: |
+| native-g8-p8 | 1.133240 | 66493952 | 163577856 |
+| torch-g8-p8 | 0.947852 | 99735040 | 205520896 |
+| csr-c256k | 2.623124 | 92711424 | 249561088 |
+| fused-c256k | 2.492139 | 92711424 | 249561088 |
+| dense | 0.591542 | 102238720 | 148897792 |
+
+Fusion reduces step4.99% versus the unfused CSR control, but is slower than both
+matrix controls: REJECT at N2048. Separate backward diagnostic1.386496 to1.117184ms
+is not the primary step improvement; forward also differs between the sequential
+workers even though its source is identical. No cache/DRAM/register causality is
+inferred from these isolated allocator/time measurements.
+
+Source archivea0e304ffd3901a2709c00a94dc245224f9a3a3cb3a3eb4252137e45e4460f774;
+verified result archive8dabee4572784b2e3e73a03d46f7371888d36ac982e1e226fa8fc8590e6493a4.
+All1601 tracked files equal the measured commit, with only the pool driver extra.
+GPU gate146.35s, benchmark65.26s, format submission check2.07s; total driver224.48s
+within1200s. The N8192 comparison joba0d6cbd5035c4e97a3a278357cdf289b uses source
+f9483cd4,1800s deadline, unchanged parameters/driver and no new tuning. Its outcome
+is recorded separately after retrieval.
+
+The supplemental evolving-state oracle uses loss `(Y*target).sum()/(B*N)` in
+separate model/optimizer instances. It verifies the full VJP at the state after24
+updates, rather than claiming the primary benchmark's final state or learning
+quality. Primary complete-step timing uses the existing benchmark loss and52
+actual updates. Floating reduction orders may yield different final Parameter
+hashes while remaining within the unchanged numerical gates.
