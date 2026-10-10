@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "plans": [
+    {
+      "id": "native-g8-p8",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_profile_product_large_matrix",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "preparation": "support",
+          "prep_group": 16,
+          "prep_sites": 16,
+          "patch_sites": 8,
+          "gemm": "triton",
+          "atom_group": 8
+        }
+      }
+    },
+    {
+      "id": "torch-g8-p8",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_profile_product_large_matrix",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "preparation": "support",
+          "prep_group": 16,
+          "prep_sites": 16,
+          "patch_sites": 8,
+          "gemm": "torch",
+          "atom_group": 8
+        }
+      }
+    },
+    {
+      "id": "csr-c256k",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_regular_product_matrix_free",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "preparation": "support",
+          "prep_group": 16,
+          "prep_sites": 16,
+          "atom_group": 8,
+          "atom_chunk": 262144,
+          "owner_atoms": 32,
+          "owner_splits": 4,
+          "owner_capacity": 4
+        }
+      }
+    },
+    {
+      "id": "fused-c256k",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_regular_product_matrix_free_fused",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "preparation": "support",
+          "prep_group": 16,
+          "prep_sites": 16,
+          "atom_group": 8,
+          "atom_chunk": 262144,
+          "owner_atoms": 32,
+          "owner_splits": 4,
+          "owner_capacity": 4,
+          "fused_backward": true
+        }
+      }
+    }
+  ]
+}

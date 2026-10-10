@@ -66,6 +66,7 @@ class PlanLinear(nn.Module):
             "research_strip_profile_product_matrix",
             "research_profile_product_large_matrix",
             "research_regular_product_matrix_free",
+            "research_regular_product_matrix_free_fused",
             "research_strip_profile_product_large_matrix",
             "research_profile_product_large_prepared",
             "research_strip_profile_product_large_prepared",

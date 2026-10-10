@@ -164,6 +164,14 @@ class _MatrixFree(torch.autograd.Function):
 
         from . import kernels as k
 
+        fused = getattr(ctx.recipe, "fused_backward", False)
+        if fused:
+            from . import fused_kernels
+
+            backward_atoms = fused_kernels.backward_atoms
+        else:
+            backward_atoms = k.backward_atoms
+
         x, source, amplitude_max, saved = ctx.saved_tensors
         recipe, sizes = ctx.recipe, ctx.sizes
         b, ni, no, _, spacing, oi, oo = sizes
@@ -177,9 +185,9 @@ class _MatrixFree(torch.autograd.Function):
             for start in range(0, a, recipe.atom_chunk):
                 count = min(recipe.atom_chunk, a - start)
                 packed = saved[13 * start : 13 * (start + count)]
-                if need_p:
+                if need_p and not fused:
                     _input_h(x, packed, h, sizes, recipe)
-                k.backward_atoms[(tr.cdiv(count, recipe.atom_group),)](
+                backward_atoms[(tr.cdiv(count, recipe.atom_group),)](
                     x,
                     dy,
                     packed,
