@@ -625,7 +625,7 @@ def test_twenty_graph_replays_same_cotangent_public_clock_moments_and_live_sigma
         torch.testing.assert_close(
             candidate.atoms.p, reference.atoms.p, rtol=0, atol=2e-6
         )
-        for key in ("step", "exp_avg", "exp_avg_sq"):
+        for key in ("exp_avg", "exp_avg_sq"):
             torch.testing.assert_close(
                 opt.state[candidate.atoms.p][key],
                 public.state[reference.atoms.p][key],
@@ -633,7 +633,9 @@ def test_twenty_graph_replays_same_cotangent_public_clock_moments_and_live_sigma
                 atol=2e-6,
             )
         # Recording contributes no update: two warmups plus twenty replays.
-        assert int(opt.state[candidate.atoms.p]["step"].item()) == replay + 3
+        actual_clock = int(opt.state[candidate.atoms.p]["step"].item())
+        public_clock = int(public.state[reference.atoms.p]["step"].item())
+        assert actual_clock == public_clock == replay + 3
     after = polar(
         copy.deepcopy(candidate.kernel).cpu().double(),
         candidate.atoms.p.detach().cpu().double(),

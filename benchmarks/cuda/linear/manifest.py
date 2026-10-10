@@ -14,6 +14,10 @@ from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip import
     NormalizedFullAlgorithm,
     NormalizedWindowAlgorithm,
 )
+from torchcst._backends.cuda.algorithms.linear.periodic_product.algorithm import (
+    PeriodicFactorAlgorithm,
+    PeriodicMatrixAlgorithm,
+)
 from torchcst._backends.cuda.algorithms.linear.profile_product.algorithm import (
     ProductAlgorithm,
 )
@@ -139,6 +143,8 @@ REGISTRY.register(TorusCompactIdsAlgorithm())
 REGISTRY.register(NormalizedFullAlgorithm())
 REGISTRY.register(NormalizedWindowAlgorithm())
 REGISTRY.register(LocalAlgorithm())
+REGISTRY.register(PeriodicMatrixAlgorithm())
+REGISTRY.register(PeriodicFactorAlgorithm())
 REGISTRY.register(ProductAlgorithm())
 REGISTRY.register(StripProductAlgorithm())
 REGISTRY.register(GlobalProductAlgorithm())
