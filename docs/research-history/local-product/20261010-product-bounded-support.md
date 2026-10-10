@@ -1,7 +1,10 @@
 # Regular Product: bounded support metadata
 
-Research candidate only. No public dispatcher adoption or performance result
-is declared by this initial checkpoint.
+Research candidates only. Both recomputation (v1) and lossless compact cache
+(v2) passed full correctness checks but failed the predeclared joint speed/memory
+acceptance gate at N2048 and N8192. Do not adopt either in the public dispatcher.
+Preserve their source on `kernel/product-bounded-support`; main receives this
+evidence and the next research direction only.
 
 Keep the existing single Euclidean Product, two positive equally spaced Line
 axes, normalized Triweight profile product and Polar[A,4]. The whole-product
@@ -232,3 +235,94 @@ from bit identity: the final layout test compares FP32 int32 views, including
 negative zero. The queued gate `l4job-e60a5704381b4e9bbabe0853d85a101b` was
 cancelled before execution and replaced with this stronger test/source freeze;
 its snapshot is retained and it supplies no GPU measurement.
+
+
+## v2/8192 result: reject cache expansion cost
+
+Job `l4job-5621868602464459b95173474dd48dea` passed all four initial
+complete FP64 checks and both candidate full-atom checks after24 live updates.
+All3355443 widths changed; worst updated errors were Y2.180e-4, dX8.162e-10,
+dP3.087e-11. Both candidates' final Parameter hash matches v1/8192. Submission
+validation passed. No tolerance change, support approximation or sample oracle.
+
+| N8192 route | Complete step ms | Allocated peak bytes | Reserved peak bytes |
+| --- | ---: | ---: | ---: |
+| Native control | 42.141644 | 1041040896 | 2501902336 |
+| Native cached | 44.071963 | 978755072 | 2386558976 |
+| Torch control | 39.843431 | 1075119616 | 2522873856 |
+| Torch cached | 41.224368 | 1012833792 | 2407530496 |
+| Dense | 11.649886 | 1112017408 | 1642070016 |
+
+Native reduces allocated peak5.98% but slows4.58%; Torch reduces5.79% but
+slows3.47%. Reject both under the <=3% regression requirement. The near-threshold
+Torch result does not justify a favorable rerun or changing the gate. Each
+comparison is one independent run /21 timed replays. The v2 cache successfully
+avoids repeated normalization, but separate conversion and chunk consumption
+still cost enough to fail the joint objective. Phase diagnostics separately show
+forward27.29→28.10ms/backward12.07→12.79ms (native),
+forward25.24→25.84ms/backward11.84→12.55ms (Torch); they do not isolate conversion
+from other kernels and are not substitutes for primary complete-step time.
+
+Measured source commit91968cf, source archive SHA256
+`bc8a93623c2ae3aa296219b2603076ef6b7c7596d2b6b71827184700f87b799d`,
+retrieved result archive SHA256
+`eaab610fdf758f5d6a5e6c181f4cade841615f581beed2885110a4f8ec9921b7`.
+Neither candidate establishes a speed advantage over the same-protocol dense
+engineering control, whose parameterization/update trajectory differs from CST.
+
+## Disposition and next structural experiment
+
+Keep both validated negative runtimes, catalogs, tests and all frozen sources on
+the named research branch. Do not add the rejected executors to main or generate
+public dispatch tables for them. Retain all failed/cancelled/negative pool jobs.
+The runtime-offset correction is a scalability repair, not a new performance
+qualification for8192.
+
+The next implementation should consume compact factors/intervals directly in
+VJP, removing expanded13-field metadata and decode launches. Compare it first
+against both same-engine matrix controls and the v2 cache, with full oracle/live
+updates and complete-step peaks. Keep exact whole-product normalization and
+canonical optimizer state. This is a new structural candidate, not another
+sample from this losing freeze.
+
+For a larger memory reduction, subsequently replace W/dW with bounded H/G and
+regular-grid owner consumption. Construct owner membership directly from each
+atom's saved interval; avoid a full K*owners table and keep overflow exact.
+At8192, W+dW alone is512MiB (tensor budget). CSR/index construction, duplicates,
+H/G recomputation, ordering and fallback must be included in the complete step.
+Existing large prepared/H-G paths were slower than the matrix control, so merely
+selecting that old path is not evidence of an improvement. No matrix-free or
+owner-index performance result is claimed here.
+
+
+## Final correction validation and preservation
+
+Final source `3144e4490be8f16c284c2e96e274955f155190ef` passed157 GPU-host
+tests, including int32-view bitwise layout/negative-zero/end8192/sentinel checks,
+and initial plus24-update2048 full oracles. Local CPU1412 passed /2700 skipped
+and wheel/sdist build passed for the runtime-offset correction; the final
+bitwise-only test change also passed the6 metadata tests /56 GPU skips locally.
+Final GPU job `l4job-f8cb4f1364ca4ba79e8b5184f7059ee0` succeeded. Its driver
+commit label was accidentally `02545d9`; preserve that raw label. A companion
+proof matches all1599 non-driver frozen-file SHA256s to the explicit commit above,
+with driver SHA256
+`be11c66f6db3ff4fa17ba162a6e94e649283a63e404806b07c517f943aba746b`.
+Proof: ignored `output/product-cached-runtime-source-proof.json`.
+Its source archive SHA256 is
+`fe2ef6699b939269b56066d2f6cb27112d7111c95403b753851548742d20245e`;
+result archive SHA256 is
+`475decb8a29b041edfb0902ef1f9e2c3c348cd6a7079c8ec16adc21d98f26fe9`.
+The duplicate corrected-label job `l4job-27d784e2a1464f3bac835a4cbd19cfdc`
+was cancelled while queued; do not remeasure to erase a metadata mistake.
+
+This corrected2048 comparison remains negative: native1.133386→1.191843ms,
+Torch0.953416→1.030533ms, allocated peaks unchanged from the first v2/2048 study.
+It supplies no corrected-source8192 performance qualification. Main receives
+only this research note and the roadmap update; rejected runtime remains on
+`kernel/product-bounded-support` in the retained research worktree.
+
+Raw source archives, receipts and results remain under
+`~/.local/state/colab-l4-pool/jobs/<job-id>/`; all job paths/hashes are catalogued in
+ignored `output/product-support-evidence-manifest.json`. The measured-source
+proofs and driver are preserved in that worktree's ignored output. No worktree
+or evidence deletion is part of this checkpoint.
