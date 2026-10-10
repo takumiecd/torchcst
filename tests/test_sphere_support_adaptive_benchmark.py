@@ -177,3 +177,52 @@ def test_sharp_wrapper_calls_unchanged_worker_with_explicit_plan(
     )
     with pytest.raises(SystemExit):
         wrapper.main()
+
+
+def test_route_diagnostics_are_candidate_only_and_after_primary(tmp_path, monkeypatch):
+    from benchmarks.cuda.linear import support_adaptive_comparison as wrapper
+
+    run = load_run(
+        LINEAR / "cases/sphere-support-adaptive-1024-sigma1_25.json", CATALOG
+    )
+    plan_file, output = tmp_path / "plan.json", tmp_path / "result.json"
+    plan_file.write_text(wrapper.REGISTRY.dumps_plan(run.entry(CANDIDATE).plan))
+    calls = []
+    monkeypatch.setattr(
+        wrapper,
+        "worker",
+        lambda *a, **kw: calls.append("primary") or dict(status="PASS"),
+    )
+    monkeypatch.setattr(
+        wrapper,
+        "route_diagnostics",
+        lambda *a: calls.append("diagnostics") or dict(scope="independent"),
+    )
+    args = [
+        "wrapper",
+        "--size",
+        "1024",
+        "--sigma",
+        "1.25",
+        "--mode",
+        "research_graph",
+        "--linear-plan",
+        str(plan_file),
+        "--output",
+        str(output),
+        "--route-diagnostics",
+    ]
+    monkeypatch.setattr(sys, "argv", args)
+    wrapper.main()
+    assert calls == ["primary", "diagnostics"]
+    assert json.loads(output.read_text())["route_diagnostics"] == {
+        "scope": "independent"
+    }
+    monkeypatch.setattr(sys, "argv", [*args, "--verify-only"])
+    with pytest.raises(SystemExit):
+        wrapper.main()
+    assert calls == ["primary", "diagnostics"]
+    plan_file.write_text(wrapper.REGISTRY.dumps_plan(run.entry("compact-weight").plan))
+    monkeypatch.setattr(sys, "argv", args)
+    with pytest.raises(SystemExit):
+        wrapper.main()
