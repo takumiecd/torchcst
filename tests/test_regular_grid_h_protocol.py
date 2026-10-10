@@ -67,3 +67,34 @@ def test_both_dense_peaks_required_even_for_fast_candidate(allocated, reserved, 
     mismatch[-1]["runtime"]["gpu"] = "A100"
     with pytest.raises(AssertionError, match="runtime"):
         protocol.assess_regular({r["kind"]: r for r in mismatch}, mismatch)
+
+
+def test_isolated_oracle_uses_saved_live_state_and_all_atom_cotangents(
+    tmp_path, monkeypatch
+):
+    layer = fixture.fixture(17, 3, atoms=19, regular_grid=True)
+    with torch.no_grad():
+        layer.atoms.p[:, 2:] += 0.1
+        layer.kernel.amplitude_max.mul_(0.8)
+        layer.kernel.sigma_max_input.mul_(0.9)
+    x = torch.randn(3, 17, generator=torch.Generator().manual_seed(643))
+    dy = torch.randn(3, 17, generator=torch.Generator().manual_seed(644))
+    snapshot = {
+        "size": 17,
+        "rho": 3,
+        "model": layer.state_dict(),
+        "x": x,
+        "dy": dy,
+        "actual": list(fixture.oracle_vjp(layer, x, dy)),
+    }
+    # Exercise snapshot reconstruction and the independent checker on CPU;
+    # the real subprocess CUDA route is exercised by the L4 cohort.
+    monkeypatch.setattr(torch.nn.Module, "cuda", lambda self: self)
+    monkeypatch.setattr(torch.Tensor, "cuda", lambda self: self)
+    path = tmp_path / "snapshot.pt"
+    torch.save(snapshot, path)
+    assert protocol.oracle_snapshot(path)["status"] == "PASS"
+    snapshot["actual"][2][18, 3] += 1.0  # Last atom, centre cotangent: must be checked.
+    torch.save(snapshot, path)
+    with pytest.raises(AssertionError, match="all_dP"):
+        protocol.oracle_snapshot(path)

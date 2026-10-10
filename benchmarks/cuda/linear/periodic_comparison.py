@@ -255,7 +255,12 @@ def isolated_oracle_check(model, x, dy, *, size, rho, directory, label):
 def oracle_snapshot(path):
     """Independent FP64 whole-axis/all-atom truth; no candidate execution."""
     data = torch.load(path, map_location="cpu", weights_only=True)
-    model = fixture.fixture(data["size"], data["rho"], regular_grid=True).cuda()
+    model = fixture.fixture(
+        data["size"],
+        data["rho"],
+        atoms=len(data["model"]["atom_state.atoms.p"]),
+        regular_grid=True,
+    ).cuda()
     model.load_state_dict(data["model"])
     expected = fixture.oracle_vjp(model, data["x"].cuda(), data["dy"].cuda())
     errors = {}
