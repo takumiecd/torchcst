@@ -49,11 +49,15 @@ def compiler_record(compiled, directory, name):
     ptx = compiled.asm["ptx"]
     path = directory / (name + ".ptx")
     path.write_text(ptx)
+    cubin = compiled.asm.get("cubin")
+    if cubin is not None:
+        (directory / (name + ".cubin")).write_bytes(cubin)
     return {
         "registers": compiled.n_regs,
         "spills": compiled.n_spills,
         "shared_bytes": compiled.metadata.shared,
         "ptx_sha256": hashlib.sha256(ptx.encode()).hexdigest(),
+        "cubin_sha256": hashlib.sha256(cubin).hexdigest() if cubin else None,
         "ptx_static_instructions": {
             op: len(re.findall(re.escape(op), ptx))
             for op in (
