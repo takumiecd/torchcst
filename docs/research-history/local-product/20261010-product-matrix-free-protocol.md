@@ -69,3 +69,10 @@ The initial runner already records full-site FP64 maxabs/relative-L2 metrics.
 The driver now additionally rejects any recorded metric >4e-4 (both gates); the
 first compile-only job never reached this stage. After24 updates the driver checks
 both criteria for all four plans, including both controls.
+
+Second freeze `82a3f30bdae34d08bf9416a1d73f7f82aa888ef4`, job
+`l4job-e6b00bf658084516a3c79e108ebb908e`:150 tests passed, one retained-forward
+fixture failed before newer execution because only input sigma_max was mutated,
+violating the existing shared-bandwidth Product declaration. All other numerical,
+CSR overflow and Graph tests passed. The fixture now mutates input/output maxima
+together; no runtime or tolerance change. The invalid fixture failure remains raw.

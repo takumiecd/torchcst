@@ -369,6 +369,7 @@ def test_matrix_free_retained_forward_owns_parameters_scalars_and_lattice():
         layer.atoms.p.add_(0.17)
         layer.kernel.amplitude_max.mul_(0.7)
         layer.kernel.sigma_max_input.mul_(0.9)
+        layer.kernel.sigma_max_output.mul_(0.9)
         for axis in layer.chart.axes:
             axis.start.add_(0.25)
             axis.spacing.fill_(1.1)
