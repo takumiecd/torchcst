@@ -1286,3 +1286,54 @@ https://github.com/takumiecd/torchcst/actions/runs/38067291396 。
 `e2a4984d` とし、現在の追加commitは研究ノートだけでruntime/runner bytesは同じ。
 各Caseで10 workers（Wtorch/factor/onchip、prepared H16/32、group32 H16/32、input-owner16/32、dense）を
 独立processで比較する。GPU correctness PASSだけで速度・memoryの採用判断はしない。
+
+### input-ownerのpaired結果とmemory不採用
+
+計算source `e2a4984d`、各Caseは10独立workers・24実更新・21 replay samples。
+9 CST×initial/post24×2Case =36 full oracleをPASS。現在のruntime/runner bytesはこのsourceと同じ。
+全workerの入力・初期Parameter・Case・source・declaration・runtimeを同じcohort内で照合する。
+
+| N2048/B32 [ms] | rho3 | rho8 |
+| --- | ---: | ---: |
+| Wtorch | 1.2995 | 3.2491 |
+| factor | 5.1651 | 11.1742 |
+| onchip | 4.4713 | 9.9355 |
+| prepared H16 | 8.3304 | 11.3550 |
+| prepared H32 | 7.5250 | 10.6973 |
+| group32 H16 | 5.8278 | 8.9054 |
+| group32 H32 | 5.7090 | 8.5980 |
+| input-owner G16/H16 | 6.2938 | 7.9252 |
+| input-owner G32/H32 | 6.1292 | 7.5581 |
+| dense | 0.5924 | 0.5942 |
+
+| peak allocated/reserved [MiB] | rho3/8共通 |
+| --- | ---: |
+| group32 H16 | 44.22/102 |
+| group32 H32 | 57.42/104 |
+| input-owner G16/H16 | 58.72/116 |
+| input-owner G32/H32 | 70.72/126 |
+| dense | 81.75/106 |
+
+rho3のinput-ownerは遅い。rho8はG32で約12.1%短縮したが、両容量ともreservedがdenseを上回る。
+したがって現版input-ownerは両Caseで不採用。研究用の明示Planと失敗条件を保全し、
+メモリ基準を緩めたり、allocatedだけで通った扱いにしない。
+post24の独立backward診断はrho8でgroup32 H32の4.250ms→input-owner G32の3.121ms。
+これも完全stepへ加減算せず、atomic stallのhardware計測とは呼ばない。
+
+N2048 rho3 job `l4job-636f6720aedf4e0485aa6254150179df`、result
+`f1cec8a68c61e082eca12915476d82b931d2c5917708eb94a9eb41843626f114`。
+rho8 job `l4job-c5200f75d6004a2aac046340f29b55f1`、result
+`726ce0702f9c03de79c403a793bbb60d89cdb38f0a99d99c87a002899f08d03b`。
+両source archiveは `fd303b44e45281851a3455461f50b5339d2a28404f5a369b7a0c7659c2b2f9a7`。
+全1629 source files、result manifest、worker source hashes、全36 snapshot hashesを照合済み。
+
+### Gとparameter partialをchunk内で畳む次候補
+
+次は別Recipe/Algorithm/PlanでG容量8を独立に指定する。forward H容量16/32は維持する。
+各G chunkのparameter partialを3Aのphysical sumへ畳み、同じpartial bufferを上書きする。
+全chunkを終えてから元のPolar source VJPを一度適用する。G・partialの同時寿命を縮める。
+数式は同じで、FP32の加算順序変更を全勾配oracleで検証する。
+
+再び全GPU契約検証を通してからN2048 rho3/8のpaired cohortを測る。
+input-owner旧版の不採用結果は変更しない。Case・24更新・21 samples・4e-4 gate・
+両peak<=denseは前と同じで、batch/atom数/支持を減らして比較しない。
