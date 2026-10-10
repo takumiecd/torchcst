@@ -743,3 +743,26 @@ PYTHONPATH=src:. python -m benchmarks.cuda.linear.periodic_comparison \
 
 高次元CUDA、別GPU、実DB、独立confirmatory cohort、candidate完全step／backward、
 physical counterによる因果確定は未検証。
+
+## 原因確定を優先する追加診断（事前方針）
+
+2026-10-10のユーザー指示により、実行candidateの最適化に進む前に、Y集約の原因を分ける。
+前回の空NCU reportは取り消さず、今回の追加調査ではProfilerStart/Stopとkernel名filterを
+外す。準備済みP/routing/HをCPUファイルへ保存し、profile子プロセスはそれをGPUへ転送して
+対象kernelを2回だけ起動する。profiling-from-start on、launch-skip 1 / count 1で2回目を取得。
+clock/cache control none、単一sampleのhardware診断であり、主測定／完全stepには使わない。
+既存sourceのN2048/rho3/H32 post24・4valid variantで取得経路を検査する（480秒固定job）。
+これは新しいユーザー指示に基づく、区間指定を変えた追加調査で、同protocolの自動retryではない。
+
+新sourceではsorted-P＋identity ID配列の2variantを追加する。original Orderと同じdtype／
+contiguous ID loadを残して、metadataアドレスの並びとID load除去を分離する。両方とも
+FP64 Y gateと対応するdirect-index variantとのbitwise一致が必要。
+`norm-one`／`sorted-p-norm-one`はnormを1に置換し、variable正規化除算とnorm loadを省く。
+支持判定・H・group/reductionは残るが、出力とcompiler resourceは変わる下限診断で、
+採用候補にはしない。norm load除去と除算処理の影響が含まれ、厳密な単独component費用ではない。
+
+CPU suite、既存4 GPU診断テスト（狭支持／全周支持、端数chunk、strided X、CPU census）を
+先に検証し、測定sourceをcommitする。新診断は既存runnerの1worker、N2048/rho3/H32、
+初期／24実更新、同一FP64 gate、21外部Event sampleで一度測る。GPU job上限600秒、retryなし。
+取得経路の結果に応じて、同じpost24状態で新controlled variantのhardware counterを一度採取する。
+physical counter、SASS、時間の3種類を照合し、断定できる範囲と残る仮説を分ける。

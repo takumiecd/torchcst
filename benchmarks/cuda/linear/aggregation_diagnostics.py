@@ -17,12 +17,23 @@ VARIANTS = {
     "scale-first": (False, True, "full"),
     "sorted-p": (True, False, "full"),
     "sorted-p-scale-first": (True, True, "full"),
+    "sorted-p-with-id": (True, False, "full"),
+    "sorted-p-scale-first-with-id": (True, True, "full"),
+    "norm-one": (False, False, "norm-one"),
+    "sorted-p-norm-one": (True, False, "norm-one"),
     "support-unit": (False, False, "support-unit"),
     "synthetic-h": (False, False, "synthetic-h"),
     "gather-reduce": (False, False, "gather-reduce"),
     "index-walk": (False, False, "index-walk"),
 }
-EXACT_FORMULA = {"full", "scale-first", "sorted-p", "sorted-p-scale-first"}
+EXACT_FORMULA = {
+    "full",
+    "scale-first",
+    "sorted-p",
+    "sorted-p-scale-first",
+    "sorted-p-with-id",
+    "sorted-p-scale-first-with-id",
+}
 COUNT_FIELDS = (
     "bins",
     "groups",
@@ -148,6 +159,9 @@ def aggregation_probes(
     assert a > 0
     routing = prepare_routing(packed, sizes, recipe)
     sorted_p = packed.index_select(1, routing[0])
+    # Same dtype and contiguous ID load as the original Order. Identity values
+    # retain the ID indirection while addressing already sorted metadata.
+    identity = torch.arange(a, device=x.device, dtype=routing[0].dtype)
     h = allocate_h(x, a, recipe)
     starts = list(range(0, b, h_capacity(recipe)))
     outputs = {name: x.new_zeros((b, no)) for name in ("runtime-full", *VARIANTS)}
@@ -197,9 +211,11 @@ def aggregation_probes(
                 enable_fp_fusion=False,
             )
         sorted_flag, scale, mode = VARIANTS[name]
+        keep_id = name.endswith("-with-id")
+        probe_routing = (identity, *routing[1:]) if keep_id else routing
         return kernels.aggregation_probe[grid](
             sorted_p if sorted_flag else packed,
-            *routing,
+            *probe_routing,
             h,
             outputs[name],
             a,
@@ -214,6 +230,7 @@ def aggregation_probes(
             SORTED=sorted_flag,
             SCALE_FIRST=scale,
             MODE=mode,
+            KEEP_ID_LOAD=keep_id,
             num_warps=4,
             enable_fp_fusion=False,
         )
@@ -232,6 +249,12 @@ def aggregation_probes(
     assert torch.equal(outputs["runtime-full"], outputs["sorted-p"]), (
         "reordered metadata changes results"
     )
+    assert torch.equal(outputs["runtime-full"], outputs["sorted-p-with-id"]), (
+        "identity ID indirection changes results"
+    )
+    assert torch.equal(
+        outputs["sorted-p-scale-first"], outputs["sorted-p-scale-first-with-id"]
+    ), "identity ID indirection changes scale-first results"
     checks = {}
     for name, output in outputs.items():
         require_finite(name, output)
@@ -324,6 +347,7 @@ def aggregation_probes(
         "atom_group": recipe.atom_group,
         "H_bytes": h.numel() * h.element_size(),
         "sorted_P_bytes": sorted_p.numel() * sorted_p.element_size(),
+        "identity_ID_bytes": identity.numel() * identity.element_size(),
         "sorted_P_build": {
             "scope": "index_select into preallocated scratch; outside Y timing",
             "samples_ms": sort_samples,

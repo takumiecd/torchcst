@@ -30,6 +30,7 @@ def aggregation_probe(
     SORTED: tl.constexpr = False,
     SCALE_FIRST: tl.constexpr = False,
     MODE: tl.constexpr = "full",
+    KEEP_ID_LOAD: tl.constexpr = False,
 ):
     owner = tl.program_id(0)
     rows = BSTART + tl.program_id(1) * BM + tl.arange(0, BM)
@@ -48,7 +49,7 @@ def aggregation_probe(
         for start in range(low, high, GROUP):
             pos = start + lane
             valid = pos < high
-            if SORTED:
+            if SORTED and not KEEP_ID_LOAD:
                 a = pos
             else:
                 a = tl.load(Order + pos, valid, 0).to(tl.int32)
@@ -67,6 +68,10 @@ def aggregation_probe(
                     inv = tl.load(P + A + a, valid, 1)
                     norm = tl.load(P + 5 * A + a, valid, 1)
                     amp = tl.load(P + a, valid, 0)
+                    if MODE == "norm-one":
+                        # Bypasses variable normalization division. Changes Y;
+                        # never an executable mathematical variant or Plan.
+                        norm = tl.full((GROUP,), 1.0, tl.float32)
                     u, _ = _periodic_raw(
                         sites[None, :], co[:, None], inv[:, None], OO, LO, NO
                     )
