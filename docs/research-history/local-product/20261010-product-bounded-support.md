@@ -175,3 +175,33 @@ retrieved result archive SHA256 is
 `c324359ed38c2a330f08101177117e8a490db60a18312a89bc9d561b18ef2d7c`.
 Preserve this validated negative route on the research branch; it is not eligible
 for public dispatch adoption. The cache candidate is evaluated separately.
+
+
+## v2/2048 gate and small-size rejection
+
+Job `l4job-98aa5d354344453494c60c70be55bccf` passed156 tests, including
+bitwise compact-layout roundtrip. All four initial FP64 oracle checks and both
+24-update candidate full-atom oracles passed; each candidate changed all209715
+widths, and the final Parameter hashes match the v1 updated oracle. This checks
+live updates without interpreting21 timed replays as independent runs.
+
+| N2048 route | Complete step ms | Allocated peak bytes | Reserved peak bytes |
+| --- | ---: | ---: | ---: |
+| Native control | 1.128098 | 66493952 | 163577856 |
+| Native cached | 1.189505 | 71738368 | 188743680 |
+| Torch control | 0.949566 | 99735040 | 205520896 |
+| Torch cached | 1.033315 | 105817088 | 230686720 |
+| Dense | 0.590983 | 102238720 | 148897792 |
+
+Reject this size: native is5.44% slower with7.89% more allocated peak; Torch
+is8.82% slower with6.10% more peak. With K<C the expanded scratch still equals
+the original support table size, and the compact cache adds storage. Keep the
+same C262144 for the already declared8192 study, rather than tuning away this
+negative case. The large job is `l4job-5621868602464459b95173474dd48dea`,
+source91968cf (only research-note changes after the v2 source08b72c8),1600s budget.
+
+The2048 source archive SHA256 is
+`0438d7e3240fef951f8452ab3195d1c43454e5d7050fd36da929b44c79c521b7`;
+retrieved result archive SHA256 is
+`7fede24bbaa6029a04eaf1639707fe011ad7c12720bed8fbc3eaec27ca411b9b`.
+GPU process usage was not measured.
