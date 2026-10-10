@@ -340,3 +340,31 @@ G8のpost24固定snapshotについて、既存runnerの別診断Graphで次を�
 主測定の完全stepと両peakを保存した後だけ診断を行い、5 replayと実input routing censusを記録する。
 producer内をさらに分けるprobeは既存contractを用いてG/dGとH/dHをそれぞれ評価できるが、
 融合解除でregister配置・中間転送が変わるため、その時間を元kernelから差し引かない。
+
+実測したG8/H16・owner BM16の内訳（N2048/B32、post24固定診断、ms）：
+
+| 区間 | rho3 | rho8 |
+| --- | ---: | ---: |
+| 入力routing・係数・dX初期化など | 0.0881 | 0.0891 |
+| G/dG＋H/dH＋parameter partial | 1.2964 | 1.7664 |
+| G→dX owner集約 | 0.9677 | 1.5585 |
+| physical部分和累積 | 0.0614 | 0.0625 |
+| source VJP | 0.0154 | 0.0164 |
+
+生成と集約の双方が重い。これだけでcache missやatomic stallを原因と断定しない。
+5種類のG8 route、両rhoで診断と実backwardのdX/all-dPの差は0だった。
+完全stepの独立FP64 gateと両peak、raw evidenceは研究履歴へ記録した。
+
+次の二候補は未実装で、forwardを固定して単独で比較する。
+
+- 入力site-prefix：8siteの区分を1siteにし、dX候補を絞る。N2048ではprefixが
+  257→2049個（int64で＋14KiB）、検索用arangeは＋7KiB。global D10かつ均一分布なら
+  候補範囲40→28siteで約30%減を予想するが、実boundsで数え直す。broad支持なら効果は消える。
+- 入力bin内の並べ替え：既存区分を保持し、`key=input_bin*NO+output_site` でsortする。
+  prefixと候補数を維持し、G producerのdY局所性を狙う。既存Keysへ書くため追加A-sized配列は
+  不要。同じinput-binには平均約819atomあり、input-site第一キーの約102atomより大きな集合を
+  第二キーで並べられる一方、bin内の入力site順は保証しない。メモリpeakの同等は実測事項。
+
+最初は候補数削減を直接検証できる入力site-prefixを優先し、次に配置だけを変える。
+いずれもatom加算順・producer groupが変わるため、全勾配・floor・境界・snapshot・Graphの
+検証を通してから完全stepを測る。既存forwardの二座標sort案は別に比較する。

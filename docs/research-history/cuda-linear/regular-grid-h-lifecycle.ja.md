@@ -1761,3 +1761,115 @@ initial/post24独立FP64 gate、24更新、21主測定samplesを維持し、
 主測定の後に5区間診断を実行する。H32通常とH16/H32-G8のBM8/16組を独立確認する。
 inner1450秒/job1500秒は直前14-route jobの実所要時間を根拠とする事前budget。
 timeoutの場合はその失敗を保存し、同じ測定を延長してやり直さない。
+
+
+### source351ee4feのGPU検証と後続cohort
+
+追加診断のGPU検証job `l4job-aa1452c0c3e64368888787d191de6edd` は
+6 passed /skipなし（22.50秒）。source archive
+`e097c4dc4a33eda5d0e4ecab89e7c6e2162f5815d9e3032b96af13efef957c04`、result archive
+`ff026b52f9af45fc1d94d3edf2f141887270ab900282b174577563397ef2b370`。
+GitHub CPU validationもPASS。runtimeはGPU840件を検証したsource971031b4とbyte同一。
+
+後続2 Caseも全11 routesがPASS、初期/post24の独立FP64 full all-atom gateは計40件PASS。
+全1629 source files、result manifest、worker source hashes、snapshots、同cohortのfixture/
+初期Parameter/Case/runtime/catalogを照合した。現在の323 source bytesとも一致する。
+source971/351間でもruntimeの全src hashesと初期入力・Parameter・Case・runtime・catalogを
+照合した。診断計測追加によるbenchmark source hashの差は保持する。
+## Streaming backward段階診断（2026-10-11）
+
+post24の固定状態、実運用と同じG8生成・dX owner・勾配累積を別Graphで計測。各chunk段階は同一replay内の4chunkを合計してから5 replayのmedianを取る。primary完全stepや別Graphのphase時間へ加減算しない。
+
+### N2048 / B32 / rho3.0
+
+| route | 完全step [ms] | allocated/reserved [MiB] | 両peak≤dense |
+| --- | ---: | ---: | --- |
+| matrix-torch | 1.3015 | 96.16/142 | FAIL |
+| factor | 5.2401 | 83.11/130 | FAIL |
+| onchip-h | 3.9704 | 42.87/114 | FAIL |
+| stream-g8-h32 | 6.3167 | 57.42/104 | PASS |
+| site-stream-g8-h32 | 5.4111 | 57.43/104 | PASS |
+| site-owner-bm16-stream-g8-h32 | 4.9588 | 57.43/104 | PASS |
+| site-routed-h32 | 4.9169 | 57.43/104 | PASS |
+| site-owner-bm16-h32 | 4.2913 | 57.43/104 | PASS |
+| site-stream-g8-h16 | 5.5950 | 47.12/102 | PASS |
+| site-owner-bm16-stream-g8-h16 | 4.9118 | 47.12/102 | PASS |
+| dense | 0.5953 | 81.75/106 | PASS |
+
+| route | setup | G/dG＋H/dH＋partial | G→dX | physical累積 | source VJP |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| stream-g8-h32 | 0.0891 | 1.2933 | 0.9748 | 0.0625 | 0.0154 |
+| site-stream-g8-h32 | 0.0901 | 1.2933 | 0.9667 | 0.0625 | 0.0154 |
+| site-owner-bm16-stream-g8-h32 | 0.0901 | 1.3107 | 0.9769 | 0.0635 | 0.0164 |
+| site-stream-g8-h16 | 0.0891 | 1.3046 | 0.9646 | 0.0625 | 0.0164 |
+| site-owner-bm16-stream-g8-h16 | 0.0881 | 1.2964 | 0.9677 | 0.0614 | 0.0154 |
+
+5 routes共通の実input routing: prefix=257、D=5、候補atom訪問=629145、GROUP反復=20058、live-site候補検査=5033160。batch多重度・padded laneを除く論理量。active dX CTA=1024、通常/fallback合計launch CTA=2048、unsafe fallback=False。
+5 routesで同じsnapshotの実backwardとの最大差: `{"all_dP": 0.0, "dX": 0.0}`。比較gateはatol/rtol=4e-4で、独立FP64 gateはprimaryのinitial/post24に別途実施。
+
+job `l4job-440850f5751e4840ac52a389b2bc7fb7`
+source archive `e2624b3c61c55dd7221b5218250672cb759288fc8cd48f3cb324f694ae00cb1a`
+result archive `114d3252072f82cb43b94454e4c0fc46e6579868171a2757c91e6eca123c3b73`
+
+### N2048 / B32 / rho8.0
+
+| route | 完全step [ms] | allocated/reserved [MiB] | 両peak≤dense |
+| --- | ---: | ---: | --- |
+| matrix-torch | 3.2860 | 96.16/142 | FAIL |
+| factor | 11.2568 | 83.11/130 | FAIL |
+| onchip-h | 9.8370 | 42.87/114 | FAIL |
+| stream-g8-h32 | 7.8905 | 57.42/104 | PASS |
+| site-stream-g8-h32 | 7.5583 | 57.43/104 | PASS |
+| site-owner-bm16-stream-g8-h32 | 6.7824 | 57.43/104 | PASS |
+| site-routed-h32 | 7.8165 | 57.43/104 | PASS |
+| site-owner-bm16-h32 | 7.6466 | 57.43/104 | PASS |
+| site-stream-g8-h16 | 7.3339 | 47.12/102 | PASS |
+| site-owner-bm16-stream-g8-h16 | 6.9662 | 47.12/102 | PASS |
+| dense | 0.5935 | 81.75/106 | PASS |
+
+| route | setup | G/dG＋H/dH＋partial | G→dX | physical累積 | source VJP |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| stream-g8-h32 | 0.0901 | 1.7531 | 1.5555 | 0.0635 | 0.0164 |
+| site-stream-g8-h32 | 0.0901 | 1.7644 | 1.5667 | 0.0635 | 0.0164 |
+| site-owner-bm16-stream-g8-h32 | 0.0922 | 1.7756 | 1.5862 | 0.0645 | 0.0164 |
+| site-stream-g8-h16 | 0.0901 | 1.7644 | 1.5555 | 0.0635 | 0.0154 |
+| site-owner-bm16-stream-g8-h16 | 0.0891 | 1.7664 | 1.5585 | 0.0625 | 0.0164 |
+
+5 routes共通の実input routing: prefix=257、D=10、候補atom訪問=1048575、GROUP反復=33420、live-site候補検査=8388600。batch多重度・padded laneを除く論理量。active dX CTA=1024、通常/fallback合計launch CTA=2048、unsafe fallback=False。
+5 routesで同じsnapshotの実backwardとの最大差: `{"all_dP": 0.0, "dX": 0.0}`。比較gateはatol/rtol=4e-4で、独立FP64 gateはprimaryのinitial/post24に別途実施。
+
+job `l4job-0c6e2cf31c714fb6928eeaaa2c27c167`
+source archive `ed4c726cc8b943f15548f3f37eaedfb5b52be3ecb20b2ee7951f4cc17829c89d`
+result archive `47f80b482c65d255bf5bda8307a0e3f977435dfdde8e9f989eca5d36453ad9d8`
+
+setupはdX初期化・routing・係数準備を含む。producerはG単独ではなくG/dG・H/dH再計算・3種類のparameter部分和を含む。dXはowner reductionでatomic scatterなし。両streaming routeの入力routingは同一のcoarse方式。小さなroute間差をアルゴリズム差としない。
+
+### Owner BM16の独立確認
+
+runtime sourceは両cohortで同一。後続source351ee4feはbenchmarkの主測定後に診断を追加した。下表は各cohort内の対応比較で、異なるsnapshot/sourceの絶対時間を直接差し引かない。
+
+| rho | BM8→16の組 | source971 完全step [ms] | source351 完全step [ms] | 両runのpeak同等 |
+| --- | --- | ---: | ---: | --- |
+| 3 | site-routed-h32 | 4.6859→4.3743 | 4.9169→4.2913 | PASS |
+| 3 | site-stream-g8-h16 | 5.4612→5.0600 | 5.5950→4.9118 | PASS |
+| 3 | site-stream-g8-h32 | 4.6623→5.1034 | 5.4111→4.9588 | PASS |
+| 8 | site-routed-h32 | 8.4355→7.8349 | 7.8165→7.6466 | PASS |
+| 8 | site-stream-g8-h16 | 7.3342→6.6225 | 7.3339→6.9662 | PASS |
+| 8 | site-stream-g8-h32 | 7.6668→6.9904 | 7.5583→6.7824 | PASS |
+
+
+rho3/8ともG8 backwardはproducerとdX ownerが主要区間であり、routing準備・physical累積・
+source VJPは小さい。rho8の生成1.77msと集約1.56msは拮抗し、index構築だけでは大幅改善しない。
+ここまででメモリ配置やcache missが物理的原因だと確定したわけではない。
+全診断routeで実backwardのdX/all-dPとの差は0だった。
+
+BM16の通常H32とG8/H16は両Caseとも2独立cohortで改善方向を確認した。
+G8/H32のrho3は方向が反転し、普遍的な改善とはしない。rho8のH16/H32の順位も反転した。
+従って通常/G8やH16/H32を一律に固定するpublic selectorは作らない。
+rho3の低メモリ速度候補は通常BM16/H32、rho8はBM16/G8を継続候補とし、
+H16は47.12/102MiB、H32は57.43/104MiBのtradeoffを保持する。denseは約0.59msで依然速い。
+
+全結果を保全後、全pool slotのstoppedとserver停止を確認した。
+証拠は `backward-stages-final-pool-status.json` と `backward-stages-final-stop-lifecycle.log`。
+新しい配置・入力site-prefixの性能はまだ測っていない。次はforwardを固定し、
+入力候補の細分化と入力区分内のoutput-site順sortを別候補として比較する。
