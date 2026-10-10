@@ -128,6 +128,8 @@ def aggregation_probes(
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     x = x.detach()
+    if expected is not None:
+        expected = expected.detach().to(x.device)
     p = model.atoms.p.detach()
     b, ni, no = len(x), model.in_features, model.out_features
     chart = model.chart

@@ -582,3 +582,9 @@ static codeとruntime resource metadataはphysical stall／cache counterの代�
 GPU診断テストを1job（600秒）、その後既存4Case × 全9controlを同一sourceで各1cohort、
 各job600秒の事前上限で測定する。主controlの全勾配・正規化gateは従来どおり。
 GPU測定の成功／失敗とarchive hashesを保存し、retryで都合のよい結果を選ばない。
+
+初回診断検証 `l4job-a0fe4fd4902a4c1d806b1469ebaacb09` はGPU YとCPU FP64 oracleのdevice不一致で4件失敗した。
+clone／sorted-Pのbitwise照合とCPU census照合は通過したが、診断timingには到達していない。
+比較Tensorをdetachして同じdeviceへ転送するhost比較だけを修正し、kernel・gate・budgetは維持する。
+修正sourceを別commitで検証に明示的に提出する。失敗archive／manifestは照合して保全した。
+source archive `bbc774d075e98e48e666990b401d7d004621b128f0acb273b65810f6a081d648`、result archive `261c2c105cd6f57efc43cbe88c7ec7b7c46ea299e9ad16e095f2da6398fb58f1`。
