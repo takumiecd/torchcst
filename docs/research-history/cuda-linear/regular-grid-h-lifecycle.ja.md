@@ -263,3 +263,78 @@ routingの明示Tensorはkeys4K、sorted keys4K、order8K、区間境界8(T+1)�
 距離部分和4ceil(K/256)、最大距離4byte。sort/searchsortedの内部workspaceは別であり、
 Algorithmのworkspace_boundは`None`とする。routing費用とallocator/Graph poolを測定へ含める。
 検証と性能processを分離した比較protocolで全controlを測り直し、旧表の数値とは混ぜない。
+
+### 出力所有候補の検証と完全step比較
+
+出力所有forwardのCUDA検査を含め150 passed / skipなし
+（実GPU116件、CPUで実行可能な宣言／protocol検査34件）。
+原子数集中257、末尾の短いtile、tile8/16/32/64、周期境界、広い支持、
+空／単一支持、joint floor、ゼロ振幅、strides、必要な勾配の分岐、
+forward snapshot、H/G非保存、20 eager／Graph更新を検査した。
+GPU検査sourceは`a7518e44ee1b3b48bc78b3c0fa4f7abcd64952c7`。
+後続のoracle snapshot復元修正はbenchmarkのatom count復元とCPU検査だけで、
+全runtime source hashはGPU検査時と一致する。
+CPU全体1650 passed / 2760 skipped、Plan宣言往復、Ruff、diff check、
+wheel/sdist build、CPU CI PASS。CUDA・実DBのskipをGPU／DB検証と扱わない。
+
+`isolated-oracle-v2`では、候補のY/dX/全dPとlive model state/X/dYをCPU snapshotへ保存し、
+FP64全axis・全atom oracleを別processで実行する。初期と24更新後の同じsnapshotを検査し、
+性能processへFP64 GEMMの割当を持ち込まない。候補自身の初期VJP、warmup、capture/replayと
+その持続的library割当は測定側に含む。denseにも同じ測定protocolを適用する。
+全40 oracle snapshot hash、24 workerの更新counter24、source/result manifestを確認した。
+全対照の最大max_abs=3.3532883353792897e-4、最大relative_l2=1.0063840142777506e-6。
+各4e-4 gate、B32、5% atoms、seed41、FP32 IEEE、optimizer／更新則は変更しない。
+
+各セルは **完全step中央値ms / allocated MiB / reserved MiB**。
+全controlをv2で再測定した。v1の表とは別protocolとして扱う。
+
+| N / 初期rho | W＋Torch | W＋Triton | 全H保存factor | atom担当H/G | 出力所有H | dense |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1024 / 3 | 0.391 / 48.67 / 116 | 0.463 / 16.17 / 36 | 1.278 / 20.96 / 36 | 1.172 / 10.84 / 36 | 2.013 / 10.84 / 36 | 0.085 / 33.00 / 86 |
+| 1024 / 8 | 0.871 / 48.67 / 116 | 0.942 / 16.17 / 36 | 2.740 / 20.96 / 36 | 2.710 / 10.84 / 36 | 3.270 / 10.84 / 36 | 0.085 / 33.00 / 86 |
+| 2048 / 3 | 1.319 / 96.16 / 142 | 1.491 / 63.11 / 122 | 5.213 / 83.11 / 130 | 4.401 / 42.87 / 114 | 8.812 / 42.87 / 114 | 0.593 / 81.75 / 106 |
+| 2048 / 8 | 3.331 / 96.16 / 142 | 3.534 / 63.11 / 122 | 11.725 / 83.11 / 130 | 10.241 / 42.87 / 114 | 13.641 / 42.87 / 114 | 0.592 / 81.75 / 106 |
+
+出力所有候補はこの1cohortではatom担当より約21〜100%遅く、両memory peakは同じ。
+Y atomicの除去だけで速くなるという仮説は、この実行方式では支持されなかった。
+1024ではmemory条件内でTriton Wが最速。2048はv2でも全CST候補がdenseの
+両peak以下条件を満たさない。H非保存のreservedはv1の154からv2の114MiBとなったが、
+依然dense106MiBを超える。公開dispatcherへの採用はなし。
+
+主測定後の別copyでは、2048/rho3のforward＋lossはatom担当1.810ms、出力所有5.078ms、
+backwardは1.912ms／1.918msで、forward側の増加が大きい。
+2048/rho8の固定forwardではprepの後の融合／routing＋所有集約が4.333ms／7.407ms。
+これらを足して主測定にしない。診断sampleには時系列変動があり、raw値を保存する。
+
+索引作成は「H→Yの支持区間を使い、中心区間の並びからY→atom候補を引く」方式。
+明示的な全site→atom対応を持たないため、出力tile内の無効候補確認と
+複数tileでのH再生成が残る。全支持indexの反転表を先に採用せず、
+まずrouting構築と集約kernelを分けて診断し、Hの再計算と逐次loopも確認する。
+出力所有を維持しつつ、小batchのHを一度だけ生成して再利用する有界bufferは次の比較候補であり、
+性能／memory改善は未検証。現在の出力所有候補は比較対照として研究branchへ保持する。
+
+| scope | job | source archive SHA256 | result archive SHA256 |
+| --- | --- | --- | --- |
+| 150 checks | `l4job-84350cfdc1404ee9b70423e82f95c811` | `d1db2d239c19db5d9b1a94bd7ce52d4ff18ed345c3320a9d97e13f0d5f993319` | `f18091474c61988f6b7054129de07e6a8cdefdc41d8d89aecaaa5d10397b5983` |
+| 4 v2 cohorts / 24 workers | `l4job-82226d60e9704b588b95f300119776a0` | `791af3a1dbf18a5181e5bded656e16653a64dcdbe70468dbed4bc51159f1033b` | `56a727dd2c574da35d3190b6caac384e4bad4d0d59331b44c5c2583f9006b9c7` |
+
+比較sourceは`5f979468`。NVIDIA L4、driver580.82.07、Torch2.11.0+cu130、
+CUDA13.0、Triton3.6.0、Python3.13.15。各case/controlは独立process、各21sampleの1cohort。
+source/result archive、全source/result file、snapshotを照合し、ignored
+`output/regular-grid-h/output-owned-evidence/`へraw copyを保管した。
+再現driverは`owner-validate-driver.py`／`owner-measure-driver.py`、例えば以下を使う。
+
+```bash
+PYTHONPATH=src:. python -m benchmarks.cuda.linear.periodic_comparison \
+  --case benchmarks/cuda/linear/cases/regular-grid-h-2048-rho8.json \
+  --isolated-oracle --phases --output output/regular-grid-h-v2.json
+```
+
+追加のtrace専用job `l4job-4ce0482f863f45a2b3ed8246f7660fd8`は、
+Colab execの外側が420秒でtimeoutし、pool状態は`interrupted`となった。
+trace／結果を回収できておらず、GPU実行の完了も確認できない。
+この失敗からsort、候補探索、H再生成の個別費用やkernel停止を推定しない。
+成功済みの150検査と4cohort比較は別jobの検証済み結果として維持する。
+自動再実行は行わない。終了後、slot1のlifecycleでsession terminatedと
+server上のactive sessionなしを確認し、全pool slotは`stopped`。
+失敗job、transport／lifecycle logもignored evidenceへ保存した。
