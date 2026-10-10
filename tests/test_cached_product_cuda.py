@@ -29,7 +29,8 @@ def bounded(monkeypatch):
 
 
 @cases.scenarios.GPU
-def test_compact_support_roundtrip_is_bitwise_lossless():
+@pytest.mark.parametrize("ni,no,offset", [(65, 33, 17), (8192, 8192, 33)])
+def test_compact_support_roundtrip_is_bitwise_lossless(ni, no, offset):
     import triton as tr
 
     from torchcst._backends.cuda.algorithms.linear.local_product.preparation import (
@@ -43,14 +44,18 @@ def test_compact_support_roundtrip_is_bitwise_lossless():
         encode,
     )
 
-    a, offset, total = 257, 17, 300
+    a, total = 257, 330
     p = torch.tensor([[0.3, 1.5, 2.4, 24]]).repeat(a, 1).cuda()
-    layer = cases.scenarios.model(p, "global", device="cuda")
+    p[:, 2] = torch.linspace(-4, no + 4, a, device="cuda")
+    p[:, 3] = torch.linspace(-4, ni + 4, a, device="cuda")
+    p[0, :2] = 0
+    p[1, 2], p[1, 3] = no - 0.25, ni - 0.25
+    layer = cases.scenarios.model(p, "global", n=ni, out=no, device="cuda")
     packed = p.new_empty((13, a))
     decoded = torch.empty_like(packed)
-    factors = p.new_empty((5, total))
-    ends = torch.empty((4, total), dtype=torch.int16, device="cuda")
-    flags = torch.empty(total, dtype=torch.uint8, device="cuda")
+    factors = p.new_full((5, total), float("nan"))
+    ends = torch.full((4, total), -32768, dtype=torch.int16, device="cuda")
+    flags = torch.full((total,), 255, dtype=torch.uint8, device="cuda")
     recipe = CachedMatrixProductRecipe()
     scalars = polar_scalars(layer.kernel)
     _prepare(
@@ -58,12 +63,24 @@ def test_compact_support_roundtrip_is_bitwise_lossless():
         packed,
         scalars,
         layer.kernel.spec.normalization.floor,
-        (7, 65, 33, 0, 1, 0, 0),
+        (7, ni, no, 0, 1, 0, 0),
         recipe,
     )
     encode[(tr.cdiv(a, 256),)](
         packed, factors, ends, flags, a, total, offset, 256, enable_fp_fusion=False
     )
+    for untouched in (slice(None, offset), slice(offset + a, None)):
+        assert torch.isnan(factors[:, untouched]).all()
+        assert (ends[:, untouched] == -32768).all()
+        assert (flags[untouched] == 255).all()
+    torch.testing.assert_close(
+        factors[:, offset : offset + a], packed[[1, 4, 5, 6, 7]], rtol=0, atol=0
+    )
+    torch.testing.assert_close(
+        ends[:, offset : offset + a], packed[9:13].to(torch.int16), rtol=0, atol=0
+    )
+    assert int(ends[1, offset + 1]) == ni
+    assert int(ends[3, offset + 1]) == no
     decode[(tr.cdiv(a, 256),)](
         factors,
         ends,

@@ -205,3 +205,21 @@ The2048 source archive SHA256 is
 retrieved result archive SHA256 is
 `7fede24bbaa6029a04eaf1639707fe011ad7c12720bed8fbc3eaec27ca411b9b`.
 GPU process usage was not measured.
+
+
+## Independent audit and offset correction
+
+The independent read-only source audit found no additional contract/snapshot
+violation or reason to invalidate the frozen C262144 comparisons. It identified
+`START: constexpr` in layout encode/decode: C256 at K3355443 would compile26216
+unique-offset variants (both directions), defeating scalable small-chunk use.
+Change START to a runtime scalar in a separate commit; preserve the measured
+source91968cf and its result. This changes layout addressing specialization,
+not the mathematical preparation or VJP.
+
+The correction also makes the inherited recipe-boundary test read its selected
+algorithm revision, so cached v2 itself is checked. Extend the bitwise layout
+test to N8192 endpoints, empty/zero-amplitude atoms and distinct nonzero offsets;
+validate untouched prefix/suffix sentinels and exact field copies, in addition to
+encode/decode equality. Targeted CPU validation is6 passed /56 skipped; the
+GPU gate must run on the separately frozen correction before any new claim.

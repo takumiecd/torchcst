@@ -13,7 +13,7 @@ def encode(
     Flags,
     A: tl.constexpr,
     K: tl.constexpr,
-    START: tl.constexpr,
+    START,
     BLOCK: tl.constexpr,
 ):
     a = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
@@ -48,7 +48,7 @@ def decode(
     P,
     A: tl.constexpr,
     K: tl.constexpr,
-    START: tl.constexpr,
+    START,
     BLOCK: tl.constexpr,
 ):
     a = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)

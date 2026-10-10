@@ -40,7 +40,9 @@ def test_boundaries_and_recipe_roundtrip():
     )
     selected = plan()
     assert REGISTRY.loads_plan(REGISTRY.dumps_plan(selected)) == selected
-    algorithm = REGISTRY.get(selected.algorithm_id, revision="v1")
+    algorithm = REGISTRY.get(
+        selected.algorithm_id, revision=selected.algorithm_revision
+    )
     assert algorithm.supports(context, selected.recipe).supported
     assert not algorithm.supports(
         replace(context, atom_count=4194305), selected.recipe
