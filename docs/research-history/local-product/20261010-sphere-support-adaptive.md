@@ -76,8 +76,35 @@ all controls retained. Public adoption is a separate decision.
 
 ## Provenance and result status
 
-The research checkout is on `kernel/sphere-support-adaptive`, starting from
-`53fcda1f19302e7c235dca0b0f814a72d1c0951e`. Implementation, tests and frozen
-comparison tooling are in preparation. Source hashes, exact collections,
-completed outcomes, job IDs and recovery proofs will be recorded before any
-integration decision. No performance improvement has been established yet.
+The original research checkout started on `kernel/sphere-support-adaptive`
+from `53fcda1f19302e7c235dca0b0f814a72d1c0951e`. The frozen regression job
+`l4job-d38aadb7725a4ddb865ca053e265c3e4` passed all64 tests with zero skips;
+its disjoint partitions were42 ordinary numerical tests, one compiler witness
+and21 declaration/benchmark tests. The same source dictionary and driver then
+ran gate job `l4job-7dab8d3b9f7a495c87fa73e8037edb4c`. Its30 common protocol
+tests passed, but the first N1024/sigma1.25 compact control failed the initial
+full all-dP gate: maxabs0.010541717151426155, relative-L2
+1.9741792350158907e-5. The fixed threshold requires both metrics <=4e-4.
+Completed worker count was0/16; no primary timing, qualification, reverse
+selection or public adoption follows.
+
+The original ignored protocol, driver, assessor and CPU proof remain under
+`output/sphere-support-adaptive/`; the driver SHA256 is
+`dcbee0aa4c594520075270867a9386eb09b096074d3bcdd8727ae4fe55c4cd86`.
+The regression/gate archive hashes are respectively
+`e1025f34d61fe6853ed8e5ada63130af8cfbb3a44f5d13922a40921112ab2864`
+and `327344b8542dc008506e109a33923f96cf93d486d90e7a9e22071dfbb1ca9a74`;
+their source-file dictionaries are identical despite different archive bytes.
+Verified raw logs, pool specs and source archives are retained at
+`~/.local/state/colab-l4-pool/jobs/<job-id>/`.
+
+Independent initial-state diagnosis job `l4job-58f89125d78a405d9f0a951972c5fc3e`
+also found the error in recompute and adaptive controls (maxabs approximately
+0.01053027). The fixed-width physical FP64 centre-difference controls are
+retained in `output/sphere-precision-adaptive-tests/fixed-width-center-controls.json`;
+the singleton below the norm floor has a nonzero centre derivative, and a
+two-site atom just above the floor also requires accurate normalization.
+This shared failure is preserved as a negative result. The
+[separate precision study](20261010-sphere-precision-adaptive.md) changes the
+Algorithm IDs and explicitly compares against a precision-corrected compact
+control; it does not relabel the failed v1 comparison as a valid measurement.
