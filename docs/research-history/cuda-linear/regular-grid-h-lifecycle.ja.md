@@ -355,3 +355,79 @@ H scratchは4K×8 byteで、全batch32分を保存せず、backwardへも残さ�
 その融合区間を一つの指標とし、他方式の時間の差し引きでHの費用を推定しない。
 Eventのある固定post24 forwardは診断用の別copyであり、主測定の完全stepにはEventを入れない。
 性能／memoryの採否は実測後に記録する。
+
+### 小batch H再利用の検証・採否
+
+実装sourceは`8d424a6ec9cf1bc6e63017c5ec72d4eb8fcad285`。L4で182 passed / skipなし
+（CUDA検査とCPUで実行可能な宣言／protocol検査を含む）。CPU全体は1651 passed / 2790 skipped。
+Plan 6件の宣言往復、Ruff、diff check、CPU CI（wheel/sdist含む）PASS。
+H bufferをYへ使用した直後にNaNで埋める検査で、batch開始0/8/16が同じ129×8 bufferを
+完全に上書きして端数batchと全勾配を処理することを確認した。既存の正規化／joint floor、
+zero amp、strides、retained snapshot、20 eager／Graph更新も通過。
+
+4caseそれぞれ7controlを独立processで同一sourceから再測定。各case/controlは21sampleの1cohort、
+同じB32・seed41・5% atoms・IEEE FP32・fused AdamW＋Polar更新・実更新counter24。
+全28workerと初期／post24の全48独立FP64 snapshotがPASS。数値gateは変更しない。
+最大max_abs=0.0003356502955487173、最大relative_l2=1.006376675101177e-06。
+
+各セルは **完全step中央値ms / allocated MiB / reserved MiB**。旧cohortとの時系列差を
+kernelの改善とは扱わず、この表の同じcohort内で比較する。
+
+| N / rho | W＋Torch | W＋Triton | 全H保存factor | atom担当H/G | 出力所有・H再計算 | 小batch H再利用 | dense |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1024 / 3 | 0.393 / 48.67 / 116 | 0.463 / 16.17 / 36 | 1.279 / 20.96 / 36 | 1.175 / 10.84 / 36 | 2.017 / 10.84 / 36 | 5.422 / 10.84 / 36 | 0.085 / 33.00 / 86 |
+| 1024 / 8 | 0.871 / 48.67 / 116 | 0.942 / 16.17 / 36 | 2.740 / 20.96 / 36 | 2.711 / 10.84 / 36 | 3.178 / 10.84 / 36 | 6.282 / 10.84 / 36 | 0.085 / 33.00 / 86 |
+| 2048 / 3 | 1.311 / 96.16 / 142 | 1.494 / 63.11 / 122 | 5.211 / 83.11 / 130 | 4.008 / 42.87 / 114 | 8.622 / 42.87 / 114 | 13.348 / 42.87 / 114 | 0.596 / 81.75 / 106 |
+| 2048 / 8 | 3.275 / 96.16 / 142 | 3.466 / 63.11 / 122 | 11.335 / 83.11 / 130 | 9.915 / 42.87 / 114 | 13.145 / 42.87 / 114 | 16.459 / 42.87 / 114 | 0.594 / 81.75 / 106 |
+
+次は固定post24 forward copyに外部CUDA Eventを入れた診断の中央値ms。
+H生成／Y集約はbatch8の4区間を各sample内で合計してから、その5sampleの中央値を取る。
+主測定にはEventを入れず、以下を足し合わせて完全stepの代わりにしない。
+候補索引はkeys生成・sort・searchsorted・半径reduction。候補loopと支持正値確認はY側へ含む。
+このため「候補探索全体が軽い」とは断定しない。計装forwardは同じsnapshotの
+未計装forwardと照合し、Parameter不変も確認した。
+
+| N / rho | 再利用：準備 | 再利用：候補索引 | 再利用：H生成 | 再利用：Y集約・支持確認 | 従来：候補索引 | 従来：融合H＋Y・支持確認 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1024 / 3 | 0.072 | 0.045 | 0.116 | 4.549 | 0.045 | 1.244 |
+| 1024 / 8 | 0.083 | 0.045 | 0.164 | 4.569 | 0.046 | 1.605 |
+| 2048 / 3 | 0.266 | 0.061 | 0.458 | 9.981 | 0.068 | 5.451 |
+| 2048 / 8 | 0.313 | 0.062 | 0.655 | 9.992 | 0.069 | 7.013 |
+
+**再利用候補は不採用、研究対照として保持。** 従来の出力所有方式より約25〜169%遅い。
+Hの明示scratchは1024で約1.6MiB、2048で約6.4MiBだが、capture/replay込みの両peakは
+従来と同じ。1024は10.84／36MiB、2048は42.87／114MiB。2048のreservedはdense106MiBを
+依然超える。全CSTはdenseより遅く、1024でdense両peak内の最速CSTはTriton W、
+2048は全CSTが両peak gateを満たさない。公開dispatchへの採用やmainへの統合はなし。
+
+確定したのは、今回の再利用scheduleではH生成よりY集約・候補走査が重いこと。
+幅3と8で再利用Y集約の時間がほぼ同じで、H生成の時間は変化する。
+構造上、1024のY gridは256 CTA一括から64 CTA×4逐次、2048は512から128×4へ変わった。
+並列度低下、依存のあるH／Parameter参照、候補loopを原因候補として残す。
+物理的なcache miss／stall／spill counterは未取得で、どれが原因かはまだ未確定。
+次の比較候補はH bufferのbatch容量とY kernelのbatch tileを分離し、
+H再利用を保ってYの同時実行数を戻すablation。未実装・未測定であり、勝つとは扱わない。
+
+初回の測定driver4本はcommit文字列の置換が環境変数名にも及ぶSyntaxErrorで、
+benchmark import前に失敗した。性能sampleは得られていない。修正後は4本とも構文検査し、
+同じ条件を明示的に再提出した。kernel・oracle・gate・時間budgetは変更しない。
+失敗jobは`l4job-a0666e8a4c4343799e4a5307c2c084d4`、
+`l4job-299f61a5386849269e76dfa958d874a2`、`l4job-eade8364672a416c8bcc17c237b98d3e`、
+`l4job-144915324e144a57888a653cd51439ac`。rawログとarchive／manifest検証を残す。
+
+| scope | job | source archive SHA256 | result archive SHA256 |
+| --- | --- | --- | --- |
+| 182 checks | `l4job-0be2ce2557e64767887c0b8fd222398b` | `3eb54976cc4a8970b8efe5646a86bb573100a039e6e17c85eee226be51e345ae` | `ddd43eeebd9be553c76a302015ad6904f35bafa64ded5172850a3ee14ec30d63` |
+| n1024-rho3 / 7 workers | `l4job-610127c546c24348926bed7e3e5e3f2e` | `b0967d96b558e28c1ce57090d085b2f4894069f44fb16c89cb020e3eda4f4a2e` | `ed14eaf275cd3d716731a8e045b5663f2a0bbb12a596e0de85d25d630bcf6c8a` |
+| n2048-rho3 / 7 workers | `l4job-1067a4e4e0044a559267c6067354aaed` | `3338f1e0bbfdcfb028d4be5749236a74e1fb27b9c20531478471b568bd762cc9` | `0de104e2c4c62a7ed20c929bd7a1b28097d82734525a785fcf181282ba5f22a4` |
+| n1024-rho8 / 7 workers | `l4job-5f71176cc8cb483b95f29c857f802f5b` | `d8f025277878d41a1297a284aa4a78324192673fd646b3f307af556246efd315` | `e498a4ee3231c458934a23882913f6c11d7e68d4712c739f4762e76ee29d9529` |
+| n2048-rho8 / 7 workers | `l4job-3f4bd4c2219c48ecbef66f50ce35dc5b` | `958fe6e78a6402fdd566a1cf17bc6ae106a46a6cf7719533634880b705bffba1` | `9ba49d623eb455b00ec6e09f27e91381f4258cd3845cf216db21db49232a13ba` |
+
+NVIDIA L4、driver580.82.07、Torch2.11.0+cu130、CUDA13.0、Triton3.6.0、Python3.13.15。
+検証／比較の全source fileはdriverを除き同一。source/result archive・全source file・
+全result manifest・48snapshot hash・runtime/benchmarkのlocal source hashを照合した。
+ignored `output/regular-grid-h/reused-h-evidence/`へ全job、失敗証拠、集計、停止ログを保存。
+再現driverは`reuse-validate-driver.py`と`reuse-measure-{N}-rho{rho}.py`。
+既存runnerの前節の`--isolated-oracle --phases`コマンドは今回の7controlを実行する。
+比較終了後は全pool slotがstoppedで、lifecycleにはsession terminatedと
+serverのactive sessionなしを確認した。実DB取込／別GPU／高次元CUDAは未検証。
