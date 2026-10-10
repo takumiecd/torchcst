@@ -3,6 +3,33 @@
 2026-10-10。[Hの寿命を軸にした設計](../../h-lifecycle-kernel-design.ja.md)の最初の研究候補。
 公開dispatcherへの採用は別判断で、当面は研究branchに置く。
 
+## 最新checkpoint（2026-10-11）
+
+計算source `547d1dcf`、L4/B32/N2048/A209715、FP32、joint discrete-L2、
+24実更新の完全step。各Case12独立workers、21 replay samples、
+11 CST×initial/post24×2Caseの44 full oracleをPASSした。
+全562 GPU環境tests、CPU1685 tests、GitHub CPU validationをPASS。
+
+| Case | prepared H32 [ms] | 両peak条件を満たす最速CST | 完全step [ms] | allocated/reserved [MiB] | dense [ms; MiB] |
+| --- | ---: | --- | ---: | ---: | ---: |
+| N2048/rho3 | 7.9262 | group32 H32 | 5.6655 | 57.42/104 | 0.5923; 81.75/106 |
+| N2048/rho8 | 10.6602 | stream G8/H32 | 7.9083 | 57.42/104 | 0.5907; 81.75/106 |
+
+rho3はgroup32で約28.5%短縮。rho8はgroup32の8.6506msからstreamでさらに約8.6%、
+prepared controlから約25.8%短縮した。stream G8はrho3では6.4045msと遅いため選ばない。
+旧input-owner G16/32はreservedがdenseを超えるため、両Caseで不採用。
+stream G8でそのmemory問題を解消し、H/G・parameter partialの寿命を短くした。
+
+これは各Case1 cohortでの研究Plan選択であり、任意shape/batch/rhoのdispatch閾値ではない。
+公開dispatcherへの統合は行っていない。N1024の選択は下記のsource `7fcf7fe3` の4条件cohortを参照する。
+上のN2048結果をN1024や別GPU、高次元CUDA、別profileへ外挿しない。
+denseは依然として約0.59msと速い。残る重い区間はH→Yの集約とrho8のbackwardである。
+粗いbinによる無効site検査は前のcensusで約8倍（rho3）／3倍（rho8）だった。
+次は支持の正値範囲を使う候補選別とprofile積和を、準備・routing費用込みで比較する。
+物理的なatomic stallやL2 hit率の原因は未測定であり、allocatorや静的compiler情報から断定しない。
+
+詳細・不採用結果・source/result hashes・停止と復旧の証跡は末尾に保全する。
+
 ## 実装範囲と契約
 
 RegularGridの二つのweight軸に各一つの座標を対応させ、FlatTorus、Triweight、
@@ -1359,3 +1386,93 @@ serverの `No active sessions found` を確認して終了した。rho3 jobはsu
 `streaming-interrupted-stop-lifecycle.log` と、再開前に取った `streaming-interrupted-status.json` を
 ignored evidenceへ保存した。queuedのrho8のみ新しいsupervisorへ引き継ぐ。
 計算のretry・再budget・好ましい結果の選択は行わない。
+
+### G8とphysical部分和のpaired結果
+
+計算source `547d1dcf`。N2048/B32/A209715、各Case12独立workers・24更新・21 replay samples。
+11 CST×initial/post24×2Case=44 full oracleをPASS。Case・入力・初期Parameter・全declaration・
+runtime・source hashを同cohort内で照合し、現在のruntime/runner bytesも凍結sourceと照合した。
+
+| 完全step [ms] | rho3 | rho8 |
+| --- | ---: | ---: |
+| matrix-torch | 1.3155 | 3.2730 |
+| factor | 5.1648 | 11.1084 |
+| onchip-h | 4.4553 | 9.8378 |
+| prepared-h16 | 8.0490 | 11.3693 |
+| prepared-h32 | 7.9262 | 10.6602 |
+| prepared-g32-h16 | 6.1404 | 8.9497 |
+| prepared-g32-h32 | 5.6655 | 8.6506 |
+| input-owned-h16 | 6.4177 | 7.8512 |
+| input-owned-h32 | 6.2003 | 7.6426 |
+| stream-g8-h16 | 6.4463 | 8.0981 |
+| stream-g8-h32 | 6.4045 | 7.9083 |
+| dense | 0.5923 | 0.5907 |
+
+rho3の総peakと採否：
+
+| route | allocated / reserved [MiB] | dense以内 |
+| --- | ---: | --- |
+| matrix-torch | 96.16 / 142 | FAIL |
+| factor | 83.11 / 130 | FAIL |
+| onchip-h | 42.87 / 114 | FAIL |
+| prepared-h16 | 44.22 / 102 | PASS |
+| prepared-h32 | 57.42 / 104 | PASS |
+| prepared-g32-h16 | 44.22 / 102 | PASS |
+| prepared-g32-h32 | 57.42 / 104 | PASS |
+| input-owned-h16 | 58.72 / 116 | FAIL |
+| input-owned-h32 | 70.72 / 126 | FAIL |
+| stream-g8-h16 | 47.12 / 102 | PASS |
+| stream-g8-h32 | 57.42 / 104 | PASS |
+| dense | 81.75 / 106 | PASS |
+
+両peak条件を満たすCST内の最速は `prepared-g32-h32`、5.6655ms。denseは0.5923msで引き続き速い。
+段階診断（別Graph、完全stepへ加減算しない）：
+
+- prepared-g32-h32: forward_loss=2.5713ms, backward=1.9282ms, optimizer=0.3072ms。
+- input-owned-h32: forward_loss=2.5743ms, backward=2.2651ms, optimizer=0.3062ms。
+- stream-g8-h32: forward_loss=2.5784ms, backward=2.4433ms, optimizer=0.3113ms。
+
+rho8の総peakと採否：
+
+| route | allocated / reserved [MiB] | dense以内 |
+| --- | ---: | --- |
+| matrix-torch | 96.16 / 142 | FAIL |
+| factor | 83.11 / 130 | FAIL |
+| onchip-h | 42.87 / 114 | FAIL |
+| prepared-h16 | 44.22 / 102 | PASS |
+| prepared-h32 | 57.42 / 104 | PASS |
+| prepared-g32-h16 | 44.22 / 102 | PASS |
+| prepared-g32-h32 | 57.42 / 104 | PASS |
+| input-owned-h16 | 58.72 / 116 | FAIL |
+| input-owned-h32 | 70.72 / 126 | FAIL |
+| stream-g8-h16 | 47.12 / 102 | PASS |
+| stream-g8-h32 | 57.42 / 104 | PASS |
+| dense | 81.75 / 106 | PASS |
+
+両peak条件を満たすCST内の最速は `stream-g8-h32`、7.9083ms。denseは0.5907msで引き続き速い。
+段階診断（別Graph、完全stepへ加減算しない）：
+
+- prepared-g32-h32: forward_loss=2.7976ms, backward=4.2168ms, optimizer=0.3082ms。
+- input-owned-h32: forward_loss=2.8938ms, backward=3.1048ms, optimizer=0.3103ms。
+- stream-g8-h32: forward_loss=2.8017ms, backward=3.4068ms, optimizer=0.3092ms。
+
+source/result archive：
+
+| job | source SHA256 | result SHA256 |
+| --- | --- | --- |
+| l4job-f021c54d21d74decabcfe6a6f33d225e | `037358aed05a2a35bd459c79c5196712cd5234423d98c05181e8955479b3f0e9` | `065799a53ecc270937940dc7893e34d6e5870e142647b301ab2a40b971b23ca0` |
+| l4job-5d8e77998bb14d59abc1b6353f4cd81f | `037358aed05a2a35bd459c79c5196712cd5234423d98c05181e8955479b3f0e9` | `79f6711ebc2871aa51d0b943d681dfe43774e07291a3977e9165595239df9f1b` |
+
+全source files、result manifest、worker source hashes、initial/post24 snapshotsを照合し、
+raw evidenceを `output/regular-grid-h/overnight-evidence/` に保全した。
+
+再現は既存runnerのCaseをrho3/8に置換する。
+
+```bash
+python -m benchmarks.cuda.linear.periodic_comparison \
+  --case benchmarks/cuda/linear/cases/regular-grid-h-2048-rho8.json \
+  --plans matrix-torch factor onchip-h prepared-h16 prepared-h32 \
+          prepared-g32-h16 prepared-g32-h32 input-owned-h16 input-owned-h32 \
+          stream-g8-h16 stream-g8-h32 dense \
+  --isolated-oracle --phases --output output/regular-grid-h/streaming-comparison.json
+```
