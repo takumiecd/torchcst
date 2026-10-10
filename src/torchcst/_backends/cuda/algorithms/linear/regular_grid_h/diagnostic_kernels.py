@@ -257,7 +257,7 @@ def prepared_aggregation_probe(
         begin = tl.load(Bounds + bucket).to(tl.int32)
         end = tl.load(Bounds + bucket + 1).to(tl.int32)
         # Partition GROUP-aligned chunks without duplication or dropped atoms.
-        groups = tr.cdiv(end - begin, GROUP)
+        groups = (end - begin + GROUP - 1) // GROUP
         low = begin + (groups * part // SPLITS) * GROUP
         high = tl.minimum(begin + (groups * (part + 1) // SPLITS) * GROUP, end)
         for start in range(low, high, GROUP):
