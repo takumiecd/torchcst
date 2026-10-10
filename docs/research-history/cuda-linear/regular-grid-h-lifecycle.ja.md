@@ -1290,7 +1290,7 @@ https://github.com/takumiecd/torchcst/actions/runs/38067291396 。
 ### input-ownerのpaired結果とmemory不採用
 
 計算source `e2a4984d`、各Caseは10独立workers・24実更新・21 replay samples。
-9 CST×initial/post24×2Case =36 full oracleをPASS。現在のruntime/runner bytesはこのsourceと同じ。
+9 CST×initial/post24×2Case =36 full oracleをPASS。測定直後にruntime/runner bytesと凍結sourceの一致を確認した。
 全workerの入力・初期Parameter・Case・source・declaration・runtimeを同じcohort内で照合する。
 
 | N2048/B32 [ms] | rho3 | rho8 |
@@ -1337,3 +1337,17 @@ rho8 job `l4job-c5200f75d6004a2aac046340f29b55f1`、result
 再び全GPU契約検証を通してからN2048 rho3/8のpaired cohortを測る。
 input-owner旧版の不採用結果は変更しない。Case・24更新・21 samples・4e-4 gate・
 両peak<=denseは前と同じで、batch/atom数/支持を減らして比較しない。
+
+streaming計算source `547d1dcf` のCPU検証は1685 passed /3144 skipped /18 warnings（30.62s）。
+L4では全562 testsをPASS（389.76s、2 warnings）。BM4/8/16、partial batch、
+同一G/partial buffer上書き、dX-only/parameter-only、floor/単一/広い支持/周期境界、
+β overflow fallback、retained snapshots、20 eager/Graph更新を含む。
+GPU検証job `l4job-f658cb5fcef04329ae540f17923e424e`、source archive
+`804d00fc279f60b4a35a38bdb3219df489999b04be87e8a71a280f504095c6f9`、result archive
+`4f2412380d4499c83a212af5846cfc2a7768f77a300d78a649beccea4862d28f`。
+全1629 source filesとresult manifestを照合済み。GitHub CPU検証も同commitでPASS：
+https://github.com/takumiecd/torchcst/actions/runs/38069619720 。
+
+このPASS後にN2048 rho3/8の12方式paired cohortを提出した。前の10 controlsに
+stream G8/H16・G8/H32を加える。Case・独立process・24更新・21 replay samples・全atom oracle・
+allocated/reserved両peak<=denseは同じ。結果を確認するまで採用とはしない。
