@@ -57,6 +57,9 @@ from torchcst._backends.cuda.algorithms.linear.profile_product_matrix.square_str
     SquareStripPreparationAlgorithm,
     SquareStripSplitAlgorithm,
 )
+from torchcst._backends.cuda.algorithms.linear.regular_product_matrix_free.algorithm import (
+    MatrixFreeProductAlgorithm,
+)
 from torchcst._backends.cuda.algorithms.linear.sphere_polar.algorithm import (
     SphereAlgorithm,
 )
@@ -141,6 +144,7 @@ REGISTRY.register(NormalizedWindowAlgorithm())
 REGISTRY.register(LocalAlgorithm())
 REGISTRY.register(ProductAlgorithm())
 REGISTRY.register(StripProductAlgorithm())
+REGISTRY.register(MatrixFreeProductAlgorithm())
 REGISTRY.register(GlobalProductAlgorithm())
 REGISTRY.register(GroupedProductAlgorithm())
 REGISTRY.register(GroupedStripAlgorithm())
