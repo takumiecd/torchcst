@@ -17,6 +17,8 @@ from .recipe import (
     ParallelReusedHRecipe,
     PreparedReusedHRecipe,
     ReusedHRecipe,
+    SiteRoutedHRecipe,
+    SiteRoutedStreamingHRecipe,
     StreamingInputHRecipe,
 )
 
@@ -185,3 +187,25 @@ class StreamingInputHAlgorithm(OutputOwnedHAlgorithm):
         if type(recipe) is not StreamingInputHRecipe:
             raise TypeError("requires StreamingInputHRecipe")
         StreamingInputHRecipe(**asdict(recipe))
+
+
+@dataclass(frozen=True)
+class SiteRoutedHAlgorithm(OutputOwnedHAlgorithm):
+    id: str = "research_cuda_regular_grid_site_routed_h"
+    recipe_type: type = SiteRoutedHRecipe
+
+    def validate_recipe(self, recipe):
+        if type(recipe) is not SiteRoutedHRecipe:
+            raise TypeError("requires SiteRoutedHRecipe")
+        SiteRoutedHRecipe(**asdict(recipe))
+
+
+@dataclass(frozen=True)
+class SiteRoutedStreamingHAlgorithm(OutputOwnedHAlgorithm):
+    id: str = "research_cuda_regular_grid_site_routed_streaming_h"
+    recipe_type: type = SiteRoutedStreamingHRecipe
+
+    def validate_recipe(self, recipe):
+        if type(recipe) is not SiteRoutedStreamingHRecipe:
+            raise TypeError("requires SiteRoutedStreamingHRecipe")
+        SiteRoutedStreamingHRecipe(**asdict(recipe))

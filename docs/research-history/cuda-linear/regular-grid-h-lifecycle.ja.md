@@ -1481,3 +1481,23 @@ python -m benchmarks.cuda.linear.periodic_comparison \
 所有VM `cst-pool-c051b85cbf04-1` のterminatedとserverの `No active sessions found` を確認した。
 最終statusと停止ログはignored evidenceの `final-pool-status.json` と `final-stop-lifecycle.log` に保全した。
 成功した比較は各Case一度だけで、transport失敗後にも測定を再実行していない。
+
+## 中心site prefixで候補範囲を絞る（事前方針、2026-10-11）
+
+coarse binの候補を減らす別Algorithmを追加する。centreのphase/site整数計算は元と同じで、
+BOで割らずsite keyをsortし、N+1 prefixを作る。実在owner区間を既存MaxDistance Dで左右に
+広げ、周期境界で最大2区間を走査する。Dの+2 guard、raw profile、norm/VJP、β overflow時の
+原式とGROUP8 fallbackは維持する。input-ownerは引き続きcoarse routingを使う。
+
+新Planはsite-routed H16/32とsite-stream G8/H16/32。H/G寿命と元の4 saved tensorsは同じ。
+BO16/GROUP32/BM8/atom producer8を固定し、探索精度だけを変える。
+支持を近似したり短く切ったりしない。full-axis/broadでは全候補を一度ずつ処理する。
+小さいNO<BO、partial owner、seam、empty/single、large-coordinate支持のcoverageを確認する。
+GPUでは既存全契約と、中心key/prefix/最大距離・独立円周距離predicateとの候補集合一致、
+prepared span包含、input prefixがcoarseであることを追加検証する。
+
+全GPU契約PASS後にN2048/rho3・8を同じCaseで比較する。cohortはWtorch/factor/onchip、
+group32 H16/32、stream G8/H16/32、新site H16/32、新site stream G8/H16/32、denseの12独立workers。
+旧prepared/旧input-ownerの不採用記録は残し、今回再実行しない。
+24実更新、21 samples、全atom FP64 initial/post24 gate4e-4、allocated/reserved両peak<=denseは不変更。
+診断はsnapshot/prep、candidate index、3項目prep、H生成、Y集約を分け、完全stepへ加減算しない。

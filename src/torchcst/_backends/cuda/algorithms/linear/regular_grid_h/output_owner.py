@@ -1,15 +1,15 @@
 """Forward-only spatial routing; one CTA owns each batch/output tile.
 
-Sort coarse centre bins, not per-site support IDs. Rebuild from the prepared
-forward snapshot every call. Routing tensors are temporary and never retained
-for backward, which still uses the original atom-owned contractions.
+Sort centre bins or centre sites, never per-site support IDs. Rebuild from the
+prepared forward snapshot every call. Forward routing tensors are temporary
+and never retained for backward.
 """
 
 import torch
 
 
 def prepare_routing(packed, sizes, recipe, *, output=True, tile=None):
-    """Build the same coarse candidate index for fused and reusable-H routes."""
+    """Build a centre prefix; input routing always retains coarse bins."""
     import triton as tr
 
     from . import output_kernels as kernels
@@ -19,7 +19,8 @@ def prepare_routing(packed, sizes, recipe, *, output=True, tile=None):
         no, lo, oo = ni, li, oi
     bo = recipe.output_tile if tile is None else tile
     a = packed.shape[1]
-    bins = tr.cdiv(no, bo)
+    site_routing = output and uses_site_routing(recipe)
+    bins = no if site_routing else tr.cdiv(no, bo)
     keys = torch.empty(a, device=packed.device, dtype=torch.int32)
     distances = torch.empty(tr.cdiv(a, 256), device=packed.device, dtype=torch.int32)
     kernels.routing_keys[(tr.cdiv(a, 256),)](
@@ -33,6 +34,7 @@ def prepare_routing(packed, sizes, recipe, *, output=True, tile=None):
         bo,
         256,
         OUTPUT=output,
+        SITE_ROUTING=site_routing,
         num_warps=4,
         enable_fp_fusion=False,
     )
@@ -44,12 +46,20 @@ def prepare_routing(packed, sizes, recipe, *, output=True, tile=None):
     return order, boundaries, max_distance
 
 
+def uses_site_routing(recipe):
+    from .recipe import SiteRoutedHRecipe, SiteRoutedStreamingHRecipe
+
+    return type(recipe) in (SiteRoutedHRecipe, SiteRoutedStreamingHRecipe)
+
+
 def h_capacity(recipe):
     from .recipe import (
         GroupedOutputHRecipe,
         InputOwnedHRecipe,
         ParallelReusedHRecipe,
         PreparedReusedHRecipe,
+        SiteRoutedHRecipe,
+        SiteRoutedStreamingHRecipe,
         StreamingInputHRecipe,
     )
 
@@ -59,6 +69,8 @@ def h_capacity(recipe):
         in (
             GroupedOutputHRecipe,
             InputOwnedHRecipe,
+            SiteRoutedHRecipe,
+            SiteRoutedStreamingHRecipe,
             StreamingInputHRecipe,
             ParallelReusedHRecipe,
             PreparedReusedHRecipe,
@@ -73,12 +85,16 @@ def allocate_h(x, atom_count, recipe):
         InputOwnedHRecipe,
         ParallelReusedHRecipe,
         PreparedReusedHRecipe,
+        SiteRoutedHRecipe,
+        SiteRoutedStreamingHRecipe,
         StreamingInputHRecipe,
     )
 
     if type(recipe) in (
         GroupedOutputHRecipe,
         InputOwnedHRecipe,
+        SiteRoutedHRecipe,
+        SiteRoutedStreamingHRecipe,
         StreamingInputHRecipe,
         ParallelReusedHRecipe,
         PreparedReusedHRecipe,
@@ -183,7 +199,13 @@ def aggregate_chunk(
         getattr(recipe, "output_group", recipe.atom_group),
         recipe.output_tile,
     )
-    options = {"H": h, "BSTART": batch_start, "num_warps": 4, "enable_fp_fusion": False}
+    options = {
+        "H": h,
+        "BSTART": batch_start,
+        "SITE_ROUTING": uses_site_routing(recipe),
+        "num_warps": 4,
+        "enable_fp_fusion": False,
+    }
     grid = (tr.cdiv(no, recipe.output_tile), tiles)
     if hot is None:
         kernels.output_owned[grid](*args, CACHED=h is not None, **options)
@@ -206,6 +228,8 @@ def forward_output_owned(x, packed, sizes, recipe):
         ParallelReusedHRecipe,
         PreparedReusedHRecipe,
         ReusedHRecipe,
+        SiteRoutedHRecipe,
+        SiteRoutedStreamingHRecipe,
         StreamingInputHRecipe,
     )
 
@@ -221,6 +245,8 @@ def forward_output_owned(x, packed, sizes, recipe):
         in (
             GroupedOutputHRecipe,
             InputOwnedHRecipe,
+            SiteRoutedHRecipe,
+            SiteRoutedStreamingHRecipe,
             StreamingInputHRecipe,
             PreparedReusedHRecipe,
         )
@@ -229,6 +255,8 @@ def forward_output_owned(x, packed, sizes, recipe):
     if type(recipe) in (
         GroupedOutputHRecipe,
         InputOwnedHRecipe,
+        SiteRoutedHRecipe,
+        SiteRoutedStreamingHRecipe,
         StreamingInputHRecipe,
         ReusedHRecipe,
         ParallelReusedHRecipe,

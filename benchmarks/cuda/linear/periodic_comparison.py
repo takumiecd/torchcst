@@ -49,6 +49,10 @@ KINDS = (
     "input-owned-h32",
     "stream-g8-h16",
     "stream-g8-h32",
+    "site-routed-h16",
+    "site-routed-h32",
+    "site-stream-g8-h16",
+    "site-stream-g8-h32",
 )
 REGULAR_PRIMARY = ("matrix-torch", "factor", "onchip-h", "dense")
 PRIMARY = ("matrix-torch", "factor", "dense")
@@ -147,6 +151,8 @@ def bind_plan(model, kind):
             ParallelReusedHRecipe,
             PreparedReusedHRecipe,
             ReusedHRecipe,
+            SiteRoutedHRecipe,
+            SiteRoutedStreamingHRecipe,
             StreamingInputHRecipe,
         )
 
@@ -165,6 +171,10 @@ def bind_plan(model, kind):
             "input-owned-h32": "research_cuda_regular_grid_input_owned_h",
             "stream-g8-h16": "research_cuda_regular_grid_streaming_input_h",
             "stream-g8-h32": "research_cuda_regular_grid_streaming_input_h",
+            "site-routed-h16": "research_cuda_regular_grid_site_routed_h",
+            "site-routed-h32": "research_cuda_regular_grid_site_routed_h",
+            "site-stream-g8-h16": "research_cuda_regular_grid_site_routed_streaming_h",
+            "site-stream-g8-h32": "research_cuda_regular_grid_site_routed_streaming_h",
         }.get(kind, "research_cuda_regular_grid_matrix")
         expected_recipe = (
             {
@@ -181,6 +191,10 @@ def bind_plan(model, kind):
                 "input-owned-h32": lambda: InputOwnedHRecipe(h_batch=32),
                 "stream-g8-h16": lambda: StreamingInputHRecipe(h_batch=16),
                 "stream-g8-h32": lambda: StreamingInputHRecipe(h_batch=32),
+                "site-routed-h16": lambda: SiteRoutedHRecipe(h_batch=16),
+                "site-routed-h32": lambda: SiteRoutedHRecipe(h_batch=32),
+                "site-stream-g8-h16": lambda: SiteRoutedStreamingHRecipe(h_batch=16),
+                "site-stream-g8-h32": lambda: SiteRoutedStreamingHRecipe(h_batch=32),
             }[kind]()
             if kind
             in (
@@ -197,6 +211,10 @@ def bind_plan(model, kind):
                 "input-owned-h32",
                 "stream-g8-h16",
                 "stream-g8-h32",
+                "site-routed-h16",
+                "site-routed-h32",
+                "site-stream-g8-h16",
+                "site-stream-g8-h32",
             )
             else PeriodicRecipe(gemm="triton" if kind == "matrix-triton" else "torch")
         )
@@ -434,6 +452,10 @@ def forward_stages(step, kind):
         "input-owned-h32",
         "stream-g8-h16",
         "stream-g8-h32",
+        "site-routed-h16",
+        "site-routed-h32",
+        "site-stream-g8-h16",
+        "site-stream-g8-h32",
     ):
         return output_owner_stages(
             step,
@@ -449,9 +471,16 @@ def forward_stages(step, kind):
                 "input-owned-h32": 32,
                 "stream-g8-h16": 16,
                 "stream-g8-h32": 32,
+                "site-routed-h16": 16,
+                "site-routed-h32": 32,
+                "site-stream-g8-h16": 16,
+                "site-stream-g8-h32": 32,
             }.get(kind),
-            prepared=kind.startswith(("prepared-", "input-owned-", "stream-")),
-            grouped=kind.startswith(("prepared-g32-", "input-owned-", "stream-")),
+            prepared=kind.startswith(("prepared-", "input-owned-", "stream-", "site-")),
+            grouped=kind.startswith(
+                ("prepared-g32-", "input-owned-", "stream-", "site-")
+            ),
+            site_routed=kind.startswith("site-"),
         )
     if kind == "onchip-h":
         return onchip_stages(step)
@@ -592,7 +621,9 @@ def onchip_stages(step, *, output_owned=False):
     }
 
 
-def output_owner_stages(step, *, reused, h_batch=None, prepared=False, grouped=False):
+def output_owner_stages(
+    step, *, reused, h_batch=None, prepared=False, grouped=False, site_routed=False
+):
     """Timestamp the actual staged forward on a fixed post24 copy.
 
     Candidate-index construction is separate. Exact support checks remain in
@@ -616,6 +647,7 @@ def output_owner_stages(step, *, reused, h_batch=None, prepared=False, grouped=F
         ParallelReusedHRecipe,
         PreparedReusedHRecipe,
         ReusedHRecipe,
+        SiteRoutedHRecipe,
     )
 
     model = copy.deepcopy(step.model)
@@ -624,7 +656,9 @@ def output_owner_stages(step, *, reused, h_batch=None, prepared=False, grouped=F
     sizes = (len(x), n, n, float(n), float(n), 0.0, 0.0)
     recipe = (
         (
-            GroupedOutputHRecipe
+            SiteRoutedHRecipe
+            if site_routed
+            else GroupedOutputHRecipe
             if grouped
             else PreparedReusedHRecipe
             if prepared
@@ -722,7 +756,14 @@ def output_owner_stages(step, *, reused, h_batch=None, prepared=False, grouped=F
     torch.testing.assert_close(y, model(x), rtol=4e-4, atol=4e-4)
     return {
         "scope": "fixed post24 forward copy; no optimizer; nonadditive to primary step",
-        "candidate_scope": "coarse index construction; exact support checks in Y kernel",
+        "candidate_scope": (
+            "site-key prefix construction; conservative ranges; exact support checks in Y kernel"
+            if site_routed
+            else "coarse index construction; exact support checks in Y kernel"
+        ),
+        "candidate_prefix_entries": n + 1
+        if site_routed
+        else (n + recipe.output_tile - 1) // recipe.output_tile + 1,
         "samples_ms": phases,
         "per_chunk_samples_ms": per_chunk,
         "output_fields_bytes": 12 * len(p) + 4 if prepared else 0,
@@ -1218,6 +1259,10 @@ def main():
                 "input-owned-h32",
                 "stream-g8-h16",
                 "stream-g8-h32",
+                "site-routed-h16",
+                "site-routed-h32",
+                "site-stream-g8-h16",
+                "site-stream-g8-h32",
                 "dense",
             ]
             if args.regular_grid
@@ -1239,6 +1284,10 @@ def main():
             "input-owned-h32",
             "stream-g8-h16",
             "stream-g8-h32",
+            "site-routed-h16",
+            "site-routed-h32",
+            "site-stream-g8-h16",
+            "site-stream-g8-h32",
         )
         or any(
             kind in args.plans
@@ -1256,6 +1305,10 @@ def main():
                 "input-owned-h32",
                 "stream-g8-h16",
                 "stream-g8-h32",
+                "site-routed-h16",
+                "site-routed-h32",
+                "site-stream-g8-h16",
+                "site-stream-g8-h32",
             )
         )
     ):

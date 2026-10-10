@@ -17,12 +17,16 @@ def forward_contraction(x, packed, sizes, recipe):
         ParallelReusedHRecipe,
         PreparedReusedHRecipe,
         ReusedHRecipe,
+        SiteRoutedHRecipe,
+        SiteRoutedStreamingHRecipe,
         StreamingInputHRecipe,
     )
 
     if type(recipe) in (
         GroupedOutputHRecipe,
         InputOwnedHRecipe,
+        SiteRoutedHRecipe,
+        SiteRoutedStreamingHRecipe,
         StreamingInputHRecipe,
         OutputOwnedHRecipe,
         ParallelReusedHRecipe,
@@ -78,7 +82,11 @@ class _OnchipH(torch.autograd.Function):
         import triton as tr
 
         from . import kernels
-        from .recipe import InputOwnedHRecipe, StreamingInputHRecipe
+        from .recipe import (
+            InputOwnedHRecipe,
+            SiteRoutedStreamingHRecipe,
+            StreamingInputHRecipe,
+        )
 
         x, source, amplitude_max, packed = ctx.saved_tensors
         b, ni, no, li, lo, oi, oo = ctx.sizes
@@ -87,14 +95,25 @@ class _OnchipH(torch.autograd.Function):
         dx = x.new_zeros(x.shape) if need_x else None
         dp = torch.empty_like(source) if need_p else None
         tiles = tr.cdiv(b, recipe.batch_tile)
-        streamed = type(recipe) is StreamingInputHRecipe and need_x
+        streamed = (
+            type(recipe) in (StreamingInputHRecipe, SiteRoutedStreamingHRecipe)
+            and need_x
+        )
         partial_tiles = (
             tr.cdiv(min(b, recipe.g_batch), recipe.batch_tile) if streamed else tiles
         )
         partial = x.new_empty((partial_tiles, 3, a)) if need_p else None
         physical = x.new_empty((3, a)) if streamed and need_p else None
         if a and (need_x or need_p):
-            if type(recipe) in (InputOwnedHRecipe, StreamingInputHRecipe) and need_x:
+            if (
+                type(recipe)
+                in (
+                    InputOwnedHRecipe,
+                    StreamingInputHRecipe,
+                    SiteRoutedStreamingHRecipe,
+                )
+                and need_x
+            ):
                 from .input_owner import input_owned_backward
 
                 input_owned_backward(

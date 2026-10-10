@@ -87,3 +87,13 @@ class StreamingInputHRecipe(InputOwnedHRecipe):
             raise ValueError("g_batch must be 8, 16 or 32")
         if self.g_batch < self.batch_tile or self.g_batch % self.batch_tile:
             raise ValueError("g_batch must be a multiple of batch_tile")
+
+
+@dataclass(frozen=True)
+class SiteRoutedHRecipe(GroupedOutputHRecipe):
+    """Centre-site prefix intervals for forward output ownership."""
+
+
+@dataclass(frozen=True)
+class SiteRoutedStreamingHRecipe(StreamingInputHRecipe):
+    """Site-routed forward H; streaming G retains coarse input routing."""

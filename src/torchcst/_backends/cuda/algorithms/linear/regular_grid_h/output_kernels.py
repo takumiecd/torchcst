@@ -19,6 +19,7 @@ def routing_keys(
     BO: tl.constexpr,
     BLOCK: tl.constexpr,
     OUTPUT: tl.constexpr = True,
+    SITE_ROUTING: tl.constexpr = False,
 ):
     a = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     valid = a < A
@@ -34,7 +35,7 @@ def routing_keys(
     # precision guards. Empty supports need no routing radius.
     distance = tl.maximum(tl.abs(low - site), tl.abs(high - 1 - site)) + 2
     distance = tl.where(valid & (high > low), distance, 0)
-    tl.store(Keys + a, site // BO, valid)
+    tl.store(Keys + a, site if SITE_ROUTING else site // BO, valid)
     tl.store(Distances + tl.program_id(0), tl.max(distance, 0))
 
 
@@ -66,22 +67,40 @@ def output_owned(
     Hot=None,
     PREPARED: tl.constexpr = False,
     PROFILE_OUTPUT: tl.constexpr = True,
+    SITE_ROUTING: tl.constexpr = False,
 ):
     owner = tl.program_id(0)
     rows = BSTART + tl.program_id(1) * BM + tl.arange(0, BM)
     sites = owner * BO + tl.arange(0, BO)
     bins: tl.constexpr = tr.cdiv(NO, BO)
     distance = tl.load(MaxDistance)
-    # One extra bin covers the short final bin on a non-multiple grid size.
-    radius = (distance + BO - 1) // BO + (1 if NO % BO else 0)
-    count = tl.minimum(2 * radius + 1, bins)
-    first = tl.where(count == bins, 0, owner - radius)
+    if SITE_ROUTING:
+        # Expand the actual (possibly short final) owner interval by the same
+        # guarded support distance as coarse routing. Centre keys in this
+        # circular interval occupy at most two contiguous sorted-position
+        # ranges, with no duplicated atoms even for full-axis support.
+        width = tl.minimum(BO, NO - owner * BO)
+        site_count = tl.minimum(width + 2 * distance, NO)
+        first = tl.where(site_count == NO, 0, ((owner * BO - distance) % NO + NO) % NO)
+        end = first + site_count
+        count = tl.where(end > NO, 2, 1)
+    else:
+        # One extra bin covers the short final bin on a non-multiple grid size.
+        radius = (distance + BO - 1) // BO + (1 if NO % BO else 0)
+        count = tl.minimum(2 * radius + 1, bins)
+        first = tl.where(count == bins, 0, owner - radius)
     accumulator = tl.full((BM, BO), 0, tl.float32)
     lane = tl.arange(0, GROUP)
     for neighbor in range(count):
-        bucket = ((first + neighbor) % bins + bins) % bins
-        low = tl.load(Bounds + bucket).to(tl.int32)
-        high = tl.load(Bounds + bucket + 1).to(tl.int32)
+        if SITE_ROUTING:
+            begin_site = tl.where(neighbor == 0, first, 0)
+            end_site = tl.where(neighbor == 0, tl.minimum(end, NO), end - NO)
+            low = tl.load(Bounds + begin_site).to(tl.int32)
+            high = tl.load(Bounds + end_site).to(tl.int32)
+        else:
+            bucket = ((first + neighbor) % bins + bins) % bins
+            low = tl.load(Bounds + bucket).to(tl.int32)
+            high = tl.load(Bounds + bucket + 1).to(tl.int32)
         for start in range(low, high, GROUP):
             pos = start + lane
             valid = pos < high
@@ -230,6 +249,7 @@ def prepared_output_owned(
     BSTART: tl.constexpr,
     FALLBACK: tl.constexpr,
     PROFILE_OUTPUT: tl.constexpr = True,
+    SITE_ROUTING: tl.constexpr = False,
 ):
     # Separate specializations keep the original-ID/division path out of the
     # fast kernel's register schedule. Only one of the two launches writes Y.
@@ -261,4 +281,5 @@ def prepared_output_owned(
             Hot=Hot,
             PREPARED=not FALLBACK,
             PROFILE_OUTPUT=PROFILE_OUTPUT,
+            SITE_ROUTING=SITE_ROUTING,
         )

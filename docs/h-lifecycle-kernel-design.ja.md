@@ -250,3 +250,23 @@ BM=8、B=32の場合、Gは8A floats、parameter用はpartialの3Aとphysical累
 chunk終了の順序はG生成→dX集約→physical累積→buffer上書きで固定する。
 追加の累積kernel、batch和のFP32順序変更、Graph poolの総peakも比較に含める。
 この候補はparameterのみ必要な場合には従来経路を維持する。
+
+## 中心site prefixでforward候補を絞る
+
+出力側の中心site keyを `k=floor(phase/spacing)` としてsortし、`N+1`個のprefixを置く。
+Hと3項目は同じOrderで生成する。Y owner開始siteをs、実在幅をw=min(BO,N-s)、
+既存prepared span由来のguard付き最大距離をDとすると、中心候補は
+`[s-D,s+w+D)` の周期窓に含まれる。窓長w+2D>=Nなら全候補を一度だけ処理し、
+短ければ重複しない最大2区間をprefixから読む。CSRやatomごとの支持site ID列は作らない。
+追加prefixの大きさはatom支持数ではなくgridのsite数で決まる。
+
+この候補はforwardの探索だけを変更する。H容量、G容量、joint norm floor、packed VJP、
+periodic_rawのFP32演算、input-owner backwardのcoarse routingは維持する。
+一つのbroad atomでDが大きくなれば全探索に戻るため、速さは支持分布に依存する。
+owner内の無効site積和は残る。粗いbinの検査比8倍/3倍がそのまま速度向上倍率ではない。
+sort/searchとprefixの準備費用、atom加算順の変更、Graph両peakを含めて測る。
+
+半周期の比較だけでperiodic_rawのdivision/floorを置換しない。例えばL=1024、
+FP32 delta=nextafter(512,0)では、delta/L+0.5が1へ丸まり、現行wrapは-512になる。
+単純なdelta>=512比較では正側に残り、広い支持の中心微分を変える場合がある。
+今回はその近似を混ぜず、既存の距離式とnorm/VJPを保つ。
