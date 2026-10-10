@@ -50,6 +50,7 @@ def h_capacity(recipe):
         InputOwnedHRecipe,
         ParallelReusedHRecipe,
         PreparedReusedHRecipe,
+        StreamingInputHRecipe,
     )
 
     return (
@@ -58,6 +59,7 @@ def h_capacity(recipe):
         in (
             GroupedOutputHRecipe,
             InputOwnedHRecipe,
+            StreamingInputHRecipe,
             ParallelReusedHRecipe,
             PreparedReusedHRecipe,
         )
@@ -71,11 +73,13 @@ def allocate_h(x, atom_count, recipe):
         InputOwnedHRecipe,
         ParallelReusedHRecipe,
         PreparedReusedHRecipe,
+        StreamingInputHRecipe,
     )
 
     if type(recipe) in (
         GroupedOutputHRecipe,
         InputOwnedHRecipe,
+        StreamingInputHRecipe,
         ParallelReusedHRecipe,
         PreparedReusedHRecipe,
     ):
@@ -202,6 +206,7 @@ def forward_output_owned(x, packed, sizes, recipe):
         ParallelReusedHRecipe,
         PreparedReusedHRecipe,
         ReusedHRecipe,
+        StreamingInputHRecipe,
     )
 
     b, _, no, *_ = sizes
@@ -213,12 +218,18 @@ def forward_output_owned(x, packed, sizes, recipe):
     hot = (
         prepare_output_fields(packed, routing)
         if type(recipe)
-        in (GroupedOutputHRecipe, InputOwnedHRecipe, PreparedReusedHRecipe)
+        in (
+            GroupedOutputHRecipe,
+            InputOwnedHRecipe,
+            StreamingInputHRecipe,
+            PreparedReusedHRecipe,
+        )
         else None
     )
     if type(recipe) in (
         GroupedOutputHRecipe,
         InputOwnedHRecipe,
+        StreamingInputHRecipe,
         ReusedHRecipe,
         ParallelReusedHRecipe,
         PreparedReusedHRecipe,

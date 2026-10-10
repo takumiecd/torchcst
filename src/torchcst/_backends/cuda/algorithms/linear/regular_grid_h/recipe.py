@@ -73,3 +73,17 @@ class InputOwnedHRecipe(GroupedOutputHRecipe):
         super().__post_init__()
         if type(self.input_tile) is not int or self.input_tile not in (8, 16, 32, 64):
             raise ValueError("input_tile must be 8, 16, 32 or 64")
+
+
+@dataclass(frozen=True)
+class StreamingInputHRecipe(InputOwnedHRecipe):
+    """Independent G cap and recycled parameter partials; forward H unchanged."""
+
+    g_batch: int = 8
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.g_batch) is not int or self.g_batch not in (8, 16, 32):
+            raise ValueError("g_batch must be 8, 16 or 32")
+        if self.g_batch < self.batch_tile or self.g_batch % self.batch_tile:
+            raise ValueError("g_batch must be a multiple of batch_tile")

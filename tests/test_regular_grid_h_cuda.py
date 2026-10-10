@@ -30,6 +30,7 @@ from torchcst._backends.cuda.algorithms.linear.regular_grid_h.algorithm import (
     RegularFactorAlgorithm,
     RegularMatrixAlgorithm,
     ReusedHAlgorithm,
+    StreamingInputHAlgorithm,
 )
 from torchcst._backends.cuda.algorithms.linear.regular_grid_h.recipe import (
     GroupedOutputHRecipe,
@@ -39,6 +40,7 @@ from torchcst._backends.cuda.algorithms.linear.regular_grid_h.recipe import (
     ParallelReusedHRecipe,
     PreparedReusedHRecipe,
     ReusedHRecipe,
+    StreamingInputHRecipe,
 )
 from torchcst._backends.registry import Registry
 from torchcst._backends.schema import DeviceInfo, ExecutionPlan
@@ -60,6 +62,8 @@ def selector(route="onchip", **settings):
         "grouped32": GroupedOutputHAlgorithm,
         "input16": InputOwnedHAlgorithm,
         "input32": InputOwnedHAlgorithm,
+        "stream16": StreamingInputHAlgorithm,
+        "stream32": StreamingInputHAlgorithm,
         "matrix": RegularMatrixAlgorithm,
         "factor": RegularFactorAlgorithm,
     }[route]()
@@ -77,6 +81,12 @@ def selector(route="onchip", **settings):
         "grouped32": lambda **kw: GroupedOutputHRecipe(h_batch=32, **kw),
         "input16": lambda **kw: InputOwnedHRecipe(h_batch=16, **kw),
         "input32": lambda **kw: InputOwnedHRecipe(h_batch=32, **kw),
+        "stream16": lambda **kw: StreamingInputHRecipe(
+            h_batch=16, g_batch=kw.pop("g_batch", max(8, kw.get("batch_tile", 8))), **kw
+        ),
+        "stream32": lambda **kw: StreamingInputHRecipe(
+            h_batch=32, g_batch=kw.pop("g_batch", max(8, kw.get("batch_tile", 8))), **kw
+        ),
     }.get(route, PeriodicRecipe)(**settings)
     plan = ExecutionPlan(algorithm.id, algorithm.revision, recipe)
     registry.validate_plan(plan)
@@ -109,6 +119,7 @@ def model(
             "h_batch",
             "output_group",
             "input_tile",
+            "g_batch",
         )
     }
     layer = BASE_MODEL(
@@ -135,6 +146,8 @@ def model(
         "grouped32",
         "input16",
         "input32",
+        "stream16",
+        "stream32",
     ],
 )
 def test_metadata_roundtrip_scope_and_no_gpu_import(route):
@@ -184,6 +197,8 @@ def test_metadata_roundtrip_scope_and_no_gpu_import(route):
         "grouped32",
         "input16",
         "input32",
+        "stream16",
+        "stream32",
     ):
         assert algorithm.workspace_bound(context, plan.recipe) is None
     if route == "onchip":
@@ -236,6 +251,8 @@ assert not any(n.endswith(('regular_grid_h.executor','regular_grid_h.kernels')) 
         "grouped32",
         "input16",
         "input32",
+        "stream16",
+        "stream32",
     ],
 )
 @pytest.mark.parametrize(
@@ -269,6 +286,8 @@ def test_full_atom_oracle_strides_batch_tiles_seams_and_broad(
         "grouped32",
         "input16",
         "input32",
+        "stream16",
+        "stream32",
     ],
 )
 @pytest.mark.parametrize(
@@ -304,6 +323,8 @@ def test_alternative_explicit_tiles(route, settings):
         "grouped32",
         "input16",
         "input32",
+        "stream16",
+        "stream32",
     ],
 )
 @pytest.mark.parametrize("case", ["empty", "singleton", "below", "equal", "above"])
@@ -327,6 +348,8 @@ def test_product_floor_and_singleton_gradients(route, monkeypatch, case):
         "grouped32",
         "input16",
         "input32",
+        "stream16",
+        "stream32",
     ],
 )
 @pytest.mark.parametrize("count", [0, 17])
@@ -353,6 +376,8 @@ def test_zero_atoms_and_requested_gradients(route, monkeypatch, count, need_x, n
         "grouped32",
         "input16",
         "input32",
+        "stream16",
+        "stream32",
     ],
 )
 def test_retained_forward_snapshots_before_live_parameter_width_and_chart_updates(
@@ -396,6 +421,8 @@ def test_retained_forward_snapshots_before_live_parameter_width_and_chart_update
         "grouped32",
         "input16",
         "input32",
+        "stream16",
+        "stream32",
     ],
 )
 def test_no_full_h_g_saved_and_backward_recomputation(
@@ -430,6 +457,8 @@ def test_no_full_h_g_saved_and_backward_recomputation(
         "grouped32",
         "input16",
         "input32",
+        "stream16",
+        "stream32",
     ],
 )
 def test_twenty_graph_replays_public_optimizer_live_width_and_all_task_gradients(
@@ -465,6 +494,8 @@ def test_twenty_graph_replays_public_optimizer_live_width_and_all_task_gradients
         "grouped32",
         "input16",
         "input32",
+        "stream16",
+        "stream32",
     ],
 )
 def test_twenty_public_eager_updates(route, monkeypatch):
@@ -494,6 +525,8 @@ def test_reject_invalid_output_tile(tile):
         "grouped32",
         "input16",
         "input32",
+        "stream16",
+        "stream32",
     ],
 )
 @pytest.mark.parametrize("tile", [8, 16, 32, 64])
@@ -533,6 +566,8 @@ def test_output_owner_partial_tile_seam_cluster_and_no_fixed_capacity(
         ("grouped32", 32),
         ("input16", 16),
         ("input32", 32),
+        ("stream16", 16),
+        ("stream32", 32),
     ],
 )
 def test_reused_h_overwrites_one_buffer_for_every_partial_batch_chunk(
@@ -641,7 +676,16 @@ def test_aggregation_probes_real_formula_partial_chunks_and_census(
 @GPU
 @pytest.mark.parametrize(
     "route",
-    ["prepared16", "prepared32", "grouped16", "grouped32", "input16", "input32"],
+    [
+        "prepared16",
+        "prepared32",
+        "grouped16",
+        "grouped32",
+        "input16",
+        "input32",
+        "stream16",
+        "stream32",
+    ],
 )
 @pytest.mark.parametrize("zero", ["amplitude", "input"])
 def test_prepared_reuse_zero_forward_preserves_nonzero_derivative(route, zero):
@@ -668,7 +712,16 @@ def test_prepared_reuse_zero_forward_preserves_nonzero_derivative(route, zero):
 @GPU
 @pytest.mark.parametrize(
     "route",
-    ["prepared16", "prepared32", "grouped16", "grouped32", "input16", "input32"],
+    [
+        "prepared16",
+        "prepared32",
+        "grouped16",
+        "grouped32",
+        "input16",
+        "input32",
+        "stream16",
+        "stream32",
+    ],
 )
 @pytest.mark.parametrize("sigma", [0.01, 0.25000006])
 def test_prepared_nonfinite_scale_preserves_original_order_and_graph(route, sigma):
@@ -795,8 +848,9 @@ def test_input_owner_recipe_is_distinct():
 @GPU
 @pytest.mark.parametrize("capacity", [16, 32])
 @pytest.mark.parametrize("tile", [8, 16, 32, 64])
+@pytest.mark.parametrize("streamed", [False, True])
 def test_input_owner_one_g_buffer_overwritten_before_next_chunk(
-    monkeypatch, capacity, tile
+    monkeypatch, capacity, tile, streamed
 ):
     from torchcst._backends.cuda.algorithms.linear.regular_grid_h import input_kernels
 
@@ -808,7 +862,15 @@ def test_input_owner_one_g_buffer_overwritten_before_next_chunk(
             launch = original[grid]
 
             def call(*args, **kwargs):
-                calls.append((args[19], args[4].data_ptr(), tuple(args[4].shape)))
+                calls.append(
+                    (
+                        args[19],
+                        args[4].data_ptr(),
+                        tuple(args[4].shape),
+                        args[5].data_ptr(),
+                        tuple(args[5].shape),
+                    )
+                )
                 return launch(*args, **kwargs)
 
             return call
@@ -816,7 +878,7 @@ def test_input_owner_one_g_buffer_overwritten_before_next_chunk(
     monkeypatch.setattr(input_kernels, "produce_g_parameters", Capture())
     layer = model(
         periodic.parameters(129),
-        "input16" if capacity == 16 else "input32",
+        ("stream" if streamed else "input") + str(capacity),
         input_tile=tile,
         device="cuda",
     )
@@ -827,6 +889,25 @@ def test_input_owner_one_g_buffer_overwritten_before_next_chunk(
         (y, *torch.autograd.grad(y, (x, layer.atoms.p), dy)),
         periodic.oracle(layer, x, dy),
     )
-    assert [c[0] for c in calls] == list(range(0, 37, capacity))
+    g_capacity = 8 if streamed else capacity
+    assert [c[0] for c in calls] == list(range(0, 37, g_capacity))
     assert len({c[1] for c in calls}) == 1
-    assert all(c[2] == (capacity // 8, 129, 8) for c in calls)
+    assert all(c[2] == (g_capacity // 8, 129, 8) for c in calls)
+    if streamed:
+        assert len({c[3] for c in calls}) == 1
+        assert all(c[4] == (1, 3, 129) for c in calls)
+
+
+@pytest.mark.parametrize("capacity", [True, 0, 4, 17, 64])
+def test_reject_invalid_g_capacity(capacity):
+    with pytest.raises(ValueError):
+        StreamingInputHRecipe(g_batch=capacity)
+
+
+def test_streaming_recipe_distinct_and_batch_compatible():
+    with pytest.raises(ValueError):
+        StreamingInputHRecipe(batch_tile=16, g_batch=8)
+    with pytest.raises(TypeError):
+        InputOwnedHAlgorithm().validate_recipe(StreamingInputHRecipe())
+    with pytest.raises(TypeError):
+        StreamingInputHAlgorithm().validate_recipe(InputOwnedHRecipe())

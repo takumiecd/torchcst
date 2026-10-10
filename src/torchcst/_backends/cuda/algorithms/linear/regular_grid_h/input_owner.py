@@ -1,7 +1,9 @@
 """Backward-only routing and bounded G, rebuilt from the forward snapshot."""
 
 
-def input_owned_backward(x, dy, packed, sizes, recipe, dx, partial, need_p):
+def input_owned_backward(
+    x, dy, packed, sizes, recipe, dx, partial, need_p, *, physical=None
+):
     import triton as tr
 
     from . import input_kernels, output_kernels
@@ -19,7 +21,15 @@ def input_owned_backward(x, dy, packed, sizes, recipe, dx, partial, need_p):
         packed, sizes, recipe, output=False, tile=recipe.input_tile
     )
     hot = prepare_output_fields(packed, routing, output=False)
-    g = allocate_h(x, a, recipe)
+    streamed = hasattr(recipe, "g_batch")
+    capacity = recipe.g_batch if streamed else h_capacity(recipe)
+    g = (
+        x.new_empty((capacity // recipe.batch_tile, a, recipe.batch_tile))
+        if streamed
+        else allocate_h(x, a, recipe)
+    )
+    if physical is not None and not b:
+        physical.zero_()
     # Symmetric owner schedule: output sites of this contraction are input sites.
     swapped = (b, no, ni, lo, li, oo, oi)
     args = (
@@ -33,7 +43,7 @@ def input_owned_backward(x, dy, packed, sizes, recipe, dx, partial, need_p):
         recipe.batch_tile,
         recipe.patch_sites,
     )
-    for start in range(0, b, h_capacity(recipe)):
+    for start in range(0, b, capacity):
         tiles = active_h_tiles(g, b, start, recipe.batch_tile)
         input_kernels.produce_g_parameters[(tr.cdiv(a, recipe.atom_group), tiles)](
             x,
@@ -51,6 +61,7 @@ def input_owned_backward(x, dy, packed, sizes, recipe, dx, partial, need_p):
             recipe.batch_tile,
             recipe.patch_sites,
             recipe.atom_group,
+            STREAM_PARTIAL=streamed,
             num_warps=4,
             enable_fp_fusion=False,
         )
@@ -68,6 +79,19 @@ def input_owned_backward(x, dy, packed, sizes, recipe, dx, partial, need_p):
                 BSTART=start,
                 FALLBACK=fallback,
                 PROFILE_OUTPUT=False,
+                num_warps=4,
+                enable_fp_fusion=False,
+            )
+
+        if physical is not None:
+            input_kernels.accumulate_physical[(tr.cdiv(a, recipe.prep_group),)](
+                partial,
+                physical,
+                a,
+                tiles,
+                tr.next_power_of_2(g.shape[0]),
+                recipe.prep_group,
+                start == 0,
                 num_warps=4,
                 enable_fp_fusion=False,
             )

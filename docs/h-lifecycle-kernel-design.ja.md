@@ -241,3 +241,12 @@ G担当方式では入力owner tile8、forward出力tile16を最初の比較条�
 βinput=amp/Svの範囲guard、routing構築、G生成、dX集約、全parameter partial/reductionも
 完全stepに含める。atomicを消すだけで速くなるとは仮定せず、allocated/reserved総peakが
 dense以内かを含めて従来のatom-owned backwardと比較する。
+
+GとHのbatch容量は独立に選べる。streaming研究Planではforward Hを16/32batch、
+backward Gを8batchに固定し、parameter partialもchunkごとに畳んで上書きする。
+BM=8、B=32の場合、Gは8A floats、parameter用はpartialの3Aとphysical累積の3A
+だけである。全batch partialの12A floatsを保持しない。各chunkでphysicalな
+(damp,dci,dco)を累積し、最後にPolar source VJPを一度適用する。
+chunk終了の順序はG生成→dX集約→physical累積→buffer上書きで固定する。
+追加の累積kernel、batch和のFP32順序変更、Graph poolの総peakも比較に含める。
+この候補はparameterのみ必要な場合には従来経路を維持する。

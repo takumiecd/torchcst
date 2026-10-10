@@ -17,6 +17,7 @@ from .recipe import (
     ParallelReusedHRecipe,
     PreparedReusedHRecipe,
     ReusedHRecipe,
+    StreamingInputHRecipe,
 )
 
 
@@ -173,3 +174,14 @@ class InputOwnedHAlgorithm(OutputOwnedHAlgorithm):
         if type(recipe) is not InputOwnedHRecipe:
             raise TypeError("requires InputOwnedHRecipe")
         InputOwnedHRecipe(**asdict(recipe))
+
+
+@dataclass(frozen=True)
+class StreamingInputHAlgorithm(OutputOwnedHAlgorithm):
+    id: str = "research_cuda_regular_grid_streaming_input_h"
+    recipe_type: type = StreamingInputHRecipe
+
+    def validate_recipe(self, recipe):
+        if type(recipe) is not StreamingInputHRecipe:
+            raise TypeError("requires StreamingInputHRecipe")
+        StreamingInputHRecipe(**asdict(recipe))

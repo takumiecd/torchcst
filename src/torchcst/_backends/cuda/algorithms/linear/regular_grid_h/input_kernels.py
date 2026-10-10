@@ -31,6 +31,7 @@ def produce_g_parameters(
     BM: tl.constexpr,
     BK: tl.constexpr,
     GROUP: tl.constexpr,
+    STREAM_PARTIAL: tl.constexpr = False,
 ):
     pos = tl.program_id(0) * GROUP + tl.arange(0, GROUP)
     valid = pos < A
@@ -49,7 +50,28 @@ def produce_g_parameters(
             X, P, a, rows, valid, A, B, NI, LI, OI, X0, X1, False, True, BM, BK, GROUP
         )
         amp = tl.load(P + a, valid, 0)
-        tile = BSTART // BM + tl.program_id(1)
+        tile = tl.program_id(1) if STREAM_PARTIAL else BSTART // BM + tl.program_id(1)
         tl.store(Partial + tile * 3 * A + a, tl.sum(h * g, 1), valid)
         tl.store(Partial + tile * 3 * A + A + a, amp * tl.sum(g * dh, 1), valid)
         tl.store(Partial + tile * 3 * A + 2 * A + a, amp * tl.sum(h * dg, 1), valid)
+
+
+@tr.jit
+def accumulate_physical(
+    Partial,
+    Physical,
+    A: tl.constexpr,
+    TILES: tl.constexpr,
+    BT: tl.constexpr,
+    GROUP: tl.constexpr,
+    FIRST: tl.constexpr,
+):
+    a = tl.program_id(0) * GROUP + tl.arange(0, GROUP)
+    t = tl.arange(0, BT)
+    mask = (a[:, None] < A) & (t[None, :] < TILES)
+    base = Partial + t[None, :] * 3 * A + a[:, None]
+    for field in tl.static_range(3):
+        value = tl.sum(tl.load(base + field * A, mask, 0), 1)
+        if not FIRST:
+            value += tl.load(Physical + field * A + a, a < A, 0)
+        tl.store(Physical + field * A + a, value, a < A)
