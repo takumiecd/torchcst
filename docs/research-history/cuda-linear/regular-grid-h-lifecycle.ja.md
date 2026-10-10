@@ -1212,3 +1212,62 @@ remote cleanup要求の接続が切れた。supervisorはcleanup CLIの180s time
 状態DBの編集・pool所有sessionへの直接操作は行っていない。
 停止記録は `output/regular-grid-h/overnight-evidence/interrupted-stop-lifecycle.log`。
 `interrupted-supervisor-status.json` は再開直後のsnapshotで、停止確認そのものはlifecycleを使う。
+
+### group32の4条件完全step結果
+
+計算source `7fcf7fe3`。各Caseは8独立worker、各workerは24実更新と21 replay samples。
+全7 CST route×initial/post24×4Case =56 full oracleをPASS。denseは別parameterizationのengineering control。
+これは各Caseにつき1 cohortで、source hintだけでなくarchive・worker source bytes・snapshotを照合した。
+N2048 rho8は上記transport切断後の別L4 VMで測った。Case内比較は同じGPU/runtime。
+
+| N/rho | Wtorch | factor | onchip | H16 | g32 H16 | H32 | g32 H32 | dense [ms] |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1024/3 | 0.3974 | 1.2860 | 1.1790 | 2.0666 | 1.5461 | 1.9356 | 1.4039 | 0.0867 |
+| 2048/3 | 1.3027 | 5.2011 | 4.6211 | 8.5514 | 6.1451 | 8.0059 | 5.6803 | 0.5921 |
+| 1024/8 | 0.8752 | 2.7412 | 2.7114 | 2.9662 | 2.3792 | 2.7875 | 2.2477 | 0.0865 |
+| 2048/8 | 3.2286 | 10.9636 | 9.7287 | 11.1455 | 8.7670 | 10.5733 | 8.4900 | 0.5933 |
+
+H32の追加改善は27.5% /29.0% /19.4% /19.7%。group32は追加Tensorを作らないため、
+両allocator peakはmatched prepared controlとbyte単位で同じだった。
+H16も改善し、H32より低いscratchを必要とする代替として保全する。
+
+| N | H16/g32 H16 allocated/reserved | H32/g32 H32 allocated/reserved | dense allocated/reserved [MiB] |
+| --- | ---: | ---: | ---: |
+| 1024 | 11.32/36 | 14.52/36 | 33.00/86 |
+| 2048 | 44.22/102 | 57.42/104 | 81.75/106 |
+
+両peak<=denseのCSTから選ぶと、N1024 rho3はonchipを維持し、残り3条件はg32 H32を選ぶ。
+Wtorchは速いが今回のmemory条件を外れる。N2048のfactor/onchipも条件を外れる。
+公開dispatcherは変更していない。denseはすべてのCaseでまだ速い。
+
+| post24 H32 Y-only stage [ms] | prepared | g32 |
+| --- | ---: | ---: |
+| 1024/3 | 1.0435 | 0.5161 |
+| 2048/3 | 3.9885 | 2.0285 |
+| 1024/8 | 1.0588 | 0.5151 |
+| 2048/8 | 3.8973 | 2.0224 |
+
+Y stageは約48–51%短縮。H生成・routing・backwardを削減した結果ではない。
+各stageは別Graphの固定snapshot診断で、完全stepの内訳として足し合わせない。
+次のinput-owner候補は別計算source `e2a4984d` として検証する。
+
+| job / Case | source archive SHA256 | result archive SHA256 |
+| --- | --- | --- |
+| l4job-805d8c75be824407ada3a87f79b6246b / 1024/3 | `8b842de87a57d8c77b3d0da839cc2f4f15b04dedc92aba84e0d0f704e64d2a1a` | `468f4ec3f74d449eb072cf1b4866866df7924781e176ae9a098bf569022d44b8` |
+| l4job-e7f3f86298a84617b5ad2da6feb141ba / 2048/3 | `8b842de87a57d8c77b3d0da839cc2f4f15b04dedc92aba84e0d0f704e64d2a1a` | `8246277d73d85b84af18f5aba19d1769da215d4a6a7e116ba8b24b538656e941` |
+| l4job-5a816127611243d1a8580e1cfb350a00 / 1024/8 | `79c26b105a77f30c3b77e68cf0264a4c852b918492e6b8cfe1816a3e1b8e7e00` | `3d79f668a27de50b00e6d592a485097dfba82c63424845632c017255dec654f6` |
+| l4job-1645726de64149a9908034d7e6e34f8e / 2048/8 | `007b332dad43a2b79c1c24e6e6d5344120a6b3eca056aee49d9678fff461b21d` | `cd32c405be7713dbd72bdfbce2020bae2b638c7711d3e214d48cb88d0452c3cb` |
+
+再現は既存runnerを使う（N/rhoを4つのCaseに置換）。
+
+```bash
+python -m benchmarks.cuda.linear.periodic_comparison \
+  --case benchmarks/cuda/linear/cases/regular-grid-h-2048-rho8.json \
+  --plans matrix-torch factor onchip-h prepared-h16 prepared-h32 \
+          prepared-g32-h16 prepared-g32-h32 dense \
+  --isolated-oracle --phases --output output/regular-grid-h/grouped-comparison.json
+```
+
+GPU回帰testは `python -m pytest -q tests/test_regular_grid_h_cuda.py tests/test_periodic_cuda.py`。
+raw evidenceは全jobの凍結source・結果archive・manifest付きで
+`output/regular-grid-h/overnight-evidence/` に保全した。
