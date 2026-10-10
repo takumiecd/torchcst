@@ -1213,3 +1213,95 @@ def test_owner_stage_routing_census(site_routed, bounds, distance, expected):
     ) == expected
     assert result["prefix_entries"] == len(bounds)
     assert result["guarded_max_distance"] == distance
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "stream-g8-h16",
+        "stream-g8-h32",
+        "site-stream-g8-h16",
+        "site-stream-g8-h32",
+        "site-owner-bm16-stream-g8-h16",
+        "site-owner-bm16-stream-g8-h32",
+    ],
+)
+def test_streaming_backward_diagnostic_layout_is_backward_not_forward_owner(kind):
+    import json
+
+    from benchmarks.cuda.linear.periodic_comparison import (
+        streaming_backward_layout,
+        streaming_stage_recipe,
+    )
+
+    recipe = streaming_stage_recipe(kind)
+    layout = streaming_backward_layout(recipe, batch=33, atoms=17)
+    assert layout["forward_H_batch_capacity"] == int(kind[-2:])
+    assert layout["G_batch_capacity"] == 8
+    assert layout["G_producer_batch_tile"] == layout["dX_owner_batch_tile"] == 8
+    assert layout["chunk_starts"] == [0, 8, 16, 24, 32]
+    assert layout["G_scratch_bytes"] == 4 * 17 * 8
+    assert (
+        layout["parameter_partial_bytes"]
+        == layout["physical_accumulator_bytes"]
+        == 4 * 17 * 3
+    )
+    assert layout["backward_saved_H_bytes"] == layout["backward_saved_G_bytes"] == 0
+    assert json.loads(json.dumps(layout)) == layout
+
+
+@pytest.mark.parametrize(
+    "kind", ["dense", "site-routed-h32", "site-owner-bm16-h32", "input-owned-h32"]
+)
+def test_streaming_backward_diagnostics_exclude_other_schedules(kind):
+    from benchmarks.cuda.linear.periodic_comparison import streaming_stage_recipe
+
+    assert streaming_stage_recipe(kind) is None
+
+
+@GPU
+@pytest.mark.parametrize(
+    "kind,route,cap",
+    [
+        ("stream-g8-h16", "stream16", 16),
+        ("stream-g8-h32", "stream32", 32),
+        ("site-stream-g8-h16", "site_stream16", 16),
+        ("site-stream-g8-h32", "site_stream32", 32),
+        ("site-owner-bm16-stream-g8-h16", "owner_batch_stream", 16),
+        ("site-owner-bm16-stream-g8-h32", "owner_batch_stream", 32),
+    ],
+)
+def test_streaming_backward_stages_use_actual_backward_schedule(kind, route, cap):
+    from types import SimpleNamespace
+
+    from benchmarks.cuda.linear.periodic_comparison import streaming_backward_stages
+
+    settings = {"h_batch": cap} if route == "owner_batch_stream" else {}
+    layer = model(periodic.parameters(17), route, device="cuda", **settings)
+    before = layer.atoms.p.detach().clone()
+    step = SimpleNamespace(
+        model=layer,
+        x=torch.randn(17, 65, device="cuda"),
+        target=torch.randn(17, 33, device="cuda"),
+    )
+    result = streaming_backward_stages(step, kind)
+    assert result["same_uninstrumented_backward"] and result["same_snapshot"]
+    assert result["layout"]["chunk_starts"] == [0, 8, 16]
+    assert result["layout"]["dX_owner_batch_tile"] == 8
+    assert result["input_routing_census"]["prefix_entries"] == 10
+    assert result["input_routing_census"]["batch_ctas_per_input_owner"] == 3
+    assert len(result["samples_ms"]) == 5
+    for sample in result["samples_ms"]:
+        assert sample["setup_input_routing_and_fields"] >= 0
+        assert sample["source_VJP"] >= 0
+        assert [chunk["batch_start"] for chunk in sample["chunks"]] == [0, 8, 16]
+        assert all(
+            chunk[name] >= 0
+            for chunk in sample["chunks"]
+            for name in (
+                "produce_G_and_parameter_partials",
+                "dX_owner",
+                "physical_accumulation",
+            )
+        )
+    torch.testing.assert_close(layer.atoms.p, before, rtol=0, atol=0)

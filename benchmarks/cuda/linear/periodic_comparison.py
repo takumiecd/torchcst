@@ -908,6 +908,279 @@ def output_owner_stages(
     }
 
 
+STREAMING_STAGE_KINDS = (
+    "stream-g8-h16",
+    "stream-g8-h32",
+    "site-stream-g8-h16",
+    "site-stream-g8-h32",
+    "site-owner-bm16-stream-g8-h16",
+    "site-owner-bm16-stream-g8-h32",
+)
+
+
+def streaming_stage_recipe(kind):
+    """Resolve the actual registered streaming plan without importing GPU code."""
+    if kind not in STREAMING_STAGE_KINDS:
+        return None
+    from benchmarks.cuda.linear.manifest import decode_catalog
+
+    entries = decode_catalog(
+        json.loads(CATALOG.with_name("plans-regular-grid-h.json").read_text())
+    )
+    return next(entry.plan.recipe for entry in entries if entry.id == kind)
+
+
+def streaming_backward_layout(recipe, *, batch, atoms):
+    """Logical tensor sizes, not allocator peaks or hardware traffic."""
+    tiles = (min(batch, recipe.g_batch) + recipe.batch_tile - 1) // recipe.batch_tile
+    return {
+        "forward_H_batch_capacity": recipe.h_batch,
+        "G_batch_capacity": recipe.g_batch,
+        "G_producer_batch_tile": recipe.batch_tile,
+        "dX_owner_batch_tile": recipe.batch_tile,
+        "dX_owner_site_tile": recipe.input_tile,
+        "G_scratch_bytes": 4 * atoms * recipe.g_batch,
+        "parameter_partial_bytes": 4 * tiles * 3 * atoms,
+        "physical_accumulator_bytes": 4 * 3 * atoms,
+        "input_fields_bytes": 4 * 3 * atoms + 4,
+        "chunk_starts": list(range(0, batch, recipe.g_batch)),
+        "backward_saved_H_bytes": 0,
+        "backward_saved_G_bytes": 0,
+    }
+
+
+def streaming_backward_stages(step, kind):
+    """Fixed post24 all-gradient backward; measured separately from primary peaks.
+
+    Use production contractions and routing on immutable forward snapshots.
+    Event intervals are diagnostics, never an additive primary-step estimate.
+    """
+    recipe = streaming_stage_recipe(kind)
+    if recipe is None:
+        return None
+    import triton as tr
+
+    from torchcst._backends.cuda.algorithms.linear.periodic_product.executor import (
+        _prepare,
+    )
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h import (
+        input_kernels,
+        kernels,
+        output_kernels,
+    )
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h.output_owner import (
+        active_h_tiles,
+        prepare_output_fields,
+        prepare_routing,
+    )
+
+    model = copy.deepcopy(step.model)
+    x = step.x.detach().clone().requires_grad_()
+    source = model.atoms.p.detach().clone(memory_format=torch.contiguous_format)
+    ampmax = model.kernel.scalar("amplitude_max").detach().clone()
+    # Explicit cotangent from the same post24 loss as the production training
+    # step. Freeze it before timing; autograd reference consumes the same dy.
+    y = model(x)
+    loss = (y - step.target.detach()).square().mean()
+    dy = torch.autograd.grad(loss, y, retain_graph=True)[0].detach().clone()
+    expected = tuple(
+        t.detach().clone() for t in torch.autograd.grad(y, (x, model.atoms.p), dy)
+    )
+    del y, loss
+    b, ni, no = len(x), model.in_features, model.out_features
+    chart = model.chart.spec
+    sizes = (
+        b,
+        ni,
+        no,
+        chart.geometry.periods[1],
+        chart.geometry.periods[0],
+        chart.origin[1],
+        chart.origin[0],
+    )
+    packed = _prepare(source, model.kernel, sizes, recipe)
+    # Diagnostic-only immutable audit copy; never part of primary peaks.
+    packed_audit = packed.clone()
+    a = len(source)
+    if not a or not b:
+        raise ValueError(
+            "streaming stage diagnostics require nonempty benchmark batch and atoms"
+        )
+    layout = streaming_backward_layout(recipe, batch=b, atoms=a)
+    starts = layout["chunk_starts"]
+    events = [
+        torch.cuda.Event(enable_timing=True, external=True)
+        for _ in range(3 + 3 * len(starts))
+    ]
+    observed = {}
+    launch = {"num_warps": 4, "enable_fp_fusion": False}
+
+    def call():
+        events[0].record()
+        dx, dp = torch.zeros_like(x), torch.empty_like(source)
+        partial_tiles = tr.cdiv(min(b, recipe.g_batch), recipe.batch_tile)
+        partial = x.new_empty((partial_tiles, 3, a))
+        physical = x.new_empty((3, a))
+        routing = prepare_routing(
+            packed, sizes, recipe, output=False, tile=recipe.input_tile
+        )
+        hot = prepare_output_fields(packed, routing, output=False)
+        g = x.new_empty((recipe.g_batch // recipe.batch_tile, a, recipe.batch_tile))
+        observed["routing"], observed["hot"] = routing, hot
+        events[1].record()
+        swapped = (b, no, ni, sizes[4], sizes[3], sizes[6], sizes[5])
+        for i, start in enumerate(starts):
+            tiles = active_h_tiles(g, b, start, recipe.batch_tile)
+            input_kernels.produce_g_parameters[(tr.cdiv(a, recipe.atom_group), tiles)](
+                x,
+                dy,
+                packed,
+                routing[0],
+                g,
+                partial,
+                a,
+                *sizes,
+                *x.stride(),
+                *dy.stride(),
+                True,
+                start,
+                recipe.batch_tile,
+                recipe.patch_sites,
+                recipe.atom_group,
+                STREAM_PARTIAL=True,
+                **launch,
+            )
+            events[2 + 3 * i].record()
+            for fallback in (False, True):
+                group = recipe.atom_group if fallback else recipe.output_group
+                output_kernels.prepared_output_owned[
+                    (tr.cdiv(ni, recipe.input_tile), tiles)
+                ](
+                    dy,
+                    packed,
+                    *routing,
+                    dx,
+                    a,
+                    *swapped,
+                    *dy.stride(),
+                    recipe.batch_tile,
+                    recipe.patch_sites,
+                    group,
+                    recipe.input_tile,
+                    H=g,
+                    Hot=hot[0],
+                    Unsafe=hot[1],
+                    BSTART=start,
+                    FALLBACK=fallback,
+                    PROFILE_OUTPUT=False,
+                    **launch,
+                )
+            events[3 + 3 * i].record()
+            input_kernels.accumulate_physical[(tr.cdiv(a, recipe.prep_group),)](
+                partial,
+                physical,
+                a,
+                tiles,
+                tr.next_power_of_2(g.shape[0]),
+                recipe.prep_group,
+                start == 0,
+                **launch,
+            )
+            events[4 + 3 * i].record()
+        kernels.reduce_parameters[(tr.cdiv(a, recipe.prep_group),)](
+            physical[None],
+            dp,
+            source,
+            ampmax,
+            a,
+            1,
+            1,
+            recipe.prep_group,
+            **launch,
+        )
+        events[-1].record()
+        return dx, dp
+
+    call()
+    torch.cuda.synchronize()
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        actual = call()
+    graph.replay()
+    torch.cuda.synchronize()
+    samples = []
+    for _ in range(5):
+        graph.replay()
+        torch.cuda.synchronize()
+        samples.append(
+            {
+                "setup_input_routing_and_fields": events[0].elapsed_time(events[1]),
+                "chunks": [
+                    {
+                        "batch_start": start,
+                        "produce_G_and_parameter_partials": events[
+                            1 + 3 * i
+                        ].elapsed_time(events[2 + 3 * i]),
+                        "dX_owner": events[2 + 3 * i].elapsed_time(events[3 + 3 * i]),
+                        "physical_accumulation": events[3 + 3 * i].elapsed_time(
+                            events[4 + 3 * i]
+                        ),
+                    }
+                    for i, start in enumerate(starts)
+                ],
+                "source_VJP": events[-2].elapsed_time(events[-1]),
+            }
+        )
+    errors = {}
+    for name, got, wanted in zip(("dX", "all_dP"), actual, expected, strict=True):
+        require_finite(name, got)
+        require_finite(name + " reference", wanted)
+        torch.testing.assert_close(got, wanted, rtol=4e-4, atol=4e-4)
+        errors[name] = float((got - wanted).abs().max().cpu())
+    # Only after every timed event: read the exact captured routing and flag.
+    routing, hot = observed["routing"], observed["hot"]
+    unsafe = bool(hot[1].detach().cpu().item())
+    group = recipe.atom_group if unsafe else recipe.output_group
+    census = routing_bounds_census(
+        routing[1].detach().cpu().tolist(),
+        int(routing[2].detach().cpu().item()),
+        sites=ni,
+        tile=recipe.input_tile,
+        group=group,
+        site_routed=False,
+    )
+    batch_ctas = sum(
+        tr.cdiv(min(recipe.g_batch, b - start), recipe.batch_tile) for start in starts
+    )
+    census.update(
+        scope="candidate ranges over input owners; excludes batch multiplicity and padded lanes",
+        unsafe_beta_fallback=unsafe,
+        batch_ctas_per_input_owner=batch_ctas,
+        active_dX_ctas=tr.cdiv(ni, recipe.input_tile) * batch_ctas,
+        launched_dX_ctas=2 * tr.cdiv(ni, recipe.input_tile) * batch_ctas,
+    )
+    unchanged = (
+        torch.equal(model.atoms.p.detach(), source)
+        and torch.equal(step.model.atoms.p.detach(), source)
+        and torch.equal(packed, packed_audit)
+    )
+    if not unchanged:
+        raise AssertionError("backward diagnostic changed its forward snapshot")
+    return {
+        "scope": "fixed post24 all-gradient backward; no optimizer; nonadditive to primary; excluded from primary peaks",
+        "snapshot_preparation_timed": False,
+        "packed_audit_copy_bytes": packed_audit.numel() * packed_audit.element_size(),
+        "dy_source": "fixed explicit cotangent of post24 mean squared loss",
+        "samples_ms": samples,
+        "layout": layout,
+        "input_routing_census": census,
+        "same_uninstrumented_backward": True,
+        "same_snapshot": unchanged,
+        "max_abs_vs_uninstrumented": errors,
+        "lifetime": "G and partials overwritten after each chunk; physical accumulator lives to source VJP; no H/G saved from forward",
+    }
+
+
 def phase_diagnostics(step):
     """Separate copy; record one initial and five diagnostic replays, no timing sum."""
     model = copy.deepcopy(step.model)
@@ -1121,6 +1394,12 @@ def worker(
         result["phase_diagnostics"] = phase_diagnostics(step) if phases else None
         result["forward_stage_diagnostics"] = (
             forward_stages(step, kind) if phases else None
+        )
+        stage = "separate-streaming-backward-diagnostics"
+        result["backward_stage_diagnostics"] = (
+            streaming_backward_stages(step, kind)
+            if phases and kind in STREAMING_STAGE_KINDS
+            else None
         )
         if aggregation_diagnostics and kind in (
             "reused-h16",

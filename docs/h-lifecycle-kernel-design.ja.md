@@ -302,3 +302,41 @@ raw UのPhi16表を持つ案は次段階に置く。正確な支持envelopeに�
 span検査とbroad fallbackが必要で、H32をH16へ縮めても表の転送や
 追加metadata・Graph poolのreservedが費用になる。まずscratchを
 増やさないbatch共有を切り分ける。
+
+### Producerとconsumerを両方考えた配置と診断
+
+現在のHは `[batch slab, output-centre-sorted atom, 8]`。
+同じatomの8batch値は連続し、Y ownerは出力座標の近いatomのHを連続して読む。
+一方、Xは `[batch,input site]` なので、各atomの支持内は隣接siteを読めても、
+同じproducer group内のatomの入力中心が近いとは限らない。
+Gはinput-centre順でdX consumerを優先しており、G producerのdY読出しには対称な問題がある。
+N2048/B32/FP32ではX自体は256KiB、A209715/H32のHは約25.6MiB。
+論理参照量だけからcache missや物理trafficを推定しない。
+
+未実装の配置候補は、output siteを第一キー、input siteを第二キーとする
+`key=output_site*NI+input_site` の単一sort。出力siteごとの連続性を保ち、
+同じoutput site内のproducerを入力中心順にする。Boundsはsorted keyに対し
+`arange(NO+1)*NI` をsearchsortedする。同scopeの最大8192²ならint32に収まる。
+別のHコピーやatom数に比例する追加permutationは不要だが、key生成とsortの費用、
+atom加算順、group内最大支持長が変わる。cache改善は未検証で、採用候補ではない。
+
+中心座標から格子番号は直接計算できる。現在のindex構築はその後のsort、
+site/binの開始位置作成、guarded最大距離のreductionも含む。
+routingはそのforward/backward内の一時状態であり、forwardのOrderをbackwardへ保存しない。
+一時的であることと構築費用がゼロであることは異なる。今回の約0.08msの構築より、
+実際の集約・profile評価・H/G読出しを先に調べる。
+
+backwardの通常経路はG生成・H再計算・dX atomic scatter・parameter partialを融合する。
+G8経路はGを一時保存し、dX owner reductionを使う。両者を同じ「atomicなし」と呼ばない。
+G8のpost24固定snapshotについて、既存runnerの別診断Graphで次を測る。
+
+1. dX初期化、入力routing、入力係数などの準備。
+2. G/dG生成、H/dH再計算、3種類のparameter partial生成を融合したproducer。
+3. GからdXへのowner集約（通常/unsafe fallbackの2launchを含む）。
+4. chunkのphysical parameter部分和を累積。
+5. source Parameterへの最終VJP。
+
+同じsnapshotの実backwardとdX/all-dPを照合し、source/packedが変化しないことを検査する。
+主測定の完全stepと両peakを保存した後だけ診断を行い、5 replayと実input routing censusを記録する。
+producer内をさらに分けるprobeは既存contractを用いてG/dGとH/dHをそれぞれ評価できるが、
+融合解除でregister配置・中間転送が変わるため、その時間を元kernelから差し引かない。

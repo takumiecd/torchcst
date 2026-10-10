@@ -1746,3 +1746,18 @@ H16/G8のrho8も7.3342→6.6225ms、47.12/102MiBで両peakがdense以下。
 BM16は同じ候補を使いbatch CTAを4→2へ減らす。これは論理量で、物理trafficではない。
 両jobの保全後、全pool slotがstoppedであることとserver停止を確認した。
 証拠は `owner-bm16-final-pool-status.json` と `owner-bm16-final-stop-lifecycle.log`。
+
+
+### G8 backward段階計測の事前方針
+
+ユーザーの「backwardを細かく、Hの生成側/消費側の配置も調べる」という依頼を受け、
+Astraの診断patchを独立レビュー後に既存periodic_comparisonへ追加した。
+runtime `src/` はsource971031b4と同一。CPU1709 passed /3414 skipped、RuffをPASS。
+追加GPU検証は6種類のG8 routeについて、実backwardとのdX/all-dP照合、snapshot不変、
+端数chunkとinput routing censusを確認する。inner1100秒/job1200秒を固定する。
+PASS後、N2048/rho3・8を各11 routesで実行する。必須matrix/factor/onchip/dense、
+coarse-G8-H32、site/BM16の通常H32、site/BM16のG8-H16/H32を含む。
+initial/post24独立FP64 gate、24更新、21主測定samplesを維持し、
+主測定の後に5区間診断を実行する。H32通常とH16/H32-G8のBM8/16組を独立確認する。
+inner1450秒/job1500秒は直前14-route jobの実所要時間を根拠とする事前budget。
+timeoutの場合はその失敗を保存し、同じ測定を延長してやり直さない。
