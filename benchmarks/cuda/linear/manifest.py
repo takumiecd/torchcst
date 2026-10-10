@@ -49,6 +49,9 @@ from torchcst._backends.cuda.algorithms.linear.profile_product_matrix.algorithm_
 from torchcst._backends.cuda.algorithms.linear.profile_product_matrix.bounded_algorithm import (
     BoundedMatrixProductAlgorithm,
 )
+from torchcst._backends.cuda.algorithms.linear.profile_product_matrix.cached_algorithm import (
+    CachedMatrixProductAlgorithm,
+)
 from torchcst._backends.cuda.algorithms.linear.profile_product_matrix.large_algorithm import (
     LargeMatrixProductAlgorithm,
     LargeMatrixStripAlgorithm,
@@ -157,6 +160,7 @@ REGISTRY.register(GroupedMatrixProductAlgorithm())
 REGISTRY.register(GroupedMatrixStripAlgorithm())
 REGISTRY.register(LargeMatrixProductAlgorithm())
 REGISTRY.register(BoundedMatrixProductAlgorithm())
+REGISTRY.register(CachedMatrixProductAlgorithm())
 REGISTRY.register(LargeMatrixStripAlgorithm())
 REGISTRY.register(LargePreparationProductAlgorithm())
 REGISTRY.register(LargePreparationStripAlgorithm())

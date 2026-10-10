@@ -53,3 +53,39 @@ forward's unequal input/output bounds. Correct the test to update both sides
 equally, retaining changes to every decoder scalar. No executor/kernel or
 tolerance changes; preserve this failed gate, and run the corrected source with
 the same1000s job budget before any performance claim.
+
+Corrected gate `l4job-7926548caf5a41539762fafc998b9150` passed125 tests and
+the complete2048 comparison. Initial full-site oracle plus both candidates'
+all209715-atom oracle after24 captured updates passed. The recompute variants
+lost: native1.118382→1.377347ms and Torch0.941928→1.200411ms; allocated peaks
+66493952→67336704 and99735040→100577792 bytes. C262144 exceeds this K, so this
+case has no chunk-bound storage reduction. The already declared8192 study is
+`l4job-dfd73c99fb604a46b4487c8a858b77fb`, same executor source and1600s budget.
+Its outcome remains independent of the2048 loss.
+
+The corrected2048 driver accidentally recorded the symbolic commit `HEAD`.
+Keep that raw artifact unchanged; certify its complete non-driver source hash
+manifest against the explicit measured source b469c48 in a companion proof.
+Later submissions use explicit commits. This metadata issue is not a new run.
+
+## Second candidate: lossless compact support cache
+
+Revision v2 keeps five FP32 fields (precision, both norms and both norm-derivative
+coefficients), four int16 interval ends and one uint8 singleton flag:29 bytes
+per atom instead of52. The8192-site support bound guarantees every interval end,
+including empty-support sentinels, fits int16. Centers are read from the saved
+canonical Parameter; amplitude uses the exact original guarded Polar formula
+and saved amplitude_max. No numerical factor is quantized or approximated.
+
+The forward prepares a chunk using the unchanged norm kernel, assembles W and
+encodes the immutable compact cache. Backward expands a chunk, then calls the
+unchanged VJP. It does not repeat full norm/width preparation. With C262144,
+logical cache+scratch is about105.8 MiB at K3355443, versus166.4 MiB for the
+original table. Actual capture/replay peak and conversion/launch cost remain
+unmeasured until the new comparison. W/dW still remain full-size.
+
+Run the same boundary/Graph/snapshot suite and an additional bitwise layout
+roundtrip, then the same-engine native/Torch controls plus dense at2048 and8192.
+Use the same acceptance thresholds and full initial/24-update FP64 oracles,
+1000s for the new2048 job and1600s for the new8192 job. This is a new execution
+candidate after the observed2048 recomputation loss; do not replace that loss.
