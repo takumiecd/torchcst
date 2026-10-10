@@ -80,6 +80,7 @@ def model(
     floor=1e-6,
     live=False,
     device="cpu",
+    chart=None,
     **settings,
 ):
     bounds = (
@@ -90,7 +91,9 @@ def model(
         )
     )
     return CSTLinear(
-        chart=chart_presets.periodic_grid(shape, periods=periods, origin=origin),
+        chart=chart
+        if chart is not None
+        else chart_presets.periodic_grid(shape, periods=periods, origin=origin),
         atoms=p,
         kernel=presets.polar_periodic_profile_product(
             profiles=(TriweightSpec(), TriweightSpec()),
@@ -141,7 +144,7 @@ def oracle_atoms(layer, p):
     state, chart = layer.kernel, layer.chart
     amp, sigma = polar(state, p)
     axes = []
-    for d, size in enumerate(chart.grid_shape):
+    for d, size in enumerate(chart.shape):
         period = chart.geometry.periods[d]
         site = (
             chart.origin[d]

@@ -61,6 +61,11 @@ from torchcst._backends.cuda.algorithms.linear.profile_product_matrix.square_str
     SquareStripPreparationAlgorithm,
     SquareStripSplitAlgorithm,
 )
+from torchcst._backends.cuda.algorithms.linear.regular_grid_h.algorithm import (
+    OnchipHAlgorithm,
+    RegularFactorAlgorithm,
+    RegularMatrixAlgorithm,
+)
 from torchcst._backends.cuda.algorithms.linear.sphere_polar.algorithm import (
     SphereAlgorithm,
 )
@@ -145,6 +150,9 @@ REGISTRY.register(NormalizedWindowAlgorithm())
 REGISTRY.register(LocalAlgorithm())
 REGISTRY.register(PeriodicMatrixAlgorithm())
 REGISTRY.register(PeriodicFactorAlgorithm())
+REGISTRY.register(RegularMatrixAlgorithm())
+REGISTRY.register(RegularFactorAlgorithm())
+REGISTRY.register(OnchipHAlgorithm())
 REGISTRY.register(ProductAlgorithm())
 REGISTRY.register(StripProductAlgorithm())
 REGISTRY.register(GlobalProductAlgorithm())

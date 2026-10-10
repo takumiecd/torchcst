@@ -52,6 +52,8 @@ class PeriodicMatrixAlgorithm(Algorithm[PeriodicRecipe]):
     input_type: type = LinearInputs
     mode: str = "matrix"
 
+    chart_spec = staticmethod(periodic_spec)
+
     def validate_recipe(self, recipe):
         if type(recipe) is not PeriodicRecipe:
             raise TypeError("requires PeriodicRecipe")
@@ -62,7 +64,7 @@ class PeriodicMatrixAlgorithm(Algorithm[PeriodicRecipe]):
             return SupportResult(("requires LinearContext",))
         reasons = []
         try:
-            periodic_spec(context.operator)
+            self.chart_spec(context.operator)
         except (ValueError, TypeError):
             reasons.append("requires supported D2 flat periodic product")
         if context.dtype != torch.float32 or context.device.type != "cuda":
@@ -91,7 +93,7 @@ class PeriodicMatrixAlgorithm(Algorithm[PeriodicRecipe]):
         from .executor import periodic_product
 
         x, p, declaration, operator = live_inputs(state, inputs)
-        chart = periodic_spec(declaration)
+        chart = self.chart_spec(declaration)
         sizes = (
             len(x),
             chart.shape[1],

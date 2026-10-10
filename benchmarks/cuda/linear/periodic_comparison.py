@@ -33,13 +33,15 @@ from benchmarks.cuda.linear.scaling_comparison import (
 )
 from torchcst import CSTOptimizer
 
-KINDS = ("matrix-torch", "matrix-triton", "factor", "torch-factored", "dense")
+LEGACY_KINDS = ("matrix-torch", "matrix-triton", "factor", "torch-factored", "dense")
+KINDS = (*LEGACY_KINDS, "onchip-h")
+REGULAR_PRIMARY = ("matrix-torch", "factor", "onchip-h", "dense")
 PRIMARY = ("matrix-torch", "factor", "dense")
 CATALOG = Path(__file__).with_name("plans-periodic-profile-product.json")
 
 
-def case_definition(size, rho):
-    return {
+def case_definition(size, rho, *, regular_grid=False):
+    value = {
         "schema": "periodic-case.research.v1",
         "size": size,
         "rho_initial": float(rho),
@@ -77,6 +79,11 @@ def case_definition(size, rho):
             "relative_l2": 4e-4,
         },
     }
+    if regular_grid:
+        value.update(
+            schema="regular-grid-h-case.research.v1", grid_shape=[[size], [size]]
+        )
+    return value
 
 
 def load_case(path):
@@ -88,7 +95,9 @@ def load_case(path):
         or value["rho_initial"] not in (3, 8)
     ):
         raise ValueError("only the four predeclared periodic cases are accepted")
-    if value != case_definition(value["size"], value["rho_initial"]):
+    if value != case_definition(
+        value["size"], value["rho_initial"], regular_grid="grid_shape" in value
+    ):
         raise ValueError("case differs from the frozen periodic protocol")
     return value
 
@@ -108,18 +117,39 @@ def bind_plan(model, kind):
     )
     from torchcst._backends.dispatch import FixedSelector
 
-    entries = decode_catalog(json.loads(CATALOG.read_text()))
-    plan = next(entry.plan for entry in entries if entry.id == kind)
-    expected_id = (
-        "research_cuda_periodic_prepared_factor"
-        if kind == "factor"
-        else "research_cuda_periodic_grouped_matrix"
+    regular_grid = model.chart.spec.kind == "regular_grid"
+    catalog = (
+        CATALOG.with_name("plans-regular-grid-h.json") if regular_grid else CATALOG
     )
+    entries = decode_catalog(json.loads(catalog.read_text()))
+    plan = next(entry.plan for entry in entries if entry.id == kind)
+    if regular_grid:
+        from torchcst._backends.cuda.algorithms.linear.regular_grid_h.recipe import (
+            OnchipHRecipe,
+        )
+
+        expected_id = {
+            "factor": "research_cuda_regular_grid_saved_factor",
+            "onchip-h": "research_cuda_regular_grid_onchip_h",
+        }.get(kind, "research_cuda_regular_grid_matrix")
+        expected_recipe = (
+            OnchipHRecipe()
+            if kind == "onchip-h"
+            else PeriodicRecipe(gemm="triton" if kind == "matrix-triton" else "torch")
+        )
+    else:
+        expected_recipe = PeriodicRecipe(
+            gemm="triton" if kind == "matrix-triton" else "torch"
+        )
+        expected_id = (
+            "research_cuda_periodic_prepared_factor"
+            if kind == "factor"
+            else "research_cuda_periodic_grouped_matrix"
+        )
     if (
         plan.algorithm_id != expected_id
         or plan.algorithm_revision != "v1"
-        or plan.recipe
-        != PeriodicRecipe(gemm="triton" if kind == "matrix-triton" else "torch")
+        or plan.recipe != expected_recipe
     ):
         raise ValueError(
             "Plan differs from the frozen grouped preparation/contraction recipe"
@@ -177,9 +207,9 @@ def oracle_check(model, x, dy):
     }
 
 
-def state_gate(*, device="cuda", steps=20):
+def state_gate(*, device="cuda", steps=20, regular_grid=False):
     """Same-cotangent public optimizer truth, including seam crossings and moments."""
-    model = fixture.fixture(32, 3, atoms=17).to(device)
+    model = fixture.fixture(32, 3, atoms=17, regular_grid=regular_grid).to(device)
     with torch.no_grad():
         model.atoms.p[:, 2] = 32 - 1e-5
         model.atoms.p[:, 3] = 1e-5
@@ -259,6 +289,8 @@ def state_gate(*, device="cuda", steps=20):
 
 def forward_stages(step, kind):
     """Fixed post-primary forward copy; these stages are not a training-step sum."""
+    if kind == "onchip-h":
+        return onchip_stages(step)
     if kind not in ("matrix-torch", "matrix-triton", "factor"):
         return None
     import triton as tr
@@ -339,6 +371,55 @@ def forward_stages(step, kind):
     }
 
 
+def onchip_stages(step):
+    """Fused H-to-Y cannot be decomposed by timestamps inside one kernel."""
+    from torchcst._backends.cuda.algorithms.linear.periodic_product.executor import (
+        _prepare,
+    )
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h.executor import (
+        forward_contraction,
+    )
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h.recipe import (
+        OnchipHRecipe,
+    )
+
+    model = copy.deepcopy(step.model)
+    x, p = step.x.detach().clone(), model.atoms.p.detach()
+    n = model.in_features
+    sizes, recipe = (len(x), n, n, float(n), float(n), 0.0, 0.0), OnchipHRecipe()
+    events = [torch.cuda.Event(enable_timing=True, external=True) for _ in range(3)]
+
+    def call():
+        events[0].record()
+        packed = _prepare(p.contiguous().clone(), model.kernel, sizes, recipe)
+        events[1].record()
+        y = forward_contraction(x, packed, sizes, recipe)
+        events[2].record()
+        return y
+
+    call()
+    torch.cuda.synchronize()
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        y = call()
+    graph.replay()
+    torch.cuda.synchronize()
+    phases = {
+        name: [] for name in ("snapshot_and_preparation", "Y_zero_and_fused_H_to_Y")
+    }
+    for _ in range(5):
+        graph.replay()
+        torch.cuda.synchronize()
+        for i, name in enumerate(phases):
+            phases[name].append(events[i].elapsed_time(events[i + 1]))
+    require_finite("fused-stage Y", y)
+    return {
+        "scope": "fixed post24 forward copy; nonadditive diagnostic; fused H/Y unsplit",
+        "samples_ms": phases,
+        "parameters_unchanged": tensor_hash(p) == tensor_hash(step.model.atoms.p),
+    }
+
+
 def phase_diagnostics(step):
     """Separate copy; record one initial and five diagnostic replays, no timing sum."""
     model = copy.deepcopy(step.model)
@@ -384,12 +465,13 @@ def phase_diagnostics(step):
     }
 
 
-def worker(size, rho, kind, *, phases=False, verify_only=False):
+def worker(size, rho, kind, *, phases=False, verify_only=False, regular_grid=False):
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
     torch.set_float32_matmul_precision("highest")
     result = {
         "status": "RUNNING",
+        "regular_grid": regular_grid,
         "kind": kind,
         "size": size,
         "rho_initial": rho,
@@ -398,9 +480,13 @@ def worker(size, rho, kind, *, phases=False, verify_only=False):
         "atoms": None if kind == "dense" else int(0.05 * size * size),
         **source_metadata(),
     }
-    case = case_definition(size, rho)
+    case = case_definition(size, rho, regular_grid=regular_grid)
     result["case_definition"] = case
-    result["plan_catalog_sha256"] = hashlib.sha256(CATALOG.read_bytes()).hexdigest()
+    result["plan_catalog_sha256"] = hashlib.sha256(
+        (
+            CATALOG.with_name("plans-regular-grid-h.json") if regular_grid else CATALOG
+        ).read_bytes()
+    ).hexdigest()
     result["case_sha256"] = hashlib.sha256(
         json.dumps(case, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
@@ -410,7 +496,9 @@ def worker(size, rho, kind, *, phases=False, verify_only=False):
         x, target, dy = xx.cuda().requires_grad_(), target.cuda(), dy.cuda()
         dense = kind == "dense"
         model = (
-            dense_fixture(size).cuda() if dense else fixture.fixture(size, rho).cuda()
+            dense_fixture(size).cuda()
+            if dense
+            else fixture.fixture(size, rho, regular_grid=regular_grid).cuda()
         )
         result["plan"] = None if dense else bind_plan(model, kind)
         result["initial_hashes"] = {
@@ -548,11 +636,18 @@ def validate_record(record):
         chart = record["fixture"]["operator_declaration"]["layout"]["chart"]
         n = record["size"]
         if (
-            chart["kind"] != "periodic_grid"
-            or tuple(chart["grid_shape"]) != (n, n)
+            chart["kind"]
+            != ("regular_grid" if record.get("regular_grid") else "periodic_grid")
+            or (
+                tuple(map(tuple, chart["grid_shape"]))
+                if record.get("regular_grid")
+                else tuple(chart["grid_shape"])
+            )
+            != (((n,), (n,)) if record.get("regular_grid") else (n, n))
             or tuple(chart["geometry"]["periods"]) != (n, n)
             or tuple(chart["origin"]) != (0.0, 0.0)
-            or chart["output_dims"] != 1
+            or (chart.get("output_dims", 1) != 1)
+            or (record.get("regular_grid") and tuple(chart["spacing"]) != (1.0, 1.0))
         ):
             raise ValueError(
                 "comparison requires canonical D2 unit-spacing periodic lattice"
@@ -577,7 +672,10 @@ def validate_record(record):
 def assess(records):
     """Keep matrix, support-factor and dense outcomes distinct; never select OOM."""
     kinds = {r["kind"]: r for r in records}
-    for key in PRIMARY:
+    primary = (
+        REGULAR_PRIMARY if any(r.get("regular_grid") for r in records) else PRIMARY
+    )
+    for key in primary:
         if key not in kinds or kinds[key]["status"] != "PASS":
             return {
                 "status": "FAIL",
@@ -612,6 +710,8 @@ def assess(records):
             "status": "FAIL",
             "reason": "worker numerical/runtime failure preserved",
         }
+    if primary == REGULAR_PRIMARY:
+        return assess_regular(kinds, valid)
     candidate = kinds["factor"]
     if any(r.get("verify_only", False) for r in valid):
         return {"status": "PASS", "verification_only": True, "qualifies": False}
@@ -642,13 +742,57 @@ def assess(records):
     }
 
 
+def assess_regular(kinds, valid):
+    """Both allocator peaks must fit dense before a candidate can be selected."""
+    if any(r.get("verify_only", False) for r in valid):
+        return {"status": "PASS", "verification_only": True, "qualifies": False}
+    if len({json.dumps(r["runtime"], sort_keys=True) for r in valid}) != 1:
+        raise AssertionError("unmatched runtime")
+    dense, saved = kinds["dense"], kinds["factor"]
+    candidates = {}
+    for name, r in kinds.items():
+        if name == "dense" or r["status"] != "PASS":
+            continue
+        fits = all(
+            r["peak_capture_replay"][key] <= dense["peak_capture_replay"][key]
+            for key in ("allocated_bytes", "reserved_bytes")
+        )
+        candidates[name] = {
+            "fits_dense_allocated_and_reserved": fits,
+            "time_ratio_to_dense": r["timing"]["median_ms"]
+            / dense["timing"]["median_ms"],
+            "time_ratio_to_saved_factor": r["timing"]["median_ms"]
+            / saved["timing"]["median_ms"],
+            "allocated_ratio_to_saved_factor": r["peak_capture_replay"][
+                "allocated_bytes"
+            ]
+            / saved["peak_capture_replay"]["allocated_bytes"],
+        }
+    fitting = [
+        name for name, r in candidates.items() if r["fits_dense_allocated_and_reserved"]
+    ]
+    return {
+        "status": "PASS",
+        "candidates": candidates,
+        "fastest_fitting_cst": min(
+            fitting, key=lambda name: kinds[name]["timing"]["median_ms"]
+        )
+        if fitting
+        else None,
+        "gate": "both total allocated/reserved <= dense; choose fastest passing CST",
+        "adopted": False,
+        "scope": "single cohort; research baseline; dispatcher adoption is separate",
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--size", type=int, choices=(1024, 2048))
     parser.add_argument("--rho", type=float, choices=(3, 8))
     parser.add_argument("--case", type=Path)
-    parser.add_argument("--plans", nargs="+", choices=KINDS, default=list(KINDS))
+    parser.add_argument("--plans", nargs="+", choices=KINDS, default=None)
     parser.add_argument("--worker", choices=KINDS)
+    parser.add_argument("--regular-grid", action="store_true")
     parser.add_argument("--state-gate", action="store_true")
     parser.add_argument("--phases", action="store_true")
     parser.add_argument("--verify-only", action="store_true")
@@ -658,6 +802,7 @@ def main():
     args = parser.parse_args()
     if args.case:
         case = load_case(args.case)
+        args.regular_grid = "grid_shape" in case
         if args.size is not None and args.size != case["size"]:
             parser.error("explicit size differs from frozen case")
         if args.rho is not None and args.rho != case["rho_initial"]:
@@ -666,9 +811,20 @@ def main():
     else:
         args.size = 1024 if args.size is None else args.size
         args.rho = 3 if args.rho is None else args.rho
+    if args.plans is None:
+        args.plans = (
+            ["matrix-torch", "matrix-triton", "factor", "onchip-h", "dense"]
+            if args.regular_grid
+            else list(LEGACY_KINDS)
+        )
+    if not args.regular_grid and (
+        args.worker == "onchip-h" or "onchip-h" in args.plans
+    ):
+        parser.error("onchip-h requires --regular-grid")
+    primary = REGULAR_PRIMARY if args.regular_grid else PRIMARY
     args.output.parent.mkdir(parents=True, exist_ok=True)
     if args.state_gate:
-        result = state_gate()
+        result = state_gate(regular_grid=args.regular_grid)
     elif args.worker:
         result = worker(
             args.size,
@@ -676,10 +832,11 @@ def main():
             args.worker,
             phases=args.phases,
             verify_only=args.verify_only,
+            regular_grid=args.regular_grid,
         )
         validate_record(result)
     else:
-        if len(set(args.plans)) != len(args.plans) or not set(PRIMARY) <= set(
+        if len(set(args.plans)) != len(args.plans) or not set(primary) <= set(
             args.plans
         ):
             parser.error("cohort requires unique matrix-torch/factor/dense workers")
@@ -699,6 +856,8 @@ def main():
                 "--output",
                 str(output),
             ]
+            if args.regular_grid:
+                command.append("--regular-grid")
             if args.phases:
                 command.append("--phases")
             if args.verify_only:
@@ -725,10 +884,12 @@ def main():
             if completed.returncode and record["status"] == "PASS":
                 raise RuntimeError("nonzero worker exit cannot certify PASS")
             records.append(record)
-            if records[-1]["status"] != "PASS" and kind in PRIMARY:
+            if records[-1]["status"] != "PASS" and kind in primary:
                 break
         result = {
-            "schema": "periodic-comparison.research.v1",
+            "schema": "regular-grid-h-comparison.research.v1"
+            if args.regular_grid
+            else "periodic-comparison.research.v1",
             "records": records,
             "assessment": assess(records),
             "independent_runs": 1,
