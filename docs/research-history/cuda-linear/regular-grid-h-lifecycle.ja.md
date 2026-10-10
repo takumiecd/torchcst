@@ -1476,3 +1476,8 @@ python -m benchmarks.cuda.linear.periodic_comparison \
           stream-g8-h16 stream-g8-h32 dense \
   --isolated-oracle --phases --output output/regular-grid-h/streaming-comparison.json
 ```
+
+全測定・結果照合後、pool supervisorは正常終了した。全3 slots stopped、待機／実行jobなし、
+所有VM `cst-pool-c051b85cbf04-1` のterminatedとserverの `No active sessions found` を確認した。
+最終statusと停止ログはignored evidenceの `final-pool-status.json` と `final-stop-lifecycle.log` に保全した。
+成功した比較は各Case一度だけで、transport失敗後にも測定を再実行していない。
