@@ -15,7 +15,7 @@ from ..periodic_product.kernels import _index, _periodic_raw
 def _compact_wrap_safe(
     center, inv, valid, O: tl.constexpr, L: tl.constexpr, N: tl.constexpr
 ):
-    if O == 0.0 and L == float(N) and 1 <= N <= 8192:
+    if O == 0.0 and L == float(N) and N >= 1 and N <= 8192:
         # Unit-spacing sites are exact integers. Keep support away from the
         # half-period rounding ambiguity and all raw intermediates finite.
         safe = (

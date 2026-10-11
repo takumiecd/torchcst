@@ -2699,3 +2699,10 @@ peak allocated/reservedはcapture/replay込み。未計測の性能やcache原�
 **RTX 6000 Ada 48GB**へ変更する。L4へはこの比較を提出しない。
 L4の前回値とGPU間の速度差をalgorithm改善とは扱わず、RTX 6000 Ada上で
 同じ7方式・rho別独立2cohortを測る。公開dispatcherへ自動採用しない。
+
+RTX 6000 Adaの最初のqualification（source `b9553ada`）は66 PASS / 44 FAIL。
+新helperの連鎖比較 `1 <= N <= 8192` がTriton3.5.1で未対応だった。
+二つの比較に分けるsource修正を行い、新snapshotで検証する。
+数学・guard境界・テスト・許容誤差は変えず、性能測定は開始していない。
+元source archiveとログはignored `output/regular-grid-h/`、remote
+`runs/cst-wrap-ada-b9553ada-20261011/` に保持する。
