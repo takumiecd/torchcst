@@ -437,4 +437,18 @@ class JointLocalHAlgorithm(OnchipHAlgorithm):
             chart.origin[0],
         )
         with torch.cuda.device(x.device):
-            return joint_local_h(x, p, operator.kernel, sizes, state.recipe)
+            return joint_local_h(
+                x,
+                p,
+                operator.kernel,
+                sizes,
+                state.recipe,
+                compact=self.id == "research_cuda_regular_grid_joint_compact_h",
+            )
+
+
+@dataclass(frozen=True)
+class JointCompactHAlgorithm(JointLocalHAlgorithm):
+    """Serialize atom outer products and use a guarded 16-site halo."""
+
+    id: str = "research_cuda_regular_grid_joint_compact_h"

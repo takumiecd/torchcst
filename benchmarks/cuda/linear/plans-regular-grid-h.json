@@ -807,6 +807,40 @@
           "cell_sites": 64
         }
       }
+    },
+    {
+      "id": "joint-compact32-bm8",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_regular_grid_joint_compact_h",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_group": 8,
+          "gemm": "torch",
+          "patch_sites": 8,
+          "prep_group": 16,
+          "prep_sites": 16,
+          "batch_tile": 8,
+          "cell_sites": 32
+        }
+      }
+    },
+    {
+      "id": "joint-compact64-bm8",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_regular_grid_joint_compact_h",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_group": 8,
+          "gemm": "torch",
+          "patch_sites": 8,
+          "prep_group": 16,
+          "prep_sites": 16,
+          "batch_tile": 8,
+          "cell_sites": 64
+        }
+      }
     }
   ]
 }

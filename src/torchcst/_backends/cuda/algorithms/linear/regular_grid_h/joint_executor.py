@@ -49,6 +49,7 @@ def local_chunk(
     backward=False,
     need_x=True,
     need_p=False,
+    compact=False,
 ):
     from . import joint_kernels
 
@@ -71,12 +72,15 @@ def local_chunk(
         backward,
         need_x,
         need_p,
+        COMPACT=compact,
         num_warps=4,
         enable_fp_fusion=False,
     )
 
 
-def aggregate_joint(scratch, routing, sizes, recipe, result, start, *, backward=False):
+def aggregate_joint(
+    scratch, routing, sizes, recipe, result, start, *, backward=False, compact=False
+):
     import triton as tr
 
     from . import joint_kernels
@@ -91,21 +95,25 @@ def aggregate_joint(scratch, routing, sizes, recipe, result, start, *, backward=
         recipe.batch_tile,
         recipe.cell_sites,
         backward,
+        COMPACT=compact,
         num_warps=4,
         enable_fp_fusion=False,
     )
 
 
-def allocate_joint(x, sizes, recipe):
+def allocate_joint(x, sizes, recipe, *, compact=False):
     import triton as tr
 
     cells = tr.cdiv(sizes[1], recipe.cell_sites) * tr.cdiv(sizes[2], recipe.cell_sites)
-    return x.new_empty((cells, recipe.batch_tile, 4 * recipe.cell_sites))
+    return x.new_empty(
+        (cells, recipe.batch_tile, (2 if compact else 4) * recipe.cell_sites)
+    )
 
 
 class _JointLocalH(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, x, p, value, sizes, recipe):
+    def forward(ctx, x, p, value, sizes, recipe, compact):
+        ctx.compact = compact
         source = p.clone(memory_format=torch.contiguous_format)
         amplitude_max = value.scalar("amplitude_max").clone()
         packed = _prepare(source, value, sizes, recipe)
@@ -113,12 +121,23 @@ class _JointLocalH(torch.autograd.Function):
         y = x.new_empty((sizes[0], sizes[2]))
         if len(source) and sizes[0]:
             routing = prepare_joint(packed, sizes, recipe)
-            scratch = allocate_joint(x, sizes, recipe)
+            scratch = allocate_joint(x, sizes, recipe, compact=compact)
             for start in range(0, sizes[0], recipe.batch_tile):
                 local_chunk(
-                    x, None, packed, routing, sizes, recipe, scratch, None, start
+                    x,
+                    None,
+                    packed,
+                    routing,
+                    sizes,
+                    recipe,
+                    scratch,
+                    None,
+                    start,
+                    compact=compact,
                 )
-                aggregate_joint(scratch, routing, sizes, recipe, y, start)
+                aggregate_joint(
+                    scratch, routing, sizes, recipe, y, start, compact=compact
+                )
         else:
             y.zero_()
             routing = (torch.empty(0, device=x.device, dtype=torch.int64),) * 3
@@ -134,6 +153,7 @@ class _JointLocalH(torch.autograd.Function):
 
         x, source, amplitude_max, packed, *routing = ctx.saved_tensors
         sizes, recipe = ctx.sizes, ctx.recipe
+        compact = ctx.compact
         need_x, need_p = ctx.needs_input_grad[:2]
         a, b = len(source), sizes[0]
         dx = x.new_empty(x.shape) if need_x else None
@@ -141,7 +161,7 @@ class _JointLocalH(torch.autograd.Function):
         partial = x.new_empty((1, 3, a)) if need_p else None
         physical = x.new_zeros((3, a)) if need_p else None
         if a and b and (need_x or need_p):
-            scratch = allocate_joint(x, sizes, recipe)
+            scratch = allocate_joint(x, sizes, recipe, compact=compact)
             for start in range(0, b, recipe.batch_tile):
                 local_chunk(
                     x,
@@ -156,10 +176,18 @@ class _JointLocalH(torch.autograd.Function):
                     backward=True,
                     need_x=need_x,
                     need_p=need_p,
+                    compact=compact,
                 )
                 if need_x:
                     aggregate_joint(
-                        scratch, routing, sizes, recipe, dx, start, backward=True
+                        scratch,
+                        routing,
+                        sizes,
+                        recipe,
+                        dx,
+                        start,
+                        backward=True,
+                        compact=compact,
                     )
                 if need_p:
                     input_kernels.accumulate_physical[(tr.cdiv(a, recipe.prep_group),)](
@@ -188,8 +216,8 @@ class _JointLocalH(torch.autograd.Function):
                 num_warps=4,
                 enable_fp_fusion=False,
             )
-        return dx, dp, None, None, None
+        return dx, dp, None, None, None, None
 
 
-def joint_local_h(x, p, value, sizes, recipe):
-    return _JointLocalH.apply(x, p, value, sizes, recipe)
+def joint_local_h(x, p, value, sizes, recipe, *, compact=False):
+    return _JointLocalH.apply(x, p, value, sizes, recipe, compact)

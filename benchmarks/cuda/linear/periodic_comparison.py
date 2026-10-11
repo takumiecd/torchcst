@@ -69,6 +69,8 @@ KINDS = (
     "input-canonical-bm16-g16-h32",
     "input-fused-backward-bm8-h32",
     "input-fused-backward-bm16-h32",
+    "joint-compact32-bm8",
+    "joint-compact64-bm8",
     "joint-local32-bm8",
     "joint-local64-bm8",
     "input-shared-x32-bm16-g16-h32",
@@ -189,6 +191,8 @@ def bind_plan(model, kind):
         )
 
         expected_id = {
+            "joint-compact32-bm8": "research_cuda_regular_grid_joint_compact_h",
+            "joint-compact64-bm8": "research_cuda_regular_grid_joint_compact_h",
             "joint-local32-bm8": "research_cuda_regular_grid_joint_local_h",
             "joint-local64-bm8": "research_cuda_regular_grid_joint_local_h",
             "input-fused-backward-bm8-h32": "research_cuda_regular_grid_fused_backward_h",
@@ -230,6 +234,8 @@ def bind_plan(model, kind):
         }.get(kind, "research_cuda_regular_grid_matrix")
         expected_recipe = (
             {
+                "joint-compact32-bm8": JointLocalHRecipe,
+                "joint-compact64-bm8": lambda: JointLocalHRecipe(cell_sites=64),
                 "joint-local32-bm8": JointLocalHRecipe,
                 "joint-local64-bm8": lambda: JointLocalHRecipe(cell_sites=64),
                 "input-shared-x32-bm16-g16-h32": SharedXHRecipe,
@@ -284,6 +290,8 @@ def bind_plan(model, kind):
             in (
                 "input-fused-backward-bm8-h32",
                 "input-fused-backward-bm16-h32",
+                "joint-compact32-bm8",
+                "joint-compact64-bm8",
                 "joint-local32-bm8",
                 "joint-local64-bm8",
                 "input-shared-x32-bm16-g16-h32",
@@ -542,7 +550,7 @@ def state_gate(*, device="cuda", steps=20, regular_grid=False):
 
 
 def forward_stages(step, kind):
-    if kind.startswith("joint-local"):
+    if kind.startswith(("joint-local", "joint-compact")):
         return {
             "status": "separate_joint_diagnostics",
             "baseline_stages_applicable": False,
@@ -1973,6 +1981,8 @@ def main():
             "input-order-stream-g8-h32",
             "input-fused-backward-bm8-h32",
             "input-fused-backward-bm16-h32",
+            "joint-compact32-bm8",
+            "joint-compact64-bm8",
             "joint-local32-bm8",
             "joint-local64-bm8",
             "input-shared-x32-bm16-g16-h32",
@@ -2013,6 +2023,8 @@ def main():
                 "input-order-stream-g8-h32",
                 "input-fused-backward-bm8-h32",
                 "input-fused-backward-bm16-h32",
+                "joint-compact32-bm8",
+                "joint-compact64-bm8",
                 "joint-local32-bm8",
                 "joint-local64-bm8",
                 "input-shared-x32-bm16-g16-h32",

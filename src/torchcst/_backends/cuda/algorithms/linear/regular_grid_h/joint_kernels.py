@@ -60,11 +60,35 @@ def joint_keys(
 
 
 @tr.jit
-def _halo_enabled(Distance, NI: tl.constexpr, NO: tl.constexpr, TILE: tl.constexpr):
+def _halo_enabled(
+    Distance,
+    NI: tl.constexpr,
+    NO: tl.constexpr,
+    TILE: tl.constexpr,
+    COMPACT: tl.constexpr = False,
+):
+    halo: tl.constexpr = 16 if COMPACT else TILE
     if NI % TILE == 0 and NO % TILE == 0 and NI >= 3 * TILE and NO >= 3 * TILE:
-        return (tl.load(Distance) <= TILE) & (tl.load(Distance + 1) <= TILE)
+        return (tl.load(Distance) <= halo) & (tl.load(Distance + 1) <= halo)
     else:
         return tl.full((), False, tl.int1)
+
+
+@tr.jit
+def _accumulate_local(
+    acc, values, coefficient, GROUP: tl.constexpr, COMPACT: tl.constexpr
+):
+    if COMPACT:
+        lane = tl.arange(0, GROUP)
+        # Never create GROUP x BM x PANEL. Each atom's outer product dies
+        # before the next, with a bounded BM x PANEL accumulator.
+        for atom in tl.static_range(GROUP):
+            v = tl.sum(tl.where(lane[:, None] == atom, values, 0.0), 0)
+            c = tl.sum(tl.where(lane[:, None] == atom, coefficient, 0.0), 0)
+            acc += v[:, None] * c[None, :]
+        return acc
+    else:
+        return acc + tl.sum(values[:, :, None] * coefficient[:, None, :], 0)
 
 
 @tr.jit
@@ -97,24 +121,29 @@ def joint_local(
     BACKWARD: tl.constexpr,
     NEED_X: tl.constexpr,
     NEED_P: tl.constexpr,
+    COMPACT: tl.constexpr = False,
 ):
+    panel: tl.constexpr = (2 if COMPACT else 4) * TILE
+    halo: tl.constexpr = 16 if COMPACT else TILE
     cell = tl.program_id(0)
     nbi: tl.constexpr = tr.cdiv(NI, TILE)
     nbo: tl.constexpr = tr.cdiv(NO, TILE)
     ob, ib = cell // nbi, cell % nbi
     rows = BSTART + tl.arange(0, BM)
-    k = tl.arange(0, 4 * TILE)
+    k = tl.arange(0, panel)
     lane = tl.arange(0, GROUP)
-    fast = _halo_enabled(Distance, NI, NO, TILE)
+    fast = _halo_enabled(Distance, NI, NO, TILE, COMPACT)
     if BACKWARD:
         owner, bins, n, length, origin = ib, nbi, NI, LI, OI
         distance = tl.load(Distance)
     else:
         owner, bins, n, length, origin = ob, nbo, NO, LO, OO
         distance = tl.load(Distance + 1)
-    sites = owner * TILE + k - tl.where(fast, TILE, 0)
-    active = (k < tl.where(fast, 3 * TILE, TILE)) & tl.where(fast, True, sites < n)
-    accumulator = tl.full((BM, 4 * TILE), 0.0, tl.float32)
+    sites = owner * TILE + k - tl.where(fast, halo, 0)
+    active = (k < tl.where(fast, TILE + 2 * halo, TILE)) & tl.where(
+        fast, True, sites < n
+    )
+    accumulator = tl.full((BM, panel), 0.0, tl.float32)
     radius = (distance + TILE - 1) // TILE + (1 if n % TILE else 0)
     count = tl.where(fast, 1, tl.minimum(2 * radius + 1, bins))
     first = tl.where(fast | (count == bins), owner if fast else 0, owner - radius)
@@ -163,7 +192,9 @@ def joint_local(
                 )
                 if NEED_X:
                     coefficient = tl.div_rn(q, norm[:, None]) * amp[:, None]
-                    accumulator += tl.sum(g[:, :, None] * coefficient[:, None, :], 0)
+                    accumulator = _accumulate_local(
+                        accumulator, g, coefficient, GROUP, COMPACT
+                    )
                 if NEED_P:  # noqa: SIM102 - constexpr keeps writer VJP specialization.
                     if tl.sum(writer.to(tl.int32), 0) > 0:
                         h, dh = _contract(
@@ -210,10 +241,12 @@ def joint_local(
                     GROUP,
                 )
                 coefficient = tl.div_rn(q, norm[:, None]) * amp[:, None]
-                accumulator += tl.sum(h[:, :, None] * coefficient[:, None, :], 0)
+                accumulator = _accumulate_local(
+                    accumulator, h, coefficient, GROUP, COMPACT
+                )
     if not BACKWARD or NEED_X:
         tl.store(
-            Scratch + (cell * BM + tl.arange(0, BM)[:, None]) * (4 * TILE) + k[None, :],
+            Scratch + (cell * BM + tl.arange(0, BM)[:, None]) * panel + k[None, :],
             accumulator,
         )
 
@@ -230,7 +263,10 @@ def reduce_joint(
     BM: tl.constexpr,
     TILE: tl.constexpr,
     BACKWARD: tl.constexpr,
+    COMPACT: tl.constexpr = False,
 ):
+    panel: tl.constexpr = (2 if COMPACT else 4) * TILE
+    halo: tl.constexpr = 16 if COMPACT else TILE
     owner = tl.program_id(0)
     nbi: tl.constexpr = tr.cdiv(NI, TILE)
     nbo: tl.constexpr = tr.cdiv(NO, TILE)
@@ -239,19 +275,21 @@ def reduce_joint(
     other_bins: tl.constexpr = nbo if BACKWARD else nbi
     rows = BSTART + tl.arange(0, BM)
     j = owner * TILE + tl.arange(0, TILE)
-    fast = _halo_enabled(Distance, NI, NO, TILE)
+    fast = _halo_enabled(Distance, NI, NO, TILE, COMPACT)
     acc = tl.full((BM, TILE), 0.0, tl.float32)
     for neighbor in range(tl.where(fast, 3, 1)):
         center_bin = (owner + neighbor - tl.where(fast, 1, 0) + bins) % bins
-        local = j - center_bin * TILE + TILE
+        local = j - center_bin * TILE + halo
         local = (local % n + n) % n
         local = tl.where(fast, local, j - owner * TILE)
         for other in range(other_bins):
             cell = other * nbi + center_bin if BACKWARD else center_bin * nbi + other
             values = tl.load(
                 Scratch
-                + (cell * BM + tl.arange(0, BM)[:, None]) * (4 * TILE)
-                + local[None, :]
+                + (cell * BM + tl.arange(0, BM)[:, None]) * panel
+                + local[None, :],
+                (~fast) | (local[None, :] < TILE + 2 * halo),
+                0.0,
             )
             acc += values
     tl.store(
