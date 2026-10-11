@@ -1123,6 +1123,27 @@
           "lifetime": "arena"
         }
       }
+    },
+    {
+      "id": "support-modes-bm16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_regular_grid_support_modes_h",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "gemm": "triton",
+          "prep_group": 16,
+          "prep_sites": 16,
+          "atom_group": 8,
+          "patch_sites": 8,
+          "batch_tile": 16,
+          "tile_sites": 16,
+          "owner_parts": 8,
+          "mode": "all",
+          "lifetime": "late",
+          "support_modes": true
+        }
+      }
     }
   ]
 }

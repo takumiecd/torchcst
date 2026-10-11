@@ -708,3 +708,31 @@ AdamW moments事前初期化・capture前warmup勾配解放・dP遅延を組み�
 peakはwarmupを含めてリセットせず、初期化自体の確保も含める。
 研究runnerの明示policyであり公開dispatcherの既定は変更しない。
 [Graph pool寿命の記録](research-history/cuda-linear/regular-grid-graph-pool-lifetime.ja.md)に負の結果・policy別比較・復旧hashを保存した。
+
+
+## 共通カーネル内の支持モード（2026-10-11）
+
+単一の実行方式で幅の混在を扱う。rhoに基づく公開dispatcherを増やさず、
+現在の支持とjoint norm floorの状態で処理を選ぶ。文字どおりGPU起動を一回に
+限定せず、H/Gの再利用とatomicなしのowner集約に必要な段階境界は残す。
+
+研究Plan `support-modes-bm16` は現行 `tile-owner-late-bm16` と同じexecutor、
+producer、ownerを使う。既存13-field packedのsingle-site flagsと支持区間から
+両軸単一・floor非適用を判定し、各軸のsort keyの先頭bandにまとめる。
+一般支持は従来のdyadic bandを一つずらし、空支持はowner範囲の末尾へ置く。
+全量packedコピー、CSR、新しいatom ID配列は追加しない。
+
+- 空支持: producerの寄与を省き、ownerから除く。Parameter/optimizer stateは維持。
+- 両軸単一・floor非適用: ownerがX/dYを直接参照し、amplitude勾配を
+  `sum_b X[b,i_a] dY[b,j_a]` から求める。中心task勾配は0。
+  H/G slabへの読み書きもprofile再評価も行わない。
+- その他: floor適用単一サイトを含め、既存の正規化・微分・小batch H/G生成を使う。
+
+初版は支持モードを学習中に毎forward再分類し、snapshotをbackwardで使う。
+混在率と支持が更新されてもGraph replayできるよう、H/G容量は引き続き
+`atom_count × batch_tile` を確保する。単一サイト部分の読み書きを省くことと、
+allocator peakを削ることは別の改善であり、初版で容量削減を主張しない。
+追加のowner band/rangesが小さなメモリ費用となる。
+初版はD2 full-period RegularGrid/Triweight/POLARに限定する。
+独立FP64のY/dX/全atom勾配、floor境界、空支持、retained backward、
+Graphの可変支持を検証してから、準備込み完全stepとpeak allocated/reservedを比較する。

@@ -32,6 +32,7 @@ from .recipe import (
     SiteRoutedHRecipe,
     SiteRoutedStreamingHRecipe,
     StreamingInputHRecipe,
+    SupportModesHRecipe,
     TileBucketHRecipe,
     TileCombinedHRecipe,
     TileDerivativeHRecipe,
@@ -619,3 +620,11 @@ class TileOwnerLifetimeHAlgorithm(TileDotHAlgorithm):
         )
         with torch.cuda.device(x.device):
             return tile_owner_lifetime_h(x, p, operator.kernel, sizes, state.recipe)
+
+
+@dataclass(frozen=True)
+class SupportModesHAlgorithm(TileOwnerLifetimeHAlgorithm):
+    """Shared producers/owners use direct references for normalized one-site atoms."""
+
+    id: str = "research_cuda_regular_grid_support_modes_h"
+    recipe_type: type = SupportModesHRecipe

@@ -29,6 +29,7 @@ def prepare_ranges(
     PARTS: tl.constexpr,
     LEVELS: tl.constexpr,
     BLOCK: tl.constexpr,
+    SUPPORT_MODES: tl.constexpr = False,
 ):
     bins: tl.constexpr = tr.cdiv(N, TILE)
     idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
@@ -37,7 +38,7 @@ def prepare_ranges(
     band = (idx // 2) % LEVELS
     part = (idx // (2 * LEVELS)) % PARTS
     tile = idx // (2 * LEVELS * PARTS)
-    upper = tl.minimum(1 << band, bins)
+    upper = tl.minimum(1 << (tl.maximum(band - 1, 0) if SUPPORT_MODES else band), bins)
     lower = tile - upper + 1
     left = tl.where(segment == 0, tl.maximum(lower, 0), bins + lower)
     right = tl.where(segment == 0, tile + 1, bins)
@@ -98,6 +99,11 @@ def owner(
     PREP_RANGES: tl.constexpr,
     PREP_MEMBERSHIP: tl.constexpr,
     GROUP: tl.constexpr = 32,
+    SUPPORT_MODES: tl.constexpr = False,
+    Direct=None,
+    DIRECT0: tl.constexpr = 0,
+    DIRECT1: tl.constexpr = 0,
+    OTHER_N: tl.constexpr = 1,
 ):
     tile, part = tl.program_id(0), tl.program_id(1)
     j = tile * TILE + tl.arange(0, TILE)
@@ -109,7 +115,9 @@ def owner(
     for band_index in range(band_count):
         band = tl.load(Bands + 1 + band_index) if PREP_BANDS else band_index
         if not PREP_RANGES:
-            upper = tl.minimum(1 << band, bins)
+            upper = tl.minimum(
+                1 << (tl.maximum(band - 1, 0) if SUPPORT_MODES else band), bins
+            )
             lower = tile - upper + 1
         for segment in range(2):
             if PREP_RANGES:
@@ -142,14 +150,34 @@ def owner(
                     first, count, _, _, _ = _membership(P, a, valid, A, N, TILE, OUTPUT)
                 distance = ((tile - first) % bins + bins) % bins
                 valid = valid & (distance < count)
-                q, _ = coefficients(P, a, valid, j, A, N, L, O, OUTPUT, False)
+                if SUPPORT_MODES and band == 0:
+                    own = tl.load(P + (11 if OUTPUT else 9) * A + a, valid, 0).to(
+                        tl.int32
+                    )
+                    other = tl.load(P + (9 if OUTPUT else 11) * A + a, valid, 0).to(
+                        tl.int32
+                    )
+                    own = ((own % N) + N) % N
+                    other = ((other % OTHER_N) + OTHER_N) % OTHER_N
+                    q = tl.where(
+                        valid[:, None] & (j[None, :] == own[:, None]), 1.0, 0.0
+                    )
+                    h = tl.load(
+                        Direct
+                        + (START + r[:, None]) * DIRECT0
+                        + other[None, :] * DIRECT1,
+                        valid[None, :] & (START + r[:, None] < B),
+                        0.0,
+                    )
+                else:
+                    q, _ = coefficients(P, a, valid, j, A, N, L, O, OUTPUT, False)
+                    h = tl.load(
+                        H + a[None, :] * BM + r[:, None],
+                        valid[None, :] & (START + r[:, None] < B),
+                        0.0,
+                    )
                 amp = tl.load(P + a, valid, 0)
                 q *= amp[:, None]
-                h = tl.load(
-                    H + a[None, :] * BM + r[:, None],
-                    valid[None, :] & (START + r[:, None] < B),
-                    0.0,
-                )
                 acc += tl.dot(h, q, input_precision="ieee")
     tl.store(
         Scratch

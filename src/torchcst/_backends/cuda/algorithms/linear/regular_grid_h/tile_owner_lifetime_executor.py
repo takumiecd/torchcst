@@ -85,7 +85,16 @@ class _TileOwnerLifetime(torch.autograd.Function):
             for start in range(0, b, recipe.batch_tile):
                 produce(x, packed, routing, sizes, recipe, h, start)
                 aggregate(
-                    h, packed, routing, sizes, recipe, scratch, y, start, output=True
+                    h,
+                    packed,
+                    routing,
+                    sizes,
+                    recipe,
+                    scratch,
+                    y,
+                    start,
+                    output=True,
+                    direct=x,
                 )
         else:
             y.zero_()
@@ -155,6 +164,7 @@ class _TileOwnerLifetime(torch.autograd.Function):
                         consume=1,
                         partner=h,
                         physical=physical,
+                        direct=x,
                     )
                     produce(
                         x,
@@ -168,6 +178,7 @@ class _TileOwnerLifetime(torch.autograd.Function):
                         consume=2,
                         partner=g,
                         physical=physical,
+                        direct=x,
                     )
                 else:
                     produce(dy, packed, routing, sizes, recipe, g, start, output=True)
@@ -182,6 +193,7 @@ class _TileOwnerLifetime(torch.autograd.Function):
                         dx,
                         start,
                         output=False,
+                        direct=dy,
                     )
         elif need_x:
             dx.zero_()

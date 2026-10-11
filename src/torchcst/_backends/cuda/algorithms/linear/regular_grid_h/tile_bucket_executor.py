@@ -22,7 +22,9 @@ def prepare_tiles(packed, sizes, recipe, *, out=None):
     for output in (False, True):
         n = sizes[2] if output else sizes[1]
         bins = tr.cdiv(n, recipe.tile_sites)
-        count = levels(n, recipe.tile_sites)
+        count = levels(n, recipe.tile_sites) + int(
+            getattr(recipe, "support_modes", False)
+        )
         keys = torch.empty(a, device=packed.device, dtype=torch.int32)
         k.keys[(tr.cdiv(a, 256),)](
             packed,
@@ -33,6 +35,7 @@ def prepare_tiles(packed, sizes, recipe, *, out=None):
             output,
             count,
             256,
+            SUPPORT_MODES=getattr(recipe, "support_modes", False),
             num_warps=4,
             enable_fp_fusion=False,
         )
@@ -66,6 +69,7 @@ def produce(
     consume=0,
     partner=None,
     physical=None,
+    direct=None,
 ):
     import triton as tr
 
@@ -93,7 +97,12 @@ def produce(
         output,
         derivative,
         consume,
-        levels(n, recipe.tile_sites),
+        levels(n, recipe.tile_sites) + int(getattr(recipe, "support_modes", False)),
+        SUPPORT_MODES=getattr(recipe, "support_modes", False),
+        Direct=direct,
+        DIRECT0=0 if direct is None else direct.stride(0),
+        DIRECT1=0 if direct is None else direct.stride(1),
+        NI=ni,
         num_warps=4,
         enable_fp_fusion=False,
     )

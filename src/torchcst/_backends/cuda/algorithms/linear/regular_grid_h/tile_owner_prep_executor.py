@@ -40,6 +40,7 @@ def prepare_ranges(bounds, n, recipe, count, *, out=None):
         recipe.owner_parts,
         count,
         256,
+        SUPPORT_MODES=getattr(recipe, "support_modes", False),
         num_warps=4,
     )
     return result
@@ -68,7 +69,9 @@ def prepare_tiles(packed, sizes, recipe, *, out=None):
     empty = routing[0].new_empty(0)
     for output in (False, True):
         n = sizes[2] if output else sizes[1]
-        count = levels(n, recipe.tile_sites)
+        count = levels(n, recipe.tile_sites) + int(
+            getattr(recipe, "support_modes", False)
+        )
         bounds = routing[2 * output + 1]
         extra.extend(
             (
@@ -103,7 +106,9 @@ def prepare_tiles(packed, sizes, recipe, *, out=None):
     return (*routing, *extra)
 
 
-def aggregate(h, packed, routing, sizes, recipe, scratch, result, start, *, output):
+def aggregate(
+    h, packed, routing, sizes, recipe, scratch, result, start, *, output, direct=None
+):
     import triton as tr
 
     from . import tile_dot_kernels
@@ -129,10 +134,15 @@ def aggregate(h, packed, routing, sizes, recipe, scratch, result, start, *, outp
         recipe.tile_sites,
         recipe.owner_parts,
         output,
-        levels(n, recipe.tile_sites),
+        levels(n, recipe.tile_sites) + int(getattr(recipe, "support_modes", False)),
         recipe.mode in ("bands", "all"),
         recipe.mode in ("ranges", "all"),
         recipe.mode in ("membership", "all"),
+        SUPPORT_MODES=getattr(recipe, "support_modes", False),
+        Direct=direct,
+        DIRECT0=0 if direct is None else direct.stride(0),
+        DIRECT1=0 if direct is None else direct.stride(1),
+        OTHER_N=ni if output else no,
         num_warps=4,
         enable_fp_fusion=False,
     )

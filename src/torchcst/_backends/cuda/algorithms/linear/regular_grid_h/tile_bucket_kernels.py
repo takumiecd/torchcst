@@ -40,6 +40,18 @@ def _membership(
 
 
 @tr.jit
+def _single_site(P, a, valid, A: tl.constexpr):
+    # Both flags require a nonempty one-site axis and an inactive joint floor.
+    # Span checks also guard unusual full-period fallback representations.
+    flags = tl.load(P + 8 * A + a, valid, 0).to(tl.int32)
+    ilo = tl.load(P + 9 * A + a, valid, 0).to(tl.int32)
+    ihi = tl.load(P + 10 * A + a, valid, 0).to(tl.int32)
+    olo = tl.load(P + 11 * A + a, valid, 0).to(tl.int32)
+    ohi = tl.load(P + 12 * A + a, valid, 0).to(tl.int32)
+    return valid & ((flags & 3) == 3) & (ihi - ilo == 1) & (ohi - olo == 1)
+
+
+@tr.jit
 def keys(
     P,
     Keys,
@@ -49,12 +61,17 @@ def keys(
     OUTPUT: tl.constexpr,
     LEVELS: tl.constexpr,
     BLOCK: tl.constexpr,
+    SUPPORT_MODES: tl.constexpr = False,
 ):
     a = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    first, count, _, _, _ = _membership(P, a, a < A, A, N, TILE, OUTPUT)
+    first, count, _, _, live = _membership(P, a, a < A, A, N, TILE, OUTPUT)
     band = tl.full((BLOCK,), 0, tl.int32)
-    for level in tl.static_range(1, LEVELS):
+    for level in tl.static_range(1, LEVELS - (1 if SUPPORT_MODES else 0)):
         band += (count > (1 << (level - 1))).to(tl.int32)
+    if SUPPORT_MODES:
+        band = tl.where(_single_site(P, a, a < A, A), 0, band + 1)
+        # Empty atoms sort after all owner ranges, without an expanded index.
+        band = tl.where(live, band, LEVELS)
     tl.store(Keys + a, band * tr.cdiv(N, TILE) + first, a < A)
 
 
@@ -81,24 +98,35 @@ def produce(
     CONSUME: tl.constexpr,
     LEVELS: tl.constexpr,
     GROUP: tl.constexpr = 32,
+    SUPPORT_MODES: tl.constexpr = False,
+    Direct=None,
+    DIRECT0: tl.constexpr = 0,
+    DIRECT1: tl.constexpr = 0,
+    NI: tl.constexpr = 1,
 ):
     pos = tl.program_id(0) * GROUP + tl.arange(0, GROUP)
     valid = pos < A
     a = tl.load(Order + pos, valid, 0).to(tl.int32)
     rows = START + tl.arange(0, 16)
     first, count, lo, span, live = _membership(P, a, valid, A, N, TILE, OUTPUT)
+    single = (
+        _single_site(P, a, valid, A)
+        if SUPPORT_MODES
+        else tl.full((GROUP,), False, tl.int1)
+    )
+    normal = valid & live & ~single if SUPPORT_MODES else valid
     band = tl.full((GROUP,), 0, tl.int32)
-    for level in tl.static_range(1, LEVELS):
+    for level in tl.static_range(1, LEVELS - (1 if SUPPORT_MODES else 0)):
         band += (count > (1 << (level - 1))).to(tl.int32)
     acc = tl.full((16, GROUP), 0.0, tl.float32)
     grad = tl.full((16, GROUP), 0.0, tl.float32)
     bins: tl.constexpr = tr.cdiv(N, TILE)
     # Only boundary groups can cross a bucket. Process each bucket separately
     # so a wide atom does not lengthen the loop of the narrow members.
-    band_begin = tl.min(tl.where(valid, band, LEVELS), 0)
-    band_end = tl.max(tl.where(valid, band + 1, 0), 0)
+    band_begin = tl.min(tl.where(normal, band, LEVELS), 0)
+    band_end = tl.max(tl.where(normal, band + 1, 0), 0)
     for current_band in range(band_begin, band_end):
-        in_band = valid & (band == current_band)
+        in_band = normal & (band == current_band)
         tile_begin = tl.min(tl.where(in_band, first, bins), 0)
         tile_end = tl.max(tl.where(in_band, first + 1, 0), 0)
         for tile in range(tile_begin, tile_end):
@@ -128,12 +156,33 @@ def produce(
         tl.store(
             H + a[None, :] * BM + tl.arange(0, 16)[:, None],
             acc,
-            valid[None, :] & (rows[:, None] < B),
+            normal[None, :] & (rows[:, None] < B),
         )
     if CONSUME:
         _consume(
-            acc, grad, Partner, P, Physical, a, valid, rows, A, B, START, BM, CONSUME
+            acc, grad, Partner, P, Physical, a, normal, rows, A, B, START, BM, CONSUME
         )
+
+    if SUPPORT_MODES and CONSUME == 1:
+        # Direct one-site dA, unique atom writer. H/G remain logical values;
+        # neither a global slab nor a centre derivative is read or written.
+        ilo = tl.load(P + 9 * A + a, single, 0).to(tl.int32)
+        olo = tl.load(P + 11 * A + a, single, 0).to(tl.int32)
+        mask = single[None, :] & (rows[:, None] < B)
+        xx = tl.load(
+            Direct
+            + rows[:, None] * DIRECT0
+            + (((ilo % NI) + NI) % NI)[None, :] * DIRECT1,
+            mask,
+            0.0,
+        )
+        yy = tl.load(
+            X + rows[:, None] * X0 + (((olo % N) + N) % N)[None, :] * X1, mask, 0.0
+        )
+        da = tl.sum(xx * yy, 0)
+        if START != 0:
+            da += tl.load(Physical + a, single, 0.0)
+        tl.store(Physical + a, da, single)
 
 
 @tr.jit

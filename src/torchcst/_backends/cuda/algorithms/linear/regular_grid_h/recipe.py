@@ -372,3 +372,18 @@ class TileOwnerLifetimeHRecipe(TileOwnerPrepHRecipe):
             "arena",
         ):
             raise ValueError("lifetime must be reuse, late, combined or arena")
+
+
+@dataclass(frozen=True)
+class SupportModesHRecipe(TileOwnerLifetimeHRecipe):
+    """One shared owner schedule with empty, one-site and general modes."""
+
+    lifetime: str = "late"
+    support_modes: bool = True
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.lifetime != "late" or self.support_modes is not True:
+            raise ValueError(
+                "support modes requires lifetime='late' and support_modes=True"
+            )

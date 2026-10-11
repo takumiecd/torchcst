@@ -83,6 +83,7 @@ KINDS = (
     "tile-owner-all-bm16",
     "tile-owner-reuse-bm16",
     "tile-owner-late-bm16",
+    "support-modes-bm16",
     "tile-owner-lifetime-bm16",
     "tile-owner-arena-bm16",
     "joint-compact32-bm8",
@@ -233,6 +234,7 @@ def bind_plan(model, kind):
             SiteRoutedHRecipe,
             SiteRoutedStreamingHRecipe,
             StreamingInputHRecipe,
+            SupportModesHRecipe,
             TileBucketHRecipe,
             TileCombinedHRecipe,
             TileDerivativeHRecipe,
@@ -256,6 +258,7 @@ def bind_plan(model, kind):
             "tile-owner-all-bm16": "research_cuda_regular_grid_tile_owner_prep_h",
             "tile-owner-reuse-bm16": "research_cuda_regular_grid_tile_owner_lifetime_h",
             "tile-owner-late-bm16": "research_cuda_regular_grid_tile_owner_lifetime_h",
+            "support-modes-bm16": "research_cuda_regular_grid_support_modes_h",
             "tile-owner-lifetime-bm16": "research_cuda_regular_grid_tile_owner_lifetime_h",
             "tile-owner-arena-bm16": "research_cuda_regular_grid_tile_owner_lifetime_h",
             "joint-compact32-bm8": "research_cuda_regular_grid_joint_compact_h",
@@ -317,6 +320,7 @@ def bind_plan(model, kind):
                 "tile-owner-reuse-bm16": lambda: TileOwnerLifetimeHRecipe(
                     lifetime="reuse"
                 ),
+                "support-modes-bm16": SupportModesHRecipe,
                 "tile-owner-late-bm16": lambda: TileOwnerLifetimeHRecipe(
                     lifetime="late"
                 ),
@@ -395,6 +399,7 @@ def bind_plan(model, kind):
                 "tile-owner-all-bm16",
                 "tile-owner-reuse-bm16",
                 "tile-owner-late-bm16",
+                "support-modes-bm16",
                 "tile-owner-lifetime-bm16",
                 "tile-owner-arena-bm16",
                 "joint-compact32-bm8",
@@ -2190,6 +2195,7 @@ def main():
             "tile-owner-all-bm16",
             "tile-owner-reuse-bm16",
             "tile-owner-late-bm16",
+            "support-modes-bm16",
             "tile-owner-lifetime-bm16",
             "tile-owner-arena-bm16",
             "joint-compact32-bm8",
@@ -2247,6 +2253,7 @@ def main():
                 "tile-owner-all-bm16",
                 "tile-owner-reuse-bm16",
                 "tile-owner-late-bm16",
+                "support-modes-bm16",
                 "tile-owner-lifetime-bm16",
                 "tile-owner-arena-bm16",
                 "joint-compact32-bm8",
