@@ -659,3 +659,16 @@ H/Gの2 slabだけを保持し、dH/dGをproducer内でphysical勾配へ消費�
 224資格検証/64 full FP64 gatesと独立2cohort/rho、8固定診断を確認。
 詳細は[組み合わせ比較](research-history/cuda-linear/regular-grid-tile-combined.ja.md)。
 任意の支持tile数への一般化は次の設計議論とし、今回の測定へ混ぜない。
+
+### 支持幅bucketと可変タイル数
+
+各軸にA個のint32 IDを保存し、幅区分と開始タイルで候補範囲を絞る方式を実装した。
+H/Gはatom束が支持全体をregisterで足し切り、即時消費のH/G 2 slabを維持する。
+2タイル制限と広支持all-atom fallbackを外し、周期・短い末尾tileの重複を避ける。
+幅16は組み合わせ対照より1.37–6.40%速くallocated62.523MiBへ減ったが、
+現行より27.31–35.17%遅くreserved124MiBがdense106MiBを上回る。幅32も不採用。
+H/G生成は約半分になった一方、Y/dX ownerが幅16で約2倍、幅32で約3.2–3.4倍へ悪化した。
+幅区分・候補範囲・所属判定の反復とrangeの分割/paddingを次の切り分け対象とする。
+今回の候補数は準備済みinterval所属数と一致しており、単なる候補過剰では説明できない。
+251資格検証/72 full FP64 gates、独立2cohort/rhoと10固定診断の詳細は
+[支持幅bucket比較](research-history/cuda-linear/regular-grid-tile-bucket.ja.md)へ保存した。

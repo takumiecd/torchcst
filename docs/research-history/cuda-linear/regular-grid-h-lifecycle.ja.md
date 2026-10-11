@@ -3117,3 +3117,14 @@ source `e5757dad` の組み合わせ版を、現行・固定tile・二つの単�
 現行より29.39–44.88%遅い。追加H value生成が約0.235/0.292ms残る。採用せず現行を維持する。
 224資格検証/64全shape FP64 gates、36 workers/756 samples、8固定snapshot診断PASS。
 結果・source/復旧hash・可変tile数の次の議論は[組み合わせ比較](regular-grid-tile-combined.ja.md)。
+
+## 2026-10-11: 支持幅bucketと可変タイル数
+
+source `ea98ba4b` で各軸A個のint32 IDとdyadic支持幅区分を用意し、任意個の支持tileへ対応した。
+atom束がH/Gを全支持で足し切り、tile×atom partialとatomicを追加しない。
+幅16は完全step1.924–1.940/2.359–2.395ms、allocated/reserved62.523/124MiB。
+既存組み合わせ対照より1.37–6.40%速いが、現行より27.31–35.17%遅いため不採用。
+幅32は集約でspill4個、完全step2.636–2.651/2.930–2.967msへ悪化した。
+H/G生成は改善したが、Y/dX ownerが約2倍以上へ増えたことを別Graph診断で確認。
+251資格検証、72 full FP64 gates、40 workers/840 samples、10固定診断PASS。
+詳細・hash・復旧先・次のowner切り分けを[支持幅bucket比較](regular-grid-tile-bucket.ja.md)に保存した。
