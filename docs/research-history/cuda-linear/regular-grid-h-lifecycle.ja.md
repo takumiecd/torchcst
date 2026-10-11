@@ -1898,3 +1898,250 @@ G→dX owner集約、physical蓄積、source VJP）を診断に使う。
 診断時間の和を完全step時間とみなさない。forwardも共通であることを確認する。
 候補訪問数・GROUP反復数をrouteごとに記録するが、実メモリtrafficやcache hit率とは
 呼ばない。比較結果によって公開dispatcherを自動変更しない。
+
+
+### 入力routing実装とGPU検証
+
+source `323ff210f1be0d192fdc09d4b100dc5c44b3d7b7`。新2routeはforwardとH32/G8容量を
+共通化し、入力prefixの粒度またはcoarse bin内の副キーだけを変える。Aの入力site判定を
+runtime/診断の両方へ接続した。Bは既存int32 Keysとin-place threshold倍率を使い、
+新しいatom数比例permutationを増やさない。sort内部workspaceを含むピークは別途測る。
+
+- ローカルCPU: 1715 passed / 3512 skipped / 18 warnings（G-buffer CUDA専用16件追加前）。
+- source HEADのGitHub CPU validation: 1714 passed / 3529 skipped / 20 warnings、
+  run `38097669307` / job `114346857862` PASS。
+- 26 plansの宣言検査、Ruff、diff check PASS。
+- L4 GPU: **976 passed / 0 skipped / 2 warnings / 620.57秒**。
+  JUnitの全976 nodeと0 failures/errors/skipsを確認。新入力route関連124 nodeも成功。
+  GPU/runtimeはNVIDIA L4、Torch2.11.0+cu130、CUDA13.0、Triton3.6.0。
+- GPU検証job `l4job-9897e59dae2845e684dc517030d5e42d`。
+  source archive `1f43a5366caf313cc74864b422d888ab46f7507246fc13d4b45089bc100f7273`、
+  result archive `4667e8b3d845410a15515f4840ab343d61da8f62878e850ce564b5b2d8d630b4`。
+  1629 snapshot files（repo1628＋driver）、全result manifestを検証して保存した。
+
+最初のjob `l4job-d35cb1e1c1274e2ab942b7d1d8d5281e` はリモート完了通知が得られず、
+Colab CLI subprocessが2040秒でtimeout。結果未回収なので数値成功／失敗を判断しない。
+source archive `1158490d16c9c9105c8cae66ee3201fbaf7921ba16a4e38602254ee241571660`、
+transport、停止証拠を保存し、supervisorによる停止・serverにactive sessionなしを確認した。
+原因は未特定であり、compile時間やkernel failureとは断定しない。
+
+復旧後の短いCUDA/回収probe `l4job-de3b2e435cab4affaf97fdd24f1329d3` は2.27秒でPASS、
+source `ebd9be2231e6b791275b12d809dcafe1c22a3de283700a36346eb25bd170e0b1`、
+result `27ed89ed266cc791a3e026287f9c61f793858332b5822a042994aa3cab1b7158` を検証した。
+その後、repo1628ファイル・976テスト・pytest1700秒/job1800秒の予算を変えず、
+テスト名とdurationsだけ詳細化したdriverで検証を明示的に再実行し、上記成功を得た。
+最初の未確認実行を成功run数へ含めない。RTX3070は到達不可、RTX6000Adaは他作業で
+稼働中だったため、代替GPUでの計測は行わずColab L4を継続した。
+
+
+## 入力site-prefix / 入力bin副キーの独立比較（2026-10-11）
+
+post24の固定状態、実運用と同じG8生成・dX owner・勾配累積を別Graphで計測。各chunk段階は同一replay内の4chunkを合計してから5 replayのmedianを取る。primary完全stepや別Graphのphase時間へ加減算しない。
+
+### N2048 / B32 / rho3.0 / independent run 1
+
+| route | 完全step [ms] | allocated/reserved [MiB] | 両peak≤dense |
+| --- | ---: | ---: | --- |
+| matrix-torch | 1.2899 | 96.16/142 | FAIL |
+| factor | 5.0275 | 83.11/130 | FAIL |
+| onchip-h | 4.3282 | 42.87/114 | FAIL |
+| site-owner-bm16-stream-g8-h32 | 4.7756 | 57.43/104 | PASS |
+| input-site-stream-g8-h32 | 4.5234 | 57.43/104 | PASS |
+| input-order-stream-g8-h32 | 4.7499 | 57.43/104 | PASS |
+| dense | 0.5932 | 81.75/106 | PASS |
+
+| route | setup | G/dG＋H/dH＋partial | G→dX | physical累積 | source VJP |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| site-owner-bm16-stream-g8-h32 | 0.0881 | 1.2800 | 0.9646 | 0.0625 | 0.0164 |
+| input-site-stream-g8-h32 | 0.0942 | 1.2861 | 0.7137 | 0.0625 | 0.0164 |
+| input-order-stream-g8-h32 | 0.0963 | 1.2196 | 0.9585 | 0.0635 | 0.0164 |
+
+| route | forward準備 | forward index | fields | H生成 | Y集約 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| site-owner-bm16-stream-g8-h32 | 0.3021 | 0.0758 | 0.0297 | 0.5100 | 0.6820 |
+| input-site-stream-g8-h32 | 0.3072 | 0.0788 | 0.0297 | 0.5100 | 0.6881 |
+| input-order-stream-g8-h32 | 0.2734 | 0.0686 | 0.0276 | 0.5018 | 0.5949 |
+
+| route | prefix | D | atom visits | GROUP iterations | live-site checks |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| site-owner-bm16-stream-g8-h32 | 257 | 5 | 629145 | 20058 | 5033160 |
+| input-site-stream-g8-h32 | 2049 | 5 | 471988 | 14877 | 3775904 |
+| input-order-stream-g8-h32 | 257 | 5 | 629145 | 20058 | 5033160 |
+
+同じsnapshotの実backwardとの最大差: `{"all_dP": 0.0, "dX": 0.0}`。比較gateはatol/rtol=4e-4。独立FP64 gateはprimaryのinitial/post24に実施。
+
+job `l4job-d0854cd13cb744579f313acc90fd8b8e`
+source archive `a26ca441b858598c92069da930dd82bb79bcabfd4b0ba79c9130102a35eb1831`
+result archive `ab7ccd27bc9aafc81750f07c7c17c72854208c2c8dfc53a930d895a3225f4086`
+
+### N2048 / B32 / rho8.0 / independent run 1
+
+| route | 完全step [ms] | allocated/reserved [MiB] | 両peak≤dense |
+| --- | ---: | ---: | --- |
+| matrix-torch | 3.2369 | 96.16/142 | FAIL |
+| factor | 11.0483 | 83.11/130 | FAIL |
+| onchip-h | 9.6501 | 42.87/114 | FAIL |
+| site-owner-bm16-stream-g8-h32 | 6.4822 | 57.43/104 | PASS |
+| input-site-stream-g8-h32 | 5.9568 | 57.43/104 | PASS |
+| input-order-stream-g8-h32 | 6.5967 | 57.43/104 | PASS |
+| dense | 0.5931 | 81.75/106 | PASS |
+
+| route | setup | G/dG＋H/dH＋partial | G→dX | physical累積 | source VJP |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| site-owner-bm16-stream-g8-h32 | 0.0891 | 1.7275 | 1.5329 | 0.0625 | 0.0154 |
+| input-site-stream-g8-h32 | 0.0952 | 1.7428 | 1.0885 | 0.0625 | 0.0164 |
+| input-order-stream-g8-h32 | 0.0973 | 1.6476 | 1.5247 | 0.0625 | 0.0154 |
+
+| route | forward準備 | forward index | fields | H生成 | Y集約 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| site-owner-bm16-stream-g8-h32 | 0.3308 | 0.0737 | 0.0287 | 0.7096 | 0.8827 |
+| input-site-stream-g8-h32 | 0.3277 | 0.0727 | 0.0287 | 0.7076 | 0.8745 |
+| input-order-stream-g8-h32 | 0.3133 | 0.0655 | 0.0276 | 0.7004 | 0.7926 |
+
+| route | prefix | D | atom visits | GROUP iterations | live-site checks |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| site-owner-bm16-stream-g8-h32 | 257 | 10 | 1048575 | 33420 | 8388600 |
+| input-site-stream-g8-h32 | 2049 | 10 | 734003 | 23061 | 5872024 |
+| input-order-stream-g8-h32 | 257 | 10 | 1048575 | 33420 | 8388600 |
+
+同じsnapshotの実backwardとの最大差: `{"all_dP": 0.0, "dX": 0.0}`。比較gateはatol/rtol=4e-4。独立FP64 gateはprimaryのinitial/post24に実施。
+
+job `l4job-a9ac47fc340c425ea6e5e06031e2dd21`
+source archive `a26ca441b858598c92069da930dd82bb79bcabfd4b0ba79c9130102a35eb1831`
+result archive `5a9762692101707182fb3791a07a5c7999ece195fa127a7bbf52f14fdeb95f93`
+
+### N2048 / B32 / rho3.0 / independent run 2
+
+| route | 完全step [ms] | allocated/reserved [MiB] | 両peak≤dense |
+| --- | ---: | ---: | --- |
+| matrix-torch | 1.2936 | 96.16/142 | FAIL |
+| factor | 5.0327 | 83.11/130 | FAIL |
+| onchip-h | 4.3615 | 42.87/114 | FAIL |
+| site-owner-bm16-stream-g8-h32 | 4.6440 | 57.43/104 | PASS |
+| input-site-stream-g8-h32 | 4.4842 | 57.43/104 | PASS |
+| input-order-stream-g8-h32 | 4.7562 | 57.43/104 | PASS |
+| dense | 0.5920 | 81.75/106 | PASS |
+
+| route | setup | G/dG＋H/dH＋partial | G→dX | physical累積 | source VJP |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| site-owner-bm16-stream-g8-h32 | 0.0880 | 1.2718 | 0.9626 | 0.0614 | 0.0154 |
+| input-site-stream-g8-h32 | 0.0932 | 1.2810 | 0.7014 | 0.0625 | 0.0154 |
+| input-order-stream-g8-h32 | 0.0973 | 1.2175 | 0.9636 | 0.0614 | 0.0154 |
+
+| route | forward準備 | forward index | fields | H生成 | Y集約 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| site-owner-bm16-stream-g8-h32 | 0.2744 | 0.0696 | 0.0276 | 0.5007 | 0.6093 |
+| input-site-stream-g8-h32 | 0.2734 | 0.0686 | 0.0276 | 0.5007 | 0.6042 |
+| input-order-stream-g8-h32 | 0.2724 | 0.0676 | 0.0276 | 0.5007 | 0.5960 |
+
+| route | prefix | D | atom visits | GROUP iterations | live-site checks |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| site-owner-bm16-stream-g8-h32 | 257 | 5 | 629145 | 20058 | 5033160 |
+| input-site-stream-g8-h32 | 2049 | 5 | 471988 | 14877 | 3775904 |
+| input-order-stream-g8-h32 | 257 | 5 | 629145 | 20058 | 5033160 |
+
+同じsnapshotの実backwardとの最大差: `{"all_dP": 0.0, "dX": 0.0}`。比較gateはatol/rtol=4e-4。独立FP64 gateはprimaryのinitial/post24に実施。
+
+job `l4job-85ebae89153e4d5d84bef55f65a83b75`
+source archive `f64be4992b4d32e1a0769512bbe8d75218f6cf2e2acc6e84fa2a7d1003f846d4`
+result archive `4cf524f70978f54c85fe8103b2d83dbc8520cc55ee2dac3fe35a12bc027bb5e7`
+
+### N2048 / B32 / rho8.0 / independent run 2
+
+| route | 完全step [ms] | allocated/reserved [MiB] | 両peak≤dense |
+| --- | ---: | ---: | --- |
+| matrix-torch | 3.3702 | 96.16/142 | FAIL |
+| factor | 11.0620 | 83.11/130 | FAIL |
+| onchip-h | 9.7922 | 42.87/114 | FAIL |
+| site-owner-bm16-stream-g8-h32 | 6.7093 | 57.43/104 | PASS |
+| input-site-stream-g8-h32 | 6.2966 | 57.43/104 | PASS |
+| input-order-stream-g8-h32 | 6.6081 | 57.43/104 | PASS |
+| dense | 0.5923 | 81.75/106 | PASS |
+
+| route | setup | G/dG＋H/dH＋partial | G→dX | physical累積 | source VJP |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| site-owner-bm16-stream-g8-h32 | 0.0891 | 1.7336 | 1.5340 | 0.0645 | 0.0164 |
+| input-site-stream-g8-h32 | 0.0942 | 1.7398 | 1.0772 | 0.0614 | 0.0164 |
+| input-order-stream-g8-h32 | 0.0972 | 1.6425 | 1.5257 | 0.0625 | 0.0164 |
+
+| route | forward準備 | forward index | fields | H生成 | Y集約 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| site-owner-bm16-stream-g8-h32 | 0.3738 | 0.0819 | 0.0307 | 0.7240 | 1.0025 |
+| input-site-stream-g8-h32 | 0.3707 | 0.0809 | 0.0307 | 0.7209 | 0.9933 |
+| input-order-stream-g8-h32 | 0.3226 | 0.0707 | 0.0276 | 0.7066 | 0.8622 |
+
+| route | prefix | D | atom visits | GROUP iterations | live-site checks |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| site-owner-bm16-stream-g8-h32 | 257 | 10 | 1048575 | 33420 | 8388600 |
+| input-site-stream-g8-h32 | 2049 | 10 | 734003 | 23061 | 5872024 |
+| input-order-stream-g8-h32 | 257 | 10 | 1048575 | 33420 | 8388600 |
+
+同じsnapshotの実backwardとの最大差: `{"all_dP": 0.0, "dX": 0.0}`。比較gateはatol/rtol=4e-4。独立FP64 gateはprimaryのinitial/post24に実施。
+
+job `l4job-2140875e3463471e8c14cd928e182a66`
+source archive `a30b97d80381dd985efb16db1c0fd41dd2a0438f5b6a8e49dd948b0e630ab1ff`
+result archive `6e44c91f954f6dfbdcb280789e38ad78598a1409bd70f70dc29d2920eb4013fd`
+
+setupはdX初期化・routing・係数準備を含む。producerはG単独ではなくG/dG・H/dH再計算・3種類のparameter部分和を含む。dXはowner reductionでatomic scatterなし。入力site-prefixだけ候補数を変え、副キー案はcoarse候補を維持する。候補数は論理量であり、cache/物理trafficではない。
+
+
+### 入力routing独立比較の結論
+
+Colab L4、N2048/B32/A209715、rho3/8、seed41、source `323ff210`。
+各rhoで独立2回、各方式24 AdamW更新・21 primary timing samplesを測った。
+下表は各runのmedianを2回で平均した値で、単位はms。
+生成はG/dG＋H/dH再計算＋parameter部分和を含み、Gだけの時間ではない。
+
+| rho | 方式 | setup | 生成 | G→dX集約 | 完全step |
+| --- | --- | ---: | ---: | ---: | ---: |
+| 3 | 基準 | 0.0880 | 1.2759 | 0.9636 | 4.7098 |
+| 3 | 入力site候補削減 | 0.0937 | 1.2836 | 0.7076 | 4.5038 |
+| 3 | 入力bin内の副キーsort | 0.0968 | 1.2186 | 0.9610 | 4.7530 |
+| 8 | 基準 | 0.0891 | 1.7306 | 1.5334 | 6.5957 |
+| 8 | 入力site候補削減 | 0.0947 | 1.7413 | 1.0829 | 6.1267 |
+| 8 | 入力bin内の副キーsort | 0.0972 | 1.6451 | 1.5252 | 6.6024 |
+
+- 入力site候補削減はrho3で候補訪問25.0%、rho8で30.0%減。
+  dX集約は全4runで26.0〜29.8%短縮、完全stepはrho3で3.4〜5.3%、rho8で6.2〜8.1%短縮。
+  生成部分は0.4〜0.9%増で、改善は主にdX集約に現れた。
+  **測定条件での次の実験基準は入力site候補削減版とする。**
+- 副キーsortは候補集合を維持し、生成診断は4.3〜5.3%短縮したが、完全stepは
+  rho3で0.5%短縮／2.4%増、rho8で1.8%増／1.5%短縮と符号が反転した。
+  **完全stepの再現した利得がないため保留。** A+Bの組合せや公開dispatcher変更は行わない。
+- 3方式とも全4runでallocated/reserved peakは**57.43/104 MiB**。
+  denseの**81.75/106 MiB**を両方下回るが、今回の変更によるpeak削減はない。
+  site prefixの論理容量増（14KiB＋arange7KiB）は主測定peakを変えなかった。
+- denseの完全stepは約0.59msで依然大幅に速い。入力候補削減だけでは差は埋まらない。
+  次は生成部分を主な調査対象にする。
+
+setup・生成・集約は別Graph診断であり、その和を完全stepとみなさない。
+forwardのコード・候補・更新後パラメータは同一だがforward診断時間にも変動があるため、
+その差を入力routing変更の効果としない。cache hit率や物理traffic改善は未測定。
+976 GPU contract testsと48 initial/post24全atom FP64 gatesが成功し、全12診断の
+実backwardとの差はdX/all-dPとも0。全4source/result archive、各1629 source entries・
+37 result manifest entries、28 workers、同一rhoの反復条件と更新後hashを独立監査した。
+全owned GPU slotsの停止を確認済み。
+
+
+### 再現と証拠
+
+source `323ff210f1be0d192fdc09d4b100dc5c44b3d7b7` の隔離checkoutで実施する。
+以下のrho3比較を独立2回、caseをrho8へ替えた比較も独立2回行った。
+各出力先は新しいdirectoryにする。
+
+```sh
+python -m tools.kernel_dev check --plans benchmarks/cuda/linear/plans-regular-grid-h.json
+python -m pytest -q tests/test_regular_grid_h_cuda.py tests/test_periodic_cuda.py
+python -m benchmarks.cuda.linear.periodic_comparison \
+  --case benchmarks/cuda/linear/cases/regular-grid-h-2048-rho3.json \
+  --plans matrix-torch factor onchip-h site-owner-bm16-stream-g8-h32 input-site-stream-g8-h32 input-order-stream-g8-h32 dense \
+  --isolated-oracle --phases --output <new-per-run-comparison-path>
+```
+
+全4sourceの1629ファイルmapは一致する。異なるsource archive hashはarchive metadataの
+差であり、worker実行対象のruntime・benchmark bytesはいずれもsource323と一致した。
+各cohort内の7方式と同じrhoの独立反復でinputs/runtime/protocol/catalogを確認した。
+raw archivesとmanifestはignored `output/regular-grid-h/overnight-evidence/` に保存した。
+集計は `input-routing-cohort-report.md`、`input-routing-summary.json`、
+検証は `verify-input-routing-cohort.py`。停止証拠は
+`input-routing-final-pool-status.json` と `input-routing-final-stop-lifecycle.log`。

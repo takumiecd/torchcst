@@ -355,7 +355,7 @@ producer内をさらに分けるprobeは既存contractを用いてG/dGとH/dHを
 5種類のG8 route、両rhoで診断と実backwardのdX/all-dPの差は0だった。
 完全stepの独立FP64 gateと両peak、raw evidenceは研究履歴へ記録した。
 
-次の二候補は未実装で、forwardを固定して単独で比較する。
+次の二候補を独立したbenchmark-local recipeとして実装し、forwardを固定して単独で比較する。
 
 - 入力site-prefix：8siteの区分を1siteにし、dX候補を絞る。N2048ではprefixが
   257→2049個（int64で＋14KiB）、検索用arangeは＋7KiB。global D10かつ均一分布なら
@@ -365,6 +365,51 @@ producer内をさらに分けるprobeは既存contractを用いてG/dGとH/dHを
   不要。同じinput-binには平均約819atomあり、input-site第一キーの約102atomより大きな集合を
   第二キーで並べられる一方、bin内の入力site順は保証しない。メモリpeakの同等は実測事項。
 
-最初は候補数削減を直接検証できる入力site-prefixを優先し、次に配置だけを変える。
+比較planは `input-site-stream-g8-h32` と `input-order-stream-g8-h32`。
+基準 `site-owner-bm16-stream-g8-h32` とH32/G8、forward BM16を一致させる。
 いずれもatom加算順・producer groupが変わるため、全勾配・floor・境界・snapshot・Graphの
 検証を通してから完全stepを測る。既存forwardの二座標sort案は別に比較する。
+
+
+実装source `323ff210` はL4で976 contract tests（skipなし）を通過した。
+forwardのrouting/Yのbitwise一致、入力site-prefixの支持包含、coarse副キーのbin人口・
+候補集合の同一性を直接検査した。全勾配・unsafe fallback・partial batch・retained snapshot・
+Graph更新も新routeで検査する。候補訪問数とallocatorピークは、比較ごとに実測する。
+
+
+### 入力routing独立比較の結論
+
+Colab L4、N2048/B32/A209715、rho3/8、seed41、source `323ff210`。
+各rhoで独立2回、各方式24 AdamW更新・21 primary timing samplesを測った。
+下表は各runのmedianを2回で平均した値で、単位はms。
+生成はG/dG＋H/dH再計算＋parameter部分和を含み、Gだけの時間ではない。
+
+| rho | 方式 | setup | 生成 | G→dX集約 | 完全step |
+| --- | --- | ---: | ---: | ---: | ---: |
+| 3 | 基準 | 0.0880 | 1.2759 | 0.9636 | 4.7098 |
+| 3 | 入力site候補削減 | 0.0937 | 1.2836 | 0.7076 | 4.5038 |
+| 3 | 入力bin内の副キーsort | 0.0968 | 1.2186 | 0.9610 | 4.7530 |
+| 8 | 基準 | 0.0891 | 1.7306 | 1.5334 | 6.5957 |
+| 8 | 入力site候補削減 | 0.0947 | 1.7413 | 1.0829 | 6.1267 |
+| 8 | 入力bin内の副キーsort | 0.0972 | 1.6451 | 1.5252 | 6.6024 |
+
+- 入力site候補削減はrho3で候補訪問25.0%、rho8で30.0%減。
+  dX集約は全4runで26.0〜29.8%短縮、完全stepはrho3で3.4〜5.3%、rho8で6.2〜8.1%短縮。
+  生成部分は0.4〜0.9%増で、改善は主にdX集約に現れた。
+  **測定条件での次の実験基準は入力site候補削減版とする。**
+- 副キーsortは候補集合を維持し、生成診断は4.3〜5.3%短縮したが、完全stepは
+  rho3で0.5%短縮／2.4%増、rho8で1.8%増／1.5%短縮と符号が反転した。
+  **完全stepの再現した利得がないため保留。** A+Bの組合せや公開dispatcher変更は行わない。
+- 3方式とも全4runでallocated/reserved peakは**57.43/104 MiB**。
+  denseの**81.75/106 MiB**を両方下回るが、今回の変更によるpeak削減はない。
+  site prefixの論理容量増（14KiB＋arange7KiB）は主測定peakを変えなかった。
+- denseの完全stepは約0.59msで依然大幅に速い。入力候補削減だけでは差は埋まらない。
+  次は生成部分を主な調査対象にする。
+
+setup・生成・集約は別Graph診断であり、その和を完全stepとみなさない。
+forwardのコード・候補・更新後パラメータは同一だがforward診断時間にも変動があるため、
+その差を入力routing変更の効果としない。cache hit率や物理traffic改善は未測定。
+976 GPU contract testsと48 initial/post24全atom FP64 gatesが成功し、全12診断の
+実backwardとの差はdX/all-dPとも0。全4source/result archive、各1629 source entries・
+37 result manifest entries、28 workers、同一rhoの反復条件と更新後hashを独立監査した。
+全owned GPU slotsの停止を確認済み。
