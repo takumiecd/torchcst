@@ -66,4 +66,8 @@ FP64周期reductionを行う。中心のpacked保存はFP32、norm/floor/gradの
 性能結果なしのFAILとして残し、修正後は別source・別remote directoryへfreezeする。
 完全stepは修正後のbucket16を対照とし、過去のbucket campaignと時間をpoolしない。
 
+source `59d058fd` はlibdevice.fmodの定数型がFP32だったためFP64とのdispatchで
+compile failureになった。229 PASS/181 compile FAIL、性能測定なしで保存し、
+周期定数も明示的にFP64へ揃えて別sourceで再検証する。
+
 実測結果は検証終了後に追記する。
