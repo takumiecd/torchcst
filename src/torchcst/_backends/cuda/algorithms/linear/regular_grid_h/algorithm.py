@@ -10,6 +10,7 @@ from torchcst.kernels import PolarAmpWidthSpec, TriweightSpec
 
 from ..periodic_product.algorithm import PeriodicMatrixAlgorithm
 from .recipe import (
+    FusedBackwardHRecipe,
     GroupedOutputHRecipe,
     InputBatchProducerHRecipe,
     InputCanonicalHRecipe,
@@ -337,3 +338,34 @@ class InputCanonicalHAlgorithm(OutputOwnedHAlgorithm):
         )
         with torch.cuda.device(x.device):
             return canonical_h(x, p, operator.kernel, sizes, state.recipe)
+
+
+@dataclass(frozen=True)
+class FusedBackwardHAlgorithm(OutputOwnedHAlgorithm):
+    """Research-only input-owner G/dX/parameter fusion on the same grid."""
+
+    id: str = "research_cuda_regular_grid_fused_backward_h"
+    recipe_type: type = FusedBackwardHRecipe
+
+    def validate_recipe(self, recipe):
+        if type(recipe) is not self.recipe_type:
+            raise TypeError("requires FusedBackwardHRecipe")
+        self.recipe_type(**asdict(recipe))
+
+    def execute(self, state, inputs):
+        from ..profile_product_matrix.algorithm import live_inputs
+        from .fused_backward_executor import fused_backward_h
+
+        x, p, declaration, operator = live_inputs(state, inputs)
+        chart = self.chart_spec(declaration)
+        sizes = (
+            len(x),
+            chart.shape[1],
+            chart.shape[0],
+            chart.geometry.periods[1],
+            chart.geometry.periods[0],
+            chart.origin[1],
+            chart.origin[0],
+        )
+        with torch.cuda.device(x.device):
+            return fused_backward_h(x, p, operator.kernel, sizes, state.recipe)

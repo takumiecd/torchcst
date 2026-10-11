@@ -201,3 +201,22 @@ class InputCanonicalHRecipe(InputBatchProducerHRecipe):
         super().__post_init__()
         if self.producer_batch_tile != 16:
             raise ValueError("canonical input layout requires BM16/G16")
+
+
+@dataclass(frozen=True)
+class FusedBackwardHRecipe(InputBatchProducerHRecipe):
+    """Matched H32 forward; input owners consume local G and emit one VJP."""
+
+    backward_batch_tile: int = 8
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.producer_batch_tile != 16:
+            raise ValueError("fused backward keeps the BM16/G16 forward control")
+        if type(
+            self.backward_batch_tile
+        ) is not int or self.backward_batch_tile not in (
+            8,
+            16,
+        ):
+            raise ValueError("backward_batch_tile must be 8 or 16")
