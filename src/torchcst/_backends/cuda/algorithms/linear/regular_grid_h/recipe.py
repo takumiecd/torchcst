@@ -144,3 +144,8 @@ class InputReciprocalStreamingHRecipe(InputSiteStreamingHRecipe):
 @dataclass(frozen=True)
 class InputOrderStreamingHRecipe(OwnerBatchStreamingHRecipe):
     """Coarse input-bin/output-site key; forward layout and dX bins unchanged."""
+
+
+@dataclass(frozen=True)
+class InputCompactWrapHRecipe(InputReciprocalStreamingHRecipe):
+    """Guarded single-wrap coordinates in the reciprocal backward producer."""

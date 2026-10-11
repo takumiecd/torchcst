@@ -64,15 +64,29 @@ def prepare_routing(packed, sizes, recipe, *, output=True, tile=None):
 
 
 def uses_input_site_routing(recipe):
-    from .recipe import InputReciprocalStreamingHRecipe, InputSiteStreamingHRecipe
+    from .recipe import (
+        InputCompactWrapHRecipe,
+        InputReciprocalStreamingHRecipe,
+        InputSiteStreamingHRecipe,
+    )
 
-    return type(recipe) in (InputSiteStreamingHRecipe, InputReciprocalStreamingHRecipe)
+    return type(recipe) in (
+        InputSiteStreamingHRecipe,
+        InputReciprocalStreamingHRecipe,
+        InputCompactWrapHRecipe,
+    )
 
 
 def uses_reciprocal_producer(recipe):
-    from .recipe import InputReciprocalStreamingHRecipe
+    from .recipe import InputCompactWrapHRecipe, InputReciprocalStreamingHRecipe
 
-    return type(recipe) is InputReciprocalStreamingHRecipe
+    return type(recipe) in (InputReciprocalStreamingHRecipe, InputCompactWrapHRecipe)
+
+
+def uses_compact_wrap_producer(recipe):
+    from .recipe import InputCompactWrapHRecipe
+
+    return type(recipe) is InputCompactWrapHRecipe
 
 
 def uses_input_secondary_order(recipe):
@@ -83,6 +97,7 @@ def uses_input_secondary_order(recipe):
 
 def uses_site_routing(recipe):
     from .recipe import (
+        InputCompactWrapHRecipe,
         InputOrderStreamingHRecipe,
         InputReciprocalStreamingHRecipe,
         InputSiteStreamingHRecipe,
@@ -97,6 +112,7 @@ def uses_site_routing(recipe):
         SiteRoutedStreamingHRecipe,
         OwnerBatchHRecipe,
         OwnerBatchStreamingHRecipe,
+        InputCompactWrapHRecipe,
         InputReciprocalStreamingHRecipe,
         InputSiteStreamingHRecipe,
         InputOrderStreamingHRecipe,
@@ -106,6 +122,7 @@ def uses_site_routing(recipe):
 def h_capacity(recipe):
     from .recipe import (
         GroupedOutputHRecipe,
+        InputCompactWrapHRecipe,
         InputOrderStreamingHRecipe,
         InputOwnedHRecipe,
         InputReciprocalStreamingHRecipe,
@@ -129,6 +146,7 @@ def h_capacity(recipe):
             OwnerBatchHRecipe,
             SiteRoutedStreamingHRecipe,
             OwnerBatchStreamingHRecipe,
+            InputCompactWrapHRecipe,
             InputReciprocalStreamingHRecipe,
             InputSiteStreamingHRecipe,
             InputOrderStreamingHRecipe,
@@ -143,6 +161,7 @@ def h_capacity(recipe):
 def allocate_h(x, atom_count, recipe):
     from .recipe import (
         GroupedOutputHRecipe,
+        InputCompactWrapHRecipe,
         InputOrderStreamingHRecipe,
         InputOwnedHRecipe,
         InputReciprocalStreamingHRecipe,
@@ -163,6 +182,7 @@ def allocate_h(x, atom_count, recipe):
         OwnerBatchHRecipe,
         SiteRoutedStreamingHRecipe,
         OwnerBatchStreamingHRecipe,
+        InputCompactWrapHRecipe,
         InputReciprocalStreamingHRecipe,
         InputSiteStreamingHRecipe,
         InputOrderStreamingHRecipe,
@@ -307,6 +327,7 @@ def aggregate_chunk(
 def forward_output_owned(x, packed, sizes, recipe):
     from .recipe import (
         GroupedOutputHRecipe,
+        InputCompactWrapHRecipe,
         InputOrderStreamingHRecipe,
         InputOwnedHRecipe,
         InputReciprocalStreamingHRecipe,
@@ -337,6 +358,7 @@ def forward_output_owned(x, packed, sizes, recipe):
             OwnerBatchHRecipe,
             SiteRoutedStreamingHRecipe,
             OwnerBatchStreamingHRecipe,
+            InputCompactWrapHRecipe,
             InputReciprocalStreamingHRecipe,
             InputSiteStreamingHRecipe,
             InputOrderStreamingHRecipe,
@@ -352,6 +374,7 @@ def forward_output_owned(x, packed, sizes, recipe):
         OwnerBatchHRecipe,
         SiteRoutedStreamingHRecipe,
         OwnerBatchStreamingHRecipe,
+        InputCompactWrapHRecipe,
         InputReciprocalStreamingHRecipe,
         InputSiteStreamingHRecipe,
         InputOrderStreamingHRecipe,

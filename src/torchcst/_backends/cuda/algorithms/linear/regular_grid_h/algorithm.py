@@ -11,6 +11,7 @@ from torchcst.kernels import PolarAmpWidthSpec, TriweightSpec
 from ..periodic_product.algorithm import PeriodicMatrixAlgorithm
 from .recipe import (
     GroupedOutputHRecipe,
+    InputCompactWrapHRecipe,
     InputOrderStreamingHRecipe,
     InputOwnedHRecipe,
     InputReciprocalStreamingHRecipe,
@@ -269,3 +270,14 @@ class InputReciprocalStreamingHAlgorithm(OutputOwnedHAlgorithm):
         if type(recipe) is not InputReciprocalStreamingHRecipe:
             raise TypeError("requires InputReciprocalStreamingHRecipe")
         InputReciprocalStreamingHRecipe(**asdict(recipe))
+
+
+@dataclass(frozen=True)
+class InputCompactWrapHAlgorithm(OutputOwnedHAlgorithm):
+    id: str = "research_cuda_regular_grid_input_compact_wrap_h"
+    recipe_type: type = InputCompactWrapHRecipe
+
+    def validate_recipe(self, recipe):
+        if type(recipe) is not InputCompactWrapHRecipe:
+            raise TypeError("requires InputCompactWrapHRecipe")
+        InputCompactWrapHRecipe(**asdict(recipe))

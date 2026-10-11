@@ -2672,3 +2672,25 @@ python -m benchmarks.cuda.linear.periodic_comparison \
     input-site-reciprocal-g8-h32 dense \
   --isolated-oracle --phases --output output/reciprocal-new/comparison.json
 ```
+
+## 周期補正だけを置換する比較の事前条件
+
+次の研究候補 `input-site-wrap-g8-h32` は逆数共有版を基準に、fused backward
+producerの周期補正だけを比較・加減算に置換する。X/dYの読み取り、modular index、
+H32/G8/BM8/BK8/group8、候補数、norm/floor/singleton/source VJPは変えない。
+
+各軸で原点0、単位間隔、1–8192 sitesを満たし、group内の全有効atomが
+`0 <= center < period`、`16/period² <= inv <= 2**100` を満たす場合に限る。
+この範囲ではdeltaは一周期内にあり、一度の補正で足りる。半周期付近の除算丸めの
+不一致は支持半径がperiod/4以下なのでprofileと微分が0の領域に収まる。
+invの上限はraw微分の中間値のoverflowを避ける。条件外は従来の除算・floorへ戻す。
+ゼロ微分の符号bitは変わり得るが、数値は同じ。forwardは従来計算のまま。
+
+検証はfloor/singleton、空支持、混在group、half-periodの隣接FP32値、非unit間隔・
+非zero原点のfallback、広い支持、strides、retained backward、全grad、20回の更新を含む。
+全axis・全atom FP64のmax absolute/relative L2閾値4e-4は維持する。
+GPU qualificationの後に、N2048/B32/A209715/rho3と8/seed41/24更新の7方式を
+fresh processで測る。matrix、factor、onchip、division、reciprocal、wrap、denseを比較し、
+各rhoを独立2job、2回目は逆順にする。完全stepの21sampleを独立run数とは数えない。
+wrapとreciprocalの初期・post24状態の数値差も保存する。診断stageは別Graphで非加算。
+peak allocated/reservedはcapture/replay込み。未計測の性能やcache原因を推定しない。

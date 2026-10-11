@@ -33,6 +33,7 @@ def produce_g_parameters(
     GROUP: tl.constexpr,
     STREAM_PARTIAL: tl.constexpr = False,
     RECIPROCAL: tl.constexpr = False,
+    COMPACT_WRAP: tl.constexpr = False,
 ):
     pos = tl.program_id(0) * GROUP + tl.arange(0, GROUP)
     valid = pos < A
@@ -57,6 +58,7 @@ def produce_g_parameters(
         BK,
         GROUP,
         RECIPROCAL,
+        COMPACT_WRAP,
     )
     tl.store(
         G + (tl.program_id(1) * A + pos[:, None]) * BM + tl.arange(0, BM)[None, :],
@@ -83,6 +85,7 @@ def produce_g_parameters(
             BK,
             GROUP,
             RECIPROCAL,
+            COMPACT_WRAP,
         )
         amp = tl.load(P + a, valid, 0)
         tile = tl.program_id(1) if STREAM_PARTIAL else BSTART // BM + tl.program_id(1)

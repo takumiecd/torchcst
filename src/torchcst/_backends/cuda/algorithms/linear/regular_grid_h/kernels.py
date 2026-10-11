@@ -7,8 +7,37 @@ These kernels isolate lifetime/fusion effects before support-overlap grouping.
 import triton as tr
 import triton.language as tl
 
-from ..local_product.kernels import _store_param_cotangent
+from ..local_product.kernels import _raw, _store_param_cotangent
 from ..periodic_product.kernels import _index, _periodic_raw
+
+
+@tr.jit
+def _compact_wrap_safe(
+    center, inv, valid, O: tl.constexpr, L: tl.constexpr, N: tl.constexpr
+):
+    if O == 0.0 and L == float(N) and 1 <= N <= 8192:
+        # Unit-spacing sites are exact integers. Keep support away from the
+        # half-period rounding ambiguity and all raw intermediates finite.
+        safe = (
+            (center >= 0.0) & (center < L) & (inv >= 16.0 / (L * L)) & (inv <= 2.0**100)
+        )
+        return tl.min((safe | ~valid).to(tl.int32), 0) != 0
+    else:
+        return tl.full((), False, tl.int1)
+
+
+@tr.jit
+def _compact_periodic_raw(
+    j, center, inv, safe, O: tl.constexpr, L: tl.constexpr, N: tl.constexpr
+):
+    if safe:
+        delta = O + _index(j, N) * (L / N) - center
+        delta = tl.where(
+            delta >= L / 2.0, delta - L, tl.where(delta < -L / 2.0, delta + L, delta)
+        )
+        return _raw(delta, inv)
+    else:
+        return _periodic_raw(j, center, inv, O, L, N)
 
 
 @tr.jit
@@ -31,6 +60,7 @@ def _contract(
     BK: tl.constexpr,
     GROUP: tl.constexpr,
     RECIPROCAL: tl.constexpr = False,
+    COMPACT_WRAP: tl.constexpr = False,
 ):
     k = tl.arange(0, BK)
     inv = tl.load(P + A + a, valid, 1)
@@ -41,6 +71,8 @@ def _contract(
     other_low = tl.load(P + (9 if OUTPUT else 11) * A + a, valid, 0)
     other_high = tl.load(P + (10 if OUTPUT else 12) * A + a, valid, 0)
     high = tl.where(other_high > other_low, high, low)
+    if COMPACT_WRAP:
+        wrap_safe = _compact_wrap_safe(center, inv, valid, O, L, N)
     if DERIVATIVE:
         loggrad = tl.load(P + (7 if OUTPUT else 6) * A + a, valid, 0)
         flags = tl.load(P + 8 * A + a, valid, 0).to(tl.int32)
@@ -63,7 +95,12 @@ def _contract(
     grad = tl.full((GROUP, BM, BK), 0.0, tl.float32)
     for start in range(0, tl.max(tl.maximum(high - low, 0), 0), BK):
         j = low[:, None] + start + k[None, :]
-        v, dv = _periodic_raw(j, center[:, None], inv[:, None], O, L, N)
+        if COMPACT_WRAP:
+            v, dv = _compact_periodic_raw(
+                j, center[:, None], inv[:, None], wrap_safe, O, L, N
+            )
+        else:
+            v, dv = _periodic_raw(j, center[:, None], inv[:, None], O, L, N)
         if RECIPROCAL:
             if reciprocal_safe:
                 v = v * inverse_norm[:, None]

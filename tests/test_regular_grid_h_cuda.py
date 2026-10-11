@@ -2413,3 +2413,339 @@ def test_reciprocal_producer_partials_floor_cancellation_and_division_guards(cas
                 rows[:active] = x[start : start + active, 0].detach().cpu().double()
                 uncorrected = raw_term[None, :, None] * rows[None, None, :]
                 assert 0 < float(dh.norm()) < 0.9 * float(uncorrected.norm())
+
+
+def _compact_wrap_selector():
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h.algorithm import (
+        InputCompactWrapHAlgorithm,
+    )
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h.recipe import (
+        InputCompactWrapHRecipe,
+    )
+
+    algorithm = InputCompactWrapHAlgorithm()
+    registry = Registry()
+    registry.register(algorithm)
+    plan = ExecutionPlan(algorithm.id, algorithm.revision, InputCompactWrapHRecipe())
+    return FixedSelector(plan, registry=registry), plan, registry
+
+
+@pytest.fixture
+def compact_wrap_route(monkeypatch):
+    original = model
+
+    def candidate_model(p, route=None, **kwargs):
+        shape = kwargs.get("shape", (33, 65))
+        kwargs.setdefault("periods", tuple(float(n) for n in shape))
+        kwargs.setdefault("origin", (0.0, 0.0))
+        layer = original(p, route, **kwargs)
+        if route is not None:
+            assert route == "input_site32"
+            layer.selector = _compact_wrap_selector()[0]
+        return layer
+
+    monkeypatch.setattr(sys.modules[__name__], "model", candidate_model)
+
+
+def test_compact_wrap_metadata_distinct_recipe_roundtrip_and_catalog():
+    from benchmarks.cuda.linear.manifest import REGISTRY
+    from benchmarks.cuda.linear.periodic_comparison import bind_plan
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h.recipe import (
+        InputCompactWrapHRecipe,
+    )
+
+    _, plan, registry = _compact_wrap_selector()
+    assert plan.algorithm_id == "research_cuda_regular_grid_input_compact_wrap_h"
+    assert plan.algorithm_revision == "v1"
+    assert registry.loads_plan(registry.dumps_plan(plan)) == plan
+    algorithm = registry.get(plan.algorithm_id, revision=plan.algorithm_revision)
+    for wrong in (InputSiteStreamingHRecipe(), _reciprocal_selector()[1].recipe):
+        with pytest.raises(TypeError):
+            algorithm.validate_recipe(wrong)
+    _, reciprocal_plan, reciprocal_registry = _reciprocal_selector()
+    reciprocal = reciprocal_registry.get(
+        reciprocal_plan.algorithm_id, revision=reciprocal_plan.algorithm_revision
+    )
+    with pytest.raises(TypeError):
+        reciprocal.validate_recipe(plan.recipe)
+    with pytest.raises(ValueError):
+        InputCompactWrapHRecipe(g_batch=32)
+    bound = REGISTRY.load_plan(
+        bind_plan(model(periodic.parameters(1)), "input-site-wrap-g8-h32")
+    )
+    assert bound == plan
+    context = replace(
+        model(periodic.parameters(17)).build_context(LinearInputs(torch.zeros(3, 65))),
+        device=DeviceInfo("cuda", 0),
+    )
+    assert algorithm.supports(context, plan.recipe).supported
+
+
+@GPU
+@pytest.mark.parametrize("case", ["empty", "singleton", "below", "equal", "above"])
+def test_compact_wrap_whole_atom_floor_and_singleton(
+    compact_wrap_route, monkeypatch, case
+):
+    test_product_floor_and_singleton_gradients("input_site32", monkeypatch, case)
+
+
+@GPU
+@pytest.mark.parametrize("count", [0, 17])
+@pytest.mark.parametrize("need_x,need_p", [(True, False), (False, True), (True, True)])
+def test_compact_wrap_requested_masks(
+    compact_wrap_route, monkeypatch, count, need_x, need_p
+):
+    test_zero_atoms_and_requested_gradients(
+        "input_site32", monkeypatch, count, need_x, need_p
+    )
+
+
+@GPU
+@pytest.mark.parametrize("batch,sigma", [(11, 0.7), (37, 4.0)])
+def test_compact_wrap_strides_broad_chunks_full_oracle(
+    compact_wrap_route, batch, sigma
+):
+    test_full_atom_oracle_strides_batch_tiles_seams_and_broad(
+        "input_site32", batch, 17, sigma
+    )
+
+
+@GPU
+def test_compact_wrap_retained_forward_live_sources(compact_wrap_route):
+    test_retained_forward_snapshots_before_live_parameter_width_and_chart_updates(
+        "input_site32"
+    )
+
+
+@GPU
+def test_compact_wrap_saved_tensor_contract(compact_wrap_route):
+    test_no_full_h_g_saved_and_backward_recomputation("input_site32")
+
+
+@GPU
+def test_compact_wrap_twenty_graph_replays_live_width(compact_wrap_route, monkeypatch):
+    test_twenty_graph_replays_public_optimizer_live_width_and_all_task_gradients(
+        "input_site32", monkeypatch
+    )
+
+
+@GPU
+def test_compact_wrap_twenty_public_eager_updates(compact_wrap_route, monkeypatch):
+    test_twenty_public_eager_updates("input_site32", monkeypatch)
+
+
+@GPU
+@pytest.mark.parametrize("sites", [32, 33, 2048, 8192])
+@pytest.mark.parametrize(
+    "case",
+    [
+        "safe",
+        "lower",
+        "below_lower",
+        "upper",
+        "above_upper",
+        "mixed_center",
+        "broad",
+        "origin",
+        "spacing",
+    ],
+)
+def test_compact_wrap_raw_seams_half_period_and_group_guards(sites, case):
+    import triton as tr
+    import triton.language as tl
+
+    from torchcst._backends.cuda.algorithms.linear.periodic_product.kernels import (
+        _periodic_raw,
+    )
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h.kernels import (
+        _compact_periodic_raw,
+        _compact_wrap_safe,
+    )
+
+    @tr.jit
+    def raw_probe(
+        C,
+        Inv,
+        J,
+        Value,
+        Derivative,
+        Safe,
+        COUNT: tl.constexpr,
+        N: tl.constexpr,
+        L: tl.constexpr,
+        O: tl.constexpr,
+        COMPACT: tl.constexpr,
+        GROUP: tl.constexpr,
+        BK: tl.constexpr,
+    ):
+        a, k = tl.arange(0, GROUP), tl.arange(0, BK)
+        valid = a < COUNT
+        center = tl.load(C + a, valid, 0.0)
+        inv = tl.load(Inv + a, valid, 1.0)
+        j = tl.load(J + k)
+        safe = _compact_wrap_safe(center, inv, valid, O, L, N)
+        if COMPACT:
+            v, dv = _compact_periodic_raw(
+                j[None, :], center[:, None], inv[:, None], safe, O, L, N
+            )
+        else:
+            v, dv = _periodic_raw(j[None, :], center[:, None], inv[:, None], O, L, N)
+        tl.store(Value + a[:, None] * BK + k[None, :], v, valid[:, None])
+        tl.store(Derivative + a[:, None] * BK + k[None, :], dv, valid[:, None])
+        tl.store(Safe, safe)
+
+    period = float(sites * (2 if case == "spacing" else 1))
+    origin = 0.25 if case == "origin" else 0.0
+    half = torch.tensor(period / 2, dtype=torch.float32)
+    zero, upper_center = torch.tensor(0.0), torch.tensor(period)
+    centers = torch.tensor(
+        [
+            0.0,
+            0.125,
+            0.5,
+            period / 2,
+            period - 0.125,
+            float(torch.nextafter(half, torch.tensor(0.0))),
+            float(torch.nextafter(half, torch.tensor(float("inf")))),
+            float(torch.nextafter(upper_center, zero)),
+            float(torch.nextafter(zero, torch.tensor(1.0))),
+            1.25,
+            2.75,
+            period / 4,
+            period * 0.75,
+            0.25,
+            0.375,
+            0.625,
+            0.875,
+        ],
+        dtype=torch.float32,
+    )
+    inverse = torch.full_like(centers, 1.0)
+    lower = torch.tensor(16.0 / (period * period), dtype=torch.float32)
+    upper = torch.tensor(2.0**100, dtype=torch.float32)
+    if case in ("lower", "below_lower", "broad"):
+        inverse.fill_(lower)
+        if case == "below_lower":
+            inverse[0] = torch.nextafter(lower, torch.tensor(0.0))
+        elif case == "broad":
+            inverse[0] = 1.0 / (period * period)
+    elif case in ("upper", "above_upper"):
+        inverse.fill_(upper)
+        if case == "above_upper":
+            inverse[0] = torch.nextafter(upper, torch.tensor(float("inf")))
+    elif case == "mixed_center":
+        centers[0] = period
+    indices = torch.tensor(
+        [
+            -sites,
+            -1,
+            0,
+            1,
+            2,
+            sites // 2 - 1,
+            sites // 2,
+            sites // 2 + 1,
+            sites - 2,
+            sites - 1,
+            sites,
+            sites + 1,
+            2 * sites,
+            -sites - 1,
+            3,
+            4,
+        ],
+        dtype=torch.int32,
+        device="cuda",
+    )
+    centers, inverse = centers.cuda(), inverse.cuda()
+    expected_safe = case in ("safe", "lower", "upper")
+    outputs = []
+    for compact in (False, True):
+        value = torch.empty((17, 16), device="cuda")
+        derivative = torch.empty_like(value)
+        safe = torch.empty((), dtype=torch.int32, device="cuda")
+        raw_probe[(1,)](
+            centers,
+            inverse,
+            indices,
+            value,
+            derivative,
+            safe,
+            17,
+            sites,
+            period,
+            origin,
+            compact,
+            32,
+            16,
+            enable_fp_fusion=False,
+            num_warps=4,
+        )
+        assert bool(safe.cpu()) == expected_safe
+        assert torch.isfinite(value).all() and torch.isfinite(derivative).all()
+        outputs.append((value, derivative))
+    for actual, expected in zip(outputs[1], outputs[0], strict=True):
+        # The helper may change the sign bit of a zero derivative. Numeric
+        # equality is exact; positive profiles and all live derivatives agree.
+        torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+
+
+@GPU
+@pytest.mark.parametrize("sigma", [3.0, 8.0, 12.0])
+def test_compact_wrap_fused_producer_exact_reciprocal_control(sigma):
+    import triton as tr
+
+    from torchcst._backends.cuda.algorithms.linear.periodic_product.executor import (
+        _prepare,
+    )
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h import input_kernels
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h.output_owner import (
+        prepare_routing,
+    )
+
+    shape = (33, 65)
+    p = periodic.parameters(17, periods=tuple(map(float, shape)), origin=(0.0, 0.0))
+    layer = model(
+        p,
+        "input_site32",
+        shape=shape,
+        periods=tuple(map(float, shape)),
+        origin=(0.0, 0.0),
+        sigma=sigma,
+        device="cuda",
+    )
+    sizes, recipe = (11, 65, 33, 65.0, 33.0, 0.0, 0.0), _reciprocal_selector()[1].recipe
+    packed = _prepare(layer.atoms.p, layer.kernel, sizes, recipe)
+    order = prepare_routing(packed, sizes, recipe, output=False, tile=8)[0]
+    x = torch.randn(11, 130, device="cuda")[:, ::2]
+    dy = torch.randn(33, 11, device="cuda").T
+    for start in (0, 8):
+        results = []
+        for compact in (False, True):
+            g = x.new_empty((1, 17, 8))
+            partial = x.new_empty((1, 3, 17))
+            input_kernels.produce_g_parameters[(tr.cdiv(17, 8), 1)](
+                x,
+                dy,
+                packed,
+                order,
+                g,
+                partial,
+                17,
+                *sizes,
+                *x.stride(),
+                *dy.stride(),
+                True,
+                start,
+                8,
+                8,
+                8,
+                STREAM_PARTIAL=True,
+                RECIPROCAL=True,
+                COMPACT_WRAP=compact,
+                enable_fp_fusion=False,
+                num_warps=4,
+            )
+            results.append((g, partial))
+        for actual, expected in zip(results[1], results[0], strict=True):
+            torch.testing.assert_close(actual, expected, rtol=0, atol=0)

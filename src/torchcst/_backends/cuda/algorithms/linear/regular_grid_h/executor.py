@@ -12,6 +12,7 @@ def forward_contraction(x, packed, sizes, recipe):
     from . import kernels
     from .recipe import (
         GroupedOutputHRecipe,
+        InputCompactWrapHRecipe,
         InputOrderStreamingHRecipe,
         InputOwnedHRecipe,
         InputReciprocalStreamingHRecipe,
@@ -34,6 +35,7 @@ def forward_contraction(x, packed, sizes, recipe):
         OwnerBatchHRecipe,
         SiteRoutedStreamingHRecipe,
         OwnerBatchStreamingHRecipe,
+        InputCompactWrapHRecipe,
         InputReciprocalStreamingHRecipe,
         InputSiteStreamingHRecipe,
         InputOrderStreamingHRecipe,
@@ -93,6 +95,7 @@ class _OnchipH(torch.autograd.Function):
 
         from . import kernels
         from .recipe import (
+            InputCompactWrapHRecipe,
             InputOrderStreamingHRecipe,
             InputOwnedHRecipe,
             InputReciprocalStreamingHRecipe,
@@ -115,6 +118,7 @@ class _OnchipH(torch.autograd.Function):
                 StreamingInputHRecipe,
                 SiteRoutedStreamingHRecipe,
                 OwnerBatchStreamingHRecipe,
+                InputCompactWrapHRecipe,
                 InputReciprocalStreamingHRecipe,
                 InputSiteStreamingHRecipe,
                 InputOrderStreamingHRecipe,
@@ -134,6 +138,7 @@ class _OnchipH(torch.autograd.Function):
                     StreamingInputHRecipe,
                     SiteRoutedStreamingHRecipe,
                     OwnerBatchStreamingHRecipe,
+                    InputCompactWrapHRecipe,
                     InputReciprocalStreamingHRecipe,
                     InputSiteStreamingHRecipe,
                     InputOrderStreamingHRecipe,

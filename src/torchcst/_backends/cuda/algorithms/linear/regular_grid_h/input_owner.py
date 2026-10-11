@@ -13,6 +13,7 @@ def input_owned_backward(
         h_capacity,
         prepare_output_fields,
         prepare_routing,
+        uses_compact_wrap_producer,
         uses_input_site_routing,
         uses_reciprocal_producer,
     )
@@ -65,6 +66,7 @@ def input_owned_backward(
             recipe.atom_group,
             STREAM_PARTIAL=streamed,
             RECIPROCAL=uses_reciprocal_producer(recipe),
+            COMPACT_WRAP=uses_compact_wrap_producer(recipe),
             num_warps=4,
             enable_fp_fusion=False,
         )
