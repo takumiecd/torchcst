@@ -609,3 +609,15 @@ Y/dX owner集約は合計で最大級のkernel群であり、候補siteの余分
 次の独立対象にする。AdamW約0.249ms、Polar/periodic更新約0.118msも別対象として記録する。
 allocator確保・解放は測定した生成Graph内で0回だった。実cache hit/stallと達成occupancyは
 未計測であり、compilerの94registers/0spillsや理論occupancyだけで原因を断定しない。
+
+
+### Joint input/output cell内でH/Gを使い切る比較
+
+入力・出力の中心binを一度だけsortし、forwardのindexをbackwardで再利用する研究候補を
+比較した。全量H/Gを作らず局所Y/dXの部分和へ消費し、最後のowner reductionで集約する。
+Register保持量とhaloを削った修正版も含め、RTX 6000 AdaのN2048/B32/rho3+8では現行
+BM16/G16より遅く、reservedがdenseを上回ったため不採用。index構築は約0.054msで、重いのは
+H/G生成と局所集約を融合したkernelに残った。
+詳細・正確なfallback・全gradient gates・完全step/両peak・source/result hashesは
+[joint cell比較](research-history/cuda-linear/regular-grid-joint-local.ja.md)を参照。
+入力・出力の近さだけで高速化を保証せず、局所保持量と支持外paddingも費用として扱う。

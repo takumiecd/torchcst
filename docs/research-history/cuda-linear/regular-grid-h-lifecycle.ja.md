@@ -3076,3 +3076,14 @@ kernel内で共有し、G16の保存/dX集約・partial/source VJPは現行の�
 論理的X要求を約87.3%減らした一方、producerは約20–24%遅く、register/shared配置の
 費用も増えた。実cache/DRAM counterは未測定。両候補を採用せずBM16/G16を維持する。
 source `231bc48feec4b6e170963dba3acd6f7d5185519d`と負の結果を保存した。
+
+
+## 2026-10-11: 入力・出力joint cellによる局所H/G
+
+既存準備を再利用し、一回のjoint sortをforward/backwardで共有した。
+局所H/Gの消費と部分和reductionを、32/64-site cell、保持量を削った修正版で比較した。
+修正版64cellでも完全stepはrho3=2.804–2.909ms、rho8=3.054–3.262msで、同cohortの
+BM16/G16=1.439–1.441/1.840–1.842msより遅い。allocated/reserved=42.866/114MiBは
+allocatedのみ減り、reservedはdense106MiBを上回る。現行を研究基準に維持する。
+192資格検証/64全shape・全atom FP64 gates、独立2cohort/rho、36 fresh workersを確認。
+詳細は[joint cell研究記録](regular-grid-joint-local.ja.md)を参照。公開default変更なし。
