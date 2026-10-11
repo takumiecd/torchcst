@@ -7,7 +7,12 @@ start/high offsets; every pointer uses modular indices, without duplicate sites.
 import triton as tr
 import triton.language as tl
 
-from ..local_product.kernels import _polar_atom, _raw, _store_param_cotangent
+from ..local_product.kernels import (
+    _polar_atom,
+    _polar_inverse_fp64,
+    _raw,
+    _store_param_cotangent,
+)
 
 
 @tr.jit
@@ -100,6 +105,17 @@ def prepare(
     nu2, ud, olo, ohi, ov = _stats(co, inv, valid, OO, LO, NO, GROUP, SITES)
     nv, nu = tl.sqrt(nv2), tl.sqrt(nu2)
     active = nv * nu >= FLOOR
+    refine = valid & ~active
+    if tl.sum(refine.to(tl.int32), 0) > 0:
+        # A tiny profile divided by the whole-atom floor amplifies a few ULPs
+        # in the FP32 polar width. Refine only those held widths, then refresh
+        # bounds and stats. No new packed fields or global scratch are needed.
+        precise_inv = _polar_inverse_fp64(Source, tl.where(valid, a, 0), Scalars)
+        inv = tl.where(refine, precise_inv, inv)
+        nv2, vd, ilo, ihi, iv = _stats(ci, inv, valid, OI, LI, NI, GROUP, SITES)
+        nu2, ud, olo, ohi, ov = _stats(co, inv, valid, OO, LO, NO, GROUP, SITES)
+        nv, nu = tl.sqrt(nv2), tl.sqrt(nu2)
+        active = nv * nu >= FLOOR
     sv, su = tl.where(active, nv, tl.sqrt(FLOOR)), tl.where(active, nu, tl.sqrt(FLOOR))
     gv = tl.where(active, tl.div_rn(vd, tl.maximum(nv2, 1.1754943508222875e-38)), 0.0)
     gu = tl.where(active, tl.div_rn(ud, tl.maximum(nu2, 1.1754943508222875e-38)), 0.0)

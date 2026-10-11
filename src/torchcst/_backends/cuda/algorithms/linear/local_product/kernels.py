@@ -44,6 +44,33 @@ def _polar_atom(Source, a, Scalars):
 
 
 @tr.jit
+def _polar_inverse_fp64(Source, a, Scalars):
+    """Refine a held width for near-floor profiles; packed storage stays FP32."""
+    z0 = tl.load(Source + 4 * a).to(tl.float64)
+    z1 = tl.load(Source + 4 * a + 1).to(tl.float64)
+    r2 = z0 * z0 + z1 * z1
+    radius = libdevice.sqrt(tl.maximum(r2, 2.2250738585072014e-308))
+    amplitude = tl.load(Scalars[0]).to(tl.float64) * z0 / radius
+    alpha = tl.minimum(tl.maximum((r2 - 1.0) / 3.0, 0.0), 1.0)
+    minimum = tl.load(Scalars[5]).to(tl.float64)
+    birth = tl.load(Scalars[6]).to(tl.float64)
+    maximum = tl.load(Scalars[7]).to(tl.float64)
+    kappa = tl.load(Scalars[2]).to(tl.float64)
+    ratio = amplitude / tl.load(Scalars[1]).to(tl.float64)
+    x = ratio * ratio
+    upper_x = libdevice.pow(x, tl.load(Scalars[4]).to(tl.float64))
+    upper = minimum + (maximum - minimum) * kappa / (kappa + upper_x)
+    upper = tl.maximum(upper, tl.load(Scalars[8]).to(tl.float64))
+    lower = minimum + (birth - minimum) / (1.0 + tl.load(Scalars[3]).to(tl.float64) * x)
+    upper = tl.maximum(upper, lower)
+    sigma = libdevice.exp(
+        (1.0 - alpha) * libdevice.log(lower) + alpha * libdevice.log(upper)
+    )
+    sigma = tl.minimum(tl.maximum(sigma, lower), upper)
+    return (1.0 / (sigma * sigma)).to(tl.float32)
+
+
+@tr.jit
 def prepare(
     Q,
     P,

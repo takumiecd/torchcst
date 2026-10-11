@@ -2725,3 +2725,19 @@ Y/dX/all-dP gateを追加する。Parameter atol2e-6とmoments atol4e-4は維持
 非unit間隔・非zero原点の従来FP32参照との20 eager更新も別caseで残す。
 テストは111件（CUDA108 + CPU3）となる。runtime演算・測定case・閾値は変更しない。
 診断json、失敗source/logは手元のignored output、tensorはremote旧runに保持する。
+
+source `ccbe7e32` のunit eagerは通過したが、別Graph caseのall-dPが
+`5.808550112870736e-4 > 4e-4` で失敗。性能測定は未開始。
+seed619で20 replayの全snapshotを保存し、division/reciprocal/wrapを同じ各状態で再評価。
+全3方式とGraphはexact数値一致、最大FP64差は同じ `5.116380068974635e-4`。
+replay18/atom4のwhole-atom normはfloor1e-6。
+FP64 raw/normalizationにsaved FP32 invだけを入れても差 `4.725140913519055e-4` が残る。
+真の幅をFP64で計算してinvを一度だけFP32へ丸めた場合の差は `3.091078981276585e-5`。
+したがって共通のpolar幅計算誤差が主要因と判断する。GPU timingは依然blocked。
+
+periodic preparationで初回whole-atom normがfloor未満のatomだけ、held widthを
+FP64で再計算し、invをFP32へ一度丸めてbounds/statsを更新する修正を追加する。
+振幅・packed13-field・global scratch・H/Gの寿命は同じ。通常の幅は従来のFP32経路。
+3方式とも同じ修正を受けたsourceで再資格検証してから周期補正比較を行う。
+元のfailed snapshot/source/logはremote `runs/cst-wrap-ada-ccbe7e32-20261011/` と
+手元 `output/regular-grid-h/wrap-graph-diagnostic.json` 等に保持する。

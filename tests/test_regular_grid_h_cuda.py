@@ -2810,3 +2810,61 @@ def test_compact_wrap_fused_producer_exact_reciprocal_control(sigma):
             results.append((g, partial))
         for actual, expected in zip(results[1], results[0], strict=True):
             torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+
+
+@GPU
+@pytest.mark.parametrize("route", ["division", "reciprocal", "wrap"])
+def test_compact_wrap_shared_floor_width_regression(route):
+    import copy
+
+    from torchcst._backends.cuda.algorithms.linear.periodic_product.executor import (
+        _prepare,
+    )
+
+    # replay18/atom4 from the retained seed619 Graph diagnostic. The first
+    # atom gives ordinary nonzero Y/dX so relative gates remain meaningful.
+    p = torch.tensor(
+        [
+            [0.3, 1.3, 1.0, 0.0],
+            [
+                -0.29759690165519714,
+                1.2153807878494263,
+                0.6064757704734802,
+                0.004747338593006134,
+            ],
+        ]
+    )
+    layer = model(
+        p,
+        "input_site32",
+        shape=(17, 19),
+        periods=(17.0, 19.0),
+        origin=(0.0, 0.0),
+        live=True,
+        device="cuda",
+    )
+    if route == "reciprocal":
+        layer.selector = _reciprocal_selector()[0]
+    elif route == "wrap":
+        layer.selector = _compact_wrap_selector()[0]
+    x = torch.zeros(1, 19, device="cuda", requires_grad=True)
+    dy = torch.zeros(1, 17, device="cuda")
+    with torch.no_grad():
+        x[0, 0] = 1.0
+        dy[0, 1] = 1.0
+    y = layer(x)
+    periodic.gate(
+        (y, *torch.autograd.grad(y, (x, layer.atoms.p), dy)),
+        periodic.oracle(layer, x, dy),
+    )
+    packed = _prepare(
+        layer.atoms.p,
+        layer.kernel,
+        (1, 19, 17, 19.0, 17.0, 0.0, 0.0),
+        _reciprocal_selector()[1].recipe,
+    )
+    _, sigma = periodic.polar(copy.deepcopy(layer.kernel).cpu().double(), p.double())
+    torch.testing.assert_close(
+        packed[1, 1].cpu(), (1 / sigma[1].square()).float(), rtol=0, atol=0
+    )
+    assert packed[8, 1] == 0
