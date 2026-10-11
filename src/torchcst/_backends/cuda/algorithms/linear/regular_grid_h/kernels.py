@@ -35,9 +35,10 @@ def _compact_periodic_raw(
         delta = tl.where(
             delta >= L / 2.0, delta - L, tl.where(delta < -L / 2.0, delta + L, delta)
         )
-        return _raw(delta, inv)
+        value, derivative = _raw(delta, inv)
     else:
-        return _periodic_raw(j, center, inv, O, L, N)
+        value, derivative = _periodic_raw(j, center, inv, O, L, N)
+    return value, derivative
 
 
 @tr.jit

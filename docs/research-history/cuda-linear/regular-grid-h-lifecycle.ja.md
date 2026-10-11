@@ -2706,3 +2706,9 @@ RTX 6000 Adaの最初のqualification（source `b9553ada`）は66 PASS / 44 FAIL
 数学・guard境界・テスト・許容誤差は変えず、性能測定は開始していない。
 元source archiveとログはignored `output/regular-grid-h/`、remote
 `runs/cst-wrap-ada-b9553ada-20261011/` に保持する。
+
+次のsource `626fcc48` はraw境界比較を含む94 PASS / 16 FAIL。
+full producer内のhelperが動的branch内でreturnする形により、Triton3.5.1の
+`ConvertTritonToTritonGPU` が未解決の `cf.cond_br` を残した。
+branch内では値を代入し、共通のreturnで返す構造へ変更する。
+演算式・guard・検証閾値は同じ。2回目も性能測定前のcompile失敗として保存する。
