@@ -1,0 +1,71 @@
+{
+  "schema": "regular-grid-width-case.research.v1",
+  "size": 2048,
+  "rho_initial": null,
+  "batch": 32,
+  "seed": 41,
+  "atoms": 209715,
+  "periods": [
+    2048,
+    2048
+  ],
+  "origin": [
+    0.0,
+    0.0
+  ],
+  "spacing": [
+    1.0,
+    1.0
+  ],
+  "dtype": "float32",
+  "tf32": false,
+  "width_bounds": {
+    "minimum": 0.125,
+    "birth": 0.125,
+    "maximum": 16.0,
+    "upper_floor": 0.125
+  },
+  "optimizer": {
+    "name": "AdamW",
+    "lr": 0.0001,
+    "weight_decay": 0.01,
+    "fused": true,
+    "capturable": true
+  },
+  "schedule": {
+    "eager_warmups": 2,
+    "initial_replays": 1,
+    "timed_replays": 21,
+    "actual_updates_required": 24
+  },
+  "oracle": {
+    "full_sites": true,
+    "all_atoms": true,
+    "max_abs": 0.0004,
+    "relative_l2": 0.0004
+  },
+  "grid_shape": [
+    [
+      2048
+    ],
+    [
+      2048
+    ]
+  ],
+  "width_scenario": "mix-rho0p75-narrow",
+  "width_distribution": {
+    "values": [
+      0.75,
+      3.0,
+      15.0
+    ],
+    "weights": [
+      8,
+      1,
+      1
+    ],
+    "assignment": "integer-weight quotas; remainder to final group; shuffled",
+    "shuffle_seed_offset": 7919,
+    "side_coupling": "shared Polar alpha; equal per-side bounds"
+  }
+}
