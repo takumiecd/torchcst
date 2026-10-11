@@ -2799,3 +2799,34 @@ python -m benchmarks.cuda.linear.periodic_comparison \
     input-site-reciprocal-g8-h32 input-site-wrap-g8-h32 dense \
   --isolated-oracle --phases --output output/wrap-new/comparison.json
 ```
+
+## RTX 6000 Ada: producerのallocate疑いの切り分け（2026-10-11）
+
+上記で資格検証済みの凍結source `0ee9d497` をそのまま使い、
+`input-site-reciprocal-g8-h32`、N2048/B32/A209715、rho3/8を各fresh processで確認した。
+変更したkernelや新しい速度比較はなく、allocatorだけの診断である。
+
+backwardのPythonコードではdX/dP/partial/physical/Gを確保するが、
+小batch chunkのループ外で一度確保し、Gとpartialは各chunkで上書きする。
+現在の完全step計測はCUDA Graph replayなので、Pythonの確保処理を毎step実行しない。
+別Graphの `produce_G_and_parameter_partials` event区間も、G/partialを含む
+setupの後で始まり、producer kernelの直後で終わる。
+
+両rhoとも21 replayで `allocation.all.allocated/freed`、
+`num_device_alloc/free`、allocated/reserved current、retry/OOMの差はすべて0。
+各replayのstatsは一致し、Parameter・勾配・出力・optimizer stateのpointerも不変。
+実更新数24を確認した。したがって現在のGraph計測の生成区間の遅さを、
+毎stepのallocator呼び出しで説明する仮説は除外する。
+
+Graph後に同じprocessで追加した2 eager stepでは、両rhoともallocator確保/解放が
+208回ずつ、device allocationが7回、reserved増分48 MiBだった。
+Graph private poolが共存する条件であり、eagerの定常速度やその原因の証明には使わない。
+Graphなしの実行についてもallocate負担がないとは結論しない。
+
+手元証拠はignored `output/regular-grid-h/producer-allocation-{rho3,rho8}.json`、
+`producer-allocation-audit.py`、`producer-allocation-run.log`、local hashesとoperating notes。
+remoteは `/home/jovyan/runs/cst-producer-alloc-0ee9d497-20261011/`。
+script SHA256 `ecc21daa9732ecbfe758d2b3e4b8324de7199e32512d004c54210f71c1eb8ef6`。
+JSON/log/scriptを取得してremote hashと照合し、自分のGPU processの終了を確認した。
+次の対象はproducerのbatch間profile/derivative共有。G/Hの読取り・演算・勾配partialの
+書込みはreplayでも毎回発生するので、allocateとbuffer内容の生成を区別する。
