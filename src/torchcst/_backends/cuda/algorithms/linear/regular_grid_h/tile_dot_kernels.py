@@ -195,8 +195,8 @@ def owner(
     fast = tl.load(Wide) == 0
     low = tl.load(Bounds + tile).to(tl.int32) if fast else 0
     high = tl.load(Bounds + tile + 1).to(tl.int32) if fast else A
-    blocks = tr.cdiv(high - low, GROUP)
-    per_part = tr.cdiv(blocks, PARTS)
+    blocks = (high - low + GROUP - 1) // GROUP
+    per_part = (blocks + PARTS - 1) // PARTS
     begin = low + part * per_part * GROUP
     end = tl.minimum(high, begin + per_part * GROUP)
     acc = tl.full((16, TILE), 0.0, tl.float32)
