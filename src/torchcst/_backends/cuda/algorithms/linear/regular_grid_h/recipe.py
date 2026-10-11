@@ -276,3 +276,27 @@ class TileDotHRecipe(PeriodicRecipe):
             8,
         ):
             raise ValueError("tile dot keeps canonical preparation settings")
+
+
+@dataclass(frozen=True)
+class TileWindowHRecipe(TileDotHRecipe):
+    """Support-union 16-site producer panels; keep four value/derivative slabs."""
+
+    batch_tile: int = 16
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.batch_tile != 16:
+            raise ValueError("support-window comparison requires batch_tile=16")
+
+
+@dataclass(frozen=True)
+class TileDerivativeHRecipe(TileDotHRecipe):
+    """Fixed 32-site panels; consume dH/dG immediately, retain H/G only."""
+
+    batch_tile: int = 16
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.batch_tile != 16:
+            raise ValueError("derivative-lifetime comparison requires batch_tile=16")

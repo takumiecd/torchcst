@@ -71,6 +71,8 @@ KINDS = (
     "input-fused-backward-bm16-h32",
     "tile-dot32-bm8",
     "tile-dot32-bm16",
+    "tile-window16-bm16",
+    "tile-derivative-bm16",
     "joint-compact32-bm8",
     "joint-compact64-bm8",
     "joint-local32-bm8",
@@ -190,12 +192,16 @@ def bind_plan(model, kind):
             SiteRoutedHRecipe,
             SiteRoutedStreamingHRecipe,
             StreamingInputHRecipe,
+            TileDerivativeHRecipe,
             TileDotHRecipe,
+            TileWindowHRecipe,
         )
 
         expected_id = {
             "tile-dot32-bm8": "research_cuda_regular_grid_tile_dot_h",
             "tile-dot32-bm16": "research_cuda_regular_grid_tile_dot_h",
+            "tile-window16-bm16": "research_cuda_regular_grid_tile_window_h",
+            "tile-derivative-bm16": "research_cuda_regular_grid_tile_derivative_h",
             "joint-compact32-bm8": "research_cuda_regular_grid_joint_compact_h",
             "joint-compact64-bm8": "research_cuda_regular_grid_joint_compact_h",
             "joint-local32-bm8": "research_cuda_regular_grid_joint_local_h",
@@ -241,6 +247,8 @@ def bind_plan(model, kind):
             {
                 "tile-dot32-bm8": TileDotHRecipe,
                 "tile-dot32-bm16": lambda: TileDotHRecipe(batch_tile=16),
+                "tile-window16-bm16": TileWindowHRecipe,
+                "tile-derivative-bm16": TileDerivativeHRecipe,
                 "joint-compact32-bm8": JointLocalHRecipe,
                 "joint-compact64-bm8": lambda: JointLocalHRecipe(cell_sites=64),
                 "joint-local32-bm8": JointLocalHRecipe,
@@ -299,6 +307,8 @@ def bind_plan(model, kind):
                 "input-fused-backward-bm16-h32",
                 "tile-dot32-bm8",
                 "tile-dot32-bm16",
+                "tile-window16-bm16",
+                "tile-derivative-bm16",
                 "joint-compact32-bm8",
                 "joint-compact64-bm8",
                 "joint-local32-bm8",
@@ -559,7 +569,9 @@ def state_gate(*, device="cuda", steps=20, regular_grid=False):
 
 
 def forward_stages(step, kind):
-    if kind.startswith(("joint-local", "joint-compact", "tile-dot")):
+    if kind.startswith(
+        ("joint-local", "joint-compact", "tile-dot", "tile-window", "tile-derivative")
+    ):
         return {
             "status": "separate_joint_diagnostics",
             "baseline_stages_applicable": False,
@@ -1992,6 +2004,8 @@ def main():
             "input-fused-backward-bm16-h32",
             "tile-dot32-bm8",
             "tile-dot32-bm16",
+            "tile-window16-bm16",
+            "tile-derivative-bm16",
             "joint-compact32-bm8",
             "joint-compact64-bm8",
             "joint-local32-bm8",
@@ -2036,6 +2050,8 @@ def main():
                 "input-fused-backward-bm16-h32",
                 "tile-dot32-bm8",
                 "tile-dot32-bm16",
+                "tile-window16-bm16",
+                "tile-derivative-bm16",
                 "joint-compact32-bm8",
                 "joint-compact64-bm8",
                 "joint-local32-bm8",

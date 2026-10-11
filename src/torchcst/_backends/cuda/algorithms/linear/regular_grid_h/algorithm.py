@@ -32,7 +32,9 @@ from .recipe import (
     SiteRoutedHRecipe,
     SiteRoutedStreamingHRecipe,
     StreamingInputHRecipe,
+    TileDerivativeHRecipe,
     TileDotHRecipe,
+    TileWindowHRecipe,
 )
 
 
@@ -484,3 +486,44 @@ class TileDotHAlgorithm(OutputOwnedHAlgorithm):
         )
         with torch.cuda.device(x.device):
             return tile_dot_h(x, p, operator.kernel, sizes, state.recipe)
+
+
+@dataclass(frozen=True)
+class TileWindowHAlgorithm(TileDotHAlgorithm):
+    """Change producer support windows only; owners and slab lifetime matched."""
+
+    id: str = "research_cuda_regular_grid_tile_window_h"
+    recipe_type: type = TileWindowHRecipe
+
+    def execute(self, state, inputs):
+        from ..profile_product_matrix.algorithm import live_inputs
+        from .tile_schedule_executor import tile_schedule_h
+
+        x, p, declaration, operator = live_inputs(state, inputs)
+        chart = self.chart_spec(declaration)
+        sizes = (
+            len(x),
+            chart.shape[1],
+            chart.shape[0],
+            chart.geometry.periods[1],
+            chart.geometry.periods[0],
+            chart.origin[1],
+            chart.origin[0],
+        )
+        with torch.cuda.device(x.device):
+            return tile_schedule_h(
+                x,
+                p,
+                operator.kernel,
+                sizes,
+                state.recipe,
+                window=self.id == "research_cuda_regular_grid_tile_window_h",
+            )
+
+
+@dataclass(frozen=True)
+class TileDerivativeHAlgorithm(TileWindowHAlgorithm):
+    """Change derivative lifetime only; fixed tile producer and owner grains."""
+
+    id: str = "research_cuda_regular_grid_tile_derivative_h"
+    recipe_type: type = TileDerivativeHRecipe
