@@ -146,7 +146,34 @@ def produce(
                 grad,
                 valid[None, :] & (rows[:, None] < B) & (tl.arange(0, 16)[:, None] < BM),
             )
-    else:
+
+
+@tr.jit
+def fallback_produce(
+    X,
+    P,
+    Wide,
+    H,
+    DH,
+    A: tl.constexpr,
+    B: tl.constexpr,
+    N: tl.constexpr,
+    L: tl.constexpr,
+    O: tl.constexpr,
+    X0: tl.constexpr,
+    X1: tl.constexpr,
+    START: tl.constexpr,
+    BM: tl.constexpr,
+    TILE: tl.constexpr,
+    OUTPUT: tl.constexpr,
+    DERIVATIVE: tl.constexpr,
+    GROUP: tl.constexpr = 32,
+):
+    # Separate compilation keeps the large exact broad-support temporary out
+    # of the narrow GEMM producer's register allocation. GPU flag remains live.
+    if tl.load(Wide) != 0:
+        pos = tl.program_id(0) * GROUP + tl.arange(0, GROUP)
+        rows = START + tl.arange(0, 16)
         a = pos
         valid = a < A
         h, dh = _contract(

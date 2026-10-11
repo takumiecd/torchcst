@@ -73,6 +73,26 @@ def produce(
         num_warps=4,
         enable_fp_fusion=False,
     )
+    k.fallback_produce[(tr.cdiv(a, 32),)](
+        x,
+        packed,
+        routing[offset + 2],
+        h,
+        dh,
+        a,
+        b,
+        no if output else ni,
+        lo if output else li,
+        oo if output else oi,
+        *x.stride(),
+        start,
+        recipe.batch_tile,
+        recipe.tile_sites,
+        output,
+        derivative,
+        num_warps=4,
+        enable_fp_fusion=False,
+    )
 
 
 def aggregate(h, packed, routing, sizes, recipe, scratch, result, start, *, output):
