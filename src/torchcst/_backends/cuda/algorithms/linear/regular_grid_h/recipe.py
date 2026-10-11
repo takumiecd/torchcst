@@ -300,3 +300,8 @@ class TileDerivativeHRecipe(TileDotHRecipe):
         super().__post_init__()
         if self.batch_tile != 16:
             raise ValueError("derivative-lifetime comparison requires batch_tile=16")
+
+
+@dataclass(frozen=True)
+class TileCombinedHRecipe(TileWindowHRecipe):
+    """Support-window panels with immediate derivative consumption."""

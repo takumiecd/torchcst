@@ -9,6 +9,7 @@ import test_regular_grid_h_cuda as base
 import torch
 
 from torchcst._backends.cuda.algorithms.linear.regular_grid_h.algorithm import (
+    TileCombinedHAlgorithm,
     TileDerivativeHAlgorithm,
     TileWindowHAlgorithm,
 )
@@ -23,15 +24,17 @@ from torchcst._backends.schema import ExecutionPlan
 
 def selector(panel):
     registry = Registry()
-    algorithm = (
-        TileWindowHAlgorithm() if panel == "window" else TileDerivativeHAlgorithm()
-    )
+    algorithm = {
+        "window": TileWindowHAlgorithm,
+        "derivative": TileDerivativeHAlgorithm,
+        "combined": TileCombinedHAlgorithm,
+    }[panel]()
     registry.register(algorithm)
     plan = ExecutionPlan(algorithm.id, algorithm.revision, algorithm.recipe_type())
     return FixedSelector(plan, registry=registry), plan, registry
 
 
-@pytest.fixture(params=["window", "derivative"])
+@pytest.fixture(params=["window", "derivative", "combined"])
 def tile_route(monkeypatch, request):
     original = base.model
 
@@ -45,7 +48,7 @@ def tile_route(monkeypatch, request):
     return request.param
 
 
-@pytest.mark.parametrize("bm", ["window", "derivative"])
+@pytest.mark.parametrize("bm", ["window", "derivative", "combined"])
 def test_tile_schedule_metadata_and_frozen_plan(bm):
     from benchmarks.cuda.linear.manifest import REGISTRY
     from benchmarks.cuda.linear.periodic_comparison import bind_plan
@@ -57,7 +60,11 @@ def test_tile_schedule_metadata_and_frozen_plan(bm):
         REGISTRY.load_plan(
             bind_plan(
                 layer,
-                ("tile-window16-bm16" if bm == "window" else "tile-derivative-bm16"),
+                {
+                    "window": "tile-window16-bm16",
+                    "derivative": "tile-derivative-bm16",
+                    "combined": "tile-combined-bm16",
+                }[bm],
             )
         )
         == plan
@@ -72,10 +79,11 @@ def test_tile_schedule_metadata_and_frozen_plan(bm):
 def test_tile_schedule_metadata_is_lazy():
     code = """
 import sys
-from torchcst._backends.cuda.algorithms.linear.regular_grid_h.algorithm import TileWindowHAlgorithm, TileDerivativeHAlgorithm
-from torchcst._backends.cuda.algorithms.linear.regular_grid_h.recipe import TileWindowHRecipe, TileDerivativeHRecipe
+from torchcst._backends.cuda.algorithms.linear.regular_grid_h.algorithm import TileWindowHAlgorithm, TileDerivativeHAlgorithm, TileCombinedHAlgorithm
+from torchcst._backends.cuda.algorithms.linear.regular_grid_h.recipe import TileWindowHRecipe, TileDerivativeHRecipe, TileCombinedHRecipe
 TileWindowHAlgorithm().validate_recipe(TileWindowHRecipe())
 TileDerivativeHAlgorithm().validate_recipe(TileDerivativeHRecipe())
+TileCombinedHAlgorithm().validate_recipe(TileCombinedHRecipe())
 assert 'triton' not in sys.modules
 assert not any('tile_schedule_kernels' in k or 'tile_schedule_executor' in k for k in sys.modules)
 """
@@ -158,7 +166,7 @@ def test_tile_schedule_rejects_schedules(changes):
 
 
 @base.GPU
-@pytest.mark.parametrize("bm", ["window", "derivative"])
+@pytest.mark.parametrize("bm", ["window", "derivative", "combined"])
 @pytest.mark.parametrize("sigma", [0.7, 3.0, 8.0, 1000.0])
 def test_tile_schedule_support_memberships_and_oracle(bm, sigma):
     from torchcst._backends.cuda.algorithms.linear.periodic_product.executor import (

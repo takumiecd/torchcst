@@ -87,6 +87,7 @@ from torchcst._backends.cuda.algorithms.linear.regular_grid_h.algorithm import (
     SiteRoutedHAlgorithm,
     SiteRoutedStreamingHAlgorithm,
     StreamingInputHAlgorithm,
+    TileCombinedHAlgorithm,
     TileDerivativeHAlgorithm,
     TileDotHAlgorithm,
     TileWindowHAlgorithm,
@@ -201,6 +202,7 @@ REGISTRY.register(JointCompactHAlgorithm())
 REGISTRY.register(TileDotHAlgorithm())
 REGISTRY.register(TileWindowHAlgorithm())
 REGISTRY.register(TileDerivativeHAlgorithm())
+REGISTRY.register(TileCombinedHAlgorithm())
 REGISTRY.register(InputWideBatchProducerHAlgorithm())
 REGISTRY.register(InputOrderStreamingHAlgorithm())
 REGISTRY.register(ProductAlgorithm())

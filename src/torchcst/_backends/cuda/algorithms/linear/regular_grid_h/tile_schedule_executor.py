@@ -1,4 +1,4 @@
-"""Two separately selectable tile-dot experiments; never combine effects."""
+"""Independently selectable producer grain and derivative lifetime."""
 
 import torch
 from torch.autograd.function import once_differentiable
@@ -93,11 +93,12 @@ def produce(
 
 class _TileSchedule(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, x, p, value, sizes, recipe, window):
+    def forward(ctx, x, p, value, sizes, recipe, window, consume_derivatives):
         source = p.clone(memory_format=torch.contiguous_format)
         amplitude_max = value.scalar("amplitude_max").clone()
         packed = _prepare(source, value, sizes, recipe)
         ctx.sizes, ctx.recipe, ctx.window = sizes, recipe, window
+        ctx.consume_derivatives = consume_derivatives
         a, b = len(source), sizes[0]
         y = x.new_empty((b, sizes[2]))
         if a and b:
@@ -129,6 +130,7 @@ class _TileSchedule(torch.autograd.Function):
 
         x, source, amplitude_max, packed, *routing = ctx.saved_tensors
         sizes, recipe, window = ctx.sizes, ctx.recipe, ctx.window
+        consume_derivatives = ctx.consume_derivatives
         a, b = len(source), sizes[0]
         need_x, need_p = ctx.needs_input_grad[:2]
         dx = x.new_empty(x.shape) if need_x else None
@@ -137,13 +139,13 @@ class _TileSchedule(torch.autograd.Function):
         if a and b and (need_x or need_p):
             g = x.new_empty((a, recipe.batch_tile))
             h = torch.empty_like(g) if need_p else None
-            if need_p and window:
+            if need_p and not consume_derivatives:
                 dh, dg = torch.empty_like(g), torch.empty_like(g)
             else:
                 dh = dg = None
             scratch = allocate_scratch(x, sizes, recipe) if need_x else None
             for start in range(0, b, recipe.batch_tile):
-                if window:
+                if not consume_derivatives:
                     produce(
                         dy,
                         packed,
@@ -189,7 +191,20 @@ class _TileSchedule(torch.autograd.Function):
                     # H is contracted first to consume dG inside its producer.
                     # Recompute H/dH later to consume dH against G. Only H/G
                     # value slabs are allocated; neither derivative has a slab.
-                    fixed_produce(x, packed, routing, sizes, recipe, h, None, start)
+                    if window:
+                        produce(
+                            x,
+                            packed,
+                            routing,
+                            sizes,
+                            recipe,
+                            h,
+                            None,
+                            start,
+                            window=True,
+                        )
+                    else:
+                        fixed_produce(x, packed, routing, sizes, recipe, h, None, start)
                     produce(
                         dy,
                         packed,
@@ -201,6 +216,7 @@ class _TileSchedule(torch.autograd.Function):
                         start,
                         output=True,
                         derivative=True,
+                        window=window,
                         consume=1,
                         partner=h,
                         physical=physical,
@@ -215,14 +231,37 @@ class _TileSchedule(torch.autograd.Function):
                         None,
                         start,
                         derivative=True,
+                        window=window,
                         consume=2,
                         partner=g,
                         physical=physical,
                     )
                 else:
-                    fixed_produce(
-                        dy, packed, routing, sizes, recipe, g, None, start, output=True
-                    )
+                    if window:
+                        produce(
+                            dy,
+                            packed,
+                            routing,
+                            sizes,
+                            recipe,
+                            g,
+                            None,
+                            start,
+                            output=True,
+                            window=True,
+                        )
+                    else:
+                        fixed_produce(
+                            dy,
+                            packed,
+                            routing,
+                            sizes,
+                            recipe,
+                            g,
+                            None,
+                            start,
+                            output=True,
+                        )
                 if need_x:
                     aggregate(
                         g,
@@ -250,8 +289,8 @@ class _TileSchedule(torch.autograd.Function):
                 num_warps=4,
                 enable_fp_fusion=False,
             )
-        return dx, dp, None, None, None, None
+        return dx, dp, None, None, None, None, None
 
 
-def tile_schedule_h(x, p, value, sizes, recipe, *, window):
-    return _TileSchedule.apply(x, p, value, sizes, recipe, window)
+def tile_schedule_h(x, p, value, sizes, recipe, *, window, consume_derivatives):
+    return _TileSchedule.apply(x, p, value, sizes, recipe, window, consume_derivatives)

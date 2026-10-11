@@ -32,6 +32,7 @@ from .recipe import (
     SiteRoutedHRecipe,
     SiteRoutedStreamingHRecipe,
     StreamingInputHRecipe,
+    TileCombinedHRecipe,
     TileDerivativeHRecipe,
     TileDotHRecipe,
     TileWindowHRecipe,
@@ -517,7 +518,9 @@ class TileWindowHAlgorithm(TileDotHAlgorithm):
                 operator.kernel,
                 sizes,
                 state.recipe,
-                window=self.id == "research_cuda_regular_grid_tile_window_h",
+                window=self.id != "research_cuda_regular_grid_tile_derivative_h",
+                consume_derivatives=self.id
+                != "research_cuda_regular_grid_tile_window_h",
             )
 
 
@@ -527,3 +530,11 @@ class TileDerivativeHAlgorithm(TileWindowHAlgorithm):
 
     id: str = "research_cuda_regular_grid_tile_derivative_h"
     recipe_type: type = TileDerivativeHRecipe
+
+
+@dataclass(frozen=True)
+class TileCombinedHAlgorithm(TileWindowHAlgorithm):
+    """Combine support-window generation and immediate dH/dG consumption."""
+
+    id: str = "research_cuda_regular_grid_tile_combined_h"
+    recipe_type: type = TileCombinedHRecipe
