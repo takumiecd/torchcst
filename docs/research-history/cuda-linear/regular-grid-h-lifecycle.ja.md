@@ -3027,3 +3027,20 @@ python -m benchmarks.cuda.linear.periodic_comparison \
     input-site-reciprocal-bm32-g32-h32 dense \
   --isolated-oracle --phases --output output/wide-batch-producer-new/comparison.json
 ```
+
+## 2026-10-11: BM16/G16の19対照・全体CUDA traceによる詳細診断
+
+詳細は[ボトルネックの測定とアクセス・メモリ内訳](regular-grid-fine-bottlenecks.ja.md)に保存した。
+source `16d9011b`、RTX 6000 Ada、rho3/8各独立2回、GPU qualification254件、独立全shape
+FP64 gate32件、primary20 worker/420 samples、microprobe76 workerがPASS。
+完全stepはrho3で1.426–1.432ms、rho8で1.831–1.834ms、dense約0.329ms。
+CST allocated/reservedは57.431/104MiB、dense81.752/106MiBを維持する。
+
+Y/dX owner、G/H+parameter partial、forward H、AdamW/Polar更新に時間が分散している。
+Pの配置対照はproducerを約10–12%短縮する一方、別copy準備は約0.036ms。
+input順はH側の支持重複を揃えるがG側は揃わない。全profile cacheはrho8で生成込みが悪化する。
+実cache counters/達成occupancyは未計測。次は余分な全量copyなしのpacked/physical layoutを
+第一候補とし、owner候補checkとoptimizerを独立対象として扱う。今回の診断から公開採用は行わない。
+
+照合用storageの保持を発見した初回`a53bf790`のsource/results/auditも保存し、
+解放gateを追加してqualificationと4cohortを再計測した。補正後の詳細表とSHA・復旧pathは上記文書にある。

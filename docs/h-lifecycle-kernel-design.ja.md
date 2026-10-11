@@ -586,3 +586,21 @@ Nsight Computeも未導入。CUDA driverのoccupancy APIはresource上限だけ�
 cache hit/stallを測ったとは表現しない。支持・padding・CTA内アドレス重複・32byte sector集計も
 実cache trafficとは区別する。rho3/8を各独立2回、2回目はprobeとprimary worker順を逆転する。
 既存全shape FP64 Y/dX/all-dP gate・完全step/両peakを維持し、診断結果の精査後に次の実装を選ぶ。
+
+### G16詳細診断からの実装優先順位（RTX 6000 Ada）
+
+[19対照と全体traceの測定](research-history/cuda-linear/regular-grid-fine-bottlenecks.ja.md)では、
+packed fieldsの物理配置をinput-orderへ揃える対照がproducerを約10–12%短縮した。
+ただし別copyの準備に約0.036msと10.4MiBのpayloadが必要であり、完全stepの改善は未認定。
+次は、G16/H32 capacityを保ち、余分な全量copyを増やさずにpacked/physical layoutを揃える。
+raw atom IDへの対応は最後のphysical→source VJPまで明示的に保持する。
+
+input順の8atomはH側の支持を約7.9倍重複して参照するが、G側は約1.01–1.03倍。
+HとGのアクセス非対称を測り、output順G生成を試す場合はmappingとbuffer寿命も含める。
+global profile cacheは追加25.6/51.2MiBで、rho8の生成込みprobeを約11%悪化させた。
+batch連続入力も遅くなったため、連続化方向や全量保存を一律に選ばない。
+
+Y/dX owner集約は合計で最大級のkernel群であり、候補siteの余分なcheckとvalue再参照を
+次の独立対象にする。AdamW約0.249ms、Polar/periodic更新約0.118msも別対象として記録する。
+allocator確保・解放は測定した生成Graph内で0回だった。実cache hit/stallと達成occupancyは
+未計測であり、compilerの94registers/0spillsや理論occupancyだけで原因を断定しない。

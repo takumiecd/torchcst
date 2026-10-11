@@ -523,7 +523,7 @@ def case_worker(snapshot, name):
                 errors[f"aux-{start}"] = error(aux[0], expected_aux)
             del expected, expected_aux, xxv, low, high, rows, jj, mask
             if needs_aux:
-                # The last field slice keeps the whole cache storage alive.
+                # Release the last materialized FP64 field used by the oracle.
                 del values
     compiler = resources(compiled, Path(snapshot).parent / "compiler" / name, name)
     validation_refs = [weakref.ref(ref_g), weakref.ref(ref_p)]
