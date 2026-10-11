@@ -543,3 +543,21 @@ BM8/G16対照に対しても完全stepが6.0–10.0%短縮した。
 この測定条件の次の研究比較基準を `input-site-reciprocal-bm16-g16-h32` とする。
 119件の資格検証と48の全shape・全atom FP64 gatesはPASS。
 詳細・加算順の差・証拠・実行コマンドは[研究記録](research-history/cuda-linear/regular-grid-h-lifecycle.ja.md)に残す。
+
+### G32容量とproducer BM32を分離する次の比較
+
+BM16/G16を固定基準とし、BM8/G32、BM16/G32、BM32/G32を独立した
+`InputWideBatchProducerHRecipe` / Algorithmで比較する。既存G16 recipeの意味は変えない。
+forward H32 / producer BM8 / Y owner BM16、入力順、dX owner BM8、BK8/group8、
+正規化・微分・source VJPは維持する。G保存は `[4,A,8]`、partialは
+`[ceil(min(B,32)/producer_batch_tile),3,A]`。H/dH/dGは追加保存しない。
+BM16/G32対BM16/G16で容量・chunk数の差、BM32/G32対BM16/G32で
+producer内の共有幅の差を調べる。BM8/G32は保存容量を揃えたcompute幅対照とする。
+
+RTX 6000 Ada、N2048/B32/A209715、rho3/8、seed41、FP32/TF32 off、
+24 AdamW更新、各21 primary samplesを固定する。上記4 routeとmatrix/factor/onchip/denseを
+fresh processで実行し、各rho独立2cohort、2回目は逆順にする。
+初期・post24の全shape/all-atom FP64 gateを変えず、tail/stride/低norm/retained snapshot/
+Graph更新を先に検証する。判断指標は未計装の完全stepとcapture/replayの実測
+allocated/reserved peak。別Graphのstage診断とstatic compiler情報を補助に使い、
+register増加だけから実機occupancy低下を断定しない。結果に従って研究基準を選び、公開defaultは維持する。

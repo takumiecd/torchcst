@@ -62,6 +62,9 @@ KINDS = (
     "input-site-wrap-g8-h32",
     "input-site-reciprocal-bm8-g16-h32",
     "input-site-reciprocal-bm16-g16-h32",
+    "input-site-reciprocal-bm8-g32-h32",
+    "input-site-reciprocal-bm16-g32-h32",
+    "input-site-reciprocal-bm32-g32-h32",
     "input-order-stream-g8-h32",
 )
 REGULAR_PRIMARY = ("matrix-torch", "factor", "onchip-h", "dense")
@@ -161,6 +164,7 @@ def bind_plan(model, kind):
             InputOwnedHRecipe,
             InputReciprocalStreamingHRecipe,
             InputSiteStreamingHRecipe,
+            InputWideBatchProducerHRecipe,
             OnchipHRecipe,
             OutputOwnedHRecipe,
             OwnerBatchHRecipe,
@@ -201,6 +205,9 @@ def bind_plan(model, kind):
             "input-site-wrap-g8-h32": "research_cuda_regular_grid_input_compact_wrap_h",
             "input-site-reciprocal-bm8-g16-h32": "research_cuda_regular_grid_input_batch_producer_h",
             "input-site-reciprocal-bm16-g16-h32": "research_cuda_regular_grid_input_batch_producer_h",
+            "input-site-reciprocal-bm8-g32-h32": "research_cuda_regular_grid_input_wide_batch_producer_h",
+            "input-site-reciprocal-bm16-g32-h32": "research_cuda_regular_grid_input_wide_batch_producer_h",
+            "input-site-reciprocal-bm32-g32-h32": "research_cuda_regular_grid_input_wide_batch_producer_h",
             "input-order-stream-g8-h32": "research_cuda_regular_grid_input_order_streaming_h",
         }.get(kind, "research_cuda_regular_grid_matrix")
         expected_recipe = (
@@ -235,6 +242,15 @@ def bind_plan(model, kind):
                     producer_batch_tile=8
                 ),
                 "input-site-reciprocal-bm16-g16-h32": InputBatchProducerHRecipe,
+                "input-site-reciprocal-bm8-g32-h32": lambda: (
+                    InputWideBatchProducerHRecipe(producer_batch_tile=8)
+                ),
+                "input-site-reciprocal-bm16-g32-h32": lambda: (
+                    InputWideBatchProducerHRecipe(producer_batch_tile=16)
+                ),
+                "input-site-reciprocal-bm32-g32-h32": lambda: (
+                    InputWideBatchProducerHRecipe(producer_batch_tile=32)
+                ),
                 "input-order-stream-g8-h32": InputOrderStreamingHRecipe,
             }[kind]()
             if kind
@@ -265,6 +281,9 @@ def bind_plan(model, kind):
                 "input-site-wrap-g8-h32",
                 "input-site-reciprocal-bm8-g16-h32",
                 "input-site-reciprocal-bm16-g16-h32",
+                "input-site-reciprocal-bm8-g32-h32",
+                "input-site-reciprocal-bm16-g32-h32",
+                "input-site-reciprocal-bm32-g32-h32",
                 "input-order-stream-g8-h32",
             )
             else PeriodicRecipe(gemm="triton" if kind == "matrix-triton" else "torch")
@@ -516,6 +535,9 @@ def forward_stages(step, kind):
         "input-site-wrap-g8-h32",
         "input-site-reciprocal-bm8-g16-h32",
         "input-site-reciprocal-bm16-g16-h32",
+        "input-site-reciprocal-bm8-g32-h32",
+        "input-site-reciprocal-bm16-g32-h32",
+        "input-site-reciprocal-bm32-g32-h32",
         "input-order-stream-g8-h32",
     ):
         return output_owner_stages(
@@ -545,6 +567,9 @@ def forward_stages(step, kind):
                 "input-site-wrap-g8-h32": 32,
                 "input-site-reciprocal-bm8-g16-h32": 32,
                 "input-site-reciprocal-bm16-g16-h32": 32,
+                "input-site-reciprocal-bm8-g32-h32": 32,
+                "input-site-reciprocal-bm16-g32-h32": 32,
+                "input-site-reciprocal-bm32-g32-h32": 32,
                 "input-order-stream-g8-h32": 32,
             }.get(kind),
             prepared=kind.startswith(
@@ -981,6 +1006,9 @@ STREAMING_STAGE_KINDS = (
     "input-site-wrap-g8-h32",
     "input-site-reciprocal-bm8-g16-h32",
     "input-site-reciprocal-bm16-g16-h32",
+    "input-site-reciprocal-bm8-g32-h32",
+    "input-site-reciprocal-bm16-g32-h32",
+    "input-site-reciprocal-bm32-g32-h32",
     "input-order-stream-g8-h32",
 )
 
@@ -1822,6 +1850,9 @@ def main():
                 "input-site-wrap-g8-h32",
                 "input-site-reciprocal-bm8-g16-h32",
                 "input-site-reciprocal-bm16-g16-h32",
+                "input-site-reciprocal-bm8-g32-h32",
+                "input-site-reciprocal-bm16-g32-h32",
+                "input-site-reciprocal-bm32-g32-h32",
                 "input-order-stream-g8-h32",
                 "dense",
             ]
@@ -1863,6 +1894,9 @@ def main():
             "input-site-wrap-g8-h32",
             "input-site-reciprocal-bm8-g16-h32",
             "input-site-reciprocal-bm16-g16-h32",
+            "input-site-reciprocal-bm8-g32-h32",
+            "input-site-reciprocal-bm16-g32-h32",
+            "input-site-reciprocal-bm32-g32-h32",
             "input-order-stream-g8-h32",
         )
         or any(
@@ -1894,6 +1928,9 @@ def main():
                 "input-site-wrap-g8-h32",
                 "input-site-reciprocal-bm8-g16-h32",
                 "input-site-reciprocal-bm16-g16-h32",
+                "input-site-reciprocal-bm8-g32-h32",
+                "input-site-reciprocal-bm16-g32-h32",
+                "input-site-reciprocal-bm32-g32-h32",
                 "input-order-stream-g8-h32",
             )
         )

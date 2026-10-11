@@ -17,6 +17,7 @@ from .recipe import (
     InputOwnedHRecipe,
     InputReciprocalStreamingHRecipe,
     InputSiteStreamingHRecipe,
+    InputWideBatchProducerHRecipe,
     OnchipHRecipe,
     OutputOwnedHRecipe,
     OwnerBatchHRecipe,
@@ -293,3 +294,14 @@ class InputBatchProducerHAlgorithm(OutputOwnedHAlgorithm):
         if type(recipe) is not InputBatchProducerHRecipe:
             raise TypeError("requires InputBatchProducerHRecipe")
         InputBatchProducerHRecipe(**asdict(recipe))
+
+
+@dataclass(frozen=True)
+class InputWideBatchProducerHAlgorithm(OutputOwnedHAlgorithm):
+    id: str = "research_cuda_regular_grid_input_wide_batch_producer_h"
+    recipe_type: type = InputWideBatchProducerHRecipe
+
+    def validate_recipe(self, recipe):
+        if type(recipe) is not InputWideBatchProducerHRecipe:
+            raise TypeError("requires InputWideBatchProducerHRecipe")
+        InputWideBatchProducerHRecipe(**asdict(recipe))

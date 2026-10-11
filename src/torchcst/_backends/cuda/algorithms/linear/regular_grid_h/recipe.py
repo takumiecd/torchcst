@@ -170,3 +170,24 @@ class InputBatchProducerHRecipe(SiteRoutedStreamingHRecipe):
             self.producer_batch_tile
         ) is not int or self.producer_batch_tile not in (8, 16):
             raise ValueError("producer_batch_tile must be 8 or 16")
+
+
+@dataclass(frozen=True)
+class InputWideBatchProducerHRecipe(SiteRoutedStreamingHRecipe):
+    """Backward BM8/BM16/BM32 control over G32, preserving forward and G8 slabs."""
+
+    h_batch: int = 32
+    g_batch: int = 32
+    owner_batch_tile: int = 16
+    producer_batch_tile: int = 32
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.batch_tile != 8 or self.h_batch != 32 or self.g_batch != 32:
+            raise ValueError("batch producer requires BM8 layout, H32 and G32")
+        if type(self.owner_batch_tile) is not int or self.owner_batch_tile != 16:
+            raise ValueError("owner_batch_tile must be 16")
+        if type(
+            self.producer_batch_tile
+        ) is not int or self.producer_batch_tile not in (8, 16, 32):
+            raise ValueError("producer_batch_tile must be 8, 16 or 32")
