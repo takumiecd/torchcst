@@ -31,8 +31,10 @@ def membership(
     other_high = tl.load(P + (10 if OUTPUT else 12) * A + a, valid, 0)
     live = (high > low) & (other_high > other_low)
     bins: tl.constexpr = tr.cdiv(N, TILE)
-    first = ((low // TILE) % bins + bins) % bins
-    last = (((high - 1) // TILE) % bins + bins) % bins
+    first = ((tl.floor(low.to(tl.float32) / TILE).to(tl.int32)) % bins + bins) % bins
+    last = (
+        (tl.floor((high - 1).to(tl.float32) / TILE).to(tl.int32)) % bins + bins
+    ) % bins
     first = tl.where(live, first, 0)
     second = live & (last != first)
     tl.store(Keys + 2 * a, first, valid)
@@ -108,8 +110,12 @@ def produce(
         ohigh = tl.load(P + (10 if OUTPUT else 12) * A + a, valid, 0)
         live = (high > low) & (ohigh > olow)
         bins: tl.constexpr = tr.cdiv(N, TILE)
-        first = ((low // TILE) % bins + bins) % bins
-        last = (((high - 1) // TILE) % bins + bins) % bins
+        first = (
+            (tl.floor(low.to(tl.float32) / TILE).to(tl.int32)) % bins + bins
+        ) % bins
+        last = (
+            (tl.floor((high - 1).to(tl.float32) / TILE).to(tl.int32)) % bins + bins
+        ) % bins
         first = tl.where(live, first, 0)
         second = live & (last != first)
         acc = tl.full((16, GROUP), 0.0, tl.float32)
