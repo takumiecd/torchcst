@@ -458,6 +458,18 @@ class TrainingStep:
         return y, loss
 
 
+def initialize_optimizer_state(step):
+    """Initialize fused AdamW moments without applying a Parameter update."""
+    for group in step.opt.param_groups:
+        for parameter in group["params"]:
+            if parameter.grad is not None:
+                raise ValueError("state initialization requires absent gradients")
+            parameter.grad = torch.empty_like(parameter)
+        # AdamW owns state allocation; no step or geometry update is executed.
+        step.opt._init_group(group, [], [], [], [], [], [])
+    step.model.zero_grad(set_to_none=True)
+
+
 def oracle_check(model, x, dy):
     expected = fixture.oracle_vjp(model, x, dy)
     xx = x.detach().clone().requires_grad_()
@@ -1518,7 +1530,10 @@ def worker(
     matched_producer_path=None,
     fine_directory=None,
     graph_pool_policy="standard",
+    optimizer_state_policy="lazy",
 ):
+    if optimizer_state_policy not in ("lazy", "preallocate"):
+        raise ValueError("unknown optimizer state policy")
     if graph_pool_policy not in ("standard", "release-warmup"):
         raise ValueError("unknown Graph pool policy")
     torch.backends.cuda.matmul.allow_tf32 = False
@@ -1574,6 +1589,7 @@ def worker(
             "tf32": False,
             "dtype": "float32",
             "graph_pool_policy": graph_pool_policy,
+            "optimizer_state_policy": optimizer_state_policy,
             "allocator_backend": torch.cuda.memory.get_allocator_backend(),
             "allocator_config": os.environ.get(
                 "PYTORCH_ALLOC_CONF", os.environ.get("PYTORCH_CUDA_ALLOC_CONF")
@@ -1603,6 +1619,8 @@ def worker(
         gc.collect()
         torch.cuda.empty_cache()
         torch.cuda.reset_peak_memory_stats()
+        if optimizer_state_policy == "preallocate":
+            initialize_optimizer_state(step)
         stage = "primary-capture-and-replay"
 
         def release_warmup():
@@ -1959,6 +1977,9 @@ def main():
         choices=("standard", "release-warmup"),
         default="standard",
     )
+    parser.add_argument(
+        "--optimizer-state-policy", choices=("lazy", "preallocate"), default="lazy"
+    )
     parser.add_argument("--worker-timeout", type=int, default=900)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -2207,6 +2228,7 @@ def main():
             args.worker,
             phases=args.phases,
             graph_pool_policy=args.graph_pool_policy,
+            optimizer_state_policy=args.optimizer_state_policy,
             fine_directory=(args.output.parent / (args.output.stem + "-fine"))
             if args.fine_diagnostics
             else None,
@@ -2249,6 +2271,8 @@ def main():
                 str(output),
                 "--graph-pool-policy",
                 args.graph_pool_policy,
+                "--optimizer-state-policy",
+                args.optimizer_state_policy,
             ]
             if args.regular_grid:
                 command.append("--regular-grid")

@@ -98,3 +98,44 @@ def test_isolated_oracle_uses_saved_live_state_and_all_atom_cotangents(
     torch.save(snapshot, path)
     with pytest.raises(AssertionError, match="all_dP"):
         protocol.oracle_snapshot(path)
+
+
+@pytest.mark.parametrize("device", ["cpu", "cuda"])
+def test_adamw_state_initialization_does_not_update_and_matches_lazy(device):
+    if device == "cuda" and not torch.cuda.is_available():
+        pytest.skip("actual CUDA required")
+    if device == "cpu":
+        # The benchmark uses capturable CUDA AdamW; the CPU check isolates init.
+        capturable = False
+    else:
+        capturable = True
+    import copy
+    from types import SimpleNamespace
+
+    model = torch.nn.Linear(13, 17, bias=False, device=device)
+    lazy_model = copy.deepcopy(model)
+    optimizer = torch.optim.AdamW(
+        model.parameters(), lr=1e-4, fused=True, capturable=capturable
+    )
+    lazy = torch.optim.AdamW(
+        lazy_model.parameters(), lr=1e-4, fused=True, capturable=capturable
+    )
+    previous = model.weight.detach().clone()
+    protocol.initialize_optimizer_state(SimpleNamespace(model=model, opt=optimizer))
+    assert torch.equal(model.weight, previous) and model.weight.grad is None
+    state = optimizer.state[model.weight]
+    assert int(state["step"]) == 0
+    assert not state["exp_avg"].any() and not state["exp_avg_sq"].any()
+    for _ in range(3):
+        gradient = (
+            torch.arange(221, device=device, dtype=torch.float32).reshape(17, 13) / 221
+        )
+        model.weight.grad = gradient.clone()
+        lazy_model.weight.grad = gradient.clone()
+        optimizer.step()
+        lazy.step()
+    torch.testing.assert_close(model.weight, lazy_model.weight, rtol=0, atol=0)
+    for name in state:
+        torch.testing.assert_close(
+            state[name], lazy.state[lazy_model.weight][name], rtol=0, atol=0
+        )
