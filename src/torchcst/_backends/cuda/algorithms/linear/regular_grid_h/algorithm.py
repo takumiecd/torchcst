@@ -13,6 +13,7 @@ from .recipe import (
     GroupedOutputHRecipe,
     InputOrderStreamingHRecipe,
     InputOwnedHRecipe,
+    InputReciprocalStreamingHRecipe,
     InputSiteStreamingHRecipe,
     OnchipHRecipe,
     OutputOwnedHRecipe,
@@ -257,3 +258,14 @@ class InputOrderStreamingHAlgorithm(OutputOwnedHAlgorithm):
         if type(recipe) is not InputOrderStreamingHRecipe:
             raise TypeError("requires InputOrderStreamingHRecipe")
         InputOrderStreamingHRecipe(**asdict(recipe))
+
+
+@dataclass(frozen=True)
+class InputReciprocalStreamingHAlgorithm(OutputOwnedHAlgorithm):
+    id: str = "research_cuda_regular_grid_input_reciprocal_streaming_h"
+    recipe_type: type = InputReciprocalStreamingHRecipe
+
+    def validate_recipe(self, recipe):
+        if type(recipe) is not InputReciprocalStreamingHRecipe:
+            raise TypeError("requires InputReciprocalStreamingHRecipe")
+        InputReciprocalStreamingHRecipe(**asdict(recipe))

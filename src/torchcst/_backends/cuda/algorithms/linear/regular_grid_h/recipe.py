@@ -137,5 +137,10 @@ class InputSiteStreamingHRecipe(OwnerBatchStreamingHRecipe):
 
 
 @dataclass(frozen=True)
+class InputReciprocalStreamingHRecipe(InputSiteStreamingHRecipe):
+    """Share a guarded per-atom norm reciprocal in the backward producer only."""
+
+
+@dataclass(frozen=True)
 class InputOrderStreamingHRecipe(OwnerBatchStreamingHRecipe):
     """Coarse input-bin/output-site key; forward layout and dX bins unchanged."""

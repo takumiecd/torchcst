@@ -32,13 +32,31 @@ def produce_g_parameters(
     BK: tl.constexpr,
     GROUP: tl.constexpr,
     STREAM_PARTIAL: tl.constexpr = False,
+    RECIPROCAL: tl.constexpr = False,
 ):
     pos = tl.program_id(0) * GROUP + tl.arange(0, GROUP)
     valid = pos < A
     a = tl.load(Order + pos, valid, 0).to(tl.int32)
     rows = BSTART + tl.program_id(1) * BM + tl.arange(0, BM)
     g, dg = _contract(
-        DY, P, a, rows, valid, A, B, NO, LO, OO, D0, D1, True, NEED_P, BM, BK, GROUP
+        DY,
+        P,
+        a,
+        rows,
+        valid,
+        A,
+        B,
+        NO,
+        LO,
+        OO,
+        D0,
+        D1,
+        True,
+        NEED_P,
+        BM,
+        BK,
+        GROUP,
+        RECIPROCAL,
     )
     tl.store(
         G + (tl.program_id(1) * A + pos[:, None]) * BM + tl.arange(0, BM)[None, :],
@@ -47,7 +65,24 @@ def produce_g_parameters(
     )
     if NEED_P:
         h, dh = _contract(
-            X, P, a, rows, valid, A, B, NI, LI, OI, X0, X1, False, True, BM, BK, GROUP
+            X,
+            P,
+            a,
+            rows,
+            valid,
+            A,
+            B,
+            NI,
+            LI,
+            OI,
+            X0,
+            X1,
+            False,
+            True,
+            BM,
+            BK,
+            GROUP,
+            RECIPROCAL,
         )
         amp = tl.load(P + a, valid, 0)
         tile = tl.program_id(1) if STREAM_PARTIAL else BSTART // BM + tl.program_id(1)

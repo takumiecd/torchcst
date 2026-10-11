@@ -65,6 +65,7 @@ from torchcst._backends.cuda.algorithms.linear.regular_grid_h.algorithm import (
     GroupedOutputHAlgorithm,
     InputOrderStreamingHAlgorithm,
     InputOwnedHAlgorithm,
+    InputReciprocalStreamingHAlgorithm,
     InputSiteStreamingHAlgorithm,
     OnchipHAlgorithm,
     OutputOwnedHAlgorithm,
@@ -178,6 +179,7 @@ REGISTRY.register(SiteRoutedStreamingHAlgorithm())
 REGISTRY.register(OwnerBatchHAlgorithm())
 REGISTRY.register(OwnerBatchStreamingHAlgorithm())
 REGISTRY.register(InputSiteStreamingHAlgorithm())
+REGISTRY.register(InputReciprocalStreamingHAlgorithm())
 REGISTRY.register(InputOrderStreamingHAlgorithm())
 REGISTRY.register(ProductAlgorithm())
 REGISTRY.register(StripProductAlgorithm())

@@ -30,6 +30,7 @@ def _contract(
     BM: tl.constexpr,
     BK: tl.constexpr,
     GROUP: tl.constexpr,
+    RECIPROCAL: tl.constexpr = False,
 ):
     k = tl.arange(0, BK)
     inv = tl.load(P + A + a, valid, 1)
@@ -43,12 +44,37 @@ def _contract(
     if DERIVATIVE:
         loggrad = tl.load(P + (7 if OUTPUT else 6) * A + a, valid, 0)
         flags = tl.load(P + 8 * A + a, valid, 0).to(tl.int32)
+    elif RECIPROCAL:
+        flags = tl.load(P + 8 * A + a, valid, 0).to(tl.int32)
+    if RECIPROCAL:
+        # Triweight values lie in [0, 1], N <= 8192. Individual norms
+        # can lie below the joint floor: use division for these and singleton
+        # groups to retain the existing floor and one-point evaluation.
+        # A normal reciprocal is safe in that domain; preserve exact division
+        # for an unexpected packed norm. Do not move normalization past sums.
+        reciprocal_safe = tl.min(
+            (
+                (norm >= 1e-6) & (norm <= 128.0) & ((flags & (2 if OUTPUT else 1)) == 0)
+            ).to(tl.int32),
+            0,
+        )
+        inverse_norm = tl.div_rn(1.0, norm)
     acc = tl.full((GROUP, BM, BK), 0.0, tl.float32)
     grad = tl.full((GROUP, BM, BK), 0.0, tl.float32)
     for start in range(0, tl.max(tl.maximum(high - low, 0), 0), BK):
         j = low[:, None] + start + k[None, :]
         v, dv = _periodic_raw(j, center[:, None], inv[:, None], O, L, N)
-        v = tl.div_rn(v, norm[:, None])
+        if RECIPROCAL:
+            if reciprocal_safe:
+                v = v * inverse_norm[:, None]
+                if DERIVATIVE:
+                    dv = dv * inverse_norm[:, None]
+            else:
+                v = tl.div_rn(v, norm[:, None])
+                if DERIVATIVE:
+                    dv = tl.div_rn(dv, norm[:, None])
+        else:
+            v = tl.div_rn(v, norm[:, None])
         mask = (
             valid[:, None, None]
             & (rows[None, :, None] < B)
@@ -59,10 +85,12 @@ def _contract(
         )
         acc += xx * v[:, None, :]
         if DERIVATIVE:
+            if not RECIPROCAL:
+                dv = tl.div_rn(dv, norm[:, None])
             dv = tl.where(
                 (flags[:, None] & (2 if OUTPUT else 1)) != 0,
                 0.0,
-                tl.div_rn(dv, norm[:, None]) - loggrad[:, None] * v,
+                dv - loggrad[:, None] * v,
             )
             grad += xx * dv[:, None, :]
     return tl.sum(acc, 2), tl.sum(grad, 2)

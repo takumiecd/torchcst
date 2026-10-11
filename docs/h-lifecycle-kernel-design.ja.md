@@ -483,3 +483,24 @@ Gは出力順、Hは入力順に利点があったが、融合全体の順序差
 この範囲では融合・容量8とconsumerに合う順序を維持し、微分を含むcontract内部の共有を
 次の対象にする。全保存・分割・容量拡大は採用しない。これらの診断差は本番stepの内訳ではない。
 [全条件・検証・監査記録](research-history/cuda-linear/regular-grid-h-lifecycle.ja.md)を参照する。
+
+### Producer内の正規化共有を比較する研究候補
+
+`input-site-reciprocal-g8-h32` は既存の `input-site-stream-g8-h32` と同じ
+H32/G8、BM8、BK8、atom group8、input-site順、融合したG/H/parameter partialsを使う。
+変更はbackward producer内の各軸について、atomごとに正しく丸めた `1 / norm` を求め、
+`raw / norm` と `raw_derivative / norm` を乗算へ置き換えることだけ。
+正規化を縮約の外へ出さず、joint floor、profile評価、中心微分、source VJPを維持する。
+個別normが `[1e-6,128]` の外、NaN、またはsingleton flagを含むatom groupでは
+その軸の従来の除算へ戻す。joint floorは個別normの下限を保証しないため、このfallbackを残す。
+これはFP32の評価順を変える研究候補であり、bitwise同値を前提にしない。
+既存Recipe/Algorithmおよび公開defaultを維持し、候補には独立したIDを与える。
+
+比較前に固定する条件: L4、N2048、B32、A209715、rho3/8、seed41、FP32/TF32 off、
+24 AdamW更新、各21 primary samples。候補・input-site除算版・matrix・factor・onchip・denseを
+各fresh processで測り、独立2 cohort（2回目は順番を反転）とする。
+初期/更新後の全Y/dX/all-dPの独立FP64 gateを両方通す。
+未計装の完全stepとcapture/replay peak allocated/reservedを判断に使い、
+別Graphでのproducer/owner/VJPの時間を完全stepから差し引かない。
+低norm、empty、singleton、stride、retained backward、Graph更新を先に検証する。
+GPU correctnessが失敗した場合は同sourceで性能測定へ進まない。

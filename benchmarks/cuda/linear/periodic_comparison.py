@@ -58,6 +58,7 @@ KINDS = (
     "site-owner-bm16-stream-g8-h16",
     "site-owner-bm16-stream-g8-h32",
     "input-site-stream-g8-h32",
+    "input-site-reciprocal-g8-h32",
     "input-order-stream-g8-h32",
 )
 REGULAR_PRIMARY = ("matrix-torch", "factor", "onchip-h", "dense")
@@ -153,6 +154,7 @@ def bind_plan(model, kind):
             GroupedOutputHRecipe,
             InputOrderStreamingHRecipe,
             InputOwnedHRecipe,
+            InputReciprocalStreamingHRecipe,
             InputSiteStreamingHRecipe,
             OnchipHRecipe,
             OutputOwnedHRecipe,
@@ -190,6 +192,7 @@ def bind_plan(model, kind):
             "site-owner-bm16-stream-g8-h16": "research_cuda_regular_grid_site_owner_batch_streaming_h",
             "site-owner-bm16-stream-g8-h32": "research_cuda_regular_grid_site_owner_batch_streaming_h",
             "input-site-stream-g8-h32": "research_cuda_regular_grid_input_site_streaming_h",
+            "input-site-reciprocal-g8-h32": "research_cuda_regular_grid_input_reciprocal_streaming_h",
             "input-order-stream-g8-h32": "research_cuda_regular_grid_input_order_streaming_h",
         }.get(kind, "research_cuda_regular_grid_matrix")
         expected_recipe = (
@@ -218,6 +221,7 @@ def bind_plan(model, kind):
                 ),
                 "site-owner-bm16-stream-g8-h32": OwnerBatchStreamingHRecipe,
                 "input-site-stream-g8-h32": InputSiteStreamingHRecipe,
+                "input-site-reciprocal-g8-h32": InputReciprocalStreamingHRecipe,
                 "input-order-stream-g8-h32": InputOrderStreamingHRecipe,
             }[kind]()
             if kind
@@ -244,6 +248,7 @@ def bind_plan(model, kind):
                 "site-owner-bm16-stream-g8-h16",
                 "site-owner-bm16-stream-g8-h32",
                 "input-site-stream-g8-h32",
+                "input-site-reciprocal-g8-h32",
                 "input-order-stream-g8-h32",
             )
             else PeriodicRecipe(gemm="triton" if kind == "matrix-triton" else "torch")
@@ -491,6 +496,7 @@ def forward_stages(step, kind):
         "site-owner-bm16-stream-g8-h16",
         "site-owner-bm16-stream-g8-h32",
         "input-site-stream-g8-h32",
+        "input-site-reciprocal-g8-h32",
         "input-order-stream-g8-h32",
     ):
         return output_owner_stages(
@@ -516,6 +522,7 @@ def forward_stages(step, kind):
                 "site-owner-bm16-stream-g8-h16": 16,
                 "site-owner-bm16-stream-g8-h32": 32,
                 "input-site-stream-g8-h32": 32,
+                "input-site-reciprocal-g8-h32": 32,
                 "input-order-stream-g8-h32": 32,
             }.get(kind),
             prepared=kind.startswith(
@@ -948,6 +955,7 @@ STREAMING_STAGE_KINDS = (
     "site-owner-bm16-stream-g8-h16",
     "site-owner-bm16-stream-g8-h32",
     "input-site-stream-g8-h32",
+    "input-site-reciprocal-g8-h32",
     "input-order-stream-g8-h32",
 )
 
@@ -1010,6 +1018,7 @@ def streaming_backward_stages(
         prepare_routing,
         uses_input_secondary_order,
         uses_input_site_routing,
+        uses_reciprocal_producer,
     )
 
     model = copy.deepcopy(step.model)
@@ -1086,6 +1095,7 @@ def streaming_backward_stages(
                 recipe.patch_sites,
                 recipe.atom_group,
                 STREAM_PARTIAL=True,
+                RECIPROCAL=uses_reciprocal_producer(recipe),
                 **launch,
             )
             events[2 + 3 * i].record()
@@ -1202,6 +1212,8 @@ def streaming_backward_stages(
     )
     producer_result = None
     if producer_breakdown:
+        if uses_reciprocal_producer(recipe):
+            raise ValueError("split producer probes support division recipes only")
         from benchmarks.cuda.linear.producer_diagnostics import producer_diagnostics
 
         producer_result = producer_diagnostics(x, dy, packed, routing, sizes, recipe)
@@ -1230,6 +1242,9 @@ def streaming_backward_stages(
         "layout": layout,
         "input_routing_census": census,
         "same_uninstrumented_backward": True,
+        "producer_normalization": (
+            "guarded_reciprocal" if uses_reciprocal_producer(recipe) else "division"
+        ),
         "same_snapshot": unchanged,
         "max_abs_vs_uninstrumented": errors,
         "lifetime": "G and partials overwritten after each chunk; physical accumulator lives to source VJP; no H/G saved from forward",
@@ -1765,6 +1780,7 @@ def main():
                 "site-owner-bm16-stream-g8-h16",
                 "site-owner-bm16-stream-g8-h32",
                 "input-site-stream-g8-h32",
+                "input-site-reciprocal-g8-h32",
                 "input-order-stream-g8-h32",
                 "dense",
             ]
@@ -1802,6 +1818,7 @@ def main():
             "site-owner-bm16-stream-g8-h16",
             "site-owner-bm16-stream-g8-h32",
             "input-site-stream-g8-h32",
+            "input-site-reciprocal-g8-h32",
             "input-order-stream-g8-h32",
         )
         or any(
@@ -1829,6 +1846,7 @@ def main():
                 "site-owner-bm16-stream-g8-h16",
                 "site-owner-bm16-stream-g8-h32",
                 "input-site-stream-g8-h32",
+                "input-site-reciprocal-g8-h32",
                 "input-order-stream-g8-h32",
             )
         )

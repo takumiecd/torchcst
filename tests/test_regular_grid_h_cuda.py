@@ -2162,3 +2162,254 @@ def test_matched_producer_helper_correctness_and_memory_boundary(tmp_path, monke
         records[0]["memory"]["peak_increment"]["allocated_bytes"]
         == records[1]["memory"]["peak_increment"]["allocated_bytes"]
     )
+
+
+def _reciprocal_selector():
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h.algorithm import (
+        InputReciprocalStreamingHAlgorithm,
+    )
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h.recipe import (
+        InputReciprocalStreamingHRecipe,
+    )
+
+    algorithm = InputReciprocalStreamingHAlgorithm()
+    registry = Registry()
+    registry.register(algorithm)
+    plan = ExecutionPlan(
+        algorithm.id, algorithm.revision, InputReciprocalStreamingHRecipe()
+    )
+    return FixedSelector(plan, registry=registry), plan, registry
+
+
+@pytest.fixture
+def reciprocal_route(monkeypatch):
+    original = model
+
+    def candidate_model(p, route=None, **kwargs):
+        layer = original(p, route, **kwargs)
+        if route is not None:
+            assert route == "input_site32"
+            layer.selector = _reciprocal_selector()[0]
+        return layer
+
+    monkeypatch.setattr(sys.modules[__name__], "model", candidate_model)
+
+
+def test_reciprocal_metadata_roundtrip_distinct_recipe_and_catalog():
+    from benchmarks.cuda.linear.manifest import REGISTRY
+    from benchmarks.cuda.linear.periodic_comparison import bind_plan
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h.recipe import (
+        InputReciprocalStreamingHRecipe,
+    )
+
+    _, plan, registry = _reciprocal_selector()
+    assert (
+        plan.algorithm_id == "research_cuda_regular_grid_input_reciprocal_streaming_h"
+    )
+    assert plan.algorithm_revision == "v1"
+    assert registry.loads_plan(registry.dumps_plan(plan)) == plan
+    assert not hasattr(InputSiteStreamingHRecipe(), "producer_normalization")
+    with pytest.raises(TypeError):
+        InputSiteStreamingHRecipe(producer_normalization="reciprocal")
+    with pytest.raises(ValueError):
+        InputReciprocalStreamingHRecipe(g_batch=32)
+    algorithm = registry.get(plan.algorithm_id, revision=plan.algorithm_revision)
+    for wrong in (
+        InputSiteStreamingHRecipe(),
+        InputOrderStreamingHRecipe(),
+        OwnerBatchStreamingHRecipe(),
+    ):
+        with pytest.raises(TypeError):
+            algorithm.validate_recipe(wrong)
+    with pytest.raises(TypeError):
+        InputSiteStreamingHAlgorithm().validate_recipe(plan.recipe)
+    bound = REGISTRY.load_plan(
+        bind_plan(model(periodic.parameters(1)), "input-site-reciprocal-g8-h32")
+    )
+    assert bound == plan
+    _, baseline, _ = selector("input_site32")
+    assert bound.algorithm_id != baseline.algorithm_id
+    context = replace(
+        model(periodic.parameters(17)).build_context(LinearInputs(torch.zeros(3, 65))),
+        device=DeviceInfo("cuda", 0),
+    )
+    assert algorithm.supports(context, plan.recipe).supported
+
+
+@GPU
+@pytest.mark.parametrize("case", ["empty", "singleton", "below", "equal", "above"])
+def test_reciprocal_whole_atom_floor_and_singleton(reciprocal_route, monkeypatch, case):
+    test_product_floor_and_singleton_gradients("input_site32", monkeypatch, case)
+
+
+@GPU
+@pytest.mark.parametrize("count", [0, 17])
+@pytest.mark.parametrize("need_x,need_p", [(True, False), (False, True), (True, True)])
+def test_reciprocal_requested_gradient_masks(
+    reciprocal_route, monkeypatch, count, need_x, need_p
+):
+    test_zero_atoms_and_requested_gradients(
+        "input_site32", monkeypatch, count, need_x, need_p
+    )
+
+
+@GPU
+@pytest.mark.parametrize("batch,sigma", [(11, 0.7), (37, 4.0)])
+def test_reciprocal_strides_broad_and_partial_chunks(reciprocal_route, batch, sigma):
+    test_full_atom_oracle_strides_batch_tiles_seams_and_broad(
+        "input_site32", batch, 17, sigma
+    )
+
+
+@GPU
+def test_reciprocal_retained_live_forward_snapshots(reciprocal_route):
+    test_retained_forward_snapshots_before_live_parameter_width_and_chart_updates(
+        "input_site32"
+    )
+
+
+@GPU
+def test_reciprocal_preserves_saved_tensor_contract(reciprocal_route):
+    test_no_full_h_g_saved_and_backward_recomputation("input_site32")
+
+
+@GPU
+def test_reciprocal_twenty_graph_updates_live_width(reciprocal_route, monkeypatch):
+    test_twenty_graph_replays_public_optimizer_live_width_and_all_task_gradients(
+        "input_site32", monkeypatch
+    )
+
+
+@GPU
+def test_reciprocal_twenty_public_eager_updates(reciprocal_route, monkeypatch):
+    test_twenty_public_eager_updates("input_site32", monkeypatch)
+
+
+@GPU
+@pytest.mark.parametrize(
+    "case",
+    [
+        "near_floor",
+        "cancellation",
+        "small_norm",
+        "large_norm",
+        "singleton_guard",
+        "safe_lower_bound",
+        "safe_upper_bound",
+    ],
+)
+def test_reciprocal_producer_partials_floor_cancellation_and_division_guards(case):
+    import triton as tr
+
+    from torchcst._backends.cuda.algorithms.linear.periodic_product.executor import (
+        _prepare,
+    )
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h import input_kernels
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h.output_owner import (
+        prepare_routing,
+    )
+
+    layer, x, dy, sizes, recipe = _producer_fixture("rho3")
+    if case in ("near_floor", "cancellation"):
+        p = periodic.parameters(17, periods=(5.0, 7.0), origin=(0.0, 0.0))
+        p[:, 2:] = 0.25 if case == "near_floor" else 0.15
+        layer = model(
+            p,
+            "input_site32",
+            shape=(5, 7),
+            periods=(5.0, 7.0),
+            origin=(0.0, 0.0),
+            sigma=0.5 if case == "near_floor" else 1.3,
+            floor=2 * 0.421875**2 * (1 + 2**-12) if case == "near_floor" else 1e-6,
+            device="cuda",
+        )
+        sizes = (11, 7, 5, 7.0, 5.0, 0.0, 0.0)
+        x = torch.zeros(11, 14, device="cuda")[:, ::2]
+        dy = torch.zeros(5, 11, device="cuda").T
+        x[:, 0], dy[:, 0] = 0.3, -0.2
+    packed = _prepare(layer.atoms.p, layer.kernel, sizes, recipe)
+    order = prepare_routing(packed, sizes, recipe, output=False, tile=8)[0]
+    if case in ("small_norm", "large_norm"):
+        # Only one atom per sorted group is outside the declared safe domain.
+        # The ordinary members must also preserve the exact division result.
+        packed[4:6, order[:: recipe.atom_group]] = (
+            5e-7 if case == "small_norm" else 129.0
+        )
+    elif case in ("safe_lower_bound", "safe_upper_bound"):
+        # Synthetic packed metadata checks the inclusive guard endpoints;
+        # tiny inputs keep the independent absolute gate informative at 1e-6.
+        packed[4:6] = 1e-6 if case == "safe_lower_bound" else 128.0
+        x.mul_(1e-10)
+        dy.mul_(1e-10)
+    if case == "singleton_guard":
+        # Synthetic metadata isolates group fallback. Physical singletons are
+        # covered by the independent whole-atom tests, including floor equality.
+        packed[8] = 0
+        packed[8, order[:: recipe.atom_group]] = 3
+    a, bm = len(layer.atoms.p), recipe.batch_tile
+    g, reference_g = [x.new_empty((1, a, bm)) for _ in range(2)]
+    partial, reference_partial = [x.new_empty((1, 3, a)) for _ in range(2)]
+    for start in range(0, sizes[0], bm):
+        for reciprocal, output_g, output_partial in (
+            (False, reference_g, reference_partial),
+            (True, g, partial),
+        ):
+            input_kernels.produce_g_parameters[(tr.cdiv(a, recipe.atom_group), 1)](
+                x,
+                dy,
+                packed,
+                order,
+                output_g,
+                output_partial,
+                a,
+                *sizes,
+                *x.stride(),
+                *dy.stride(),
+                True,
+                start,
+                bm,
+                recipe.patch_sites,
+                recipe.atom_group,
+                STREAM_PARTIAL=True,
+                RECIPROCAL=reciprocal,
+                num_warps=4,
+                enable_fp_fusion=False,
+            )
+        if case in ("small_norm", "large_norm", "singleton_guard"):
+            torch.testing.assert_close(g, reference_g, rtol=0, atol=0)
+            torch.testing.assert_close(partial, reference_partial, rtol=0, atol=0)
+        else:
+            gg, dg = _producer_axis_truth(
+                dy, packed, order, sizes, output=True, start=start, batch_tile=bm
+            )
+            hh, dh = _producer_axis_truth(
+                x, packed, order, sizes, output=False, start=start, batch_tile=bm
+            )
+            amp = packed[0, order].detach().cpu().double()[None, :]
+            expected_sorted = torch.stack(
+                ((hh * gg).sum(-1), amp * (gg * dh).sum(-1), amp * (hh * dg).sum(-1)), 1
+            )
+            expected = torch.empty_like(expected_sorted)
+            expected.index_copy_(2, order.cpu(), expected_sorted)
+            _producer_close(g, gg)
+            _producer_close(partial, expected)
+            if case == "near_floor":
+                assert not packed[8].count_nonzero()
+                assert expected[:, 1:].count_nonzero()
+            elif case == "cancellation":
+                assert (packed[10] - packed[9] > 1).all()
+                assert packed[6:8].abs().count_nonzero()
+                point = packed.detach().cpu().double()[:, order.cpu()]
+                delta = -point[2]
+                raw_term = (
+                    6
+                    * delta
+                    * point[1]
+                    * (1 - delta.square() * point[1]).square()
+                    / point[4]
+                )
+                rows = torch.zeros(bm, dtype=torch.float64)
+                active = min(bm, sizes[0] - start)
+                rows[:active] = x[start : start + active, 0].detach().cpu().double()
+                uncorrected = raw_term[None, :, None] * rows[None, None, :]
+                assert 0 < float(dh.norm()) < 0.9 * float(uncorrected.norm())
