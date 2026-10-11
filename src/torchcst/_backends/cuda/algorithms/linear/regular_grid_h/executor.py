@@ -12,6 +12,7 @@ def forward_contraction(x, packed, sizes, recipe):
     from . import kernels
     from .recipe import (
         GroupedOutputHRecipe,
+        InputBatchProducerHRecipe,
         InputCompactWrapHRecipe,
         InputOrderStreamingHRecipe,
         InputOwnedHRecipe,
@@ -35,6 +36,7 @@ def forward_contraction(x, packed, sizes, recipe):
         OwnerBatchHRecipe,
         SiteRoutedStreamingHRecipe,
         OwnerBatchStreamingHRecipe,
+        InputBatchProducerHRecipe,
         InputCompactWrapHRecipe,
         InputReciprocalStreamingHRecipe,
         InputSiteStreamingHRecipe,
@@ -95,6 +97,7 @@ class _OnchipH(torch.autograd.Function):
 
         from . import kernels
         from .recipe import (
+            InputBatchProducerHRecipe,
             InputCompactWrapHRecipe,
             InputOrderStreamingHRecipe,
             InputOwnedHRecipe,
@@ -118,6 +121,7 @@ class _OnchipH(torch.autograd.Function):
                 StreamingInputHRecipe,
                 SiteRoutedStreamingHRecipe,
                 OwnerBatchStreamingHRecipe,
+                InputBatchProducerHRecipe,
                 InputCompactWrapHRecipe,
                 InputReciprocalStreamingHRecipe,
                 InputSiteStreamingHRecipe,
@@ -126,7 +130,12 @@ class _OnchipH(torch.autograd.Function):
             and need_x
         )
         partial_tiles = (
-            tr.cdiv(min(b, recipe.g_batch), recipe.batch_tile) if streamed else tiles
+            tr.cdiv(
+                min(b, recipe.g_batch),
+                getattr(recipe, "producer_batch_tile", recipe.batch_tile),
+            )
+            if streamed
+            else tiles
         )
         partial = x.new_empty((partial_tiles, 3, a)) if need_p else None
         physical = x.new_empty((3, a)) if streamed and need_p else None
@@ -138,6 +147,7 @@ class _OnchipH(torch.autograd.Function):
                     StreamingInputHRecipe,
                     SiteRoutedStreamingHRecipe,
                     OwnerBatchStreamingHRecipe,
+                    InputBatchProducerHRecipe,
                     InputCompactWrapHRecipe,
                     InputReciprocalStreamingHRecipe,
                     InputSiteStreamingHRecipe,

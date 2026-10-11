@@ -509,3 +509,29 @@ GPU correctnessが失敗した場合は同sourceで性能測定へ進まない�
 rho3は差なし／5.9%短縮で、全体改善を一律には主張しない。peak allocated/reservedは
 除算版と同じ57.431/104MiB。詳細は[研究記録](research-history/cuda-linear/regular-grid-h-lifecycle.ja.md)の
 2026-10-11の逆数共有比較を参照。候補は研究routeに保持し、公開defaultは変更しない。
+
+### Backward producerのbatch共有を分離する比較
+
+RTX 6000 Adaで、基準BM8/G8に対しBM8/G16とBM16/G16を比較する。
+forwardのH32・producer BM8・Y owner BM16、input-site順、dX owner BM8、
+BK8/group8、profileと正規化微分、inverse normの共有は同じ。
+BM8/G16は保存容量とchunk launchの変更を含む対照で、BM16/G16との比較で
+producer内のbatch共有を広げる効果を調べる。
+
+新しい `InputBatchProducerHRecipe` はcomputeの `producer_batch_tile` と
+G storageの `batch_tile=8` を分ける。Gは両対照とも `[2,A,8]`。
+local row rの書込みoffsetは `((r//8)*A+sorted_position)*8+r%8`。
+dX consumerは同じslabを読む。G/Hの値と中心微分はproducer内で融合し、
+H/dH/dGをglobalへ追加保存せず、Gとparameter partialはchunkごとに上書きする。
+
+parameter partialは `[ceil(min(B,16)/producer_batch_tile),3,A]`。
+BM16のbatch reductionとG16のchunk累積ではFP32の加算順が変わるため、
+全atom FP64 gate、tail/stride/floor/retained snapshot/Graph更新を先に検証する。
+G16 scratchはG8より4*A*8 bytes増え、BM8/G16はpartialも1slab増える。
+この論理容量をGPU peakと混同せず、capture/replayのallocated/reservedを実測する。
+compute幅を広げることでregister圧力やoccupancyが悪化する可能性もある。
+
+N2048/B32/A209715、rho3/8、seed41、24 AdamW更新を固定し、
+3方式とdenseをfresh processで測る。各rho独立2cohort、2回目は逆順。
+診断は同じpost24 snapshotの別Graphでproducer/dX/physical/source VJPを測り、
+完全stepの内訳として足したり差し引いたりしない。公開defaultは変更しない。

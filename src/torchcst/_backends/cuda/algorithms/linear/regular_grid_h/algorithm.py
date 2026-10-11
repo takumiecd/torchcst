@@ -11,6 +11,7 @@ from torchcst.kernels import PolarAmpWidthSpec, TriweightSpec
 from ..periodic_product.algorithm import PeriodicMatrixAlgorithm
 from .recipe import (
     GroupedOutputHRecipe,
+    InputBatchProducerHRecipe,
     InputCompactWrapHRecipe,
     InputOrderStreamingHRecipe,
     InputOwnedHRecipe,
@@ -281,3 +282,14 @@ class InputCompactWrapHAlgorithm(OutputOwnedHAlgorithm):
         if type(recipe) is not InputCompactWrapHRecipe:
             raise TypeError("requires InputCompactWrapHRecipe")
         InputCompactWrapHRecipe(**asdict(recipe))
+
+
+@dataclass(frozen=True)
+class InputBatchProducerHAlgorithm(OutputOwnedHAlgorithm):
+    id: str = "research_cuda_regular_grid_input_batch_producer_h"
+    recipe_type: type = InputBatchProducerHRecipe
+
+    def validate_recipe(self, recipe):
+        if type(recipe) is not InputBatchProducerHRecipe:
+            raise TypeError("requires InputBatchProducerHRecipe")
+        InputBatchProducerHRecipe(**asdict(recipe))

@@ -34,6 +34,7 @@ def produce_g_parameters(
     STREAM_PARTIAL: tl.constexpr = False,
     RECIPROCAL: tl.constexpr = False,
     COMPACT_WRAP: tl.constexpr = False,
+    G_LAYOUT_BM: tl.constexpr = 0,
 ):
     pos = tl.program_id(0) * GROUP + tl.arange(0, GROUP)
     valid = pos < A
@@ -60,11 +61,14 @@ def produce_g_parameters(
         RECIPROCAL,
         COMPACT_WRAP,
     )
-    tl.store(
-        G + (tl.program_id(1) * A + pos[:, None]) * BM + tl.arange(0, BM)[None, :],
-        g,
-        valid[:, None],
-    )
+    if G_LAYOUT_BM:
+        local_rows = tl.program_id(1) * BM + tl.arange(0, BM)
+        offset = (
+            local_rows[None, :] // G_LAYOUT_BM * A + pos[:, None]
+        ) * G_LAYOUT_BM + local_rows[None, :] % G_LAYOUT_BM
+    else:
+        offset = (tl.program_id(1) * A + pos[:, None]) * BM + tl.arange(0, BM)[None, :]
+    tl.store(G + offset, g, valid[:, None])
     if NEED_P:
         h, dh = _contract(
             X,

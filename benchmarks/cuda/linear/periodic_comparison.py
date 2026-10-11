@@ -60,6 +60,8 @@ KINDS = (
     "input-site-stream-g8-h32",
     "input-site-reciprocal-g8-h32",
     "input-site-wrap-g8-h32",
+    "input-site-reciprocal-bm8-g16-h32",
+    "input-site-reciprocal-bm16-g16-h32",
     "input-order-stream-g8-h32",
 )
 REGULAR_PRIMARY = ("matrix-torch", "factor", "onchip-h", "dense")
@@ -153,6 +155,7 @@ def bind_plan(model, kind):
     if regular_grid:
         from torchcst._backends.cuda.algorithms.linear.regular_grid_h.recipe import (
             GroupedOutputHRecipe,
+            InputBatchProducerHRecipe,
             InputCompactWrapHRecipe,
             InputOrderStreamingHRecipe,
             InputOwnedHRecipe,
@@ -196,6 +199,8 @@ def bind_plan(model, kind):
             "input-site-stream-g8-h32": "research_cuda_regular_grid_input_site_streaming_h",
             "input-site-reciprocal-g8-h32": "research_cuda_regular_grid_input_reciprocal_streaming_h",
             "input-site-wrap-g8-h32": "research_cuda_regular_grid_input_compact_wrap_h",
+            "input-site-reciprocal-bm8-g16-h32": "research_cuda_regular_grid_input_batch_producer_h",
+            "input-site-reciprocal-bm16-g16-h32": "research_cuda_regular_grid_input_batch_producer_h",
             "input-order-stream-g8-h32": "research_cuda_regular_grid_input_order_streaming_h",
         }.get(kind, "research_cuda_regular_grid_matrix")
         expected_recipe = (
@@ -226,6 +231,10 @@ def bind_plan(model, kind):
                 "input-site-stream-g8-h32": InputSiteStreamingHRecipe,
                 "input-site-reciprocal-g8-h32": InputReciprocalStreamingHRecipe,
                 "input-site-wrap-g8-h32": InputCompactWrapHRecipe,
+                "input-site-reciprocal-bm8-g16-h32": lambda: InputBatchProducerHRecipe(
+                    producer_batch_tile=8
+                ),
+                "input-site-reciprocal-bm16-g16-h32": InputBatchProducerHRecipe,
                 "input-order-stream-g8-h32": InputOrderStreamingHRecipe,
             }[kind]()
             if kind
@@ -254,6 +263,8 @@ def bind_plan(model, kind):
                 "input-site-stream-g8-h32",
                 "input-site-reciprocal-g8-h32",
                 "input-site-wrap-g8-h32",
+                "input-site-reciprocal-bm8-g16-h32",
+                "input-site-reciprocal-bm16-g16-h32",
                 "input-order-stream-g8-h32",
             )
             else PeriodicRecipe(gemm="triton" if kind == "matrix-triton" else "torch")
@@ -503,6 +514,8 @@ def forward_stages(step, kind):
         "input-site-stream-g8-h32",
         "input-site-reciprocal-g8-h32",
         "input-site-wrap-g8-h32",
+        "input-site-reciprocal-bm8-g16-h32",
+        "input-site-reciprocal-bm16-g16-h32",
         "input-order-stream-g8-h32",
     ):
         return output_owner_stages(
@@ -530,6 +543,8 @@ def forward_stages(step, kind):
                 "input-site-stream-g8-h32": 32,
                 "input-site-reciprocal-g8-h32": 32,
                 "input-site-wrap-g8-h32": 32,
+                "input-site-reciprocal-bm8-g16-h32": 32,
+                "input-site-reciprocal-bm16-g16-h32": 32,
                 "input-order-stream-g8-h32": 32,
             }.get(kind),
             prepared=kind.startswith(
@@ -964,6 +979,8 @@ STREAMING_STAGE_KINDS = (
     "input-site-stream-g8-h32",
     "input-site-reciprocal-g8-h32",
     "input-site-wrap-g8-h32",
+    "input-site-reciprocal-bm8-g16-h32",
+    "input-site-reciprocal-bm16-g16-h32",
     "input-order-stream-g8-h32",
 )
 
@@ -982,11 +999,13 @@ def streaming_stage_recipe(kind):
 
 def streaming_backward_layout(recipe, *, batch, atoms):
     """Logical tensor sizes, not allocator peaks or hardware traffic."""
-    tiles = (min(batch, recipe.g_batch) + recipe.batch_tile - 1) // recipe.batch_tile
+    pbm = getattr(recipe, "producer_batch_tile", recipe.batch_tile)
+    tiles = (min(batch, recipe.g_batch) + pbm - 1) // pbm
     return {
         "forward_H_batch_capacity": recipe.h_batch,
         "G_batch_capacity": recipe.g_batch,
-        "G_producer_batch_tile": recipe.batch_tile,
+        "G_producer_batch_tile": pbm,
+        "G_storage_batch_tile": recipe.batch_tile,
         "dX_owner_batch_tile": recipe.batch_tile,
         "dX_owner_site_tile": recipe.input_tile,
         "G_scratch_bytes": 4 * atoms * recipe.g_batch,
@@ -1024,6 +1043,7 @@ def streaming_backward_stages(
         active_h_tiles,
         prepare_output_fields,
         prepare_routing,
+        producer_batch_tile,
         uses_compact_wrap_producer,
         uses_input_secondary_order,
         uses_input_site_routing,
@@ -1064,6 +1084,7 @@ def streaming_backward_stages(
         )
     layout = streaming_backward_layout(recipe, batch=b, atoms=a)
     starts = layout["chunk_starts"]
+    pbm = producer_batch_tile(recipe)
     events = [
         torch.cuda.Event(enable_timing=True, external=True)
         for _ in range(3 + 3 * len(starts))
@@ -1074,7 +1095,7 @@ def streaming_backward_stages(
     def call():
         events[0].record()
         dx, dp = torch.zeros_like(x), torch.empty_like(source)
-        partial_tiles = tr.cdiv(min(b, recipe.g_batch), recipe.batch_tile)
+        partial_tiles = tr.cdiv(min(b, recipe.g_batch), pbm)
         partial = x.new_empty((partial_tiles, 3, a))
         physical = x.new_empty((3, a))
         routing = prepare_routing(
@@ -1087,7 +1108,10 @@ def streaming_backward_stages(
         swapped = (b, no, ni, sizes[4], sizes[3], sizes[6], sizes[5])
         for i, start in enumerate(starts):
             tiles = active_h_tiles(g, b, start, recipe.batch_tile)
-            input_kernels.produce_g_parameters[(tr.cdiv(a, recipe.atom_group), tiles)](
+            producer_tiles = tr.cdiv(min(recipe.g_batch, b - start), pbm)
+            input_kernels.produce_g_parameters[
+                (tr.cdiv(a, recipe.atom_group), producer_tiles)
+            ](
                 x,
                 dy,
                 packed,
@@ -1100,12 +1124,13 @@ def streaming_backward_stages(
                 *dy.stride(),
                 True,
                 start,
-                recipe.batch_tile,
+                pbm,
                 recipe.patch_sites,
                 recipe.atom_group,
                 STREAM_PARTIAL=True,
                 RECIPROCAL=uses_reciprocal_producer(recipe),
                 COMPACT_WRAP=uses_compact_wrap_producer(recipe),
+                G_LAYOUT_BM=recipe.batch_tile if pbm != recipe.batch_tile else 0,
                 **launch,
             )
             events[2 + 3 * i].record()
@@ -1139,8 +1164,8 @@ def streaming_backward_stages(
                 partial,
                 physical,
                 a,
-                tiles,
-                tr.next_power_of_2(g.shape[0]),
+                producer_tiles,
+                tr.next_power_of_2(tr.cdiv(recipe.g_batch, pbm)),
                 recipe.prep_group,
                 start == 0,
                 **launch,
@@ -1795,6 +1820,8 @@ def main():
                 "input-site-stream-g8-h32",
                 "input-site-reciprocal-g8-h32",
                 "input-site-wrap-g8-h32",
+                "input-site-reciprocal-bm8-g16-h32",
+                "input-site-reciprocal-bm16-g16-h32",
                 "input-order-stream-g8-h32",
                 "dense",
             ]
@@ -1834,6 +1861,8 @@ def main():
             "input-site-stream-g8-h32",
             "input-site-reciprocal-g8-h32",
             "input-site-wrap-g8-h32",
+            "input-site-reciprocal-bm8-g16-h32",
+            "input-site-reciprocal-bm16-g16-h32",
             "input-order-stream-g8-h32",
         )
         or any(
@@ -1863,6 +1892,8 @@ def main():
                 "input-site-stream-g8-h32",
                 "input-site-reciprocal-g8-h32",
                 "input-site-wrap-g8-h32",
+                "input-site-reciprocal-bm8-g16-h32",
+                "input-site-reciprocal-bm16-g16-h32",
                 "input-order-stream-g8-h32",
             )
         )

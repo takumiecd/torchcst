@@ -13,6 +13,7 @@ def input_owned_backward(
         h_capacity,
         prepare_output_fields,
         prepare_routing,
+        producer_batch_tile,
         uses_compact_wrap_producer,
         uses_input_site_routing,
         uses_reciprocal_producer,
@@ -26,6 +27,7 @@ def input_owned_backward(
     hot = prepare_output_fields(packed, routing, output=False)
     streamed = hasattr(recipe, "g_batch")
     capacity = recipe.g_batch if streamed else h_capacity(recipe)
+    pbm = producer_batch_tile(recipe)
     g = (
         x.new_empty((capacity // recipe.batch_tile, a, recipe.batch_tile))
         if streamed
@@ -48,7 +50,10 @@ def input_owned_backward(
     )
     for start in range(0, b, capacity):
         tiles = active_h_tiles(g, b, start, recipe.batch_tile)
-        input_kernels.produce_g_parameters[(tr.cdiv(a, recipe.atom_group), tiles)](
+        producer_tiles = tr.cdiv(min(capacity, b - start), pbm)
+        input_kernels.produce_g_parameters[
+            (tr.cdiv(a, recipe.atom_group), producer_tiles)
+        ](
             x,
             dy,
             packed,
@@ -61,12 +66,13 @@ def input_owned_backward(
             *dy.stride(),
             need_p,
             start,
-            recipe.batch_tile,
+            pbm,
             recipe.patch_sites,
             recipe.atom_group,
             STREAM_PARTIAL=streamed,
             RECIPROCAL=uses_reciprocal_producer(recipe),
             COMPACT_WRAP=uses_compact_wrap_producer(recipe),
+            G_LAYOUT_BM=recipe.batch_tile if pbm != recipe.batch_tile else 0,
             num_warps=4,
             enable_fp_fusion=False,
         )
@@ -94,8 +100,8 @@ def input_owned_backward(
                 partial,
                 physical,
                 a,
-                tiles,
-                tr.next_power_of_2(g.shape[0]),
+                producer_tiles,
+                tr.next_power_of_2(tr.cdiv(capacity, pbm)),
                 recipe.prep_group,
                 start == 0,
                 num_warps=4,

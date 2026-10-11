@@ -149,3 +149,24 @@ class InputOrderStreamingHRecipe(OwnerBatchStreamingHRecipe):
 @dataclass(frozen=True)
 class InputCompactWrapHRecipe(InputReciprocalStreamingHRecipe):
     """Guarded single-wrap coordinates in the reciprocal backward producer."""
+
+
+@dataclass(frozen=True)
+class InputBatchProducerHRecipe(SiteRoutedStreamingHRecipe):
+    """Backward BM8/BM16 control over G16, preserving forward and G8 slabs."""
+
+    h_batch: int = 32
+    g_batch: int = 16
+    owner_batch_tile: int = 16
+    producer_batch_tile: int = 16
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.batch_tile != 8 or self.h_batch != 32 or self.g_batch != 16:
+            raise ValueError("batch producer requires BM8 layout, H32 and G16")
+        if type(self.owner_batch_tile) is not int or self.owner_batch_tile != 16:
+            raise ValueError("owner_batch_tile must be 16")
+        if type(
+            self.producer_batch_tile
+        ) is not int or self.producer_batch_tile not in (8, 16):
+            raise ValueError("producer_batch_tile must be 8 or 16")

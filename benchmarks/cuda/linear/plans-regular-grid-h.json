@@ -539,6 +539,52 @@
           "owner_batch_tile": 16
         }
       }
+    },
+    {
+      "id": "input-site-reciprocal-bm8-g16-h32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_regular_grid_input_batch_producer_h",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_group": 8,
+          "gemm": "torch",
+          "patch_sites": 8,
+          "prep_group": 16,
+          "prep_sites": 16,
+          "batch_tile": 8,
+          "output_tile": 16,
+          "h_batch": 32,
+          "output_group": 32,
+          "input_tile": 8,
+          "g_batch": 16,
+          "owner_batch_tile": 16,
+          "producer_batch_tile": 8
+        }
+      }
+    },
+    {
+      "id": "input-site-reciprocal-bm16-g16-h32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_regular_grid_input_batch_producer_h",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_group": 8,
+          "gemm": "torch",
+          "patch_sites": 8,
+          "prep_group": 16,
+          "prep_sites": 16,
+          "batch_tile": 8,
+          "output_tile": 16,
+          "h_batch": 32,
+          "output_group": 32,
+          "input_tile": 8,
+          "g_batch": 16,
+          "owner_batch_tile": 16,
+          "producer_batch_tile": 16
+        }
+      }
     }
   ]
 }

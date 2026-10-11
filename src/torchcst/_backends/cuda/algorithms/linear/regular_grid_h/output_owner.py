@@ -65,6 +65,7 @@ def prepare_routing(packed, sizes, recipe, *, output=True, tile=None):
 
 def uses_input_site_routing(recipe):
     from .recipe import (
+        InputBatchProducerHRecipe,
         InputCompactWrapHRecipe,
         InputReciprocalStreamingHRecipe,
         InputSiteStreamingHRecipe,
@@ -73,14 +74,23 @@ def uses_input_site_routing(recipe):
     return type(recipe) in (
         InputSiteStreamingHRecipe,
         InputReciprocalStreamingHRecipe,
+        InputBatchProducerHRecipe,
         InputCompactWrapHRecipe,
     )
 
 
 def uses_reciprocal_producer(recipe):
-    from .recipe import InputCompactWrapHRecipe, InputReciprocalStreamingHRecipe
+    from .recipe import (
+        InputBatchProducerHRecipe,
+        InputCompactWrapHRecipe,
+        InputReciprocalStreamingHRecipe,
+    )
 
-    return type(recipe) in (InputReciprocalStreamingHRecipe, InputCompactWrapHRecipe)
+    return type(recipe) in (
+        InputBatchProducerHRecipe,
+        InputReciprocalStreamingHRecipe,
+        InputCompactWrapHRecipe,
+    )
 
 
 def uses_compact_wrap_producer(recipe):
@@ -97,6 +107,7 @@ def uses_input_secondary_order(recipe):
 
 def uses_site_routing(recipe):
     from .recipe import (
+        InputBatchProducerHRecipe,
         InputCompactWrapHRecipe,
         InputOrderStreamingHRecipe,
         InputReciprocalStreamingHRecipe,
@@ -112,6 +123,7 @@ def uses_site_routing(recipe):
         SiteRoutedStreamingHRecipe,
         OwnerBatchHRecipe,
         OwnerBatchStreamingHRecipe,
+        InputBatchProducerHRecipe,
         InputCompactWrapHRecipe,
         InputReciprocalStreamingHRecipe,
         InputSiteStreamingHRecipe,
@@ -122,6 +134,7 @@ def uses_site_routing(recipe):
 def h_capacity(recipe):
     from .recipe import (
         GroupedOutputHRecipe,
+        InputBatchProducerHRecipe,
         InputCompactWrapHRecipe,
         InputOrderStreamingHRecipe,
         InputOwnedHRecipe,
@@ -146,6 +159,7 @@ def h_capacity(recipe):
             OwnerBatchHRecipe,
             SiteRoutedStreamingHRecipe,
             OwnerBatchStreamingHRecipe,
+            InputBatchProducerHRecipe,
             InputCompactWrapHRecipe,
             InputReciprocalStreamingHRecipe,
             InputSiteStreamingHRecipe,
@@ -161,6 +175,7 @@ def h_capacity(recipe):
 def allocate_h(x, atom_count, recipe):
     from .recipe import (
         GroupedOutputHRecipe,
+        InputBatchProducerHRecipe,
         InputCompactWrapHRecipe,
         InputOrderStreamingHRecipe,
         InputOwnedHRecipe,
@@ -182,6 +197,7 @@ def allocate_h(x, atom_count, recipe):
         OwnerBatchHRecipe,
         SiteRoutedStreamingHRecipe,
         OwnerBatchStreamingHRecipe,
+        InputBatchProducerHRecipe,
         InputCompactWrapHRecipe,
         InputReciprocalStreamingHRecipe,
         InputSiteStreamingHRecipe,
@@ -327,6 +343,7 @@ def aggregate_chunk(
 def forward_output_owned(x, packed, sizes, recipe):
     from .recipe import (
         GroupedOutputHRecipe,
+        InputBatchProducerHRecipe,
         InputCompactWrapHRecipe,
         InputOrderStreamingHRecipe,
         InputOwnedHRecipe,
@@ -358,6 +375,7 @@ def forward_output_owned(x, packed, sizes, recipe):
             OwnerBatchHRecipe,
             SiteRoutedStreamingHRecipe,
             OwnerBatchStreamingHRecipe,
+            InputBatchProducerHRecipe,
             InputCompactWrapHRecipe,
             InputReciprocalStreamingHRecipe,
             InputSiteStreamingHRecipe,
@@ -374,6 +392,7 @@ def forward_output_owned(x, packed, sizes, recipe):
         OwnerBatchHRecipe,
         SiteRoutedStreamingHRecipe,
         OwnerBatchStreamingHRecipe,
+        InputBatchProducerHRecipe,
         InputCompactWrapHRecipe,
         InputReciprocalStreamingHRecipe,
         InputSiteStreamingHRecipe,
@@ -402,3 +421,8 @@ def forward_output_owned(x, packed, sizes, recipe):
     else:
         aggregate_chunk(x, packed, sizes, recipe, routing, y)
     return y
+
+
+def producer_batch_tile(recipe):
+    """Backward compute tile; G storage and dX owners retain batch_tile."""
+    return getattr(recipe, "producer_batch_tile", recipe.batch_tile)
