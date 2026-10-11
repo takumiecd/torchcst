@@ -647,3 +647,15 @@ H valueを先に用意して入力profile/微分を再生成するpassが増え�
 現行BM16/G16/H32を維持する。194資格検証/56全shape FP64 gates、独立2cohort/rhoの
 完全step・両peak・6固定診断・復旧hashは
 [粒度と微分寿命の研究記録](research-history/cuda-linear/regular-grid-tile-schedule.ja.md)を参照。
+
+### 支持幅生成と即時消費の組み合わせ
+
+二つの効果を独立したflagで組み合わせた研究planを比較した。
+H/Gの2 slabだけを保持し、dH/dGをproducer内でphysical勾配へ消費する。
+支持幅単独からallocatedを25.601MiB/reservedを28MiB減らしたが、完全stepは2.85–3.22%遅い。
+組み合わせはrho3=2.051–2.055ms/rho8=2.421–2.426ms、68.117/122MiB。
+現行より29.39–44.88%遅く、reservedはdense106MiBより大きいため採用しない。
+追加のH value生成passは約0.235/0.292ms残る。全支持縮約後に勾配を作る契約は維持する。
+224資格検証/64 full FP64 gatesと独立2cohort/rho、8固定診断を確認。
+詳細は[組み合わせ比較](research-history/cuda-linear/regular-grid-tile-combined.ja.md)。
+任意の支持tile数への一般化は次の設計議論とし、今回の測定へ混ぜない。

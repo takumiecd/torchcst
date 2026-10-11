@@ -3108,3 +3108,12 @@ allocated/reserved=93.717/150MiBは固定tile対照と同じ。別候補の微�
 194 GPU qualification、56初期/post24全shape・全atom FP64 gates、32 workers/672 samples、
 6固定snapshot診断PASS。両候補は不採用、現行を維持する。詳細は
 [生成粒度と微分寿命の比較](regular-grid-tile-schedule.ja.md)。別sourceの前回値とpoolしない。
+
+## 2026-10-11: 支持幅生成と微分即時消費を組み合わせた比較
+
+source `e5757dad` の組み合わせ版を、現行・固定tile・二つの単独版と同cohortで比較した。
+組み合わせの完全step=2.051–2.055/2.421–2.426ms、allocated/reserved=68.117/122MiB。
+支持幅単独からallocated25.601MiB/reserved28MiBを削減したが2.85–3.22%遅く、
+現行より29.39–44.88%遅い。追加H value生成が約0.235/0.292ms残る。採用せず現行を維持する。
+224資格検証/64全shape FP64 gates、36 workers/756 samples、8固定snapshot診断PASS。
+結果・source/復旧hash・可変tile数の次の議論は[組み合わせ比較](regular-grid-tile-combined.ja.md)。
