@@ -1,0 +1,2164 @@
+"""Ephemeral H/G: full-atom oracle, retention, gradient and Graph contracts."""
+
+import os
+import subprocess
+import sys
+from dataclasses import replace
+
+import pytest
+import test_periodic_cuda as periodic
+import torch
+
+from torchcst import (
+    BandwidthBounds,
+    FixedSelector,
+    LinearInputs,
+    TriweightSpec,
+    chart_presets,
+    presets,
+)
+from torchcst._backends.cuda.algorithms.linear.periodic_product.recipe import (
+    PeriodicRecipe,
+)
+from torchcst._backends.cuda.algorithms.linear.regular_grid_h.algorithm import (
+    GroupedOutputHAlgorithm,
+    InputOrderStreamingHAlgorithm,
+    InputOwnedHAlgorithm,
+    InputSiteStreamingHAlgorithm,
+    OnchipHAlgorithm,
+    OutputOwnedHAlgorithm,
+    OwnerBatchHAlgorithm,
+    OwnerBatchStreamingHAlgorithm,
+    ParallelReusedHAlgorithm,
+    PreparedReusedHAlgorithm,
+    RegularFactorAlgorithm,
+    RegularMatrixAlgorithm,
+    ReusedHAlgorithm,
+    SiteRoutedHAlgorithm,
+    SiteRoutedStreamingHAlgorithm,
+    StreamingInputHAlgorithm,
+)
+from torchcst._backends.cuda.algorithms.linear.regular_grid_h.recipe import (
+    GroupedOutputHRecipe,
+    InputOrderStreamingHRecipe,
+    InputOwnedHRecipe,
+    InputSiteStreamingHRecipe,
+    OnchipHRecipe,
+    OutputOwnedHRecipe,
+    OwnerBatchHRecipe,
+    OwnerBatchStreamingHRecipe,
+    ParallelReusedHRecipe,
+    PreparedReusedHRecipe,
+    ReusedHRecipe,
+    SiteRoutedHRecipe,
+    SiteRoutedStreamingHRecipe,
+    StreamingInputHRecipe,
+)
+from torchcst._backends.registry import Registry
+from torchcst._backends.schema import DeviceInfo, ExecutionPlan
+
+GPU = periodic.GPU
+BASE_MODEL = periodic.model
+
+
+def selector(route="onchip", **settings):
+    algorithm = {
+        "onchip": OnchipHAlgorithm,
+        "owner": OutputOwnedHAlgorithm,
+        "reuse": ReusedHAlgorithm,
+        "parallel16": ParallelReusedHAlgorithm,
+        "parallel32": ParallelReusedHAlgorithm,
+        "prepared16": PreparedReusedHAlgorithm,
+        "prepared32": PreparedReusedHAlgorithm,
+        "grouped16": GroupedOutputHAlgorithm,
+        "grouped32": GroupedOutputHAlgorithm,
+        "input16": InputOwnedHAlgorithm,
+        "input32": InputOwnedHAlgorithm,
+        "stream16": StreamingInputHAlgorithm,
+        "stream32": StreamingInputHAlgorithm,
+        "owner_batch": OwnerBatchHAlgorithm,
+        "owner_batch_stream": OwnerBatchStreamingHAlgorithm,
+        "input_site32": InputSiteStreamingHAlgorithm,
+        "input_order32": InputOrderStreamingHAlgorithm,
+        "site16": SiteRoutedHAlgorithm,
+        "site32": SiteRoutedHAlgorithm,
+        "site_stream16": SiteRoutedStreamingHAlgorithm,
+        "site_stream32": SiteRoutedStreamingHAlgorithm,
+        "matrix": RegularMatrixAlgorithm,
+        "factor": RegularFactorAlgorithm,
+    }[route]()
+    registry = Registry()
+    registry.register(algorithm)
+    recipe = {
+        "onchip": OnchipHRecipe,
+        "owner": OutputOwnedHRecipe,
+        "reuse": ReusedHRecipe,
+        "parallel16": lambda **kw: ParallelReusedHRecipe(h_batch=16, **kw),
+        "parallel32": lambda **kw: ParallelReusedHRecipe(h_batch=32, **kw),
+        "prepared16": lambda **kw: PreparedReusedHRecipe(h_batch=16, **kw),
+        "prepared32": lambda **kw: PreparedReusedHRecipe(h_batch=32, **kw),
+        "grouped16": lambda **kw: GroupedOutputHRecipe(h_batch=16, **kw),
+        "grouped32": lambda **kw: GroupedOutputHRecipe(h_batch=32, **kw),
+        "input16": lambda **kw: InputOwnedHRecipe(h_batch=16, **kw),
+        "input32": lambda **kw: InputOwnedHRecipe(h_batch=32, **kw),
+        "stream16": lambda **kw: StreamingInputHRecipe(
+            h_batch=16, g_batch=kw.pop("g_batch", max(8, kw.get("batch_tile", 8))), **kw
+        ),
+        "stream32": lambda **kw: StreamingInputHRecipe(
+            h_batch=32, g_batch=kw.pop("g_batch", max(8, kw.get("batch_tile", 8))), **kw
+        ),
+        "owner_batch": OwnerBatchHRecipe,
+        "owner_batch_stream": OwnerBatchStreamingHRecipe,
+        "input_site32": InputSiteStreamingHRecipe,
+        "input_order32": InputOrderStreamingHRecipe,
+        "site16": lambda **kw: SiteRoutedHRecipe(h_batch=16, **kw),
+        "site32": lambda **kw: SiteRoutedHRecipe(h_batch=32, **kw),
+        "site_stream16": lambda **kw: SiteRoutedStreamingHRecipe(
+            h_batch=16, g_batch=kw.pop("g_batch", max(8, kw.get("batch_tile", 8))), **kw
+        ),
+        "site_stream32": lambda **kw: SiteRoutedStreamingHRecipe(
+            h_batch=32, g_batch=kw.pop("g_batch", max(8, kw.get("batch_tile", 8))), **kw
+        ),
+    }.get(route, PeriodicRecipe)(**settings)
+    plan = ExecutionPlan(algorithm.id, algorithm.revision, recipe)
+    registry.validate_plan(plan)
+    return FixedSelector(plan, registry=registry), plan, registry
+
+
+def model(
+    p, route=None, *, shape=(33, 65), periods=None, origin=(-0.25, 0.125), **settings
+):
+    # Binary-exact spacing fixes placement for the first D2 CUDA scope.
+    periods = periods or (shape[0] * 0.125, shape[1] * 0.25)
+    chart = chart_presets.regular_grid(
+        grid_shape=tuple((n,) for n in shape),
+        spacing=tuple(l / n for l, n in zip(periods, shape, strict=True)),
+        origin=origin,
+        geometry="flat_torus",
+    )
+    recipe_settings = {
+        name: settings.pop(name)
+        for name in list(settings)
+        if name
+        in (
+            "gemm",
+            "prep_group",
+            "prep_sites",
+            "atom_group",
+            "patch_sites",
+            "batch_tile",
+            "output_tile",
+            "h_batch",
+            "output_group",
+            "input_tile",
+            "g_batch",
+            "owner_batch_tile",
+        )
+    }
+    layer = BASE_MODEL(
+        p, shape=shape, periods=periods, origin=origin, chart=chart, **settings
+    )
+    if route is not None:
+        layer.selector = selector(route, **recipe_settings)[0]
+    return layer
+
+
+@pytest.mark.parametrize(
+    "route",
+    [
+        "matrix",
+        "factor",
+        "onchip",
+        "owner",
+        "reuse",
+        "parallel16",
+        "parallel32",
+        "prepared16",
+        "prepared32",
+        "grouped16",
+        "grouped32",
+        "input16",
+        "input32",
+        "stream16",
+        "stream32",
+        "owner_batch",
+        "owner_batch_stream",
+        "input_site32",
+        "input_order32",
+        "site16",
+        "site32",
+        "site_stream16",
+        "site_stream32",
+    ],
+)
+def test_metadata_roundtrip_scope_and_no_gpu_import(route):
+    _, plan, registry = selector(route)
+    assert registry.loads_plan(registry.dumps_plan(plan)) == plan
+    layer = model(periodic.parameters(17))
+    context = replace(
+        layer.build_context(LinearInputs(torch.zeros(3, 65))),
+        device=DeviceInfo("cuda", 0),
+    )
+    algorithm = registry.get(plan.algorithm_id, revision=plan.algorithm_revision)
+    assert algorithm.supports(context, plan.recipe).supported
+    for chart in (
+        chart_presets.regular_grid(grid_shape=((3, 11), (65,)), geometry="flat_torus"),
+        chart_presets.regular_grid(
+            grid_shape=((33,), (65,)), spacing=1.0, geometry="flat_torus"
+        ),
+    ):
+        if chart.grid_shape == ((33,), (65,)):
+            chart = replace(
+                chart, spacing=(0.5, 1.0)
+            )  # Partial period: refuse modulo-site mapping.
+        fault = replace(
+            context,
+            operator=replace(
+                context.operator,
+                layout=replace(context.operator.layout, chart=chart),
+                kernel=presets.polar_periodic_profile_product(
+                    profiles=(TriweightSpec(),) * chart.geometry.intrinsic_dim,
+                    amplitude_max=1.0,
+                    bounds=BandwidthBounds(
+                        minimum=1.0, birth=1.0, maximum=16.0, upper_floor=1.0
+                    ),
+                    w_c=1.0,
+                ),
+            ),
+        )
+        assert not algorithm.supports(fault, plan.recipe).supported
+    if route in (
+        "owner",
+        "reuse",
+        "parallel16",
+        "parallel32",
+        "prepared16",
+        "prepared32",
+        "grouped16",
+        "grouped32",
+        "input16",
+        "input32",
+        "stream16",
+        "stream32",
+        "owner_batch",
+        "owner_batch_stream",
+        "input_site32",
+        "input_order32",
+        "site16",
+        "site32",
+        "site_stream16",
+        "site_stream32",
+    ):
+        assert algorithm.workspace_bound(context, plan.recipe) is None
+    if route == "onchip":
+        assert algorithm.workspace_bound(context, plan.recipe) == 4 * (
+            (17 + 3) * 17 + 1
+        )
+
+
+@pytest.mark.parametrize("tile", [True, 1, 0, 32])
+def test_reject_invalid_batch_tile(tile):
+    with pytest.raises(ValueError):
+        OnchipHRecipe(batch_tile=tile)
+
+
+def test_metadata_lazy_import():
+    code = """
+import sys
+from torchcst._backends.cuda.algorithms.linear.regular_grid_h.algorithm import OnchipHAlgorithm
+from torchcst._backends.cuda.algorithms.linear.regular_grid_h.recipe import OnchipHRecipe
+from torchcst._backends.registry import Registry
+from torchcst._backends.schema import ExecutionPlan
+r=Registry(); a=OnchipHAlgorithm(); r.register(a)
+p=ExecutionPlan(a.id,a.revision,OnchipHRecipe())
+assert r.loads_plan(r.dumps_plan(p))==p
+assert 'triton' not in sys.modules
+assert not any(n.endswith(('regular_grid_h.executor','regular_grid_h.kernels')) for n in sys.modules)
+"""
+    subprocess.run(
+        [sys.executable, "-c", code],
+        check=True,
+        capture_output=True,
+        env=dict(os.environ, PYTHONPATH=os.pathsep.join(sys.path)),
+    )
+
+
+@GPU
+@pytest.mark.parametrize(
+    "route",
+    [
+        "matrix",
+        "factor",
+        "onchip",
+        "owner",
+        "reuse",
+        "parallel16",
+        "parallel32",
+        "prepared16",
+        "prepared32",
+        "grouped16",
+        "grouped32",
+        "input16",
+        "input32",
+        "stream16",
+        "stream32",
+        "owner_batch",
+        "owner_batch_stream",
+        "input_site32",
+        "input_order32",
+        "site16",
+        "site32",
+        "site_stream16",
+        "site_stream32",
+    ],
+)
+@pytest.mark.parametrize(
+    "batch,count,sigma", [(1, 17, 0.7), (3, 129, 0.7), (32, 17, 4.0), (64, 9, 0.7)]
+)
+def test_full_atom_oracle_strides_batch_tiles_seams_and_broad(
+    route, batch, count, sigma
+):
+    layer = model(periodic.parameters(count), route, sigma=sigma, device="cuda")
+    x = torch.randn(batch, 130, device="cuda")[:, ::2].detach().requires_grad_()
+    dy = torch.randn(33, batch, device="cuda").T
+    y = layer(x)
+    periodic.gate(
+        (y, *torch.autograd.grad(y, (x, layer.atoms.p), dy)),
+        periodic.oracle(layer, x, dy),
+    )
+
+
+@GPU
+@pytest.mark.parametrize(
+    "route",
+    [
+        "onchip",
+        "owner",
+        "reuse",
+        "parallel16",
+        "parallel32",
+        "prepared16",
+        "prepared32",
+        "grouped16",
+        "grouped32",
+        "input16",
+        "input32",
+        "stream16",
+        "stream32",
+        "site16",
+        "site32",
+        "site_stream16",
+        "site_stream32",
+    ],
+)
+@pytest.mark.parametrize(
+    "settings",
+    [
+        {"batch_tile": 4, "atom_group": 1, "patch_sites": 32},
+        {"batch_tile": 16, "atom_group": 4, "patch_sites": 16},
+    ],
+)
+def test_alternative_explicit_tiles(route, settings):
+    layer = model(periodic.parameters(17), route, device="cuda", **settings)
+    x = torch.randn(37, 65, device="cuda", requires_grad=True)
+    dy = torch.randn(37, 33, device="cuda")
+    y = layer(x)
+    periodic.gate(
+        (y, *torch.autograd.grad(y, (x, layer.atoms.p), dy)),
+        periodic.oracle(layer, x, dy),
+    )
+
+
+@GPU
+@pytest.mark.parametrize(
+    "route",
+    [
+        "onchip",
+        "owner",
+        "reuse",
+        "parallel16",
+        "parallel32",
+        "prepared16",
+        "prepared32",
+        "grouped16",
+        "grouped32",
+        "input16",
+        "input32",
+        "stream16",
+        "stream32",
+        "owner_batch",
+        "owner_batch_stream",
+        "input_site32",
+        "input_order32",
+        "site16",
+        "site32",
+        "site_stream16",
+        "site_stream32",
+    ],
+)
+@pytest.mark.parametrize("case", ["empty", "singleton", "below", "equal", "above"])
+def test_product_floor_and_singleton_gradients(route, monkeypatch, case):
+    monkeypatch.setattr(periodic, "model", model)
+    periodic.test_whole_atom_floor_and_singleton_support_derivatives(route, case)
+
+
+@GPU
+@pytest.mark.parametrize(
+    "route",
+    [
+        "onchip",
+        "owner",
+        "reuse",
+        "parallel16",
+        "parallel32",
+        "prepared16",
+        "prepared32",
+        "grouped16",
+        "grouped32",
+        "input16",
+        "input32",
+        "stream16",
+        "stream32",
+        "owner_batch",
+        "owner_batch_stream",
+        "input_site32",
+        "input_order32",
+        "site16",
+        "site32",
+        "site_stream16",
+        "site_stream32",
+    ],
+)
+@pytest.mark.parametrize("count", [0, 17])
+@pytest.mark.parametrize("need_x,need_p", [(True, False), (False, True), (True, True)])
+def test_zero_atoms_and_requested_gradients(route, monkeypatch, count, need_x, need_p):
+    monkeypatch.setattr(periodic, "model", model)
+    periodic.test_zero_atoms_and_requested_gradient_branches(
+        route, count, need_x, need_p
+    )
+
+
+@GPU
+@pytest.mark.parametrize(
+    "route",
+    [
+        "onchip",
+        "owner",
+        "reuse",
+        "parallel16",
+        "parallel32",
+        "prepared16",
+        "prepared32",
+        "grouped16",
+        "grouped32",
+        "input16",
+        "input32",
+        "stream16",
+        "stream32",
+        "owner_batch",
+        "owner_batch_stream",
+        "input_site32",
+        "input_order32",
+        "site16",
+        "site32",
+        "site_stream16",
+        "site_stream32",
+    ],
+)
+def test_retained_forward_snapshots_before_live_parameter_width_and_chart_updates(
+    route,
+):
+    layer = model(periodic.parameters(17), route, live=True, device="cuda")
+    x = torch.randn(11, 65, device="cuda", requires_grad=True)
+    dy = torch.randn(11, 33, device="cuda")
+    expected = periodic.oracle(layer, x, dy)
+    y = layer(x)
+    first = torch.autograd.grad(y, (x, layer.atoms.p), dy, retain_graph=True)
+    periodic.gate((y, *first), expected)
+    with torch.no_grad():
+        layer.atoms.p.mul_(1.05)
+        layer.kernel.amplitude_max.mul_(0.8)
+        layer.kernel.sigma_max_input.mul_(0.9)
+        layer.kernel.sigma_max_output.mul_(0.9)
+        layer.chart.origin.add_(0.07)
+        layer.chart.spacing.mul_(2)
+        layer.chart.geometry.periods.mul_(2)
+    yy = layer(x)
+    periodic.gate(
+        (yy, *torch.autograd.grad(yy, (x, layer.atoms.p), dy)),
+        periodic.oracle(layer, x, dy),
+    )
+    periodic.gate((y, *torch.autograd.grad(y, (x, layer.atoms.p), dy)), expected)
+
+
+@GPU
+@pytest.mark.parametrize(
+    "route",
+    [
+        "onchip",
+        "owner",
+        "reuse",
+        "parallel16",
+        "parallel32",
+        "prepared16",
+        "prepared32",
+        "grouped16",
+        "grouped32",
+        "input16",
+        "input32",
+        "stream16",
+        "stream32",
+        "owner_batch",
+        "owner_batch_stream",
+        "input_site32",
+        "input_order32",
+        "site16",
+        "site32",
+        "site_stream16",
+        "site_stream32",
+    ],
+)
+def test_no_full_h_g_saved_and_backward_recomputation(
+    route,
+):
+    layer = model(periodic.parameters(129), route, device="cuda")
+    x = torch.randn(19, 65, device="cuda", requires_grad=True)
+    saved = []
+
+    def save(t):
+        saved.append(tuple(t.shape))
+        return t
+
+    with torch.autograd.graph.saved_tensors_hooks(save, lambda t: t):
+        layer(x).sum().backward()
+    assert saved == [(19, 65), (129, 4), (), (13, 129)]
+    assert (129, 19) not in saved and (19, 129) not in saved
+
+
+@GPU
+@pytest.mark.parametrize(
+    "route",
+    [
+        "onchip",
+        "owner",
+        "reuse",
+        "parallel16",
+        "parallel32",
+        "prepared16",
+        "prepared32",
+        "grouped16",
+        "grouped32",
+        "input16",
+        "input32",
+        "stream16",
+        "stream32",
+        "owner_batch",
+        "owner_batch_stream",
+        "input_site32",
+        "input_order32",
+        "site16",
+        "site32",
+        "site_stream16",
+        "site_stream32",
+    ],
+)
+def test_twenty_graph_replays_public_optimizer_live_width_and_all_task_gradients(
+    route,
+    monkeypatch,
+):
+    monkeypatch.setattr(periodic, "model", model)
+    # Use binary-exact full-period placement throughout the reused update test.
+    original = model
+
+    def graph_model(*args, **kwargs):
+        kwargs.pop("periods", None)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(periodic, "model", graph_model)
+    periodic.test_twenty_graph_replays_same_cotangent_public_clock_moments_and_live_sigma(
+        route, public_fused=True
+    )
+
+
+@GPU
+@pytest.mark.parametrize(
+    "route",
+    [
+        "onchip",
+        "owner",
+        "reuse",
+        "parallel16",
+        "parallel32",
+        "prepared16",
+        "prepared32",
+        "grouped16",
+        "grouped32",
+        "input16",
+        "input32",
+        "stream16",
+        "stream32",
+        "owner_batch",
+        "owner_batch_stream",
+        "input_site32",
+        "input_order32",
+        "site16",
+        "site32",
+        "site_stream16",
+        "site_stream32",
+    ],
+)
+def test_twenty_public_eager_updates(route, monkeypatch):
+    monkeypatch.setattr(periodic, "model", model)
+    periodic.test_twenty_eager_public_adamw_updates_match_reference_and_live_width(
+        route
+    )
+
+
+@pytest.mark.parametrize("tile", [True, 1, 0, 128])
+def test_reject_invalid_output_tile(tile):
+    with pytest.raises(ValueError):
+        OutputOwnedHRecipe(output_tile=tile)
+
+
+@GPU
+@pytest.mark.parametrize(
+    "route",
+    [
+        "owner",
+        "reuse",
+        "parallel16",
+        "parallel32",
+        "prepared16",
+        "prepared32",
+        "grouped16",
+        "grouped32",
+        "input16",
+        "input32",
+        "stream16",
+        "stream32",
+        "owner_batch",
+        "owner_batch_stream",
+        "input_site32",
+        "input_order32",
+        "site16",
+        "site32",
+        "site_stream16",
+        "site_stream32",
+    ],
+)
+@pytest.mark.parametrize("tile", [8, 16, 32, 64])
+@pytest.mark.parametrize("broad", [False, True])
+def test_output_owner_partial_tile_seam_cluster_and_no_fixed_capacity(
+    route, tile, broad
+):
+    p = periodic.parameters(257)
+    p[:, 2] = torch.linspace(-0.35, 0.15, len(p))  # Cluster around the seam.
+    layer = model(
+        p,
+        route,
+        shape=(37, 19),
+        output_tile=tile,
+        sigma=9.0 if broad else 0.7,
+        device="cuda",
+    )
+    x = torch.randn(7, 38, device="cuda")[:, ::2].detach().requires_grad_()
+    dy = torch.randn(37, 7, device="cuda").T
+    y = layer(x)
+    periodic.gate(
+        (y, *torch.autograd.grad(y, (x, layer.atoms.p), dy)),
+        periodic.oracle(layer, x, dy),
+    )
+
+
+@GPU
+@pytest.mark.parametrize(
+    "route,capacity",
+    [
+        ("reuse", 8),
+        ("parallel16", 16),
+        ("parallel32", 32),
+        ("prepared16", 16),
+        ("prepared32", 32),
+        ("grouped16", 16),
+        ("grouped32", 32),
+        ("input16", 16),
+        ("input32", 32),
+        ("stream16", 16),
+        ("stream32", 32),
+        ("site16", 16),
+        ("site32", 32),
+        ("owner_batch", 32),
+        ("owner_batch_stream", 32),
+        ("input_site32", 32),
+        ("input_order32", 32),
+        ("site_stream16", 16),
+        ("site_stream32", 32),
+    ],
+)
+def test_reused_h_overwrites_one_buffer_for_every_partial_batch_chunk(
+    monkeypatch, route, capacity
+):
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h import output_owner
+
+    produce = output_owner.produce_h_chunk
+    aggregate = output_owner.aggregate_chunk
+    calls = []
+
+    def observed_produce(x, packed, sizes, recipe, routing, h, batch_start):
+        calls.append((batch_start, tuple(h.shape), h.data_ptr()))
+        return produce(x, packed, sizes, recipe, routing, h, batch_start)
+
+    def poisoned_after_use(*args, **kwargs):
+        aggregate(*args, **kwargs)
+        kwargs["h"].fill_(float("nan"))
+
+    monkeypatch.setattr(output_owner, "produce_h_chunk", observed_produce)
+    monkeypatch.setattr(output_owner, "aggregate_chunk", poisoned_after_use)
+    layer = model(periodic.parameters(129), route, device="cuda")
+    x = torch.randn(37, 65, device="cuda", requires_grad=True)
+    dy = torch.randn(37, 33, device="cuda")
+    y = layer(x)
+    periodic.gate(
+        (y, *torch.autograd.grad(y, (x, layer.atoms.p), dy)),
+        periodic.oracle(layer, x, dy),
+    )
+    assert [c[0] for c in calls] == list(range(0, 37, capacity))
+    expected_shape = (129, 8) if capacity == 8 else (capacity // 8, 129, 8)
+    assert all(c[1] == expected_shape for c in calls)
+    assert len({c[2] for c in calls}) == 1
+
+
+@pytest.mark.parametrize("capacity", [True, 0, 8, 17, 64])
+def test_reject_invalid_h_capacity(capacity):
+    with pytest.raises(ValueError):
+        ParallelReusedHRecipe(h_batch=capacity)
+    with pytest.raises(ValueError):
+        PreparedReusedHRecipe(h_batch=capacity)
+
+
+def test_reused_recipes_are_distinct():
+    with pytest.raises(TypeError):
+        ParallelReusedHAlgorithm().validate_recipe(PreparedReusedHRecipe())
+    with pytest.raises(TypeError):
+        PreparedReusedHAlgorithm().validate_recipe(ParallelReusedHRecipe())
+    with pytest.raises(TypeError):
+        ReusedHAlgorithm().validate_recipe(ParallelReusedHRecipe())
+    with pytest.raises(TypeError):
+        ParallelReusedHAlgorithm().validate_recipe(ReusedHRecipe())
+
+
+@GPU
+@pytest.mark.parametrize("capacity", [16, 32])
+@pytest.mark.parametrize("shape,sigma", [((33, 65), 0.7), ((17, 19), 9.0)])
+def test_aggregation_probes_real_formula_partial_chunks_and_census(
+    tmp_path, capacity, shape, sigma
+):
+    from benchmarks.cuda.linear.aggregation_diagnostics import aggregation_probes
+
+    layer = model(
+        periodic.parameters(17),
+        "parallel16" if capacity == 16 else "parallel32",
+        shape=shape,
+        sigma=sigma,
+        device="cuda",
+    )
+    x = torch.randn(19, shape[1] * 2, device="cuda")[:, ::2].detach().requires_grad_()
+    dy = torch.randn(shape[0], 19, device="cuda").T
+    result = aggregation_probes(
+        layer,
+        x,
+        ParallelReusedHRecipe(h_batch=capacity),
+        expected=periodic.oracle(layer, x, dy)[0],
+        directory=tmp_path,
+        samples=3,
+    )
+    assert result["status"] == "PASS"
+    assert result["census"]["cpu_enumeration_match"]
+    assert set(result["median_ms"]) == {
+        "runtime-full",
+        "full",
+        "scale-first",
+        "sorted-p",
+        "sorted-p-scale-first",
+        "sorted-p-with-id",
+        "sorted-p-scale-first-with-id",
+        "norm-one",
+        "sorted-p-norm-one",
+        "safe-numerator",
+        "sorted-p-safe-numerator",
+        "support-unit",
+        "synthetic-h",
+        "gather-reduce",
+        "index-walk",
+    }
+    assert [chunk["batch_start"] for chunk in result["per_chunk"]] == list(
+        range(0, 19, capacity)
+    )
+    assert result["H_bytes"] == 17 * capacity * 4
+    assert all(v > 0 for v in result["median_ms"].values())
+
+
+@GPU
+@pytest.mark.parametrize(
+    "route",
+    [
+        "prepared16",
+        "prepared32",
+        "grouped16",
+        "grouped32",
+        "input16",
+        "input32",
+        "stream16",
+        "stream32",
+        "owner_batch",
+        "owner_batch_stream",
+        "input_site32",
+        "input_order32",
+        "site16",
+        "site32",
+        "site_stream16",
+        "site_stream32",
+    ],
+)
+@pytest.mark.parametrize("zero", ["amplitude", "input"])
+def test_prepared_reuse_zero_forward_preserves_nonzero_derivative(route, zero):
+    # Moving normalization before multiplication must not erase dX at X=0,
+    # or the polar-amplitude derivative at a zero amplitude parameter.
+    p = periodic.parameters(17)
+    if zero == "amplitude":
+        p[:, 0] = 0
+    layer = model(p, route, device="cuda")
+    x = torch.randn(37, 130, device="cuda")[:, ::2].detach()
+    if zero == "input":
+        x.zero_()
+    x.requires_grad_()
+    dy = torch.randn(33, 37, device="cuda").T
+    y = layer(x)
+    actual = (y, *torch.autograd.grad(y, (x, layer.atoms.p), dy))
+    expected = periodic.oracle(layer, x, dy)
+    periodic.gate(actual, expected)
+    assert torch.count_nonzero(y) == 0
+    derivative = actual[1] if zero == "input" else actual[2][:, 0]
+    assert torch.count_nonzero(derivative) > 0
+
+
+@GPU
+@pytest.mark.parametrize(
+    "route",
+    [
+        "prepared16",
+        "prepared32",
+        "grouped16",
+        "grouped32",
+        "input16",
+        "input32",
+        "stream16",
+        "stream32",
+        "owner_batch",
+        "owner_batch_stream",
+        "input_site32",
+        "input_order32",
+        "site16",
+        "site32",
+        "site_stream16",
+        "site_stream32",
+    ],
+)
+@pytest.mark.parametrize("sigma", [0.01, 0.25000006])
+def test_prepared_nonfinite_scale_preserves_original_order_and_graph(route, sigma):
+    # amp/Su can overflow while (raw_U/Su)*amp remains finite. The empty
+    # atom also has an independent FP64 zero oracle. For the extreme nonempty
+    # case retain the original floating order bitwise, without relaxing its
+    # ordinary-sized FP64 gate or claiming a new precision guarantee.
+    p = torch.tensor([[0.2, 1.2, 0.25, 0.25]])
+    settings = {
+        "shape": (2, 2),
+        "periods": (2.0, 2.0),
+        "origin": (0.0, 0.0),
+        "sigma": sigma,
+        "floor": 1e-40,
+        "device": "cuda",
+    }
+    candidate = model(p, route, **settings)
+    control = model(
+        p, "parallel16" if route.endswith("16") else "parallel32", **settings
+    )
+    for layer in (candidate, control):
+        layer.kernel.amplitude_max.fill_(1e30)
+    x = torch.tensor([[0.3, -0.5]], device="cuda", requires_grad=True)
+    dy = torch.tensor([[0.2, -0.7]], device="cuda")
+    expected_y = control(x)
+    expected = tuple(
+        t.detach().clone()
+        for t in (
+            expected_y,
+            *torch.autograd.grad(expected_y, (x, control.atoms.p), dy),
+        )
+    )
+    del expected_y
+
+    def call():
+        y = candidate(x)
+        return (y, *torch.autograd.grad(y, (x, candidate.atoms.p), dy))
+
+    actual = tuple(t.detach().clone() for t in call())
+    if sigma == 0.01:
+        periodic.gate(actual, periodic.oracle(candidate, x, dy))
+    for a, e in zip(actual, expected, strict=True):
+        assert a.isfinite().all() and e.isfinite().all()
+        torch.testing.assert_close(a, e, rtol=0, atol=0)
+    capture_stream = torch.cuda.Stream()
+    capture_stream.wait_stream(torch.cuda.current_stream())
+    with torch.cuda.stream(capture_stream):
+        call()  # Warmup and capture share a stream; no eager graph is retained.
+    torch.cuda.current_stream().wait_stream(capture_stream)
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph, stream=capture_stream):
+        replay = call()
+    for _ in range(3):
+        graph.replay()
+        for a, e in zip(replay, expected, strict=True):
+            torch.testing.assert_close(a, e, rtol=0, atol=0)
+    # The guard must be rebuilt after live values return to the finite route.
+    candidate.kernel.amplitude_max.fill_(1.0)
+    control.kernel.amplitude_max.fill_(1.0)
+    cy = control(x)
+    finite_expected = (cy, *torch.autograd.grad(cy, (x, control.atoms.p), dy))
+    if sigma == 0.01:
+        periodic.gate(call(), periodic.oracle(candidate, x, dy))
+    graph.replay()
+    for a, e in zip(replay, finite_expected, strict=True):
+        torch.testing.assert_close(a, e, rtol=4e-4, atol=4e-4)
+
+
+@GPU
+@pytest.mark.parametrize("shape,sigma", [((33, 65), 0.7), ((17, 19), 9.0)])
+def test_prepared_probes_split_partial_chunks_and_backward_controls(
+    tmp_path, shape, sigma
+):
+    from benchmarks.cuda.linear.aggregation_diagnostics import prepared_probes
+
+    layer = model(
+        periodic.parameters(17), "prepared16", shape=shape, sigma=sigma, device="cuda"
+    )
+    x = torch.randn(19, shape[1] * 2, device="cuda")[:, ::2].detach().requires_grad_()
+    dy = torch.randn(shape[0], 19, device="cuda").T
+    result = prepared_probes(
+        layer,
+        x,
+        dy,
+        PreparedReusedHRecipe(h_batch=16),
+        expected=periodic.oracle(layer, x, dy),
+        directory=tmp_path,
+        samples=3,
+    )
+    assert result["status"] == "PASS" and result["same_runtime_bitwise"]
+    assert len(result["checks"]) == 5
+    assert result["backward"]["same_partial_bitwise"]
+    assert result["split_scratch_bytes"]["split4"] == 4 * 19 * shape[0] * 4
+
+
+@pytest.mark.parametrize("group", [True, 0, 8, 17, 64])
+def test_reject_invalid_output_group(group):
+    with pytest.raises(ValueError):
+        GroupedOutputHRecipe(output_group=group)
+
+
+def test_grouped_output_recipe_is_distinct_and_keeps_h_group():
+    recipe = GroupedOutputHRecipe()
+    assert recipe.atom_group == 8 and recipe.output_group == 32
+    with pytest.raises(TypeError):
+        PreparedReusedHAlgorithm().validate_recipe(recipe)
+    with pytest.raises(TypeError):
+        GroupedOutputHAlgorithm().validate_recipe(PreparedReusedHRecipe())
+
+
+@pytest.mark.parametrize("tile", [True, 0, 4, 17, 128])
+def test_reject_invalid_input_tile(tile):
+    with pytest.raises(ValueError):
+        InputOwnedHRecipe(input_tile=tile)
+
+
+def test_input_owner_recipe_is_distinct():
+    with pytest.raises(TypeError):
+        GroupedOutputHAlgorithm().validate_recipe(InputOwnedHRecipe())
+    with pytest.raises(TypeError):
+        InputOwnedHAlgorithm().validate_recipe(GroupedOutputHRecipe())
+
+
+@GPU
+@pytest.mark.parametrize("capacity", [16, 32])
+@pytest.mark.parametrize("tile", [8, 16, 32, 64])
+@pytest.mark.parametrize("streamed", [False, True, "input_site32", "input_order32"])
+def test_input_owner_one_g_buffer_overwritten_before_next_chunk(
+    monkeypatch, capacity, tile, streamed
+):
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h import input_kernels
+
+    calls = []
+    original = input_kernels.produce_g_parameters
+
+    class Capture:
+        def __getitem__(self, grid):
+            launch = original[grid]
+
+            def call(*args, **kwargs):
+                calls.append(
+                    (
+                        args[19],
+                        args[4].data_ptr(),
+                        tuple(args[4].shape),
+                        args[5].data_ptr(),
+                        tuple(args[5].shape),
+                    )
+                )
+                return launch(*args, **kwargs)
+
+            return call
+
+    monkeypatch.setattr(input_kernels, "produce_g_parameters", Capture())
+    layer = model(
+        periodic.parameters(129),
+        streamed
+        if isinstance(streamed, str)
+        else ("stream" if streamed else "input") + str(capacity),
+        input_tile=tile,
+        device="cuda",
+    )
+    x = torch.randn(37, 65, device="cuda", requires_grad=True)
+    dy = torch.randn(37, 33, device="cuda")
+    y = layer(x)
+    periodic.gate(
+        (y, *torch.autograd.grad(y, (x, layer.atoms.p), dy)),
+        periodic.oracle(layer, x, dy),
+    )
+    g_capacity = 8 if streamed else capacity
+    assert [c[0] for c in calls] == list(range(0, 37, g_capacity))
+    assert len({c[1] for c in calls}) == 1
+    assert all(c[2] == (g_capacity // 8, 129, 8) for c in calls)
+    if streamed:
+        assert len({c[3] for c in calls}) == 1
+        assert all(c[4] == (1, 3, 129) for c in calls)
+
+
+@pytest.mark.parametrize("capacity", [True, 0, 4, 17, 64])
+def test_reject_invalid_g_capacity(capacity):
+    with pytest.raises(ValueError):
+        StreamingInputHRecipe(g_batch=capacity)
+
+
+def test_streaming_recipe_distinct_and_batch_compatible():
+    with pytest.raises(ValueError):
+        StreamingInputHRecipe(batch_tile=16, g_batch=8)
+    with pytest.raises(TypeError):
+        InputOwnedHAlgorithm().validate_recipe(StreamingInputHRecipe())
+    with pytest.raises(TypeError):
+        StreamingInputHAlgorithm().validate_recipe(InputOwnedHRecipe())
+
+
+def test_site_routed_recipes_are_distinct():
+    for algorithm, wrong in (
+        (SiteRoutedHAlgorithm(), GroupedOutputHRecipe()),
+        (GroupedOutputHAlgorithm(), SiteRoutedHRecipe()),
+        (SiteRoutedStreamingHAlgorithm(), StreamingInputHRecipe()),
+        (StreamingInputHAlgorithm(), SiteRoutedStreamingHRecipe()),
+    ):
+        with pytest.raises(TypeError):
+            algorithm.validate_recipe(wrong)
+
+
+@GPU
+@pytest.mark.parametrize(
+    "route", ["site32", "site_stream32", "owner_batch", "owner_batch_stream"]
+)
+@pytest.mark.parametrize("tile", [8, 16, 64])
+@pytest.mark.parametrize(
+    "shape,sigma,offset",
+    [((37, 19), 0.7, 0.0), ((33, 65), 9.0, 0.0), ((2, 2), 9.0, 2**20)],
+)
+def test_site_prefix_circular_candidates_cover_prepared_support(
+    route, tile, shape, sigma, offset
+):
+    from torchcst._backends.cuda.algorithms.linear.periodic_product.executor import (
+        _prepare,
+    )
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h.output_owner import (
+        prepare_routing,
+    )
+
+    p = periodic.parameters(129)
+    p[:, 2] += offset
+    layer = model(p, route, shape=shape, sigma=sigma, output_tile=tile, device="cuda")
+    recipe = selector(route, output_tile=tile)[1].recipe
+    no, ni = shape
+    lo, li = map(float, layer.chart.geometry.periods)
+    oo, oi = map(float, layer.chart.origin)
+    sizes = (3, ni, no, li, lo, oi, oo)
+    packed = _prepare(layer.atoms.p, layer.kernel, sizes, recipe)
+    order, bounds, distance = prepare_routing(packed, sizes, recipe)
+    pp = packed.cpu()
+    ids, prefix, d = order.cpu(), bounds.cpu(), int(distance)
+    phase = pp[3] - oo - lo * torch.floor((pp[3] - oo) / lo)
+    keys = torch.floor(phase / (lo / no)).clamp(0, no - 1).long()
+    sorted_keys = keys[ids]
+    assert torch.all(sorted_keys[1:] >= sorted_keys[:-1])
+    torch.testing.assert_close(
+        prefix, torch.searchsorted(sorted_keys, torch.arange(no + 1)), rtol=0, atol=0
+    )
+    low, high = pp[11].long(), pp[12].long()
+    expected_d = torch.maximum((low - keys).abs(), (high - 1 - keys).abs()) + 2
+    expected_d = torch.where(high > low, expected_d, 0)
+    assert d == int(expected_d.max())
+    for start in range(0, no, tile):
+        width = min(tile, no - start)
+        length = min(width + 2 * d, no)
+        first = 0 if length == no else (start - d) % no
+        end = first + length
+        picked = ids[prefix[first] : prefix[min(end, no)]].tolist()
+        if end > no:
+            picked += ids[prefix[0] : prefix[end - no]].tolist()
+        # Independent circular distance predicate, rather than the window formula.
+        delta = (torch.arange(start, start + width)[:, None] - keys) % no
+        circular = torch.minimum(delta, no - delta)
+        expected = torch.nonzero((circular <= d).any(0)).flatten().tolist()
+        assert len(picked) == len(set(picked))
+        assert set(picked) == set(expected)
+        picked_set = set(picked)
+        for atom in range(len(p)):
+            support = {j % no for j in range(int(low[atom]), int(high[atom]))}
+            if support.intersection(range(start, start + width)):
+                assert atom in picked_set
+    input_prefix = prepare_routing(packed, sizes, recipe, output=False, tile=8)[1]
+    assert input_prefix.numel() == (ni + 7) // 8 + 1
+
+
+@pytest.mark.parametrize(
+    "recipe_cls,algorithm_cls,parent",
+    [
+        (OwnerBatchHRecipe, OwnerBatchHAlgorithm, SiteRoutedHRecipe),
+        (
+            OwnerBatchStreamingHRecipe,
+            OwnerBatchStreamingHAlgorithm,
+            SiteRoutedStreamingHRecipe,
+        ),
+    ],
+)
+def test_owner_batch_metadata(recipe_cls, algorithm_cls, parent):
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h.output_owner import (
+        active_owner_tiles,
+        allocate_h,
+        h_capacity,
+        owner_batch_tile,
+        uses_site_routing,
+    )
+
+    registry = Registry()
+    algorithm = algorithm_cls()
+    registry.register(algorithm)
+    with pytest.raises(TypeError):
+        algorithm.validate_recipe(parent())
+    for bad in (True, 8, 32):
+        with pytest.raises(ValueError):
+            recipe_cls(owner_batch_tile=bad)
+    with pytest.raises(ValueError):
+        recipe_cls(batch_tile=16)
+    for cap in (16, 32):
+        recipe = recipe_cls(h_batch=cap)
+        plan = ExecutionPlan(algorithm.id, algorithm.revision, recipe)
+        assert registry.loads_plan(registry.dumps_plan(plan)) == plan
+        assert uses_site_routing(recipe)
+        assert h_capacity(recipe) == cap and owner_batch_tile(recipe) == 16
+        h = allocate_h(torch.empty(0), 17, recipe)
+        assert h.shape == (cap // 8, 17, 8)
+        for batch in (1, 3, 15, 17, 32, 33, 64):
+            for start in range(0, batch, cap):
+                assert (
+                    active_owner_tiles(h, batch, start, recipe)
+                    == (min(cap, batch - start) + 15) // 16
+                )
+
+
+@GPU
+@pytest.mark.parametrize(
+    "route", ["owner_batch", "owner_batch_stream", "input_site32", "input_order32"]
+)
+@pytest.mark.parametrize("cap", [16, 32])
+@pytest.mark.parametrize("batch", [1, 3, 15, 17, 32, 33, 64])
+def test_owner_batch_slabs_strides_all_gradients_and_graph(route, cap, batch):
+    layer = model(periodic.parameters(17), route, h_batch=cap, sigma=0.7, device="cuda")
+    x = torch.randn(batch, 130, device="cuda")[:, ::2].detach().requires_grad_()
+    dy = torch.randn(33, batch, device="cuda").T
+    expected = periodic.oracle(layer, x, dy)
+
+    def call():
+        y = layer(x)
+        return (y, *torch.autograd.grad(y, (x, layer.atoms.p), dy))
+
+    periodic.gate(call(), expected)
+    stream = torch.cuda.Stream()
+    stream.wait_stream(torch.cuda.current_stream())
+    with torch.cuda.stream(stream):
+        call()
+    torch.cuda.current_stream().wait_stream(stream)
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph, stream=stream):
+        actual = call()
+    for _ in range(3):
+        graph.replay()
+        periodic.gate(actual, expected)
+
+
+def test_owner_batch_catalog_plans():
+    from benchmarks.cuda.linear.manifest import REGISTRY
+    from benchmarks.cuda.linear.periodic_comparison import bind_plan
+
+    for kind, recipe_cls in [
+        ("site-owner-bm16-h16", OwnerBatchHRecipe),
+        ("site-owner-bm16-h32", OwnerBatchHRecipe),
+        ("site-owner-bm16-stream-g8-h16", OwnerBatchStreamingHRecipe),
+        ("site-owner-bm16-stream-g8-h32", OwnerBatchStreamingHRecipe),
+        ("input-site-stream-g8-h32", InputSiteStreamingHRecipe),
+        ("input-order-stream-g8-h32", InputOrderStreamingHRecipe),
+    ]:
+        plan = REGISTRY.load_plan(bind_plan(model(periodic.parameters(1)), kind))
+        assert type(plan.recipe) is recipe_cls
+        assert plan.recipe.batch_tile == 8
+        assert plan.recipe.owner_batch_tile == 16
+        assert plan.recipe.h_batch == int(kind[-2:])
+
+
+@pytest.mark.parametrize(
+    "site_routed,bounds,distance,expected",
+    [
+        # N=5, tile=2: owners [0,1],[2,3],[4]; one atom at each site.
+        (True, [0, 1, 2, 3, 4, 5], 0, (5, 3, 9)),
+        # Expanded periodic intervals have 4,4,3 atoms, including seam wrap.
+        (True, [0, 1, 2, 3, 4, 5], 1, (11, 7, 19)),
+        # Full-axis clamp visits each atom once per owner.
+        (True, [0, 1, 2, 3, 4, 5], 5, (15, 9, 25)),
+        # Coarse short-final-bin guard visits all three bins for every owner.
+        (False, [0, 2, 4, 5], 0, (15, 9, 25)),
+    ],
+)
+def test_owner_stage_routing_census(site_routed, bounds, distance, expected):
+    from benchmarks.cuda.linear.periodic_comparison import routing_bounds_census
+
+    result = routing_bounds_census(
+        bounds, distance, sites=5, tile=2, group=2, site_routed=site_routed
+    )
+    assert (
+        result["candidate_atom_visits"],
+        result["atom_group_iterations"],
+        result["candidate_live_site_checks"],
+    ) == expected
+    assert result["prefix_entries"] == len(bounds)
+    assert result["guarded_max_distance"] == distance
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "stream-g8-h16",
+        "stream-g8-h32",
+        "site-stream-g8-h16",
+        "site-stream-g8-h32",
+        "site-owner-bm16-stream-g8-h16",
+        "site-owner-bm16-stream-g8-h32",
+        "input-site-stream-g8-h32",
+        "input-order-stream-g8-h32",
+    ],
+)
+def test_streaming_backward_diagnostic_layout_is_backward_not_forward_owner(kind):
+    import json
+
+    from benchmarks.cuda.linear.periodic_comparison import (
+        streaming_backward_layout,
+        streaming_stage_recipe,
+    )
+
+    recipe = streaming_stage_recipe(kind)
+    layout = streaming_backward_layout(recipe, batch=33, atoms=17)
+    assert layout["forward_H_batch_capacity"] == int(kind[-2:])
+    assert layout["G_batch_capacity"] == 8
+    assert layout["G_producer_batch_tile"] == layout["dX_owner_batch_tile"] == 8
+    assert layout["chunk_starts"] == [0, 8, 16, 24, 32]
+    assert layout["G_scratch_bytes"] == 4 * 17 * 8
+    assert (
+        layout["parameter_partial_bytes"]
+        == layout["physical_accumulator_bytes"]
+        == 4 * 17 * 3
+    )
+    assert layout["backward_saved_H_bytes"] == layout["backward_saved_G_bytes"] == 0
+    assert json.loads(json.dumps(layout)) == layout
+
+
+@pytest.mark.parametrize(
+    "kind", ["dense", "site-routed-h32", "site-owner-bm16-h32", "input-owned-h32"]
+)
+def test_streaming_backward_diagnostics_exclude_other_schedules(kind):
+    from benchmarks.cuda.linear.periodic_comparison import streaming_stage_recipe
+
+    assert streaming_stage_recipe(kind) is None
+
+
+@GPU
+@pytest.mark.parametrize(
+    "kind,route,cap",
+    [
+        ("stream-g8-h16", "stream16", 16),
+        ("stream-g8-h32", "stream32", 32),
+        ("site-stream-g8-h16", "site_stream16", 16),
+        ("site-stream-g8-h32", "site_stream32", 32),
+        ("site-owner-bm16-stream-g8-h16", "owner_batch_stream", 16),
+        ("site-owner-bm16-stream-g8-h32", "owner_batch_stream", 32),
+        ("input-site-stream-g8-h32", "input_site32", 32),
+        ("input-order-stream-g8-h32", "input_order32", 32),
+    ],
+)
+def test_streaming_backward_stages_use_actual_backward_schedule(kind, route, cap):
+    from types import SimpleNamespace
+
+    from benchmarks.cuda.linear.periodic_comparison import streaming_backward_stages
+
+    settings = {"h_batch": cap} if route == "owner_batch_stream" else {}
+    layer = model(periodic.parameters(17), route, device="cuda", **settings)
+    before = layer.atoms.p.detach().clone()
+    step = SimpleNamespace(
+        model=layer,
+        x=torch.randn(17, 65, device="cuda"),
+        target=torch.randn(17, 33, device="cuda"),
+    )
+    result = streaming_backward_stages(step, kind)
+    assert result["same_uninstrumented_backward"] and result["same_snapshot"]
+    assert result["layout"]["chunk_starts"] == [0, 8, 16]
+    assert result["layout"]["dX_owner_batch_tile"] == 8
+    assert result["input_routing_census"]["prefix_entries"] == (
+        66 if route == "input_site32" else 10
+    )
+    assert result["input_routing_census"]["batch_ctas_per_input_owner"] == 3
+    assert len(result["samples_ms"]) == 5
+    for sample in result["samples_ms"]:
+        assert sample["setup_input_routing_and_fields"] >= 0
+        assert sample["source_VJP"] >= 0
+        assert [chunk["batch_start"] for chunk in sample["chunks"]] == [0, 8, 16]
+        assert all(
+            chunk[name] >= 0
+            for chunk in sample["chunks"]
+            for name in (
+                "produce_G_and_parameter_partials",
+                "dX_owner",
+                "physical_accumulation",
+            )
+        )
+    torch.testing.assert_close(layer.atoms.p, before, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize(
+    "recipe_cls,algorithm_cls",
+    [
+        (InputSiteStreamingHRecipe, InputSiteStreamingHAlgorithm),
+        (InputOrderStreamingHRecipe, InputOrderStreamingHAlgorithm),
+    ],
+)
+def test_input_routing_recipes_reject_parent_and_sibling(recipe_cls, algorithm_cls):
+    for wrong in (
+        OwnerBatchStreamingHRecipe(),
+        InputSiteStreamingHRecipe(),
+        InputOrderStreamingHRecipe(),
+    ):
+        if type(wrong) is not recipe_cls:
+            with pytest.raises(TypeError):
+                algorithm_cls().validate_recipe(wrong)
+
+
+@GPU
+@pytest.mark.parametrize(
+    "shape,sigma,offset",
+    [
+        ((37, 19), 0.01, 0.0),
+        ((33, 65), 0.7, 0.0),
+        ((33, 65), 9.0, 0.0),
+        ((2, 2), 9.0, 2**20),
+    ],
+)
+def test_input_routing_changes_only_backward_candidates(shape, sigma, offset):
+    from torchcst._backends.cuda.algorithms.linear.periodic_product.executor import (
+        _prepare,
+    )
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h.output_owner import (
+        prepare_routing,
+    )
+
+    p = periodic.parameters(129)
+    p[:, 2] += offset
+    no, ni = shape
+    baseline = model(p, "owner_batch_stream", shape=shape, sigma=sigma, device="cuda")
+    lo, li = map(float, baseline.chart.geometry.periods)
+    oo, oi = map(float, baseline.chart.origin)
+    sizes = (3, ni, no, li, lo, oi, oo)
+    recipes = [
+        OwnerBatchStreamingHRecipe(),
+        InputSiteStreamingHRecipe(),
+        InputOrderStreamingHRecipe(),
+    ]
+    packed = _prepare(baseline.atoms.p, baseline.kernel, sizes, recipes[0])
+    forward = [prepare_routing(packed, sizes, r) for r in recipes]
+    for actual in forward[1:]:
+        for value, expected in zip(actual, forward[0], strict=True):
+            torch.testing.assert_close(value, expected, rtol=0, atol=0)
+    x = torch.randn(3, ni, device="cuda")
+    expected_y = baseline(x)
+    for route in ("input_site32", "input_order32"):
+        candidate = model(p, route, shape=shape, sigma=sigma, device="cuda")
+        torch.testing.assert_close(candidate(x), expected_y, rtol=0, atol=0)
+    routes = [prepare_routing(packed, sizes, r, output=False, tile=8) for r in recipes]
+    old, fine, ordered = [(o.cpu(), b.cpu(), int(d)) for o, b, d in routes]
+    assert torch.equal(old[1], ordered[1]) and old[2] == fine[2] == ordered[2]
+    assert fine[1].numel() == ni + 1
+    for j in range(len(old[1]) - 1):
+        assert set(old[0][old[1][j] : old[1][j + 1]].tolist()) == set(
+            ordered[0][ordered[1][j] : ordered[1][j + 1]].tolist()
+        )
+    # Independent input support coverage; every atom is unique per owner.
+    pp = packed.cpu()
+    phase = pp[2] - oi - li * torch.floor((pp[2] - oi) / li)
+    input_sites = torch.floor(phase / (li / ni)).clamp(0, ni - 1).long()
+    output_phase = pp[3] - oo - lo * torch.floor((pp[3] - oo) / lo)
+    output_sites = torch.floor(output_phase / (lo / no)).clamp(0, no - 1).long()
+    composite = (input_sites // 8) * no + output_sites
+    assert torch.all(composite[ordered[0]][1:] >= composite[ordered[0]][:-1])
+    ids, prefix, d = fine
+    for start in range(0, ni, 8):
+        width = min(8, ni - start)
+        length = min(width + 2 * d, ni)
+        first = 0 if length == ni else (start - d) % ni
+        end = first + length
+        picked = ids[prefix[first] : prefix[min(end, ni)]].tolist()
+        if end > ni:
+            picked += ids[: prefix[end - ni]].tolist()
+        assert len(picked) == len(set(picked))
+        for atom in range(len(p)):
+            support = {j % ni for j in range(int(pp[9, atom]), int(pp[10, atom]))}
+            if support.intersection(range(start, start + width)):
+                assert atom in picked
+
+
+def _producer_fixture(case):
+    """Small fixed snapshots: rho is sigma divided by unit site spacing."""
+    batch = 37 if case == "multichunk" else 11
+    shape = (
+        (5, 7) if case in ("narrow", "empty", "empty_input", "boundary") else (33, 65)
+    )
+    shape = (2, 2) if case == "floor" else shape
+    sigma = {
+        "rho3": 3.0,
+        "rho8": 8.0,
+        "narrow": 0.1,
+        "empty": 0.01,
+        "empty_input": 0.01,
+        "floor": 0.5,
+        "broad": 40.0,
+        "boundary": 1.0,
+        "multichunk": 3.0,
+    }[case]
+    periods = tuple(float(size) for size in shape)
+    origin = (0.0, 0.0) if case == "floor" else (-0.25, 0.125)
+    p = periodic.parameters(17, periods=periods, origin=origin)
+    if case in ("narrow", "empty", "floor", "boundary"):
+        offset = {"narrow": 0.037, "empty": 0.5, "floor": 0.25, "boundary": 0.0}[case]
+        p[:, 2:] = torch.tensor(origin) + offset
+    if case == "empty_input":
+        p[:, 2] = origin[0]
+        p[:, 3] = origin[1] + 0.5
+    layer = model(
+        p,
+        "input_site32",
+        shape=shape,
+        periods=periods,
+        origin=origin,
+        sigma=sigma,
+        floor=2 * 0.421875**2 if case == "floor" else 1e-6,
+        device="cuda",
+    )
+    generator = torch.Generator().manual_seed(825)
+    x = torch.randn(batch, 2 * shape[1], generator=generator).cuda()[:, ::2]
+    dy = torch.randn(shape[0], batch, generator=generator).cuda().T
+    sizes = (batch, shape[1], shape[0], periods[1], periods[0], origin[1], origin[0])
+    return layer, x, dy, sizes, InputSiteStreamingHRecipe()
+
+
+def _producer_axis_truth(x, packed, order, sizes, *, output, start, batch_tile):
+    """Independent full-axis scalar algebra on the frozen prepared snapshot.
+
+    Width/norm/log-gradient/one-point flags are inputs to these probes. Their
+    physical preparation is covered by the existing whole-atom FP64 tests.
+    This oracle independently checks both contractions without _contract,
+    support intervals, modular site indexing or any diagnostic kernel.
+    """
+    b, ni, no, li, lo, oi, oo = sizes
+    n, period, origin = (no, lo, oo) if output else (ni, li, oi)
+    point = packed.detach().cpu().double()[:, order.cpu()]
+    sites = origin + torch.arange(n, dtype=torch.float64) * (period / n)
+    residue = torch.remainder(
+        sites[None, :] - point[3 if output else 2, :, None], period
+    )
+    delta = torch.where(residue < period / 2, residue, residue - period)
+    gap = (1 - delta.square() * point[1, :, None]).clamp_min(0)
+    norm = point[5 if output else 4, :, None]
+    value = gap.pow(3) / norm
+    derivative = (
+        6 * delta * point[1, :, None] * gap.square() / norm
+        - point[7 if output else 6, :, None] * value
+    )
+    one_point = (point[8].long() & (2 if output else 1)) != 0
+    derivative[one_point] = 0
+    other_live = (point[10] > point[9]) if output else (point[12] > point[11])
+    value[~other_live] = 0
+    derivative[~other_live] = 0
+    rows = min(batch_tile, b - start)
+    inputs = torch.zeros(batch_tile, n, dtype=torch.float64)
+    inputs[:rows] = x[start : start + rows].detach().cpu().double()
+    return (value @ inputs.T)[None], (derivative @ inputs.T)[None]
+
+
+def _producer_close(actual, expected):
+    actual, expected = actual.detach().cpu().double(), expected.detach().cpu().double()
+    assert actual.shape == expected.shape
+    assert torch.isfinite(actual).all() and torch.isfinite(expected).all()
+    difference = actual - expected
+    assert float(difference.abs().max()) <= 4e-4
+    assert float(difference.norm() / expected.norm().clamp_min(1e-30)) <= 4e-4
+
+
+@GPU
+@pytest.mark.parametrize(
+    "case",
+    [
+        "rho3",
+        "rho8",
+        "narrow",
+        "floor",
+        "empty",
+        "empty_input",
+        "broad",
+        "boundary",
+        "multichunk",
+    ],
+)
+def test_producer_split_fields_partials_value_only_padding_and_graph(case):
+    import triton as tr
+
+    from torchcst._backends.cuda.algorithms.linear.periodic_product.executor import (
+        _prepare,
+    )
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h import (
+        input_kernels,
+    )
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h import (
+        producer_diagnostic_kernels as probes,
+    )
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h.output_owner import (
+        prepare_routing,
+    )
+
+    layer, x, dy, sizes, recipe = _producer_fixture(case)
+    packed = _prepare(layer.atoms.p, layer.kernel, sizes, recipe)
+    if case == "empty_input":
+        assert torch.all(packed[9] == packed[10])
+        assert torch.all(packed[11] < packed[12])
+    routing = prepare_routing(
+        packed, sizes, recipe, output=False, tile=recipe.input_tile
+    )
+    order = routing[0]
+    a, b, bm = len(layer.atoms.p), sizes[0], recipe.batch_tile
+    assert recipe.g_batch == bm == 8
+    shape = (1, a, bm)
+    g, dg, h, dh, production_g = [x.new_empty(shape) for _ in range(5)]
+    partial, production_partial = [x.new_empty((1, 3, a)) for _ in range(2)]
+    global_partial, production_global_partial = [
+        x.new_full((tr.cdiv(b, bm), 3, a), float("nan")) for _ in range(2)
+    ]
+    launch = {"num_warps": 4, "enable_fp_fusion": False}
+    grid = (tr.cdiv(a, recipe.atom_group), 1)
+
+    def probe(kernel, value, derivative, start, enabled=True):
+        kernel[grid](
+            x,
+            dy,
+            packed,
+            order,
+            value,
+            derivative,
+            a,
+            *sizes,
+            *x.stride(),
+            *dy.stride(),
+            start,
+            bm,
+            recipe.patch_sites,
+            recipe.atom_group,
+            DERIVATIVE=enabled,
+            **launch,
+        )
+
+    def combine(destination, start, streamed):
+        probes.produce_parameter_partials[grid](
+            g,
+            dg,
+            h,
+            dh,
+            packed,
+            order,
+            destination,
+            a,
+            start,
+            bm,
+            recipe.atom_group,
+            STREAM_PARTIAL=streamed,
+            **launch,
+        )
+
+    def production(destination, start, streamed=True, need_p=True):
+        input_kernels.produce_g_parameters[grid](
+            x,
+            dy,
+            packed,
+            order,
+            production_g,
+            destination,
+            a,
+            *sizes,
+            *x.stride(),
+            *dy.stride(),
+            need_p,
+            start,
+            bm,
+            recipe.patch_sites,
+            recipe.atom_group,
+            STREAM_PARTIAL=streamed,
+            **launch,
+        )
+
+    def split(start):
+        probe(probes.produce_g_probe, g, dg, start)
+        probe(probes.produce_h_probe, h, dh, start)
+        combine(partial, start, True)
+
+    expected_partials = []
+    for start in range(0, b, recipe.g_batch):
+        for field in (g, dg, h, dh, partial):
+            field.fill_(float("nan"))
+        production(production_partial, start)
+        split(start)
+        combine(global_partial, start, False)
+        production(production_global_partial, start, False)
+        _producer_close(g, production_g)
+        _producer_close(partial, production_partial)
+        expected_g, expected_dg = _producer_axis_truth(
+            dy, packed, order, sizes, output=True, start=start, batch_tile=bm
+        )
+        expected_h, expected_dh = _producer_axis_truth(
+            x, packed, order, sizes, output=False, start=start, batch_tile=bm
+        )
+        for actual, expected in (
+            (g, expected_g),
+            (dg, expected_dg),
+            (h, expected_h),
+            (dh, expected_dh),
+        ):
+            _producer_close(actual, expected)
+            if b - start < bm:
+                # Recycled scratch must overwrite every padded lane with zero.
+                assert not actual[:, :, b - start :].count_nonzero()
+        # Check field order and original-atom scatter independently of fused code.
+        gg, ddg, hh, ddh = [field.detach().cpu().double() for field in (g, dg, h, dh)]
+        amplitude = packed[0, order].detach().cpu().double()[None, :]
+        sorted_partial = torch.stack(
+            (
+                (hh * gg).sum(-1),
+                amplitude * (gg * ddh).sum(-1),
+                amplitude * (hh * ddg).sum(-1),
+            ),
+            1,
+        )
+        truth = torch.empty_like(sorted_partial)
+        truth.index_copy_(2, order.cpu(), sorted_partial)
+        _producer_close(partial, truth)
+        expected_partials.append(truth)
+        probe(probes.produce_g_probe, g, None, start, False)
+        probe(probes.produce_h_probe, h, None, start, False)
+        _producer_close(g, expected_g)
+        _producer_close(h, expected_h)
+        production(None, start, need_p=False)
+        _producer_close(g, production_g)
+    truth = torch.cat(expected_partials)
+    _producer_close(global_partial, truth)
+    _producer_close(global_partial, production_global_partial)
+    if case == "rho3":
+        # Prove replay writes actual values, not only the eager prechecks.
+        graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(graph):
+            split(start)
+        for field in (g, dg, h, dh, partial):
+            field.fill_(float("nan"))
+        graph.replay()
+        for actual, expected in (
+            (g, expected_g),
+            (dg, expected_dg),
+            (h, expected_h),
+            (dh, expected_dh),
+            (partial, truth[-1:]),
+        ):
+            _producer_close(actual, expected)
+
+
+@GPU
+def test_producer_diagnostics_smoke_complete_backward_frozen_snapshot_and_samples():
+    from types import SimpleNamespace
+
+    from benchmarks.cuda.linear.periodic_comparison import streaming_backward_stages
+
+    layer, x, _dy, _sizes, _recipe = _producer_fixture("rho3")
+    x.requires_grad_()
+    target = torch.randn(11, 33, device="cuda")
+    source = layer.atoms.p.detach().clone()
+    y = layer(x)
+    dy = (2 * (y.detach() - target) / y.numel()).detach()
+    periodic.gate(
+        (y, *torch.autograd.grad(y, (x, layer.atoms.p), dy)),
+        periodic.oracle(layer, x, dy),
+    )
+    result = streaming_backward_stages(
+        SimpleNamespace(model=layer, x=x, target=target),
+        "input-site-stream-g8-h32",
+        producer_breakdown=True,
+    )
+    assert result["same_snapshot"] and result["same_uninstrumented_backward"]
+    diagnostic = result["producer_diagnostics"]
+    assert diagnostic["same_production_G_and_partials"]
+    assert diagnostic["captured_final_chunk_matches_production"]
+    assert diagnostic["layout"]["field_shape"] == [1, 17, 8]
+    assert diagnostic["layout"]["chunk_starts"] == [0, 8]
+    assert diagnostic["layout"]["materialized_four_fields_bytes"] == 4 * 1 * 17 * 8 * 4
+    assert (
+        diagnostic["layout"]["extra_fields_vs_production_G_bytes"] == 3 * 1 * 17 * 8 * 4
+    )
+    assert diagnostic["layout"]["partial_bytes"] == 1 * 3 * 17 * 4
+    modes = {
+        "fused_production",
+        "split_G_then_H",
+        "split_H_then_G",
+        "G_value_only",
+        "H_value_only",
+        "production_G_value_only",
+    }
+    assert set(diagnostic["samples_ms"]) == modes
+    assert len(diagnostic["execution_orders"]) == 21
+    for order in diagnostic["execution_orders"]:
+        assert len(order) == len(modes) and set(order) == modes
+    for name, samples in diagnostic["samples_ms"].items():
+        assert len(samples) == 21
+        for sample in samples:
+            assert sample["whole_graph_ms"] >= 0
+            assert all(value >= 0 for value in sample["stages_ms"].values())
+            assert [chunk["batch_start"] for chunk in sample["chunks"]] == [0, 8]
+        assert diagnostic["medians_ms"][name]["whole_graph_ms"] >= 0
+    assert all(value <= 4e-4 for value in diagnostic["max_abs_vs_production"].values())
+    torch.testing.assert_close(layer.atoms.p, source, rtol=0, atol=0)
+
+
+@GPU
+@pytest.mark.parametrize("case", ["rho3", "floor", "empty_input", "broad"])
+@pytest.mark.parametrize("capacity", [8, 32])
+def test_producer_controlled_stores_fused_multislab_and_atom_orders(case, capacity):
+    import triton as tr
+
+    from torchcst._backends.cuda.algorithms.linear.periodic_product.executor import (
+        _prepare,
+    )
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h import input_kernels
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h import (
+        producer_diagnostic_kernels as probes,
+    )
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h.output_owner import (
+        prepare_routing,
+    )
+
+    layer, _x, _dy, sizes, recipe = _producer_fixture(case)
+    b, ni, no = 37, sizes[1], sizes[2]
+    sizes = (b, *sizes[1:])
+    generator = torch.Generator().manual_seed(827)
+    x = torch.randn(b, 2 * ni, generator=generator).cuda()[:, ::2]
+    dy = torch.randn(no, b, generator=generator).cuda().T
+    packed = _prepare(layer.atoms.p, layer.kernel, sizes, recipe)
+    frozen_packed = packed.clone()
+    frozen_source = layer.atoms.p.detach().clone()
+    a, bm = len(layer.atoms.p), recipe.batch_tile
+    shape = (capacity // bm, a, bm)
+    launch = {"num_warps": 4, "enable_fp_fusion": False}
+    original_order_partials = []
+    atom_orders = []
+
+    for output in (False, True):
+        order = prepare_routing(packed, sizes, recipe, output=output, tile=8)[0]
+        atom_orders.append(order)
+        g, dg, h, dh, value, auxiliary, fused_g, fused_dg, fused_h, fused_dh = [
+            x.new_empty(shape) for _ in range(10)
+        ]
+        production_g = x.new_empty(shape)
+        local_shape = (shape[0], 3, a)
+        partial, production_partial, split_partial = [
+            x.new_empty(local_shape) for _ in range(3)
+        ]
+        global_partial = x.new_full((tr.cdiv(b, bm), 3, a), float("nan"))
+        production_global = torch.empty_like(global_partial)
+
+        for start in range(0, b, capacity):
+            slabs = tr.cdiv(min(capacity, b - start), bm)
+            grid = (tr.cdiv(a, recipe.atom_group), slabs)
+            common = (
+                a,
+                *sizes,
+                *x.stride(),
+                *dy.stride(),
+                start,
+                bm,
+                recipe.patch_sites,
+                recipe.atom_group,
+            )
+
+            def probe(
+                kernel,
+                value_buffer,
+                derivative_buffer,
+                derivative,
+                matched,
+                *,
+                grid=grid,
+                order=order,
+                common=common,
+            ):
+                kernel[grid](
+                    x,
+                    dy,
+                    packed,
+                    order,
+                    value_buffer,
+                    derivative_buffer,
+                    *common,
+                    DERIVATIVE=derivative,
+                    STORE_AUX_WHEN_VALUE_ONLY=matched,
+                    **launch,
+                )
+
+            def production(
+                destination,
+                streamed,
+                *,
+                grid=grid,
+                order=order,
+                production_g=production_g,
+                common=common,
+            ):
+                input_kernels.produce_g_parameters[grid](
+                    x,
+                    dy,
+                    packed,
+                    order,
+                    production_g,
+                    destination,
+                    *common[:-4],
+                    True,
+                    *common[-4:],
+                    STREAM_PARTIAL=streamed,
+                    **launch,
+                )
+
+            for field in (g, dg, h, dh, split_partial):
+                field.fill_(float("nan"))
+            probe(probes.produce_g_probe, g, dg, True, False)
+            probe(probes.produce_h_probe, h, dh, True, False)
+            probes.produce_parameter_partials[grid](
+                g,
+                dg,
+                h,
+                dh,
+                packed,
+                order,
+                split_partial,
+                a,
+                start,
+                bm,
+                recipe.atom_group,
+                STREAM_PARTIAL=True,
+                **launch,
+            )
+            for kernel, expected_value, expected_derivative in (
+                (probes.produce_g_probe, g, dg),
+                (probes.produce_h_probe, h, dh),
+            ):
+                value.fill_(float("nan"))
+                auxiliary.fill_(float("nan"))
+                probe(kernel, value, auxiliary, False, True)
+                # The matched-store control writes identical values twice.
+                assert torch.equal(value[:slabs], auxiliary[:slabs])
+                _producer_close(value[:slabs], expected_value[:slabs])
+                probe(kernel, value, auxiliary, True, True)
+                torch.testing.assert_close(
+                    value[:slabs], expected_value[:slabs], rtol=0, atol=0
+                )
+                torch.testing.assert_close(
+                    auxiliary[:slabs], expected_derivative[:slabs], rtol=0, atol=0
+                )
+                if slabs < shape[0]:
+                    assert value[slabs:].isnan().all()
+                    assert auxiliary[slabs:].isnan().all()
+
+            expected_fields = []
+            for inputs, is_output in ((dy, True), (x, False)):
+                per_slab = [
+                    _producer_axis_truth(
+                        inputs,
+                        packed,
+                        order,
+                        sizes,
+                        output=is_output,
+                        start=start + slab * bm,
+                        batch_tile=bm,
+                    )
+                    for slab in range(slabs)
+                ]
+                expected_fields.extend(
+                    torch.cat([pair[index] for pair in per_slab]) for index in (0, 1)
+                )
+            for actual, expected in zip((g, dg, h, dh), expected_fields, strict=True):
+                _producer_close(actual[:slabs], expected)
+                last_rows = min(bm, b - start - (slabs - 1) * bm)
+                assert not actual[slabs - 1, :, last_rows:].count_nonzero()
+                if slabs < shape[0]:
+                    assert actual[slabs:].isnan().all()
+
+            for streamed in (True, False):
+                destination = partial if streamed else global_partial
+                production_destination = (
+                    production_partial if streamed else production_global
+                )
+                offset = 0 if streamed else start // bm
+                production(production_destination, streamed)
+                for materialize in (False, True):
+                    for field in (fused_g, fused_dg, fused_h, fused_dh):
+                        field.fill_(float("nan"))
+                    if streamed:
+                        partial.fill_(float("nan"))
+                    probes.produce_fused_probe[grid](
+                        x,
+                        dy,
+                        packed,
+                        order,
+                        fused_g,
+                        destination,
+                        fused_dg if materialize else None,
+                        fused_h if materialize else None,
+                        fused_dh if materialize else None,
+                        *common,
+                        STREAM_PARTIAL=streamed,
+                        MATERIALIZE_AUX=materialize,
+                        **launch,
+                    )
+                    _producer_close(fused_g[:slabs], production_g[:slabs])
+                    _producer_close(
+                        destination[offset : offset + slabs],
+                        production_destination[offset : offset + slabs],
+                    )
+                    _producer_close(
+                        destination[offset : offset + slabs], split_partial[:slabs]
+                    )
+                    if materialize:
+                        for actual, expected in zip(
+                            (fused_g, fused_dg, fused_h, fused_dh),
+                            (g, dg, h, dh),
+                            strict=True,
+                        ):
+                            _producer_close(actual[:slabs], expected[:slabs])
+                    else:
+                        assert all(
+                            field.isnan().all()
+                            for field in (fused_dg, fused_h, fused_dh)
+                        )
+                    if slabs < shape[0]:
+                        assert all(
+                            field[slabs:].isnan().all()
+                            for field in (fused_g, fused_dg, fused_h, fused_dh)
+                        )
+                        if streamed:
+                            assert partial[slabs:].isnan().all()
+        _producer_close(global_partial, production_global)
+        original_order_partials.append(global_partial.clone())
+
+    if case == "rho3":
+        assert not torch.equal(*atom_orders)
+    _producer_close(*original_order_partials)
+    torch.testing.assert_close(packed, frozen_packed, rtol=0, atol=0)
+    torch.testing.assert_close(layer.atoms.p, frozen_source, rtol=0, atol=0)
+
+
+def test_matched_producer_catalog_complete_controlled_contrasts():
+    from itertools import product
+
+    from benchmarks.cuda.linear.matched_producer_diagnostics import catalog
+
+    cases = catalog()
+    expected = {
+        (axis, mode, order, capacity)
+        for axis, mode, order, capacity in product(
+            ("G", "H"),
+            ("native_value", "matched_value", "derivative"),
+            ("input", "output"),
+            (8, 32),
+        )
+    } | {
+        ("pipeline", mode, order, capacity)
+        for mode, order, capacity in product(
+            ("compact", "materialized", "split"), ("input", "output"), (8, 32)
+        )
+    }
+    assert len(cases) == len(expected) == 36
+    actual = set()
+    for name, config in cases.items():
+        assert set(config) == {"axis", "mode", "order", "capacity"}
+        axis, mode, order, capacity = (
+            config[key] for key in ("axis", "mode", "order", "capacity")
+        )
+        assert name == f"{axis}-{mode}-{order}-c{capacity}"
+        actual.add((axis, mode, order, capacity))
+    assert actual == expected
+
+
+@GPU
+def test_matched_producer_helper_correctness_and_memory_boundary(tmp_path, monkeypatch):
+    """Same-process API smoke; these samples are not fresh-worker evidence."""
+    from benchmarks.cuda.linear.matched_producer_diagnostics import (
+        case_worker,
+        catalog,
+        export_snapshot,
+    )
+    from torchcst._backends.cuda.algorithms.linear.periodic_product.executor import (
+        _prepare,
+    )
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h.output_owner import (
+        prepare_routing,
+    )
+
+    layer, x, dy, sizes, recipe = _producer_fixture("rho3")
+    packed = _prepare(layer.atoms.p, layer.kernel, sizes, recipe)
+    routing = prepare_routing(packed, sizes, recipe, output=False, tile=8)
+    snapshot_path = tmp_path / "producer-smoke.pt"
+    receipt = export_snapshot(snapshot_path, x, dy, packed, routing, sizes, recipe)
+    assert receipt["path"] == str(snapshot_path)
+    assert len(receipt["sha256"]) == 64
+    trace = []
+    finite = torch.isfinite
+
+    def traced_finite(tensor):
+        trace.append(("check", None))
+        return finite(tensor)
+
+    monkeypatch.setattr(torch, "isfinite", traced_finite)
+    for name in (
+        "memory_allocated",
+        "memory_reserved",
+        "max_memory_allocated",
+        "max_memory_reserved",
+    ):
+        original = getattr(torch.cuda, name)
+
+        def measured(*args, name=name, original=original, **kwargs):
+            value = original(*args, **kwargs)
+            trace.append((name, value))
+            return value
+
+        monkeypatch.setattr(torch.cuda, name, measured)
+
+    records = []
+    for case in (
+        "H-matched_value-input-c8",
+        "H-derivative-input-c8",
+        "pipeline-materialized-output-c32",
+    ):
+        trace.clear()
+        record = case_worker(snapshot_path, case)
+        records.append(record)
+        assert record["status"] == "PASS"
+        assert record["case_id"] == case
+        assert record["config"] == catalog()[case]
+        assert record["snapshot_sha256"] == receipt["sha256"]
+        assert len(record["order_sha256"]) == 64
+        correctness = record["correctness"]
+        assert correctness["all_chunks_before_capture"]
+        assert correctness["captured_final_chunk"]
+        assert correctness["errors"]
+        for error in correctness["errors"].values():
+            assert error["max_abs"] <= 4e-4 and error["relative_l2"] <= 4e-4
+        timing = record["timing"]
+        assert len(timing["samples_ms"]) == 21
+        assert all(sample >= 0 for sample in timing["samples_ms"])
+        assert timing["median_ms"] >= 0
+        assert timing["replays_per_sample"] == 16
+        assert timing["warmup_replays"] == 20
+        memory = record["memory"]
+        for key in ("allocated_bytes", "reserved_bytes"):
+            assert memory["peak_increment"][key] >= 0
+            assert memory["peak_increment"][key] == (
+                memory["peak_capture_replay"][key] - memory["baseline"][key]
+            )
+            assert memory["baseline"][key] <= memory["live_after_replay"][key]
+            assert (
+                memory["live_after_replay"][key] <= memory["peak_capture_replay"][key]
+            )
+        # A real correctness check allocates reference tensors. Its final run
+        # must occur after recording both peak and live allocator counters.
+        peak_positions = [
+            index for index, (name, _) in enumerate(trace) if name.startswith("max_")
+        ]
+        assert peak_positions
+        assert any(name == "check" for name, _ in trace[: min(peak_positions)])
+        after_peak = max(peak_positions) + 1
+        final_check = next(
+            index
+            for index in range(after_peak, len(trace))
+            if trace[index][0] == "check"
+        )
+        assert {name for name, _ in trace[after_peak:final_check]} >= {
+            "memory_allocated",
+            "memory_reserved",
+        }
+        for name, key in (
+            ("max_memory_allocated", "allocated_bytes"),
+            ("max_memory_reserved", "reserved_bytes"),
+        ):
+            measured_peak = [value for method, value in trace if method == name][-1]
+            assert memory["peak_capture_replay"][key] == measured_peak
+        schedule = record["schedule"]
+        assert schedule["batch_tile"] == 8 and schedule["atom_group"] == 8
+        output_bytes = memory["output_tensor_bytes"]
+        if record["config"]["axis"] == "H":
+            assert schedule["chunk_starts"] == [0, 8]
+            assert schedule["active_slabs"] == [1, 1]
+            assert output_bytes == {"Value": 17 * 8 * 4, "Aux": 17 * 8 * 4}
+        else:
+            assert schedule["chunk_starts"] == [0]
+            assert schedule["active_slabs"] == [2]
+            assert output_bytes == {
+                **{key: 4 * 17 * 8 * 4 for key in ("G", "DG", "H", "DH")},
+                "Partial": 4 * 3 * 17 * 4,
+            }
+        assert all(value > 0 for value in output_bytes.values())
+        assert sum(output_bytes.values()) <= memory["peak_increment"]["allocated_bytes"]
+    assert (
+        records[0]["memory"]["output_tensor_bytes"]
+        == records[1]["memory"]["output_tensor_bytes"]
+    )
+    assert (
+        records[0]["memory"]["peak_increment"]["allocated_bytes"]
+        == records[1]["memory"]["peak_increment"]["allocated_bytes"]
+    )

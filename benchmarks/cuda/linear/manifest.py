@@ -61,6 +61,24 @@ from torchcst._backends.cuda.algorithms.linear.profile_product_matrix.square_str
     SquareStripPreparationAlgorithm,
     SquareStripSplitAlgorithm,
 )
+from torchcst._backends.cuda.algorithms.linear.regular_grid_h.algorithm import (
+    GroupedOutputHAlgorithm,
+    InputOrderStreamingHAlgorithm,
+    InputOwnedHAlgorithm,
+    InputSiteStreamingHAlgorithm,
+    OnchipHAlgorithm,
+    OutputOwnedHAlgorithm,
+    OwnerBatchHAlgorithm,
+    OwnerBatchStreamingHAlgorithm,
+    ParallelReusedHAlgorithm,
+    PreparedReusedHAlgorithm,
+    RegularFactorAlgorithm,
+    RegularMatrixAlgorithm,
+    ReusedHAlgorithm,
+    SiteRoutedHAlgorithm,
+    SiteRoutedStreamingHAlgorithm,
+    StreamingInputHAlgorithm,
+)
 from torchcst._backends.cuda.algorithms.linear.sphere_polar.algorithm import (
     SphereAlgorithm,
 )
@@ -145,6 +163,22 @@ REGISTRY.register(NormalizedWindowAlgorithm())
 REGISTRY.register(LocalAlgorithm())
 REGISTRY.register(PeriodicMatrixAlgorithm())
 REGISTRY.register(PeriodicFactorAlgorithm())
+REGISTRY.register(RegularMatrixAlgorithm())
+REGISTRY.register(RegularFactorAlgorithm())
+REGISTRY.register(OnchipHAlgorithm())
+REGISTRY.register(OutputOwnedHAlgorithm())
+REGISTRY.register(ReusedHAlgorithm())
+REGISTRY.register(ParallelReusedHAlgorithm())
+REGISTRY.register(PreparedReusedHAlgorithm())
+REGISTRY.register(GroupedOutputHAlgorithm())
+REGISTRY.register(InputOwnedHAlgorithm())
+REGISTRY.register(StreamingInputHAlgorithm())
+REGISTRY.register(SiteRoutedHAlgorithm())
+REGISTRY.register(SiteRoutedStreamingHAlgorithm())
+REGISTRY.register(OwnerBatchHAlgorithm())
+REGISTRY.register(OwnerBatchStreamingHAlgorithm())
+REGISTRY.register(InputSiteStreamingHAlgorithm())
+REGISTRY.register(InputOrderStreamingHAlgorithm())
 REGISTRY.register(ProductAlgorithm())
 REGISTRY.register(StripProductAlgorithm())
 REGISTRY.register(GlobalProductAlgorithm())

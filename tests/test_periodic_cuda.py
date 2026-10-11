@@ -80,6 +80,7 @@ def model(
     floor=1e-6,
     live=False,
     device="cpu",
+    chart=None,
     **settings,
 ):
     bounds = (
@@ -90,7 +91,9 @@ def model(
         )
     )
     return CSTLinear(
-        chart=chart_presets.periodic_grid(shape, periods=periods, origin=origin),
+        chart=chart
+        if chart is not None
+        else chart_presets.periodic_grid(shape, periods=periods, origin=origin),
         atoms=p,
         kernel=presets.polar_periodic_profile_product(
             profiles=(TriweightSpec(), TriweightSpec()),
@@ -141,7 +144,7 @@ def oracle_atoms(layer, p):
     state, chart = layer.kernel, layer.chart
     amp, sigma = polar(state, p)
     axes = []
-    for d, size in enumerate(chart.grid_shape):
+    for d, size in enumerate(chart.shape):
         period = chart.geometry.periods[d]
         site = (
             chart.origin[d]
@@ -544,7 +547,9 @@ def test_twenty_eager_public_adamw_updates_match_reference_and_live_width(route)
 
 @GPU
 @pytest.mark.parametrize("route", ROUTES)
-def test_twenty_graph_replays_same_cotangent_public_clock_moments_and_live_sigma(route):
+def test_twenty_graph_replays_same_cotangent_public_clock_moments_and_live_sigma(
+    route, *, public_fused=False
+):
     from torchcst._backends.torch.algorithms.polar_update.executor import graph_update
 
     p = parameters(9, periods=(1.5, 2.75), origin=(0.0, 0.0))
@@ -559,7 +564,11 @@ def test_twenty_graph_replays_same_cotangent_public_clock_moments_and_live_sigma
     )
     public = CSTOptimizer(
         torch.optim.AdamW(
-            reference.parameters(), lr=0.01, weight_decay=0.01, foreach=False
+            reference.parameters(),
+            lr=0.01,
+            weight_decay=0.01,
+            foreach=False,
+            fused=public_fused,
         ),
         model=reference,
     )

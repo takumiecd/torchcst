@@ -1,0 +1,500 @@
+{
+  "schema_version": 1,
+  "plans": [
+    {
+      "id": "matrix-torch",
+      "plan": {
+        "algorithm_id": "research_cuda_regular_grid_matrix",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_group": 8,
+          "gemm": "torch",
+          "patch_sites": 8,
+          "prep_group": 16,
+          "prep_sites": 16
+        },
+        "schema_version": 1
+      }
+    },
+    {
+      "id": "matrix-triton",
+      "plan": {
+        "algorithm_id": "research_cuda_regular_grid_matrix",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_group": 8,
+          "gemm": "triton",
+          "patch_sites": 8,
+          "prep_group": 16,
+          "prep_sites": 16
+        },
+        "schema_version": 1
+      }
+    },
+    {
+      "id": "factor",
+      "plan": {
+        "algorithm_id": "research_cuda_regular_grid_saved_factor",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_group": 8,
+          "gemm": "torch",
+          "patch_sites": 8,
+          "prep_group": 16,
+          "prep_sites": 16
+        },
+        "schema_version": 1
+      }
+    },
+    {
+      "id": "onchip-h",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_regular_grid_onchip_h",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_group": 8,
+          "gemm": "torch",
+          "patch_sites": 8,
+          "prep_group": 16,
+          "prep_sites": 16,
+          "batch_tile": 8
+        }
+      }
+    },
+    {
+      "id": "output-owned-h",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_regular_grid_output_owned_h",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_group": 8,
+          "gemm": "torch",
+          "patch_sites": 8,
+          "prep_group": 16,
+          "prep_sites": 16,
+          "batch_tile": 8,
+          "output_tile": 16
+        }
+      }
+    },
+    {
+      "id": "reused-h",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_regular_grid_reused_h",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_group": 8,
+          "gemm": "torch",
+          "patch_sites": 8,
+          "prep_group": 16,
+          "prep_sites": 16,
+          "batch_tile": 8,
+          "output_tile": 16
+        }
+      }
+    },
+    {
+      "id": "reused-h16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_regular_grid_parallel_reused_h",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_group": 8,
+          "gemm": "torch",
+          "patch_sites": 8,
+          "prep_group": 16,
+          "prep_sites": 16,
+          "batch_tile": 8,
+          "output_tile": 16,
+          "h_batch": 16
+        }
+      }
+    },
+    {
+      "id": "reused-h32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_regular_grid_parallel_reused_h",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_group": 8,
+          "gemm": "torch",
+          "patch_sites": 8,
+          "prep_group": 16,
+          "prep_sites": 16,
+          "batch_tile": 8,
+          "output_tile": 16,
+          "h_batch": 32
+        }
+      }
+    },
+    {
+      "id": "prepared-h16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_regular_grid_prepared_reused_h",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_group": 8,
+          "gemm": "torch",
+          "patch_sites": 8,
+          "prep_group": 16,
+          "prep_sites": 16,
+          "batch_tile": 8,
+          "output_tile": 16,
+          "h_batch": 16
+        }
+      }
+    },
+    {
+      "id": "prepared-h32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_regular_grid_prepared_reused_h",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_group": 8,
+          "gemm": "torch",
+          "patch_sites": 8,
+          "prep_group": 16,
+          "prep_sites": 16,
+          "batch_tile": 8,
+          "output_tile": 16,
+          "h_batch": 32
+        }
+      }
+    },
+    {
+      "id": "prepared-g32-h16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_regular_grid_grouped_output_h",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_group": 8,
+          "gemm": "torch",
+          "patch_sites": 8,
+          "prep_group": 16,
+          "prep_sites": 16,
+          "batch_tile": 8,
+          "output_tile": 16,
+          "h_batch": 16,
+          "output_group": 32
+        }
+      }
+    },
+    {
+      "id": "prepared-g32-h32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_regular_grid_grouped_output_h",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_group": 8,
+          "gemm": "torch",
+          "patch_sites": 8,
+          "prep_group": 16,
+          "prep_sites": 16,
+          "batch_tile": 8,
+          "output_tile": 16,
+          "h_batch": 32,
+          "output_group": 32
+        }
+      }
+    },
+    {
+      "id": "input-owned-h16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_regular_grid_input_owned_h",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_group": 8,
+          "gemm": "torch",
+          "patch_sites": 8,
+          "prep_group": 16,
+          "prep_sites": 16,
+          "batch_tile": 8,
+          "output_tile": 16,
+          "h_batch": 16,
+          "output_group": 32,
+          "input_tile": 8
+        }
+      }
+    },
+    {
+      "id": "input-owned-h32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_regular_grid_input_owned_h",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_group": 8,
+          "gemm": "torch",
+          "patch_sites": 8,
+          "prep_group": 16,
+          "prep_sites": 16,
+          "batch_tile": 8,
+          "output_tile": 16,
+          "h_batch": 32,
+          "output_group": 32,
+          "input_tile": 8
+        }
+      }
+    },
+    {
+      "id": "stream-g8-h16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_regular_grid_streaming_input_h",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_group": 8,
+          "gemm": "torch",
+          "patch_sites": 8,
+          "prep_group": 16,
+          "prep_sites": 16,
+          "batch_tile": 8,
+          "output_tile": 16,
+          "h_batch": 16,
+          "output_group": 32,
+          "input_tile": 8,
+          "g_batch": 8
+        }
+      }
+    },
+    {
+      "id": "stream-g8-h32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_regular_grid_streaming_input_h",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_group": 8,
+          "gemm": "torch",
+          "patch_sites": 8,
+          "prep_group": 16,
+          "prep_sites": 16,
+          "batch_tile": 8,
+          "output_tile": 16,
+          "h_batch": 32,
+          "output_group": 32,
+          "input_tile": 8,
+          "g_batch": 8
+        }
+      }
+    },
+    {
+      "id": "site-routed-h16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_regular_grid_site_routed_h",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_group": 8,
+          "gemm": "torch",
+          "patch_sites": 8,
+          "prep_group": 16,
+          "prep_sites": 16,
+          "batch_tile": 8,
+          "output_tile": 16,
+          "h_batch": 16,
+          "output_group": 32
+        }
+      }
+    },
+    {
+      "id": "site-routed-h32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_regular_grid_site_routed_h",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_group": 8,
+          "gemm": "torch",
+          "patch_sites": 8,
+          "prep_group": 16,
+          "prep_sites": 16,
+          "batch_tile": 8,
+          "output_tile": 16,
+          "h_batch": 32,
+          "output_group": 32
+        }
+      }
+    },
+    {
+      "id": "site-stream-g8-h16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_regular_grid_site_routed_streaming_h",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_group": 8,
+          "gemm": "torch",
+          "patch_sites": 8,
+          "prep_group": 16,
+          "prep_sites": 16,
+          "batch_tile": 8,
+          "output_tile": 16,
+          "h_batch": 16,
+          "output_group": 32,
+          "input_tile": 8,
+          "g_batch": 8
+        }
+      }
+    },
+    {
+      "id": "site-stream-g8-h32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_regular_grid_site_routed_streaming_h",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_group": 8,
+          "gemm": "torch",
+          "patch_sites": 8,
+          "prep_group": 16,
+          "prep_sites": 16,
+          "batch_tile": 8,
+          "output_tile": 16,
+          "h_batch": 32,
+          "output_group": 32,
+          "input_tile": 8,
+          "g_batch": 8
+        }
+      }
+    },
+    {
+      "id": "site-owner-bm16-h32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_regular_grid_site_owner_batch_h",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_group": 8,
+          "gemm": "torch",
+          "patch_sites": 8,
+          "prep_group": 16,
+          "prep_sites": 16,
+          "batch_tile": 8,
+          "output_tile": 16,
+          "h_batch": 32,
+          "output_group": 32,
+          "owner_batch_tile": 16
+        }
+      }
+    },
+    {
+      "id": "site-owner-bm16-stream-g8-h32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_regular_grid_site_owner_batch_streaming_h",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_group": 8,
+          "gemm": "torch",
+          "patch_sites": 8,
+          "prep_group": 16,
+          "prep_sites": 16,
+          "batch_tile": 8,
+          "output_tile": 16,
+          "h_batch": 32,
+          "output_group": 32,
+          "input_tile": 8,
+          "g_batch": 8,
+          "owner_batch_tile": 16
+        }
+      }
+    },
+    {
+      "id": "site-owner-bm16-h16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_regular_grid_site_owner_batch_h",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_group": 8,
+          "gemm": "torch",
+          "patch_sites": 8,
+          "prep_group": 16,
+          "prep_sites": 16,
+          "batch_tile": 8,
+          "output_tile": 16,
+          "h_batch": 16,
+          "output_group": 32,
+          "owner_batch_tile": 16
+        }
+      }
+    },
+    {
+      "id": "site-owner-bm16-stream-g8-h16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_regular_grid_site_owner_batch_streaming_h",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_group": 8,
+          "gemm": "torch",
+          "patch_sites": 8,
+          "prep_group": 16,
+          "prep_sites": 16,
+          "batch_tile": 8,
+          "output_tile": 16,
+          "h_batch": 16,
+          "output_group": 32,
+          "input_tile": 8,
+          "g_batch": 8,
+          "owner_batch_tile": 16
+        }
+      }
+    },
+    {
+      "id": "input-site-stream-g8-h32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_regular_grid_input_site_streaming_h",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_group": 8,
+          "gemm": "torch",
+          "patch_sites": 8,
+          "prep_group": 16,
+          "prep_sites": 16,
+          "batch_tile": 8,
+          "output_tile": 16,
+          "h_batch": 32,
+          "output_group": 32,
+          "input_tile": 8,
+          "g_batch": 8,
+          "owner_batch_tile": 16
+        }
+      }
+    },
+    {
+      "id": "input-order-stream-g8-h32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_regular_grid_input_order_streaming_h",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_group": 8,
+          "gemm": "torch",
+          "patch_sites": 8,
+          "prep_group": 16,
+          "prep_sites": 16,
+          "batch_tile": 8,
+          "output_tile": 16,
+          "h_batch": 32,
+          "output_group": 32,
+          "input_tile": 8,
+          "g_batch": 8,
+          "owner_batch_tile": 16
+        }
+      }
+    }
+  ]
+}

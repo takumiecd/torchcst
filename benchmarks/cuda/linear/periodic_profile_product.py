@@ -11,7 +11,7 @@ import torch
 from torchcst import BandwidthBounds, CSTLinear, TriweightSpec, chart_presets, presets
 
 
-def fixture(size, rho, *, atoms=None, seed=41):
+def fixture(size, rho, *, atoms=None, seed=41, regular_grid=False):
     if type(size) is not int or size < 2 or not 1 <= rho <= 16:
         raise ValueError("requires size>=2 and initial rho in [1,16]")
     atoms = int(0.05 * size * size) if atoms is None else atoms
@@ -28,7 +28,13 @@ def fixture(size, rho, *, atoms=None, seed=41):
     )
     centers = torch.rand(atoms, 2, generator=gen) * size
     return CSTLinear(
-        chart=chart_presets.periodic_grid((size, size), periods=(size, size)),
+        chart=(
+            chart_presets.regular_grid(
+                grid_shape=((size,), (size,)), spacing=1.0, geometry="flat_torus"
+            )
+            if regular_grid
+            else chart_presets.periodic_grid((size, size), periods=(size, size))
+        ),
         atoms=torch.cat((polar, centers), 1),
         kernel=presets.polar_periodic_profile_product(
             profiles=(TriweightSpec(), TriweightSpec()),
@@ -76,7 +82,7 @@ def oracle_factors(value, chart, p):
     """Enumerate all sites, including seam/cut-locus branch and one global floor."""
     amplitude, sigma = polar_values(value, p)
     raw = []
-    for axis, size in enumerate(chart.grid_shape):
+    for axis, size in enumerate(chart.shape):
         period = chart.geometry.periods[axis].to(p)
         sites = chart.origin[axis].to(p) + torch.arange(
             size, device=p.device, dtype=p.dtype

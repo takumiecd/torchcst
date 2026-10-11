@@ -9,7 +9,9 @@ Chartの公開契約は[RegularGridの仕様](regular-grid.ja.md)、実装・登
 [kernel開発ガイド](kernel-development.ja.md)、既存の測定は
 [PeriodicGridの比較](periodic-comparison.ja.md)を参照する。
 この文書は実行方式の設計方針であり、KernelSpecの数学や公開dispatcherを変更しない。
-RegularGridの宣言・Torch参照は実装済み。以下の新しい融合・集約方式のGPU性能は未検証。
+RegularGridの宣言・Torch参照は実装済み。D2 FlatTorusの初期kernelをL4で検証・比較し、
+[研究ノート](research-history/cuda-linear/regular-grid-h-lifecycle.ja.md)へ記録した。
+以下の設計を高次元・別geometry・別GPUへ広げた性能は未検証。
 
 ## 決めたことと計測で決めること
 
@@ -187,3 +189,297 @@ scopeを固定し、メモリ条件を満たさない研究候補の記録も保
 診断用の各stage時間を足して完全step時間の代用にしない。
 allocatorのpeakは物理DRAM転送量やL2 hit率ではない。cache/atomicの物理的な原因は
 必要なtrace・counterで確認し、未測定の部分を確定した理由として書かない。
+
+## D2実装での正規化配分とforward scale
+
+現在のRegularGrid/Triweight D2実装は、raw入力・出力profileをqv、quとして、
+
+\[
+D=\max(\|q_v\|_2\|q_u\|_2,\epsilon),\qquad
+(S_v,S_u)=\begin{cases}
+(\|q_v\|_2,\|q_u\|_2) & \|q_v\|_2\|q_u\|_2\ge\epsilon,\\
+(\sqrt\epsilon,\sqrt\epsilon) & \text{otherwise}.
+\end{cases}
+\]
+
+したがってSv Su=Dであり、各軸へ独立にfloorを適用する方式ではない。
+この配分で `H=(qv/Sv)X`、`β=amp/Su`、`Y=sum_a qu*β*H` と計算する。
+新しいprepared H経路のβはamp/D全体ではなく、出力側分母Suの先行計算である。
+Hの生成方法・backwardの正規化微分は元の配分を維持する。
+
+β・inverse width・output centreだけをHのsorted positionへ置く。値は12A bytesで、
+forward中のすべての小batchに再利用する。βの非finite検出用flagは4 bytes。
+flag、3項目、routing、Hはいずれもbackwardへ保存せず、次forwardで更新状態から再生成する。
+backwardには元のforward snapshotとnorm/VJP情報を残す。ゼロ振幅からの割算復元は使わない。
+
+FP32ではamp/Suだけがoverflowしても、(qu/Su)*ampが有限になる場合がある。
+非finite βでは元の演算順序を使い、通常βではsorted positionから積和する。
+この選択はGPU flagで行い、host同期を入れない。guard用の準備と空launchも完全step費用に含める。
+候補数、H容量、3項目の保持量、backward再計算は別々に評価し、
+[実測と範囲regression](research-history/cuda-linear/regular-grid-h-lifecycle.ja.md)を残す。
+
+## 出力の束と対称なG寿命
+
+H生成のatom groupと、出力集約のatom groupは同じにする必要はない。
+Hは8 atomずつ生成し、H→Yは32 atomずつ束ねる研究Planを追加した。
+Hのbatch容量、3項目の保持量、forward snapshotの保存量は増えない。
+広い束のreduction順序とGPU register配置は変わるので、全勾配oracleと完全stepで検証する。
+
+backwardの対称候補では `G[b,a]=sum_j dY[b,j]*qu[a,j]/Su[a]` を作り、
+`dX[b,i]=sum_a G[b,a]*amp[a]*qv[a,i]/Sv[a]` を入力site担当で集める。
+Gをinput中心で整列したpositionに置き、同じ小batch内で再利用する。
+G・routing・inputの3項目はbackward内だけで寿命を終え、次chunkで上書きする。
+forwardからH/Gを保存せず、必要なparameter partialは元のatom IDへ一度ずつ書く。
+
+`damp=sum_b H*G`、`dci=amp*sum_b G*dH`、`dco=amp*sum_b H*dG` とし、
+正規化微分・単一siteの微分flag・Polarのsource VJPは既存と同じ。
+G/dGとH/dHはforward時点のpacked情報から計算し、live Parameterやchartを読み直さない。
+dXが不要なら従来のparameter-only計算を使い、G用routing/bufferを作らない。
+
+G担当方式では入力owner tile8、forward出力tile16を最初の比較条件にする。
+両方向のsupportを連結するCSRは作らず、中心binのprefixと支持のexact評価を使う。
+βinput=amp/Svの範囲guard、routing構築、G生成、dX集約、全parameter partial/reductionも
+完全stepに含める。atomicを消すだけで速くなるとは仮定せず、allocated/reserved総peakが
+dense以内かを含めて従来のatom-owned backwardと比較する。
+
+GとHのbatch容量は独立に選べる。streaming研究Planではforward Hを16/32batch、
+backward Gを8batchに固定し、parameter partialもchunkごとに畳んで上書きする。
+BM=8、B=32の場合、Gは8A floats、parameter用はpartialの3Aとphysical累積の3A
+だけである。全batch partialの12A floatsを保持しない。各chunkでphysicalな
+(damp,dci,dco)を累積し、最後にPolar source VJPを一度適用する。
+chunk終了の順序はG生成→dX集約→physical累積→buffer上書きで固定する。
+追加の累積kernel、batch和のFP32順序変更、Graph poolの総peakも比較に含める。
+この候補はparameterのみ必要な場合には従来経路を維持する。
+
+## 中心site prefixでforward候補を絞る
+
+出力側の中心site keyを `k=floor(phase/spacing)` としてsortし、`N+1`個のprefixを置く。
+Hと3項目は同じOrderで生成する。Y owner開始siteをs、実在幅をw=min(BO,N-s)、
+既存prepared span由来のguard付き最大距離をDとすると、中心候補は
+`[s-D,s+w+D)` の周期窓に含まれる。窓長w+2D>=Nなら全候補を一度だけ処理し、
+短ければ重複しない最大2区間をprefixから読む。CSRやatomごとの支持site ID列は作らない。
+追加prefixの大きさはatom支持数ではなくgridのsite数で決まる。
+
+この候補はforwardの探索だけを変更する。H容量、G容量、joint norm floor、packed VJP、
+periodic_rawのFP32演算、input-owner backwardのcoarse routingは維持する。
+一つのbroad atomでDが大きくなれば全探索に戻るため、速さは支持分布に依存する。
+owner内の無効site積和は残る。粗いbinの検査比8倍/3倍がそのまま速度向上倍率ではない。
+sort/searchとprefixの準備費用、atom加算順の変更、Graph両peakを含めて測る。
+
+半周期の比較だけでperiodic_rawのdivision/floorを置換しない。例えばL=1024、
+FP32 delta=nextafter(512,0)では、delta/L+0.5が1へ丸まり、現行wrapは-512になる。
+単純なdelta>=512比較では正側に残り、広い支持の中心微分を変える場合がある。
+今回はその近似を混ぜず、既存の距離式とnorm/VJPを保つ。
+
+### H生成幅とY担当batch幅を分ける候補（2026-10-11）
+
+centre-site prefixの後、H producerのBM8・tile-major配置を維持し、
+Y ownerだけBM16へ広げる。独立した `OwnerBatchHRecipe` と
+`OwnerBatchStreamingHRecipe` を用い、既存recipeの意味を変更しない。
+後者はG8、入力側coarse routing、physical部分和の再利用を維持する。
+
+owner内のlocal batch rowを r、sorted atom positionを pos とすると、
+Hの読出しoffsetは `((r // 8) * A + pos) * 8 + r % 8`。
+Hは引き続き `[Hcap/8, A, 8]`、Hcapは16または32。
+actual batch rowでmaskし、最後のchunkやbatch33/64でも保存範囲を越えない。
+H/Gをbackwardへ追加保存せず、raw profile・一つのjoint L2 floor・
+Unsafe beta時の元の演算順序を変えない。
+
+B32のY担当CTAは各output ownerにつき4から2になる。
+profileとroutingのbatch間の重複を減らす一方、GROUP32×BO16×BM16の
+中間値はBM8の倍であり、register圧力・spill・実測時間の悪化はあり得る。
+追加global scratchは必要ないが、総allocator peakの同等は実測で確認する。
+H16/H32×通常/G8の4候補を同じ条件で比較し、未計装完全stepと
+allocated/reserved総peakの両方で判断する。
+
+post24の実routing prefixから、guarded距離・候補atom訪問数・
+実GROUP別の反復数・live grid site候補検査数をCPUで数える。
+時刻計測後の診断内でのみコピーし、primary graph/peakに入れない。
+候補数は正支持数や物理memory trafficではなく、batch多重度と
+padded laneを除く値。Yのactive/launch CTA数も別に記録する。
+
+raw UのPhi16表を持つ案は次段階に置く。正確な支持envelopeによる
+span検査とbroad fallbackが必要で、H32をH16へ縮めても表の転送や
+追加metadata・Graph poolのreservedが費用になる。まずscratchを
+増やさないbatch共有を切り分ける。
+
+### Producerとconsumerを両方考えた配置と診断
+
+現在のHは `[batch slab, output-centre-sorted atom, 8]`。
+同じatomの8batch値は連続し、Y ownerは出力座標の近いatomのHを連続して読む。
+一方、Xは `[batch,input site]` なので、各atomの支持内は隣接siteを読めても、
+同じproducer group内のatomの入力中心が近いとは限らない。
+Gはinput-centre順でdX consumerを優先しており、G producerのdY読出しには対称な問題がある。
+N2048/B32/FP32ではX自体は256KiB、A209715/H32のHは約25.6MiB。
+論理参照量だけからcache missや物理trafficを推定しない。
+
+未実装の配置候補は、output siteを第一キー、input siteを第二キーとする
+`key=output_site*NI+input_site` の単一sort。出力siteごとの連続性を保ち、
+同じoutput site内のproducerを入力中心順にする。Boundsはsorted keyに対し
+`arange(NO+1)*NI` をsearchsortedする。同scopeの最大8192²ならint32に収まる。
+別のHコピーやatom数に比例する追加permutationは不要だが、key生成とsortの費用、
+atom加算順、group内最大支持長が変わる。cache改善は未検証で、採用候補ではない。
+
+中心座標から格子番号は直接計算できる。現在のindex構築はその後のsort、
+site/binの開始位置作成、guarded最大距離のreductionも含む。
+routingはそのforward/backward内の一時状態であり、forwardのOrderをbackwardへ保存しない。
+一時的であることと構築費用がゼロであることは異なる。今回の約0.08msの構築より、
+実際の集約・profile評価・H/G読出しを先に調べる。
+
+backwardの通常経路はG生成・H再計算・dX atomic scatter・parameter partialを融合する。
+G8経路はGを一時保存し、dX owner reductionを使う。両者を同じ「atomicなし」と呼ばない。
+G8のpost24固定snapshotについて、既存runnerの別診断Graphで次を測る。
+
+1. dX初期化、入力routing、入力係数などの準備。
+2. G/dG生成、H/dH再計算、3種類のparameter partial生成を融合したproducer。
+3. GからdXへのowner集約（通常/unsafe fallbackの2launchを含む）。
+4. chunkのphysical parameter部分和を累積。
+5. source Parameterへの最終VJP。
+
+同じsnapshotの実backwardとdX/all-dPを照合し、source/packedが変化しないことを検査する。
+主測定の完全stepと両peakを保存した後だけ診断を行い、5 replayと実input routing censusを記録する。
+producer内をさらに分けるprobeは既存contractを用いてG/dGとH/dHをそれぞれ評価できるが、
+融合解除でregister配置・中間転送が変わるため、その時間を元kernelから差し引かない。
+
+実測したG8/H16・owner BM16の内訳（N2048/B32、post24固定診断、ms）：
+
+| 区間 | rho3 | rho8 |
+| --- | ---: | ---: |
+| 入力routing・係数・dX初期化など | 0.0881 | 0.0891 |
+| G/dG＋H/dH＋parameter partial | 1.2964 | 1.7664 |
+| G→dX owner集約 | 0.9677 | 1.5585 |
+| physical部分和累積 | 0.0614 | 0.0625 |
+| source VJP | 0.0154 | 0.0164 |
+
+生成と集約の双方が重い。これだけでcache missやatomic stallを原因と断定しない。
+5種類のG8 route、両rhoで診断と実backwardのdX/all-dPの差は0だった。
+完全stepの独立FP64 gateと両peak、raw evidenceは研究履歴へ記録した。
+
+次の二候補を独立したbenchmark-local recipeとして実装し、forwardを固定して単独で比較する。
+
+- 入力site-prefix：8siteの区分を1siteにし、dX候補を絞る。N2048ではprefixが
+  257→2049個（int64で＋14KiB）、検索用arangeは＋7KiB。global D10かつ均一分布なら
+  候補範囲40→28siteで約30%減を予想するが、実boundsで数え直す。broad支持なら効果は消える。
+- 入力bin内の並べ替え：既存区分を保持し、`key=input_bin*NO+output_site` でsortする。
+  prefixと候補数を維持し、G producerのdY局所性を狙う。既存Keysへ書くため追加A-sized配列は
+  不要。同じinput-binには平均約819atomあり、input-site第一キーの約102atomより大きな集合を
+  第二キーで並べられる一方、bin内の入力site順は保証しない。メモリpeakの同等は実測事項。
+
+比較planは `input-site-stream-g8-h32` と `input-order-stream-g8-h32`。
+基準 `site-owner-bm16-stream-g8-h32` とH32/G8、forward BM16を一致させる。
+いずれもatom加算順・producer groupが変わるため、全勾配・floor・境界・snapshot・Graphの
+検証を通してから完全stepを測る。既存forwardの二座標sort案は別に比較する。
+
+
+実装source `323ff210` はL4で976 contract tests（skipなし）を通過した。
+forwardのrouting/Yのbitwise一致、入力site-prefixの支持包含、coarse副キーのbin人口・
+候補集合の同一性を直接検査した。全勾配・unsafe fallback・partial batch・retained snapshot・
+Graph更新も新routeで検査する。候補訪問数とallocatorピークは、比較ごとに実測する。
+
+
+### 入力routing独立比較の結論
+
+Colab L4、N2048/B32/A209715、rho3/8、seed41、source `323ff210`。
+各rhoで独立2回、各方式24 AdamW更新・21 primary timing samplesを測った。
+下表は各runのmedianを2回で平均した値で、単位はms。
+生成はG/dG＋H/dH再計算＋parameter部分和を含み、Gだけの時間ではない。
+
+| rho | 方式 | setup | 生成 | G→dX集約 | 完全step |
+| --- | --- | ---: | ---: | ---: | ---: |
+| 3 | 基準 | 0.0880 | 1.2759 | 0.9636 | 4.7098 |
+| 3 | 入力site候補削減 | 0.0937 | 1.2836 | 0.7076 | 4.5038 |
+| 3 | 入力bin内の副キーsort | 0.0968 | 1.2186 | 0.9610 | 4.7530 |
+| 8 | 基準 | 0.0891 | 1.7306 | 1.5334 | 6.5957 |
+| 8 | 入力site候補削減 | 0.0947 | 1.7413 | 1.0829 | 6.1267 |
+| 8 | 入力bin内の副キーsort | 0.0972 | 1.6451 | 1.5252 | 6.6024 |
+
+- 入力site候補削減はrho3で候補訪問25.0%、rho8で30.0%減。
+  dX集約は全4runで26.0〜29.8%短縮、完全stepはrho3で3.4〜5.3%、rho8で6.2〜8.1%短縮。
+  生成部分は0.4〜0.9%増で、改善は主にdX集約に現れた。
+  **測定条件での次の実験基準は入力site候補削減版とする。**
+- 副キーsortは候補集合を維持し、生成診断は4.3〜5.3%短縮したが、完全stepは
+  rho3で0.5%短縮／2.4%増、rho8で1.8%増／1.5%短縮と符号が反転した。
+  **完全stepの再現した利得がないため保留。** A+Bの組合せや公開dispatcher変更は行わない。
+- 3方式とも全4runでallocated/reserved peakは**57.43/104 MiB**。
+  denseの**81.75/106 MiB**を両方下回るが、今回の変更によるpeak削減はない。
+  site prefixの論理容量増（14KiB＋arange7KiB）は主測定peakを変えなかった。
+- denseの完全stepは約0.59msで依然大幅に速い。入力候補削減だけでは差は埋まらない。
+  次は生成部分を主な調査対象にする。
+
+setup・生成・集約は別Graph診断であり、その和を完全stepとみなさない。
+forwardのコード・候補・更新後パラメータは同一だがforward診断時間にも変動があるため、
+その差を入力routing変更の効果としない。cache hit率や物理traffic改善は未測定。
+976 GPU contract testsと48 initial/post24全atom FP64 gatesが成功し、全12診断の
+実backwardとの差はdX/all-dPとも0。全4source/result archive、各1629 source entries・
+37 result manifest entries、28 workers、同一rhoの反復条件と更新後hashを独立監査した。
+全owned GPU slotsの停止を確認済み。
+
+
+### producer分解で分かったこと
+
+入力site候補削減版、source `ecfbb914`、Colab L4/N2048/B32/rho3,8の各独立2回。
+下表はG→H分割Graphの各run medianを2回で平均した値。単位はms。
+
+| rho | G/dG生成 | H/dH再計算 | parameter partial | 値のみG | 値のみH |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 3 | 0.8970 | 0.8515 | 0.3343 | 0.6651 | 0.5837 |
+| 8 | 1.1924 | 1.1310 | 0.3287 | 0.9313 | 0.7931 |
+
+G/dGとH/dHの両方が大きく、Gだけが突出する結果ではない。rho3→8で両contractの時間が
+増える一方、最後の3部分和は約0.33msでほぼ一定だった。H→Gの逆順でも同じ順位で、
+G/dGはrho3 0.8909/rho8 1.1894ms、H/dHは0.8520/1.1336msだった。
+値だけのprobeもproduction NEED_P=FalseのG値と一致し、G値の計測は0.6656/0.9329ms。
+ただし微分付きとの差には追加store・別specializationの影響もあり、純粋な微分費用としない。
+
+**次の調査対象はG/H共通の `_contract` 内部**とする。profile評価・正規化微分と、
+X/dYのgather・積和reductionのどちらが大きいかを分けて調べる。今回の結果から
+cache miss、実traffic、算術律速のいずれかに原因を確定することはできない。
+最後のparameter partialだけを先に最適化する根拠は弱い。
+
+測定文脈による差も大きい。元のbackward schedule内で融合producerはrho3平均1.3271ms、
+rho8平均1.8079msだったが、producerだけを回す別Graphでは1.8560/2.4028ms。
+分割Graph全体は2.0838/2.6527msだった。**分割各段やその差・割合を、本番融合kernelの
+厳密な内訳へ換算しない。** 主測定や融合の性能改善としても扱わない。
+
+本番の既存runtimeは変更していない。primary完全stepはrho3 4.7369〜4.7509ms、
+rho8 6.5390〜6.5537ms、全4runでallocated/reserved peak **57.43/104 MiB**。
+denseは約0.59ms、81.75/106 MiB。診断の4中間bufferは論理25.60MiBで、productionの
+G scratchに比べ追加3field=19.20MiBを使う。照合用bufferは別途15.20MiBであり、
+これらは主測定後だけの診断storageであってprimary peakや最適化案のmemoryではない。
+
+全4cohortで同じsnapshotのGは差0、partialの最大差9.32e-10以下、value-onlyの差0。
+実backwardのdX/all-dPとの差は0。18 GPU testsと32 initial/post24全atom FP64 gatesを
+通過した。各rhoの候補削減版は更新後Parameterがbitwise一致し、同じ条件の独立反復で
+診断の順位を確認した。公開dispatcherや新しい実行方式の採用は行わない。
+
+### 微分と実行方式の費用を分ける比較
+
+G/Hの値のみと微分付きの差を見るときは、batch単位・atom順・出力field数を揃える。
+値のみでも第2bufferへ同じ値を保存するcontrolを置き、微分付きと同じ論理保存量・
+allocator増分になったことを確認する。この差は必要な微分処理を加えた実装上の差であり、
+追加packed読出し・依存関係・register配置を含むため純粋なFLOPs時間とは呼ばない。
+
+容量8/32の比較でBM8を固定した場合、変わるのは4回のchunk launchと1回の4-slab launch、
+およびscratch容量である。32batchへprofileを一度だけ評価する共有の実験ではない。
+atom順を変えたときはgroup内最大支持長に由来するpadding loopも確認する。
+診断の`valid_sites`はprepared envelope長の合計で、full-axis fallback時の内部ゼロを
+除いたpositive支持数ではない。loop数が同じでも、時間差だけでcache missを原因と断定しない。
+
+G/DG/H/DHの保存を加えた融合版と、同じbufferを使う分割版を分けて比較する。
+前者と元producerの差は追加store・値の寿命・compiler配置、後者との差はscratch再読出し・
+追加launch・Order/P読出し等を含む。これらの診断差を足して本番backwardの厳密な内訳としない。
+
+Orderはproducerとconsumer双方の都合で決める。G生成が出力順で速くても、dX consumerが
+入力順を必要とするなら並べ替え／別Order／index変換の費用を完全stepへ含めて評価する。
+H生成とY consumerにも同じ制約がある。両Orderを置いたproducerだけのpeakは本番stepの
+peakとは区別し、採用は完全stepとallocated/reserved両peakで判断する。
+
+source `1abbd00c` のL4/N2048/B32/rho3,8、各独立2回では、入力順・容量8の微分追加は
+G +0.2188/+0.2738ms、H +0.2356/+0.2940msで、同じ2bufferのallocated/reserved peakは一致した。
+元の融合producerは1.7468/2.3441ms・22.90/56MiB、中間値3fieldの保存追加で
+2.1091/2.7065ms・42.90/76MiBになった。容量32も元の融合より約6.2%/4.9%遅かった。
+Gは出力順、Hは入力順に利点があったが、融合全体の順序差は小さくrho3では反復で順位が逆転した。
+
+この範囲では融合・容量8とconsumerに合う順序を維持し、微分を含むcontract内部の共有を
+次の対象にする。全保存・分割・容量拡大は採用しない。これらの診断差は本番stepの内訳ではない。
+[全条件・検証・監査記録](research-history/cuda-linear/regular-grid-h-lifecycle.ja.md)を参照する。
