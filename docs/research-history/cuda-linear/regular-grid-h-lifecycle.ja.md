@@ -2382,3 +2382,32 @@ raw evidenceはignored `output/regular-grid-h/overnight-evidence/`、集計は
 独立反復間でbitwise一致した。監査記録は `producer-final-independent-audit.json`。
 全owned GPU slotsのstoppedとserverにactive sessionなしを確認し、停止証拠を
 `producer-final-pool-status.json` と `producer-final-stop-lifecycle.log`へ保存した。
+
+
+### batch・atom順・保存量を揃えるproducer比較（測定前の固定条件）
+
+2026-10-11。前回はforward/backwardでbatch容量・atom順・保存field数が違ったため、
+今回この3条件を分離する。N2048/B32/A209715、rho3/8、seed41、normalizeとjoint floor、
+24更新後の入力候補削減版ParameterとMSE cotangentを固定する。本番runtimeは変更しない。
+BM8/BK8/GROUP8を固定し、容量8/32、入力site順/出力site順を直交して比較する。
+
+- G、Hそれぞれに、値のみ1field・値を複製した2field・値と微分の2fieldを用意する。
+  2field同士の差は保存量を揃えた微分追加の効果であり、register/compiler変化を含む。
+  純粋なFLOPs費用とは呼ばない。計24条件。
+- 元productionのG+partial融合、同じ融合計算にDG/H/DH保存を加えたもの、
+  G/DGとH/DHを別kernelで生成して同じpartialを計算するものを比較する。計12条件。
+  保存追加と分割の差はglobal store/reload・launch・寿命・compilerの影響を含む。
+- 全36条件はそれぞれ新規subprocessで時間とallocator peakを測る。両方のOrderを常駐させ、
+  共通入力のshape/dtype/bytesとbaselineを記録。全chunk照合後に参照scratchを解放し、
+  専用Graph内で容量分のbufferを1回確保してchunk間再利用する。capture/replay込みの
+  allocated/reserved peakとbaseline差を報告し、論理tensor bytesやprocess総使用量と区別する。
+- 20 warm replay後、Graphの外のeventで16 replayを1sampleとして21回測る。
+  peak/live counter取得後に最後のchunkを再照合する。G/H/partialにmax_absとrelative L2
+  各4e-4以下を要求し、別GPUテストではFP64・floor・empty・tail batchも検証する。
+- rhoごとに独立2cohort、2回目はcase実行順を反転する。各cohortに従来5routeの
+  primary完全step・allocated/reserved peakとinitial/post24 FP64 gatesを併走せず順次測る。
+  primary worker終了後に診断workerを起動する。診断の差を足して本番stepの内訳とはしない。
+
+並べ替えはgroup内最大support幅によるloop paddingも変えるため、時間差だけでcacheを
+原因と断定しない。各Orderの有効site数・group loop回数・padding lane数も保存する。
+採用判断は完全stepへの組込み測定後とし、今回は原因候補を絞る診断として扱う。

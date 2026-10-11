@@ -983,7 +983,9 @@ def streaming_backward_layout(recipe, *, batch, atoms):
     }
 
 
-def streaming_backward_stages(step, kind, *, producer_breakdown=False):
+def streaming_backward_stages(
+    step, kind, *, producer_breakdown=False, matched_snapshot=None
+):
     """Fixed post24 all-gradient backward; measured separately from primary peaks.
 
     Use production contractions and routing on immutable forward snapshots.
@@ -1203,6 +1205,13 @@ def streaming_backward_stages(step, kind, *, producer_breakdown=False):
         from benchmarks.cuda.linear.producer_diagnostics import producer_diagnostics
 
         producer_result = producer_diagnostics(x, dy, packed, routing, sizes, recipe)
+    matched_export = None
+    if matched_snapshot is not None:
+        from benchmarks.cuda.linear.matched_producer_diagnostics import export_snapshot
+
+        matched_export = export_snapshot(
+            matched_snapshot, x, dy, packed, routing, sizes, recipe
+        )
     unchanged = (
         torch.equal(model.atoms.p.detach(), source)
         and torch.equal(step.model.atoms.p.detach(), source)
@@ -1213,6 +1222,7 @@ def streaming_backward_stages(step, kind, *, producer_breakdown=False):
     return {
         "scope": "fixed post24 all-gradient backward; no optimizer; nonadditive to primary; excluded from primary peaks",
         "producer_diagnostics": producer_result,
+        "matched_producer_snapshot": matched_export,
         "snapshot_preparation_timed": False,
         "packed_audit_copy_bytes": packed_audit.numel() * packed_audit.element_size(),
         "dy_source": "fixed explicit cotangent of post24 mean squared loss",
@@ -1282,6 +1292,7 @@ def worker(
     oracle_directory=None,
     aggregation_diagnostics=False,
     producer_diagnostics=False,
+    matched_producer_path=None,
 ):
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
@@ -1444,9 +1455,13 @@ def worker(
         stage = "separate-streaming-backward-diagnostics"
         result["backward_stage_diagnostics"] = (
             streaming_backward_stages(
-                step, kind, producer_breakdown=producer_diagnostics
+                step,
+                kind,
+                producer_breakdown=producer_diagnostics,
+                matched_snapshot=matched_producer_path,
             )
-            if (phases or producer_diagnostics) and kind in STREAMING_STAGE_KINDS
+            if (phases or producer_diagnostics or matched_producer_path is not None)
+            and kind in STREAMING_STAGE_KINDS
             else None
         )
         if aggregation_diagnostics and kind in (
@@ -1679,11 +1694,32 @@ def main():
     parser.add_argument("--phases", action="store_true")
     parser.add_argument("--aggregation-diagnostics", action="store_true")
     parser.add_argument("--producer-diagnostics", action="store_true")
+    parser.add_argument("--matched-producer-diagnostics", action="store_true")
+    parser.add_argument("--matched-producer-snapshot", type=Path)
+    parser.add_argument("--matched-producer-case")
     parser.add_argument("--verify-only", action="store_true")
     parser.add_argument("--reverse", action="store_true")
     parser.add_argument("--worker-timeout", type=int, default=900)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
+    if args.matched_producer_snapshot:
+        from benchmarks.cuda.linear.matched_producer_diagnostics import case_worker
+
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            result = case_worker(
+                args.matched_producer_snapshot, args.matched_producer_case
+            )
+        except Exception:  # noqa: BLE001 -- persist isolated worker failure before exit
+            result = {
+                "status": "FAIL",
+                "case_id": args.matched_producer_case,
+                "error": traceback.format_exc(),
+            }
+        args.output.write_text(json.dumps(result, indent=2, allow_nan=False))
+        if result["status"] != "PASS":
+            raise SystemExit(1)
+        return
     if args.oracle_snapshot:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(
@@ -1734,6 +1770,12 @@ def main():
             ]
             if args.regular_grid
             else list(LEGACY_KINDS)
+        )
+    if args.matched_producer_diagnostics and (
+        args.verify_only or "input-site-stream-g8-h32" not in args.plans
+    ):
+        parser.error(
+            "matched diagnostics require a measured input-site-stream-g8-h32 plan"
         )
     if not args.regular_grid and (
         args.worker
@@ -1799,7 +1841,7 @@ def main():
         not args.regular_grid or not args.isolated_oracle
     ):
         parser.error("aggregation diagnostics require regular grid and isolated oracle")
-    if args.producer_diagnostics and (
+    if (args.producer_diagnostics or args.matched_producer_diagnostics) and (
         not args.regular_grid or not args.isolated_oracle
     ):
         parser.error("producer diagnostics require regular grid and isolated oracle")
@@ -1814,6 +1856,12 @@ def main():
             phases=args.phases,
             aggregation_diagnostics=args.aggregation_diagnostics,
             producer_diagnostics=args.producer_diagnostics,
+            matched_producer_path=(
+                args.output.with_suffix(".matched.pt")
+                if args.matched_producer_diagnostics
+                and args.worker == "input-site-stream-g8-h32"
+                else None
+            ),
             verify_only=args.verify_only,
             regular_grid=args.regular_grid,
             oracle_directory=(
@@ -1854,6 +1902,8 @@ def main():
                 command.append("--aggregation-diagnostics")
             if args.producer_diagnostics:
                 command.append("--producer-diagnostics")
+            if args.matched_producer_diagnostics:
+                command.append("--matched-producer-diagnostics")
             if args.verify_only:
                 command.append("--verify-only")
             try:
@@ -1889,6 +1939,22 @@ def main():
             "independent_runs": 1,
             "submission_schema": False,
         }
+        if (
+            args.matched_producer_diagnostics
+            and result["assessment"]["status"] == "PASS"
+        ):
+            from benchmarks.cuda.linear.matched_producer_diagnostics import run_workers
+
+            record = next(r for r in records if r["kind"] == "input-site-stream-g8-h32")
+            exported = record["backward_stage_diagnostics"]["matched_producer_snapshot"]
+            result["matched_producer_diagnostics"] = {"status": "NOT_COMPLETED"}
+            args.output.write_text(json.dumps(result, indent=2, allow_nan=False))
+            result["matched_producer_diagnostics"] = run_workers(
+                exported["path"],
+                args.output.parent / f"{args.output.stem}-matched-producer-cases",
+                expected_sha256=exported["sha256"],
+                reverse=args.reverse,
+            )
     args.output.write_text(json.dumps(result, indent=2, allow_nan=False))
     if args.worker and result["status"] == "OOM":
         return  # Parent retains an honest OOM record; required plans then fail.

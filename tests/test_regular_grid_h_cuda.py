@@ -1765,3 +1765,400 @@ def test_producer_diagnostics_smoke_complete_backward_frozen_snapshot_and_sample
         assert diagnostic["medians_ms"][name]["whole_graph_ms"] >= 0
     assert all(value <= 4e-4 for value in diagnostic["max_abs_vs_production"].values())
     torch.testing.assert_close(layer.atoms.p, source, rtol=0, atol=0)
+
+
+@GPU
+@pytest.mark.parametrize("case", ["rho3", "floor", "empty_input", "broad"])
+@pytest.mark.parametrize("capacity", [8, 32])
+def test_producer_controlled_stores_fused_multislab_and_atom_orders(case, capacity):
+    import triton as tr
+
+    from torchcst._backends.cuda.algorithms.linear.periodic_product.executor import (
+        _prepare,
+    )
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h import input_kernels
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h import (
+        producer_diagnostic_kernels as probes,
+    )
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h.output_owner import (
+        prepare_routing,
+    )
+
+    layer, _x, _dy, sizes, recipe = _producer_fixture(case)
+    b, ni, no = 37, sizes[1], sizes[2]
+    sizes = (b, *sizes[1:])
+    generator = torch.Generator().manual_seed(827)
+    x = torch.randn(b, 2 * ni, generator=generator).cuda()[:, ::2]
+    dy = torch.randn(no, b, generator=generator).cuda().T
+    packed = _prepare(layer.atoms.p, layer.kernel, sizes, recipe)
+    frozen_packed = packed.clone()
+    frozen_source = layer.atoms.p.detach().clone()
+    a, bm = len(layer.atoms.p), recipe.batch_tile
+    shape = (capacity // bm, a, bm)
+    launch = {"num_warps": 4, "enable_fp_fusion": False}
+    original_order_partials = []
+    atom_orders = []
+
+    for output in (False, True):
+        order = prepare_routing(packed, sizes, recipe, output=output, tile=8)[0]
+        atom_orders.append(order)
+        g, dg, h, dh, value, auxiliary, fused_g, fused_dg, fused_h, fused_dh = [
+            x.new_empty(shape) for _ in range(10)
+        ]
+        production_g = x.new_empty(shape)
+        local_shape = (shape[0], 3, a)
+        partial, production_partial, split_partial = [
+            x.new_empty(local_shape) for _ in range(3)
+        ]
+        global_partial = x.new_full((tr.cdiv(b, bm), 3, a), float("nan"))
+        production_global = torch.empty_like(global_partial)
+
+        for start in range(0, b, capacity):
+            slabs = tr.cdiv(min(capacity, b - start), bm)
+            grid = (tr.cdiv(a, recipe.atom_group), slabs)
+            common = (
+                a,
+                *sizes,
+                *x.stride(),
+                *dy.stride(),
+                start,
+                bm,
+                recipe.patch_sites,
+                recipe.atom_group,
+            )
+
+            def probe(
+                kernel,
+                value_buffer,
+                derivative_buffer,
+                derivative,
+                matched,
+                *,
+                grid=grid,
+                order=order,
+                common=common,
+            ):
+                kernel[grid](
+                    x,
+                    dy,
+                    packed,
+                    order,
+                    value_buffer,
+                    derivative_buffer,
+                    *common,
+                    DERIVATIVE=derivative,
+                    STORE_AUX_WHEN_VALUE_ONLY=matched,
+                    **launch,
+                )
+
+            def production(
+                destination,
+                streamed,
+                *,
+                grid=grid,
+                order=order,
+                production_g=production_g,
+                common=common,
+            ):
+                input_kernels.produce_g_parameters[grid](
+                    x,
+                    dy,
+                    packed,
+                    order,
+                    production_g,
+                    destination,
+                    *common[:-4],
+                    True,
+                    *common[-4:],
+                    STREAM_PARTIAL=streamed,
+                    **launch,
+                )
+
+            for field in (g, dg, h, dh, split_partial):
+                field.fill_(float("nan"))
+            probe(probes.produce_g_probe, g, dg, True, False)
+            probe(probes.produce_h_probe, h, dh, True, False)
+            probes.produce_parameter_partials[grid](
+                g,
+                dg,
+                h,
+                dh,
+                packed,
+                order,
+                split_partial,
+                a,
+                start,
+                bm,
+                recipe.atom_group,
+                STREAM_PARTIAL=True,
+                **launch,
+            )
+            for kernel, expected_value, expected_derivative in (
+                (probes.produce_g_probe, g, dg),
+                (probes.produce_h_probe, h, dh),
+            ):
+                value.fill_(float("nan"))
+                auxiliary.fill_(float("nan"))
+                probe(kernel, value, auxiliary, False, True)
+                # The matched-store control writes identical values twice.
+                assert torch.equal(value[:slabs], auxiliary[:slabs])
+                _producer_close(value[:slabs], expected_value[:slabs])
+                probe(kernel, value, auxiliary, True, True)
+                torch.testing.assert_close(
+                    value[:slabs], expected_value[:slabs], rtol=0, atol=0
+                )
+                torch.testing.assert_close(
+                    auxiliary[:slabs], expected_derivative[:slabs], rtol=0, atol=0
+                )
+                if slabs < shape[0]:
+                    assert value[slabs:].isnan().all()
+                    assert auxiliary[slabs:].isnan().all()
+
+            expected_fields = []
+            for inputs, is_output in ((dy, True), (x, False)):
+                per_slab = [
+                    _producer_axis_truth(
+                        inputs,
+                        packed,
+                        order,
+                        sizes,
+                        output=is_output,
+                        start=start + slab * bm,
+                        batch_tile=bm,
+                    )
+                    for slab in range(slabs)
+                ]
+                expected_fields.extend(
+                    torch.cat([pair[index] for pair in per_slab]) for index in (0, 1)
+                )
+            for actual, expected in zip((g, dg, h, dh), expected_fields, strict=True):
+                _producer_close(actual[:slabs], expected)
+                last_rows = min(bm, b - start - (slabs - 1) * bm)
+                assert not actual[slabs - 1, :, last_rows:].count_nonzero()
+                if slabs < shape[0]:
+                    assert actual[slabs:].isnan().all()
+
+            for streamed in (True, False):
+                destination = partial if streamed else global_partial
+                production_destination = (
+                    production_partial if streamed else production_global
+                )
+                offset = 0 if streamed else start // bm
+                production(production_destination, streamed)
+                for materialize in (False, True):
+                    for field in (fused_g, fused_dg, fused_h, fused_dh):
+                        field.fill_(float("nan"))
+                    if streamed:
+                        partial.fill_(float("nan"))
+                    probes.produce_fused_probe[grid](
+                        x,
+                        dy,
+                        packed,
+                        order,
+                        fused_g,
+                        destination,
+                        fused_dg if materialize else None,
+                        fused_h if materialize else None,
+                        fused_dh if materialize else None,
+                        *common,
+                        STREAM_PARTIAL=streamed,
+                        MATERIALIZE_AUX=materialize,
+                        **launch,
+                    )
+                    _producer_close(fused_g[:slabs], production_g[:slabs])
+                    _producer_close(
+                        destination[offset : offset + slabs],
+                        production_destination[offset : offset + slabs],
+                    )
+                    _producer_close(
+                        destination[offset : offset + slabs], split_partial[:slabs]
+                    )
+                    if materialize:
+                        for actual, expected in zip(
+                            (fused_g, fused_dg, fused_h, fused_dh),
+                            (g, dg, h, dh),
+                            strict=True,
+                        ):
+                            _producer_close(actual[:slabs], expected[:slabs])
+                    else:
+                        assert all(
+                            field.isnan().all()
+                            for field in (fused_dg, fused_h, fused_dh)
+                        )
+                    if slabs < shape[0]:
+                        assert all(
+                            field[slabs:].isnan().all()
+                            for field in (fused_g, fused_dg, fused_h, fused_dh)
+                        )
+                        if streamed:
+                            assert partial[slabs:].isnan().all()
+        _producer_close(global_partial, production_global)
+        original_order_partials.append(global_partial.clone())
+
+    if case == "rho3":
+        assert not torch.equal(*atom_orders)
+    _producer_close(*original_order_partials)
+    torch.testing.assert_close(packed, frozen_packed, rtol=0, atol=0)
+    torch.testing.assert_close(layer.atoms.p, frozen_source, rtol=0, atol=0)
+
+
+def test_matched_producer_catalog_complete_controlled_contrasts():
+    from itertools import product
+
+    from benchmarks.cuda.linear.matched_producer_diagnostics import catalog
+
+    cases = catalog()
+    expected = {
+        (axis, mode, order, capacity)
+        for axis, mode, order, capacity in product(
+            ("G", "H"),
+            ("native_value", "matched_value", "derivative"),
+            ("input", "output"),
+            (8, 32),
+        )
+    } | {
+        ("pipeline", mode, order, capacity)
+        for mode, order, capacity in product(
+            ("compact", "materialized", "split"), ("input", "output"), (8, 32)
+        )
+    }
+    assert len(cases) == len(expected) == 36
+    actual = set()
+    for name, config in cases.items():
+        assert set(config) == {"axis", "mode", "order", "capacity"}
+        axis, mode, order, capacity = (
+            config[key] for key in ("axis", "mode", "order", "capacity")
+        )
+        assert name == f"{axis}-{mode}-{order}-c{capacity}"
+        actual.add((axis, mode, order, capacity))
+    assert actual == expected
+
+
+@GPU
+def test_matched_producer_helper_correctness_and_memory_boundary(tmp_path, monkeypatch):
+    """Same-process API smoke; these samples are not fresh-worker evidence."""
+    from benchmarks.cuda.linear.matched_producer_diagnostics import (
+        case_worker,
+        catalog,
+        export_snapshot,
+    )
+    from torchcst._backends.cuda.algorithms.linear.periodic_product.executor import (
+        _prepare,
+    )
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h.output_owner import (
+        prepare_routing,
+    )
+
+    layer, x, dy, sizes, recipe = _producer_fixture("rho3")
+    packed = _prepare(layer.atoms.p, layer.kernel, sizes, recipe)
+    routing = prepare_routing(packed, sizes, recipe, output=False, tile=8)
+    snapshot_path = tmp_path / "producer-smoke.pt"
+    receipt = export_snapshot(snapshot_path, x, dy, packed, routing, sizes, recipe)
+    assert receipt["path"] == str(snapshot_path)
+    assert len(receipt["sha256"]) == 64
+    trace = []
+    finite = torch.isfinite
+
+    def traced_finite(tensor):
+        trace.append(("check", None))
+        return finite(tensor)
+
+    monkeypatch.setattr(torch, "isfinite", traced_finite)
+    for name in (
+        "memory_allocated",
+        "memory_reserved",
+        "max_memory_allocated",
+        "max_memory_reserved",
+    ):
+        original = getattr(torch.cuda, name)
+
+        def measured(*args, name=name, original=original, **kwargs):
+            value = original(*args, **kwargs)
+            trace.append((name, value))
+            return value
+
+        monkeypatch.setattr(torch.cuda, name, measured)
+
+    records = []
+    for case in (
+        "H-matched_value-input-c8",
+        "H-derivative-input-c8",
+        "pipeline-materialized-output-c32",
+    ):
+        trace.clear()
+        record = case_worker(snapshot_path, case)
+        records.append(record)
+        assert record["status"] == "PASS"
+        assert record["case_id"] == case
+        assert record["config"] == catalog()[case]
+        assert record["snapshot_sha256"] == receipt["sha256"]
+        assert len(record["order_sha256"]) == 64
+        correctness = record["correctness"]
+        assert correctness["all_chunks_before_capture"]
+        assert correctness["captured_final_chunk"]
+        assert correctness["errors"]
+        for error in correctness["errors"].values():
+            assert error["max_abs"] <= 4e-4 and error["relative_l2"] <= 4e-4
+        timing = record["timing"]
+        assert len(timing["samples_ms"]) == 21
+        assert all(sample >= 0 for sample in timing["samples_ms"])
+        assert timing["median_ms"] >= 0
+        assert timing["replays_per_sample"] == 16
+        assert timing["warmup_replays"] == 20
+        memory = record["memory"]
+        for key in ("allocated_bytes", "reserved_bytes"):
+            assert memory["peak_increment"][key] >= 0
+            assert memory["peak_increment"][key] == (
+                memory["peak_capture_replay"][key] - memory["baseline"][key]
+            )
+            assert memory["baseline"][key] <= memory["live_after_replay"][key]
+            assert (
+                memory["live_after_replay"][key] <= memory["peak_capture_replay"][key]
+            )
+        # A real correctness check allocates reference tensors. Its final run
+        # must occur after recording both peak and live allocator counters.
+        peak_positions = [
+            index for index, (name, _) in enumerate(trace) if name.startswith("max_")
+        ]
+        assert peak_positions
+        assert any(name == "check" for name, _ in trace[: min(peak_positions)])
+        after_peak = max(peak_positions) + 1
+        final_check = next(
+            index
+            for index in range(after_peak, len(trace))
+            if trace[index][0] == "check"
+        )
+        assert {name for name, _ in trace[after_peak:final_check]} >= {
+            "memory_allocated",
+            "memory_reserved",
+        }
+        for name, key in (
+            ("max_memory_allocated", "allocated_bytes"),
+            ("max_memory_reserved", "reserved_bytes"),
+        ):
+            measured_peak = [value for method, value in trace if method == name][-1]
+            assert memory["peak_capture_replay"][key] == measured_peak
+        schedule = record["schedule"]
+        assert schedule["batch_tile"] == 8 and schedule["atom_group"] == 8
+        output_bytes = memory["output_tensor_bytes"]
+        if record["config"]["axis"] == "H":
+            assert schedule["chunk_starts"] == [0, 8]
+            assert schedule["active_slabs"] == [1, 1]
+            assert output_bytes == {"Value": 17 * 8 * 4, "Aux": 17 * 8 * 4}
+        else:
+            assert schedule["chunk_starts"] == [0]
+            assert schedule["active_slabs"] == [2]
+            assert output_bytes == {
+                **{key: 4 * 17 * 8 * 4 for key in ("G", "DG", "H", "DH")},
+                "Partial": 4 * 3 * 17 * 4,
+            }
+        assert all(value > 0 for value in output_bytes.values())
+        assert sum(output_bytes.values()) <= memory["peak_increment"]["allocated_bytes"]
+    assert (
+        records[0]["memory"]["output_tensor_bytes"]
+        == records[1]["memory"]["output_tensor_bytes"]
+    )
+    assert (
+        records[0]["memory"]["peak_increment"]["allocated_bytes"]
+        == records[1]["memory"]["peak_increment"]["allocated_bytes"]
+    )
