@@ -305,3 +305,31 @@ class TileDerivativeHRecipe(TileDotHRecipe):
 @dataclass(frozen=True)
 class TileCombinedHRecipe(TileWindowHRecipe):
     """Support-window panels with immediate derivative consumption."""
+
+
+@dataclass(frozen=True)
+class TileBucketHRecipe(PeriodicRecipe):
+    """Dyadic support buckets; one ID per atom/axis and two H/G slabs."""
+
+    gemm: str = "triton"
+    batch_tile: int = 16
+    tile_sites: int = 16
+    owner_parts: int = 8
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.gemm != "triton":
+            raise ValueError("tile bucket requires gemm='triton'")
+        if type(self.batch_tile) is not int or self.batch_tile != 16:
+            raise ValueError("tile bucket requires batch_tile=16")
+        if type(self.tile_sites) is not int or self.tile_sites not in (16, 32):
+            raise ValueError("tile_sites must be 16 or 32")
+        if type(self.owner_parts) is not int or self.owner_parts != 8:
+            raise ValueError("owner_parts must be 8")
+        if (self.prep_group, self.prep_sites, self.atom_group, self.patch_sites) != (
+            16,
+            16,
+            8,
+            8,
+        ):
+            raise ValueError("tile bucket keeps canonical preparation settings")

@@ -32,6 +32,7 @@ from .recipe import (
     SiteRoutedHRecipe,
     SiteRoutedStreamingHRecipe,
     StreamingInputHRecipe,
+    TileBucketHRecipe,
     TileCombinedHRecipe,
     TileDerivativeHRecipe,
     TileDotHRecipe,
@@ -538,3 +539,29 @@ class TileCombinedHAlgorithm(TileWindowHAlgorithm):
 
     id: str = "research_cuda_regular_grid_tile_combined_h"
     recipe_type: type = TileCombinedHRecipe
+
+
+@dataclass(frozen=True)
+class TileBucketHAlgorithm(TileDotHAlgorithm):
+    """Dyadic support buckets without expanded memberships or H/G atomics."""
+
+    id: str = "research_cuda_regular_grid_tile_bucket_h"
+    recipe_type: type = TileBucketHRecipe
+
+    def execute(self, state, inputs):
+        from ..profile_product_matrix.algorithm import live_inputs
+        from .tile_bucket_executor import tile_bucket_h
+
+        x, p, declaration, operator = live_inputs(state, inputs)
+        chart = self.chart_spec(declaration)
+        sizes = (
+            len(x),
+            chart.shape[1],
+            chart.shape[0],
+            chart.geometry.periods[1],
+            chart.geometry.periods[0],
+            chart.origin[1],
+            chart.origin[0],
+        )
+        with torch.cuda.device(x.device):
+            return tile_bucket_h(x, p, operator.kernel, sizes, state.recipe)
