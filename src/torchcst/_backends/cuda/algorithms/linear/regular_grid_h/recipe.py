@@ -369,5 +369,6 @@ class TileOwnerLifetimeHRecipe(TileOwnerPrepHRecipe):
             "reuse",
             "late",
             "combined",
+            "arena",
         ):
-            raise ValueError("lifetime must be reuse, late or combined")
+            raise ValueError("lifetime must be reuse, late, combined or arena")

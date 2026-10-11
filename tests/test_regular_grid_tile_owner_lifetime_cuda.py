@@ -17,7 +17,7 @@ from torchcst._backends.dispatch import FixedSelector
 from torchcst._backends.registry import Registry
 from torchcst._backends.schema import ExecutionPlan
 
-LIFETIMES = ("reuse", "late", "combined")
+LIFETIMES = ("reuse", "late", "combined", "arena")
 
 
 def selector(lifetime):
@@ -177,6 +177,9 @@ def test_lifetime_saved_workspaces(lifetime_route):
         lambda t: saved.append(tuple(t.shape)) or t, lambda t: t
     ):
         layer(x).sum().backward()
-    assert len(saved) == 16
+    assert len(saved) == 18
     expected = [(129, 16), (5, 8, 16, 16)] if lifetime_route != "late" else [(0,), (0,)]
-    assert saved[-2:] == expected
+    assert saved[-4:-2] == expected
+    assert saved[-2:] == (
+        [(129, 16), (3, 129)] if lifetime_route == "arena" else [(0,), (0,)]
+    )

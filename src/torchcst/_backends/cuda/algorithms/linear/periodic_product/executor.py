@@ -6,7 +6,9 @@ from torch.autograd.function import once_differentiable
 from ..profile_product_matrix.executor import _matmul
 
 
-def _prepare(source, value, sizes, recipe, *, order=None, canonical_centers=False):
+def _prepare(
+    source, value, sizes, recipe, *, order=None, canonical_centers=False, out=None
+):
     import triton as tr
 
     from ..local_product.preparation import polar_scalars
@@ -14,7 +16,7 @@ def _prepare(source, value, sizes, recipe, *, order=None, canonical_centers=Fals
 
     _b, ni, no, li, lo, oi, oo = sizes
     a = len(source)
-    packed = source.new_empty((13, a))
+    packed = source.new_empty((13, a)) if out is None else out
     if a:
         k.prepare[(tr.cdiv(a, recipe.prep_group),)](
             source,

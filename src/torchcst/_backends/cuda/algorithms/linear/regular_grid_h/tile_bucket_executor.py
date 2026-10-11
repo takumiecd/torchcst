@@ -12,7 +12,7 @@ def levels(n, tile):
     return (bins - 1).bit_length() + 1
 
 
-def prepare_tiles(packed, sizes, recipe):
+def prepare_tiles(packed, sizes, recipe, *, out=None):
     import triton as tr
 
     from . import tile_bucket_kernels as k
@@ -37,11 +37,16 @@ def prepare_tiles(packed, sizes, recipe):
             enable_fp_fusion=False,
         )
         sorted_keys, order64 = torch.sort(keys)
-        order = order64.to(torch.int32)
+        if out is None:
+            order = order64.to(torch.int32)
+        else:
+            order = out[2 * output]
+            order.copy_(order64)
         bounds = torch.searchsorted(
             sorted_keys,
             torch.arange(count * bins + 1, device=packed.device, dtype=torch.int32),
             out_int32=True,
+            out=None if out is None else out[2 * output + 1],
         )
         routes.extend((order, bounds))
     return tuple(routes)

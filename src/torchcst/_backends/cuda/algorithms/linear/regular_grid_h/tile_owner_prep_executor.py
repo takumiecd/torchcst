@@ -9,25 +9,29 @@ from .tile_bucket_executor import prepare_tiles as bucket_tiles
 from .tile_dot_executor import allocate_scratch
 
 
-def prepare_bands(bounds, bins, count):
+def prepare_bands(bounds, bins, count, *, out=None):
     import triton as tr
 
     from . import tile_owner_prep_kernels as k
 
-    result = bounds.new_zeros(count + 1)
+    result = bounds.new_zeros(count + 1) if out is None else out.zero_()
     k.prepare_bands[(1,)](
         bounds, result, bins, count, tr.next_power_of_2(count), num_warps=4
     )
     return result
 
 
-def prepare_ranges(bounds, n, recipe, count):
+def prepare_ranges(bounds, n, recipe, count, *, out=None):
     import triton as tr
 
     from . import tile_owner_prep_kernels as k
 
     bins = tr.cdiv(n, recipe.tile_sites)
-    result = bounds.new_empty((bins, recipe.owner_parts, count, 2, 2))
+    result = (
+        bounds.new_empty((bins, recipe.owner_parts, count, 2, 2))
+        if out is None
+        else out
+    )
     k.prepare_ranges[(tr.cdiv(result.numel() // 2, 256),)](
         bounds,
         result,
@@ -41,21 +45,25 @@ def prepare_ranges(bounds, n, recipe, count):
     return result
 
 
-def prepare_membership(packed, n, recipe, output):
+def prepare_membership(packed, n, recipe, output, *, out=None):
     import triton as tr
 
     from . import tile_owner_prep_kernels as k
 
     a = packed.shape[1]
-    result = torch.empty((2, a), device=packed.device, dtype=torch.int32)
+    result = (
+        torch.empty((2, a), device=packed.device, dtype=torch.int32)
+        if out is None
+        else out
+    )
     k.prepare_membership[(tr.cdiv(a, 256),)](
         packed, result, a, n, recipe.tile_sites, output, 256, num_warps=4
     )
     return result
 
 
-def prepare_tiles(packed, sizes, recipe):
-    routing = bucket_tiles(packed, sizes, recipe)
+def prepare_tiles(packed, sizes, recipe, *, out=None):
+    routing = bucket_tiles(packed, sizes, recipe, out=None if out is None else out[:4])
     extra = []
     empty = routing[0].new_empty(0)
     for output in (False, True):
@@ -65,14 +73,29 @@ def prepare_tiles(packed, sizes, recipe):
         extra.extend(
             (
                 prepare_bands(
-                    bounds, (n + recipe.tile_sites - 1) // recipe.tile_sites, count
+                    bounds,
+                    (n + recipe.tile_sites - 1) // recipe.tile_sites,
+                    count,
+                    out=None if out is None else out[4 + 3 * output],
                 )
                 if recipe.mode in ("bands", "all")
                 else empty,
-                prepare_ranges(bounds, n, recipe, count)
+                prepare_ranges(
+                    bounds,
+                    n,
+                    recipe,
+                    count,
+                    out=None if out is None else out[5 + 3 * output],
+                )
                 if recipe.mode in ("ranges", "all")
                 else empty,
-                prepare_membership(packed, n, recipe, output)
+                prepare_membership(
+                    packed,
+                    n,
+                    recipe,
+                    output,
+                    out=None if out is None else out[6 + 3 * output],
+                )
                 if recipe.mode in ("membership", "all")
                 else empty,
             )
