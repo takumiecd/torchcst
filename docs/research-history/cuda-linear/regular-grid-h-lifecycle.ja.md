@@ -3044,3 +3044,14 @@ input順はH側の支持重複を揃えるがG側は揃わない。全profile ca
 
 照合用storageの保持を発見した初回`a53bf790`のsource/results/auditも保存し、
 解放gateを追加してqualificationと4cohortを再計測した。補正後の詳細表とSHA・復旧pathは上記文書にある。
+
+
+## canonical packed/partialの全量コピーなし比較
+
+source `2a0daa31` で入力site順にpackedを直接生成し、partial/physicalも同じ順に
+書いてsource VJPでraw IDへ直接戻す候補を検証した。40全shape FP64 gateと281 GPU
+回帰検証はPASS。完全stepはrho3で2.5–2.7%、rho8で3.3–3.9%短縮したが、
+capture/replay allocated/reservedは59.846/120 MiB（既存57.431/104、dense81.752/106）。
+reservedがdenseを超えるため既存BM16/G16を維持する。準備・復元もprimaryに含めた
+負の採用結果、配置/寿命、4 cohortの実測、source/result hashは
+[canonical比較](regular-grid-canonical-layout.ja.md)に残す。
