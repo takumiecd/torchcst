@@ -129,3 +129,13 @@ class OwnerBatchStreamingHRecipe(SiteRoutedStreamingHRecipe):
             raise ValueError("owner_batch_tile must be 16")
         if self.g_batch != 8:
             raise ValueError("owner BM16 streaming requires g_batch=8")
+
+
+@dataclass(frozen=True)
+class InputSiteStreamingHRecipe(OwnerBatchStreamingHRecipe):
+    """Input-site prefix for dX; forward output layout and G8 unchanged."""
+
+
+@dataclass(frozen=True)
+class InputOrderStreamingHRecipe(OwnerBatchStreamingHRecipe):
+    """Coarse input-bin/output-site key; forward layout and dX bins unchanged."""

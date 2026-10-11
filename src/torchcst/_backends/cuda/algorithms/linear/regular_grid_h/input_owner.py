@@ -13,6 +13,7 @@ def input_owned_backward(
         h_capacity,
         prepare_output_fields,
         prepare_routing,
+        uses_input_site_routing,
     )
 
     b, ni, no, li, lo, oi, oo = sizes
@@ -79,6 +80,7 @@ def input_owned_backward(
                 BSTART=start,
                 FALLBACK=fallback,
                 PROFILE_OUTPUT=False,
+                SITE_ROUTING=uses_input_site_routing(recipe),
                 num_warps=4,
                 enable_fp_fusion=False,
             )

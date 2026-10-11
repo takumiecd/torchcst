@@ -11,7 +11,9 @@ from torchcst.kernels import PolarAmpWidthSpec, TriweightSpec
 from ..periodic_product.algorithm import PeriodicMatrixAlgorithm
 from .recipe import (
     GroupedOutputHRecipe,
+    InputOrderStreamingHRecipe,
     InputOwnedHRecipe,
+    InputSiteStreamingHRecipe,
     OnchipHRecipe,
     OutputOwnedHRecipe,
     OwnerBatchHRecipe,
@@ -233,3 +235,25 @@ class OwnerBatchStreamingHAlgorithm(OutputOwnedHAlgorithm):
         if type(recipe) is not OwnerBatchStreamingHRecipe:
             raise TypeError("requires OwnerBatchStreamingHRecipe")
         OwnerBatchStreamingHRecipe(**asdict(recipe))
+
+
+@dataclass(frozen=True)
+class InputSiteStreamingHAlgorithm(OutputOwnedHAlgorithm):
+    id: str = "research_cuda_regular_grid_input_site_streaming_h"
+    recipe_type: type = InputSiteStreamingHRecipe
+
+    def validate_recipe(self, recipe):
+        if type(recipe) is not InputSiteStreamingHRecipe:
+            raise TypeError("requires InputSiteStreamingHRecipe")
+        InputSiteStreamingHRecipe(**asdict(recipe))
+
+
+@dataclass(frozen=True)
+class InputOrderStreamingHAlgorithm(OutputOwnedHAlgorithm):
+    id: str = "research_cuda_regular_grid_input_order_streaming_h"
+    recipe_type: type = InputOrderStreamingHRecipe
+
+    def validate_recipe(self, recipe):
+        if type(recipe) is not InputOrderStreamingHRecipe:
+            raise TypeError("requires InputOrderStreamingHRecipe")
+        InputOrderStreamingHRecipe(**asdict(recipe))

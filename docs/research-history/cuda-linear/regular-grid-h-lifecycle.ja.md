@@ -1873,3 +1873,28 @@ H16は47.12/102MiB、H32は57.43/104MiBのtradeoffを保持する。denseは約0
 証拠は `backward-stages-final-pool-status.json` と `backward-stages-final-stop-lifecycle.log`。
 新しい配置・入力site-prefixの性能はまだ測っていない。次はforwardを固定し、
 入力候補の細分化と入力区分内のoutput-site順sortを別候補として比較する。
+
+
+## 入力候補削減と並び替えの独立比較（事前条件）
+
+基準を `site-owner-bm16-stream-g8-h32` に固定し、次の2案を別々に比較する。
+forwardは同じoutput site routing、owner BM16、H32。backwardはG8、BM8、
+同じjoint norm floor、全atom勾配、同じsource snapshotとする。
+
+- `input-site-stream-g8-h32`: 入力索引をcoarse binからsite prefixへ変更し、
+  dX ownerの候補を減らす。出力副キーは使わない。
+- `input-order-stream-g8-h32`: 入力coarse binを第一キー、output siteを第二キーに
+  する。coarse binの人口・候補集合を保ち、G生成の参照局所性を試す。
+  既存int32 keyを合成し、追加のatom数比例permutationは持たない。
+
+N=2048、B=32、A=209715、rho=3/8、seed=41、FP32、既存24 AdamW更新を固定。
+各caseにmatrix-torch/factor/onchip-h/denseの4対照と基準・2案、計7方式を含める。
+全976 contract testsを先に通し、各測定の初期・更新後全atom FP64 gateも維持する。
+各rhoで2独立cohortを同じ条件で実行し、片方だけ良い値を選ばない。
+
+未計装完全stepとcapture/replay allocated・reservedピークを主指標とし、
+別Graphの5段階（入力routing/fields準備、G/dG・H/dH・parameter partial生成、
+G→dX owner集約、physical蓄積、source VJP）を診断に使う。
+診断時間の和を完全step時間とみなさない。forwardも共通であることを確認する。
+候補訪問数・GROUP反復数をrouteごとに記録するが、実メモリtrafficやcache hit率とは
+呼ばない。比較結果によって公開dispatcherを自動変更しない。

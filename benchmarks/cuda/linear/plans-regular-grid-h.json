@@ -451,6 +451,50 @@
           "owner_batch_tile": 16
         }
       }
+    },
+    {
+      "id": "input-site-stream-g8-h32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_regular_grid_input_site_streaming_h",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_group": 8,
+          "gemm": "torch",
+          "patch_sites": 8,
+          "prep_group": 16,
+          "prep_sites": 16,
+          "batch_tile": 8,
+          "output_tile": 16,
+          "h_batch": 32,
+          "output_group": 32,
+          "input_tile": 8,
+          "g_batch": 8,
+          "owner_batch_tile": 16
+        }
+      }
+    },
+    {
+      "id": "input-order-stream-g8-h32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_regular_grid_input_order_streaming_h",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_group": 8,
+          "gemm": "torch",
+          "patch_sites": 8,
+          "prep_group": 16,
+          "prep_sites": 16,
+          "batch_tile": 8,
+          "output_tile": 16,
+          "h_batch": 32,
+          "output_group": 32,
+          "input_tile": 8,
+          "g_batch": 8,
+          "owner_batch_tile": 16
+        }
+      }
     }
   ]
 }

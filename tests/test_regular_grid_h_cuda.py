@@ -22,7 +22,9 @@ from torchcst._backends.cuda.algorithms.linear.periodic_product.recipe import (
 )
 from torchcst._backends.cuda.algorithms.linear.regular_grid_h.algorithm import (
     GroupedOutputHAlgorithm,
+    InputOrderStreamingHAlgorithm,
     InputOwnedHAlgorithm,
+    InputSiteStreamingHAlgorithm,
     OnchipHAlgorithm,
     OutputOwnedHAlgorithm,
     OwnerBatchHAlgorithm,
@@ -38,7 +40,9 @@ from torchcst._backends.cuda.algorithms.linear.regular_grid_h.algorithm import (
 )
 from torchcst._backends.cuda.algorithms.linear.regular_grid_h.recipe import (
     GroupedOutputHRecipe,
+    InputOrderStreamingHRecipe,
     InputOwnedHRecipe,
+    InputSiteStreamingHRecipe,
     OnchipHRecipe,
     OutputOwnedHRecipe,
     OwnerBatchHRecipe,
@@ -74,6 +78,8 @@ def selector(route="onchip", **settings):
         "stream32": StreamingInputHAlgorithm,
         "owner_batch": OwnerBatchHAlgorithm,
         "owner_batch_stream": OwnerBatchStreamingHAlgorithm,
+        "input_site32": InputSiteStreamingHAlgorithm,
+        "input_order32": InputOrderStreamingHAlgorithm,
         "site16": SiteRoutedHAlgorithm,
         "site32": SiteRoutedHAlgorithm,
         "site_stream16": SiteRoutedStreamingHAlgorithm,
@@ -103,6 +109,8 @@ def selector(route="onchip", **settings):
         ),
         "owner_batch": OwnerBatchHRecipe,
         "owner_batch_stream": OwnerBatchStreamingHRecipe,
+        "input_site32": InputSiteStreamingHRecipe,
+        "input_order32": InputOrderStreamingHRecipe,
         "site16": lambda **kw: SiteRoutedHRecipe(h_batch=16, **kw),
         "site32": lambda **kw: SiteRoutedHRecipe(h_batch=32, **kw),
         "site_stream16": lambda **kw: SiteRoutedStreamingHRecipe(
@@ -175,6 +183,8 @@ def model(
         "stream32",
         "owner_batch",
         "owner_batch_stream",
+        "input_site32",
+        "input_order32",
         "site16",
         "site32",
         "site_stream16",
@@ -232,6 +242,8 @@ def test_metadata_roundtrip_scope_and_no_gpu_import(route):
         "stream32",
         "owner_batch",
         "owner_batch_stream",
+        "input_site32",
+        "input_order32",
         "site16",
         "site32",
         "site_stream16",
@@ -292,6 +304,8 @@ assert not any(n.endswith(('regular_grid_h.executor','regular_grid_h.kernels')) 
         "stream32",
         "owner_batch",
         "owner_batch_stream",
+        "input_site32",
+        "input_order32",
         "site16",
         "site32",
         "site_stream16",
@@ -374,6 +388,8 @@ def test_alternative_explicit_tiles(route, settings):
         "stream32",
         "owner_batch",
         "owner_batch_stream",
+        "input_site32",
+        "input_order32",
         "site16",
         "site32",
         "site_stream16",
@@ -405,6 +421,8 @@ def test_product_floor_and_singleton_gradients(route, monkeypatch, case):
         "stream32",
         "owner_batch",
         "owner_batch_stream",
+        "input_site32",
+        "input_order32",
         "site16",
         "site32",
         "site_stream16",
@@ -439,6 +457,8 @@ def test_zero_atoms_and_requested_gradients(route, monkeypatch, count, need_x, n
         "stream32",
         "owner_batch",
         "owner_batch_stream",
+        "input_site32",
+        "input_order32",
         "site16",
         "site32",
         "site_stream16",
@@ -490,6 +510,8 @@ def test_retained_forward_snapshots_before_live_parameter_width_and_chart_update
         "stream32",
         "owner_batch",
         "owner_batch_stream",
+        "input_site32",
+        "input_order32",
         "site16",
         "site32",
         "site_stream16",
@@ -532,6 +554,8 @@ def test_no_full_h_g_saved_and_backward_recomputation(
         "stream32",
         "owner_batch",
         "owner_batch_stream",
+        "input_site32",
+        "input_order32",
         "site16",
         "site32",
         "site_stream16",
@@ -575,6 +599,8 @@ def test_twenty_graph_replays_public_optimizer_live_width_and_all_task_gradients
         "stream32",
         "owner_batch",
         "owner_batch_stream",
+        "input_site32",
+        "input_order32",
         "site16",
         "site32",
         "site_stream16",
@@ -612,6 +638,8 @@ def test_reject_invalid_output_tile(tile):
         "stream32",
         "owner_batch",
         "owner_batch_stream",
+        "input_site32",
+        "input_order32",
         "site16",
         "site32",
         "site_stream16",
@@ -661,6 +689,8 @@ def test_output_owner_partial_tile_seam_cluster_and_no_fixed_capacity(
         ("site32", 32),
         ("owner_batch", 32),
         ("owner_batch_stream", 32),
+        ("input_site32", 32),
+        ("input_order32", 32),
         ("site_stream16", 16),
         ("site_stream32", 32),
     ],
@@ -782,6 +812,8 @@ def test_aggregation_probes_real_formula_partial_chunks_and_census(
         "stream32",
         "owner_batch",
         "owner_batch_stream",
+        "input_site32",
+        "input_order32",
         "site16",
         "site32",
         "site_stream16",
@@ -824,6 +856,8 @@ def test_prepared_reuse_zero_forward_preserves_nonzero_derivative(route, zero):
         "stream32",
         "owner_batch",
         "owner_batch_stream",
+        "input_site32",
+        "input_order32",
         "site16",
         "site32",
         "site_stream16",
@@ -955,7 +989,7 @@ def test_input_owner_recipe_is_distinct():
 @GPU
 @pytest.mark.parametrize("capacity", [16, 32])
 @pytest.mark.parametrize("tile", [8, 16, 32, 64])
-@pytest.mark.parametrize("streamed", [False, True])
+@pytest.mark.parametrize("streamed", [False, True, "input_site32", "input_order32"])
 def test_input_owner_one_g_buffer_overwritten_before_next_chunk(
     monkeypatch, capacity, tile, streamed
 ):
@@ -985,7 +1019,9 @@ def test_input_owner_one_g_buffer_overwritten_before_next_chunk(
     monkeypatch.setattr(input_kernels, "produce_g_parameters", Capture())
     layer = model(
         periodic.parameters(129),
-        ("stream" if streamed else "input") + str(capacity),
+        streamed
+        if isinstance(streamed, str)
+        else ("stream" if streamed else "input") + str(capacity),
         input_tile=tile,
         device="cuda",
     )
@@ -1143,7 +1179,9 @@ def test_owner_batch_metadata(recipe_cls, algorithm_cls, parent):
 
 
 @GPU
-@pytest.mark.parametrize("route", ["owner_batch", "owner_batch_stream"])
+@pytest.mark.parametrize(
+    "route", ["owner_batch", "owner_batch_stream", "input_site32", "input_order32"]
+)
 @pytest.mark.parametrize("cap", [16, 32])
 @pytest.mark.parametrize("batch", [1, 3, 15, 17, 32, 33, 64])
 def test_owner_batch_slabs_strides_all_gradients_and_graph(route, cap, batch):
@@ -1179,6 +1217,8 @@ def test_owner_batch_catalog_plans():
         ("site-owner-bm16-h32", OwnerBatchHRecipe),
         ("site-owner-bm16-stream-g8-h16", OwnerBatchStreamingHRecipe),
         ("site-owner-bm16-stream-g8-h32", OwnerBatchStreamingHRecipe),
+        ("input-site-stream-g8-h32", InputSiteStreamingHRecipe),
+        ("input-order-stream-g8-h32", InputOrderStreamingHRecipe),
     ]:
         plan = REGISTRY.load_plan(bind_plan(model(periodic.parameters(1)), kind))
         assert type(plan.recipe) is recipe_cls
@@ -1224,6 +1264,8 @@ def test_owner_stage_routing_census(site_routed, bounds, distance, expected):
         "site-stream-g8-h32",
         "site-owner-bm16-stream-g8-h16",
         "site-owner-bm16-stream-g8-h32",
+        "input-site-stream-g8-h32",
+        "input-order-stream-g8-h32",
     ],
 )
 def test_streaming_backward_diagnostic_layout_is_backward_not_forward_owner(kind):
@@ -1269,6 +1311,8 @@ def test_streaming_backward_diagnostics_exclude_other_schedules(kind):
         ("site-stream-g8-h32", "site_stream32", 32),
         ("site-owner-bm16-stream-g8-h16", "owner_batch_stream", 16),
         ("site-owner-bm16-stream-g8-h32", "owner_batch_stream", 32),
+        ("input-site-stream-g8-h32", "input_site32", 32),
+        ("input-order-stream-g8-h32", "input_order32", 32),
     ],
 )
 def test_streaming_backward_stages_use_actual_backward_schedule(kind, route, cap):
@@ -1288,7 +1332,9 @@ def test_streaming_backward_stages_use_actual_backward_schedule(kind, route, cap
     assert result["same_uninstrumented_backward"] and result["same_snapshot"]
     assert result["layout"]["chunk_starts"] == [0, 8, 16]
     assert result["layout"]["dX_owner_batch_tile"] == 8
-    assert result["input_routing_census"]["prefix_entries"] == 10
+    assert result["input_routing_census"]["prefix_entries"] == (
+        66 if route == "input_site32" else 10
+    )
     assert result["input_routing_census"]["batch_ctas_per_input_owner"] == 3
     assert len(result["samples_ms"]) == 5
     for sample in result["samples_ms"]:
@@ -1305,3 +1351,93 @@ def test_streaming_backward_stages_use_actual_backward_schedule(kind, route, cap
             )
         )
     torch.testing.assert_close(layer.atoms.p, before, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize(
+    "recipe_cls,algorithm_cls",
+    [
+        (InputSiteStreamingHRecipe, InputSiteStreamingHAlgorithm),
+        (InputOrderStreamingHRecipe, InputOrderStreamingHAlgorithm),
+    ],
+)
+def test_input_routing_recipes_reject_parent_and_sibling(recipe_cls, algorithm_cls):
+    for wrong in (
+        OwnerBatchStreamingHRecipe(),
+        InputSiteStreamingHRecipe(),
+        InputOrderStreamingHRecipe(),
+    ):
+        if type(wrong) is not recipe_cls:
+            with pytest.raises(TypeError):
+                algorithm_cls().validate_recipe(wrong)
+
+
+@GPU
+@pytest.mark.parametrize(
+    "shape,sigma,offset",
+    [
+        ((37, 19), 0.01, 0.0),
+        ((33, 65), 0.7, 0.0),
+        ((33, 65), 9.0, 0.0),
+        ((2, 2), 9.0, 2**20),
+    ],
+)
+def test_input_routing_changes_only_backward_candidates(shape, sigma, offset):
+    from torchcst._backends.cuda.algorithms.linear.periodic_product.executor import (
+        _prepare,
+    )
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h.output_owner import (
+        prepare_routing,
+    )
+
+    p = periodic.parameters(129)
+    p[:, 2] += offset
+    no, ni = shape
+    baseline = model(p, "owner_batch_stream", shape=shape, sigma=sigma, device="cuda")
+    lo, li = map(float, baseline.chart.geometry.periods)
+    oo, oi = map(float, baseline.chart.origin)
+    sizes = (3, ni, no, li, lo, oi, oo)
+    recipes = [
+        OwnerBatchStreamingHRecipe(),
+        InputSiteStreamingHRecipe(),
+        InputOrderStreamingHRecipe(),
+    ]
+    packed = _prepare(baseline.atoms.p, baseline.kernel, sizes, recipes[0])
+    forward = [prepare_routing(packed, sizes, r) for r in recipes]
+    for actual in forward[1:]:
+        for value, expected in zip(actual, forward[0], strict=True):
+            torch.testing.assert_close(value, expected, rtol=0, atol=0)
+    x = torch.randn(3, ni, device="cuda")
+    expected_y = baseline(x)
+    for route in ("input_site32", "input_order32"):
+        candidate = model(p, route, shape=shape, sigma=sigma, device="cuda")
+        torch.testing.assert_close(candidate(x), expected_y, rtol=0, atol=0)
+    routes = [prepare_routing(packed, sizes, r, output=False, tile=8) for r in recipes]
+    old, fine, ordered = [(o.cpu(), b.cpu(), int(d)) for o, b, d in routes]
+    assert torch.equal(old[1], ordered[1]) and old[2] == fine[2] == ordered[2]
+    assert fine[1].numel() == ni + 1
+    for j in range(len(old[1]) - 1):
+        assert set(old[0][old[1][j] : old[1][j + 1]].tolist()) == set(
+            ordered[0][ordered[1][j] : ordered[1][j + 1]].tolist()
+        )
+    # Independent input support coverage; every atom is unique per owner.
+    pp = packed.cpu()
+    phase = pp[2] - oi - li * torch.floor((pp[2] - oi) / li)
+    input_sites = torch.floor(phase / (li / ni)).clamp(0, ni - 1).long()
+    output_phase = pp[3] - oo - lo * torch.floor((pp[3] - oo) / lo)
+    output_sites = torch.floor(output_phase / (lo / no)).clamp(0, no - 1).long()
+    composite = (input_sites // 8) * no + output_sites
+    assert torch.all(composite[ordered[0]][1:] >= composite[ordered[0]][:-1])
+    ids, prefix, d = fine
+    for start in range(0, ni, 8):
+        width = min(8, ni - start)
+        length = min(width + 2 * d, ni)
+        first = 0 if length == ni else (start - d) % ni
+        end = first + length
+        picked = ids[prefix[first] : prefix[min(end, ni)]].tolist()
+        if end > ni:
+            picked += ids[: prefix[end - ni]].tolist()
+        assert len(picked) == len(set(picked))
+        for atom in range(len(p)):
+            support = {j % ni for j in range(int(pp[9, atom]), int(pp[10, atom]))}
+            if support.intersection(range(start, start + width)):
+                assert atom in picked

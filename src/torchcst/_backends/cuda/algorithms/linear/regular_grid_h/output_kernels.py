@@ -20,6 +20,10 @@ def routing_keys(
     BLOCK: tl.constexpr,
     OUTPUT: tl.constexpr = True,
     SITE_ROUTING: tl.constexpr = False,
+    SECONDARY_OUTPUT: tl.constexpr = False,
+    SECONDARY_N: tl.constexpr = 1,
+    SECONDARY_L: tl.constexpr = 1.0,
+    SECONDARY_O: tl.constexpr = 0.0,
 ):
     a = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     valid = a < A
@@ -35,7 +39,23 @@ def routing_keys(
     # precision guards. Empty supports need no routing radius.
     distance = tl.maximum(tl.abs(low - site), tl.abs(high - 1 - site)) + 2
     distance = tl.where(valid & (high > low), distance, 0)
-    tl.store(Keys + a, site if SITE_ROUTING else site // BO, valid)
+    key = site if SITE_ROUTING else site // BO
+    if SECONDARY_OUTPUT:
+        tl.static_assert(not OUTPUT and not SITE_ROUTING)
+        # Input coarse bin stays primary; output centre only orders its members.
+        # Full supported shape is <=8192 per side, hence int32 key is safe.
+        centre = tl.load(P + 3 * A + a, valid, SECONDARY_O)
+        phase2 = (
+            centre
+            - SECONDARY_O
+            - SECONDARY_L * tl.floor(tl.div_rn(centre - SECONDARY_O, SECONDARY_L))
+        )
+        secondary = tl.minimum(
+            tl.maximum(tl.floor(tl.div_rn(phase2, SECONDARY_L / SECONDARY_N)), 0),
+            SECONDARY_N - 1,
+        ).to(tl.int32)
+        key = key * SECONDARY_N + secondary
+    tl.store(Keys + a, key, valid)
     tl.store(Distances + tl.program_id(0), tl.max(distance, 0))
 
 

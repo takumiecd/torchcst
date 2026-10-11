@@ -57,6 +57,8 @@ KINDS = (
     "site-stream-g8-h32",
     "site-owner-bm16-stream-g8-h16",
     "site-owner-bm16-stream-g8-h32",
+    "input-site-stream-g8-h32",
+    "input-order-stream-g8-h32",
 )
 REGULAR_PRIMARY = ("matrix-torch", "factor", "onchip-h", "dense")
 PRIMARY = ("matrix-torch", "factor", "dense")
@@ -149,7 +151,9 @@ def bind_plan(model, kind):
     if regular_grid:
         from torchcst._backends.cuda.algorithms.linear.regular_grid_h.recipe import (
             GroupedOutputHRecipe,
+            InputOrderStreamingHRecipe,
             InputOwnedHRecipe,
+            InputSiteStreamingHRecipe,
             OnchipHRecipe,
             OutputOwnedHRecipe,
             OwnerBatchHRecipe,
@@ -185,6 +189,8 @@ def bind_plan(model, kind):
             "site-stream-g8-h32": "research_cuda_regular_grid_site_routed_streaming_h",
             "site-owner-bm16-stream-g8-h16": "research_cuda_regular_grid_site_owner_batch_streaming_h",
             "site-owner-bm16-stream-g8-h32": "research_cuda_regular_grid_site_owner_batch_streaming_h",
+            "input-site-stream-g8-h32": "research_cuda_regular_grid_input_site_streaming_h",
+            "input-order-stream-g8-h32": "research_cuda_regular_grid_input_order_streaming_h",
         }.get(kind, "research_cuda_regular_grid_matrix")
         expected_recipe = (
             {
@@ -211,6 +217,8 @@ def bind_plan(model, kind):
                     h_batch=16
                 ),
                 "site-owner-bm16-stream-g8-h32": OwnerBatchStreamingHRecipe,
+                "input-site-stream-g8-h32": InputSiteStreamingHRecipe,
+                "input-order-stream-g8-h32": InputOrderStreamingHRecipe,
             }[kind]()
             if kind
             in (
@@ -235,6 +243,8 @@ def bind_plan(model, kind):
                 "site-stream-g8-h32",
                 "site-owner-bm16-stream-g8-h16",
                 "site-owner-bm16-stream-g8-h32",
+                "input-site-stream-g8-h32",
+                "input-order-stream-g8-h32",
             )
             else PeriodicRecipe(gemm="triton" if kind == "matrix-triton" else "torch")
         )
@@ -480,6 +490,8 @@ def forward_stages(step, kind):
         "site-stream-g8-h32",
         "site-owner-bm16-stream-g8-h16",
         "site-owner-bm16-stream-g8-h32",
+        "input-site-stream-g8-h32",
+        "input-order-stream-g8-h32",
     ):
         return output_owner_stages(
             step,
@@ -503,13 +515,33 @@ def forward_stages(step, kind):
                 "site-stream-g8-h32": 32,
                 "site-owner-bm16-stream-g8-h16": 16,
                 "site-owner-bm16-stream-g8-h32": 32,
+                "input-site-stream-g8-h32": 32,
+                "input-order-stream-g8-h32": 32,
             }.get(kind),
-            prepared=kind.startswith(("prepared-", "input-owned-", "stream-", "site-")),
-            grouped=kind.startswith(
-                ("prepared-g32-", "input-owned-", "stream-", "site-")
+            prepared=kind.startswith(
+                (
+                    "prepared-",
+                    "input-owned-",
+                    "stream-",
+                    "site-",
+                    "input-site-",
+                    "input-order-",
+                )
             ),
-            site_routed=kind.startswith("site-"),
-            owner_bm16=kind.startswith("site-owner-bm16-"),
+            grouped=kind.startswith(
+                (
+                    "prepared-g32-",
+                    "input-owned-",
+                    "stream-",
+                    "site-",
+                    "input-site-",
+                    "input-order-",
+                )
+            ),
+            site_routed=kind.startswith(("site-", "input-site-", "input-order-")),
+            owner_bm16=kind.startswith(
+                ("site-owner-bm16-", "input-site-", "input-order-")
+            ),
         )
     if kind == "onchip-h":
         return onchip_stages(step)
@@ -915,6 +947,8 @@ STREAMING_STAGE_KINDS = (
     "site-stream-g8-h32",
     "site-owner-bm16-stream-g8-h16",
     "site-owner-bm16-stream-g8-h32",
+    "input-site-stream-g8-h32",
+    "input-order-stream-g8-h32",
 )
 
 
@@ -972,6 +1006,8 @@ def streaming_backward_stages(step, kind):
         active_h_tiles,
         prepare_output_fields,
         prepare_routing,
+        uses_input_secondary_order,
+        uses_input_site_routing,
     )
 
     model = copy.deepcopy(step.model)
@@ -1073,6 +1109,7 @@ def streaming_backward_stages(step, kind):
                     BSTART=start,
                     FALLBACK=fallback,
                     PROFILE_OUTPUT=False,
+                    SITE_ROUTING=uses_input_site_routing(recipe),
                     **launch,
                 )
             events[3 + 3 * i].record()
@@ -1147,7 +1184,7 @@ def streaming_backward_stages(step, kind):
         sites=ni,
         tile=recipe.input_tile,
         group=group,
-        site_routed=False,
+        site_routed=uses_input_site_routing(recipe),
     )
     batch_ctas = sum(
         tr.cdiv(min(recipe.g_batch, b - start), recipe.batch_tile) for start in starts
@@ -1155,6 +1192,8 @@ def streaming_backward_stages(step, kind):
     census.update(
         scope="candidate ranges over input owners; excludes batch multiplicity and padded lanes",
         unsafe_beta_fallback=unsafe,
+        input_site_routed=uses_input_site_routing(recipe),
+        output_site_secondary_order=uses_input_secondary_order(recipe),
         batch_ctas_per_input_owner=batch_ctas,
         active_dX_ctas=tr.cdiv(ni, recipe.input_tile) * batch_ctas,
         launched_dX_ctas=2 * tr.cdiv(ni, recipe.input_tile) * batch_ctas,
@@ -1679,6 +1718,8 @@ def main():
                 "site-stream-g8-h32",
                 "site-owner-bm16-stream-g8-h16",
                 "site-owner-bm16-stream-g8-h32",
+                "input-site-stream-g8-h32",
+                "input-order-stream-g8-h32",
                 "dense",
             ]
             if args.regular_grid
@@ -1708,6 +1749,8 @@ def main():
             "site-stream-g8-h32",
             "site-owner-bm16-stream-g8-h16",
             "site-owner-bm16-stream-g8-h32",
+            "input-site-stream-g8-h32",
+            "input-order-stream-g8-h32",
         )
         or any(
             kind in args.plans
@@ -1733,6 +1776,8 @@ def main():
                 "site-stream-g8-h32",
                 "site-owner-bm16-stream-g8-h16",
                 "site-owner-bm16-stream-g8-h32",
+                "input-site-stream-g8-h32",
+                "input-order-stream-g8-h32",
             )
         )
     ):

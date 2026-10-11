@@ -9,17 +9,31 @@ import torch
 
 
 def prepare_routing(packed, sizes, recipe, *, output=True, tile=None):
-    """Build a centre prefix; input routing always retains coarse bins."""
+    """Build ephemeral centre prefixes; backward variants choose input keys."""
     import triton as tr
 
     from . import output_kernels as kernels
 
     _, ni, no, li, lo, oi, oo = sizes
+    secondary_n, secondary_l, secondary_o = no, lo, oo
     if not output:
         no, lo, oo = ni, li, oi
     bo = recipe.output_tile if tile is None else tile
     a = packed.shape[1]
-    site_routing = output and uses_site_routing(recipe)
+    site_routing = (
+        uses_site_routing(recipe) if output else uses_input_site_routing(recipe)
+    )
+    secondary_order = not output and uses_input_secondary_order(recipe)
+    routing_options = (
+        {
+            "SECONDARY_OUTPUT": True,
+            "SECONDARY_N": secondary_n,
+            "SECONDARY_L": secondary_l,
+            "SECONDARY_O": secondary_o,
+        }
+        if secondary_order
+        else {}
+    )
     bins = no if site_routing else tr.cdiv(no, bo)
     keys = torch.empty(a, device=packed.device, dtype=torch.int32)
     distances = torch.empty(tr.cdiv(a, 256), device=packed.device, dtype=torch.int32)
@@ -35,19 +49,36 @@ def prepare_routing(packed, sizes, recipe, *, output=True, tile=None):
         256,
         OUTPUT=output,
         SITE_ROUTING=site_routing,
+        **routing_options,
         num_warps=4,
         enable_fp_fusion=False,
     )
     sorted_keys, order = torch.sort(keys)
-    boundaries = torch.searchsorted(
-        sorted_keys, torch.arange(bins + 1, device=packed.device, dtype=torch.int32)
-    )
+    thresholds = torch.arange(bins + 1, device=packed.device, dtype=torch.int32)
+    if secondary_order:
+        # Search composite-key bin starts directly: no A-sized primary-key copy.
+        thresholds.mul_(secondary_n)
+    boundaries = torch.searchsorted(sorted_keys, thresholds)
     max_distance = distances.amax()
     return order, boundaries, max_distance
 
 
+def uses_input_site_routing(recipe):
+    from .recipe import InputSiteStreamingHRecipe
+
+    return type(recipe) is InputSiteStreamingHRecipe
+
+
+def uses_input_secondary_order(recipe):
+    from .recipe import InputOrderStreamingHRecipe
+
+    return type(recipe) is InputOrderStreamingHRecipe
+
+
 def uses_site_routing(recipe):
     from .recipe import (
+        InputOrderStreamingHRecipe,
+        InputSiteStreamingHRecipe,
         OwnerBatchHRecipe,
         OwnerBatchStreamingHRecipe,
         SiteRoutedHRecipe,
@@ -59,13 +90,17 @@ def uses_site_routing(recipe):
         SiteRoutedStreamingHRecipe,
         OwnerBatchHRecipe,
         OwnerBatchStreamingHRecipe,
+        InputSiteStreamingHRecipe,
+        InputOrderStreamingHRecipe,
     )
 
 
 def h_capacity(recipe):
     from .recipe import (
         GroupedOutputHRecipe,
+        InputOrderStreamingHRecipe,
         InputOwnedHRecipe,
+        InputSiteStreamingHRecipe,
         OwnerBatchHRecipe,
         OwnerBatchStreamingHRecipe,
         ParallelReusedHRecipe,
@@ -85,6 +120,8 @@ def h_capacity(recipe):
             OwnerBatchHRecipe,
             SiteRoutedStreamingHRecipe,
             OwnerBatchStreamingHRecipe,
+            InputSiteStreamingHRecipe,
+            InputOrderStreamingHRecipe,
             StreamingInputHRecipe,
             ParallelReusedHRecipe,
             PreparedReusedHRecipe,
@@ -96,7 +133,9 @@ def h_capacity(recipe):
 def allocate_h(x, atom_count, recipe):
     from .recipe import (
         GroupedOutputHRecipe,
+        InputOrderStreamingHRecipe,
         InputOwnedHRecipe,
+        InputSiteStreamingHRecipe,
         OwnerBatchHRecipe,
         OwnerBatchStreamingHRecipe,
         ParallelReusedHRecipe,
@@ -113,6 +152,8 @@ def allocate_h(x, atom_count, recipe):
         OwnerBatchHRecipe,
         SiteRoutedStreamingHRecipe,
         OwnerBatchStreamingHRecipe,
+        InputSiteStreamingHRecipe,
+        InputOrderStreamingHRecipe,
         StreamingInputHRecipe,
         ParallelReusedHRecipe,
         PreparedReusedHRecipe,
@@ -254,7 +295,9 @@ def aggregate_chunk(
 def forward_output_owned(x, packed, sizes, recipe):
     from .recipe import (
         GroupedOutputHRecipe,
+        InputOrderStreamingHRecipe,
         InputOwnedHRecipe,
+        InputSiteStreamingHRecipe,
         OwnerBatchHRecipe,
         OwnerBatchStreamingHRecipe,
         ParallelReusedHRecipe,
@@ -281,6 +324,8 @@ def forward_output_owned(x, packed, sizes, recipe):
             OwnerBatchHRecipe,
             SiteRoutedStreamingHRecipe,
             OwnerBatchStreamingHRecipe,
+            InputSiteStreamingHRecipe,
+            InputOrderStreamingHRecipe,
             StreamingInputHRecipe,
             PreparedReusedHRecipe,
         )
@@ -293,6 +338,8 @@ def forward_output_owned(x, packed, sizes, recipe):
         OwnerBatchHRecipe,
         SiteRoutedStreamingHRecipe,
         OwnerBatchStreamingHRecipe,
+        InputSiteStreamingHRecipe,
+        InputOrderStreamingHRecipe,
         StreamingInputHRecipe,
         ReusedHRecipe,
         ParallelReusedHRecipe,
