@@ -2694,3 +2694,8 @@ fresh processで測る。matrix、factor、onchip、division、reciprocal、wrap
 各rhoを独立2job、2回目は逆順にする。完全stepの21sampleを独立run数とは数えない。
 wrapとreciprocalの初期・post24状態の数値差も保存する。診断stageは別Graphで非加算。
 peak allocated/reservedはcapture/replay込み。未計測の性能やcache原因を推定しない。
+
+ユーザーの2026-10-11の指示で、この周期補正比較の実機は利用可能になった
+**RTX 6000 Ada 48GB**へ変更する。L4へはこの比較を提出しない。
+L4の前回値とGPU間の速度差をalgorithm改善とは扱わず、RTX 6000 Ada上で
+同じ7方式・rho別独立2cohortを測る。公開dispatcherへ自動採用しない。
