@@ -2,7 +2,18 @@
 
 
 def input_owned_backward(
-    x, dy, packed, sizes, recipe, dx, partial, need_p, *, physical=None
+    x,
+    dy,
+    packed,
+    sizes,
+    recipe,
+    dx,
+    partial,
+    need_p,
+    *,
+    physical=None,
+    routing=None,
+    identity_order=False,
 ):
     import triton as tr
 
@@ -21,10 +32,13 @@ def input_owned_backward(
 
     b, ni, no, li, lo, oi, oo = sizes
     a = packed.shape[1]
-    routing = prepare_routing(
-        packed, sizes, recipe, output=False, tile=recipe.input_tile
+    if routing is None:
+        routing = prepare_routing(
+            packed, sizes, recipe, output=False, tile=recipe.input_tile
+        )
+    hot = prepare_output_fields(
+        packed, routing, output=False, identity_order=identity_order
     )
-    hot = prepare_output_fields(packed, routing, output=False)
     streamed = hasattr(recipe, "g_batch")
     capacity = recipe.g_batch if streamed else h_capacity(recipe)
     pbm = producer_batch_tile(recipe)
@@ -70,6 +84,7 @@ def input_owned_backward(
             recipe.patch_sites,
             recipe.atom_group,
             STREAM_PARTIAL=streamed,
+            IDENTITY_ORDER=identity_order,
             RECIPROCAL=uses_reciprocal_producer(recipe),
             COMPACT_WRAP=uses_compact_wrap_producer(recipe),
             G_LAYOUT_BM=recipe.batch_tile if pbm != recipe.batch_tile else 0,
@@ -90,6 +105,7 @@ def input_owned_backward(
                 BSTART=start,
                 FALLBACK=fallback,
                 PROFILE_OUTPUT=False,
+                IDENTITY_ORDER=identity_order,
                 SITE_ROUTING=uses_input_site_routing(recipe),
                 num_warps=4,
                 enable_fp_fusion=False,

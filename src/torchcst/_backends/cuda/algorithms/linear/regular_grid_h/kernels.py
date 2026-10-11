@@ -255,6 +255,8 @@ def reduce_parameters(
     TILES: tl.constexpr,
     BT: tl.constexpr,
     GROUP: tl.constexpr,
+    Order=None,
+    RESTORE_ORDER: tl.constexpr = False,
 ):
     a = tl.program_id(0) * GROUP + tl.arange(0, GROUP)
     t = tl.arange(0, BT)
@@ -263,6 +265,16 @@ def reduce_parameters(
     da = tl.sum(tl.load(base, mask, 0), 1)
     dci = tl.sum(tl.load(base + A, mask, 0), 1)
     dco = tl.sum(tl.load(base + 2 * A, mask, 0), 1)
+    raw_a = tl.load(Order + a, a < A, 0).to(tl.int32) if RESTORE_ORDER else a
     _store_param_cotangent(
-        DP, Source, AmplitudeMax, a, a < A, da, dci, dco, True, CENTER_OUTPUT_FIRST=True
+        DP,
+        Source,
+        AmplitudeMax,
+        raw_a,
+        a < A,
+        da,
+        dci,
+        dco,
+        True,
+        CENTER_OUTPUT_FIRST=True,
     )

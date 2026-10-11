@@ -35,10 +35,11 @@ def produce_g_parameters(
     RECIPROCAL: tl.constexpr = False,
     COMPACT_WRAP: tl.constexpr = False,
     G_LAYOUT_BM: tl.constexpr = 0,
+    IDENTITY_ORDER: tl.constexpr = False,
 ):
     pos = tl.program_id(0) * GROUP + tl.arange(0, GROUP)
     valid = pos < A
-    a = tl.load(Order + pos, valid, 0).to(tl.int32)
+    a = pos if IDENTITY_ORDER else tl.load(Order + pos, valid, 0).to(tl.int32)
     rows = BSTART + tl.program_id(1) * BM + tl.arange(0, BM)
     g, dg = _contract(
         DY,

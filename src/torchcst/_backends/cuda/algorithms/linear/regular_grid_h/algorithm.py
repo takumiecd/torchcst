@@ -12,6 +12,7 @@ from ..periodic_product.algorithm import PeriodicMatrixAlgorithm
 from .recipe import (
     GroupedOutputHRecipe,
     InputBatchProducerHRecipe,
+    InputCanonicalHRecipe,
     InputCompactWrapHRecipe,
     InputOrderStreamingHRecipe,
     InputOwnedHRecipe,
@@ -305,3 +306,34 @@ class InputWideBatchProducerHAlgorithm(OutputOwnedHAlgorithm):
         if type(recipe) is not InputWideBatchProducerHRecipe:
             raise TypeError("requires InputWideBatchProducerHRecipe")
         InputWideBatchProducerHRecipe(**asdict(recipe))
+
+
+@dataclass(frozen=True)
+class InputCanonicalHAlgorithm(OutputOwnedHAlgorithm):
+    """Research-only route: one packed buffer, direct raw-ID source VJP."""
+
+    id: str = "research_cuda_regular_grid_input_canonical_h"
+    recipe_type: type = InputCanonicalHRecipe
+
+    def validate_recipe(self, recipe):
+        if type(recipe) is not self.recipe_type:
+            raise TypeError("requires InputCanonicalHRecipe")
+        self.recipe_type(**asdict(recipe))
+
+    def execute(self, state, inputs):
+        from ..profile_product_matrix.algorithm import live_inputs
+        from .canonical_executor import canonical_h
+
+        x, p, declaration, operator = live_inputs(state, inputs)
+        chart = self.chart_spec(declaration)
+        sizes = (
+            len(x),
+            chart.shape[1],
+            chart.shape[0],
+            chart.geometry.periods[1],
+            chart.geometry.periods[0],
+            chart.origin[1],
+            chart.origin[0],
+        )
+        with torch.cuda.device(x.device):
+            return canonical_h(x, p, operator.kernel, sizes, state.recipe)

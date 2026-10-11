@@ -260,7 +260,7 @@ def produce_h_chunk(x, packed, sizes, recipe, routing, h, batch_start):
     )
 
 
-def prepare_output_fields(packed, routing, *, output=True):
+def prepare_output_fields(packed, routing, *, output=True, identity_order=False):
     """Only the three output fields survive across H chunks, never backward."""
     import triton as tr
 
@@ -277,6 +277,7 @@ def prepare_output_fields(packed, routing, *, output=True):
         a,
         256,
         OUTPUT=output,
+        IDENTITY_ORDER=identity_order,
         num_warps=4,
         enable_fp_fusion=False,
     )

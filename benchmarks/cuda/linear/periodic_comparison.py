@@ -66,6 +66,7 @@ KINDS = (
     "input-site-reciprocal-bm16-g32-h32",
     "input-site-reciprocal-bm32-g32-h32",
     "input-order-stream-g8-h32",
+    "input-canonical-bm16-g16-h32",
 )
 REGULAR_PRIMARY = ("matrix-torch", "factor", "onchip-h", "dense")
 PRIMARY = ("matrix-torch", "factor", "dense")
@@ -159,6 +160,7 @@ def bind_plan(model, kind):
         from torchcst._backends.cuda.algorithms.linear.regular_grid_h.recipe import (
             GroupedOutputHRecipe,
             InputBatchProducerHRecipe,
+            InputCanonicalHRecipe,
             InputCompactWrapHRecipe,
             InputOrderStreamingHRecipe,
             InputOwnedHRecipe,
@@ -178,6 +180,7 @@ def bind_plan(model, kind):
         )
 
         expected_id = {
+            "input-canonical-bm16-g16-h32": "research_cuda_regular_grid_input_canonical_h",
             "factor": "research_cuda_regular_grid_saved_factor",
             "onchip-h": "research_cuda_regular_grid_onchip_h",
             "output-owned-h": "research_cuda_regular_grid_output_owned_h",
@@ -212,6 +215,7 @@ def bind_plan(model, kind):
         }.get(kind, "research_cuda_regular_grid_matrix")
         expected_recipe = (
             {
+                "input-canonical-bm16-g16-h32": InputCanonicalHRecipe,
                 "onchip-h": OnchipHRecipe,
                 "output-owned-h": OutputOwnedHRecipe,
                 "reused-h": ReusedHRecipe,
@@ -255,6 +259,7 @@ def bind_plan(model, kind):
             }[kind]()
             if kind
             in (
+                "input-canonical-bm16-g16-h32",
                 "onchip-h",
                 "output-owned-h",
                 "reused-h",
@@ -509,6 +514,10 @@ def state_gate(*, device="cuda", steps=20, regular_grid=False):
 
 def forward_stages(step, kind):
     """Fixed post-primary forward copy; these stages are not a training-step sum."""
+    if kind == "input-canonical-bm16-g16-h32":
+        from benchmarks.cuda.linear.canonical_diagnostics import canonical_stages
+
+        return canonical_stages(step)
     if kind in (
         "output-owned-h",
         "reused-h",

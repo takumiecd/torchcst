@@ -64,6 +64,7 @@ from torchcst._backends.cuda.algorithms.linear.profile_product_matrix.square_str
 from torchcst._backends.cuda.algorithms.linear.regular_grid_h.algorithm import (
     GroupedOutputHAlgorithm,
     InputBatchProducerHAlgorithm,
+    InputCanonicalHAlgorithm,
     InputCompactWrapHAlgorithm,
     InputOrderStreamingHAlgorithm,
     InputOwnedHAlgorithm,
@@ -185,6 +186,7 @@ REGISTRY.register(InputSiteStreamingHAlgorithm())
 REGISTRY.register(InputReciprocalStreamingHAlgorithm())
 REGISTRY.register(InputCompactWrapHAlgorithm())
 REGISTRY.register(InputBatchProducerHAlgorithm())
+REGISTRY.register(InputCanonicalHAlgorithm())
 REGISTRY.register(InputWideBatchProducerHAlgorithm())
 REGISTRY.register(InputOrderStreamingHAlgorithm())
 REGISTRY.register(ProductAlgorithm())

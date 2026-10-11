@@ -93,13 +93,16 @@ def prepare(
     FLOOR: tl.constexpr,
     GROUP: tl.constexpr,
     SITES: tl.constexpr,
+    Order=None,
+    ORDERED: tl.constexpr = False,
 ):
     a = tl.program_id(0) * GROUP + tl.arange(0, GROUP)
     valid = a < A
-    amp, inv = _polar_atom(Source, tl.where(valid, a, 0), Scalars)
+    source_a = tl.load(Order + a, valid, 0).to(tl.int32) if ORDERED else a
+    amp, inv = _polar_atom(Source, tl.where(valid, source_a, 0), Scalars)
     co, ci = (
-        tl.load(Source + 4 * a + 2, valid, 0),
-        tl.load(Source + 4 * a + 3, valid, 0),
+        tl.load(Source + 4 * source_a + 2, valid, 0),
+        tl.load(Source + 4 * source_a + 3, valid, 0),
     )
     nv2, vd, ilo, ihi, iv = _stats(ci, inv, valid, OI, LI, NI, GROUP, SITES)
     nu2, ud, olo, ohi, ov = _stats(co, inv, valid, OO, LO, NO, GROUP, SITES)
@@ -110,7 +113,7 @@ def prepare(
         # A tiny profile divided by the whole-atom floor amplifies a few ULPs
         # in the FP32 polar width. Refine only those held widths, then refresh
         # bounds and stats. No new packed fields or global scratch are needed.
-        precise_inv = _polar_inverse_fp64(Source, tl.where(valid, a, 0), Scalars)
+        precise_inv = _polar_inverse_fp64(Source, tl.where(valid, source_a, 0), Scalars)
         inv = tl.where(refine, precise_inv, inv)
         nv2, vd, ilo, ihi, iv = _stats(ci, inv, valid, OI, LI, NI, GROUP, SITES)
         nu2, ud, olo, ohi, ov = _stats(co, inv, valid, OO, LO, NO, GROUP, SITES)

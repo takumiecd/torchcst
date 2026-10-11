@@ -89,6 +89,7 @@ def output_owned(
     PROFILE_OUTPUT: tl.constexpr = True,
     SITE_ROUTING: tl.constexpr = False,
     H_BM: tl.constexpr = 0,
+    IDENTITY_ORDER: tl.constexpr = False,
 ):
     owner = tl.program_id(0)
     rows = BSTART + tl.program_id(1) * BM + tl.arange(0, BM)
@@ -131,7 +132,11 @@ def output_owned(
                 inv = tl.load(Hot + A + pos, valid, 1)
                 beta = tl.load(Hot + pos, valid, 0)
             else:
-                a = tl.load(Order + pos, valid, 0).to(tl.int32)
+                a = (
+                    pos
+                    if IDENTITY_ORDER
+                    else tl.load(Order + pos, valid, 0).to(tl.int32)
+                )
                 co = tl.load(P + (3 if PROFILE_OUTPUT else 2) * A + a, valid, OO)
                 inv = tl.load(P + A + a, valid, 1)
                 norm = tl.load(P + (5 if PROFILE_OUTPUT else 4) * A + a, valid, 1)
@@ -231,11 +236,12 @@ def prepare_output_fields(
     A: tl.constexpr,
     BLOCK: tl.constexpr,
     OUTPUT: tl.constexpr = True,
+    IDENTITY_ORDER: tl.constexpr = False,
 ):
     """Ephemeral SoA beta/inverse-width/centre, sorted identically to raw H."""
     pos = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     valid = pos < A
-    a = tl.load(Order + pos, valid, 0).to(tl.int32)
+    a = pos if IDENTITY_ORDER else tl.load(Order + pos, valid, 0).to(tl.int32)
     amp = tl.load(P + a, valid, 0)
     norm = tl.load(P + (5 if OUTPUT else 4) * A + a, valid, 1)
     inv = tl.load(P + A + a, valid, 1)
@@ -280,6 +286,7 @@ def prepared_output_owned(
     PROFILE_OUTPUT: tl.constexpr = True,
     SITE_ROUTING: tl.constexpr = False,
     H_BM: tl.constexpr = 0,
+    IDENTITY_ORDER: tl.constexpr = False,
 ):
     # Separate specializations keep the original-ID/division path out of the
     # fast kernel's register schedule. Only one of the two launches writes Y.
@@ -313,4 +320,5 @@ def prepared_output_owned(
             PROFILE_OUTPUT=PROFILE_OUTPUT,
             SITE_ROUTING=SITE_ROUTING,
             H_BM=H_BM,
+            IDENTITY_ORDER=IDENTITY_ORDER,
         )

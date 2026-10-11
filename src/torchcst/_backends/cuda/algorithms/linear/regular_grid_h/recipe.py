@@ -191,3 +191,13 @@ class InputWideBatchProducerHRecipe(SiteRoutedStreamingHRecipe):
             self.producer_batch_tile
         ) is not int or self.producer_batch_tile not in (8, 16, 32):
             raise ValueError("producer_batch_tile must be 8, 16 or 32")
+
+
+@dataclass(frozen=True)
+class InputCanonicalHRecipe(InputBatchProducerHRecipe):
+    """Direct input-order preparation and canonical parameter partials."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.producer_batch_tile != 16:
+            raise ValueError("canonical input layout requires BM16/G16")
