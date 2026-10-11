@@ -36,6 +36,7 @@ from .recipe import (
     TileCombinedHRecipe,
     TileDerivativeHRecipe,
     TileDotHRecipe,
+    TileOwnerPrepHRecipe,
     TileWindowHRecipe,
 )
 
@@ -565,3 +566,29 @@ class TileBucketHAlgorithm(TileDotHAlgorithm):
         )
         with torch.cuda.device(x.device):
             return tile_bucket_h(x, p, operator.kernel, sizes, state.recipe)
+
+
+@dataclass(frozen=True)
+class TileOwnerPrepHAlgorithm(TileDotHAlgorithm):
+    """Move owner bookkeeping into forward-owned metadata snapshots."""
+
+    id: str = "research_cuda_regular_grid_tile_owner_prep_h"
+    recipe_type: type = TileOwnerPrepHRecipe
+
+    def execute(self, state, inputs):
+        from ..profile_product_matrix.algorithm import live_inputs
+        from .tile_owner_prep_executor import tile_owner_prep_h
+
+        x, p, declaration, operator = live_inputs(state, inputs)
+        chart = self.chart_spec(declaration)
+        sizes = (
+            len(x),
+            chart.shape[1],
+            chart.shape[0],
+            chart.geometry.periods[1],
+            chart.geometry.periods[0],
+            chart.origin[1],
+            chart.origin[0],
+        )
+        with torch.cuda.device(x.device):
+            return tile_owner_prep_h(x, p, operator.kernel, sizes, state.recipe)

@@ -333,3 +333,22 @@ class TileBucketHRecipe(PeriodicRecipe):
             8,
         ):
             raise ValueError("tile bucket keeps canonical preparation settings")
+
+
+@dataclass(frozen=True)
+class TileOwnerPrepHRecipe(TileBucketHRecipe):
+    """Isolate active-band, range and membership owner preparation costs."""
+
+    mode: str = "bands"
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.tile_sites != 16:
+            raise ValueError("owner preparation requires tile_sites=16")
+        if type(self.mode) is not str or self.mode not in (
+            "bands",
+            "ranges",
+            "membership",
+            "all",
+        ):
+            raise ValueError("mode must be bands, ranges, membership or all")

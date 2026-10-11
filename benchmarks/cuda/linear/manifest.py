@@ -91,6 +91,7 @@ from torchcst._backends.cuda.algorithms.linear.regular_grid_h.algorithm import (
     TileCombinedHAlgorithm,
     TileDerivativeHAlgorithm,
     TileDotHAlgorithm,
+    TileOwnerPrepHAlgorithm,
     TileWindowHAlgorithm,
 )
 from torchcst._backends.cuda.algorithms.linear.sphere_polar.algorithm import (
@@ -205,6 +206,7 @@ REGISTRY.register(TileWindowHAlgorithm())
 REGISTRY.register(TileDerivativeHAlgorithm())
 REGISTRY.register(TileCombinedHAlgorithm())
 REGISTRY.register(TileBucketHAlgorithm())
+REGISTRY.register(TileOwnerPrepHAlgorithm())
 REGISTRY.register(InputWideBatchProducerHAlgorithm())
 REGISTRY.register(InputOrderStreamingHAlgorithm())
 REGISTRY.register(ProductAlgorithm())
