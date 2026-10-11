@@ -84,6 +84,11 @@ atomの並び替えだけでcache効率が上がるとは仮定しない。
 自由に動く中心について`rho<1`だけで常にone-hotと仮定しない。
 Triweightでは`rho<0.5`なら各軸で高々1site。ただし空支持があり、単一siteでも
 正規化floorが活性な場合はampだけの重みに縮退しない。これらを区別して軽量経路を検証する。
+両側の支持がそれぞれ1siteでnorm積がfloorより大きいTriweight atomなら、
+局所的に `W_a[j,i] = A_a * 1[j=j_a] * 1[i=i_a]` となる。
+HはXの単一site参照に、GはdYの単一site参照に置き換えられ、中心のtask勾配は0。
+振幅のtask勾配は `sum_b dY[b,j_a] * X[b,i_a]`、Polarへのpullbackは維持する。
+空支持とfloor活性のatomを同じamp-only経路へ入れない。これは今後の候補であり実装済みではない。
 Gaussianなど無限支持のprofileを有限範囲で打ち切ることは、この方針に含めない。
 
 速度・メモリの評価は狭い・中間・広い単一幅だけでなく、幅の混在率を変えた条件で行う。
