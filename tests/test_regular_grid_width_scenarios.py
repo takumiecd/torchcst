@@ -97,13 +97,18 @@ def test_cuda_mixed_all_cotangents_and_retained_backward(name, kind):
     y = model(x)
     first = torch.autograd.grad(y, (x, model.atoms.p), dy, retain_graph=True)
     second = torch.autograd.grad(y, (x, model.atoms.p), dy)
-    for a, b in zip(first, second, strict=True):
-        torch.testing.assert_close(a, b, rtol=0, atol=0)
-    for label, actual, truth in zip(
-        ("Y", "dX", "all_dP"),
-        (y, *first),
-        fixture.oracle_vjp(model, x, dy),
-        strict=True,
-    ):
-        error = protocol.finite_error(label, actual, truth)
-        assert error["max_abs"] <= 4e-4 and error["relative_l2"] <= 4e-4, (label, error)
+    torch.testing.assert_close(first[1], second[1], rtol=0, atol=0)
+    if kind in ("matrix-torch", "tile-owner-late-bm16"):
+        torch.testing.assert_close(first[0], second[0], rtol=0, atol=0)
+    # Factor/onchip dX uses atomics; validate both retained VJPs against the
+    # same independent oracle rather than requiring one atomic addition order.
+    truth = fixture.oracle_vjp(model, x, dy)
+    for gradients in (first, second):
+        for label, actual, expected in zip(
+            ("Y", "dX", "all_dP"), (y, *gradients), truth, strict=True
+        ):
+            error = protocol.finite_error(label, actual, expected)
+            assert error["max_abs"] <= 4e-4 and error["relative_l2"] <= 4e-4, (
+                label,
+                error,
+            )
