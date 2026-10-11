@@ -2530,8 +2530,69 @@ def test_compact_wrap_twenty_graph_replays_live_width(compact_wrap_route, monkey
 
 
 @GPU
-def test_compact_wrap_twenty_public_eager_updates(compact_wrap_route, monkeypatch):
-    test_twenty_public_eager_updates("input_site32", monkeypatch)
+@pytest.mark.parametrize("grid", ["unit", "fallback"])
+def test_compact_wrap_twenty_public_eager_updates(
+    compact_wrap_route, monkeypatch, grid
+):
+    if grid == "fallback":
+        unit_model = model
+
+        def fallback_model(p, route=None, **kwargs):
+            shape = kwargs.get("shape", (33, 65))
+            kwargs.setdefault("periods", (shape[0] * 0.125, shape[1] * 0.25))
+            kwargs.setdefault("origin", (-0.25, 0.125))
+            return unit_model(p, route, **kwargs)
+
+        monkeypatch.setattr(sys.modules[__name__], "model", fallback_model)
+        test_twenty_public_eager_updates("input_site32", monkeypatch)
+        return
+
+    # Unit spacing introduces normalized one-point profiles. Their exact
+    # center derivative is zero, whereas FP32 factored autograd can leave a
+    # cancellation residual that AdamW amplifies through its epsilon. Use the
+    # independent FP64 task VJP for the reference; retain every update gate.
+    from torchcst import CSTOptimizer
+
+    candidate = model(
+        periodic.parameters(9), "input_site32", shape=(17, 19), live=True, device="cuda"
+    )
+    reference = model(
+        candidate.atoms.p.detach().clone(), shape=(17, 19), live=True, device="cuda"
+    )
+    opts = [
+        CSTOptimizer(torch.optim.AdamW(m.parameters(), lr=1e-4, foreach=False), model=m)
+        for m in (candidate, reference)
+    ]
+    generator = torch.Generator().manual_seed(619)
+    x = torch.randn(3, 19, generator=generator).cuda().requires_grad_()
+    dy = torch.randn(3, 17, generator=generator).cuda()
+    before = candidate.atoms.p.detach().clone()
+    for update in range(20):
+        for opt in opts:
+            opt.zero_grad(set_to_none=True)
+        x.grad = None
+        y = candidate(x)
+        y.backward(dy)
+        periodic.gate(
+            (y, x.grad, candidate.atoms.p.grad), periodic.oracle(candidate, x, dy)
+        )
+        reference.atoms.p.grad = periodic.oracle(reference, x, dy)[2].to(
+            reference.atoms.p
+        )
+        for opt in opts:
+            opt.step()
+        torch.testing.assert_close(
+            candidate.atoms.p, reference.atoms.p, rtol=0, atol=2e-6
+        )
+        for key in ("step", "exp_avg", "exp_avg_sq"):
+            torch.testing.assert_close(
+                opts[0].state[candidate.atoms.p][key],
+                opts[1].state[reference.atoms.p][key],
+                rtol=0,
+                atol=4e-4,
+            )
+        assert int(opts[0].state[candidate.atoms.p]["step"].item()) == update + 1
+    assert not torch.equal(before, candidate.atoms.p)
 
 
 @GPU

@@ -2712,3 +2712,16 @@ full producer内のhelperが動的branch内でreturnする形により、Triton3
 `ConvertTritonToTritonGPU` が未解決の `cf.cond_br` を残した。
 branch内では値を代入し、共通のreturnで返す構造へ変更する。
 演算式・guard・検証閾値は同じ。2回目も性能測定前のcompile失敗として保存する。
+
+source `20d1a480` は109 PASS / 1 FAIL。compileとraw/producerのexact数値比較は通過。
+単位格子の20 eager更新だけ、FP32 factored Torch参照とのParameter gateで失敗した。
+seed619の同条件診断ではdivision、reciprocal、wrapのY/dX/all-dPと1step後Pは一致。
+FP32 Torch参照との1step後P差は `9.584426879882812e-5`。
+packed singleton flagのatomで、FP64独立oracleの中心勾配は0または約1e-17に対し、
+FP32 Torch autogradが丸め残差を残す。AdamWのepsilon1e-8が残差を増幅する。
+
+新routeの単位格子eager testでは参照のtask VJPを独立FP64にし、20回すべてで
+Y/dX/all-dP gateを追加する。Parameter atol2e-6とmoments atol4e-4は維持する。
+非unit間隔・非zero原点の従来FP32参照との20 eager更新も別caseで残す。
+テストは111件（CUDA108 + CPU3）となる。runtime演算・測定case・閾値は変更しない。
+診断json、失敗source/logは手元のignored output、tensorはremote旧runに保持する。
