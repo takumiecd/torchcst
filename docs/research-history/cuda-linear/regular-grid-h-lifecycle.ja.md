@@ -2411,3 +2411,185 @@ BM8/BK8/GROUP8を固定し、容量8/32、入力site順/出力site順を直交�
 並べ替えはgroup内最大support幅によるloop paddingも変えるため、時間差だけでcacheを
 原因と断定しない。各Orderの有効site数・group loop回数・padding lane数も保存する。
 採用判断は完全stepへの組込み測定後とし、今回は原因候補を絞る診断として扱う。
+
+
+### batch・並び順・保存量を揃えた結果（source `1abbd00c`）
+
+Colab NVIDIA L4 / Torch2.11.0+cu130 / N2048 / B32 / A209715 / rho3,8。
+各rho独立2cohort、2回目はprimaryと診断caseの実行順を反転した。
+以下は各runの21 sample中央値を2回で平均した値。1sampleは16 Graph replay平均であり、
+3024 sampleを独立run数とは数えない。正規化・joint floor・微分契約・24 AdamW更新は不変。
+
+**判断は融合・容量8を基準として維持する。** 中間値の全面保存と容量32への拡大は、
+今回のproducerでは時間・メモリとも不利だった。これは本番変更の採用結果ではなく、
+既存runtimeを変えずに行った対照実験である。
+
+入力順・容量8で、保存量を2fieldに揃えた微分追加の差は次の通り。
+
+| rho | G 値のみ→微分あり [ms] | G増分 | H 値のみ→微分あり [ms] | H増分 |
+| --- | ---: | ---: | ---: | ---: |
+| 3 | 0.6606→0.8795 | +0.2188 (+33.1%) | 0.5610→0.7966 | +0.2356 (+42.0%) |
+| 8 | 0.9153→1.1891 | +0.2738 (+29.9%) | 0.7626→1.0565 | +0.2940 (+38.6%) |
+
+各pairのlogical buffer数と実測allocated/reserved peakは一致し、いずれも26.90/56 MiB。
+共通入力からのallocated増分は12.80 MiB。値のみ1fieldに第2storeを足した費用は、
+同じ入力順・容量8では0.010〜0.019msであり、上記の差を第二storeだけでは説明できない。
+微分側の追加profile/正規化微分・積和・packed読出し・依存関係・register配置を含む
+**現実装の微分追加費用**であって、数学的な下限時間や純粋なFLOPs費用ではない。
+
+入力順のpipeline比較は次の通り。時間はproducer専用Graph全体で、完全学習stepではない。
+
+| 方式 | rho3 [ms] | rho8 [ms] | allocated/reserved peak [MiB] |
+| --- | ---: | ---: | ---: |
+| 元の融合・容量8 | 1.7468 | 2.3441 | 22.90 /56 |
+| 融合＋DG/H/DH保存・容量8 | 2.1091 | 2.7065 | 42.90 /76 |
+| G/H/partialへ分割・容量8 | 2.1567 | 2.7567 | 42.90 /76 |
+| 元の融合・容量32 | 1.8560 | 2.4600 | 49.70 /82 |
+| 融合＋DG/H/DH保存・容量32 | 2.1378 | 2.7453 | 127.70 /160 |
+| G/H/partialへ分割・容量32 | 2.4495 | 3.0486 | 127.70 /160 |
+
+容量8では中間保存追加が約0.362ms（rho3 +20.7%、rho8 +15.5%）、分割はさらに
+約0.048/0.050msを要した。容量32では元の融合でも約6.2%/4.9%遅く、保存版・分割版の
+peakは127.70/160 MiBに増えた。BMは8のままであり、容量32はprofile評価のbatch共有を
+増やす実験ではない。これらは診断変更が加えた費用で、元producerに0.362msの不要な
+保存が存在するという意味ではない。
+
+並び順は対称に効く。容量8の微分付きGは出力順でrho3約9.9%、rho8約10.4%速い。
+Hは入力順で約8.6%/10.9%速い。一方、融合全体の順序差は平均約0.03%/0.2%に留まり、
+rho3では独立反復間で順位が逆転した。全caseでgroup loop数は順序によらず
+rho3 26215、rho8 52430と一致した。今回は探索ループ削減では説明できないが、
+cache missや帯域を直接測ったわけではない。GのdX consumer、HのY consumerに合う順序を
+維持し、片側の生成だけを理由に全体のOrderを変えない。
+
+rho8・出力順・容量8の保存融合と分割の小差も反復間で符号が変わるため、安定した優劣とはしない。
+
+次は**微分を残したまま、融合内部のprofile/dprofile評価・正規化計算・読み取り共有を
+改善する**。今回の差を足して本番backwardの厳密な内訳とせず、将来の候補はconsumerと
+完全stepを含めて測る。測定対象は上記サイズ・batch・rhoに限定し、他条件への一般化はしない。
+
+本番の入力候補削減版は、完全stepでrho3 4.4472〜4.5952ms、rho8 6.2754〜6.5046ms。
+allocated/reservedは全4runで57.43/104 MiB、denseは81.75/106 MiB・約0.59msだった。
+今回のproducer単体の22.90MiB等はこれらと別の測定範囲であり、足し引きして本番peakとしない。
+
+#### 検証・再現・回収履歴
+
+- GPU選択28件（27 CUDA＋1 CPU catalog）はskipなしでPASS、155.25秒。
+  floor、空支持、広い支持、非連続入力、B37/容量8,32、両atom順、tail、Graph、FP64を含む。
+  Host全体は1716 passed /3547 skipped。26plan宣言、Ruff、diff check、source-head CPU CIはPASS。
+- 全4cohortの20 primary workers、32 initial/post24全atom FP64 gatesと144診断caseがPASS。
+  1632 source entries、326 worker source hashes、各64結果manifest、全snapshot/order hash、
+  時間の中央値と保存量を監査した。candidateのpost24 P/Y/dX/all-dPとexport X/dY/packed/両Orderは
+  各rhoの独立反復間でbitwise一致する。controlのpost24数値状態は同一とは要求せず、各々のgateを保持。
+- 最初の検証job `l4job-b31212237b40493cab89f0ec9631b688` はCLI execが1240秒で応答せず中断。
+  数値成否は不明で性能測定は未開始だった。GPU停止と回復を確認し、短いCUDA/回収確認
+  `l4job-1b80ec6fa09c4ca0a35e0b17c0ba24d0` がPASSした後に、同一ソース・28件・上限で明示的に再提出。
+  検証成功jobは `l4job-21a4769da6fd46cea6ac29422d84a205`。中断記録は削除していない。
+- 独立監査でMac Torch2.13のseed再生成値をLinux Torch2.11の入力と同一とする誤った仮定を検出。
+  元FAILを保存し、数値許容幅を広げず、CPU入力の生データを同じLinux環境から回収した。
+  補助job `l4job-2466a1e73923400db2cc0bd21b27efda` のX/target/dY hashは全cohortと一致し、
+  post24 MSE cotangentもそのtargetから厳密再構成して一致した。benchmarkやgateは変更していない。
+- 最終独立監査は `matched-final-independent-audit.json` のPASS_COMPLETE、SHA256
+  `e6cc5b7ff2c30a0d11303213b4565ad3678350519aeb2b8d4bac0d676d6b99bc`。
+  raw archive・ログ・tensor・監査補正記録はignored `output/regular-grid-h/overnight-evidence/`
+  および `output/regular-grid-h/matched-*` に保持する。
+
+```sh
+python -m benchmarks.cuda.linear.periodic_comparison \
+  --case benchmarks/cuda/linear/cases/regular-grid-h-2048-rho3.json \
+  --plans matrix-torch factor onchip-h input-site-stream-g8-h32 dense \
+  --isolated-oracle --phases --matched-producer-diagnostics \
+  --output <new-per-run-directory>/comparison.json
+```
+
+rho8も同じ手順で測り、2回目は`--reverse`を付ける。各caseはfresh subprocess。
+各cohortのdriver上限1900秒、pool上限2100秒、個別診断worker上限180秒。
+
+#### source/result archive ledger
+
+| rho | job | source SHA256 | result SHA256 |
+| --- | --- | --- | --- |
+| 3.0 | `l4job-5c39e35ec41c47bc9d9f319bfaae51cd` | `2d3a158e110f1f5764af2caa60d60a63f28938f908ad3f022857d7687adf6a62` | `6818b5f7baa52811fac1085f6a687f86a196ae59eb8238006a16d036bb92ad59` |
+| 8.0 | `l4job-a067417a295f4f1091468203654842a4` | `f58e8daffbfe171759d0b48bae5d7eab0074d81665028f4411cebb37e32e378b` | `be30689d933367451cd2fa5c28e60995a441fa5950b21160b9ebf6ee8dc6d481` |
+| 3.0 | `l4job-81e2a943ff0e420eab89f64cdae346fa` | `e08d3da63cf6c125333ae23f873a5164984741988e66588b1cb4afec6b9d51a5` | `aef0432fec62f76b7207dd43c60acba5193964ec472a6395cfab23009ed83c45` |
+| 8.0 | `l4job-74e504272a8045989035b6c2ae7a2c08` | `e08d3da63cf6c125333ae23f873a5164984741988e66588b1cb4afec6b9d51a5` | `ea37dcc34df7828586b36b7b9d95c30e3f600ba6317e719bcfb76fb12f5bd059` |
+
+#### 全条件の集計
+
+A/Rはallocated/reserved。全4runの共通入力baselineは14.10/34 MiB。
+
+##### rho3.0 axis probes
+
+| axis/order/cap | native | matched stores | derivative | derivative extra | extra % | peak A/R (derivative) | increment A/R |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| G/input/8 | 0.6479 | 0.6606 | 0.8795 | +0.2188 | +33.13 | 26.902/56.000 | 12.802/22.000 |
+| G/input/32 | 0.7224 | 0.8303 | 1.0313 | +0.2010 | +24.21 | 66.102/88.000 | 52.001/54.000 |
+| G/output/8 | 0.5540 | 0.5721 | 0.7926 | +0.2204 | +38.53 | 26.902/56.000 | 12.802/22.000 |
+| G/output/32 | 0.6213 | 0.7043 | 0.9303 | +0.2260 | +32.10 | 66.102/88.000 | 52.001/54.000 |
+| H/input/8 | 0.5486 | 0.5610 | 0.7966 | +0.2356 | +41.99 | 26.902/56.000 | 12.802/22.000 |
+| H/input/32 | 0.6199 | 0.7052 | 0.9208 | +0.2156 | +30.58 | 66.102/88.000 | 52.001/54.000 |
+| H/output/8 | 0.6411 | 0.6540 | 0.8712 | +0.2172 | +33.21 | 26.902/56.000 | 12.802/22.000 |
+| H/output/32 | 0.7195 | 0.8195 | 1.0279 | +0.2084 | +25.43 | 66.102/88.000 | 52.001/54.000 |
+
+##### rho3.0 pipelines
+
+| order/cap | compact | materialized | split | materialized extra | split extra | compact peak A/R | materialized peak A/R | split peak A/R |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| input/8 | 1.7468 | 2.1091 | 2.1567 | +0.3622 | +0.0476 | 22.902/56.000 | 42.902/76.000 | 42.902/76.000 |
+| input/32 | 1.8560 | 2.1378 | 2.4495 | +0.2818 | +0.3117 | 49.702/82.000 | 127.702/160.000 | 127.702/160.000 |
+| output/8 | 1.7463 | 2.0949 | 2.1581 | +0.3487 | +0.0632 | 22.902/56.000 | 42.902/76.000 | 42.902/76.000 |
+| output/32 | 1.8478 | 2.1199 | 2.4479 | +0.2721 | +0.3281 | 49.702/82.000 | 127.702/160.000 | 127.702/160.000 |
+
+##### rho3.0 primary complete step
+
+| repeat/route | ms | allocated/reserved MiB |
+|---|---:|---:|
+| 1/matrix-torch | 1.3152 | 96.163/142.000 |
+| 1/factor | 5.2137 | 83.114/130.000 |
+| 1/onchip-h | 4.6152 | 42.866/114.000 |
+| 1/input-site-stream-g8-h32 | 4.4472 | 57.431/104.000 |
+| 1/dense | 0.5937 | 81.752/106.000 |
+| 2/dense | 0.5918 | 81.752/106.000 |
+| 2/input-site-stream-g8-h32 | 4.5952 | 57.431/104.000 |
+| 2/onchip-h | 4.7374 | 42.866/114.000 |
+| 2/factor | 5.3326 | 83.114/130.000 |
+| 2/matrix-torch | 1.3220 | 96.163/142.000 |
+
+##### rho8.0 axis probes
+
+| axis/order/cap | native | matched stores | derivative | derivative extra | extra % | peak A/R (derivative) | increment A/R |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| G/input/8 | 0.9049 | 0.9153 | 1.1891 | +0.2738 | +29.91 | 26.902/56.000 | 12.802/22.000 |
+| G/input/32 | 0.9848 | 1.0531 | 1.3225 | +0.2695 | +25.59 | 66.102/88.000 | 52.001/54.000 |
+| G/output/8 | 0.7519 | 0.7651 | 1.0652 | +0.3001 | +39.23 | 26.902/56.000 | 12.802/22.000 |
+| G/output/32 | 0.8122 | 0.8927 | 1.1916 | +0.2989 | +33.49 | 66.102/88.000 | 52.001/54.000 |
+| H/input/8 | 0.7436 | 0.7626 | 1.0565 | +0.2940 | +38.55 | 26.902/56.000 | 12.802/22.000 |
+| H/input/32 | 0.8138 | 0.8874 | 1.1822 | +0.2948 | +33.23 | 66.102/88.000 | 52.001/54.000 |
+| H/output/8 | 0.9013 | 0.9164 | 1.1855 | +0.2691 | +29.37 | 26.902/56.000 | 12.802/22.000 |
+| H/output/32 | 0.9761 | 1.0576 | 1.3178 | +0.2602 | +24.60 | 66.102/88.000 | 52.001/54.000 |
+
+##### rho8.0 pipelines
+
+| order/cap | compact | materialized | split | materialized extra | split extra | compact peak A/R | materialized peak A/R | split peak A/R |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| input/8 | 2.3441 | 2.7065 | 2.7567 | +0.3623 | +0.0502 | 22.902/56.000 | 42.902/76.000 | 42.902/76.000 |
+| input/32 | 2.4600 | 2.7453 | 3.0486 | +0.2853 | +0.3033 | 49.702/82.000 | 127.702/160.000 | 127.702/160.000 |
+| output/8 | 2.3489 | 2.7281 | 2.7407 | +0.3792 | +0.0126 | 22.902/56.000 | 42.902/76.000 | 42.902/76.000 |
+| output/32 | 2.4775 | 2.7273 | 3.0256 | +0.2498 | +0.2983 | 49.702/82.000 | 127.702/160.000 | 127.702/160.000 |
+
+##### rho8.0 primary complete step
+
+| repeat/route | ms | allocated/reserved MiB |
+|---|---:|---:|
+| 1/matrix-torch | 3.3573 | 96.163/142.000 |
+| 1/factor | 11.5689 | 83.114/130.000 |
+| 1/onchip-h | 10.2250 | 42.866/114.000 |
+| 1/input-site-stream-g8-h32 | 6.2754 | 57.431/104.000 |
+| 1/dense | 0.5938 | 81.752/106.000 |
+| 2/dense | 0.5948 | 81.752/106.000 |
+| 2/input-site-stream-g8-h32 | 6.5046 | 57.431/104.000 |
+| 2/onchip-h | 9.9844 | 42.866/114.000 |
+| 2/factor | 11.5483 | 83.114/130.000 |
+| 2/matrix-torch | 3.3487 | 96.163/142.000 |
+
+全測定・入力証拠回収後に全owned slotsのstoppedとserverにactive sessionなしを確認した。
+停止証拠は `matched-final-pool-status.json` と `matched-final-stop-lifecycle.log` に保存済み。

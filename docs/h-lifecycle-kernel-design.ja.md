@@ -451,3 +451,35 @@ G scratchに比べ追加3field=19.20MiBを使う。照合用bufferは別途15.20
 実backwardのdX/all-dPとの差は0。18 GPU testsと32 initial/post24全atom FP64 gatesを
 通過した。各rhoの候補削減版は更新後Parameterがbitwise一致し、同じ条件の独立反復で
 診断の順位を確認した。公開dispatcherや新しい実行方式の採用は行わない。
+
+### 微分と実行方式の費用を分ける比較
+
+G/Hの値のみと微分付きの差を見るときは、batch単位・atom順・出力field数を揃える。
+値のみでも第2bufferへ同じ値を保存するcontrolを置き、微分付きと同じ論理保存量・
+allocator増分になったことを確認する。この差は必要な微分処理を加えた実装上の差であり、
+追加packed読出し・依存関係・register配置を含むため純粋なFLOPs時間とは呼ばない。
+
+容量8/32の比較でBM8を固定した場合、変わるのは4回のchunk launchと1回の4-slab launch、
+およびscratch容量である。32batchへprofileを一度だけ評価する共有の実験ではない。
+atom順を変えたときはgroup内最大支持長に由来するpadding loopも確認する。
+診断の`valid_sites`はprepared envelope長の合計で、full-axis fallback時の内部ゼロを
+除いたpositive支持数ではない。loop数が同じでも、時間差だけでcache missを原因と断定しない。
+
+G/DG/H/DHの保存を加えた融合版と、同じbufferを使う分割版を分けて比較する。
+前者と元producerの差は追加store・値の寿命・compiler配置、後者との差はscratch再読出し・
+追加launch・Order/P読出し等を含む。これらの診断差を足して本番backwardの厳密な内訳としない。
+
+Orderはproducerとconsumer双方の都合で決める。G生成が出力順で速くても、dX consumerが
+入力順を必要とするなら並べ替え／別Order／index変換の費用を完全stepへ含めて評価する。
+H生成とY consumerにも同じ制約がある。両Orderを置いたproducerだけのpeakは本番stepの
+peakとは区別し、採用は完全stepとallocated/reserved両peakで判断する。
+
+source `1abbd00c` のL4/N2048/B32/rho3,8、各独立2回では、入力順・容量8の微分追加は
+G +0.2188/+0.2738ms、H +0.2356/+0.2940msで、同じ2bufferのallocated/reserved peakは一致した。
+元の融合producerは1.7468/2.3441ms・22.90/56MiB、中間値3fieldの保存追加で
+2.1091/2.7065ms・42.90/76MiBになった。容量32も元の融合より約6.2%/4.9%遅かった。
+Gは出力順、Hは入力順に利点があったが、融合全体の順序差は小さくrho3では反復で順位が逆転した。
+
+この範囲では融合・容量8とconsumerに合う順序を維持し、微分を含むcontract内部の共有を
+次の対象にする。全保存・分割・容量拡大は採用しない。これらの診断差は本番stepの内訳ではない。
+[全条件・検証・監査記録](research-history/cuda-linear/regular-grid-h-lifecycle.ja.md)を参照する。
