@@ -48,4 +48,22 @@ seed=41、AdamW/Polarの24回更新、21サンプル。現行の候補削減版�
 足さない。単独版との差は実装変更の効果であり、特定命令の排他的な実行時間とは
 呼ばない。完全stepのallocated/reservedピークと合わせて判断する。
 
+## 性能測定前の共通精度修正
+
+最初のsource `d62a7fd6060114319c0b2da23b1c3991e00bb7c9` の405回帰で、
+sigma0.7、shape(257,65)、513 atom/17 batchの全dP誤差が0.000472860604026で
+4e-4を超えた。性能測定には進まず、404 PASS/1 FAILとsource/logを保存した。
+固定したCUDA RNG streamで入力を再現し、元bucket16と4候補のY/dX/all_dPが
+bitwise一致することを確認した。失敗は所属range処理ではなく共通のprofile計算にある。
+
+複数周期ずれた代表座標を一周期内へ戻してからnorm/profileを計算する診断では、
+最大all_dP誤差が0.000012331545051へ下がった。source/optimizer/VJPに使う元座標は
+変えない。bucketとowner準備版は、既存のprepare kernel内で必要なatom groupだけ
+FP64周期reductionを行う。中心のpacked保存はFP32、norm/floor/gradの定義は維持し、
+全量source copyや新しいglobal scratchは増やさない。他のPeriodic経路の既定は維持する。
+
+失敗入力を固定した5経路の回帰を追加し、未変更の4e-4で再検証する。最初のcampaignは
+性能結果なしのFAILとして残し、修正後は別source・別remote directoryへfreezeする。
+完全stepは修正後のbucket16を対照とし、過去のbucket campaignと時間をpoolしない。
+
 実測結果は検証終了後に追記する。

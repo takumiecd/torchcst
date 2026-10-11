@@ -6,6 +6,7 @@ start/high offsets; every pointer uses modular indices, without duplicate sites.
 
 import triton as tr
 import triton.language as tl
+from triton.language.extra.cuda import libdevice
 
 from ..local_product.kernels import (
     _polar_atom,
@@ -95,6 +96,7 @@ def prepare(
     SITES: tl.constexpr,
     Order=None,
     ORDERED: tl.constexpr = False,
+    CANONICAL_CENTERS: tl.constexpr = False,
 ):
     a = tl.program_id(0) * GROUP + tl.arange(0, GROUP)
     valid = a < A
@@ -104,6 +106,19 @@ def prepare(
         tl.load(Source + 4 * source_a + 2, valid, 0),
         tl.load(Source + 4 * source_a + 3, valid, 0),
     )
+    if CANONICAL_CENTERS:
+        # Avoid subtracting distant periodic representatives in every profile
+        # evaluation. Do this before stats as well as contractions, without a
+        # source copy. Keep original centres for the source VJP and optimizer.
+        outside = valid & ((ci < OI) | (ci >= OI + LI) | (co < OO) | (co >= OO + LO))
+        if tl.sum(outside.to(tl.int32), 0) > 0:
+            ci64, co64 = ci.to(tl.float64), co.to(tl.float64)
+            phase_i = libdevice.fmod(ci64 - OI, LI)
+            phase_o = libdevice.fmod(co64 - OO, LO)
+            wrapped_i = OI + tl.where(phase_i < 0, phase_i + LI, phase_i)
+            wrapped_o = OO + tl.where(phase_o < 0, phase_o + LO, phase_o)
+            ci = tl.where(outside, wrapped_i.to(tl.float32), ci)
+            co = tl.where(outside, wrapped_o.to(tl.float32), co)
     nv2, vd, ilo, ihi, iv = _stats(ci, inv, valid, OI, LI, NI, GROUP, SITES)
     nu2, ud, olo, ohi, ov = _stats(co, inv, valid, OO, LO, NO, GROUP, SITES)
     nv, nu = tl.sqrt(nv2), tl.sqrt(nu2)

@@ -6,7 +6,7 @@ from torch.autograd.function import once_differentiable
 from ..profile_product_matrix.executor import _matmul
 
 
-def _prepare(source, value, sizes, recipe, *, order=None):
+def _prepare(source, value, sizes, recipe, *, order=None, canonical_centers=False):
     import triton as tr
 
     from ..local_product.preparation import polar_scalars
@@ -32,6 +32,7 @@ def _prepare(source, value, sizes, recipe, *, order=None):
             recipe.prep_sites,
             Order=order,
             ORDERED=order is not None,
+            CANONICAL_CENTERS=canonical_centers,
             num_warps=4,
             enable_fp_fusion=False,
         )

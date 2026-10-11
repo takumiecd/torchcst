@@ -307,3 +307,27 @@ def test_owner_saved_lifetime(owner_route):
 @base.GPU
 def test_owner_derivative_lifetime(owner_route, monkeypatch):
     bucket.test_tile_bucket_temporary_derivative_slabs(16, monkeypatch)
+
+
+@base.GPU
+@pytest.mark.parametrize("mode", ("bucket16", *MODES))
+def test_owner_failed_multi_period_gradient_fixture(mode):
+    """Keep the exact failed CUDA RNG stream; never resample the oracle gate."""
+    torch.manual_seed(61)
+    for shape in [(256, 192)] * 4 + [(257, 65)] * 2:
+        no, ni = shape
+        x = torch.randn(17, 2 * ni, device="cuda")[:, ::2].detach().requires_grad_()
+        dy = torch.randn(no, 17, device="cuda").T
+    layer = base.model(
+        base.periodic.parameters(513, periods=shape),
+        shape=shape,
+        periods=shape,
+        sigma=0.7,
+        device="cuda",
+    )
+    layer.selector = bucket.selector(16)[0] if mode == "bucket16" else selector(mode)[0]
+    y = layer(x)
+    base.periodic.gate(
+        (y, *torch.autograd.grad(y, (x, layer.atoms.p), dy)),
+        base.periodic.oracle(layer, x, dy),
+    )

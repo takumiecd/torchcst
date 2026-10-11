@@ -142,7 +142,7 @@ class _TileBucket(torch.autograd.Function):
     def forward(ctx, x, p, value, sizes, recipe):
         source = p.clone(memory_format=torch.contiguous_format)
         amplitude_max = value.scalar("amplitude_max").clone()
-        packed = _prepare(source, value, sizes, recipe)
+        packed = _prepare(source, value, sizes, recipe, canonical_centers=True)
         ctx.sizes, ctx.recipe = sizes, recipe
         a, b = len(source), sizes[0]
         y = x.new_empty((b, sizes[2]))
