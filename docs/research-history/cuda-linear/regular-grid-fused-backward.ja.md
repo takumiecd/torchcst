@@ -2,7 +2,8 @@
 
 2026-10-11。Stripへ配置を変えず、[過去のsmall backward融合](../local-product/20261007-backward-fusion.md)
 の担当規則を現在のRegularGrid profile-productへ移す研究候補。
-この実装checkpointではGPUの正しさ・速度・メモリは未検証。
+数学・更新・担当の一意性は検証を通過したが、完全stepは遅くなり、総peakも
+減らなかったため採用しない。現行BM16/G16を維持し、候補は研究対照として残す。
 
 ## 同じ部分と変える部分
 
@@ -54,3 +55,92 @@ capture/replay allocated/reservedと同条件denseを比較する。phaseは別G
 matched baselineに対する時間・メモリの交換を両独立runで確認する。
 kernel内のG再計算回数がowner数に比例して増えるため、融合だけで高速化するとは仮定しない。
 raw source/results/tensorsはignored `output/regular-grid-h/`とGPU run directoryへ保存する。
+
+## 完了した比較
+
+measured source `eb48f8249335e625d72a08cc45b5341e345ca693`。
+RTX 6000 Ada Generation、Torch2.9.1+cu128 / CUDA12.8 / Triton3.5.1。
+131qualification tests PASS、0skip/error/failure、22.62秒。
+4cohort・28fresh workers・588primary samplesと、全6CSTのinitial/post24に対する
+48全shape/all-atom FP64 Y/dX/all-four-dP gateがPASS。許容値4e-4は変更していない。
+全routeを含む最大absolute Y/dX/all-dPは3.2761e-4 /2.3559e-4 /1.4641e-4、
+最大relative L2は8.2374e-7 /8.1086e-7 /6.9248e-7。
+現行と融合2routeは、rho3/8とも独立逆順で自分自身のpost24 P/Y/dX/all-dPがbitwise一致。
+
+未計装の完全step、単位ms。初回/独立逆順を別々に保存する。
+
+| rho | 現行BM16/G16 | 融合BM8 | 融合BM16 | dense |
+| --- | ---: | ---: | ---: | ---: |
+| 3初回 | 1.420073 | 2.232005 | 1.781742 | 0.329850 |
+| 3逆順 | 1.432075 | 2.273698 | 1.789081 | 0.329340 |
+| 8初回 | 1.821556 | 3.583095 | 2.723330 | 0.329181 |
+| 8逆順 | 1.835225 | 3.244595 | 2.653250 | 0.329224 |
+
+融合BM16でもrho3は24.9–25.5%、rho8は44.6–49.5%遅い。
+BM8のrho8には独立run間でばらつきがあるが、両方で現行より76.8–96.7%遅い。
+都合のよいrunだけを選ばず、両方を負の結果として残す。
+
+capture/replay allocated/reservedは現行・融合BM8・融合BM16の全4cohortで
+**57.430664/104MiB**、denseは**81.752441/106MiB**。
+G Tensorを省いたことは、完全step peakの削減にならなかった。
+H32は変更しておらず、parameter partialの容量・寿命も変わる。
+今回の観測だけでallocatorの特定blockがpeakを支配したと断定しない。
+
+### backwardのどこが増えたか
+
+別の更新Graphコピーで測ったbackwardの中央値、単位ms。
+primaryの完全stepへ加算・減算しない。
+
+| rho | 現行 | 融合BM8 | 融合BM16 |
+| --- | ---: | ---: | ---: |
+| 3 | 0.543–0.549 | 1.302–1.315 | 0.908–0.911 |
+| 8 | 0.799–0.810 | 2.213–2.229 | 1.621–1.627 |
+
+固定したprimary post24 snapshotで、実際の融合routeを別Graphで計装した。
+4診断とも保存済みprimary Y/dX/dPおよび未計装routeとbitwise一致し、Parameterは不変。
+小batch・支持・更新を変えた再チューニングやprimary再測定は行っていない。
+
+| rho / BM | input routing ms | G＋dX＋parameter partial融合kernel ms | source VJP ms | registers / spills / shared bytes |
+| --- | ---: | ---: | ---: | --- |
+| 3 /8 | 0.05350 | 1.32678 | 0.01309 | 118 /0 /512 |
+| 3 /16 | 0.05357 | 0.89389 | 0.01040 | 128 /2 /512 |
+| 8 /8 | 0.05322 | 2.25392 | 0.01302 | 118 /0 /512 |
+| 8 /16 | 0.05347 | 1.60403 | 0.01040 | 128 /2 /512 |
+
+このkernel内で、inputの支持区間が触るownerごとにGを作り直す。
+post24の連続する短い支持区間から数えた、atom×batch tileあたりのG要求回数は
+rho3で平均**1.623112**（1owner79039atoms、2owners130676atoms）、
+rho8で平均**2.862747**（2owners28784atoms、3owners180931atoms）。
+現行producerは1回。この数字は支持区間からの論理的な要求回数であり、
+GPU命令数・L2 hit率・物理DRAM転送量ではない。
+parameter VJPは一意ownerだけが書くため、その重複を意味しない。
+
+増えたG/dG縮約とowner内の処理が主要な次の診断対象になる。
+通常のパラメータ順gather、profileの評価・除算、register圧力等も変わるため、
+性能回帰の全量をGの回数だけへ帰属しない。
+BM16にはcompiler spill2があるが、spill0のBM8もさらに遅いのでspillだけでは説明できない。
+準備indexの構築やsource VJPだけを原因にする結果でもない。
+
+現行のkernel間G共有を維持し、次は同じRegularGridの重なるX断片を共有して
+H/dH生成の読み取りを減らす候補を優先する。Stripへの配置変更は必要ない。
+Gの寿命を短くする設計でも、担当をまたぐ再計算を増やさない方法が必要になる。
+
+## 証拠と復旧
+
+- remote `/home/jovyan/runs/cst-fused-backward-ada-eb48f824-20261011/`。
+  durable controller PID163209、4固定snapshot診断とread-only auditのPID168204。
+  controller/qualification/各cohort/診断/auditは完了。raw .ptはremoteに残す。
+- local ignored `output/regular-grid-h/fused-backward-results/`、
+  `fused-backward-source.tar.gz`、`fused-backward-compact-results.tar.gz`、
+  controller/validator/diagnostic/audit scripts、CPU/build logs、operating notesを保持。
+- source archive SHA256 `0e7a0d0aff840239c7f0d0db9667e38ce0b5e4b7f16f22a14275f22a44fc6db4`。
+  compact archive `bf841b45ce98fc8ce5fd24f1d1f17d29f6b44fd72b07a290e3552e14913ecb7d`。
+  audit PASS_COMPLETE `6fd95e8f086b794a37cdb0b701cf39cfa7eec7d8c148a94fe3e1400da9856bac`。
+  download後113compact entries、1647tracked source filesのSHAを照合した。
+  全48raw snapshotのSHA・shape・all-gradient coverageはremote auditで照合した。
+- local CPU1744PASS/3898GPU-or-DB skip、36Plan metadata、Ruff/diff、wheel/sdist PASS。
+  source CPU/build CI PASS:
+  https://github.com/takumiecd/torchcst/actions/runs/38120670832。
+  宣言checkは既存catalogに実施し、特殊research Caseは専用runnerのload_caseで検査した。
+  contributorの通常Case schemaへ特殊Caseを押し込んでいない。
+- 公開route/defaultへ採用しない。GPU computeは終了し、ユーザーが開いたHubをreadyのまま維持する。

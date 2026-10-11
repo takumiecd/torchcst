@@ -3055,3 +3055,13 @@ capture/replay allocated/reservedは59.846/120 MiB（既存57.431/104、dense81.
 reservedがdenseを超えるため既存BM16/G16を維持する。準備・復元もprimaryに含めた
 負の採用結果、配置/寿命、4 cohortの実測、source/result hashは
 [canonical比較](regular-grid-canonical-layout.ja.md)に残す。
+
+## FlatTorusのinput-owner backward融合
+
+source `eb48f824`、Stripへ配置を変更せず、GをdXとparameter VJPでCTA内に共有する
+候補をBM8/16で比較した。131qualification testsと48全shape/all-atom FP64 gateはPASS。
+4cohort/28fresh workersの完全stepでは、良い方のBM16でもrho3は約25%、rho8は
+約45–50%遅く、allocated/reservedは現行と同じ57.431/104MiB。採用せず現行を維持する。
+支持区間から数えたG要求回数は1回から平均1.623/2.863回へ増えた。
+固定snapshotの実kernel時間・compiler情報・一意writer・負の結果・SHAと復旧先は
+[backward融合の比較](regular-grid-fused-backward.ja.md)へ保存した。
