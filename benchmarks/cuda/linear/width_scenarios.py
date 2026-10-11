@@ -20,7 +20,7 @@ SCENARIOS = {
             "values": [float(rho)],
             "weights": [1],
         }
-        for rho in (0.5, 0.75, 1, 1.25, 3, 8, 15)
+        for rho in (0.25, 0.5, 0.75, 1, 1.25, 3, 8, 15)
     },
     "mix-narrow": {"values": [0.5, 3.0, 15.0], "weights": [8, 1, 1]},
     "mix-balanced": {"values": [0.5, 3.0, 15.0], "weights": [1, 1, 1]},
@@ -81,7 +81,7 @@ def support_summary(model):
     quantiles = torch.quantile(
         rho, torch.tensor([0.0, 0.25, 0.5, 0.75, 1.0], dtype=rho.dtype)
     )
-    return {
+    result = {
         "rho_quantiles": quantiles.tolist(),
         "rho_bins": {
             "le1": int((rho <= 1).sum()),
@@ -101,3 +101,19 @@ def support_summary(model):
         ],
         "empty_product_atoms": int((counts == 0).any(dim=1).sum()),
     }
+    # For the strictly sub-half-spacing case, nearest-site evaluation is the
+    # complete independent FP64 support, not a sampled or truncated profile.
+    if float(rho.max()) < 0.5:
+        from benchmarks.cuda.linear.periodic_profile_product import polar_values
+
+        _, exact_rho = polar_values(model.kernel, p)
+        delta = p[:, 2:].round() - p[:, 2:]
+        raw = (1 - (delta / exact_rho[:, None]).square()).clamp_min(0).pow(3)
+        norm = raw.prod(dim=1)
+        floor = model.kernel.spec.normalization.floor
+        result["fp64_single_site_classes"] = {
+            "empty_product": int((norm == 0).sum()),
+            "nonempty_floor_active": int(((norm > 0) & (norm < floor)).sum()),
+            "nonempty_floor_inactive": int((norm >= floor).sum()),
+        }
+    return result

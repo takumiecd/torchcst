@@ -40,6 +40,10 @@ def test_frozen_distribution_and_fixture(name, tmp_path):
     torch.testing.assert_close(amp, old_amp, rtol=1e-6, atol=1e-6)
     summary = support_summary(model)
     assert sum(summary["rho_bins"].values()) == 97
+    if name == "rho0p25":
+        classes = summary["fp64_single_site_classes"]
+        assert sum(classes.values()) == 97
+        assert classes["empty_product"] == summary["empty_product_atoms"]
     for axis in summary["support_count_axes"]:
         assert axis["zero"] + axis["one"] + axis["multiple"] == 97
 
