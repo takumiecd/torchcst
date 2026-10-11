@@ -2830,3 +2830,86 @@ script SHA256 `ecc21daa9732ecbfe758d2b3e4b8324de7199e32512d004c54210f71c1eb8ef6`
 JSON/log/scriptを取得してremote hashと照合し、自分のGPU processの終了を確認した。
 次の対象はproducerのbatch間profile/derivative共有。G/Hの読取り・演算・勾配partialの
 書込みはreplayでも毎回発生するので、allocateとbuffer内容の生成を区別する。
+
+## RTX 6000 Ada: backward producer BM16/G16比較（2026-10-11）
+
+Source `b3e74be687cfc30efab9fea3fb27a81126217485`。
+RTX 6000 Ada 48GB、Torch2.9.1+cu128/CUDA12.8/Triton3.5.1。
+N2048/B32/A209715、rho3/8、seed41、FP32/TF32 off、normalizeあり、24 AdamW更新。
+各rho独立2cohort、2回目は7方式の順を反転。既存runnerが必要とする
+matrix/factor/onchipの工程対照も含め、全方式をfresh processで実行した。
+
+判定: **BM16/G16を、この測定条件の次の研究比較基準にする。**
+BM8/G8より完全stepが12.0–14.9%短縮し、総allocated/reservedは同じ。
+G容量だけを16へ増やしたBM8/G16対照にも6.0–10.0%の完全step改善がある。
+公開CSTLinear/dispatcherの既定は変更しない。
+
+| rho/run | BM8/G8 完全step ms | BM8/G16 ms | BM16/G16 ms | 基準からの短縮率 | dense ms |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| rho3-run1 | 1.664944 | 1.566490 | 1.424539 | 14.44% | 0.329289 |
+| rho3-run2 | 1.676275 | 1.577938 | 1.430548 | 14.66% | 0.329595 |
+| rho8-run1 | 2.139996 | 2.024532 | 1.821912 | 14.86% | 0.329480 |
+| rho8-run2 | 2.084410 | 1.951043 | 1.833859 | 12.02% | 0.329566 |
+
+主測定は未計装CUDA Graph replay＋同期をhost perf_counterで囲む。
+BM16/G16はdenseに対しrho3で4.33–4.34倍、rho8で5.53–5.56倍の時間で、速度差は残る。
+3方式すべて全4runでallocated/reservedは57.430664/104 MiB、
+denseは81.752441/106 MiB。G16の論理scratchはG8から約6.4 MiB増えるが、
+capture/replay込みの総peak増加はなかった。プロセス全体のGPU使用量は未測定。
+
+同じ各方式のpost24状態を固定した別Graph診断。下表は独立2runのmedianの範囲で、ms。
+診断時間の和や差を完全stepの厳密な内訳として使わない。
+
+| rho | 方式 | G/H＋parameter partials | dX owner | physical累積 |
+| --- | --- | ---: | ---: | ---: |
+| 3 | BM8/G8 | 0.423–0.433 | 0.269–0.270 | 0.0372–0.0372 |
+| 3 | BM8/G16 | 0.406–0.421 | 0.192–0.195 | 0.0193–0.0196 |
+| 3 | BM16/G16 | 0.274–0.279 | 0.188–0.190 | 0.0188–0.0190 |
+| 8 | BM8/G8 | 0.565–0.568 | 0.391–0.393 | 0.0371–0.0373 |
+| 8 | BM8/G16 | 0.546–0.556 | 0.295–0.300 | 0.0199–0.0205 |
+| 8 | BM16/G16 | 0.423–0.425 | 0.294–0.294 | 0.0190–0.0193 |
+
+BM16の生成段は基準からrho3で35.4–35.6%、rho8で24.8–25.5%短縮。
+G16容量対照からも22.6–33.8%短縮した。G16でchunk数が4から2へ減る効果と、
+computeをBM16へ広げる効果を区別する。後者にはpartial数・batch加算順の変化も含む。
+H32、forward producer BM8/Y owner BM16、input-site順、dX owner BM8、BK8/group8は固定。
+H/dH/dGを追加global保存せず、G storageはBM8/G16とBM16/G16でともに[2,A,8]。
+full-shape compilerはBM8が64 registers、BM16が94、両方0 spills/512 shared bytes。
+BM8/G8とBM8/G16のPTX/cubinは同一。実occupancy、cache hit、DRAM trafficは未測定で、
+register差や時刻だけから律速原因を確定しない。
+
+BM16でも生成段が最大。rho3ではforward H生成約0.187–0.188、Y集約約0.162–0.163、
+rho8では約0.248–0.249/0.222–0.223。次の調査でも生成とdX集約の双方を追う。
+
+検証・同等性・証拠:
+
+- 資格検証119 PASS/0skip。floor/singleton/empty、requested gradients、strides、
+  batch1/8/9/16/17/37、seam/broad支持、保存境界canary、retained snapshot、
+  20 Graph更新と20 public更新、実stage scheduleを検査した。
+- 48 initial/post24の全軸・全atom FP64 Y/dX/all-dP gatesが、既存max absolute/relative L2の
+  4e-4でPASS。28 fresh workers/588 primary samples。CPU1727 PASS/3684 GPU-or-DB skip、
+  30-plan宣言、Ruff、diff check PASS。
+- 初期forward Yは基準とBM16でbitwise一致。batch reductionの評価順は変わる。
+  初期dX/all-dPの最大差は5.73e-6/2.87e-6以下。post24 Pは基準とのbitwise一致を要求せず、
+  rho3で901 scalar/最大7.63e-6、rho8で853 scalar/最大1.23e-4の差を監査に残した。
+  独立repeatでは3研究方式自身のpost24 P/Y/dX/all-dPがbitwise一致した。
+  matrix/factor/onchipのrepeat hash差も保持し、独立FP64 gateと区別する。
+- source全entry1634、result manifest、raw/embedded worker、snapshot bytes/hash、
+  更新数、両peak、各rhoの反復条件と逆順をcluster上のCPU監査で検証した。
+  最終audit PASS_COMPLETE SHA256 `9455c1545b67b1b60e1c51b1b233a9c245c1e1bdbada6892e061d388a89af337`。
+- source archive SHA256 `263ddb7c44b3c853f1a9c4bcc3baacf4b1bb625b4a9866dbd727c7407cbd0175`。
+  compact results SHA256 `c6e8433982716913994e794ece8f427a0d23b4e0a3920ecbcd3dcfea64ce625a`。
+  download後132 entriesを照合。手元はignored `output/regular-grid-h/batch-producer-results/`、
+  raw tensorは `/home/jovyan/runs/cst-batch-producer-ada-b3e74be6-20261011/` に保持する。
+  source archive、drivers、auditor、operating notes、receiptも手元へ保全した。
+  自分のGPU processは終了し、ユーザーが開いたHub serverはreadyのまま維持した。
+
+再現（rho8も同様、2回目は `--reverse`）:
+
+```bash
+python -m benchmarks.cuda.linear.periodic_comparison \
+  --case benchmarks/cuda/linear/cases/regular-grid-h-2048-rho3.json \
+  --plans matrix-torch factor onchip-h input-site-reciprocal-g8-h32 \
+    input-site-reciprocal-bm8-g16-h32 input-site-reciprocal-bm16-g16-h32 dense \
+  --isolated-oracle --phases --output output/batch-producer-new/comparison.json
+```

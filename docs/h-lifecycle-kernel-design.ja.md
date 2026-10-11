@@ -535,3 +535,11 @@ N2048/B32/A209715、rho3/8、seed41、24 AdamW更新を固定し、
 3方式とdenseをfresh processで測る。各rho独立2cohort、2回目は逆順。
 診断は同じpost24 snapshotの別Graphでproducer/dX/physical/source VJPを測り、
 完全stepの内訳として足したり差し引いたりしない。公開defaultは変更しない。
+
+比較はsource `b3e74be6`、RTX 6000 Adaのrho3/8・各独立2cohortで完了した。
+BM16/G16はBM8/G8に対し完全stepが12.0–14.9%、生成段が24.8–35.6%短縮した。
+BM8/G16対照に対しても完全stepが6.0–10.0%短縮した。
+3方式の総allocated/reserved peakはすべて57.431/104 MiBで、denseの両peak以下。
+この測定条件の次の研究比較基準を `input-site-reciprocal-bm16-g16-h32` とする。
+119件の資格検証と48の全shape・全atom FP64 gatesはPASS。
+詳細・加算順の差・証拠・実行コマンドは[研究記録](research-history/cuda-linear/regular-grid-h-lifecycle.ja.md)に残す。
