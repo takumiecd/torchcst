@@ -20,6 +20,7 @@ from .recipe import (
     InputReciprocalStreamingHRecipe,
     InputSiteStreamingHRecipe,
     InputWideBatchProducerHRecipe,
+    JointLocalHRecipe,
     OnchipHRecipe,
     OutputOwnedHRecipe,
     OwnerBatchHRecipe,
@@ -401,3 +402,39 @@ class SharedXHAlgorithm(OutputOwnedHAlgorithm):
         )
         with torch.cuda.device(x.device):
             return shared_x_h(x, p, operator.kernel, sizes, state.recipe)
+
+
+@dataclass(frozen=True)
+class JointLocalHAlgorithm(OnchipHAlgorithm):
+    """Joint centre cells with local H/G and one retained routing snapshot."""
+
+    id: str = "research_cuda_regular_grid_joint_local_h"
+    recipe_type: type = JointLocalHRecipe
+
+    def validate_recipe(self, recipe):
+        if type(recipe) is not self.recipe_type:
+            raise TypeError("requires JointLocalHRecipe")
+        self.recipe_type(**asdict(recipe))
+
+    def workspace_bound(self, context, recipe):
+        # Joint cell scratch depends on both site-axis sizes; no inherited
+        # all-atom H bound is claimed as a GPU allocator peak.
+        return None
+
+    def execute(self, state, inputs):
+        from ..profile_product_matrix.algorithm import live_inputs
+        from .joint_executor import joint_local_h
+
+        x, p, declaration, operator = live_inputs(state, inputs)
+        chart = self.chart_spec(declaration)
+        sizes = (
+            len(x),
+            chart.shape[1],
+            chart.shape[0],
+            chart.geometry.periods[1],
+            chart.geometry.periods[0],
+            chart.origin[1],
+            chart.origin[0],
+        )
+        with torch.cuda.device(x.device):
+            return joint_local_h(x, p, operator.kernel, sizes, state.recipe)

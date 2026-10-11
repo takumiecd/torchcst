@@ -69,6 +69,8 @@ KINDS = (
     "input-canonical-bm16-g16-h32",
     "input-fused-backward-bm8-h32",
     "input-fused-backward-bm16-h32",
+    "joint-local32-bm8",
+    "joint-local64-bm8",
     "input-shared-x32-bm16-g16-h32",
     "input-shared-x64-bm16-g16-h32",
 )
@@ -172,6 +174,7 @@ def bind_plan(model, kind):
             InputReciprocalStreamingHRecipe,
             InputSiteStreamingHRecipe,
             InputWideBatchProducerHRecipe,
+            JointLocalHRecipe,
             OnchipHRecipe,
             OutputOwnedHRecipe,
             OwnerBatchHRecipe,
@@ -186,6 +189,8 @@ def bind_plan(model, kind):
         )
 
         expected_id = {
+            "joint-local32-bm8": "research_cuda_regular_grid_joint_local_h",
+            "joint-local64-bm8": "research_cuda_regular_grid_joint_local_h",
             "input-fused-backward-bm8-h32": "research_cuda_regular_grid_fused_backward_h",
             "input-fused-backward-bm16-h32": "research_cuda_regular_grid_fused_backward_h",
             "input-shared-x32-bm16-g16-h32": "research_cuda_regular_grid_shared_x_h",
@@ -225,6 +230,8 @@ def bind_plan(model, kind):
         }.get(kind, "research_cuda_regular_grid_matrix")
         expected_recipe = (
             {
+                "joint-local32-bm8": JointLocalHRecipe,
+                "joint-local64-bm8": lambda: JointLocalHRecipe(cell_sites=64),
                 "input-shared-x32-bm16-g16-h32": SharedXHRecipe,
                 "input-shared-x64-bm16-g16-h32": lambda: SharedXHRecipe(panel_sites=64),
                 "input-fused-backward-bm8-h32": FusedBackwardHRecipe,
@@ -277,6 +284,8 @@ def bind_plan(model, kind):
             in (
                 "input-fused-backward-bm8-h32",
                 "input-fused-backward-bm16-h32",
+                "joint-local32-bm8",
+                "joint-local64-bm8",
                 "input-shared-x32-bm16-g16-h32",
                 "input-shared-x64-bm16-g16-h32",
                 "input-canonical-bm16-g16-h32",
@@ -533,6 +542,11 @@ def state_gate(*, device="cuda", steps=20, regular_grid=False):
 
 
 def forward_stages(step, kind):
+    if kind.startswith("joint-local"):
+        return {
+            "status": "separate_joint_diagnostics",
+            "baseline_stages_applicable": False,
+        }
     if kind.startswith(("input-fused-backward-", "input-shared-x")):
         return forward_stages(step, "input-site-reciprocal-bm16-g16-h32")
     """Fixed post-primary forward copy; these stages are not a training-step sum."""
@@ -1959,6 +1973,8 @@ def main():
             "input-order-stream-g8-h32",
             "input-fused-backward-bm8-h32",
             "input-fused-backward-bm16-h32",
+            "joint-local32-bm8",
+            "joint-local64-bm8",
             "input-shared-x32-bm16-g16-h32",
             "input-shared-x64-bm16-g16-h32",
         )
@@ -1997,6 +2013,8 @@ def main():
                 "input-order-stream-g8-h32",
                 "input-fused-backward-bm8-h32",
                 "input-fused-backward-bm16-h32",
+                "joint-local32-bm8",
+                "joint-local64-bm8",
                 "input-shared-x32-bm16-g16-h32",
                 "input-shared-x64-bm16-g16-h32",
             )

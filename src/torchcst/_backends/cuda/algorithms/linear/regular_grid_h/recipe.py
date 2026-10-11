@@ -234,3 +234,17 @@ class SharedXHRecipe(InputBatchProducerHRecipe):
             raise ValueError("shared X requires the matched BM16/G16 control")
         if type(self.panel_sites) is not int or self.panel_sites not in (32, 64):
             raise ValueError("panel_sites must be 32 or 64")
+
+
+@dataclass(frozen=True)
+class JointLocalHRecipe(OnchipHRecipe):
+    """One joint centre sort; local H/G and recycled cell partials."""
+
+    cell_sites: int = 32
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.batch_tile != 8:
+            raise ValueError("joint local route requires batch_tile=8")
+        if type(self.cell_sites) is not int or self.cell_sites not in (32, 64):
+            raise ValueError("cell_sites must be 32 or 64")
