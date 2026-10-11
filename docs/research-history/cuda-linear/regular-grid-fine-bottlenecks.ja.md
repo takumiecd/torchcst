@@ -124,7 +124,7 @@ logical read量は同じ小さなX/dYへの反復参照も数えている。こ�
 
 ## 並べ替え・cacheの費用と寿命
 
-Pのみの配置対照はproducerを約10.0–11.7%短縮した。Pとpartial両方のrho8対照は0.371–0.406msと独立run間で振れ、wrap対照も0.389–0.432msで改善方向が揃わない。最速sampleを選んで一律採用しない。Pをsorted配置へコピーする準備Graphは約0.036–0.038ms（独立測定）。rho3でproducerが節約する時間と同程度なので、後からcopyを一つ足すだけでは完全step改善を保証できない。sorted partialは最後にraw atom IDへ戻す費用も必要になる。次の実装では「別コピーを増やす」より、canonical packed/physical layoutの作成順を設計する。
+Pのみの配置対照はproducerを約10.0–11.7%短縮した。Pとpartial両方のrho8対照は0.371–0.406msと独立run間で振れ、wrap対照も0.389–0.432msで改善方向が揃わない。最速sampleを選んで一律採用しない。Pをsorted配置へコピーする準備Graphは約0.036ms、combined対照での同じ準備は0.036–0.040ms（いずれも独立測定）。rho3でproducerが節約する時間と同程度なので、後からcopyを一つ足すだけでは完全step改善を保証できない。sorted partialは最後にraw atom IDへ戻す費用も必要になる。次の実装では「別コピーを増やす」より、canonical packed/physical layoutの作成順を設計する。
 
 global profile cacheは4×A×S float。rho3はS8で25.600MiB、rho8はS16で51.200MiBを追加する。rho3では生成込みprobeも改善するが、rho8ではconsumer単体の改善が小さく、生成込みで悪化する。profile評価は無料ではないが、今回の両rhoへ全profile保存を一律に採用する根拠はない。局所・小batchで使い切るH/G/profileの寿命を引き続き優先する。
 
@@ -175,7 +175,7 @@ hardware countersはdriverのRmProfilingAdminOnly=1で制限され、ncu/nsysは
 - local: `output/regular-grid-h/fine-results/`、`fine-source-manifest.json`、`fine-operating-notes.json`、`audit-fine.py`、`fine-fixed-cpu-tests.log`。raw `.pt`はauthorized clusterに保持。
 - remote: `/home/jovyan/runs/cst-fine-g16-ada-16d9011b-20261011/`。controllerと4cohortが完了し、GPU processなし・0%/39MiB。user-opened Hubはreadyのまま。
 - 初回 `a53bf790` campaignはmath/primary計測/監査にPASSしたが、microprobe capture前にexpected partialやaxis用support bounds/最後のmaterialized FP64 fieldが照合用GPU storageを保持していた。個別probe peakに影響するため、`16d9011b`で明示解放とweak-reference gateを追加し、254 qualification + 4 full cohortsを再計測した。初回archive/source/results/auditは削除せず `fine-results-a53bf790/` と旧remote runへ残す。新結果を個別メモリの根拠に使う。
-- CPU 1740 PASS、3806 GPU/DB skips、Ruff/diff check PASS。source CIおよび最終docs commit CIはPRに記録する。
+- CPU 1740 PASS、3806 GPU/DB skips、Ruff/diff check PASS。[測定sourceのCPU/build CI](https://github.com/takumiecd/torchcst/actions/runs/38116792413)もPASS。最終docs commit CIはPRに記録する。
 
 再現は、新しい出力ディレクトリで次を実行し、rho8および逆順runも独立processで繰り返す。
 
