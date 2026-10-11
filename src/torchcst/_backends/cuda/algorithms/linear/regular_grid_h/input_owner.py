@@ -14,6 +14,8 @@ def input_owned_backward(
     physical=None,
     routing=None,
     identity_order=False,
+    producer=None,
+    producer_options=None,
 ):
     import triton as tr
 
@@ -29,6 +31,11 @@ def input_owned_backward(
         uses_input_site_routing,
         uses_reciprocal_producer,
     )
+
+    if producer is None:
+        producer = input_kernels.produce_g_parameters
+    if producer_options is None:
+        producer_options = {}
 
     b, ni, no, li, lo, oi, oo = sizes
     a = packed.shape[1]
@@ -65,9 +72,7 @@ def input_owned_backward(
     for start in range(0, b, capacity):
         tiles = active_h_tiles(g, b, start, recipe.batch_tile)
         producer_tiles = tr.cdiv(min(capacity, b - start), pbm)
-        input_kernels.produce_g_parameters[
-            (tr.cdiv(a, recipe.atom_group), producer_tiles)
-        ](
+        producer[(tr.cdiv(a, recipe.atom_group), producer_tiles)](
             x,
             dy,
             packed,
@@ -90,6 +95,7 @@ def input_owned_backward(
             G_LAYOUT_BM=recipe.batch_tile if pbm != recipe.batch_tile else 0,
             num_warps=4,
             enable_fp_fusion=False,
+            **producer_options,
         )
         for fallback in (False, True):
             group = recipe.atom_group if fallback else recipe.output_group

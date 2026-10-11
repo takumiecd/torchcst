@@ -220,3 +220,17 @@ class FusedBackwardHRecipe(InputBatchProducerHRecipe):
             16,
         ):
             raise ValueError("backward_batch_tile must be 8 or 16")
+
+
+@dataclass(frozen=True)
+class SharedXHRecipe(InputBatchProducerHRecipe):
+    """Keep G16; share a bounded input panel across each sorted atom group."""
+
+    panel_sites: int = 32
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.producer_batch_tile != 16:
+            raise ValueError("shared X requires the matched BM16/G16 control")
+        if type(self.panel_sites) is not int or self.panel_sites not in (32, 64):
+            raise ValueError("panel_sites must be 32 or 64")

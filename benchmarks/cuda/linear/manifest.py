@@ -81,6 +81,7 @@ from torchcst._backends.cuda.algorithms.linear.regular_grid_h.algorithm import (
     RegularFactorAlgorithm,
     RegularMatrixAlgorithm,
     ReusedHAlgorithm,
+    SharedXHAlgorithm,
     SiteRoutedHAlgorithm,
     SiteRoutedStreamingHAlgorithm,
     StreamingInputHAlgorithm,
@@ -189,6 +190,7 @@ REGISTRY.register(InputCompactWrapHAlgorithm())
 REGISTRY.register(InputBatchProducerHAlgorithm())
 REGISTRY.register(InputCanonicalHAlgorithm())
 REGISTRY.register(FusedBackwardHAlgorithm())
+REGISTRY.register(SharedXHAlgorithm())
 REGISTRY.register(InputWideBatchProducerHAlgorithm())
 REGISTRY.register(InputOrderStreamingHAlgorithm())
 REGISTRY.register(ProductAlgorithm())

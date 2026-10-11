@@ -69,6 +69,8 @@ KINDS = (
     "input-canonical-bm16-g16-h32",
     "input-fused-backward-bm8-h32",
     "input-fused-backward-bm16-h32",
+    "input-shared-x32-bm16-g16-h32",
+    "input-shared-x64-bm16-g16-h32",
 )
 REGULAR_PRIMARY = ("matrix-torch", "factor", "onchip-h", "dense")
 PRIMARY = ("matrix-torch", "factor", "dense")
@@ -177,6 +179,7 @@ def bind_plan(model, kind):
             ParallelReusedHRecipe,
             PreparedReusedHRecipe,
             ReusedHRecipe,
+            SharedXHRecipe,
             SiteRoutedHRecipe,
             SiteRoutedStreamingHRecipe,
             StreamingInputHRecipe,
@@ -185,6 +188,8 @@ def bind_plan(model, kind):
         expected_id = {
             "input-fused-backward-bm8-h32": "research_cuda_regular_grid_fused_backward_h",
             "input-fused-backward-bm16-h32": "research_cuda_regular_grid_fused_backward_h",
+            "input-shared-x32-bm16-g16-h32": "research_cuda_regular_grid_shared_x_h",
+            "input-shared-x64-bm16-g16-h32": "research_cuda_regular_grid_shared_x_h",
             "input-canonical-bm16-g16-h32": "research_cuda_regular_grid_input_canonical_h",
             "factor": "research_cuda_regular_grid_saved_factor",
             "onchip-h": "research_cuda_regular_grid_onchip_h",
@@ -220,6 +225,8 @@ def bind_plan(model, kind):
         }.get(kind, "research_cuda_regular_grid_matrix")
         expected_recipe = (
             {
+                "input-shared-x32-bm16-g16-h32": SharedXHRecipe,
+                "input-shared-x64-bm16-g16-h32": lambda: SharedXHRecipe(panel_sites=64),
                 "input-fused-backward-bm8-h32": FusedBackwardHRecipe,
                 "input-fused-backward-bm16-h32": lambda: FusedBackwardHRecipe(
                     backward_batch_tile=16
@@ -270,6 +277,8 @@ def bind_plan(model, kind):
             in (
                 "input-fused-backward-bm8-h32",
                 "input-fused-backward-bm16-h32",
+                "input-shared-x32-bm16-g16-h32",
+                "input-shared-x64-bm16-g16-h32",
                 "input-canonical-bm16-g16-h32",
                 "onchip-h",
                 "output-owned-h",
@@ -524,7 +533,7 @@ def state_gate(*, device="cuda", steps=20, regular_grid=False):
 
 
 def forward_stages(step, kind):
-    if kind.startswith("input-fused-backward-"):
+    if kind.startswith(("input-fused-backward-", "input-shared-x")):
         return forward_stages(step, "input-site-reciprocal-bm16-g16-h32")
     """Fixed post-primary forward copy; these stages are not a training-step sum."""
     if kind == "input-canonical-bm16-g16-h32":
@@ -1950,6 +1959,8 @@ def main():
             "input-order-stream-g8-h32",
             "input-fused-backward-bm8-h32",
             "input-fused-backward-bm16-h32",
+            "input-shared-x32-bm16-g16-h32",
+            "input-shared-x64-bm16-g16-h32",
         )
         or any(
             kind in args.plans
@@ -1986,6 +1997,8 @@ def main():
                 "input-order-stream-g8-h32",
                 "input-fused-backward-bm8-h32",
                 "input-fused-backward-bm16-h32",
+                "input-shared-x32-bm16-g16-h32",
+                "input-shared-x64-bm16-g16-h32",
             )
         )
     ):
