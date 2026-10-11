@@ -75,13 +75,13 @@ packedを並べ替えるだけの実測と、Xのunionを一度読んで共有�
 
 ## 次の比較へ落とす二つの候補
 
-第一候補は旧Stripの入力断片共有をH producerへ移すこと。
+候補Aは旧Stripの入力断片共有をH producerへ移すこと。
 近い入力支持のatom群について、連続するX小片を一度読み、各atomのVと縮約する。
 狭い支持の直接縮約と、union小片から複数Hを生成する方式を同じ条件で比較する。
 正規化と微分用縮約を同じ入力読み取りへ載せる。G側へ同じ共有率を仮定しない。
 最初はH/Gの外部buffer・Y/dX ownerを維持して、producer変更の効果を分離する。
 
-第二候補はsmall backward融合の担当規則をFlatTorusへ移すこと。
+候補Bはsmall backward融合の担当規則をFlatTorusへ移すこと。
 GをdXとparameter VJPで同じCTA内に使い、最後の利用後に捨てる。
 現在のG共有はkernel間なので、重複G生成とglobal保存/再読込の交換が変わる。
 周期支持は二つの端区間へまたがり得るため、canonicalなparameter担当を一意にし、
@@ -97,3 +97,20 @@ batch-loopによるparameter partial削減とforward→backward選択保存は�
 未計装完全stepとcapture/replay allocated/reservedで判断する。
 同条件denseの両peakを上回らないという目標は変えない。
 歴史的な改善率を現行Adaの予測値には使わない。
+
+## 追加の方針: Stripは最後の選択肢に回す
+
+ユーザーは、Stripで一つの次元へ複数の意味を持たせ、短い軸と長い軸へ配置を
+組み直すことを避けたいと指定した。現在のRegularGrid＋FlatTorusのgrid_shape、
+weight shape、spacing、座標とprofile-productの意味を保ち、Strip chartへの変更は
+通常の最適化候補から外す。Strip自体を不可能と結論したものではない。
+
+次の優先対象は候補Bのbackward融合とする。現在のproducerで作ったGはparameter
+partialと別kernelのdX ownerに共有されるため、単にG共有を追加する実験ではない。
+dX owner内でGを生成・消費し、atomごとに一意なownerだけがH/dHとdGを使って
+parameter partialを出す方式と、現行のG保存方式を比較する。
+周期支持の重複、owner間のG再計算、勾配用partial、準備とroutingの費用を含める。
+数学・更新を変えず、Gの寿命とkernel境界だけを変更するのが実験の目的である。
+
+候補Aの入力断片共有もRegularGridの同じ座標上で実装でき、Stripへの変更を必要と
+しない。ただし今回の順序では後続候補とし、Stripの幾何・tile配置を移植しない。
