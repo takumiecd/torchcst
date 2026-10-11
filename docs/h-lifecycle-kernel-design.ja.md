@@ -683,3 +683,16 @@ H/G生成は約半分になった一方、Y/dX ownerが幅16で約2倍、幅32�
 410資格検証、72 full FP64 gates、独立2cohort/rho、10固定診断をPASS。
 複数周期の代表座標による共通勾配誤差も、全量コピーなしの準備内canonical reductionで修正。
 詳細は[owner準備移動の記録](research-history/cuda-linear/regular-grid-tile-owner-prep.ja.md)。
+
+### Graph poolとbuffer寿命の切り分け
+
+owner組み合わせのreserved124 MiBを通常pool60/Graph pool64 MiBに分けた。
+H/partial共用は130 MiB、dP遅延だけは124 MiB、arenaだけは122 MiBで不採用。
+AdamW moments事前初期化・capture前warmup勾配解放・dP遅延を組み合わせると
+完全stepのallocated/reserved=62.774/88 MiB、同条件dense=81.752/104 MiB。
+速度差は通常ownerに対し−0.255〜+0.239%、rho3約1.381 ms/rho8約1.716–1.718 ms。
+545資格検証/112 full FP64 gatesをPASSし、24更新後のParameter/全勾配/moments/clockはbitwise一致。
+通常pool22/Graph pool66 MiBで、主効果は通常poolの断片化とwarmup所有を減らしたこと。
+peakはwarmupを含めてリセットせず、初期化自体の確保も含める。
+研究runnerの明示policyであり公開dispatcherの既定は変更しない。
+[Graph pool寿命の記録](research-history/cuda-linear/regular-grid-graph-pool-lifetime.ja.md)に負の結果・policy別比較・復旧hashを保存した。
