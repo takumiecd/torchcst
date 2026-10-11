@@ -217,13 +217,18 @@ class TrainingStep:
         return y, loss
 
 
-def capture(call):
+def capture(call, *, before_capture=None):
     stream = torch.cuda.Stream()
     stream.wait_stream(torch.cuda.current_stream())
     with torch.cuda.stream(stream):
         for _ in range(2):
             call()
     torch.cuda.current_stream().wait_stream(stream)
+    if before_capture is not None:
+        # Release warmup-only ownership before switching to a private pool.
+        # Keep the original peak counters, including both eager warmups.
+        torch.cuda.synchronize()
+        before_capture()
     graph = torch.cuda.CUDAGraph()
     with torch.cuda.graph(graph, stream=stream):
         outputs = call()

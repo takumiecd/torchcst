@@ -1517,7 +1517,10 @@ def worker(
     producer_diagnostics=False,
     matched_producer_path=None,
     fine_directory=None,
+    graph_pool_policy="standard",
 ):
+    if graph_pool_policy not in ("standard", "release-warmup"):
+        raise ValueError("unknown Graph pool policy")
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
     torch.set_float32_matmul_precision("highest")
@@ -1570,6 +1573,7 @@ def worker(
             "triton": __import__("triton").__version__,
             "tf32": False,
             "dtype": "float32",
+            "graph_pool_policy": graph_pool_policy,
             "allocator_backend": torch.cuda.memory.get_allocator_backend(),
             "allocator_config": os.environ.get(
                 "PYTORCH_ALLOC_CONF", os.environ.get("PYTORCH_CUDA_ALLOC_CONF")
@@ -1600,7 +1604,19 @@ def worker(
         torch.cuda.empty_cache()
         torch.cuda.reset_peak_memory_stats()
         stage = "primary-capture-and-replay"
-        graph, outputs = capture(step)
+
+        def release_warmup():
+            model.zero_grad(set_to_none=True)
+            x.grad = None
+            gc.collect()
+            torch.cuda.empty_cache()
+
+        graph, outputs = capture(
+            step,
+            before_capture=release_warmup
+            if graph_pool_policy == "release-warmup"
+            else None,
+        )
         samples = []
         for _ in range(ROUNDS):
             torch.cuda.synchronize()
@@ -1938,6 +1954,11 @@ def main():
     parser.add_argument("--fine-case")
     parser.add_argument("--verify-only", action="store_true")
     parser.add_argument("--reverse", action="store_true")
+    parser.add_argument(
+        "--graph-pool-policy",
+        choices=("standard", "release-warmup"),
+        default="standard",
+    )
     parser.add_argument("--worker-timeout", type=int, default=900)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -2185,6 +2206,7 @@ def main():
             args.rho,
             args.worker,
             phases=args.phases,
+            graph_pool_policy=args.graph_pool_policy,
             fine_directory=(args.output.parent / (args.output.stem + "-fine"))
             if args.fine_diagnostics
             else None,
@@ -2225,6 +2247,8 @@ def main():
                 str(args.rho),
                 "--output",
                 str(output),
+                "--graph-pool-policy",
+                args.graph_pool_policy,
             ]
             if args.regular_grid:
                 command.append("--regular-grid")

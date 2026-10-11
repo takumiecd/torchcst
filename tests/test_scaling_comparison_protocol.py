@@ -182,14 +182,24 @@ def test_tensor_hash_does_not_require_numpy_and_preserves_exact_bytes(monkeypatc
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="actual CUDA required")
-def test_graph_capture_executes_exactly_twenty_four_updates():
+@pytest.mark.parametrize("release", [False, True])
+def test_graph_capture_executes_exactly_twenty_four_updates(release):
     clock = torch.zeros((), device="cuda", dtype=torch.int64)
 
     def update():
         clock.add_(1)
         return clock
 
-    graph, result = protocol.capture(update)
+    observed = []
+
+    def release_warmup():
+        observed.append(int(clock))
+        torch.cuda.empty_cache()
+
+    graph, result = protocol.capture(
+        update, before_capture=release_warmup if release else None
+    )
+    assert observed == ([2] if release else [])
     assert int(clock) == 3  # Two eager warmups and the explicitly run capture.
     for _ in range(21):
         graph.replay()
