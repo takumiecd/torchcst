@@ -3128,3 +3128,14 @@ atom束がH/Gを全支持で足し切り、tile×atom partialとatomicを追加�
 H/G生成は改善したが、Y/dX ownerが約2倍以上へ増えたことを別Graph診断で確認。
 251資格検証、72 full FP64 gates、40 workers/840 samples、10固定診断PASS。
 詳細・hash・復旧先・次のowner切り分けを[支持幅bucket比較](regular-grid-tile-bucket.ja.md)に保存した。
+
+### タイル16 ownerの準備移動
+
+幅区分・範囲・所属情報を準備へ移す単独版と組み合わせ版を同条件で比較した。
+幅区分だけで完全stepを元bucket16から17.57–20.93%、全部で25.96–29.03%短縮。
+全部版は現行より3.32–6.49%速く、Y/dX ownerは約63–67%短くなった。
+追加準備は約0.0285ms、allocated65.975MiB/reserved124MiB。reservedがdense106MiBを
+上回るため採用は保留し、現行の両peak適合baselineを維持する。
+410資格検証、72 full FP64 gates、独立2cohort/rho、10固定診断をPASS。
+複数周期の代表座標による共通勾配誤差も、全量コピーなしの準備内canonical reductionで修正。
+詳細は[owner準備移動の記録](regular-grid-tile-owner-prep.ja.md)。

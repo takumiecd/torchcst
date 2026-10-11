@@ -672,3 +672,14 @@ H/G生成は約半分になった一方、Y/dX ownerが幅16で約2倍、幅32�
 今回の候補数は準備済みinterval所属数と一致しており、単なる候補過剰では説明できない。
 251資格検証/72 full FP64 gates、独立2cohort/rhoと10固定診断の詳細は
 [支持幅bucket比較](research-history/cuda-linear/regular-grid-tile-bucket.ja.md)へ保存した。
+
+### タイル16 ownerの準備移動
+
+幅区分・範囲・所属情報を準備へ移す単独版と組み合わせ版を同条件で比較した。
+幅区分だけで完全stepを元bucket16から17.57–20.93%、全部で25.96–29.03%短縮。
+全部版は現行より3.32–6.49%速く、Y/dX ownerは約63–67%短くなった。
+追加準備は約0.0285ms、allocated65.975MiB/reserved124MiB。reservedがdense106MiBを
+上回るため採用は保留し、現行の両peak適合baselineを維持する。
+410資格検証、72 full FP64 gates、独立2cohort/rho、10固定診断をPASS。
+複数周期の代表座標による共通勾配誤差も、全量コピーなしの準備内canonical reductionで修正。
+詳細は[owner準備移動の記録](research-history/cuda-linear/regular-grid-tile-owner-prep.ja.md)。
