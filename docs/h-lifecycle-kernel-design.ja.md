@@ -13,6 +13,11 @@ RegularGridの宣言・Torch参照は実装済み。D2 FlatTorusの初期kernel�
 [研究ノート](research-history/cuda-linear/regular-grid-h-lifecycle.ja.md)へ記録した。
 以下の設計を高次元・別geometry・別GPUへ広げた性能は未検証。
 
+過去の実装と実測から移せる処理順序は
+[歴史的kernelとHの寿命](research-history/cuda-linear/regular-grid-h-historical-kernels.ja.md)に整理した。
+入力断片共有・owner内のG再利用・batch内勾配累積・選択保存を、現行で実装済みの
+再利用と区別して比較する。
+
 ## 決めたことと計測で決めること
 
 | 決めた方針 | 計測して決める実装 |
