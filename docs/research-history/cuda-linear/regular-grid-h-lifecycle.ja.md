@@ -2145,3 +2145,21 @@ raw archivesとmanifestはignored `output/regular-grid-h/overnight-evidence/` �
 集計は `input-routing-cohort-report.md`、`input-routing-summary.json`、
 検証は `verify-input-routing-cohort.py`。停止証拠は
 `input-routing-final-pool-status.json` と `input-routing-final-stop-lifecycle.log`。
+
+## 候補削減版のproducer分解（事前条件）
+
+次の調査では `input-site-stream-g8-h32` を固定し、production kernelを変更せず、
+同じ `_contract` を呼ぶ診断kernelでG/dG、H/dH、3種類のparameter partialを分ける。
+元の融合producerと、Gのみ／Hのみ／production NEED_P=Falseも対照にする。
+G→HとH→Gの両実行順を測り、6 Graphの順番を回転・反転して21 replayずつ記録する。
+
+分割版は4個の `[slab,A_sorted,BM]` 中間bufferを書き読みするため、元kernelの厳密な
+内訳ではない。各段の絶対時間と融合producerを併記し、差分を元kernelの持分と呼ばない。
+parameter partialは振幅・入力中心・出力中心の3fieldで、幅等へのsource VJPは従来の
+後段計測に含む。G/dGとH/dHにはprofile評価・正規化の微分も含まれる。
+
+全chunkのG/partialをproductionと照合し、value-only値も照合する。floor・空支持・
+片側空支持・広い支持・境界・partial batchをGPUで確認してから計測へ進む。
+主測定の時間と両メモリpeakの後に診断を実行し、診断scratchをprimaryへ含めない。
+N2048/B32/A209715、rho3/8、seed41、24更新とinitial/post24全FP64 gateを固定し、
+各rho独立2cohortを行う。各cohortは従来のmatrix/factor/onchip/denseと候補削減の5方式。

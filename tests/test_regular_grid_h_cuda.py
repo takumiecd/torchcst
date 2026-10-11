@@ -1441,3 +1441,327 @@ def test_input_routing_changes_only_backward_candidates(shape, sigma, offset):
             support = {j % ni for j in range(int(pp[9, atom]), int(pp[10, atom]))}
             if support.intersection(range(start, start + width)):
                 assert atom in picked
+
+
+def _producer_fixture(case):
+    """Small fixed snapshots: rho is sigma divided by unit site spacing."""
+    batch = 37 if case == "multichunk" else 11
+    shape = (
+        (5, 7) if case in ("narrow", "empty", "empty_input", "boundary") else (33, 65)
+    )
+    shape = (2, 2) if case == "floor" else shape
+    sigma = {
+        "rho3": 3.0,
+        "rho8": 8.0,
+        "narrow": 0.1,
+        "empty": 0.01,
+        "empty_input": 0.01,
+        "floor": 0.5,
+        "broad": 40.0,
+        "boundary": 1.0,
+        "multichunk": 3.0,
+    }[case]
+    periods = tuple(float(size) for size in shape)
+    origin = (0.0, 0.0) if case == "floor" else (-0.25, 0.125)
+    p = periodic.parameters(17, periods=periods, origin=origin)
+    if case in ("narrow", "empty", "floor", "boundary"):
+        offset = {"narrow": 0.037, "empty": 0.5, "floor": 0.25, "boundary": 0.0}[case]
+        p[:, 2:] = torch.tensor(origin) + offset
+    if case == "empty_input":
+        p[:, 2] = origin[0]
+        p[:, 3] = origin[1] + 0.5
+    layer = model(
+        p,
+        "input_site32",
+        shape=shape,
+        periods=periods,
+        origin=origin,
+        sigma=sigma,
+        floor=2 * 0.421875**2 if case == "floor" else 1e-6,
+        device="cuda",
+    )
+    generator = torch.Generator().manual_seed(825)
+    x = torch.randn(batch, 2 * shape[1], generator=generator).cuda()[:, ::2]
+    dy = torch.randn(shape[0], batch, generator=generator).cuda().T
+    sizes = (batch, shape[1], shape[0], periods[1], periods[0], origin[1], origin[0])
+    return layer, x, dy, sizes, InputSiteStreamingHRecipe()
+
+
+def _producer_axis_truth(x, packed, order, sizes, *, output, start, batch_tile):
+    """Independent full-axis scalar algebra on the frozen prepared snapshot.
+
+    Width/norm/log-gradient/one-point flags are inputs to these probes. Their
+    physical preparation is covered by the existing whole-atom FP64 tests.
+    This oracle independently checks both contractions without _contract,
+    support intervals, modular site indexing or any diagnostic kernel.
+    """
+    b, ni, no, li, lo, oi, oo = sizes
+    n, period, origin = (no, lo, oo) if output else (ni, li, oi)
+    point = packed.detach().cpu().double()[:, order.cpu()]
+    sites = origin + torch.arange(n, dtype=torch.float64) * (period / n)
+    residue = torch.remainder(
+        sites[None, :] - point[3 if output else 2, :, None], period
+    )
+    delta = torch.where(residue < period / 2, residue, residue - period)
+    gap = (1 - delta.square() * point[1, :, None]).clamp_min(0)
+    norm = point[5 if output else 4, :, None]
+    value = gap.pow(3) / norm
+    derivative = (
+        6 * delta * point[1, :, None] * gap.square() / norm
+        - point[7 if output else 6, :, None] * value
+    )
+    one_point = (point[8].long() & (2 if output else 1)) != 0
+    derivative[one_point] = 0
+    other_live = (point[10] > point[9]) if output else (point[12] > point[11])
+    value[~other_live] = 0
+    derivative[~other_live] = 0
+    rows = min(batch_tile, b - start)
+    inputs = torch.zeros(batch_tile, n, dtype=torch.float64)
+    inputs[:rows] = x[start : start + rows].detach().cpu().double()
+    return (value @ inputs.T)[None], (derivative @ inputs.T)[None]
+
+
+def _producer_close(actual, expected):
+    actual, expected = actual.detach().cpu().double(), expected.detach().cpu().double()
+    assert actual.shape == expected.shape
+    assert torch.isfinite(actual).all() and torch.isfinite(expected).all()
+    difference = actual - expected
+    assert float(difference.abs().max()) <= 4e-4
+    assert float(difference.norm() / expected.norm().clamp_min(1e-30)) <= 4e-4
+
+
+@GPU
+@pytest.mark.parametrize(
+    "case",
+    [
+        "rho3",
+        "rho8",
+        "narrow",
+        "floor",
+        "empty",
+        "empty_input",
+        "broad",
+        "boundary",
+        "multichunk",
+    ],
+)
+def test_producer_split_fields_partials_value_only_padding_and_graph(case):
+    import triton as tr
+
+    from torchcst._backends.cuda.algorithms.linear.periodic_product.executor import (
+        _prepare,
+    )
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h import (
+        input_kernels,
+    )
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h import (
+        producer_diagnostic_kernels as probes,
+    )
+    from torchcst._backends.cuda.algorithms.linear.regular_grid_h.output_owner import (
+        prepare_routing,
+    )
+
+    layer, x, dy, sizes, recipe = _producer_fixture(case)
+    packed = _prepare(layer.atoms.p, layer.kernel, sizes, recipe)
+    if case == "empty_input":
+        assert torch.all(packed[9] == packed[10])
+        assert torch.all(packed[11] < packed[12])
+    routing = prepare_routing(
+        packed, sizes, recipe, output=False, tile=recipe.input_tile
+    )
+    order = routing[0]
+    a, b, bm = len(layer.atoms.p), sizes[0], recipe.batch_tile
+    assert recipe.g_batch == bm == 8
+    shape = (1, a, bm)
+    g, dg, h, dh, production_g = [x.new_empty(shape) for _ in range(5)]
+    partial, production_partial = [x.new_empty((1, 3, a)) for _ in range(2)]
+    global_partial, production_global_partial = [
+        x.new_full((tr.cdiv(b, bm), 3, a), float("nan")) for _ in range(2)
+    ]
+    launch = {"num_warps": 4, "enable_fp_fusion": False}
+    grid = (tr.cdiv(a, recipe.atom_group), 1)
+
+    def probe(kernel, value, derivative, start, enabled=True):
+        kernel[grid](
+            x,
+            dy,
+            packed,
+            order,
+            value,
+            derivative,
+            a,
+            *sizes,
+            *x.stride(),
+            *dy.stride(),
+            start,
+            bm,
+            recipe.patch_sites,
+            recipe.atom_group,
+            DERIVATIVE=enabled,
+            **launch,
+        )
+
+    def combine(destination, start, streamed):
+        probes.produce_parameter_partials[grid](
+            g,
+            dg,
+            h,
+            dh,
+            packed,
+            order,
+            destination,
+            a,
+            start,
+            bm,
+            recipe.atom_group,
+            STREAM_PARTIAL=streamed,
+            **launch,
+        )
+
+    def production(destination, start, streamed=True, need_p=True):
+        input_kernels.produce_g_parameters[grid](
+            x,
+            dy,
+            packed,
+            order,
+            production_g,
+            destination,
+            a,
+            *sizes,
+            *x.stride(),
+            *dy.stride(),
+            need_p,
+            start,
+            bm,
+            recipe.patch_sites,
+            recipe.atom_group,
+            STREAM_PARTIAL=streamed,
+            **launch,
+        )
+
+    def split(start):
+        probe(probes.produce_g_probe, g, dg, start)
+        probe(probes.produce_h_probe, h, dh, start)
+        combine(partial, start, True)
+
+    expected_partials = []
+    for start in range(0, b, recipe.g_batch):
+        for field in (g, dg, h, dh, partial):
+            field.fill_(float("nan"))
+        production(production_partial, start)
+        split(start)
+        combine(global_partial, start, False)
+        production(production_global_partial, start, False)
+        _producer_close(g, production_g)
+        _producer_close(partial, production_partial)
+        expected_g, expected_dg = _producer_axis_truth(
+            dy, packed, order, sizes, output=True, start=start, batch_tile=bm
+        )
+        expected_h, expected_dh = _producer_axis_truth(
+            x, packed, order, sizes, output=False, start=start, batch_tile=bm
+        )
+        for actual, expected in (
+            (g, expected_g),
+            (dg, expected_dg),
+            (h, expected_h),
+            (dh, expected_dh),
+        ):
+            _producer_close(actual, expected)
+            if b - start < bm:
+                # Recycled scratch must overwrite every padded lane with zero.
+                assert not actual[:, :, b - start :].count_nonzero()
+        # Check field order and original-atom scatter independently of fused code.
+        gg, ddg, hh, ddh = [field.detach().cpu().double() for field in (g, dg, h, dh)]
+        amplitude = packed[0, order].detach().cpu().double()[None, :]
+        sorted_partial = torch.stack(
+            (
+                (hh * gg).sum(-1),
+                amplitude * (gg * ddh).sum(-1),
+                amplitude * (hh * ddg).sum(-1),
+            ),
+            1,
+        )
+        truth = torch.empty_like(sorted_partial)
+        truth.index_copy_(2, order.cpu(), sorted_partial)
+        _producer_close(partial, truth)
+        expected_partials.append(truth)
+        probe(probes.produce_g_probe, g, None, start, False)
+        probe(probes.produce_h_probe, h, None, start, False)
+        _producer_close(g, expected_g)
+        _producer_close(h, expected_h)
+        production(None, start, need_p=False)
+        _producer_close(g, production_g)
+    truth = torch.cat(expected_partials)
+    _producer_close(global_partial, truth)
+    _producer_close(global_partial, production_global_partial)
+    if case == "rho3":
+        # Prove replay writes actual values, not only the eager prechecks.
+        graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(graph):
+            split(start)
+        for field in (g, dg, h, dh, partial):
+            field.fill_(float("nan"))
+        graph.replay()
+        for actual, expected in (
+            (g, expected_g),
+            (dg, expected_dg),
+            (h, expected_h),
+            (dh, expected_dh),
+            (partial, truth[-1:]),
+        ):
+            _producer_close(actual, expected)
+
+
+@GPU
+def test_producer_diagnostics_smoke_complete_backward_frozen_snapshot_and_samples():
+    from types import SimpleNamespace
+
+    from benchmarks.cuda.linear.periodic_comparison import streaming_backward_stages
+
+    layer, x, _dy, _sizes, _recipe = _producer_fixture("rho3")
+    x.requires_grad_()
+    target = torch.randn(11, 33, device="cuda")
+    source = layer.atoms.p.detach().clone()
+    y = layer(x)
+    dy = (2 * (y.detach() - target) / y.numel()).detach()
+    periodic.gate(
+        (y, *torch.autograd.grad(y, (x, layer.atoms.p), dy)),
+        periodic.oracle(layer, x, dy),
+    )
+    result = streaming_backward_stages(
+        SimpleNamespace(model=layer, x=x, target=target),
+        "input-site-stream-g8-h32",
+        producer_breakdown=True,
+    )
+    assert result["same_snapshot"] and result["same_uninstrumented_backward"]
+    diagnostic = result["producer_diagnostics"]
+    assert diagnostic["same_production_G_and_partials"]
+    assert diagnostic["captured_final_chunk_matches_production"]
+    assert diagnostic["layout"]["field_shape"] == [1, 17, 8]
+    assert diagnostic["layout"]["chunk_starts"] == [0, 8]
+    assert diagnostic["layout"]["materialized_four_fields_bytes"] == 4 * 1 * 17 * 8 * 4
+    assert (
+        diagnostic["layout"]["extra_fields_vs_production_G_bytes"] == 3 * 1 * 17 * 8 * 4
+    )
+    assert diagnostic["layout"]["partial_bytes"] == 1 * 3 * 17 * 4
+    modes = {
+        "fused_production",
+        "split_G_then_H",
+        "split_H_then_G",
+        "G_value_only",
+        "H_value_only",
+        "production_G_value_only",
+    }
+    assert set(diagnostic["samples_ms"]) == modes
+    assert len(diagnostic["execution_orders"]) == 21
+    for order in diagnostic["execution_orders"]:
+        assert len(order) == len(modes) and set(order) == modes
+    for name, samples in diagnostic["samples_ms"].items():
+        assert len(samples) == 21
+        for sample in samples:
+            assert sample["whole_graph_ms"] >= 0
+            assert all(value >= 0 for value in sample["stages_ms"].values())
+            assert [chunk["batch_start"] for chunk in sample["chunks"]] == [0, 8]
+        assert diagnostic["medians_ms"][name]["whole_graph_ms"] >= 0
+    assert all(value <= 4e-4 for value in diagnostic["max_abs_vs_production"].values())
+    torch.testing.assert_close(layer.atoms.p, source, rtol=0, atol=0)

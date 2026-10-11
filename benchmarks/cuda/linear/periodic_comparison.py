@@ -983,7 +983,7 @@ def streaming_backward_layout(recipe, *, batch, atoms):
     }
 
 
-def streaming_backward_stages(step, kind):
+def streaming_backward_stages(step, kind, *, producer_breakdown=False):
     """Fixed post24 all-gradient backward; measured separately from primary peaks.
 
     Use production contractions and routing on immutable forward snapshots.
@@ -1198,6 +1198,11 @@ def streaming_backward_stages(step, kind):
         active_dX_ctas=tr.cdiv(ni, recipe.input_tile) * batch_ctas,
         launched_dX_ctas=2 * tr.cdiv(ni, recipe.input_tile) * batch_ctas,
     )
+    producer_result = None
+    if producer_breakdown:
+        from benchmarks.cuda.linear.producer_diagnostics import producer_diagnostics
+
+        producer_result = producer_diagnostics(x, dy, packed, routing, sizes, recipe)
     unchanged = (
         torch.equal(model.atoms.p.detach(), source)
         and torch.equal(step.model.atoms.p.detach(), source)
@@ -1207,6 +1212,7 @@ def streaming_backward_stages(step, kind):
         raise AssertionError("backward diagnostic changed its forward snapshot")
     return {
         "scope": "fixed post24 all-gradient backward; no optimizer; nonadditive to primary; excluded from primary peaks",
+        "producer_diagnostics": producer_result,
         "snapshot_preparation_timed": False,
         "packed_audit_copy_bytes": packed_audit.numel() * packed_audit.element_size(),
         "dy_source": "fixed explicit cotangent of post24 mean squared loss",
@@ -1275,6 +1281,7 @@ def worker(
     regular_grid=False,
     oracle_directory=None,
     aggregation_diagnostics=False,
+    producer_diagnostics=False,
 ):
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
@@ -1436,8 +1443,10 @@ def worker(
         )
         stage = "separate-streaming-backward-diagnostics"
         result["backward_stage_diagnostics"] = (
-            streaming_backward_stages(step, kind)
-            if phases and kind in STREAMING_STAGE_KINDS
+            streaming_backward_stages(
+                step, kind, producer_breakdown=producer_diagnostics
+            )
+            if (phases or producer_diagnostics) and kind in STREAMING_STAGE_KINDS
             else None
         )
         if aggregation_diagnostics and kind in (
@@ -1669,6 +1678,7 @@ def main():
     parser.add_argument("--state-gate", action="store_true")
     parser.add_argument("--phases", action="store_true")
     parser.add_argument("--aggregation-diagnostics", action="store_true")
+    parser.add_argument("--producer-diagnostics", action="store_true")
     parser.add_argument("--verify-only", action="store_true")
     parser.add_argument("--reverse", action="store_true")
     parser.add_argument("--worker-timeout", type=int, default=900)
@@ -1789,6 +1799,10 @@ def main():
         not args.regular_grid or not args.isolated_oracle
     ):
         parser.error("aggregation diagnostics require regular grid and isolated oracle")
+    if args.producer_diagnostics and (
+        not args.regular_grid or not args.isolated_oracle
+    ):
+        parser.error("producer diagnostics require regular grid and isolated oracle")
     args.output.parent.mkdir(parents=True, exist_ok=True)
     if args.state_gate:
         result = state_gate(regular_grid=args.regular_grid)
@@ -1799,6 +1813,7 @@ def main():
             args.worker,
             phases=args.phases,
             aggregation_diagnostics=args.aggregation_diagnostics,
+            producer_diagnostics=args.producer_diagnostics,
             verify_only=args.verify_only,
             regular_grid=args.regular_grid,
             oracle_directory=(
@@ -1837,6 +1852,8 @@ def main():
                 command.append("--phases")
             if args.aggregation_diagnostics:
                 command.append("--aggregation-diagnostics")
+            if args.producer_diagnostics:
+                command.append("--producer-diagnostics")
             if args.verify_only:
                 command.append("--verify-only")
             try:
