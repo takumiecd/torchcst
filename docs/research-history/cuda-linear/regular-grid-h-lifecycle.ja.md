@@ -2593,3 +2593,82 @@ A/Rはallocated/reserved。全4runの共通入力baselineは14.10/34 MiB。
 
 全測定・入力証拠回収後に全owned slotsのstoppedとserverにactive sessionなしを確認した。
 停止証拠は `matched-final-pool-status.json` と `matched-final-stop-lifecycle.log` に保存済み。
+
+## 2026-10-11: fused producerの正規化逆数共有
+
+測定sourceは `0603e15b87014d4da80e95aae53d4ceb4ca096aa`。結論は、**生成段は改善、完全stepの改善はrho8で2回とも確認、rho3では安定せず**。`input-site-reciprocal-g8-h32` を研究候補として残す。公開defaultは変更しない。rho8の次の比較ではこの候補を比較基準にできるが、rho3の除算版も対照として残す。
+
+既存の入力site候補削減、atom順、H32/G8、BM8/BK8/group8、融合とscratch寿命を固定し、backward producerの正規化だけを変えた。各producer CTA/batch slabの軸ごとに $r_a=1/n_a$ を求め、$v_{aj}=q_{aj}r_a$、$\partial v_{aj}=q'_{aj}r_a-\ell_a v_{aj}$ とする。縮約の外へ正規化を移動せず、Hの保存・再計算回数も変更しない。個別normが `[1e-6,128]` の外、NaN、または関連singleton flagを一つでも含むgroupは、その軸を従来除算に戻す。joint floorは個別normの下限を保証しない。floorされたatomでもこのguard内なら逆数を使うので、floor全体がbitwise fallbackという意味ではない。parameter-only backwardは従来経路を使う。
+
+L4 1台、PyTorch2.11.0+cu130/CUDA13.0/Triton3.6.0。N2048/B32/A209715、seed41、rho3/8、normalizeあり、FP32/TF32 off、24 AdamW更新。各条件独立2cohort、各plan fresh process、2回目はplan順を反転した。21 samplesは独立21runではない。
+
+### 完全stepとメモリ
+
+| Plan | rho3 run1 ms | rho3 run2 ms | rho8 run1 ms | rho8 run2 ms | peak allocated/reserved MiB |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| matrix-torch | 1.2856 | 1.3010 | 3.2733 | 3.3812 | 96.163/142 |
+| factor | 5.0997 | 5.1926 | 11.1043 | 11.3963 | 83.114/130 |
+| onchip-h | 4.1493 | 4.6354 | 9.9261 | 10.0158 | 42.866/114 |
+| input-site-stream-g8-h32 | 4.4864 | 4.5288 | 6.2757 | 6.2397 | 57.431/104 |
+| input-site-reciprocal-g8-h32 | 4.4884 | 4.2611 | 5.5261 | 5.8948 | 57.431/104 |
+| dense | 0.5936 | 0.5930 | 0.5929 | 0.5936 | 81.752/106 |
+
+逆数版の完全step短縮率はrho3で **−0.045% / 5.912%**、rho8で **11.944% / 5.528%**。rho3を一律の改善とは扱わない。allocated/reservedは両方式全4runで **57.431/104MiB**。denseの **81.752/106MiB** 以下だが、dense自体は約0.593msで、速度差は依然大きい。GPU process全体の使用量は未測定。
+
+### 別Graphの生成段診断
+
+| rho/run | division G/H + parameter partials ms | reciprocal ms | 短縮率 |
+| --- | ---: | ---: | ---: |
+| 3/1 | 1.2677 | 1.1540 | 8.97% |
+| 8/1 | 1.7428 | 1.5514 | 10.99% |
+| 3/2 | 1.2800 | 1.1510 | 10.08% |
+| 8/2 | 1.7428 | 1.5606 | 10.46% |
+
+生成段の短縮は4runで再現した。これはG/dG、H/dH、parameter partialsが融合された1段の測定であり、純粋なFLOPs時間や正規化だけの厳密な内訳ではない。phase/固定snapshotの診断はprimary後の別Graphで、完全stepから差し引いたり足し合わせたりしない。候補探索数、layout、保存量が同一であることを確認した。
+
+主測定は1回のCUDA Graph replayと同期をhost `perf_counter` で囲み、各sampleで実更新する。
+固定状態のGPU event計測ではない。sample列の後半で時間が増える傾向は観測したが、原因は未確定。
+候補自身・baseline自身のrun間post24状態が一致しても時間の再現性を保証するものではない。
+
+候補で残る主要stage（別Graph、2runのmedian範囲）は次の通り。
+
+| stage | rho3 ms | rho8 ms |
+| --- | ---: | ---: |
+| G/H + parameter partials | 1.151–1.154 | 1.551–1.561 |
+| dX owner | 0.694 | 1.062–1.076 |
+| Y aggregation | 0.600–0.609 | 0.926–0.993 |
+| forward H generation | 0.495–0.497 | 0.707–0.720 |
+
+次に調べる対象は、生成段に残る周期座標/profile計算とX/dY参照の費用。
+現段階でDRAMやcacheが原因と確定したわけではない。H/Gの容量・並び順を再び同時変更せず、
+生成の変更を一つずつ比較する。
+
+
+確認用rho3/rho8 fixtureのPTXでは、各軸ループの8個の正規化除算がsafe blockで8個の乗算になり、ループ前に逆数除算が1個入った。fallbackと周期処理の除算は残るため、全バイナリの静的div数は24→26。確認fixtureは各軸3/3groupがsafe。register72→72、spill0→0、shared512→512 bytes。静的shuffle19→25、branch4→12で、guardも無コストではない。これらは小fixtureのコンパイラ情報であり、実機のDRAM転送量やstall、主測定kernelの占有率を示すものではない。
+
+### 検証・証拠
+
+- L4対象テスト **53 PASS、0skip**（CUDA51 + CPU2）。floor/singleton/empty、guard境界・混在group、相殺のある微分、strides、retained snapshot、requested gradients、20回のeager/Graph更新を含む。host全体 **1717 PASS / 3571 skip**。27-plan宣言check、Ruff、diff check PASS。
+- **40** initial/post24全shape・全atom FP64 gates PASS。閾値はmax absolute/relative L2とも4e-4のまま。24 fresh workers、504 primary samples。既存baselineのPlan/case宣言は前回凍結資料と一致。4cohortのsource entry mapも一致。
+- baseline/candidateそれぞれの独立2回のpost24 P/Y/dX/all-dPはrho別にbitwise一致。両algorithm間のpost24 bitwise一致は要求しない。matrix/factor/onchipはそれぞれのFP64 gateで判定し、更新後hashのrun間差も保持。
+- 最初のvalidation jobは53テスト通過後、補助compiler exportで `test_periodic_cuda` のimport path不足によりexit1。元ログを保存し、ignored scriptのpathを修正してcompiler exportだけ別jobで回収。runtime/test sourceと閾値は変更せず、数値テストやtimingの再試行も行っていない。
+- 独立最終監査 `reciprocal-final-audit.json`: **PASS_COMPLETE**, SHA256 `801e424541bd7697d88f6a7b82b0217048db73a51a02e660103005807bf683c3`。各source1632entryと各result32-entry manifest、全snapshot/source/result archive hashを確認。全owned GPU slot停止、serverのno active sessionsも確認した。
+
+| job | source archive SHA256 | result archive SHA256 |
+| --- | --- | --- |
+| `l4job-dfcd92d0b4474501852aa52f5fb29ad9` | `c109b9ee07aa7ce25e1560e3e53cf33f6d1a1c993b6907702921ad6c1a0ceafc` | `3cb16ef19cb53c3f239b71f81ea7439bed23a1798f9070f21418034af8e8eccb` |
+| `l4job-e86406b0a85a45f9b6b6ad608bb50486` | `c109b9ee07aa7ce25e1560e3e53cf33f6d1a1c993b6907702921ad6c1a0ceafc` | `e86185578172421ddec751bfd7826df78ea1bf21ff9088c10471a757ded99476` |
+| `l4job-04cd638804fc4c4c9d0c48de098cea92` | `4ce2c79f816e094ff34a5afe6f63bfbfb682e0ecb5fcb068767616812e550ee9` | `fc615aa0fb47b57f2ad7adbb036e99911b08c5131954413e9a4f9e8f16805c84` |
+| `l4job-465ddf568e7f413390b00995f43a87b9` | `9dd6408beb251712674e894f08056fe2b5a1bf98c35e5294dce802a216654505` | `9b381e33830cba0e049eca34d1916127b95cbd32423057b3ddeb9d734f32d06c` |
+
+数値validation: `l4job-8dc53875f1ed4aa18f0a3521c248b5fd`。compiler回収: `l4job-70f3e0d8f4654d29a5a3ecca37d1fc01`。rawは `output/regular-grid-h/overnight-evidence/<job>/`、validation summary・audit・driverは `output/regular-grid-h/reciprocal-*` と `audit-reciprocal-study.py` に保存。
+
+再現（rho8も同様、2回目は `--reverse`）：
+
+```bash
+python -m benchmarks.cuda.linear.periodic_comparison \
+  --case benchmarks/cuda/linear/cases/regular-grid-h-2048-rho3.json \
+  --plans matrix-torch factor onchip-h input-site-stream-g8-h32 \
+    input-site-reciprocal-g8-h32 dense \
+  --isolated-oracle --phases --output output/reciprocal-new/comparison.json
+```

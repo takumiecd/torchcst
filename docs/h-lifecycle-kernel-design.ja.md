@@ -504,3 +504,8 @@ H32/G8、BM8、BK8、atom group8、input-site順、融合したG/H/parameter par
 別Graphでのproducer/owner/VJPの時間を完全stepから差し引かない。
 低norm、empty、singleton、stride、retained backward、Graph更新を先に検証する。
 GPU correctnessが失敗した場合は同sourceで性能測定へ進まない。
+
+この比較は完了し、生成段は9〜11%短縮、完全stepはrho8で5.5〜11.9%短縮を2回確認した。
+rho3は差なし／5.9%短縮で、全体改善を一律には主張しない。peak allocated/reservedは
+除算版と同じ57.431/104MiB。詳細は[研究記録](research-history/cuda-linear/regular-grid-h-lifecycle.ja.md)の
+2026-10-11の逆数共有比較を参照。候補は研究routeに保持し、公開defaultは変更しない。
