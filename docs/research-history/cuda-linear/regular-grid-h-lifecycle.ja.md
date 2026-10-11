@@ -2913,3 +2913,117 @@ python -m benchmarks.cuda.linear.periodic_comparison \
     input-site-reciprocal-bm8-g16-h32 input-site-reciprocal-bm16-g16-h32 dense \
   --isolated-oracle --phases --output output/batch-producer-new/comparison.json
 ```
+
+## RTX 6000 Ada: G32容量とproducer BM32の分離比較（2026-10-11）
+
+判定: **BM16/G16を研究基準として維持する**。BM32/G32は完全stepを5.4–7.1%短縮したが、
+総peak allocatedが57.431→66.731 MiB、reservedが104→126 MiBへ増えた。allocatedは
+denseの81.752 MiB以下でもreservedはdenseの106 MiBを上回り、既存の両peak条件を満たさない。
+全G32方式を速度・メモリの交換条件を示す研究routeとして保持し、公開default・dispatcherは変更しない。
+
+測定source `6813b75c321d409d298d050845e166e0a49f9250`。GPUはRTX 6000 Ada Generation 48GB、
+Torch2.9.1+cu128/CUDA12.8/Triton3.5.1。N2048/B32/A209715、rho3/8、seed41、
+normalized profile-product、FP32/TF32 off、AdamW lr1e-4/weight_decay.01/fused/capturable、
+24実更新を固定した。各rho独立2cohort、2回目は逆順、各8 fresh workers。各workerの21
+primary samplesは同じGraphの更新replayで、独立runとして数えない。host perf_counterで
+replayと同期を囲む未計装完全stepを判断指標にする。stage診断はpost24の別Graphで5回、
+primary時間・peakから除外し、加算／差引きを行わない。GPU process全体のpeak usageは未測定。
+
+完全step ms（各欄は独立cohortのmedian）:
+
+| rho | run | matrix | factor | onchip | BM16/G16 | BM8/G32 | BM16/G32 | BM32/G32 | dense |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 3 | 1 | 0.7062 | 1.9538 | 1.7939 | 1.4210 | 1.5600 | 1.4177 | 1.3310 | 0.3292 |
+| 8 | 1 | 1.3622 | 4.2904 | 3.6877 | 1.8208 | 1.9488 | 1.8155 | 1.6919 | 0.3293 |
+| 3 | 2 | 0.7141 | 1.9798 | 1.8340 | 1.4366 | 1.5744 | 1.4264 | 1.3416 | 0.3288 |
+| 8 | 2 | 1.3683 | 4.3512 | 3.8844 | 1.8377 | 1.9662 | 1.8213 | 1.7393 | 0.3288 |
+
+capture/replay込みの総peak（全4cohortで同じ、MiB）:
+
+| 方式 | allocated | reserved | 両peakがdense以下 |
+| --- | --- | --- | --- |
+| matrix | 96.163 | 142 | no |
+| factor | 83.114 | 130 | no |
+| onchip | 42.866 | 114 | no |
+| BM16/G16 基準 | 57.431 | 104 | yes |
+| BM8/G32 対照 | 73.931 | 126 | no |
+| BM16/G32 容量対照 | 69.131 | 126 | no |
+| BM32/G32 候補 | 66.731 | 126 | no |
+| dense | 81.752 | 106 | yes |
+
+BM16/G32容量対照の完全step短縮は基準比0.2–0.9%で小さく、生成段はほぼ同じ。
+BM32/G32対BM16/G32は完全stepが4.5–6.8%短縮し、producer内のbatch共有を広げる効果がある。
+BM8/G32は基準より遅く、容量だけを広げる方針は採用しない。BM32のG/H+parameter partial生成は
+基準よりrho3で28.8–29.7%、rho8で26.4–28.0%短縮した。
+
+別Graphの固定backward診断 ms:
+
+| rho | 方式 | G/H + parameter partial生成 | dX owner | physical集約 |
+| --- | --- | --- | --- |
+| 3 | BM16/G16 基準 | 0.2743–0.2782 | 0.1878–0.1899 | 0.0187–0.0188 |
+| 3 | BM8/G32 対照 | 0.4295–0.4339 | 0.1801–0.1819 | 0.0103–0.0104 |
+| 3 | BM16/G32 容量対照 | 0.2772–0.2791 | 0.1781–0.1810 | 0.0098–0.0099 |
+| 3 | BM32/G32 候補 | 0.1953–0.1957 | 0.1770–0.1789 | 0.0095–0.0095 |
+| 8 | BM16/G16 基準 | 0.4244–0.4282 | 0.2925–0.2946 | 0.0190–0.0191 |
+| 8 | BM8/G32 対照 | 0.5828–0.5857 | 0.2810–0.2823 | 0.0103–0.0104 |
+| 8 | BM16/G32 容量対照 | 0.4282–0.4337 | 0.2777–0.2805 | 0.0099–0.0101 |
+| 8 | BM32/G32 候補 | 0.3057–0.3154 | 0.2770–0.2806 | 0.0097–0.0098 |
+
+基準BM16/G16では生成段がrho3で0.274–0.278ms、rho8で0.424–0.428msと依然最大。
+dX ownerは約0.188–0.190/0.293–0.295ms、forward H生成は0.186–0.189/0.247–0.252ms、
+Y集約は0.162–0.163/0.222–0.223ms。入力index/field setupは約0.061–0.062ms、source VJPは
+約0.0095–0.0097ms。次の生成段最適化はG16容量を維持する前提で調べる。
+BM32/G32でも生成段が最大だがrho3はH生成・dXに近づいた。これらは非加算の診断値。
+
+配置・寿命・compiler:
+
+- forward H32/producer BM8/Y owner BM16、input-site順、dX owner BM8、BK8/group8、
+  正規化とsource VJPは固定。新InputWideBatchProducerHRecipe/AlgorithmはG32/BM8,16,32だけを許し、
+  既存InputBatchProducerHRecipeのG16/BM8,16の意味は変更しない。G storageは[4,A,8]、
+  local rowのslab offsetとconsumerは同じ。H/dH/dGは追加保存せず、backward後にH/Gを残さない。
+- G32の論理G容量は25.600 MiBでG16より12.800 MiB増える。parameter partialは
+  BM8/G32が9.600、BM16/G32が4.800、BM32/G32が2.400 MiB。compute幅によるpartial削減を
+  含めても総peakは増えた。論理buffer容量と実測peakを区別する。reserved増加をfragmentationだけの
+  原因と断定しない。batch共有の幅と保存量を同時に増やすだけではメモリ目的を満たせない。
+- full N2048/B32/A209715 compileはBM8:64 registers/0 spills/512 shared bytes、
+  BM16:94/0/512、BM32:128/0/1024。BM16/G16とBM16/G32のPTX/cubin SHAは同一。
+  実occupancy、cache hit、DRAM traffic、stallは未測定。register増加だけから律速を断定しない。
+
+検証・同等性・証拠:
+
+- 資格検証211 PASS、errors/failures/skipなし。旧119件と新92件。新routeは
+  floor/singleton/empty、gradient masks、batch1/9/17/31/32/33/63、stride/seam/broad、
+  retained snapshot、H/G lifetime、20Graph/20public更新、forward bitwise、実stage scheduleを検査。
+  lower-level G slab/partial canaryはbatch65も含み、dispatchは64対応/65拒否をmetadataで確認した。
+- 初期/post24の全Y/dX/all四atom勾配FP64 gatesは56件すべて既存max absolute/relative L2
+  4e-4でPASS。32 fresh workers、672 primary samples。33-plan宣言、Ruff、diff check PASS。
+  CPU1737 PASS/3766 GPU-or-DB skip。測定sourceのCPU/build CIもPASS。
+  [source 6813b75cのCI](https://github.com/takumiecd/torchcst/actions/runs/38114812587)。
+- 基準対BM32の初期Y/dXはbitwise一致。初期all-dPの最大差はrho3で2.87e-6、rho8で1.91e-6。
+  post24 Pはrho3で729 scalars/最大4.18e-6、rho8で662 scalars/最大1.23e-4の差。
+  FP32のbatch reduction順の差を残し、post-update cross-route一致を新しいgateにしない。
+  4研究方式それぞれ自身の独立repeat post24 P/Y/dX/all-dPはbitwise一致。
+  matrix/factor/onchipのrepeat hash差は保持し、独立FP64 gateとは区別した。
+- 初期source c2baaea6では私がbatch65を対応内oracle試験に入れ、3件がUnsupportedPlanで失敗
+  （208 PASS、timingなし）。runtime/許容値/対応範囲を変えず、batch63のoracleとbatch65の
+  拒否確認へ修正して6813b75cを新しく固定した。失敗source/archive/logは消していない。
+- source全1635 entries、raw/embedded worker、snapshot bytes/hash、更新数、両peak、反復/逆順、
+  result manifestをclusterのCPU監査で照合。audit PASS_COMPLETE SHA256
+  `90ff5157ee5991c4fb38325e550fc6318f80c2ee88395b494b2611743048b3ea`。
+- source archive SHA256 `ec2979d1c8f36bdf0893a6240f4f348518c278296a03f207bf7c58d79622d19d`。
+  compact results SHA256 `7f0672de86d50b284523c0830f050948f69ec3e1dc7f37efc15331020fce36a6`。
+  download後154 entriesを照合。手元ignored `output/regular-grid-h/wide-batch-producer-results/`、
+  raw .ptは `/home/jovyan/runs/cst-wide-batch-producer-ada-6813b75c-20261011/` に保持する。
+  source/driver/auditor/compiler/receipt/operating notesも手元へ保全した。
+  自分のGPU処理は終了し、ユーザーが開いたHub serverをreadyのまま維持した。
+
+再現（rho8も同様、2回目は `--reverse`）:
+
+```bash
+python -m benchmarks.cuda.linear.periodic_comparison \
+  --case benchmarks/cuda/linear/cases/regular-grid-h-2048-rho3.json \
+  --plans matrix-torch factor onchip-h input-site-reciprocal-bm16-g16-h32 \
+    input-site-reciprocal-bm8-g32-h32 input-site-reciprocal-bm16-g32-h32 \
+    input-site-reciprocal-bm32-g32-h32 dense \
+  --isolated-oracle --phases --output output/wide-batch-producer-new/comparison.json
+```

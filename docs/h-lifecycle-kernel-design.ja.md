@@ -561,3 +561,11 @@ fresh processで実行し、各rho独立2cohort、2回目は逆順にする。
 Graph更新を先に検証する。判断指標は未計装の完全stepとcapture/replayの実測
 allocated/reserved peak。別Graphのstage診断とstatic compiler情報を補助に使い、
 register増加だけから実機occupancy低下を断定しない。結果に従って研究基準を選び、公開defaultは維持する。
+
+比較はsource `6813b75c`で完了し、211資格検証/56 FP64 gatesがPASSした。
+BM32/G32は完全stepを5.4–7.1%、生成段を26.4–29.7%短縮したが、総allocated/reserved peakは
+66.731/126 MiBへ増えた。denseの81.752/106 MiBに対してreservedが上回るため、
+両peak条件を満たすBM16/G16（57.431/104 MiB）を研究基準に維持する。
+BM16/G32の容量だけの拡大は完全stepが0.2–0.9%短縮に留まり、生成段はほぼ同じ。
+次はG16容量のままproducer内部の共有・読取りを調べる。全G32候補は測定済みの研究対照として
+残し、公開defaultは変更しない。詳細は[研究記録](research-history/cuda-linear/regular-grid-h-lifecycle.ja.md)を参照。
