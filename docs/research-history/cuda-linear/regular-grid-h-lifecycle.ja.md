@@ -3065,3 +3065,14 @@ source `eb48f824`、Stripへ配置を変更せず、GをdXとparameter VJPでCTA
 支持区間から数えたG要求回数は1回から平均1.623/2.863回へ増えた。
 固定snapshotの実kernel時間・compiler情報・一意writer・負の結果・SHAと復旧先は
 [backward融合の比較](regular-grid-fused-backward.ja.md)へ保存した。
+
+### 2026-10-11: G共有を維持したH/dH用X panel共有
+
+[共有X32/X64の比較](regular-grid-shared-x.ja.md)では、入力順の8 atomへ重なるXを
+kernel内で共有し、G16の保存/dX集約・partial/source VJPは現行のままにした。
+追加sort・全量Xコピーなしでも、Ada N2048/B32/rho3/8の独立2回で完全stepは
+4.74–6.70%遅く、allocated/reservedは57.430664/104MiBで同じだった。
+137GPU testsと48全shape/all-atom FP64 gate、6固定snapshot診断がPASS。
+論理的X要求を約87.3%減らした一方、producerは約20–24%遅く、register/shared配置の
+費用も増えた。実cache/DRAM counterは未測定。両候補を採用せずBM16/G16を維持する。
+source `231bc48feec4b6e170963dba3acd6f7d5185519d`と負の結果を保存した。
