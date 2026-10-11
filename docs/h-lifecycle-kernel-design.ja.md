@@ -634,3 +634,16 @@ H/dH/G/dGは全atom×小batchのslabであり、寿命はchunk単位。atom束�
 支持に対するpanel paddingと微分slabの寿命を次の仮説として扱い、実cacheの原因は未断定。
 127資格検証/48 full FP64 gatesと独立2cohort/rhoの完全step・メモリ・source修正の経緯は
 [支持タイル研究記録](research-history/cuda-linear/regular-grid-tile-dot.ja.md)を参照。
+
+### 生成粒度と微分寿命を独立に変更した比較
+
+32-site routing/ownerは固定し、生成だけをlive支持和集合の16-site panelにする版と、
+固定32-site生成でdH/dGをphysical勾配へ直ちに消費する版を別々に比較した。
+支持幅版はH/G生成を約54–59%、完全stepを固定tile対照から37.70–39.92%短縮した。
+しかし現行より28.85–40.14%遅く、両peak93.717/150MiBのため採用しない。
+微分寿命版は4 slabからH/Gの2 slabへ減らし、allocated/reservedを68.117/122MiBへ削減したが、
+H valueを先に用意して入力profile/微分を再生成するpassが増え、固定tileより10.24–11.02%遅かった。
+生成粒度と保持量の改善を混ぜず、追加passとownerアクセスを寿命の費用として扱う。
+現行BM16/G16/H32を維持する。194資格検証/56全shape FP64 gates、独立2cohort/rhoの
+完全step・両peak・6固定診断・復旧hashは
+[粒度と微分寿命の研究記録](research-history/cuda-linear/regular-grid-tile-schedule.ja.md)を参照。

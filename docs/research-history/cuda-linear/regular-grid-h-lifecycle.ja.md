@@ -3098,3 +3098,13 @@ BM16でもrho3=3.249–3.250ms、rho8=3.885–3.945ms、allocated/reserved=93.71
 現行1.436–1.443/1.838–1.839ms、57.431/104MiBより悪化した。BM8も不採用。
 主費用はH/Gと中心微分のproducer。sort/reductionの費用、初回source47の別campaign、
 失敗資格検証の修正とSHA・復旧先を[支持タイル研究記録](regular-grid-tile-dot.ja.md)へ保存した。
+
+## 2026-10-11: 支持幅の生成粒度とdH/dG寿命の独立比較
+
+source `aff01d67` の支持幅16-panelは固定tile対照から37.70–39.92%短縮したが、
+完全step=1.992–1.995/2.345–2.363msで同cohortの現行1.422–1.434/1.820–1.831msより遅い。
+allocated/reserved=93.717/150MiBは固定tile対照と同じ。別候補の微分寿命版はdH/dG slabを
+なくし68.117/122MiBへ減らしたが、固定tileより10.24–11.02%遅い3.551–3.555/4.305–4.312ms。
+194 GPU qualification、56初期/post24全shape・全atom FP64 gates、32 workers/672 samples、
+6固定snapshot診断PASS。両候補は不採用、現行を維持する。詳細は
+[生成粒度と微分寿命の比較](regular-grid-tile-schedule.ja.md)。別sourceの前回値とpoolしない。
