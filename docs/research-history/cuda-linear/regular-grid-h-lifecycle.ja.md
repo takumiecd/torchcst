@@ -2741,3 +2741,61 @@ FP64で再計算し、invをFP32へ一度丸めてbounds/statsを更新する修
 3方式とも同じ修正を受けたsourceで再資格検証してから周期補正比較を行う。
 元のfailed snapshot/source/logはremote `runs/cst-wrap-ada-ccbe7e32-20261011/` と
 手元 `output/regular-grid-h/wrap-graph-diagnostic.json` 等に保持する。
+
+## RTX 6000 Ada: 周期補正の比較結果（2026-10-11）
+Source `0ee9d4973865d8a630ec9624fd2715432ff94857`。RTX 6000 Ada 48GB、PyTorch2.9.1+cu128 / CUDA12.8 / Triton3.5.1。N2048/B32/A209715、rho3/8、seed41、normalizeあり、FP32/TF32 off、24 AdamW更新を固定。各rho独立2cohort、2回目は7方式の順を反転。
+判定: **周期補正だけでは意味のある改善を確認できなかった**。rho3は両runで僅かに遅く、rho8は0.3–0.7%短縮。メモリは全4runで同じ。`input-site-wrap-g8-h32` は負の研究結果として保持し、次の基準は `input-site-reciprocal-g8-h32` のまま。公開CSTLinear/dispatcherの既定は変更しない。共通floor精度修正は保持する。
+| rho/run | reciprocal完全step ms | wrap ms | wrap短縮率 | allocated/reserved MiB |
+| --- | ---: | ---: | ---: | ---: |
+| rho3-run1 | 1.671039 | 1.673363 | -0.139% | 57.431/104 |
+| rho8-run1 | 2.071428 | 2.065355 | +0.293% | 57.431/104 |
+| rho3-run2 | 1.684311 | 1.689223 | -0.292% | 57.431/104 |
+| rho8-run2 | 2.084270 | 2.069499 | +0.709% | 57.431/104 |
+
+主測定はhost perf_counterでCUDA Graph replay＋同期を囲み、各sampleで実更新する。21 sampleは独立21runではない。別Graph診断を足したり、完全stepから差し引いたりしない。GPU process全体の使用量は未測定。
+
+7方式の完全step中央値範囲（独立2run）。同じGPU内の結果であり、L4との差をalgorithm改善とは扱わない。
+| 方式 | rho3 ms | rho8 ms | allocated/reserved MiB |
+| --- | ---: | ---: | ---: |
+| matrix-torch | 0.707–0.713 | 1.362–1.373 | 96.163/142 |
+| factor | 1.962–1.974 | 4.301–4.327 | 83.114/130 |
+| onchip-h | 1.806–1.812 | 3.888–3.931 | 42.866/114 |
+| input-site-stream-g8-h32 | 1.719–1.733 | 2.167–2.245 | 57.431/104 |
+| input-site-reciprocal-g8-h32 | 1.671–1.684 | 2.071–2.084 | 57.431/104 |
+| input-site-wrap-g8-h32 | 1.673–1.689 | 2.065–2.069 | 57.431/104 |
+| dense | 0.329–0.330 | 0.329–0.329 | 81.752/106 |
+
+H/G streaming3方式はdenseのallocated/reserved両方以下だが、denseの約0.329msより遅い。matrix、factorはallocated/reservedともdense以上。onchipはallocatedが小さいがreservedはdense以上。この2つのpeak指標を分けて評価する。
+
+基準reciprocalの診断stage（同一post24 snapshot、別Graph）:
+| stage | rho3 ms | rho8 ms |
+| --- | ---: | ---: |
+| G/H + parameter partials | 0.431–0.436 | 0.556–0.562 |
+| dX owner | 0.268–0.268 | 0.399–0.407 |
+| forward H generation | 0.188–0.188 | 0.249–0.250 |
+| Y aggregation | 0.162–0.163 | 0.223–0.224 |
+| forward candidate index | 0.049–0.049 | 0.050–0.050 |
+
+生成段は依然最大。次はG/H producerのbatch共有量を変える比較を候補にする。例えばBM16/G16はprofile/normの共有を増やせるが、register/occupancyとG scratchが増える可能性がある。H容量・並び順を同時に変えず、完全step・全grad・実peakを再測定する。今回の結果からDRAM/cache原因は確定しない。
+
+検証と証拠:
+
+- 新候補・基準・producerの対象 **114 PASS / 0skip**（CUDA111 + CPU3）。periodic全体 **72 PASS / 0skip**。CPU全体 **1718 PASS / 3631 skip**。28-plan宣言・Ruff・diff check PASS。
+- **48** initial/post24全shape・全atom FP64 gates PASS。max absolute/relative L2閾値は4e-4。28 fresh workers / 588 primary samples。元のfailuresは前節のsourceごとに保存し、数値gateや性能を都合のよいseedで再試行していない。
+- reciprocalとwrapの初期/24更新後のP/Y/dX/all-dPは全4cohortでbitwise一致。各方式自身の独立repeatもこの2方式はbitwise一致。matrix/factor/onchipの更新後hashのrun間差は監査に残した。
+- compiler小fixtureは両方式72 registers / 0 spills / 512 shared bytes。guard censusはinput2/3・output1/3 group。static情報であり、実行命令数やmain kernelのcache/stallの測定ではない。
+- 114数値テストPASS後、compiler補助のCPU censusが `inv <= 2**100` のPython整数変換で失敗。補助scriptのfloat boundへ修正し、compiler回収のみ行った。テスト・runtime source・閾値・timingは再試行していない。
+
+最終監査 `wrap-ada-audit-bits.json`: **PASS_COMPLETE**、SHA256 `4bfc96984e6c34e1b79846460420c64154a17a7667981f33ac81a327936a8e00`。source全entry、result manifest、snapshot hash、raw worker/embedded record、更新数とpeakをcluster上で確認。byte viewでsigned zeroを含むbitwise比較も行った。
+
+凍結source archive SHA256 `510d06ef6532f4ae6d31a68ffbc10b5a1024b2170ace5f20090211876f8662b6`。手元compact result archive SHA256 `406bd30e1213559a7575af8d774afa6e6ade0622c96bad777ef4a6a65f256ce4`、138-entry compact manifestをdownload後照合。JSON/log/compilerは `output/regular-grid-h/wrap-ada-results/`、原tensorは `/home/jovyan/runs/cst-wrap-ada-0ee9d497-20261011/` に保全。source archive、driver、監査、receiptは手元ignored outputに保存。GPUを使う自分のprocessは全て終了し、Hub serverはユーザーが開いたまま維持する。
+
+再現（rho8も同様、2回目は `--reverse`）:
+
+```bash
+python -m benchmarks.cuda.linear.periodic_comparison \
+  --case benchmarks/cuda/linear/cases/regular-grid-h-2048-rho3.json \
+  --plans matrix-torch factor onchip-h input-site-stream-g8-h32 \
+    input-site-reciprocal-g8-h32 input-site-wrap-g8-h32 dense \
+  --isolated-oracle --phases --output output/wrap-new/comparison.json
+```
