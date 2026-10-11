@@ -9,6 +9,7 @@ import copy
 import gc
 import hashlib
 import json
+import os
 import subprocess
 import sys
 import time
@@ -1569,6 +1570,10 @@ def worker(
             "triton": __import__("triton").__version__,
             "tf32": False,
             "dtype": "float32",
+            "allocator_backend": torch.cuda.memory.get_allocator_backend(),
+            "allocator_config": os.environ.get(
+                "PYTORCH_ALLOC_CONF", os.environ.get("PYTORCH_CUDA_ALLOC_CONF")
+            ),
         }
         width0 = None if dense else fixture.widths(model).detach().cpu()
         stage = "initial-full-oracle"
