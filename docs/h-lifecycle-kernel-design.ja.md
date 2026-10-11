@@ -569,3 +569,20 @@ BM32/G32は完全stepを5.4–7.1%、生成段を26.4–29.7%短縮したが、�
 BM16/G32の容量だけの拡大は完全stepが0.2–0.9%短縮に留まり、生成段はほぼ同じ。
 次はG16容量のままproducer内部の共有・読取りを調べる。全G32候補は測定済みの研究対照として
 残し、公開defaultは変更しない。詳細は[研究記録](research-history/cuda-linear/regular-grid-h-lifecycle.ja.md)を参照。
+
+### G16の詳細診断
+
+採用候補の変更前に、BM16/G16のpost24 snapshotを固定して、元の融合producer、Gのみ、
+G/Hそれぞれのvalue-only・同じ2bufferへのvalue書込み・中心微分、Pの並べ替え、partial書込み順、
+batch連続入力、profile事前計算を別の対照として測る。最後の2つは追加buffer／準備費用を含め、
+個別probe時間を融合時間から引かない。constant-site入力と256MiBの外部eviction pressureは
+アクセス負荷の対照であり、実workloadの性能候補ではない。すべての数学対照をproduction値と
+照合し、axisの縮約はmaterialized per-site fieldsを使ったFP64縮約とも照合する。
+
+実際のGraph replayのCUPTI traceを別のmodel/optimizer copyで採り、kernel数・各kernel時間・
+GPU時間間隔を保存する。元のpost24 parameterを変えず、完全stepとcapture/replay peakは
+既存runnerで別に測る。RTX 6000 Adaのhardware countersはRmProfilingAdminOnly=1で制限され、
+Nsight Computeも未導入。CUDA driverのoccupancy APIはresource上限だけを示し、達成occupancyや
+cache hit/stallを測ったとは表現しない。支持・padding・CTA内アドレス重複・32byte sector集計も
+実cache trafficとは区別する。rho3/8を各独立2回、2回目はprobeとprimary worker順を逆転する。
+既存全shape FP64 Y/dX/all-dP gate・完全step/両peakを維持し、診断結果の精査後に次の実装を選ぶ。

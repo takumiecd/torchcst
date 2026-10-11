@@ -1374,6 +1374,7 @@ def worker(
     aggregation_diagnostics=False,
     producer_diagnostics=False,
     matched_producer_path=None,
+    fine_directory=None,
 ):
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
@@ -1577,6 +1578,14 @@ def worker(
                 )
                 for label in ("initial", "post24")
             }
+        if fine_directory is not None and kind in (
+            "input-site-reciprocal-bm16-g16-h32",
+            "dense",
+        ):
+            stage = "separate-fine-diagnostics"
+            from benchmarks.cuda.linear.fine_diagnostics import export
+
+            result["fine_export"] = export(step, kind, fine_directory)
         result["verify_only"] = verify_only
         result["status"] = "PASS"
     except torch.cuda.OutOfMemoryError as error:
@@ -1778,11 +1787,30 @@ def main():
     parser.add_argument("--matched-producer-diagnostics", action="store_true")
     parser.add_argument("--matched-producer-snapshot", type=Path)
     parser.add_argument("--matched-producer-case")
+    parser.add_argument("--fine-diagnostics", action="store_true")
+    parser.add_argument("--fine-snapshot", type=Path)
+    parser.add_argument("--fine-case")
     parser.add_argument("--verify-only", action="store_true")
     parser.add_argument("--reverse", action="store_true")
     parser.add_argument("--worker-timeout", type=int, default=900)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
+    if args.fine_snapshot:
+        from benchmarks.cuda.linear.fine_diagnostics import case_worker
+
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            result = case_worker(args.fine_snapshot, args.fine_case)
+        except Exception:  # noqa: BLE001 -- retain isolated diagnostic failure
+            result = {
+                "status": "FAIL",
+                "case": args.fine_case,
+                "error": traceback.format_exc(),
+            }
+        args.output.write_text(json.dumps(result, indent=2, allow_nan=False))
+        if result["status"] != "PASS":
+            raise SystemExit(1)
+        return
     if args.matched_producer_snapshot:
         from benchmarks.cuda.linear.matched_producer_diagnostics import case_worker
 
@@ -1947,6 +1975,15 @@ def main():
         not args.regular_grid or not args.isolated_oracle
     ):
         parser.error("producer diagnostics require regular grid and isolated oracle")
+    if args.fine_diagnostics and (
+        not args.regular_grid
+        or not args.isolated_oracle
+        or (
+            args.worker is None
+            and "input-site-reciprocal-bm16-g16-h32" not in args.plans
+        )
+    ):
+        parser.error("fine diagnostics require isolated regular-grid BM16/G16 baseline")
     args.output.parent.mkdir(parents=True, exist_ok=True)
     if args.state_gate:
         result = state_gate(regular_grid=args.regular_grid)
@@ -1956,6 +1993,9 @@ def main():
             args.rho,
             args.worker,
             phases=args.phases,
+            fine_directory=(args.output.parent / (args.output.stem + "-fine"))
+            if args.fine_diagnostics
+            else None,
             aggregation_diagnostics=args.aggregation_diagnostics,
             producer_diagnostics=args.producer_diagnostics,
             matched_producer_path=(
@@ -2006,6 +2046,8 @@ def main():
                 command.append("--producer-diagnostics")
             if args.matched_producer_diagnostics:
                 command.append("--matched-producer-diagnostics")
+            if args.fine_diagnostics:
+                command.append("--fine-diagnostics")
             if args.verify_only:
                 command.append("--verify-only")
             try:
@@ -2041,6 +2083,19 @@ def main():
             "independent_runs": 1,
             "submission_schema": False,
         }
+        if args.fine_diagnostics and result["assessment"]["status"] == "PASS":
+            from benchmarks.cuda.linear.fine_diagnostics import run_workers
+
+            record = next(
+                r for r in records if r["kind"] == "input-site-reciprocal-bm16-g16-h32"
+            )
+            result["fine_diagnostics"] = {"status": "NOT_COMPLETED"}
+            args.output.write_text(json.dumps(result, indent=2, allow_nan=False))
+            result["fine_diagnostics"] = run_workers(
+                record["fine_export"]["producer_snapshot"],
+                args.output.parent / (args.output.stem + "-fine-cases"),
+                reverse=args.reverse,
+            )
         if (
             args.matched_producer_diagnostics
             and result["assessment"]["status"] == "PASS"
