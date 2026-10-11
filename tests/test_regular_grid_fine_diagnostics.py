@@ -87,6 +87,7 @@ def test_fine_probe_layout_cache_reduction_and_tail(tmp_path, case, sigma):
     )
     result = case_worker(path, case)
     assert result["status"] == "PASS"
+    assert result["memory"]["validation_GPU_buffers_released_before_capture"]
     assert result["schedule"]["chunk_starts"] == [0, 16, 32]
     assert len(result["timing"]["samples_ms"]) == (
         21 if case in ("runtime-one", "eviction-pressure") else 9

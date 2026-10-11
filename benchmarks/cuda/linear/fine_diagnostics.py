@@ -8,6 +8,7 @@ import json
 import statistics
 import subprocess
 import sys
+import weakref
 from pathlib import Path
 
 import torch
@@ -486,6 +487,7 @@ def case_worker(snapshot, name):
             if partial is not None:
                 expected = ref_p[:, :, order.long()] if sorted_partial else ref_p
                 errors[f"partial-{start}"] = error(partial, expected)
+                del expected
         else:
             # FP64 reduction truth using independently materialized normalized per-site fields.
             side = 1 if axis == "G" else 0
@@ -519,13 +521,21 @@ def case_worker(snapshot, name):
             errors[f"value-{start}"] = error(g[0], expected)
             if needs_aux:
                 errors[f"aux-{start}"] = error(aux[0], expected_aux)
-            del expected, expected_aux, xxv
+            del expected, expected_aux, xxv, low, high, rows, jj, mask
+            if needs_aux:
+                # The last field slice keeps the whole cache storage alive.
+                del values
     compiler = resources(compiled, Path(snapshot).parent / "compiler" / name, name)
+    validation_refs = [weakref.ref(ref_g), weakref.ref(ref_p)]
     if name not in ("cached-profiles", "cache-pipeline"):
+        validation_refs.append(weakref.ref(cache))
         del cache
         cache = None
     del ref_g, ref_p
     gc.collect()
+    assert all(reference() is None for reference in validation_refs), (
+        "validation tensor retained before microprobe capture"
+    )
     torch.cuda.empty_cache()
     baseline = {
         "allocated_bytes": torch.cuda.memory_allocated(),
@@ -644,6 +654,7 @@ def case_worker(snapshot, name):
             "dY_strides": list(dy.stride()),
         },
         "memory": {
+            "validation_GPU_buffers_released_before_capture": True,
             "resident_before_capture": baseline,
             "allocator_counts_during_timed_replays": allocation_counts,
             "peak_capture_replay": peaks,
