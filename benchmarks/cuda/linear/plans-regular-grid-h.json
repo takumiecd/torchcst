@@ -1043,6 +1043,66 @@
           "mode": "all"
         }
       }
+    },
+    {
+      "id": "tile-owner-reuse-bm16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_regular_grid_tile_owner_lifetime_h",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "gemm": "triton",
+          "prep_group": 16,
+          "prep_sites": 16,
+          "atom_group": 8,
+          "patch_sites": 8,
+          "batch_tile": 16,
+          "tile_sites": 16,
+          "owner_parts": 8,
+          "mode": "all",
+          "lifetime": "reuse"
+        }
+      }
+    },
+    {
+      "id": "tile-owner-late-bm16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_regular_grid_tile_owner_lifetime_h",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "gemm": "triton",
+          "prep_group": 16,
+          "prep_sites": 16,
+          "atom_group": 8,
+          "patch_sites": 8,
+          "batch_tile": 16,
+          "tile_sites": 16,
+          "owner_parts": 8,
+          "mode": "all",
+          "lifetime": "late"
+        }
+      }
+    },
+    {
+      "id": "tile-owner-lifetime-bm16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_regular_grid_tile_owner_lifetime_h",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "gemm": "triton",
+          "prep_group": 16,
+          "prep_sites": 16,
+          "atom_group": 8,
+          "patch_sites": 8,
+          "batch_tile": 16,
+          "tile_sites": 16,
+          "owner_parts": 8,
+          "mode": "all",
+          "lifetime": "combined"
+        }
+      }
     }
   ]
 }

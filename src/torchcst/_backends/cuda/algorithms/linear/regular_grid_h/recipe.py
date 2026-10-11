@@ -352,3 +352,22 @@ class TileOwnerPrepHRecipe(TileBucketHRecipe):
             "all",
         ):
             raise ValueError("mode must be bands, ranges, membership or all")
+
+
+@dataclass(frozen=True)
+class TileOwnerLifetimeHRecipe(TileOwnerPrepHRecipe):
+    """Forward-owned workspaces and delayed parameter-gradient allocation."""
+
+    mode: str = "all"
+    lifetime: str = "reuse"
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.mode != "all":
+            raise ValueError("lifetime comparison requires all owner metadata")
+        if type(self.lifetime) is not str or self.lifetime not in (
+            "reuse",
+            "late",
+            "combined",
+        ):
+            raise ValueError("lifetime must be reuse, late or combined")

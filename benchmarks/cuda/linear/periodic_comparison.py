@@ -80,6 +80,9 @@ KINDS = (
     "tile-owner-ranges-bm16",
     "tile-owner-membership-bm16",
     "tile-owner-all-bm16",
+    "tile-owner-reuse-bm16",
+    "tile-owner-late-bm16",
+    "tile-owner-lifetime-bm16",
     "joint-compact32-bm8",
     "joint-compact64-bm8",
     "joint-local32-bm8",
@@ -203,6 +206,7 @@ def bind_plan(model, kind):
             TileCombinedHRecipe,
             TileDerivativeHRecipe,
             TileDotHRecipe,
+            TileOwnerLifetimeHRecipe,
             TileOwnerPrepHRecipe,
             TileWindowHRecipe,
         )
@@ -219,6 +223,9 @@ def bind_plan(model, kind):
             "tile-owner-ranges-bm16": "research_cuda_regular_grid_tile_owner_prep_h",
             "tile-owner-membership-bm16": "research_cuda_regular_grid_tile_owner_prep_h",
             "tile-owner-all-bm16": "research_cuda_regular_grid_tile_owner_prep_h",
+            "tile-owner-reuse-bm16": "research_cuda_regular_grid_tile_owner_lifetime_h",
+            "tile-owner-late-bm16": "research_cuda_regular_grid_tile_owner_lifetime_h",
+            "tile-owner-lifetime-bm16": "research_cuda_regular_grid_tile_owner_lifetime_h",
             "joint-compact32-bm8": "research_cuda_regular_grid_joint_compact_h",
             "joint-compact64-bm8": "research_cuda_regular_grid_joint_compact_h",
             "joint-local32-bm8": "research_cuda_regular_grid_joint_local_h",
@@ -275,6 +282,15 @@ def bind_plan(model, kind):
                     mode="membership"
                 ),
                 "tile-owner-all-bm16": lambda: TileOwnerPrepHRecipe(mode="all"),
+                "tile-owner-reuse-bm16": lambda: TileOwnerLifetimeHRecipe(
+                    lifetime="reuse"
+                ),
+                "tile-owner-late-bm16": lambda: TileOwnerLifetimeHRecipe(
+                    lifetime="late"
+                ),
+                "tile-owner-lifetime-bm16": lambda: TileOwnerLifetimeHRecipe(
+                    lifetime="combined"
+                ),
                 "joint-compact32-bm8": JointLocalHRecipe,
                 "joint-compact64-bm8": lambda: JointLocalHRecipe(cell_sites=64),
                 "joint-local32-bm8": JointLocalHRecipe,
@@ -342,6 +358,9 @@ def bind_plan(model, kind):
                 "tile-owner-ranges-bm16",
                 "tile-owner-membership-bm16",
                 "tile-owner-all-bm16",
+                "tile-owner-reuse-bm16",
+                "tile-owner-late-bm16",
+                "tile-owner-lifetime-bm16",
                 "joint-compact32-bm8",
                 "joint-compact64-bm8",
                 "joint-local32-bm8",
@@ -2055,6 +2074,9 @@ def main():
             "tile-owner-ranges-bm16",
             "tile-owner-membership-bm16",
             "tile-owner-all-bm16",
+            "tile-owner-reuse-bm16",
+            "tile-owner-late-bm16",
+            "tile-owner-lifetime-bm16",
             "joint-compact32-bm8",
             "joint-compact64-bm8",
             "joint-local32-bm8",
@@ -2108,6 +2130,9 @@ def main():
                 "tile-owner-ranges-bm16",
                 "tile-owner-membership-bm16",
                 "tile-owner-all-bm16",
+                "tile-owner-reuse-bm16",
+                "tile-owner-late-bm16",
+                "tile-owner-lifetime-bm16",
                 "joint-compact32-bm8",
                 "joint-compact64-bm8",
                 "joint-local32-bm8",
