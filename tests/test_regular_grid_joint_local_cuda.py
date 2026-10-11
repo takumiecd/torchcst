@@ -45,7 +45,7 @@ def joint_route(monkeypatch, request):
 
 
 @pytest.mark.parametrize("bm", [32, 64])
-def test_joint_metadata_and_matched_forward(bm):
+def test_joint_metadata_and_frozen_plan(bm):
     from benchmarks.cuda.linear.manifest import REGISTRY
     from benchmarks.cuda.linear.periodic_comparison import bind_plan
 
@@ -156,7 +156,10 @@ def test_joint_forward_and_saved_tensor_lifetime(joint_route):
         lambda t: saved.append(tuple(t.shape)) or t, lambda t: t
     ):
         layer(x).sum().backward()
-    assert saved == [(19, 65), (129, 4), (), (13, 129), (129,), (7,), (2,)]
+    cells = ((65 + joint_route - 1) // joint_route) * (
+        (33 + joint_route - 1) // joint_route
+    )
+    assert saved == [(19, 65), (129, 4), (), (13, 129), (129,), (cells + 1,), (2,)]
     assert (129, 19) not in saved and (19, 129) not in saved
 
 
