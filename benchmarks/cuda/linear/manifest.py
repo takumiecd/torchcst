@@ -87,6 +87,7 @@ from torchcst._backends.cuda.algorithms.linear.regular_grid_h.algorithm import (
     SiteRoutedHAlgorithm,
     SiteRoutedStreamingHAlgorithm,
     StreamingInputHAlgorithm,
+    TileDotHAlgorithm,
 )
 from torchcst._backends.cuda.algorithms.linear.sphere_polar.algorithm import (
     SphereAlgorithm,
@@ -195,6 +196,7 @@ REGISTRY.register(FusedBackwardHAlgorithm())
 REGISTRY.register(SharedXHAlgorithm())
 REGISTRY.register(JointLocalHAlgorithm())
 REGISTRY.register(JointCompactHAlgorithm())
+REGISTRY.register(TileDotHAlgorithm())
 REGISTRY.register(InputWideBatchProducerHAlgorithm())
 REGISTRY.register(InputOrderStreamingHAlgorithm())
 REGISTRY.register(ProductAlgorithm())

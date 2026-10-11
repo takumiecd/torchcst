@@ -32,6 +32,7 @@ from .recipe import (
     SiteRoutedHRecipe,
     SiteRoutedStreamingHRecipe,
     StreamingInputHRecipe,
+    TileDotHRecipe,
 )
 
 
@@ -452,3 +453,34 @@ class JointCompactHAlgorithm(JointLocalHAlgorithm):
     """Serialize atom outer products and use a guarded 16-site halo."""
 
     id: str = "research_cuda_regular_grid_joint_compact_h"
+
+
+@dataclass(frozen=True)
+class TileDotHAlgorithm(OutputOwnedHAlgorithm):
+    """Support memberships, local IEEE matrix products and small-batch H/G."""
+
+    id: str = "research_cuda_regular_grid_tile_dot_h"
+    recipe_type: type = TileDotHRecipe
+
+    def validate_recipe(self, recipe):
+        if type(recipe) is not self.recipe_type:
+            raise TypeError("requires TileDotHRecipe")
+        self.recipe_type(**asdict(recipe))
+
+    def execute(self, state, inputs):
+        from ..profile_product_matrix.algorithm import live_inputs
+        from .tile_dot_executor import tile_dot_h
+
+        x, p, declaration, operator = live_inputs(state, inputs)
+        chart = self.chart_spec(declaration)
+        sizes = (
+            len(x),
+            chart.shape[1],
+            chart.shape[0],
+            chart.geometry.periods[1],
+            chart.geometry.periods[0],
+            chart.origin[1],
+            chart.origin[0],
+        )
+        with torch.cuda.device(x.device):
+            return tile_dot_h(x, p, operator.kernel, sizes, state.recipe)

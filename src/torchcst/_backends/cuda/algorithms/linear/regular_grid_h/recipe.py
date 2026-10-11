@@ -248,3 +248,31 @@ class JointLocalHRecipe(OnchipHRecipe):
             raise ValueError("joint local route requires batch_tile=8")
         if type(self.cell_sites) is not int or self.cell_sites not in (32, 64):
             raise ValueError("cell_sites must be 32 or 64")
+
+
+@dataclass(frozen=True)
+class TileDotHRecipe(PeriodicRecipe):
+    """IEEE FP32 tile products; bounded H/G batch and owner partials."""
+
+    gemm: str = "triton"
+    batch_tile: int = 8
+    tile_sites: int = 32
+    owner_parts: int = 8
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.gemm != "triton":
+            raise ValueError("tile dot requires gemm='triton'")
+        if type(self.batch_tile) is not int or self.batch_tile not in (8, 16):
+            raise ValueError("batch_tile must be 8 or 16")
+        if type(self.tile_sites) is not int or self.tile_sites != 32:
+            raise ValueError("tile_sites must be 32")
+        if type(self.owner_parts) is not int or self.owner_parts != 8:
+            raise ValueError("owner_parts must be 8")
+        if (self.prep_group, self.prep_sites, self.atom_group, self.patch_sites) != (
+            16,
+            16,
+            8,
+            8,
+        ):
+            raise ValueError("tile dot keeps canonical preparation settings")
