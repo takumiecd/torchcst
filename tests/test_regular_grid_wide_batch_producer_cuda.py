@@ -69,6 +69,14 @@ def test_wide_batch_producer_metadata_and_diagnostic_layout(bm):
     assert layout["chunk_starts"] == [0, 32]
     assert layout["parameter_partial_bytes"] == 4 * (32 // bm) * 3 * 17
     assert layout["backward_saved_H_bytes"] == layout["backward_saved_G_bytes"] == 0
+    for batch, supported in ((64, True), (65, False)):
+        context = replace(
+            base.model(base.periodic.parameters(17)).build_context(
+                base.LinearInputs(torch.zeros(batch, 65))
+            ),
+            device=base.DeviceInfo("cuda", 0),
+        )
+        assert algorithm.supports(context, plan.recipe).supported is supported
 
 
 @pytest.mark.parametrize(
@@ -110,7 +118,7 @@ def test_wide_batch_producer_gradient_masks(
 @base.GPU
 @pytest.mark.parametrize(
     "batch,sigma",
-    [(1, 0.7), (9, 3.0), (17, 8.0), (31, 3.0), (32, 8.0), (33, 4.0), (65, 4.0)],
+    [(1, 0.7), (9, 3.0), (17, 8.0), (31, 3.0), (32, 8.0), (33, 4.0), (63, 4.0)],
 )
 def test_wide_batch_producer_strides_seams_tail_full_oracle(
     wide_batch_producer_route, batch, sigma
