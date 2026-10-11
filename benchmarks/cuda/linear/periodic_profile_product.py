@@ -11,8 +11,12 @@ import torch
 from torchcst import BandwidthBounds, CSTLinear, TriweightSpec, chart_presets, presets
 
 
-def fixture(size, rho, *, atoms=None, seed=41, regular_grid=False):
-    if type(size) is not int or size < 2 or not 1 <= rho <= 16:
+def fixture(size, rho, *, atoms=None, seed=41, regular_grid=False, width_scenario=None):
+    if (
+        type(size) is not int
+        or size < 2
+        or (width_scenario is None and not 1 <= rho <= 16)
+    ):
         raise ValueError("requires size>=2 and initial rho in [1,16]")
     atoms = int(0.05 * size * size) if atoms is None else atoms
     if type(atoms) is not int or atoms < 1:
@@ -20,8 +24,21 @@ def fixture(size, rho, *, atoms=None, seed=41, regular_grid=False):
     gen = torch.Generator().manual_seed(seed)
     # Match the ordinary Product amplitudes; only the geometry changes.
     direction = (torch.rand(atoms, generator=gen) * 0.4 - 0.2).sign() * 0.6
-    upper = 1 + 15 / (1 + (direction / 1e6).square())
-    alpha = math.log(rho) / upper.log()
+    if width_scenario is None:
+        bounds = BandwidthBounds(minimum=1.0, birth=1.0, maximum=16.0, upper_floor=1.0)
+        upper = 1 + 15 / (1 + (direction / 1e6).square())
+        alpha = math.log(rho) / upper.log()
+    else:
+        from benchmarks.cuda.linear.width_scenarios import WIDTH_BOUNDS, initial_widths
+
+        if not regular_grid:
+            raise ValueError("width scenarios require RegularGrid")
+        bounds = BandwidthBounds(**WIDTH_BOUNDS)
+        initial = initial_widths(width_scenario, atoms, seed)
+        upper = bounds.minimum + (bounds.maximum - bounds.minimum) / (
+            1 + (direction / 1e6).square()
+        )
+        alpha = (initial / bounds.minimum).log() / (upper / bounds.minimum).log()
     radius = (1 + 3 * alpha).sqrt()
     polar = (
         torch.stack((direction, torch.full_like(direction, 0.8)), 1) * radius[:, None]
@@ -39,9 +56,7 @@ def fixture(size, rho, *, atoms=None, seed=41, regular_grid=False):
         kernel=presets.polar_periodic_profile_product(
             profiles=(TriweightSpec(), TriweightSpec()),
             amplitude_max=1.0,
-            bounds=BandwidthBounds(
-                minimum=1.0, birth=1.0, maximum=16.0, upper_floor=1.0
-            ),
+            bounds=bounds,
             w_c=1e6,
             dormant_expansion_rate=0.02,
         ),

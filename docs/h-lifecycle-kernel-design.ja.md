@@ -84,6 +84,11 @@ atomの並び替えだけでcache効率が上がるとは仮定しない。
 自由に動く中心について`rho<1`だけで常にone-hotと仮定しない。
 Gaussianなど無限支持のprofileを有限範囲で打ち切ることは、この方針に含めない。
 
+速度・メモリの評価は狭い・中間・広い単一幅だけでなく、幅の混在率を変えた条件で行う。
+初期幅の平均だけでなく、両側の支持site数と空支持、幅分位点、更新後の変化を記録する。
+共通の幅境界を持つ[分布別比較](research-history/cuda-linear/regular-grid-width-distributions.ja.md)を用い、
+単一幅で速い方式をmixでも速いと仮定しない。
+
 Euclideanは有限格子の端で範囲を切る。FlatTorusは周期差を使い、周期境界をまたぐ支持を扱う。
 **座標の周期wrapと、site番号の`% n`は同じ条件ではない。**
 RegularGridには具体geometryを渡して部分周期の格子も宣言できる。

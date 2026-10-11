@@ -97,7 +97,24 @@ PRIMARY = ("matrix-torch", "factor", "dense")
 CATALOG = Path(__file__).with_name("plans-periodic-profile-product.json")
 
 
-def case_definition(size, rho, *, regular_grid=False):
+def case_definition(size, rho, *, regular_grid=False, width_scenario=None):
+    if width_scenario is not None:
+        from benchmarks.cuda.linear.width_scenarios import WIDTH_BOUNDS, definition
+
+        if not regular_grid:
+            raise ValueError("width scenarios require RegularGrid")
+        distribution = definition(width_scenario)
+        value = case_definition(size, 3, regular_grid=True)
+        value.update(
+            schema="regular-grid-width-case.research.v1",
+            rho_initial=distribution["values"][0]
+            if len(distribution["values"]) == 1
+            else None,
+            width_scenario=width_scenario,
+            width_distribution=distribution,
+            width_bounds=dict(WIDTH_BOUNDS),
+        )
+        return value
     value = {
         "schema": "periodic-case.research.v1",
         "size": size,
@@ -145,6 +162,18 @@ def case_definition(size, rho, *, regular_grid=False):
 
 def load_case(path):
     value = json.loads(Path(path).read_text())
+    if value.get("schema") == "regular-grid-width-case.research.v1":
+        if type(value.get("size")) is not int or value["size"] not in (1024, 2048):
+            raise ValueError("unsupported width-study size")
+        expected = case_definition(
+            value["size"],
+            None,
+            regular_grid=True,
+            width_scenario=value.get("width_scenario"),
+        )
+        if value != expected:
+            raise ValueError("case differs from frozen width-study protocol")
+        return value
     if (
         type(value.get("size")) is not int
         or value["size"] not in (1024, 2048)
@@ -490,7 +519,9 @@ def oracle_check(model, x, dy):
     }
 
 
-def isolated_oracle_check(model, x, dy, *, size, rho, directory, label):
+def isolated_oracle_check(
+    model, x, dy, *, size, rho, directory, label, width_scenario=None
+):
     """Validate exact CPU snapshots in a separate, untimed CUDA process."""
     xx = x.detach().clone().requires_grad_()
     y = model(xx)
@@ -498,6 +529,7 @@ def isolated_oracle_check(model, x, dy, *, size, rho, directory, label):
     snapshot = {
         "size": size,
         "rho": rho,
+        "width_scenario": width_scenario,
         "model": {
             key: (
                 value.detach().cpu()
@@ -541,6 +573,7 @@ def oracle_snapshot(path):
         data["rho"],
         atoms=len(data["model"]["atom_state.atoms.p"]),
         regular_grid=True,
+        width_scenario=data.get("width_scenario"),
     ).cuda()
     model.load_state_dict(data["model"])
     expected = fixture.oracle_vjp(model, data["x"].cuda(), data["dy"].cuda())
@@ -1531,6 +1564,7 @@ def worker(
     fine_directory=None,
     graph_pool_policy="standard",
     optimizer_state_policy="lazy",
+    width_scenario=None,
 ):
     if optimizer_state_policy not in ("lazy", "preallocate"):
         raise ValueError("unknown optimizer state policy")
@@ -1545,6 +1579,7 @@ def worker(
         "kind": kind,
         "size": size,
         "rho_initial": rho,
+        "width_scenario": width_scenario,
         "batch": 32,
         "seed": 41,
         "atoms": None if kind == "dense" else int(0.05 * size * size),
@@ -1553,7 +1588,9 @@ def worker(
             "isolated-oracle-v2" if oracle_directory else "inprocess-oracle-v1"
         ),
     }
-    case = case_definition(size, rho, regular_grid=regular_grid)
+    case = case_definition(
+        size, rho, regular_grid=regular_grid, width_scenario=width_scenario
+    )
     result["case_definition"] = case
     result["plan_catalog_sha256"] = hashlib.sha256(
         (
@@ -1571,7 +1608,9 @@ def worker(
         model = (
             dense_fixture(size).cuda()
             if dense
-            else fixture.fixture(size, rho, regular_grid=regular_grid).cuda()
+            else fixture.fixture(
+                size, rho, regular_grid=regular_grid, width_scenario=width_scenario
+            ).cuda()
         )
         result["plan"] = None if dense else bind_plan(model, kind)
         result["initial_hashes"] = {
@@ -1596,6 +1635,10 @@ def worker(
             ),
         }
         width0 = None if dense else fixture.widths(model).detach().cpu()
+        if width_scenario is not None and not dense:
+            from benchmarks.cuda.linear.width_scenarios import support_summary
+
+            result["initial_support"] = support_summary(model)
         stage = "initial-full-oracle"
 
         def check(label):
@@ -1608,6 +1651,7 @@ def worker(
                     rho=rho,
                     directory=oracle_directory,
                     label=label,
+                    width_scenario=width_scenario,
                 )
             return oracle_check(model, x, dy)
 
@@ -1697,6 +1741,8 @@ def worker(
             raise AssertionError("correctness reads changed the primary clock")
         if not dense:
             width1 = fixture.widths(model).detach().cpu()
+            if width_scenario is not None:
+                result["updated_support"] = support_summary(model)
             changed = int((width0 != width1).sum())
             if not changed:
                 raise AssertionError("live widths did not evolve")
@@ -1951,9 +1997,12 @@ def assess_regular(kinds, valid):
 
 
 def main():
+    from benchmarks.cuda.linear.width_scenarios import SCENARIOS
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--size", type=int, choices=(1024, 2048))
     parser.add_argument("--rho", type=float, choices=(3, 8))
+    parser.add_argument("--width-scenario", choices=tuple(SCENARIOS))
     parser.add_argument("--case", type=Path)
     parser.add_argument("--plans", nargs="+", choices=KINDS, default=None)
     parser.add_argument("--worker", choices=KINDS)
@@ -2030,10 +2079,22 @@ def main():
             parser.error("explicit size differs from frozen case")
         if args.rho is not None and args.rho != case["rho_initial"]:
             parser.error("explicit rho differs from frozen case")
+        if args.width_scenario is not None and args.width_scenario != case.get(
+            "width_scenario"
+        ):
+            parser.error("explicit width scenario differs from frozen case")
+        args.width_scenario = case.get("width_scenario")
         args.size, args.rho = case["size"], case["rho_initial"]
     else:
         args.size = 1024 if args.size is None else args.size
-        args.rho = 3 if args.rho is None else args.rho
+        if args.width_scenario is not None:
+            if args.rho is not None or not args.regular_grid:
+                parser.error("width scenario requires --regular-grid without --rho")
+            args.rho = case_definition(
+                args.size, None, regular_grid=True, width_scenario=args.width_scenario
+            )["rho_initial"]
+        else:
+            args.rho = 3 if args.rho is None else args.rho
     if args.plans is None:
         args.plans = (
             [
@@ -2229,6 +2290,7 @@ def main():
             phases=args.phases,
             graph_pool_policy=args.graph_pool_policy,
             optimizer_state_policy=args.optimizer_state_policy,
+            width_scenario=args.width_scenario,
             fine_directory=(args.output.parent / (args.output.stem + "-fine"))
             if args.fine_diagnostics
             else None,
@@ -2265,8 +2327,6 @@ def main():
                 kind,
                 "--size",
                 str(args.size),
-                "--rho",
-                str(args.rho),
                 "--output",
                 str(output),
                 "--graph-pool-policy",
@@ -2274,6 +2334,12 @@ def main():
                 "--optimizer-state-policy",
                 args.optimizer_state_policy,
             ]
+            if args.case:
+                command.extend(("--case", str(args.case.resolve())))
+            elif args.width_scenario is not None:
+                command.extend(("--width-scenario", args.width_scenario))
+            else:
+                command.extend(("--rho", str(args.rho)))
             if args.regular_grid:
                 command.append("--regular-grid")
             if args.isolated_oracle:
