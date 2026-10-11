@@ -413,3 +413,41 @@ forwardのコード・候補・更新後パラメータは同一だがforward診
 実backwardとの差はdX/all-dPとも0。全4source/result archive、各1629 source entries・
 37 result manifest entries、28 workers、同一rhoの反復条件と更新後hashを独立監査した。
 全owned GPU slotsの停止を確認済み。
+
+
+### producer分解で分かったこと
+
+入力site候補削減版、source `ecfbb914`、Colab L4/N2048/B32/rho3,8の各独立2回。
+下表はG→H分割Graphの各run medianを2回で平均した値。単位はms。
+
+| rho | G/dG生成 | H/dH再計算 | parameter partial | 値のみG | 値のみH |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 3 | 0.8970 | 0.8515 | 0.3343 | 0.6651 | 0.5837 |
+| 8 | 1.1924 | 1.1310 | 0.3287 | 0.9313 | 0.7931 |
+
+G/dGとH/dHの両方が大きく、Gだけが突出する結果ではない。rho3→8で両contractの時間が
+増える一方、最後の3部分和は約0.33msでほぼ一定だった。H→Gの逆順でも同じ順位で、
+G/dGはrho3 0.8909/rho8 1.1894ms、H/dHは0.8520/1.1336msだった。
+値だけのprobeもproduction NEED_P=FalseのG値と一致し、G値の計測は0.6656/0.9329ms。
+ただし微分付きとの差には追加store・別specializationの影響もあり、純粋な微分費用としない。
+
+**次の調査対象はG/H共通の `_contract` 内部**とする。profile評価・正規化微分と、
+X/dYのgather・積和reductionのどちらが大きいかを分けて調べる。今回の結果から
+cache miss、実traffic、算術律速のいずれかに原因を確定することはできない。
+最後のparameter partialだけを先に最適化する根拠は弱い。
+
+測定文脈による差も大きい。元のbackward schedule内で融合producerはrho3平均1.3271ms、
+rho8平均1.8079msだったが、producerだけを回す別Graphでは1.8560/2.4028ms。
+分割Graph全体は2.0838/2.6527msだった。**分割各段やその差・割合を、本番融合kernelの
+厳密な内訳へ換算しない。** 主測定や融合の性能改善としても扱わない。
+
+本番の既存runtimeは変更していない。primary完全stepはrho3 4.7369〜4.7509ms、
+rho8 6.5390〜6.5537ms、全4runでallocated/reserved peak **57.43/104 MiB**。
+denseは約0.59ms、81.75/106 MiB。診断の4中間bufferは論理25.60MiBで、productionの
+G scratchに比べ追加3field=19.20MiBを使う。照合用bufferは別途15.20MiBであり、
+これらは主測定後だけの診断storageであってprimary peakや最適化案のmemoryではない。
+
+全4cohortで同じsnapshotのGは差0、partialの最大差9.32e-10以下、value-onlyの差0。
+実backwardのdX/all-dPとの差は0。18 GPU testsと32 initial/post24全atom FP64 gatesを
+通過した。各rhoの候補削減版は更新後Parameterがbitwise一致し、同じ条件の独立反復で
+診断の順位を確認した。公開dispatcherや新しい実行方式の採用は行わない。

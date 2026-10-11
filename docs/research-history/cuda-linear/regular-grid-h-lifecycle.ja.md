@@ -2163,3 +2163,222 @@ parameter partialは振幅・入力中心・出力中心の3fieldで、幅等へ
 主測定の時間と両メモリpeakの後に診断を実行し、診断scratchをprimaryへ含めない。
 N2048/B32/A209715、rho3/8、seed41、24更新とinitial/post24全FP64 gateを固定し、
 各rho独立2cohortを行う。各cohortは従来のmatrix/factor/onchip/denseと候補削減の5方式。
+
+### producer分解の実装と検証
+
+source `ecfbb914d2807f4a404ef9901d1098ba12c893d0`。既存runtimeのbytesは変更せず、
+`producer_diagnostic_kernels.py` と既存runnerの `--producer-diagnostics` を追加した。
+6 Graphは同じpacked/source/cotangent/Order/BM8/BK8/GROUP8を使う。
+全chunkでG→HとH→Gをproductionへ照合し、各Graphのcapture/replay後にも最終chunkを
+照合する。入力・出力の非連続strideと未初期化scratchを用いたpadding検査も含む。
+
+- 26 plans宣言検査、Ruff、diff check PASS。
+- ローカルCPU全体: 1715 passed / 3528 skipped / 18 warnings（新GPU専用10件追加前）。
+- 追加後の関連2ファイル: 92 passed / 894 CUDA skipped。
+- source HEADのGitHub CPU validation: 1714 passed / 3539 skipped / 20 warnings、
+  run `38102175070` / job `114360182310` PASS。
+- Colab L4の対象GPU検証: **18 passed / 0 skipped / 70.19秒**。
+  既存streaming schedule 8件、分割producer 9条件、full backward診断smoke 1件。
+  通常rho3/8、narrow、floor、empty、片側empty、broad、境界、複数chunkを含む。
+  各contractを独立FP64全site式へ照合し、全勾配のFP64照合もsmokeで実施した。
+- job `l4job-3d72f28226ec494ea10eaa0e2a20bea2`。
+  source archive `ae2105620b32c1d61da58c1988089e4f78618510c6dcdb7e566949ebec0de8b5`、
+  result archive `e21fa26a723b33b0d3ebd6d695f54f8c20521d8c44b3a8ec229ac8d65d015bd4`。
+  1631 source filesと結果manifestを照合・保存済み。
+
+
+## 入力候補削減版のproducer分解結果（2026-10-11）
+
+Source `ecfbb914d2807f4a404ef9901d1098ba12c893d0`。N2048/B32/A209715、rho3/8、seed41、Colab L4。各rhoで独立2cohort。primaryは24 AdamW更新・21時間sample、診断は固定post24状態の6 Graphを順序回転・反転して各21 replay。各診断段階は同一replay内の4chunk時間を合計してからmedianを取った。
+
+分割Graphには中間値のglobal store/loadと追加launchがある。元融合kernelの時間配分でも完全stepの加算可能な内訳でもない。G/dG・H/dHはprofile評価と正規化微分を含み、partialは振幅・入力中心・出力中心の3部分和。幅等へのsource VJPは後段。
+
+### rho3 / independent run 1
+
+| route | 完全step [ms] | allocated/reserved [MiB] |
+| --- | ---: | ---: |
+| matrix-torch | 1.3061 | 96.16/142 |
+| factor | 5.2412 | 83.11/130 |
+| onchip-h | 4.7294 | 42.87/114 |
+| input-site-stream-g8-h32 | 4.7509 | 57.43/104 |
+| dense | 0.5931 | 81.75/106 |
+
+従来のbackward全体診断での融合producer: **1.3271 ms**。以下のproducer専用Graphは前後のdX集約を含まず、cache状態等も同一とは仮定しない。
+
+| probe | G/dG [ms] | H/dH [ms] | partial [ms] | Graph全体 [ms] |
+| --- | ---: | ---: | ---: | ---: |
+| split_G_then_H | 0.8991 | 0.8550 | 0.3359 | 2.0920 |
+| split_H_then_G | 0.8970 | 0.8571 | 0.3359 | 2.0900 |
+
+| probe | Graph全体 [ms] |
+| --- | ---: |
+| fused_production | 1.8565 |
+| G_value_only | 0.6687 |
+| H_value_only | 0.5868 |
+| production_G_value_only | 0.6697 |
+
+全chunkのG/partialとvalue-onlyの最大差: `{"G": 0.0, "G_value_only": 0.0, "H_value_only": 0.0, "parameter_partials": 9.313225746154785e-10, "production_G_value_only": 0.0}`。全6 Graphの最終chunk出力も照合。実backwardとのdX/all-dP最大差: `{"all_dP": 0.0, "dX": 0.0}`。
+
+job `l4job-4efd077ff9f94ea68e69c2060388ec33`
+source archive `37403b7b4e766b37f306478d1a57a5fe3b274bbefb68fa18983e0bcc90fec4a5`
+result archive `031821068b3b2bad7dde66921b93f577548bb91088bca4868a3fbce63f2fea40`
+
+### rho8 / independent run 1
+
+| route | 完全step [ms] | allocated/reserved [MiB] |
+| --- | ---: | ---: |
+| matrix-torch | 3.3437 | 96.16/142 |
+| factor | 11.5339 | 83.11/130 |
+| onchip-h | 10.2051 | 42.87/114 |
+| input-site-stream-g8-h32 | 6.5537 | 57.43/104 |
+| dense | 0.5930 | 81.75/106 |
+
+従来のbackward全体診断での融合producer: **1.8043 ms**。以下のproducer専用Graphは前後のdX集約を含まず、cache状態等も同一とは仮定しない。
+
+| probe | G/dG [ms] | H/dH [ms] | partial [ms] | Graph全体 [ms] |
+| --- | ---: | ---: | ---: | ---: |
+| split_G_then_H | 1.1909 | 1.1305 | 0.3277 | 2.6501 |
+| split_H_then_G | 1.1878 | 1.1325 | 0.3277 | 2.6501 |
+
+| probe | Graph全体 [ms] |
+| --- | ---: |
+| fused_production | 2.3890 |
+| G_value_only | 0.9267 |
+| H_value_only | 0.7895 |
+| production_G_value_only | 0.9288 |
+
+全chunkのG/partialとvalue-onlyの最大差: `{"G": 0.0, "G_value_only": 0.0, "H_value_only": 0.0, "parameter_partials": 9.313225746154785e-10, "production_G_value_only": 0.0}`。全6 Graphの最終chunk出力も照合。実backwardとのdX/all-dP最大差: `{"all_dP": 0.0, "dX": 0.0}`。
+
+job `l4job-585971da045143c78a505c9e453eb3e6`
+source archive `0ec8dbd19f71561aba61a25dd896a0aa3c77eb7d2b86f7b37a61cbbdc893f06a`
+result archive `6a8849b749af425f5ae060532ed3e868c7900628c81f5cab83293e87d5bf402a`
+
+### rho3 / independent run 2
+
+| route | 完全step [ms] | allocated/reserved [MiB] |
+| --- | ---: | ---: |
+| matrix-torch | 1.3101 | 96.16/142 |
+| factor | 5.2941 | 83.11/130 |
+| onchip-h | 4.4050 | 42.87/114 |
+| input-site-stream-g8-h32 | 4.7369 | 57.43/104 |
+| dense | 0.5953 | 81.75/106 |
+
+従来のbackward全体診断での融合producer: **1.3271 ms**。以下のproducer専用Graphは前後のdX集約を含まず、cache状態等も同一とは仮定しない。
+
+| probe | G/dG [ms] | H/dH [ms] | partial [ms] | Graph全体 [ms] |
+| --- | ---: | ---: | ---: | ---: |
+| split_G_then_H | 0.8950 | 0.8479 | 0.3328 | 2.0756 |
+| split_H_then_G | 0.8847 | 0.8468 | 0.3318 | 2.0654 |
+
+| probe | Graph全体 [ms] |
+| --- | ---: |
+| fused_production | 1.8555 |
+| G_value_only | 0.6615 |
+| H_value_only | 0.5806 |
+| production_G_value_only | 0.6615 |
+
+全chunkのG/partialとvalue-onlyの最大差: `{"G": 0.0, "G_value_only": 0.0, "H_value_only": 0.0, "parameter_partials": 9.313225746154785e-10, "production_G_value_only": 0.0}`。全6 Graphの最終chunk出力も照合。実backwardとのdX/all-dP最大差: `{"all_dP": 0.0, "dX": 0.0}`。
+
+job `l4job-88030dbc2ea842ce93d7d7b619611aa0`
+source archive `2ab268049dffffecbaec3ebe5eff4842c284f5e9707337a0e43d66bdf4a261ea`
+result archive `073feb368f820c8e08d265bc18c400507b32cf5f46fef7f0fe02758e0eb39bb8`
+
+### rho8 / independent run 2
+
+| route | 完全step [ms] | allocated/reserved [MiB] |
+| --- | ---: | ---: |
+| matrix-torch | 3.3894 | 96.16/142 |
+| factor | 11.5562 | 83.11/130 |
+| onchip-h | 10.1904 | 42.87/114 |
+| input-site-stream-g8-h32 | 6.5390 | 57.43/104 |
+| dense | 0.5924 | 81.75/106 |
+
+従来のbackward全体診断での融合producer: **1.8115 ms**。以下のproducer専用Graphは前後のdX集約を含まず、cache状態等も同一とは仮定しない。
+
+| probe | G/dG [ms] | H/dH [ms] | partial [ms] | Graph全体 [ms] |
+| --- | ---: | ---: | ---: | ---: |
+| split_G_then_H | 1.1940 | 1.1315 | 0.3297 | 2.6552 |
+| split_H_then_G | 1.1909 | 1.1346 | 0.3287 | 2.6542 |
+
+| probe | Graph全体 [ms] |
+| --- | ---: |
+| fused_production | 2.4166 |
+| G_value_only | 0.9359 |
+| H_value_only | 0.7967 |
+| production_G_value_only | 0.9370 |
+
+全chunkのG/partialとvalue-onlyの最大差: `{"G": 0.0, "G_value_only": 0.0, "H_value_only": 0.0, "parameter_partials": 9.313225746154785e-10, "production_G_value_only": 0.0}`。全6 Graphの最終chunk出力も照合。実backwardとのdX/all-dP最大差: `{"all_dP": 0.0, "dX": 0.0}`。
+
+job `l4job-42d22187665248f4b22f3d4bc9b7a9f2`
+source archive `2ab268049dffffecbaec3ebe5eff4842c284f5e9707337a0e43d66bdf4a261ea`
+result archive `3666231464ce067e85eef3e14f39f9541d877585377c60f3dbadee265a0a35f7`
+
+
+
+### producer分解で分かったこと
+
+入力site候補削減版、source `ecfbb914`、Colab L4/N2048/B32/rho3,8の各独立2回。
+下表はG→H分割Graphの各run medianを2回で平均した値。単位はms。
+
+| rho | G/dG生成 | H/dH再計算 | parameter partial | 値のみG | 値のみH |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 3 | 0.8970 | 0.8515 | 0.3343 | 0.6651 | 0.5837 |
+| 8 | 1.1924 | 1.1310 | 0.3287 | 0.9313 | 0.7931 |
+
+G/dGとH/dHの両方が大きく、Gだけが突出する結果ではない。rho3→8で両contractの時間が
+増える一方、最後の3部分和は約0.33msでほぼ一定だった。H→Gの逆順でも同じ順位で、
+G/dGはrho3 0.8909/rho8 1.1894ms、H/dHは0.8520/1.1336msだった。
+値だけのprobeもproduction NEED_P=FalseのG値と一致し、G値の計測は0.6656/0.9329ms。
+ただし微分付きとの差には追加store・別specializationの影響もあり、純粋な微分費用としない。
+
+**次の調査対象はG/H共通の `_contract` 内部**とする。profile評価・正規化微分と、
+X/dYのgather・積和reductionのどちらが大きいかを分けて調べる。今回の結果から
+cache miss、実traffic、算術律速のいずれかに原因を確定することはできない。
+最後のparameter partialだけを先に最適化する根拠は弱い。
+
+測定文脈による差も大きい。元のbackward schedule内で融合producerはrho3平均1.3271ms、
+rho8平均1.8079msだったが、producerだけを回す別Graphでは1.8560/2.4028ms。
+分割Graph全体は2.0838/2.6527msだった。**分割各段やその差・割合を、本番融合kernelの
+厳密な内訳へ換算しない。** 主測定や融合の性能改善としても扱わない。
+
+本番の既存runtimeは変更していない。primary完全stepはrho3 4.7369〜4.7509ms、
+rho8 6.5390〜6.5537ms、全4runでallocated/reserved peak **57.43/104 MiB**。
+denseは約0.59ms、81.75/106 MiB。診断の4中間bufferは論理25.60MiBで、productionの
+G scratchに比べ追加3field=19.20MiBを使う。照合用bufferは別途15.20MiBであり、
+これらは主測定後だけの診断storageであってprimary peakや最適化案のmemoryではない。
+
+全4cohortで同じsnapshotのGは差0、partialの最大差9.32e-10以下、value-onlyの差0。
+実backwardのdX/all-dPとの差は0。18 GPU testsと32 initial/post24全atom FP64 gatesを
+通過した。各rhoの候補削減版は更新後Parameterがbitwise一致し、同じ条件の独立反復で
+診断の順位を確認した。公開dispatcherや新しい実行方式の採用は行わない。
+
+
+### producer分解の再現と監査範囲
+
+```sh
+python -m benchmarks.cuda.linear.periodic_comparison \
+  --case benchmarks/cuda/linear/cases/regular-grid-h-2048-rho3.json \
+  --plans matrix-torch factor onchip-h input-site-stream-g8-h32 dense \
+  --isolated-oracle --phases --producer-diagnostics \
+  --output <new-per-run-comparison-path>
+```
+
+source `ecfbb914` の隔離snapshotで上記を独立2回、rho8も独立2回行う。
+GPU追加検証は `python -m pytest -v tests/test_regular_grid_h_cuda.py -k 'producer or streaming_backward_stages'`。
+全4sourceの1631 entriesは同一で、325 worker source hashes、各27結果manifest、
+20 workersのactual24更新と21 primary samplesを照合した。source archiveのhash差は
+archive metadataに由来し、source file mapの差はない。
+
+controlのmatrix/factor/onchipは独立反復のpost24 Parameter hashが一致しない。
+各snapshotはそれぞれの独立FP64 gateを通過しているが、controlを同一post24数値状態と
+扱わない。rho3ではParameter最大差がmatrix/factor 1.22e-4、onchip 3.06e-5以下で、
+候補削減版のParameter/Y/dX/all-dPはbitwise一致した。atomic reduction順序は原因候補だが、
+因果を実証したわけではない。生データを保持し、比較条件や数値gateは変更していない。
+
+raw evidenceはignored `output/regular-grid-h/overnight-evidence/`、集計は
+`producer-cohort-report.md` / `producer-summary.json`、control差の数値監査は
+`producer-control-repeat-audit.json`。source/result archive・manifest・FP64 snapshot・
+診断のchunk合計と中央値は独立監査PASS。両rhoの候補削減版はParameter/Y/dX/all-dPも
+独立反復間でbitwise一致した。監査記録は `producer-final-independent-audit.json`。
+全owned GPU slotsのstoppedとserverにactive sessionなしを確認し、停止証拠を
+`producer-final-pool-status.json` と `producer-final-stop-lifecycle.log`へ保存した。
