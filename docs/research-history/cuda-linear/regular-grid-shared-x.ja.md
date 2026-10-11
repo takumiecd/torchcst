@@ -41,3 +41,13 @@ compiler register/spill/shared bytesと論理的X load要求量はhardware cache
 採否は現行に対する両独立runの完全stepと総peak、およびdenseの両peakで決める。
 raw source/results/tensorsはignored outputとremote runに保存する。これは研究schemaで、
 公開benchmark submission/DB schemaの対応を意味しない。
+
+## 初回コンパイルの修正
+
+source `7d77b724fc6fbf1ea750a9aeb1b1f330a4b9a6ae`のGPU資格確認は81PASS/56FAIL。
+Tritonで条件分岐内だけに定義した`panel`を後続loopで参照し、SSA値が未定義として
+コンパイルに失敗した。性能cohortは0で、数学gateや時間・メモリの結果には扱わない。
+両分岐のSSA値を定義するゼロ初期値を追加する。global Xのloadは共有分岐だけで維持する。
+失敗source/137testsのlogs/XMLをremote `cst-shared-x-ada-7d77b724-20261011`と
+localのsource archive/operating notesに保持し、修正commitは別directoryで全資格確認を行う。
+数値許容値・比較条件・候補構成は変更しない。

@@ -50,6 +50,9 @@ def _shared_x_contract(
     panel_high = tl.max(tl.where(active, high, -2147483647), 0)
     shared = tl.sum(active.to(tl.int32), 0) > 0
     shared = shared & ((panel_high - panel_low) <= PANEL)
+    # Define the SSA value on both branches; a later loop consumes it only
+    # when shared is true. The zero definition does not load global X.
+    panel = tl.full((BM, PANEL), 0.0, tl.float32)
     if shared:
         sites = panel_low + tl.arange(0, PANEL)
         panel = tl.load(
