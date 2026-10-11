@@ -18,6 +18,13 @@ B32、209715 atoms、seed41、FP32、TF32無効、全積のdiscrete L2正規化�
 | mix-narrow | 0.5, 3, 15 | 8:1:1 |
 | mix-balanced | 0.5, 3, 15 | 1:1:1 |
 | mix-wide | 0.5, 3, 15 | 1:1:8 |
+| mix-rho1-narrow | 1, 3, 15 | 8:1:1 |
+| mix-rho1-balanced | 1, 3, 15 | 1:1:1 |
+| mix-rho1-wide | 1, 3, 15 | 1:1:8 |
+
+rho0.5を含む混在caseは独立oracleの勾配gate失敗をそのまま保存する。
+rho1の混在caseは空支持近傍の鋭い条件と幅の混在による実装費用を切り分けるための追加条件。
+最初のcaseを置き換えず、両方を別caseとして残す。
 
 幅のquotaは整数切り捨て後の余りを最後の群に入れ、seed+7919でatomへ割り当てる。
 中心と振幅の乱数列は従来fixtureと共通。各Planに同じ初期Parameter、入力、target、dyを渡す。
