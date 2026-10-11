@@ -621,3 +621,16 @@ H/G生成と局所集約を融合したkernelに残った。
 詳細・正確なfallback・全gradient gates・完全step/両peak・source/result hashesは
 [joint cell比較](research-history/cuda-linear/regular-grid-joint-local.ja.md)を参照。
 入力・出力の近さだけで高速化を保証せず、局所保持量と支持外paddingも費用として扱う。
+
+### 支持タイルとIEEE FP32小行列積
+
+中心cellではなく支持区間から最大2タイル/軸へ所属させ、同じ開始タイルのatomで
+X/dY panelを共有する候補をBM8/BM16で比較した。indexはforwardからbackwardへ再利用。
+全支持のH/Gを集約してからparameter勾配を作り、タイル間の交差項と正規化を維持する。
+H/dH/G/dGは全atom×小batchのslabであり、寿命はchunk単位。atom束内だけでは完結しない。
+狭支持producerと広支持fallbackを分離してspillを0にした最終版でも、Ada N2048/B32の
+完全stepはBM16で現行の2.11–2.26倍、両peak93.717/150MiBへ増えた。採用せず現行を維持する。
+重いstageはH/Gと中心微分の生成で、sort約0.111msと最後のreductionは相対的に小さい。
+支持に対するpanel paddingと微分slabの寿命を次の仮説として扱い、実cacheの原因は未断定。
+127資格検証/48 full FP64 gatesと独立2cohort/rhoの完全step・メモリ・source修正の経緯は
+[支持タイル研究記録](research-history/cuda-linear/regular-grid-tile-dot.ja.md)を参照。

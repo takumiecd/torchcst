@@ -3087,3 +3087,14 @@ BM16/G16=1.439–1.441/1.840–1.842msより遅い。allocated/reserved=42.866/1
 allocatedのみ減り、reservedはdense106MiBを上回る。現行を研究基準に維持する。
 192資格検証/64全shape・全atom FP64 gates、独立2cohort/rho、36 fresh workersを確認。
 詳細は[joint cell研究記録](regular-grid-joint-local.ja.md)を参照。公開default変更なし。
+
+## 2026-10-11: 支持タイルと小行列積によるH/G
+
+32-site支持タイルの所属をsortし、IEEE FP32小行列積でH/Gを作り、ownerでY/dXへ消費した。
+H/dH/G/dGの寿命は小batch chunk単位で、全atom slabは残る。最終source `2fbeeabe` は
+広支持fallbackを別kernelへ分離し、狭支持producerのspillを0にした。
+127資格検証/48 full-shape・全atom FP64 gates、28 fresh workers/588 samples、4固定診断PASS。
+BM16でもrho3=3.249–3.250ms、rho8=3.885–3.945ms、allocated/reserved=93.717/150MiBで、
+現行1.436–1.443/1.838–1.839ms、57.431/104MiBより悪化した。BM8も不採用。
+主費用はH/Gと中心微分のproducer。sort/reductionの費用、初回source47の別campaign、
+失敗資格検証の修正とSHA・復旧先を[支持タイル研究記録](regular-grid-tile-dot.ja.md)へ保存した。
