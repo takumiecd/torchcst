@@ -189,6 +189,9 @@ study have maxabs7.88e-16. Raw logs and the comparison JSON are ignored
 `output/fourier-profile-reference/` evidence. Scientific definitions and tests
 do not establish a speed or memory win.
 
-Triton/CUDA, all-FP32 reconstruction accuracy, GPU Graph replay, complete-step
-timing and allocated/reserved peak measurement remain unimplemented/unvalidated.
-The shared Plan is explicitly selected and is not added to the default selector.
+The explicit CPU shared Plan is not added to the default selector.
+The later benchmark-only Chebyshev/Kaiser M32/64 Triton executor has actual L4
+value/VJP, Graph/update and complete-step allocated/reserved validation. It uses
+live GPU FP64 coefficient/L2 preparation and FP32 contractions; see
+[the measured scope and retained evidence](fourier-shared-tiles-triton.ja.md).
+DPSS, other GPUs and multidimensional CUDA execution remain unqualified.

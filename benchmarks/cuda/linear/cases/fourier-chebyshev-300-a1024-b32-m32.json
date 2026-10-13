@@ -1,0 +1,55 @@
+{
+  "schema": "fourier-case.research.v4",
+  "size": 300,
+  "atoms": 1024,
+  "batch": 32,
+  "modes": 32,
+  "family": "chebyshev",
+  "seed": 41,
+  "tile_width": 10.0,
+  "local_period": 30.0,
+  "spacing": 0.1,
+  "periods": [
+    30.0,
+    30.0
+  ],
+  "origin": [
+    0.0,
+    0.0
+  ],
+  "dtype": "float32",
+  "tf32": false,
+  "width_bounds": {
+    "minimum": 0.1,
+    "birth": 0.1,
+    "maximum": 10.0,
+    "upper_floor": 0.1
+  },
+  "initial_width_distribution": "geomspace_0.1_10",
+  "task_sigma_stop_gradient": true,
+  "normalization": {
+    "kind": "discrete_l2",
+    "domain": "operator_sites",
+    "floor": 1e-06
+  },
+  "optimizer": {
+    "name": "AdamW",
+    "lr": 0.0001,
+    "weight_decay": 0.01,
+    "fused": true,
+    "capturable": true
+  },
+  "schedule": {
+    "eager_warmups": 2,
+    "initial_replays": 1,
+    "timed_replays": 21,
+    "actual_updates_required": 24
+  },
+  "oracle": {
+    "full_sites": true,
+    "all_atoms": true,
+    "max_abs": 0.0004,
+    "relative_l2": 0.0004,
+    "chunk_atoms": 64
+  }
+}
