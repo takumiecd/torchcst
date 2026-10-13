@@ -25,8 +25,12 @@ def axis_geometry(chart, centers, dim, width, size):
     relative = (site_tile[:, None] - owner[None, :]).remainder(tiles)
     relative = torch.where(relative == tiles - 1, -1, relative)
     mask = (relative >= -1) & (relative <= 1)
-    displacement = position[:, None] - site_tile[:, None] * width + relative * width
-    displacement = displacement - (center - owner * width)[None, :]
+    displacement = (
+        position[:, None]
+        - site_tile[:, None].to(position.dtype) * width
+        + relative.to(position.dtype) * width
+    )
+    displacement = displacement - (center - owner.to(center.dtype) * width)[None, :]
     return displacement, mask
 
 

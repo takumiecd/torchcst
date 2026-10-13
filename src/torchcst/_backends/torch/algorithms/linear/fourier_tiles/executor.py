@@ -15,7 +15,7 @@ def _axis(chart, centers, sigma, dim, layout, profile):
         chart.geometry.periods[dim]
     )
     owner = (center / width).floor().to(torch.long)
-    delta = center - owner * width
+    delta = center - owner.to(center.dtype) * width
     k = torch.arange(
         -profile.modes, profile.modes + 1, device=center.device, dtype=center.dtype
     )

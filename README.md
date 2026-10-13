@@ -135,6 +135,9 @@ explicit CPU FP64 shared-tile Plan are available; see the
 An explicit benchmark-only Triton shared-tile executor for Chebyshev/Kaiser
 M32/64 has NVIDIA L4 correctness and complete-step measurements; see
 [the implementation and results](docs/fourier-shared-tiles-triton.ja.md).
+The [1024×1024, 52,428-atom comparison](docs/fourier-density-1024.ja.md)
+passes L4 correctness checks but is slower and uses more allocator memory than
+dense; it also records the low-frequency limit on sharply localized profiles.
 
 ## Checkpoint
 
