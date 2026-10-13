@@ -76,4 +76,71 @@ Graph/public eager 更新の Parameter・AdamW moments・clock も照合する�
 メモリは warmup/capture/replay を含む allocated/reserved peak。独立 oracle scratch は除外し、
 GPU process 全体の使用量は未測定とする。
 
-実機結果と PR 判定は、検証完了後にこの文書へ記録する。
+## 実機結果と採否
+
+NVIDIA L4、Torch `2.11.0+cu130`、CUDA `13.0`、Triton `3.6.0`。
+実測 source は `52393e7997a26ef4a2f1ad0c1064cc2f29d5ca54`。
+CPU 最終 suite は **1707 passed / 2724 GPU・DB skips / 18 existing warnings**。
+実 L4 の回帰は **22 passed / 0 skipped**。
+wheel/sdist build、隔離 wheel の metadata import、catalog の JSON 往復、Ruff、PR CPU CI も合格。
+
+以下は N=300、B=32、live sigma `[0.1,10]` の結果。
+時間は二つの独立 subprocess cohort の各中央値の範囲、メモリは両 run で同一の値。
+全て L2・backward・AdamW・Polar 更新を含む完全 step。
+peak は **MiB** (`2^20` bytes)、direct → shared の順。
+
+| profile | M | atoms | direct ms | shared ms | allocated MiB | reserved MiB |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| chebyshev | 32 | 1024 | 1.146–1.147 | 0.869–0.874 | 38.13 → 3.55 | 108 → 28 |
+| chebyshev | 64 | 1024 | 2.510–2.513 | 1.153–1.154 | 39.92 → 6.85 | 108 → 32 |
+| kaiser | 32 | 1024 | 1.028–1.028 | 0.753–0.753 | 38.13 → 3.55 | 108 → 30 |
+| kaiser | 64 | 1024 | 2.242–2.243 | 0.885–0.886 | 39.92 → 6.85 | 108 → 30 |
+| chebyshev | 64 | 64 | 0.722–0.723 | 0.696–0.697 | 33.16 → 0.64 | 46 → 6 |
+| chebyshev | 64 | 256 | 1.090–1.091 | 0.825–0.827 | 34.28 → 1.88 | 46 → 6 |
+
+1024 atoms の4条件は direct より約24–60%短縮、allocated peak は約83–91%減。
+再利用確認の Chebyshev M64 は、64 atoms で約3.6%短縮、256 atoms で約24%短縮。
+全6条件が二つの run とも事前の時間・allocated 判定に合格した。
+これらの条件に限る研究 route として保持し、公開 default selector への採用は行わない。
+N700・別 batch・別 GPU・DPSS・多次元側への速度の外挿はしない。
+
+各 cohort の shared/direct/Torch-factored に対する初期・24更新後の独立 FP64 gate、
+計 **72 operator/VJP 比較**が合格。
+全 route を通した最大絶対誤差は Y `5.36e-6`、dX `5.21e-6`、all-dP `4.01e-5` 以下。
+最大 relative L2 は順に `6.76e-7 / 6.28e-7 / 9.83e-7` 以下。
+両 run は逆の worker 順で、初期値・X/target/dy・metadata・source hashes の一致を確認した。
+live width は bounds に固定された一つを除き更新され、全 worker の実 clock は24。
+
+同サイズの dense は `0.063–0.065ms`、allocated `17.85MiB`、reserved `26MiB`。
+時間では dense が速い。これは90,000個の自由な行列要素と4096個の atom parameters の
+異なるモデルの比較であり、今回の採否は同じ profile 演算の direct 比較で行う。
+Torch-factored の1024 atom 完全 step は profile/M ごとに約5.15–26.20ms、
+allocated は344.59–951.15MiBだった。
+allocator peak には各 route が保持する library workspace も含む。
+共有 Tensor の byte 予算や process VRAM の削減率として読み替えない。
+
+## 証拠の保存
+
+raw evidence は worktree の ignored `output/fourier-shared-tiles-20261014/` に保存。
+`jobs/` に全8 job の frozen source tar、spec、receipt、回収 archive、raw results を保持した。
+最初の2失敗は4 Graph テストの eager reference 設定と CPU constant upload の問題であり、
+修正前の失敗ログも残している。
+`measurement-summary.json` と `artifact-manifest.json` は全 case・source・回収結果を確認する入口。
+元データは host-wide pool の同じ job ID ディレクトリにも保存される。
+
+| job ID | 内容 |
+| --- | --- |
+| `l4job-04db29fb30a944b2824bb2769bfe9d88` | 初回 regression、18 pass / 4 fail |
+| `l4job-35de3d77284c4dcd8723ce063bab9390` | 2回目 regression、18 pass / 4 fail |
+| `l4job-72fc0f7c174f4333b243877034b3667e` | 最終22 regression、Chebyshev M32 A1024、2 cohorts |
+| `l4job-96d51b1b2bb0447284924cc48c45c04b` | Chebyshev M64 A1024、2 cohorts |
+| `l4job-f64ad439880b4c04b4c989bb5c56787d` | Kaiser M32 A1024、2 cohorts |
+| `l4job-c26a8d7cfeaa455393789aaa66d25e45` | Kaiser M64 A1024、2 cohorts |
+| `l4job-2abd4be053b64d46a3ed652ec1ef7ec9` | Chebyshev M64 A64、2 cohorts |
+| `l4job-2f284aa05e5245c59bb4532bb29704a7` | Chebyshev M64 A256、2 cohorts |
+
+`measurement-summary.json` SHA256: `436805a9e3d17bd3361ced45719ba65687db194dbd39bd514c681569cc1644fd`。
+`artifact-manifest.json` SHA256: `0caba2e949a4b7c5d7146862a33058db3758fcbe05986254a5d5181de7df25b5`。
+
+独立監査で成功6 job の回収99ファイル・各 source 327ファイルと現在の Python source の一致を確認した。
+全 job の回収後、pool supervisor の終了と全 slots の停止を確認し、`gpu-shutdown.json` を保存した。

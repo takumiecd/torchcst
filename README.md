@@ -132,6 +132,9 @@ tile_widths=..., ...)`. M, width floors and owner-relative three-tile support
 define this separate revision-4 operator. Torch direct references and an
 explicit CPU FP64 shared-tile Plan are available; see the
 [definitions, example and validation scope](docs/fourier-profile-product.ja.md).
+An explicit benchmark-only Triton shared-tile executor for Chebyshev/Kaiser
+M32/64 has NVIDIA L4 correctness and complete-step measurements; see
+[the implementation and results](docs/fourier-shared-tiles-triton.ja.md).
 
 ## Checkpoint
 
