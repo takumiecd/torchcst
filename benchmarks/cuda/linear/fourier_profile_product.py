@@ -26,6 +26,10 @@ FAMILIES = {"chebyshev": ChebyshevSquareSpec, "kaiser": KaiserSquareSpec}
 
 
 def case_definition(size=300, atoms=1024, batch=32, modes=32, family="chebyshev"):
+    if any(type(value) is not int for value in (size, atoms, batch, modes)):
+        raise ValueError("Fourier dimensions and budgets must be integers")
+    if type(family) is not str:
+        raise ValueError("Fourier family must be a string")
     if size not in (300, 700, 2000) or atoms not in (64, 256, 1024, 4096):
         raise ValueError("requires a predeclared global size and atom budget")
     if batch not in (8, 32) or modes not in (32, 64) or family not in FAMILIES:

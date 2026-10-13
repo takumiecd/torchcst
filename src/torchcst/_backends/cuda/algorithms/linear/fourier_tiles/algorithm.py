@@ -83,13 +83,34 @@ class FourierTilesAlgorithm(Algorithm[FourierTilesRecipe]):
         super().validate_inputs(state, inputs)
         validate_live_operator(state, inputs)
 
+    def prepare(self, state):
+        # Parameter/optimizer storage changes refresh generic placement state,
+        # but cannot change these immutable grid tables. execute rechecks their
+        # device/layout/degree key before reuse. No live coefficients survive.
+        tables = {
+            name: state.buffers[name]
+            for name in ("axes", "axes_key")
+            if name in state.buffers
+        }
+        super().prepare(state)
+        state.buffers.update(tables)
+
     def execute(self, state, inputs):
         from .executor import fourier_tiles, static_axes
 
         x, p, operator, site = linear_execution(state, inputs)
         layout = fourier_tile_layout(operator.charts[0], operator.kernel)
-        if state.recipe.strategy == "shared" and "axes" not in state.buffers:
+        axes_key = (
+            p.device,
+            layout,
+            tuple(b.profile.modes for b in operator.kernel.profiles),
+        )
+        if (
+            state.recipe.strategy == "shared"
+            and state.buffers.get("axes_key") != axes_key
+        ):
             state.buffers["axes"] = static_axes(p, layout, operator.kernel.profiles)
+            state.buffers["axes_key"] = axes_key
         with torch.cuda.device(x.device):
             return fourier_tiles(
                 x,

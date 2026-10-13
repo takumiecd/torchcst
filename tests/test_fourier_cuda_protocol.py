@@ -92,3 +92,13 @@ def test_same_cotangent_public_optimizer_cpu():
         fourier_case=ff.case_definition(size=300, atoms=64, batch=8),
     )
     assert result["status"] == "PASS" and result["final_clock"] == 4
+
+
+@pytest.mark.parametrize(
+    "field,value", [("size", 300.0), ("atoms", 64.0), ("batch", 8.0), ("modes", True)]
+)
+def test_fourier_case_rejects_noninteger_dimensions(field, value):
+    case = ff.case_definition()
+    case[field] = value
+    with pytest.raises(ValueError, match="integers"):
+        ff.load_case(case)

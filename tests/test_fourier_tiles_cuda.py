@@ -81,6 +81,13 @@ def test_graph_replay_live_width_and_public_optimizer(family, modes):
     # Initialize bindings before capture, then check the entire recorded step
     # against eager public CSTOptimizer with matching AdamW moments/clock.
     layer(x)
+    cached_state = next(
+        state
+        for state in layer._algorithm_states
+        if state.algorithm.id == "research_cuda_fourier_tiles_triton"
+    )
+    cached_axes = cached_state.buffers["axes"]
+    cached_key = cached_state.buffers["axes_key"]
     replica = copy.deepcopy(layer)
     step = TrainingStep(layer, x, target)
     reference_opt = torch.optim.AdamW(
@@ -100,6 +107,13 @@ def test_graph_replay_live_width_and_public_optimizer(family, modes):
     reference_opt.zero_grad(set_to_none=True)
     (replica(rx) - target).square().mean().backward()
     public.step()
+    # Generic placement refresh (including first optimizer storage binding)
+    # must preserve the immutable tables before entering CUDA Graph capture.
+    cached_state.algorithm.prepare(cached_state)
+    assert cached_state.buffers["axes"] is cached_axes
+    assert cached_state.buffers["axes_key"] == cached_key
+    layer(x)
+    assert cached_state.buffers["axes"] is cached_axes
     width0 = ff.widths(layer).detach().clone()
     graph = torch.cuda.CUDAGraph()
     with torch.cuda.graph(graph):

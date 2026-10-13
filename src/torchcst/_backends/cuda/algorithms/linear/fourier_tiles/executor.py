@@ -32,7 +32,9 @@ def static_axes(source, layout, profiles):
             .contiguous()
         )
         rk = torch.arange(modes + 1, device=source.device, dtype=torch.float64)
-        offset = torch.tensor([-1, 0, 1], device=source.device, dtype=torch.float64)
+        # Device generation is capture-safe even when placement preparation is
+        # refreshed after optimizer-state allocation; no CPU tensor upload.
+        offset = torch.arange(-1, 2, device=source.device, dtype=torch.float64)
         theta = (2 * math.pi / 3) * offset[:, None] * rk
         rotation = torch.stack((theta.cos(), theta.sin()), dim=-1).float().contiguous()
         result.append((phi, rotation))
