@@ -148,6 +148,13 @@ CUDA FULL/WINDOWもその純粋metadata処理を再利用する。具体的な�
 区別し、Triton というだけの理由で複数の計算方式を一つのファイルへ集めない。
 未実装のディレクトリや空の雛形は作らない。
 
+有限Fourier profileは `kernels/profiles/fourier.py`、重みを変える3tile支持は
+`kernels/support.py` / `FourierProductKernelSpec` に宣言する。Torchでの係数生成と
+native評価は `_backends/torch/profiles/fourier.py`、直接productは
+`_backends/torch/kernels/fourier_product.py`、共有tile momentによる別の計算方式は
+`_backends/torch/algorithms/linear/fourier_tiles/` に置く。
+[意味と検証範囲](../../../docs/fourier-profile-product.ja.md)を参照。
+
 RegularGridのprofile-product Linearでは
 [Hの生成・再利用・寿命の設計方針](../../../docs/h-lifecycle-kernel-design.ja.md)を使い、
 具体的な分割・融合・routing・保存／再計算はAlgorithm/Recipeの実行方式として扱う。

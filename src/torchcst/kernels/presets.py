@@ -319,3 +319,29 @@ def polar_periodic_profile_product(*, profiles, **kwargs):
     from dataclasses import replace
 
     return replace(polar_profile_product(profiles=profiles, **kwargs), revision=3)
+
+
+def polar_fourier_profile_product(*, profiles, tile_widths, **kwargs):
+    """Native Fourier profiles on three owner-relative tiles (revision 4)."""
+    from .profiles.fourier import PeriodicFourierSpec
+    from .spec import FourierProductKernelSpec
+    from .support import FourierTileSupportSpec
+
+    if (
+        not isinstance(profiles, tuple)
+        or not profiles
+        or not all(isinstance(p, PeriodicFourierSpec) for p in profiles)
+    ):
+        raise TypeError("profiles must be a tuple of periodic Fourier declarations")
+    base = polar_profile_product(profiles=(TriweightSpec(),) * len(profiles), **kwargs)
+    support = FourierTileSupportSpec(tile_widths=tile_widths)
+    if base.parameterization.input_bounds.maximum > min(support.tile_widths):
+        raise ValueError("maximum width must not exceed any tile width")
+    return FourierProductKernelSpec(
+        **{
+            **vars(base),
+            "profiles": tuple(profile(p, normalize=False) for p in profiles),
+            "revision": 4,
+            "tile_support": support,
+        }
+    )

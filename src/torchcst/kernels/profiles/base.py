@@ -5,7 +5,10 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True, kw_only=True)
 class ProfileSpec:
-    """Identity fixes the function of dimensionless squared distance q.
+    """Identity fixes a function and its argument contract.
+
+    Scalar profiles use dimensionless squared distance q. PeriodicFourierSpec
+    instead declares a function of angle and relative width.
 
     Bandwidth, center coordinates and normalization belong to separate
     declarations. No tensor evaluation methods belong on this type.

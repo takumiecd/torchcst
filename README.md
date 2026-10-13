@@ -121,9 +121,17 @@ Use `presets.polar_periodic_profile_product(profiles=(TriweightSpec(),) * 3,
 amplitude_max=1.0, bounds=bandwidth_bounds, w_c=0.1)` for shortest wrapped
 coordinate distances and one full-product L2 floor. Kernel revision 3 and
 `FlatTorusGeometrySpec` distinguish this metric from the embedded Torus above.
+
 D >= 2 is supported, including higher-dimensional grids. Torch factored/materialized
 execution and eager periodic center updates are available; GPU performance and
 Graph updates remain unvalidated. See [the API and computation choices](docs/periodic-grid.ja.md).
+
+Native finite-Fourier products use `ChebyshevSquareSpec`, `KaiserSquareSpec` or
+`DPSSSquareSpec` with `presets.polar_fourier_profile_product(profiles=...,
+tile_widths=..., ...)`. M, width floors and owner-relative three-tile support
+define this separate revision-4 operator. Torch direct references and an
+explicit CPU FP64 shared-tile Plan are available; see the
+[definitions, example and validation scope](docs/fourier-profile-product.ja.md).
 
 ## Checkpoint
 

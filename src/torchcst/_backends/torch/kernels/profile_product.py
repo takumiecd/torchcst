@@ -69,6 +69,10 @@ def _product(values):
 
 
 def factors(state, chart, p):
+    if state.spec.revision == 4:
+        from .fourier_product import factors as fourier_factors
+
+        return fourier_factors(state, chart, p)
     if state.spec.revision == 2:
         from .torus_profile_product import factors as torus_factors
 
