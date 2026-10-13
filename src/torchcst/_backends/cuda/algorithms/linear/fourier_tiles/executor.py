@@ -75,7 +75,9 @@ def _prepare(source, value, chart, layout, *, strategy="shared"):
             chart.geometry.periods[dim].double()
         )
         owner = (center / width).floor().long()
-        delta = center - owner * width
+        # Integer Tensor times a Python float otherwise uses default FP32,
+        # rounding non-integral tile origins before the FP64 subtraction.
+        delta = center - owner.to(center.dtype) * width
         if strategy == "direct":
             axes.append(
                 (

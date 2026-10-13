@@ -1,4 +1,4 @@
-"""Matched periodic v1 and Fourier rev4 complete-step research protocol.
+"""Matched periodic v1 and Fourier rev4/rev5 complete-step research protocol.
 
 This standalone protocol JSON is not the benchmark submission/DB schema.
 Numerical gates cover full axes and all atoms before and after 24 real updates.
@@ -657,7 +657,20 @@ FOURIER_KINDS = (
     "dense",
 )
 FOURIER_PRIMARY = ("fourier-shared", "fourier-direct", "torch-factored", "dense")
+FOURIER_DENSITY_PRIMARY = ("fourier-shared", "fourier-direct", "dense")
 FOURIER_CATALOG = Path(__file__).with_name("plans-fourier-tiles.json")
+
+
+def fourier_primary(case):
+    return (
+        FOURIER_DENSITY_PRIMARY
+        if case["schema"] == "fourier-case.research.v5"
+        else FOURIER_PRIMARY
+    )
+
+
+def fourier_revision(case):
+    return "v5" if case["schema"] == "fourier-case.research.v5" else "v4"
 
 
 def bind_fourier_plan(model, kind):
@@ -698,10 +711,21 @@ def bind_fourier_plan(model, kind):
     return registry.dump_plan(plan)
 
 
-def fourier_oracle_check(model, x, dy):
+def fourier_oracle_check(model, x, dy, *, case=None):
     from benchmarks.cuda.linear import fourier_profile_product as ff
 
-    truth = ff.oracle_vjp(model, x, dy)
+    if case is not None and fourier_revision(case) == "v5":
+        from benchmarks.cuda.linear.fourier_native_oracle import oracle_vjp
+
+        truth = oracle_vjp(model, x, dy, chunk=case["oracle"]["chunk_atoms"])
+        scope = (
+            "independent CPU FP64 native H squared at every global site; all atom "
+            "cotangents; vectorized native H generation; full-site norm derivative; "
+            "atom chunks64"
+        )
+    else:
+        truth = ff.oracle_vjp(model, x, dy)
+        scope = "independent CPU FP64 native H squared at every global site; all atom cotangents; atom chunks64"
     xx = x.detach().clone().requires_grad_()
     y = model(xx)
     gx, gp = torch.autograd.grad(y, (xx, model.atoms.p), dy)
@@ -717,7 +741,7 @@ def fourier_oracle_check(model, x, dy):
     require_finite("task stop-gradient radial cotangent", radial)
     return {
         "status": "PASS",
-        "scope": "independent CPU FP64 native H squared at every global site; all atom cotangents; atom chunks64",
+        "scope": scope,
         "errors": errors,
         "max_abs_radial_task_gradient": float(radial.detach().abs().max()),
     }
@@ -727,17 +751,20 @@ def fourier_worker(case, kind, *, phases=False, verify_only=False):
     from benchmarks.cuda.linear import fourier_profile_product as ff
 
     ff.load_case(case)
+    if fourier_revision(case) == "v5" and kind not in FOURIER_DENSITY_PRIMARY:
+        raise ValueError("density cohort permits only shared/direct/dense workers")
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
     torch.set_float32_matmul_precision("highest")
     size, batch = case["size"], case["batch"]
     result = {
-        "schema": "fourier-worker.research.v4",
+        "schema": f"fourier-worker.research.{fourier_revision(case)}",
         "status": "RUNNING",
         "kind": kind,
         "size": size,
         "batch": batch,
         "atoms": None if kind == "dense" else case["atoms"],
+        "weight_shape": [size, size],
         "case_definition": case,
         **source_metadata(),
     }
@@ -775,7 +802,9 @@ def fourier_worker(case, kind, *, phases=False, verify_only=False):
         }
         width0 = None if dense else ff.widths(model).detach().cpu()
         stage = "initial-full-oracle"
-        result["initial_oracle"] = None if dense else fourier_oracle_check(model, x, dy)
+        result["initial_oracle"] = (
+            None if dense else fourier_oracle_check(model, x, dy, case=case)
+        )
         step = TrainingStep(model, x, target, dense=dense)
         model.zero_grad(set_to_none=True)
         x.grad = None
@@ -836,7 +865,9 @@ def fourier_worker(case, kind, *, phases=False, verify_only=False):
             memory_scope="own model/optimizer/X/target/dy; warmup/capture/replay included; independent CPU oracle and diagnostics excluded",
         )
         stage = "updated-full-oracle"
-        result["updated_oracle"] = None if dense else fourier_oracle_check(model, x, dy)
+        result["updated_oracle"] = (
+            None if dense else fourier_oracle_check(model, x, dy, case=case)
+        )
         if int(step.opt.state[next(model.parameters())]["step"]) != 24:
             raise AssertionError("oracle changed primary optimizer clock")
         if not dense:
@@ -890,6 +921,12 @@ def validate_fourier_record(record):
             raise ValueError("failure must retain stage/error without timings")
         return
     case = ff.load_case(record["case_definition"])
+    if fourier_revision(case) == "v5" and (
+        record["schema"] != "fourier-worker.research.v5"
+        or record["kind"] not in FOURIER_DENSITY_PRIMARY
+        or record["weight_shape"] != [1024, 1024]
+    ):
+        raise ValueError("requires the exact 1024 density cohort and weight shape")
     if (
         record["actual_updates"] != 24
         or record["batch"] != case["batch"]
@@ -919,12 +956,12 @@ def assess_fourier(records):
     for r in records:
         validate_fourier_record(r)
     kinds = {r["kind"]: r for r in records}
-    if any(
-        key not in kinds or kinds[key]["status"] != "PASS" for key in FOURIER_PRIMARY
-    ):
+    cases = [r["case_definition"] for r in records if "case_definition" in r]
+    primary = fourier_primary(cases[0]) if cases else FOURIER_PRIMARY
+    if any(key not in kinds or kinds[key]["status"] != "PASS" for key in primary):
         return {
             "status": "FAIL",
-            "reason": "required shared/direct/Torch/dense worker missing or not PASS",
+            "reason": f"required {'/'.join(primary)} worker missing or not PASS",
         }
     if any(r["status"] == "FAIL" for r in records):
         return {"status": "FAIL", "reason": "numerical/runtime failure retained"}
@@ -992,15 +1029,15 @@ def fourier_main(args, parser, case):
     else:
         # Torch shared tiles is a CPU FP64 reference and remains an explicit
         # diagnostic alias; CUDA cohorts default to the four executable controls.
-        plans = list(FOURIER_PRIMARY) if args.plans is None else args.plans
+        primary = fourier_primary(case)
+        allowed = primary if fourier_revision(case) == "v5" else FOURIER_KINDS
+        plans = list(primary) if args.plans is None else args.plans
         if (
             len(set(plans)) != len(plans)
-            or not set(FOURIER_PRIMARY) <= set(plans)
-            or not set(plans) <= set(FOURIER_KINDS)
+            or not set(primary) <= set(plans)
+            or not set(plans) <= set(allowed)
         ):
-            parser.error(
-                "cohort requires unique Fourier shared/direct/Torch/dense workers"
-            )
+            parser.error(f"cohort requires unique {'/'.join(primary)} workers")
         records = []
         for kind in reversed(plans) if args.reverse else plans:
             output = args.output.parent / f"{args.output.stem}-{kind}.json"
@@ -1025,7 +1062,7 @@ def fourier_main(args, parser, case):
                 )
             except subprocess.TimeoutExpired:
                 record = {
-                    "schema": "fourier-worker.research.v4",
+                    "schema": f"fourier-worker.research.{fourier_revision(case)}",
                     "kind": kind,
                     "status": "FAIL",
                     "failed_stage": "worker-deadline",
@@ -1041,10 +1078,10 @@ def fourier_main(args, parser, case):
             if completed.returncode and record["status"] == "PASS":
                 raise RuntimeError("nonzero exit cannot certify PASS")
             records.append(record)
-            if record["status"] != "PASS" and kind in FOURIER_PRIMARY:
+            if record["status"] != "PASS" and kind in primary:
                 break
         result = {
-            "schema": "fourier-comparison.research.v4",
+            "schema": f"fourier-comparison.research.{fourier_revision(case)}",
             "records": records,
             "assessment": assess_fourier(records),
             "independent_runs": 1,
@@ -1078,7 +1115,10 @@ def main():
     args = parser.parse_args()
     if args.case:
         case_data = json.loads(args.case.read_text())
-        if case_data.get("schema") == "fourier-case.research.v4":
+        if case_data.get("schema") in (
+            "fourier-case.research.v4",
+            "fourier-case.research.v5",
+        ):
             from benchmarks.cuda.linear import fourier_profile_product as ff
 
             fourier_main(args, parser, ff.load_case(case_data))

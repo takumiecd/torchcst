@@ -1,4 +1,4 @@
-"""Rev4 Fourier fixtures and independent full-site CPU FP64 truth.
+"""Frozen Fourier fixtures and independent full-site CPU FP64 truth.
 
 No CUDA preparation, tile moment or runtime Fourier coefficient routine is used
 by the oracle. NumPy prepares the native H function; each selected site evaluates
@@ -86,11 +86,57 @@ def case_definition(size=300, atoms=1024, batch=32, modes=32, family="chebyshev"
 
 
 def load_case(value):
+    if value.get("schema") == "fourier-case.research.v5":
+        if any(
+            type(value.get(key)) is not int
+            for key in (
+                "size",
+                "atoms",
+                "batch",
+                "modes",
+                "seed",
+                "tile_count",
+                "sites_per_tile",
+            )
+        ) or value != density_case_definition(
+            family=value.get("family"), modes=value.get("modes")
+        ):
+            raise ValueError("case differs from frozen Fourier rev5 density protocol")
+        return value
     if value != case_definition(
         *(value.get(key) for key in ("size", "atoms", "batch", "modes", "family"))
     ):
         raise ValueError("case differs from frozen Fourier rev4 protocol")
     return value
+
+
+def density_case_definition(*, family="chebyshev", modes=32):
+    """Exact 1024-site density cohort with eight complete equal-width tiles.
+
+    The global period is 102.4, while 38.4 is the profile's local period.
+    Truncation is explicit: 0.05 * 1024**2 = 52428.8 gives 52428 atoms.
+    Immutable geometry uses FP64; trainable atom coordinates remain FP32.
+    """
+    if type(modes) is not int or modes not in (32, 64):
+        raise ValueError("density Fourier modes must be integers 32 or 64")
+    if type(family) is not str or family not in FAMILIES:
+        raise ValueError("density Fourier family must be chebyshev or kaiser")
+    case = case_definition(family=family, modes=modes)
+    case.update(
+        schema="fourier-case.research.v5",
+        size=1024,
+        atoms=52428,
+        atom_density=0.05,
+        atom_count_policy="int(density * input_sites * output_sites); truncate toward zero",
+        tile_width=12.8,
+        local_period=38.4,
+        tile_count=8,
+        sites_per_tile=128,
+        periods=[102.4, 102.4],
+        geometry_dtype="float64",
+        required_workers=["fourier-shared", "fourier-direct", "dense"],
+    )
+    return case
 
 
 def fixture(case, *, dtype=torch.float32, floor=None, atoms=None):
@@ -100,11 +146,12 @@ def fixture(case, *, dtype=torch.float32, floor=None, atoms=None):
     widths0 = torch.logspace(-1, 1, count, dtype=torch.float64)
     radius = (1 + 3 * torch.log(widths0 / 0.1) / math.log(100)).sqrt()
     direction = torch.where(torch.rand(count, generator=generator) < 0.5, -0.6, 0.6)
+    period, tile = case["periods"][0], case["tile_width"]
     p = torch.cat(
         (
             torch.stack((direction.double(), torch.full_like(radius, 0.8)), -1)
             * radius[:, None],
-            torch.rand(count, 2, generator=generator).double() * (size / 10),
+            torch.rand(count, 2, generator=generator).double() * period,
         ),
         -1,
     )
@@ -112,22 +159,33 @@ def fixture(case, *, dtype=torch.float32, floor=None, atoms=None):
     p[:6, 2:] = torch.tensor(
         [
             [0.0, 0.0],
-            [9.975, 10.025],
-            [size / 10 - 0.025, 0.025],
-            [10.0, 20.0],
+            [tile - 0.025, tile + 0.025],
+            [period - 0.025, 0.025],
+            [tile, 2 * tile],
             [0.05, 0.075],
-            [-0.025, size / 10 + 0.025],
+            [-0.025, period + 0.025],
         ]
     )
+    if case["schema"] == "fourier-case.research.v5" and count > 6:
+        # 64.0 = 5 * 12.8 is an exactly representable FP32 owner seam.
+        # Probe the actual neighbouring trainable values on both axis sides.
+        seam = torch.tensor(64.0, dtype=torch.float32)
+        below = torch.nextafter(seam, torch.tensor(-math.inf)).item()
+        above = torch.nextafter(seam, torch.tensor(math.inf)).item()
+        probes = p.new_tensor([[64.0, 64.0], [below, above], [above, below]])
+        p[6 : min(count, 9), 2:] = probes[: min(count - 6, 3)]
     p[0, 0] = 0.0
     profile = FAMILIES[case["family"]](modes=case["modes"])
-    return CSTLinear(
+    model = CSTLinear(
         chart=chart_presets.periodic_grid(
-            (size, size), periods=(size / 10, size / 10), output_dims=1
+            (size, size),
+            periods=tuple(case["periods"]),
+            origin=tuple(case["origin"]),
+            output_dims=1,
         ),
         kernel=presets.polar_fourier_profile_product(
             profiles=(profile, profile),
-            tile_widths=(10.0, 10.0),
+            tile_widths=(tile, tile),
             amplitude_max=1.0,
             bounds=BandwidthBounds(
                 minimum=0.1, birth=0.1, maximum=10.0, upper_floor=0.1
@@ -143,6 +201,15 @@ def fixture(case, *, dtype=torch.float32, floor=None, atoms=None):
         dtype=dtype,
         backend="factored",
     )
+    if case["schema"] == "fourier-case.research.v5":
+        # CSTLinear's dtype converts floating buffers with its Parameters. Restore
+        # original numeric declarations, never promote already-rounded FP32 data.
+        # Device-only .cuda() / .to(device) then preserve these geometric dtypes.
+        model.chart.geometry.periods = torch.tensor(
+            case["periods"], dtype=torch.float64
+        )
+        model.chart.origin = torch.tensor(case["origin"], dtype=torch.float64)
+    return model
 
 
 def native_h(profile, sigma, period=30.0):

@@ -1,0 +1,65 @@
+{
+  "schema": "fourier-case.research.v5",
+  "size": 1024,
+  "atoms": 52428,
+  "batch": 32,
+  "modes": 64,
+  "family": "kaiser",
+  "seed": 41,
+  "tile_width": 12.8,
+  "local_period": 38.4,
+  "spacing": 0.1,
+  "periods": [
+    102.4,
+    102.4
+  ],
+  "origin": [
+    0.0,
+    0.0
+  ],
+  "dtype": "float32",
+  "tf32": false,
+  "width_bounds": {
+    "minimum": 0.1,
+    "birth": 0.1,
+    "maximum": 10.0,
+    "upper_floor": 0.1
+  },
+  "initial_width_distribution": "geomspace_0.1_10",
+  "task_sigma_stop_gradient": true,
+  "normalization": {
+    "kind": "discrete_l2",
+    "domain": "operator_sites",
+    "floor": 1e-06
+  },
+  "optimizer": {
+    "name": "AdamW",
+    "lr": 0.0001,
+    "weight_decay": 0.01,
+    "fused": true,
+    "capturable": true
+  },
+  "schedule": {
+    "eager_warmups": 2,
+    "initial_replays": 1,
+    "timed_replays": 21,
+    "actual_updates_required": 24
+  },
+  "oracle": {
+    "full_sites": true,
+    "all_atoms": true,
+    "max_abs": 0.0004,
+    "relative_l2": 0.0004,
+    "chunk_atoms": 64
+  },
+  "atom_density": 0.05,
+  "atom_count_policy": "int(density * input_sites * output_sites); truncate toward zero",
+  "tile_count": 8,
+  "sites_per_tile": 128,
+  "geometry_dtype": "float64",
+  "required_workers": [
+    "fourier-shared",
+    "fourier-direct",
+    "dense"
+  ]
+}
