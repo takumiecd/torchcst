@@ -1,4 +1,4 @@
-"""Isolated matched periodic matrix/factor complete-step research protocol.
+"""Matched periodic v1 and Fourier rev4 complete-step research protocol.
 
 This standalone protocol JSON is not the benchmark submission/DB schema.
 Numerical gates cover full axes and all atoms before and after 24 real updates.
@@ -177,11 +177,16 @@ def oracle_check(model, x, dy):
     }
 
 
-def state_gate(*, device="cuda", steps=20):
+def state_gate(*, device="cuda", steps=20, fourier_case=None):
     """Same-cotangent public optimizer truth, including seam crossings and moments."""
-    model = fixture.fixture(32, 3, atoms=17).to(device)
+    if fourier_case is None:
+        model = fixture.fixture(32, 3, atoms=17).to(device)
+    else:
+        from benchmarks.cuda.linear import fourier_profile_product as ff
+
+        model = ff.fixture(fourier_case).to(device)
     with torch.no_grad():
-        model.atoms.p[:, 2] = 32 - 1e-5
+        model.atoms.p[:, 2] = model.chart.geometry.periods[0] - 1e-5
         model.atoms.p[:, 3] = 1e-5
     reference = copy.deepcopy(model)
     actual = torch.optim.AdamW(
@@ -642,13 +647,428 @@ def assess(records):
     }
 
 
+# Rev4 extends this runner with an explicitly different mathematical fixture.
+# Legacy periodic v1 cases and qualification rules above remain unchanged.
+FOURIER_KINDS = (
+    "fourier-shared",
+    "fourier-direct",
+    "torch-factored",
+    "torch-shared",
+    "dense",
+)
+FOURIER_PRIMARY = ("fourier-shared", "fourier-direct", "torch-factored", "dense")
+FOURIER_CATALOG = Path(__file__).with_name("plans-fourier-tiles.json")
+
+
+def bind_fourier_plan(model, kind):
+    if kind == "torch-factored":
+        return None
+    from benchmarks.cuda.linear.manifest import REGISTRY, decode_catalog
+    from torchcst import (
+        DefaultRecipe,
+        ExecutionPlan,
+        FixedSelector,
+        make_algorithm_registry,
+    )
+
+    if kind == "torch-shared":
+        plan = ExecutionPlan("torch_fourier_tiles", "v1", DefaultRecipe())
+        registry = make_algorithm_registry()
+    else:
+        from torchcst._backends.cuda.algorithms.linear.fourier_tiles.recipe import (
+            FourierTilesRecipe,
+        )
+
+        entries = decode_catalog(json.loads(FOURIER_CATALOG.read_text()))
+        plan = next(entry.plan for entry in entries if entry.id == kind)
+        if (
+            plan.algorithm_id != "research_cuda_fourier_tiles_triton"
+            or plan.algorithm_revision != "v1"
+        ):
+            raise ValueError("requires the frozen Fourier Triton revision")
+        if plan.recipe != FourierTilesRecipe(
+            strategy="shared" if kind == "fourier-shared" else "direct",
+            block_atoms=32,
+            block_batch=16,
+        ):
+            raise ValueError("requires the frozen shared/direct recipe")
+        registry = REGISTRY
+    registry.validate_plan(plan)
+    model.selector = FixedSelector(plan, registry=registry)
+    return registry.dump_plan(plan)
+
+
+def fourier_oracle_check(model, x, dy):
+    from benchmarks.cuda.linear import fourier_profile_product as ff
+
+    truth = ff.oracle_vjp(model, x, dy)
+    xx = x.detach().clone().requires_grad_()
+    y = model(xx)
+    gx, gp = torch.autograd.grad(y, (xx, model.atoms.p), dy)
+    errors = {}
+    for name, actual, expected in zip(
+        ("Y", "dX", "all_dP"), (y, gx, gp), truth, strict=True
+    ):
+        metric = finite_error(name, actual.detach().cpu(), expected)
+        if metric["max_abs"] > 4e-4 or metric["relative_l2"] > 4e-4:
+            raise AssertionError((name, metric))
+        errors[name] = metric
+    radial = (gp[:, :2] * model.atoms.p[:, :2]).sum(-1)
+    require_finite("task stop-gradient radial cotangent", radial)
+    return {
+        "status": "PASS",
+        "scope": "independent CPU FP64 native H squared at every global site; all atom cotangents; atom chunks64",
+        "errors": errors,
+        "max_abs_radial_task_gradient": float(radial.detach().abs().max()),
+    }
+
+
+def fourier_worker(case, kind, *, phases=False, verify_only=False):
+    from benchmarks.cuda.linear import fourier_profile_product as ff
+
+    ff.load_case(case)
+    torch.backends.cuda.matmul.allow_tf32 = False
+    torch.backends.cudnn.allow_tf32 = False
+    torch.set_float32_matmul_precision("highest")
+    size, batch = case["size"], case["batch"]
+    result = {
+        "schema": "fourier-worker.research.v4",
+        "status": "RUNNING",
+        "kind": kind,
+        "size": size,
+        "batch": batch,
+        "atoms": None if kind == "dense" else case["atoms"],
+        "case_definition": case,
+        **source_metadata(),
+    }
+    result["plan_catalog_sha256"] = hashlib.sha256(
+        FOURIER_CATALOG.read_bytes()
+    ).hexdigest()
+    result["case_sha256"] = hashlib.sha256(
+        json.dumps(case, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    stage = "fixture"
+    try:
+        xx, target, dy = shared_inputs(size, batch=batch, seed=case["seed"])
+        x, target, dy = xx.cuda().requires_grad_(), target.cuda(), dy.cuda()
+        dense = kind == "dense"
+        model = (
+            dense_fixture(size, seed=case["seed"]).cuda()
+            if dense
+            else ff.fixture(case).cuda()
+        )
+        result["plan"] = None if dense else bind_fourier_plan(model, kind)
+        result["initial_hashes"] = {
+            "parameters": tensor_hash(next(model.parameters())),
+            "x": tensor_hash(x),
+            "target": tensor_hash(target),
+            "dy": tensor_hash(dy),
+        }
+        result["fixture"] = None if dense else fixture_metadata(model)
+        result["runtime"] = {
+            "gpu": torch.cuda.get_device_name(0),
+            "torch": torch.__version__,
+            "cuda": torch.version.cuda,
+            "triton": __import__("triton").__version__,
+            "tf32": False,
+            "dtype": "float32",
+        }
+        width0 = None if dense else ff.widths(model).detach().cpu()
+        stage = "initial-full-oracle"
+        result["initial_oracle"] = None if dense else fourier_oracle_check(model, x, dy)
+        step = TrainingStep(model, x, target, dense=dense)
+        model.zero_grad(set_to_none=True)
+        x.grad = None
+        torch.cuda.synchronize()
+        gc.collect()
+        torch.cuda.empty_cache()
+        torch.cuda.reset_peak_memory_stats()
+        memory_start = {
+            "allocated_bytes": torch.cuda.memory_allocated(),
+            "reserved_bytes": torch.cuda.memory_reserved(),
+        }
+        stage = "primary-capture-and-replay"
+        graph, outputs = capture(step)
+        peaks_capture = {
+            "allocated_bytes": torch.cuda.max_memory_allocated(),
+            "reserved_bytes": torch.cuda.max_memory_reserved(),
+        }
+        samples = []
+        for _ in range(ROUNDS):
+            torch.cuda.synchronize()
+            start = time.perf_counter()
+            graph.replay()
+            torch.cuda.synchronize()
+            samples.append((time.perf_counter() - start) * 1000)
+        import statistics
+
+        timing = (
+            None
+            if verify_only
+            else {"median_ms": statistics.median(samples), "samples_ms": samples}
+        )
+        peaks = {
+            "allocated_bytes": torch.cuda.max_memory_allocated(),
+            "reserved_bytes": torch.cuda.max_memory_reserved(),
+        }
+        validate_measurement(timing, peaks)
+        clock = int(step.opt.state[next(model.parameters())]["step"])
+        if clock != 24:
+            raise AssertionError(("primary expected actual clock24", clock))
+        for value in outputs:
+            require_finite("final output/loss", value)
+        require_finite("final dX", x.grad)
+        for parameter in model.parameters():
+            require_finite("final parameter", parameter)
+            require_finite("final gradient", parameter.grad)
+            for value in step.opt.state[parameter].values():
+                if isinstance(value, torch.Tensor):
+                    require_finite("optimizer state", value)
+        result.update(
+            timing=timing,
+            peak_capture_replay=peaks,
+            peak_warmup_capture=peaks_capture,
+            memory_before_warmup=memory_start,
+            actual_updates=clock,
+            schedule=case["schedule"],
+            optimizer=case["optimizer"],
+            gpu_process_bytes=None,
+            memory_scope="own model/optimizer/X/target/dy; warmup/capture/replay included; independent CPU oracle and diagnostics excluded",
+        )
+        stage = "updated-full-oracle"
+        result["updated_oracle"] = None if dense else fourier_oracle_check(model, x, dy)
+        if int(step.opt.state[next(model.parameters())]["step"]) != 24:
+            raise AssertionError("oracle changed primary optimizer clock")
+        if not dense:
+            width1 = ff.widths(model).detach().cpu()
+            changed = int((width0 != width1).sum())
+            if not changed:
+                raise AssertionError("live widths did not evolve")
+            result["width_changes"] = {
+                "changed_atoms": changed,
+                "max_abs_change": float((width0 - width1).abs().max()),
+                "initial_range": [float(width0.min()), float(width0.max())],
+                "final_range": [float(width1.min()), float(width1.max())],
+                "initial_hash": tensor_hash(width0),
+                "final_hash": tensor_hash(width1),
+            }
+        result["final_parameter_hash"] = tensor_hash(next(model.parameters()))
+        stage = "separate-phase-diagnostics"
+        result["phase_diagnostics"] = phase_diagnostics(step) if phases else None
+        result["verify_only"] = verify_only
+        result["status"] = "PASS"
+    except torch.cuda.OutOfMemoryError as error:
+        result.update(status="OOM", failed_stage=stage, error=str(error))
+    except Exception as error:  # noqa: BLE001 - Preserve failed validation before nonzero exit.
+        result.update(
+            status="FAIL",
+            failed_stage=stage,
+            error=str(error),
+            traceback=traceback.format_exc(),
+        )
+    if result["status"] != "PASS":
+        # Qualification failures must never publish a timing that could be selected.
+        result["timing"] = None
+    return result
+
+
+def validate_fourier_record(record):
+    from benchmarks.cuda.linear import fourier_profile_product as ff
+
+    if record["kind"] not in FOURIER_KINDS or record["status"] not in (
+        "PASS",
+        "FAIL",
+        "OOM",
+    ):
+        raise ValueError("invalid Fourier worker state")
+    if record["status"] != "PASS":
+        if (
+            not record.get("failed_stage")
+            or not record.get("error")
+            or record.get("timing") is not None
+        ):
+            raise ValueError("failure must retain stage/error without timings")
+        return
+    case = ff.load_case(record["case_definition"])
+    if (
+        record["actual_updates"] != 24
+        or record["batch"] != case["batch"]
+        or record["size"] != case["size"]
+    ):
+        raise ValueError("requires frozen Fourier dimensions and actual updates")
+    if record["runtime"]["tf32"] or record["runtime"]["dtype"] != "float32":
+        raise ValueError("requires IEEE FP32")
+    validate_measurement(record["timing"], record["peak_capture_replay"])
+    if record["kind"] != "dense":
+        if record["atoms"] != case["atoms"]:
+            raise ValueError("atom count differs from Fourier case")
+        for name in ("initial_oracle", "updated_oracle"):
+            gate = record[name]
+            if gate["status"] != "PASS" or set(gate["errors"]) != {"Y", "dX", "all_dP"}:
+                raise ValueError("incomplete full Fourier gate")
+            if any(
+                not all(0 <= error[key] <= 4e-4 for key in ("max_abs", "relative_l2"))
+                for error in gate["errors"].values()
+            ):
+                raise ValueError("failed numerical gate")
+        if not 0 < record["width_changes"]["changed_atoms"] <= record["atoms"]:
+            raise ValueError("live widths must evolve")
+
+
+def assess_fourier(records):
+    for r in records:
+        validate_fourier_record(r)
+    kinds = {r["kind"]: r for r in records}
+    if any(
+        key not in kinds or kinds[key]["status"] != "PASS" for key in FOURIER_PRIMARY
+    ):
+        return {
+            "status": "FAIL",
+            "reason": "required shared/direct/Torch/dense worker missing or not PASS",
+        }
+    if any(r["status"] == "FAIL" for r in records):
+        return {"status": "FAIL", "reason": "numerical/runtime failure retained"}
+    valid = [r for r in records if r["status"] == "PASS"]
+    for key in ("x", "target", "dy"):
+        if len({r["initial_hashes"][key] for r in valid}) != 1:
+            raise ValueError(f"unmatched {key}")
+    cst = [r for r in valid if r["kind"] != "dense"]
+    if len({r["initial_hashes"]["parameters"] for r in cst}) != 1:
+        raise ValueError("unmatched CST parameters")
+    for key in (
+        "source_hashes",
+        "source_commit",
+        "source_commit_hint",
+        "case_sha256",
+        "plan_catalog_sha256",
+    ):
+        if len({json.dumps(r[key], sort_keys=True) for r in valid}) != 1:
+            raise ValueError(f"unmatched {key}")
+    for key in ("declaration_sha256", "tensor_hashes", "tensor_specs"):
+        if len({json.dumps(r["fixture"][key], sort_keys=True) for r in cst}) != 1:
+            raise ValueError(f"unmatched Fourier fixture {key}")
+    if any(r.get("verify_only") for r in valid):
+        return {"status": "PASS", "verification_only": True, "qualifies": False}
+    shared = kinds["fourier-shared"]
+    comparisons = {}
+    for name in ("fourier-direct", "torch-factored", "torch-shared", "dense"):
+        if name in kinds and kinds[name]["status"] == "PASS":
+            control = kinds[name]
+            comparisons[name] = {
+                "time_ratio": shared["timing"]["median_ms"]
+                / control["timing"]["median_ms"],
+                "allocated_ratio": shared["peak_capture_replay"]["allocated_bytes"]
+                / control["peak_capture_replay"]["allocated_bytes"],
+                "reserved_ratio": shared["peak_capture_replay"]["reserved_bytes"]
+                / control["peak_capture_replay"]["reserved_bytes"],
+            }
+    direct = comparisons["fourier-direct"]
+    return {
+        "status": "PASS",
+        "comparisons": comparisons,
+        "qualifies": (direct["time_ratio"] < 0.97 and direct["allocated_ratio"] <= 1)
+        or (direct["allocated_ratio"] <= 0.95 and direct["time_ratio"] <= 1.03),
+        "gate": ">3% faster/no allocated increase OR >=5% lower allocated/<=3% slower versus native direct",
+        "dense_scope": "different parameterization; engineering control",
+        "independent_runs": 1,
+    }
+
+
+def fourier_main(args, parser, case):
+    if args.size is not None and args.size != case["size"]:
+        parser.error("explicit size differs from Fourier case")
+    if args.rho is not None:
+        parser.error("Fourier case uses a variable width distribution, not rho")
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    if args.state_gate:
+        result = state_gate(fourier_case=case)
+    elif args.worker:
+        if args.worker not in FOURIER_KINDS:
+            parser.error("requires a Fourier worker alias")
+        result = fourier_worker(
+            case, args.worker, phases=args.phases, verify_only=args.verify_only
+        )
+        validate_fourier_record(result)
+    else:
+        # Torch shared tiles is a CPU FP64 reference and remains an explicit
+        # diagnostic alias; CUDA cohorts default to the four executable controls.
+        plans = list(FOURIER_PRIMARY) if args.plans is None else args.plans
+        if (
+            len(set(plans)) != len(plans)
+            or not set(FOURIER_PRIMARY) <= set(plans)
+            or not set(plans) <= set(FOURIER_KINDS)
+        ):
+            parser.error(
+                "cohort requires unique Fourier shared/direct/Torch/dense workers"
+            )
+        records = []
+        for kind in reversed(plans) if args.reverse else plans:
+            output = args.output.parent / f"{args.output.stem}-{kind}.json"
+            command = [
+                sys.executable,
+                "-m",
+                __spec__.name,
+                "--worker",
+                kind,
+                "--case",
+                str(args.case),
+                "--output",
+                str(output),
+            ]
+            if args.phases:
+                command.append("--phases")
+            if args.verify_only:
+                command.append("--verify-only")
+            try:
+                completed = subprocess.run(
+                    command, check=False, timeout=args.worker_timeout
+                )
+            except subprocess.TimeoutExpired:
+                record = {
+                    "schema": "fourier-worker.research.v4",
+                    "kind": kind,
+                    "status": "FAIL",
+                    "failed_stage": "worker-deadline",
+                    "error": f"worker exceeded predeclared {args.worker_timeout}s",
+                    "timing": None,
+                }
+                output.write_text(json.dumps(record, indent=2))
+                records.append(record)
+                break
+            if not output.exists():
+                raise RuntimeError(f"worker {kind} exited without artifact")
+            record = json.loads(output.read_text())
+            if completed.returncode and record["status"] == "PASS":
+                raise RuntimeError("nonzero exit cannot certify PASS")
+            records.append(record)
+            if record["status"] != "PASS" and kind in FOURIER_PRIMARY:
+                break
+        result = {
+            "schema": "fourier-comparison.research.v4",
+            "records": records,
+            "assessment": assess_fourier(records),
+            "independent_runs": 1,
+            "submission_schema": False,
+        }
+    args.output.write_text(json.dumps(result, indent=2, allow_nan=False))
+    if args.worker and result["status"] == "OOM":
+        return
+    if result.get("status", result.get("assessment", {}).get("status")) != "PASS":
+        raise SystemExit(1)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--size", type=int, choices=(1024, 2048))
+    parser.add_argument("--size", type=int, choices=(300, 700, 2000, 1024, 2048))
     parser.add_argument("--rho", type=float, choices=(3, 8))
     parser.add_argument("--case", type=Path)
-    parser.add_argument("--plans", nargs="+", choices=KINDS, default=list(KINDS))
-    parser.add_argument("--worker", choices=KINDS)
+    parser.add_argument(
+        "--plans",
+        nargs="+",
+        choices=tuple(dict.fromkeys(KINDS + FOURIER_KINDS)),
+        default=None,
+    )
+    parser.add_argument("--worker", choices=tuple(dict.fromkeys(KINDS + FOURIER_KINDS)))
     parser.add_argument("--state-gate", action="store_true")
     parser.add_argument("--phases", action="store_true")
     parser.add_argument("--verify-only", action="store_true")
@@ -657,6 +1077,12 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if args.case:
+        case_data = json.loads(args.case.read_text())
+        if case_data.get("schema") == "fourier-case.research.v4":
+            from benchmarks.cuda.linear import fourier_profile_product as ff
+
+            fourier_main(args, parser, ff.load_case(case_data))
+            return
         case = load_case(args.case)
         if args.size is not None and args.size != case["size"]:
             parser.error("explicit size differs from frozen case")
@@ -666,6 +1092,12 @@ def main():
     else:
         args.size = 1024 if args.size is None else args.size
         args.rho = 3 if args.rho is None else args.rho
+    if args.size not in (1024, 2048):
+        parser.error("nonlegacy sizes require an explicit Fourier rev4 case")
+    if args.plans is None:
+        args.plans = list(KINDS)
+    if not set(args.plans) <= set(KINDS) or (args.worker and args.worker not in KINDS):
+        parser.error("Fourier plans require a Fourier rev4 case")
     args.output.parent.mkdir(parents=True, exist_ok=True)
     if args.state_gate:
         result = state_gate()

@@ -10,6 +10,9 @@ from pathlib import Path
 
 from benchmarks.cuda.linear.local_product import SEMANTICS as LOCAL_SEMANTICS
 from benchmarks.cuda.linear.local_product import LocalAlgorithm
+from torchcst._backends.cuda.algorithms.linear.fourier_tiles.algorithm import (
+    FourierTilesAlgorithm,
+)
 from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip import (
     NormalizedFullAlgorithm,
     NormalizedWindowAlgorithm,
@@ -145,6 +148,7 @@ REGISTRY.register(NormalizedWindowAlgorithm())
 REGISTRY.register(LocalAlgorithm())
 REGISTRY.register(PeriodicMatrixAlgorithm())
 REGISTRY.register(PeriodicFactorAlgorithm())
+REGISTRY.register(FourierTilesAlgorithm())
 REGISTRY.register(ProductAlgorithm())
 REGISTRY.register(StripProductAlgorithm())
 REGISTRY.register(GlobalProductAlgorithm())
