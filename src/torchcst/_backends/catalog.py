@@ -16,6 +16,7 @@ def make_registry():
     from .cuda.algorithms.polar_update import FusedPolarUpdateAlgorithm
     from .torch.algorithms.atom_update import AtomUpdateAlgorithm
     from .torch.algorithms.linear.factored import FactoredAlgorithm
+    from .torch.algorithms.linear.fourier_tiles import FourierTilesAlgorithm
     from .torch.algorithms.linear.materialized import MaterializedAlgorithm
     from .torch.algorithms.linear.normalized_radial import NormalizedRadialAlgorithm
     from .torch.algorithms.linear.tiled import TiledAlgorithm
@@ -25,6 +26,7 @@ def make_registry():
     for algorithm in (
         MaterializedAlgorithm(),
         FactoredAlgorithm(),
+        FourierTilesAlgorithm(),
         TiledAlgorithm(),
         NormalizedRadialAlgorithm(),
         NormalizedFullAlgorithm(),

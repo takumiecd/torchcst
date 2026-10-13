@@ -7,6 +7,8 @@ from typing import Literal
 from .normalization import NormalizationSpec
 from .parameterizations import FixedWidthSpec, ParameterizationSpec, PolarAmpWidthSpec
 from .profiles import ProfileSpec
+from .profiles.fourier import PeriodicFourierSpec
+from .support import FourierTileSupportSpec
 
 AtomInit = Literal["balanced", "uniform"]
 
@@ -90,6 +92,23 @@ class KernelSpec:
             isinstance(p, ProfileBinding) for p in self.profiles
         ):
             raise TypeError("profiles must be an immutable tuple of bindings")
+        periodic = any(
+            isinstance(p.profile, PeriodicFourierSpec) for p in self.profiles
+        )
+        support = getattr(self, "tile_support", None)
+        if (support is not None or periodic or self.revision == 4) and (
+            self.composition != "profile_product"
+            or self.revision != 4
+            or not isinstance(support, FourierTileSupportSpec)
+            or not self.profiles
+            or not all(
+                isinstance(p.profile, PeriodicFourierSpec) for p in self.profiles
+            )
+            or len(support.tile_widths) != len(self.profiles)
+        ):
+            raise ValueError(
+                "periodic Fourier profiles require revision 4 and matching tile support"
+            )
         if self.parameterization is not None and not isinstance(
             self.parameterization, ParameterizationSpec
         ):
@@ -157,3 +176,10 @@ class KernelSpec:
                 raise ValueError("separable profiles normalize over chart_sites")
         else:
             raise ValueError("unknown kernel composition")
+
+
+@dataclass(frozen=True, kw_only=True)
+class FourierProductKernelSpec(KernelSpec):
+    """Revision-4 extension without changing older serialized KernelSpec fields."""
+
+    tile_support: FourierTileSupportSpec

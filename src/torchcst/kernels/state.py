@@ -223,6 +223,8 @@ class KernelState(nn.Module):
         }
         if self.spec.composition == "profile_product":
             result["normalization"] = asdict(self.spec.normalization)
+        if getattr(self.spec, "tile_support", None) is not None:
+            result["tile_support"] = asdict(self.spec.tile_support)
         return result
 
     def set_extra_state(self, state):
