@@ -70,9 +70,9 @@ def test_nonrepresentable_upper_width_keeps_convex_template_fraction(strategy):
         layer.atoms.p.copy_(
             layer.atoms.p.new_tensor(
                 [
-                    [10.0, 1.0, 0.025, 99.975],
-                    [-10.0, 1.0, 10.001, 9.999],
-                    [10.0, 1.0, 20.025, 19.975],
+                    [0.0, 2.0, 0.025, 99.975],
+                    [0.0, 2.0, 10.001, 9.999],
+                    [0.0, 2.0, 20.025, 19.975],
                 ]
             )
         )
