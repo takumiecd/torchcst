@@ -81,7 +81,8 @@ N1024、A=int(.05*1024²)=52428、B32、D102.4、spacing0.1、sigma0.1..10、8/1
 max_abs/relativeL2 gateは4e-4。norm floor、retained saves、live幅、Graph/public optimizerも検査。
 完全stepはprepare/L2/forward/MSE/backward/fusedAdamW/Polar/periodic updateを含む。
 未計装の隔離workerで中央値とcapture/replay allocated/reservedを記録。
-GPU性能は実測後に追記。CPUだけの正しさをGPUの速度採用と解釈しない。
+L4で実測済み。共有実装は全atomの正しさを保って直接実装を大幅に上回るが、
+このdensity条件ではdenseより遅い。公開CUDA dispatcherには採用しない。
 
 ```python
 from torchcst import MaternMixtureSpec, BandwidthBounds, presets
@@ -96,3 +97,38 @@ python -m benchmarks.cuda.linear.periodic_comparison \
   --case benchmarks/cuda/linear/cases/matern-mixture-1024-a52428-b32-k16.json \
   --plans matern-shared matern-direct dense --output output/matern/cohort.json
 ```
+
+## 2026-10-14の検証結果
+
+source `a7f23ce655d10525bb3ae49d0a2cc106dc33a7d6`、NVIDIA L4、
+Torch2.11.0+cu130 / CUDA13.0 / Triton3.6.0、IEEE FP32、座標FP64、実行block64。
+CPU1,900件、L4上82件の回帰検査が合格した。後者は実GPU66件とCPU原点検査16件。
+8/16幅それぞれ2回の隔離process cohortを逆順で実行し、各workerで21時間sample、
+実際のoptimizer更新24回を確認した。21 samplesを21独立runと数えない。
+初期と更新後のY/dX/全52,428 atomsのdPは独立FP64 oracleの4e-4 gateを通過。
+共有実装の最大絶対誤差はY8.51e-6、dX6.66e-6、all-dP1.044e-4。
+全atomのlive幅が更新された。原点・floor・retained saves・Graphも検証した。
+
+| 完全step | 中央値ms（2runsの範囲） | peak allocated MiB | peak reserved MiB |
+| --- | ---: | ---: | ---: |
+| 共有8幅 | 2.7968–2.7988 | 47.17 | 82 |
+| 共有16幅 | 2.8771–2.8777 | 55.30 | 82 |
+| 直接8/16幅 | 232.42–232.94 | 889.66 | 922 |
+| dense | 0.08447–0.08475 | 33.00 | 86 |
+
+allocated/reservedはwarmup/capture/replay込み。独立CPU oracleと診断を除く。
+GPU process全体のVRAMは未測定。denseは同じshape/batch/精度/optimizerの工学的controlで、
+同一parameterizationの精度比較ではない。runnerの`qualifies=true`は直接実装との比較であり、
+denseへの採用を意味しない。共有は直接比約81–83倍速くallocatedを約94–95%減らしたが、
+dense比では約33–34倍遅く、allocatedも約1.43–1.68倍だった。
+
+別Graphでの診断では、固定初期forwardの幅・L2・係数準備が両bankとも約1.221ms、
+入力共有scanは8幅0.0266ms/16幅0.0502ms、atom queryは約0.042–0.043ms、
+出力scatter/随伴scanは約0.146–0.173msだった。更新後の別copyでは
+forward/loss約1.44–1.48ms、backward約1.19–1.23ms、optimizer約0.171–0.172ms。
+これらの計装値を主測定へ足し合わせたり差し引いたりしない。
+共有scan自体は軽く、次の最適化候補はatomごとの幅/L2/係数準備とbackward側の集計。
+profile定義と正しさを先に確立し、速度最適化は次の段階とする。
+
+再現とraw evidenceの保全先は
+[研究記録](research-history/cuda-linear/20261014-matern-mixture.md)に記載する。
