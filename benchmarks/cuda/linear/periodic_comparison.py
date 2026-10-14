@@ -662,9 +662,16 @@ FOURIER_CATALOG = Path(__file__).with_name("plans-fourier-tiles.json")
 
 MATERN_PRIMARY = ("matern-shared", "matern-direct", "dense")
 MATERN_CATALOG = Path(__file__).with_name("plans-matern-mixture.json")
+DYADIC_PRIMARY = ("matern-shared", "matern-stream1", "matern-stream2", "dense")
+DYADIC_CATALOG = Path(__file__).with_name("plans-matern-dyadic.json")
+DYADIC_SCHEMA = "matern-dyadic-case.research.v1"
 
 
 def profile_protocol(case):
+    if case is not None and case.get("schema") == DYADIC_SCHEMA:
+        from benchmarks.cuda.linear import matern_dyadic_product
+
+        return matern_dyadic_product
     if case is not None and case.get("schema") == "matern-mixture-case.research.v7":
         from benchmarks.cuda.linear import matern_mixture_product
 
@@ -675,10 +682,18 @@ def profile_protocol(case):
 
 
 def profile_catalog(case):
-    return MATERN_CATALOG if fourier_revision(case) == "v7" else FOURIER_CATALOG
+    if case.get("schema") == DYADIC_SCHEMA:
+        return DYADIC_CATALOG
+    return (
+        MATERN_CATALOG
+        if fourier_revision(case) in ("v7", "dyadic-v1")
+        else FOURIER_CATALOG
+    )
 
 
 def fourier_primary(case):
+    if case.get("schema") == DYADIC_SCHEMA:
+        return DYADIC_PRIMARY
     if case["schema"] == "matern-mixture-case.research.v7":
         return MATERN_PRIMARY
     return (
@@ -689,6 +704,8 @@ def fourier_primary(case):
 
 
 def worker_schema(case):
+    if case.get("schema") == DYADIC_SCHEMA:
+        return "matern-dyadic-worker.research.v1"
     family = (
         "matern-mixture"
         if case["schema"] == "matern-mixture-case.research.v7"
@@ -702,12 +719,45 @@ def comparison_schema(case):
 
 
 def fourier_revision(case):
+    if case.get("schema") == DYADIC_SCHEMA:
+        return "dyadic-v1"
     if case["schema"] == "matern-mixture-case.research.v7":
         return "v7"
     return "v5" if case["schema"] == "fourier-case.research.v5" else "v4"
 
 
-def bind_fourier_plan(model, kind):
+def bind_fourier_plan(model, kind, *, case=None):
+    if case is not None and case.get("schema") == DYADIC_SCHEMA:
+        from benchmarks.cuda.linear.manifest import REGISTRY, decode_catalog
+        from torchcst import FixedSelector
+        from torchcst._backends.cuda.algorithms.linear.matern_mixture.recipe import (
+            MaternMixtureRecipe,
+        )
+        from torchcst._backends.cuda.algorithms.linear.matern_streaming.recipe import (
+            MaternStreamingRecipe,
+        )
+
+        entries = decode_catalog(json.loads(DYADIC_CATALOG.read_text()))
+        plan = next(entry.plan for entry in entries if entry.id == kind)
+        if kind == "matern-shared":
+            expected_id = "research_cuda_matern_mixture_triton"
+            expected = MaternMixtureRecipe(strategy="shared", block_sites=64)
+        else:
+            expected_id = "research_cuda_matern_streaming_triton"
+            expected = MaternStreamingRecipe(
+                width_group=int(kind[-1]), block_sites=64, power_basis=True
+            )
+        if (
+            plan.algorithm_id != expected_id
+            or plan.algorithm_revision != "v1"
+            or plan.recipe != expected
+        ):
+            raise ValueError(
+                "requires frozen dyadic all-bank/streamed algorithm recipe"
+            )
+        REGISTRY.validate_plan(plan)
+        model.selector = FixedSelector(plan, registry=REGISTRY)
+        return REGISTRY.dump_plan(plan)
     if kind in ("matern-shared", "matern-direct"):
         from benchmarks.cuda.linear.manifest import REGISTRY, decode_catalog
         from torchcst import FixedSelector
@@ -770,7 +820,7 @@ def bind_fourier_plan(model, kind):
 def fourier_oracle_check(model, x, dy, *, case=None):
     ff = profile_protocol(case)
 
-    if case is not None and fourier_revision(case) == "v7":
+    if case is not None and fourier_revision(case) in ("v7", "dyadic-v1"):
         truth = ff.oracle_vjp(model, x, dy, chunk=case["oracle"]["chunk_atoms"])
         scope = "independent CPU FP64 native periodic image sum at all sites; actual sampled norm derivatives and all atom cotangents; chunks64"
     elif case is not None and fourier_revision(case) == "v5":
@@ -810,7 +860,11 @@ def fourier_worker(case, kind, *, phases=False, verify_only=False):
     ff = profile_protocol(case)
 
     ff.load_case(case)
-    if fourier_revision(case) in ("v5", "v7") and kind not in fourier_primary(case):
+    if fourier_revision(case) in (
+        "v5",
+        "v7",
+        "dyadic-v1",
+    ) and kind not in fourier_primary(case):
         raise ValueError("density cohort permits only shared/direct/dense workers")
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
@@ -843,7 +897,7 @@ def fourier_worker(case, kind, *, phases=False, verify_only=False):
             if dense
             else ff.fixture(case).cuda()
         )
-        result["plan"] = None if dense else bind_fourier_plan(model, kind)
+        result["plan"] = None if dense else bind_fourier_plan(model, kind, case=case)
         result["initial_hashes"] = {
             "parameters": tensor_hash(next(model.parameters())),
             "x": tensor_hash(x),
@@ -942,6 +996,17 @@ def fourier_worker(case, kind, *, phases=False, verify_only=False):
                 "initial_hash": tensor_hash(width0),
                 "final_hash": tensor_hash(width1),
             }
+        if not dense and case.get("schema") == DYADIC_SCHEMA:
+            b0, b1 = width0.square(), width1.square()
+            result["user_sigma_changes"] = {
+                "meaning": "decay length b = internal Polar sigma**2",
+                "changed_atoms": int((b0 != b1).sum()),
+                "max_abs_change": float((b0 - b1).abs().max()),
+                "initial_range": [float(b0.min()), float(b0.max())],
+                "final_range": [float(b1.min()), float(b1.max())],
+                "initial_hash": tensor_hash(b0),
+                "final_hash": tensor_hash(b1),
+            }
         result["final_parameter_hash"] = tensor_hash(next(model.parameters()))
         stage = "separate-phase-diagnostics"
         result["phase_diagnostics"] = phase_diagnostics(step) if phases else None
@@ -965,9 +1030,11 @@ def fourier_worker(case, kind, *, phases=False, verify_only=False):
 def validate_fourier_record(record):
     ff = profile_protocol(record.get("case_definition"))
 
-    if record["kind"] not in (*FOURIER_KINDS, *MATERN_PRIMARY) or record[
-        "status"
-    ] not in (
+    if record["kind"] not in (
+        *FOURIER_KINDS,
+        *MATERN_PRIMARY,
+        *DYADIC_PRIMARY,
+    ) or record["status"] not in (
         "PASS",
         "FAIL",
         "OOM",
@@ -982,11 +1049,11 @@ def validate_fourier_record(record):
             raise ValueError("failure must retain stage/error without timings")
         return
     case = ff.load_case(record["case_definition"])
-    if fourier_revision(case) == "v7" and (
+    if fourier_revision(case) in ("v7", "dyadic-v1") and (
         (record.get("timing") is None) != bool(record.get("verify_only", False))
     ):
         raise ValueError("Matern timing presence must match verification-only mode")
-    if fourier_revision(case) in ("v5", "v7") and (
+    if fourier_revision(case) in ("v5", "v7", "dyadic-v1") and (
         record["schema"] != worker_schema(case)
         or record["kind"] not in fourier_primary(case)
         or record["weight_shape"] != [1024, 1024]
@@ -1025,7 +1092,7 @@ def assess_fourier(records):
     primary = fourier_primary(cases[0]) if cases else FOURIER_PRIMARY
     if (
         cases
-        and fourier_revision(cases[0]) == "v7"
+        and fourier_revision(cases[0]) in ("v7", "dyadic-v1")
         and len({json.dumps(case, sort_keys=True) for case in cases}) != 1
     ):
         raise ValueError("unmatched Matern case definitions")
@@ -1057,7 +1124,33 @@ def assess_fourier(records):
             raise ValueError(f"unmatched Fourier fixture {key}")
     if any(r.get("verify_only") for r in valid):
         return {"status": "PASS", "verification_only": True, "qualifies": False}
-    is_matern = bool(cases) and fourier_revision(cases[0]) == "v7"
+    if cases and cases[0].get("schema") == DYADIC_SCHEMA:
+        control = kinds["matern-shared"]
+        comparisons = {}
+        for name in ("matern-stream1", "matern-stream2", "dense"):
+            candidate = kinds[name]
+            ratios = {
+                "time_ratio": candidate["timing"]["median_ms"]
+                / control["timing"]["median_ms"],
+                "allocated_ratio": candidate["peak_capture_replay"]["allocated_bytes"]
+                / control["peak_capture_replay"]["allocated_bytes"],
+                "reserved_ratio": candidate["peak_capture_replay"]["reserved_bytes"]
+                / control["peak_capture_replay"]["reserved_bytes"],
+            }
+            ratios["allocated_reduction_bytes"] = (
+                control["peak_capture_replay"]["allocated_bytes"]
+                - candidate["peak_capture_replay"]["allocated_bytes"]
+            )
+            comparisons[name] = ratios
+        return {
+            "status": "PASS",
+            "comparisons_against_all_bank": comparisons,
+            "qualifies": False,
+            "gate": "fixed correctness required; memory objective reported without speed adoption gate",
+            "dense_scope": "different parameterization; engineering control",
+            "independent_runs": 1,
+        }
+    is_matern = bool(cases) and fourier_revision(cases[0]) in ("v7", "dyadic-v1")
     shared_name = "matern-shared" if is_matern else "fourier-shared"
     direct_name = "matern-direct" if is_matern else "fourier-direct"
     shared = kinds[shared_name]
@@ -1094,7 +1187,7 @@ def fourier_main(args, parser, case):
     if args.state_gate:
         result = state_gate(fourier_case=case)
     elif args.worker:
-        if args.worker not in (*FOURIER_KINDS, *MATERN_PRIMARY):
+        if args.worker not in (*FOURIER_KINDS, *MATERN_PRIMARY, *DYADIC_PRIMARY):
             parser.error("requires a Fourier worker alias")
         result = fourier_worker(
             case, args.worker, phases=args.phases, verify_only=args.verify_only
@@ -1104,7 +1197,11 @@ def fourier_main(args, parser, case):
         # Torch shared tiles is a CPU FP64 reference and remains an explicit
         # diagnostic alias; CUDA cohorts default to the four executable controls.
         primary = fourier_primary(case)
-        allowed = primary if fourier_revision(case) in ("v5", "v7") else FOURIER_KINDS
+        allowed = (
+            primary
+            if fourier_revision(case) in ("v5", "v7", "dyadic-v1")
+            else FOURIER_KINDS
+        )
         plans = list(primary) if args.plans is None else args.plans
         if (
             len(set(plans)) != len(plans)
@@ -1176,11 +1273,16 @@ def main():
     parser.add_argument(
         "--plans",
         nargs="+",
-        choices=tuple(dict.fromkeys(KINDS + FOURIER_KINDS + MATERN_PRIMARY)),
+        choices=tuple(
+            dict.fromkeys(KINDS + FOURIER_KINDS + MATERN_PRIMARY + DYADIC_PRIMARY)
+        ),
         default=None,
     )
     parser.add_argument(
-        "--worker", choices=tuple(dict.fromkeys(KINDS + FOURIER_KINDS + MATERN_PRIMARY))
+        "--worker",
+        choices=tuple(
+            dict.fromkeys(KINDS + FOURIER_KINDS + MATERN_PRIMARY + DYADIC_PRIMARY)
+        ),
     )
     parser.add_argument("--state-gate", action="store_true")
     parser.add_argument("--phases", action="store_true")
@@ -1195,6 +1297,7 @@ def main():
             "fourier-case.research.v4",
             "fourier-case.research.v5",
             "matern-mixture-case.research.v7",
+            DYADIC_SCHEMA,
         ):
             ff = profile_protocol(case_data)
             fourier_main(args, parser, ff.load_case(case_data))

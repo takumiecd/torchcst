@@ -578,3 +578,10 @@ from torchcst._backends.cuda.algorithms.linear.matern_mixture.algorithm import (
 )
 
 REGISTRY.register(MaternMixtureAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.matern_streaming.algorithm import (
+    MaternStreamingAlgorithm,
+)
+
+REGISTRY.register(MaternStreamingAlgorithm())
