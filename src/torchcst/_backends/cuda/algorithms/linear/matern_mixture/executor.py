@@ -24,8 +24,10 @@ def _prepare(source, value, chart, layout, static, recipe):
 
     from . import kernels as k
 
-    sigma = coordinates.bandwidth_sigma(value, chart, source).detach().double()
-    amp = coordinates.amplitude(value, chart, source)
+    # Sub-site profiles amplify width-rounding errors in normalized centre VJPs.
+    precise_source = source.double()
+    sigma = coordinates.bandwidth_sigma(value, chart, precise_source).detach()
+    amp = coordinates.amplitude(value, chart, precise_source).to(source.dtype)
     geometry = []
     for dim, ((n, d, h), binding, tables) in enumerate(
         zip(layout, value.spec.profiles, static)
@@ -292,12 +294,12 @@ class _Matern(torch.autograd.Function):
                     num_warps=4,
                     enable_fp_fusion=False,
                 )
-                polar = source[:, :2]
+                polar = source[:, :2].double()
                 r2 = polar.square().sum(-1)
-                safe = r2.clamp_min(torch.finfo(source.dtype).tiny)
+                safe = r2.clamp_min(torch.finfo(polar.dtype).tiny)
                 inv = safe.rsqrt()
                 correction = torch.where(
-                    r2 >= torch.finfo(source.dtype).tiny, polar[:, 0] * inv / safe, 0
+                    r2 >= torch.finfo(polar.dtype).tiny, polar[:, 0] * inv / safe, 0
                 )
                 da0 = amplitude_max * (inv - polar[:, 0] * correction)
                 da1 = -amplitude_max * polar[:, 1] * correction
@@ -307,7 +309,7 @@ class _Matern(torch.autograd.Function):
                         grad[:, 1:],
                     ),
                     -1,
-                )
+                ).to(source.dtype)
         return dx, dp, None, None, None, None, None
 
 

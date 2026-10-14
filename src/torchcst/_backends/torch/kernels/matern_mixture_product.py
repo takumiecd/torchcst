@@ -11,7 +11,7 @@ def factors(state, chart, p):
     from .profile_product import _axis_positions, _product
 
     _, centres = coordinates._split(state, chart, p)
-    sigma = coordinates.bandwidth_sigma(state, chart, p).detach()
+    sigma = coordinates.bandwidth_sigma(state, chart, p.double()).detach()
     amp = coordinates.amplitude(state, chart, p)
     axes = [
         values(
@@ -19,12 +19,12 @@ def factors(state, chart, p):
             positions.double()[:, None] - centres.double()[None, :, dim],
             sigma,
             chart.geometry.periods[dim].double(),
-        ).to(p.dtype)
+        )
         for dim, (positions, profile) in enumerate(
             zip(_axis_positions(chart), state.profiles)
         )
     ]
-    dtype = torch.float32 if p.dtype in (torch.float16, torch.bfloat16) else p.dtype
+    dtype = torch.float64
     norm = torch.ones_like(amp, dtype=dtype)
     for axis in axes:
         norm = norm * torch.linalg.vector_norm(axis.to(dtype), dim=0)
