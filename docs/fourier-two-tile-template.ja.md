@@ -178,3 +178,13 @@ compact supportを最大限使ったbaselineの代表速度ではない。
 現在の分解では共有site走査を省けても、5万atom×33/65 featuresの縮約、係数更新、
 全atom勾配と保存量が残る。5% atom条件でその負担がdenseの3 GEMMより軽いことは示せなかった。
 別density・別分解の採用は、その条件での独立完全step測定を要する。
+
+
+## 方針停止
+
+2026-10-14、ユーザーがFourierを止めて`(1+|x-p|/s²)exp(-|x-p|/s²)`の検討へ移る方針を指定。
+PR105はmergeせずclose。正しい新profile・Torch/Triton実装・全実験の証拠は研究branchと
+ignored evidenceに保持し、dense dispatch採用も追加Fourier tuningも行わない。
+停止指示時に実行中だった別Graphの最終M16診断job
+`l4job-e65de87ebced4cef946ab9deca73adb9`は完了結果を回収・保存した。
+新しいGPU測定は投入しない。この診断をprimary完全stepへ加算/減算しない。
