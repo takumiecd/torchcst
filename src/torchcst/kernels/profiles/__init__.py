@@ -6,6 +6,7 @@ from .fourier import (
     ChebyshevSquareSpec,
     DPSSSquareSpec,
     KaiserSquareSpec,
+    KaiserTemplateSpec,
     PeriodicFourierSpec,
 )
 from .gaussian import GaussianSpec
@@ -16,6 +17,7 @@ __all__ = [
     "DPSSSquareSpec",
     "GaussianSpec",
     "KaiserSquareSpec",
+    "KaiserTemplateSpec",
     "PeriodicFourierSpec",
     "ProfileSpec",
     "TriangleSpec",

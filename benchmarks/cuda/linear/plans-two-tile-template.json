@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "plans": [
+    {
+      "id": "two-tile-shared",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_two_tile_template_triton",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "strategy": "shared",
+          "block_atoms": 32,
+          "block_batch": 16
+        }
+      }
+    },
+    {
+      "id": "two-tile-direct",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_two_tile_template_triton",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "strategy": "direct",
+          "block_atoms": 32,
+          "block_batch": 16
+        }
+      }
+    }
+  ]
+}

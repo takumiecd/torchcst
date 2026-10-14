@@ -24,3 +24,26 @@ class FourierTileSupportSpec:
             )
         ):
             raise ValueError("tile_widths must be a nonempty tuple of positive widths")
+
+
+@dataclass(frozen=True, kw_only=True)
+class FourierTwoTileSupportSpec:
+    """Owner and one neighbour, selected at the owner midpoint.
+
+    Centres in the left half (including the midpoint) use left+owner; the
+    right half uses owner+right. Local period is twice the tile width.
+    Exactly two tiles are retained, even when the numerical tail is small.
+    """
+
+    tile_widths: tuple[float, ...]
+
+    def __post_init__(self):
+        if (
+            not isinstance(self.tile_widths, tuple)
+            or not self.tile_widths
+            or any(
+                type(x) not in (int, float) or not math.isfinite(x) or x <= 0
+                for x in self.tile_widths
+            )
+        ):
+            raise ValueError("tile_widths must be a nonempty tuple of positive widths")

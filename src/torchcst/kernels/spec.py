@@ -7,8 +7,8 @@ from typing import Literal
 from .normalization import NormalizationSpec
 from .parameterizations import FixedWidthSpec, ParameterizationSpec, PolarAmpWidthSpec
 from .profiles import ProfileSpec
-from .profiles.fourier import PeriodicFourierSpec
-from .support import FourierTileSupportSpec
+from .profiles.fourier import KaiserTemplateSpec, PeriodicFourierSpec
+from .support import FourierTileSupportSpec, FourierTwoTileSupportSpec
 
 AtomInit = Literal["balanced", "uniform"]
 
@@ -96,7 +96,22 @@ class KernelSpec:
             isinstance(p.profile, PeriodicFourierSpec) for p in self.profiles
         )
         support = getattr(self, "tile_support", None)
-        if (support is not None or periodic or self.revision == 4) and (
+        template = any(isinstance(p.profile, KaiserTemplateSpec) for p in self.profiles)
+        two_tile = isinstance(support, FourierTwoTileSupportSpec)
+        if (template or two_tile or self.revision == 5) and (
+            self.composition != "profile_product"
+            or self.revision != 5
+            or not two_tile
+            or not self.profiles
+            or not all(type(p.profile) is KaiserTemplateSpec for p in self.profiles)
+            or len(support.tile_widths) != len(self.profiles)
+        ):
+            raise ValueError(
+                "Kaiser templates require revision 5 and matching two-tile support"
+            )
+        if (
+            periodic or self.revision == 4 or (support is not None and not two_tile)
+        ) and (
             self.composition != "profile_product"
             or self.revision != 4
             or not isinstance(support, FourierTileSupportSpec)
@@ -183,3 +198,10 @@ class FourierProductKernelSpec(KernelSpec):
     """Revision-4 extension without changing older serialized KernelSpec fields."""
 
     tile_support: FourierTileSupportSpec
+
+
+@dataclass(frozen=True, kw_only=True)
+class FourierTwoTileKernelSpec(KernelSpec):
+    """Revision-5 native width-template profile and two-tile support."""
+
+    tile_support: FourierTwoTileSupportSpec

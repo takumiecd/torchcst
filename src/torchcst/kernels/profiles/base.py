@@ -8,7 +8,7 @@ class ProfileSpec:
     """Identity fixes a function and its argument contract.
 
     Scalar profiles use dimensionless squared distance q. PeriodicFourierSpec
-    instead declares a function of angle and relative width.
+    and KaiserTemplateSpec instead declare functions of angle and width.
 
     Bandwidth, center coordinates and normalization belong to separate
     declarations. No tensor evaluation methods belong on this type.

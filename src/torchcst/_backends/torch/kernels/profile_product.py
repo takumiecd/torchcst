@@ -69,6 +69,10 @@ def _product(values):
 
 
 def factors(state, chart, p):
+    if state.spec.revision == 5:
+        from .fourier_two_tile_product import factors as two_tile_factors
+
+        return two_tile_factors(state, chart, p)
     if state.spec.revision == 4:
         from .fourier_product import factors as fourier_factors
 

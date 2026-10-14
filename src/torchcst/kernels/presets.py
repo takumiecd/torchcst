@@ -345,3 +345,41 @@ def polar_fourier_profile_product(*, profiles, tile_widths, **kwargs):
             "tile_support": support,
         }
     )
+
+
+def polar_two_tile_template_product(*, profiles, tile_widths, **kwargs):
+    """Native width templates with two selected tiles and P=2*tile width."""
+    from .profiles.fourier import KaiserTemplateSpec
+    from .spec import FourierTwoTileKernelSpec
+    from .support import FourierTwoTileSupportSpec
+
+    if (
+        not isinstance(profiles, tuple)
+        or not profiles
+        or not all(type(p) is KaiserTemplateSpec for p in profiles)
+    ):
+        raise TypeError("profiles must be a tuple of Kaiser template declarations")
+    base = polar_profile_product(profiles=(TriweightSpec(),) * len(profiles), **kwargs)
+    support = FourierTwoTileSupportSpec(tile_widths=tile_widths)
+    if len(profiles) != len(tile_widths):
+        raise ValueError("one tile width is required per profile")
+    bounds = base.parameterization.input_bounds
+    for spec, width in zip(profiles, tile_widths):
+        if bounds.maximum > width / 2:
+            raise ValueError("maximum width must not exceed half any tile width")
+        if (
+            spec.width_knots[0] > bounds.minimum
+            or spec.width_knots[-1] < bounds.maximum
+            or spec.width_knots[-1] > width / 2
+        ):
+            raise ValueError(
+                "width knots must cover bandwidth bounds and stay within half a tile"
+            )
+    return FourierTwoTileKernelSpec(
+        **{
+            **vars(base),
+            "profiles": tuple(profile(p, normalize=False) for p in profiles),
+            "revision": 5,
+            "tile_support": support,
+        }
+    )

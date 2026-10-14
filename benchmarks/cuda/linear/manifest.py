@@ -94,6 +94,9 @@ from torchcst._backends.cuda.algorithms.linear.torus_profile_product.onchip.algo
 from torchcst._backends.cuda.algorithms.linear.torus_profile_product.sparse_weight.algorithm import (
     TorusSparseWeightAlgorithm,
 )
+from torchcst._backends.cuda.algorithms.linear.two_tile_template.algorithm import (
+    TwoTileTemplateAlgorithm,
+)
 from torchcst._backends.registry import Registry
 from torchcst._backends.schema import ExecutionPlan
 from torchcst._backends.serialization import decode_json
@@ -149,6 +152,7 @@ REGISTRY.register(LocalAlgorithm())
 REGISTRY.register(PeriodicMatrixAlgorithm())
 REGISTRY.register(PeriodicFactorAlgorithm())
 REGISTRY.register(FourierTilesAlgorithm())
+REGISTRY.register(TwoTileTemplateAlgorithm())
 REGISTRY.register(ProductAlgorithm())
 REGISTRY.register(StripProductAlgorithm())
 REGISTRY.register(GlobalProductAlgorithm())

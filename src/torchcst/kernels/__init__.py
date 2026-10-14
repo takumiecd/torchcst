@@ -20,15 +20,21 @@ from .profiles import (
     TriweightSpec,
     WendlandC2Spec,
 )
-from .profiles.fourier import ChebyshevSquareSpec, DPSSSquareSpec, KaiserSquareSpec
+from .profiles.fourier import (
+    ChebyshevSquareSpec,
+    DPSSSquareSpec,
+    KaiserSquareSpec,
+    KaiserTemplateSpec,
+)
 from .spec import (
     AtomInit,
     FourierProductKernelSpec,
+    FourierTwoTileKernelSpec,
     KernelSpec,
     ProfileBinding,
     StatePolicySpec,
 )
-from .support import FourierTileSupportSpec
+from .support import FourierTileSupportSpec, FourierTwoTileSupportSpec
 
 __all__ = [
     "AmpWidthSpec",
@@ -41,8 +47,11 @@ __all__ = [
     "FixedWidthSpec",
     "FourierProductKernelSpec",
     "FourierTileSupportSpec",
+    "FourierTwoTileKernelSpec",
+    "FourierTwoTileSupportSpec",
     "GaussianSpec",
     "KaiserSquareSpec",
+    "KaiserTemplateSpec",
     "KernelOptions",
     "KernelSpec",
     "LogWidthSpec",

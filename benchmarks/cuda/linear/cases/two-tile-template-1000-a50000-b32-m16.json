@@ -1,0 +1,78 @@
+{
+  "schema": "fourier-case.research.v6",
+  "size": 1000,
+  "atoms": 50000,
+  "batch": 32,
+  "modes": 16,
+  "family": "kaiser-template",
+  "seed": 41,
+  "tile_width": 20.0,
+  "local_period": 40.0,
+  "spacing": 0.1,
+  "periods": [
+    100.0,
+    100.0
+  ],
+  "origin": [
+    0.0,
+    0.0
+  ],
+  "dtype": "float32",
+  "tf32": false,
+  "width_bounds": {
+    "minimum": 0.1,
+    "birth": 0.1,
+    "maximum": 10.0,
+    "upper_floor": 0.1
+  },
+  "initial_width_distribution": "geomspace_0.1_10",
+  "task_sigma_stop_gradient": true,
+  "normalization": {
+    "kind": "discrete_l2",
+    "domain": "operator_sites",
+    "floor": 1e-06
+  },
+  "optimizer": {
+    "name": "AdamW",
+    "lr": 0.0001,
+    "weight_decay": 0.01,
+    "fused": true,
+    "capturable": true
+  },
+  "schedule": {
+    "eager_warmups": 2,
+    "initial_replays": 1,
+    "timed_replays": 21,
+    "actual_updates_required": 24
+  },
+  "oracle": {
+    "full_sites": true,
+    "all_atoms": true,
+    "max_abs": 0.0004,
+    "relative_l2": 0.0004,
+    "chunk_atoms": 64
+  },
+  "atom_density": 0.05,
+  "atom_count_policy": "int(density * input_sites * output_sites); truncate toward zero",
+  "tile_count": 5,
+  "sites_per_tile": 200,
+  "geometry_dtype": "float64",
+  "width_knots": [
+    0.1,
+    0.3,
+    1.0,
+    3.0,
+    6.0,
+    10.0
+  ],
+  "concentration_floor": 1.0,
+  "width_interpolation": "linear native H squared in log sigma; clipped endpoints",
+  "tile_routing": "owner and left if delta <= tile/2, otherwise owner and right",
+  "normalization_scope": "actual operator sites; whole product floor exactly once",
+  "required_workers": [
+    "two-tile-shared",
+    "two-tile-direct",
+    "dense"
+  ],
+  "comparison_scope": "new N1000 mathematical revision; not matched to old N1024 results"
+}
