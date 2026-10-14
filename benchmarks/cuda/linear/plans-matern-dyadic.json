@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "plans": [
+    {
+      "id": "matern-shared",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_matern_mixture_triton",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "strategy": "shared",
+          "block_sites": 64
+        }
+      }
+    },
+    {
+      "id": "matern-stream1",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_matern_streaming_triton",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "width_group": 1,
+          "block_sites": 64,
+          "power_basis": true
+        }
+      }
+    },
+    {
+      "id": "matern-stream2",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_matern_streaming_triton",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "width_group": 2,
+          "block_sites": 64,
+          "power_basis": true
+        }
+      }
+    }
+  ]
+}

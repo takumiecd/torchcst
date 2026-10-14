@@ -1,0 +1,99 @@
+{
+  "schema": "matern-dyadic-case.research.v1",
+  "size": 1024,
+  "atoms": 52428,
+  "batch": 32,
+  "knot_count": 8,
+  "width_knots": [
+    0.2795084971874737,
+    0.39528470752104744,
+    0.5590169943749475,
+    0.7905694150420949,
+    1.118033988749895,
+    1.5811388300841898,
+    2.23606797749979,
+    3.1622776601683795
+  ],
+  "dyadic_powers": [
+    128,
+    64,
+    32,
+    16,
+    8,
+    4,
+    2,
+    1
+  ],
+  "user_decay_length_knots": [
+    0.078125,
+    0.15625,
+    0.3125,
+    0.625,
+    1.25,
+    2.5,
+    5.0,
+    10.0
+  ],
+  "decay_length": "user sigma = b = internal Polar sigma**2",
+  "user_sigma_bounds": [
+    0.1,
+    10.0
+  ],
+  "mixture": "adjacent convex interpolation in log(user sigma); equivalent to log(internal sigma)",
+  "power_profile": "(1 + n*r/10)*[exp(-r/10)]**n; fixed n = powers of two",
+  "periodization": "all periodic images, each fixed-width profile peak-normalized",
+  "atom_density": 0.05,
+  "atom_count_policy": "int(density * input_sites * output_sites); truncate toward zero",
+  "seed": 41,
+  "spacing": 0.1,
+  "periods": [
+    102.4,
+    102.4
+  ],
+  "origin": [
+    0.0,
+    0.0
+  ],
+  "dtype": "float32",
+  "geometry_dtype": "float64",
+  "tf32": false,
+  "width_bounds": {
+    "minimum": 0.31622776601683794,
+    "birth": 0.31622776601683794,
+    "maximum": 3.1622776601683795,
+    "upper_floor": 0.31622776601683794
+  },
+  "initial_width_distribution": "user decay length geomspace_0.1_10; internal sigma = sqrt(user sigma)",
+  "task_sigma_stop_gradient": true,
+  "normalization": {
+    "kind": "discrete_l2",
+    "domain": "operator_sites",
+    "floor": 1e-06
+  },
+  "optimizer": {
+    "name": "AdamW",
+    "lr": 0.0001,
+    "weight_decay": 0.01,
+    "fused": true,
+    "capturable": true
+  },
+  "schedule": {
+    "eager_warmups": 2,
+    "initial_replays": 1,
+    "timed_replays": 21,
+    "actual_updates_required": 24
+  },
+  "oracle": {
+    "full_sites": true,
+    "all_atoms": true,
+    "max_abs": 0.0004,
+    "relative_l2": 0.0004,
+    "chunk_atoms": 64
+  },
+  "required_workers": [
+    "matern-shared",
+    "matern-stream1",
+    "matern-stream2",
+    "dense"
+  ]
+}
