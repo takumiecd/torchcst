@@ -49,7 +49,9 @@ def _prepare(source, value, chart, layout, static, *, strategy):
         index = (torch.searchsorted(knots, sigma, right=True) - 1).clamp(
             0, len(knots) - 2
         )
-        mix = (sigma.log() - logs[index]) / (logs[index + 1] - logs[index])
+        mix = ((sigma.log() - logs[index]) / (logs[index + 1] - logs[index])).clamp(
+            0, 1
+        )
         g = gram[index]
         norm2 = (
             2
@@ -154,17 +156,20 @@ def _moments(x, layout, static, recipe):
 def _contract(z, axis, width, recipe):
     import triton as tr
 
-    from ..fourier_tiles import kernels as k
+    from . import kernels as k
 
     owner, beta = axis[:2]
     b, tiles, f = z.shape
     a = len(owner)
     h, hp = z.new_empty((b, a)), z.new_empty((b, a))
     if a:
-        k.axis_contract[(a, tr.cdiv(b, recipe.block_batch))](
+        k.grouped_contract[
+            (tr.cdiv(a, recipe.block_atoms), tr.cdiv(b, recipe.block_batch))
+        ](
             z,
             owner,
             beta,
+            axis[2],
             h,
             hp,
             b,
@@ -172,6 +177,7 @@ def _contract(z, axis, width, recipe):
             a,
             (f - 1) // 2,
             math.pi / width,
+            recipe.block_atoms,
             recipe.block_batch,
             tr.next_power_of_2(f),
             num_warps=4,

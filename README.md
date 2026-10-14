@@ -139,6 +139,11 @@ The [1024×1024, 52,428-atom comparison](docs/fourier-density-1024.ja.md)
 passes L4 correctness checks but is slower and uses more allocator memory than
 dense; it also records the low-frequency limit on sharply localized profiles.
 
+`KaiserTemplateSpec` with `presets.polar_two_tile_template_product` declares a
+separate positive width-template product with two-tile support and local period
+twice the tile width. Its width floor, L2 and research execution scope are
+documented in [the two-tile study](docs/fourier-two-tile-template.ja.md).
+
 ## Checkpoint
 
 ```python

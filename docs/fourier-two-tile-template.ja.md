@@ -15,7 +15,7 @@ global Torusのseamではtile IDをmoduloで扱うが、中心位相はunwrapped
 M16/24/32、22 profile設定、84 sigma、17 centre位置のCPU FP64比較。
 Chebyshev、Kaiser、DPSS、Fejer、Jackson、raised cosine、heatとその窓掛け、
 幅テンプレートの直接定義を含む。負値を持つ比較profileは正値候補と区別する。
-5544 profile rows、94248 native-site L2 checks、330 branchwise centre微分checks。
+5544 profile rows、94248 site二乗和/Parseval比較、330 branchwise centre微分checks。
 tail領域は1e-6単位の整数距離で閉区間を正確に判定し、端点の丸め誤差で漏れを増やさない。
 16384点で測った連続形状・tail値は格子による推定で、解析的全域保証とは区別する。
 
@@ -98,3 +98,18 @@ python -m benchmarks.cuda.linear.periodic_comparison \
 形の生データ・図・独立auditはprimary checkoutのignored
 `output/fourier-two-tiles-20261014/`に保全する。GPU jobのsource/result hashesも同じ名前の
 research-worktree outputに記録し、終了時にprimaryへ照合してコピーする。
+
+## 初回GPUと追加候補
+
+source450d5438の実NVIDIA L4検証は54GPU tests、全50k atomsの初期/24更新後gateがPASS。
+M16 shared complete step8.756 ms、M32 10.592 ms。allocated46.23/58.51 MiB、
+dense約0.083〜0.084 ms、allocated32.67 MiB。各2独立cohorts。
+native directはFP64 libdevice trigで全site factorsを生成する実装で、最適compactbaselineではない。
+別GraphのM16診断ではprepare5.529 ms、atom縮約約0.983 msが各方向に残った。
+tile momentは各方向約0.0092 ms。診断値をprimary時間から差し引かない。
+
+同じ数学的profileの追加候補は、FP64で中心・位相の範囲縮約を行ってからFP32 sin/cosを使い、
+owner順に並べたatom blockで同じmomentをIEEE dotに再利用する。
+異なるownerが混ざるblockではtileごとのmasked dotを使う。
+width fractionはknotsの端でclampし、FP32上限丸めによる非凸weightを避ける。
+この変更は独立FP64 gateを維持して再検証・完全step再測定する。

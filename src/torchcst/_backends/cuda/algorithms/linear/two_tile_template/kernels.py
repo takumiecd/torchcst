@@ -2,7 +2,15 @@
 
 import triton as tr
 import triton.language as tl
-from triton.language.extra.cuda import libdevice
+
+
+@tr.jit
+def reduced_phase(theta):
+    """Reduce in FP64 before FP32 trigonometry, preserving narrow phases."""
+    return (
+        theta
+        - tl.floor((theta + 3.141592653589793) / 6.283185307179586) * 6.283185307179586
+    ).to(tl.float32)
 
 
 @tr.jit
@@ -46,12 +54,11 @@ def prepare_beta(
         c1 = tl.load(Table + (index + 1) * F + M + k, f < F, 0)
         coefficient = ((1 - mix) * c0 + mix * c1) / tl.load(Scale + atom)
         theta = (3.141592653589793 / WIDTH) * delta * k.to(tl.float64)
+        theta = reduced_phase(theta)
         feature = tl.where(
             f == 0,
             coefficient,
-            2
-            * coefficient
-            * tl.where(f <= M, libdevice.cos(theta), libdevice.sin(theta)),
+            2 * coefficient * tl.where(f <= M, tl.cos(theta), tl.sin(theta)),
         )
         tl.store(Beta + atom * F + f, feature.to(tl.float32), f < F)
     tl.store(Owner + atom, pair)
@@ -116,7 +123,8 @@ def direct_template_factors(
     mix = tl.load(Mix + atom)
     h0 = tl.load(Htable + index * (M + 1) + hindex, hindex < M + 1, 0)
     h1 = tl.load(Htable + (index + 1) * (M + 1) + hindex, hindex < M + 1, 0)
-    cosine, sine = libdevice.cos(angle), libdevice.sin(angle)
+    angle = reduced_phase(angle)
+    cosine, sine = tl.cos(angle), tl.sin(angle)
     v0 = tl.sum(cosine * h0[None, :], 1)
     v1 = tl.sum(cosine * h1[None, :], 1)
     vp0 = tl.sum(sine * h0[None, :] * k[None, :], 1) * (3.141592653589793 / WIDTH)
@@ -127,3 +135,70 @@ def direct_template_factors(
     prime = tl.where(supported, 2 * ((1 - mix) * v0 * vp0 + mix * v1 * vp1) / scale, 0)
     tl.store(Axis + atom * (N * S) + site, raw.to(tl.float32), site < N * S)
     tl.store(Prime + atom * (N * S) + site, prime.to(tl.float32), site < N * S)
+
+
+@tr.jit
+def grouped_contract(
+    Z,
+    Owner,
+    Beta,
+    Order,
+    H,
+    Hp,
+    B: tl.constexpr,
+    N: tl.constexpr,
+    A: tl.constexpr,
+    M: tl.constexpr,
+    OMEGA: tl.constexpr,
+    BA: tl.constexpr,
+    BB: tl.constexpr,
+    FF: tl.constexpr,
+):
+    """Reuse one pair's moments across a sorted atom block via IEEE dots."""
+    positions = tl.program_id(0) * BA + tl.arange(0, BA)
+    atoms = tl.load(Order + positions, positions < A, 0)
+    owner = tl.load(Owner + atoms, positions < A, 0)
+    f = tl.arange(0, FF)
+    b = tl.program_id(1) * BB + tl.arange(0, BB)
+    F: tl.constexpr = 2 * M + 1
+    beta = tl.load(
+        Beta + atoms[:, None] * F + f[None, :],
+        (positions[:, None] < A) & (f[None, :] < F),
+        0,
+    )
+    k = tl.where(f <= M, f, f - M)
+    pair = tl.where(f <= M, M + k, k)
+    paired = tl.load(
+        Beta + atoms[:, None] * F + pair[None, :],
+        (positions[:, None] < A) & (f[None, :] < F) & (k[None, :] > 0),
+        0,
+    )
+    prime = paired * tl.where(f <= M, -OMEGA * k, OMEGA * k)[None, :]
+    first_atom = tl.load(Order + tl.program_id(0) * BA)
+    last_atom = tl.load(Order + tl.minimum((tl.program_id(0) + 1) * BA - 1, A - 1))
+    first = tl.load(Owner + first_atom)
+    last = tl.load(Owner + last_atom)
+    h = tl.full((BA, BB), 0, tl.float32)
+    hp = tl.full((BA, BB), 0, tl.float32)
+    if first == last:
+        z = tl.load(
+            Z + (b[None, :] * N + first) * F + f[:, None],
+            (b[None, :] < B) & (f[:, None] < F),
+            0,
+        )
+        h = tl.dot(beta, z, input_precision="ieee")
+        hp = tl.dot(prime, z, input_precision="ieee")
+    else:
+        # Only boundary blocks mix owners. Keep an exact masked fallback.
+        for tile in range(N):
+            z = tl.load(
+                Z + (b[None, :] * N + tile) * F + f[:, None],
+                (b[None, :] < B) & (f[:, None] < F),
+                0,
+            )
+            selected = owner[:, None] == tile
+            h += tl.dot(tl.where(selected, beta, 0), z, input_precision="ieee")
+            hp += tl.dot(tl.where(selected, prime, 0), z, input_precision="ieee")
+    mask = (positions[:, None] < A) & (b[None, :] < B)
+    tl.store(H + b[None, :] * A + atoms[:, None], h, mask)
+    tl.store(Hp + b[None, :] * A + atoms[:, None], hp, mask)

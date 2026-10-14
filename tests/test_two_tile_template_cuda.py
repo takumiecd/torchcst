@@ -12,7 +12,14 @@ from benchmarks.cuda.linear.periodic_comparison import (
     fourier_oracle_check,
     state_gate,
 )
-from torchcst import CSTOptimizer
+from torchcst import (
+    BandwidthBounds,
+    CSTLinear,
+    CSTOptimizer,
+    KaiserTemplateSpec,
+    chart_presets,
+    presets,
+)
 
 GPU = pytest.mark.skipif(not torch.cuda.is_available(), reason="actual CUDA required")
 
@@ -37,6 +44,50 @@ def inputs():
     return tuple(
         torch.randn(8, 1600, generator=generator).cuda()[:, ::2] for _ in range(3)
     )
+
+
+@GPU
+@pytest.mark.parametrize("strategy", ["shared", "direct"])
+def test_nonrepresentable_upper_width_keeps_convex_template_fraction(strategy):
+    from torchcst._backends.cuda.algorithms.linear.two_tile_template import executor
+    from torchcst.kernels.fourier_two_tile_layout import two_tile_layout
+
+    spec = KaiserTemplateSpec(modes=16, width_knots=(0.1, 0.3, 1.0, 3.0, 6.0, 9.6))
+    kernel = presets.polar_two_tile_template_product(
+        profiles=(spec, spec),
+        tile_widths=(20.0, 20.0),
+        amplitude_max=1.0,
+        w_c=0.1,
+        bounds=BandwidthBounds(minimum=0.1, birth=0.1, maximum=9.6, upper_floor=0.1),
+    )
+    chart = chart_presets.periodic_grid(
+        (1000, 1000), periods=(100.0, 100.0), output_dims=1
+    )
+    layer = CSTLinear(
+        chart=chart, kernel=kernel, atoms=3, dtype=torch.float32, backend="factored"
+    ).cuda()
+    with torch.no_grad():
+        layer.atoms.p.copy_(
+            layer.atoms.p.new_tensor(
+                [
+                    [10.0, 1.0, 0.025, 99.975],
+                    [-10.0, 1.0, 10.001, 9.999],
+                    [10.0, 1.0, 20.025, 19.975],
+                ]
+            )
+        )
+    bind_fourier_plan(layer, "two-tile-" + strategy)
+    layout = two_tile_layout(layer.chart.spec, layer.kernel.spec)
+    tables = executor.static_axes(layer.atoms.p, layout, layer.kernel.spec.profiles)
+    _, _, axes = executor._prepare(
+        layer.atoms.p, layer.kernel, layer.chart, layout, tables, strategy=strategy
+    )
+    for axis in axes:
+        torch.testing.assert_close(axis[5], torch.ones_like(axis[5]), atol=0, rtol=0)
+    generator = torch.Generator().manual_seed(701)
+    xx = torch.randn(2, 1000, generator=generator).cuda()
+    dy = torch.randn(2, 1000, generator=generator).cuda()
+    fourier_oracle_check(layer, xx, dy, case=ff.case_definition(modes=16))
 
 
 @GPU
