@@ -10,6 +10,7 @@ import torch
 
 from benchmarks.cuda.linear import matern_mixture_product as mm
 from benchmarks.cuda.linear.matern_native_oracle import (
+    _polar,
     native_mixture,
     native_periodic,
     oracle_vjp,
@@ -140,3 +141,43 @@ def test_mixture_catalog_registry_roundtrip():
     assert {entry.id for entry in entries} == {"matern-shared", "matern-direct"}
     for entry in entries:
         assert REGISTRY.loads_plan(REGISTRY.dumps_plan(entry.plan)) == entry.plan
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_native_zero_and_subguard_polar_vectors_are_finite(dtype):
+    layer = mm.fixture(mm.case_definition(), dtype=dtype, atoms=5, size=128)
+    tiny = torch.finfo(dtype).tiny
+    root = np.sqrt(tiny)
+    polar = np.array(
+        [[0, 0], [root / 4, root / 4], [root, 0], [root, root], [0, root / 4]],
+        dtype=np.float64,
+    )
+    with torch.no_grad():
+        layer.atoms.p[:, :2] = torch.tensor(polar, dtype=dtype)
+        layer.atoms.p[:, 2:] = 0
+    p = layer.atoms.p.detach().double().numpy()
+    amp, sigma, derivative = _polar(layer.kernel, p, tiny=tiny)
+    assert np.isfinite(amp).all()
+    assert np.isfinite(sigma).all()
+    assert np.isfinite(derivative).all()
+    # Inside the guarded disk the denominator is constant, including at zero.
+    amax = float(layer.kernel.scalar("amplitude_max"))
+    expected = amax / root
+    np.testing.assert_allclose(derivative[[0, 1, 4], 0], expected, rtol=3e-15)
+    np.testing.assert_array_equal(derivative[[0, 1, 4], 1], 0)
+    # Clamp equality retains the radial cancellation of the true unit map.
+    np.testing.assert_allclose(derivative[2], 0, rtol=0, atol=0)
+    generator = torch.Generator().manual_seed(912)
+    x = torch.randn(2, 128, generator=generator, dtype=dtype)
+    dy = torch.randn(2, 128, generator=generator, dtype=dtype)
+    result = oracle_vjp(layer, x, dy, chunk=2)
+    assert all(torch.isfinite(value).all() for value in result)
+    # Zero amplitude has no centre cotangents, while the guarded amplitude VJP
+    # remains finite. FP32-origin guards must also survive a final FP32 cast.
+    assert result[2][0, 2:].count_nonzero() == 0
+    if dtype == torch.float32:
+        assert torch.isfinite(result[2].float()).all()
+    live_width = mm.widths(layer)
+    assert live_width.device == layer.atoms.p.device
+    assert live_width.dtype == torch.float64
+    torch.testing.assert_close(live_width, torch.from_numpy(sigma), rtol=0, atol=0)

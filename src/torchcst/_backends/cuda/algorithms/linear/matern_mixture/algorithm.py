@@ -7,7 +7,7 @@ import torch
 
 from torchcst._backends.algorithm import Algorithm
 from torchcst._backends.schema import SupportResult
-from torchcst.charts import RegularGridChartSpec
+from torchcst.charts import RegularGridChartSpec, RegularGridChartState
 from torchcst.kernels.matern_layout import matern_layout
 from torchcst.kernels.profiles.matern import MaternMixtureSpec
 from torchcst.operators.context import LinearContext
@@ -80,6 +80,14 @@ class MaternMixtureAlgorithm(Algorithm[MaternMixtureRecipe]):
     def validate_inputs(self, state, inputs):
         super().validate_inputs(state, inputs)
         validate_live_operator(state, inputs)
+        chart = state.binding.chart
+        coordinates = [chart.origin, chart.geometry.periods]
+        if type(chart) is RegularGridChartState:
+            coordinates.append(chart.spacing)
+        if any(value.dtype != torch.float64 for value in coordinates):
+            raise ValueError(
+                "mixture CUDA requires FP64 chart coordinates; use model.chart.double()"
+            )
 
     def prepare(self, state):
         # Parameter/optimizer storage changes refresh generic placement state,

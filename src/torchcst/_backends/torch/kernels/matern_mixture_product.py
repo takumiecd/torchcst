@@ -11,9 +11,9 @@ def factors(state, chart, p):
     from .profile_product import _axis_positions, _product
 
     _, centres = coordinates._split(state, chart, p)
-    precise_p = p.double()
-    sigma = coordinates.bandwidth_sigma(state, chart, precise_p).detach()
-    amp = coordinates.amplitude(state, chart, precise_p).to(p.dtype)
+    amp, sigma = coordinates.precise_polar_values(state, chart, p)
+    sigma = sigma.detach()
+    amp = amp.to(p.dtype)
     axes = [
         values(
             profile.binding.profile,

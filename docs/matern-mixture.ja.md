@@ -47,6 +47,7 @@ G11=sum_i G_b(j+1)(x_i-p)²
 Gram/係数の準備はFP64で行う。Torch参照もprofileとノルムをFP64で計算した後に
 factorをParameterのdtypeへ戻す。共有状態と保存HはFP32、atom VJPのbatch縮約と
 Polar振幅のJacobianはFP64で計算し、返す勾配はParameterのdtypeにする。
+Polar原点の保護値tinyは元のParameter dtypeの値を保ち、FP64昇格で変更しない。
 
 ## 共有処理と寿命
 
@@ -68,6 +69,10 @@ immutable幅/geometry tablesだけをcacheし、live幅・中心・係数はcall
 Torch参照は公開preset `polar_matern_mixture_product` で使用できる。
 GPUの対応範囲はFP32 IEEE、8/16knots、2つの一様周期軸、64/128sitesの実行block。
 数学的なtile幅制限ではなく、初回の実装対応範囲。
+座標buffer（origin/periods/RegularGrid spacing）はFP64を要求する。
+FP32のchartはsiteごとに座標を丸めるため、等間隔のFP64 scanと異なる離散ノルムに
+なりうる。Torch参照は元のchartのsite座標を保ち、研究CUDAはこの違いを黙って許容しない。
+研究routeを使う場合は設定境界で`model.chart.double()`を行う。
 
 ## 初回の固定比較
 

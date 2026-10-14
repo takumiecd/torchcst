@@ -25,9 +25,9 @@ def _prepare(source, value, chart, layout, static, recipe):
     from . import kernels as k
 
     # Sub-site profiles amplify width-rounding errors in normalized centre VJPs.
-    precise_source = source.double()
-    sigma = coordinates.bandwidth_sigma(value, chart, precise_source).detach()
-    amp = coordinates.amplitude(value, chart, precise_source).to(source.dtype)
+    amp, sigma = coordinates.precise_polar_values(value, chart, source)
+    sigma = sigma.detach()
+    amp = amp.to(source.dtype)
     geometry = []
     for dim, ((n, d, h), binding, tables) in enumerate(
         zip(layout, value.spec.profiles, static)
@@ -296,11 +296,10 @@ class _Matern(torch.autograd.Function):
                 )
                 polar = source[:, :2].double()
                 r2 = polar.square().sum(-1)
-                safe = r2.clamp_min(torch.finfo(polar.dtype).tiny)
+                tiny = torch.finfo(source.dtype).tiny
+                safe = r2.clamp_min(tiny)
                 inv = safe.rsqrt()
-                correction = torch.where(
-                    r2 >= torch.finfo(polar.dtype).tiny, polar[:, 0] * inv / safe, 0
-                )
+                correction = torch.where(r2 >= tiny, polar[:, 0] * inv / safe, 0)
                 da0 = amplitude_max * (inv - polar[:, 0] * correction)
                 da1 = -amplitude_max * polar[:, 1] * correction
                 dp = torch.cat(

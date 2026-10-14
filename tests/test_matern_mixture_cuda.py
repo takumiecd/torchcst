@@ -109,3 +109,19 @@ def test_graph_live_width_updates_match_public_eager(knots, strategy):
 def test_public_same_cotangent_full_count_postclock24():
     result = state_gate(fourier_case=mm.case_definition(), steps=23)
     assert result["status"] == "PASS" and result["final_clock"] == 24
+
+
+@GPU
+@pytest.mark.parametrize("strategy", ["shared", "direct"])
+def test_research_route_rejects_fp32_chart_coordinate_buffers(strategy):
+    layer = fixture(8, strategy)
+    # Public FP32 charts observe per-site rounded coordinates. The initial
+    # research CUDA route evaluates uniform FP64 sites, so it must reject this
+    # different observation arithmetic before launching its kernels.
+    layer.chart.float()
+    assert layer.chart.dtype == torch.float32
+    assert layer.chart.origin.dtype == torch.float32
+    assert layer.chart.geometry.periods.dtype == torch.float32
+    x, _, _ = inputs()
+    with pytest.raises(ValueError, match="FP64"):
+        layer(x)

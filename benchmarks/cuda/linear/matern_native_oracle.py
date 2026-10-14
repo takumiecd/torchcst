@@ -42,15 +42,19 @@ def native_mixture(distance, sigma, period, knots):
     return (1 - weight) * lo + weight * hi, -((1 - weight) * dl + weight * dh)
 
 
-def _polar(kernel, p):
+def _polar(kernel, p, *, tiny=None):
     """NumPy declaration of Polar amplitude, live width, and amplitude VJP."""
 
     def scalar(name):
         return float(kernel.scalar(name).detach().cpu().double())
 
     radius2 = (p[:, :2] ** 2).sum(-1)
-    safe_radius2 = np.maximum(radius2, np.finfo(np.float64).tiny)
+    # Accumulate in FP64 while preserving the original parameter dtype's
+    # singular-origin guard. Promotion must not redefine the guarded map.
+    tiny = np.finfo(np.float64).tiny if tiny is None else tiny
+    safe_radius2 = np.maximum(radius2, tiny)
     radius = np.sqrt(safe_radius2)
+    inverse = 1 / radius
     amax = scalar("amplitude_max")
     amp = amax * p[:, 0] / radius
     alpha = np.clip((radius2 - 1) / 3, 0, 1)
@@ -67,8 +71,12 @@ def _polar(kernel, p):
         np.exp((1 - alpha) * np.log(lower) + alpha * np.log(upper)), lower, upper
     )
     da = np.empty_like(p[:, :2])
-    da[:, 0] = amax * (1 / radius - p[:, 0] ** 2 / radius**3)
-    da[:, 1] = -amax * p[:, 0] * p[:, 1] / radius**3
+    # Do not form radius**3: it underflows at the FP64 guard and yields 0/0
+    # even for the exact zero polar vector. The clamp derivative is active at
+    # equality, matching the declared Torch clamp_min subgradient.
+    correction = np.where(radius2 >= tiny, p[:, 0] * inverse / safe_radius2, 0)
+    da[:, 0] = amax * (inverse - p[:, 0] * correction)
+    da[:, 1] = -amax * p[:, 1] * correction
     return amp, sigma, da
 
 
@@ -76,7 +84,9 @@ def oracle_vjp(model, x, dy, *, chunk=64):
     """Bounded full Y, dX and all atom dP, with task width stop-gradient."""
     if type(chunk) is not int or chunk < 1:
         raise ValueError("chunk must be a positive integer")
-    source = model.atoms.p.detach().cpu().double().numpy()
+    parameter = model.atoms.p.detach()
+    tiny = torch.finfo(parameter.dtype).tiny
+    source = parameter.cpu().double().numpy()
     xx, cotangent = (v.detach().cpu().double().numpy() for v in (x, dy))
     periods = model.chart.geometry.periods.detach().cpu().double().numpy()
     origins = model.chart.origin.detach().cpu().double().numpy()
@@ -90,7 +100,7 @@ def oracle_vjp(model, x, dy, *, chunk=64):
     floor = model.kernel.spec.normalization.floor
     for start in range(0, len(source), chunk):
         p = source[start : start + chunk]
-        amp, sigma, da = _polar(model.kernel, p)
+        amp, sigma, da = _polar(model.kernel, p, tiny=tiny)
         axes = [
             native_mixture(
                 s[None, :] - p[:, dim + 2, None], sigma, d, profile.width_knots

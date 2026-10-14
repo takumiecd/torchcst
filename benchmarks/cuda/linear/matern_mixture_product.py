@@ -6,10 +6,8 @@ choice and is deliberately absent from this mathematical case declaration.
 
 import math
 
-import numpy as np
 import torch
 
-from benchmarks.cuda.linear.periodic_profile_product import polar_values
 from torchcst import (
     BandwidthBounds,
     CSTLinear,
@@ -18,7 +16,6 @@ from torchcst import (
     chart_presets,
     presets,
 )
-
 
 FROZEN_WIDTH_KNOTS = {
     8: (
@@ -186,7 +183,16 @@ def fixture(case, *, dtype=torch.float32, floor=None, atoms=None, size=None):
 
 
 def widths(model):
-    return polar_values(model.kernel, model.atoms.p.detach())[1]
+    """Untimed live-width metadata, retaining the source dtype's origin guard."""
+    from benchmarks.cuda.linear.matern_native_oracle import _polar
+
+    parameter = model.atoms.p.detach()
+    _, sigma, _ = _polar(
+        model.kernel,
+        parameter.cpu().double().numpy(),
+        tiny=torch.finfo(parameter.dtype).tiny,
+    )
+    return torch.from_numpy(sigma).to(device=parameter.device)
 
 
 def oracle_vjp(model, x, dy, *, chunk=64):
