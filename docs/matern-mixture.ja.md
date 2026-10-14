@@ -43,6 +43,11 @@ G11=sum_i G_b(j+1)(x_i-p)²
 負の指数rateは距離の順を反転し、正の大指数と逆数を作らない。
 軸ノルムの積の後でfloorを一度だけ適用する。
 
+狭い山では幅の丸めが正規化中心微分に増幅されるため、Polarからの幅解釈と
+Gram/係数の準備はFP64で行う。Torch参照もprofileとノルムをFP64で計算した後に
+factorをParameterのdtypeへ戻す。共有状態と保存HはFP32、atom VJPのbatch縮約と
+Polar振幅のJacobianはFP64で計算し、返す勾配はParameterのdtypeにする。
+
 ## 共有処理と寿命
 
 幅基準ごとに左右の2状態を計算する。1step進む際の距離a=h/b、e=exp(-a)について
