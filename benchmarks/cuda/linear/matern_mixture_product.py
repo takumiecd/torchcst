@@ -20,6 +20,38 @@ from torchcst import (
 )
 
 
+FROZEN_WIDTH_KNOTS = {
+    8: (
+        0.1,
+        0.193069772888325,
+        0.372759372031494,
+        0.7196856730011519,
+        1.3894954943731375,
+        2.6826957952797246,
+        5.17947467923121,
+        10.0,
+    ),
+    16: (
+        0.1,
+        0.13593563908785256,
+        0.18478497974222907,
+        0.251188643150958,
+        0.34145488738336016,
+        0.46415888336127786,
+        0.6309573444801934,
+        0.8576958985908941,
+        1.1659144011798317,
+        1.5848931924611134,
+        2.1544346900318834,
+        2.9286445646252357,
+        3.981071705534973,
+        5.411695265464638,
+        7.3564225445964135,
+        10.0,
+    ),
+}
+
+
 def case_definition(*, knots=16):
     if type(knots) is not int or knots not in (8, 16):
         raise ValueError("requires frozen integer knot count 8 or 16")
@@ -29,7 +61,7 @@ def case_definition(*, knots=16):
         "atoms": 52428,
         "batch": 32,
         "knot_count": knots,
-        "width_knots": np.geomspace(0.1, 10.0, knots).tolist(),
+        "width_knots": list(FROZEN_WIDTH_KNOTS[knots]),
         "decay_length": "b = sigma**2",
         "mixture": "adjacent convex interpolation in log(sigma)",
         "periodization": "all periodic images, each fixed-width profile peak-normalized",
