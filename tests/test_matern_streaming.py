@@ -211,6 +211,11 @@ def test_dyadic_power_all_vjps_cross_group_pairs_and_public_update_graph(group, 
             .clamp(0, len(KNOTS) - 2)
         )
         assert set(intervals.cpu().tolist()) == set(range(7))
+        # Retained-VJP outputs keep default-stream AccumulateGrad nodes alive
+        # even after saved tensors are released. Graph capture must use a
+        # fresh input leaf after those invocation graphs are discarded.
+        del y, yy
+        x = x.detach().clone().requires_grad_()
         layer(x)
         replica = copy.deepcopy(layer)
         step = TrainingStep(layer, x, target)
