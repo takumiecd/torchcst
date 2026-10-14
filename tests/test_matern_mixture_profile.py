@@ -347,3 +347,82 @@ def test_site_vs_intersite_discrete_norm_changes_are_retained():
     # The narrowest decay length is .01, below grid spacing: a continuum or
     # centre-independent L2 replacement would materially change the operator.
     assert float(at_site.square().sum()) > 100 * float(between.square().sum())
+
+
+def test_sharp_fp32_width_decode_preserves_normalized_centre_vjp():
+    """Real failing atom: tiny width rounding exceeds the fixed dP gate.
+
+    The atom is number 100 from the frozen 1024/52428 CPU diagnostic. A
+    deterministic one-hot probe isolates its normalized input-centre VJP;
+    native image enumeration and the independent Polar map define the oracle.
+    Decay remains b=sigma² and both precise/legacy paths share that definition.
+    """
+    period = 102.4
+    profile = MaternMixtureSpec(
+        width_knots=tuple(0.1 * 100 ** (j / 7) for j in range(8))
+    )
+    layer = CSTLinear(
+        chart=chart_presets.periodic_grid(
+            (1024, 1024), periods=(period, period), output_dims=1
+        ),
+        kernel=presets.polar_matern_mixture_product(
+            profiles=(profile, profile),
+            amplitude_max=1.0,
+            bounds=BandwidthBounds(
+                minimum=0.1, birth=0.1, maximum=10.0, upper_floor=0.1
+            ),
+            w_c=1e6,
+        ),
+        atoms=torch.tensor(
+            [
+                [
+                    -0.6017142534255981,
+                    0.8022856116294861,
+                    40.30596923828125,
+                    30.94780921936035,
+                ]
+            ],
+            dtype=torch.float32,
+        ),
+        dtype=torch.float32,
+        backend="factored",
+    )
+    layer.chart.geometry.periods = torch.tensor((period, period), dtype=torch.float64)
+    layer.chart.origin = torch.zeros(2, dtype=torch.float64)
+    p = layer.atoms.p
+    amplitude, precise_sigma = polar_map(layer.kernel, p.double())
+    _, legacy_sigma = polar_map(layer.kernel, p)
+    assert 1e-8 < float((precise_sigma - legacy_sigma.double()).abs()) < 1e-7
+    x = torch.zeros(16, 1024, dtype=torch.float32)
+    dy = torch.zeros_like(x)
+    x[:, 310] = 1.0
+    dy[:, 403] = 1.0
+    sites = torch.arange(1024, dtype=torch.float64) * (period / 1024)
+
+    def native_gradient(width):
+        axes = [
+            native_mixture(
+                profile,
+                sites[:, None] - p.double()[None, :, dim + 2],
+                width,
+                period,
+            )
+            for dim in range(2)
+        ]
+        raw = axes[0][:, None, :] * axes[1][None, :, :]
+        norm = torch.linalg.vector_norm(raw.flatten(0, 1), dim=0).clamp_min(1e-6)
+        weight = (raw * (amplitude / norm)[None, None, :]).sum(-1)
+        native_y = x.double() @ weight.T
+        return torch.autograd.grad((native_y * dy).sum(), p, retain_graph=True)[0]
+
+    expected = native_gradient(precise_sigma)
+    rounded_width = native_gradient(legacy_sigma)
+    observed = torch.autograd.grad((layer(x) * dy).sum(), p)[0]
+    # Keep the full GPU protocol's absolute gate; no relative allowance can
+    # conceal this high-magnitude centre derivative.
+    torch.testing.assert_close(observed, expected, rtol=0, atol=4e-4)
+    assert float((rounded_width - expected)[0, 3].abs()) > 4e-4
+    relative_l2 = torch.linalg.vector_norm(
+        observed - expected
+    ) / torch.linalg.vector_norm(expected)
+    assert float(relative_l2) < 4e-4
