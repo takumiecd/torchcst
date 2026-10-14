@@ -688,6 +688,19 @@ def fourier_primary(case):
     )
 
 
+def worker_schema(case):
+    family = (
+        "matern-mixture"
+        if case["schema"] == "matern-mixture-case.research.v7"
+        else "fourier"
+    )
+    return f"{family}-worker.research.{fourier_revision(case)}"
+
+
+def comparison_schema(case):
+    return worker_schema(case).replace("-worker.", "-comparison.")
+
+
 def fourier_revision(case):
     if case["schema"] == "matern-mixture-case.research.v7":
         return "v7"
@@ -701,6 +714,19 @@ def bind_fourier_plan(model, kind):
 
         entries = decode_catalog(json.loads(MATERN_CATALOG.read_text()))
         plan = next(entry.plan for entry in entries if entry.id == kind)
+        from torchcst._backends.cuda.algorithms.linear.matern_mixture.recipe import (
+            MaternMixtureRecipe,
+        )
+
+        expected = MaternMixtureRecipe(
+            strategy="shared" if kind == "matern-shared" else "direct", block_sites=64
+        )
+        if (
+            plan.algorithm_id != "research_cuda_matern_mixture_triton"
+            or plan.algorithm_revision != "v1"
+            or plan.recipe != expected
+        ):
+            raise ValueError("requires frozen Matern mixture algorithm/recipe")
         REGISTRY.validate_plan(plan)
         model.selector = FixedSelector(plan, registry=REGISTRY)
         return REGISTRY.dump_plan(plan)
@@ -791,7 +817,7 @@ def fourier_worker(case, kind, *, phases=False, verify_only=False):
     torch.set_float32_matmul_precision("highest")
     size, batch = case["size"], case["batch"]
     result = {
-        "schema": f"fourier-worker.research.{fourier_revision(case)}",
+        "schema": worker_schema(case),
         "status": "RUNNING",
         "kind": kind,
         "size": size,
@@ -956,8 +982,12 @@ def validate_fourier_record(record):
             raise ValueError("failure must retain stage/error without timings")
         return
     case = ff.load_case(record["case_definition"])
+    if fourier_revision(case) == "v7" and (
+        (record.get("timing") is None) != bool(record.get("verify_only", False))
+    ):
+        raise ValueError("Matern timing presence must match verification-only mode")
     if fourier_revision(case) in ("v5", "v7") and (
-        record["schema"] != f"fourier-worker.research.{fourier_revision(case)}"
+        record["schema"] != worker_schema(case)
         or record["kind"] not in fourier_primary(case)
         or record["weight_shape"] != [1024, 1024]
     ):
@@ -993,6 +1023,12 @@ def assess_fourier(records):
     kinds = {r["kind"]: r for r in records}
     cases = [r["case_definition"] for r in records if "case_definition" in r]
     primary = fourier_primary(cases[0]) if cases else FOURIER_PRIMARY
+    if (
+        cases
+        and fourier_revision(cases[0]) == "v7"
+        and len({json.dumps(case, sort_keys=True) for case in cases}) != 1
+    ):
+        raise ValueError("unmatched Matern case definitions")
     if any(key not in kinds or kinds[key]["status"] != "PASS" for key in primary):
         return {
             "status": "FAIL",
@@ -1100,7 +1136,7 @@ def fourier_main(args, parser, case):
                 )
             except subprocess.TimeoutExpired:
                 record = {
-                    "schema": f"fourier-worker.research.{fourier_revision(case)}",
+                    "schema": worker_schema(case),
                     "kind": kind,
                     "status": "FAIL",
                     "failed_stage": "worker-deadline",
@@ -1119,7 +1155,7 @@ def fourier_main(args, parser, case):
             if record["status"] != "PASS" and kind in primary:
                 break
         result = {
-            "schema": f"fourier-comparison.research.{fourier_revision(case)}",
+            "schema": comparison_schema(case),
             "records": records,
             "assessment": assess_fourier(records),
             "independent_runs": 1,

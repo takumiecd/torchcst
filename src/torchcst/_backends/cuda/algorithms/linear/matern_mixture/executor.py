@@ -9,13 +9,14 @@ from torchcst._backends.torch.profiles.matern_moments import static_tables
 
 
 def static_axes(p, layout, profiles):
-    return tuple(
-        tuple(
-            t.to(p.device)
-            for t in static_tables(binding.profile, int(size), float(period))
+    axes = []
+    for (size, period, _), binding in zip(layout, profiles):
+        constants, moments = static_tables(binding.profile, int(size), float(period))
+        knots = torch.tensor(
+            binding.profile.width_knots, dtype=torch.float64, device=p.device
         )
-        for (size, period, _), binding in zip(layout, profiles)
-    )
+        axes.append((constants.to(p.device), moments.to(p.device), knots))
+    return tuple(axes)
 
 
 def _prepare(source, value, chart, layout, static, recipe):
@@ -29,7 +30,7 @@ def _prepare(source, value, chart, layout, static, recipe):
     for dim, ((n, d, h), binding, tables) in enumerate(
         zip(layout, value.spec.profiles, static)
     ):
-        j, t, _ = interpolation(binding.profile, sigma)
+        j, t, _ = interpolation(binding.profile, sigma, knots=tables[2])
         index = torch.empty((len(source), 3), device=source.device, dtype=torch.int32)
         delta = torch.empty_like(sigma)
         norm = torch.empty_like(sigma)
@@ -38,7 +39,7 @@ def _prepare(source, value, chart, layout, static, recipe):
             source,
             j,
             t,
-            *tables,
+            *tables[:2],
             index,
             delta,
             norm,

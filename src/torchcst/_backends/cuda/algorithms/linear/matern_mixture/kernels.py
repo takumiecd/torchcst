@@ -160,7 +160,9 @@ def gram(C, M, row, j, k, delta, N: tl.constexpr, D: tl.constexpr, H: tl.constex
         sk = 1 if o % 2 == 0 else -1
         rate = sj * lj + sk * lk
         reverse = rate < 0
-        u0 = tl.where(reverse, (N - 1) * H, 0)
+        u0 = tl.where(
+            reverse, tl.full((), (N - 1) * H, tl.float64), tl.full((), 0, tl.float64)
+        )
         direction = tl.where(reverse, -1, 1)
         rj = delta + u0 if sj == 1 else D - delta - u0
         rk = delta + u0 if sk == 1 else D - delta - u0
@@ -243,7 +245,7 @@ def prepare_coeff(
     np_ = tl.load(Prime + a, valid, 0)
     other = tl.load(Other + a, valid, 1)
     root = lib.sqrt(n)
-    corr = tl.where(lib.sqrt(n * other) > FLOOR, np_ / (2 * n), 0)
+    corr = tl.where(lib.sqrt(n * other) >= FLOOR, np_ / (2 * n), 0)
     for w in tl.static_range(2):
         lam = tl.load(C + (j + w) * 7)
         peak = tl.load(C + (j + w) * 7 + 3)
@@ -390,7 +392,7 @@ def direct_axis(
     norm = tl.load(Norm + a)
     prime = tl.load(Prime + a)
     other = tl.load(Other + a)
-    corr = tl.where(lib.sqrt(norm * other) > FLOOR, prime / (2 * norm), 0)
+    corr = tl.where(lib.sqrt(norm * other) >= FLOOR, prime / (2 * norm), 0)
     out = tl.full((BS,), 0, tl.float64)
     deriv = tl.full((BS,), 0, tl.float64)
     for w in tl.static_range(2):

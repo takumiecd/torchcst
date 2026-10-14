@@ -3,9 +3,10 @@
 import torch
 
 
-def interpolation(spec, sigma):
+def interpolation(spec, sigma, *, knots=None):
     sigma = sigma.double()
-    knots = sigma.new_tensor(spec.width_knots)
+    if knots is None:
+        knots = sigma.new_tensor(spec.width_knots)
     bounded = sigma.clamp(knots[0], knots[-1])
     j = (torch.searchsorted(knots, bounded.contiguous(), right=True) - 1).clamp(
         0, len(knots) - 2

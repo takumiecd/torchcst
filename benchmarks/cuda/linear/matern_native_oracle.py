@@ -109,8 +109,8 @@ def oracle_vjp(model, x, dy, *, chunk=64):
         dx += (g * scale[None, :]) @ v
         dot = (h * g).sum(0)
         gp[start : start + len(p), :2] = (dot / norm)[:, None] * da
-        norm_u = np.where(raw_norm > floor, (u * du).sum(-1) / nu, 0)
-        norm_v = np.where(raw_norm > floor, (v * dv).sum(-1) / nv, 0)
+        norm_u = np.where(raw_norm >= floor, (u * du).sum(-1) / nu, 0)
+        norm_v = np.where(raw_norm >= floor, (v * dv).sum(-1) / nv, 0)
         gp[start : start + len(p), 2] = scale * (
             (h * (cotangent @ du.T)).sum(0) - dot * norm_u
         )

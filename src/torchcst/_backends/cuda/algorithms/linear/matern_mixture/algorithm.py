@@ -1,4 +1,4 @@
-"""Metadata-only support for the shared uniform-tile Fourier contraction."""
+"""Metadata-only support for the periodic mixture scan and its adjoint."""
 
 import math
 from dataclasses import asdict, dataclass
@@ -84,7 +84,7 @@ class MaternMixtureAlgorithm(Algorithm[MaternMixtureRecipe]):
     def prepare(self, state):
         # Parameter/optimizer storage changes refresh generic placement state,
         # but cannot change these immutable grid tables. execute rechecks their
-        # device/layout/degree key before reuse. No live coefficients survive.
+        # device/layout/profile key before reuse. No live coefficients survive.
         tables = {
             name: state.buffers[name]
             for name in ("axes", "axes_key")
