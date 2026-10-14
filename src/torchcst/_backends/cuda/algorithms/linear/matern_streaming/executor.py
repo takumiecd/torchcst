@@ -309,6 +309,11 @@ class _MaternStreaming(torch.autograd.Function):
                     num_warps=4,
                     enable_fp_fusion=False,
                 )
+                # dX and the atom contraction have consumed these temporary
+                # batch-by-atom tensors. Release before the FP64 Polar pullback
+                # allocates its intermediates; current-stream ordering preserves
+                # the preceding Triton reads when the allocator reuses storage.
+                del g, gp
                 polar = source[:, :2].double()
                 r2 = polar.square().sum(-1)
                 tiny = torch.finfo(source.dtype).tiny
