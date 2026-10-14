@@ -345,3 +345,19 @@ def polar_fourier_profile_product(*, profiles, tile_widths, **kwargs):
             "tile_support": support,
         }
     )
+
+
+def polar_matern_mixture_product(*, profiles, **kwargs):
+    """Full-period image-sum profiles with adjacent fixed-width mixing (rev6)."""
+    from .profiles.matern import MaternMixtureSpec
+
+    if (
+        not isinstance(profiles, tuple)
+        or not profiles
+        or not all(type(p) is MaternMixtureSpec for p in profiles)
+    ):
+        raise TypeError("requires a nonempty tuple of MaternMixtureSpec")
+    base = polar_profile_product(profiles=(TriweightSpec(),) * len(profiles), **kwargs)
+    return replace(
+        base, profiles=tuple(profile(p, normalize=False) for p in profiles), revision=6
+    )

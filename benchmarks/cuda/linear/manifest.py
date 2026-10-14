@@ -571,3 +571,10 @@ def decode_snapshot(value):
         value["dense"],
         value["input_hashes"],
     )
+
+
+from torchcst._backends.cuda.algorithms.linear.matern_mixture.algorithm import (
+    MaternMixtureAlgorithm,
+)
+
+REGISTRY.register(MaternMixtureAlgorithm())

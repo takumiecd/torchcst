@@ -18,7 +18,7 @@ def family(state):
 
     spec = state.spec
     if spec.revision != 1 and not (
-        spec.revision in (2, 3, 4) and spec.composition == "profile_product"
+        spec.revision in (2, 3, 4, 6) and spec.composition == "profile_product"
     ):
         raise ValueError("unsupported kernel revision")
     if spec.composition == "amplitude":

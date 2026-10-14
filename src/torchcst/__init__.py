@@ -61,6 +61,7 @@ from .kernels import (
     WendlandC2Spec,
     presets,
 )
+from .kernels.profiles.matern import MaternMixtureSpec
 from .nn import CSTConv2d, CSTLinear, CSTModule
 from .operators import ChartPairSpec, Operator, OperatorSpec, SingleChartSpec
 from .operators.atom_update import AtomUpdateBinding, AtomUpdateInputs
@@ -119,6 +120,7 @@ __all__ = [
     "LinearBinding",
     "LinearInputs",
     "LogWidthSpec",
+    "MaternMixtureSpec",
     "NormalizationSpec",
     "Operator",
     "OperatorSpec",

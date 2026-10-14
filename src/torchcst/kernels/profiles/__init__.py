@@ -9,6 +9,7 @@ from .fourier import (
     PeriodicFourierSpec,
 )
 from .gaussian import GaussianSpec
+from .matern import MaternMixtureSpec
 
 __all__ = [
     "BiweightSpec",
@@ -16,6 +17,7 @@ __all__ = [
     "DPSSSquareSpec",
     "GaussianSpec",
     "KaiserSquareSpec",
+    "MaternMixtureSpec",
     "PeriodicFourierSpec",
     "ProfileSpec",
     "TriangleSpec",

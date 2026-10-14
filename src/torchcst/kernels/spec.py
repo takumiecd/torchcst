@@ -8,6 +8,7 @@ from .normalization import NormalizationSpec
 from .parameterizations import FixedWidthSpec, ParameterizationSpec, PolarAmpWidthSpec
 from .profiles import ProfileSpec
 from .profiles.fourier import PeriodicFourierSpec
+from .profiles.matern import MaternMixtureSpec
 from .support import FourierTileSupportSpec
 
 AtomInit = Literal["balanced", "uniform"]
@@ -92,6 +93,14 @@ class KernelSpec:
             isinstance(p, ProfileBinding) for p in self.profiles
         ):
             raise TypeError("profiles must be an immutable tuple of bindings")
+        mixture = any(isinstance(p.profile, MaternMixtureSpec) for p in self.profiles)
+        if (mixture or self.revision == 6) and (
+            self.revision != 6
+            or self.composition != "profile_product"
+            or not self.profiles
+            or not all(type(p.profile) is MaternMixtureSpec for p in self.profiles)
+        ):
+            raise ValueError("mixture profiles require revision6 profile_product")
         periodic = any(
             isinstance(p.profile, PeriodicFourierSpec) for p in self.profiles
         )

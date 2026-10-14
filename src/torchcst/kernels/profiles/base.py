@@ -8,7 +8,8 @@ class ProfileSpec:
     """Identity fixes a function and its argument contract.
 
     Scalar profiles use dimensionless squared distance q. PeriodicFourierSpec
-    instead declares a function of angle and relative width.
+    instead declares a function of angle and relative width. MaternMixtureSpec
+    uses physical periodic displacement and adjacent widths with decay sigma².
 
     Bandwidth, center coordinates and normalization belong to separate
     declarations. No tensor evaluation methods belong on this type.

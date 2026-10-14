@@ -119,6 +119,12 @@ def validate_profile_product_layout(chart, kernel):
     )
     from torchcst.patterns.spec import GridPatternSpec, LinePatternSpec
 
+    if kernel.revision == 6:
+        from torchcst.kernels.matern_layout import matern_layout
+
+        matern_layout(chart, kernel)
+        return
+
     if kernel.revision == 4:
         from torchcst.kernels.fourier_layout import fourier_tile_layout
 

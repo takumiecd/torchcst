@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "plans": [
+    {
+      "id": "matern-shared",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_matern_mixture_triton",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "strategy": "shared",
+          "block_sites": 64
+        }
+      }
+    },
+    {
+      "id": "matern-direct",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_matern_mixture_triton",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "strategy": "direct",
+          "block_sites": 64
+        }
+      }
+    }
+  ]
+}

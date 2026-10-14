@@ -280,3 +280,8 @@ different optimizer or the current revision.
 Copyright 2026 takumiecd and contributors.
 Licensed under the [Apache License, Version 2.0](LICENSE).
 See [NOTICE](NOTICE) for attribution.
+
+`MaternMixtureSpec` with `presets.polar_matern_mixture_product` defines adjacent
+fixed-width mixtures of peak-one periodic Matérn3/2 profiles. Each atom retains
+its own live width; discrete whole-product L2 normalization applies once.
+See [the mathematical contract and research validation](docs/matern-mixture.ja.md).
