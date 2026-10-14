@@ -68,4 +68,64 @@ python -m benchmarks.cuda.linear.periodic_comparison \
 中心移動によるL2norm変動はσ0.1で0.6730%、σ1で0.00006988%。
 σ1の距離10外の二乗和割合は約2.35e-6。σ10は反対側の高さ0.07309、広い裾が残る。
 原本はignored `output/dyadic-profile-streaming-20261014/`へ保存する。
-GPU correctness・完全stepピークの結果は、取得した原本とsource/result hashを確認して追記する。
+GPU結果と原本のprovenanceは以下に記録する。
+
+## 検証済みL4結果
+
+NVIDIA L4、Torch2.11.0+cu130、CUDA13.0、Triton3.6.0、driver580.82.07。
+同じjob内の隔離workerによる2cohort。2回目は実worker順を反転した。
+各cohort21 timing samplesは21独立runではない。
+
+|方式|完全step中央値ms、run1 / run2|peak allocated MiB|peak reserved MiB|
+|---|---:|---:|---:|
+|全8幅共有|2.799087 / 2.780578|47.169922|82|
+|1幅streaming|4.100805 / 4.084903|40.185059|62|
+|2幅streaming|3.343694 / 3.338409|41.200684|62|
+|dense|0.086302 / 0.086310|33.002441|86|
+
+1幅はallocated14.81%、2幅は12.65%削減。reservedは両方24.39%削減。
+時間はそれぞれ約46–47%、19–20%増えた。denseは別parameterizationの工学的対照で、
+このfixtureでは時間とallocatedの両方で勝つ。公開dispatcherの採用はしていない。
+対象model/optimizer/X/target/dyのwarmup・capture・replayを含むピークで、
+CPU oracleと診断値は範囲外。GPU process全体のVRAMは未測定。
+
+初期・24更新後の全shape独立FP64 oracleに対し、全方式の最大絶対誤差は
+Y5.714e-6、dX4.739e-6、全atom dP9.017e-6以下。
+max_abs/relativeL2各4e-4のgateは変更していない。52428全atomのlive幅が更新された。
+GPU jobのテストは55 passed（31 CUDA + 24 CPU）、skip/failureなし。
+ローカル全CPU suite1929 passed、2776 skipped、wheel/sdist build PASS。
+CUDA unavailableによるskipをGPU検証と数えていない。
+
+G/Gpの最終読み取り後に解放し、Polar FP64 pullbackとの同時生存をなくした。
+この修正前はstream1/2とも45.372559MiBだった。数値や幅groupを変えずに
+lifetimeを修正した結果が上表。同一streamの順序でallocator再利用を行う。
+最初のGraphテスト失敗はretained VJPの出力graphをテストが保持したためで、
+保持graphを終了して新しいinput leafでcaptureする修正後に全テストを通した。
+失敗原本と修正前の成功原本も保存した。
+
+最終検証runtime checkpoint: `6cbe1afb0a979fd9e49b5ee1771dcf2ef63c6c9c`。
+
+|段階|job|source archive SHA256|result archive SHA256|
+|---|---|---|---|
+|最終|l4job-75fa59f81b1445cda79240a1be145bb2|76141a0764d3e0ba42c334df130d6a64a84a442f32601a12004978d7ce68d2af|eae7b4538b73cbce91e8f720fa01c719507ea9c7d7027f706a24011120757135|
+|lifetime修正前|l4job-5d4987d576c24385b51ab36b95de873d|d088c0e9aaa31f0681e821bca4c2d735b97363aae64105e18e0ea2d33362282f|20d9a0813abae5ee758aa97be84a2ddbec120019a6ea0fa803a5cf425cf62dd8|
+|Graphテスト失敗|l4job-f6e51a02ca5342f1bc0fd3d28b6a57ae|fa8892d39416f3da404304e039ee5354f8daec3a60d422e5a21ee1c68c1566ba|failed-capture-test内のreceipt参照|
+
+原本はworktreeとprimary両方のignored `output/dyadic-profile-streaming-20261014/`。
+`qualified-l4/`、`qualified-before-lifetime-fix/`、`failed-capture-test/`に
+source/result archive、spec、logs、receiptを保存。copy manifestとGit recovery bundleも保存する。
+今回所有したGPU sessionは停止確認済み。
+
+## 任意の実数累乗と基準幅
+
+`u=exp(-r/bref)`なら`u**(bref/b)=exp(-r/b)`は実数bでも厳密。
+これは指数因子の恒等式で、幅別の入力集計を1本へ潰す恒等式ではない。
+CPUの独立precision sweep（88幅、r<=51.2とr<=300）では、
+FP64のbref1/10はいずれもprofile最大絶対差約1e-15–1e-14以下。
+FP32ではr<=51.2でbref1が3.709e-7、bref10が2.986e-6。
+r<=300ではbref1の底underflowによる広い裾の損失が3.476e-4。
+基準1は今回のbounded rangeなら良い選択であり、最大幅が常に最も高精度ではない。
+GPUで検証したrouteはbref10から固定dyadic bankを作る方式で、
+bref1・任意実数幅のGPU routeは未実装・未検証。
+
+次の資産調査と候補順位は[最適化資産の選定](20261014-dyadic-optimization-assets.md)に記録する。
