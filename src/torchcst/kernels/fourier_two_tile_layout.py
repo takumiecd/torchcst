@@ -38,16 +38,27 @@ def two_tile_layout(chart, kernel):
         spec = binding.profile
         if type(spec) is not KaiserTemplateSpec or spec.revision != 1:
             raise ValueError("unsupported two-tile template profile")
-        if bounds.maximum > width / 2:
+        if bounds.maximum > width / 2 and not math.isclose(
+            bounds.maximum, width / 2, rel_tol=1e-6
+        ):
             raise ValueError("maximum width exceeds half the tile width")
         if (
-            spec.width_knots[0] > bounds.minimum
-            or spec.width_knots[-1] < bounds.maximum
+            (
+                spec.width_knots[0] > bounds.minimum
+                and not math.isclose(spec.width_knots[0], bounds.minimum, rel_tol=1e-6)
+            )
+            or (
+                spec.width_knots[-1] < bounds.maximum
+                and not math.isclose(spec.width_knots[-1], bounds.maximum, rel_tol=1e-6)
+            )
             or spec.width_knots[-1] > width / 2
         ):
             raise ValueError(
                 "width knots must cover bandwidth bounds and stay within half a tile"
             )
+        # Kernel scalar buffers may round declared bounds when Module.to()
+        # casts them to FP32. The profile clamps interpolation to its immutable
+        # FP64 knots; this metadata allowance does not relax numerical gates.
         tiles = round(period / width)
         if tiles < 2 or not math.isclose(tiles * width, period, rel_tol=1e-6):
             raise ValueError(

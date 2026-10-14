@@ -44,6 +44,40 @@ def native_tables(spec, period):
     return h, np.array([np.convolve(row, row) for row in h])
 
 
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_scalar_bound_cast_preserves_covered_template_endpoint(dtype):
+    spec = KaiserTemplateSpec(modes=16, width_knots=(0.1, 0.3, 1.0, 3.0, 6.0, 9.6))
+    kernel = presets.polar_two_tile_template_product(
+        profiles=(spec, spec),
+        tile_widths=(20.0, 20.0),
+        amplitude_max=1.0,
+        w_c=0.1,
+        bounds=BandwidthBounds(minimum=0.1, birth=0.1, maximum=9.6, upper_floor=0.1),
+    )
+    chart = chart_presets.periodic_grid((400, 400), periods=(40.0, 40.0), output_dims=1)
+    layer = CSTLinear(
+        chart=chart, kernel=kernel, atoms=3, dtype=dtype, backend="factored"
+    )
+    with torch.no_grad():
+        layer.atoms.p[:, :2] = layer.atoms.p.new_tensor([10.0, 1.0])
+    x = torch.randn(2, 400, dtype=dtype, requires_grad=True)
+    result = layer(x)
+    result.square().sum().backward()
+    assert torch.isfinite(result).all() and torch.isfinite(layer.atoms.p.grad).all()
+    # A genuine coverage gap is still rejected; only representation roundoff
+    # at a matching endpoint is allowed.
+    invalid = replace(
+        kernel,
+        parameterization=replace(
+            kernel.parameterization,
+            input_bounds=replace(kernel.parameterization.input_bounds, maximum=9.61),
+            output_bounds=replace(kernel.parameterization.output_bounds, maximum=9.61),
+        ),
+    )
+    with pytest.raises(ValueError, match="width knots"):
+        two_tile_layout(chart, invalid)
+
+
 @pytest.mark.parametrize("modes", [16, 24, 32])
 @pytest.mark.parametrize("sigma", [0.1, 0.2, 0.3, 0.7, 1.0, 2.0, 6.0, 8.0, 10.0])
 def test_positive_native_blend_coefficients_and_shifted_period_l2(modes, sigma):
