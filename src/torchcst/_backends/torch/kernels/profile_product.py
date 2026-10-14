@@ -69,6 +69,9 @@ def _product(values):
 
 
 def factors(state, chart, p):
+    if state.spec.revision == 6:
+        from .matern_mixture_product import factors as mixture_factors
+        return mixture_factors(state,chart,p)
     if state.spec.revision == 4:
         from .fourier_product import factors as fourier_factors
 

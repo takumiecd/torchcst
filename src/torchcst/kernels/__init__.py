@@ -21,6 +21,7 @@ from .profiles import (
     WendlandC2Spec,
 )
 from .profiles.fourier import ChebyshevSquareSpec, DPSSSquareSpec, KaiserSquareSpec
+from .profiles.matern import MaternMixtureSpec
 from .spec import (
     AtomInit,
     FourierProductKernelSpec,
@@ -46,6 +47,7 @@ __all__ = [
     "KernelOptions",
     "KernelSpec",
     "LogWidthSpec",
+    "MaternMixtureSpec",
     "NormalizationSpec",
     "ParameterizationSpec",
     "PolarAmpWidthSpec",

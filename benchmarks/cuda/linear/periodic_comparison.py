@@ -182,8 +182,7 @@ def state_gate(*, device="cuda", steps=20, fourier_case=None):
     if fourier_case is None:
         model = fixture.fixture(32, 3, atoms=17).to(device)
     else:
-        from benchmarks.cuda.linear import fourier_profile_product as ff
-
+        ff = profile_protocol(fourier_case)
         model = ff.fixture(fourier_case).to(device)
     with torch.no_grad():
         model.atoms.p[:, 2] = model.chart.geometry.periods[0] - 1e-5
@@ -661,7 +660,27 @@ FOURIER_DENSITY_PRIMARY = ("fourier-shared", "fourier-direct", "dense")
 FOURIER_CATALOG = Path(__file__).with_name("plans-fourier-tiles.json")
 
 
+MATERN_PRIMARY = ("matern-shared", "matern-direct", "dense")
+MATERN_CATALOG = Path(__file__).with_name("plans-matern-mixture.json")
+
+
+def profile_protocol(case):
+    if case is not None and case.get("schema") == "matern-mixture-case.research.v7":
+        from benchmarks.cuda.linear import matern_mixture_product
+
+        return matern_mixture_product
+    from benchmarks.cuda.linear import fourier_profile_product
+
+    return fourier_profile_product
+
+
+def profile_catalog(case):
+    return MATERN_CATALOG if fourier_revision(case) == "v7" else FOURIER_CATALOG
+
+
 def fourier_primary(case):
+    if case["schema"] == "matern-mixture-case.research.v7":
+        return MATERN_PRIMARY
     return (
         FOURIER_DENSITY_PRIMARY
         if case["schema"] == "fourier-case.research.v5"
@@ -669,11 +688,48 @@ def fourier_primary(case):
     )
 
 
+def worker_schema(case):
+    family = (
+        "matern-mixture"
+        if case["schema"] == "matern-mixture-case.research.v7"
+        else "fourier"
+    )
+    return f"{family}-worker.research.{fourier_revision(case)}"
+
+
+def comparison_schema(case):
+    return worker_schema(case).replace("-worker.", "-comparison.")
+
+
 def fourier_revision(case):
+    if case["schema"] == "matern-mixture-case.research.v7":
+        return "v7"
     return "v5" if case["schema"] == "fourier-case.research.v5" else "v4"
 
 
 def bind_fourier_plan(model, kind):
+    if kind in ("matern-shared", "matern-direct"):
+        from benchmarks.cuda.linear.manifest import REGISTRY, decode_catalog
+        from torchcst import FixedSelector
+
+        entries = decode_catalog(json.loads(MATERN_CATALOG.read_text()))
+        plan = next(entry.plan for entry in entries if entry.id == kind)
+        from torchcst._backends.cuda.algorithms.linear.matern_mixture.recipe import (
+            MaternMixtureRecipe,
+        )
+
+        expected = MaternMixtureRecipe(
+            strategy="shared" if kind == "matern-shared" else "direct", block_sites=64
+        )
+        if (
+            plan.algorithm_id != "research_cuda_matern_mixture_triton"
+            or plan.algorithm_revision != "v1"
+            or plan.recipe != expected
+        ):
+            raise ValueError("requires frozen Matern mixture algorithm/recipe")
+        REGISTRY.validate_plan(plan)
+        model.selector = FixedSelector(plan, registry=REGISTRY)
+        return REGISTRY.dump_plan(plan)
     if kind == "torch-factored":
         return None
     from benchmarks.cuda.linear.manifest import REGISTRY, decode_catalog
@@ -712,9 +768,12 @@ def bind_fourier_plan(model, kind):
 
 
 def fourier_oracle_check(model, x, dy, *, case=None):
-    from benchmarks.cuda.linear import fourier_profile_product as ff
+    ff = profile_protocol(case)
 
-    if case is not None and fourier_revision(case) == "v5":
+    if case is not None and fourier_revision(case) == "v7":
+        truth = ff.oracle_vjp(model, x, dy, chunk=case["oracle"]["chunk_atoms"])
+        scope = "independent CPU FP64 native periodic image sum at all sites; actual sampled norm derivatives and all atom cotangents; chunks64"
+    elif case is not None and fourier_revision(case) == "v5":
         from benchmarks.cuda.linear.fourier_native_oracle import oracle_vjp
 
         truth = oracle_vjp(model, x, dy, chunk=case["oracle"]["chunk_atoms"])
@@ -748,17 +807,17 @@ def fourier_oracle_check(model, x, dy, *, case=None):
 
 
 def fourier_worker(case, kind, *, phases=False, verify_only=False):
-    from benchmarks.cuda.linear import fourier_profile_product as ff
+    ff = profile_protocol(case)
 
     ff.load_case(case)
-    if fourier_revision(case) == "v5" and kind not in FOURIER_DENSITY_PRIMARY:
+    if fourier_revision(case) in ("v5", "v7") and kind not in fourier_primary(case):
         raise ValueError("density cohort permits only shared/direct/dense workers")
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
     torch.set_float32_matmul_precision("highest")
     size, batch = case["size"], case["batch"]
     result = {
-        "schema": f"fourier-worker.research.{fourier_revision(case)}",
+        "schema": worker_schema(case),
         "status": "RUNNING",
         "kind": kind,
         "size": size,
@@ -769,7 +828,7 @@ def fourier_worker(case, kind, *, phases=False, verify_only=False):
         **source_metadata(),
     }
     result["plan_catalog_sha256"] = hashlib.sha256(
-        FOURIER_CATALOG.read_bytes()
+        profile_catalog(case).read_bytes()
     ).hexdigest()
     result["case_sha256"] = hashlib.sha256(
         json.dumps(case, sort_keys=True, separators=(",", ":")).encode()
@@ -904,9 +963,11 @@ def fourier_worker(case, kind, *, phases=False, verify_only=False):
 
 
 def validate_fourier_record(record):
-    from benchmarks.cuda.linear import fourier_profile_product as ff
+    ff = profile_protocol(record.get("case_definition"))
 
-    if record["kind"] not in FOURIER_KINDS or record["status"] not in (
+    if record["kind"] not in (*FOURIER_KINDS, *MATERN_PRIMARY) or record[
+        "status"
+    ] not in (
         "PASS",
         "FAIL",
         "OOM",
@@ -921,9 +982,13 @@ def validate_fourier_record(record):
             raise ValueError("failure must retain stage/error without timings")
         return
     case = ff.load_case(record["case_definition"])
-    if fourier_revision(case) == "v5" and (
-        record["schema"] != "fourier-worker.research.v5"
-        or record["kind"] not in FOURIER_DENSITY_PRIMARY
+    if fourier_revision(case) == "v7" and (
+        (record.get("timing") is None) != bool(record.get("verify_only", False))
+    ):
+        raise ValueError("Matern timing presence must match verification-only mode")
+    if fourier_revision(case) in ("v5", "v7") and (
+        record["schema"] != worker_schema(case)
+        or record["kind"] not in fourier_primary(case)
         or record["weight_shape"] != [1024, 1024]
     ):
         raise ValueError("requires the exact 1024 density cohort and weight shape")
@@ -958,6 +1023,12 @@ def assess_fourier(records):
     kinds = {r["kind"]: r for r in records}
     cases = [r["case_definition"] for r in records if "case_definition" in r]
     primary = fourier_primary(cases[0]) if cases else FOURIER_PRIMARY
+    if (
+        cases
+        and fourier_revision(cases[0]) == "v7"
+        and len({json.dumps(case, sort_keys=True) for case in cases}) != 1
+    ):
+        raise ValueError("unmatched Matern case definitions")
     if any(key not in kinds or kinds[key]["status"] != "PASS" for key in primary):
         return {
             "status": "FAIL",
@@ -986,9 +1057,12 @@ def assess_fourier(records):
             raise ValueError(f"unmatched Fourier fixture {key}")
     if any(r.get("verify_only") for r in valid):
         return {"status": "PASS", "verification_only": True, "qualifies": False}
-    shared = kinds["fourier-shared"]
+    is_matern = bool(cases) and fourier_revision(cases[0]) == "v7"
+    shared_name = "matern-shared" if is_matern else "fourier-shared"
+    direct_name = "matern-direct" if is_matern else "fourier-direct"
+    shared = kinds[shared_name]
     comparisons = {}
-    for name in ("fourier-direct", "torch-factored", "torch-shared", "dense"):
+    for name in (direct_name, "torch-factored", "torch-shared", "dense"):
         if name in kinds and kinds[name]["status"] == "PASS":
             control = kinds[name]
             comparisons[name] = {
@@ -999,7 +1073,7 @@ def assess_fourier(records):
                 "reserved_ratio": shared["peak_capture_replay"]["reserved_bytes"]
                 / control["peak_capture_replay"]["reserved_bytes"],
             }
-    direct = comparisons["fourier-direct"]
+    direct = comparisons[direct_name]
     return {
         "status": "PASS",
         "comparisons": comparisons,
@@ -1020,7 +1094,7 @@ def fourier_main(args, parser, case):
     if args.state_gate:
         result = state_gate(fourier_case=case)
     elif args.worker:
-        if args.worker not in FOURIER_KINDS:
+        if args.worker not in (*FOURIER_KINDS, *MATERN_PRIMARY):
             parser.error("requires a Fourier worker alias")
         result = fourier_worker(
             case, args.worker, phases=args.phases, verify_only=args.verify_only
@@ -1030,7 +1104,7 @@ def fourier_main(args, parser, case):
         # Torch shared tiles is a CPU FP64 reference and remains an explicit
         # diagnostic alias; CUDA cohorts default to the four executable controls.
         primary = fourier_primary(case)
-        allowed = primary if fourier_revision(case) == "v5" else FOURIER_KINDS
+        allowed = primary if fourier_revision(case) in ("v5", "v7") else FOURIER_KINDS
         plans = list(primary) if args.plans is None else args.plans
         if (
             len(set(plans)) != len(plans)
@@ -1062,7 +1136,7 @@ def fourier_main(args, parser, case):
                 )
             except subprocess.TimeoutExpired:
                 record = {
-                    "schema": f"fourier-worker.research.{fourier_revision(case)}",
+                    "schema": worker_schema(case),
                     "kind": kind,
                     "status": "FAIL",
                     "failed_stage": "worker-deadline",
@@ -1081,7 +1155,7 @@ def fourier_main(args, parser, case):
             if record["status"] != "PASS" and kind in primary:
                 break
         result = {
-            "schema": f"fourier-comparison.research.{fourier_revision(case)}",
+            "schema": comparison_schema(case),
             "records": records,
             "assessment": assess_fourier(records),
             "independent_runs": 1,
@@ -1102,10 +1176,12 @@ def main():
     parser.add_argument(
         "--plans",
         nargs="+",
-        choices=tuple(dict.fromkeys(KINDS + FOURIER_KINDS)),
+        choices=tuple(dict.fromkeys(KINDS + FOURIER_KINDS + MATERN_PRIMARY)),
         default=None,
     )
-    parser.add_argument("--worker", choices=tuple(dict.fromkeys(KINDS + FOURIER_KINDS)))
+    parser.add_argument(
+        "--worker", choices=tuple(dict.fromkeys(KINDS + FOURIER_KINDS + MATERN_PRIMARY))
+    )
     parser.add_argument("--state-gate", action="store_true")
     parser.add_argument("--phases", action="store_true")
     parser.add_argument("--verify-only", action="store_true")
@@ -1118,9 +1194,9 @@ def main():
         if case_data.get("schema") in (
             "fourier-case.research.v4",
             "fourier-case.research.v5",
+            "matern-mixture-case.research.v7",
         ):
-            from benchmarks.cuda.linear import fourier_profile_product as ff
-
+            ff = profile_protocol(case_data)
             fourier_main(args, parser, ff.load_case(case_data))
             return
         case = load_case(args.case)

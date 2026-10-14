@@ -109,10 +109,14 @@ def _split(
     return p[:, :2], p[:, 2:input_end], p[:, input_end:]
 
 
-def _amplitude_and_alpha(state, polar: Tensor) -> tuple[Tensor, Tensor]:
+def _amplitude_and_alpha(
+    state, polar: Tensor, *, tiny: float | None = None
+) -> tuple[Tensor, Tensor]:
     radius_square = polar.square().sum(dim=-1)
     # The exact polar map is used everywhere except the singular origin.
-    safe_square = radius_square.clamp_min(torch.finfo(polar.dtype).tiny)
+    safe_square = radius_square.clamp_min(
+        torch.finfo(polar.dtype).tiny if tiny is None else tiny
+    )
     amplitude = (
         state.scalar("amplitude_max").to(polar) * polar[:, 0] / safe_square.sqrt()
     )

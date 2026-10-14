@@ -1,0 +1,201 @@
+"""Frozen continuous-atom, fixed-width-mixture density protocol and fixture.
+
+The full periodic image sum is the profile definition. Tile size is an execution
+choice and is deliberately absent from this mathematical case declaration.
+"""
+
+import math
+
+import torch
+
+from torchcst import (
+    BandwidthBounds,
+    CSTLinear,
+    MaternMixtureSpec,
+    NormalizationSpec,
+    chart_presets,
+    presets,
+)
+
+FROZEN_WIDTH_KNOTS = {
+    8: (
+        0.1,
+        0.193069772888325,
+        0.372759372031494,
+        0.7196856730011519,
+        1.3894954943731375,
+        2.6826957952797246,
+        5.17947467923121,
+        10.0,
+    ),
+    16: (
+        0.1,
+        0.13593563908785256,
+        0.18478497974222907,
+        0.251188643150958,
+        0.34145488738336016,
+        0.46415888336127786,
+        0.6309573444801934,
+        0.8576958985908941,
+        1.1659144011798317,
+        1.5848931924611134,
+        2.1544346900318834,
+        2.9286445646252357,
+        3.981071705534973,
+        5.411695265464638,
+        7.3564225445964135,
+        10.0,
+    ),
+}
+
+
+def case_definition(*, knots=16):
+    if type(knots) is not int or knots not in (8, 16):
+        raise ValueError("requires frozen integer knot count 8 or 16")
+    return {
+        "schema": "matern-mixture-case.research.v7",
+        "size": 1024,
+        "atoms": 52428,
+        "batch": 32,
+        "knot_count": knots,
+        "width_knots": list(FROZEN_WIDTH_KNOTS[knots]),
+        "decay_length": "b = sigma**2",
+        "mixture": "adjacent convex interpolation in log(sigma)",
+        "periodization": "all periodic images, each fixed-width profile peak-normalized",
+        "atom_density": 0.05,
+        "atom_count_policy": "int(density * input_sites * output_sites); truncate toward zero",
+        "seed": 41,
+        "spacing": 0.1,
+        "periods": [102.4, 102.4],
+        "origin": [0.0, 0.0],
+        "dtype": "float32",
+        "geometry_dtype": "float64",
+        "tf32": False,
+        "width_bounds": {
+            "minimum": 0.1,
+            "birth": 0.1,
+            "maximum": 10.0,
+            "upper_floor": 0.1,
+        },
+        "initial_width_distribution": "geomspace_0.1_10",
+        "task_sigma_stop_gradient": True,
+        "normalization": {
+            "kind": "discrete_l2",
+            "domain": "operator_sites",
+            "floor": 1e-6,
+        },
+        "optimizer": {
+            "name": "AdamW",
+            "lr": 1e-4,
+            "weight_decay": 0.01,
+            "fused": True,
+            "capturable": True,
+        },
+        "schedule": {
+            "eager_warmups": 2,
+            "initial_replays": 1,
+            "timed_replays": 21,
+            "actual_updates_required": 24,
+        },
+        "oracle": {
+            "full_sites": True,
+            "all_atoms": True,
+            "max_abs": 4e-4,
+            "relative_l2": 4e-4,
+            "chunk_atoms": 64,
+        },
+        "required_workers": ["matern-shared", "matern-direct", "dense"],
+    }
+
+
+def load_case(value):
+    if not isinstance(value, dict) or value != case_definition(
+        knots=value.get("knot_count")
+    ):
+        raise ValueError("case differs from frozen Matérn mixture v7 protocol")
+    # Equality alone regards 1024.0 as 1024 and True as 1.
+    if any(type(value[key]) is not int for key in ("size", "atoms", "batch", "seed")):
+        raise ValueError("frozen dimensions and seed must be integers")
+    return value
+
+
+def fixture(case, *, dtype=torch.float32, floor=None, atoms=None, size=None):
+    """Construct the frozen cohort; smaller sites/atoms are regression fixtures."""
+    load_case(case)
+    count = case["atoms"] if atoms is None else atoms
+    n = case["size"] if size is None else size
+    if type(count) is not int or count < 1 or type(n) is not int or n < 2:
+        raise ValueError("fixture requires positive integer atoms and >=2 sites")
+    generator = torch.Generator().manual_seed(case["seed"])
+    target_sigma = torch.logspace(-1, 1, count, dtype=torch.float64)
+    radius = (1 + 3 * torch.log(target_sigma / 0.1) / math.log(100)).sqrt()
+    direction = torch.where(torch.rand(count, generator=generator) < 0.5, -0.6, 0.6)
+    period = case["spacing"] * n
+    p = torch.cat(
+        (
+            torch.stack((direction.double(), torch.full_like(radius, 0.8)), -1)
+            * radius[:, None],
+            torch.rand(count, 2, generator=generator).double() * period,
+        ),
+        -1,
+    )
+    probes = p.new_tensor(
+        [
+            [0.0, 0.0],
+            [0.025, 0.075],
+            [period - 0.025, 0.025],
+            [period / 2, period / 2],
+            [-0.025, period + 0.025],
+            [0.1, 0.2],
+        ]
+    )
+    p[: min(count, len(probes)), 2:] = probes[: min(count, len(probes))]
+    p[0, 0] = 0.0
+    profile = MaternMixtureSpec(width_knots=tuple(case["width_knots"]))
+    model = CSTLinear(
+        chart=chart_presets.periodic_grid(
+            (n, n),
+            periods=(period, period),
+            origin=tuple(case["origin"]),
+            output_dims=1,
+        ),
+        kernel=presets.polar_matern_mixture_product(
+            profiles=(profile, profile),
+            amplitude_max=1.0,
+            bounds=BandwidthBounds(
+                minimum=0.1, birth=0.1, maximum=10.0, upper_floor=0.1
+            ),
+            w_c=1e6,
+            normalization=NormalizationSpec(
+                kind="discrete_l2",
+                domain="operator_sites",
+                floor=case["normalization"]["floor"] if floor is None else floor,
+            ),
+        ),
+        atoms=p.to(dtype),
+        dtype=dtype,
+        backend="factored",
+    )
+    # Restore original declarations after CSTLinear's parameter dtype conversion.
+    model.chart.geometry.periods = torch.tensor((period, period), dtype=torch.float64)
+    model.chart.origin = torch.tensor(case["origin"], dtype=torch.float64)
+    return model
+
+
+def widths(model):
+    """Untimed live-width metadata, retaining the source dtype's origin guard."""
+    from benchmarks.cuda.linear.matern_native_oracle import _polar
+
+    parameter = model.atoms.p.detach()
+    _, sigma, _ = _polar(
+        model.kernel,
+        parameter.cpu().double().numpy(),
+        tiny=torch.finfo(parameter.dtype).tiny,
+    )
+    return torch.from_numpy(sigma).to(device=parameter.device)
+
+
+def oracle_vjp(model, x, dy, *, chunk=64):
+    from benchmarks.cuda.linear.matern_native_oracle import oracle_vjp as native_vjp
+
+    return native_vjp(model, x, dy, chunk=chunk)

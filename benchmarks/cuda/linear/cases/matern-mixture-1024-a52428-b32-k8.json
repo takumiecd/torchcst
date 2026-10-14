@@ -1,0 +1,73 @@
+{
+  "schema": "matern-mixture-case.research.v7",
+  "size": 1024,
+  "atoms": 52428,
+  "batch": 32,
+  "knot_count": 8,
+  "width_knots": [
+    0.1,
+    0.193069772888325,
+    0.372759372031494,
+    0.7196856730011519,
+    1.3894954943731375,
+    2.6826957952797246,
+    5.17947467923121,
+    10.0
+  ],
+  "decay_length": "b = sigma**2",
+  "mixture": "adjacent convex interpolation in log(sigma)",
+  "periodization": "all periodic images, each fixed-width profile peak-normalized",
+  "atom_density": 0.05,
+  "atom_count_policy": "int(density * input_sites * output_sites); truncate toward zero",
+  "seed": 41,
+  "spacing": 0.1,
+  "periods": [
+    102.4,
+    102.4
+  ],
+  "origin": [
+    0.0,
+    0.0
+  ],
+  "dtype": "float32",
+  "geometry_dtype": "float64",
+  "tf32": false,
+  "width_bounds": {
+    "minimum": 0.1,
+    "birth": 0.1,
+    "maximum": 10.0,
+    "upper_floor": 0.1
+  },
+  "initial_width_distribution": "geomspace_0.1_10",
+  "task_sigma_stop_gradient": true,
+  "normalization": {
+    "kind": "discrete_l2",
+    "domain": "operator_sites",
+    "floor": 1e-06
+  },
+  "optimizer": {
+    "name": "AdamW",
+    "lr": 0.0001,
+    "weight_decay": 0.01,
+    "fused": true,
+    "capturable": true
+  },
+  "schedule": {
+    "eager_warmups": 2,
+    "initial_replays": 1,
+    "timed_replays": 21,
+    "actual_updates_required": 24
+  },
+  "oracle": {
+    "full_sites": true,
+    "all_atoms": true,
+    "max_abs": 0.0004,
+    "relative_l2": 0.0004,
+    "chunk_atoms": 64
+  },
+  "required_workers": [
+    "matern-shared",
+    "matern-direct",
+    "dense"
+  ]
+}

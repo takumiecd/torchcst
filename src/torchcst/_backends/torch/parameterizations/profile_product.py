@@ -1,5 +1,7 @@
 """Single-chart interpretation of the existing shared Polar coordinate law."""
 
+import torch
+
 from torchcst._backends.torch.kernels import execution as _kernel
 
 from .polar_amp_width import _amplitude_and_alpha, _sigma_bounds
@@ -36,3 +38,12 @@ def bandwidth_sigma(state, chart, p):
 
 def bandwidth_precision(state, chart, p):
     return bandwidth_sigma(state, chart, p).reciprocal().square()
+
+
+def precise_polar_values(state, chart, p):
+    """Decode in FP64 while retaining the source dtype's singular-origin guard."""
+    polar, _ = _split(state, chart, p)
+    amp, alpha = _amplitude_and_alpha(
+        state, polar.double(), tiny=torch.finfo(p.dtype).tiny
+    )
+    return amp, _sigma_bounds(state, amp, alpha)[0]
