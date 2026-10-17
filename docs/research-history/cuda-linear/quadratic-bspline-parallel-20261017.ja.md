@@ -178,3 +178,36 @@ python -m benchmarks.submissions check output/bspline-mixed-parallel.json
 
 8192²の完全step性能、周期・複数座標軸、実DB登録は今回も未実施。
 Denseとの差は残り、公開dispatcherへ自動採用する結果ではない。
+
+## 選択した設定での再測定
+
+source `60a1a450`、job `l4job-eea25c36991e4767b13c1317fbc7086c`。
+trackedのsmall/mixed-parallel Caseを使い、各候補の独立FP64検査と提出前検査を通過した。
+GPUテスト160件は直前sourceで実施済みで、このjobは未変更のCUDA実装の独立性能再測定である。
+smallのprepare 1 warpは1.6073 ms (v2=1.7751、Dense=.0824)、
+mixedのVJPのみ16 atom集約は8.7865 ms (v2=9.1245、Dense=.0819)。
+allocated/reservedはsmall49.83/112、mixed35.68/98 MiBのまま。
+全52428 atomのsigma更新を確認した。
+smallの選択候補は計3 job、mixedのVJP候補は計2 jobの完全step測定となった。
+
+source archive SHA256は`55d97da65af0047410e1c6ee5e9dc80300c9f528a70995aa02c96551e558e839`、
+result archive SHA256は`742840c74f476c6d467f7af685622c644b271599661b11386417a20bcc799a76`。
+manifest全33ファイルを照合済み。
+
+## batchを連続に保存する追加案
+
+従来のqueryはbatchを一緒に処理する一方、H[B,A]のbatch間のstrideはA、
+prefix[3,B,N+1]のbatch間のstrideはN+1だった。
+追加案`hybrid_transposed`はH/Hp/G/Gpを[A,B]、prefixと差分/scanを[3,N+1,B]へ変更する。
+batch laneのアドレスを連続にし、atomの処理単位は1のまま保つ。
+query/inject/VJPの数式は同じで、固定係数を新たに学習したりprofileを変更しない。
+
+入力prefixは従来どおりsite軸でcumsumした後に転置copyする。そのcopyをbank構築時間と
+完全step・peakに含める。差分のcumsumは新しいsite軸dim=1を使い、restoreで通常のY[B,N]へ戻す。
+scanの物理配置に伴う加算順序の変化は独立FP64検査で確認する。
+既存経路はconstexpr TRANSPOSED=Falseのまま使う。
+
+この追加案は現時点でGPU検証が完了していないため、PRの最終差分から除いた。
+実装と追加テストはcommit `61a17826`およびlocal branch
+`kernel/quadratic-bspline-transposed-batch`へ保全し、固定sourceと実行記録も保持する。
+PRのruntime・benchmark・GPUテストファイルは検証済み`60a1a450`とbyte単位で同じ状態へ戻した。
