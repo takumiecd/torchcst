@@ -69,6 +69,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
 def test_recipe_and_metadata_roundtrip():
     reg = Registry()
     reg.register(BSplineAlgorithm())
+    reg.register(BSplineTuningAlgorithm())
     for strategy in ("torch", "direct", "hybrid", "matrix"):
         p = ExecutionPlan(
             "research_cuda_quadratic_bspline", "v1", BSplineRecipe(strategy)
@@ -78,6 +79,20 @@ def test_recipe_and_metadata_roundtrip():
         with pytest.raises(ValueError):
             BSplineRecipe(invalid)
     assert layout(bs.fixture_operator(case())) == (64, 64)
+    tuned = ExecutionPlan(
+        "research_cuda_quadratic_bspline",
+        "v2",
+        BSplineTuningRecipe("matrix", matrix_sites=8, matrix_atoms=32),
+    )
+    assert reg.loads_plan(reg.dumps_plan(tuned)) == tuned
+    original = ExecutionPlan("research_cuda_quadratic_bspline", "v1", BSplineRecipe())
+    assert set(reg.dump_plan(original)["recipe"]) == {
+        "strategy",
+        "direct_sites",
+        "block_sites",
+        "reciprocal",
+        "norm_lookup",
+    }
 
 
 def gate(layer, x, dy):
@@ -136,10 +151,23 @@ def test_edges_empty_zero_amplitude_and_saved_geometry(strategy):
 
 
 @GPU
-@pytest.mark.parametrize("strategy", ["direct", "hybrid", "matrix"])
-def test_live_graph_optimizer_state(strategy):
+@pytest.mark.parametrize(
+    "strategy, options",
+    [
+        ("direct", {}),
+        ("hybrid", {}),
+        ("matrix", {}),
+        ("hybrid", {"axis_warps": 1}),
+        ("hybrid", {"axis_warps": 2}),
+    ]
+    + [
+        ("matrix", {"matrix_sites": s, "matrix_atoms": a, "matrix_warps": w})
+        for s, a, w in [(8, 8, 4), (4, 8, 4), (8, 32, 4), (16, 32, 8)]
+    ],
+)
+def test_live_graph_optimizer_state(strategy, options):
     torch.backends.cuda.matmul.allow_tf32 = False
-    layer = model(strategy)
+    layer = model(strategy, **options)
     reference = CSTLinear(
         chart=bs.fixture_operator(case()).charts[0],
         atoms=layer.atoms.p.detach().clone(),
