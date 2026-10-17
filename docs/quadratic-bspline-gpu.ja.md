@@ -10,6 +10,7 @@
 - `QuadraticBSplineSpec` revision 1のPolar profile-product。中心曲率幅sigma、支持半幅√6 sigma。
 - X/sourceはFP32、chartのorigin/spacingはFP64。batch 1..64、autocast/TF32なし。
 - 任意の中心位置とatomごとのlive sigma。支持は有限gridの観測siteで切る。
+- 入力側・出力側のbandwidth boundsは同一。異なる設定は宣言検査で拒否する。
 - 空支持、零振幅、norm floor、retained backward、forward後の中心変更を扱う。
 - first-order VJP。高階微分、周期座標、入出力側に複数の座標を持つgridは初版の範囲外。
 
@@ -19,6 +20,7 @@
 直接評価のsite演算枠は16/64、半幅の逆数のatom内共有も独立のRecipe設定として比較する。
 初期候補の閾値32 siteは実装上の比較値で、最適な閾値やσの上限の結論ではない。
 計算blockと数学的な支持／周期を混同せず、支持をblockへ丸めない。
+FourierのM=4/8に相当する可変次数は使わず、次数2・3pieceの同じ山を全経路で評価する。
 
 ## 共有する値
 
@@ -128,5 +130,81 @@ W/dWとGEMM workspaceを含めた完全step peakを測り、小さい支持向�
 Kと局所座標係数・norm・norm微分は各forwardで更新する。表はdevice/shapeごとに保持し、
 メモリ計測に含む。`norm_lookup=False`は同じ式を毎回評価する対照。
 `reciprocal=True`ではatom内のRの逆数とspacingの逆数を共有する。
-widthのupper decay powerが1または2の場合は、それぞれx/x*xを使い、他のpowerには元のpowを使う。
+widthのupper decay powerが1の場合はxを使い、他の許可されたpower (0,1)には元のpowを使う。
 どちらもlive scalarを読み、学習値を固定・切り捨てない。
+
+最終版のmetadataはatomごとに12個のFP64値を持つ。振幅・支持半幅・2中心・逆norm・
+2つのnorm補正・2つのPolar振幅微分・逆支持半幅・2つの逆spacingである。
+逆数もforwardごとに更新し、H/G query、端点書き戻し、matrix構築/VJPで共用する。
+
+## 計算量と保存量
+
+出力/入力site数をNo/Ni、batchをB、atom数をA、各軸支持site数をSo/Siとする。
+directは概ね`O(AB(So+Si))`、保存するH/Hpは`2BA`個のFP32。
+hybridの広い支持は各軸3本のprefixと端点scanが`O(B(No+Ni))`、
+atom query/端点加算が`O(AB)`となる。広い支持の境界site走査はない。
+狭い支持ではdirectと同じ支持site演算を行う。
+moment表は`16*(max(No,Ni)+1)` bytesで、1024 siteなら約16 KiB。
+normの算出はatomごと3piece×2軸で、支持site数には比例しない。
+
+matrixは`O(A So Si)`のW構築/VJPと、`O(B No Ni)`の3つのGEMMを使う。
+WとdWの保存量は合計`8 No Ni` bytesで、1024²なら8 MiB。
+batchを全atomで共有する効果がある一方、支持が広いほど各atomの支持積が増える。
+これらはtensor量の式であり、allocatorやGEMM workspace込みの実測peakとは区別する。
+
+## L4測定記録
+
+NVIDIA L4、Torch 2.11.0+cu130、CUDA 13.0、Triton 3.6.0、IEEE FP32。
+chart座標・geometry/norm/prefixはFP64。AdamW＋既存fused Polar更新を含む。
+spacing=.1、smallの初期sigmaは(.1,.14,.18)、mixedは(.1,.4,1.6,6.4,12)、
+wideは(3.2,6.4,12)、各群をほぼ同数でshuffleしている。
+各atomのsigmaはPolar状態から毎forward/replayで算出する。
+
+次の表はsource `c4343268776e3745c5fc44e79bd40ff0d9ce9625`の完全step中央値(ms)。
+独立runは各cell 1回、各run 21 sample。小さいσのmatrixと広いσのhybridを別々に評価し、
+両者を混在させたdispatcherの測定ではない。
+
+| N, A, B, 初期幅 | Torch参照 | direct | hybrid | matrix | Dense |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 64, 204, 32, small | .4519 | .1368 | .1736 | .1117 | .0390 |
+| 128, 819, 32, small | .6822 | .3521 | .3971 | .1552 | .0453 |
+| 1024, 2048, 8, mixed | 11.0630 | 2.3784 | .7686 | 未測定 | .0720 |
+| 1024, 52428, 32, small | 444.6252 | 18.6944 | 18.7661 | 4.9743 | .0818 |
+| 1024, 52428, 32, mixed | 449.1328 | 未測定 | 31.3840 | 未測定 | .0814 |
+| 1024, 52428, 32, wide | 450.2825 | 未測定 | 37.0841 | 未測定 | .0823 |
+
+同じsource、1024/A52428/smallのcapture/replay込みpeak allocated/reservedは、
+Torch=8137.09/17468 MiB、direct=33.73/98 MiB、hybrid=34.48/98 MiB、
+matrix=48.63/114 MiB、Dense=49.00/106 MiB。
+matrixはdirectより速いが保存量が増え、Denseよりreservedが大きい。
+GPUプロセス全体のpeakは未測定。Dense並みの速度・メモリを達成したという結果ではない。
+
+固定moment表の効果はmatrix-formula対matrixで比較した。
+64では.1237→.1117 ms、128では.1670→.1552 ms、1024/A52428では5.1237→4.9743 ms。
+norm自体は毎forward算出し、Kだけで決まるmomentの再評価を除いている。
+phase診断は別の計装Graphで、1024/A52428/smallのmatrixは
+forward/loss=1.8391、backward=3.0935、optimizer=.0451 msだった。
+計装値を完全step時間の代わりには使わない。
+
+この全6 caseはY/dX/全atom勾配の独立FP64検査と提出前検査を通過した。
+原本jobは`l4job-d538de6865184a28adaf8573f6604a8e`、
+source archive SHA256は`4f896f760f62bb226f310e9c9bb3b102b81713f9cf6dbcc39a1d5e09c7b6609c`、
+result archive SHA256は`57eaad75e95812cd535f0924722b0eab04c7aa4f309374a96b142d719b45799d`。
+manifest全118ファイルのhashを回収後に照合済み。
+
+最終CUDAコードsource `83b2dae4`では追加stress検証45件を通過した
+(`l4job-25bec8dfcd4c477080e5b4f6aa57a446`)。
+direct/hybridの64..8192 site、matrixの64..1024 site、2種類のnorm floor、
+極小片側支持、空支持、零振幅、異なるorigin/spacingの矩形grid、
+live width-law power=1/.5/.75、非連続stride入力、retained backwardを含む。
+3経路それぞれでGraphを24更新し、eager公開optimizerとParameter/moments/stepを照合し、
+更新後のY/dX/全atom勾配も独立oracleで検査した。
+45件のうち1件はCPU metadata検査、44件が実CUDA検査である。
+CPU全suiteは1968 passed / 2820 skipped (38.57 s)。
+wheel/sdistはbuild成功、全330 runtimeファイルがcheckoutとbyte一致した。
+8192²・約5% atomの性能測定、周期座標、複数座標軸、実DB登録は未実施。
+
+失敗した初期jobも同じignored evidenceへ保持した。
+Triton構文とGraph検証のclock差は修正し、5MiB超過の配列証拠は上記sidecar方式へ移した。
+追加width-lawテストでAPI範囲外のpower=2/1.5を指定した2件は、検証設定を修正して再実行した。
+誤差閾値の緩和、支持の切り捨て、固定sigmaへの置換は行っていない。
