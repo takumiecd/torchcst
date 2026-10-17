@@ -25,7 +25,7 @@ def _report(name, compiled):
 
 def diagnostic_components(strategy):
     common = ("snapshot", "prepare", "norm_replay")
-    if strategy == "matrix":
+    if strategy.startswith("matrix"):
         return common + ("w_build", "y_gemm", "dx_gemm", "dw_gemm", "atom_vjp")
     names = common + (
         "query_input",
@@ -212,7 +212,7 @@ class _BSpline(torch.autograd.Function):
                 )
                 _stamp("norm_replay", 1)
                 _report("norm_replay", compiled)
-            if recipe.strategy == "matrix":
+            if recipe.strategy.startswith("matrix"):
                 ctx.matrix = True
                 w = x.new_zeros((no, ni))
                 _stamp("w_build", 0)
@@ -280,6 +280,7 @@ class _BSpline(torch.autograd.Function):
                     ctx.recipe.matrix_sites,
                     ctx.recipe.matrix_atoms,
                     ctx.recipe.reciprocal,
+                    ctx.recipe.strategy == "matrix_separable",
                     num_warps=ctx.recipe.matrix_warps,
                     enable_fp_fusion=False,
                 )

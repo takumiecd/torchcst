@@ -482,6 +482,7 @@ def matrix_vjp(
     BS: tl.constexpr,
     AB: tl.constexpr,
     RECIPROCAL: tl.constexpr,
+    SEPARABLE: tl.constexpr = False,
 ):
     a = tl.program_id(0) * AB + tl.arange(0, AB)
     radius = tl.load(Meta + a * 12 + 1, a < A, 1)
@@ -526,9 +527,16 @@ def matrix_vjp(
             dw = tl.load(DW + j[:, :, None] * NI + i[:, None, :], mask, 0).to(
                 tl.float64
             )
-            total += tl.sum(tl.sum(dw * fo[:, :, None] * fi[:, None, :], 2), 1)
-            dout += tl.sum(tl.sum(dw * dfo[:, :, None] * fi[:, None, :], 2), 1)
-            din += tl.sum(tl.sum(dw * fo[:, :, None] * dfi[:, None, :], 2), 1)
+            if SEPARABLE:
+                weighted = tl.sum(dw * fi[:, None, :], 2)
+                weighted_prime = tl.sum(dw * dfi[:, None, :], 2)
+                total += tl.sum(weighted * fo, 1)
+                dout += tl.sum(weighted * dfo, 1)
+                din += tl.sum(weighted_prime * fo, 1)
+            else:
+                total += tl.sum(tl.sum(dw * fo[:, :, None] * fi[:, None, :], 2), 1)
+                dout += tl.sum(tl.sum(dw * dfo[:, :, None] * fi[:, None, :], 2), 1)
+                din += tl.sum(tl.sum(dw * fo[:, :, None] * dfi[:, None, :], 2), 1)
     inv = tl.load(Meta + a * 12 + 4, a < A, 0)
     scale = tl.load(Meta + a * 12, a < A, 0) * inv
     tl.store(DP + 4 * a, total * inv * tl.load(Meta + a * 12 + 7, a < A, 0), a < A)

@@ -71,7 +71,7 @@ class BSplineAlgorithm(Algorithm[BSplineRecipe]):
         reasons = []
         try:
             sizes = layout(context.operator)
-            if recipe.strategy == "matrix" and max(sizes) > 1024:
+            if recipe.strategy.startswith("matrix") and max(sizes) > 1024:
                 reasons.append(
                     "matrix research route supports at most 1024 sites per axis"
                 )

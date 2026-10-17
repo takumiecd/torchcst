@@ -48,11 +48,12 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry = Registry()
     registry.register(BSplineAlgorithm())
     registry.register(BSplineTuningAlgorithm())
+    tuned = bool(recipe_options) or strategy == "matrix_separable"
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v2" if recipe_options else "v1",
+        "v2" if tuned else "v1",
         BSplineTuningRecipe(strategy, **recipe_options)
-        if recipe_options
+        if tuned
         else BSplineRecipe(strategy),
     )
     layer = CSTLinear(
@@ -159,6 +160,8 @@ def test_edges_empty_zero_amplitude_and_saved_geometry(strategy):
         ("matrix", {}),
         ("hybrid", {"axis_warps": 1}),
         ("hybrid", {"axis_warps": 2}),
+        ("matrix_separable", {"matrix_sites": 4}),
+        ("matrix_separable", {"matrix_sites": 16}),
     ]
     + [
         ("matrix", {"matrix_sites": s, "matrix_atoms": a, "matrix_warps": w})
@@ -269,7 +272,7 @@ def test_matrix_full_atom_gradient_gate(n, floor):
 
 
 @GPU
-@pytest.mark.parametrize("strategy", ["direct", "hybrid", "matrix"])
+@pytest.mark.parametrize("strategy", ["direct", "hybrid", "matrix", "matrix_separable"])
 def test_tiny_single_axis_support_below_product_floor(strategy):
     layer = model(strategy, n=64)
     with torch.no_grad():
@@ -331,12 +334,13 @@ def test_live_amplitude_dependent_sigma_with_power_branches(strategy, power):
 
 @GPU
 @pytest.mark.parametrize("shape", [(8, 8, 4), (4, 8, 4), (8, 32, 4), (16, 32, 8)])
+@pytest.mark.parametrize("strategy", ["matrix", "matrix_separable"])
 @pytest.mark.parametrize("n", [64, 1024])
 @pytest.mark.parametrize("floor", [1e-6, 1000.0])
-def test_matrix_launch_variants_all_gradients(shape, n, floor):
+def test_matrix_launch_variants_all_gradients(shape, strategy, n, floor):
     sites, atoms, warps = shape
     layer = model(
-        "matrix",
+        strategy,
         n=n,
         floor=floor,
         matrix_sites=sites,
