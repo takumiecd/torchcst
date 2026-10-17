@@ -13,6 +13,7 @@ from dataclasses import asdict
 
 from benchmarks.cuda.linear.manifest import REGISTRY, decode_snapshot
 from benchmarks.cuda.linear.protocol import (
+    BSPLINE_ORACLE_SCOPE,
     GLOBAL_PRODUCT_ORACLE_SCOPE,
     LOCAL_OPTIMIZER_POLICY,
     LOCAL_ORACLE_SCOPE,
@@ -183,6 +184,7 @@ def project(value):
         "polar_profile_product_square_strip",
     )
     product = run.case.fixture in (
+        "quadratic_bspline",
         "polar_profile_product",
         "polar_profile_product_strip",
         "polar_profile_product_square_strip",
@@ -195,7 +197,9 @@ def project(value):
     global_product = run.case.fixture == "polar_profile_product_global"
     square_strip = run.case.fixture == "polar_profile_product_square_strip"
     revision = (
-        8
+        9
+        if run.case.fixture == "quadratic_bspline"
+        else 8
         if torus
         else 7
         if square_strip
@@ -210,7 +214,9 @@ def project(value):
         else REVISION
     )
     oracle_scope = (
-        TORUS_PRODUCT_ORACLE_SCOPE
+        BSPLINE_ORACLE_SCOPE
+        if run.case.fixture == "quadratic_bspline"
+        else TORUS_PRODUCT_ORACLE_SCOPE
         if torus
         else SQUARE_STRIP_PRODUCT_ORACLE_SCOPE
         if square_strip

@@ -297,6 +297,7 @@ class BenchmarkCase:
             "normalized_euclidean_strip",
             "polar_sphere_separable",
             "local_polar_product",
+            "quadratic_bspline",
             "polar_profile_product",
             "polar_profile_product_strip",
             "polar_profile_product_square_strip",
@@ -318,7 +319,9 @@ class BenchmarkCase:
         elif not self.optimizer.capturable:
             raise ValueError("existing fixtures require capturable AdamW")
         sizes = (
-            (64, 1024, 2048)
+            (64, 128, 1024, 8192)
+            if self.fixture == "quadratic_bspline"
+            else (64, 1024, 2048)
             if self.fixture == "polar_sphere_separable"
             else (1024, 2048)
             if self.fixture == "polar_torus_profile_product_strip"
@@ -333,6 +336,7 @@ class BenchmarkCase:
             if self.fixture
             in (
                 "local_polar_product",
+                "quadratic_bspline",
                 "polar_profile_product",
                 "polar_profile_product_strip",
                 "polar_profile_product_square_strip",
@@ -344,6 +348,7 @@ class BenchmarkCase:
             raise ValueError(f"fixture size must be one of {sizes}")
         if self.fixture in (
             "local_polar_product",
+            "quadratic_bspline",
             "polar_profile_product",
             "polar_profile_product_strip",
             "polar_profile_product_square_strip",
@@ -381,6 +386,7 @@ class BenchmarkCase:
             if self.fixture
             in (
                 "local_polar_product",
+                "quadratic_bspline",
                 "polar_profile_product",
                 "polar_profile_product_strip",
                 "polar_profile_product_square_strip",
@@ -398,6 +404,7 @@ class BenchmarkCase:
             or self.fixture
             not in (
                 "local_polar_product",
+                "quadratic_bspline",
                 "polar_profile_product",
                 "polar_profile_product_strip",
                 "polar_profile_product_square_strip",
@@ -436,6 +443,7 @@ class BenchmarkRun:
                     "polar_profile_product_global",
                     "polar_torus_profile_product_strip",
                     "polar_sphere_separable",
+                    "quadratic_bspline",
                 )
                 else LOCAL_SEMANTICS
                 if self.case.fixture == "local_polar_product"
@@ -585,3 +593,14 @@ from torchcst._backends.cuda.algorithms.linear.matern_streaming.algorithm import
 )
 
 REGISTRY.register(MaternStreamingAlgorithm())
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineAlgorithm,
+    BSplineParallelAlgorithm,
+    BSplineTuningAlgorithm,
+)
+
+REGISTRY.register(BSplineAlgorithm())
+
+REGISTRY.register(BSplineTuningAlgorithm())
+REGISTRY.register(BSplineParallelAlgorithm())

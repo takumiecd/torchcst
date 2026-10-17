@@ -56,6 +56,7 @@ class PlanLinear(nn.Module):
         self.update_binding = None
         if plan.algorithm_id in (
             "research_profile_product",
+            "research_cuda_quadratic_bspline",
             "research_torch_torus_profile_product_chunked",
             "research_cuda_torus_profile_product_onchip",
             "research_cuda_torus_profile_product_sparse_weight",
@@ -81,6 +82,13 @@ class PlanLinear(nn.Module):
                 device=self.p.device,
                 dtype=self.p.dtype,
             )
+            if plan.algorithm_id == "research_cuda_quadratic_bspline":
+                self.product_site.chart.double()
+                self.product_site.chart.spacing.copy_(
+                    torch.tensor(
+                        operator.charts[0].spacing, device=p.device, dtype=torch.float64
+                    )
+                )
             self.live_operator = self.product_site.operator
             self.local_state = self.product_site.kernel
             self.update_binding = AtomUpdateBinding(self.live_operator)
@@ -141,6 +149,7 @@ class PlanLinear(nn.Module):
             self.product_site
             if self.plan.algorithm_id
             in (
+                "research_cuda_quadratic_bspline",
                 "research_torch_torus_profile_product_chunked",
                 "research_cuda_torus_profile_product_onchip",
                 "research_cuda_torus_profile_product_sparse_weight",
@@ -165,6 +174,7 @@ def _metadata(args, run):
         Path(__file__),
         Path(reference.__file__),
         Path(__file__).with_name("fixtures.py"),
+        Path(__file__).with_name("bspline.py"),
         Path(__file__).with_name("check_normalized.py"),
         Path(__file__).with_name("manifest.py"),
         Path(__file__).with_name("local_product.py"),
@@ -212,6 +222,10 @@ def _metadata(args, run):
 
 
 def correctness(args, run):
+    if run.case.fixture == "quadratic_bspline":
+        from .bspline import correctness as bspline_check
+
+        return bspline_check(args, run, PlanLinear)
     if run.case.fixture == "polar_sphere_separable":
         from torchcst._backends.dispatch import FixedSelector
 
@@ -301,6 +315,7 @@ def measure(args, run):
     torus = case.fixture == "polar_torus_profile_product_strip"
     global_product = case.fixture == "polar_profile_product_global"
     product = case.fixture in (
+        "quadratic_bspline",
         "polar_profile_product",
         "polar_profile_product_strip",
         "polar_profile_product_square_strip",
@@ -356,9 +371,19 @@ def measure(args, run):
                 initialize,
                 summarize,
             )
+        if case.fixture == "quadratic_bspline":
+            from .bspline import (
+                decode,
+                fixture_operator,
+                fixture_state,
+                initialize,
+                summarize,
+            )
         op, p = fixture_operator(case), initialize(case)
         support_domain = (
-            op.charts[0] if strip or global_product or torus else Domain(n, n)
+            op.charts[0]
+            if strip or global_product or torus or case.fixture == "quadratic_bspline"
+            else Domain(n, n)
         )
         support_report = summarize(decode(fixture_state(case), p), support_domain)
     else:
@@ -405,7 +430,9 @@ def measure(args, run):
             decode,
         )
 
-        if torus:
+        if case.fixture == "quadratic_bspline":
+            from .bspline import decode
+        elif torus:
             from benchmarks.cuda.linear.torus_profile_product import decode
         elif product:
             from benchmarks.cuda.linear.profile_product import decode
@@ -489,6 +516,29 @@ def measure(args, run):
             "changed_atoms": int((change != 0).sum()),
             "max_abs_change": float(change.abs().max()),
         }
+        if case.fixture == "quadratic_bspline" and case.atoms > 512:
+            sidecar = args.output.with_suffix(".widths.pt")
+            torch.save({"initial": initial_sigma, "final": final_sigma}, sidecar)
+            sample = (
+                torch.linspace(0, case.atoms - 1, min(16, case.atoms)).round().long()
+            )
+            sigma_updates.update(
+                {
+                    "initial": initial_sigma[sample].tolist(),
+                    "final": final_sigma[sample].tolist(),
+                    "sample_indices": sample.tolist(),
+                    "arrays_are_samples": True,
+                    "full_arrays_file": sidecar.name,
+                    "full_arrays_sha256": hashlib.sha256(
+                        sidecar.read_bytes()
+                    ).hexdigest(),
+                    "initial_range": [
+                        float(initial_sigma.min()),
+                        float(initial_sigma.max()),
+                    ],
+                    "final_range": [float(final_sigma.min()), float(final_sigma.max())],
+                }
+            )
         if not sigma_updates["changed_atoms"]:
             raise AssertionError("dynamic-width fixture did not update sigma")
         recipe = run.entry(args.plan_id).plan.recipe
@@ -591,7 +641,34 @@ def measure(args, run):
         )
         diagnostic = torch.cuda.CUDAGraph()
         backend_events = None
-        if args.kernel_diagnostics and local and args.worker != "dense":
+        bspline_diagnostics = (
+            args.kernel_diagnostics
+            and case.fixture == "quadratic_bspline"
+            and args.worker != "dense"
+            and run.entry(args.plan_id).plan.recipe.strategy != "torch"
+        )
+        if bspline_diagnostics:
+            from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+                executor,
+            )
+
+            names = executor.diagnostic_components(
+                run.entry(args.plan_id).plan.recipe.strategy
+            )
+            backend_events = {
+                name: [
+                    torch.cuda.Event(enable_timing=True, external=True)
+                    for _ in range(2)
+                ]
+                for name in names
+            }
+            executor.DIAGNOSTIC_EVENTS = backend_events
+        elif (
+            args.kernel_diagnostics
+            and local
+            and args.worker != "dense"
+            and case.fixture != "quadratic_bspline"
+        ):
             from torchcst._backends.cuda.algorithms.linear.local_product import executor
 
             backward_components = (
@@ -608,6 +685,10 @@ def measure(args, run):
             }
             executor.DIAGNOSTIC_EVENTS = backend_events
         try:
+            if bspline_diagnostics:
+                with torch.cuda.stream(stream):
+                    step()
+                torch.cuda.synchronize()
             with torch.cuda.graph(diagnostic, stream=stream):
                 step(events, update_events)
         finally:
@@ -645,6 +726,11 @@ def measure(args, run):
                 name: {"median_ms": statistics.median(values), "samples_ms": values}
                 for name, values in backend_samples.items()
             },
+            "norm_replay_scope": (
+                "extra diagnostic norm-only re-evaluation from live decoded geometry; included in diagnostic forward, absent from primary timing; do not subtract from fused prepare"
+                if bspline_diagnostics
+                else None
+            ),
         }
     core = None
     if args.core_diagnostics:
@@ -690,7 +776,9 @@ def measure(args, run):
         if local and args.worker != "dense"
         else None,
         "compiler_reports": __import__(
-            "torchcst._backends.cuda.algorithms.linear.local_product.executor",
+            "torchcst._backends.cuda.algorithms.linear.quadratic_bspline.executor"
+            if case.fixture == "quadratic_bspline"
+            else "torchcst._backends.cuda.algorithms.linear.local_product.executor",
             fromlist=["COMPILER_REPORTS"],
         ).COMPILER_REPORTS
         if local and args.worker != "dense"
@@ -808,6 +896,7 @@ def main():
         ap.error("--core-diagnostics requires the local product fixture")
     if args.polar_update == "fused" and run.case.fixture not in (
         "local_polar_product",
+        "quadratic_bspline",
         "polar_profile_product",
         "polar_profile_product_strip",
         "polar_profile_product_square_strip",
@@ -815,10 +904,13 @@ def main():
     ):
         ap.error("--polar-update fused requires the local product fixture")
     if args.kernel_diagnostics and (
-        run.case.fixture != "local_polar_product"
-        or any(entry.plan.recipe.execution_route == "torch" for entry in run.plans)
+        run.case.fixture not in ("local_polar_product", "quadratic_bspline")
+        or (
+            run.case.fixture == "local_polar_product"
+            and any(entry.plan.recipe.execution_route == "torch" for entry in run.plans)
+        )
     ):
-        ap.error("--kernel-diagnostics requires CUDA local product routes")
+        ap.error("--kernel-diagnostics requires CUDA local product or B-spline routes")
     if not args.output:
         ap.error("--output is required for GPU execution")
     args.output = args.output.resolve()
