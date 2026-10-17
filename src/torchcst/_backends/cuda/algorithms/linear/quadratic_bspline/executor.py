@@ -26,7 +26,10 @@ def _report(name, compiled):
 def diagnostic_components(strategy):
     common = ("snapshot", "prepare", "norm_replay")
     if strategy.startswith("matrix"):
-        return common + ("w_build", "y_gemm", "dx_gemm", "dw_gemm", "atom_vjp")
+        grouping = ("group",) if strategy == "matrix_support_grouped" else ()
+        return (
+            common + grouping + ("w_build", "y_gemm", "dx_gemm", "dw_gemm", "atom_vjp")
+        )
     names = common + (
         "query_input",
         "query_adjoint",
@@ -265,6 +268,13 @@ class _BSpline(torch.autograd.Function):
                 _report("norm_replay", compiled)
             if recipe.strategy.startswith("matrix"):
                 ctx.matrix = True
+                order = None
+                if recipe.strategy == "matrix_support_grouped":
+                    from .grouping import order_atoms
+
+                    _stamp("group", 0)
+                    order = order_atoms(meta, origin, spacing, (no, ni), recipe)
+                    _stamp("group", 1)
                 w = x.new_zeros((no, ni))
                 _stamp("w_build", 0)
                 if recipe.strategy == "matrix_flat":
@@ -298,6 +308,8 @@ class _BSpline(torch.autograd.Function):
                         recipe.matrix_sites,
                         recipe.matrix_atoms,
                         recipe.reciprocal,
+                        Order=order,
+                        GROUPED=order is not None,
                         num_warps=recipe.matrix_warps,
                         enable_fp_fusion=False,
                     )
@@ -305,7 +317,7 @@ class _BSpline(torch.autograd.Function):
                 _report("w_build", compiled)
                 ctx.sizes = (no, ni)
                 ctx.recipe = recipe
-                ctx.save_for_backward(meta, x, w, origin, spacing)
+                ctx.save_for_backward(meta, x, w, origin, spacing, order)
                 _stamp("y_gemm", 0)
                 y = x @ w.T
                 _stamp("y_gemm", 1)
@@ -328,7 +340,7 @@ class _BSpline(torch.autograd.Function):
         from . import kernels as k
 
         if ctx.matrix:
-            meta, x, w, origin, spacing = ctx.saved_tensors
+            meta, x, w, origin, spacing, order = ctx.saved_tensors
             dy = dy.contiguous()
             _stamp("dx_gemm", 0)
             dx = dy @ w if ctx.needs_input_grad[0] else None
@@ -374,7 +386,10 @@ class _BSpline(torch.autograd.Function):
                         ctx.recipe.matrix_sites,
                         ctx.recipe.matrix_atoms,
                         ctx.recipe.reciprocal,
-                        ctx.recipe.strategy == "matrix_separable",
+                        ctx.recipe.strategy
+                        in ("matrix_separable", "matrix_support_grouped"),
+                        Order=order,
+                        GROUPED=order is not None,
                         num_warps=ctx.recipe.matrix_warps,
                         enable_fp_fusion=False,
                     )

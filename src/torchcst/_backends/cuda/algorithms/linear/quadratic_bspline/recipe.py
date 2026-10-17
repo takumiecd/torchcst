@@ -61,6 +61,7 @@ class BSplineTuningRecipe(BSplineRecipe):
 class BSplineParallelRecipe(BSplineTuningRecipe):
     strategies = BSplineTuningRecipe.strategies + (
         "matrix_flat",
+        "matrix_support_grouped",
         "hybrid_grouped",
         "hybrid_vjp_grouped",
     )

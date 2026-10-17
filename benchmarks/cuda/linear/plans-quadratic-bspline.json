@@ -394,6 +394,75 @@
           "prepare_warps": 1
         }
       }
+    },
+    {
+      "id": "matrix-support4a4",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_quadratic_bspline",
+        "algorithm_revision": "v3",
+        "recipe": {
+          "strategy": "matrix_support_grouped",
+          "direct_sites": 32,
+          "block_sites": 8,
+          "reciprocal": true,
+          "norm_lookup": true,
+          "matrix_sites": 4,
+          "matrix_atoms": 4,
+          "matrix_warps": 1,
+          "axis_warps": 4,
+          "axis_atoms": 8,
+          "axis_batch": 8,
+          "matrix_pairs": 32,
+          "prepare_warps": 1
+        }
+      }
+    },
+    {
+      "id": "matrix-support4a8",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_quadratic_bspline",
+        "algorithm_revision": "v3",
+        "recipe": {
+          "strategy": "matrix_support_grouped",
+          "direct_sites": 32,
+          "block_sites": 8,
+          "reciprocal": true,
+          "norm_lookup": true,
+          "matrix_sites": 4,
+          "matrix_atoms": 8,
+          "matrix_warps": 1,
+          "axis_warps": 4,
+          "axis_atoms": 8,
+          "axis_batch": 8,
+          "matrix_pairs": 32,
+          "prepare_warps": 1
+        }
+      }
+    },
+    {
+      "id": "matrix-support4a16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_quadratic_bspline",
+        "algorithm_revision": "v3",
+        "recipe": {
+          "strategy": "matrix_support_grouped",
+          "direct_sites": 32,
+          "block_sites": 8,
+          "reciprocal": true,
+          "norm_lookup": true,
+          "matrix_sites": 4,
+          "matrix_atoms": 16,
+          "matrix_warps": 1,
+          "axis_warps": 4,
+          "axis_atoms": 8,
+          "axis_batch": 8,
+          "matrix_pairs": 32,
+          "prepare_warps": 1
+        }
+      }
     }
   ]
 }

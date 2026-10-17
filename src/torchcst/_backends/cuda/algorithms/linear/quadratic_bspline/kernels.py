@@ -421,8 +421,12 @@ def matrix_build(
     BS: tl.constexpr,
     AB: tl.constexpr,
     RECIPROCAL: tl.constexpr,
+    Order=None,
+    GROUPED: tl.constexpr = False,
 ):
     a = tl.program_id(0) * AB + tl.arange(0, AB)
+    if GROUPED:
+        a = tl.load(Order + a, a < A, A)
     radius = tl.load(Meta + a * 12 + 1, a < A, 1)
     inverse_radius = tl.load(Meta + a * 12 + 9, a < A, 1)
     inverse_ho = tl.load(Meta + a * 12 + 10, a < A, 1)
@@ -483,8 +487,12 @@ def matrix_vjp(
     AB: tl.constexpr,
     RECIPROCAL: tl.constexpr,
     SEPARABLE: tl.constexpr = False,
+    Order=None,
+    GROUPED: tl.constexpr = False,
 ):
     a = tl.program_id(0) * AB + tl.arange(0, AB)
+    if GROUPED:
+        a = tl.load(Order + a, a < A, A)
     radius = tl.load(Meta + a * 12 + 1, a < A, 1)
     inverse_radius = tl.load(Meta + a * 12 + 9, a < A, 1)
     inverse_ho = tl.load(Meta + a * 12 + 10, a < A, 1)

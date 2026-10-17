@@ -53,6 +53,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineParallelAlgorithm())
     parallel = strategy in (
         "matrix_flat",
+        "matrix_support_grouped",
         "hybrid_grouped",
         "hybrid_vjp_grouped",
     ) or bool(
@@ -104,6 +105,12 @@ def test_recipe_and_metadata_roundtrip():
         "research_cuda_quadratic_bspline", "v3", BSplineParallelRecipe("hybrid_grouped")
     )
     assert reg.loads_plan(reg.dumps_plan(grouped)) == grouped
+    support_grouped = ExecutionPlan(
+        "research_cuda_quadratic_bspline",
+        "v3",
+        BSplineParallelRecipe("matrix_support_grouped", matrix_sites=4, matrix_warps=1),
+    )
+    assert reg.loads_plan(reg.dumps_plan(support_grouped)) == support_grouped
     original = ExecutionPlan("research_cuda_quadratic_bspline", "v1", BSplineRecipe())
     assert set(reg.dump_plan(original)["recipe"]) == {
         "strategy",
@@ -150,7 +157,8 @@ def test_live_width_all_gradients(strategy, n, floor):
 
 @GPU
 @pytest.mark.parametrize(
-    "strategy", ["direct", "hybrid", "matrix_flat", "hybrid_grouped"]
+    "strategy",
+    ["direct", "hybrid", "matrix_flat", "hybrid_grouped", "matrix_support_grouped"],
 )
 def test_edges_empty_zero_amplitude_and_saved_geometry(strategy):
     torch.backends.cuda.matmul.allow_tf32 = False
@@ -184,6 +192,7 @@ def test_edges_empty_zero_amplitude_and_saved_geometry(strategy):
         ("matrix_separable", {"matrix_sites": 16}),
         ("matrix_separable", {"matrix_sites": 4, "matrix_warps": 1}),
         ("matrix_separable", {"matrix_sites": 4, "matrix_warps": 2}),
+        ("matrix_support_grouped", {"matrix_sites": 4, "matrix_warps": 1}),
         ("matrix_flat", {"matrix_pairs": 16, "matrix_warps": 1}),
         ("matrix_flat", {"matrix_pairs": 32, "matrix_warps": 1}),
         ("matrix_flat", {"matrix_pairs": 64, "matrix_warps": 1}),
@@ -267,7 +276,9 @@ def test_live_graph_optimizer_state(strategy, options):
 
 
 @GPU
-@pytest.mark.parametrize("strategy", ["direct", "hybrid", "hybrid_grouped"])
+@pytest.mark.parametrize(
+    "strategy", ["direct", "hybrid", "hybrid_grouped", "matrix_support_grouped"]
+)
 def test_switching_support_size_and_coordinate_buffer_rejection(strategy):
     layer = model(strategy, n=128)
     x = torch.randn(3, 128, device="cuda", requires_grad=True)
@@ -305,7 +316,15 @@ def test_matrix_full_atom_gradient_gate(n, floor):
 @GPU
 @pytest.mark.parametrize(
     "strategy",
-    ["direct", "hybrid", "matrix", "matrix_separable", "matrix_flat", "hybrid_grouped"],
+    [
+        "direct",
+        "hybrid",
+        "matrix",
+        "matrix_separable",
+        "matrix_flat",
+        "hybrid_grouped",
+        "matrix_support_grouped",
+    ],
 )
 def test_tiny_single_axis_support_below_product_floor(strategy):
     layer = model(strategy, n=64)
@@ -321,7 +340,15 @@ def test_tiny_single_axis_support_below_product_floor(strategy):
 
 @GPU
 @pytest.mark.parametrize(
-    "strategy", ["direct", "hybrid", "matrix", "matrix_flat", "hybrid_grouped"]
+    "strategy",
+    [
+        "direct",
+        "hybrid",
+        "matrix",
+        "matrix_flat",
+        "hybrid_grouped",
+        "matrix_support_grouped",
+    ],
 )
 def test_rectangular_grid_distinct_spacing_and_origin(strategy):
     from torchcst import chart_presets
@@ -330,7 +357,7 @@ def test_rectangular_grid_distinct_spacing_and_origin(strategy):
     reg = Registry()
     reg.register(BSplineAlgorithm())
     reg.register(BSplineParallelAlgorithm())
-    parallel = strategy in ("matrix_flat", "hybrid_grouped")
+    parallel = strategy in ("matrix_flat", "hybrid_grouped", "matrix_support_grouped")
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
         "v3" if parallel else "v1",
@@ -463,3 +490,75 @@ def test_grouped_vjp_only_all_gradients(n, floor):
                 layer.atoms.p[:, 2:].add_(0.0037)
         x = torch.randn(3, n, device="cuda", requires_grad=True)
         gate(layer, x, torch.randn_like(x))
+
+
+@GPU
+@pytest.mark.parametrize("n", [64, 1024])
+@pytest.mark.parametrize("floor", [1e-6, 1000.0])
+@pytest.mark.parametrize("atoms", [4, 8, 16])
+def test_support_grouped_all_gradients(n, floor, atoms):
+    layer = model(
+        "matrix_support_grouped",
+        n=n,
+        floor=floor,
+        matrix_sites=4,
+        matrix_atoms=atoms,
+        matrix_warps=1,
+    )
+    for step in range(3):
+        if step:
+            with torch.no_grad():
+                layer.atoms.p[:, :2].mul_(1.003)
+                layer.atoms.p[:, 2:].add_(0.0037)
+        x = torch.randn(3, n, device="cuda", requires_grad=True)
+        gate(layer, x, torch.randn_like(x))
+
+
+@GPU
+@pytest.mark.parametrize("reciprocal", [True, False])
+def test_support_order_tracks_both_clipped_axes(reciprocal):
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.grouping import (
+        order_atoms,
+    )
+
+    # Includes empty, single-site, broad, clipped and partial last atom groups.
+    meta = torch.ones((17, 12), dtype=torch.float64, device="cuda")
+    origin = torch.tensor([-2.0, 1.0], dtype=torch.float64, device="cuda")
+    spacing = torch.tensor([0.13, 0.07], dtype=torch.float64, device="cuda")
+    meta[:, 1] = torch.linspace(0.01, 4, 17, device="cuda").double()
+    meta[:, 2] = torch.linspace(-3, 3, 17, device="cuda").double()
+    meta[:, 3] = torch.linspace(6, 0, 17, device="cuda").double()
+    meta[:, 10:12] = spacing.reciprocal()
+    recipe = BSplineParallelRecipe(
+        "matrix_support_grouped", matrix_sites=4, reciprocal=reciprocal
+    )
+    orders = []
+    for step in range(3):
+        if step:
+            meta[:, 1].mul_(0.6)
+            meta[:, 2].add_(0.53)
+        order = order_atoms(meta, origin, spacing, (32, 64), recipe)
+        torch.testing.assert_close(order.sort().values, torch.arange(17, device="cuda"))
+        radius = meta[:, 1, None]
+        center = meta[:, 2:4]
+        lo = (center - radius - origin) / spacing
+        hi = (center + radius - origin) / spacing
+        lengths = torch.tensor([32, 64], device="cuda")
+        count = hi.ceil().clamp_min(0).minimum(lengths) - lo.ceil().clamp_min(
+            0
+        ).minimum(lengths)
+        patches = (count.long() + 3) // 4
+        key = patches[:, 0] * 17 + patches[:, 1]
+        assert bool((key[order][1:] >= key[order][:-1]).all())
+        orders.append(order.clone())
+    assert not torch.equal(orders[0], orders[-1])
+
+
+@GPU
+def test_support_grouped_zero_atoms():
+    layer = model("matrix_support_grouped", a=0)
+    x = torch.randn(3, 64, device="cuda", requires_grad=True)
+    y = layer(x)
+    dx, dp = torch.autograd.grad(y.sum(), (x, layer.atoms.p))
+    assert not bool(y.any()) and not bool(dx.any())
+    assert dp.shape == (0, 4)
