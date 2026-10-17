@@ -211,3 +211,58 @@ scanの物理配置に伴う加算順序の変化は独立FP64検査で確認す
 実装と追加テストはcommit `61a17826`およびlocal branch
 `kernel/quadratic-bspline-transposed-batch`へ保全し、固定sourceと実行記録も保持する。
 PRのruntime・benchmark・GPUテストファイルは検証済み`60a1a450`とbyte単位で同じ状態へ戻した。
+
+job `l4job-33284710b27441a6bbadc6cad61f64ae`はColab接続が失われ、hostの2040秒の上限で
+実行確認が中断された。source archive SHA256は
+`aa417cdc04685824fd5618901c84364d1a603eae57c816105092a4cadd2653c3`。
+result archive/receipt/pytest logは回収できていない。どの検証まで進んだかも確定できず、
+精度FAILや性能劣化の証拠には使えない。source/spec/transport logをignoredの
+`unqualified-transposed/`へ保全した。poolが所有VMの停止を確認した後にrecoverし、
+同じjobの自動再試行はしていない。CPU検証は1968 passed / 2952 skippedだったが、
+実CUDAの検証完了には代えない。
+
+検証済みのruntimeへ戻した後もCPU全suite 1968 passed / 2935 skipped (40.49 s)、
+Ruff、wheel/sdistの331 runtimeファイルのbyte一致を確認した。
+
+## 小さいsigmaのmasked patch枠の監査
+
+GPU実測の追加結果ではなく、同じsmall Caseの初期ParameterからCPU FP64で支持境界を列挙した。
+現行の8 atom、4×4 site patchではgroup gの演算枠は
+
+\[
+E_g=8\cdot4^2\cdot
+\max_{a\in g}\lceil S_{oa}/4\rceil\cdot
+\max_{a\in g}\lceil S_{ia}/4\rceil.
+\]
+
+有効な支持内の組は \(U=\sum_a S_{oa}S_{ia}\) である。
+8個に満たない最後のgroupも同じmask枠で数える。
+`bspline-1024-a52428-small-parallel`の初期値ではU=2,592,254組、
+現行順の枠は7,181,056組。二軸のpatch数でatomを並べる仮想配置では4,331,136組となり、
+枠を約39.7%減らせる。3つのCPU状態 (thetaを毎回1.00005倍、中心に.0001加算する指定摂動) で
+同様に39.6..39.7%となった。学習後の実測Parameterを使った数字ではない。
+
+これはprofile演算枠の数で、全命令数や速度の比率ではない。
+GPUの並べ替え、索引保持、indirect loadの費用は未測定であり、GPU採用案にも含めない。
+sigmaだけでなくclip後の二軸支持点数で処理を揃える設計を、次の仮説として記録する。
+原本はignored `output/bspline-parallel-20261017/support-slot-audit.py`と同JSONへ保全する。
+
+同じCUDA実装のsite patchを2×2へ変える設定も準備した (source `fc16e8fa`)。
+v2は従来どおり4/8/16のみを許し、v3だけ2を追加する案で、serialized fields数は5/9/13のまま。
+これはW構築・VJPの内側の処理単位であり、支持の打ち切りではない。
+CPU全suiteは1968 passed / 2945 skipped (41.29 s)、Ruffとmetadata往復はPASS。
+実CUDAの結果を回収できていないため現在は採用せず、実装と追加テストをlocal branch
+`kernel/quadratic-bspline-patch2`へ保全した。最終PRのruntimeとGPUテストは再び
+検証済み`60a1a450`とbyte単位で同じ状態である。
+
+2点案のjob `l4job-6791431fb5794636a2de71d0361a3445`も、別の新規L4でColab接続が失われ、
+hostの840秒の上限で実行確認が中断された。source archive SHA256は
+`9072eded86ed30391e626172c30a4d40441b353b5477e807f61bea205df5445b`。
+source/spec/transport logを`unqualified-patch2/`へコピーしてsource hashを照合した。
+result archive/receipt/pytest logは未回収なので、2点案の精度も速度も未検証である。
+kernel内のどの処理に到達したか、接続障害とkernelの関係も確定していない。
+両jobのGPUをpool経由で停止・recoverし、全slotがstopped、待ちjobがないことを確認して終了した。
+
+最終的に報告する追加改善は、独立測定済みのsmall 1.6073 ms、mixed 8.7865 msのみ。
+v2の最速対照からそれぞれ約10% / 約4%短縮し、Denseとの差は約20倍 / 約107倍残る。
+追加2案の未回収結果を性能値や正しさの根拠へ混ぜていない。
