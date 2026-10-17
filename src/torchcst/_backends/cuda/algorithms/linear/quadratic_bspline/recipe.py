@@ -10,8 +10,19 @@ class BSplineRecipe:
     block_sites: int = 16
     reciprocal: bool = True
     norm_lookup: bool = True
+    matrix_sites: int = 16
+    matrix_atoms: int = 8
+    matrix_warps: int = 4
 
     def __post_init__(self):
+        for name, allowed in (
+            ("matrix_sites", (4, 8, 16)),
+            ("matrix_atoms", (4, 8, 16, 32)),
+            ("matrix_warps", (2, 4, 8)),
+        ):
+            value = getattr(self, name)
+            if type(value) is not int or value not in allowed:
+                raise ValueError(f"{name} must be one of {allowed}")
         if type(self.norm_lookup) is not bool:
             raise ValueError("norm_lookup must be boolean")
         if type(self.reciprocal) is not bool:

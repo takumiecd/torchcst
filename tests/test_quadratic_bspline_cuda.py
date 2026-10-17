@@ -35,7 +35,7 @@ def case(n=64, a=17):
     return SimpleNamespace(size=n, atoms=a, seed=207, widths=None)
 
 
-def model(strategy, n=64, a=17, floor=1e-6):
+def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     from dataclasses import replace
 
     c = case(n, a)
@@ -46,7 +46,9 @@ def model(strategy, n=64, a=17, floor=1e-6):
     registry = Registry()
     registry.register(BSplineAlgorithm())
     plan = ExecutionPlan(
-        "research_cuda_quadratic_bspline", "v1", BSplineRecipe(strategy)
+        "research_cuda_quadratic_bspline",
+        "v1",
+        BSplineRecipe(strategy, **recipe_options),
     )
     layer = CSTLinear(
         chart=op.charts[0],
@@ -292,3 +294,26 @@ def test_live_amplitude_dependent_sigma_with_power_branches(strategy, power):
     with torch.no_grad():
         layer.atoms.p[:, :2].mul_(1.01)
     gate(layer, x, dy)
+
+
+@GPU
+@pytest.mark.parametrize("shape", [(8, 8, 4), (4, 8, 4), (8, 32, 4), (16, 32, 8)])
+@pytest.mark.parametrize("n", [64, 1024])
+@pytest.mark.parametrize("floor", [1e-6, 1000.0])
+def test_matrix_launch_variants_all_gradients(shape, n, floor):
+    sites, atoms, warps = shape
+    layer = model(
+        "matrix",
+        n=n,
+        floor=floor,
+        matrix_sites=sites,
+        matrix_atoms=atoms,
+        matrix_warps=warps,
+    )
+    for step in range(3):
+        if step:
+            with torch.no_grad():
+                layer.atoms.p[:, :2].mul_(1.003)
+                layer.atoms.p[:, 2:].add_(0.0037)
+        x = torch.randn(3, n, device="cuda", requires_grad=True)
+        gate(layer, x, torch.randn_like(x))

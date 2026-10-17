@@ -216,7 +216,7 @@ class _BSpline(torch.autograd.Function):
                 ctx.matrix = True
                 w = x.new_zeros((no, ni))
                 _stamp("w_build", 0)
-                compiled = k.matrix_build[(tr.cdiv(len(p), 8),)](
+                compiled = k.matrix_build[(tr.cdiv(len(p), recipe.matrix_atoms),)](
                     meta,
                     w,
                     origin,
@@ -224,10 +224,10 @@ class _BSpline(torch.autograd.Function):
                     len(p),
                     no,
                     ni,
-                    16,
-                    8,
+                    recipe.matrix_sites,
+                    recipe.matrix_atoms,
                     recipe.reciprocal,
-                    num_warps=4,
+                    num_warps=recipe.matrix_warps,
                     enable_fp_fusion=False,
                 )
                 _stamp("w_build", 1)
@@ -269,7 +269,7 @@ class _BSpline(torch.autograd.Function):
                 _stamp("dw_gemm", 1)
                 dp = dy.new_empty((len(meta), 4))
                 _stamp("atom_vjp", 0)
-                compiled = k.matrix_vjp[(tr.cdiv(len(meta), 8),)](
+                compiled = k.matrix_vjp[(tr.cdiv(len(meta), ctx.recipe.matrix_atoms),)](
                     meta,
                     dw,
                     dp,
@@ -277,10 +277,10 @@ class _BSpline(torch.autograd.Function):
                     spacing,
                     len(meta),
                     *ctx.sizes,
-                    16,
-                    8,
+                    ctx.recipe.matrix_sites,
+                    ctx.recipe.matrix_atoms,
                     ctx.recipe.reciprocal,
-                    num_warps=4,
+                    num_warps=ctx.recipe.matrix_warps,
                     enable_fp_fusion=False,
                 )
                 _stamp("atom_vjp", 1)
