@@ -245,3 +245,34 @@ def test_tiny_single_axis_support_below_product_floor(strategy):
         layer.atoms.p[0, 3] = 3.2
     x = torch.randn(3, 64, device="cuda", requires_grad=True)
     gate(layer, x, torch.randn_like(x))
+
+
+@GPU
+@pytest.mark.parametrize("strategy", ["direct", "hybrid", "matrix"])
+def test_rectangular_grid_distinct_spacing_and_origin(strategy):
+    from torchcst import chart_presets
+
+    op = bs.fixture_operator(case())
+    reg = Registry()
+    reg.register(BSplineAlgorithm())
+    plan = ExecutionPlan(
+        "research_cuda_quadratic_bspline", "v1", BSplineRecipe(strategy)
+    )
+    chart = chart_presets.regular_grid(
+        ((32,), (64,)), spacing=(0.13, 0.07), origin=(-2.0, 1.0)
+    )
+    layer = CSTLinear(
+        chart=chart,
+        atoms=bs.initialize(case()),
+        kernel=op.kernel,
+        selector=FixedSelector(plan, registry=reg),
+    ).cuda()
+    layer.chart.double()
+    layer.chart.spacing.copy_(
+        torch.tensor([0.13, 0.07], device="cuda", dtype=torch.float64)
+    )
+    layer.chart.origin.copy_(
+        torch.tensor([-2.0, 1.0], device="cuda", dtype=torch.float64)
+    )
+    x = torch.randn(3, 64, device="cuda", requires_grad=True)
+    gate(layer, x, torch.randn(3, 32, device="cuda"))

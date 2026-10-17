@@ -128,5 +128,5 @@ W/dWとGEMM workspaceを含めた完全step peakを測り、小さい支持向�
 Kと局所座標係数・norm・norm微分は各forwardで更新する。表はdevice/shapeごとに保持し、
 メモリ計測に含む。`norm_lookup=False`は同じ式を毎回評価する対照。
 `reciprocal=True`ではatom内のRの逆数とspacingの逆数を共有する。
-widthのupper decay powerが1/2の場合は、それぞれx/x*xを使い、他のpowerには元のpowを使う。
+widthのupper decay powerが1または2の場合は、それぞれx/x*xを使い、他のpowerには元のpowを使う。
 どちらもlive scalarを読み、学習値を固定・切り捨てない。
