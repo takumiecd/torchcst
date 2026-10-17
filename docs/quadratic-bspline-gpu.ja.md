@@ -236,3 +236,11 @@ job `l4job-d8644b2e23be4ea9b1817688f384d3cb`は両case PASS、提出前検査も
 source archive SHA256は`a9c5e8087a219aa7f4d37d50b6091774df6411285ceb2deb47e5ed7080d5f53e`、
 result archive SHA256は`e47ea5650542a519c6a9710deb8d41f507d70a4b3db59e4affd625235ca569df`。
 manifest全43ファイルを照合済み。両caseのfull-axis/全atom FP64検査を省略していない。
+
+
+## 内訳診断と次の最適化
+
+[個別stage・レジスタ退避・launch配置の比較](research-history/cuda-linear/quadratic-bspline-bottleneck-20261017.ja.md)
+に続く。v1の宣言と固定launchを保持し、追加設定はv2のBSplineTuningRecipeへ分離した。
+小さいsigmaではmatrixの小patch＋axiswise VJP、混在sigmaではhybridのwarp削減を比較する。
+全候補は既存runnerの`--kernel-diagnostics`で診断できる。新しい数学的profileや近似L2ではない。
