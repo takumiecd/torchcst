@@ -132,9 +132,8 @@ def test_live_graph_optimizer_state(strategy):
     )
     reference.chart.double()
     reference.chart.spacing.fill_(0.1)
-    optim = CSTOptimizer(
-        torch.optim.AdamW(layer.parameters(), lr=0.0001, fused=True, capturable=True),
-        model=layer,
+    optim = torch.optim.AdamW(
+        layer.parameters(), lr=0.0001, fused=True, capturable=True
     )
     ropt = CSTOptimizer(
         torch.optim.AdamW(
@@ -150,7 +149,15 @@ def test_live_graph_optimizer_state(strategy):
         o.zero_grad()
         xx.grad = None
         (m(xx) * dy).sum().backward()
-        o.step()
+        if isinstance(o, CSTOptimizer):
+            o.step()
+        else:
+            from benchmarks.cuda.polar_update import optimizer_step
+            from torchcst import AtomUpdateBinding
+
+            optimizer_step(
+                AtomUpdateBinding(m.operator), o, step_size=0.0001, polar_update="fused"
+            )
 
     stream = torch.cuda.Stream()
     stream.wait_stream(torch.cuda.current_stream())
@@ -171,7 +178,7 @@ def test_live_graph_optimizer_state(strategy):
         )
         for name in ("exp_avg", "exp_avg_sq", "step"):
             torch.testing.assert_close(
-                optim.base_optimizer.state[layer.atoms.p][name],
+                optim.state[layer.atoms.p][name],
                 ropt.base_optimizer.state[reference.atoms.p][name],
                 atol=4e-5,
                 rtol=4e-4,
