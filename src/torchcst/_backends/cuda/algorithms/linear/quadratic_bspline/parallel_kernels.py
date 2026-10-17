@@ -207,7 +207,7 @@ def inject_grouped(
     small_count = tl.where((a < A) & ~wide, right - left, 0)
     for start in range(0, tl.max(small_count, 0), BS):
         j = left[:, None] + start + tl.arange(0, BS)[None, :]
-        f, _ = _shape(
+        f, _native_prime = _shape(
             o + j.to(tl.float64) * h - center[:, None],
             radius[:, None],
             ir[:, None],
@@ -231,7 +231,7 @@ def inject_grouped(
             l, r = _interval(
                 center, radius, Origin, Spacing, N, DIM, piece, RECIPROCAL, ih
             )
-            a0, a1, a2, _, _ = _coeff(
+            a0, a1, a2, _center0, _center1 = _coeff(
                 o + half - center, half, radius, ir, piece, RECIPROCAL
             )
             for k in tl.static_range(3):
