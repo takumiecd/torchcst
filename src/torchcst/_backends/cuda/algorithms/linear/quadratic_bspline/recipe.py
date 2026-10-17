@@ -10,21 +10,13 @@ class BSplineRecipe:
     block_sites: int = 16
     reciprocal: bool = True
     norm_lookup: bool = True
-    matrix_sites: int = 16
-    matrix_atoms: int = 8
-    matrix_warps: int = 4
-    axis_warps: int = 4
+    # Revision 1 launch geometry is fixed and is not part of its serialized fields.
+    matrix_sites = 16
+    matrix_atoms = 8
+    matrix_warps = 4
+    axis_warps = 4
 
     def __post_init__(self):
-        for name, allowed in (
-            ("axis_warps", (1, 2, 4)),
-            ("matrix_sites", (4, 8, 16)),
-            ("matrix_atoms", (4, 8, 16, 32)),
-            ("matrix_warps", (2, 4, 8)),
-        ):
-            value = getattr(self, name)
-            if type(value) is not int or value not in allowed:
-                raise ValueError(f"{name} must be one of {allowed}")
         if type(self.norm_lookup) is not bool:
             raise ValueError("norm_lookup must be boolean")
         if type(self.reciprocal) is not bool:
@@ -35,3 +27,23 @@ class BSplineRecipe:
             raise ValueError("block_sites must be 16, 32 or 64")
         if type(self.direct_sites) is not int or self.direct_sites not in (16, 32, 64):
             raise ValueError("direct_sites must be 16, 32 or 64")
+
+
+@dataclass(frozen=True)
+class BSplineTuningRecipe(BSplineRecipe):
+    matrix_sites: int = 16
+    matrix_atoms: int = 8
+    matrix_warps: int = 4
+    axis_warps: int = 4
+
+    def __post_init__(self):
+        super().__post_init__()
+        for name, allowed in (
+            ("axis_warps", (1, 2, 4)),
+            ("matrix_sites", (4, 8, 16)),
+            ("matrix_atoms", (4, 8, 16, 32)),
+            ("matrix_warps", (2, 4, 8)),
+        ):
+            value = getattr(self, name)
+            if type(value) is not int or value not in allowed:
+                raise ValueError(f"{name} must be one of {allowed}")

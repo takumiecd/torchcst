@@ -10,10 +10,12 @@ from benchmarks.cuda.linear import bspline as bs
 from torchcst import CSTLinear, CSTOptimizer
 from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
     BSplineAlgorithm,
+    BSplineTuningAlgorithm,
     layout,
 )
 from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineRecipe,
+    BSplineTuningRecipe,
 )
 from torchcst._backends.dispatch import FixedSelector
 from torchcst._backends.registry import Registry
@@ -45,10 +47,13 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     )
     registry = Registry()
     registry.register(BSplineAlgorithm())
+    registry.register(BSplineTuningAlgorithm())
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v1",
-        BSplineRecipe(strategy, **recipe_options),
+        "v2" if recipe_options else "v1",
+        BSplineTuningRecipe(strategy, **recipe_options)
+        if recipe_options
+        else BSplineRecipe(strategy),
     )
     layer = CSTLinear(
         chart=op.charts[0],

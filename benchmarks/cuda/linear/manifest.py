@@ -596,6 +596,9 @@ REGISTRY.register(MaternStreamingAlgorithm())
 
 from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
     BSplineAlgorithm,
+    BSplineTuningAlgorithm,
 )
 
 REGISTRY.register(BSplineAlgorithm())
+
+REGISTRY.register(BSplineTuningAlgorithm())

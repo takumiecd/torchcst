@@ -16,7 +16,7 @@ from torchcst.operators.execution import (
     validate_live_operator,
 )
 
-from .recipe import BSplineRecipe
+from .recipe import BSplineRecipe, BSplineTuningRecipe
 
 
 def layout(op):
@@ -61,9 +61,9 @@ class BSplineAlgorithm(Algorithm[BSplineRecipe]):
     input_type: type = LinearInputs
 
     def validate_recipe(self, recipe):
-        if type(recipe) is not BSplineRecipe:
+        if type(recipe) is not self.recipe_type:
             raise TypeError("requires BSplineRecipe")
-        BSplineRecipe(**asdict(recipe))
+        self.recipe_type(**asdict(recipe))
 
     def supports(self, context, recipe):
         if not isinstance(context, LinearContext):
@@ -138,3 +138,9 @@ class BSplineAlgorithm(Algorithm[BSplineRecipe]):
                 state.buffers["bases"],
                 state.buffers["moments"],
             )
+
+
+@dataclass(frozen=True)
+class BSplineTuningAlgorithm(BSplineAlgorithm):
+    revision: str = "v2"
+    recipe_type: type = BSplineTuningRecipe
