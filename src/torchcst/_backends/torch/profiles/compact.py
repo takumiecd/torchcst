@@ -248,6 +248,41 @@ def triweight_d_raw_d_precision(state, squared: Tensor, precision: Tensor) -> Te
     return -3.0 * squared * inside.square()
 
 
+def _quadratic_bspline_value_and_slope(
+    squared: Tensor, precision: Tensor
+) -> tuple[Tensor, Tensor]:
+    """Return f(q), df/dq with no singular square root in the center branch."""
+    q = squared * precision.reshape(1, -1)
+    # Only the outer branch needs sqrt(q/6), where q>2/3. Clamp its unused
+    # center expression to that boundary, preserving the exact inner parabola
+    # rather than adding epsilon to the radius. Backprop at q=0 stays finite.
+    r = (q / 6.0).clamp_min(1.0 / 9.0).sqrt()
+    gap = (1.0 - r).clamp_min(0.0)
+    inside = q <= 2.0 / 3.0
+    value = torch.where(inside, 1.0 - 0.5 * q, 1.5 * gap.square())
+    slope = torch.where(inside, torch.full_like(q, -0.5), -gap / (4.0 * r))
+    return value, slope
+
+
+def quadratic_bspline_unnormalized_from_squared(
+    state, squared: Tensor, precision: Tensor
+) -> Tensor:
+    return _quadratic_bspline_value_and_slope(squared, precision)[0]
+
+
+def quadratic_bspline_d_raw_d_center(
+    state, offset: Tensor, squared: Tensor, precision: Tensor
+) -> Tensor:
+    slope = _quadratic_bspline_value_and_slope(squared, precision)[1]
+    return (-2.0 * slope * precision.reshape(1, -1)).unsqueeze(-1) * offset
+
+
+def quadratic_bspline_d_raw_d_precision(
+    state, squared: Tensor, precision: Tensor
+) -> Tensor:
+    return _quadratic_bspline_value_and_slope(squared, precision)[1] * squared
+
+
 def _radial_from_squared(squared: Tensor, precision: Tensor) -> Tensor:
     """Return ``q = d/R`` with a floor so ``sqrt`` stays twice differentiable."""
 

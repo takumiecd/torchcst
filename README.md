@@ -91,6 +91,13 @@ The complete product is L2-normalized over all operator sites with one norm floo
 Torch materialized/factored execution is available; this adds no CUDA performance claim.
 See the [API and mathematical contract](docs/profile-product.ja.md).
 
+`QuadraticBSplineSpec()` declares the peak-one C1 quadratic B-spline with
+curvature width sigma and support radius `sqrt(6) * sigma`. Use it in
+`profiles=(QuadraticBSplineSpec(),) * D` with the existing profile-product
+presets. Torch reference evaluation, discrete L2 normalization and center
+derivatives are available; cumulative-moment and CUDA optimization are separate
+implementations. See the [definition and usage](docs/quadratic-bspline-profile.ja.md).
+
 `presets.polar_torus_profile_product(profiles=(TriweightSpec(), TriweightSpec()),
 amplitude_max=1.0, bounds=bandwidth_bounds, w_c=0.1)` declares the centre-fibre
 chord product on a single S¹ × S² Torus Product/Strip chart. Profiles are ordered

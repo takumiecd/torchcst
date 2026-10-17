@@ -90,6 +90,8 @@ g_{a,d}(i_d)=\left[1-
 $$
 
 各軸に宣言したGaussian、Biweightなども、その既存のscalar profileを使う。
+`QuadraticBSplineSpec()`は中心曲率幅sigmaと支持半幅`sqrt(6)*sigma`を持つ
+[2次B-spline](quadratic-bspline-profile.ja.md)。Triweightとは幅の意味が異なる。
 全観測点はCartesian productなので、atomのproductとノルムは
 
 $$

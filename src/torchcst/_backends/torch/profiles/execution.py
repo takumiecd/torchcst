@@ -5,12 +5,20 @@ from importlib import import_module
 from torchcst.kernels.profiles import (
     BiweightSpec,
     GaussianSpec,
+    QuadraticBSplineSpec,
     TriangleSpec,
     TriweightSpec,
     WendlandC2Spec,
 )
 
-_TYPES = (GaussianSpec, TriweightSpec, BiweightSpec, TriangleSpec, WendlandC2Spec)
+_TYPES = (
+    GaussianSpec,
+    TriweightSpec,
+    BiweightSpec,
+    TriangleSpec,
+    WendlandC2Spec,
+    QuadraticBSplineSpec,
+)
 
 
 def _module(state):
