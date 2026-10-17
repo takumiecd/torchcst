@@ -51,7 +51,11 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineAlgorithm())
     registry.register(BSplineTuningAlgorithm())
     registry.register(BSplineParallelAlgorithm())
-    parallel = strategy in ("matrix_flat", "hybrid_grouped") or bool(
+    parallel = strategy in (
+        "matrix_flat",
+        "hybrid_grouped",
+        "hybrid_vjp_grouped",
+    ) or bool(
         set(recipe_options)
         & {"axis_atoms", "axis_batch", "matrix_pairs", "prepare_warps"}
     )
@@ -185,6 +189,10 @@ def test_edges_empty_zero_amplitude_and_saved_geometry(strategy):
         ("matrix_flat", {"matrix_pairs": 64, "matrix_warps": 1}),
         ("hybrid_grouped", {"axis_warps": 1}),
         ("hybrid_grouped", {"axis_atoms": 4, "axis_batch": 16, "axis_warps": 1}),
+        ("hybrid_grouped", {"axis_atoms": 4, "axis_batch": 4, "axis_warps": 1}),
+        ("hybrid_grouped", {"axis_atoms": 4, "axis_batch": 16, "axis_warps": 4}),
+        ("hybrid_grouped", {"axis_atoms": 8, "axis_batch": 8, "axis_warps": 4}),
+        ("hybrid_vjp_grouped", {"axis_atoms": 16, "axis_warps": 1}),
     ]
     + [
         ("matrix", {"matrix_sites": s, "matrix_atoms": a, "matrix_warps": w})
@@ -421,7 +429,7 @@ def test_flat_pair_all_gradients(pairs, n, floor):
 
 
 @GPU
-@pytest.mark.parametrize("shape", [(4, 16), (8, 8), (16, 4)])
+@pytest.mark.parametrize("shape", [(4, 4), (4, 16), (8, 8), (16, 4)])
 @pytest.mark.parametrize("n", [64, 8192])
 @pytest.mark.parametrize("floor", [1e-6, 1000.0])
 def test_grouped_axis_all_gradients(shape, n, floor):
@@ -434,6 +442,20 @@ def test_grouped_axis_all_gradients(shape, n, floor):
         axis_batch=batch,
         axis_warps=1,
     )
+    for step in range(3):
+        if step:
+            with torch.no_grad():
+                layer.atoms.p[:, :2].mul_(1.003)
+                layer.atoms.p[:, 2:].add_(0.0037)
+        x = torch.randn(3, n, device="cuda", requires_grad=True)
+        gate(layer, x, torch.randn_like(x))
+
+
+@GPU
+@pytest.mark.parametrize("n", [64, 8192])
+@pytest.mark.parametrize("floor", [1e-6, 1000.0])
+def test_grouped_vjp_only_all_gradients(n, floor):
+    layer = model("hybrid_vjp_grouped", n=n, floor=floor, axis_atoms=16, axis_warps=1)
     for step in range(3):
         if step:
             with torch.no_grad():

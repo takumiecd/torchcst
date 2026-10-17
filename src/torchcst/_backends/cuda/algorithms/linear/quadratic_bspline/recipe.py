@@ -59,7 +59,11 @@ class BSplineTuningRecipe(BSplineRecipe):
 
 @dataclass(frozen=True)
 class BSplineParallelRecipe(BSplineTuningRecipe):
-    strategies = BSplineTuningRecipe.strategies + ("matrix_flat", "hybrid_grouped")
+    strategies = BSplineTuningRecipe.strategies + (
+        "matrix_flat",
+        "hybrid_grouped",
+        "hybrid_vjp_grouped",
+    )
     block_sizes = (8, 16, 32, 64)
     block_sites: int = 8
     axis_atoms: int = 8

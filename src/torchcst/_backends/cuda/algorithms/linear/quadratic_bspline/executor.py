@@ -393,7 +393,7 @@ class _BSpline(torch.autograd.Function):
             if ctx.needs_input_grad[1]:
                 dp = dy.new_empty((a, 4))
                 _stamp("atom_vjp", 0)
-                if ctx.recipe.strategy == "hybrid_grouped":
+                if ctx.recipe.strategy in ("hybrid_grouped", "hybrid_vjp_grouped"):
                     from . import parallel_kernels as pk
 
                     compiled = pk.vjp_grouped[(tr.cdiv(a, ctx.recipe.axis_atoms),)](
