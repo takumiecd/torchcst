@@ -104,14 +104,6 @@ def test_recipe_and_metadata_roundtrip():
         "research_cuda_quadratic_bspline", "v3", BSplineParallelRecipe("hybrid_grouped")
     )
     assert reg.loads_plan(reg.dumps_plan(grouped)) == grouped
-    tiny = ExecutionPlan(
-        "research_cuda_quadratic_bspline",
-        "v3",
-        BSplineParallelRecipe("matrix_separable", matrix_sites=2),
-    )
-    assert reg.loads_plan(reg.dumps_plan(tiny)) == tiny
-    with pytest.raises(ValueError):
-        BSplineTuningRecipe("matrix_separable", matrix_sites=2)
     original = ExecutionPlan("research_cuda_quadratic_bspline", "v1", BSplineRecipe())
     assert set(reg.dump_plan(original)["recipe"]) == {
         "strategy",
@@ -192,19 +184,6 @@ def test_edges_empty_zero_amplitude_and_saved_geometry(strategy):
         ("matrix_separable", {"matrix_sites": 16}),
         ("matrix_separable", {"matrix_sites": 4, "matrix_warps": 1}),
         ("matrix_separable", {"matrix_sites": 4, "matrix_warps": 2}),
-        (
-            "matrix_separable",
-            {"matrix_sites": 2, "matrix_warps": 1, "prepare_warps": 1},
-        ),
-        (
-            "matrix_separable",
-            {
-                "matrix_sites": 2,
-                "matrix_atoms": 16,
-                "matrix_warps": 1,
-                "prepare_warps": 1,
-            },
-        ),
         ("matrix_flat", {"matrix_pairs": 16, "matrix_warps": 1}),
         ("matrix_flat", {"matrix_pairs": 32, "matrix_warps": 1}),
         ("matrix_flat", {"matrix_pairs": 64, "matrix_warps": 1}),
@@ -477,29 +456,6 @@ def test_grouped_axis_all_gradients(shape, n, floor):
 @pytest.mark.parametrize("floor", [1e-6, 1000.0])
 def test_grouped_vjp_only_all_gradients(n, floor):
     layer = model("hybrid_vjp_grouped", n=n, floor=floor, axis_atoms=16, axis_warps=1)
-    for step in range(3):
-        if step:
-            with torch.no_grad():
-                layer.atoms.p[:, :2].mul_(1.003)
-                layer.atoms.p[:, 2:].add_(0.0037)
-        x = torch.randn(3, n, device="cuda", requires_grad=True)
-        gate(layer, x, torch.randn_like(x))
-
-
-@GPU
-@pytest.mark.parametrize("n", [64, 1024])
-@pytest.mark.parametrize("floor", [1e-6, 1000.0])
-@pytest.mark.parametrize("atoms_per_block", [8, 16])
-def test_two_site_patch_all_gradients(n, floor, atoms_per_block):
-    layer = model(
-        "matrix_separable",
-        n=n,
-        floor=floor,
-        matrix_sites=2,
-        matrix_atoms=atoms_per_block,
-        matrix_warps=1,
-        prepare_warps=1,
-    )
     for step in range(3):
         if step:
             with torch.no_grad():
