@@ -34,7 +34,7 @@ def diagnostic_components(strategy):
         "inject_input",
         "atom_vjp",
     )
-    if strategy == "hybrid":
+    if strategy.startswith("hybrid"):
         names += (
             "bank_input",
             "bank_adjoint",
@@ -84,25 +84,51 @@ def _query(x, meta, origin, spacing, dim, recipe, basis):
     h = x.new_empty((b, a))
     hp = torch.empty_like(h)
     _stamp("query_" + side, 0)
-    compiled = k.query[(a, tr.cdiv(b, 16))](
-        x,
-        bank,
-        meta,
-        h,
-        hp,
-        origin,
-        spacing,
-        a,
-        b,
-        n,
-        dim,
-        recipe.strategy == "direct",
-        recipe.direct_sites,
-        recipe.block_sites,
-        recipe.reciprocal,
-        num_warps=recipe.axis_warps,
-        enable_fp_fusion=False,
-    )
+    if recipe.strategy == "hybrid_grouped":
+        from . import parallel_kernels as pk
+
+        compiled = pk.query_grouped[
+            (tr.cdiv(a, recipe.axis_atoms), tr.cdiv(b, recipe.axis_batch))
+        ](
+            x,
+            bank,
+            meta,
+            h,
+            hp,
+            origin,
+            spacing,
+            a,
+            b,
+            n,
+            dim,
+            recipe.direct_sites,
+            recipe.block_sites,
+            recipe.axis_atoms,
+            recipe.axis_batch,
+            recipe.reciprocal,
+            num_warps=recipe.axis_warps,
+            enable_fp_fusion=False,
+        )
+    else:
+        compiled = k.query[(a, tr.cdiv(b, 16))](
+            x,
+            bank,
+            meta,
+            h,
+            hp,
+            origin,
+            spacing,
+            a,
+            b,
+            n,
+            dim,
+            recipe.strategy == "direct",
+            recipe.direct_sites,
+            recipe.block_sites,
+            recipe.reciprocal,
+            num_warps=recipe.axis_warps,
+            enable_fp_fusion=False,
+        )
     _stamp("query_" + side, 1)
     _report("query_" + side, compiled)
     return h, hp
@@ -122,24 +148,49 @@ def _scatter(h, meta, origin, spacing, dim, n, recipe):
         else torch.zeros((3, b, n + 1), device=h.device, dtype=torch.float64)
     )
     _stamp("inject_" + side, 0)
-    compiled = k.inject[(a, tr.cdiv(b, 16))](
-        h,
-        meta,
-        delta,
-        y,
-        origin,
-        spacing,
-        a,
-        b,
-        n,
-        dim,
-        recipe.strategy == "direct",
-        recipe.direct_sites,
-        recipe.block_sites,
-        recipe.reciprocal,
-        num_warps=recipe.axis_warps,
-        enable_fp_fusion=False,
-    )
+    if recipe.strategy == "hybrid_grouped":
+        from . import parallel_kernels as pk
+
+        compiled = pk.inject_grouped[
+            (tr.cdiv(a, recipe.axis_atoms), tr.cdiv(b, recipe.axis_batch))
+        ](
+            h,
+            meta,
+            delta,
+            y,
+            origin,
+            spacing,
+            a,
+            b,
+            n,
+            dim,
+            recipe.direct_sites,
+            recipe.block_sites,
+            recipe.axis_atoms,
+            recipe.axis_batch,
+            recipe.reciprocal,
+            num_warps=recipe.axis_warps,
+            enable_fp_fusion=False,
+        )
+    else:
+        compiled = k.inject[(a, tr.cdiv(b, 16))](
+            h,
+            meta,
+            delta,
+            y,
+            origin,
+            spacing,
+            a,
+            b,
+            n,
+            dim,
+            recipe.strategy == "direct",
+            recipe.direct_sites,
+            recipe.block_sites,
+            recipe.reciprocal,
+            num_warps=recipe.axis_warps,
+            enable_fp_fusion=False,
+        )
     _stamp("inject_" + side, 1)
     _report("inject_" + side, compiled)
     if recipe.strategy != "direct":
@@ -165,7 +216,7 @@ class _BSpline(torch.autograd.Function):
 
         no, ni = chart.grid_shape[0][0], chart.grid_shape[1][0]
         _stamp("snapshot", 0)
-        source = p.contiguous().clone()
+        source = p.contiguous().clone() if recipe.snapshot_source else p.contiguous()
         origin, spacing = chart.origin.clone(), chart.spacing.clone()
         _stamp("snapshot", 1)
         meta = torch.empty((len(p), 12), device=p.device, dtype=torch.float64)
@@ -186,7 +237,7 @@ class _BSpline(torch.autograd.Function):
                 moments.shape[1],
                 recipe.reciprocal,
                 recipe.norm_lookup,
-                num_warps=4,
+                num_warps=recipe.prepare_warps,
                 enable_fp_fusion=False,
             )
             _stamp("prepare", 1)
@@ -216,20 +267,40 @@ class _BSpline(torch.autograd.Function):
                 ctx.matrix = True
                 w = x.new_zeros((no, ni))
                 _stamp("w_build", 0)
-                compiled = k.matrix_build[(tr.cdiv(len(p), recipe.matrix_atoms),)](
-                    meta,
-                    w,
-                    origin,
-                    spacing,
-                    len(p),
-                    no,
-                    ni,
-                    recipe.matrix_sites,
-                    recipe.matrix_atoms,
-                    recipe.reciprocal,
-                    num_warps=recipe.matrix_warps,
-                    enable_fp_fusion=False,
-                )
+                if recipe.strategy == "matrix_flat":
+                    from . import parallel_kernels as pk
+
+                    compiled = pk.matrix_flat[(tr.cdiv(len(p), recipe.matrix_atoms),)](
+                        meta,
+                        w,
+                        source,
+                        origin,
+                        spacing,
+                        len(p),
+                        no,
+                        ni,
+                        recipe.matrix_pairs,
+                        recipe.matrix_atoms,
+                        recipe.reciprocal,
+                        False,
+                        num_warps=recipe.matrix_warps,
+                        enable_fp_fusion=False,
+                    )
+                else:
+                    compiled = k.matrix_build[(tr.cdiv(len(p), recipe.matrix_atoms),)](
+                        meta,
+                        w,
+                        origin,
+                        spacing,
+                        len(p),
+                        no,
+                        ni,
+                        recipe.matrix_sites,
+                        recipe.matrix_atoms,
+                        recipe.reciprocal,
+                        num_warps=recipe.matrix_warps,
+                        enable_fp_fusion=False,
+                    )
                 _stamp("w_build", 1)
                 _report("w_build", compiled)
                 ctx.sizes = (no, ni)
@@ -269,21 +340,44 @@ class _BSpline(torch.autograd.Function):
                 _stamp("dw_gemm", 1)
                 dp = dy.new_empty((len(meta), 4))
                 _stamp("atom_vjp", 0)
-                compiled = k.matrix_vjp[(tr.cdiv(len(meta), ctx.recipe.matrix_atoms),)](
-                    meta,
-                    dw,
-                    dp,
-                    origin,
-                    spacing,
-                    len(meta),
-                    *ctx.sizes,
-                    ctx.recipe.matrix_sites,
-                    ctx.recipe.matrix_atoms,
-                    ctx.recipe.reciprocal,
-                    ctx.recipe.strategy == "matrix_separable",
-                    num_warps=ctx.recipe.matrix_warps,
-                    enable_fp_fusion=False,
-                )
+                if ctx.recipe.strategy == "matrix_flat":
+                    from . import parallel_kernels as pk
+
+                    compiled = pk.matrix_flat[
+                        (tr.cdiv(len(meta), ctx.recipe.matrix_atoms),)
+                    ](
+                        meta,
+                        dw,
+                        dp,
+                        origin,
+                        spacing,
+                        len(meta),
+                        *ctx.sizes,
+                        ctx.recipe.matrix_pairs,
+                        ctx.recipe.matrix_atoms,
+                        ctx.recipe.reciprocal,
+                        True,
+                        num_warps=ctx.recipe.matrix_warps,
+                        enable_fp_fusion=False,
+                    )
+                else:
+                    compiled = k.matrix_vjp[
+                        (tr.cdiv(len(meta), ctx.recipe.matrix_atoms),)
+                    ](
+                        meta,
+                        dw,
+                        dp,
+                        origin,
+                        spacing,
+                        len(meta),
+                        *ctx.sizes,
+                        ctx.recipe.matrix_sites,
+                        ctx.recipe.matrix_atoms,
+                        ctx.recipe.reciprocal,
+                        ctx.recipe.strategy == "matrix_separable",
+                        num_warps=ctx.recipe.matrix_warps,
+                        enable_fp_fusion=False,
+                    )
                 _stamp("atom_vjp", 1)
                 _report("atom_vjp", compiled)
             return dx, dp, None, None, None, None, None
@@ -299,19 +393,37 @@ class _BSpline(torch.autograd.Function):
             if ctx.needs_input_grad[1]:
                 dp = dy.new_empty((a, 4))
                 _stamp("atom_vjp", 0)
-                compiled = k.vjp[(a,)](
-                    h,
-                    hp,
-                    g,
-                    gp,
-                    meta,
-                    dp,
-                    a,
-                    b,
-                    tr.next_power_of_2(b),
-                    num_warps=ctx.recipe.axis_warps,
-                    enable_fp_fusion=False,
-                )
+                if ctx.recipe.strategy == "hybrid_grouped":
+                    from . import parallel_kernels as pk
+
+                    compiled = pk.vjp_grouped[(tr.cdiv(a, ctx.recipe.axis_atoms),)](
+                        h,
+                        hp,
+                        g,
+                        gp,
+                        meta,
+                        dp,
+                        a,
+                        b,
+                        ctx.recipe.axis_atoms,
+                        tr.next_power_of_2(b),
+                        num_warps=ctx.recipe.axis_warps,
+                        enable_fp_fusion=False,
+                    )
+                else:
+                    compiled = k.vjp[(a,)](
+                        h,
+                        hp,
+                        g,
+                        gp,
+                        meta,
+                        dp,
+                        a,
+                        b,
+                        tr.next_power_of_2(b),
+                        num_warps=ctx.recipe.axis_warps,
+                        enable_fp_fusion=False,
+                    )
                 _stamp("atom_vjp", 1)
                 _report("atom_vjp", compiled)
         else:

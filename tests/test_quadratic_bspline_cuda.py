@@ -10,10 +10,12 @@ from benchmarks.cuda.linear import bspline as bs
 from torchcst import CSTLinear, CSTOptimizer
 from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
     BSplineAlgorithm,
+    BSplineParallelAlgorithm,
     BSplineTuningAlgorithm,
     layout,
 )
 from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
+    BSplineParallelRecipe,
     BSplineRecipe,
     BSplineTuningRecipe,
 )
@@ -48,11 +50,18 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry = Registry()
     registry.register(BSplineAlgorithm())
     registry.register(BSplineTuningAlgorithm())
+    registry.register(BSplineParallelAlgorithm())
+    parallel = strategy in ("matrix_flat", "hybrid_grouped") or bool(
+        set(recipe_options)
+        & {"axis_atoms", "axis_batch", "matrix_pairs", "prepare_warps"}
+    )
     tuned = bool(recipe_options) or strategy == "matrix_separable"
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v2" if tuned else "v1",
-        BSplineTuningRecipe(strategy, **recipe_options)
+        "v3" if parallel else "v2" if tuned else "v1",
+        BSplineParallelRecipe(strategy, **recipe_options)
+        if parallel
+        else BSplineTuningRecipe(strategy, **recipe_options)
         if tuned
         else BSplineRecipe(strategy),
     )
@@ -131,7 +140,9 @@ def test_live_width_all_gradients(strategy, n, floor):
 
 
 @GPU
-@pytest.mark.parametrize("strategy", ["direct", "hybrid"])
+@pytest.mark.parametrize(
+    "strategy", ["direct", "hybrid", "matrix_flat", "hybrid_grouped"]
+)
 def test_edges_empty_zero_amplitude_and_saved_geometry(strategy):
     torch.backends.cuda.matmul.allow_tf32 = False
     layer = model(strategy)
@@ -164,6 +175,11 @@ def test_edges_empty_zero_amplitude_and_saved_geometry(strategy):
         ("matrix_separable", {"matrix_sites": 16}),
         ("matrix_separable", {"matrix_sites": 4, "matrix_warps": 1}),
         ("matrix_separable", {"matrix_sites": 4, "matrix_warps": 2}),
+        ("matrix_flat", {"matrix_pairs": 16, "matrix_warps": 1}),
+        ("matrix_flat", {"matrix_pairs": 32, "matrix_warps": 1}),
+        ("matrix_flat", {"matrix_pairs": 64, "matrix_warps": 1}),
+        ("hybrid_grouped", {"axis_warps": 1}),
+        ("hybrid_grouped", {"axis_atoms": 4, "axis_batch": 16, "axis_warps": 1}),
     ]
     + [
         ("matrix", {"matrix_sites": s, "matrix_atoms": a, "matrix_warps": w})
@@ -274,7 +290,10 @@ def test_matrix_full_atom_gradient_gate(n, floor):
 
 
 @GPU
-@pytest.mark.parametrize("strategy", ["direct", "hybrid", "matrix", "matrix_separable"])
+@pytest.mark.parametrize(
+    "strategy",
+    ["direct", "hybrid", "matrix", "matrix_separable", "matrix_flat", "hybrid_grouped"],
+)
 def test_tiny_single_axis_support_below_product_floor(strategy):
     layer = model(strategy, n=64)
     with torch.no_grad():
@@ -288,15 +307,21 @@ def test_tiny_single_axis_support_below_product_floor(strategy):
 
 
 @GPU
-@pytest.mark.parametrize("strategy", ["direct", "hybrid", "matrix"])
+@pytest.mark.parametrize(
+    "strategy", ["direct", "hybrid", "matrix", "matrix_flat", "hybrid_grouped"]
+)
 def test_rectangular_grid_distinct_spacing_and_origin(strategy):
     from torchcst import chart_presets
 
     op = bs.fixture_operator(case())
     reg = Registry()
     reg.register(BSplineAlgorithm())
+    reg.register(BSplineParallelAlgorithm())
+    parallel = strategy in ("matrix_flat", "hybrid_grouped")
     plan = ExecutionPlan(
-        "research_cuda_quadratic_bspline", "v1", BSplineRecipe(strategy)
+        "research_cuda_quadratic_bspline",
+        "v3" if parallel else "v1",
+        BSplineParallelRecipe(strategy) if parallel else BSplineRecipe(strategy),
     )
     chart = chart_presets.regular_grid(
         ((32,), (64,)), spacing=(0.13, 0.07), origin=(-2.0, 1.0)
@@ -366,6 +391,44 @@ def test_matrix_launch_variants_all_gradients(shape, strategy, n, floor):
 @pytest.mark.parametrize("n", [64, 8192])
 def test_axis_warp_variants_all_gradients(strategy, warps, n):
     layer = model(strategy, n=n, axis_warps=warps)
+    for step in range(3):
+        if step:
+            with torch.no_grad():
+                layer.atoms.p[:, :2].mul_(1.003)
+                layer.atoms.p[:, 2:].add_(0.0037)
+        x = torch.randn(3, n, device="cuda", requires_grad=True)
+        gate(layer, x, torch.randn_like(x))
+
+
+@GPU
+@pytest.mark.parametrize("pairs", [16, 32, 64])
+@pytest.mark.parametrize("n", [64, 1024])
+@pytest.mark.parametrize("floor", [1e-6, 1000.0])
+def test_flat_pair_all_gradients(pairs, n, floor):
+    layer = model("matrix_flat", n=n, floor=floor, matrix_pairs=pairs, matrix_warps=1)
+    for step in range(3):
+        if step:
+            with torch.no_grad():
+                layer.atoms.p[:, :2].mul_(1.003)
+                layer.atoms.p[:, 2:].add_(0.0037)
+        x = torch.randn(3, n, device="cuda", requires_grad=True)
+        gate(layer, x, torch.randn_like(x))
+
+
+@GPU
+@pytest.mark.parametrize("shape", [(4, 16), (8, 8), (16, 4)])
+@pytest.mark.parametrize("n", [64, 8192])
+@pytest.mark.parametrize("floor", [1e-6, 1000.0])
+def test_grouped_axis_all_gradients(shape, n, floor):
+    atoms, batch = shape
+    layer = model(
+        "hybrid_grouped",
+        n=n,
+        floor=floor,
+        axis_atoms=atoms,
+        axis_batch=batch,
+        axis_warps=1,
+    )
     for step in range(3):
         if step:
             with torch.no_grad():

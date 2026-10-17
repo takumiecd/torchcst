@@ -16,7 +16,7 @@ from torchcst.operators.execution import (
     validate_live_operator,
 )
 
-from .recipe import BSplineRecipe, BSplineTuningRecipe
+from .recipe import BSplineParallelRecipe, BSplineRecipe, BSplineTuningRecipe
 
 
 def layout(op):
@@ -123,7 +123,7 @@ class BSplineAlgorithm(Algorithm[BSplineRecipe]):
         if state.buffers.get("basis_key") != key:
             state.buffers["bases"] = (
                 (_basis(no, x.device), _basis(ni, x.device))
-                if state.recipe.strategy == "hybrid"
+                if state.recipe.strategy.startswith("hybrid")
                 else (None, None)
             )
             state.buffers["moments"] = _norm_moments(max(no, ni), x.device)
@@ -144,3 +144,9 @@ class BSplineAlgorithm(Algorithm[BSplineRecipe]):
 class BSplineTuningAlgorithm(BSplineAlgorithm):
     revision: str = "v2"
     recipe_type: type = BSplineTuningRecipe
+
+
+@dataclass(frozen=True)
+class BSplineParallelAlgorithm(BSplineAlgorithm):
+    revision: str = "v3"
+    recipe_type: type = BSplineParallelRecipe
