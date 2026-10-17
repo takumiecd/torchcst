@@ -56,6 +56,7 @@ class PlanLinear(nn.Module):
         self.update_binding = None
         if plan.algorithm_id in (
             "research_profile_product",
+            "research_cuda_quadratic_bspline",
             "research_torch_torus_profile_product_chunked",
             "research_cuda_torus_profile_product_onchip",
             "research_cuda_torus_profile_product_sparse_weight",
@@ -81,6 +82,13 @@ class PlanLinear(nn.Module):
                 device=self.p.device,
                 dtype=self.p.dtype,
             )
+            if plan.algorithm_id == "research_cuda_quadratic_bspline":
+                self.product_site.chart.double()
+                self.product_site.chart.spacing.copy_(
+                    torch.tensor(
+                        operator.charts[0].spacing, device=p.device, dtype=torch.float64
+                    )
+                )
             self.live_operator = self.product_site.operator
             self.local_state = self.product_site.kernel
             self.update_binding = AtomUpdateBinding(self.live_operator)
@@ -141,6 +149,7 @@ class PlanLinear(nn.Module):
             self.product_site
             if self.plan.algorithm_id
             in (
+                "research_cuda_quadratic_bspline",
                 "research_torch_torus_profile_product_chunked",
                 "research_cuda_torus_profile_product_onchip",
                 "research_cuda_torus_profile_product_sparse_weight",
@@ -165,6 +174,7 @@ def _metadata(args, run):
         Path(__file__),
         Path(reference.__file__),
         Path(__file__).with_name("fixtures.py"),
+        Path(__file__).with_name("bspline.py"),
         Path(__file__).with_name("check_normalized.py"),
         Path(__file__).with_name("manifest.py"),
         Path(__file__).with_name("local_product.py"),
@@ -212,6 +222,10 @@ def _metadata(args, run):
 
 
 def correctness(args, run):
+    if run.case.fixture == "quadratic_bspline":
+        from .bspline import correctness as bspline_check
+
+        return bspline_check(args, run, PlanLinear)
     if run.case.fixture == "polar_sphere_separable":
         from torchcst._backends.dispatch import FixedSelector
 
@@ -301,6 +315,7 @@ def measure(args, run):
     torus = case.fixture == "polar_torus_profile_product_strip"
     global_product = case.fixture == "polar_profile_product_global"
     product = case.fixture in (
+        "quadratic_bspline",
         "polar_profile_product",
         "polar_profile_product_strip",
         "polar_profile_product_square_strip",
@@ -356,6 +371,14 @@ def measure(args, run):
                 initialize,
                 summarize,
             )
+        if case.fixture == "quadratic_bspline":
+            from .bspline import (
+                decode,
+                fixture_operator,
+                fixture_state,
+                initialize,
+                summarize,
+            )
         op, p = fixture_operator(case), initialize(case)
         support_domain = (
             op.charts[0] if strip or global_product or torus else Domain(n, n)
@@ -405,7 +428,9 @@ def measure(args, run):
             decode,
         )
 
-        if torus:
+        if case.fixture == "quadratic_bspline":
+            from .bspline import decode
+        elif torus:
             from benchmarks.cuda.linear.torus_profile_product import decode
         elif product:
             from benchmarks.cuda.linear.profile_product import decode
@@ -808,6 +833,7 @@ def main():
         ap.error("--core-diagnostics requires the local product fixture")
     if args.polar_update == "fused" and run.case.fixture not in (
         "local_polar_product",
+        "quadratic_bspline",
         "polar_profile_product",
         "polar_profile_product_strip",
         "polar_profile_product_square_strip",
