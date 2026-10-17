@@ -381,7 +381,9 @@ def measure(args, run):
             )
         op, p = fixture_operator(case), initialize(case)
         support_domain = (
-            op.charts[0] if strip or global_product or torus else Domain(n, n)
+            op.charts[0]
+            if strip or global_product or torus or case.fixture == "quadratic_bspline"
+            else Domain(n, n)
         )
         support_report = summarize(decode(fixture_state(case), p), support_domain)
     else:

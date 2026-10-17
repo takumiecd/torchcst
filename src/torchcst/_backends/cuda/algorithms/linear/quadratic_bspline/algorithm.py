@@ -92,8 +92,19 @@ class BSplineAlgorithm(Algorithm[BSplineRecipe]):
             raise ValueError(
                 "requires FP64 chart coordinate buffers; use model.chart.double()"
             )
-        if any(p.requires_grad for p in chart.parameters()):
+        if (
+            chart.origin.requires_grad
+            or chart.spacing.requires_grad
+            or any(p.requires_grad for p in chart.parameters())
+        ):
             raise ValueError("chart gradients unsupported")
+
+    def prepare(self, state):
+        fixed = {
+            k: state.buffers[k] for k in ("bases", "basis_key") if k in state.buffers
+        }
+        super().prepare(state)
+        state.buffers.update(fixed)
 
     def execute(self, state, inputs):
         x, p, op, site = linear_execution(state, inputs)

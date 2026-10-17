@@ -155,6 +155,7 @@ def query(
     DIM: tl.constexpr,
     DIRECT: tl.constexpr,
     CUT: tl.constexpr,
+    BS: tl.constexpr,
 ):
     a = tl.program_id(0)
     b = tl.program_id(1) * 16 + tl.arange(0, 16)
@@ -167,8 +168,8 @@ def query(
     result = tl.full((16,), 0, tl.float64)
     prime = tl.full((16,), 0, tl.float64)
     if DIRECT or right - left <= CUT:
-        for start in range(left, right, 64):
-            j = start + tl.arange(0, 64)
+        for start in range(left, right, BS):
+            j = start + tl.arange(0, BS)
             f, dc = _shape(o + j.to(tl.float64) * h - center, radius)
             xx = tl.load(
                 X + b[:, None] * N + j[None, :],
@@ -212,6 +213,7 @@ def inject(
     DIM: tl.constexpr,
     DIRECT: tl.constexpr,
     CUT: tl.constexpr,
+    BS: tl.constexpr,
 ):
     a = tl.program_id(0)
     b = tl.program_id(1) * 16 + tl.arange(0, 16)
@@ -224,8 +226,8 @@ def inject(
     o = tl.load(Origin + DIM).to(tl.float64)
     h = tl.load(Spacing + DIM).to(tl.float64)
     if DIRECT or right - left <= CUT:
-        for start in range(left, right, 64):
-            j = start + tl.arange(0, 64)
+        for start in range(left, right, BS):
+            j = start + tl.arange(0, BS)
             f, _dc = _shape(o + j.to(tl.float64) * h - center, radius)
             tl.atomic_add(
                 Y + b[:, None] * N + j[None, :],

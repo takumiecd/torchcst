@@ -9,7 +9,8 @@
         "algorithm_revision": "v1",
         "recipe": {
           "strategy": "torch",
-          "direct_sites": 32
+          "direct_sites": 32,
+          "block_sites": 16
         }
       }
     },
@@ -21,7 +22,8 @@
         "algorithm_revision": "v1",
         "recipe": {
           "strategy": "direct",
-          "direct_sites": 32
+          "direct_sites": 32,
+          "block_sites": 16
         }
       }
     },
@@ -33,7 +35,34 @@
         "algorithm_revision": "v1",
         "recipe": {
           "strategy": "hybrid",
-          "direct_sites": 32
+          "direct_sites": 32,
+          "block_sites": 16
+        }
+      }
+    },
+    {
+      "id": "direct64",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_quadratic_bspline",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "strategy": "direct",
+          "direct_sites": 32,
+          "block_sites": 64
+        }
+      }
+    },
+    {
+      "id": "hybrid64",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_quadratic_bspline",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "strategy": "hybrid",
+          "direct_sites": 32,
+          "block_sites": 64
         }
       }
     }
