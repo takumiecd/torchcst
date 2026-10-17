@@ -641,7 +641,34 @@ def measure(args, run):
         )
         diagnostic = torch.cuda.CUDAGraph()
         backend_events = None
-        if args.kernel_diagnostics and local and args.worker != "dense":
+        bspline_diagnostics = (
+            args.kernel_diagnostics
+            and case.fixture == "quadratic_bspline"
+            and args.worker != "dense"
+            and run.entry(args.plan_id).plan.recipe.strategy != "torch"
+        )
+        if bspline_diagnostics:
+            from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+                executor,
+            )
+
+            names = executor.diagnostic_components(
+                run.entry(args.plan_id).plan.recipe.strategy
+            )
+            backend_events = {
+                name: [
+                    torch.cuda.Event(enable_timing=True, external=True)
+                    for _ in range(2)
+                ]
+                for name in names
+            }
+            executor.DIAGNOSTIC_EVENTS = backend_events
+        elif (
+            args.kernel_diagnostics
+            and local
+            and args.worker != "dense"
+            and case.fixture != "quadratic_bspline"
+        ):
             from torchcst._backends.cuda.algorithms.linear.local_product import executor
 
             backward_components = (
@@ -658,6 +685,10 @@ def measure(args, run):
             }
             executor.DIAGNOSTIC_EVENTS = backend_events
         try:
+            if bspline_diagnostics:
+                with torch.cuda.stream(stream):
+                    step()
+                torch.cuda.synchronize()
             with torch.cuda.graph(diagnostic, stream=stream):
                 step(events, update_events)
         finally:
@@ -695,6 +726,11 @@ def measure(args, run):
                 name: {"median_ms": statistics.median(values), "samples_ms": values}
                 for name, values in backend_samples.items()
             },
+            "norm_replay_scope": (
+                "extra diagnostic norm-only re-evaluation from live decoded geometry; included in diagnostic forward, absent from primary timing; do not subtract from fused prepare"
+                if bspline_diagnostics
+                else None
+            ),
         }
     core = None
     if args.core_diagnostics:
@@ -740,7 +776,9 @@ def measure(args, run):
         if local and args.worker != "dense"
         else None,
         "compiler_reports": __import__(
-            "torchcst._backends.cuda.algorithms.linear.local_product.executor",
+            "torchcst._backends.cuda.algorithms.linear.quadratic_bspline.executor"
+            if case.fixture == "quadratic_bspline"
+            else "torchcst._backends.cuda.algorithms.linear.local_product.executor",
             fromlist=["COMPILER_REPORTS"],
         ).COMPILER_REPORTS
         if local and args.worker != "dense"
@@ -866,10 +904,13 @@ def main():
     ):
         ap.error("--polar-update fused requires the local product fixture")
     if args.kernel_diagnostics and (
-        run.case.fixture != "local_polar_product"
-        or any(entry.plan.recipe.execution_route == "torch" for entry in run.plans)
+        run.case.fixture not in ("local_polar_product", "quadratic_bspline")
+        or (
+            run.case.fixture == "local_polar_product"
+            and any(entry.plan.recipe.execution_route == "torch" for entry in run.plans)
+        )
     ):
-        ap.error("--kernel-diagnostics requires CUDA local product routes")
+        ap.error("--kernel-diagnostics requires CUDA local product or B-spline routes")
     if not args.output:
         ap.error("--output is required for GPU execution")
     args.output = args.output.resolve()

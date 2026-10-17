@@ -3,6 +3,48 @@
 import torch
 from torch.autograd.function import once_differentiable
 
+DIAGNOSTIC_EVENTS = None
+COMPILER_REPORTS = {}
+
+
+def _stamp(name, edge):
+    if DIAGNOSTIC_EVENTS is not None:
+        DIAGNOSTIC_EVENTS[name][edge].record()
+
+
+def _report(name, compiled):
+    if DIAGNOSTIC_EVENTS is not None:
+        COMPILER_REPORTS[name] = {
+            "registers": getattr(compiled, "n_regs", None),
+            "spill_slots": getattr(compiled, "n_spills", None),
+            "shared_bytes": getattr(compiled.metadata, "shared", None),
+            "local_loads": "ld.local" in compiled.asm["ptx"],
+            "local_stores": "st.local" in compiled.asm["ptx"],
+        }
+
+
+def diagnostic_components(strategy):
+    common = ("snapshot", "prepare", "norm_replay")
+    if strategy == "matrix":
+        return common + ("w_build", "y_gemm", "dx_gemm", "dw_gemm", "atom_vjp")
+    names = common + (
+        "query_input",
+        "query_adjoint",
+        "inject_output",
+        "inject_input",
+        "atom_vjp",
+    )
+    if strategy == "hybrid":
+        names += (
+            "bank_input",
+            "bank_adjoint",
+            "scan_output",
+            "scan_input",
+            "restore_output",
+            "restore_input",
+        )
+    return names
+
 
 def _basis(n, device):
     z = torch.arange(n, dtype=torch.float64, device=device) * (2.0 / (n - 1)) - 1
@@ -33,10 +75,16 @@ def _query(x, meta, origin, spacing, dim, recipe, basis):
 
     b, n = x.shape
     a = len(meta)
+    side = "input" if dim == 1 else "adjoint"
+    if recipe.strategy != "direct":
+        _stamp("bank_" + side, 0)
     bank = x if recipe.strategy == "direct" else _bank(x, basis)
+    if recipe.strategy != "direct":
+        _stamp("bank_" + side, 1)
     h = x.new_empty((b, a))
     hp = torch.empty_like(h)
-    k.query[(a, tr.cdiv(b, 16))](
+    _stamp("query_" + side, 0)
+    compiled = k.query[(a, tr.cdiv(b, 16))](
         x,
         bank,
         meta,
@@ -55,6 +103,8 @@ def _query(x, meta, origin, spacing, dim, recipe, basis):
         num_warps=4,
         enable_fp_fusion=False,
     )
+    _stamp("query_" + side, 1)
+    _report("query_" + side, compiled)
     return h, hp
 
 
@@ -64,13 +114,15 @@ def _scatter(h, meta, origin, spacing, dim, n, recipe):
     from . import kernels as k
 
     b, a = h.shape
+    side = "output" if dim == 0 else "input"
     y = h.new_zeros((b, n))
     delta = (
         y
         if recipe.strategy == "direct"
         else torch.zeros((3, b, n + 1), device=h.device, dtype=torch.float64)
     )
-    k.inject[(a, tr.cdiv(b, 16))](
+    _stamp("inject_" + side, 0)
+    compiled = k.inject[(a, tr.cdiv(b, 16))](
         h,
         meta,
         delta,
@@ -88,11 +140,18 @@ def _scatter(h, meta, origin, spacing, dim, n, recipe):
         num_warps=4,
         enable_fp_fusion=False,
     )
+    _stamp("inject_" + side, 1)
+    _report("inject_" + side, compiled)
     if recipe.strategy != "direct":
+        _stamp("scan_" + side, 0)
         scan = delta.cumsum(-1)
-        k.restore[(tr.cdiv(b * n, 128),)](
+        _stamp("scan_" + side, 1)
+        _stamp("restore_" + side, 0)
+        compiled = k.restore[(tr.cdiv(b * n, 128),)](
             scan, y, n, b, num_warps=4, enable_fp_fusion=False
         )
+        _stamp("restore_" + side, 1)
+        _report("restore_" + side, compiled)
     return y
 
 
@@ -105,12 +164,15 @@ class _BSpline(torch.autograd.Function):
         from . import kernels as k
 
         no, ni = chart.grid_shape[0][0], chart.grid_shape[1][0]
+        _stamp("snapshot", 0)
         source = p.contiguous().clone()
         origin, spacing = chart.origin.clone(), chart.spacing.clone()
+        _stamp("snapshot", 1)
         meta = torch.empty((len(p), 12), device=p.device, dtype=torch.float64)
         ctx.matrix = False
         if len(p):
-            k.prepare[(tr.cdiv(len(p), 64),)](
+            _stamp("prepare", 0)
+            compiled = k.prepare[(tr.cdiv(len(p), 64),)](
                 source,
                 meta,
                 origin,
@@ -127,10 +189,34 @@ class _BSpline(torch.autograd.Function):
                 num_warps=4,
                 enable_fp_fusion=False,
             )
+            _stamp("prepare", 1)
+            _report("prepare", compiled)
+            if DIAGNOSTIC_EVENTS is not None:
+                scratch = torch.empty((len(p), 4), device=p.device, dtype=torch.float64)
+                _stamp("norm_replay", 0)
+                compiled = k.norm_replay[(tr.cdiv(len(p), 64),)](
+                    meta,
+                    origin,
+                    spacing,
+                    moments,
+                    scratch,
+                    len(p),
+                    no,
+                    ni,
+                    moments.shape[1],
+                    value.spec.normalization.floor,
+                    recipe.reciprocal,
+                    recipe.norm_lookup,
+                    num_warps=4,
+                    enable_fp_fusion=False,
+                )
+                _stamp("norm_replay", 1)
+                _report("norm_replay", compiled)
             if recipe.strategy == "matrix":
                 ctx.matrix = True
                 w = x.new_zeros((no, ni))
-                k.matrix_build[(tr.cdiv(len(p), 8),)](
+                _stamp("w_build", 0)
+                compiled = k.matrix_build[(tr.cdiv(len(p), 8),)](
                     meta,
                     w,
                     origin,
@@ -144,10 +230,15 @@ class _BSpline(torch.autograd.Function):
                     num_warps=4,
                     enable_fp_fusion=False,
                 )
+                _stamp("w_build", 1)
+                _report("w_build", compiled)
                 ctx.sizes = (no, ni)
                 ctx.recipe = recipe
                 ctx.save_for_backward(meta, x, w, origin, spacing)
-                return x @ w.T
+                _stamp("y_gemm", 0)
+                y = x @ w.T
+                _stamp("y_gemm", 1)
+                return y
             h, hp = _query(x, meta, origin, spacing, 1, recipe, bases[1])
             y = _scatter(h, meta, origin, spacing, 0, no, recipe)
         else:
@@ -168,12 +259,17 @@ class _BSpline(torch.autograd.Function):
         if ctx.matrix:
             meta, x, w, origin, spacing = ctx.saved_tensors
             dy = dy.contiguous()
+            _stamp("dx_gemm", 0)
             dx = dy @ w if ctx.needs_input_grad[0] else None
+            _stamp("dx_gemm", 1)
             dp = None
             if ctx.needs_input_grad[1]:
+                _stamp("dw_gemm", 0)
                 dw = dy.T @ x
+                _stamp("dw_gemm", 1)
                 dp = dy.new_empty((len(meta), 4))
-                k.matrix_vjp[(tr.cdiv(len(meta), 8),)](
+                _stamp("atom_vjp", 0)
+                compiled = k.matrix_vjp[(tr.cdiv(len(meta), 8),)](
                     meta,
                     dw,
                     dp,
@@ -187,6 +283,8 @@ class _BSpline(torch.autograd.Function):
                     num_warps=4,
                     enable_fp_fusion=False,
                 )
+                _stamp("atom_vjp", 1)
+                _report("atom_vjp", compiled)
             return dx, dp, None, None, None, None, None
         meta, h, hp, origin, spacing = ctx.saved_tensors
         dy = dy.contiguous()
@@ -199,7 +297,8 @@ class _BSpline(torch.autograd.Function):
                 dx = _scatter(g, meta, origin, spacing, 1, ctx.sizes[1], ctx.recipe)
             if ctx.needs_input_grad[1]:
                 dp = dy.new_empty((a, 4))
-                k.vjp[(a,)](
+                _stamp("atom_vjp", 0)
+                compiled = k.vjp[(a,)](
                     h,
                     hp,
                     g,
@@ -212,6 +311,8 @@ class _BSpline(torch.autograd.Function):
                     num_warps=4,
                     enable_fp_fusion=False,
                 )
+                _stamp("atom_vjp", 1)
+                _report("atom_vjp", compiled)
         else:
             dx = dy.new_zeros((b, ctx.sizes[1])) if ctx.needs_input_grad[0] else None
             dp = dy.new_empty((0, 4)) if ctx.needs_input_grad[1] else None

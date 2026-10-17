@@ -174,6 +174,44 @@ def prepare(
 
 
 @tr.jit
+def norm_replay(
+    Meta,
+    Origin,
+    Spacing,
+    Moments,
+    Scratch,
+    A: tl.constexpr,
+    NO: tl.constexpr,
+    NI: tl.constexpr,
+    ML: tl.constexpr,
+    FLOOR: tl.constexpr,
+    RECIPROCAL: tl.constexpr,
+    LOOKUP: tl.constexpr,
+):
+    # Diagnostic re-evaluation from already decoded live geometry. Not on the
+    # normal execution path; its timing is not subtracted from fused prepare.
+    a = tl.program_id(0) * 64 + tl.arange(0, 64)
+    radius = tl.load(Meta + a * 12 + 1, a < A, 1)
+    co = tl.load(Meta + a * 12 + 2, a < A, 0)
+    ci = tl.load(Meta + a * 12 + 3, a < A, 0)
+    qo, vo = _norm(co, radius, Origin, Spacing, Moments, NO, 0, ML, RECIPROCAL, LOOKUP)
+    qi, vi = _norm(ci, radius, Origin, Spacing, Moments, NI, 1, ML, RECIPROCAL, LOOKUP)
+    d = lib.sqrt(qo * qi)
+    tl.store(Scratch + 4 * a, 1 / tl.maximum(d, FLOOR), a < A)
+    tl.store(
+        Scratch + 4 * a + 1,
+        tl.where(d >= FLOOR, vo / tl.where(qo > 0, qo, 1), 0),
+        a < A,
+    )
+    tl.store(
+        Scratch + 4 * a + 2,
+        tl.where(d >= FLOOR, vi / tl.where(qi > 0, qi, 1), 0),
+        a < A,
+    )
+    tl.store(Scratch + 4 * a + 3, qo + qi, a < A)
+
+
+@tr.jit
 def _shape(d, radius, inverse_radius, RECIPROCAL: tl.constexpr):
     if RECIPROCAL:
         inverse = inverse_radius
