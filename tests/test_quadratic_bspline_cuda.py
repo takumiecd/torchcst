@@ -162,6 +162,8 @@ def test_edges_empty_zero_amplitude_and_saved_geometry(strategy):
         ("hybrid", {"axis_warps": 2}),
         ("matrix_separable", {"matrix_sites": 4}),
         ("matrix_separable", {"matrix_sites": 16}),
+        ("matrix_separable", {"matrix_sites": 4, "matrix_warps": 1}),
+        ("matrix_separable", {"matrix_sites": 4, "matrix_warps": 2}),
     ]
     + [
         ("matrix", {"matrix_sites": s, "matrix_atoms": a, "matrix_warps": w})
@@ -333,7 +335,9 @@ def test_live_amplitude_dependent_sigma_with_power_branches(strategy, power):
 
 
 @GPU
-@pytest.mark.parametrize("shape", [(8, 8, 4), (4, 8, 4), (8, 32, 4), (16, 32, 8)])
+@pytest.mark.parametrize(
+    "shape", [(8, 8, 4), (4, 8, 4), (8, 32, 4), (16, 32, 8), (4, 8, 1), (4, 8, 2)]
+)
 @pytest.mark.parametrize("strategy", ["matrix", "matrix_separable"])
 @pytest.mark.parametrize("n", [64, 1024])
 @pytest.mark.parametrize("floor", [1e-6, 1000.0])

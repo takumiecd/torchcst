@@ -44,7 +44,7 @@ class BSplineTuningRecipe(BSplineRecipe):
             ("axis_warps", (1, 2, 4)),
             ("matrix_sites", (4, 8, 16)),
             ("matrix_atoms", (4, 8, 16, 32)),
-            ("matrix_warps", (2, 4, 8)),
+            ("matrix_warps", (1, 2, 4, 8)),
         ):
             value = getattr(self, name)
             if type(value) is not int or value not in allowed:
