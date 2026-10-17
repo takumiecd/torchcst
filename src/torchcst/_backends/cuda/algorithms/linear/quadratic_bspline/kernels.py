@@ -162,8 +162,8 @@ def query(
     center = tl.load(Meta + a * 9 + 2 + DIM)
     o = tl.load(Origin + DIM).to(tl.float64)
     h = tl.load(Spacing + DIM).to(tl.float64)
-    left, _ = _interval(center, radius, Origin, Spacing, N, DIM, 0)
-    _, right = _interval(center, radius, Origin, Spacing, N, DIM, 2)
+    left, _first_right = _interval(center, radius, Origin, Spacing, N, DIM, 0)
+    _last_left, right = _interval(center, radius, Origin, Spacing, N, DIM, 2)
     result = tl.full((16,), 0, tl.float64)
     prime = tl.full((16,), 0, tl.float64)
     if DIRECT or right - left <= CUT:
@@ -219,14 +219,14 @@ def inject(
     center = tl.load(Meta + a * 9 + 2 + DIM)
     scale = tl.load(Meta + a * 9) * tl.load(Meta + a * 9 + 4)
     w = tl.load(H + b * A + a, b < B, 0).to(tl.float64) * scale
-    left, _ = _interval(center, radius, Origin, Spacing, N, DIM, 0)
-    _, right = _interval(center, radius, Origin, Spacing, N, DIM, 2)
+    left, _first_right = _interval(center, radius, Origin, Spacing, N, DIM, 0)
+    _last_left, right = _interval(center, radius, Origin, Spacing, N, DIM, 2)
     o = tl.load(Origin + DIM).to(tl.float64)
     h = tl.load(Spacing + DIM).to(tl.float64)
     if DIRECT or right - left <= CUT:
         for start in range(left, right, 64):
             j = start + tl.arange(0, 64)
-            f, _ = _shape(o + j.to(tl.float64) * h - center, radius)
+            f, _dc = _shape(o + j.to(tl.float64) * h - center, radius)
             tl.atomic_add(
                 Y + b[:, None] * N + j[None, :],
                 (w[:, None] * f[None, :]).to(tl.float32),
@@ -237,7 +237,7 @@ def inject(
         half = h * (N - 1) * 0.5
         for piece in tl.static_range(3):
             l, r = _interval(center, radius, Origin, Spacing, N, DIM, piece)
-            a0, a1, a2, _, _ = _coeff(o + half - center, half, radius, piece)
+            a0, a1, a2, _b0, _b1 = _coeff(o + half - center, half, radius, piece)
             for k in tl.static_range(3):
                 coeff = a0 if k == 0 else a1 if k == 1 else a2
                 tl.atomic_add(
