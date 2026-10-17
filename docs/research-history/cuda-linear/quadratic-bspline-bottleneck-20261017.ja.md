@@ -154,3 +154,41 @@ L2込みprepareの比率は速度改善後には約19%となり、初版の約7%
 wheel/sdist build成功、全330 runtimeファイルがcheckoutとbyte一致。
 
 最終候補jobのresult archive SHA256: `db3b0eb2346d6e6816653aece9301eba6d8079a2af8aaf185dfd9b250d4a6923`。
+
+## 最終ソースでの独立再測定
+
+source `9213933d`、job `l4job-df5c54bf463d48d1a3d1335c6a81de21`。
+新しく確保したL4でGPU検証112件を再実行し、両caseのfull-axis Y/dX/全atom oracle、
+optimizer/動的幅、提出前検査もPASSした。各run 21 sample。候補の独立計測はそれぞれ計2 jobとなった。
+
+| 条件 | Torch ms | v1 ms | v2最終候補 ms | Dense ms | v2 allocated/reserved MiB |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| small | 441.3304 | 4.7139 | **1.7802** | .0828 | 49.83 / 114 |
+| mixed | 445.0876 | 24.7902 | **9.1279** | .0824 | 35.68 / 98 |
+
+初回のsmall=1.7747、mixed=9.1276 msから大きな変動はなかった。
+両条件で全52428 atomのsigma更新を確認した。全候補を含む独立FP64検査の最大絶対誤差は、
+smallでY=2.55e-6、dX=3.20e-6、全atom勾配=5.84e-5、
+mixedでY=5.98e-6、dX=6.87e-6、全atom勾配=5.12e-5。
+いずれも最大絶対誤差・相対L2誤差の両方に対する既存4e-4 gateを維持している。
+
+初版からsmallは約62%、mixedは約63%短縮したが、Denseとの差はそれぞれ約22倍/111倍残る。
+smallの残る費用はatom VJP=.9308、W構築=.4270、prepare=.3308 ms。
+mixedではH/G queryが各約2.69、Y/dX injectが各約1.48 ms。
+CST全体や他の幅分布に共通する最適dispatcherを確立したという結果ではない。
+
+再現コマンド (tuning Caseは検証済みの対照も含む):
+
+```bash
+python -m pytest tests/test_quadratic_bspline_cuda.py -q
+python -m tools.kernel_dev check --plans benchmarks/cuda/linear/plans-quadratic-bspline.json \
+  --case benchmarks/cuda/linear/cases/bspline-1024-a52428-small-tuning.json \
+  --case benchmarks/cuda/linear/cases/bspline-1024-a52428-mixed-tuning.json
+python -m benchmarks.cuda.linear.run --plans benchmarks/cuda/linear/plans-quadratic-bspline.json \
+  --case benchmarks/cuda/linear/cases/bspline-1024-a52428-small-tuning.json \
+  --polar-update fused --kernel-diagnostics --output output/bspline-small-tuning.json
+python -m benchmarks.submissions check output/bspline-small-tuning.json
+```
+
+source archive SHA256: `2e66214d62474c91e55fd6e177e6ffbf6f369777acd82bd7e751ab7e64b0ebef`。
+result archive SHA256: `9f9e9e9306aac663a8041dceb15bf4bc37ea297715ee7a848cef472a3a566cd4`。manifest 33ファイルを照合済み。
