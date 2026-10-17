@@ -41,6 +41,7 @@
     "direct",
     "hybrid64",
     "hybrid",
+    "matrix-formula",
     "matrix"
   ],
   "baseline": "torch",

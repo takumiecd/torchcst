@@ -6,17 +6,28 @@ from triton.language.extra.cuda import libdevice as lib
 
 
 @tr.jit
-def _coeff(mid, half, radius, piece: tl.constexpr):
-    z = mid / radius
-    v = half / radius
+def _coeff(mid, half, radius, piece: tl.constexpr, RECIPROCAL: tl.constexpr = False):
+    if RECIPROCAL:
+        inverse = 1.0 / radius
+        z = mid * inverse
+        v = half * inverse
+    else:
+        z = mid / radius
+        v = half / radius
     if piece == 1:
         a0, a1, a2 = 1.0 - 3.0 * z * z, -6.0 * z * v, -3.0 * v * v
-        b0, b1 = 6.0 * z / radius, 6.0 * v / radius
+        if RECIPROCAL:
+            b0, b1 = 6.0 * z * inverse, 6.0 * v * inverse
+        else:
+            b0, b1 = 6.0 * z / radius, 6.0 * v / radius
     else:
         sign: tl.constexpr = 1.0 if piece == 0 else -1.0
         base = 1.0 + sign * z
         a0, a1, a2 = 1.5 * base * base, 3.0 * sign * base * v, 1.5 * v * v
-        b0, b1 = -3.0 * sign * base / radius, -3.0 * v / radius
+        if RECIPROCAL:
+            b0, b1 = -3.0 * sign * base * inverse, -3.0 * v * inverse
+        else:
+            b0, b1 = -3.0 * sign * base / radius, -3.0 * v / radius
     return a0, a1, a2, b0, b1
 
 
@@ -29,36 +40,58 @@ def _interval(
     N: tl.constexpr,
     dim: tl.constexpr,
     piece: tl.constexpr,
+    RECIPROCAL: tl.constexpr = False,
 ):
     o = tl.load(Origin + dim).to(tl.float64)
     h = tl.load(Spacing + dim).to(tl.float64)
     low: tl.constexpr = -1.0 if piece == 0 else -1.0 / 3.0 if piece == 1 else 1.0 / 3.0
     high: tl.constexpr = -1.0 / 3.0 if piece == 0 else 1.0 / 3.0 if piece == 1 else 1.0
-    left = tl.minimum(tl.maximum(tl.ceil((center + radius * low - o) / h), 0), N).to(
-        tl.int32
-    )
-    right = tl.minimum(tl.maximum(tl.ceil((center + radius * high - o) / h), 0), N).to(
-        tl.int32
-    )
+    if RECIPROCAL:
+        inverse_h = 1.0 / h
+        low_index = (center + radius * low - o) * inverse_h
+        high_index = (center + radius * high - o) * inverse_h
+    else:
+        low_index = (center + radius * low - o) / h
+        high_index = (center + radius * high - o) / h
+    left = tl.minimum(tl.maximum(tl.ceil(low_index), 0), N).to(tl.int32)
+    right = tl.minimum(tl.maximum(tl.ceil(high_index), 0), N).to(tl.int32)
     return left, right
 
 
 @tr.jit
-def _norm(center, radius, Origin, Spacing, N: tl.constexpr, dim: tl.constexpr):
+def _norm(
+    center,
+    radius,
+    Origin,
+    Spacing,
+    Moments,
+    N: tl.constexpr,
+    dim: tl.constexpr,
+    ML: tl.constexpr,
+    RECIPROCAL: tl.constexpr,
+    LOOKUP: tl.constexpr,
+):
     q = tl.full((), 0, tl.float64)
     vjp = tl.full((), 0, tl.float64)
     o = tl.load(Origin + dim).to(tl.float64)
     h = tl.load(Spacing + dim).to(tl.float64)
     for piece in tl.static_range(3):
-        left, right = _interval(center, radius, Origin, Spacing, N, dim, piece)
+        left, right = _interval(
+            center, radius, Origin, Spacing, N, dim, piece, RECIPROCAL
+        )
         count = (right - left).to(tl.float64)
         safe = tl.maximum(count, 1)
         mid = o + (left.to(tl.float64) + (count - 1) * 0.5) * h - center
-        a0, a1, a2, b0, b1 = _coeff(mid, h * count * 0.5, radius, piece)
-        m2 = tl.where(count > 1, count / 3 - 1 / (3 * safe), 0)
-        m4 = tl.where(
-            count > 1, count / 5 - 2 / (3 * safe) + 7 / (15 * safe * safe * safe), 0
-        )
+        a0, a1, a2, b0, b1 = _coeff(mid, h * count * 0.5, radius, piece, RECIPROCAL)
+        if LOOKUP:
+            index = (right - left).to(tl.int32)
+            m2 = tl.load(Moments + index)
+            m4 = tl.load(Moments + ML + index)
+        else:
+            m2 = tl.where(count > 1, count / 3 - 1 / (3 * safe), 0)
+            m4 = tl.where(
+                count > 1, count / 5 - 2 / (3 * safe) + 7 / (15 * safe * safe * safe), 0
+            )
         q += a0 * a0 * count + (a1 * a1 + 2 * a0 * a2) * m2 + a2 * a2 * m4
         vjp += a0 * b0 * count + (a1 * b1 + a2 * b0) * m2
     return q, vjp
@@ -75,6 +108,10 @@ def prepare(
     NO: tl.constexpr,
     NI: tl.constexpr,
     FLOOR: tl.constexpr,
+    Moments,
+    ML: tl.constexpr,
+    RECIPROCAL: tl.constexpr,
+    LOOKUP: tl.constexpr,
 ):
     a = tl.program_id(0) * 64 + tl.arange(0, 64)
     z0 = tl.load(P + 4 * a, a < A, 0).to(tl.float64)
@@ -92,7 +129,12 @@ def prepare(
     maximum = tl.load(Scalars[7]).to(tl.float64)
     kappa = tl.load(Scalars[2]).to(tl.float64)
     power = tl.load(Scalars[4]).to(tl.float64)
-    ux = lib.pow(x, power)
+    if power == 1.0:
+        ux = x
+    elif power == 2.0:
+        ux = x * x
+    else:
+        ux = lib.pow(x, power)
     upper = minimum + (maximum - minimum) * kappa / (kappa + ux)
     upper = tl.maximum(upper, tl.load(Scalars[8]).to(tl.float64))
     lower = minimum + (birth - minimum) / (1 + tl.load(Scalars[3]).to(tl.float64) * x)
@@ -102,8 +144,8 @@ def prepare(
     radius = 2.449489742783178 * sigma
     co = tl.load(P + 4 * a + 2, a < A, 0).to(tl.float64)
     ci = tl.load(P + 4 * a + 3, a < A, 0).to(tl.float64)
-    qo, vo = _norm(co, radius, Origin, Spacing, NO, 0)
-    qi, vi = _norm(ci, radius, Origin, Spacing, NI, 1)
+    qo, vo = _norm(co, radius, Origin, Spacing, Moments, NO, 0, ML, RECIPROCAL, LOOKUP)
+    qi, vi = _norm(ci, radius, Origin, Spacing, Moments, NI, 1, ML, RECIPROCAL, LOOKUP)
     denominator = lib.sqrt(qo * qi)
     correction = tl.where(r2 >= 1.1754943508222875e-38, z0 * inv / safe, 0)
     tl.store(Meta + a * 9, amp, a < A)
@@ -175,8 +217,12 @@ def query(
     center = tl.load(Meta + a * 9 + 2 + DIM)
     o = tl.load(Origin + DIM).to(tl.float64)
     h = tl.load(Spacing + DIM).to(tl.float64)
-    left, _first_right = _interval(center, radius, Origin, Spacing, N, DIM, 0)
-    _last_left, right = _interval(center, radius, Origin, Spacing, N, DIM, 2)
+    left, _first_right = _interval(
+        center, radius, Origin, Spacing, N, DIM, 0, RECIPROCAL
+    )
+    _last_left, right = _interval(
+        center, radius, Origin, Spacing, N, DIM, 2, RECIPROCAL
+    )
     result = tl.full((16,), 0, tl.float64)
     prime = tl.full((16,), 0, tl.float64)
     if DIRECT or right - left <= CUT:
@@ -194,8 +240,8 @@ def query(
         half = h * (N - 1) * 0.5
         mid = o + half - center
         for piece in tl.static_range(3):
-            l, r = _interval(center, radius, Origin, Spacing, N, DIM, piece)
-            a0, a1, a2, b0, b1 = _coeff(mid, half, radius, piece)
+            l, r = _interval(center, radius, Origin, Spacing, N, DIM, piece, RECIPROCAL)
+            a0, a1, a2, b0, b1 = _coeff(mid, half, radius, piece, RECIPROCAL)
             v0 = tl.load(Bank + b * (N + 1) + r, b < B, 0) - tl.load(
                 Bank + b * (N + 1) + l, b < B, 0
             )
@@ -234,8 +280,12 @@ def inject(
     center = tl.load(Meta + a * 9 + 2 + DIM)
     scale = tl.load(Meta + a * 9) * tl.load(Meta + a * 9 + 4)
     w = tl.load(H + b * A + a, b < B, 0).to(tl.float64) * scale
-    left, _first_right = _interval(center, radius, Origin, Spacing, N, DIM, 0)
-    _last_left, right = _interval(center, radius, Origin, Spacing, N, DIM, 2)
+    left, _first_right = _interval(
+        center, radius, Origin, Spacing, N, DIM, 0, RECIPROCAL
+    )
+    _last_left, right = _interval(
+        center, radius, Origin, Spacing, N, DIM, 2, RECIPROCAL
+    )
     o = tl.load(Origin + DIM).to(tl.float64)
     h = tl.load(Spacing + DIM).to(tl.float64)
     if DIRECT or right - left <= CUT:
@@ -251,8 +301,10 @@ def inject(
     else:
         half = h * (N - 1) * 0.5
         for piece in tl.static_range(3):
-            l, r = _interval(center, radius, Origin, Spacing, N, DIM, piece)
-            a0, a1, a2, _b0, _b1 = _coeff(o + half - center, half, radius, piece)
+            l, r = _interval(center, radius, Origin, Spacing, N, DIM, piece, RECIPROCAL)
+            a0, a1, a2, _b0, _b1 = _coeff(
+                o + half - center, half, radius, piece, RECIPROCAL
+            )
             for k in tl.static_range(3):
                 coeff = a0 if k == 0 else a1 if k == 1 else a2
                 tl.atomic_add(
@@ -315,10 +367,10 @@ def matrix_build(
     co = tl.load(Meta + a * 9 + 2, a < A, 0)
     ci = tl.load(Meta + a * 9 + 3, a < A, 0)
     scale = tl.load(Meta + a * 9, a < A, 0) * tl.load(Meta + a * 9 + 4, a < A, 0)
-    lo, _ro = _interval(co, radius, Origin, Spacing, NO, 0, 0)
-    _lo, hi = _interval(co, radius, Origin, Spacing, NO, 0, 2)
-    li, _ri = _interval(ci, radius, Origin, Spacing, NI, 1, 0)
-    _li, ri = _interval(ci, radius, Origin, Spacing, NI, 1, 2)
+    lo, _ro = _interval(co, radius, Origin, Spacing, NO, 0, 0, RECIPROCAL)
+    _lo, hi = _interval(co, radius, Origin, Spacing, NO, 0, 2, RECIPROCAL)
+    li, _ri = _interval(ci, radius, Origin, Spacing, NI, 1, 0, RECIPROCAL)
+    _li, ri = _interval(ci, radius, Origin, Spacing, NI, 1, 2, RECIPROCAL)
     rows = tl.arange(0, BS)
     oo = tl.load(Origin).to(tl.float64)
     oi = tl.load(Origin + 1).to(tl.float64)
@@ -366,10 +418,10 @@ def matrix_vjp(
     radius = tl.load(Meta + a * 9 + 1, a < A, 1)
     co = tl.load(Meta + a * 9 + 2, a < A, 0)
     ci = tl.load(Meta + a * 9 + 3, a < A, 0)
-    lo, _ro = _interval(co, radius, Origin, Spacing, NO, 0, 0)
-    _lo, hi = _interval(co, radius, Origin, Spacing, NO, 0, 2)
-    li, _ri = _interval(ci, radius, Origin, Spacing, NI, 1, 0)
-    _li, ri = _interval(ci, radius, Origin, Spacing, NI, 1, 2)
+    lo, _ro = _interval(co, radius, Origin, Spacing, NO, 0, 0, RECIPROCAL)
+    _lo, hi = _interval(co, radius, Origin, Spacing, NO, 0, 2, RECIPROCAL)
+    li, _ri = _interval(ci, radius, Origin, Spacing, NI, 1, 0, RECIPROCAL)
+    _li, ri = _interval(ci, radius, Origin, Spacing, NI, 1, 2, RECIPROCAL)
     rows = tl.arange(0, BS)
     oo = tl.load(Origin).to(tl.float64)
     oi = tl.load(Origin + 1).to(tl.float64)

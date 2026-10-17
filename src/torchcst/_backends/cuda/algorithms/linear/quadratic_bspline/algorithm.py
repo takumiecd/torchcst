@@ -105,7 +105,9 @@ class BSplineAlgorithm(Algorithm[BSplineRecipe]):
 
     def prepare(self, state):
         fixed = {
-            k: state.buffers[k] for k in ("bases", "basis_key") if k in state.buffers
+            k: state.buffers[k]
+            for k in ("bases", "basis_key", "moments")
+            if k in state.buffers
         }
         super().prepare(state)
         state.buffers.update(fixed)
@@ -114,7 +116,7 @@ class BSplineAlgorithm(Algorithm[BSplineRecipe]):
         x, p, op, site = linear_execution(state, inputs)
         if state.recipe.strategy == "torch":
             return site.operator.apply(x, p, algorithm="factored")
-        from .executor import _basis, apply
+        from .executor import _basis, _norm_moments, apply
 
         no, ni = layout(op)
         key = (x.device, no, ni)
@@ -124,8 +126,15 @@ class BSplineAlgorithm(Algorithm[BSplineRecipe]):
                 if state.recipe.strategy == "hybrid"
                 else (None, None)
             )
+            state.buffers["moments"] = _norm_moments(max(no, ni), x.device)
             state.buffers["basis_key"] = key
         with torch.cuda.device(x.device):
             return apply(
-                x, p, site.kernel, site.chart, state.recipe, state.buffers["bases"]
+                x,
+                p,
+                site.kernel,
+                site.chart,
+                state.recipe,
+                state.buffers["bases"],
+                state.buffers["moments"],
             )

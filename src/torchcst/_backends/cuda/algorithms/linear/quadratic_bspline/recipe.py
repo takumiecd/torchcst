@@ -9,8 +9,11 @@ class BSplineRecipe:
     direct_sites: int = 32
     block_sites: int = 16
     reciprocal: bool = True
+    norm_lookup: bool = True
 
     def __post_init__(self):
+        if type(self.norm_lookup) is not bool:
+            raise ValueError("norm_lookup must be boolean")
         if type(self.reciprocal) is not bool:
             raise ValueError("reciprocal must be boolean")
         if self.strategy not in ("torch", "direct", "hybrid", "matrix"):

@@ -11,7 +11,8 @@
           "strategy": "torch",
           "direct_sites": 32,
           "block_sites": 16,
-          "reciprocal": true
+          "reciprocal": true,
+          "norm_lookup": true
         }
       }
     },
@@ -25,7 +26,8 @@
           "strategy": "direct",
           "direct_sites": 32,
           "block_sites": 16,
-          "reciprocal": true
+          "reciprocal": true,
+          "norm_lookup": true
         }
       }
     },
@@ -39,7 +41,8 @@
           "strategy": "hybrid",
           "direct_sites": 32,
           "block_sites": 16,
-          "reciprocal": true
+          "reciprocal": true,
+          "norm_lookup": true
         }
       }
     },
@@ -53,7 +56,8 @@
           "strategy": "direct",
           "direct_sites": 32,
           "block_sites": 64,
-          "reciprocal": false
+          "reciprocal": false,
+          "norm_lookup": false
         }
       }
     },
@@ -67,7 +71,8 @@
           "strategy": "hybrid",
           "direct_sites": 32,
           "block_sites": 64,
-          "reciprocal": false
+          "reciprocal": false,
+          "norm_lookup": false
         }
       }
     },
@@ -81,7 +86,8 @@
           "strategy": "direct",
           "direct_sites": 32,
           "block_sites": 16,
-          "reciprocal": false
+          "reciprocal": false,
+          "norm_lookup": false
         }
       }
     },
@@ -95,7 +101,8 @@
           "strategy": "hybrid",
           "direct_sites": 32,
           "block_sites": 16,
-          "reciprocal": false
+          "reciprocal": false,
+          "norm_lookup": false
         }
       }
     },
@@ -109,7 +116,23 @@
           "strategy": "matrix",
           "direct_sites": 32,
           "block_sites": 16,
-          "reciprocal": true
+          "reciprocal": true,
+          "norm_lookup": true
+        }
+      }
+    },
+    {
+      "id": "matrix-formula",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_quadratic_bspline",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "strategy": "matrix",
+          "direct_sites": 32,
+          "block_sites": 16,
+          "reciprocal": true,
+          "norm_lookup": false
         }
       }
     }

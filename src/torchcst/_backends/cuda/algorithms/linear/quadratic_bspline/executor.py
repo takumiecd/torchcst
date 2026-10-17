@@ -9,6 +9,14 @@ def _basis(n, device):
     return torch.stack((torch.ones_like(z), z, z.square()))
 
 
+def _norm_moments(n, device):
+    count = torch.arange(n + 1, device=device, dtype=torch.float64)
+    safe = count.clamp_min(1)
+    m2 = torch.where(count > 1, count / 3 - 1 / (3 * safe), 0)
+    m4 = torch.where(count > 1, count / 5 - 2 / (3 * safe) + 7 / (15 * safe.pow(3)), 0)
+    return torch.stack((m2, m4))
+
+
 def _bank(x, basis):
     bank = torch.empty(
         (3, len(x), x.shape[1] + 1), dtype=torch.float64, device=x.device
@@ -90,7 +98,7 @@ def _scatter(h, meta, origin, spacing, dim, n, recipe):
 
 class _BSpline(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, x, p, value, chart, recipe, bases):
+    def forward(ctx, x, p, value, chart, recipe, bases, moments):
         import triton as tr
 
         from ..local_product.preparation import polar_scalars
@@ -112,6 +120,10 @@ class _BSpline(torch.autograd.Function):
                 no,
                 ni,
                 value.spec.normalization.floor,
+                moments,
+                moments.shape[1],
+                recipe.reciprocal,
+                recipe.norm_lookup,
                 num_warps=4,
                 enable_fp_fusion=False,
             )
@@ -175,7 +187,7 @@ class _BSpline(torch.autograd.Function):
                     num_warps=4,
                     enable_fp_fusion=False,
                 )
-            return dx, dp, None, None, None, None
+            return dx, dp, None, None, None, None, None
         meta, h, hp, origin, spacing = ctx.saved_tensors
         dy = dy.contiguous()
         a = len(meta)
@@ -203,8 +215,8 @@ class _BSpline(torch.autograd.Function):
         else:
             dx = dy.new_zeros((b, ctx.sizes[1])) if ctx.needs_input_grad[0] else None
             dp = dy.new_empty((0, 4)) if ctx.needs_input_grad[1] else None
-        return dx, dp, None, None, None, None
+        return dx, dp, None, None, None, None, None
 
 
-def apply(x, p, value, chart, recipe, bases):
-    return _BSpline.apply(x.contiguous(), p, value, chart, recipe, bases)
+def apply(x, p, value, chart, recipe, bases, moments):
+    return _BSpline.apply(x.contiguous(), p, value, chart, recipe, bases, moments)
