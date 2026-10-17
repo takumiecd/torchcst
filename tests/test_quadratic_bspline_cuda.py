@@ -80,6 +80,7 @@ def test_recipe_and_metadata_roundtrip():
     reg = Registry()
     reg.register(BSplineAlgorithm())
     reg.register(BSplineTuningAlgorithm())
+    reg.register(BSplineParallelAlgorithm())
     for strategy in ("torch", "direct", "hybrid", "matrix"):
         p = ExecutionPlan(
             "research_cuda_quadratic_bspline", "v1", BSplineRecipe(strategy)
@@ -95,6 +96,10 @@ def test_recipe_and_metadata_roundtrip():
         BSplineTuningRecipe("matrix", matrix_sites=8, matrix_atoms=32),
     )
     assert reg.loads_plan(reg.dumps_plan(tuned)) == tuned
+    grouped = ExecutionPlan(
+        "research_cuda_quadratic_bspline", "v3", BSplineParallelRecipe("hybrid_grouped")
+    )
+    assert reg.loads_plan(reg.dumps_plan(grouped)) == grouped
     original = ExecutionPlan("research_cuda_quadratic_bspline", "v1", BSplineRecipe())
     assert set(reg.dump_plan(original)["recipe"]) == {
         "strategy",

@@ -136,13 +136,15 @@ def query_grouped(
             ir[:, None],
             RECIPROCAL,
         )
-        mask = (
+        native_mask = (
             (b[:, None, None] < B)
             & (a[None, :, None] < A)
             & ~wide[None, :, None]
             & (j[None, :, :] < right[None, :, None])
         )
-        xx = tl.load(X + b[:, None, None] * N + j[None, :, :], mask, 0).to(tl.float64)
+        xx = tl.load(X + b[:, None, None] * N + j[None, :, :], native_mask, 0).to(
+            tl.float64
+        )
         result += tl.sum(xx * f[None, :, :], 2)
         prime += tl.sum(xx * dc[None, :, :], 2)
     if tl.sum(wide.to(tl.int32), 0) > 0:
@@ -153,21 +155,23 @@ def query_grouped(
                 center, radius, Origin, Spacing, N, DIM, piece, RECIPROCAL, ih
             )
             a0, a1, a2, b0, b1 = _coeff(mid, half, radius, ir, piece, RECIPROCAL)
-            mask = (b[:, None] < B) & wide[None, :] & (r[None, :] > l[None, :])
-            v0 = tl.load(Bank + b[:, None] * (N + 1) + r[None, :], mask, 0) - tl.load(
-                Bank + b[:, None] * (N + 1) + l[None, :], mask, 0
-            )
+            wide_mask = (b[:, None] < B) & wide[None, :] & (r[None, :] > l[None, :])
+            v0 = tl.load(
+                Bank + b[:, None] * (N + 1) + r[None, :], wide_mask, 0
+            ) - tl.load(Bank + b[:, None] * (N + 1) + l[None, :], wide_mask, 0)
             v1 = tl.load(
-                Bank + (B + b[:, None]) * (N + 1) + r[None, :], mask, 0
-            ) - tl.load(Bank + (B + b[:, None]) * (N + 1) + l[None, :], mask, 0)
+                Bank + (B + b[:, None]) * (N + 1) + r[None, :], wide_mask, 0
+            ) - tl.load(Bank + (B + b[:, None]) * (N + 1) + l[None, :], wide_mask, 0)
             v2 = tl.load(
-                Bank + (2 * B + b[:, None]) * (N + 1) + r[None, :], mask, 0
-            ) - tl.load(Bank + (2 * B + b[:, None]) * (N + 1) + l[None, :], mask, 0)
+                Bank + (2 * B + b[:, None]) * (N + 1) + r[None, :], wide_mask, 0
+            ) - tl.load(
+                Bank + (2 * B + b[:, None]) * (N + 1) + l[None, :], wide_mask, 0
+            )
             result += a0[None, :] * v0 + a1[None, :] * v1 + a2[None, :] * v2
             prime += b0[None, :] * v0 + b1[None, :] * v1
-    mask = (b[:, None] < B) & (a[None, :] < A)
-    tl.store(H + b[:, None] * A + a[None, :], result, mask)
-    tl.store(HP + b[:, None] * A + a[None, :], prime, mask)
+    store_mask = (b[:, None] < B) & (a[None, :] < A)
+    tl.store(H + b[:, None] * A + a[None, :], result, store_mask)
+    tl.store(HP + b[:, None] * A + a[None, :], prime, store_mask)
 
 
 @tr.jit
@@ -195,9 +199,9 @@ def inject_grouped(
     ih = tl.load(Meta + a * 12 + 10 + DIM, a < A, 1)
     center = tl.load(Meta + a * 12 + 2 + DIM, a < A, 0)
     scale = tl.load(Meta + a * 12, a < A, 0) * tl.load(Meta + a * 12 + 4, a < A, 0)
-    mask = (b[:, None] < B) & (a[None, :] < A)
+    source_mask = (b[:, None] < B) & (a[None, :] < A)
     w = (
-        tl.load(H + b[:, None] * A + a[None, :], mask, 0).to(tl.float64)
+        tl.load(H + b[:, None] * A + a[None, :], source_mask, 0).to(tl.float64)
         * scale[None, :]
     )
     o, h = tl.load(Origin + DIM).to(tl.float64), tl.load(Spacing + DIM).to(tl.float64)
@@ -213,7 +217,7 @@ def inject_grouped(
             ir[:, None],
             RECIPROCAL,
         )
-        mask = (
+        native_mask = (
             (b[:, None, None] < B)
             & (a[None, :, None] < A)
             & ~wide[None, :, None]
@@ -222,7 +226,7 @@ def inject_grouped(
         tl.atomic_add(
             Y + b[:, None, None] * N + j[None, :, :],
             (w[:, :, None] * f[None, :, :]).to(tl.float32),
-            mask,
+            native_mask,
             sem="relaxed",
         )
     if tl.sum(wide.to(tl.int32), 0) > 0:
@@ -236,17 +240,17 @@ def inject_grouped(
             )
             for k in tl.static_range(3):
                 coeff = a0 if k == 0 else a1 if k == 1 else a2
-                mask = (b[:, None] < B) & wide[None, :] & (r[None, :] > l[None, :])
+                wide_mask = (b[:, None] < B) & wide[None, :] & (r[None, :] > l[None, :])
                 tl.atomic_add(
                     Delta + (k * B + b[:, None]) * (N + 1) + l[None, :],
                     w * coeff[None, :],
-                    mask,
+                    wide_mask,
                     sem="relaxed",
                 )
                 tl.atomic_add(
                     Delta + (k * B + b[:, None]) * (N + 1) + r[None, :],
                     -w * coeff[None, :],
-                    mask,
+                    wide_mask,
                     sem="relaxed",
                 )
 
