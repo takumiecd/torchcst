@@ -218,7 +218,14 @@ def correctness(args, run, model_type):
             4e-4,
         )
         update = {key: max(update[key], result[key]) for key in update}
+    assert all(
+        r[name][key] < 4e-4
+        for r in reports
+        for name in ("y", "dx", "dp")
+        for key in ("max", "rel_l2")
+    )
     return {
+        "status": "PASS",
         "scope": "independent FP64 full-axis Y/dX/all atom gradients; three live states",
         **{
             name: {key: max(r[name][key] for r in reports) for key in ("max", "rel_l2")}

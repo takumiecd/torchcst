@@ -74,7 +74,8 @@ def gate(layer, x, dy):
     ag = torch.autograd.grad(y, (x, layer.atoms.p), dy, retain_graph=True)
     rg = torch.autograd.grad(ref, (rx, rp), dy.double())
     for a, b in zip((y, *ag), (ref, *rg)):
-        check(a, b, 4e-4)
+        errors = check(a, b, 4e-4)
+        assert errors["max"] < 4e-4 and errors["rel_l2"] < 4e-4
     gg = torch.autograd.grad(y, (x, layer.atoms.p), dy)
     for a, b in zip(ag, gg):
         check(a, b, 4e-4)
