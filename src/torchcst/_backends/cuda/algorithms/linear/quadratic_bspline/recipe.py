@@ -39,6 +39,7 @@ class BSplineRecipe:
 @dataclass(frozen=True)
 class BSplineTuningRecipe(BSplineRecipe):
     strategies = BSplineRecipe.strategies + ("matrix_separable",)
+    matrix_sizes = (4, 8, 16)
     matrix_sites: int = 16
     matrix_atoms: int = 8
     matrix_warps: int = 4
@@ -48,7 +49,7 @@ class BSplineTuningRecipe(BSplineRecipe):
         super().__post_init__()
         for name, allowed in (
             ("axis_warps", (1, 2, 4)),
-            ("matrix_sites", (4, 8, 16)),
+            ("matrix_sites", self.matrix_sizes),
             ("matrix_atoms", (4, 8, 16, 32)),
             ("matrix_warps", (1, 2, 4, 8)),
         ):
@@ -65,6 +66,7 @@ class BSplineParallelRecipe(BSplineTuningRecipe):
         "hybrid_vjp_grouped",
     )
     block_sizes = (8, 16, 32, 64)
+    matrix_sizes = (2, 4, 8, 16)
     block_sites: int = 8
     axis_atoms: int = 8
     axis_batch: int = 8
