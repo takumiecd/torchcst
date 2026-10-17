@@ -121,6 +121,7 @@ class BSplineAlgorithm(Algorithm[BSplineRecipe]):
                 else (None, None)
             )
             state.buffers["basis_key"] = key
-        return apply(
-            x, p, site.kernel, site.chart, state.recipe, state.buffers["bases"]
-        )
+        with torch.cuda.device(x.device):
+            return apply(
+                x, p, site.kernel, site.chart, state.recipe, state.buffers["bases"]
+            )

@@ -179,7 +179,7 @@ def test_live_graph_optimizer_state(strategy):
     graph = torch.cuda.CUDAGraph()
     with torch.cuda.graph(graph):
         step(layer, optim, x)
-    for _ in range(3):
+    for _ in range(24):
         graph.replay()
         step(reference, ropt, rx)
         torch.cuda.synchronize()
@@ -193,6 +193,8 @@ def test_live_graph_optimizer_state(strategy):
                 atol=4e-5,
                 rtol=4e-4,
             )
+
+    gate(layer, x, dy)
 
 
 @GPU

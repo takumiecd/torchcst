@@ -16,6 +16,7 @@
 `research_cuda_quadratic_bspline`のRecipeで同じ演算の3経路を比較する。
 `torch`は既存のTorch factored参照、`direct`は支持内だけの軸別GPU直接評価、
 `hybrid`は各軸の支持site数により直接評価と共有prefixを選ぶ。
+直接評価のsite演算枠は16/64、半幅の逆数のatom内共有も独立のRecipe設定として比較する。
 初期候補の閾値32 siteは実装上の比較値で、最適な閾値やσの上限の結論ではない。
 計算blockと数学的な支持／周期を混同せず、支持をblockへ丸めない。
 
@@ -83,6 +84,8 @@ forwardのmetadata、origin、spacing、H/Hpを保存し、後のforwardや更�
 capturable AdamW＋Polar updateを使い、公開CSTOptimizerのeager更新と比較する。
 
 既存`benchmarks.cuda.linear.run`へfixture、Plan catalog、Caseを接続した。
+Case内の既存`widths.rho`欄はこの研究fixtureでは物理sigmaの初期値を記録する。
+実際のsigma/spacingはdecode結果とspacing=.1から求め、他fixtureのrhoと混同しない。
 別の計測runnerは作らない。`bspline.py`がfixtureとoracleを持ち、
 結果adapter revision 9で他profileと区別する。dispatcherへの既定採用は未実施。
 
