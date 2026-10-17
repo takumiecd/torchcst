@@ -259,7 +259,7 @@ def test_live_graph_optimizer_state(strategy, options):
 
 
 @GPU
-@pytest.mark.parametrize("strategy", ["direct", "hybrid"])
+@pytest.mark.parametrize("strategy", ["direct", "hybrid", "hybrid_grouped"])
 def test_switching_support_size_and_coordinate_buffer_rejection(strategy):
     layer = model(strategy, n=128)
     x = torch.randn(3, 128, device="cuda", requires_grad=True)
