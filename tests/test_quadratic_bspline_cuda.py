@@ -280,7 +280,7 @@ def test_rectangular_grid_distinct_spacing_and_origin(strategy):
 
 @GPU
 @pytest.mark.parametrize("strategy", ["direct", "hybrid", "matrix"])
-@pytest.mark.parametrize("power", [1.0, 2.0, 1.5])
+@pytest.mark.parametrize("power", [1.0, 0.5, 0.75])
 def test_live_amplitude_dependent_sigma_with_power_branches(strategy, power):
     layer = model(strategy, n=64)
     with torch.no_grad():

@@ -136,8 +136,6 @@ def prepare(
     power = tl.load(Scalars[4]).to(tl.float64)
     if power == 1.0:
         ux = x
-    elif power == 2.0:
-        ux = x * x
     else:
         ux = lib.pow(x, power)
     upper = minimum + (maximum - minimum) * kappa / (kappa + ux)
