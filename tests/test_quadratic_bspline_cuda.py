@@ -169,7 +169,6 @@ def test_live_graph_optimizer_state(strategy):
     graph = torch.cuda.CUDAGraph()
     with torch.cuda.graph(graph):
         step(layer, optim, x)
-    step(reference, ropt, rx)
     for _ in range(3):
         graph.replay()
         step(reference, ropt, rx)
