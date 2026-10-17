@@ -1,6 +1,7 @@
 """Declarative scalar profile shapes; no Torch or GPU implementation imports."""
 
 from .base import ProfileSpec
+from .bspline import QuadraticBSplineSpec
 from .compact import BiweightSpec, TriangleSpec, TriweightSpec, WendlandC2Spec
 from .fourier import (
     ChebyshevSquareSpec,
@@ -20,6 +21,7 @@ __all__ = [
     "MaternMixtureSpec",
     "PeriodicFourierSpec",
     "ProfileSpec",
+    "QuadraticBSplineSpec",
     "TriangleSpec",
     "TriweightSpec",
     "WendlandC2Spec",
