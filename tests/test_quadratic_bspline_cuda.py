@@ -55,6 +55,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         "matrix_flat",
         "hybrid_grouped",
         "hybrid_vjp_grouped",
+        "hybrid_transposed",
     ) or bool(
         set(recipe_options)
         & {"axis_atoms", "axis_batch", "matrix_pairs", "prepare_warps"}
@@ -150,7 +151,8 @@ def test_live_width_all_gradients(strategy, n, floor):
 
 @GPU
 @pytest.mark.parametrize(
-    "strategy", ["direct", "hybrid", "matrix_flat", "hybrid_grouped"]
+    "strategy",
+    ["direct", "hybrid", "matrix_flat", "hybrid_grouped", "hybrid_transposed"],
 )
 def test_edges_empty_zero_amplitude_and_saved_geometry(strategy):
     torch.backends.cuda.matmul.allow_tf32 = False
@@ -193,6 +195,7 @@ def test_edges_empty_zero_amplitude_and_saved_geometry(strategy):
         ("hybrid_grouped", {"axis_atoms": 4, "axis_batch": 16, "axis_warps": 4}),
         ("hybrid_grouped", {"axis_atoms": 8, "axis_batch": 8, "axis_warps": 4}),
         ("hybrid_vjp_grouped", {"axis_atoms": 16, "axis_warps": 1}),
+        ("hybrid_transposed", {"axis_warps": 1, "block_sites": 16}),
     ]
     + [
         ("matrix", {"matrix_sites": s, "matrix_atoms": a, "matrix_warps": w})
@@ -267,7 +270,9 @@ def test_live_graph_optimizer_state(strategy, options):
 
 
 @GPU
-@pytest.mark.parametrize("strategy", ["direct", "hybrid", "hybrid_grouped"])
+@pytest.mark.parametrize(
+    "strategy", ["direct", "hybrid", "hybrid_grouped", "hybrid_transposed"]
+)
 def test_switching_support_size_and_coordinate_buffer_rejection(strategy):
     layer = model(strategy, n=128)
     x = torch.randn(3, 128, device="cuda", requires_grad=True)
@@ -305,7 +310,15 @@ def test_matrix_full_atom_gradient_gate(n, floor):
 @GPU
 @pytest.mark.parametrize(
     "strategy",
-    ["direct", "hybrid", "matrix", "matrix_separable", "matrix_flat", "hybrid_grouped"],
+    [
+        "direct",
+        "hybrid",
+        "matrix",
+        "matrix_separable",
+        "matrix_flat",
+        "hybrid_grouped",
+        "hybrid_transposed",
+    ],
 )
 def test_tiny_single_axis_support_below_product_floor(strategy):
     layer = model(strategy, n=64)
@@ -321,7 +334,15 @@ def test_tiny_single_axis_support_below_product_floor(strategy):
 
 @GPU
 @pytest.mark.parametrize(
-    "strategy", ["direct", "hybrid", "matrix", "matrix_flat", "hybrid_grouped"]
+    "strategy",
+    [
+        "direct",
+        "hybrid",
+        "matrix",
+        "matrix_flat",
+        "hybrid_grouped",
+        "hybrid_transposed",
+    ],
 )
 def test_rectangular_grid_distinct_spacing_and_origin(strategy):
     from torchcst import chart_presets
@@ -330,7 +351,7 @@ def test_rectangular_grid_distinct_spacing_and_origin(strategy):
     reg = Registry()
     reg.register(BSplineAlgorithm())
     reg.register(BSplineParallelAlgorithm())
-    parallel = strategy in ("matrix_flat", "hybrid_grouped")
+    parallel = strategy in ("matrix_flat", "hybrid_grouped", "hybrid_transposed")
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
         "v3" if parallel else "v1",
@@ -462,4 +483,19 @@ def test_grouped_vjp_only_all_gradients(n, floor):
                 layer.atoms.p[:, :2].mul_(1.003)
                 layer.atoms.p[:, 2:].add_(0.0037)
         x = torch.randn(3, n, device="cuda", requires_grad=True)
+        gate(layer, x, torch.randn_like(x))
+
+
+@GPU
+@pytest.mark.parametrize("n", [64, 8192])
+@pytest.mark.parametrize("floor", [1e-6, 1000.0])
+@pytest.mark.parametrize("batch", [1, 32, 64])
+def test_transposed_axis_all_gradients(n, floor, batch):
+    layer = model("hybrid_transposed", n=n, floor=floor, axis_warps=1, block_sites=16)
+    for step in range(3):
+        if step:
+            with torch.no_grad():
+                layer.atoms.p[:, :2].mul_(1.003)
+                layer.atoms.p[:, 2:].add_(0.0037)
+        x = torch.randn(batch, n, device="cuda", requires_grad=True)
         gate(layer, x, torch.randn_like(x))

@@ -63,6 +63,7 @@ class BSplineParallelRecipe(BSplineTuningRecipe):
         "matrix_flat",
         "hybrid_grouped",
         "hybrid_vjp_grouped",
+        "hybrid_transposed",
     )
     block_sizes = (8, 16, 32, 64)
     block_sites: int = 8

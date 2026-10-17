@@ -254,6 +254,7 @@ def query(
     CUT: tl.constexpr,
     BS: tl.constexpr,
     RECIPROCAL: tl.constexpr,
+    TRANSPOSED: tl.constexpr = False,
 ):
     a = tl.program_id(0)
     b = tl.program_id(1) * 16 + tl.arange(0, 16)
@@ -294,19 +295,22 @@ def query(
             a0, a1, a2, b0, b1 = _coeff(
                 mid, half, radius, inverse_radius, piece, RECIPROCAL
             )
-            v0 = tl.load(Bank + b * (N + 1) + r, b < B, 0) - tl.load(
-                Bank + b * (N + 1) + l, b < B, 0
+            if TRANSPOSED:
+                li, ri = l * B + b, r * B + b
+            else:
+                li, ri = b * (N + 1) + l, b * (N + 1) + r
+            v0 = tl.load(Bank + ri, b < B, 0) - tl.load(Bank + li, b < B, 0)
+            v1 = tl.load(Bank + B * (N + 1) + ri, b < B, 0) - tl.load(
+                Bank + B * (N + 1) + li, b < B, 0
             )
-            v1 = tl.load(Bank + (B + b) * (N + 1) + r, b < B, 0) - tl.load(
-                Bank + (B + b) * (N + 1) + l, b < B, 0
-            )
-            v2 = tl.load(Bank + (2 * B + b) * (N + 1) + r, b < B, 0) - tl.load(
-                Bank + (2 * B + b) * (N + 1) + l, b < B, 0
+            v2 = tl.load(Bank + 2 * B * (N + 1) + ri, b < B, 0) - tl.load(
+                Bank + 2 * B * (N + 1) + li, b < B, 0
             )
             result += a0 * v0 + a1 * v1 + a2 * v2
             prime += b0 * v0 + b1 * v1
-    tl.store(H + b * A + a, result, b < B)
-    tl.store(HP + b * A + a, prime, b < B)
+    hi = a * B + b if TRANSPOSED else b * A + a
+    tl.store(H + hi, result, b < B)
+    tl.store(HP + hi, prime, b < B)
 
 
 @tr.jit
@@ -325,6 +329,7 @@ def inject(
     CUT: tl.constexpr,
     BS: tl.constexpr,
     RECIPROCAL: tl.constexpr,
+    TRANSPOSED: tl.constexpr = False,
 ):
     a = tl.program_id(0)
     b = tl.program_id(1) * 16 + tl.arange(0, 16)
@@ -333,7 +338,8 @@ def inject(
     inverse_h = tl.load(Meta + a * 12 + 10 + DIM)
     center = tl.load(Meta + a * 12 + 2 + DIM)
     scale = tl.load(Meta + a * 12) * tl.load(Meta + a * 12 + 4)
-    w = tl.load(H + b * A + a, b < B, 0).to(tl.float64) * scale
+    hi = a * B + b if TRANSPOSED else b * A + a
+    w = tl.load(H + hi, b < B, 0).to(tl.float64) * scale
     left, _first_right = _interval(
         center, radius, Origin, Spacing, N, DIM, 0, RECIPROCAL, inverse_h
     )
@@ -365,35 +371,50 @@ def inject(
             )
             for k in tl.static_range(3):
                 coeff = a0 if k == 0 else a1 if k == 1 else a2
-                tl.atomic_add(
-                    Delta + (k * B + b) * (N + 1) + l, w * coeff, b < B, sem="relaxed"
-                )
-                tl.atomic_add(
-                    Delta + (k * B + b) * (N + 1) + r, -w * coeff, b < B, sem="relaxed"
-                )
+                if TRANSPOSED:
+                    li, ri = (k * (N + 1) + l) * B + b, (k * (N + 1) + r) * B + b
+                else:
+                    li, ri = (k * B + b) * (N + 1) + l, (k * B + b) * (N + 1) + r
+                tl.atomic_add(Delta + li, w * coeff, b < B, sem="relaxed")
+                tl.atomic_add(Delta + ri, -w * coeff, b < B, sem="relaxed")
 
 
 @tr.jit
-def restore(Scan, Y, N: tl.constexpr, B: tl.constexpr):
+def restore(
+    Scan, Y, N: tl.constexpr, B: tl.constexpr, TRANSPOSED: tl.constexpr = False
+):
     idx = tl.program_id(0) * 128 + tl.arange(0, 128)
     j = idx % N
     b = idx // N
     z = j.to(tl.float64) * (2.0 / (N - 1)) - 1
-    v0 = tl.load(Scan + b * (N + 1) + j, b < B, 0)
-    v1 = tl.load(Scan + (B + b) * (N + 1) + j, b < B, 0)
-    v2 = tl.load(Scan + (2 * B + b) * (N + 1) + j, b < B, 0)
+    si = j * B + b if TRANSPOSED else b * (N + 1) + j
+    v0 = tl.load(Scan + si, b < B, 0)
+    v1 = tl.load(Scan + B * (N + 1) + si, b < B, 0)
+    v2 = tl.load(Scan + 2 * B * (N + 1) + si, b < B, 0)
     old = tl.load(Y + idx, b < B, 0)
     tl.store(Y + idx, old + v0 + z * v1 + z * z * v2, b < B)
 
 
 @tr.jit
-def vjp(H, HP, G, GP, Meta, DP, A: tl.constexpr, B: tl.constexpr, BB: tl.constexpr):
+def vjp(
+    H,
+    HP,
+    G,
+    GP,
+    Meta,
+    DP,
+    A: tl.constexpr,
+    B: tl.constexpr,
+    BB: tl.constexpr,
+    TRANSPOSED: tl.constexpr = False,
+):
     a = tl.program_id(0)
     b = tl.arange(0, BB)
-    h = tl.load(H + b * A + a, b < B, 0).to(tl.float64)
-    hp = tl.load(HP + b * A + a, b < B, 0).to(tl.float64)
-    g = tl.load(G + b * A + a, b < B, 0).to(tl.float64)
-    gp = tl.load(GP + b * A + a, b < B, 0).to(tl.float64)
+    hi = a * B + b if TRANSPOSED else b * A + a
+    h = tl.load(H + hi, b < B, 0).to(tl.float64)
+    hp = tl.load(HP + hi, b < B, 0).to(tl.float64)
+    g = tl.load(G + hi, b < B, 0).to(tl.float64)
+    gp = tl.load(GP + hi, b < B, 0).to(tl.float64)
     hg = tl.sum(h * g, 0)
     amp = tl.load(Meta + a * 12)
     inv = tl.load(Meta + a * 12 + 4)

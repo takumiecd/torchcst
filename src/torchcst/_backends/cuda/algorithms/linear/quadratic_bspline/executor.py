@@ -59,13 +59,13 @@ def _norm_moments(n, device):
     return torch.stack((m2, m4))
 
 
-def _bank(x, basis):
+def _bank(x, basis, transposed=False):
     bank = torch.empty(
         (3, len(x), x.shape[1] + 1), dtype=torch.float64, device=x.device
     )
     bank[:, :, 0] = 0
     torch.cumsum(x.double()[None] * basis[:, None], -1, out=bank[:, :, 1:])
-    return bank
+    return bank.transpose(1, 2).contiguous() if transposed else bank
 
 
 def _query(x, meta, origin, spacing, dim, recipe, basis):
@@ -75,13 +75,14 @@ def _query(x, meta, origin, spacing, dim, recipe, basis):
 
     b, n = x.shape
     a = len(meta)
+    transposed = recipe.strategy == "hybrid_transposed"
     side = "input" if dim == 1 else "adjoint"
     if recipe.strategy != "direct":
         _stamp("bank_" + side, 0)
-    bank = x if recipe.strategy == "direct" else _bank(x, basis)
+    bank = x if recipe.strategy == "direct" else _bank(x, basis, transposed)
     if recipe.strategy != "direct":
         _stamp("bank_" + side, 1)
-    h = x.new_empty((b, a))
+    h = x.new_empty((a, b) if transposed else (b, a))
     hp = torch.empty_like(h)
     _stamp("query_" + side, 0)
     if recipe.strategy == "hybrid_grouped":
@@ -126,6 +127,7 @@ def _query(x, meta, origin, spacing, dim, recipe, basis):
             recipe.direct_sites,
             recipe.block_sites,
             recipe.reciprocal,
+            transposed,
             num_warps=recipe.axis_warps,
             enable_fp_fusion=False,
         )
@@ -139,13 +141,18 @@ def _scatter(h, meta, origin, spacing, dim, n, recipe):
 
     from . import kernels as k
 
-    b, a = h.shape
+    transposed = recipe.strategy == "hybrid_transposed"
+    a, b = h.shape if transposed else (h.shape[1], h.shape[0])
     side = "output" if dim == 0 else "input"
     y = h.new_zeros((b, n))
     delta = (
         y
         if recipe.strategy == "direct"
-        else torch.zeros((3, b, n + 1), device=h.device, dtype=torch.float64)
+        else torch.zeros(
+            (3, n + 1, b) if transposed else (3, b, n + 1),
+            device=h.device,
+            dtype=torch.float64,
+        )
     )
     _stamp("inject_" + side, 0)
     if recipe.strategy == "hybrid_grouped":
@@ -188,6 +195,7 @@ def _scatter(h, meta, origin, spacing, dim, n, recipe):
             recipe.direct_sites,
             recipe.block_sites,
             recipe.reciprocal,
+            transposed,
             num_warps=recipe.axis_warps,
             enable_fp_fusion=False,
         )
@@ -195,11 +203,11 @@ def _scatter(h, meta, origin, spacing, dim, n, recipe):
     _report("inject_" + side, compiled)
     if recipe.strategy != "direct":
         _stamp("scan_" + side, 0)
-        scan = delta.cumsum(-1)
+        scan = delta.cumsum(1 if transposed else -1)
         _stamp("scan_" + side, 1)
         _stamp("restore_" + side, 0)
         compiled = k.restore[(tr.cdiv(b * n, 128),)](
-            scan, y, n, b, num_warps=4, enable_fp_fusion=False
+            scan, y, n, b, transposed, num_warps=4, enable_fp_fusion=False
         )
         _stamp("restore_" + side, 1)
         _report("restore_" + side, compiled)
@@ -421,6 +429,7 @@ class _BSpline(torch.autograd.Function):
                         a,
                         b,
                         tr.next_power_of_2(b),
+                        ctx.recipe.strategy == "hybrid_transposed",
                         num_warps=ctx.recipe.axis_warps,
                         enable_fp_fusion=False,
                     )
