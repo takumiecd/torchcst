@@ -7,6 +7,8 @@ import torch
 
 from torchcst import (
     BandwidthBounds,
+    CSTLinear,
+    CSTOptimizer,
     QuadraticBSplineSpec,
     chart_presets,
     presets,
@@ -178,7 +180,50 @@ def correctness(args, run, model_type):
         repeated = torch.autograd.grad(y, (x, model.p), dy)
         for a, b in zip(ga, repeated):
             check(a, b, 4e-4)
+    from benchmarks.cuda.polar_update import optimizer_step
+
+    reference = CSTLinear(
+        chart=fixture_operator(case).charts[0],
+        atoms=model.p.detach().clone(),
+        kernel=model.local_state.spec,
+        backend="factored",
+        device="cuda",
+    )
+    reference.chart.double()
+    reference.chart.spacing.fill_(0.1)
+    reference.atoms.p.grad = ga[1].detach().clone()
+    model.p.grad = ga[1].detach().clone()
+    kwargs = {
+        "lr": case.optimizer.lr,
+        "weight_decay": case.optimizer.weight_decay,
+        "fused": True,
+    }
+    public = CSTOptimizer(
+        torch.optim.AdamW(reference.parameters(), capturable=False, **kwargs),
+        model=reference,
+    )
+    candidate = torch.optim.AdamW(model.parameters(), capturable=True, **kwargs)
+    public.step()
+    optimizer_step(
+        model.update_binding,
+        candidate,
+        step_size=case.optimizer.lr,
+        polar_update=args.polar_update,
+    )
+    update = check(model.p, reference.atoms.p, 4e-4)
+    for name in ("exp_avg", "exp_avg_sq", "step"):
+        result = check(
+            candidate.state[model.p][name],
+            public.base_optimizer.state[reference.atoms.p][name],
+            4e-4,
+        )
+        update = {key: max(update[key], result[key]) for key in update}
     return {
         "scope": "independent FP64 full-axis Y/dX/all atom gradients; three live states",
+        **{
+            name: {key: max(r[name][key] for r in reports) for key in ("max", "rel_l2")}
+            for name in ("y", "dx", "dp")
+        },
+        "polar_update": update,
         "states": reports,
     }

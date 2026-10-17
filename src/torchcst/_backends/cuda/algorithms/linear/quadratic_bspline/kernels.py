@@ -128,7 +128,8 @@ def prepare(
 @tr.jit
 def _shape(d, radius):
     u = d / radius
-    outer = 1.5 * tl.maximum(1 - tl.abs(u), 0) ** 2
+    gap = tl.maximum(1 - tl.abs(u), 0)
+    outer = 1.5 * gap * gap
     inner = 1 - 3 * u * u
     f = tl.where(tl.abs(u) <= 1.0 / 3.0, inner, outer)
     dc = tl.where(

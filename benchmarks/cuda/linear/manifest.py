@@ -443,6 +443,7 @@ class BenchmarkRun:
                     "polar_profile_product_global",
                     "polar_torus_profile_product_strip",
                     "polar_sphere_separable",
+                    "quadratic_bspline",
                 )
                 else LOCAL_SEMANTICS
                 if self.case.fixture == "local_polar_product"
