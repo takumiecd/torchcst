@@ -8,8 +8,11 @@ class BSplineRecipe:
     strategy: str = "hybrid"
     direct_sites: int = 32
     block_sites: int = 16
+    reciprocal: bool = True
 
     def __post_init__(self):
+        if type(self.reciprocal) is not bool:
+            raise ValueError("reciprocal must be boolean")
         if self.strategy not in ("torch", "direct", "hybrid"):
             raise ValueError("strategy must be torch, direct or hybrid")
         if type(self.block_sites) is not int or self.block_sites not in (16, 32, 64):

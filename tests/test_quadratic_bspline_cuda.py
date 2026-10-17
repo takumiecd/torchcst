@@ -22,6 +22,15 @@ from torchcst._backends.schema import ExecutionPlan
 GPU = pytest.mark.skipif(not torch.cuda.is_available(), reason="actual CUDA required")
 
 
+@pytest.fixture(autouse=True)
+def seeded_ieee():
+    previous = torch.backends.cuda.matmul.allow_tf32
+    torch.backends.cuda.matmul.allow_tf32 = False
+    torch.manual_seed(207)
+    yield
+    torch.backends.cuda.matmul.allow_tf32 = previous
+
+
 def case(n=64, a=17):
     return SimpleNamespace(size=n, atoms=a, seed=207, widths=None)
 
@@ -184,3 +193,25 @@ def test_live_graph_optimizer_state(strategy):
                 atol=4e-5,
                 rtol=4e-4,
             )
+
+
+@GPU
+@pytest.mark.parametrize("strategy", ["direct", "hybrid"])
+def test_switching_support_size_and_coordinate_buffer_rejection(strategy):
+    layer = model(strategy, n=128)
+    x = torch.randn(3, 128, device="cuda", requires_grad=True)
+    dy = torch.randn_like(x)
+    for sigma in (0.64, 0.66, 1.6, 0.12):
+        radius = (
+            (1 + 3 * torch.tensor(sigma / 0.1).log() / torch.tensor(128.0).log())
+            .sqrt()
+            .item()
+        )
+        with torch.no_grad():
+            layer.atoms.p[:, 0].fill_(0.6 * radius)
+            layer.atoms.p[:, 1].fill_(0.8 * radius)
+            layer.atoms.p[:, 2:].fill_(3.2)
+        gate(layer, x, dy)
+    layer.chart.float()
+    with pytest.raises(ValueError, match="FP64"):
+        layer(x)

@@ -10,7 +10,8 @@
         "recipe": {
           "strategy": "torch",
           "direct_sites": 32,
-          "block_sites": 16
+          "block_sites": 16,
+          "reciprocal": true
         }
       }
     },
@@ -23,7 +24,8 @@
         "recipe": {
           "strategy": "direct",
           "direct_sites": 32,
-          "block_sites": 16
+          "block_sites": 16,
+          "reciprocal": true
         }
       }
     },
@@ -36,7 +38,8 @@
         "recipe": {
           "strategy": "hybrid",
           "direct_sites": 32,
-          "block_sites": 16
+          "block_sites": 16,
+          "reciprocal": true
         }
       }
     },
@@ -49,7 +52,8 @@
         "recipe": {
           "strategy": "direct",
           "direct_sites": 32,
-          "block_sites": 64
+          "block_sites": 64,
+          "reciprocal": false
         }
       }
     },
@@ -62,7 +66,36 @@
         "recipe": {
           "strategy": "hybrid",
           "direct_sites": 32,
-          "block_sites": 64
+          "block_sites": 64,
+          "reciprocal": false
+        }
+      }
+    },
+    {
+      "id": "direct16div",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_quadratic_bspline",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "strategy": "direct",
+          "direct_sites": 32,
+          "block_sites": 16,
+          "reciprocal": false
+        }
+      }
+    },
+    {
+      "id": "hybrid16div",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_quadratic_bspline",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "strategy": "hybrid",
+          "direct_sites": 32,
+          "block_sites": 16,
+          "reciprocal": false
         }
       }
     }

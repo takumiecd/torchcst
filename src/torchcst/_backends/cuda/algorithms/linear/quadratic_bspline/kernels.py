@@ -126,17 +126,28 @@ def prepare(
 
 
 @tr.jit
-def _shape(d, radius):
-    u = d / radius
+def _shape(d, radius, RECIPROCAL: tl.constexpr):
+    if RECIPROCAL:
+        inverse = 1.0 / radius
+        u = d * inverse
+    else:
+        u = d / radius
     gap = tl.maximum(1 - tl.abs(u), 0)
     outer = 1.5 * gap * gap
     inner = 1 - 3 * u * u
     f = tl.where(tl.abs(u) <= 1.0 / 3.0, inner, outer)
-    dc = tl.where(
-        tl.abs(u) <= 1.0 / 3.0,
-        6 * u / radius,
-        3 * tl.where(u >= 0, 1.0, -1.0) * tl.maximum(1 - tl.abs(u), 0) / radius,
-    )
+    if RECIPROCAL:
+        dc = tl.where(
+            tl.abs(u) <= 1.0 / 3.0,
+            6 * u * inverse,
+            3 * tl.where(u >= 0, 1.0, -1.0) * gap * inverse,
+        )
+    else:
+        dc = tl.where(
+            tl.abs(u) <= 1.0 / 3.0,
+            6 * u / radius,
+            3 * tl.where(u >= 0, 1.0, -1.0) * gap / radius,
+        )
     return f, dc
 
 
@@ -156,6 +167,7 @@ def query(
     DIRECT: tl.constexpr,
     CUT: tl.constexpr,
     BS: tl.constexpr,
+    RECIPROCAL: tl.constexpr,
 ):
     a = tl.program_id(0)
     b = tl.program_id(1) * 16 + tl.arange(0, 16)
@@ -170,7 +182,7 @@ def query(
     if DIRECT or right - left <= CUT:
         for start in range(left, right, BS):
             j = start + tl.arange(0, BS)
-            f, dc = _shape(o + j.to(tl.float64) * h - center, radius)
+            f, dc = _shape(o + j.to(tl.float64) * h - center, radius, RECIPROCAL)
             xx = tl.load(
                 X + b[:, None] * N + j[None, :],
                 (b[:, None] < B) & (j[None, :] < right),
@@ -214,6 +226,7 @@ def inject(
     DIRECT: tl.constexpr,
     CUT: tl.constexpr,
     BS: tl.constexpr,
+    RECIPROCAL: tl.constexpr,
 ):
     a = tl.program_id(0)
     b = tl.program_id(1) * 16 + tl.arange(0, 16)
@@ -228,7 +241,7 @@ def inject(
     if DIRECT or right - left <= CUT:
         for start in range(left, right, BS):
             j = start + tl.arange(0, BS)
-            f, _dc = _shape(o + j.to(tl.float64) * h - center, radius)
+            f, _dc = _shape(o + j.to(tl.float64) * h - center, radius, RECIPROCAL)
             tl.atomic_add(
                 Y + b[:, None] * N + j[None, :],
                 (w[:, None] * f[None, :]).to(tl.float32),

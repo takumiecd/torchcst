@@ -43,6 +43,7 @@ def _query(x, meta, origin, spacing, dim, recipe, basis):
         recipe.strategy == "direct",
         recipe.direct_sites,
         recipe.block_sites,
+        recipe.reciprocal,
         num_warps=4,
         enable_fp_fusion=False,
     )
@@ -75,6 +76,7 @@ def _scatter(h, meta, origin, spacing, dim, n, recipe):
         recipe.strategy == "direct",
         recipe.direct_sites,
         recipe.block_sites,
+        recipe.reciprocal,
         num_warps=4,
         enable_fp_fusion=False,
     )
