@@ -208,3 +208,31 @@ wheel/sdistはbuild成功、全330 runtimeファイルがcheckoutとbyte一致�
 Triton構文とGraph検証のclock差は修正し、5MiB超過の配列証拠は上記sidecar方式へ移した。
 追加width-lawテストでAPI範囲外のpower=2/1.5を指定した2件は、検証設定を修正して再実行した。
 誤差閾値の緩和、支持の切り捨て、固定sigmaへの置換は行っていない。
+
+### 逆数を保存して共有する最終版
+
+同じsource `83b2dae4db39d7aa546725ca22f4237486812df3`で上記45件を再度通した後、
+1024/A52428/B32の2 caseを再測定した。条件・21 sample・独立run数1は同じ。
+全52428 atomでsigma更新を確認した。
+
+| 初期幅 | Torch | direct64 | direct | hybrid64 | hybrid | matrix-formula | matrix | Dense |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| small | 442.6622 | 41.0390 | 14.4709 | 41.0989 | 14.5629 | 4.8603 | 4.7104 | .0817 |
+| mixed | 447.3258 | 未測定 | 未測定 | 47.0869 | 24.7973 | 未測定 | 未測定 | .0821 |
+
+最終版のallocated/reserved MiBは、direct=34.93/98、hybrid=35.68/98、
+matrix=49.83/114、Dense=49.00/106。逆数3個×FP64×Aのmetadata増加分がpeakにも現れる。
+smallのmatrixはTorch比約94倍速いがDenseの約58倍の時間で、allocatedもDenseを超えた。
+mixedのhybridはTorch比約18倍速く、Denseよりallocatedを減らす一方、時間は約302倍。
+時間とメモリの両方でDenseを上回るという採用条件は満たしていない。
+
+別計装Graphのsmall matrixはforward/loss=1.7162、backward=2.9553、optimizer=.0451 ms。
+mixed hybridはそれぞれ11.9501、12.7939、.0451 ms。
+backwardの個別kernelやL2単独の時間はこのphase診断からは確定しない。
+FP64のprofile/係数演算・atomごとの処理・atomic書き戻しを次の診断対象とするが、
+この測定だけで各kernelの支配率やFP32化の可否を結論しない。
+
+job `l4job-d8644b2e23be4ea9b1817688f384d3cb`は両case PASS、提出前検査もPASS。
+source archive SHA256は`a9c5e8087a219aa7f4d37d50b6091774df6411285ceb2deb47e5ed7080d5f53e`、
+result archive SHA256は`e47ea5650542a519c6a9710deb8d41f507d70a4b3db59e4affd625235ca569df`。
+manifest全43ファイルを照合済み。両caseのfull-axis/全atom FP64検査を省略していない。
