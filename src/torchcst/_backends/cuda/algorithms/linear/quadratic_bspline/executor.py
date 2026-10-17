@@ -107,7 +107,7 @@ class _BSpline(torch.autograd.Function):
         no, ni = chart.grid_shape[0][0], chart.grid_shape[1][0]
         source = p.contiguous().clone()
         origin, spacing = chart.origin.clone(), chart.spacing.clone()
-        meta = torch.empty((len(p), 9), device=p.device, dtype=torch.float64)
+        meta = torch.empty((len(p), 12), device=p.device, dtype=torch.float64)
         ctx.matrix = False
         if len(p):
             k.prepare[(tr.cdiv(len(p), 64),)](

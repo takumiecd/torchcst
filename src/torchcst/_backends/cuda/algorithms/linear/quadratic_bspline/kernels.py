@@ -8,7 +8,7 @@ from triton.language.extra.cuda import libdevice as lib
 @tr.jit
 def _coeff(mid, half, radius, piece: tl.constexpr, RECIPROCAL: tl.constexpr = False):
     if RECIPROCAL:
-        inverse = 1.0 / radius
+        inverse = radius
         z = mid * inverse
         v = half * inverse
     else:
@@ -41,13 +41,15 @@ def _interval(
     dim: tl.constexpr,
     piece: tl.constexpr,
     RECIPROCAL: tl.constexpr = False,
+    inverse_h=None,
 ):
     o = tl.load(Origin + dim).to(tl.float64)
     h = tl.load(Spacing + dim).to(tl.float64)
     low: tl.constexpr = -1.0 if piece == 0 else -1.0 / 3.0 if piece == 1 else 1.0 / 3.0
     high: tl.constexpr = -1.0 / 3.0 if piece == 0 else 1.0 / 3.0 if piece == 1 else 1.0
     if RECIPROCAL:
-        inverse_h = 1.0 / h
+        if inverse_h is None:
+            inverse_h = 1.0 / h
         low_index = (center + radius * low - o) * inverse_h
         high_index = (center + radius * high - o) * inverse_h
     else:
@@ -75,6 +77,7 @@ def _norm(
     vjp = tl.full((), 0, tl.float64)
     o = tl.load(Origin + dim).to(tl.float64)
     h = tl.load(Spacing + dim).to(tl.float64)
+    coefficient_scale = 1.0 / radius if RECIPROCAL else radius
     for piece in tl.static_range(3):
         left, right = _interval(
             center, radius, Origin, Spacing, N, dim, piece, RECIPROCAL
@@ -82,7 +85,9 @@ def _norm(
         count = (right - left).to(tl.float64)
         safe = tl.maximum(count, 1)
         mid = o + (left.to(tl.float64) + (count - 1) * 0.5) * h - center
-        a0, a1, a2, b0, b1 = _coeff(mid, h * count * 0.5, radius, piece, RECIPROCAL)
+        a0, a1, a2, b0, b1 = _coeff(
+            mid, h * count * 0.5, coefficient_scale, piece, RECIPROCAL
+        )
         if LOOKUP:
             index = (right - left).to(tl.int32)
             m2 = tl.load(Moments + index)
@@ -148,29 +153,32 @@ def prepare(
     qi, vi = _norm(ci, radius, Origin, Spacing, Moments, NI, 1, ML, RECIPROCAL, LOOKUP)
     denominator = lib.sqrt(qo * qi)
     correction = tl.where(r2 >= 1.1754943508222875e-38, z0 * inv / safe, 0)
-    tl.store(Meta + a * 9, amp, a < A)
-    tl.store(Meta + a * 9 + 1, radius, a < A)
-    tl.store(Meta + a * 9 + 2, co, a < A)
-    tl.store(Meta + a * 9 + 3, ci, a < A)
-    tl.store(Meta + a * 9 + 4, 1 / tl.maximum(denominator, FLOOR), a < A)
+    tl.store(Meta + a * 12, amp, a < A)
+    tl.store(Meta + a * 12 + 1, radius, a < A)
+    tl.store(Meta + a * 12 + 2, co, a < A)
+    tl.store(Meta + a * 12 + 3, ci, a < A)
+    tl.store(Meta + a * 12 + 4, 1 / tl.maximum(denominator, FLOOR), a < A)
     tl.store(
-        Meta + a * 9 + 5,
+        Meta + a * 12 + 5,
         tl.where(denominator >= FLOOR, vo / tl.where(qo > 0, qo, 1), 0),
         a < A,
     )
     tl.store(
-        Meta + a * 9 + 6,
+        Meta + a * 12 + 6,
         tl.where(denominator >= FLOOR, vi / tl.where(qi > 0, qi, 1), 0),
         a < A,
     )
-    tl.store(Meta + a * 9 + 7, maximum_amp * (inv - z0 * correction), a < A)
-    tl.store(Meta + a * 9 + 8, -maximum_amp * z1 * correction, a < A)
+    tl.store(Meta + a * 12 + 7, maximum_amp * (inv - z0 * correction), a < A)
+    tl.store(Meta + a * 12 + 8, -maximum_amp * z1 * correction, a < A)
+    tl.store(Meta + a * 12 + 9, 1.0 / radius, a < A)
+    tl.store(Meta + a * 12 + 10, 1.0 / tl.load(Spacing).to(tl.float64), a < A)
+    tl.store(Meta + a * 12 + 11, 1.0 / tl.load(Spacing + 1).to(tl.float64), a < A)
 
 
 @tr.jit
 def _shape(d, radius, RECIPROCAL: tl.constexpr):
     if RECIPROCAL:
-        inverse = 1.0 / radius
+        inverse = radius
         u = d * inverse
     else:
         u = d / radius
@@ -213,8 +221,10 @@ def query(
 ):
     a = tl.program_id(0)
     b = tl.program_id(1) * 16 + tl.arange(0, 16)
-    radius = tl.load(Meta + a * 9 + 1)
-    center = tl.load(Meta + a * 9 + 2 + DIM)
+    radius = tl.load(Meta + a * 12 + 1)
+    shape_scale = tl.load(Meta + a * 12 + 9) if RECIPROCAL else radius
+    inverse_h = tl.load(Meta + a * 12 + 10 + DIM) if RECIPROCAL else 0.0
+    center = tl.load(Meta + a * 12 + 2 + DIM)
     o = tl.load(Origin + DIM).to(tl.float64)
     h = tl.load(Spacing + DIM).to(tl.float64)
     left, _first_right = _interval(
@@ -228,7 +238,7 @@ def query(
     if DIRECT or right - left <= CUT:
         for start in range(left, right, BS):
             j = start + tl.arange(0, BS)
-            f, dc = _shape(o + j.to(tl.float64) * h - center, radius, RECIPROCAL)
+            f, dc = _shape(o + j.to(tl.float64) * h - center, shape_scale, RECIPROCAL)
             xx = tl.load(
                 X + b[:, None] * N + j[None, :],
                 (b[:, None] < B) & (j[None, :] < right),
@@ -240,8 +250,10 @@ def query(
         half = h * (N - 1) * 0.5
         mid = o + half - center
         for piece in tl.static_range(3):
-            l, r = _interval(center, radius, Origin, Spacing, N, DIM, piece, RECIPROCAL)
-            a0, a1, a2, b0, b1 = _coeff(mid, half, radius, piece, RECIPROCAL)
+            l, r = _interval(
+                center, radius, Origin, Spacing, N, DIM, piece, RECIPROCAL, inverse_h
+            )
+            a0, a1, a2, b0, b1 = _coeff(mid, half, shape_scale, piece, RECIPROCAL)
             v0 = tl.load(Bank + b * (N + 1) + r, b < B, 0) - tl.load(
                 Bank + b * (N + 1) + l, b < B, 0
             )
@@ -276,9 +288,11 @@ def inject(
 ):
     a = tl.program_id(0)
     b = tl.program_id(1) * 16 + tl.arange(0, 16)
-    radius = tl.load(Meta + a * 9 + 1)
-    center = tl.load(Meta + a * 9 + 2 + DIM)
-    scale = tl.load(Meta + a * 9) * tl.load(Meta + a * 9 + 4)
+    radius = tl.load(Meta + a * 12 + 1)
+    shape_scale = tl.load(Meta + a * 12 + 9) if RECIPROCAL else radius
+    inverse_h = tl.load(Meta + a * 12 + 10 + DIM) if RECIPROCAL else 0.0
+    center = tl.load(Meta + a * 12 + 2 + DIM)
+    scale = tl.load(Meta + a * 12) * tl.load(Meta + a * 12 + 4)
     w = tl.load(H + b * A + a, b < B, 0).to(tl.float64) * scale
     left, _first_right = _interval(
         center, radius, Origin, Spacing, N, DIM, 0, RECIPROCAL
@@ -291,7 +305,7 @@ def inject(
     if DIRECT or right - left <= CUT:
         for start in range(left, right, BS):
             j = start + tl.arange(0, BS)
-            f, _dc = _shape(o + j.to(tl.float64) * h - center, radius, RECIPROCAL)
+            f, _dc = _shape(o + j.to(tl.float64) * h - center, shape_scale, RECIPROCAL)
             tl.atomic_add(
                 Y + b[:, None] * N + j[None, :],
                 (w[:, None] * f[None, :]).to(tl.float32),
@@ -301,7 +315,9 @@ def inject(
     else:
         half = h * (N - 1) * 0.5
         for piece in tl.static_range(3):
-            l, r = _interval(center, radius, Origin, Spacing, N, DIM, piece, RECIPROCAL)
+            l, r = _interval(
+                center, radius, Origin, Spacing, N, DIM, piece, RECIPROCAL, inverse_h
+            )
             a0, a1, a2, _b0, _b1 = _coeff(
                 o + half - center, half, radius, piece, RECIPROCAL
             )
@@ -337,15 +353,17 @@ def vjp(H, HP, G, GP, Meta, DP, A: tl.constexpr, B: tl.constexpr, BB: tl.constex
     g = tl.load(G + b * A + a, b < B, 0).to(tl.float64)
     gp = tl.load(GP + b * A + a, b < B, 0).to(tl.float64)
     hg = tl.sum(h * g, 0)
-    amp = tl.load(Meta + a * 9)
-    inv = tl.load(Meta + a * 9 + 4)
-    tl.store(DP + 4 * a, hg * inv * tl.load(Meta + a * 9 + 7))
-    tl.store(DP + 4 * a + 1, hg * inv * tl.load(Meta + a * 9 + 8))
+    amp = tl.load(Meta + a * 12)
+    inv = tl.load(Meta + a * 12 + 4)
+    tl.store(DP + 4 * a, hg * inv * tl.load(Meta + a * 12 + 7))
+    tl.store(DP + 4 * a + 1, hg * inv * tl.load(Meta + a * 12 + 8))
     tl.store(
-        DP + 4 * a + 2, amp * inv * (tl.sum(h * gp, 0) - hg * tl.load(Meta + a * 9 + 5))
+        DP + 4 * a + 2,
+        amp * inv * (tl.sum(h * gp, 0) - hg * tl.load(Meta + a * 12 + 5)),
     )
     tl.store(
-        DP + 4 * a + 3, amp * inv * (tl.sum(hp * g, 0) - hg * tl.load(Meta + a * 9 + 6))
+        DP + 4 * a + 3,
+        amp * inv * (tl.sum(hp * g, 0) - hg * tl.load(Meta + a * 12 + 6)),
     )
 
 
@@ -363,14 +381,17 @@ def matrix_build(
     RECIPROCAL: tl.constexpr,
 ):
     a = tl.program_id(0) * AB + tl.arange(0, AB)
-    radius = tl.load(Meta + a * 9 + 1, a < A, 1)
-    co = tl.load(Meta + a * 9 + 2, a < A, 0)
-    ci = tl.load(Meta + a * 9 + 3, a < A, 0)
-    scale = tl.load(Meta + a * 9, a < A, 0) * tl.load(Meta + a * 9 + 4, a < A, 0)
-    lo, _ro = _interval(co, radius, Origin, Spacing, NO, 0, 0, RECIPROCAL)
-    _lo, hi = _interval(co, radius, Origin, Spacing, NO, 0, 2, RECIPROCAL)
-    li, _ri = _interval(ci, radius, Origin, Spacing, NI, 1, 0, RECIPROCAL)
-    _li, ri = _interval(ci, radius, Origin, Spacing, NI, 1, 2, RECIPROCAL)
+    radius = tl.load(Meta + a * 12 + 1, a < A, 1)
+    shape_scale = tl.load(Meta + a * 12 + 9, a < A, 1) if RECIPROCAL else radius
+    inverse_ho = tl.load(Meta + a * 12 + 10, a < A, 1) if RECIPROCAL else 0.0
+    inverse_hi = tl.load(Meta + a * 12 + 11, a < A, 1) if RECIPROCAL else 0.0
+    co = tl.load(Meta + a * 12 + 2, a < A, 0)
+    ci = tl.load(Meta + a * 12 + 3, a < A, 0)
+    scale = tl.load(Meta + a * 12, a < A, 0) * tl.load(Meta + a * 12 + 4, a < A, 0)
+    lo, _ro = _interval(co, radius, Origin, Spacing, NO, 0, 0, RECIPROCAL, inverse_ho)
+    _lo, hi = _interval(co, radius, Origin, Spacing, NO, 0, 2, RECIPROCAL, inverse_ho)
+    li, _ri = _interval(ci, radius, Origin, Spacing, NI, 1, 0, RECIPROCAL, inverse_hi)
+    _li, ri = _interval(ci, radius, Origin, Spacing, NI, 1, 2, RECIPROCAL, inverse_hi)
     rows = tl.arange(0, BS)
     oo = tl.load(Origin).to(tl.float64)
     oi = tl.load(Origin + 1).to(tl.float64)
@@ -379,12 +400,14 @@ def matrix_build(
     for start_o in range(0, tl.max(hi - lo, 0), BS):
         j = lo[:, None] + start_o + rows[None, :]
         fo, _dfo = _shape(
-            oo + j.to(tl.float64) * so - co[:, None], radius[:, None], RECIPROCAL
+            oo + j.to(tl.float64) * so - co[:, None], shape_scale[:, None], RECIPROCAL
         )
         for start_i in range(0, tl.max(ri - li, 0), BS):
             i = li[:, None] + start_i + rows[None, :]
             fi, _dfi = _shape(
-                oi + i.to(tl.float64) * si - ci[:, None], radius[:, None], RECIPROCAL
+                oi + i.to(tl.float64) * si - ci[:, None],
+                shape_scale[:, None],
+                RECIPROCAL,
             )
             w = scale[:, None, None] * fo[:, :, None] * fi[:, None, :]
             mask = (
@@ -415,13 +438,16 @@ def matrix_vjp(
     RECIPROCAL: tl.constexpr,
 ):
     a = tl.program_id(0) * AB + tl.arange(0, AB)
-    radius = tl.load(Meta + a * 9 + 1, a < A, 1)
-    co = tl.load(Meta + a * 9 + 2, a < A, 0)
-    ci = tl.load(Meta + a * 9 + 3, a < A, 0)
-    lo, _ro = _interval(co, radius, Origin, Spacing, NO, 0, 0, RECIPROCAL)
-    _lo, hi = _interval(co, radius, Origin, Spacing, NO, 0, 2, RECIPROCAL)
-    li, _ri = _interval(ci, radius, Origin, Spacing, NI, 1, 0, RECIPROCAL)
-    _li, ri = _interval(ci, radius, Origin, Spacing, NI, 1, 2, RECIPROCAL)
+    radius = tl.load(Meta + a * 12 + 1, a < A, 1)
+    shape_scale = tl.load(Meta + a * 12 + 9, a < A, 1) if RECIPROCAL else radius
+    inverse_ho = tl.load(Meta + a * 12 + 10, a < A, 1) if RECIPROCAL else 0.0
+    inverse_hi = tl.load(Meta + a * 12 + 11, a < A, 1) if RECIPROCAL else 0.0
+    co = tl.load(Meta + a * 12 + 2, a < A, 0)
+    ci = tl.load(Meta + a * 12 + 3, a < A, 0)
+    lo, _ro = _interval(co, radius, Origin, Spacing, NO, 0, 0, RECIPROCAL, inverse_ho)
+    _lo, hi = _interval(co, radius, Origin, Spacing, NO, 0, 2, RECIPROCAL, inverse_ho)
+    li, _ri = _interval(ci, radius, Origin, Spacing, NI, 1, 0, RECIPROCAL, inverse_hi)
+    _li, ri = _interval(ci, radius, Origin, Spacing, NI, 1, 2, RECIPROCAL, inverse_hi)
     rows = tl.arange(0, BS)
     oo = tl.load(Origin).to(tl.float64)
     oi = tl.load(Origin + 1).to(tl.float64)
@@ -433,12 +459,14 @@ def matrix_vjp(
     for start_o in range(0, tl.max(hi - lo, 0), BS):
         j = lo[:, None] + start_o + rows[None, :]
         fo, dfo = _shape(
-            oo + j.to(tl.float64) * so - co[:, None], radius[:, None], RECIPROCAL
+            oo + j.to(tl.float64) * so - co[:, None], shape_scale[:, None], RECIPROCAL
         )
         for start_i in range(0, tl.max(ri - li, 0), BS):
             i = li[:, None] + start_i + rows[None, :]
             fi, dfi = _shape(
-                oi + i.to(tl.float64) * si - ci[:, None], radius[:, None], RECIPROCAL
+                oi + i.to(tl.float64) * si - ci[:, None],
+                shape_scale[:, None],
+                RECIPROCAL,
             )
             mask = (
                 (a[:, None, None] < A)
@@ -451,17 +479,17 @@ def matrix_vjp(
             total += tl.sum(tl.sum(dw * fo[:, :, None] * fi[:, None, :], 2), 1)
             dout += tl.sum(tl.sum(dw * dfo[:, :, None] * fi[:, None, :], 2), 1)
             din += tl.sum(tl.sum(dw * fo[:, :, None] * dfi[:, None, :], 2), 1)
-    inv = tl.load(Meta + a * 9 + 4, a < A, 0)
-    scale = tl.load(Meta + a * 9, a < A, 0) * inv
-    tl.store(DP + 4 * a, total * inv * tl.load(Meta + a * 9 + 7, a < A, 0), a < A)
-    tl.store(DP + 4 * a + 1, total * inv * tl.load(Meta + a * 9 + 8, a < A, 0), a < A)
+    inv = tl.load(Meta + a * 12 + 4, a < A, 0)
+    scale = tl.load(Meta + a * 12, a < A, 0) * inv
+    tl.store(DP + 4 * a, total * inv * tl.load(Meta + a * 12 + 7, a < A, 0), a < A)
+    tl.store(DP + 4 * a + 1, total * inv * tl.load(Meta + a * 12 + 8, a < A, 0), a < A)
     tl.store(
         DP + 4 * a + 2,
-        scale * (dout - total * tl.load(Meta + a * 9 + 5, a < A, 0)),
+        scale * (dout - total * tl.load(Meta + a * 12 + 5, a < A, 0)),
         a < A,
     )
     tl.store(
         DP + 4 * a + 3,
-        scale * (din - total * tl.load(Meta + a * 9 + 6, a < A, 0)),
+        scale * (din - total * tl.load(Meta + a * 12 + 6, a < A, 0)),
         a < A,
     )
