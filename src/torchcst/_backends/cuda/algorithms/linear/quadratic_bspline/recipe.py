@@ -13,9 +13,11 @@ class BSplineRecipe:
     matrix_sites: int = 16
     matrix_atoms: int = 8
     matrix_warps: int = 4
+    axis_warps: int = 4
 
     def __post_init__(self):
         for name, allowed in (
+            ("axis_warps", (1, 2, 4)),
             ("matrix_sites", (4, 8, 16)),
             ("matrix_atoms", (4, 8, 16, 32)),
             ("matrix_warps", (2, 4, 8)),

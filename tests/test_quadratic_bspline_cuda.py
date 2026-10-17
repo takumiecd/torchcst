@@ -317,3 +317,18 @@ def test_matrix_launch_variants_all_gradients(shape, n, floor):
                 layer.atoms.p[:, 2:].add_(0.0037)
         x = torch.randn(3, n, device="cuda", requires_grad=True)
         gate(layer, x, torch.randn_like(x))
+
+
+@GPU
+@pytest.mark.parametrize("strategy", ["direct", "hybrid"])
+@pytest.mark.parametrize("warps", [1, 2])
+@pytest.mark.parametrize("n", [64, 8192])
+def test_axis_warp_variants_all_gradients(strategy, warps, n):
+    layer = model(strategy, n=n, axis_warps=warps)
+    for step in range(3):
+        if step:
+            with torch.no_grad():
+                layer.atoms.p[:, :2].mul_(1.003)
+                layer.atoms.p[:, 2:].add_(0.0037)
+        x = torch.randn(3, n, device="cuda", requires_grad=True)
+        gate(layer, x, torch.randn_like(x))

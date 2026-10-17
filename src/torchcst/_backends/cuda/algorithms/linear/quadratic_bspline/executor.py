@@ -100,7 +100,7 @@ def _query(x, meta, origin, spacing, dim, recipe, basis):
         recipe.direct_sites,
         recipe.block_sites,
         recipe.reciprocal,
-        num_warps=4,
+        num_warps=recipe.axis_warps,
         enable_fp_fusion=False,
     )
     _stamp("query_" + side, 1)
@@ -137,7 +137,7 @@ def _scatter(h, meta, origin, spacing, dim, n, recipe):
         recipe.direct_sites,
         recipe.block_sites,
         recipe.reciprocal,
-        num_warps=4,
+        num_warps=recipe.axis_warps,
         enable_fp_fusion=False,
     )
     _stamp("inject_" + side, 1)
@@ -308,7 +308,7 @@ class _BSpline(torch.autograd.Function):
                     a,
                     b,
                     tr.next_power_of_2(b),
-                    num_warps=4,
+                    num_warps=ctx.recipe.axis_warps,
                     enable_fp_fusion=False,
                 )
                 _stamp("atom_vjp", 1)
