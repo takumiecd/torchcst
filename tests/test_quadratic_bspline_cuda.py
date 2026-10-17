@@ -231,3 +231,17 @@ def test_matrix_full_atom_gradient_gate(n, floor):
                 layer.atoms.p[:, 2:].add_(0.0037)
         x = torch.randn(3, n, device="cuda", requires_grad=True)
         gate(layer, x, torch.randn_like(x))
+
+
+@GPU
+@pytest.mark.parametrize("strategy", ["direct", "hybrid", "matrix"])
+def test_tiny_single_axis_support_below_product_floor(strategy):
+    layer = model(strategy, n=64)
+    with torch.no_grad():
+        layer.atoms.p[0, 0] = 0.6
+        layer.atoms.p[0, 1] = 0.8
+        sigma = bs.decode(layer.kernel, layer.atoms.p)[0, 1].rsqrt()
+        layer.atoms.p[0, 2] = (-sigma * (6.0**0.5) + 1e-7).float()
+        layer.atoms.p[0, 3] = 3.2
+    x = torch.randn(3, 64, device="cuda", requires_grad=True)
+    gate(layer, x, torch.randn_like(x))

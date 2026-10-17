@@ -120,3 +120,13 @@ W/dWとGEMM workspaceを含めた完全step peakを測り、小さい支持向�
 このfixtureに限り、配列をhash付き`*.widths.pt`へ保存し、JSONにはsample indexと16例、
 全体のmin/max、changed-atom数を記録する。値を打ち切って実行する変更ではなく、
 計測後の証拠表現だけを小さくする。両方のファイルをpoolのmanifestで保全する。
+
+## 固定moment表の再利用
+
+`norm_lookup=True`はK=0..max(No,Ni)のM2/M4をFP64で一度だけ作り、pieceのsample数Kで読む。
+幅の量子化や係数の補間ではなく、上記の有限和そのものを再利用する。
+Kと局所座標係数・norm・norm微分は各forwardで更新する。表はdevice/shapeごとに保持し、
+メモリ計測に含む。`norm_lookup=False`は同じ式を毎回評価する対照。
+`reciprocal=True`ではatom内のRの逆数とspacingの逆数を共有する。
+widthのupper decay powerが1/2の場合は、それぞれx/x*xを使い、他のpowerには元のpowを使う。
+どちらもlive scalarを読み、学習値を固定・切り捨てない。
