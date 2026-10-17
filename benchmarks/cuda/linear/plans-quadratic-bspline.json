@@ -98,6 +98,20 @@
           "reciprocal": false
         }
       }
+    },
+    {
+      "id": "matrix",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_quadratic_bspline",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "strategy": "matrix",
+          "direct_sites": 32,
+          "block_sites": 16,
+          "reciprocal": true
+        }
+      }
     }
   ]
 }

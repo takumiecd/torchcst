@@ -70,7 +70,11 @@ class BSplineAlgorithm(Algorithm[BSplineRecipe]):
             return SupportResult(("requires LinearContext",))
         reasons = []
         try:
-            layout(context.operator)
+            sizes = layout(context.operator)
+            if recipe.strategy == "matrix" and max(sizes) > 1024:
+                reasons.append(
+                    "matrix research route supports at most 1024 sites per axis"
+                )
         except (ValueError, TypeError, AttributeError) as e:
             reasons.append(str(e))
         if context.dtype != torch.float32 or context.device.type != "cuda":
@@ -117,7 +121,7 @@ class BSplineAlgorithm(Algorithm[BSplineRecipe]):
         if state.buffers.get("basis_key") != key:
             state.buffers["bases"] = (
                 (_basis(no, x.device), _basis(ni, x.device))
-                if state.recipe.strategy != "direct"
+                if state.recipe.strategy == "hybrid"
                 else (None, None)
             )
             state.buffers["basis_key"] = key

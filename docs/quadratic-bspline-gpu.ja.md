@@ -13,7 +13,7 @@
 - 空支持、零振幅、norm floor、retained backward、forward後の中心変更を扱う。
 - first-order VJP。高階微分、周期座標、入出力側に複数の座標を持つgridは初版の範囲外。
 
-`research_cuda_quadratic_bspline`のRecipeで同じ演算の3経路を比較する。
+`research_cuda_quadratic_bspline`のRecipeで同じ演算の4経路を比較する。
 `torch`は既存のTorch factored参照、`direct`は支持内だけの軸別GPU直接評価、
 `hybrid`は各軸の支持site数により直接評価と共有prefixを選ぶ。
 直接評価のsite演算枠は16/64、半幅の逆数のatom内共有も独立のRecipe設定として比較する。
@@ -104,3 +104,19 @@ python -m benchmarks.submissions check output/bspline-small.json
 完全stepの未計装Graph時間とcapture/replay込みのallocated/reserved peakで比較する。
 診断phaseの合計を完全stepの代用にせず、独立run数と計測sample数を区別する。
 原本はignored `output/bspline-gpu-20261017/`および共有poolのjob directoryに保全する。
+
+
+## 小さい支持のmatrix経路
+
+`matrix`は支持内のFo*FiをWへ集約し、Y=XWᵀ、dX=dY WをGEMMで計算する。
+`dW=dYᵀX`を全atomで共有し、T=Σji dWji Foja Fiiaとすると
+`dalpha=T/D`、`dmu_o=(alpha/D)(Σ dW Fo_prime Fi - gamma_o*T)`、入力中心も同様。
+H/Gでbatchを先に縮約する式と、和の順序だけが異なる。
+生profile・global floor・幅stop-gradientは同じ。支持が広がった場合も全区間を走査する。
+初版は各軸1024 site以下だけを受け付け、大きいsigmaでの高速性は保証しない。
+W/dWとGEMM workspaceを含めた完全step peakを測り、小さい支持向けの候補として扱う。
+
+5万atomを超える測定では、全sigma配列をJSONへ列挙すると受付上限5MiBを超える。
+このfixtureに限り、配列をhash付き`*.widths.pt`へ保存し、JSONにはsample indexと16例、
+全体のmin/max、changed-atom数を記録する。値を打ち切って実行する変更ではなく、
+計測後の証拠表現だけを小さくする。両方のファイルをpoolのmanifestで保全する。

@@ -295,3 +295,121 @@ def vjp(H, HP, G, GP, Meta, DP, A: tl.constexpr, B: tl.constexpr, BB: tl.constex
     tl.store(
         DP + 4 * a + 3, amp * inv * (tl.sum(hp * g, 0) - hg * tl.load(Meta + a * 9 + 6))
     )
+
+
+@tr.jit
+def matrix_build(
+    Meta,
+    W,
+    Origin,
+    Spacing,
+    A: tl.constexpr,
+    NO: tl.constexpr,
+    NI: tl.constexpr,
+    BS: tl.constexpr,
+    AB: tl.constexpr,
+    RECIPROCAL: tl.constexpr,
+):
+    a = tl.program_id(0) * AB + tl.arange(0, AB)
+    radius = tl.load(Meta + a * 9 + 1, a < A, 1)
+    co = tl.load(Meta + a * 9 + 2, a < A, 0)
+    ci = tl.load(Meta + a * 9 + 3, a < A, 0)
+    scale = tl.load(Meta + a * 9, a < A, 0) * tl.load(Meta + a * 9 + 4, a < A, 0)
+    lo, _ro = _interval(co, radius, Origin, Spacing, NO, 0, 0)
+    _lo, hi = _interval(co, radius, Origin, Spacing, NO, 0, 2)
+    li, _ri = _interval(ci, radius, Origin, Spacing, NI, 1, 0)
+    _li, ri = _interval(ci, radius, Origin, Spacing, NI, 1, 2)
+    rows = tl.arange(0, BS)
+    oo = tl.load(Origin).to(tl.float64)
+    oi = tl.load(Origin + 1).to(tl.float64)
+    so = tl.load(Spacing).to(tl.float64)
+    si = tl.load(Spacing + 1).to(tl.float64)
+    for start_o in range(0, tl.max(hi - lo, 0), BS):
+        j = lo[:, None] + start_o + rows[None, :]
+        fo, _dfo = _shape(
+            oo + j.to(tl.float64) * so - co[:, None], radius[:, None], RECIPROCAL
+        )
+        for start_i in range(0, tl.max(ri - li, 0), BS):
+            i = li[:, None] + start_i + rows[None, :]
+            fi, _dfi = _shape(
+                oi + i.to(tl.float64) * si - ci[:, None], radius[:, None], RECIPROCAL
+            )
+            w = scale[:, None, None] * fo[:, :, None] * fi[:, None, :]
+            mask = (
+                (a[:, None, None] < A)
+                & (j[:, :, None] < hi[:, None, None])
+                & (i[:, None, :] < ri[:, None, None])
+            )
+            tl.atomic_add(
+                W + j[:, :, None] * NI + i[:, None, :],
+                w.to(tl.float32),
+                mask,
+                sem="relaxed",
+            )
+
+
+@tr.jit
+def matrix_vjp(
+    Meta,
+    DW,
+    DP,
+    Origin,
+    Spacing,
+    A: tl.constexpr,
+    NO: tl.constexpr,
+    NI: tl.constexpr,
+    BS: tl.constexpr,
+    AB: tl.constexpr,
+    RECIPROCAL: tl.constexpr,
+):
+    a = tl.program_id(0) * AB + tl.arange(0, AB)
+    radius = tl.load(Meta + a * 9 + 1, a < A, 1)
+    co = tl.load(Meta + a * 9 + 2, a < A, 0)
+    ci = tl.load(Meta + a * 9 + 3, a < A, 0)
+    lo, _ro = _interval(co, radius, Origin, Spacing, NO, 0, 0)
+    _lo, hi = _interval(co, radius, Origin, Spacing, NO, 0, 2)
+    li, _ri = _interval(ci, radius, Origin, Spacing, NI, 1, 0)
+    _li, ri = _interval(ci, radius, Origin, Spacing, NI, 1, 2)
+    rows = tl.arange(0, BS)
+    oo = tl.load(Origin).to(tl.float64)
+    oi = tl.load(Origin + 1).to(tl.float64)
+    so = tl.load(Spacing).to(tl.float64)
+    si = tl.load(Spacing + 1).to(tl.float64)
+    total = tl.full((AB,), 0, tl.float64)
+    dout = tl.full((AB,), 0, tl.float64)
+    din = tl.full((AB,), 0, tl.float64)
+    for start_o in range(0, tl.max(hi - lo, 0), BS):
+        j = lo[:, None] + start_o + rows[None, :]
+        fo, dfo = _shape(
+            oo + j.to(tl.float64) * so - co[:, None], radius[:, None], RECIPROCAL
+        )
+        for start_i in range(0, tl.max(ri - li, 0), BS):
+            i = li[:, None] + start_i + rows[None, :]
+            fi, dfi = _shape(
+                oi + i.to(tl.float64) * si - ci[:, None], radius[:, None], RECIPROCAL
+            )
+            mask = (
+                (a[:, None, None] < A)
+                & (j[:, :, None] < hi[:, None, None])
+                & (i[:, None, :] < ri[:, None, None])
+            )
+            dw = tl.load(DW + j[:, :, None] * NI + i[:, None, :], mask, 0).to(
+                tl.float64
+            )
+            total += tl.sum(tl.sum(dw * fo[:, :, None] * fi[:, None, :], 2), 1)
+            dout += tl.sum(tl.sum(dw * dfo[:, :, None] * fi[:, None, :], 2), 1)
+            din += tl.sum(tl.sum(dw * fo[:, :, None] * dfi[:, None, :], 2), 1)
+    inv = tl.load(Meta + a * 9 + 4, a < A, 0)
+    scale = tl.load(Meta + a * 9, a < A, 0) * inv
+    tl.store(DP + 4 * a, total * inv * tl.load(Meta + a * 9 + 7, a < A, 0), a < A)
+    tl.store(DP + 4 * a + 1, total * inv * tl.load(Meta + a * 9 + 8, a < A, 0), a < A)
+    tl.store(
+        DP + 4 * a + 2,
+        scale * (dout - total * tl.load(Meta + a * 9 + 5, a < A, 0)),
+        a < A,
+    )
+    tl.store(
+        DP + 4 * a + 3,
+        scale * (din - total * tl.load(Meta + a * 9 + 6, a < A, 0)),
+        a < A,
+    )

@@ -41,8 +41,6 @@
   },
   "plans": [
     "torch",
-    "direct64",
-    "direct",
     "hybrid64",
     "hybrid"
   ],

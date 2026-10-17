@@ -40,7 +40,8 @@
     "direct64",
     "direct",
     "hybrid64",
-    "hybrid"
+    "hybrid",
+    "matrix"
   ],
   "baseline": "torch",
   "dense": true

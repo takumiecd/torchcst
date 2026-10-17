@@ -62,7 +62,7 @@ def model(strategy, n=64, a=17, floor=1e-6):
 def test_recipe_and_metadata_roundtrip():
     reg = Registry()
     reg.register(BSplineAlgorithm())
-    for strategy in ("torch", "direct", "hybrid"):
+    for strategy in ("torch", "direct", "hybrid", "matrix"):
         p = ExecutionPlan(
             "research_cuda_quadratic_bspline", "v1", BSplineRecipe(strategy)
         )
@@ -129,7 +129,7 @@ def test_edges_empty_zero_amplitude_and_saved_geometry(strategy):
 
 
 @GPU
-@pytest.mark.parametrize("strategy", ["direct", "hybrid"])
+@pytest.mark.parametrize("strategy", ["direct", "hybrid", "matrix"])
 def test_live_graph_optimizer_state(strategy):
     torch.backends.cuda.matmul.allow_tf32 = False
     layer = model(strategy)
@@ -217,3 +217,17 @@ def test_switching_support_size_and_coordinate_buffer_rejection(strategy):
     layer.chart.float()
     with pytest.raises(ValueError, match="FP64"):
         layer(x)
+
+
+@GPU
+@pytest.mark.parametrize("n", [64, 128, 1024])
+@pytest.mark.parametrize("floor", [1e-6, 1000.0])
+def test_matrix_full_atom_gradient_gate(n, floor):
+    layer = model("matrix", n=n, floor=floor)
+    for step in range(3):
+        if step:
+            with torch.no_grad():
+                layer.atoms.p[:, :2].mul_(1.003)
+                layer.atoms.p[:, 2:].add_(0.0037)
+        x = torch.randn(3, n, device="cuda", requires_grad=True)
+        gate(layer, x, torch.randn_like(x))

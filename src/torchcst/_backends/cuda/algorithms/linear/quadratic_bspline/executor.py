@@ -100,6 +100,7 @@ class _BSpline(torch.autograd.Function):
         source = p.contiguous().clone()
         origin, spacing = chart.origin.clone(), chart.spacing.clone()
         meta = torch.empty((len(p), 9), device=p.device, dtype=torch.float64)
+        ctx.matrix = False
         if len(p):
             k.prepare[(tr.cdiv(len(p), 64),)](
                 source,
@@ -114,6 +115,27 @@ class _BSpline(torch.autograd.Function):
                 num_warps=4,
                 enable_fp_fusion=False,
             )
+            if recipe.strategy == "matrix":
+                ctx.matrix = True
+                w = x.new_zeros((no, ni))
+                k.matrix_build[(tr.cdiv(len(p), 8),)](
+                    meta,
+                    w,
+                    origin,
+                    spacing,
+                    len(p),
+                    no,
+                    ni,
+                    16,
+                    8,
+                    recipe.reciprocal,
+                    num_warps=4,
+                    enable_fp_fusion=False,
+                )
+                ctx.sizes = (no, ni)
+                ctx.recipe = recipe
+                ctx.save_for_backward(meta, x, w, origin, spacing)
+                return x @ w.T
             h, hp = _query(x, meta, origin, spacing, 1, recipe, bases[1])
             y = _scatter(h, meta, origin, spacing, 0, no, recipe)
         else:
@@ -131,6 +153,29 @@ class _BSpline(torch.autograd.Function):
 
         from . import kernels as k
 
+        if ctx.matrix:
+            meta, x, w, origin, spacing = ctx.saved_tensors
+            dy = dy.contiguous()
+            dx = dy @ w if ctx.needs_input_grad[0] else None
+            dp = None
+            if ctx.needs_input_grad[1]:
+                dw = dy.T @ x
+                dp = dy.new_empty((len(meta), 4))
+                k.matrix_vjp[(tr.cdiv(len(meta), 8),)](
+                    meta,
+                    dw,
+                    dp,
+                    origin,
+                    spacing,
+                    len(meta),
+                    *ctx.sizes,
+                    16,
+                    8,
+                    ctx.recipe.reciprocal,
+                    num_warps=4,
+                    enable_fp_fusion=False,
+                )
+            return dx, dp, None, None, None, None
         meta, h, hp, origin, spacing = ctx.saved_tensors
         dy = dy.contiguous()
         a = len(meta)

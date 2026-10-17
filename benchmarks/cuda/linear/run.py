@@ -516,6 +516,29 @@ def measure(args, run):
             "changed_atoms": int((change != 0).sum()),
             "max_abs_change": float(change.abs().max()),
         }
+        if case.fixture == "quadratic_bspline" and case.atoms > 512:
+            sidecar = args.output.with_suffix(".widths.pt")
+            torch.save({"initial": initial_sigma, "final": final_sigma}, sidecar)
+            sample = (
+                torch.linspace(0, case.atoms - 1, min(16, case.atoms)).round().long()
+            )
+            sigma_updates.update(
+                {
+                    "initial": initial_sigma[sample].tolist(),
+                    "final": final_sigma[sample].tolist(),
+                    "sample_indices": sample.tolist(),
+                    "arrays_are_samples": True,
+                    "full_arrays_file": sidecar.name,
+                    "full_arrays_sha256": hashlib.sha256(
+                        sidecar.read_bytes()
+                    ).hexdigest(),
+                    "initial_range": [
+                        float(initial_sigma.min()),
+                        float(initial_sigma.max()),
+                    ],
+                    "final_range": [float(final_sigma.min()), float(final_sigma.max())],
+                }
+            )
         if not sigma_updates["changed_atoms"]:
             raise AssertionError("dynamic-width fixture did not update sigma")
         recipe = run.entry(args.plan_id).plan.recipe
