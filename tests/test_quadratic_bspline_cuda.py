@@ -145,6 +145,10 @@ def test_live_graph_optimizer_state(strategy):
     rx = x.detach().clone().requires_grad_()
     dy = torch.randn_like(x)
 
+    from torchcst import AtomUpdateBinding
+
+    update_binding = AtomUpdateBinding(layer.operator)
+
     def step(m, o, xx):
         o.zero_grad()
         xx.grad = None
@@ -153,11 +157,8 @@ def test_live_graph_optimizer_state(strategy):
             o.step()
         else:
             from benchmarks.cuda.polar_update import optimizer_step
-            from torchcst import AtomUpdateBinding
 
-            optimizer_step(
-                AtomUpdateBinding(m.operator), o, step_size=0.0001, polar_update="fused"
-            )
+            optimizer_step(update_binding, o, step_size=0.0001, polar_update="fused")
 
     stream = torch.cuda.Stream()
     stream.wait_stream(torch.cuda.current_stream())
