@@ -276,3 +276,19 @@ def test_rectangular_grid_distinct_spacing_and_origin(strategy):
     )
     x = torch.randn(3, 64, device="cuda", requires_grad=True)
     gate(layer, x, torch.randn(3, 32, device="cuda"))
+
+
+@GPU
+@pytest.mark.parametrize("strategy", ["direct", "hybrid", "matrix"])
+@pytest.mark.parametrize("power", [1.0, 2.0, 1.5])
+def test_live_amplitude_dependent_sigma_with_power_branches(strategy, power):
+    layer = model(strategy, n=64)
+    with torch.no_grad():
+        layer.kernel.scalar("w_c").fill_(0.1)
+        layer.kernel.scalar("upper_decay_power").fill_(power)
+    x = torch.randn(3, 64, device="cuda", requires_grad=True)
+    dy = torch.randn_like(x)
+    gate(layer, x, dy)
+    with torch.no_grad():
+        layer.atoms.p[:, :2].mul_(1.01)
+    gate(layer, x, dy)
