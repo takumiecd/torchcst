@@ -244,3 +244,7 @@ manifest全43ファイルを照合済み。両caseのfull-axis/全atom FP64検�
 に続く。v1の宣言と固定launchを保持し、追加設定はv2のBSplineTuningRecipeへ分離した。
 小さいsigmaではmatrixの小patch＋axiswise VJP、混在sigmaではhybridのwarp削減を比較する。
 全候補は既存runnerの`--kernel-diagnostics`で診断できる。新しい数学的profileや近似L2ではない。
+
+[支持点列挙・atom集約・prepareの追加比較](research-history/cuda-linear/quadratic-bspline-parallel-20261017.ja.md)
+ではv3 Recipeを追加し、prepareのwarp削減とVJPだけのatom集約を検証した。
+全面的なatom集約と支持点のflat列挙は負の結果で、対照とともに記録している。
