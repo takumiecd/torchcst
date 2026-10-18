@@ -257,3 +257,8 @@ capture/replay込みのpeakを比較している。
 [atomごと・stepごとのsigma振り分け](research-history/cuda-linear/quadratic-bspline-sigma-split-20261018.ja.md)
 ではv4 Recipeで小支持Wと大支持Hを合算する。混在時の速度改善、全small時の余分な処理、
 固定容量によるメモリ増加、閾値をまたぐ移動と全勾配の検証を分けて記録した。
+
+[配置の継続利用とHの即時消費](research-history/cuda-linear/quadratic-bspline-stream-20261018.ja.md)
+では、v5でGPU検証付きの配置再利用とregister内H/G、v6でW再構築とW/dW領域再利用を比較した。
+形と厳密L2を維持したmixedでの速度/確保量削減、smallでの負の結果、閾値依存、
+予約量の未達、独立run、全勾配精度を分けて記録している。
