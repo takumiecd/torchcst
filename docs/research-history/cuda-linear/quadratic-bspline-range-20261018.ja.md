@@ -93,3 +93,35 @@ v7は両軸のprefixを9係数面すべてに適用する。v8ではtensor積の
 同じ9係数面の演算順序を変える候補であり、kernelの近似・切り捨てではない。
 配列の一時容量は3係数面と1中間面。FP64の合成用WとFP32のWも別に存在する。
 Triton scanの性能、ピークメモリと丸め誤差はGPUで別途比較する。
+
+## v7単純版の実測
+
+NVIDIA L4、1024×1024、A52428、B32、spacing .1、seed41、warmup5/21 samples。
+AdamWとfused Polar更新、live sigma・構築・厳密L2を含む未計装Graph完全step。
+各候補の前に全A・3状態の独立FP64 oracleを通している。
+
+| sigma条件 | 従来最速 ms | 1面ずつ ms | 3面ずつ ms | 9面同時 ms | Dense ms |
+|---|---:|---:|---:|---:|---:|
+| mixed | 4.318150 | 8.855427 | 5.661841 | 7.387453 | .082610 |
+| small | 1.205669 | 7.208419 | 4.511889 | 5.004908 | .082248 |
+| switch | 4.634804 | 10.589937 | 7.690621 | 8.713041 | .082533 |
+
+新候補のcapture/replay込みpeak allocated / reserved MiBは、1面70.590/138、
+3面102.590/202、9面198.590/490（3条件とも同じ）。mixed従来51.688/116、
+small従来50.231/114、Dense49.002/106。process全体のGPU memoryは未測定。
+
+別計装Graphのmixed・3面版ではrange組立2.308 ms、range VJP2.142 ms。
+smallではbroad atomが0でも、それぞれ1.698/1.452 msの固定費を払う。
+このstageにはscatter/query・scan・係数合成を含む。未計装完全stepの代用として
+足し合わせたり差し引いたりしない。DRAM/cache/atomicの物理counterは未測定。
+
+v7単純版は速度・メモリの両方で不採用。3面版の別job再測定もmixed5.660750、
+small4.512089、switch7.688989 msで、同じ結論だった。
+
+## 分離した研究ブランチ
+
+今回のv7/v8試作は `kernel/quadratic-bspline-range` に隔離する。
+基準の `kernel/quadratic-bspline-prefix` とPR109は `e4e266e3` のまま維持し、
+既存の最速版や公開dispatcherへ新方式を置換しない。
+分離前に現在worktreeで作成した `689d57fa` / `a4940ea0` の両commitは新研究branchに保持。
+source/result archiveとrawログは削除しない。worktreeのpathは従来と同じである。
