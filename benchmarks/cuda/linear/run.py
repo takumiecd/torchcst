@@ -584,8 +584,23 @@ def measure(args, run):
                             "coefficient_planes_per_group": recipe.range_planes,
                             "total_coefficient_planes": 9,
                             "fused_coefficient_scans": recipe.fused_scan,
+                            "coefficient_scratch_reused": recipe.reuse_scratch,
+                            "blocked_output_scans": recipe.blocked_scan,
+                            "output_scan_block_rows": getattr(
+                                recipe, "scan_rows", None
+                            ),
+                            "output_scan_block_cols": getattr(
+                                recipe, "scan_cols", None
+                            ),
+                            "broad_placement_tile_sites": getattr(
+                                recipe, "range_tile", None
+                            ),
                             "routing_count_scope": "sigma-only counts above; device route additionally keeps <=2-site clipped axis supports native",
-                            "layout_policy": "device-validated width buckets with tiny clipped-support native guard",
+                            "layout_policy": (
+                                "device-validated broad width/spatial buckets with tiny clipped-support native guard"
+                                if getattr(recipe, "range_tile", None)
+                                else "device-validated width buckets with tiny clipped-support native guard"
+                            ),
                         }
                     )
                 if recipe.reuse_layout:

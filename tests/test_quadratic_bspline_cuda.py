@@ -1219,8 +1219,9 @@ def test_range_scan_first_plane_alias_matches_separate_storage(sizes):
 @pytest.mark.parametrize(
     "strategy", ["matrix_range_reuse", "matrix_range_blocked", "matrix_range_spatial"]
 )
-def test_range_reuse_live_width_all_gradients(n, floor, strategy):
-    layer = model(strategy, n=n, a=33, floor=floor)
+@pytest.mark.parametrize("warps", [1, 4])
+def test_range_reuse_live_width_all_gradients(n, floor, strategy, warps):
+    layer = model(strategy, n=n, a=33, floor=floor, range_warps=warps)
     for step in range(3):
         if step:
             with torch.no_grad():
