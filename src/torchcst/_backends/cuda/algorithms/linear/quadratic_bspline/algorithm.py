@@ -18,9 +18,10 @@ from torchcst.operators.execution import (
 
 from .recipe import (
     BSplineParallelRecipe,
+    BSplineRangeBlockedRecipe,
     BSplineRangeFusedRecipe,
-    BSplineRangeReuseRecipe,
     BSplineRangeRecipe,
+    BSplineRangeReuseRecipe,
     BSplineRecipe,
     BSplineSplitRecipe,
     BSplineStreamingMemoryRecipe,
@@ -236,3 +237,9 @@ class BSplineRangeFusedAlgorithm(BSplineStreamingAlgorithm):
 class BSplineRangeReuseAlgorithm(BSplineStreamingAlgorithm):
     revision: str = "v9"
     recipe_type: type = BSplineRangeReuseRecipe
+
+
+@dataclass(frozen=True)
+class BSplineRangeBlockedAlgorithm(BSplineStreamingAlgorithm):
+    revision: str = "v10"
+    recipe_type: type = BSplineRangeBlockedRecipe

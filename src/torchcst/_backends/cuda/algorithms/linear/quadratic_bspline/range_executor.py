@@ -31,6 +31,35 @@ def _adjoint_bank(dw, bank, sizes, start, recipe):
     _prefix(bank)
 
 
+def _output_blocks(source, temporary, carry, sizes, start, recipe, adjoint):
+    br, bc = recipe.scan_rows, recipe.scan_cols
+    compiled = rk.output_scan_blocks[(tr.cdiv(sizes[0], br), tr.cdiv(sizes[1], bc))](
+        source,
+        temporary,
+        carry,
+        *sizes,
+        start // 3,
+        br,
+        bc,
+        adjoint,
+        num_warps=4,
+        enable_fp_fusion=False,
+    )
+    _report("range_block_adjoint" if adjoint else "range_block_output", compiled)
+    nb = tr.cdiv(sizes[0], br)
+    compiled = rk.output_scan_carries[(tr.cdiv(sizes[1], 32),)](
+        carry,
+        sizes[1],
+        nb,
+        tr.next_power_of_2(nb),
+        32,
+        adjoint,
+        num_warps=4,
+        enable_fp_fusion=False,
+    )
+    _report("range_block_carry", compiled)
+
+
 def _matrix(meta, origin, spacing, count, sizes, recipe):
     w = _build_w(meta, origin, spacing, count, sizes, recipe, meta.device, "w_build")
     # Accumulate the coefficient groups in FP64 before the one FP32 W rounding.
@@ -42,6 +71,15 @@ def _matrix(meta, origin, spacing, count, sizes, recipe):
             (recipe.range_planes, *sizes), dtype=torch.float64, device=meta.device
         )
         if recipe.reuse_scratch
+        else None
+    )
+    carry = (
+        torch.empty(
+            (tr.cdiv(sizes[0], recipe.scan_rows), sizes[1]),
+            device=meta.device,
+            dtype=torch.float64,
+        )
+        if recipe.blocked_scan
         else None
     )
     _stamp("range_init", 1)
@@ -92,16 +130,30 @@ def _matrix(meta, origin, spacing, count, sizes, recipe):
             _report("range_input_scan", compiled)
             _stamp(f"range_scan_input_{start}", 1)
             _stamp(f"range_scan_output_{start}", 0)
-            compiled = rk.output_scan[(tr.cdiv(sizes[1], 4),)](
-                temp,
-                accum,
-                *sizes,
-                tr.next_power_of_2(sizes[0]),
-                start // 3,
-                4,
-                num_warps=4,
-                enable_fp_fusion=False,
-            )
+            if recipe.blocked_scan:
+                _output_blocks(temp, temp, carry, sizes, start, recipe, False)
+                compiled = rk.output_scan_restore[(tr.cdiv(sizes[0] * sizes[1], 256),)](
+                    temp,
+                    carry,
+                    accum,
+                    *sizes,
+                    start // 3,
+                    recipe.scan_rows,
+                    256,
+                    num_warps=4,
+                    enable_fp_fusion=False,
+                )
+            else:
+                compiled = rk.output_scan[(tr.cdiv(sizes[1], 4),)](
+                    temp,
+                    accum,
+                    *sizes,
+                    tr.next_power_of_2(sizes[0]),
+                    start // 3,
+                    4,
+                    num_warps=4,
+                    enable_fp_fusion=False,
+                )
             _report("range_output_scan", compiled)
             _stamp(f"range_scan_output_{start}", 1)
             del temp
@@ -215,6 +267,15 @@ class _Range(torch.autograd.Function):
                 if recipe.reuse_scratch
                 else None
             )
+            carry = (
+                torch.empty(
+                    (tr.cdiv(sizes[0], recipe.scan_rows), sizes[1]),
+                    device=dy.device,
+                    dtype=torch.float64,
+                )
+                if recipe.blocked_scan
+                else None
+            )
             _stamp("range_partial_init", 1)
             for start in range(0, 9, recipe.range_planes):
                 if not recipe.reuse_scratch:
@@ -231,27 +292,42 @@ class _Range(torch.autograd.Function):
                         if recipe.reuse_scratch
                         else torch.empty(sizes, dtype=torch.float64, device=dy.device)
                     )
-                    compiled = rk.adjoint_output_scan[(tr.cdiv(sizes[1], 4),)](
-                        dw,
-                        temp,
-                        *sizes,
-                        tr.next_power_of_2(sizes[0]),
-                        start // 3,
-                        4,
-                        num_warps=4,
-                        enable_fp_fusion=False,
-                    )
-                    _report("range_adjoint_output_scan", compiled)
+                    if recipe.blocked_scan:
+                        _output_blocks(dw, temp, carry, sizes, start, recipe, True)
+                    else:
+                        compiled = rk.adjoint_output_scan[(tr.cdiv(sizes[1], 4),)](
+                            dw,
+                            temp,
+                            *sizes,
+                            tr.next_power_of_2(sizes[0]),
+                            start // 3,
+                            4,
+                            num_warps=4,
+                            enable_fp_fusion=False,
+                        )
+                        _report("range_adjoint_output_scan", compiled)
                     _stamp(f"range_adjoint_output_{start}", 1)
                     _stamp(f"range_adjoint_input_{start}", 0)
-                    compiled = rk.adjoint_input_scan[(sizes[0],)](
-                        temp,
-                        bank,
-                        *sizes,
-                        tr.next_power_of_2(sizes[1]),
-                        num_warps=4,
-                        enable_fp_fusion=False,
-                    )
+                    if recipe.blocked_scan:
+                        compiled = rk.adjoint_input_scan_carry[(sizes[0],)](
+                            temp,
+                            carry,
+                            bank,
+                            *sizes,
+                            tr.next_power_of_2(sizes[1]),
+                            recipe.scan_rows,
+                            num_warps=4,
+                            enable_fp_fusion=False,
+                        )
+                    else:
+                        compiled = rk.adjoint_input_scan[(sizes[0],)](
+                            temp,
+                            bank,
+                            *sizes,
+                            tr.next_power_of_2(sizes[1]),
+                            num_warps=4,
+                            enable_fp_fusion=False,
+                        )
                     _report("range_adjoint_input_scan", compiled)
                     _stamp(f"range_adjoint_input_{start}", 1)
                     del temp

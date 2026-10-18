@@ -311,3 +311,113 @@ def adjoint_input_scan(
         sums,
         (p[:, None] < 3) & (i[None, :] < NI),
     )
+
+
+@tr.jit
+def output_scan_blocks(
+    Source,
+    Temporary,
+    Carry,
+    NO: tl.constexpr,
+    NI: tl.constexpr,
+    POWER: tl.constexpr,
+    BR: tl.constexpr,
+    BC: tl.constexpr,
+    ADJOINT: tl.constexpr,
+):
+    block = tl.program_id(0)
+    r = tl.arange(0, BR)
+    j = block * BR + r
+    i = tl.program_id(1) * BC + tl.arange(0, BC)
+    addr = j[:, None] * NI + i[None, :]
+    mask = (j[:, None] < NO) & (i[None, :] < NI)
+    values = tl.load(Source + addr, mask, 0).to(tl.float64)
+    if ADJOINT:
+        z = 2.0 * j.to(tl.float64) / (NO - 1) - 1.0
+        if POWER == 1:
+            values = values * z[:, None]
+        elif POWER == 2:
+            values = values * (z * z)[:, None]
+    sums = tl.cumsum(values, 0, reverse=ADJOINT)
+    tl.store(Temporary + addr, sums, mask)
+    endpoint = 0 if ADJOINT else BR - 1
+    total = tl.sum(tl.where(r[:, None] == endpoint, sums, 0), 0)
+    tl.store(Carry + block * NI + i, total, i < NI)
+
+
+@tr.jit
+def output_scan_carries(
+    Carry,
+    NI: tl.constexpr,
+    NB: tl.constexpr,
+    BN: tl.constexpr,
+    BC: tl.constexpr,
+    ADJOINT: tl.constexpr,
+):
+    b = tl.arange(0, BN)
+    i = tl.program_id(0) * BC + tl.arange(0, BC)
+    mask = (b[:, None] < NB) & (i[None, :] < NI)
+    addr = b[:, None] * NI + i[None, :]
+    # Exclusive carry avoids subtracting a large inclusive sum from itself.
+    source_b = b + 1 if ADJOINT else b - 1
+    shifted = tl.load(
+        Carry + source_b[:, None] * NI + i[None, :],
+        (source_b[:, None] >= 0) & (source_b[:, None] < NB) & (i[None, :] < NI),
+        0,
+    )
+    result = tl.cumsum(shifted, 0, reverse=ADJOINT)
+    tl.store(Carry + addr, result, mask)
+
+
+@tr.jit
+def output_scan_restore(
+    Temporary,
+    Carry,
+    W,
+    NO: tl.constexpr,
+    NI: tl.constexpr,
+    POWER: tl.constexpr,
+    BR: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    addr = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    j, i = addr // NI, addr % NI
+    values = tl.load(Temporary + addr, addr < NO * NI, 0)
+    carry = tl.load(Carry + (j // BR) * NI + i, addr < NO * NI, 0)
+    z = 2.0 * j.to(tl.float64) / (NO - 1) - 1.0
+    sums = values + carry
+    if POWER == 1:
+        sums = sums * z
+    elif POWER == 2:
+        sums = sums * (z * z)
+    old = tl.load(W + addr, addr < NO * NI, 0)
+    tl.store(W + addr, old + sums, addr < NO * NI)
+
+
+@tr.jit
+def adjoint_input_scan_carry(
+    Temporary,
+    Carry,
+    Bank,
+    NO: tl.constexpr,
+    NI: tl.constexpr,
+    NN: tl.constexpr,
+    BR: tl.constexpr,
+):
+    row = tl.program_id(0)
+    i = tl.arange(0, NN)
+    p = tl.arange(0, 4)
+    z = 2.0 * i.to(tl.float64) / (NI - 1) - 1.0
+    values = tl.load(Temporary + row * NI + i, i < NI, 0)
+    carry = tl.load(Carry + (row // BR) * NI + i, i < NI, 0)
+    basis = tl.where(
+        p[:, None] == 0,
+        1.0,
+        tl.where(p[:, None] == 1, z[None, :], z[None, :] * z[None, :]),
+    )
+    sums = tl.cumsum((values + carry)[None, :] * basis, 1, reverse=True)
+    tl.store(
+        Bank + p[:, None] * NO * NI + row * NI + i[None, :],
+        sums,
+        (p[:, None] < 3) & (i[None, :] < NI),
+    )

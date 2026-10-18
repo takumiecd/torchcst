@@ -148,6 +148,7 @@ class BSplineRangeRecipe(BSplineStreamingMemoryRecipe):
     strategy: str = "matrix_range"
     fused_scan = False
     reuse_scratch = False
+    blocked_scan = False
     tiny_native = True
     range_planes: int = 3
     range_atoms: int = 16
@@ -185,3 +186,24 @@ class BSplineRangeReuseRecipe(BSplineRangeFusedRecipe):
     """Revision 9: one coefficient bank, with its first plane as scan scratch."""
 
     reuse_scratch = True
+
+
+@dataclass(frozen=True)
+class BSplineRangeBlockedRecipe(BSplineRangeReuseRecipe):
+    """Revision 10: coalesced short scans and a small block-carry bank."""
+
+    blocked_scan = True
+    scan_rows: int = 128
+    scan_cols: int = 32
+
+    def __post_init__(self):
+        super().__post_init__()
+        for name, allowed in (
+            ("scan_rows", (64, 128, 256)),
+            ("scan_cols", (8, 16, 32)),
+        ):
+            if (
+                type(getattr(self, name)) is not int
+                or getattr(self, name) not in allowed
+            ):
+                raise ValueError(f"{name} must be one of {allowed}")
