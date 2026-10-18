@@ -10,6 +10,29 @@ from .executor import _bank, _prepare, _report, _stamp
 from .stream_layout import make_layout, placement
 
 
+def _build_w(meta, origin, spacing, count, sizes, recipe, device, stage):
+    w = torch.zeros(sizes, dtype=torch.float32, device=device)
+    _stamp(stage, 0)
+    compiled = k.matrix_build[(tr.cdiv(len(meta), recipe.matrix_atoms),)](
+        meta,
+        w,
+        origin,
+        spacing,
+        len(meta),
+        *sizes,
+        recipe.matrix_sites,
+        recipe.matrix_atoms,
+        recipe.reciprocal,
+        Count=count,
+        PARTITIONED=True,
+        num_warps=recipe.matrix_warps,
+        enable_fp_fusion=False,
+    )
+    _stamp(stage, 1)
+    _report(stage, compiled)
+    return w
+
+
 def _restore(delta, y, side):
     b, n = y.shape
     _stamp("scan_" + side, 0)
@@ -42,28 +65,12 @@ class _Streaming(torch.autograd.Function):
         # Physical execution rows are contiguous; source IDs and Adam state stay canonical.
         meta = meta.index_select(0, order)
         _stamp("pack", 1)
-        w = x.new_zeros(sizes)
-        _stamp("w_build", 0)
-        compiled = k.matrix_build[(tr.cdiv(a, recipe.matrix_atoms),)](
-            meta,
-            w,
-            origin,
-            spacing,
-            a,
-            *sizes,
-            recipe.matrix_sites,
-            recipe.matrix_atoms,
-            recipe.reciprocal,
-            Count=count,
-            PARTITIONED=True,
-            num_warps=recipe.matrix_warps,
-            enable_fp_fusion=False,
-        )
-        _stamp("w_build", 1)
-        _report("w_build", compiled)
+        w = _build_w(meta, origin, spacing, count, sizes, recipe, x.device, "w_build")
         _stamp("y_gemm", 0)
         y = x @ w.T
         _stamp("y_gemm", 1)
+        saved_w = w if recipe.save_w else x.new_empty(0)
+        del w
         _stamp("bank_input", 0)
         bank = _bank(x, bases[1])
         _stamp("bank_input", 1)
@@ -88,7 +95,7 @@ class _Streaming(torch.autograd.Function):
         _stamp("stream_forward", 1)
         _report("stream_forward", compiled)
         y = _restore(delta, y, "output")
-        ctx.save_for_backward(meta, x, w, origin, spacing, order, count)
+        ctx.save_for_backward(meta, x, saved_w, origin, spacing, order, count)
         return y
 
     @staticmethod
@@ -111,13 +118,23 @@ class _Streaming(torch.autograd.Function):
         a, b = len(meta), len(dy)
         dy = dy.contiguous()
         dx = dp = None
+        if not recipe.save_w and ctx.needs_input_grad[0]:
+            w = _build_w(
+                meta, origin, spacing, count, sizes, recipe, x.device, "w_rebuild"
+            )
+        else:
+            _stamp("w_rebuild", 0)
+            _stamp("w_rebuild", 1)
         _stamp("dx_gemm", 0)
         if ctx.needs_input_grad[0]:
             dx = dy @ w
         _stamp("dx_gemm", 1)
         _stamp("dw_gemm", 0)
         if ctx.needs_input_grad[1]:
-            dw = dy.T @ x
+            if not recipe.save_w and ctx.needs_input_grad[0]:
+                dw = torch.mm(dy.T, x, out=w)
+            else:
+                dw = dy.T @ x
         _stamp("dw_gemm", 1)
         _stamp("matrix_atom_vjp", 0)
         if ctx.needs_input_grad[1]:
@@ -142,6 +159,7 @@ class _Streaming(torch.autograd.Function):
             _report("matrix_atom_vjp", compiled)
             del dw
         _stamp("matrix_atom_vjp", 1)
+        del w
         _stamp("bank_recompute", 0)
         input_bank = _bank(x, ctx.bases[1]) if ctx.needs_input_grad[1] else None
         _stamp("bank_recompute", 1)

@@ -120,8 +120,21 @@ class BSplineStreamingRecipe(BSplineSplitRecipe):
     axis_atoms: int = 8
     axis_warps: int = 4
     reuse_layout: bool = True
+    save_w = True
 
     def __post_init__(self):
         super().__post_init__()
         if type(self.reuse_layout) is not bool:
             raise ValueError("reuse_layout must be boolean")
+
+
+@dataclass(frozen=True)
+class BSplineStreamingMemoryRecipe(BSplineStreamingRecipe):
+    """Revision 6: optionally rebuild W in backward and reuse its storage for dW."""
+
+    save_w: bool = False
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.save_w) is not bool:
+            raise ValueError("save_w must be boolean")

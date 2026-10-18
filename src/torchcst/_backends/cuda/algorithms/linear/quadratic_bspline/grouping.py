@@ -44,8 +44,16 @@ def support_keys(
         pi = tl.minimum(tl.ceil(2 * radius * ihi / BS), tr.cdiv(NI, BS)).to(tl.int32)
     # The radix exceeds every possible input patch count, including full support.
     key = po * (tr.cdiv(NI, BS) + 1) + pi
+    if WIDTH_ONLY:
+        # Both patch counts are monotone in the same radius and fixed spacings.
+        # Their sum distinguishes every reachable pair without a quadratic bank.
+        key = po + pi
     if SPLIT:
-        offset: tl.constexpr = (tr.cdiv(NO, BS) + 1) * (tr.cdiv(NI, BS) + 1)
+        offset: tl.constexpr = (
+            tr.cdiv(NO, BS) + tr.cdiv(NI, BS) + 1
+            if WIDTH_ONLY
+            else (tr.cdiv(NO, BS) + 1) * (tr.cdiv(NI, BS) + 1)
+        )
         if TRACK or WIDTH_ONLY:
             key = tl.where(radius <= 2.449489742783178 * CUTOFF, key, offset)
         else:

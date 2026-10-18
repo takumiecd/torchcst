@@ -30,6 +30,7 @@ def diagnostic_components(strategy):
             "group",
             "pack",
             "w_build",
+            "w_rebuild",
             "y_gemm",
             "dx_gemm",
             "dw_gemm",

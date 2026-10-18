@@ -13,6 +13,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineParallelAlgorithm,
     BSplineSplitAlgorithm,
     BSplineStreamingAlgorithm,
+    BSplineStreamingMemoryAlgorithm,
     BSplineTuningAlgorithm,
     layout,
 )
@@ -20,6 +21,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineParallelRecipe,
     BSplineRecipe,
     BSplineSplitRecipe,
+    BSplineStreamingMemoryRecipe,
     BSplineStreamingRecipe,
     BSplineTuningRecipe,
 )
@@ -57,6 +59,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineParallelAlgorithm())
     registry.register(BSplineSplitAlgorithm())
     registry.register(BSplineStreamingAlgorithm())
+    registry.register(BSplineStreamingMemoryAlgorithm())
     parallel = strategy in (
         "matrix_flat",
         "matrix_support_grouped",
@@ -69,7 +72,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     tuned = bool(recipe_options) or strategy == "matrix_separable"
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v5"
+        "v6"
+        if strategy == "sigma_stream_memory"
+        else "v5"
         if strategy == "sigma_stream"
         else "v4"
         if strategy == "sigma_split"
@@ -78,7 +83,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         else "v2"
         if tuned
         else "v1",
-        BSplineStreamingRecipe(**recipe_options)
+        BSplineStreamingMemoryRecipe(**recipe_options)
+        if strategy == "sigma_stream_memory"
+        else BSplineStreamingRecipe(**recipe_options)
         if strategy == "sigma_stream"
         else BSplineSplitRecipe(**recipe_options)
         if strategy == "sigma_split"
@@ -106,6 +113,7 @@ def test_recipe_and_metadata_roundtrip():
     reg.register(BSplineParallelAlgorithm())
     reg.register(BSplineSplitAlgorithm())
     reg.register(BSplineStreamingAlgorithm())
+    reg.register(BSplineStreamingMemoryAlgorithm())
     for strategy in ("torch", "direct", "hybrid", "matrix"):
         p = ExecutionPlan(
             "research_cuda_quadratic_bspline", "v1", BSplineRecipe(strategy)
@@ -133,6 +141,14 @@ def test_recipe_and_metadata_roundtrip():
     )
     assert reg.loads_plan(reg.dumps_plan(stream)) == stream
     assert len(reg.dump_plan(stream)["recipe"]) == 15
+    memory = ExecutionPlan(
+        "research_cuda_quadratic_bspline", "v6", BSplineStreamingMemoryRecipe()
+    )
+    assert reg.loads_plan(reg.dumps_plan(memory)) == memory
+    assert len(reg.dump_plan(memory)["recipe"]) == 16
+    for invalid in (0, 1, None, "false"):
+        with pytest.raises(ValueError):
+            BSplineStreamingMemoryRecipe(save_w=invalid)
     for invalid in (0, 1, None, "true"):
         with pytest.raises(ValueError):
             BSplineStreamingRecipe(reuse_layout=invalid)
@@ -200,6 +216,7 @@ def test_live_width_all_gradients(strategy, n, floor):
         "matrix_support_grouped",
         "sigma_split",
         "sigma_stream",
+        "sigma_stream_memory",
     ],
 )
 def test_edges_empty_zero_amplitude_and_saved_geometry(strategy):
@@ -237,6 +254,9 @@ def test_edges_empty_zero_amplitude_and_saved_geometry(strategy):
         ("matrix_support_grouped", {"matrix_sites": 4, "matrix_warps": 1}),
         ("sigma_split", {"sigma_cutoff": 0.5}),
         ("sigma_stream", {"sigma_cutoff": 0.5}),
+        ("sigma_stream_memory", {"sigma_cutoff": 0.5}),
+        ("sigma_stream_memory", {"sigma_cutoff": 0.01}),
+        ("sigma_stream_memory", {"sigma_cutoff": 100.0}),
         ("sigma_stream", {"sigma_cutoff": 0.01}),
         ("sigma_stream", {"sigma_cutoff": 100.0}),
         ("sigma_stream", {"reuse_layout": False}),
@@ -334,6 +354,7 @@ def test_live_graph_optimizer_state(strategy, options):
         "matrix_support_grouped",
         "sigma_split",
         "sigma_stream",
+        "sigma_stream_memory",
     ],
 )
 def test_switching_support_size_and_coordinate_buffer_rejection(strategy):
@@ -383,6 +404,7 @@ def test_matrix_full_atom_gradient_gate(n, floor):
         "matrix_support_grouped",
         "sigma_split",
         "sigma_stream",
+        "sigma_stream_memory",
     ],
 )
 def test_tiny_single_axis_support_below_product_floor(strategy):
@@ -409,6 +431,7 @@ def test_tiny_single_axis_support_below_product_floor(strategy):
         "matrix_support_grouped",
         "sigma_split",
         "sigma_stream",
+        "sigma_stream_memory",
     ],
 )
 def test_rectangular_grid_distinct_spacing_and_origin(strategy):
@@ -420,17 +443,22 @@ def test_rectangular_grid_distinct_spacing_and_origin(strategy):
     reg.register(BSplineParallelAlgorithm())
     reg.register(BSplineSplitAlgorithm())
     reg.register(BSplineStreamingAlgorithm())
+    reg.register(BSplineStreamingMemoryAlgorithm())
     parallel = strategy in ("matrix_flat", "hybrid_grouped", "matrix_support_grouped")
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v5"
+        "v6"
+        if strategy == "sigma_stream_memory"
+        else "v5"
         if strategy == "sigma_stream"
         else "v4"
         if strategy == "sigma_split"
         else "v3"
         if parallel
         else "v1",
-        BSplineStreamingRecipe()
+        BSplineStreamingMemoryRecipe()
+        if strategy == "sigma_stream_memory"
+        else BSplineStreamingRecipe()
         if strategy == "sigma_stream"
         else BSplineSplitRecipe()
         if strategy == "sigma_split"
@@ -631,7 +659,8 @@ def test_support_order_tracks_both_clipped_axes(reciprocal):
 
 @GPU
 @pytest.mark.parametrize(
-    "strategy", ["matrix_support_grouped", "sigma_split", "sigma_stream"]
+    "strategy",
+    ["matrix_support_grouped", "sigma_split", "sigma_stream", "sigma_stream_memory"],
 )
 def test_support_grouped_zero_atoms(strategy):
     layer = model(strategy, a=0)
@@ -646,7 +675,9 @@ def test_support_grouped_zero_atoms(strategy):
 @pytest.mark.parametrize("n", [64, 1024])
 @pytest.mark.parametrize("floor", [1e-6, 1000.0])
 @pytest.mark.parametrize("cutoff", [0.2, 0.5, 2.0])
-@pytest.mark.parametrize("strategy", ["sigma_split", "sigma_stream"])
+@pytest.mark.parametrize(
+    "strategy", ["sigma_split", "sigma_stream", "sigma_stream_memory"]
+)
 def test_sigma_partition_all_gradients(n, floor, cutoff, strategy):
     layer = model(strategy, n=n, floor=floor, sigma_cutoff=cutoff)
     for step in range(3):
@@ -684,7 +715,9 @@ def test_partition_count_and_ids_change_inside_graph():
 
 
 @GPU
-@pytest.mark.parametrize("strategy", ["sigma_split", "sigma_stream"])
+@pytest.mark.parametrize(
+    "strategy", ["sigma_split", "sigma_stream", "sigma_stream_memory"]
+)
 def test_sigma_split_graph_large_width_switches(strategy):
     import math
 
@@ -762,8 +795,9 @@ def test_stream_placement_reuse_and_graph_invalidation():
 
 
 @GPU
-def test_stream_saved_backward_survives_later_forward_relayout():
-    layer = model("sigma_stream")
+@pytest.mark.parametrize("strategy", ["sigma_stream", "sigma_stream_memory"])
+def test_stream_saved_backward_survives_later_forward_relayout(strategy):
+    layer = model(strategy)
     x = torch.randn(3, 64, device="cuda", requires_grad=True)
     dy = torch.randn_like(x)
     y = layer(x)
@@ -793,8 +827,9 @@ def test_stream_batch_tile_and_single_empty_axis(batch, atoms_per_tile):
 
 @GPU
 @pytest.mark.parametrize("input_grad", [False, True])
-def test_stream_individual_gradient_requests(input_grad):
-    layer = model("sigma_stream")
+@pytest.mark.parametrize("strategy", ["sigma_stream", "sigma_stream_memory"])
+def test_stream_individual_gradient_requests(input_grad, strategy):
+    layer = model(strategy)
     layer.atoms.p.requires_grad_(not input_grad)
     x = torch.randn(3, 64, device="cuda", requires_grad=input_grad)
     dy = torch.randn_like(x)
@@ -806,3 +841,26 @@ def test_stream_individual_gradient_requests(input_grad):
     truth = bs.oracle(copy.deepcopy(layer.kernel).double(), layer.chart, rp, rx)
     expected = torch.autograd.grad(truth, rx if input_grad else rp, dy.double())[0]
     torch.testing.assert_close(actual.double(), expected, atol=4e-4, rtol=4e-4)
+
+
+@GPU
+@pytest.mark.parametrize("strategy", ["sigma_stream", "sigma_stream_memory"])
+def test_stream_model_reuses_placement_across_capture_and_eager(strategy):
+    layer = model(strategy)
+    x = torch.randn(3, 64, device="cuda", requires_grad=True)
+    dy = torch.randn_like(x)
+    gate(layer, x, dy)
+    state = layer.__dict__["_algorithm_states"][0]
+    cache = state.buffers["stream_layout"]
+    calls, rebuilds = cache["stats"].tolist()
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        y = layer(x)
+        _dx, _dp = torch.autograd.grad(y, (x, layer.atoms.p), dy)
+    assert state.buffers["stream_layout"] is cache
+    for _ in range(4):
+        graph.replay()
+    assert cache["stats"].tolist() == [calls + 4, rebuilds]
+    gate(layer, x, dy)
+    assert state.buffers["stream_layout"] is cache
+    assert cache["stats"].tolist() == [calls + 5, rebuilds]

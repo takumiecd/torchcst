@@ -43,9 +43,10 @@
     "torch",
     "sigma-split-05",
     "stream-sort8",
-    "stream-reuse4",
     "stream-reuse8",
-    "stream-reuse16"
+    "stream-memory8",
+    "stream-reuse8c02",
+    "stream-memory8c02"
   ],
   "baseline": "torch",
   "dense": true

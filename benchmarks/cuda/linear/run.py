@@ -569,6 +569,7 @@ def measure(args, run):
                         if recipe.reuse_layout
                         else "fresh sort of width buckets every forward",
                         "canonical_parameter_rows_moved": False,
+                        "save_w": recipe.save_w,
                     }
                 )
                 if recipe.reuse_layout:

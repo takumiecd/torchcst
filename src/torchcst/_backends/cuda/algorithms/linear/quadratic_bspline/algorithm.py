@@ -20,6 +20,7 @@ from .recipe import (
     BSplineParallelRecipe,
     BSplineRecipe,
     BSplineSplitRecipe,
+    BSplineStreamingMemoryRecipe,
     BSplineStreamingRecipe,
     BSplineTuningRecipe,
 )
@@ -185,3 +186,20 @@ class BSplineSplitAlgorithm(BSplineAlgorithm):
 class BSplineStreamingAlgorithm(BSplineAlgorithm):
     revision: str = "v5"
     recipe_type: type = BSplineStreamingRecipe
+
+    def prepare(self, state):
+        # A permutation is valid across execution-mode changes. Live GPU keys
+        # still validate every call; shape/device/recipe changes replace it in apply.
+        placement = {
+            k: state.buffers[k]
+            for k in ("stream_layout", "stream_layout_key")
+            if k in state.buffers
+        }
+        super().prepare(state)
+        state.buffers.update(placement)
+
+
+@dataclass(frozen=True)
+class BSplineStreamingMemoryAlgorithm(BSplineStreamingAlgorithm):
+    revision: str = "v6"
+    recipe_type: type = BSplineStreamingMemoryRecipe

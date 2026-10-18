@@ -51,13 +51,17 @@ def _place(
 
 
 def make_layout(a, sizes, recipe, device):
-    radix = (tr.cdiv(sizes[0], recipe.matrix_sites) + 1) * (
-        tr.cdiv(sizes[1], recipe.matrix_sites) + 1
+    radix = (
+        tr.cdiv(sizes[0], recipe.matrix_sites)
+        + tr.cdiv(sizes[1], recipe.matrix_sites)
+        + 1
     )
 
     def empty(n, dtype=torch.int32):
         return torch.empty(n, dtype=dtype, device=device)
 
+    if not recipe.reuse_layout:
+        return {"keys": empty(a), "radix": radix}
     return {
         "keys": torch.full((a,), -1, dtype=torch.int32, device=device),
         "dirty": empty(1),
@@ -87,7 +91,7 @@ def placement(meta, origin, spacing, sizes, recipe, cache):
             num_warps=4,
             enable_fp_fusion=False,
         )
-        count = (cache["keys"] < len(cache["hist"]) - 1).sum(dtype=torch.int32)
+        count = (cache["keys"] < cache["radix"]).sum(dtype=torch.int32)
         return torch.argsort(cache["keys"]), count
     a = len(meta)
     cache["dirty"].zero_()

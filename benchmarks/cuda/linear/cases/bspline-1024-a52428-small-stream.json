@@ -40,9 +40,8 @@
     "matrix-support4a16",
     "sigma-split-05",
     "stream-sort8",
-    "stream-reuse4",
     "stream-reuse8",
-    "stream-reuse16"
+    "stream-memory8"
   ],
   "baseline": "torch",
   "dense": true
