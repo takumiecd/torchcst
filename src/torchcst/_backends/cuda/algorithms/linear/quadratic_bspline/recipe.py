@@ -138,3 +138,84 @@ class BSplineStreamingMemoryRecipe(BSplineStreamingRecipe):
         super().__post_init__()
         if type(self.save_w) is not bool:
             raise ValueError("save_w must be boolean")
+
+
+@dataclass(frozen=True)
+class BSplineRangeRecipe(BSplineStreamingMemoryRecipe):
+    """Revision 7: broad splines use nine 2D polynomial coefficient planes."""
+
+    strategies = ("matrix_range",)
+    strategy: str = "matrix_range"
+    fused_scan = False
+    reuse_scratch = False
+    blocked_scan = False
+    tiny_native = True
+    range_planes: int = 3
+    range_atoms: int = 16
+    range_warps: int = 4
+    save_w: bool = True
+
+    def __post_init__(self):
+        super().__post_init__()
+        for name, allowed in (
+            ("range_planes", (1, 3, 9)),
+            ("range_atoms", (8, 16, 32)),
+            ("range_warps", (1, 2, 4, 8)),
+        ):
+            if (
+                type(getattr(self, name)) is not int
+                or getattr(self, name) not in allowed
+            ):
+                raise ValueError(f"{name} must be one of {allowed}")
+
+
+@dataclass(frozen=True)
+class BSplineRangeFusedRecipe(BSplineRangeRecipe):
+    """Revision 8: reduce polynomial planes between the two spatial scans."""
+
+    fused_scan = True
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.range_planes != 3:
+            raise ValueError("fused scans require range_planes=3")
+
+
+@dataclass(frozen=True)
+class BSplineRangeReuseRecipe(BSplineRangeFusedRecipe):
+    """Revision 9: one coefficient bank, with its first plane as scan scratch."""
+
+    reuse_scratch = True
+
+
+@dataclass(frozen=True)
+class BSplineRangeBlockedRecipe(BSplineRangeReuseRecipe):
+    """Revision 10: coalesced short scans and a small block-carry bank."""
+
+    blocked_scan = True
+    scan_rows: int = 128
+    scan_cols: int = 32
+
+    def __post_init__(self):
+        super().__post_init__()
+        for name, allowed in (
+            ("scan_rows", (64, 128, 256)),
+            ("scan_cols", (8, 16, 32)),
+        ):
+            if (
+                type(getattr(self, name)) is not int
+                or getattr(self, name) not in allowed
+            ):
+                raise ValueError(f"{name} must be one of {allowed}")
+
+
+@dataclass(frozen=True)
+class BSplineRangeSpatialRecipe(BSplineRangeReuseRecipe):
+    """Revision 11: coefficient-query locality in broad-atom placement only."""
+
+    range_tile: int = 32
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.range_tile) is not int or self.range_tile not in (16, 32, 64, 128):
+            raise ValueError("range_tile must be one of (16, 32, 64, 128)")

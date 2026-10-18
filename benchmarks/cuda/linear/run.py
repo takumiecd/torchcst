@@ -542,7 +542,11 @@ def measure(args, run):
         if not sigma_updates["changed_atoms"]:
             raise AssertionError("dynamic-width fixture did not update sigma")
         recipe = run.entry(args.plan_id).plan.recipe
-        if getattr(recipe, "strategy", None) in ("sigma_split", "sigma_stream"):
+        if getattr(recipe, "strategy", None) in (
+            "sigma_split",
+            "sigma_stream",
+            "matrix_range",
+        ):
             initial_small = initial_sigma <= recipe.sigma_cutoff
             final_small = final_sigma <= recipe.sigma_cutoff
             hybrid_routing = {
@@ -558,7 +562,7 @@ def measure(args, run):
                 "saved_order_bytes": case.atoms * 8,
                 "sigma_fixed": False,
             }
-            if recipe.strategy == "sigma_stream":
+            if recipe.strategy in ("sigma_stream", "matrix_range"):
                 hybrid_routing.update(
                     {
                         "capacity_policy": "register-local atom-group H/G; forward numerical metadata and placement snapshot saved; input bank recomputed in backward",
@@ -572,6 +576,33 @@ def measure(args, run):
                         "save_w": recipe.save_w,
                     }
                 )
+                if recipe.strategy == "matrix_range":
+                    hybrid_routing.update(
+                        {
+                            "capacity_policy": "batch-independent W coefficient scans; exact adjoint coefficient banks; no H/G tensor",
+                            "register_tile_elements_per_value": None,
+                            "coefficient_planes_per_group": recipe.range_planes,
+                            "total_coefficient_planes": 9,
+                            "fused_coefficient_scans": recipe.fused_scan,
+                            "coefficient_scratch_reused": recipe.reuse_scratch,
+                            "blocked_output_scans": recipe.blocked_scan,
+                            "output_scan_block_rows": getattr(
+                                recipe, "scan_rows", None
+                            ),
+                            "output_scan_block_cols": getattr(
+                                recipe, "scan_cols", None
+                            ),
+                            "broad_placement_tile_sites": getattr(
+                                recipe, "range_tile", None
+                            ),
+                            "routing_count_scope": "sigma-only counts above; device route additionally keeps <=2-site clipped axis supports native",
+                            "layout_policy": (
+                                "device-validated broad width/spatial buckets with tiny clipped-support native guard"
+                                if getattr(recipe, "range_tile", None)
+                                else "device-validated width buckets with tiny clipped-support native guard"
+                            ),
+                        }
+                    )
                 if recipe.reuse_layout:
                     states = model.product_site.__dict__.get("_algorithm_states", [])
                     caches = [
@@ -584,6 +615,10 @@ def measure(args, run):
                             "missing or ambiguous persistent B-spline placement"
                         )
                     calls, rebuilds = caches[0]["stats"].cpu().tolist()
+                    if recipe.strategy == "matrix_range":
+                        native = int(caches[0]["count"].item())
+                        hybrid_routing["final_device_native_atoms"] = native
+                        hybrid_routing["final_device_range_atoms"] = case.atoms - native
                     hybrid_routing.update(
                         {
                             "placement_calls": calls,
@@ -703,7 +738,8 @@ def measure(args, run):
             )
 
             names = executor.diagnostic_components(
-                run.entry(args.plan_id).plan.recipe.strategy
+                run.entry(args.plan_id).plan.recipe.strategy,
+                getattr(run.entry(args.plan_id).plan.recipe, "range_planes", 3),
             )
             backend_events = {
                 name: [

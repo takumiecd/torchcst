@@ -11,6 +11,11 @@ from torchcst import CSTLinear, CSTOptimizer
 from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
     BSplineAlgorithm,
     BSplineParallelAlgorithm,
+    BSplineRangeAlgorithm,
+    BSplineRangeBlockedAlgorithm,
+    BSplineRangeFusedAlgorithm,
+    BSplineRangeReuseAlgorithm,
+    BSplineRangeSpatialAlgorithm,
     BSplineSplitAlgorithm,
     BSplineStreamingAlgorithm,
     BSplineStreamingMemoryAlgorithm,
@@ -19,6 +24,11 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
 )
 from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineParallelRecipe,
+    BSplineRangeBlockedRecipe,
+    BSplineRangeFusedRecipe,
+    BSplineRangeRecipe,
+    BSplineRangeReuseRecipe,
+    BSplineRangeSpatialRecipe,
     BSplineRecipe,
     BSplineSplitRecipe,
     BSplineStreamingMemoryRecipe,
@@ -48,6 +58,17 @@ def case(n=64, a=17):
 def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     from dataclasses import replace
 
+    spatial = strategy == "matrix_range_spatial"
+    blocked = strategy == "matrix_range_blocked"
+    reuse = strategy == "matrix_range_reuse"
+    fused = strategy in (
+        "matrix_range_fused",
+        "matrix_range_reuse",
+        "matrix_range_spatial",
+        "matrix_range_blocked",
+    )
+    if fused:
+        strategy = "matrix_range"
     c = case(n, a)
     op = bs.fixture_operator(c)
     kernel = replace(
@@ -55,6 +76,11 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     )
     registry = Registry()
     registry.register(BSplineAlgorithm())
+    registry.register(BSplineRangeAlgorithm())
+    registry.register(BSplineRangeFusedAlgorithm())
+    registry.register(BSplineRangeSpatialAlgorithm())
+    registry.register(BSplineRangeBlockedAlgorithm())
+    registry.register(BSplineRangeReuseAlgorithm())
     registry.register(BSplineTuningAlgorithm())
     registry.register(BSplineParallelAlgorithm())
     registry.register(BSplineSplitAlgorithm())
@@ -72,7 +98,17 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     tuned = bool(recipe_options) or strategy == "matrix_separable"
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v6"
+        "v11"
+        if spatial
+        else "v10"
+        if blocked
+        else "v9"
+        if reuse
+        else "v8"
+        if fused
+        else "v7"
+        if strategy == "matrix_range"
+        else "v6"
         if strategy == "sigma_stream_memory"
         else "v5"
         if strategy == "sigma_stream"
@@ -83,7 +119,17 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         else "v2"
         if tuned
         else "v1",
-        BSplineStreamingMemoryRecipe(**recipe_options)
+        BSplineRangeSpatialRecipe(**recipe_options)
+        if spatial
+        else BSplineRangeBlockedRecipe(**recipe_options)
+        if blocked
+        else BSplineRangeReuseRecipe(**recipe_options)
+        if reuse
+        else BSplineRangeFusedRecipe(**recipe_options)
+        if fused
+        else BSplineRangeRecipe(**recipe_options)
+        if strategy == "matrix_range"
+        else BSplineStreamingMemoryRecipe(**recipe_options)
         if strategy == "sigma_stream_memory"
         else BSplineStreamingRecipe(**recipe_options)
         if strategy == "sigma_stream"
@@ -109,6 +155,11 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
 def test_recipe_and_metadata_roundtrip():
     reg = Registry()
     reg.register(BSplineAlgorithm())
+    reg.register(BSplineRangeAlgorithm())
+    reg.register(BSplineRangeFusedAlgorithm())
+    reg.register(BSplineRangeSpatialAlgorithm())
+    reg.register(BSplineRangeBlockedAlgorithm())
+    reg.register(BSplineRangeReuseAlgorithm())
     reg.register(BSplineTuningAlgorithm())
     reg.register(BSplineParallelAlgorithm())
     reg.register(BSplineSplitAlgorithm())
@@ -146,6 +197,21 @@ def test_recipe_and_metadata_roundtrip():
     )
     assert reg.loads_plan(reg.dumps_plan(memory)) == memory
     assert len(reg.dump_plan(memory)["recipe"]) == 16
+    range_plan = ExecutionPlan(
+        "research_cuda_quadratic_bspline", "v7", BSplineRangeRecipe()
+    )
+    assert reg.loads_plan(reg.dumps_plan(range_plan)) == range_plan
+    fused_plan = ExecutionPlan(
+        "research_cuda_quadratic_bspline", "v8", BSplineRangeFusedRecipe()
+    )
+    assert reg.loads_plan(reg.dumps_plan(fused_plan)) == fused_plan
+    for planes in (1, 9):
+        with pytest.raises(ValueError, match="require range_planes=3"):
+            BSplineRangeFusedRecipe(range_planes=planes)
+    for field in ("range_planes", "range_atoms", "range_warps"):
+        for invalid in (0, True, None, "3"):
+            with pytest.raises(ValueError):
+                BSplineRangeRecipe(**{field: invalid})
     for invalid in (0, 1, None, "false"):
         with pytest.raises(ValueError):
             BSplineStreamingMemoryRecipe(save_w=invalid)
@@ -217,6 +283,11 @@ def test_live_width_all_gradients(strategy, n, floor):
         "sigma_split",
         "sigma_stream",
         "sigma_stream_memory",
+        "matrix_range",
+        "matrix_range_fused",
+        "matrix_range_reuse",
+        "matrix_range_spatial",
+        "matrix_range_blocked",
     ],
 )
 def test_edges_empty_zero_amplitude_and_saved_geometry(strategy):
@@ -254,6 +325,16 @@ def test_edges_empty_zero_amplitude_and_saved_geometry(strategy):
         ("matrix_support_grouped", {"matrix_sites": 4, "matrix_warps": 1}),
         ("sigma_split", {"sigma_cutoff": 0.5}),
         ("sigma_stream", {"sigma_cutoff": 0.5}),
+        ("matrix_range", {"sigma_cutoff": 0.5}),
+        ("matrix_range", {"save_w": False}),
+        ("matrix_range_fused", {}),
+        ("matrix_range_reuse", {}),
+        ("matrix_range_spatial", {}),
+        ("matrix_range_spatial", {"save_w": False}),
+        ("matrix_range_blocked", {}),
+        ("matrix_range_blocked", {"save_w": False}),
+        ("matrix_range_reuse", {"save_w": False}),
+        ("matrix_range_fused", {"save_w": False}),
         ("sigma_stream_memory", {"sigma_cutoff": 0.5}),
         ("sigma_stream_memory", {"sigma_cutoff": 0.01}),
         ("sigma_stream_memory", {"sigma_cutoff": 100.0}),
@@ -355,6 +436,11 @@ def test_live_graph_optimizer_state(strategy, options):
         "sigma_split",
         "sigma_stream",
         "sigma_stream_memory",
+        "matrix_range",
+        "matrix_range_fused",
+        "matrix_range_reuse",
+        "matrix_range_spatial",
+        "matrix_range_blocked",
     ],
 )
 def test_switching_support_size_and_coordinate_buffer_rejection(strategy):
@@ -405,6 +491,11 @@ def test_matrix_full_atom_gradient_gate(n, floor):
         "sigma_split",
         "sigma_stream",
         "sigma_stream_memory",
+        "matrix_range",
+        "matrix_range_fused",
+        "matrix_range_reuse",
+        "matrix_range_spatial",
+        "matrix_range_blocked",
     ],
 )
 def test_tiny_single_axis_support_below_product_floor(strategy):
@@ -432,6 +523,11 @@ def test_tiny_single_axis_support_below_product_floor(strategy):
         "sigma_split",
         "sigma_stream",
         "sigma_stream_memory",
+        "matrix_range",
+        "matrix_range_fused",
+        "matrix_range_reuse",
+        "matrix_range_spatial",
+        "matrix_range_blocked",
     ],
 )
 def test_rectangular_grid_distinct_spacing_and_origin(strategy):
@@ -440,6 +536,11 @@ def test_rectangular_grid_distinct_spacing_and_origin(strategy):
     op = bs.fixture_operator(case())
     reg = Registry()
     reg.register(BSplineAlgorithm())
+    reg.register(BSplineRangeAlgorithm())
+    reg.register(BSplineRangeFusedAlgorithm())
+    reg.register(BSplineRangeSpatialAlgorithm())
+    reg.register(BSplineRangeBlockedAlgorithm())
+    reg.register(BSplineRangeReuseAlgorithm())
     reg.register(BSplineParallelAlgorithm())
     reg.register(BSplineSplitAlgorithm())
     reg.register(BSplineStreamingAlgorithm())
@@ -447,7 +548,17 @@ def test_rectangular_grid_distinct_spacing_and_origin(strategy):
     parallel = strategy in ("matrix_flat", "hybrid_grouped", "matrix_support_grouped")
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v6"
+        "v11"
+        if strategy == "matrix_range_spatial"
+        else "v10"
+        if strategy == "matrix_range_blocked"
+        else "v9"
+        if strategy == "matrix_range_reuse"
+        else "v8"
+        if strategy == "matrix_range_fused"
+        else "v7"
+        if strategy == "matrix_range"
+        else "v6"
         if strategy == "sigma_stream_memory"
         else "v5"
         if strategy == "sigma_stream"
@@ -456,7 +567,17 @@ def test_rectangular_grid_distinct_spacing_and_origin(strategy):
         else "v3"
         if parallel
         else "v1",
-        BSplineStreamingMemoryRecipe()
+        BSplineRangeSpatialRecipe()
+        if strategy == "matrix_range_spatial"
+        else BSplineRangeBlockedRecipe()
+        if strategy == "matrix_range_blocked"
+        else BSplineRangeReuseRecipe()
+        if strategy == "matrix_range_reuse"
+        else BSplineRangeFusedRecipe()
+        if strategy == "matrix_range_fused"
+        else BSplineRangeRecipe()
+        if strategy == "matrix_range"
+        else BSplineStreamingMemoryRecipe()
         if strategy == "sigma_stream_memory"
         else BSplineStreamingRecipe()
         if strategy == "sigma_stream"
@@ -795,7 +916,18 @@ def test_stream_placement_reuse_and_graph_invalidation():
 
 
 @GPU
-@pytest.mark.parametrize("strategy", ["sigma_stream", "sigma_stream_memory"])
+@pytest.mark.parametrize(
+    "strategy",
+    [
+        "sigma_stream",
+        "sigma_stream_memory",
+        "matrix_range",
+        "matrix_range_fused",
+        "matrix_range_reuse",
+        "matrix_range_spatial",
+        "matrix_range_blocked",
+    ],
+)
 def test_stream_saved_backward_survives_later_forward_relayout(strategy):
     layer = model(strategy)
     x = torch.randn(3, 64, device="cuda", requires_grad=True)
@@ -827,7 +959,18 @@ def test_stream_batch_tile_and_single_empty_axis(batch, atoms_per_tile):
 
 @GPU
 @pytest.mark.parametrize("input_grad", [False, True])
-@pytest.mark.parametrize("strategy", ["sigma_stream", "sigma_stream_memory"])
+@pytest.mark.parametrize(
+    "strategy",
+    [
+        "sigma_stream",
+        "sigma_stream_memory",
+        "matrix_range",
+        "matrix_range_fused",
+        "matrix_range_reuse",
+        "matrix_range_spatial",
+        "matrix_range_blocked",
+    ],
+)
 def test_stream_individual_gradient_requests(input_grad, strategy):
     layer = model(strategy)
     layer.atoms.p.requires_grad_(not input_grad)
@@ -844,7 +987,18 @@ def test_stream_individual_gradient_requests(input_grad, strategy):
 
 
 @GPU
-@pytest.mark.parametrize("strategy", ["sigma_stream", "sigma_stream_memory"])
+@pytest.mark.parametrize(
+    "strategy",
+    [
+        "sigma_stream",
+        "sigma_stream_memory",
+        "matrix_range",
+        "matrix_range_fused",
+        "matrix_range_reuse",
+        "matrix_range_spatial",
+        "matrix_range_blocked",
+    ],
+)
 def test_stream_model_reuses_placement_across_capture_and_eager(strategy):
     layer = model(strategy)
     x = torch.randn(3, 64, device="cuda", requires_grad=True)
@@ -864,3 +1018,396 @@ def test_stream_model_reuses_placement_across_capture_and_eager(strategy):
     gate(layer, x, dy)
     assert state.buffers["stream_layout"] is cache
     assert cache["stats"].tolist() == [calls + 5, rebuilds]
+
+
+@GPU
+@pytest.mark.parametrize("planes", [1, 3, 9])
+@pytest.mark.parametrize("n", [64, 1024])
+@pytest.mark.parametrize("floor", [1e-6, 1000.0])
+def test_range_live_width_all_gradients(planes, n, floor):
+    layer = model("matrix_range", n=n, a=33, floor=floor, range_planes=planes)
+    for step in range(3):
+        if step:
+            with torch.no_grad():
+                layer.atoms.p[:, :2].mul_(1.003)
+                layer.atoms.p[:, 2:].add_(0.0037)
+        x = torch.randn(3, n * 2, device="cuda")[:, ::2].requires_grad_()
+        gate(layer, x, torch.randn(3, n, device="cuda"))
+
+
+@GPU
+@pytest.mark.parametrize("save_w", [False, True])
+def test_range_rebuild_and_batch64(save_w):
+    layer = model("matrix_range", save_w=save_w)
+    x = torch.randn(64, 64, device="cuda", requires_grad=True)
+    gate(layer, x, torch.randn_like(x))
+
+
+@GPU
+@pytest.mark.parametrize("n", [64, 1024])
+@pytest.mark.parametrize("floor", [1e-6, 1000.0])
+def test_range_fused_live_all_gradients(n, floor):
+    layer = model("matrix_range_fused", n=n, a=33, floor=floor)
+    for step in range(3):
+        if step:
+            with torch.no_grad():
+                layer.atoms.p[:, :2].mul_(1.003)
+                layer.atoms.p[:, 2:].add_(0.0037)
+        x = torch.randn(3, n, device="cuda", requires_grad=True)
+        gate(layer, x, torch.randn_like(x))
+
+
+@GPU
+def test_range_knots_keep_fp64_geometry_at_ceil_boundaries():
+    import triton as tr
+    import triton.language as tl
+
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.range_kernels import (
+        _jumps,
+    )
+
+    @tr.jit
+    def read_cuts(Meta, Origin, Spacing, Cuts, A: tl.constexpr, AB: tl.constexpr):
+        a = tl.arange(0, AB)
+        cuts, _, _, _ = _jumps(Meta, Origin, Spacing, a, A, 128, 0, 0, True)
+        tl.store(Cuts + a[:, None] * 4 + tl.arange(0, 4)[None, :], cuts, a[:, None] < A)
+
+    a = 33
+    meta = torch.ones((a, 12), device="cuda", dtype=torch.float64)
+    origin = torch.tensor([0.0, 0.0], device="cuda", dtype=torch.float64)
+    spacing = torch.tensor([0.1, 0.1], device="cuda", dtype=torch.float64)
+    radius = torch.linspace(0.3, 9.0, a, device="cuda", dtype=torch.float64)
+    offsets = torch.tensor(
+        [-1e-8, 0.0, 1e-8], device="cuda", dtype=torch.float64
+    ).repeat(11)
+    meta[:, 1] = radius
+    meta[:, 2] = 3.7 - radius / 3 + offsets
+    meta[:, 9] = radius.reciprocal()
+    meta[:, 10] = spacing[0].reciprocal()
+    cuts = torch.empty((a, 4), device="cuda", dtype=torch.int32)
+    read_cuts[(1,)](
+        meta, origin, spacing, cuts, a, 64, num_warps=4, enable_fp_fusion=False
+    )
+    fractions = torch.tensor(
+        [-1.0, -1 / 3, 1 / 3, 1.0], device="cuda", dtype=torch.float64
+    )
+    expected = (
+        ((meta[:, 2, None] + radius[:, None] * fractions[None, :]) * meta[:, 10, None])
+        .ceil()
+        .clamp(0, 128)
+        .int()
+    )
+    torch.testing.assert_close(cuts, expected, rtol=0, atol=0)
+
+
+@GPU
+@pytest.mark.parametrize(
+    "strategy",
+    [
+        "matrix_range",
+        "matrix_range_fused",
+        "matrix_range_reuse",
+        "matrix_range_spatial",
+        "matrix_range_blocked",
+    ],
+)
+@pytest.mark.parametrize("epsilon", [1e-7, 1e-4, 0.01])
+def test_range_single_broad_atom_clipped_to_one_site(strategy, epsilon):
+    import math
+
+    layer = model(strategy, n=1024, a=1, sigma_cutoff=0.2)
+    radius = math.sqrt(1 + 3 * math.log(0.4 / 0.1) / math.log(128.0))
+    with torch.no_grad():
+        layer.atoms.p[0, 0] = 0.6 * radius
+        layer.atoms.p[0, 1] = 0.8 * radius
+        sigma = bs.decode(layer.kernel, layer.atoms.p)[0, 1].rsqrt()
+        layer.atoms.p[0, 2] = -math.sqrt(6) * sigma + epsilon
+        layer.atoms.p[0, 3] = 51.15
+    x = torch.randn(3, 1024, device="cuda", requires_grad=True)
+    gate(layer, x, torch.randn_like(x))
+    state = layer.__dict__["_algorithm_states"][0]
+    assert state.buffers["stream_layout"]["count"].item() == 1
+
+
+@GPU
+@pytest.mark.parametrize(
+    "strategy",
+    [
+        "matrix_range_fused",
+        "matrix_range_reuse",
+        "matrix_range_blocked",
+        "matrix_range_spatial",
+    ],
+)
+def test_range_graph_invalidates_guard_on_center_only_moves(strategy):
+    import math
+
+    from benchmarks.cuda.linear.check_normalized import check
+
+    layer = model(strategy, n=1024, a=1, sigma_cutoff=0.2)
+    radius = math.sqrt(1 + 3 * math.log(0.4 / 0.1) / math.log(128.0))
+    with torch.no_grad():
+        layer.atoms.p[0, 0] = 0.6 * radius
+        layer.atoms.p[0, 1] = 0.8 * radius
+        layer.atoms.p[0, 2:] = 51.15
+        sigma = bs.decode(layer.kernel, layer.atoms.p)[0, 1].rsqrt()
+    outside = float(-math.sqrt(6) * sigma + 1e-4)
+    x = torch.randn(3, 1024, device="cuda", requires_grad=True)
+    dy = torch.randn_like(x)
+    gate(layer, x, dy)
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        y = layer(x)
+        dx, dp = torch.autograd.grad(y, (x, layer.atoms.p), dy)
+    for center, native in ((outside, 1), (51.15, 0), (outside, 1), (0.0, 0)):
+        with torch.no_grad():
+            layer.atoms.p[0, 2] = center
+        graph.replay()
+        rx = x.detach().double().requires_grad_()
+        rp = layer.atoms.p.detach().double().requires_grad_()
+        ref = bs.oracle(copy.deepcopy(layer.kernel).double(), layer.chart, rp, rx)
+        rdx, rdp = torch.autograd.grad(ref, (rx, rp), dy.double())
+        for actual, expected in zip((y, dx, dp), (ref, rdx, rdp)):
+            error = check(actual, expected, 4e-4)
+            assert error["max"] < 4e-4 and error["rel_l2"] < 4e-4
+        cache = layer.__dict__["_algorithm_states"][0].buffers["stream_layout"]
+        assert cache["count"].item() == native
+
+
+def test_range_reuse_recipe_roundtrip():
+    reg = Registry()
+    reg.register(BSplineRangeReuseAlgorithm())
+    plan = ExecutionPlan(
+        "research_cuda_quadratic_bspline", "v9", BSplineRangeReuseRecipe()
+    )
+    assert reg.loads_plan(reg.dumps_plan(plan)) == plan
+    assert plan.recipe.reuse_scratch and plan.recipe.fused_scan
+
+
+@GPU
+@pytest.mark.parametrize("sizes", [(64, 128), (127, 93), (1024, 1024)])
+def test_range_scan_first_plane_alias_matches_separate_storage(sizes):
+    import triton as tr
+
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        range_kernels as rk,
+    )
+
+    no, ni = sizes
+    delta = torch.randn((3, no, ni), device="cuda", dtype=torch.float64)
+    original = delta.clone()
+    separate = torch.empty((no, ni), device="cuda", dtype=torch.float64)
+    args = (*sizes, tr.next_power_of_2(ni))
+    rk.input_scan[(no,)](original, separate, *args, num_warps=4, enable_fp_fusion=False)
+    rk.input_scan[(no,)](delta, delta[0], *args, num_warps=4, enable_fp_fusion=False)
+    torch.testing.assert_close(delta[0], separate, rtol=0, atol=0)
+    bank = torch.empty_like(delta)
+    alias = bank.clone()
+    alias[0].copy_(separate)
+    rk.adjoint_input_scan[(no,)](
+        separate, bank, *args, num_warps=4, enable_fp_fusion=False
+    )
+    rk.adjoint_input_scan[(no,)](
+        alias[0], alias, *args, num_warps=4, enable_fp_fusion=False
+    )
+    torch.testing.assert_close(alias, bank, rtol=0, atol=0)
+
+
+@GPU
+@pytest.mark.parametrize("n", [64, 1024])
+@pytest.mark.parametrize("floor", [1e-6, 1000.0])
+@pytest.mark.parametrize(
+    "strategy", ["matrix_range_reuse", "matrix_range_blocked", "matrix_range_spatial"]
+)
+@pytest.mark.parametrize("warps", [1, 4])
+def test_range_reuse_live_width_all_gradients(n, floor, strategy, warps):
+    layer = model(strategy, n=n, a=33, floor=floor, range_warps=warps)
+    for step in range(3):
+        if step:
+            with torch.no_grad():
+                layer.atoms.p[:, :2].mul_(1.003)
+                layer.atoms.p[:, 2:].add_(0.0037)
+        x = torch.randn(3, n * 2, device="cuda")[:, ::2].requires_grad_()
+        gate(layer, x, torch.randn(3, n, device="cuda"))
+
+
+def test_range_blocked_recipe_roundtrip_and_bounds():
+    reg = Registry()
+    reg.register(BSplineRangeBlockedAlgorithm())
+    plan = ExecutionPlan(
+        "research_cuda_quadratic_bspline", "v10", BSplineRangeBlockedRecipe()
+    )
+    assert reg.loads_plan(reg.dumps_plan(plan)) == plan
+    for key, value in (("scan_rows", True), ("scan_rows", 32), ("scan_cols", 64)):
+        with pytest.raises(ValueError):
+            BSplineRangeBlockedRecipe(**{key: value})
+
+
+@GPU
+@pytest.mark.parametrize("sizes", [(64, 128), (127, 93), (1024, 1024)])
+@pytest.mark.parametrize("br,bc", [(64, 32), (128, 32), (128, 16)])
+def test_range_blocked_scan_and_adjoint_match_independent_sum(sizes, br, bc):
+    import triton as tr
+
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        range_kernels as rk,
+    )
+
+    no, ni = sizes
+    source = torch.randn(sizes, device="cuda", dtype=torch.float64)
+    for power in (0, 1, 2):
+        z = torch.arange(no, device="cuda", dtype=torch.float64) * (2.0 / (no - 1)) - 1
+        basis = z.pow(power)[:, None]
+        for adjoint in (False, True):
+            temporary = source.clone()
+            carry = torch.empty(
+                (tr.cdiv(no, br), ni), device="cuda", dtype=torch.float64
+            )
+            rk.output_scan_blocks[(tr.cdiv(no, br), tr.cdiv(ni, bc))](
+                temporary,
+                temporary,
+                carry,
+                *sizes,
+                power,
+                br,
+                bc,
+                adjoint,
+                num_warps=4,
+                enable_fp_fusion=False,
+            )
+            rk.output_scan_carries[(tr.cdiv(ni, 32),)](
+                carry,
+                ni,
+                tr.cdiv(no, br),
+                tr.next_power_of_2(tr.cdiv(no, br)),
+                32,
+                adjoint,
+                num_warps=4,
+                enable_fp_fusion=False,
+            )
+            if adjoint:
+                bank = torch.empty((3, no, ni), device="cuda", dtype=torch.float64)
+                rk.adjoint_input_scan_carry[(no,)](
+                    temporary,
+                    carry,
+                    bank,
+                    *sizes,
+                    tr.next_power_of_2(ni),
+                    br,
+                    num_warps=4,
+                    enable_fp_fusion=False,
+                )
+                output_sum = (source * basis).flip(0).cumsum(0).flip(0)
+                zi = (
+                    torch.arange(ni, device="cuda", dtype=torch.float64)
+                    * (2.0 / (ni - 1))
+                    - 1
+                )
+                for pi in (0, 1, 2):
+                    expected = (
+                        (output_sum * zi.pow(pi)[None, :]).flip(1).cumsum(1).flip(1)
+                    )
+                    torch.testing.assert_close(
+                        bank[pi], expected, rtol=1e-10, atol=1e-10
+                    )
+            else:
+                result = torch.zeros_like(source)
+                rk.output_scan_restore[(tr.cdiv(no * ni, 256),)](
+                    temporary,
+                    carry,
+                    result,
+                    *sizes,
+                    power,
+                    br,
+                    256,
+                    num_warps=4,
+                    enable_fp_fusion=False,
+                )
+                torch.testing.assert_close(
+                    result, source.cumsum(0) * basis, rtol=1e-11, atol=1e-11
+                )
+
+
+def test_range_spatial_recipe_roundtrip_and_bounds():
+    reg = Registry()
+    reg.register(BSplineRangeSpatialAlgorithm())
+    plan = ExecutionPlan(
+        "research_cuda_quadratic_bspline", "v11", BSplineRangeSpatialRecipe()
+    )
+    assert reg.loads_plan(reg.dumps_plan(plan)) == plan
+    for value in (True, 0, 8, 256):
+        with pytest.raises(ValueError):
+            BSplineRangeSpatialRecipe(range_tile=value)
+
+
+@GPU
+def test_range_spatial_center_move_rebuilds_placement_without_width_change():
+    layer = model("matrix_range_spatial", n=128, a=1, sigma_cutoff=0.01, range_tile=16)
+    with torch.no_grad():
+        layer.atoms.p[0, 2:] = 6.0
+    x = torch.randn(3, 128, device="cuda", requires_grad=True)
+    dy = torch.randn_like(x)
+    gate(layer, x, dy)
+    cache = layer.__dict__["_algorithm_states"][0].buffers["stream_layout"]
+    rebuilds = cache["stats"][1].item()
+    key = cache["keys"].clone()
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        y = layer(x)
+        dx, dp = torch.autograd.grad(y, (x, layer.atoms.p), dy)
+    with torch.no_grad():
+        layer.atoms.p[0, 2:].add_(2.0)
+    graph.replay()
+    assert cache["stats"][1].item() == rebuilds + 1
+    assert not torch.equal(cache["keys"], key)
+    rx = x.detach().double().requires_grad_()
+    rp = layer.atoms.p.detach().double().requires_grad_()
+    ref = bs.oracle(copy.deepcopy(layer.kernel).double(), layer.chart, rp, rx)
+    rdx, rdp = torch.autograd.grad(ref, (rx, rp), dy.double())
+    from benchmarks.cuda.linear.check_normalized import check
+
+    for actual, expected in zip((y, dx, dp), (ref, rdx, rdp)):
+        error = check(actual, expected, 4e-4)
+        assert error["max"] < 4e-4 and error["rel_l2"] < 4e-4
+
+
+@GPU
+def test_selected_range_one_warp_graph_crosses_live_sigma_cutoff():
+    import math
+
+    from benchmarks.cuda.linear.check_normalized import check
+
+    layer = model("matrix_range_reuse", n=1024, a=33, sigma_cutoff=0.2, range_warps=1)
+    sigma = torch.tensor([0.1, 0.19, 0.21, 1.6], device="cuda", dtype=torch.float64)
+    ids = torch.arange(33, device="cuda")
+    with torch.no_grad():
+        layer.atoms.p[:, 2:] = 51.15
+
+    def set_widths(step):
+        widths = sigma[(ids + step) % 4]
+        radius = (1 + 3 * (widths / 0.1).log() / math.log(128.0)).sqrt()
+        with torch.no_grad():
+            layer.atoms.p[:, 0] = (0.6 * radius).float()
+            layer.atoms.p[:, 1] = (0.8 * radius).float()
+        return int((widths <= 0.2).sum())
+
+    set_widths(0)
+    x = torch.randn(3, 1024, device="cuda", requires_grad=True)
+    dy = torch.randn_like(x)
+    gate(layer, x, dy)
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        y = layer(x)
+        dx, dp = torch.autograd.grad(y, (x, layer.atoms.p), dy)
+    for step in range(1, 5):
+        native = set_widths(step)
+        graph.replay()
+        rx = x.detach().double().requires_grad_()
+        rp = layer.atoms.p.detach().double().requires_grad_()
+        ref = bs.oracle(copy.deepcopy(layer.kernel).double(), layer.chart, rp, rx)
+        rdx, rdp = torch.autograd.grad(ref, (rx, rp), dy.double())
+        for actual, expected in zip((y, dx, dp), (ref, rdx, rdp)):
+            error = check(actual, expected, 4e-4)
+            assert error["max"] < 4e-4 and error["rel_l2"] < 4e-4
+        cache = layer.__dict__["_algorithm_states"][0].buffers["stream_layout"]
+        assert cache["count"].item() == native

@@ -18,6 +18,11 @@ from torchcst.operators.execution import (
 
 from .recipe import (
     BSplineParallelRecipe,
+    BSplineRangeBlockedRecipe,
+    BSplineRangeFusedRecipe,
+    BSplineRangeRecipe,
+    BSplineRangeReuseRecipe,
+    BSplineRangeSpatialRecipe,
     BSplineRecipe,
     BSplineSplitRecipe,
     BSplineStreamingMemoryRecipe,
@@ -153,6 +158,18 @@ class BSplineAlgorithm(Algorithm[BSplineRecipe]):
                     state.buffers["moments"],
                     state.buffers,
                 )
+            if state.recipe.strategy == "matrix_range":
+                from .range_executor import apply as range_apply
+
+                return range_apply(
+                    x,
+                    p,
+                    site.kernel,
+                    site.chart,
+                    state.recipe,
+                    state.buffers["moments"],
+                    state.buffers,
+                )
             return apply(
                 x,
                 p,
@@ -203,3 +220,33 @@ class BSplineStreamingAlgorithm(BSplineAlgorithm):
 class BSplineStreamingMemoryAlgorithm(BSplineStreamingAlgorithm):
     revision: str = "v6"
     recipe_type: type = BSplineStreamingMemoryRecipe
+
+
+@dataclass(frozen=True)
+class BSplineRangeAlgorithm(BSplineStreamingAlgorithm):
+    revision: str = "v7"
+    recipe_type: type = BSplineRangeRecipe
+
+
+@dataclass(frozen=True)
+class BSplineRangeFusedAlgorithm(BSplineStreamingAlgorithm):
+    revision: str = "v8"
+    recipe_type: type = BSplineRangeFusedRecipe
+
+
+@dataclass(frozen=True)
+class BSplineRangeReuseAlgorithm(BSplineStreamingAlgorithm):
+    revision: str = "v9"
+    recipe_type: type = BSplineRangeReuseRecipe
+
+
+@dataclass(frozen=True)
+class BSplineRangeBlockedAlgorithm(BSplineStreamingAlgorithm):
+    revision: str = "v10"
+    recipe_type: type = BSplineRangeBlockedRecipe
+
+
+@dataclass(frozen=True)
+class BSplineRangeSpatialAlgorithm(BSplineStreamingAlgorithm):
+    revision: str = "v11"
+    recipe_type: type = BSplineRangeSpatialRecipe

@@ -24,6 +24,8 @@ def support_keys(
     Dirty=None,
     TRACK: tl.constexpr = False,
     WIDTH_ONLY: tl.constexpr = False,
+    TINY_NATIVE: tl.constexpr = False,
+    RANGE_TILE: tl.constexpr = 0,
 ):
     a = tl.program_id(0) * 128 + tl.arange(0, 128)
     radius = tl.load(Meta + a * 12 + 1, a < A, 1)
@@ -55,7 +57,21 @@ def support_keys(
             else (tr.cdiv(NO, BS) + 1) * (tr.cdiv(NI, BS) + 1)
         )
         if TRACK or WIDTH_ONLY:
-            key = tl.where(radius <= 2.449489742783178 * CUTOFF, key, offset)
+            native = radius <= 2.449489742783178 * CUTOFF
+            if TINY_NATIVE:
+                native |= tl.minimum(hi - lo, ri - li) <= 2
+            broad_key = tl.full((128,), offset, tl.int32)
+            if RANGE_TILE:
+                # Quantized keys change execution order only, never widths/support.
+                width = tl.floor(tl.log2((tl.maximum(po, pi) + 1).to(tl.float32))).to(
+                    tl.int32
+                )
+                tile_o = tl.minimum(lo // RANGE_TILE, tr.cdiv(NO, RANGE_TILE) - 1)
+                tile_i = tl.minimum(li // RANGE_TILE, tr.cdiv(NI, RANGE_TILE) - 1)
+                broad_key += (width * tr.cdiv(NO, RANGE_TILE) + tile_o) * tr.cdiv(
+                    NI, RANGE_TILE
+                ) + tile_i
+            key = tl.where(native, key, broad_key)
         else:
             key += tl.where(radius <= 2.449489742783178 * CUTOFF, 0, offset)
     if TRACK:
