@@ -262,3 +262,9 @@ capture/replay込みのpeakを比較している。
 では、v5でGPU検証付きの配置再利用とregister内H/G、v6でW再構築とW/dW領域再利用を比較した。
 形と厳密L2を維持したmixedでの速度/確保量削減、smallでの負の結果、閾値依存、
 予約量の未達、独立run、全勾配精度を分けて記録している。
+
+[Wの係数区間集約とその随伴](research-history/cuda-linear/quadratic-bspline-range-20261018.ja.md)
+では、同じB-splineをbatch非依存でWへ集約する別研究branchを検証した。
+B64 mixedで約42%短縮した一方、B32 mixedは改善せず、smallは遅く、総peak memoryも増えた。
+FP64境界と小支持の安定性guardを含む全勾配gate、独立repeat、負の結果を記録し、
+既定採用せずPR110に分離している。

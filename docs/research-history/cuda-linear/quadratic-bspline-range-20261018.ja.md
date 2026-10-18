@@ -1,6 +1,11 @@
 # B-splineのW区間集約と累積和
 
-研究候補。profile・Polar更新則・task幅stop-gradient・全観測siteの離散L2は変更しない。
+B64のmixedで7.386→4.310 ms（41.65%短縮）を独立2 jobで再現した。
+B32 mixedは改善せず、smallは遅い。メモリはB64で54.194/114→86.840/188 MiB
+（allocated/reserved）へ増え、Dense以下のメモリ目標を満たさないため既定採用しない。
+形・学習規約を保った大batch用の研究候補として、数式・負の結果とともに保留する。
+
+profile・Polar更新則・task幅stop-gradient・全観測siteの離散L2は変更しない。
 本番dispatcherへの採用とは分ける。Hをbatchごとに生成する現行版に対し、batch非依存の
 W組立と、その線形随伴による全atom VJPを比較する。
 
@@ -35,7 +40,7 @@ W組立と、その線形随伴による全atom VJPを比較する。
 \]
 
 `P`はinclusive prefix sum。添字がNの切替は保存不要。係数面はFP64で、Wだけ
-最後にFP32へ丸める。小さいsigmaの寄与は従来の支持別grouped W構築を併用する。
+最後にFP32へ丸める。小さいsigma、または片軸のclipped supportが2点以下の寄与は従来の支持別grouped W構築を併用する。
 係数面は1/3/9枚ずつ処理して、一時メモリとlaunch/reductionの交換を調べる。
 
 `E=dY`、`G=dW=E^T X` と置く。逆向きのinclusive累積和 `S=P^T` を使い、
@@ -75,8 +80,8 @@ raw CPU probeとGPU driver/source/resultは ignored `output/bspline-range-202610
 
 ## 実機検証
 
-未完了。独立FP64 Y/dX/全atom勾配、可変sigma・Graph/optimizer・retained backwardを
-確認してから、同条件の未計装完全stepとcapture込みallocated/reserved peakを比較する。
+独立FP64 Y/dX/全atom勾配、可変sigma・Graph/optimizer・retained backwardを通過。
+最終runtimeと独立repeatの完全step・capture込みallocated/reserved peakは末尾に記録した。
 
 ## 係数合成とscanの融合候補
 
@@ -94,7 +99,7 @@ v7は両軸のprefixを9係数面すべてに適用する。v8ではtensor積の
 配列の一時容量は3係数面と1中間面。FP64の合成用WとFP32のWも別に存在する。
 Triton scanの性能、ピークメモリと丸め誤差はGPUで別途比較する。
 
-## v7単純版の実測
+## v7単純版の実測（修正前の探索結果）
 
 NVIDIA L4、1024×1024、A52428、B32、spacing .1、seed41、warmup5/21 samples。
 AdamWとfused Polar更新、live sigma・構築・厳密L2を含む未計装Graph完全step。
@@ -133,14 +138,14 @@ v7実装の初期2 jobはTritonのconstexpr再代入とscalar/vector条件式の
 `l4job-52a0fe25c3304a25b5159a1bed1e0876`はdriver正常終了・全result archiveの取得と
 SHA256照合まで完了したが、取得後のremote cleanupがWebSocket切断で失敗した。
 GPUはserver照合で停止済み。データは保全するが、採用判断用の独立run数には数えず、
-以後のclean jobで融合版の精度・性能を再確認する。
+以後のclean jobで融合版の精度・性能を再確認した。
 
 CPU回帰1968 passed（CUDAのskipはGPU確認ではない）。wheelとsdistをbuildし、
 全338 runtime fileがcheckoutとbyte一致することを確認した。
 最初のno-isolation buildはローカル環境にhatchlingがなく失敗したため、標準の
 隔離build環境で再実行し成功。ローカル環境の依存を変更していない。
 
-B32 mixed/switchの閾値比較とB64 mixedを新しいGPUで確認する。
+B32 mixed/switchの閾値比較とB64 mixedを新しいGPUで確認した。
 full-shape oracleは各候補・各case・3つのlive状態でY/dX/全source Parameter勾配の
 maxabs/relative L2をともに4e-4未満とする。基準の緩和や幅の固定化はしない。
 
@@ -161,3 +166,124 @@ clipped supportが2 site以下** のatomを既存のnative W/VJPへ戻す。
 旧streamの分類は変更しない。profileやfloorを変える救済ではない。
 1 atomだけを使う小真値のY/dX/全atom勾配gateと、中心だけを動かすGraph replayの
 route反転テストを追加した。通常のbenchmarkにも、このguardの構築費を含める。
+
+## 最終版の比較と判断
+
+最終runtimeは `ee5343502fd91df4482c7f7f5144184ced985ac6`。
+FP64 knotと2-site guardを含み、以下の2 job・checkout・wheel/sdistの全338 runtime file、
+runner/manifest/oracle/test/catalogの8 fileがbyte一致している。
+同じL4上の独立job（各planは新規process）であり、別GPUでの再現とは数えない。
+
+NVIDIA L4 / driver580.82.07 / Python3.13.15 / Torch2.11.0+cu130 /
+CUDA13.0 / Triton3.6.0。N1024×1024、A52428、spacing .1、seed41、warmup5、
+21 samples、FP32・TF32なし、AdamW lr1e-4 + fused Polar更新。
+Aは行列site数の約5%であり、Parameter数の5%ではない。
+Denseは通常の学習可能FP32行列。CSTと同じParameterizationではなく、同じ入力・target・
+batch・precision・optimizer条件の性能対照である。
+
+初期sigmaはsmall=.1/.14/.18、mixed=.1/.4/1.6/6.4/12、
+switch=.1/.4998/.5002/.501/1.6を各等比率でshuffle。boundsは.1..12.8。
+旧最速はsmallでmatrix-support4a16、mixedでstream-reuse8（cutoff.5）、
+switchでstream-reuse8c02。新方式はrange-fused-c02（cutoff.2）。
+
+| 条件 | 旧最速 ms | 新方式 ms | Dense ms | 旧比 |
+|---|---:|---:|---:|---|
+| B32 mixed | 4.316159 | 4.319431 | .082487 | 改善なし |
+| B32 small | 1.205816 | 3.230222 | .082837 | 遅い |
+| B32 switch | 4.631252 | 4.329603 | .082995 | 6.51%短縮 |
+| B64 mixed | 7.386281 | 4.309852 | .104415 | 41.65%短縮 |
+
+独立repeatはB32 mixed=4.314593→4.326242（Dense .083255）、
+B32 switch=4.631833→4.323370（.082710）、B64 mixed=7.382172→4.307182（.104663）。
+B32 mixedは両方とも改善せず、switchは6.51–6.66%、B64は両方41.65%短縮。
+smallは最終runtimeの独立job1つ、他の3条件は2つ。21 samplesを21独立runとはしない。
+
+| 条件 | 旧最速 allocated / reserved MiB | 新方式 | Dense |
+|---|---:|---:|---:|
+| B32 mixed/switch | 51.688 / 116 | 86.590 / 186 | 49.002 / 106 |
+| B32 small | 50.231 / 114 | 86.590 / 186 | 49.002 / 106 |
+| B64 mixed | 54.194 / 114 | 86.840 / 188 | 49.502 / 106 |
+
+capture/replay込みの実測peakであり、process全体のGPU memoryではない。
+repeatでも該当条件のpeakは一致した。新方式はDenseを上回らないというメモリ目標を
+満たさず、既定採用しない。batch64の速度候補として研究branchに保留し、
+batch32 mixedおよびsmallを新方式へ置換しない。
+
+### 何が変わったか
+
+新方式の別計装Graphでは、B32 mixedのrange組立2.039 ms、range VJP1.725 ms。
+B64も2.044/1.724 msで、batchを倍にしてもこの部分の時間はほぼ一定だった。
+旧H版のstream forward/backwardはB32で1.041/1.972 ms、B64で2.054/3.956 ms。
+W構築をbatch間で共有する効果は確認できたが、9係数面由来の全行列scanと随伴の
+固定費がB32の改善を相殺する。smallではrange atomが0でも1.044/.812 msを払う。
+
+新方式のprepare（L2込み）は.162 ms、guardを含む分類/配置は.032 ms、Meta pack .042 ms。
+これらのstageは別計装Graphであり、足して完全step時間の代用にしない。
+compiler reportでは選択したscan/組立/queryにspill/local load/storeを検出しなかったが、
+物理DRAM/cache/atomic counterによる原因の特定はしていない。
+
+選択した4条件とも52 call中1 rebuild、51 reuse（98.08%）。warmup/eager/replayを含む
+主測定全体のcounterであり、timed replayだけのreuse率ではない。
+W・sigma係数・normを使い回した割合ではなく、GPU上で検証した配置の再利用率である。
+全52428 atomのsigmaが測定前後で変化したことを両jobで確認し、every forwardのlive prepareと
+独立3状態oracle、forced Graph移動の単体テストで動的な数値・支持・配置を検証した。
+各atomのsigmaがtimed replayの一回ごとに必ず異なったとまでは主張しない。
+
+### 正しさとpackage
+
+312 tests passed（metadata1、actual GPU311）。その前にcritical 8件のpreflightも通過。
+2-site guard、中心だけの移動でのGraph route反転、ceil直近のFP64 cut index完全一致、
+空/単一/小/広い支持、floor1e-6/1000、矩形/異なるorigin/spacing、retained backward、
+個別gradient要求、live sigma、公開CSTOptimizerとのParameter/moments/step比較を含む。
+CPUは1968 passed / 3087 skipped / 18既存warnings。CUDA skipはGPU検証として数えない。
+
+全A・全shapeの独立FP64 oracleを候補/対照の各case・3つのlive状態で実行。
+同じ初期P/X/target hashを候補間・repeat間で確認した。最終新候補の両job全状態の最大誤差は：
+
+| Tensor | maxabs | relative L2 |
+|---|---:|---:|
+| Y | 1.788291e-5 | 1.196098e-6 |
+| dX | 1.903907e-5 | 1.254305e-6 |
+| 全source atom勾配 | 1.407709e-4 | 4.037001e-7 |
+
+全て同じ4e-4のmaxabs/relative L2 gateを維持した。数学の変更や近似の導入ではないが、
+加算順序は変わり、旧H版とbit一致するわけではない。全ての単体テストの誤差上限が
+この表の最大値以下であるとは主張しない。上表は性能caseの全shape oracleの範囲である。
+
+最終wheel SHA256 `19eebda7d5c48edbcc0a38213d970b2b1a779b055386afea5de3e1098f91e27f`、
+sdist `4dabcb15a9f2cdee0773a5f5cf6ac622b908a389f06630f9c238f1b3942c58ec`。
+両方とも全338 runtime fileが最終runtimeとbyte一致する。検証後の変更は研究記録のみ。
+
+### 最終証拠と再現
+
+| job | source archive SHA256 | result archive SHA256 |
+|---|---|---|
+| l4job-645610c8538d4fcfb57d50e219b5e8b5 | 41172936e748967d86739f5a8e5f52eb58be82fee95d28ffbdc14e8e839d7daf | 4cb683e1ec9901a587be14f781bef9567257bf7a517c7ed04c37c822845c8da5 |
+| l4job-82b8f225cd64406b8659f8a1a4b2860d | 67a2594d2bed7865f75148457309bbe1d56e70cd826ee509722c309fb574d93d | a70d7f17f8ced08de80faac58444fe82e5a0f30b42badd92e9a16a47f39729da |
+
+両archiveと全manifest fileを再hashし、returncode0・完成runner JSONの提出前検査を確認。
+通信後片付けが失敗した52a0 jobやqueued cancelを、この独立run数に含めない。
+raw evidence保全先はこのworktreeの `output/bspline-range-20261018/verified-jobs/`、
+元のpool job directoryも保持する。最終結果の初期条件hash/全精度/メモリ集約は
+`output/bspline-range-20261018/audit-final.json`、source byte proofとpackage proofも同所にある。
+
+最終runtimeをcheckoutしたGPU環境で、既存runnerを使う例：
+
+```bash
+python -m benchmarks.cuda.linear.run \
+  --plans benchmarks/cuda/linear/plans-quadratic-bspline.json \
+  --case benchmarks/cuda/linear/cases/bspline-1024-a52428-b64-mixed-range-selected.json \
+  --polar-update fused --phase-diagnostics --kernel-diagnostics \
+  --source-commit ee5343502fd91df4482c7f7f5144184ced985ac6 \
+  --output output/bspline-range-reproduction.json
+python -m benchmarks.submissions check output/bspline-range-reproduction.json
+```
+
+所有者L4では共有poolに `output/bspline-range-20261018/selected-guard.py` を提出する。
+commit引数だけならcritical/full testsと4条件、続けて`repeat`を渡すとmixed/switch/B64の
+3条件を新規processで再測定する。構築済み結果のhash検証は `verify.py`、
+同一入力・全勾配gateの集約は `audit_final.py`、runtime照合は `verify_sources.py` を使った。
+
+実装・数式・負の結果はDraft [PR110](https://github.com/takumiecd/torchcst/pull/110) に保存。
+PR109をbaseとする独立研究PRで、現行最速版は変更しない。最終2 jobのremote cleanupと
+owned GPUの停止を確認し、queued/running jobが残っていないことも確認済み。
