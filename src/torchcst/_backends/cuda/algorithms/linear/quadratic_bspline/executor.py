@@ -23,21 +23,39 @@ def _report(name, compiled):
         }
 
 
-def diagnostic_components(strategy):
+def diagnostic_components(strategy, range_planes=3):
     common = ("snapshot", "prepare", "norm_replay")
     if strategy == "matrix_range":
-        return common + (
-            "group",
-            "pack",
-            "w_build",
-            "w_rebuild",
-            "range_build",
-            "range_vjp",
-            "y_gemm",
-            "dx_gemm",
-            "dw_gemm",
-            "matrix_atom_vjp",
-            "unpack",
+        substeps = tuple(
+            f"range_{stage}_{start}"
+            for start in range(0, 9, range_planes)
+            for stage in (
+                "zero",
+                "scatter",
+                "scan_input",
+                "scan_output",
+                "adjoint_output",
+                "adjoint_input",
+                "query",
+            )
+        )
+        return (
+            common
+            + substeps
+            + ("range_init", "range_copy", "range_partial_init", "range_pullback")
+            + (
+                "group",
+                "pack",
+                "w_build",
+                "w_rebuild",
+                "range_build",
+                "range_vjp",
+                "y_gemm",
+                "dx_gemm",
+                "dw_gemm",
+                "matrix_atom_vjp",
+                "unpack",
+            )
         )
     if strategy == "sigma_stream":
         return common + (

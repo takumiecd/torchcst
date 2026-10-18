@@ -147,6 +147,7 @@ class BSplineRangeRecipe(BSplineStreamingMemoryRecipe):
     strategies = ("matrix_range",)
     strategy: str = "matrix_range"
     fused_scan = False
+    reuse_scratch = False
     tiny_native = True
     range_planes: int = 3
     range_atoms: int = 16
@@ -177,3 +178,10 @@ class BSplineRangeFusedRecipe(BSplineRangeRecipe):
         super().__post_init__()
         if self.range_planes != 3:
             raise ValueError("fused scans require range_planes=3")
+
+
+@dataclass(frozen=True)
+class BSplineRangeReuseRecipe(BSplineRangeFusedRecipe):
+    """Revision 9: one coefficient bank, with its first plane as scan scratch."""
+
+    reuse_scratch = True

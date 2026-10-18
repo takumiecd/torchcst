@@ -35,11 +35,26 @@ def _matrix(meta, origin, spacing, count, sizes, recipe):
     w = _build_w(meta, origin, spacing, count, sizes, recipe, meta.device, "w_build")
     # Accumulate the coefficient groups in FP64 before the one FP32 W rounding.
     _stamp("range_build", 0)
+    _stamp("range_init", 0)
     accum = w.double()
-    for start in range(0, 9, recipe.range_planes):
-        delta = torch.zeros(
+    delta = (
+        torch.empty(
             (recipe.range_planes, *sizes), dtype=torch.float64, device=meta.device
         )
+        if recipe.reuse_scratch
+        else None
+    )
+    _stamp("range_init", 1)
+    for start in range(0, 9, recipe.range_planes):
+        _stamp(f"range_zero_{start}", 0)
+        if recipe.reuse_scratch:
+            delta.zero_()
+        else:
+            delta = torch.zeros(
+                (recipe.range_planes, *sizes), dtype=torch.float64, device=meta.device
+            )
+        _stamp(f"range_zero_{start}", 1)
+        _stamp(f"range_scatter_{start}", 0)
         compiled = rk.scatter[(tr.cdiv(len(meta), recipe.range_atoms),)](
             meta,
             delta,
@@ -56,8 +71,16 @@ def _matrix(meta, origin, spacing, count, sizes, recipe):
             enable_fp_fusion=False,
         )
         _report("range_build", compiled)
+        _stamp(f"range_scatter_{start}", 1)
         if recipe.fused_scan:
-            temp = torch.empty(sizes, dtype=torch.float64, device=meta.device)
+            # A CTA loads every plane of its own row before storing that row.
+            # Other CTAs own disjoint rows, so plane zero can hold the reduced scan.
+            temp = (
+                delta[0]
+                if recipe.reuse_scratch
+                else torch.empty(sizes, dtype=torch.float64, device=meta.device)
+            )
+            _stamp(f"range_scan_input_{start}", 0)
             compiled = rk.input_scan[(sizes[0],)](
                 delta,
                 temp,
@@ -67,6 +90,8 @@ def _matrix(meta, origin, spacing, count, sizes, recipe):
                 enable_fp_fusion=False,
             )
             _report("range_input_scan", compiled)
+            _stamp(f"range_scan_input_{start}", 1)
+            _stamp(f"range_scan_output_{start}", 0)
             compiled = rk.output_scan[(tr.cdiv(sizes[1], 4),)](
                 temp,
                 accum,
@@ -78,9 +103,15 @@ def _matrix(meta, origin, spacing, count, sizes, recipe):
                 enable_fp_fusion=False,
             )
             _report("range_output_scan", compiled)
-            del temp, delta
+            _stamp(f"range_scan_output_{start}", 1)
+            del temp
+            if not recipe.reuse_scratch:
+                del delta
             continue
+        _stamp(f"range_scan_input_{start}", 0)
         _prefix(delta)
+        _stamp(f"range_scan_input_{start}", 1)
+        _stamp(f"range_scan_output_{start}", 0)
         rk.restore[(tr.cdiv(sizes[0] * sizes[1], 256),)](
             delta,
             accum,
@@ -91,8 +122,11 @@ def _matrix(meta, origin, spacing, count, sizes, recipe):
             num_warps=4,
             enable_fp_fusion=False,
         )
+        _stamp(f"range_scan_output_{start}", 1)
         del delta
+    _stamp("range_copy", 0)
     w.copy_(accum)
+    _stamp("range_copy", 1)
     _stamp("range_build", 1)
     return w
 
@@ -172,13 +206,31 @@ class _Range(torch.autograd.Function):
             _stamp("matrix_atom_vjp", 1)
             _report("matrix_atom_vjp", compiled)
             _stamp("range_vjp", 0)
+            _stamp("range_partial_init", 0)
             partial = torch.zeros((len(meta), 3), device=dy.device, dtype=torch.float64)
-            for start in range(0, 9, recipe.range_planes):
-                bank = torch.empty(
+            bank = (
+                torch.empty(
                     (recipe.range_planes, *sizes), device=dy.device, dtype=torch.float64
                 )
+                if recipe.reuse_scratch
+                else None
+            )
+            _stamp("range_partial_init", 1)
+            for start in range(0, 9, recipe.range_planes):
+                if not recipe.reuse_scratch:
+                    bank = torch.empty(
+                        (recipe.range_planes, *sizes),
+                        device=dy.device,
+                        dtype=torch.float64,
+                    )
+                _stamp(f"range_adjoint_output_{start}", 0)
                 if recipe.fused_scan:
-                    temp = torch.empty(sizes, dtype=torch.float64, device=dy.device)
+                    # The input scan reads its whole row before overwriting plane zero.
+                    temp = (
+                        bank[0]
+                        if recipe.reuse_scratch
+                        else torch.empty(sizes, dtype=torch.float64, device=dy.device)
+                    )
                     compiled = rk.adjoint_output_scan[(tr.cdiv(sizes[1], 4),)](
                         dw,
                         temp,
@@ -190,6 +242,8 @@ class _Range(torch.autograd.Function):
                         enable_fp_fusion=False,
                     )
                     _report("range_adjoint_output_scan", compiled)
+                    _stamp(f"range_adjoint_output_{start}", 1)
+                    _stamp(f"range_adjoint_input_{start}", 0)
                     compiled = rk.adjoint_input_scan[(sizes[0],)](
                         temp,
                         bank,
@@ -199,9 +253,14 @@ class _Range(torch.autograd.Function):
                         enable_fp_fusion=False,
                     )
                     _report("range_adjoint_input_scan", compiled)
+                    _stamp(f"range_adjoint_input_{start}", 1)
                     del temp
                 else:
                     _adjoint_bank(dw, bank, sizes, start, recipe)
+                    _stamp(f"range_adjoint_output_{start}", 1)
+                    _stamp(f"range_adjoint_input_{start}", 0)
+                    _stamp(f"range_adjoint_input_{start}", 1)
+                _stamp(f"range_query_{start}", 0)
                 compiled = rk.query[(tr.cdiv(len(meta), recipe.range_atoms),)](
                     bank,
                     meta,
@@ -220,10 +279,14 @@ class _Range(torch.autograd.Function):
                     enable_fp_fusion=False,
                 )
                 _report("range_vjp", compiled)
-                del bank
+                _stamp(f"range_query_{start}", 1)
+                if not recipe.reuse_scratch:
+                    del bank
+            _stamp("range_pullback", 0)
             rk.pullback[(tr.cdiv(len(meta), 128),)](
                 meta, partial, packed, count, len(meta), 128
             )
+            _stamp("range_pullback", 1)
             _stamp("range_vjp", 1)
             _stamp("unpack", 0)
             dp = torch.empty_like(packed)

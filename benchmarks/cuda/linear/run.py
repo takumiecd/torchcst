@@ -723,7 +723,8 @@ def measure(args, run):
             )
 
             names = executor.diagnostic_components(
-                run.entry(args.plan_id).plan.recipe.strategy
+                run.entry(args.plan_id).plan.recipe.strategy,
+                getattr(run.entry(args.plan_id).plan.recipe, "range_planes", 3),
             )
             backend_events = {
                 name: [
