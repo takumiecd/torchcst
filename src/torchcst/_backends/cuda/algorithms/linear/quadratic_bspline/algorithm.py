@@ -16,7 +16,12 @@ from torchcst.operators.execution import (
     validate_live_operator,
 )
 
-from .recipe import BSplineParallelRecipe, BSplineRecipe, BSplineTuningRecipe
+from .recipe import (
+    BSplineParallelRecipe,
+    BSplineRecipe,
+    BSplineSplitRecipe,
+    BSplineTuningRecipe,
+)
 
 
 def layout(op):
@@ -71,7 +76,9 @@ class BSplineAlgorithm(Algorithm[BSplineRecipe]):
         reasons = []
         try:
             sizes = layout(context.operator)
-            if recipe.strategy.startswith("matrix") and max(sizes) > 1024:
+            if (
+                recipe.strategy.startswith("matrix") or recipe.strategy == "sigma_split"
+            ) and max(sizes) > 1024:
                 reasons.append(
                     "matrix research route supports at most 1024 sites per axis"
                 )
@@ -124,6 +131,7 @@ class BSplineAlgorithm(Algorithm[BSplineRecipe]):
             state.buffers["bases"] = (
                 (_basis(no, x.device), _basis(ni, x.device))
                 if state.recipe.strategy.startswith("hybrid")
+                or state.recipe.strategy == "sigma_split"
                 else (None, None)
             )
             state.buffers["moments"] = _norm_moments(max(no, ni), x.device)
@@ -150,3 +158,9 @@ class BSplineTuningAlgorithm(BSplineAlgorithm):
 class BSplineParallelAlgorithm(BSplineAlgorithm):
     revision: str = "v3"
     recipe_type: type = BSplineParallelRecipe
+
+
+@dataclass(frozen=True)
+class BSplineSplitAlgorithm(BSplineAlgorithm):
+    revision: str = "v4"
+    recipe_type: type = BSplineSplitRecipe

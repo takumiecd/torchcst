@@ -37,7 +37,7 @@ def diagnostic_components(strategy):
         "inject_input",
         "atom_vjp",
     )
-    if strategy.startswith("hybrid"):
+    if strategy.startswith("hybrid") or strategy == "sigma_split":
         names += (
             "bank_input",
             "bank_adjoint",
@@ -46,6 +46,8 @@ def diagnostic_components(strategy):
             "restore_output",
             "restore_input",
         )
+    if strategy == "sigma_split":
+        names += ("group", "w_build", "y_gemm", "dx_gemm", "dw_gemm", "matrix_atom_vjp")
     return names
 
 
@@ -71,7 +73,7 @@ def _bank(x, basis):
     return bank
 
 
-def _query(x, meta, origin, spacing, dim, recipe, basis):
+def _query(x, meta, origin, spacing, dim, recipe, basis, order=None, count=None):
     import triton as tr
 
     from . import kernels as k
@@ -129,6 +131,9 @@ def _query(x, meta, origin, spacing, dim, recipe, basis):
             recipe.direct_sites,
             recipe.block_sites,
             recipe.reciprocal,
+            Order=order,
+            Count=count,
+            ROUTED=order is not None,
             num_warps=recipe.axis_warps,
             enable_fp_fusion=False,
         )
@@ -137,14 +142,16 @@ def _query(x, meta, origin, spacing, dim, recipe, basis):
     return h, hp
 
 
-def _scatter(h, meta, origin, spacing, dim, n, recipe):
+def _scatter(
+    h, meta, origin, spacing, dim, n, recipe, order=None, count=None, initial=None
+):
     import triton as tr
 
     from . import kernels as k
 
     b, a = h.shape
     side = "output" if dim == 0 else "input"
-    y = h.new_zeros((b, n))
+    y = h.new_zeros((b, n)) if initial is None else initial
     delta = (
         y
         if recipe.strategy == "direct"
@@ -191,6 +198,9 @@ def _scatter(h, meta, origin, spacing, dim, n, recipe):
             recipe.direct_sites,
             recipe.block_sites,
             recipe.reciprocal,
+            Order=order,
+            Count=count,
+            ROUTED=order is not None,
             num_warps=recipe.axis_warps,
             enable_fp_fusion=False,
         )
@@ -224,6 +234,7 @@ class _BSpline(torch.autograd.Function):
         _stamp("snapshot", 1)
         meta = torch.empty((len(p), 12), device=p.device, dtype=torch.float64)
         ctx.matrix = False
+        ctx.split = False
         if len(p):
             _stamp("prepare", 0)
             compiled = k.prepare[(tr.cdiv(len(p), 64),)](
@@ -266,6 +277,11 @@ class _BSpline(torch.autograd.Function):
                 )
                 _stamp("norm_replay", 1)
                 _report("norm_replay", compiled)
+            if recipe.strategy == "sigma_split":
+                from .split_executor import forward
+
+                ctx.split = True
+                return forward(ctx, x, meta, origin, spacing, recipe, bases, (no, ni))
             if recipe.strategy.startswith("matrix"):
                 ctx.matrix = True
                 order = None
@@ -339,6 +355,10 @@ class _BSpline(torch.autograd.Function):
 
         from . import kernels as k
 
+        if ctx.split:
+            from .split_executor import backward
+
+            return backward(ctx, dy)
         if ctx.matrix:
             meta, x, w, origin, spacing, order = ctx.saved_tensors
             dy = dy.contiguous()

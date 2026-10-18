@@ -11,12 +11,14 @@ from torchcst import CSTLinear, CSTOptimizer
 from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
     BSplineAlgorithm,
     BSplineParallelAlgorithm,
+    BSplineSplitAlgorithm,
     BSplineTuningAlgorithm,
     layout,
 )
 from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineParallelRecipe,
     BSplineRecipe,
+    BSplineSplitRecipe,
     BSplineTuningRecipe,
 )
 from torchcst._backends.dispatch import FixedSelector
@@ -51,6 +53,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineAlgorithm())
     registry.register(BSplineTuningAlgorithm())
     registry.register(BSplineParallelAlgorithm())
+    registry.register(BSplineSplitAlgorithm())
     parallel = strategy in (
         "matrix_flat",
         "matrix_support_grouped",
@@ -63,8 +66,16 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     tuned = bool(recipe_options) or strategy == "matrix_separable"
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v3" if parallel else "v2" if tuned else "v1",
-        BSplineParallelRecipe(strategy, **recipe_options)
+        "v4"
+        if strategy == "sigma_split"
+        else "v3"
+        if parallel
+        else "v2"
+        if tuned
+        else "v1",
+        BSplineSplitRecipe(**recipe_options)
+        if strategy == "sigma_split"
+        else BSplineParallelRecipe(strategy, **recipe_options)
         if parallel
         else BSplineTuningRecipe(strategy, **recipe_options)
         if tuned
@@ -86,6 +97,7 @@ def test_recipe_and_metadata_roundtrip():
     reg.register(BSplineAlgorithm())
     reg.register(BSplineTuningAlgorithm())
     reg.register(BSplineParallelAlgorithm())
+    reg.register(BSplineSplitAlgorithm())
     for strategy in ("torch", "direct", "hybrid", "matrix"):
         p = ExecutionPlan(
             "research_cuda_quadratic_bspline", "v1", BSplineRecipe(strategy)
@@ -105,6 +117,12 @@ def test_recipe_and_metadata_roundtrip():
         "research_cuda_quadratic_bspline", "v3", BSplineParallelRecipe("hybrid_grouped")
     )
     assert reg.loads_plan(reg.dumps_plan(grouped)) == grouped
+    split = ExecutionPlan("research_cuda_quadratic_bspline", "v4", BSplineSplitRecipe())
+    assert reg.loads_plan(reg.dumps_plan(split)) == split
+    assert len(reg.dump_plan(split)["recipe"]) == 14
+    for invalid in (0, -1, True, float("nan"), float("inf")):
+        with pytest.raises(ValueError):
+            BSplineSplitRecipe(sigma_cutoff=invalid)
     support_grouped = ExecutionPlan(
         "research_cuda_quadratic_bspline",
         "v3",
@@ -158,7 +176,14 @@ def test_live_width_all_gradients(strategy, n, floor):
 @GPU
 @pytest.mark.parametrize(
     "strategy",
-    ["direct", "hybrid", "matrix_flat", "hybrid_grouped", "matrix_support_grouped"],
+    [
+        "direct",
+        "hybrid",
+        "matrix_flat",
+        "hybrid_grouped",
+        "matrix_support_grouped",
+        "sigma_split",
+    ],
 )
 def test_edges_empty_zero_amplitude_and_saved_geometry(strategy):
     torch.backends.cuda.matmul.allow_tf32 = False
@@ -193,6 +218,9 @@ def test_edges_empty_zero_amplitude_and_saved_geometry(strategy):
         ("matrix_separable", {"matrix_sites": 4, "matrix_warps": 1}),
         ("matrix_separable", {"matrix_sites": 4, "matrix_warps": 2}),
         ("matrix_support_grouped", {"matrix_sites": 4, "matrix_warps": 1}),
+        ("sigma_split", {"sigma_cutoff": 0.5}),
+        ("sigma_split", {"sigma_cutoff": 0.01}),
+        ("sigma_split", {"sigma_cutoff": 100.0}),
         ("matrix_flat", {"matrix_pairs": 16, "matrix_warps": 1}),
         ("matrix_flat", {"matrix_pairs": 32, "matrix_warps": 1}),
         ("matrix_flat", {"matrix_pairs": 64, "matrix_warps": 1}),
@@ -277,7 +305,8 @@ def test_live_graph_optimizer_state(strategy, options):
 
 @GPU
 @pytest.mark.parametrize(
-    "strategy", ["direct", "hybrid", "hybrid_grouped", "matrix_support_grouped"]
+    "strategy",
+    ["direct", "hybrid", "hybrid_grouped", "matrix_support_grouped", "sigma_split"],
 )
 def test_switching_support_size_and_coordinate_buffer_rejection(strategy):
     layer = model(strategy, n=128)
@@ -324,6 +353,7 @@ def test_matrix_full_atom_gradient_gate(n, floor):
         "matrix_flat",
         "hybrid_grouped",
         "matrix_support_grouped",
+        "sigma_split",
     ],
 )
 def test_tiny_single_axis_support_below_product_floor(strategy):
@@ -348,6 +378,7 @@ def test_tiny_single_axis_support_below_product_floor(strategy):
         "matrix_flat",
         "hybrid_grouped",
         "matrix_support_grouped",
+        "sigma_split",
     ],
 )
 def test_rectangular_grid_distinct_spacing_and_origin(strategy):
@@ -357,11 +388,16 @@ def test_rectangular_grid_distinct_spacing_and_origin(strategy):
     reg = Registry()
     reg.register(BSplineAlgorithm())
     reg.register(BSplineParallelAlgorithm())
+    reg.register(BSplineSplitAlgorithm())
     parallel = strategy in ("matrix_flat", "hybrid_grouped", "matrix_support_grouped")
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v3" if parallel else "v1",
-        BSplineParallelRecipe(strategy) if parallel else BSplineRecipe(strategy),
+        "v4" if strategy == "sigma_split" else "v3" if parallel else "v1",
+        BSplineSplitRecipe()
+        if strategy == "sigma_split"
+        else BSplineParallelRecipe(strategy)
+        if parallel
+        else BSplineRecipe(strategy),
     )
     chart = chart_presets.regular_grid(
         ((32,), (64,)), spacing=(0.13, 0.07), origin=(-2.0, 1.0)
@@ -555,10 +591,83 @@ def test_support_order_tracks_both_clipped_axes(reciprocal):
 
 
 @GPU
-def test_support_grouped_zero_atoms():
-    layer = model("matrix_support_grouped", a=0)
+@pytest.mark.parametrize("strategy", ["matrix_support_grouped", "sigma_split"])
+def test_support_grouped_zero_atoms(strategy):
+    layer = model(strategy, a=0)
     x = torch.randn(3, 64, device="cuda", requires_grad=True)
     y = layer(x)
     dx, dp = torch.autograd.grad(y.sum(), (x, layer.atoms.p))
     assert not bool(y.any()) and not bool(dx.any())
     assert dp.shape == (0, 4)
+
+
+@GPU
+@pytest.mark.parametrize("n", [64, 1024])
+@pytest.mark.parametrize("floor", [1e-6, 1000.0])
+@pytest.mark.parametrize("cutoff", [0.2, 0.5, 2.0])
+def test_sigma_partition_all_gradients(n, floor, cutoff):
+    layer = model("sigma_split", n=n, floor=floor, sigma_cutoff=cutoff)
+    for step in range(3):
+        if step:
+            with torch.no_grad():
+                layer.atoms.p[:, :2].mul_(1.003)
+                layer.atoms.p[:, 2:].add_(0.0037)
+        x = torch.randn(3, n, device="cuda", requires_grad=True)
+        gate(layer, x, torch.randn_like(x))
+
+
+@GPU
+def test_partition_count_and_ids_change_inside_graph():
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.grouping import (
+        partition_atoms,
+    )
+
+    meta = torch.ones((17, 12), dtype=torch.float64, device="cuda")
+    origin = torch.zeros(2, dtype=torch.float64, device="cuda")
+    spacing = torch.full((2,), 0.1, dtype=torch.float64, device="cuda")
+    meta[:, 2:4] = 3.2
+    meta[:, 10:12] = 10
+    recipe = BSplineSplitRecipe(sigma_cutoff=0.5)
+    partition_atoms(meta, origin, spacing, (64, 64), recipe)
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        order, count = partition_atoms(meta, origin, spacing, (64, 64), recipe)
+    for small in (0, 5, 17, 2):
+        meta[:, 1] = 2.449489742783178
+        meta[:small, 1] = 0.2 * 2.449489742783178
+        graph.replay()
+        assert count.item() == small
+        assert bool((order[:small] < small).all())
+        torch.testing.assert_close(order.sort().values, torch.arange(17, device="cuda"))
+
+
+@GPU
+def test_sigma_split_graph_large_width_switches():
+    import math
+
+    from benchmarks.cuda.linear.check_normalized import check
+
+    layer = model("sigma_split", sigma_cutoff=0.5)
+    x = torch.randn(3, 64, device="cuda", requires_grad=True)
+    dy = torch.randn_like(x)
+    gate(layer, x, dy)
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        y = layer(x)
+        dx, dp = torch.autograd.grad(y, (x, layer.atoms.p), dy)
+    sigmas = torch.tensor([0.12, 0.49, 0.51, 2.0], device="cuda")
+    for step in range(4):
+        widths = sigmas[(torch.arange(17, device="cuda") + step) % 4]
+        radius = (1 + 3 * (widths / 0.1).log() / math.log(128)).sqrt()
+        with torch.no_grad():
+            layer.atoms.p[:, 0] = 0.6 * radius
+            layer.atoms.p[:, 1] = 0.8 * radius
+            layer.atoms.p[:, 2:].add_(0.007)
+        graph.replay()
+        rx = x.detach().double().requires_grad_()
+        rp = layer.atoms.p.detach().double().requires_grad_()
+        truth = bs.oracle(copy.deepcopy(layer.kernel).double(), layer.chart, rp, rx)
+        reference_grads = torch.autograd.grad(truth, (rx, rp), dy.double())
+        for actual, expected in zip((y, dx, dp), (truth, *reference_grads)):
+            error = check(actual, expected, 4e-4)
+            assert error["max"] < 4e-4 and error["rel_l2"] < 4e-4

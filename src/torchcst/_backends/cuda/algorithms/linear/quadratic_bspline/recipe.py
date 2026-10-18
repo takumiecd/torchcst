@@ -1,5 +1,6 @@
 """Execution policy for one quadratic B-spline mathematical profile."""
 
+import math
 from dataclasses import dataclass
 
 
@@ -84,3 +85,27 @@ class BSplineParallelRecipe(BSplineTuningRecipe):
             value = getattr(self, name)
             if type(value) is not int or value not in allowed:
                 raise ValueError(f"{name} must be one of {allowed}")
+
+
+@dataclass(frozen=True)
+class BSplineSplitRecipe(BSplineParallelRecipe):
+    """Revision 4: GPU partition by live sigma, with one exact shared preparation."""
+
+    strategies = ("sigma_split",)
+    strategy: str = "sigma_split"
+    block_sites: int = 16
+    matrix_sites: int = 4
+    matrix_atoms: int = 16
+    matrix_warps: int = 1
+    axis_warps: int = 1
+    axis_atoms: int = 16
+    sigma_cutoff: float = 0.5
+
+    def __post_init__(self):
+        super().__post_init__()
+        if (
+            type(self.sigma_cutoff) not in (int, float)
+            or not math.isfinite(self.sigma_cutoff)
+            or self.sigma_cutoff <= 0
+        ):
+            raise ValueError("sigma_cutoff must be finite and positive")

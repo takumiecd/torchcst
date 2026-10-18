@@ -267,13 +267,26 @@ def vjp_grouped(
     B: tl.constexpr,
     AB: tl.constexpr,
     BB: tl.constexpr,
+    Order=None,
+    Count=None,
+    ROUTED: tl.constexpr = False,
 ):
-    a = tl.program_id(0) * AB + tl.arange(0, AB)
-    b = tl.arange(0, BB)
-    mask = (b[:, None] < B) & (a[None, :] < A)
-    offset = b[:, None] * A + a[None, :]
-    h = tl.load(H + offset, mask, 0).to(tl.float64)
-    hp = tl.load(HP + offset, mask, 0).to(tl.float64)
-    g = tl.load(G + offset, mask, 0).to(tl.float64)
-    gp = tl.load(GP + offset, mask, 0).to(tl.float64)
-    _pullback(Meta, DP, a, tl.sum(h * g, 0), tl.sum(h * gp, 0), tl.sum(hp * g, 0), A)
+    base = tl.program_id(0) * AB
+    slot = base + tl.arange(0, AB)
+    count = A
+    a = slot
+    if ROUTED:
+        small = tl.load(Count)
+        count = A - small
+        a = tl.load(Order + small + slot, slot < count, A)
+    if not ROUTED or base < count:
+        b = tl.arange(0, BB)
+        mask = (b[:, None] < B) & (slot[None, :] < count)
+        offset = b[:, None] * A + slot[None, :]
+        h = tl.load(H + offset, mask, 0).to(tl.float64)
+        hp = tl.load(HP + offset, mask, 0).to(tl.float64)
+        g = tl.load(G + offset, mask, 0).to(tl.float64)
+        gp = tl.load(GP + offset, mask, 0).to(tl.float64)
+        _pullback(
+            Meta, DP, a, tl.sum(h * g, 0), tl.sum(h * gp, 0), tl.sum(hp * g, 0), A
+        )

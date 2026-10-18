@@ -542,6 +542,22 @@ def measure(args, run):
         if not sigma_updates["changed_atoms"]:
             raise AssertionError("dynamic-width fixture did not update sigma")
         recipe = run.entry(args.plan_id).plan.recipe
+        if getattr(recipe, "strategy", None) == "sigma_split":
+            initial_small = initial_sigma <= recipe.sigma_cutoff
+            final_small = final_sigma <= recipe.sigma_cutoff
+            hybrid_routing = {
+                "sigma_cutoff": recipe.sigma_cutoff,
+                "diagnostic_basis": "Torch decode outside timing; boundary rounding can differ from FP64 CUDA radius comparison",
+                "initial_matrix_atoms": int(initial_small.sum()),
+                "initial_prefix_atoms": int((~initial_small).sum()),
+                "final_matrix_atoms": int(final_small.sum()),
+                "final_prefix_atoms": int((~final_small).sum()),
+                "changed_routes": int((initial_small != final_small).sum()),
+                "capacity_policy": "fixed B*A capacity per H/HP/G/GP, large IDs compacted into prefix slots; device count and ID order rebuilt every forward/replay",
+                "h_elements_per_buffer": m * case.atoms,
+                "saved_order_bytes": case.atoms * 8,
+                "sigma_fixed": False,
+            }
         if getattr(recipe, "execution_route", None) in (
             "hybrid",
             "hybrid_support",

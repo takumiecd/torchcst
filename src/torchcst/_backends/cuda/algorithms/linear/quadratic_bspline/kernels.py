@@ -254,59 +254,80 @@ def query(
     CUT: tl.constexpr,
     BS: tl.constexpr,
     RECIPROCAL: tl.constexpr,
+    Order=None,
+    Count=None,
+    ROUTED: tl.constexpr = False,
 ):
-    a = tl.program_id(0)
-    b = tl.program_id(1) * 16 + tl.arange(0, 16)
-    radius = tl.load(Meta + a * 12 + 1)
-    inverse_radius = tl.load(Meta + a * 12 + 9)
-    inverse_h = tl.load(Meta + a * 12 + 10 + DIM)
-    center = tl.load(Meta + a * 12 + 2 + DIM)
-    o = tl.load(Origin + DIM).to(tl.float64)
-    h = tl.load(Spacing + DIM).to(tl.float64)
-    left, _first_right = _interval(
-        center, radius, Origin, Spacing, N, DIM, 0, RECIPROCAL, inverse_h
-    )
-    _last_left, right = _interval(
-        center, radius, Origin, Spacing, N, DIM, 2, RECIPROCAL, inverse_h
-    )
-    result = tl.full((16,), 0, tl.float64)
-    prime = tl.full((16,), 0, tl.float64)
-    if DIRECT or right - left <= CUT:
-        for start in range(left, right, BS):
-            j = start + tl.arange(0, BS)
-            f, dc = _shape(
-                o + j.to(tl.float64) * h - center, radius, inverse_radius, RECIPROCAL
-            )
-            xx = tl.load(
-                X + b[:, None] * N + j[None, :],
-                (b[:, None] < B) & (j[None, :] < right),
-                0,
-            ).to(tl.float64)
-            result += tl.sum(xx * f[None, :], 1)
-            prime += tl.sum(xx * dc[None, :], 1)
-    else:
-        half = h * (N - 1) * 0.5
-        mid = o + half - center
-        for piece in tl.static_range(3):
-            l, r = _interval(
-                center, radius, Origin, Spacing, N, DIM, piece, RECIPROCAL, inverse_h
-            )
-            a0, a1, a2, b0, b1 = _coeff(
-                mid, half, radius, inverse_radius, piece, RECIPROCAL
-            )
-            v0 = tl.load(Bank + b * (N + 1) + r, b < B, 0) - tl.load(
-                Bank + b * (N + 1) + l, b < B, 0
-            )
-            v1 = tl.load(Bank + (B + b) * (N + 1) + r, b < B, 0) - tl.load(
-                Bank + (B + b) * (N + 1) + l, b < B, 0
-            )
-            v2 = tl.load(Bank + (2 * B + b) * (N + 1) + r, b < B, 0) - tl.load(
-                Bank + (2 * B + b) * (N + 1) + l, b < B, 0
-            )
-            result += a0 * v0 + a1 * v1 + a2 * v2
-            prime += b0 * v0 + b1 * v1
-    tl.store(H + b * A + a, result, b < B)
-    tl.store(HP + b * A + a, prime, b < B)
+    slot = tl.program_id(0)
+    count = A
+    a = slot
+    if ROUTED:
+        small = tl.load(Count)
+        count = A - small
+        a = tl.load(Order + small + slot, slot < count, 0)
+    if not ROUTED or slot < count:
+        b = tl.program_id(1) * 16 + tl.arange(0, 16)
+        radius = tl.load(Meta + a * 12 + 1)
+        inverse_radius = tl.load(Meta + a * 12 + 9)
+        inverse_h = tl.load(Meta + a * 12 + 10 + DIM)
+        center = tl.load(Meta + a * 12 + 2 + DIM)
+        o = tl.load(Origin + DIM).to(tl.float64)
+        h = tl.load(Spacing + DIM).to(tl.float64)
+        left, _first_right = _interval(
+            center, radius, Origin, Spacing, N, DIM, 0, RECIPROCAL, inverse_h
+        )
+        _last_left, right = _interval(
+            center, radius, Origin, Spacing, N, DIM, 2, RECIPROCAL, inverse_h
+        )
+        result = tl.full((16,), 0, tl.float64)
+        prime = tl.full((16,), 0, tl.float64)
+        if DIRECT or right - left <= CUT:
+            for start in range(left, right, BS):
+                j = start + tl.arange(0, BS)
+                f, dc = _shape(
+                    o + j.to(tl.float64) * h - center,
+                    radius,
+                    inverse_radius,
+                    RECIPROCAL,
+                )
+                xx = tl.load(
+                    X + b[:, None] * N + j[None, :],
+                    (b[:, None] < B) & (j[None, :] < right),
+                    0,
+                ).to(tl.float64)
+                result += tl.sum(xx * f[None, :], 1)
+                prime += tl.sum(xx * dc[None, :], 1)
+        else:
+            half = h * (N - 1) * 0.5
+            mid = o + half - center
+            for piece in tl.static_range(3):
+                l, r = _interval(
+                    center,
+                    radius,
+                    Origin,
+                    Spacing,
+                    N,
+                    DIM,
+                    piece,
+                    RECIPROCAL,
+                    inverse_h,
+                )
+                a0, a1, a2, b0, b1 = _coeff(
+                    mid, half, radius, inverse_radius, piece, RECIPROCAL
+                )
+                v0 = tl.load(Bank + b * (N + 1) + r, b < B, 0) - tl.load(
+                    Bank + b * (N + 1) + l, b < B, 0
+                )
+                v1 = tl.load(Bank + (B + b) * (N + 1) + r, b < B, 0) - tl.load(
+                    Bank + (B + b) * (N + 1) + l, b < B, 0
+                )
+                v2 = tl.load(Bank + (2 * B + b) * (N + 1) + r, b < B, 0) - tl.load(
+                    Bank + (2 * B + b) * (N + 1) + l, b < B, 0
+                )
+                result += a0 * v0 + a1 * v1 + a2 * v2
+                prime += b0 * v0 + b1 * v1
+        tl.store(H + b * A + slot, result, b < B)
+        tl.store(HP + b * A + slot, prime, b < B)
 
 
 @tr.jit
@@ -325,52 +346,79 @@ def inject(
     CUT: tl.constexpr,
     BS: tl.constexpr,
     RECIPROCAL: tl.constexpr,
+    Order=None,
+    Count=None,
+    ROUTED: tl.constexpr = False,
 ):
-    a = tl.program_id(0)
-    b = tl.program_id(1) * 16 + tl.arange(0, 16)
-    radius = tl.load(Meta + a * 12 + 1)
-    inverse_radius = tl.load(Meta + a * 12 + 9)
-    inverse_h = tl.load(Meta + a * 12 + 10 + DIM)
-    center = tl.load(Meta + a * 12 + 2 + DIM)
-    scale = tl.load(Meta + a * 12) * tl.load(Meta + a * 12 + 4)
-    w = tl.load(H + b * A + a, b < B, 0).to(tl.float64) * scale
-    left, _first_right = _interval(
-        center, radius, Origin, Spacing, N, DIM, 0, RECIPROCAL, inverse_h
-    )
-    _last_left, right = _interval(
-        center, radius, Origin, Spacing, N, DIM, 2, RECIPROCAL, inverse_h
-    )
-    o = tl.load(Origin + DIM).to(tl.float64)
-    h = tl.load(Spacing + DIM).to(tl.float64)
-    if DIRECT or right - left <= CUT:
-        for start in range(left, right, BS):
-            j = start + tl.arange(0, BS)
-            f, _dc = _shape(
-                o + j.to(tl.float64) * h - center, radius, inverse_radius, RECIPROCAL
-            )
-            tl.atomic_add(
-                Y + b[:, None] * N + j[None, :],
-                (w[:, None] * f[None, :]).to(tl.float32),
-                (b[:, None] < B) & (j[None, :] < right),
-                sem="relaxed",
-            )
-    else:
-        half = h * (N - 1) * 0.5
-        for piece in tl.static_range(3):
-            l, r = _interval(
-                center, radius, Origin, Spacing, N, DIM, piece, RECIPROCAL, inverse_h
-            )
-            a0, a1, a2, _b0, _b1 = _coeff(
-                o + half - center, half, radius, inverse_radius, piece, RECIPROCAL
-            )
-            for k in tl.static_range(3):
-                coeff = a0 if k == 0 else a1 if k == 1 else a2
-                tl.atomic_add(
-                    Delta + (k * B + b) * (N + 1) + l, w * coeff, b < B, sem="relaxed"
+    slot = tl.program_id(0)
+    count = A
+    a = slot
+    if ROUTED:
+        small = tl.load(Count)
+        count = A - small
+        a = tl.load(Order + small + slot, slot < count, 0)
+    if not ROUTED or slot < count:
+        b = tl.program_id(1) * 16 + tl.arange(0, 16)
+        radius = tl.load(Meta + a * 12 + 1)
+        inverse_radius = tl.load(Meta + a * 12 + 9)
+        inverse_h = tl.load(Meta + a * 12 + 10 + DIM)
+        center = tl.load(Meta + a * 12 + 2 + DIM)
+        scale = tl.load(Meta + a * 12) * tl.load(Meta + a * 12 + 4)
+        w = tl.load(H + b * A + slot, b < B, 0).to(tl.float64) * scale
+        left, _first_right = _interval(
+            center, radius, Origin, Spacing, N, DIM, 0, RECIPROCAL, inverse_h
+        )
+        _last_left, right = _interval(
+            center, radius, Origin, Spacing, N, DIM, 2, RECIPROCAL, inverse_h
+        )
+        o = tl.load(Origin + DIM).to(tl.float64)
+        h = tl.load(Spacing + DIM).to(tl.float64)
+        if DIRECT or right - left <= CUT:
+            for start in range(left, right, BS):
+                j = start + tl.arange(0, BS)
+                f, _dc = _shape(
+                    o + j.to(tl.float64) * h - center,
+                    radius,
+                    inverse_radius,
+                    RECIPROCAL,
                 )
                 tl.atomic_add(
-                    Delta + (k * B + b) * (N + 1) + r, -w * coeff, b < B, sem="relaxed"
+                    Y + b[:, None] * N + j[None, :],
+                    (w[:, None] * f[None, :]).to(tl.float32),
+                    (b[:, None] < B) & (j[None, :] < right),
+                    sem="relaxed",
                 )
+        else:
+            half = h * (N - 1) * 0.5
+            for piece in tl.static_range(3):
+                l, r = _interval(
+                    center,
+                    radius,
+                    Origin,
+                    Spacing,
+                    N,
+                    DIM,
+                    piece,
+                    RECIPROCAL,
+                    inverse_h,
+                )
+                a0, a1, a2, _b0, _b1 = _coeff(
+                    o + half - center, half, radius, inverse_radius, piece, RECIPROCAL
+                )
+                for k in tl.static_range(3):
+                    coeff = a0 if k == 0 else a1 if k == 1 else a2
+                    tl.atomic_add(
+                        Delta + (k * B + b) * (N + 1) + l,
+                        w * coeff,
+                        b < B,
+                        sem="relaxed",
+                    )
+                    tl.atomic_add(
+                        Delta + (k * B + b) * (N + 1) + r,
+                        -w * coeff,
+                        b < B,
+                        sem="relaxed",
+                    )
 
 
 @tr.jit
@@ -423,54 +471,70 @@ def matrix_build(
     RECIPROCAL: tl.constexpr,
     Order=None,
     GROUPED: tl.constexpr = False,
+    Count=None,
+    PARTITIONED: tl.constexpr = False,
 ):
-    a = tl.program_id(0) * AB + tl.arange(0, AB)
-    if GROUPED:
-        a = tl.load(Order + a, a < A, A)
-    radius = tl.load(Meta + a * 12 + 1, a < A, 1)
-    inverse_radius = tl.load(Meta + a * 12 + 9, a < A, 1)
-    inverse_ho = tl.load(Meta + a * 12 + 10, a < A, 1)
-    inverse_hi = tl.load(Meta + a * 12 + 11, a < A, 1)
-    co = tl.load(Meta + a * 12 + 2, a < A, 0)
-    ci = tl.load(Meta + a * 12 + 3, a < A, 0)
-    scale = tl.load(Meta + a * 12, a < A, 0) * tl.load(Meta + a * 12 + 4, a < A, 0)
-    lo, _ro = _interval(co, radius, Origin, Spacing, NO, 0, 0, RECIPROCAL, inverse_ho)
-    _lo, hi = _interval(co, radius, Origin, Spacing, NO, 0, 2, RECIPROCAL, inverse_ho)
-    li, _ri = _interval(ci, radius, Origin, Spacing, NI, 1, 0, RECIPROCAL, inverse_hi)
-    _li, ri = _interval(ci, radius, Origin, Spacing, NI, 1, 2, RECIPROCAL, inverse_hi)
-    rows = tl.arange(0, BS)
-    oo = tl.load(Origin).to(tl.float64)
-    oi = tl.load(Origin + 1).to(tl.float64)
-    so = tl.load(Spacing).to(tl.float64)
-    si = tl.load(Spacing + 1).to(tl.float64)
-    for start_o in range(0, tl.max(hi - lo, 0), BS):
-        j = lo[:, None] + start_o + rows[None, :]
-        fo, _dfo = _shape(
-            oo + j.to(tl.float64) * so - co[:, None],
-            radius[:, None],
-            inverse_radius[:, None],
-            RECIPROCAL,
+    base = tl.program_id(0) * AB
+    count = A
+    if PARTITIONED:
+        count = tl.load(Count)
+    if not PARTITIONED or base < count:
+        slot = base + tl.arange(0, AB)
+        a = slot
+        if GROUPED:
+            a = tl.load(Order + slot, slot < count, A)
+        radius = tl.load(Meta + a * 12 + 1, a < A, 1)
+        inverse_radius = tl.load(Meta + a * 12 + 9, a < A, 1)
+        inverse_ho = tl.load(Meta + a * 12 + 10, a < A, 1)
+        inverse_hi = tl.load(Meta + a * 12 + 11, a < A, 1)
+        co = tl.load(Meta + a * 12 + 2, a < A, 0)
+        ci = tl.load(Meta + a * 12 + 3, a < A, 0)
+        scale = tl.load(Meta + a * 12, a < A, 0) * tl.load(Meta + a * 12 + 4, a < A, 0)
+        lo, _ro = _interval(
+            co, radius, Origin, Spacing, NO, 0, 0, RECIPROCAL, inverse_ho
         )
-        for start_i in range(0, tl.max(ri - li, 0), BS):
-            i = li[:, None] + start_i + rows[None, :]
-            fi, _dfi = _shape(
-                oi + i.to(tl.float64) * si - ci[:, None],
+        _lo, hi = _interval(
+            co, radius, Origin, Spacing, NO, 0, 2, RECIPROCAL, inverse_ho
+        )
+        li, _ri = _interval(
+            ci, radius, Origin, Spacing, NI, 1, 0, RECIPROCAL, inverse_hi
+        )
+        _li, ri = _interval(
+            ci, radius, Origin, Spacing, NI, 1, 2, RECIPROCAL, inverse_hi
+        )
+        rows = tl.arange(0, BS)
+        oo = tl.load(Origin).to(tl.float64)
+        oi = tl.load(Origin + 1).to(tl.float64)
+        so = tl.load(Spacing).to(tl.float64)
+        si = tl.load(Spacing + 1).to(tl.float64)
+        for start_o in range(0, tl.max(hi - lo, 0), BS):
+            j = lo[:, None] + start_o + rows[None, :]
+            fo, _dfo = _shape(
+                oo + j.to(tl.float64) * so - co[:, None],
                 radius[:, None],
                 inverse_radius[:, None],
                 RECIPROCAL,
             )
-            w = scale[:, None, None] * fo[:, :, None] * fi[:, None, :]
-            mask = (
-                (a[:, None, None] < A)
-                & (j[:, :, None] < hi[:, None, None])
-                & (i[:, None, :] < ri[:, None, None])
-            )
-            tl.atomic_add(
-                W + j[:, :, None] * NI + i[:, None, :],
-                w.to(tl.float32),
-                mask,
-                sem="relaxed",
-            )
+            for start_i in range(0, tl.max(ri - li, 0), BS):
+                i = li[:, None] + start_i + rows[None, :]
+                fi, _dfi = _shape(
+                    oi + i.to(tl.float64) * si - ci[:, None],
+                    radius[:, None],
+                    inverse_radius[:, None],
+                    RECIPROCAL,
+                )
+                w = scale[:, None, None] * fo[:, :, None] * fi[:, None, :]
+                mask = (
+                    (a[:, None, None] < A)
+                    & (j[:, :, None] < hi[:, None, None])
+                    & (i[:, None, :] < ri[:, None, None])
+                )
+                tl.atomic_add(
+                    W + j[:, :, None] * NI + i[:, None, :],
+                    w.to(tl.float32),
+                    mask,
+                    sem="relaxed",
+                )
 
 
 @tr.jit
@@ -489,73 +553,91 @@ def matrix_vjp(
     SEPARABLE: tl.constexpr = False,
     Order=None,
     GROUPED: tl.constexpr = False,
+    Count=None,
+    PARTITIONED: tl.constexpr = False,
 ):
-    a = tl.program_id(0) * AB + tl.arange(0, AB)
-    if GROUPED:
-        a = tl.load(Order + a, a < A, A)
-    radius = tl.load(Meta + a * 12 + 1, a < A, 1)
-    inverse_radius = tl.load(Meta + a * 12 + 9, a < A, 1)
-    inverse_ho = tl.load(Meta + a * 12 + 10, a < A, 1)
-    inverse_hi = tl.load(Meta + a * 12 + 11, a < A, 1)
-    co = tl.load(Meta + a * 12 + 2, a < A, 0)
-    ci = tl.load(Meta + a * 12 + 3, a < A, 0)
-    lo, _ro = _interval(co, radius, Origin, Spacing, NO, 0, 0, RECIPROCAL, inverse_ho)
-    _lo, hi = _interval(co, radius, Origin, Spacing, NO, 0, 2, RECIPROCAL, inverse_ho)
-    li, _ri = _interval(ci, radius, Origin, Spacing, NI, 1, 0, RECIPROCAL, inverse_hi)
-    _li, ri = _interval(ci, radius, Origin, Spacing, NI, 1, 2, RECIPROCAL, inverse_hi)
-    rows = tl.arange(0, BS)
-    oo = tl.load(Origin).to(tl.float64)
-    oi = tl.load(Origin + 1).to(tl.float64)
-    so = tl.load(Spacing).to(tl.float64)
-    si = tl.load(Spacing + 1).to(tl.float64)
-    total = tl.full((AB,), 0, tl.float64)
-    dout = tl.full((AB,), 0, tl.float64)
-    din = tl.full((AB,), 0, tl.float64)
-    for start_o in range(0, tl.max(hi - lo, 0), BS):
-        j = lo[:, None] + start_o + rows[None, :]
-        fo, dfo = _shape(
-            oo + j.to(tl.float64) * so - co[:, None],
-            radius[:, None],
-            inverse_radius[:, None],
-            RECIPROCAL,
+    base = tl.program_id(0) * AB
+    count = A
+    if PARTITIONED:
+        count = tl.load(Count)
+    if not PARTITIONED or base < count:
+        slot = base + tl.arange(0, AB)
+        a = slot
+        if GROUPED:
+            a = tl.load(Order + slot, slot < count, A)
+        radius = tl.load(Meta + a * 12 + 1, a < A, 1)
+        inverse_radius = tl.load(Meta + a * 12 + 9, a < A, 1)
+        inverse_ho = tl.load(Meta + a * 12 + 10, a < A, 1)
+        inverse_hi = tl.load(Meta + a * 12 + 11, a < A, 1)
+        co = tl.load(Meta + a * 12 + 2, a < A, 0)
+        ci = tl.load(Meta + a * 12 + 3, a < A, 0)
+        lo, _ro = _interval(
+            co, radius, Origin, Spacing, NO, 0, 0, RECIPROCAL, inverse_ho
         )
-        for start_i in range(0, tl.max(ri - li, 0), BS):
-            i = li[:, None] + start_i + rows[None, :]
-            fi, dfi = _shape(
-                oi + i.to(tl.float64) * si - ci[:, None],
+        _lo, hi = _interval(
+            co, radius, Origin, Spacing, NO, 0, 2, RECIPROCAL, inverse_ho
+        )
+        li, _ri = _interval(
+            ci, radius, Origin, Spacing, NI, 1, 0, RECIPROCAL, inverse_hi
+        )
+        _li, ri = _interval(
+            ci, radius, Origin, Spacing, NI, 1, 2, RECIPROCAL, inverse_hi
+        )
+        rows = tl.arange(0, BS)
+        oo = tl.load(Origin).to(tl.float64)
+        oi = tl.load(Origin + 1).to(tl.float64)
+        so = tl.load(Spacing).to(tl.float64)
+        si = tl.load(Spacing + 1).to(tl.float64)
+        total = tl.full((AB,), 0, tl.float64)
+        dout = tl.full((AB,), 0, tl.float64)
+        din = tl.full((AB,), 0, tl.float64)
+        for start_o in range(0, tl.max(hi - lo, 0), BS):
+            j = lo[:, None] + start_o + rows[None, :]
+            fo, dfo = _shape(
+                oo + j.to(tl.float64) * so - co[:, None],
                 radius[:, None],
                 inverse_radius[:, None],
                 RECIPROCAL,
             )
-            mask = (
-                (a[:, None, None] < A)
-                & (j[:, :, None] < hi[:, None, None])
-                & (i[:, None, :] < ri[:, None, None])
-            )
-            dw = tl.load(DW + j[:, :, None] * NI + i[:, None, :], mask, 0).to(
-                tl.float64
-            )
-            if SEPARABLE:
-                weighted = tl.sum(dw * fi[:, None, :], 2)
-                weighted_prime = tl.sum(dw * dfi[:, None, :], 2)
-                total += tl.sum(weighted * fo, 1)
-                dout += tl.sum(weighted * dfo, 1)
-                din += tl.sum(weighted_prime * fo, 1)
-            else:
-                total += tl.sum(tl.sum(dw * fo[:, :, None] * fi[:, None, :], 2), 1)
-                dout += tl.sum(tl.sum(dw * dfo[:, :, None] * fi[:, None, :], 2), 1)
-                din += tl.sum(tl.sum(dw * fo[:, :, None] * dfi[:, None, :], 2), 1)
-    inv = tl.load(Meta + a * 12 + 4, a < A, 0)
-    scale = tl.load(Meta + a * 12, a < A, 0) * inv
-    tl.store(DP + 4 * a, total * inv * tl.load(Meta + a * 12 + 7, a < A, 0), a < A)
-    tl.store(DP + 4 * a + 1, total * inv * tl.load(Meta + a * 12 + 8, a < A, 0), a < A)
-    tl.store(
-        DP + 4 * a + 2,
-        scale * (dout - total * tl.load(Meta + a * 12 + 5, a < A, 0)),
-        a < A,
-    )
-    tl.store(
-        DP + 4 * a + 3,
-        scale * (din - total * tl.load(Meta + a * 12 + 6, a < A, 0)),
-        a < A,
-    )
+            for start_i in range(0, tl.max(ri - li, 0), BS):
+                i = li[:, None] + start_i + rows[None, :]
+                fi, dfi = _shape(
+                    oi + i.to(tl.float64) * si - ci[:, None],
+                    radius[:, None],
+                    inverse_radius[:, None],
+                    RECIPROCAL,
+                )
+                mask = (
+                    (a[:, None, None] < A)
+                    & (j[:, :, None] < hi[:, None, None])
+                    & (i[:, None, :] < ri[:, None, None])
+                )
+                dw = tl.load(DW + j[:, :, None] * NI + i[:, None, :], mask, 0).to(
+                    tl.float64
+                )
+                if SEPARABLE:
+                    weighted = tl.sum(dw * fi[:, None, :], 2)
+                    weighted_prime = tl.sum(dw * dfi[:, None, :], 2)
+                    total += tl.sum(weighted * fo, 1)
+                    dout += tl.sum(weighted * dfo, 1)
+                    din += tl.sum(weighted_prime * fo, 1)
+                else:
+                    total += tl.sum(tl.sum(dw * fo[:, :, None] * fi[:, None, :], 2), 1)
+                    dout += tl.sum(tl.sum(dw * dfo[:, :, None] * fi[:, None, :], 2), 1)
+                    din += tl.sum(tl.sum(dw * fo[:, :, None] * dfi[:, None, :], 2), 1)
+        inv = tl.load(Meta + a * 12 + 4, a < A, 0)
+        scale = tl.load(Meta + a * 12, a < A, 0) * inv
+        tl.store(DP + 4 * a, total * inv * tl.load(Meta + a * 12 + 7, a < A, 0), a < A)
+        tl.store(
+            DP + 4 * a + 1, total * inv * tl.load(Meta + a * 12 + 8, a < A, 0), a < A
+        )
+        tl.store(
+            DP + 4 * a + 2,
+            scale * (dout - total * tl.load(Meta + a * 12 + 5, a < A, 0)),
+            a < A,
+        )
+        tl.store(
+            DP + 4 * a + 3,
+            scale * (din - total * tl.load(Meta + a * 12 + 6, a < A, 0)),
+            a < A,
+        )
