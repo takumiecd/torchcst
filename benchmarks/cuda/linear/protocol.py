@@ -28,6 +28,10 @@ LOCAL_OPTIMIZER_POLICY = (
 def measurement_operator(case):
     """Rebuild from a validated Case, never from arbitrary serialized types."""
     case = _case({"id": "stored-case", **case})
+    if case.fixture == "quadratic_bspline":
+        from .bspline import fixture_operator as bspline_operator
+
+        return bspline_operator(case)
     if case.fixture == "polar_sphere_separable":
         from .sphere_baseline import fixture
 
@@ -65,3 +69,8 @@ def measurement_operator(case):
         origin=(-(n - 1) / 2, -(h - 1) / 4, -(j - 1) / 4),
         spacing=(1.0, 0.5, 0.5),
     )
+
+
+BSPLINE_ORACLE_SCOPE = (
+    "independent FP64 full-axis Y/dX/all atom gradients; three live states"
+)

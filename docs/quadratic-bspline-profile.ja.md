@@ -116,3 +116,5 @@ Torch参照はsiteごとに正しい値を作る経路。共有prefix／局所�
 この参照と照合する別Algorithmとして扱い、runtimeへはまだ接続していない。
 CUDA最適化、Graph、完全step速度とGPUピーク容量は次の検証対象。
 CPU suiteのGPU／DB skipを実機検証には数えない。
+
+研究GPU実装の範囲と共有集計の式は[GPU実装ノート](quadratic-bspline-gpu.ja.md)を参照。
