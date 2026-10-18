@@ -966,3 +966,46 @@ def test_range_fused_live_all_gradients(n, floor):
                 layer.atoms.p[:, 2:].add_(0.0037)
         x = torch.randn(3, n, device="cuda", requires_grad=True)
         gate(layer, x, torch.randn_like(x))
+
+
+@GPU
+def test_range_knots_keep_fp64_geometry_at_ceil_boundaries():
+    import triton as tr
+    import triton.language as tl
+
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.range_kernels import (
+        _jumps,
+    )
+
+    @tr.jit
+    def read_cuts(Meta, Origin, Spacing, Cuts, A: tl.constexpr, AB: tl.constexpr):
+        a = tl.arange(0, AB)
+        cuts, _, _, _ = _jumps(Meta, Origin, Spacing, a, A, 128, 0, 0, True)
+        tl.store(Cuts + a[:, None] * 4 + tl.arange(0, 4)[None, :], cuts, a[:, None] < A)
+
+    a = 33
+    meta = torch.ones((a, 12), device="cuda", dtype=torch.float64)
+    origin = torch.tensor([0.0, 0.0], device="cuda", dtype=torch.float64)
+    spacing = torch.tensor([0.1, 0.1], device="cuda", dtype=torch.float64)
+    radius = torch.linspace(0.3, 9.0, a, device="cuda", dtype=torch.float64)
+    offsets = torch.tensor(
+        [-1e-8, 0.0, 1e-8], device="cuda", dtype=torch.float64
+    ).repeat(11)
+    meta[:, 1] = radius
+    meta[:, 2] = 3.7 - radius / 3 + offsets
+    meta[:, 9] = radius.reciprocal()
+    meta[:, 10] = spacing[0].reciprocal()
+    cuts = torch.empty((a, 4), device="cuda", dtype=torch.int32)
+    read_cuts[(1,)](
+        meta, origin, spacing, cuts, a, 64, num_warps=4, enable_fp_fusion=False
+    )
+    fractions = torch.tensor(
+        [-1.0, -1 / 3, 1 / 3, 1.0], device="cuda", dtype=torch.float64
+    )
+    expected = (
+        ((meta[:, 2, None] + radius[:, None] * fractions[None, :]) * meta[:, 10, None])
+        .ceil()
+        .clamp(0, 128)
+        .int()
+    )
+    torch.testing.assert_close(cuts, expected, rtol=0, atol=0)

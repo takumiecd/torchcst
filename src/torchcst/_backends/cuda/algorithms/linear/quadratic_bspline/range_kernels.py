@@ -44,11 +44,11 @@ def _jumps(
             tl.full(l2.shape, 0, tl.float64),
         )
     knot = tl.arange(0, 4)
-    t = tl.where(
-        knot == 0,
-        -1.0,
-        tl.where(knot == 1, -1.0 / 3.0, tl.where(knot == 2, 1.0 / 3.0, 1.0)),
-    )
+    # Keep the non-integral knot fractions in the FP64 geometry contract.
+    t = tl.full((4,), 1.0, tl.float64)
+    t = tl.where(knot == 2, 1.0 / 3.0, t)
+    t = tl.where(knot == 1, -1.0 / 3.0, t)
+    t = tl.where(knot == 0, -1.0, t)
     edge = center[:, None] + radius[:, None] * t[None, :] - origin
     index = edge * ih[:, None] if RECIPROCAL else edge / h
     cut = tl.minimum(tl.maximum(tl.ceil(index), 0), N).to(tl.int32)

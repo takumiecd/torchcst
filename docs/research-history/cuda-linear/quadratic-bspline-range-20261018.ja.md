@@ -125,3 +125,28 @@ small4.512089、switch7.688989 msで、同じ結論だった。
 既存の最速版や公開dispatcherへ新方式を置換しない。
 分離前に現在worktreeで作成した `689d57fa` / `a4940ea0` の両commitは新研究branchに保持。
 source/result archiveとrawログは削除しない。worktreeのpathは従来と同じである。
+
+## 検証・取得時の注意
+
+v7実装の初期2 jobはTritonのconstexpr再代入とscalar/vector条件式のコンパイルで失敗。
+数学・性能の結果には数えず、修正後のsmokeで25件通過を確認した。
+`l4job-52a0fe25c3304a25b5159a1bed1e0876`はdriver正常終了・全result archiveの取得と
+SHA256照合まで完了したが、取得後のremote cleanupがWebSocket切断で失敗した。
+GPUはserver照合で停止済み。データは保全するが、採用判断用の独立run数には数えず、
+以後のclean jobで融合版の精度・性能を再確認する。
+
+CPU回帰1968 passed（CUDAのskipはGPU確認ではない）。wheelとsdistをbuildし、
+全338 runtime fileがcheckoutとbyte一致することを確認した。
+最初のno-isolation buildはローカル環境にhatchlingがなく失敗したため、標準の
+隔離build環境で再実行し成功。ローカル環境の依存を変更していない。
+
+B32 mixed/switchの閾値比較とB64 mixedを新しいGPUで確認する。
+full-shape oracleは各候補・各case・3つのlive状態でY/dX/全source Parameter勾配の
+maxabs/relative L2をともに4e-4未満とする。基準の緩和や幅の固定化はしない。
+
+最終監査で、Tritonの`where`だけで作ったknot fraction tensorが暗黙のFP32に
+なり得る点を修正した。従来の値・勾配gateは通っていたが、ceil直近の区間選択も
+元のFP64 geometryと揃えるため、±1/3をFP64 tensorに直接入れる。
+微小offsetを持つ33 atomでcut index自体をFP64式と完全一致させる回帰テストを追加。
+最終の速度・精度・メモリ判断には、この修正後の同一runtimeを使う独立jobを使う。
+修正前の表は探索経過として保持し、最終版の数字と混ぜない。
