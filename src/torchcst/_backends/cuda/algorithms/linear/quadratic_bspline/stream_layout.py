@@ -35,6 +35,7 @@ def _place(
     Stats,
     A: tl.constexpr,
     K: tl.constexpr,
+    NATIVE_END: tl.constexpr,
 ):
     dirty = tl.load(Dirty)
     if dirty:
@@ -45,7 +46,7 @@ def _place(
         tl.store(Order + base + rank, a.to(tl.int64), a < A)
     if tl.program_id(0) == 0:
         if dirty:
-            tl.store(Count, tl.load(Ends + K - 2))
+            tl.store(Count, tl.load(Ends + NATIVE_END))
         tl.store(Stats, tl.load(Stats) + 1)
         tl.store(Stats + 1, tl.load(Stats + 1) + dirty.to(tl.int64))
 
@@ -60,14 +61,26 @@ def make_layout(a, sizes, recipe, device):
     def empty(n, dtype=torch.int32):
         return torch.empty(n, dtype=dtype, device=device)
 
+    tiles = getattr(recipe, "range_tile", 0)
+    broad_bins = (
+        max(
+            tr.cdiv(sizes[0], recipe.matrix_sites),
+            tr.cdiv(sizes[1], recipe.matrix_sites),
+        ).bit_length()
+        * tr.cdiv(sizes[0], tiles)
+        * tr.cdiv(sizes[1], tiles)
+        if tiles
+        else 1
+    )
     if not recipe.reuse_layout:
         return {"keys": empty(a), "radix": radix}
     return {
+        "radix": radix,
         "keys": torch.full((a,), -1, dtype=torch.int32, device=device),
         "dirty": empty(1),
-        "hist": empty(radix + 1),
-        "ends": empty(radix + 1),
-        "cursor": empty(radix + 1),
+        "hist": empty(radix + broad_bins),
+        "ends": empty(radix + broad_bins),
+        "cursor": empty(radix + broad_bins),
         "order": empty(a, torch.int64),
         "count": empty(1),
         "stats": torch.zeros(2, dtype=torch.int64, device=device),
@@ -89,6 +102,7 @@ def placement(meta, origin, spacing, sizes, recipe, cache):
             recipe.sigma_cutoff,
             WIDTH_ONLY=True,
             TINY_NATIVE=getattr(recipe, "tiny_native", False),
+            RANGE_TILE=getattr(recipe, "range_tile", 0),
             num_warps=4,
             enable_fp_fusion=False,
         )
@@ -112,6 +126,7 @@ def placement(meta, origin, spacing, sizes, recipe, cache):
         TRACK=True,
         WIDTH_ONLY=True,
         TINY_NATIVE=getattr(recipe, "tiny_native", False),
+        RANGE_TILE=getattr(recipe, "range_tile", 0),
         num_warps=4,
         enable_fp_fusion=False,
     )
@@ -131,6 +146,7 @@ def placement(meta, origin, spacing, sizes, recipe, cache):
         cache["stats"],
         a,
         k,
+        cache["radix"] - 1,
     )
     # Mutable placement may be reused by later forwards before this VJP executes.
     return cache["order"].clone(), cache["count"].clone()

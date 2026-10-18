@@ -59,3 +59,24 @@ raw source/result archive、検証manifest、pytest/CPUログはignored
 `output/bspline-range-reuse-20261018/`と共有poolのjob directoryへ保存する。
 v9初回source commitは90387df5、v10探索sourceはaed1c310。
 性能結果と採否は回収・検証後に追記する。
+
+## v9初回の切り分け（独立repeat前）
+
+L4 B64 mixedの完全stepはv8 4.309892、v9 4.239705、既存H版7.390236、
+Dense .104460 ms。capture/replay込みpeak allocated/reservedはv8 86.840/188、
+v9 78.840/156 MiB（Dense49.502/106）。領域共有だけでは約1.6%短縮に留まる。
+
+別計装Graphのv8内訳は、各pの時間を診断目的で集約すると、W側scatter .991232、
+入力scan/係数合成 .623616、出力scan/係数合成 .285696、zero .146432 ms。
+VJP側はquery/収縮 .927744、入力随伴scan .525312、出力随伴scan .284672 ms。
+prepare .162816、native W .057344、native DP .111616 ms。
+外部eventの費用・中央値の性質により、主測定の完全step時間へ足し引きしない。
+v9の主な変化はzeroが合計 .112640 msへ減ったことで、query/入力scanはほぼ同じ。
+これに基づき、係数scatter/queryのatom数・warp数も既存recipeで6構成比較する。
+
+job `l4job-12721c4c8ce54b61b4445a2b12cdfdb9`、source 90387df5、GPUテスト333件通過。
+独立FP64 Y/dX/DPは3 live状態・全AでPASS。v9の最大絶対誤差は
+Y2.036e-5、dX2.107e-5、DP1.234e-4。relative L2も4e-4未満。
+source archive `3894fcddf55d095cf4719182cf017f7ff61aac60fb765c169532d32a89e6d233`、
+result archive `f157e4c63d9ed3811c04bbb3dae664278ee340f8baa2f25e869728f2bb06e3bd`。
+17 manifest filesを再hash検証し、returncode 0を確認。

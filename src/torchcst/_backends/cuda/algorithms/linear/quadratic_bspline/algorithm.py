@@ -22,6 +22,7 @@ from .recipe import (
     BSplineRangeFusedRecipe,
     BSplineRangeRecipe,
     BSplineRangeReuseRecipe,
+    BSplineRangeSpatialRecipe,
     BSplineRecipe,
     BSplineSplitRecipe,
     BSplineStreamingMemoryRecipe,
@@ -243,3 +244,9 @@ class BSplineRangeReuseAlgorithm(BSplineStreamingAlgorithm):
 class BSplineRangeBlockedAlgorithm(BSplineStreamingAlgorithm):
     revision: str = "v10"
     recipe_type: type = BSplineRangeBlockedRecipe
+
+
+@dataclass(frozen=True)
+class BSplineRangeSpatialAlgorithm(BSplineStreamingAlgorithm):
+    revision: str = "v11"
+    recipe_type: type = BSplineRangeSpatialRecipe

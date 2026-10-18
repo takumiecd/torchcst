@@ -15,6 +15,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineRangeBlockedAlgorithm,
     BSplineRangeFusedAlgorithm,
     BSplineRangeReuseAlgorithm,
+    BSplineRangeSpatialAlgorithm,
     BSplineSplitAlgorithm,
     BSplineStreamingAlgorithm,
     BSplineStreamingMemoryAlgorithm,
@@ -27,6 +28,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineRangeFusedRecipe,
     BSplineRangeRecipe,
     BSplineRangeReuseRecipe,
+    BSplineRangeSpatialRecipe,
     BSplineRecipe,
     BSplineSplitRecipe,
     BSplineStreamingMemoryRecipe,
@@ -56,11 +58,13 @@ def case(n=64, a=17):
 def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     from dataclasses import replace
 
+    spatial = strategy == "matrix_range_spatial"
     blocked = strategy == "matrix_range_blocked"
     reuse = strategy == "matrix_range_reuse"
     fused = strategy in (
         "matrix_range_fused",
         "matrix_range_reuse",
+        "matrix_range_spatial",
         "matrix_range_blocked",
     )
     if fused:
@@ -74,6 +78,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineAlgorithm())
     registry.register(BSplineRangeAlgorithm())
     registry.register(BSplineRangeFusedAlgorithm())
+    registry.register(BSplineRangeSpatialAlgorithm())
     registry.register(BSplineRangeBlockedAlgorithm())
     registry.register(BSplineRangeReuseAlgorithm())
     registry.register(BSplineTuningAlgorithm())
@@ -93,7 +98,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     tuned = bool(recipe_options) or strategy == "matrix_separable"
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v10"
+        "v11"
+        if spatial
+        else "v10"
         if blocked
         else "v9"
         if reuse
@@ -112,7 +119,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         else "v2"
         if tuned
         else "v1",
-        BSplineRangeBlockedRecipe(**recipe_options)
+        BSplineRangeSpatialRecipe(**recipe_options)
+        if spatial
+        else BSplineRangeBlockedRecipe(**recipe_options)
         if blocked
         else BSplineRangeReuseRecipe(**recipe_options)
         if reuse
@@ -148,6 +157,7 @@ def test_recipe_and_metadata_roundtrip():
     reg.register(BSplineAlgorithm())
     reg.register(BSplineRangeAlgorithm())
     reg.register(BSplineRangeFusedAlgorithm())
+    reg.register(BSplineRangeSpatialAlgorithm())
     reg.register(BSplineRangeBlockedAlgorithm())
     reg.register(BSplineRangeReuseAlgorithm())
     reg.register(BSplineTuningAlgorithm())
@@ -276,6 +286,7 @@ def test_live_width_all_gradients(strategy, n, floor):
         "matrix_range",
         "matrix_range_fused",
         "matrix_range_reuse",
+        "matrix_range_spatial",
         "matrix_range_blocked",
     ],
 )
@@ -318,6 +329,8 @@ def test_edges_empty_zero_amplitude_and_saved_geometry(strategy):
         ("matrix_range", {"save_w": False}),
         ("matrix_range_fused", {}),
         ("matrix_range_reuse", {}),
+        ("matrix_range_spatial", {}),
+        ("matrix_range_spatial", {"save_w": False}),
         ("matrix_range_blocked", {}),
         ("matrix_range_blocked", {"save_w": False}),
         ("matrix_range_reuse", {"save_w": False}),
@@ -426,6 +439,7 @@ def test_live_graph_optimizer_state(strategy, options):
         "matrix_range",
         "matrix_range_fused",
         "matrix_range_reuse",
+        "matrix_range_spatial",
         "matrix_range_blocked",
     ],
 )
@@ -480,6 +494,7 @@ def test_matrix_full_atom_gradient_gate(n, floor):
         "matrix_range",
         "matrix_range_fused",
         "matrix_range_reuse",
+        "matrix_range_spatial",
         "matrix_range_blocked",
     ],
 )
@@ -511,6 +526,7 @@ def test_tiny_single_axis_support_below_product_floor(strategy):
         "matrix_range",
         "matrix_range_fused",
         "matrix_range_reuse",
+        "matrix_range_spatial",
         "matrix_range_blocked",
     ],
 )
@@ -522,6 +538,7 @@ def test_rectangular_grid_distinct_spacing_and_origin(strategy):
     reg.register(BSplineAlgorithm())
     reg.register(BSplineRangeAlgorithm())
     reg.register(BSplineRangeFusedAlgorithm())
+    reg.register(BSplineRangeSpatialAlgorithm())
     reg.register(BSplineRangeBlockedAlgorithm())
     reg.register(BSplineRangeReuseAlgorithm())
     reg.register(BSplineParallelAlgorithm())
@@ -531,7 +548,9 @@ def test_rectangular_grid_distinct_spacing_and_origin(strategy):
     parallel = strategy in ("matrix_flat", "hybrid_grouped", "matrix_support_grouped")
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v10"
+        "v11"
+        if strategy == "matrix_range_spatial"
+        else "v10"
         if strategy == "matrix_range_blocked"
         else "v9"
         if strategy == "matrix_range_reuse"
@@ -548,7 +567,9 @@ def test_rectangular_grid_distinct_spacing_and_origin(strategy):
         else "v3"
         if parallel
         else "v1",
-        BSplineRangeBlockedRecipe()
+        BSplineRangeSpatialRecipe()
+        if strategy == "matrix_range_spatial"
+        else BSplineRangeBlockedRecipe()
         if strategy == "matrix_range_blocked"
         else BSplineRangeReuseRecipe()
         if strategy == "matrix_range_reuse"
@@ -903,6 +924,7 @@ def test_stream_placement_reuse_and_graph_invalidation():
         "matrix_range",
         "matrix_range_fused",
         "matrix_range_reuse",
+        "matrix_range_spatial",
         "matrix_range_blocked",
     ],
 )
@@ -945,6 +967,7 @@ def test_stream_batch_tile_and_single_empty_axis(batch, atoms_per_tile):
         "matrix_range",
         "matrix_range_fused",
         "matrix_range_reuse",
+        "matrix_range_spatial",
         "matrix_range_blocked",
     ],
 )
@@ -972,6 +995,7 @@ def test_stream_individual_gradient_requests(input_grad, strategy):
         "matrix_range",
         "matrix_range_fused",
         "matrix_range_reuse",
+        "matrix_range_spatial",
         "matrix_range_blocked",
     ],
 )
@@ -1083,6 +1107,7 @@ def test_range_knots_keep_fp64_geometry_at_ceil_boundaries():
         "matrix_range",
         "matrix_range_fused",
         "matrix_range_reuse",
+        "matrix_range_spatial",
         "matrix_range_blocked",
     ],
 )
@@ -1106,7 +1131,13 @@ def test_range_single_broad_atom_clipped_to_one_site(strategy, epsilon):
 
 @GPU
 @pytest.mark.parametrize(
-    "strategy", ["matrix_range_fused", "matrix_range_reuse", "matrix_range_blocked"]
+    "strategy",
+    [
+        "matrix_range_fused",
+        "matrix_range_reuse",
+        "matrix_range_blocked",
+        "matrix_range_spatial",
+    ],
 )
 def test_range_graph_invalidates_guard_on_center_only_moves(strategy):
     import math
@@ -1185,7 +1216,9 @@ def test_range_scan_first_plane_alias_matches_separate_storage(sizes):
 @GPU
 @pytest.mark.parametrize("n", [64, 1024])
 @pytest.mark.parametrize("floor", [1e-6, 1000.0])
-@pytest.mark.parametrize("strategy", ["matrix_range_reuse", "matrix_range_blocked"])
+@pytest.mark.parametrize(
+    "strategy", ["matrix_range_reuse", "matrix_range_blocked", "matrix_range_spatial"]
+)
 def test_range_reuse_live_width_all_gradients(n, floor, strategy):
     layer = model(strategy, n=n, a=33, floor=floor)
     for step in range(3):
@@ -1292,3 +1325,46 @@ def test_range_blocked_scan_and_adjoint_match_independent_sum(sizes, br, bc):
                 torch.testing.assert_close(
                     result, source.cumsum(0) * basis, rtol=1e-11, atol=1e-11
                 )
+
+
+def test_range_spatial_recipe_roundtrip_and_bounds():
+    reg = Registry()
+    reg.register(BSplineRangeSpatialAlgorithm())
+    plan = ExecutionPlan(
+        "research_cuda_quadratic_bspline", "v11", BSplineRangeSpatialRecipe()
+    )
+    assert reg.loads_plan(reg.dumps_plan(plan)) == plan
+    for value in (True, 0, 8, 256):
+        with pytest.raises(ValueError):
+            BSplineRangeSpatialRecipe(range_tile=value)
+
+
+@GPU
+def test_range_spatial_center_move_rebuilds_placement_without_width_change():
+    layer = model("matrix_range_spatial", n=128, a=1, sigma_cutoff=0.01, range_tile=16)
+    with torch.no_grad():
+        layer.atoms.p[0, 2:] = 6.0
+    x = torch.randn(3, 128, device="cuda", requires_grad=True)
+    dy = torch.randn_like(x)
+    gate(layer, x, dy)
+    cache = layer.__dict__["_algorithm_states"][0].buffers["stream_layout"]
+    rebuilds = cache["stats"][1].item()
+    key = cache["keys"].clone()
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        y = layer(x)
+        dx, dp = torch.autograd.grad(y, (x, layer.atoms.p), dy)
+    with torch.no_grad():
+        layer.atoms.p[0, 2:].add_(2.0)
+    graph.replay()
+    assert cache["stats"][1].item() == rebuilds + 1
+    assert not torch.equal(cache["keys"], key)
+    rx = x.detach().double().requires_grad_()
+    rp = layer.atoms.p.detach().double().requires_grad_()
+    ref = bs.oracle(copy.deepcopy(layer.kernel).double(), layer.chart, rp, rx)
+    rdx, rdp = torch.autograd.grad(ref, (rx, rp), dy.double())
+    from benchmarks.cuda.linear.check_normalized import check
+
+    for actual, expected in zip((y, dx, dp), (ref, rdx, rdp)):
+        error = check(actual, expected, 4e-4)
+        assert error["max"] < 4e-4 and error["rel_l2"] < 4e-4

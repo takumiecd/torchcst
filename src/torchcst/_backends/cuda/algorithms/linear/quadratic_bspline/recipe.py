@@ -207,3 +207,15 @@ class BSplineRangeBlockedRecipe(BSplineRangeReuseRecipe):
                 or getattr(self, name) not in allowed
             ):
                 raise ValueError(f"{name} must be one of {allowed}")
+
+
+@dataclass(frozen=True)
+class BSplineRangeSpatialRecipe(BSplineRangeReuseRecipe):
+    """Revision 11: coefficient-query locality in broad-atom placement only."""
+
+    range_tile: int = 32
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.range_tile) is not int or self.range_tile not in (16, 32, 64, 128):
+            raise ValueError("range_tile must be one of (16, 32, 64, 128)")
