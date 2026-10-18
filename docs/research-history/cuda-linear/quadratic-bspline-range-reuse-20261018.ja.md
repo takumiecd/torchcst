@@ -80,3 +80,52 @@ Y2.036e-5、dX2.107e-5、DP1.234e-4。relative L2も4e-4未満。
 source archive `3894fcddf55d095cf4719182cf017f7ff61aac60fb765c169532d32a89e6d233`、
 result archive `f157e4c63d9ed3811c04bbb3dae664278ee340f8baa2f25e869728f2bb06e3bd`。
 17 manifest filesを再hash検証し、returncode 0を確認。
+
+## block scanとlaunch構成の探索
+
+v10は精度・GPUテスト362件を通過したが、B64 mixedで改善しなかった。
+
+| Plan | 完全step ms | allocated / reserved MiB |
+|---|---:|---:|
+| v8 | 4.308205 | 86.840 / 188 |
+| v9 reuse | 4.233513 | 78.840 / 156 |
+| block128c32 | 4.341168 | 78.903 / 156 |
+| block64c32 | 4.293657 | 78.965 / 156 |
+| block128c16 | 4.347764 | 78.903 / 156 |
+
+block合計/carry/書戻しが追加され、単にscanを短くしても完全stepは速くならない。
+この負の結果を保持し、selected routeには使わない。
+job `l4job-88105f1542824326bf58fc4e5422bd50`、source aed1c310、
+source archive `749122d7b539eceaa87dbef115dc08852fc37663c7af562615538456a1cc1855`、
+result archive `da21523836fa335c0dde4dcb8dcb960d2249e013d8a53257593fbf80e82bab84`、
+23 manifest files・returncode 0を検証。
+
+v9の既存recipeだけでscatter/queryの実行粒度を比較した。batch・sigma・正規化・
+係数面は同じで、range_atoms/range_warpsだけを変える。
+
+| atom / warp | 完全step ms | scatter合計 ms | query合計 ms |
+|---|---:|---:|---:|
+| 16 / 4 基準 | 4.238091 | .976896 | .926720 |
+| 8 / 1 | 3.577863 | .656384 | .598016 |
+| 8 / 2 | 4.238051 | .974848 | .928768 |
+| 16 / 1 | 3.253430 | .457728 | .462848 |
+| 16 / 2 | 3.598263 | .650240 | .617472 |
+| 32 / 2 | 3.274323 | .472064 | .470016 |
+| 32 / 4 | 3.588135 | .647168 | .610304 |
+
+右2列は別Graphの各pの診断中央値を集約したもので、主時間の代用ではない。
+全候補でallocated/reservedは78.840/156 MiB。
+全A・3 live状態のY/dX/DP gateを通過。16/1の最大絶対誤差は
+Y2.151e-5、dX2.075e-5、DP1.848e-4。相対L2も4e-4未満。
+job `l4job-c5a1d57dc1244c548c234276637ba34d`、source d4094cd3、
+source archive `3eeb3a791cf1eb27e1007bca56152748aae052a4d0e6ef5aa846d05772981a3f`、
+result archive `a37cbce65f062204ffebc81f2e30cc6ea9d2194dfef2b9270d1af4a4a7f5c3e5`、
+29 manifest files・returncode 0を検証。
+
+v11ではbroad atomだけを、支持幅のbucketと左端切替siteの空間tileで並べる。
+これは物理的な実行順序だけで、sigma/support/係数を量子化しない。source Parameterや
+optimizer momentsの行は動かさず、同じorder snapshotでDPを書き戻す。
+各forwardでkeyをdevice上で検査し、幅bucket・tile・native/range分類が変われば
+histogram/scan/scatterで配置を再構築する。keyが不変でも数値Metaは毎回更新する。
+native数はnative histogram末尾で取り、broad bucketが複数あっても分類を混ぜない。
+この配置と16/1を組み合わせる候補も比較する。
