@@ -248,3 +248,8 @@ manifest全43ファイルを照合済み。両caseのfull-axis/全atom FP64検�
 [支持点列挙・atom集約・prepareの追加比較](research-history/cuda-linear/quadratic-bspline-parallel-20261017.ja.md)
 ではv3 Recipeを追加し、prepareのwarp削減とVJPだけのatom集約を検証した。
 全面的なatom集約と支持点のflat列挙は負の結果で、対照とともに記録している。
+
+[live支持点数によるatomのグループ化](research-history/cuda-linear/quadratic-bspline-support-grouped-20261018.ja.md)
+では、両軸の支持patch数で毎step atom IDをソートし、W構築とVJPで順序を共有する。
+小さいσと大小混在を分け、並べ替え・厳密L2・更新を含む完全step、独立FP64の全勾配、
+capture/replay込みのpeakを比較している。

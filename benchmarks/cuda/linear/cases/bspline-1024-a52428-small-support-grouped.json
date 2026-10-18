@@ -38,7 +38,9 @@
   "plans": [
     "torch",
     "matrix-separable4p1",
-    "matrix-support4a8"
+    "matrix-support4a4",
+    "matrix-support4a8",
+    "matrix-support4a16"
   ],
   "baseline": "torch",
   "dense": true
