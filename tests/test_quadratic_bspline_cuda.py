@@ -1009,3 +1009,59 @@ def test_range_knots_keep_fp64_geometry_at_ceil_boundaries():
         .int()
     )
     torch.testing.assert_close(cuts, expected, rtol=0, atol=0)
+
+
+@GPU
+@pytest.mark.parametrize("strategy", ["matrix_range", "matrix_range_fused"])
+@pytest.mark.parametrize("epsilon", [1e-7, 1e-4, 0.01])
+def test_range_single_broad_atom_clipped_to_one_site(strategy, epsilon):
+    import math
+
+    layer = model(strategy, n=1024, a=1, sigma_cutoff=0.2)
+    radius = math.sqrt(1 + 3 * math.log(0.4 / 0.1) / math.log(128.0))
+    with torch.no_grad():
+        layer.atoms.p[0, 0] = 0.6 * radius
+        layer.atoms.p[0, 1] = 0.8 * radius
+        sigma = bs.decode(layer.kernel, layer.atoms.p)[0, 1].rsqrt()
+        layer.atoms.p[0, 2] = -math.sqrt(6) * sigma + epsilon
+        layer.atoms.p[0, 3] = 51.15
+    x = torch.randn(3, 1024, device="cuda", requires_grad=True)
+    gate(layer, x, torch.randn_like(x))
+    state = layer.__dict__["_algorithm_states"][0]
+    assert state.buffers["stream_layout"]["count"].item() == 1
+
+
+@GPU
+def test_range_graph_invalidates_guard_on_center_only_moves():
+    import math
+
+    from benchmarks.cuda.linear.check_normalized import check
+
+    layer = model("matrix_range_fused", n=1024, a=1, sigma_cutoff=0.2)
+    radius = math.sqrt(1 + 3 * math.log(0.4 / 0.1) / math.log(128.0))
+    with torch.no_grad():
+        layer.atoms.p[0, 0] = 0.6 * radius
+        layer.atoms.p[0, 1] = 0.8 * radius
+        layer.atoms.p[0, 2:] = 51.15
+        sigma = bs.decode(layer.kernel, layer.atoms.p)[0, 1].rsqrt()
+    outside = float(-math.sqrt(6) * sigma + 1e-4)
+    x = torch.randn(3, 1024, device="cuda", requires_grad=True)
+    dy = torch.randn_like(x)
+    gate(layer, x, dy)
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        y = layer(x)
+        dx, dp = torch.autograd.grad(y, (x, layer.atoms.p), dy)
+    for center, native in ((outside, 1), (51.15, 0), (outside, 1), (0.0, 0)):
+        with torch.no_grad():
+            layer.atoms.p[0, 2] = center
+        graph.replay()
+        rx = x.detach().double().requires_grad_()
+        rp = layer.atoms.p.detach().double().requires_grad_()
+        ref = bs.oracle(copy.deepcopy(layer.kernel).double(), layer.chart, rp, rx)
+        rdx, rdp = torch.autograd.grad(ref, (rx, rp), dy.double())
+        for actual, expected in zip((y, dx, dp), (ref, rdx, rdp)):
+            error = check(actual, expected, 4e-4)
+            assert error["max"] < 4e-4 and error["rel_l2"] < 4e-4
+        cache = layer.__dict__["_algorithm_states"][0].buffers["stream_layout"]
+        assert cache["count"].item() == native

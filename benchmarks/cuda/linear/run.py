@@ -584,6 +584,8 @@ def measure(args, run):
                             "coefficient_planes_per_group": recipe.range_planes,
                             "total_coefficient_planes": 9,
                             "fused_coefficient_scans": recipe.fused_scan,
+                            "routing_count_scope": "sigma-only counts above; device route additionally keeps <=2-site clipped axis supports native",
+                            "layout_policy": "device-validated width buckets with tiny clipped-support native guard",
                         }
                     )
                 if recipe.reuse_layout:
@@ -598,6 +600,10 @@ def measure(args, run):
                             "missing or ambiguous persistent B-spline placement"
                         )
                     calls, rebuilds = caches[0]["stats"].cpu().tolist()
+                    if recipe.strategy == "matrix_range":
+                        native = int(caches[0]["count"].item())
+                        hybrid_routing["final_device_native_atoms"] = native
+                        hybrid_routing["final_device_range_atoms"] = case.atoms - native
                     hybrid_routing.update(
                         {
                             "placement_calls": calls,

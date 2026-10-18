@@ -150,3 +150,14 @@ maxabs/relative L2をともに4e-4未満とする。基準の緩和や幅の固�
 微小offsetを持つ33 atomでcut index自体をFP64式と完全一致させる回帰テストを追加。
 最終の速度・精度・メモリ判断には、この修正後の同一runtimeを使う独立jobを使う。
 修正前の表は探索経過として保持し、最終版の数字と混ぜない。
+
+追加のCPU auditでは、大きいsigmaでも片軸の支持が領域端で1点へ縮むと、
+L2 floorの倍率で全体係数の相殺誤差が増幅することも確認した。
+N1024・sigma .3・片軸中心 `-sqrt(6)*sigma+1e-7` の1 atomではY最大絶対誤差
+7.74e-5だが、真値が小さいためrelative L2 gateを満たさない。
+この既知のケースを放置せず、v7/v8は **sigma <= cutoff または、どちらかの軸の
+clipped supportが2 site以下** のatomを既存のnative W/VJPへ戻す。
+全atomの小支持キーをdeviceで毎forward検査し、中心だけの移動でもrouteを更新する。
+旧streamの分類は変更しない。profileやfloorを変える救済ではない。
+1 atomだけを使う小真値のY/dX/全atom勾配gateと、中心だけを動かすGraph replayの
+route反転テストを追加した。通常のbenchmarkにも、このguardの構築費を含める。

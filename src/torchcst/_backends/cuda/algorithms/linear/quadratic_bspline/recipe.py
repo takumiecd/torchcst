@@ -147,6 +147,7 @@ class BSplineRangeRecipe(BSplineStreamingMemoryRecipe):
     strategies = ("matrix_range",)
     strategy: str = "matrix_range"
     fused_scan = False
+    tiny_native = True
     range_planes: int = 3
     range_atoms: int = 16
     range_warps: int = 4

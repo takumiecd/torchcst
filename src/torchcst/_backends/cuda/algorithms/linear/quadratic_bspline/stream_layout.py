@@ -88,6 +88,7 @@ def placement(meta, origin, spacing, sizes, recipe, cache):
             True,
             recipe.sigma_cutoff,
             WIDTH_ONLY=True,
+            TINY_NATIVE=getattr(recipe, "tiny_native", False),
             num_warps=4,
             enable_fp_fusion=False,
         )
@@ -110,6 +111,7 @@ def placement(meta, origin, spacing, sizes, recipe, cache):
         Dirty=cache["dirty"],
         TRACK=True,
         WIDTH_ONLY=True,
+        TINY_NATIVE=getattr(recipe, "tiny_native", False),
         num_warps=4,
         enable_fp_fusion=False,
     )
