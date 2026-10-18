@@ -1369,3 +1369,45 @@ def test_range_spatial_center_move_rebuilds_placement_without_width_change():
     for actual, expected in zip((y, dx, dp), (ref, rdx, rdp)):
         error = check(actual, expected, 4e-4)
         assert error["max"] < 4e-4 and error["rel_l2"] < 4e-4
+
+
+@GPU
+def test_selected_range_one_warp_graph_crosses_live_sigma_cutoff():
+    import math
+
+    from benchmarks.cuda.linear.check_normalized import check
+
+    layer = model("matrix_range_reuse", n=1024, a=33, sigma_cutoff=0.2, range_warps=1)
+    sigma = torch.tensor([0.1, 0.19, 0.21, 1.6], device="cuda", dtype=torch.float64)
+    ids = torch.arange(33, device="cuda")
+    with torch.no_grad():
+        layer.atoms.p[:, 2:] = 51.15
+
+    def set_widths(step):
+        widths = sigma[(ids + step) % 4]
+        radius = (1 + 3 * (widths / 0.1).log() / math.log(128.0)).sqrt()
+        with torch.no_grad():
+            layer.atoms.p[:, 0] = (0.6 * radius).float()
+            layer.atoms.p[:, 1] = (0.8 * radius).float()
+        return int((widths <= 0.2).sum())
+
+    set_widths(0)
+    x = torch.randn(3, 1024, device="cuda", requires_grad=True)
+    dy = torch.randn_like(x)
+    gate(layer, x, dy)
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        y = layer(x)
+        dx, dp = torch.autograd.grad(y, (x, layer.atoms.p), dy)
+    for step in range(1, 5):
+        native = set_widths(step)
+        graph.replay()
+        rx = x.detach().double().requires_grad_()
+        rp = layer.atoms.p.detach().double().requires_grad_()
+        ref = bs.oracle(copy.deepcopy(layer.kernel).double(), layer.chart, rp, rx)
+        rdx, rdp = torch.autograd.grad(ref, (rx, rp), dy.double())
+        for actual, expected in zip((y, dx, dp), (ref, rdx, rdp)):
+            error = check(actual, expected, 4e-4)
+            assert error["max"] < 4e-4 and error["rel_l2"] < 4e-4
+        cache = layer.__dict__["_algorithm_states"][0].buffers["stream_layout"]
+        assert cache["count"].item() == native
