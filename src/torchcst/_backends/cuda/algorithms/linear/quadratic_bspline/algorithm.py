@@ -18,6 +18,7 @@ from torchcst.operators.execution import (
 
 from .recipe import (
     BSplineParallelRecipe,
+    BSplineRangeRecipe,
     BSplineRecipe,
     BSplineSplitRecipe,
     BSplineStreamingMemoryRecipe,
@@ -153,6 +154,18 @@ class BSplineAlgorithm(Algorithm[BSplineRecipe]):
                     state.buffers["moments"],
                     state.buffers,
                 )
+            if state.recipe.strategy == "matrix_range":
+                from .range_executor import apply as range_apply
+
+                return range_apply(
+                    x,
+                    p,
+                    site.kernel,
+                    site.chart,
+                    state.recipe,
+                    state.buffers["moments"],
+                    state.buffers,
+                )
             return apply(
                 x,
                 p,
@@ -203,3 +216,9 @@ class BSplineStreamingAlgorithm(BSplineAlgorithm):
 class BSplineStreamingMemoryAlgorithm(BSplineStreamingAlgorithm):
     revision: str = "v6"
     recipe_type: type = BSplineStreamingMemoryRecipe
+
+
+@dataclass(frozen=True)
+class BSplineRangeAlgorithm(BSplineStreamingAlgorithm):
+    revision: str = "v7"
+    recipe_type: type = BSplineRangeRecipe

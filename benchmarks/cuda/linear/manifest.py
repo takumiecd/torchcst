@@ -597,6 +597,7 @@ REGISTRY.register(MaternStreamingAlgorithm())
 from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
     BSplineAlgorithm,
     BSplineParallelAlgorithm,
+    BSplineRangeAlgorithm,
     BSplineSplitAlgorithm,
     BSplineStreamingAlgorithm,
     BSplineStreamingMemoryAlgorithm,
@@ -610,3 +611,5 @@ REGISTRY.register(BSplineParallelAlgorithm())
 REGISTRY.register(BSplineSplitAlgorithm())
 REGISTRY.register(BSplineStreamingAlgorithm())
 REGISTRY.register(BSplineStreamingMemoryAlgorithm())
+
+REGISTRY.register(BSplineRangeAlgorithm())

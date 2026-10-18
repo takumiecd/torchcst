@@ -542,7 +542,11 @@ def measure(args, run):
         if not sigma_updates["changed_atoms"]:
             raise AssertionError("dynamic-width fixture did not update sigma")
         recipe = run.entry(args.plan_id).plan.recipe
-        if getattr(recipe, "strategy", None) in ("sigma_split", "sigma_stream"):
+        if getattr(recipe, "strategy", None) in (
+            "sigma_split",
+            "sigma_stream",
+            "matrix_range",
+        ):
             initial_small = initial_sigma <= recipe.sigma_cutoff
             final_small = final_sigma <= recipe.sigma_cutoff
             hybrid_routing = {
@@ -558,7 +562,7 @@ def measure(args, run):
                 "saved_order_bytes": case.atoms * 8,
                 "sigma_fixed": False,
             }
-            if recipe.strategy == "sigma_stream":
+            if recipe.strategy in ("sigma_stream", "matrix_range"):
                 hybrid_routing.update(
                     {
                         "capacity_policy": "register-local atom-group H/G; forward numerical metadata and placement snapshot saved; input bank recomputed in backward",
@@ -572,6 +576,15 @@ def measure(args, run):
                         "save_w": recipe.save_w,
                     }
                 )
+                if recipe.strategy == "matrix_range":
+                    hybrid_routing.update(
+                        {
+                            "capacity_policy": "batch-independent W coefficient scans; exact adjoint coefficient banks; no H/G tensor",
+                            "register_tile_elements_per_value": None,
+                            "coefficient_planes_per_group": recipe.range_planes,
+                            "total_coefficient_planes": 9,
+                        }
+                    )
                 if recipe.reuse_layout:
                     states = model.product_site.__dict__.get("_algorithm_states", [])
                     caches = [

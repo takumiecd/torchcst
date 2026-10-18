@@ -25,6 +25,20 @@ def _report(name, compiled):
 
 def diagnostic_components(strategy):
     common = ("snapshot", "prepare", "norm_replay")
+    if strategy == "matrix_range":
+        return common + (
+            "group",
+            "pack",
+            "w_build",
+            "w_rebuild",
+            "range_build",
+            "range_vjp",
+            "y_gemm",
+            "dx_gemm",
+            "dw_gemm",
+            "matrix_atom_vjp",
+            "unpack",
+        )
     if strategy == "sigma_stream":
         return common + (
             "group",

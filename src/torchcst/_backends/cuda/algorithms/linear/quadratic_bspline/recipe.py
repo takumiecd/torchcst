@@ -138,3 +138,28 @@ class BSplineStreamingMemoryRecipe(BSplineStreamingRecipe):
         super().__post_init__()
         if type(self.save_w) is not bool:
             raise ValueError("save_w must be boolean")
+
+
+@dataclass(frozen=True)
+class BSplineRangeRecipe(BSplineStreamingMemoryRecipe):
+    """Revision 7: broad splines use nine 2D polynomial coefficient planes."""
+
+    strategies = ("matrix_range",)
+    strategy: str = "matrix_range"
+    range_planes: int = 3
+    range_atoms: int = 16
+    range_warps: int = 4
+    save_w: bool = True
+
+    def __post_init__(self):
+        super().__post_init__()
+        for name, allowed in (
+            ("range_planes", (1, 3, 9)),
+            ("range_atoms", (8, 16, 32)),
+            ("range_warps", (1, 2, 4, 8)),
+        ):
+            if (
+                type(getattr(self, name)) is not int
+                or getattr(self, name) not in allowed
+            ):
+                raise ValueError(f"{name} must be one of {allowed}")
