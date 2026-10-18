@@ -583,6 +583,7 @@ def measure(args, run):
                             "register_tile_elements_per_value": None,
                             "coefficient_planes_per_group": recipe.range_planes,
                             "total_coefficient_planes": 9,
+                            "fused_coefficient_scans": recipe.fused_scan,
                         }
                     )
                 if recipe.reuse_layout:

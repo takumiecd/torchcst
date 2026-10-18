@@ -77,3 +77,19 @@ raw CPU probeとGPU driver/source/resultは ignored `output/bspline-range-202610
 
 未完了。独立FP64 Y/dX/全atom勾配、可変sigma・Graph/optimizer・retained backwardを
 確認してから、同条件の未計装完全stepとcapture込みallocated/reserved peakを比較する。
+
+## 係数合成とscanの融合候補
+
+v7は両軸のprefixを9係数面すべてに適用する。v8ではtensor積の線形性から、
+各出力次数pについて、先に入力側の3面をprefixして入力多項式へ合成する。
+
+\[
+ T_p[j,i]=\sum_q z_i(i)^q(P_i\Delta_{pq})[j,i],\qquad
+ W_{ji}=\sum_p z_o(j)^p(P_oT_p)[j,i].
+\]
+
+入力側のscanは計9面、出力側は計3面となり、中間合成・読み書きも融合する。
+随伴では出力側を先に計3面処理し、入力側を計9面へ展開してreverse scanする。
+同じ9係数面の演算順序を変える候補であり、kernelの近似・切り捨てではない。
+配列の一時容量は3係数面と1中間面。FP64の合成用WとFP32のWも別に存在する。
+Triton scanの性能、ピークメモリと丸め誤差はGPUで別途比較する。

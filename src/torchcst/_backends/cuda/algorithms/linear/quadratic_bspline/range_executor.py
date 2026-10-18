@@ -17,6 +17,20 @@ def _prefix(delta):
     return delta
 
 
+def _adjoint_bank(dw, bank, sizes, start, recipe):
+    rk.adjoint_init[(tr.cdiv(sizes[0] * sizes[1], 256),)](
+        dw,
+        bank,
+        *sizes,
+        start,
+        recipe.range_planes,
+        256,
+        num_warps=4,
+        enable_fp_fusion=False,
+    )
+    _prefix(bank)
+
+
 def _matrix(meta, origin, spacing, count, sizes, recipe):
     w = _build_w(meta, origin, spacing, count, sizes, recipe, meta.device, "w_build")
     # Accumulate the coefficient groups in FP64 before the one FP32 W rounding.
@@ -42,6 +56,30 @@ def _matrix(meta, origin, spacing, count, sizes, recipe):
             enable_fp_fusion=False,
         )
         _report("range_build", compiled)
+        if recipe.fused_scan:
+            temp = torch.empty(sizes, dtype=torch.float64, device=meta.device)
+            compiled = rk.input_scan[(sizes[0],)](
+                delta,
+                temp,
+                *sizes,
+                tr.next_power_of_2(sizes[1]),
+                num_warps=4,
+                enable_fp_fusion=False,
+            )
+            _report("range_input_scan", compiled)
+            compiled = rk.output_scan[(tr.cdiv(sizes[1], 4),)](
+                temp,
+                accum,
+                *sizes,
+                tr.next_power_of_2(sizes[0]),
+                start // 3,
+                4,
+                num_warps=4,
+                enable_fp_fusion=False,
+            )
+            _report("range_output_scan", compiled)
+            del temp, delta
+            continue
         _prefix(delta)
         rk.restore[(tr.cdiv(sizes[0] * sizes[1], 256),)](
             delta,
@@ -139,17 +177,31 @@ class _Range(torch.autograd.Function):
                 bank = torch.empty(
                     (recipe.range_planes, *sizes), device=dy.device, dtype=torch.float64
                 )
-                rk.adjoint_init[(tr.cdiv(sizes[0] * sizes[1], 256),)](
-                    dw,
-                    bank,
-                    *sizes,
-                    start,
-                    recipe.range_planes,
-                    256,
-                    num_warps=4,
-                    enable_fp_fusion=False,
-                )
-                _prefix(bank)
+                if recipe.fused_scan:
+                    temp = torch.empty(sizes, dtype=torch.float64, device=dy.device)
+                    compiled = rk.adjoint_output_scan[(tr.cdiv(sizes[1], 4),)](
+                        dw,
+                        temp,
+                        *sizes,
+                        tr.next_power_of_2(sizes[0]),
+                        start // 3,
+                        4,
+                        num_warps=4,
+                        enable_fp_fusion=False,
+                    )
+                    _report("range_adjoint_output_scan", compiled)
+                    compiled = rk.adjoint_input_scan[(sizes[0],)](
+                        temp,
+                        bank,
+                        *sizes,
+                        tr.next_power_of_2(sizes[1]),
+                        num_warps=4,
+                        enable_fp_fusion=False,
+                    )
+                    _report("range_adjoint_input_scan", compiled)
+                    del temp
+                else:
+                    _adjoint_bank(dw, bank, sizes, start, recipe)
                 compiled = rk.query[(tr.cdiv(len(meta), recipe.range_atoms),)](
                     bank,
                     meta,
@@ -163,6 +215,7 @@ class _Range(torch.autograd.Function):
                     start,
                     recipe.range_planes,
                     recipe.reciprocal,
+                    REVERSED=not recipe.fused_scan,
                     num_warps=recipe.range_warps,
                     enable_fp_fusion=False,
                 )

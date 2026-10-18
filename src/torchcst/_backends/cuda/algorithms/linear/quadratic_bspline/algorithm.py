@@ -18,6 +18,7 @@ from torchcst.operators.execution import (
 
 from .recipe import (
     BSplineParallelRecipe,
+    BSplineRangeFusedRecipe,
     BSplineRangeRecipe,
     BSplineRecipe,
     BSplineSplitRecipe,
@@ -222,3 +223,9 @@ class BSplineStreamingMemoryAlgorithm(BSplineStreamingAlgorithm):
 class BSplineRangeAlgorithm(BSplineStreamingAlgorithm):
     revision: str = "v7"
     recipe_type: type = BSplineRangeRecipe
+
+
+@dataclass(frozen=True)
+class BSplineRangeFusedAlgorithm(BSplineStreamingAlgorithm):
+    revision: str = "v8"
+    recipe_type: type = BSplineRangeFusedRecipe

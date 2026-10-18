@@ -146,6 +146,7 @@ class BSplineRangeRecipe(BSplineStreamingMemoryRecipe):
 
     strategies = ("matrix_range",)
     strategy: str = "matrix_range"
+    fused_scan = False
     range_planes: int = 3
     range_atoms: int = 16
     range_warps: int = 4
@@ -163,3 +164,15 @@ class BSplineRangeRecipe(BSplineStreamingMemoryRecipe):
                 or getattr(self, name) not in allowed
             ):
                 raise ValueError(f"{name} must be one of {allowed}")
+
+
+@dataclass(frozen=True)
+class BSplineRangeFusedRecipe(BSplineRangeRecipe):
+    """Revision 8: reduce polynomial planes between the two spatial scans."""
+
+    fused_scan = True
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.range_planes != 3:
+            raise ValueError("fused scans require range_planes=3")

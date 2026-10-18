@@ -174,6 +174,7 @@ def query(
     START: tl.constexpr,
     PLANES: tl.constexpr,
     RECIPROCAL: tl.constexpr,
+    REVERSED: tl.constexpr = True,
 ):
     base = tl.load(Count) + tl.program_id(0) * AB
     if base < A:
@@ -192,7 +193,10 @@ def query(
                 & (co[:, :, None] < NO)
                 & (ci[:, None, :] < NI)
             )
-            addr = (NO - 1 - co[:, :, None]) * NI + (NI - 1 - ci[:, None, :])
+            if REVERSED:
+                addr = (NO - 1 - co[:, :, None]) * NI + (NI - 1 - ci[:, None, :])
+            else:
+                addr = co[:, :, None] * NI + ci[:, None, :]
             b = tl.load(Bank + plane * NO * NI + addr, mask, 0)
             total += tl.sum(tl.sum(b * vo[:, :, None] * vi[:, None, :], 2), 1)
             dout += tl.sum(tl.sum(b * dvo[:, :, None] * vi[:, None, :], 2), 1)
@@ -213,3 +217,97 @@ def pullback(Meta, Partial, DP, Count, A: tl.constexpr, AB: tl.constexpr):
     dout = tl.load(Partial + 3 * a + 1, a < A, 0)
     din = tl.load(Partial + 3 * a + 2, a < A, 0)
     _pullback(Meta, DP, a, total, dout, din, A)
+
+
+@tr.jit
+def input_scan(Delta, Temporary, NO: tl.constexpr, NI: tl.constexpr, NN: tl.constexpr):
+    row = tl.program_id(0)
+    i = tl.arange(0, NN)
+    p = tl.arange(0, 4)
+    values = tl.load(
+        Delta + p[:, None] * NO * NI + row * NI + i[None, :],
+        (p[:, None] < 3) & (i[None, :] < NI),
+        0,
+    )
+    sums = tl.cumsum(values, 1)
+    z = 2.0 * i.to(tl.float64) / (NI - 1) - 1.0
+    basis = tl.where(
+        p[:, None] == 0,
+        1.0,
+        tl.where(p[:, None] == 1, z[None, :], z[None, :] * z[None, :]),
+    )
+    value = tl.sum(sums * basis, 0)
+    tl.store(Temporary + row * NI + i, value, i < NI)
+
+
+@tr.jit
+def output_scan(
+    Temporary,
+    W,
+    NO: tl.constexpr,
+    NI: tl.constexpr,
+    NN: tl.constexpr,
+    POWER: tl.constexpr,
+    CB: tl.constexpr,
+):
+    j = tl.arange(0, NN)
+    i = tl.program_id(0) * CB + tl.arange(0, CB)
+    mask = (j[:, None] < NO) & (i[None, :] < NI)
+    addr = j[:, None] * NI + i[None, :]
+    values = tl.load(Temporary + addr, mask, 0)
+    sums = tl.cumsum(values, 0)
+    z = 2.0 * j.to(tl.float64) / (NO - 1) - 1.0
+    basis = tl.full((NN,), 1.0, tl.float64)
+    if POWER == 1:
+        basis = z
+    elif POWER == 2:
+        basis = z * z
+    old = tl.load(W + addr, mask, 0)
+    tl.store(W + addr, old + sums * basis[:, None], mask)
+
+
+@tr.jit
+def adjoint_output_scan(
+    DW,
+    Temporary,
+    NO: tl.constexpr,
+    NI: tl.constexpr,
+    NN: tl.constexpr,
+    POWER: tl.constexpr,
+    CB: tl.constexpr,
+):
+    j = tl.arange(0, NN)
+    i = tl.program_id(0) * CB + tl.arange(0, CB)
+    mask = (j[:, None] < NO) & (i[None, :] < NI)
+    addr = j[:, None] * NI + i[None, :]
+    z = 2.0 * j.to(tl.float64) / (NO - 1) - 1.0
+    basis = tl.full((NN,), 1.0, tl.float64)
+    if POWER == 1:
+        basis = z
+    elif POWER == 2:
+        basis = z * z
+    values = tl.load(DW + addr, mask, 0).to(tl.float64) * basis[:, None]
+    sums = tl.cumsum(values, 0, reverse=True)
+    tl.store(Temporary + addr, sums, mask)
+
+
+@tr.jit
+def adjoint_input_scan(
+    Temporary, Bank, NO: tl.constexpr, NI: tl.constexpr, NN: tl.constexpr
+):
+    row = tl.program_id(0)
+    i = tl.arange(0, NN)
+    p = tl.arange(0, 4)
+    z = 2.0 * i.to(tl.float64) / (NI - 1) - 1.0
+    values = tl.load(Temporary + row * NI + i, i < NI, 0)
+    basis = tl.where(
+        p[:, None] == 0,
+        1.0,
+        tl.where(p[:, None] == 1, z[None, :], z[None, :] * z[None, :]),
+    )
+    sums = tl.cumsum(values[None, :] * basis, 1, reverse=True)
+    tl.store(
+        Bank + p[:, None] * NO * NI + row * NI + i[None, :],
+        sums,
+        (p[:, None] < 3) & (i[None, :] < NI),
+    )
