@@ -483,6 +483,8 @@ def matrix_build(
         a = slot
         if GROUPED:
             a = tl.load(Order + slot, slot < count, A)
+        elif PARTITIONED:
+            a = tl.where(slot < count, slot, A)
         radius = tl.load(Meta + a * 12 + 1, a < A, 1)
         inverse_radius = tl.load(Meta + a * 12 + 9, a < A, 1)
         inverse_ho = tl.load(Meta + a * 12 + 10, a < A, 1)
@@ -565,6 +567,8 @@ def matrix_vjp(
         a = slot
         if GROUPED:
             a = tl.load(Order + slot, slot < count, A)
+        elif PARTITIONED:
+            a = tl.where(slot < count, slot, A)
         radius = tl.load(Meta + a * 12 + 1, a < A, 1)
         inverse_radius = tl.load(Meta + a * 12 + 9, a < A, 1)
         inverse_ho = tl.load(Meta + a * 12 + 10, a < A, 1)

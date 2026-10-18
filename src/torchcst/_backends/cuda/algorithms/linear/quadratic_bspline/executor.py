@@ -25,6 +25,26 @@ def _report(name, compiled):
 
 def diagnostic_components(strategy):
     common = ("snapshot", "prepare", "norm_replay")
+    if strategy == "sigma_stream":
+        return common + (
+            "group",
+            "pack",
+            "w_build",
+            "y_gemm",
+            "dx_gemm",
+            "dw_gemm",
+            "matrix_atom_vjp",
+            "bank_input",
+            "bank_recompute",
+            "bank_adjoint",
+            "stream_forward",
+            "stream_backward",
+            "scan_output",
+            "scan_input",
+            "restore_output",
+            "restore_input",
+            "unpack",
+        )
     if strategy.startswith("matrix"):
         grouping = ("group",) if strategy == "matrix_support_grouped" else ()
         return (
@@ -219,64 +239,75 @@ def _scatter(
     return y
 
 
+def _prepare(p, value, chart, recipe, moments):
+    import triton as tr
+
+    from ..local_product.preparation import polar_scalars
+    from . import kernels as k
+
+    no, ni = chart.grid_shape[0][0], chart.grid_shape[1][0]
+    _stamp("snapshot", 0)
+    source = p.contiguous().clone() if recipe.snapshot_source else p.contiguous()
+    origin, spacing = chart.origin.clone(), chart.spacing.clone()
+    _stamp("snapshot", 1)
+    meta = torch.empty((len(p), 12), device=p.device, dtype=torch.float64)
+    if len(p):
+        _stamp("prepare", 0)
+        compiled = k.prepare[(tr.cdiv(len(p), 64),)](
+            source,
+            meta,
+            origin,
+            spacing,
+            polar_scalars(value),
+            len(p),
+            no,
+            ni,
+            value.spec.normalization.floor,
+            moments,
+            moments.shape[1],
+            recipe.reciprocal,
+            recipe.norm_lookup,
+            num_warps=recipe.prepare_warps,
+            enable_fp_fusion=False,
+        )
+        _stamp("prepare", 1)
+        _report("prepare", compiled)
+        if DIAGNOSTIC_EVENTS is not None:
+            scratch = torch.empty((len(p), 4), device=p.device, dtype=torch.float64)
+            _stamp("norm_replay", 0)
+            compiled = k.norm_replay[(tr.cdiv(len(p), 64),)](
+                meta,
+                origin,
+                spacing,
+                moments,
+                scratch,
+                len(p),
+                no,
+                ni,
+                moments.shape[1],
+                value.spec.normalization.floor,
+                recipe.reciprocal,
+                recipe.norm_lookup,
+                num_warps=4,
+                enable_fp_fusion=False,
+            )
+            _stamp("norm_replay", 1)
+            _report("norm_replay", compiled)
+    return meta, origin, spacing, source
+
+
 class _BSpline(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, p, value, chart, recipe, bases, moments):
         import triton as tr
 
-        from ..local_product.preparation import polar_scalars
         from . import kernels as k
 
         no, ni = chart.grid_shape[0][0], chart.grid_shape[1][0]
-        _stamp("snapshot", 0)
-        source = p.contiguous().clone() if recipe.snapshot_source else p.contiguous()
-        origin, spacing = chart.origin.clone(), chart.spacing.clone()
-        _stamp("snapshot", 1)
-        meta = torch.empty((len(p), 12), device=p.device, dtype=torch.float64)
+        meta, origin, spacing, source = _prepare(p, value, chart, recipe, moments)
         ctx.matrix = False
         ctx.split = False
         if len(p):
-            _stamp("prepare", 0)
-            compiled = k.prepare[(tr.cdiv(len(p), 64),)](
-                source,
-                meta,
-                origin,
-                spacing,
-                polar_scalars(value),
-                len(p),
-                no,
-                ni,
-                value.spec.normalization.floor,
-                moments,
-                moments.shape[1],
-                recipe.reciprocal,
-                recipe.norm_lookup,
-                num_warps=recipe.prepare_warps,
-                enable_fp_fusion=False,
-            )
-            _stamp("prepare", 1)
-            _report("prepare", compiled)
-            if DIAGNOSTIC_EVENTS is not None:
-                scratch = torch.empty((len(p), 4), device=p.device, dtype=torch.float64)
-                _stamp("norm_replay", 0)
-                compiled = k.norm_replay[(tr.cdiv(len(p), 64),)](
-                    meta,
-                    origin,
-                    spacing,
-                    moments,
-                    scratch,
-                    len(p),
-                    no,
-                    ni,
-                    moments.shape[1],
-                    value.spec.normalization.floor,
-                    recipe.reciprocal,
-                    recipe.norm_lookup,
-                    num_warps=4,
-                    enable_fp_fusion=False,
-                )
-                _stamp("norm_replay", 1)
-                _report("norm_replay", compiled)
             if recipe.strategy == "sigma_split":
                 from .split_executor import forward
 

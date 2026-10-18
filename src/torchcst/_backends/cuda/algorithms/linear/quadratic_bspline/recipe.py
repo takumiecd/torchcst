@@ -109,3 +109,19 @@ class BSplineSplitRecipe(BSplineParallelRecipe):
             or self.sigma_cutoff <= 0
         ):
             raise ValueError("sigma_cutoff must be finite and positive")
+
+
+@dataclass(frozen=True)
+class BSplineStreamingRecipe(BSplineSplitRecipe):
+    """Revision 5: reusable placement and register-sized H, recomputed in VJP."""
+
+    strategies = ("sigma_stream",)
+    strategy: str = "sigma_stream"
+    axis_atoms: int = 8
+    axis_warps: int = 4
+    reuse_layout: bool = True
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.reuse_layout) is not bool:
+            raise ValueError("reuse_layout must be boolean")

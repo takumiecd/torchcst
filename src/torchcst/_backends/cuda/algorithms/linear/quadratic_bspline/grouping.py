@@ -20,6 +20,10 @@ def support_keys(
     RECIPROCAL: tl.constexpr,
     SPLIT: tl.constexpr = False,
     CUTOFF: tl.constexpr = 0.5,
+    Previous=None,
+    Dirty=None,
+    TRACK: tl.constexpr = False,
+    WIDTH_ONLY: tl.constexpr = False,
 ):
     a = tl.program_id(0) * 128 + tl.arange(0, 128)
     radius = tl.load(Meta + a * 12 + 1, a < A, 1)
@@ -33,11 +37,25 @@ def support_keys(
     _, ri = _interval(ci, radius, Origin, Spacing, NI, 1, 2, RECIPROCAL, ihi)
     po = tl.cdiv(hi - lo, BS)
     pi = tl.cdiv(ri - li, BS)
+    if WIDTH_ONLY:
+        # Placement buckets need not change when only a center crosses a site.
+        # Actual clipped support is still freshly evaluated by matrix kernels.
+        po = tl.minimum(tl.ceil(2 * radius * iho / BS), tr.cdiv(NO, BS)).to(tl.int32)
+        pi = tl.minimum(tl.ceil(2 * radius * ihi / BS), tr.cdiv(NI, BS)).to(tl.int32)
     # The radix exceeds every possible input patch count, including full support.
     key = po * (tr.cdiv(NI, BS) + 1) + pi
     if SPLIT:
         offset: tl.constexpr = (tr.cdiv(NO, BS) + 1) * (tr.cdiv(NI, BS) + 1)
-        key += tl.where(radius <= 2.449489742783178 * CUTOFF, 0, offset)
+        if TRACK or WIDTH_ONLY:
+            key = tl.where(radius <= 2.449489742783178 * CUTOFF, key, offset)
+        else:
+            key += tl.where(radius <= 2.449489742783178 * CUTOFF, 0, offset)
+    if TRACK:
+        old = tl.load(Previous + a, a < A, -1)
+        changed = tl.sum(((key != old) & (a < A)).to(tl.int32), 0)
+        if changed > 0:
+            tl.atomic_or(Dirty, 1, sem="relaxed")
+        tl.store(Previous + a, key, a < A)
     tl.store(Keys + a, key, a < A)
 
 

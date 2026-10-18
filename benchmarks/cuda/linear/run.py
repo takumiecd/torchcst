@@ -542,7 +542,7 @@ def measure(args, run):
         if not sigma_updates["changed_atoms"]:
             raise AssertionError("dynamic-width fixture did not update sigma")
         recipe = run.entry(args.plan_id).plan.recipe
-        if getattr(recipe, "strategy", None) == "sigma_split":
+        if getattr(recipe, "strategy", None) in ("sigma_split", "sigma_stream"):
             initial_small = initial_sigma <= recipe.sigma_cutoff
             final_small = final_sigma <= recipe.sigma_cutoff
             hybrid_routing = {
@@ -558,6 +558,39 @@ def measure(args, run):
                 "saved_order_bytes": case.atoms * 8,
                 "sigma_fixed": False,
             }
+            if recipe.strategy == "sigma_stream":
+                hybrid_routing.update(
+                    {
+                        "capacity_policy": "register-local atom-group H/G; forward numerical metadata and placement snapshot saved; input bank recomputed in backward",
+                        "h_elements_per_buffer": 0,
+                        "register_tile_elements_per_value": recipe.axis_atoms
+                        * (1 << (m - 1).bit_length()),
+                        "layout_policy": "device-validated persistent width buckets"
+                        if recipe.reuse_layout
+                        else "fresh sort of width buckets every forward",
+                        "canonical_parameter_rows_moved": False,
+                    }
+                )
+                if recipe.reuse_layout:
+                    states = model.product_site.__dict__.get("_algorithm_states", [])
+                    caches = [
+                        s.buffers["stream_layout"]
+                        for s in states
+                        if "stream_layout" in s.buffers
+                    ]
+                    if len(caches) != 1:
+                        raise AssertionError(
+                            "missing or ambiguous persistent B-spline placement"
+                        )
+                    calls, rebuilds = caches[0]["stats"].cpu().tolist()
+                    hybrid_routing.update(
+                        {
+                            "placement_calls": calls,
+                            "placement_rebuilds": rebuilds,
+                            "placement_reuses": calls - rebuilds,
+                            "placement_count_scope": "warmup/eager/captured-replay calls through primary measurement; not replay-only",
+                        }
+                    )
         if getattr(recipe, "execution_route", None) in (
             "hybrid",
             "hybrid_support",

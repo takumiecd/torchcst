@@ -20,6 +20,7 @@ from .recipe import (
     BSplineParallelRecipe,
     BSplineRecipe,
     BSplineSplitRecipe,
+    BSplineStreamingRecipe,
     BSplineTuningRecipe,
 )
 
@@ -77,7 +78,8 @@ class BSplineAlgorithm(Algorithm[BSplineRecipe]):
         try:
             sizes = layout(context.operator)
             if (
-                recipe.strategy.startswith("matrix") or recipe.strategy == "sigma_split"
+                recipe.strategy.startswith("matrix")
+                or recipe.strategy in ("sigma_split", "sigma_stream")
             ) and max(sizes) > 1024:
                 reasons.append(
                     "matrix research route supports at most 1024 sites per axis"
@@ -131,12 +133,25 @@ class BSplineAlgorithm(Algorithm[BSplineRecipe]):
             state.buffers["bases"] = (
                 (_basis(no, x.device), _basis(ni, x.device))
                 if state.recipe.strategy.startswith("hybrid")
-                or state.recipe.strategy == "sigma_split"
+                or state.recipe.strategy in ("sigma_split", "sigma_stream")
                 else (None, None)
             )
             state.buffers["moments"] = _norm_moments(max(no, ni), x.device)
             state.buffers["basis_key"] = key
         with torch.cuda.device(x.device):
+            if state.recipe.strategy == "sigma_stream":
+                from .stream_executor import apply as stream_apply
+
+                return stream_apply(
+                    x,
+                    p,
+                    site.kernel,
+                    site.chart,
+                    state.recipe,
+                    state.buffers["bases"],
+                    state.buffers["moments"],
+                    state.buffers,
+                )
             return apply(
                 x,
                 p,
@@ -164,3 +179,9 @@ class BSplineParallelAlgorithm(BSplineAlgorithm):
 class BSplineSplitAlgorithm(BSplineAlgorithm):
     revision: str = "v4"
     recipe_type: type = BSplineSplitRecipe
+
+
+@dataclass(frozen=True)
+class BSplineStreamingAlgorithm(BSplineAlgorithm):
+    revision: str = "v5"
+    recipe_type: type = BSplineStreamingRecipe
