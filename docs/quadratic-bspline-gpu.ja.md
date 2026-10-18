@@ -253,3 +253,7 @@ manifest全43ファイルを照合済み。両caseのfull-axis/全atom FP64検�
 では、両軸の支持patch数で毎step atom IDをソートし、W構築とVJPで順序を共有する。
 小さいσと大小混在を分け、並べ替え・厳密L2・更新を含む完全step、独立FP64の全勾配、
 capture/replay込みのpeakを比較している。
+
+[atomごと・stepごとのsigma振り分け](research-history/cuda-linear/quadratic-bspline-sigma-split-20261018.ja.md)
+ではv4 Recipeで小支持Wと大支持Hを合算する。混在時の速度改善、全small時の余分な処理、
+固定容量によるメモリ増加、閾値をまたぐ移動と全勾配の検証を分けて記録した。
