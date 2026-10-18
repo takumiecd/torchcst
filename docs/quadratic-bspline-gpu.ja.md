@@ -268,3 +268,9 @@ capture/replay込みのpeakを比較している。
 B64 mixedで約42%短縮した一方、B32 mixedは改善せず、smallは遅く、総peak memoryも増えた。
 FP64境界と小支持の安定性guardを含む全勾配gate、独立repeat、負の結果を記録し、
 既定採用せずPR110に分離している。
+
+
+係数面の第0面をscanの中間領域に使い、3面を次数間で再利用する候補は
+[係数面の寿命・scan/atom VJPの切り分け](research-history/cuda-linear/quadratic-bspline-range-reuse-20261018.ja.md)
+を参照。L2・形状・幅stop-gradientは同じで、16atom/1warpの実行構成も比較する。
+block scanと空間順の負の結果を含め、公開の既定採用とは区別する。
