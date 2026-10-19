@@ -21,6 +21,7 @@ from .recipe import (
     BSplineCoalescedHRecipe,
     BSplineParallelRecipe,
     BSplinePreparedHRecipe,
+    BSplineQueryRecipe,
     BSplineRangeBlockedRecipe,
     BSplineRangeFusedRecipe,
     BSplineRangeRecipe,
@@ -284,3 +285,9 @@ class BSplineSavedHAlgorithm(BSplineStreamingAlgorithm):
 class BSplineAdjointAlgorithm(BSplineStreamingAlgorithm):
     revision: str = "v15"
     recipe_type: type = BSplineAdjointRecipe
+
+
+@dataclass(frozen=True)
+class BSplineQueryAlgorithm(BSplineStreamingAlgorithm):
+    revision: str = "v16"
+    recipe_type: type = BSplineQueryRecipe

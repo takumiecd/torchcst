@@ -72,6 +72,7 @@ class _SavedH(torch.autograd.Function):
             if mode == "none"
             else (bank, meta, cuts, co, values, saved_hp)
         )
+        query_args = (recipe.query_method,) if getattr(recipe, "query_h", False) else ()
         mode_arg = False if mode == "none" else mode
         compiled = kernel[(tr.cdiv(a, recipe.axis_atoms),)](
             *prefix,
@@ -92,6 +93,7 @@ class _SavedH(torch.autograd.Function):
             recipe.point_major,
             recipe.share_reads,
             recipe.reduce_writes,
+            *query_args,
             num_warps=recipe.axis_warps,
             enable_fp_fusion=False,
         )
@@ -300,6 +302,7 @@ class _SavedH(torch.autograd.Function):
                 recipe.reciprocal,
                 recipe.coefficient_derivatives,
                 vjp,
+                *((recipe.query_method,) if getattr(recipe, "query_h", False) else ()),
                 num_warps=recipe.axis_warps,
                 enable_fp_fusion=False,
             )
@@ -352,6 +355,8 @@ class _SavedH(torch.autograd.Function):
                 else (input_bank, saved_h, saved_hp, adjoint_bank)
             )
             extra = () if mode == "none" else (mode,)
+            if getattr(recipe, "query_h", False):
+                extra += (recipe.query_method,)
             compiled = kernel[(tr.cdiv(a, recipe.axis_atoms),)](
                 *prefix,
                 meta,
