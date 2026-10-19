@@ -80,8 +80,9 @@ ownerはfloat atomicを消しても各siteのeventループ、H/Gの再読込、
 
 最終比較と検証の記録は以下へ追記する。
 
-launch探索（job `l4job-9c80730e83ec410abf798bbf28f216d7`、source `329de44e`）では、atom tile 4/8/16、warps 1/2/4を比較した。
+参考のlaunch探索（job `l4job-9c80730e83ec410abf798bbf28f216d7`、source `329de44e`）では、atom tile 4/8/16、warps 1/2/4を比較した。
 完全stepは1.982～2.115msで、基本の8atom/4warpsを超える改善はなかった。
 cutoff .05（小さいσも広いσ側に振り分ける）は2.152ms、cutoff .5は2.369ms。
 compactな3係数planeでは2.086ms、allocatedは62.888MiBへ減るがreservedは142MiBだった。
+このlaunch探索はdriver成功・archive取得後のremote cleanupで接続を失い、poolがVM停止とserver assignment消失を確認した。正式な最終比較には含めず、負の探索記録として保持する。
 精度を緩めず両方のメモリ指標でDense以下にするという採用条件は、ここまでの候補では満たしていない。
