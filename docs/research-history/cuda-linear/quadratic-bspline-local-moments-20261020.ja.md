@@ -442,3 +442,37 @@ small4/mid1はpaired control比約1.35% /1.66%短縮。1独立runの小さな差
 source SHA256 `e78cbc0278aa8f38c207a03b45301eb8f716bd16f2db9050d53a74fc7c7a96cf`、result SHA256 `abe79307f07933f45b9c9d4e229b242f439878a32db9c487cc1842894beed5af`。source byte一致1567 files、manifest48 files、return0/cleanup ackを確認した。
 
 v33 source `29af8c68c60d1084f0fe0bdeff5ef5b4e668b6c1` はCPU1994 PASS /4244 skipped /既存warning18、38.76秒、Ruff/diff checkとisolated sdist/wheelの361 runtime-file byte一致を確認。GPU job `l4job-dd92385a8d154b759457f408b3c53212` で検証中。これを性能の証拠とは扱わない。
+
+
+## v33 GPU結果：H/Gのpersistent化は改善しない
+
+source `29af8c68c60d1084f0fe0bdeff5ef5b4e668b6c1`、job `l4job-dd92385a8d154b759457f408b3c53212`。31 checks PASS /1464 deselected、85.54秒。Count全/一部/ゼロ、1025 atom/128 CTAの複数loopとGraph、動的σ/X、個別勾配、retained snapshot、両主要caseの全plan・3状態の独立FP64 full-shape gateが通った。全52428 σ更新と初期条件同一性も確認した。
+
+| H/G grid | B32完全step ms | B64完全step ms |
+|---|---:|---:|
+| 従来grid control |0.808028|1.319484|
+| 128 CTA |1.335713|2.341960|
+| 256 CTA |0.969225|1.630286|
+| 512 CTA |0.845369|1.402480|
+| 1024 CTA |0.842042|1.397173|
+| Dense |0.082923|0.104919|
+
+全candidateの両peakはcontrolと同じ34.153 /98 MiB（B32）、34.653 /100（B64）でDense以下。追加Tensorなしでも、完全stepの速度は改善しなかった。BT32のfused forward/backwardはcontrol約0.132 /0.238ms、128 CTAでは約0.259 /0.630ms。512/1024でもbackward約0.274 /0.263msへ増えた。compiler reportは全候補でregister40、spill0、local load/storeなし。起動数削減だけでは高速にならず、この方式は採用しない。並列度低下との整合性はあるが、hardware occupancy counterで原因を測定したという主張はしない。
+
+source SHA256 `72c64b81fc1a90ae5a90941318277e33c02876846a74c26ed9b30be18abfbdf6`、result SHA256 `7e8381d9356fa9019b6b318ac0bb082c8594cf8dc8fc09b3bc4ec75c12a5f4e3`。source byte一致1572 files、manifest48 files、return0/cleanup ackを確認。
+
+
+## v32独立再測定とsmall/switch
+
+job `l4job-9f3c973cd6b344b3b7fa8db955d3988b`、source `a3c7670cb28dbb6e7ea22402098da3da7fadbc52`。catalog check後、全plan・3状態の独立FP64 full-shape gate、全σ更新と初期条件同一性を通過した。このsourceにはv33のoptional Base/Programも含まれるが、測定するv30/v32は従来Base=Noneを使う。
+
+| case | control ms | small4/mid1 bundle ms | Dense ms |
+|---|---:|---:|---:|
+| B32 mixed repeat |0.806965|0.796006|0.082713|
+| B64 mixed repeat |1.316404|1.298737|0.104868|
+| B32 small |0.804949|0.793381|0.083066|
+| B32 switch |0.808499|0.799098|0.083032|
+
+両peakは全B32 caseで34.153 /98 MiB、B64で34.653 /100、controlと同じでDense49.002 /106、49.502 /106以下。mixedの約1.3〜1.7%短縮は2独立runで同じ速度帯を再現。small/switchは各1性能runで、約1.4% /1.2%短縮した。速度目標2倍は未達のまま。source SHA256 `02d4c9d1fbfd65910f8a6a05f6a474485f1e11c8738c239e29cf3a44ed5c69a3`、result SHA256 `b465acc9366661f4779ba5f0ab6ec9f0896a9a13d4e865f1f45bcdca4605783e`。source byte一致1576 files、manifest44 files、return0/cleanup ackを確認。
+
+次の検討では、同じ入力側のdyadic sizeと4 knotを持つatomの共有を調べる。CPUの初期mixedでは入力group約13888、平均3.78 atom、4 atom以上のgroupに38673 atom、8 atom以上には15057 atomが入った。syntheticなPolar activityの乗算変化後も平均約3.2〜4.3で、batch行列の16行単位へpaddingすると余分な仕事が大きい。これはCPUの所属数で、GPU速度の証拠ではない。まず索引構築をGPUで測り、既存H/G時間に対して回収可能かを見る。数式・支持・精度基準は変えない。
