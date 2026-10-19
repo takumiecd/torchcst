@@ -111,7 +111,7 @@ def _inject(
         for p in tl.static_range(3):
             c = c0 if p == 0 else c1 if p == 1 else c2
             value = w * c[:, None]
-            if EDGE_REDUCE:
+            if EDGE_REDUCE or ZERO_SHARDS:
                 has_edge = (
                     tl.sum(((cut == 0) & (a < A) & (right > left)).to(tl.int32), 0) > 0
                 )
