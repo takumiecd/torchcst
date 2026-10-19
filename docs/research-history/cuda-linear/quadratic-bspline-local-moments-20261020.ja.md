@@ -422,3 +422,23 @@ v32 source `8c2d84342e2b3d9d09d92124bf08685283adf2c9` はCPU1993 PASS /4215 skip
 slot順のatom群を128/256/512/1024個のCTAへgrid-strideで割り当て、従来と同じlocal forward/backward関数を呼ぶ。各atomの式・1回の所有・全source pullbackは変えない。border shardは物理CTA IDへ変更せず、旧論理CTA番号(start−Count)/ABの剰余を維持する。追加のTensor保存はない。h_programs=0と古いrecipeは従来のgridを保持する。nativeの制限とは独立し、all-native時にはH/G bodyを一度も実行しない。
 
 v30 SoAをcontrolにし、v31/v32の配置変更とは分ける。1025 atom/128 CTA（AB4）の複数loop、Count全/一部/ゼロのGraph、変わるσ/X、retained snapshot、個別/全atom勾配と独立FP64 full-shape gateを維持する。起動数の削減が速度改善に直結するとは仮定せず、完全stepと両peakで判定する。
+
+
+## v32 GPU結果：小tile bundleは約1〜2%短縮、再測定待ち
+
+source `8c2d84342e2b3d9d09d92124bf08685283adf2c9`、job `l4job-d26ecbeda9b1410c84bb4eb3037cd848`。66 checks PASS /1399 deselected、227.03秒。N8/64/1024、B1/3/33、group1/2/3、active mask、物理paddingのbank/restore比較、動的Count/σ/X・retained・個別勾配を含む。両主要caseの全plan・3状態の独立FP64 full-shape gateも通過し、全52428 σの更新と初期X/P/target同一性を確認した。
+
+| plan | B32完全step ms | B64完全step ms | B32 allocated/reserved MiB | B64 allocated/reserved MiB |
+|---|---:|---:|---|---|
+| v30 canonical cap128 |0.807850|1.319499|34.153 /98|34.653 /100|
+| small4/mid1 SoA |0.796974|1.297598|34.153 /98|34.653 /100|
+| small8/mid2 SoA |0.803290|1.310314|34.153 /98|34.653 /100|
+| small8/mid4 SoA |0.805292|1.315625|34.153 /98|34.653 /100|
+| small8/mid2 AoS4 |1.042898|1.727211|36.014 /98|36.514 /100|
+| Dense |0.083783|0.105143|49.002 /106|49.502 /106|
+
+small4/mid1はpaired control比約1.35% /1.66%短縮。1独立runの小さな差なので、mixed/B64 repeatとsmall/switchを別jobで確認する。bank_inputが約0.0276→0.0256ms、復元が約0.0307/0.0317→0.0276/0.0287ms（BT32）。H/Gのfused query/injectは約0.132 /0.237msのままで、支配的な部分は残る。8tileへ増やすとrestoreはやや短くてもbankが増え、完全stepでは4tileを上回らなかった。AoS4組合せも遅い。時間と両peakを同時に評価し、Dense比約9.51 /12.34倍で2倍目標は未達。defaultは変更しない。
+
+source SHA256 `e78cbc0278aa8f38c207a03b45301eb8f716bd16f2db9050d53a74fc7c7a96cf`、result SHA256 `abe79307f07933f45b9c9d4e229b242f439878a32db9c487cc1842894beed5af`。source byte一致1567 files、manifest48 files、return0/cleanup ackを確認した。
+
+v33 source `29af8c68c60d1084f0fe0bdeff5ef5b4e668b6c1` はCPU1994 PASS /4244 skipped /既存warning18、38.76秒、Ruff/diff checkとisolated sdist/wheelの361 runtime-file byte一致を確認。GPU job `l4job-dd92385a8d154b759457f408b3c53212` で検証中。これを性能の証拠とは扱わない。
