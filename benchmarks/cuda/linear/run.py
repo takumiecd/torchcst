@@ -689,6 +689,9 @@ def measure(args, run):
                         {
                             "bank_layout": "FP32 plane,dyadic-local-point,batch; no periodic wrap",
                             "local_events_per_axis": 6,
+                            "inactive_scales_skipped": bool(
+                                getattr(recipe, "active_levels", False)
+                            ),
                             "local_event_scope": "four knot jumps and up to two tile-boundary corrections",
                             "coefficient_storage": "FP32 value polynomials in immutable forward snapshot",
                             "coordinate_classification_dtype": "FP64",

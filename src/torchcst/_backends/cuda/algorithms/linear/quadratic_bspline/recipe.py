@@ -501,3 +501,14 @@ class BSplineLocalMomentRecipe(BSplineNativeHRecipe):
                 or getattr(self, name) not in allowed
             ):
                 raise ValueError(f"{name} must be one of {allowed}")
+
+
+@dataclass(frozen=True)
+class BSplineLocalActiveRecipe(BSplineLocalMomentRecipe):
+    """Revision 21: compute only scales referenced by the forward event snapshot."""
+
+    active_levels = True
+    prepare_float32: bool = True
+    norm_float32: bool = True
+    native_float32: bool = True
+    contract_float32: bool = True

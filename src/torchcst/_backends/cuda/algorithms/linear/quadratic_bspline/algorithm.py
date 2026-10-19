@@ -20,6 +20,7 @@ from .recipe import (
     BSplineAdjointRecipe,
     BSplineCoalescedHRecipe,
     BSplineLeanHRecipe,
+    BSplineLocalActiveRecipe,
     BSplineLocalMomentRecipe,
     BSplineNativeHRecipe,
     BSplineNativeLoopRecipe,
@@ -334,3 +335,9 @@ class BSplineLocalMomentAlgorithm(BSplineStreamingAlgorithm):
             except (ValueError, TypeError, AttributeError):
                 pass
         return SupportResult(tuple(reasons))
+
+
+@dataclass(frozen=True)
+class BSplineLocalActiveAlgorithm(BSplineLocalMomentAlgorithm):
+    revision: str = "v21"
+    recipe_type: type = BSplineLocalActiveRecipe

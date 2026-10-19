@@ -21,7 +21,7 @@ def _points(n):
     return (n.bit_length() - 3) * n + 2 * (n // 8) - 1
 
 
-def _bank(x, n, recipe, label):
+def _bank(x, n, recipe, label, active, dim, ml):
     bank = x.new_empty((3, _points(n), len(x)))
     _stamp(label, 0)
     for k, sizes in enumerate(_groups(n, recipe)):
@@ -37,6 +37,10 @@ def _bank(x, n, recipe, label):
             len(sizes),
             sizes[-1],
             recipe.bank_batch,
+            active if getattr(recipe, "active_levels", False) else None,
+            ml,
+            dim,
+            getattr(recipe, "active_levels", False),
             num_warps=recipe.bank_warps,
             enable_fp_fusion=False,
         )
@@ -45,7 +49,7 @@ def _bank(x, n, recipe, label):
     return bank
 
 
-def _restore(delta, y, n, recipe, label):
+def _restore(delta, y, n, recipe, label, active, dim, ml):
     _stamp(label, 0)
     for k, sizes in enumerate(_groups(n, recipe)):
         compiled = lk.restore[
@@ -60,12 +64,46 @@ def _restore(delta, y, n, recipe, label):
             len(sizes),
             sizes[-1],
             recipe.bank_batch,
+            active if getattr(recipe, "active_levels", False) else None,
+            ml,
+            dim,
+            getattr(recipe, "active_levels", False),
             num_warps=recipe.bank_warps,
             enable_fp_fusion=False,
         )
         _report(label + f"_{k}", compiled)
     _stamp(label, 1)
     return y
+
+
+def _delta(x, n, recipe, active, dim, ml):
+    label = "delta_output" if dim == 0 else "delta_input"
+    _stamp(label, 0)
+    if getattr(recipe, "active_levels", False):
+        delta = x.new_empty((3, _points(n), len(x)))
+        for k, sizes in enumerate(_groups(n, recipe)):
+            compiled = lk.zero[
+                (sum(n // v for v in sizes), tr.cdiv(len(x), recipe.bank_batch))
+            ](
+                delta,
+                active,
+                n,
+                len(x),
+                _points(n),
+                sizes[0],
+                len(sizes),
+                sizes[-1],
+                recipe.bank_batch,
+                ml,
+                dim,
+                num_warps=recipe.bank_warps,
+                enable_fp_fusion=False,
+            )
+            _report(label + f"_{k}", compiled)
+    else:
+        delta = x.new_zeros((3, _points(n), len(x)))
+    _stamp(label, 1)
+    return delta
 
 
 class _Local(torch.autograd.Function):
@@ -108,10 +146,29 @@ class _Local(torch.autograd.Function):
         )
         _report("coeff_prepare", compiled)
         _stamp("coeff_prepare", 1)
+        ml = max(sizes).bit_length() - 3
+        _stamp("active_levels", 0)
+        if getattr(recipe, "active_levels", False):
+            active = x.new_empty((2, ml), dtype=torch.int32)
+            compiled = lk.classify_levels[(2, ml)](
+                pos,
+                count,
+                active,
+                a,
+                *sizes,
+                ml,
+                512,
+                num_warps=4,
+                enable_fp_fusion=False,
+            )
+            _report("active_levels", compiled)
+        else:
+            active = x.new_empty(0, dtype=torch.int32)
+        _stamp("active_levels", 1)
         y = x.new_zeros((b, sizes[0]))
         native_forward(x, y, meta, count, origin, spacing, sizes, recipe)
-        bank = _bank(x, sizes[1], recipe, "bank_input")
-        delta = x.new_zeros((3, _points(sizes[0]), b))
+        bank = _bank(x, sizes[1], recipe, "bank_input", active, 1, ml)
+        delta = _delta(x, sizes[0], recipe, active, 0, ml)
         h = x.new_empty((a, b)) if ctx.mode != "none" else x.new_empty(0)
         hp = x.new_empty((a, b)) if ctx.mode == "hp" else x.new_empty(0)
         _stamp("stream_forward", 0)
@@ -137,9 +194,9 @@ class _Local(torch.autograd.Function):
         )
         _report("stream_forward", compiled)
         _stamp("stream_forward", 1)
-        y = _restore(delta, y, sizes[0], recipe, "scan_output")
+        y = _restore(delta, y, sizes[0], recipe, "scan_output", active, 0, ml)
         ctx.save_for_backward(
-            meta, x, origin, spacing, order, count, pos, co, half, h, hp
+            meta, x, origin, spacing, order, count, pos, co, half, h, hp, active
         )
         return y
 
@@ -157,22 +214,25 @@ class _Local(torch.autograd.Function):
                 None,
                 None,
             )
-        meta, x, origin, spacing, order, count, pos, co, half, h, hp = ctx.saved_tensors
+        meta, x, origin, spacing, order, count, pos, co, half, h, hp, active = (
+            ctx.saved_tensors
+        )
         dy = dy.contiguous()
         recipe, sizes = ctx.recipe, ctx.sizes
         a, b = len(meta), len(x)
+        ml = max(sizes).bit_length() - 3
         need_dx, need_dp = ctx.needs_input_grad[:2]
         dx, dp = native_backward(
             x, dy, meta, count, origin, spacing, sizes, recipe, need_dx, need_dp
         )
         if need_dp and ctx.mode != "hp":
-            input_bank = _bank(x, sizes[1], recipe, "bank_recompute")
+            input_bank = _bank(x, sizes[1], recipe, "bank_recompute", active, 1, ml)
         else:
             input_bank = None
             _stamp("bank_recompute", 0)
             _stamp("bank_recompute", 1)
-        adjoint_bank = _bank(dy, sizes[0], recipe, "bank_adjoint")
-        delta = x.new_zeros((3, _points(sizes[1]), b))
+        adjoint_bank = _bank(dy, sizes[0], recipe, "bank_adjoint", active, 0, ml)
+        delta = _delta(x, sizes[1], recipe, active, 1, ml)
         _stamp("stream_backward", 0)
         compiled = lk.backward[(tr.cdiv(a, recipe.axis_atoms),)](
             input_bank,
@@ -202,7 +262,7 @@ class _Local(torch.autograd.Function):
         _report("stream_backward", compiled)
         _stamp("stream_backward", 1)
         if need_dx:
-            dx = _restore(delta, dx, sizes[1], recipe, "scan_input")
+            dx = _restore(delta, dx, sizes[1], recipe, "scan_input", active, 1, ml)
         else:
             _stamp("scan_input", 0)
             _stamp("scan_input", 1)

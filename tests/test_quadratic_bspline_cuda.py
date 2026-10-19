@@ -13,6 +13,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineAlgorithm,
     BSplineCoalescedHAlgorithm,
     BSplineLeanHAlgorithm,
+    BSplineLocalActiveAlgorithm,
     BSplineLocalMomentAlgorithm,
     BSplineNativeHAlgorithm,
     BSplineNativeLoopAlgorithm,
@@ -35,6 +36,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineAdjointRecipe,
     BSplineCoalescedHRecipe,
     BSplineLeanHRecipe,
+    BSplineLocalActiveRecipe,
     BSplineLocalMomentRecipe,
     BSplineNativeHRecipe,
     BSplineNativeLoopRecipe,
@@ -76,7 +78,8 @@ def case(n=64, a=17):
 def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     from dataclasses import replace
 
-    local = strategy == "h_local" or recipe_options.pop("_local", False)
+    active = strategy == "h_local_active" or recipe_options.pop("_active", False)
+    local = strategy == "h_local" or recipe_options.pop("_local", False) or active
     loop = strategy == "h_native_loop" or recipe_options.pop("_loop", False)
     native = (
         strategy == "h_native" or recipe_options.pop("_native", False) or loop or local
@@ -116,6 +119,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineQueryAlgorithm())
     registry.register(BSplineLeanHAlgorithm())
     registry.register(BSplineLocalMomentAlgorithm())
+    registry.register(BSplineLocalActiveAlgorithm())
     registry.register(BSplineNativeHAlgorithm())
     registry.register(BSplineNativeLoopAlgorithm())
     registry.register(BSplineRangeAlgorithm())
@@ -140,7 +144,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     tuned = bool(recipe_options) or strategy == "matrix_separable"
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v20"
+        "v21"
+        if active
+        else "v20"
         if local
         else "v19"
         if loop
@@ -179,7 +185,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         else "v2"
         if tuned
         else "v1",
-        BSplineLocalMomentRecipe(**recipe_options)
+        BSplineLocalActiveRecipe(**recipe_options)
+        if active
+        else BSplineLocalMomentRecipe(**recipe_options)
         if local
         else BSplineNativeLoopRecipe(**recipe_options)
         if loop
@@ -2237,12 +2245,25 @@ LOCAL_OPTIONS = [
     },
     {"_local": True, "reciprocal": False, "bank_group_levels": 1},
 ]
+ACTIVE_OPTIONS = [
+    {"_active": True},
+    {"_active": True, "save_h": "hp"},
+    {
+        "_active": True,
+        "prepare_float32": False,
+        "norm_float32": False,
+        "native_float32": False,
+        "contract_float32": False,
+        "bank_group_levels": 1,
+    },
+]
 ALL_QUERY_OPTIONS = (
     QUERY_OPTIONS
     + LEAN_OPTIONS
     + [pytest.param(opt, id=f"native-{i}") for i, opt in enumerate(NATIVE_OPTIONS)]
     + [pytest.param(opt, id=f"native-loop-{i}") for i, opt in enumerate(LOOP_OPTIONS)]
     + [pytest.param(opt, id=f"local-{i}") for i, opt in enumerate(LOCAL_OPTIONS)]
+    + [pytest.param(opt, id=f"active-{i}") for i, opt in enumerate(ACTIVE_OPTIONS)]
 )
 
 
@@ -2464,7 +2485,11 @@ def test_local_recipe_roundtrip_and_bounds():
 
 
 @GPU
-@pytest.mark.parametrize("options", LOCAL_OPTIONS[:3])
+@pytest.mark.parametrize(
+    "options",
+    [pytest.param(opt, id=f"local-{i}") for i, opt in enumerate(LOCAL_OPTIONS[:3])]
+    + [pytest.param(opt, id=f"active-{i}") for i, opt in enumerate(ACTIVE_OPTIONS)],
+)
 def test_local_dyadic_boundaries_graph(options):
     import math
 
@@ -2541,3 +2566,53 @@ def test_local_near_norm_floor(factor):
         layer.atoms.p.copy_(probe.atoms.p)
     x = torch.randn(5, 64, device="cuda", requires_grad=True)
     gate(layer, x, torch.randn_like(x))
+
+
+def test_active_recipe_roundtrip():
+    reg = Registry()
+    reg.register(BSplineLocalActiveAlgorithm())
+    for options in ACTIVE_OPTIONS:
+        options = {k: v for k, v in options.items() if k != "_active"}
+        plan = ExecutionPlan(
+            "research_cuda_quadratic_bspline",
+            "v21",
+            BSplineLocalActiveRecipe(**options),
+        )
+        assert reg.loads_plan(reg.dumps_plan(plan)) == plan
+        assert plan.recipe.active_levels is True
+
+
+@GPU
+@pytest.mark.parametrize("mode", ["none", "hp"])
+def test_active_all_native_to_broad_graph(mode):
+    import math
+
+    from benchmarks.cuda.linear.check_normalized import check
+
+    layer = model("h_local_active", n=1024, a=33, sigma_cutoff=0.2, save_h=mode)
+    x = torch.randn(3, 1024, device="cuda", requires_grad=True)
+    dy = torch.randn_like(x)
+
+    def update(width):
+        radius = math.sqrt(1 + 3 * math.log(width / 0.1) / math.log(128.0))
+        with torch.no_grad():
+            layer.atoms.p[:, 0] = 0.6 * radius
+            layer.atoms.p[:, 1] = 0.8 * radius
+            x.copy_(torch.randn_like(x))
+
+    update(0.1)
+    gate(layer, x, dy)
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        y = layer(x)
+        dx, dp = torch.autograd.grad(y, (x, layer.atoms.p), dy)
+    for width in (0.4, 12.0, 0.1, 1.6, 0.1):
+        update(width)
+        graph.replay()
+        rx = x.detach().double().requires_grad_()
+        rp = layer.atoms.p.detach().double().requires_grad_()
+        ref = bs.oracle(copy.deepcopy(layer.kernel).double(), layer.chart, rp, rx)
+        rdx, rdp = torch.autograd.grad(ref, (rx, rp), dy.double())
+        for actual, expected in zip((y, dx, dp), (ref, rdx, rdp)):
+            error = check(actual, expected, 4e-4)
+            assert error["max"] < 4e-4 and error["rel_l2"] < 4e-4

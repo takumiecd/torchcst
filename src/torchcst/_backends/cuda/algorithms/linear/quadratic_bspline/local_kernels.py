@@ -165,7 +165,7 @@ def _group(N: tl.constexpr, LOW: tl.constexpr, LEVELS: tl.constexpr):
     size = 1 << shift
     level = shift - 3
     offset = level * N + 2 * (N // 8) - 2 * (N >> shift)
-    return size, tile, offset
+    return size, tile, offset, level
 
 
 @tr.jit
@@ -179,27 +179,35 @@ def bank(
     LEVELS: tl.constexpr,
     SS: tl.constexpr,
     BB: tl.constexpr,
+    Active=None,
+    ML: tl.constexpr = 0,
+    DIM: tl.constexpr = 0,
+    ACTIVE: tl.constexpr = False,
 ):
-    size, tile, offset = _group(N, LOW, LEVELS)
-    i = tl.arange(0, SS)
-    b = tl.program_id(1) * BB + tl.arange(0, BB)
-    site = tile * size + i
-    x = tl.load(
-        X + b[None, :] * N + site[:, None], (i[:, None] < size) & (b[None, :] < B), 0
-    )
-    z = 2 * i.to(tl.float32) / size.to(tl.float32) - 1
-    p0 = tl.cumsum(x, 0)
-    p1 = tl.cumsum(x * z[:, None], 0)
-    p2 = tl.cumsum(x * (z * z)[:, None], 0)
-    base = offset + tile * (size + 1)
-    for p in tl.static_range(3):
-        value = p0 if p == 0 else p1 if p == 1 else p2
-        tl.store(
-            Bank + p * POINTS * B + (base + i[:, None] + 1) * B + b[None, :],
-            value,
+    size, tile, offset, level = _group(N, LOW, LEVELS)
+    enabled = tl.load(Active + DIM * ML + level) if ACTIVE else tl.full((), 1, tl.int32)
+    if enabled:
+        i = tl.arange(0, SS)
+        b = tl.program_id(1) * BB + tl.arange(0, BB)
+        site = tile * size + i
+        x = tl.load(
+            X + b[None, :] * N + site[:, None],
             (i[:, None] < size) & (b[None, :] < B),
+            0,
         )
-        tl.store(Bank + p * POINTS * B + base * B + b, 0, b < B)
+        z = 2 * i.to(tl.float32) / size.to(tl.float32) - 1
+        p0 = tl.cumsum(x, 0)
+        p1 = tl.cumsum(x * z[:, None], 0)
+        p2 = tl.cumsum(x * (z * z)[:, None], 0)
+        base = offset + tile * (size + 1)
+        for p in tl.static_range(3):
+            value = p0 if p == 0 else p1 if p == 1 else p2
+            tl.store(
+                Bank + p * POINTS * B + (base + i[:, None] + 1) * B + b[None, :],
+                value,
+                (i[:, None] < size) & (b[None, :] < B),
+            )
+            tl.store(Bank + p * POINTS * B + base * B + b, 0, b < B)
 
 
 @tr.jit
@@ -213,21 +221,86 @@ def restore(
     LEVELS: tl.constexpr,
     SS: tl.constexpr,
     BB: tl.constexpr,
+    Active=None,
+    ML: tl.constexpr = 0,
+    DIM: tl.constexpr = 0,
+    ACTIVE: tl.constexpr = False,
 ):
-    size, tile, offset = _group(N, LOW, LEVELS)
-    i = tl.arange(0, SS)
-    b = tl.program_id(1) * BB + tl.arange(0, BB)
-    base = offset + tile * (size + 1)
-    addr = (base + i[:, None]) * B + b[None, :]
-    mask = (i[:, None] < size) & (b[None, :] < B)
-    p0 = tl.cumsum(tl.load(Delta + addr, mask, 0), 0)
-    p1 = tl.cumsum(tl.load(Delta + POINTS * B + addr, mask, 0), 0)
-    p2 = tl.cumsum(tl.load(Delta + 2 * POINTS * B + addr, mask, 0), 0)
-    z = 2 * i.to(tl.float32) / size.to(tl.float32) - 1
-    value = tl.fma(z[:, None] * z[:, None], p2, tl.fma(z[:, None], p1, p0))
-    tl.atomic_add(
-        Y + b[None, :] * N + (tile * size + i[:, None]), value, mask, sem="relaxed"
-    )
+    size, tile, offset, level = _group(N, LOW, LEVELS)
+    enabled = tl.load(Active + DIM * ML + level) if ACTIVE else tl.full((), 1, tl.int32)
+    if enabled:
+        i = tl.arange(0, SS)
+        b = tl.program_id(1) * BB + tl.arange(0, BB)
+        base = offset + tile * (size + 1)
+        addr = (base + i[:, None]) * B + b[None, :]
+        mask = (i[:, None] < size) & (b[None, :] < B)
+        p0 = tl.cumsum(tl.load(Delta + addr, mask, 0), 0)
+        p1 = tl.cumsum(tl.load(Delta + POINTS * B + addr, mask, 0), 0)
+        p2 = tl.cumsum(tl.load(Delta + 2 * POINTS * B + addr, mask, 0), 0)
+        z = 2 * i.to(tl.float32) / size.to(tl.float32) - 1
+        value = tl.fma(z[:, None] * z[:, None], p2, tl.fma(z[:, None], p1, p0))
+        tl.atomic_add(
+            Y + b[None, :] * N + (tile * size + i[:, None]), value, mask, sem="relaxed"
+        )
+
+
+@tr.jit
+def classify_levels(
+    Pos,
+    Count,
+    Active,
+    A: tl.constexpr,
+    NO: tl.constexpr,
+    NI: tl.constexpr,
+    ML: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    dim = tl.program_id(0)
+    level = tl.program_id(1)
+    n = tl.where(dim == 0, NO, NI)
+    size = 8 << level
+    found = tl.full((), False, tl.int1)
+    if size <= n:
+        tiles = n >> (level + 3)
+        low = level * n + 2 * (n // 8) - 2 * tiles
+        high = low + n + tiles
+        cursor = tl.load(Count)
+        while (cursor < A) & ~found:
+            a = cursor + tl.arange(0, BLOCK)
+            point = tl.load(Pos + dim * 6 * A + a, a < A, -1)
+            found = (
+                tl.sum(((point >= low) & (point < high) & (a < A)).to(tl.int32), 0) > 0
+            )
+            cursor += BLOCK
+    tl.store(Active + dim * ML + level, found.to(tl.int32))
+
+
+@tr.jit
+def zero(
+    Delta,
+    Active,
+    N: tl.constexpr,
+    B: tl.constexpr,
+    POINTS: tl.constexpr,
+    LOW: tl.constexpr,
+    LEVELS: tl.constexpr,
+    SS: tl.constexpr,
+    BB: tl.constexpr,
+    ML: tl.constexpr,
+    DIM: tl.constexpr,
+):
+    size, tile, offset, level = _group(N, LOW, LEVELS)
+    if tl.load(Active + DIM * ML + level):
+        i = tl.arange(0, SS)
+        b = tl.program_id(1) * BB + tl.arange(0, BB)
+        base = offset + tile * (size + 1)
+        for p in tl.static_range(3):
+            tl.store(
+                Delta + p * POINTS * B + (base + i[:, None] + 1) * B + b[None, :],
+                0,
+                (i[:, None] < size) & (b[None, :] < B),
+            )
+            tl.store(Delta + p * POINTS * B + base * B + b, 0, b < B)
 
 
 @tr.jit
