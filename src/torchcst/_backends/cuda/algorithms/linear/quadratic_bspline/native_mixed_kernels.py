@@ -177,6 +177,7 @@ def forward(
                     BS,
                     RECIPROCAL,
                     False,
+                    KEEP64=True,
                 )
                 nk._inject(
                     h, Y, Meta, Origin, Spacing, a, b, A, B, NO, 0, BS, RECIPROCAL
@@ -254,6 +255,7 @@ def backward(
                     BS,
                     RECIPROCAL,
                     NEED_DP,
+                    KEEP64=True,
                 )
             if NEED_DP:
                 if CORE32:
@@ -291,6 +293,7 @@ def backward(
                         BS,
                         RECIPROCAL,
                         True,
+                        KEEP64=True,
                     )
                 if CORE32 and CONTRACT32:
                     h, g, hp, gp = (
