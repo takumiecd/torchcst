@@ -16,6 +16,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineLocalActiveAlgorithm,
     BSplineLocalEndpointAlgorithm,
     BSplineLocalMomentAlgorithm,
+    BSplineLocalNarrowAlgorithm,
     BSplineLocalPaddedAlgorithm,
     BSplineLocalShardedAlgorithm,
     BSplineLocalSplitAlgorithm,
@@ -43,6 +44,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineLocalActiveRecipe,
     BSplineLocalEndpointRecipe,
     BSplineLocalMomentRecipe,
+    BSplineLocalNarrowRecipe,
     BSplineLocalPaddedRecipe,
     BSplineLocalShardedRecipe,
     BSplineLocalSplitRecipe,
@@ -86,7 +88,10 @@ def case(n=64, a=17):
 def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     from dataclasses import replace
 
-    padded = strategy == "h_local_padded" or recipe_options.pop("_padded", False)
+    narrow = strategy == "h_local_narrow" or recipe_options.pop("_narrow", False)
+    padded = (
+        strategy == "h_local_padded" or recipe_options.pop("_padded", False) or narrow
+    )
     split_prepare = (
         strategy == "h_local_split"
         or recipe_options.pop("_split_prepare", False)
@@ -150,6 +155,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineLocalEndpointAlgorithm())
     registry.register(BSplineLocalSplitAlgorithm())
     registry.register(BSplineLocalPaddedAlgorithm())
+    registry.register(BSplineLocalNarrowAlgorithm())
     registry.register(BSplineNativeHAlgorithm())
     registry.register(BSplineNativeLoopAlgorithm())
     registry.register(BSplineRangeAlgorithm())
@@ -174,7 +180,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     tuned = bool(recipe_options) or strategy == "matrix_separable"
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v25"
+        "v26"
+        if narrow
+        else "v25"
         if padded
         else "v24"
         if split_prepare
@@ -223,7 +231,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         else "v2"
         if tuned
         else "v1",
-        BSplineLocalPaddedRecipe(**recipe_options)
+        BSplineLocalNarrowRecipe(**recipe_options)
+        if narrow
+        else BSplineLocalPaddedRecipe(**recipe_options)
         if padded
         else BSplineLocalSplitRecipe(**recipe_options)
         if split_prepare
@@ -2329,6 +2339,17 @@ PADDED_OPTIONS = [
     {"_padded": True, "bank_padding": 8},
     {"_padded": True, "bank_padding": 16, "active_levels": True, "save_h": "hp"},
 ]
+NARROW_OPTIONS = [
+    {"_narrow": True},
+    {"_narrow": True, "prepare_float32": True},
+    {
+        "_narrow": True,
+        "save_h": "hp",
+        "active_levels": True,
+        "bank_group_levels": 2,
+        "reciprocal": False,
+    },
+]
 ALL_QUERY_OPTIONS = (
     QUERY_OPTIONS
     + LEAN_OPTIONS
@@ -2343,6 +2364,7 @@ ALL_QUERY_OPTIONS = (
         for i, opt in enumerate(SPLIT_PREPARE_OPTIONS)
     ]
     + [pytest.param(opt, id=f"padded-{i}") for i, opt in enumerate(PADDED_OPTIONS)]
+    + [pytest.param(opt, id=f"narrow-{i}") for i, opt in enumerate(NARROW_OPTIONS)]
 )
 
 
@@ -2575,16 +2597,24 @@ def test_local_recipe_roundtrip_and_bounds():
         pytest.param(opt, id=f"split-prepare-{i}")
         for i, opt in enumerate(SPLIT_PREPARE_OPTIONS)
     ]
-    + [pytest.param(opt, id=f"padded-{i}") for i, opt in enumerate(PADDED_OPTIONS)],
+    + [pytest.param(opt, id=f"padded-{i}") for i, opt in enumerate(PADDED_OPTIONS)]
+    + [pytest.param(opt, id=f"narrow-{i}") for i, opt in enumerate(NARROW_OPTIONS)],
 )
 def test_local_dyadic_boundaries_graph(options):
     import math
 
     from benchmarks.cuda.linear.check_normalized import check
 
-    layer = model("h_query", n=1024, a=33, sigma_cutoff=0.2, **options)
+    layer = model(
+        "h_query",
+        n=1024,
+        a=33,
+        sigma_cutoff=0.05 if options.get("_narrow") else 0.2,
+        **options,
+    )
     ids = torch.arange(33, device="cuda")
-    targets = (2.0 ** (3 + ids % 6)) * 0.1 / math.sqrt(6)
+    minimum = 2 if options.get("_narrow") else 3
+    targets = (2.0 ** (minimum + ids % 6)) * 0.1 / math.sqrt(6)
     centers = torch.tensor(
         [-0.2, 0.0, 0.03, 0.8, 1.6, 3.2, 51.2, 102.27, 102.3, 102.5], device="cuda"
     )
@@ -2673,7 +2703,9 @@ def test_active_recipe_roundtrip():
 
 @GPU
 @pytest.mark.parametrize("mode", ["none", "hp"])
-@pytest.mark.parametrize("route", ["active", "sharded", "endpoint", "split", "padded"])
+@pytest.mark.parametrize(
+    "route", ["active", "sharded", "endpoint", "split", "padded", "narrow"]
+)
 def test_active_all_native_to_broad_graph(mode, route):
     import math
 
@@ -2789,3 +2821,65 @@ def test_local_native_warp8_tiny_profiles(batch):
         layer.atoms.p[:, 3] = centers.roll(3)
     x = torch.randn(batch, 64, device="cuda", requires_grad=True)
     gate(layer, x, torch.randn_like(x))
+
+
+def test_narrow_recipe_roundtrip():
+    reg = Registry()
+    reg.register(BSplineLocalNarrowAlgorithm())
+    for options in NARROW_OPTIONS:
+        options = {k: v for k, v in options.items() if k != "_narrow"}
+        plan = ExecutionPlan(
+            "research_cuda_quadratic_bspline",
+            "v26",
+            BSplineLocalNarrowRecipe(**options),
+        )
+        assert reg.loads_plan(reg.dumps_plan(plan)) == plan
+        assert plan.recipe.min_block_log == 2 and plan.recipe.tiny_native
+
+
+@GPU
+@pytest.mark.parametrize("batch", [33, 64])
+def test_narrow_small_width_graph(batch):
+    import math
+
+    from benchmarks.cuda.linear.check_normalized import check
+
+    layer = model("h_local_narrow", n=128, a=33)
+    ids = torch.arange(33, device="cuda")
+    widths = torch.tensor([0.1, 0.103, 0.12, 0.4], device="cuda", dtype=torch.float64)
+    with torch.no_grad():
+        layer.atoms.p[:, 2] = (ids * 0.29 + 0.037) % 12.7
+        layer.atoms.p[:, 3] = (ids * 0.43 + 0.081) % 12.7
+    x = torch.randn(batch, 128, device="cuda", requires_grad=True)
+    dy = torch.randn_like(x)
+
+    def update(step):
+        sigma = widths[(ids + step) % len(widths)]
+        radius = (1 + 3 * (sigma / 0.1).log() / math.log(128)).sqrt()
+        with torch.no_grad():
+            layer.atoms.p[:, 0] = (0.6 * radius).float()
+            layer.atoms.p[:, 1] = (0.8 * radius).float()
+            x.copy_(torch.randn_like(x))
+
+    update(0)
+    gate(layer, x, dy)
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        y = layer(x)
+        dx, dp = torch.autograd.grad(y, (x, layer.atoms.p), dy)
+    for step in range(1, 4):
+        update(step)
+        graph.replay()
+        rx = x.detach().double().requires_grad_()
+        rp = layer.atoms.p.detach().double().requires_grad_()
+        ref = bs.oracle(copy.deepcopy(layer.kernel).double(), layer.chart, rp, rx)
+        rdx, rdp = torch.autograd.grad(ref, (rx, rp), dy.double())
+        for actual, expected in zip((y, dx, dp), (ref, rdx, rdp)):
+            error = check(actual, expected, 4e-4)
+            assert error["max"] < 4e-4 and error["rel_l2"] < 4e-4
+        assert (
+            layer.__dict__["_algorithm_states"][0]
+            .buffers["stream_layout"]["count"]
+            .item()
+            == 0
+        )

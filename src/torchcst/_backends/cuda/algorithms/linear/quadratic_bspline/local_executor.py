@@ -12,17 +12,26 @@ from .stream_layout import make_layout, placement
 
 
 def _groups(n, recipe):
-    sizes = tuple(1 << k for k in range(3, n.bit_length()))
+    sizes = tuple(
+        1 << k for k in range(getattr(recipe, "min_block_log", 3), n.bit_length())
+    )
     count = recipe.bank_group_levels
     return tuple(sizes[k : k + count] for k in range(0, len(sizes), count))
 
 
-def _points(n):
-    return (n.bit_length() - 3) * n + 2 * (n // 8) - 1
+def _points(n, recipe):
+    minimum = getattr(recipe, "min_block_log", 3)
+    return (n.bit_length() - minimum) * n + 2 * (n >> minimum) - 1
+
+
+def _blocks(n, recipe):
+    return 2 * (n >> getattr(recipe, "min_block_log", 3)) - 1
 
 
 def _bank(x, n, recipe, label, active, dim, ml):
-    bank = x.new_empty((3, _points(n), len(x) + getattr(recipe, "bank_padding", 0)))
+    bank = x.new_empty(
+        (3, _points(n, recipe), len(x) + getattr(recipe, "bank_padding", 0))
+    )
     _stamp(label, 0)
     for k, sizes in enumerate(_groups(n, recipe)):
         compiled = lk.bank[
@@ -32,7 +41,7 @@ def _bank(x, n, recipe, label, active, dim, ml):
             bank,
             n,
             len(x),
-            _points(n),
+            _points(n, recipe),
             sizes[0],
             len(sizes),
             sizes[-1],
@@ -42,6 +51,7 @@ def _bank(x, n, recipe, label, active, dim, ml):
             dim,
             getattr(recipe, "active_levels", False),
             getattr(recipe, "bank_padding", 0),
+            getattr(recipe, "min_block_log", 3),
             num_warps=recipe.bank_warps,
             enable_fp_fusion=False,
         )
@@ -60,7 +70,7 @@ def _restore(delta, border, y, n, recipe, label, active, dim, ml):
             y,
             n,
             len(y),
-            _points(n),
+            _points(n, recipe),
             sizes[0],
             len(sizes),
             sizes[-1],
@@ -72,6 +82,7 @@ def _restore(delta, border, y, n, recipe, label, active, dim, ml):
             border,
             getattr(recipe, "boundary_shards", 0),
             getattr(recipe, "bank_padding", 0),
+            getattr(recipe, "min_block_log", 3),
             num_warps=recipe.bank_warps,
             enable_fp_fusion=False,
         )
@@ -85,7 +96,7 @@ def _delta(x, n, recipe, active, dim, ml):
     _stamp(label, 0)
     if getattr(recipe, "active_levels", False):
         delta = x.new_empty(
-            (3, _points(n), len(x) + getattr(recipe, "bank_padding", 0))
+            (3, _points(n, recipe), len(x) + getattr(recipe, "bank_padding", 0))
         )
         for k, sizes in enumerate(_groups(n, recipe)):
             compiled = lk.zero[
@@ -95,7 +106,7 @@ def _delta(x, n, recipe, active, dim, ml):
                 active,
                 n,
                 len(x),
-                _points(n),
+                _points(n, recipe),
                 sizes[0],
                 len(sizes),
                 sizes[-1],
@@ -103,18 +114,19 @@ def _delta(x, n, recipe, active, dim, ml):
                 ml,
                 dim,
                 getattr(recipe, "bank_padding", 0),
+                getattr(recipe, "min_block_log", 3),
                 num_warps=recipe.bank_warps,
                 enable_fp_fusion=False,
             )
             _report(label + f"_{k}", compiled)
     else:
         delta = x.new_zeros(
-            (3, _points(n), len(x) + getattr(recipe, "bank_padding", 0))
+            (3, _points(n, recipe), len(x) + getattr(recipe, "bank_padding", 0))
         )
     shards = getattr(recipe, "boundary_shards", 0)
     border = (
         x.new_zeros(
-            (3, 2 * (n // 8) - 1, shards, len(x) + getattr(recipe, "bank_padding", 0))
+            (3, _blocks(n, recipe), shards, len(x) + getattr(recipe, "bank_padding", 0))
         )
         if shards
         else None
@@ -174,12 +186,13 @@ class _Local(torch.autograd.Function):
             shards,
             injection if endpoints else None,
             endpoints,
+            getattr(recipe, "min_block_log", 3),
             num_warps=4,
             enable_fp_fusion=False,
         )
         _report("coeff_prepare", compiled)
         _stamp("coeff_prepare", 1)
-        ml = max(sizes).bit_length() - 3
+        ml = max(sizes).bit_length() - getattr(recipe, "min_block_log", 3)
         _stamp("active_levels", 0)
         if getattr(recipe, "active_levels", False):
             active = x.new_empty((2, ml), dtype=torch.int32)
@@ -191,6 +204,7 @@ class _Local(torch.autograd.Function):
                 *sizes,
                 ml,
                 512,
+                getattr(recipe, "min_block_log", 3),
                 num_warps=4,
                 enable_fp_fusion=False,
             )
@@ -217,15 +231,15 @@ class _Local(torch.autograd.Function):
             count,
             a,
             b,
-            _points(sizes[1]),
-            _points(sizes[0]),
+            _points(sizes[1], recipe),
+            _points(sizes[0], recipe),
             recipe.axis_atoms,
             tr.next_power_of_2(b),
             ctx.mode,
             border,
             bp if shards else None,
             shards,
-            2 * (sizes[0] // 8) - 1,
+            _blocks(sizes[0], recipe),
             injection if endpoints else None,
             endpoints,
             getattr(recipe, "shard_origin", False),
@@ -287,7 +301,7 @@ class _Local(torch.autograd.Function):
         dy = dy.contiguous()
         recipe, sizes = ctx.recipe, ctx.sizes
         a, b = len(meta), len(x)
-        ml = max(sizes).bit_length() - 3
+        ml = max(sizes).bit_length() - getattr(recipe, "min_block_log", 3)
         shards = getattr(recipe, "boundary_shards", 0)
         endpoints = getattr(recipe, "skip_endpoints", False)
         need_dx, need_dp = ctx.needs_input_grad[:2]
@@ -317,8 +331,8 @@ class _Local(torch.autograd.Function):
             count,
             a,
             b,
-            _points(sizes[1]),
-            _points(sizes[0]),
+            _points(sizes[1], recipe),
+            _points(sizes[0], recipe),
             recipe.axis_atoms,
             tr.next_power_of_2(b),
             ctx.mode,
@@ -328,7 +342,7 @@ class _Local(torch.autograd.Function):
             border,
             bp if shards else None,
             shards,
-            2 * (sizes[1] // 8) - 1,
+            _blocks(sizes[1], recipe),
             injection if endpoints else None,
             endpoints,
             getattr(recipe, "shard_origin", False),

@@ -193,3 +193,41 @@ small/switch job `l4job-498058fb1bcd45c199035a92ce97ba6d` はdriver return0・ti
 次は同じv24のruntime/recipeが既に受け付けるaxis_atoms/axis_warpsの(4,4)/(4,2)/(8,2)/(16,4)、およびnative_warps=8を個別に比較する。controlはaxis(8,4)、native_warps=4、padding0、16分散。FP32 projectionでB64の仕事量/プログラムが増える影響を切り分けるもので、8 warpsへ無条件に拡張する新仕様ではない。alias/Caseをcommitし、準備・L2・並べ替え・全勾配・optimizer込みの完全stepと両peakで採否を決める。
 
 batchを32列（1状態は16列）ずつ独立に縮約し、source pullbackの部分勾配をFP32加算するCPU screenも実施した。5状態×B32/B33/B64×2floorの30条件と、tile16の1状態6条件が全て4e-4 gate内。maxabsはY6.464e-5 /dX8.962e-5 /all-source7.827e-5、relative L2は7.021e-6以下。これはGPU未実装であり、native projectionはFP64のまま。コードと原本はignored `batch-partial-screen.py` と `batch-partial-cpu-tile*-step*.json`。
+
+## launch比較：axis_atoms=4が改善
+
+source `68286cabadb1ba92047a657bb0788af9b8e993cf`、job `l4job-d234ba6bce2a4852aedca6938d534aae`。28 CUDA checks PASS /1104 deselected、82.13秒。全主要plan独立FP64 full-shape gate PASS。変更は既存recipeのlaunch設定で、profile/精度基準/保存量は維持した。
+
+| plan | B32 ms | B64 ms | allocated/reserved MiB (B32; B64) |
+|---|---:|---:|---|
+| query-fma |1.614742|2.506577|81.288/172;96.791/188|
+| axis(8,4) control |1.449141|2.622206|34.016/98;44.490/102|
+| axis(4,4) |1.354232|1.976857|34.016/98;44.490/102|
+| axis(4,2) |1.454083|2.629927|same as control|
+| axis(8,2) |1.782447|2.624907|same as control|
+| axis(16,4) |1.783516|2.644907|same as control|
+| native 8 warps |1.956798|3.157575|same as control|
+| Dense |0.082303|0.104018|49.002/106;49.502/106|
+
+axis(4,4)はB32約6.5%、B64約24.6%短縮した。B64でも旧query-fmaより速く、両peakがDense以下となる候補。これは初回runで、repeat前の改善として扱う。単にwarp数を増減すれば速いという結果ではなく、native 8 warpsは負の結果。Dense対比はなおB32約16.5倍、B64約19.0倍で、2倍目標は未達。
+
+## 小さいσ・切替の検証済み再測定
+
+source `c6d99f4c`、job `l4job-191754323fe74c96968dc8a74d48a495` はcleanup失敗runの明示的再測定。archive/manifest/source byte/return0/cleanup ackを確認し、全planのFP64 gate PASS。
+
+| B32 profile | query-fma ms | small W ms | endpoint32 ms | split16 ms | Dense ms |
+|---|---:|---:|---:|---:|---:|
+| small |1.453961|1.209235|3.228393|3.313914|0.082165|
+| switch |1.729237|not selected|2.812572|2.870405|0.082578|
+
+local系は34.016–34.605/98 MiBでメモリ条件を満たすが、小さいσの直接Hは遅い。small Wは50.231/114 MiB、Dense49.002/106 MiBを少し超える。σが小さいから直接Hへ送れば有利という前提も再検討が必要。
+
+## v26候補：最小4-site blockによる小σの局所moment化
+
+CPUで通常atomを全て局所momentへ送り、clipped support≤2-siteだけFP64 nativeへ残した。min block8ではmixed/smallの24条件中5条件がall-source maxabs基準を超え、最大4.596e-4となった。min block4は全24条件PASS、all-source maxabs上限1.115e-4。B32/B64、3連続状態、floor1e-6/1000を含む。これだけでGPU精度を保証しない。原本はignored `all-local-screen.py` / `all-local-cpu-{mixed,small}-min{4,8}-step*.json`。
+
+v26は最小block4、cutoff0.05、axis(4,4)、8分散を使う。sigma_min0.1の通常atomも局所momentへ入り、tiny supportは従来の正確なnative経路へ残る。profile/R=√6σと支持、4 knot+最大2 boundary event、離散L2/floor、source pullbackは不変。
+
+最小blockをm=2^sとすると尺度Sのlevel=log2(S)-s、prefix offset=level*N+2(N/m)-2(N/S)、全点数=(log2(N)-s+1)N+2(N/m)-1、全block数=2(N/m)-1。古いrecipeはs=3のまま、新revisionだけs=2にする。bank/restore/zero/分類/境界補正の全offsetを同じsで計算する。N1024では1 bankあたり1280 point増える。B64で1 bank約0.938 MiB増、3 banks約2.813 MiB増。分散を16→8にすることでborder容量増を抑えるが、実際の両peakはGPU測定で判定する。
+
+係数はまずFP64で生成してFP32 snapshotへ保存し、FP32係数生成も別ablationで確認する。S4のdyadic境界、tiny/空支持、retained forward、動的σ/Xと全4 source勾配を照合後に完全stepを比較する。public/defaultへの採用はまだ行わない。

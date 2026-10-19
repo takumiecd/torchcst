@@ -689,6 +689,8 @@ def measure(args, run):
                         {
                             "bank_layout": "FP32 plane,dyadic-local-point,batch; no periodic wrap",
                             "local_events_per_axis": 6,
+                            "minimum_local_block": 1
+                            << getattr(recipe, "min_block_log", 3),
                             "endpoint_writes_skipped": bool(
                                 getattr(recipe, "skip_endpoints", False)
                             ),

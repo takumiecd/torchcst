@@ -47,6 +47,7 @@ def prepare(
     SHARDS: tl.constexpr = 0,
     Injection=None,
     ENDPOINTS: tl.constexpr = False,
+    MIN_LOG: tl.constexpr = 3,
 ):
     base = tl.load(Count) + tl.program_id(0) * AB
     if base < A:
@@ -61,15 +62,17 @@ def prepare(
             center = tl.load(Meta + 12 * a + 2 + dim, a < A, 0)
             span = radius * ih if RECIPROCAL else radius / spacing
             hint = tl.minimum(
-                tl.maximum(tl.floor(tl.log2(span.to(tl.float32))).to(tl.int32), 3),
+                tl.maximum(
+                    tl.floor(tl.log2(span.to(tl.float32))).to(tl.int32), MIN_LOG
+                ),
                 tl.log2(tl.full((), n, tl.float32)).to(tl.int32),
             )
             size = 1 << hint
             size = tl.where(size.to(tl.float64) < span, tl.minimum(2 * size, n), size)
             logsize = tl.log2(size.to(tl.float32)).to(tl.int32)
-            level = logsize - 3
+            level = logsize - MIN_LOG
             tiles = n >> logsize
-            offset = level * n + 2 * (n // 8) - 2 * tiles
+            offset = level * n + 2 * (n >> MIN_LOG) - 2 * tiles
             half = spacing * size.to(tl.float64) * 0.5
             tl.store(HalfInv + dim * A + a, (1 / half).to(tl.float32), a < A)
             left, _ = _interval(
@@ -139,7 +142,7 @@ def prepare(
                     c2 = tl.where(before, x2, tl.where(inner, p2, q2))
                     active = (a < A) & (boundary < n) & (boundary < right)
                 if SHARDS and event >= 4:
-                    block = 2 * (n // 8) - 2 * tiles + tile + 1
+                    block = 2 * (n >> MIN_LOG) - 2 * tiles + tile + 1
                     tl.store(
                         BorderPos + (dim * 2 + event - 4) * A + a,
                         tl.where(active, block, -1),
@@ -161,7 +164,9 @@ def prepare(
 
 
 @tr.jit
-def _group(N: tl.constexpr, LOW: tl.constexpr, LEVELS: tl.constexpr):
+def _group(
+    N: tl.constexpr, LOW: tl.constexpr, LEVELS: tl.constexpr, MIN_LOG: tl.constexpr = 3
+):
     pid = tl.program_id(0)
     if LEVELS == 1:
         part = tl.full((), 0, tl.int32)
@@ -180,8 +185,8 @@ def _group(N: tl.constexpr, LOW: tl.constexpr, LEVELS: tl.constexpr):
         )
     shift = tl.log2(tl.full((), LOW, tl.float32)).to(tl.int32) + part
     size = 1 << shift
-    level = shift - 3
-    offset = level * N + 2 * (N // 8) - 2 * (N >> shift)
+    level = shift - MIN_LOG
+    offset = level * N + 2 * (N >> MIN_LOG) - 2 * (N >> shift)
     return size, tile, offset, level
 
 
@@ -201,9 +206,10 @@ def bank(
     DIM: tl.constexpr = 0,
     ACTIVE: tl.constexpr = False,
     PAD: tl.constexpr = 0,
+    MIN_LOG: tl.constexpr = 3,
 ):
     pb: tl.constexpr = B + PAD
-    size, tile, offset, level = _group(N, LOW, LEVELS)
+    size, tile, offset, level = _group(N, LOW, LEVELS, MIN_LOG)
     enabled = tl.load(Active + DIM * ML + level) if ACTIVE else tl.full((), 1, tl.int32)
     if enabled:
         i = tl.arange(0, SS)
@@ -247,9 +253,10 @@ def restore(
     BorderDelta=None,
     SHARDS: tl.constexpr = 0,
     PAD: tl.constexpr = 0,
+    MIN_LOG: tl.constexpr = 3,
 ):
     pb: tl.constexpr = B + PAD
-    size, tile, offset, level = _group(N, LOW, LEVELS)
+    size, tile, offset, level = _group(N, LOW, LEVELS, MIN_LOG)
     enabled = tl.load(Active + DIM * ML + level) if ACTIVE else tl.full((), 1, tl.int32)
     if enabled:
         i = tl.arange(0, SS)
@@ -261,9 +268,9 @@ def restore(
         p1 = tl.cumsum(tl.load(Delta + POINTS * pb + addr, mask, 0), 0)
         p2 = tl.cumsum(tl.load(Delta + 2 * POINTS * pb + addr, mask, 0), 0)
         if SHARDS:
-            block = 2 * (N // 8) - 2 * (N // size) + tile
+            block = 2 * (N >> MIN_LOG) - 2 * (N // size) + tile
             shard = tl.arange(0, SHARDS)
-            blocks: tl.constexpr = 2 * (N // 8) - 1
+            blocks: tl.constexpr = 2 * (N >> MIN_LOG) - 1
             addr_border = (block * SHARDS + shard[:, None]) * pb + b[None, :]
             v0 = tl.sum(tl.load(BorderDelta + addr_border, b[None, :] < B, 0), 0)
             v1 = tl.sum(
@@ -300,15 +307,16 @@ def classify_levels(
     NI: tl.constexpr,
     ML: tl.constexpr,
     BLOCK: tl.constexpr,
+    MIN_LOG: tl.constexpr = 3,
 ):
     dim = tl.program_id(0)
     level = tl.program_id(1)
     n = tl.where(dim == 0, NO, NI)
-    size = 8 << level
+    size = (1 << MIN_LOG) << level
     found = tl.full((), False, tl.int1)
     if size <= n:
-        tiles = n >> (level + 3)
-        low = level * n + 2 * (n // 8) - 2 * tiles
+        tiles = n >> (level + MIN_LOG)
+        low = level * n + 2 * (n >> MIN_LOG) - 2 * tiles
         high = low + n + tiles
         cursor = tl.load(Count)
         while (cursor < A) & ~found:
@@ -335,9 +343,10 @@ def zero(
     ML: tl.constexpr,
     DIM: tl.constexpr,
     PAD: tl.constexpr = 0,
+    MIN_LOG: tl.constexpr = 3,
 ):
     pb: tl.constexpr = B + PAD
-    size, tile, offset, level = _group(N, LOW, LEVELS)
+    size, tile, offset, level = _group(N, LOW, LEVELS, MIN_LOG)
     if tl.load(Active + DIM * ML + level):
         i = tl.arange(0, SS)
         b = tl.program_id(1) * BB + tl.arange(0, BB)

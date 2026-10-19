@@ -569,3 +569,14 @@ class BSplineLocalPaddedRecipe(BSplineLocalSplitRecipe):
         super().__post_init__()
         if type(self.bank_padding) is not int or self.bank_padding not in (0, 4, 8, 16):
             raise ValueError("bank_padding must be 0, 4, 8 or 16")
+
+
+@dataclass(frozen=True)
+class BSplineLocalNarrowRecipe(BSplineLocalSplitRecipe):
+    """Revision 26: four-site local blocks cover ordinary small-width atoms."""
+
+    min_block_log = 2
+    sigma_cutoff: float = 0.05
+    prepare_float32: bool = False
+    boundary_shards: int = 8
+    axis_atoms: int = 4
