@@ -514,3 +514,29 @@ B33/spacing.3は0.0007039で、どのFP32結果でも4e-4を満たせない。
 
 新しい振幅域を含む追加spacing testsも含め、改めて全cache回帰とprimary性能を確認する。
 診断jobだけでは完全step速度・メモリの採用根拠にしない。
+
+## v39完全step：小さい候補改善、独立repeatへ
+
+source `9e928c3fc08e48af9c828c0e7ff3e561df1bea61`、job
+`l4job-26001f45364b4d98aabbcb8d22c5e76b`。39 checks PASS /1701 deselected、160.11秒。
+maskと旧分類の一致、係数・位置等のbit一致、Graphの新尺度有効化を通過した。
+4 caseの全plan・3状態の独立FP64 full-shape Y/dX/all4P gateと全52428 σ更新も確認した。
+
+| case | Gluon lane1 ms | mask+全zero ms | mask+有効level zero ms | Dense ms |
+|---|---:|---:|---:|---:|
+| B32 mixed |0.773283|0.755915|0.765538|0.082318|
+| B64 mixed |1.247125|1.211925|1.238853|0.104683|
+| B32 small |0.772651|0.695009|0.695598|0.082892|
+| B32 switch |0.774559|0.722699|0.726222|0.083310|
+
+mask+全zeroの候補改善は2.25%/2.82%、small10.05%、switch6.70%。
+有効levelだけのzeroは追加launchを回収できず、全zeroより遅いか同じ帯だった。
+allocatedはmaskのallocator丸め分512bytesだけ増え34.154/34.654MiB、reserved98/100MiBで同じ。
+Dense49.002/49.502MiB・106MiBに対し両peakは小さいままである。
+source/result/manifest/cleanup ackの検証済みだが、速度は単発なので独立repeatで確認する。
+
+B32 mixedのbank_inputは約0.0256→0.0205ms、scan_outputは0.0266→0.0246ms、
+smallではそれぞれ0.0092/0.0123msへ減った。係数構築は約1µs増え、H/G本体はほぼ同じ。
+独立分類scanを再投入せずに不要な集約を省けたが、Dense2倍の速度目標は依然未達。
+
+source SHA256 `e1d0254377823a6af07267a4831c054764f43c1a75d1f1e5a9939461f7142852`, result SHA256 `8042ac6ea82e8e9a91fc738818fa25aedd75a2bd23e64fc49fbb9c931a1ee61e`; source files 1611, manifest 56, return0/cleanup ack verified.
