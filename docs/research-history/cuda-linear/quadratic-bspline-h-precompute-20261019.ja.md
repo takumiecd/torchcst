@@ -120,3 +120,45 @@ allocated/reserved 84.795/160MiBと大きい。compact fusedは6.385〜7.745ms�
 source archive SHA256 `aa58ca1229ead0cd998ad95124808007f7c394b655f8f7f926942f8091c159b6`、
 result archive SHA256 `dff7d7ef607b94b9e8aee7595ff0a2122a215ed3529dd1b60540fdbc0f11f28c`。
 38 manifest filesを照合済み。
+
+
+## compact微分の逆数共有
+
+8b404e77では、Meta内の逆spacingを使い、`inverse_half=inverse_spacing*2/(N-1)`、
+`J'_0=-J_1*inverse_half`、`J'_1=-2J_2*inverse_half`とした。
+同じ平行移動の恒等式で、繰り返しFP64除算を避ける。
+cut0を持たないatom blockはedge reduction atomic自体を発行しない。
+full/compact両版で形・L2・task幅stop-gradientを維持し、41 GPU testsと全shape gateを通過。
+
+B64 mixedでは、compact atom4/warp1が7.310→4.529ms、allocated/reservedは65.591/140MiB。
+full cache既定版は4.483ms・71.191/132MiB。Wは3.260ms・78.840/156MiB、Denseは0.109ms。
+fullの実行粒度4/1・8/1・8/2は4.602/4.474/4.470msで、差は小さく新たな優位とは判断しない。
+最終比較には既定full `h-cache-edges` とcompact `h-compact-edge-a4w1`を残す。
+compactはallocatedを減らしたが、reservedも減るとはいえない。
+
+full fusedの別計装では係数0.065ms、H→Y 1.125ms、backwardのbroad H/G・VJP・dX集約1.724ms。
+小支持側W構築0.298ms、native atom VJP 0.624msも残る。
+compactはH→Y 1.135ms、同backward1.787ms。これは完全stepの差分ではない。
+full backwardは128 registers / spill_slots=0、compactは255 / 92。
+このcompiler情報は実機のDRAM転送量・stallの計測ではない。
+
+job `l4job-744c9411145f4f4fa39a0324337e16d6`、38 manifest files照合済み。
+source archive SHA256 `aa233c5de83d582802eb9296daa3f030cc77317c84625d1baa4295ed12cf4216`、
+result archive SHA256 `a1380c0f6853a9e93cc397fd50620ad3f01c8a4184591827ccb45fd79c2cdac8`。
+
+
+## 通信中断と再実行
+
+最終比較の最初のjob `l4job-a175399434aa481c8b9fc78120687fe9` は結果archiveを回収できなかった。
+ホストが2026-10-19 12:50:50〜13:04:28 JSTにclamshell/maintenance sleepへ入り、
+再接続時はpool設定のen7が存在せず、現在のdefault/Wi-Fiはen0だった。
+応答待ちのローカルCLIへSIGTERMを送り、poolはquarantineした。stopの初回は通信経路の不在、
+en0へ合わせた後は既に存在しないendpointの404となった。
+poolの排他下でserver sessionsを読み、stale CLI cacheがpruneされ、server assignmentがゼロと確認。
+その後の公式recoverで全slot停止と中断jobのfailed化を確認した。DB/slot記録を手動変更していない。
+GPU計算の遅さや数値失敗とは扱わず、このjobは性能・GPUテストの成功根拠から全て除外する。
+source/spec/transport logをignored evidenceの`interrupted-job/`に保全した。
+
+以後は比較だけのjobとGPU testsだけのjobを分け、新規VMで実行する。
+実験中のidle sleepを避けるため、supervisorの存続中だけ`caffeinate -i`を使う。
+ネットワークの変更はpool CLI用interfaceだけで、システム全体のVPN/経路は変更しない。
