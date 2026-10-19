@@ -219,3 +219,39 @@ class BSplineRangeSpatialRecipe(BSplineRangeReuseRecipe):
         super().__post_init__()
         if type(self.range_tile) is not int or self.range_tile not in (16, 32, 64, 128):
             raise ValueError("range_tile must be one of (16, 32, 64, 128)")
+
+
+@dataclass(frozen=True)
+class BSplinePreparedHRecipe(BSplineStreamingMemoryRecipe):
+    """Revision 12: endpoint preparation and optional segmented Y/dX injection."""
+
+    prepared_h = True
+    tiny_native = True
+    h_mode: str = "fused"
+    coefficient_cache: bool = True
+    coefficient_derivatives: bool = True
+    edge_reduce: bool = False
+    event_atoms: int = 32
+    event_batch: int = 8
+    event_warps: int = 4
+    save_w: bool = True
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.h_mode not in ("fused", "split", "segmented"):
+            raise ValueError("h_mode must be fused, split or segmented")
+        for name in ("coefficient_cache", "coefficient_derivatives", "edge_reduce"):
+            if type(getattr(self, name)) is not bool:
+                raise ValueError(f"{name} must be boolean")
+        for name, allowed in (
+            ("event_atoms", (16, 32, 64)),
+            ("event_batch", (4, 8, 16)),
+            ("event_warps", (1, 2, 4)),
+        ):
+            if (
+                type(getattr(self, name)) is not int
+                or getattr(self, name) not in allowed
+            ):
+                raise ValueError(f"{name} must be one of {allowed}")
+        if self.h_mode == "segmented" and not self.coefficient_cache:
+            raise ValueError("segmented injection requires coefficient_cache")

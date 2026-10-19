@@ -576,6 +576,34 @@ def measure(args, run):
                         "save_w": recipe.save_w,
                     }
                 )
+                if getattr(recipe, "prepared_h", False):
+                    hybrid_routing.update(
+                        {
+                            "prepared_h_mode": recipe.h_mode,
+                            "coefficient_cache": recipe.coefficient_cache,
+                            "cached_derivatives": recipe.coefficient_derivatives,
+                            "edge_reduction": recipe.edge_reduce,
+                            "coefficient_scope": "fresh each forward; saved forward snapshot reused by backward",
+                            "split_stage_scope": "h_query/back_query/y_inject/dx_inject are empty in fused mode; fused spans retain both query and injection",
+                            "event_policy": "fresh integer histogram/scan/place per forward; no site-by-atom table"
+                            if recipe.h_mode == "segmented"
+                            else None,
+                            "h_elements_per_buffer": m * case.atoms
+                            if recipe.h_mode != "fused"
+                            else 0,
+                            "capacity_policy": (
+                                "register-local H/G; forward coefficient snapshot reused in backward"
+                                if recipe.h_mode == "fused"
+                                else "one local B*A H or G workspace; forward coefficient snapshot reused in backward"
+                            ),
+                            "layout_policy": (
+                                "device-validated width buckets with tiny clipped-support native guard"
+                                if recipe.reuse_layout
+                                else "fresh width-bucket sort with tiny clipped-support native guard"
+                            ),
+                            "routing_count_scope": "sigma-only counts above; device route additionally keeps <=2-site clipped axis supports native",
+                        }
+                    )
                 if recipe.strategy == "matrix_range":
                     hybrid_routing.update(
                         {
@@ -615,10 +643,15 @@ def measure(args, run):
                             "missing or ambiguous persistent B-spline placement"
                         )
                     calls, rebuilds = caches[0]["stats"].cpu().tolist()
-                    if recipe.strategy == "matrix_range":
+                    if recipe.strategy == "matrix_range" or getattr(
+                        recipe, "prepared_h", False
+                    ):
                         native = int(caches[0]["count"].item())
                         hybrid_routing["final_device_native_atoms"] = native
-                        hybrid_routing["final_device_range_atoms"] = case.atoms - native
+                        route = "range" if recipe.strategy == "matrix_range" else "h"
+                        hybrid_routing[f"final_device_{route}_atoms"] = (
+                            case.atoms - native
+                        )
                     hybrid_routing.update(
                         {
                             "placement_calls": calls,
@@ -740,6 +773,7 @@ def measure(args, run):
             names = executor.diagnostic_components(
                 run.entry(args.plan_id).plan.recipe.strategy,
                 getattr(run.entry(args.plan_id).plan.recipe, "range_planes", 3),
+                getattr(run.entry(args.plan_id).plan.recipe, "prepared_h", False),
             )
             backend_events = {
                 name: [

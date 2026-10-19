@@ -23,7 +23,7 @@ def _report(name, compiled):
         }
 
 
-def diagnostic_components(strategy, range_planes=3):
+def diagnostic_components(strategy, range_planes=3, prepared_h=False):
     common = ("snapshot", "prepare", "norm_replay")
     if strategy == "matrix_range":
         substeps = tuple(
@@ -58,25 +58,42 @@ def diagnostic_components(strategy, range_planes=3):
             )
         )
     if strategy == "sigma_stream":
-        return common + (
-            "group",
-            "pack",
-            "w_build",
-            "w_rebuild",
-            "y_gemm",
-            "dx_gemm",
-            "dw_gemm",
-            "matrix_atom_vjp",
-            "bank_input",
-            "bank_recompute",
-            "bank_adjoint",
-            "stream_forward",
-            "stream_backward",
-            "scan_output",
-            "scan_input",
-            "restore_output",
-            "restore_input",
-            "unpack",
+        extra = (
+            (
+                "coeff_prepare",
+                "event_output",
+                "event_input",
+                "h_query",
+                "y_inject",
+                "back_query",
+                "dx_inject",
+            )
+            if prepared_h
+            else ()
+        )
+        return (
+            common
+            + extra
+            + (
+                "group",
+                "pack",
+                "w_build",
+                "w_rebuild",
+                "y_gemm",
+                "dx_gemm",
+                "dw_gemm",
+                "matrix_atom_vjp",
+                "bank_input",
+                "bank_recompute",
+                "bank_adjoint",
+                "stream_forward",
+                "stream_backward",
+                "scan_output",
+                "scan_input",
+                "restore_output",
+                "restore_input",
+                "unpack",
+            )
         )
     if strategy.startswith("matrix"):
         grouping = ("group",) if strategy == "matrix_support_grouped" else ()

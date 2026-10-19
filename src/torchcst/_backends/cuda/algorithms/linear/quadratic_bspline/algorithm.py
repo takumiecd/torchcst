@@ -18,6 +18,7 @@ from torchcst.operators.execution import (
 
 from .recipe import (
     BSplineParallelRecipe,
+    BSplinePreparedHRecipe,
     BSplineRangeBlockedRecipe,
     BSplineRangeFusedRecipe,
     BSplineRangeRecipe,
@@ -148,6 +149,8 @@ class BSplineAlgorithm(Algorithm[BSplineRecipe]):
             if state.recipe.strategy == "sigma_stream":
                 from .stream_executor import apply as stream_apply
 
+                if getattr(state.recipe, "prepared_h", False):
+                    from .h_executor import apply as stream_apply
                 return stream_apply(
                     x,
                     p,
@@ -250,3 +253,9 @@ class BSplineRangeBlockedAlgorithm(BSplineStreamingAlgorithm):
 class BSplineRangeSpatialAlgorithm(BSplineStreamingAlgorithm):
     revision: str = "v11"
     recipe_type: type = BSplineRangeSpatialRecipe
+
+
+@dataclass(frozen=True)
+class BSplinePreparedHAlgorithm(BSplineStreamingAlgorithm):
+    revision: str = "v12"
+    recipe_type: type = BSplinePreparedHRecipe
