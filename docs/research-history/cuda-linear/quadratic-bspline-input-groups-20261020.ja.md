@@ -101,3 +101,29 @@ GPU log2の丸めを整数変換前に行い、CPU位置との全要素照合を
 ad99は結果download後のremote cleanupがWebSocket切断で失敗した。source/archive/manifestは照合したが
 cleanup ackがなく、incomplete-jobsへ区別して保存した。owned VMの停止はpoolが確認済み。
 両方とも性能の根拠から除外する。
+
+
+## 独立再測定と全memberの照合
+
+source `bb59beb8d7d3076436afbec537bf5fcea54386df`、job
+`l4job-cb3638e528864e88a6f2f46f519aba48`。27 checks PASS、8.66秒。
+A52428の実際のprimary形状についても、各groupの全memberと全6 prefix点を照合した。
+測定driverでもmixed/small/switchの全memberが同じ4 knotに属すること、group重複がないこと、
+全52428 IDを一度ずつ被覆することをCPUと厳密に照合した。hash runtimeは5fc5ccffと同じ。
+
+| 初期分布 | Torch全構築 ms | hash全構築 ms | 4-atom chunk数 |
+|---|---:|---:|---:|
+| mixed |0.139264|0.034816|19644|
+| small |0.140288|0.034816|17773|
+| switch |0.141312|0.034816|17881|
+
+初回と同じ約0.035ms帯を再現した。両runの増分allocated peakはTorch2.433 /hash4.103MiB。
+hashの返却表payloadは1,992,288 bytes、約1.900MiB（count/ends/IDs/chunk ends/map）。
+構築時の辞書と一時bufferはpayloadとは別。完全stepのpeakをこれらの足し算で推定しない。
+H/Gへは未統合なので、現時点の完全step最速はv32 bundleの約0.796 /1.299msのまま。
+
+source SHA256 `74fcf67319b31a47ec0ced9e3fa96b0f5aff0e561b23ead073d2f5abd99cee42`、
+result SHA256 `00703e56710043a7913544e0571aa8510d3e3f303a931b539d925fec684e1225`。
+source byte一致1579 files、manifest8 files、return0/cleanup ackを確認。
+次は共有input H queryと、同じinput eventへ戻すdXのgroup内reductionを同じframeで試す。
+個別G/Gmuと全source VJP、native guard、exact L2、完全stepと両peakのgateは維持する。
