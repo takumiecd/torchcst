@@ -200,7 +200,9 @@ def bank(
     ML: tl.constexpr = 0,
     DIM: tl.constexpr = 0,
     ACTIVE: tl.constexpr = False,
+    PAD: tl.constexpr = 0,
 ):
+    pb: tl.constexpr = B + PAD
     size, tile, offset, level = _group(N, LOW, LEVELS)
     enabled = tl.load(Active + DIM * ML + level) if ACTIVE else tl.full((), 1, tl.int32)
     if enabled:
@@ -220,11 +222,11 @@ def bank(
         for p in tl.static_range(3):
             value = p0 if p == 0 else p1 if p == 1 else p2
             tl.store(
-                Bank + p * POINTS * B + (base + i[:, None] + 1) * B + b[None, :],
+                Bank + p * POINTS * pb + (base + i[:, None] + 1) * pb + b[None, :],
                 value,
                 (i[:, None] < size) & (b[None, :] < B),
             )
-            tl.store(Bank + p * POINTS * B + base * B + b, 0, b < B)
+            tl.store(Bank + p * POINTS * pb + base * pb + b, 0, b < B)
 
 
 @tr.jit
@@ -244,33 +246,35 @@ def restore(
     ACTIVE: tl.constexpr = False,
     BorderDelta=None,
     SHARDS: tl.constexpr = 0,
+    PAD: tl.constexpr = 0,
 ):
+    pb: tl.constexpr = B + PAD
     size, tile, offset, level = _group(N, LOW, LEVELS)
     enabled = tl.load(Active + DIM * ML + level) if ACTIVE else tl.full((), 1, tl.int32)
     if enabled:
         i = tl.arange(0, SS)
         b = tl.program_id(1) * BB + tl.arange(0, BB)
         base = offset + tile * (size + 1)
-        addr = (base + i[:, None]) * B + b[None, :]
+        addr = (base + i[:, None]) * pb + b[None, :]
         mask = (i[:, None] < size) & (b[None, :] < B)
         p0 = tl.cumsum(tl.load(Delta + addr, mask, 0), 0)
-        p1 = tl.cumsum(tl.load(Delta + POINTS * B + addr, mask, 0), 0)
-        p2 = tl.cumsum(tl.load(Delta + 2 * POINTS * B + addr, mask, 0), 0)
+        p1 = tl.cumsum(tl.load(Delta + POINTS * pb + addr, mask, 0), 0)
+        p2 = tl.cumsum(tl.load(Delta + 2 * POINTS * pb + addr, mask, 0), 0)
         if SHARDS:
             block = 2 * (N // 8) - 2 * (N // size) + tile
             shard = tl.arange(0, SHARDS)
             blocks: tl.constexpr = 2 * (N // 8) - 1
-            addr_border = (block * SHARDS + shard[:, None]) * B + b[None, :]
+            addr_border = (block * SHARDS + shard[:, None]) * pb + b[None, :]
             v0 = tl.sum(tl.load(BorderDelta + addr_border, b[None, :] < B, 0), 0)
             v1 = tl.sum(
                 tl.load(
-                    BorderDelta + blocks * SHARDS * B + addr_border, b[None, :] < B, 0
+                    BorderDelta + blocks * SHARDS * pb + addr_border, b[None, :] < B, 0
                 ),
                 0,
             )
             v2 = tl.sum(
                 tl.load(
-                    BorderDelta + 2 * blocks * SHARDS * B + addr_border,
+                    BorderDelta + 2 * blocks * SHARDS * pb + addr_border,
                     b[None, :] < B,
                     0,
                 ),
@@ -330,7 +334,9 @@ def zero(
     BB: tl.constexpr,
     ML: tl.constexpr,
     DIM: tl.constexpr,
+    PAD: tl.constexpr = 0,
 ):
+    pb: tl.constexpr = B + PAD
     size, tile, offset, level = _group(N, LOW, LEVELS)
     if tl.load(Active + DIM * ML + level):
         i = tl.arange(0, SS)
@@ -338,11 +344,11 @@ def zero(
         base = offset + tile * (size + 1)
         for p in tl.static_range(3):
             tl.store(
-                Delta + p * POINTS * B + (base + i[:, None] + 1) * B + b[None, :],
+                Delta + p * POINTS * pb + (base + i[:, None] + 1) * pb + b[None, :],
                 0,
                 (i[:, None] < size) & (b[None, :] < B),
             )
-            tl.store(Delta + p * POINTS * B + base * B + b, 0, b < B)
+            tl.store(Delta + p * POINTS * pb + base * pb + b, 0, b < B)
 
 
 @tr.jit
@@ -360,6 +366,7 @@ def _query(
     AB: tl.constexpr,
     BB: tl.constexpr,
     PRIME: tl.constexpr,
+    PB: tl.constexpr,
 ):
     value = tl.full((AB, BB), 0, tl.float32)
     prime = tl.full((AB, BB), 0, tl.float32)
@@ -367,9 +374,9 @@ def _query(
     for event in tl.static_range(6):
         point = tl.load(Pos + (DIM * 6 + event) * A + a, a < A, -1)
         mask = (a[:, None] < A) & (b[None, :] < B) & (point[:, None] >= 0)
-        p0 = tl.load(Bank + point[:, None] * B + b[None, :], mask, 0)
-        p1 = tl.load(Bank + POINTS * B + point[:, None] * B + b[None, :], mask, 0)
-        p2 = tl.load(Bank + 2 * POINTS * B + point[:, None] * B + b[None, :], mask, 0)
+        p0 = tl.load(Bank + point[:, None] * PB + b[None, :], mask, 0)
+        p1 = tl.load(Bank + POINTS * PB + point[:, None] * PB + b[None, :], mask, 0)
+        p2 = tl.load(Bank + 2 * POINTS * PB + point[:, None] * PB + b[None, :], mask, 0)
         c0 = tl.load(Co + ((DIM * 3) * 6 + event) * A + a, a < A, 0)
         c1 = tl.load(Co + ((DIM * 3 + 1) * 6 + event) * A + a, a < A, 0)
         c2 = tl.load(Co + ((DIM * 3 + 2) * 6 + event) * A + a, a < A, 0)
@@ -403,6 +410,7 @@ def _inject(
     Injection,
     ENDPOINTS: tl.constexpr,
     SHARD_ORIGIN: tl.constexpr,
+    PB: tl.constexpr,
 ):
     scale = tl.load(Meta + 12 * a, a < A, 0) * tl.load(Meta + 12 * a + 4, a < A, 0)
     weight = (Value * scale[:, None]).to(tl.float32)
@@ -432,8 +440,8 @@ def _inject(
                 block = tl.load(BorderPos + (DIM * 2 + event - 4) * A + a, a < A, -1)
                 shard = tl.program_id(0) % SHARDS
                 addr = (
-                    p * BLOCKS * SHARDS * B
-                    + (block[:, None] * SHARDS + shard) * B
+                    p * BLOCKS * SHARDS * PB
+                    + (block[:, None] * SHARDS + shard) * PB
                     + b[None, :]
                 )
                 tl.atomic_add(
@@ -443,13 +451,13 @@ def _inject(
                     sem="relaxed",
                 )
             else:
-                addr = Delta + p * POINTS * B + point[:, None] * B + b[None, :]
+                addr = Delta + p * POINTS * PB + point[:, None] * PB + b[None, :]
                 if ENDPOINTS and SHARD_ORIGIN:
                     shard = tl.program_id(0) % SHARDS
                     border = (
                         BorderDelta
-                        + p * BLOCKS * SHARDS * B
-                        + (origin_block[:, None] * SHARDS + shard) * B
+                        + p * BLOCKS * SHARDS * PB
+                        + (origin_block[:, None] * SHARDS + shard) * PB
                         + b[None, :]
                     )
                     addr = tl.where(mode[:, None] == 2, border, addr)
@@ -481,12 +489,15 @@ def forward(
     Injection=None,
     ENDPOINTS: tl.constexpr = False,
     SHARD_ORIGIN: tl.constexpr = False,
+    PAD: tl.constexpr = 0,
 ):
     base = tl.load(Count) + tl.program_id(0) * AB
     if base < A:
         a = base + tl.arange(0, AB)
         b = tl.arange(0, BB)
-        h, hp = _query(Bank, Pos, Co, HalfInv, a, b, A, B, PI, 1, AB, BB, SAVE == "hp")
+        h, hp = _query(
+            Bank, Pos, Co, HalfInv, a, b, A, B, PI, 1, AB, BB, SAVE == "hp", B + PAD
+        )
         mask = (a[:, None] < A) & (b[None, :] < B)
         if SAVE != "none":
             tl.store(H + a[:, None] * B + b[None, :], h.to(tl.float32), mask)
@@ -511,6 +522,7 @@ def forward(
             Injection,
             ENDPOINTS,
             SHARD_ORIGIN,
+            B + PAD,
         )
 
 
@@ -544,12 +556,15 @@ def backward(
     Injection=None,
     ENDPOINTS: tl.constexpr = False,
     SHARD_ORIGIN: tl.constexpr = False,
+    PAD: tl.constexpr = 0,
 ):
     base = tl.load(Count) + tl.program_id(0) * AB
     if base < A:
         a = base + tl.arange(0, AB)
         b = tl.arange(0, BB)
-        g, gp = _query(AdjointBank, Pos, Co, HalfInv, a, b, A, B, PO, 0, AB, BB, VJP)
+        g, gp = _query(
+            AdjointBank, Pos, Co, HalfInv, a, b, A, B, PO, 0, AB, BB, VJP, B + PAD
+        )
         if VJP:
             mask = (a[:, None] < A) & (b[None, :] < B)
             if SAVE == "hp":
@@ -557,7 +572,20 @@ def backward(
                 hp = tl.load(HP + a[:, None] * B + b[None, :], mask, 0).to(tl.float64)
             else:
                 h, hp = _query(
-                    InputBank, Pos, Co, HalfInv, a, b, A, B, PI, 1, AB, BB, True
+                    InputBank,
+                    Pos,
+                    Co,
+                    HalfInv,
+                    a,
+                    b,
+                    A,
+                    B,
+                    PI,
+                    1,
+                    AB,
+                    BB,
+                    True,
+                    B + PAD,
                 )
                 if SAVE == "h":
                     h = tl.load(H + a[:, None] * B + b[None, :], mask, 0).to(tl.float64)
@@ -597,4 +625,5 @@ def backward(
                 Injection,
                 ENDPOINTS,
                 SHARD_ORIGIN,
+                B + PAD,
             )

@@ -16,6 +16,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineLocalActiveAlgorithm,
     BSplineLocalEndpointAlgorithm,
     BSplineLocalMomentAlgorithm,
+    BSplineLocalPaddedAlgorithm,
     BSplineLocalShardedAlgorithm,
     BSplineLocalSplitAlgorithm,
     BSplineNativeHAlgorithm,
@@ -42,6 +43,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineLocalActiveRecipe,
     BSplineLocalEndpointRecipe,
     BSplineLocalMomentRecipe,
+    BSplineLocalPaddedRecipe,
     BSplineLocalShardedRecipe,
     BSplineLocalSplitRecipe,
     BSplineNativeHRecipe,
@@ -84,8 +86,11 @@ def case(n=64, a=17):
 def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     from dataclasses import replace
 
-    split_prepare = strategy == "h_local_split" or recipe_options.pop(
-        "_split_prepare", False
+    padded = strategy == "h_local_padded" or recipe_options.pop("_padded", False)
+    split_prepare = (
+        strategy == "h_local_split"
+        or recipe_options.pop("_split_prepare", False)
+        or padded
     )
     endpoint = (
         strategy == "h_local_endpoint"
@@ -144,6 +149,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineLocalShardedAlgorithm())
     registry.register(BSplineLocalEndpointAlgorithm())
     registry.register(BSplineLocalSplitAlgorithm())
+    registry.register(BSplineLocalPaddedAlgorithm())
     registry.register(BSplineNativeHAlgorithm())
     registry.register(BSplineNativeLoopAlgorithm())
     registry.register(BSplineRangeAlgorithm())
@@ -168,7 +174,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     tuned = bool(recipe_options) or strategy == "matrix_separable"
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v24"
+        "v25"
+        if padded
+        else "v24"
         if split_prepare
         else "v23"
         if endpoint
@@ -215,7 +223,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         else "v2"
         if tuned
         else "v1",
-        BSplineLocalSplitRecipe(**recipe_options)
+        BSplineLocalPaddedRecipe(**recipe_options)
+        if padded
+        else BSplineLocalSplitRecipe(**recipe_options)
         if split_prepare
         else BSplineLocalEndpointRecipe(**recipe_options)
         if endpoint
@@ -2312,6 +2322,11 @@ SPLIT_PREPARE_OPTIONS = [
         "save_h": "hp",
     },
 ]
+PADDED_OPTIONS = [
+    {"_padded": True, "bank_padding": 4},
+    {"_padded": True, "bank_padding": 8},
+    {"_padded": True, "bank_padding": 16, "active_levels": True, "save_h": "hp"},
+]
 ALL_QUERY_OPTIONS = (
     QUERY_OPTIONS
     + LEAN_OPTIONS
@@ -2325,6 +2340,7 @@ ALL_QUERY_OPTIONS = (
         pytest.param(opt, id=f"split-prepare-{i}")
         for i, opt in enumerate(SPLIT_PREPARE_OPTIONS)
     ]
+    + [pytest.param(opt, id=f"padded-{i}") for i, opt in enumerate(PADDED_OPTIONS)]
 )
 
 
@@ -2555,7 +2571,8 @@ def test_local_recipe_roundtrip_and_bounds():
     + [
         pytest.param(opt, id=f"split-prepare-{i}")
         for i, opt in enumerate(SPLIT_PREPARE_OPTIONS)
-    ],
+    ]
+    + [pytest.param(opt, id=f"padded-{i}") for i, opt in enumerate(PADDED_OPTIONS)],
 )
 def test_local_dyadic_boundaries_graph(options):
     import math
@@ -2651,7 +2668,7 @@ def test_active_recipe_roundtrip():
 
 @GPU
 @pytest.mark.parametrize("mode", ["none", "hp"])
-@pytest.mark.parametrize("route", ["active", "sharded", "endpoint", "split"])
+@pytest.mark.parametrize("route", ["active", "sharded", "endpoint", "split", "padded"])
 def test_active_all_native_to_broad_graph(mode, route):
     import math
 
@@ -2735,3 +2752,19 @@ def test_split_prepare_recipe_roundtrip_and_bounds():
     for options in ({"split_prepare": 1}, {"active_levels": 1}):
         with pytest.raises(ValueError):
             BSplineLocalSplitRecipe(**options)
+
+
+def test_padded_recipe_roundtrip_and_bounds():
+    reg = Registry()
+    reg.register(BSplineLocalPaddedAlgorithm())
+    for options in PADDED_OPTIONS:
+        options = {k: v for k, v in options.items() if k != "_padded"}
+        plan = ExecutionPlan(
+            "research_cuda_quadratic_bspline",
+            "v25",
+            BSplineLocalPaddedRecipe(**options),
+        )
+        assert reg.loads_plan(reg.dumps_plan(plan)) == plan
+    for value in (1, 3, 32, True):
+        with pytest.raises(ValueError):
+            BSplineLocalPaddedRecipe(bank_padding=value)

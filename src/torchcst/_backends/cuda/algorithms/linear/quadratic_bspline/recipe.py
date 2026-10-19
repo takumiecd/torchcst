@@ -557,3 +557,15 @@ class BSplineLocalSplitRecipe(BSplineLocalEndpointRecipe):
         for name in ("active_levels", "split_prepare"):
             if type(getattr(self, name)) is not bool:
                 raise ValueError(f"{name} must be boolean")
+
+
+@dataclass(frozen=True)
+class BSplineLocalPaddedRecipe(BSplineLocalSplitRecipe):
+    """Revision 25: physical bank row padding, independent of the real batch."""
+
+    bank_padding: int = 8
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.bank_padding) is not int or self.bank_padding not in (0, 4, 8, 16):
+            raise ValueError("bank_padding must be 0, 4, 8 or 16")

@@ -22,7 +22,7 @@ def _points(n):
 
 
 def _bank(x, n, recipe, label, active, dim, ml):
-    bank = x.new_empty((3, _points(n), len(x)))
+    bank = x.new_empty((3, _points(n), len(x) + getattr(recipe, "bank_padding", 0)))
     _stamp(label, 0)
     for k, sizes in enumerate(_groups(n, recipe)):
         compiled = lk.bank[
@@ -41,6 +41,7 @@ def _bank(x, n, recipe, label, active, dim, ml):
             ml,
             dim,
             getattr(recipe, "active_levels", False),
+            getattr(recipe, "bank_padding", 0),
             num_warps=recipe.bank_warps,
             enable_fp_fusion=False,
         )
@@ -70,6 +71,7 @@ def _restore(delta, border, y, n, recipe, label, active, dim, ml):
             getattr(recipe, "active_levels", False),
             border,
             getattr(recipe, "boundary_shards", 0),
+            getattr(recipe, "bank_padding", 0),
             num_warps=recipe.bank_warps,
             enable_fp_fusion=False,
         )
@@ -82,7 +84,9 @@ def _delta(x, n, recipe, active, dim, ml):
     label = "delta_output" if dim == 0 else "delta_input"
     _stamp(label, 0)
     if getattr(recipe, "active_levels", False):
-        delta = x.new_empty((3, _points(n), len(x)))
+        delta = x.new_empty(
+            (3, _points(n), len(x) + getattr(recipe, "bank_padding", 0))
+        )
         for k, sizes in enumerate(_groups(n, recipe)):
             compiled = lk.zero[
                 (sum(n // v for v in sizes), tr.cdiv(len(x), recipe.bank_batch))
@@ -98,14 +102,23 @@ def _delta(x, n, recipe, active, dim, ml):
                 recipe.bank_batch,
                 ml,
                 dim,
+                getattr(recipe, "bank_padding", 0),
                 num_warps=recipe.bank_warps,
                 enable_fp_fusion=False,
             )
             _report(label + f"_{k}", compiled)
     else:
-        delta = x.new_zeros((3, _points(n), len(x)))
+        delta = x.new_zeros(
+            (3, _points(n), len(x) + getattr(recipe, "bank_padding", 0))
+        )
     shards = getattr(recipe, "boundary_shards", 0)
-    border = x.new_zeros((3, 2 * (n // 8) - 1, shards, len(x))) if shards else None
+    border = (
+        x.new_zeros(
+            (3, 2 * (n // 8) - 1, shards, len(x) + getattr(recipe, "bank_padding", 0))
+        )
+        if shards
+        else None
+    )
     _stamp(label, 1)
     return delta, border
 
@@ -216,6 +229,7 @@ class _Local(torch.autograd.Function):
             injection if endpoints else None,
             endpoints,
             getattr(recipe, "shard_origin", False),
+            getattr(recipe, "bank_padding", 0),
             num_warps=recipe.axis_warps,
             enable_fp_fusion=False,
         )
@@ -318,6 +332,7 @@ class _Local(torch.autograd.Function):
             injection if endpoints else None,
             endpoints,
             getattr(recipe, "shard_origin", False),
+            getattr(recipe, "bank_padding", 0),
             num_warps=recipe.axis_warps,
             enable_fp_fusion=False,
         )

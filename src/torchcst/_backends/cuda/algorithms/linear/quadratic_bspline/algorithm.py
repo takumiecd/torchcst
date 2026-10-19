@@ -23,6 +23,7 @@ from .recipe import (
     BSplineLocalActiveRecipe,
     BSplineLocalEndpointRecipe,
     BSplineLocalMomentRecipe,
+    BSplineLocalPaddedRecipe,
     BSplineLocalShardedRecipe,
     BSplineLocalSplitRecipe,
     BSplineNativeHRecipe,
@@ -362,3 +363,9 @@ class BSplineLocalEndpointAlgorithm(BSplineLocalShardedAlgorithm):
 class BSplineLocalSplitAlgorithm(BSplineLocalEndpointAlgorithm):
     revision: str = "v24"
     recipe_type: type = BSplineLocalSplitRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalPaddedAlgorithm(BSplineLocalSplitAlgorithm):
+    revision: str = "v25"
+    recipe_type: type = BSplineLocalPaddedRecipe

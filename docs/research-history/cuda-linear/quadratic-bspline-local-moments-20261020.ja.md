@@ -124,3 +124,9 @@ B32はquery-fma対比約9.9%速く、allocated/reservedともDense以下。B64�
 独立phaseのstream forward/backwardはB32 sharded32 0.203/0.237ms→endpoint32 0.176/0.211ms、B64 0.742/0.792ms→0.673/0.711ms。小支持native forward/backwardはB32約0.258/0.356ms、B64約0.305/0.404msで残る。準備約0.137ms、係数約0.043msも残る。部分phaseは別graphでありprimaryとの加算一致を要求しない。
 
 source SHA256 `412648a09c6962ba5cdc258be2b895f62865845ef297d541802dc3358c4ecf8c`、result SHA256 `697dacfb86561f31467f731898a748632ea8e05225af8a51528d4b663201494a`。通算gate maxabs上限はY6.583e-5 /dX7.542e-5 /all-source6.261e-5、relative L2はいずれも3.965e-6以下。CPU v23は1983 passed /3794 skipped。共通経路の追加GPU回帰とv24比較は別jobで実行中であり、この時点では完了扱いにしない。
+
+## v25の検証仮説：batch行strideのpadding
+
+v23のbroad streamはB32 forward/backward 0.176/0.211msに対しB64は0.673/0.711ms。batch2倍に対し3倍以上の費用差があるため、物理strideに依存する挙動を切り分ける。現時点ではcache missやmemory partitionのhardware counterを取っておらず、原因は確定していない。
+
+bank/差分/border planeの物理行幅を`PB=B+padding`とし、実batchはBのまま、全load/store/query/inject/reductionは`b<B`でmaskする。X/Y/H/HPのshapeとstride、全ての演算式は変えない。bank/差分/borderのplane offsetだけをPBで計算する。paddingは4/8/16列、確保増加もpeakに含める。active尺度を使う場合のzeroも同じ物理幅で初期化し、padding列の未初期化値は読まない。比較controlはv24の16分散・split prepare。GPU gateと完全step/両peakが揃うまで有効とは判断しない。
