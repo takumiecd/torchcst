@@ -182,3 +182,58 @@ job `l4job-b3100ed66e514fd983ac6748c7f75f02`、runtime `bc7186f5`。新規対象
 3つの非compact kernelはforward/backwardともregister48、spill0、shared1024byte。命令数を減らしたchainが最速にはならなかった。chainは累積値への依存が長い式であり、独立に計算できる端点内積和の方がこの実測では速い。ただし依存待ちやissue率のhardware counterは測っていない。
 
 最終runtimeに対するCPU全体は1,976 passed / 3,495 skipped、41.68s、既存warning18件。wheel/sdist内の348 runtimeファイルをcheckoutとbyte照合した。GPU回帰は変更対象のquery・saved-H・adjointを対象にし、非対象の旧range方式のGPU全件再実行とは区別する。
+
+
+## 最終B32/B64混合σ: 独立2 process
+
+job `l4job-7ad5cfb881fb4844936ec2af8ac2b643` / `l4job-61676a3645e449e398e1cc8b7e3217dc`。runtime `bc7186f5`、Case `45839364`。同じL4 VMで各Caseを2回独立に実行し、各processの21 replay medianの範囲を示す。source/全manifest/全record PASS/cleanupを確認し、各Caseの初期X/target/P hash一致と全52,428 atomのσ変化を確認した。メモリは両runで一致した。
+
+| 方法 | B32 ms | B32 allocated / reserved MiB | B64 ms | B64 allocated / reserved MiB |
+|---|---:|---:|---:|---:|
+| v14対照 | 1.709105–1.709961 | 81.288 / 172 | 2.864197–2.883085 | 96.791 / 188 |
+| FP64 fma | 1.616568–1.623078 | 81.288 / 172 | 2.513332–2.525754 | 96.791 / 188 |
+| fma + compact | 1.650069–1.651954 | 75.688 / 158 | 2.549413–2.633523 | 91.388 / 196 |
+| fma_chain | 1.641307–1.644867 | 81.288 / 172 | 2.564857–2.737209 | 96.791 / 188 |
+| chain + compact | 1.676832–1.678303 | 75.688 / 158 | 2.636618–2.743774 | 91.388 / 196 |
+| W版 | 3.225959–3.228290 | 78.590 / 154 | 3.252162–3.259977 | 78.840 / 156 |
+| Dense | 0.082668–0.082759 | 49.002 / 106 | 0.104785–0.104865 | 49.502 / 106 |
+
+最速は端点内のFP64 fma。各run内で対照からB32は5.03–5.46%、B64は12.25–12.39%短縮した。B64のchainやcompactの時間は変動も大きく、単発の最良値だけでは選ばない。fmaのB32は約1.62ms、B64は約2.52msという改善であり、Dense比ではまだ約19.5–24.1倍かかる。
+
+fmaは対照と同じallocated/reservedで、追加G/GP bufferを持たない。compactはB32の両peakを下げるが、B64ではallocatedが5.403MiB減る一方reservedは188→196MiBへ増えた。全体としてメモリが減ったとは扱わない。Denseの両peak以下という研究guideの採用条件はどのH候補も満たしていないため、公開dispatcherへは採用しない。
+
+上記最終比較のH系独立oracle最大誤差はY 1.217888e-6、dX 1.547656e-6、全atom勾配3.135378e-5、relative L2は1.415e-7以下。これはrunnerの3状態×全候補の集計で、pytest各fixtureの最大値の集計ではない。W版も同じgateをPASSした。
+
+## 小さいσだけの条件
+
+job `l4job-683039d4045449fca214b257f2f64d30`。B32、σ=.1/.14/.18をほぼ等分、宣言上限12.8は維持。全record PASS、archive/manifest/source/cleanupを確認した。全52,428 atomのσは更新で変化したが、実device routeは全atom native、H側0のままだった。配置は52call中1 rebuild / 51 reuse。
+
+| 方法 | 完全step ms | allocated / reserved MiB |
+|---|---:|---:|
+| v14対照 | 1.453862 | 81.288 / 172 |
+| fma | 1.454123 | 81.288 / 172 |
+| fma + compact | 1.453828 | 75.688 / 158 |
+| chain | 1.454067 | 81.288 / 172 |
+| chain + compact | 1.454397 | 75.688 / 158 |
+| range W | 3.178465 | 78.590 / 154 |
+| 既存small W `matrix-support4a16` | **1.212084** | 50.231 / 114 |
+| Dense | .083089 | 49.002 / 106 |
+
+この条件ではG/Gμの本体を実行しないので、積和を変更しても速度は同じ帯域だった。H/Hμや係数snapshotの全A容量は引き続き確保し、native slotは未使用。小σの残る費用をG/Gμやscanだけで説明しない。small WはDense比約14.6倍であり、Dense並みという結果ではない。
+
+H系のfull-shape gateはY max2.398145e-6、dX max2.553265e-6、全atom勾配max2.000722e-5、relative L2 ≤1.732e-7でPASS。
+
+## 切替条件の既存W精度失敗
+
+job `l4job-900c169f6a6f451c8279f3281bd83d43` はσ=.1/.199999/.200001/.20001/1.6の条件で、既存 `range-reuse-a16w1` の全atom勾配が独立FP64 gateに失敗した。maxabs .0046330021（許容 .0004）、228/209,712要素がtorch assert_closeを満たさなかった。relative L2値はassert_closeが先に停止したため、このFAIL recordからは得ていない。
+
+同じjobのv14対照・全fma/chain候補の3状態correctnessはPASSしたが、runnerは測定前に止まった。このjobの速度は全方式とも正の結果に使わない。FAIL JSON・全manifest・source・cleanupを検証して保持した。W版の式や閾値を変更せず、W精度失敗を明示したまま、H/Denseだけの別Case snapshot `11ea2557` で再提出した。混合σのW比較は前節のPASSした結果を用いる。
+
+
+## 切替再検証と回帰検証
+
+切替H/Dense再実行 `l4job-7b9a5af6d05d43e7b9084d842c49b179` は全record PASS。v14 1.761824ms、fma 1.732927ms、compact 1.743637ms、chain 1.737898ms、chain compact 1.750084ms、Dense .082732ms。H系peakは混合条件と同じ。全52,428 atomのσが変化し、σ変化だけでrouteが変わったatomは20,971。最大誤差Y 1.469069e-6 / dX 1.685681e-6 / dP 1.585082e-5、relative L2 ≤1.043e-7。
+
+変更経路のGPU回帰は `l4job-9ce49571d79148728d2f2e1fe679ba0e` で252 passed / 476 deselected（249 CUDA + 3 metadata）。全728件の再実行ではない。CPUは1976 passed / 3495 skipped。runtimeは `bc7186f5` 以降同一で、source/結果archive/manifest/cleanupをignored evidenceに保持する。
+
+ユーザーは追加目標として、B32/B64混合σの完全step時間をDenseの2倍以内、capture/replay込みallocated/reserved両peakをDense以下と指定した。現候補は未達。後続では係数・Hの保持と再計算の交換を再評価するが、この目標を下げたり、数式・sampled L2・全勾配gateを緩和したりしない。
