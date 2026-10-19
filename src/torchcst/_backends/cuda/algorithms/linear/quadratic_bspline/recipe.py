@@ -327,6 +327,7 @@ class BSplineAdjointRecipe(BSplineSavedHRecipe):
     adjoint_reduce: bool = False
     scatter_shards: int = 1
     scatter_scope: str = "zero"
+    fold_zero: bool = False
 
     def __post_init__(self):
         super().__post_init__()
@@ -346,6 +347,10 @@ class BSplineAdjointRecipe(BSplineSavedHRecipe):
             raise ValueError("adjoint_order must be none, input or output")
         if self.scatter_scope not in ("zero", "full"):
             raise ValueError("scatter_scope must be zero or full")
-        for name in ("adjoint_share", "adjoint_reduce"):
+        for name in ("adjoint_share", "adjoint_reduce", "fold_zero"):
             if type(getattr(self, name)) is not bool:
                 raise ValueError(f"{name} must be boolean")
+        if self.fold_zero and (
+            self.scatter_shards == 1 or self.scatter_scope != "zero"
+        ):
+            raise ValueError("fold_zero requires multiple zero-endpoint shards")

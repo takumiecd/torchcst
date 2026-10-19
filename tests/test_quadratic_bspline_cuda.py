@@ -1956,6 +1956,14 @@ def test_saved_h_graph_crosses_selected_cutoff(options):
 
 
 ADJOINT_OPTIONS = [
+    {"scatter_shards": 16, "fold_zero": True},
+    {
+        "scatter_shards": 16,
+        "fold_zero": True,
+        "adjoint_atoms": 16,
+        "adjoint_order": "input",
+        "adjoint_reduce": True,
+    },
     {},
     {"scatter_shards": 16},
     {"scatter_scope": "full", "scatter_shards": 4},

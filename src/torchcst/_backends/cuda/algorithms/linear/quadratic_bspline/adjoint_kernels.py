@@ -32,6 +32,7 @@ def _inject(
     Edges,
     SHARDS: tl.constexpr,
     ZERO_SHARDS: tl.constexpr,
+    FOLD_ZERO: tl.constexpr,
     Value,
     Delta,
     Meta,
@@ -88,6 +89,11 @@ def _inject(
     )
     mask &= right[:, None] > left[:, None]
     lane = tl.arange(0, Value.shape[0])
+    if FOLD_ZERO:
+        edge0 = tl.full((Value.shape[1],), 0, tl.float64)
+        edge1 = tl.full((Value.shape[1],), 0, tl.float64)
+        edge2 = tl.full((Value.shape[1],), 0, tl.float64)
+        any_edge = tl.full((), False, tl.int1)
     for knot in tl.static_range(4):
         cut, c0, c1, c2, _, _ = _geometry(
             Meta,
@@ -115,7 +121,16 @@ def _inject(
                 has_edge = (
                     tl.sum(((cut == 0) & (a < A) & (right > left)).to(tl.int32), 0) > 0
                 )
-                if has_edge:
+                if FOLD_ZERO:
+                    any_edge |= has_edge
+                    edge = tl.sum(tl.where(mask & (cut[:, None] == 0), value, 0), 0)
+                    if p == 0:
+                        edge0 += edge
+                    elif p == 1:
+                        edge1 += edge
+                    else:
+                        edge2 += edge
+                elif has_edge:
                     edge = tl.sum(tl.where(mask & (cut[:, None] == 0), value, 0), 0)
                     tl.atomic_add(
                         Edges + ((tl.program_id(0) % SHARDS) * 3 + p) * B + b
@@ -151,6 +166,13 @@ def _inject(
                 tl.atomic_add(
                     Delta + p * B * (N + 1) + address, value, active, sem="relaxed"
                 )
+
+    if FOLD_ZERO:  # noqa: SIM102 - constexpr guards the edge accumulators
+        if any_edge:
+            address = (tl.program_id(0) % SHARDS) * 3 * B + b
+            tl.atomic_add(Edges + address, edge0, b < B, sem="relaxed")
+            tl.atomic_add(Edges + B + address, edge1, b < B, sem="relaxed")
+            tl.atomic_add(Edges + 2 * B + address, edge2, b < B, sem="relaxed")
 
 
 @tr.jit
@@ -190,6 +212,7 @@ def backward(
     ORDERED: tl.constexpr,
     SHARDS: tl.constexpr,
     ZERO_SHARDS: tl.constexpr,
+    FOLD_ZERO: tl.constexpr,
 ):
     base = tl.load(Count) + tl.program_id(0) * AB
     if base < A:
@@ -257,6 +280,7 @@ def backward(
                     Edges,
                     SHARDS,
                     ZERO_SHARDS,
+                    FOLD_ZERO,
                     g,
                     Delta,
                     Meta,

@@ -89,6 +89,7 @@ def backward(
         recipe.adjoint_order != "none",
         shards,
         zero,
+        recipe.fold_zero,
         num_warps=recipe.adjoint_warps,
         enable_fp_fusion=False,
     )

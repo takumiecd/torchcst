@@ -658,6 +658,7 @@ def measure(args, run):
                             "adjoint_local_reduction": recipe.adjoint_reduce,
                             "scatter_shards": recipe.scatter_shards,
                             "scatter_scope": recipe.scatter_scope,
+                            "fold_zero_endpoint": recipe.fold_zero,
                             "adjoint_atoms": recipe.adjoint_atoms,
                             "scatter_workspace_bytes": 0
                             if recipe.scatter_shards == 1
