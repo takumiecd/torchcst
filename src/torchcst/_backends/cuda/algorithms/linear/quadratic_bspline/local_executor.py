@@ -28,6 +28,18 @@ def _blocks(n, recipe):
     return 2 * (n >> getattr(recipe, "min_block_log", 3)) - 1
 
 
+def _h_launch(direction, atoms, recipe):
+    module = lk
+    programs = tr.cdiv(atoms, recipe.axis_atoms)
+    cap = getattr(recipe, "h_programs", 0)
+    if cap:
+        from . import local_persistent_kernels
+
+        module = local_persistent_kernels
+        programs = min(programs, cap)
+    return getattr(module, direction)[(programs,)]
+
+
 def _tile_bundle(n, sizes, recipe):
     if not hasattr(recipe, "bank_tile_blocks") or sizes[0] >= 256:
         return 1
@@ -309,7 +321,7 @@ class _Local(torch.autograd.Function):
         h = x.new_empty((a, b)) if ctx.mode != "none" else x.new_empty(0)
         hp = x.new_empty((a, b)) if ctx.mode == "hp" else x.new_empty(0)
         _stamp("stream_forward", 0)
-        compiled = lk.forward[(tr.cdiv(a, recipe.axis_atoms),)](
+        compiled = _h_launch("forward", a, recipe)(
             bank,
             meta,
             pos,
@@ -419,7 +431,7 @@ class _Local(torch.autograd.Function):
         adjoint_bank = _bank(dy, sizes[0], recipe, "bank_adjoint", active, 0, ml)
         delta, border = _delta(x, sizes[1], recipe, active, 1, ml)
         _stamp("stream_backward", 0)
-        compiled = lk.backward[(tr.cdiv(a, recipe.axis_atoms),)](
+        compiled = _h_launch("backward", a, recipe)(
             input_bank,
             adjoint_bank,
             meta,

@@ -4,13 +4,13 @@ import torch
 import triton as tr
 from torch.autograd.function import once_differentiable
 
-from . import local_kernels as lk
 from .executor import _report, _stamp
 from .local_executor import (
     _bank,
     _blocks,
     _delta,
     _frame,
+    _h_launch,
     _Local,
     _points,
     _restore,
@@ -95,7 +95,7 @@ class _Chunked(torch.autograd.Function):
             )
             label = _name("stream_forward", index)
             _stamp(label, 0)
-            compiled = lk.forward[(tr.cdiv(a, recipe.axis_atoms),)](
+            compiled = _h_launch("forward", a, recipe)(
                 bank,
                 meta,
                 pos,
@@ -214,7 +214,7 @@ class _Chunked(torch.autograd.Function):
             )
             label = _name("stream_backward", index)
             _stamp(label, 0)
-            compiled = lk.backward[(tr.cdiv(a, recipe.axis_atoms),)](
+            compiled = _h_launch("backward", a, recipe)(
                 input_bank,
                 adjoint_bank,
                 meta,

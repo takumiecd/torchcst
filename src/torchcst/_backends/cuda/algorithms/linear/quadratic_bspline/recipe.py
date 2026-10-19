@@ -674,3 +674,21 @@ class BSplineLocalBankBundleRecipe(BSplineLocalCoefficientRecipe):
             value = getattr(self, name)
             if type(value) is not int or value not in (1, 2, 4, 8):
                 raise ValueError(f"{name} must be 1, 2, 4 or 8")
+
+
+@dataclass(frozen=True)
+class BSplineLocalPersistentRecipe(BSplineLocalCanonicalRecipe):
+    """Revision 33: strided H/G grid, identical logical border-shard mapping."""
+
+    h_programs: int = 512
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.h_programs) is not int or self.h_programs not in (
+            0,
+            128,
+            256,
+            512,
+            1024,
+        ):
+            raise ValueError("h_programs must be 0, 128, 256, 512 or 1024")

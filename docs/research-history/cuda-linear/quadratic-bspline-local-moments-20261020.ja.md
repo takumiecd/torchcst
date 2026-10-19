@@ -415,3 +415,10 @@ AoS3は完全stepで約4.1% /2.8%遅く、AoS4も改善しない。独立phase�
 source SHA256 `bd6baf0b2d37e370e9d52b2ec292751e1ff6db485107ba07a3144c25fc66dcdc`、result SHA256 `1471fc62e07a95901ebb523eac1dfef5c50b1d70e371775b94282071c569f770`。source byte一致1562 files、manifest48 files、return0/cleanup ackを確認した。
 
 v32 source `8c2d84342e2b3d9d09d92124bf08685283adf2c9` はCPU1993 PASS /4215 skipped /既存warning18、38.44秒。Ruffとdiff check、isolated build、sdist/wheelの全360 runtime filesとgit archiveとのbyte一致を確認。GPU検証は別job `l4job-d26ecbeda9b1410c84bb4eb3037cd848` に提出中で、このCPU記録はGPU精度や速度の証拠にはしない。
+
+
+## v33候補：H/GのCTA数を制限する
+
+slot順のatom群を128/256/512/1024個のCTAへgrid-strideで割り当て、従来と同じlocal forward/backward関数を呼ぶ。各atomの式・1回の所有・全source pullbackは変えない。border shardは物理CTA IDへ変更せず、旧論理CTA番号(start−Count)/ABの剰余を維持する。追加のTensor保存はない。h_programs=0と古いrecipeは従来のgridを保持する。nativeの制限とは独立し、all-native時にはH/G bodyを一度も実行しない。
+
+v30 SoAをcontrolにし、v31/v32の配置変更とは分ける。1025 atom/128 CTA（AB4）の複数loop、Count全/一部/ゼロのGraph、変わるσ/X、retained snapshot、個別/全atom勾配と独立FP64 full-shape gateを維持する。起動数の削減が速度改善に直結するとは仮定せず、完全stepと両peakで判定する。

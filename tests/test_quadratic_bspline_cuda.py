@@ -24,6 +24,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineLocalNativeBoundAlgorithm,
     BSplineLocalOwnerAlgorithm,
     BSplineLocalPaddedAlgorithm,
+    BSplineLocalPersistentAlgorithm,
     BSplineLocalShardedAlgorithm,
     BSplineLocalSplitAlgorithm,
     BSplineNativeHAlgorithm,
@@ -58,6 +59,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineLocalNativeBoundRecipe,
     BSplineLocalOwnerRecipe,
     BSplineLocalPaddedRecipe,
+    BSplineLocalPersistentRecipe,
     BSplineLocalShardedRecipe,
     BSplineLocalSplitRecipe,
     BSplineNativeHRecipe,
@@ -100,6 +102,9 @@ def case(n=64, a=17):
 def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     from dataclasses import replace
 
+    persistent = strategy == "h_local_persistent" or recipe_options.pop(
+        "_persistent", False
+    )
     bank_bundle = strategy == "h_local_bank_bundle" or recipe_options.pop(
         "_bank_bundle", False
     )
@@ -110,6 +115,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     )
     canonical = (
         strategy == "h_local_canonical"
+        or persistent
         or recipe_options.pop("_canonical", False)
         or coefficients
     )
@@ -201,6 +207,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineLocalCanonicalAlgorithm())
     registry.register(BSplineLocalCoefficientAlgorithm())
     registry.register(BSplineLocalBankBundleAlgorithm())
+    registry.register(BSplineLocalPersistentAlgorithm())
     registry.register(BSplineNativeHAlgorithm())
     registry.register(BSplineNativeLoopAlgorithm())
     registry.register(BSplineRangeAlgorithm())
@@ -225,7 +232,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     tuned = bool(recipe_options) or strategy == "matrix_separable"
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v32"
+        "v33"
+        if persistent
+        else "v32"
         if bank_bundle
         else "v31"
         if coefficients
@@ -288,7 +297,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         else "v2"
         if tuned
         else "v1",
-        BSplineLocalBankBundleRecipe(**recipe_options)
+        BSplineLocalPersistentRecipe(**recipe_options)
+        if persistent
+        else BSplineLocalBankBundleRecipe(**recipe_options)
         if bank_bundle
         else BSplineLocalCoefficientRecipe(**recipe_options)
         if coefficients
@@ -2494,6 +2505,16 @@ BANK_BUNDLE_OPTIONS = [
         "coefficient_layout": "aos4",
     },
 ]
+PERSISTENT_OPTIONS = [
+    {"_persistent": True},
+    {
+        "_persistent": True,
+        "h_programs": 128,
+        "batch_chunk": 16,
+        "active_levels": True,
+        "native_programs": 32,
+    },
+]
 ALL_QUERY_OPTIONS = (
     QUERY_OPTIONS
     + LEAN_OPTIONS
@@ -2526,6 +2547,10 @@ ALL_QUERY_OPTIONS = (
     + [
         pytest.param(opt, id=f"bank-bundle-{i}")
         for i, opt in enumerate(BANK_BUNDLE_OPTIONS)
+    ]
+    + [
+        pytest.param(opt, id=f"persistent-{i}")
+        for i, opt in enumerate(PERSISTENT_OPTIONS)
     ]
 )
 
@@ -2778,6 +2803,10 @@ def test_local_recipe_roundtrip_and_bounds():
     + [
         pytest.param(opt, id=f"bank-bundle-{i}")
         for i, opt in enumerate(BANK_BUNDLE_OPTIONS)
+    ]
+    + [
+        pytest.param(opt, id=f"persistent-{i}")
+        for i, opt in enumerate(PERSISTENT_OPTIONS)
     ],
 )
 def test_local_dyadic_boundaries_graph(options):
@@ -2797,6 +2826,7 @@ def test_local_dyadic_boundaries_graph(options):
         or options.get("_canonical")
         or options.get("_coefficients")
         or options.get("_bank_bundle")
+        or options.get("_persistent")
         else 0.2,
         **options,
     )
@@ -2810,6 +2840,7 @@ def test_local_dyadic_boundaries_graph(options):
         or options.get("_canonical")
         or options.get("_coefficients")
         or options.get("_bank_bundle")
+        or options.get("_persistent")
         else 3
     )
     targets = (2.0 ** (minimum + ids % 6)) * 0.1 / math.sqrt(6)
@@ -3306,7 +3337,7 @@ def test_complete_bspline_catalog_decodes():
     )
     entries = decode_catalog(catalog)
     revisions = {entry.plan.algorithm_revision for entry in entries}
-    assert {"v26", "v27", "v28", "v29", "v30", "v31", "v32"} <= revisions
+    assert {"v26", "v27", "v28", "v29", "v30", "v31", "v32", "v33"} <= revisions
 
 
 def test_native_bound_recipe_roundtrip_and_bounds():
@@ -3339,6 +3370,7 @@ def test_native_bound_recipe_roundtrip_and_bounds():
         "h_local_canonical",
         "h_local_coefficient",
         "h_local_bank_bundle",
+        "h_local_persistent",
     ],
 )
 def test_native_bound_count_changes_across_graph(batch, floor, strategy):
@@ -3353,6 +3385,7 @@ def test_native_bound_count_changes_across_graph(batch, floor, strategy):
         floor=floor,
         sigma_cutoff=0.2,
         native_programs=32,
+        **({"h_programs": 128} if strategy == "h_local_persistent" else {}),
     )
     ids = torch.arange(1025, device="cuda")
     widths = torch.tensor([0.1, 0.4, 1.6], device="cuda", dtype=torch.float64)
@@ -3417,6 +3450,7 @@ def test_native_bound_count_changes_across_graph(batch, floor, strategy):
         "h_local_canonical",
         "h_local_coefficient",
         "h_local_bank_bundle",
+        "h_local_persistent",
     ],
 )
 def test_native_bound_strided_individual_gradients(which, strategy):
@@ -3447,6 +3481,7 @@ def test_native_bound_strided_individual_gradients(which, strategy):
         "h_local_canonical",
         "h_local_coefficient",
         "h_local_bank_bundle",
+        "h_local_persistent",
     ],
 )
 def test_native_bound_retained_count_above_grid(strategy):
@@ -3697,3 +3732,18 @@ def test_bank_bundle_matches_unbundled_prefix_and_restore(
         _restore(delta, border, out, n, recipe, "test_bundle_restore", active, 0, ml)
     error = check(outputs[1], outputs[0], 4e-4)
     assert error["max"] < 4e-4 and error["rel_l2"] < 4e-4
+
+
+def test_local_persistent_recipe_roundtrip_and_bounds():
+    reg = Registry()
+    reg.register(BSplineLocalPersistentAlgorithm())
+    for cap in (0, 128, 256, 512, 1024):
+        plan = ExecutionPlan(
+            "research_cuda_quadratic_bspline",
+            "v33",
+            BSplineLocalPersistentRecipe(h_programs=cap),
+        )
+        assert reg.loads_plan(reg.dumps_plan(plan)) == plan
+    for cap in (-1, 1, 127, 4096, True):
+        with pytest.raises(ValueError):
+            BSplineLocalPersistentRecipe(h_programs=cap)

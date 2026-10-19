@@ -475,7 +475,9 @@ def _inject(
     PB: tl.constexpr,
     Order=None,
     LAYOUT: tl.constexpr = "soa",
+    Program=None,
 ):
+    program = tl.program_id(0) if Program is None else Program
     source = _source(Order, a, A)
     scale = tl.load(Meta + 12 * source, a < A, 0) * tl.load(
         Meta + 12 * source + 4, a < A, 0
@@ -503,7 +505,7 @@ def _inject(
             c = c0 if p == 0 else c1 if p == 1 else c2
             if SHARDS and event >= 4:
                 block = tl.load(BorderPos + (DIM * 2 + event - 4) * A + a, a < A, -1)
-                shard = tl.program_id(0) % SHARDS
+                shard = program % SHARDS
                 addr = (
                     p * BLOCKS * SHARDS * PB
                     + (block[:, None] * SHARDS + shard) * PB
@@ -518,7 +520,7 @@ def _inject(
             else:
                 addr = Delta + p * POINTS * PB + point[:, None] * PB + b[None, :]
                 if ENDPOINTS and SHARD_ORIGIN:
-                    shard = tl.program_id(0) % SHARDS
+                    shard = program % SHARDS
                     border = (
                         BorderDelta
                         + p * BLOCKS * SHARDS * PB
@@ -557,8 +559,9 @@ def forward(
     PAD: tl.constexpr = 0,
     Order=None,
     LAYOUT: tl.constexpr = "soa",
+    Base=None,
 ):
-    base = tl.load(Count) + tl.program_id(0) * AB
+    base = tl.load(Count) + tl.program_id(0) * AB if Base is None else Base
     if base < A:
         a = base + tl.arange(0, AB)
         b = tl.arange(0, BB)
@@ -606,6 +609,7 @@ def forward(
             B + PAD,
             Order,
             LAYOUT,
+            Program=None if Base is None else (base - tl.load(Count)) // AB,
         )
 
 
@@ -643,8 +647,9 @@ def backward(
     ADD_DP: tl.constexpr = False,
     Order=None,
     LAYOUT: tl.constexpr = "soa",
+    Base=None,
 ):
-    base = tl.load(Count) + tl.program_id(0) * AB
+    base = tl.load(Count) + tl.program_id(0) * AB if Base is None else Base
     if base < A:
         a = base + tl.arange(0, AB)
         b = tl.arange(0, BB)
@@ -730,4 +735,5 @@ def backward(
                 B + PAD,
                 Order,
                 LAYOUT,
+                Program=None if Base is None else (base - tl.load(Count)) // AB,
             )
