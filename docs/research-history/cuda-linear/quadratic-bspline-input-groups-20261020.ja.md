@@ -153,3 +153,15 @@ B64などは従来どおりbatchを小分けにし、同じforward snapshotとgr
 同じ入力点でもσ/係数が異なる257 atom、B17/33、動的Count全/一部/ゼロ、retained、
 個別勾配と共通のtiny/floor/dyadic条件を検査する。新方式は未検証のresearch候補で、defaultは変更しない。
 CPU1996 PASS /4312 skipped /既存warning18、38.53秒、Ruff/diff checkを確認。GPU成功とは数えない。
+
+
+v34初回job `l4job-29da1475c0b5476e8ec12fc4e8bec119`、source
+`f27805fa892a87a4b62b9f60017dc93f9d23fe0e` は71 checks PASS /1494 deselected、422.40秒。
+B32大規模caseの全5 plan・3状態の独立FP64 Y/dX/全source勾配gateも通った。
+その後、従来v32 controlのphase診断で未登録`input_group_prepare`へのstampが起き、
+KeyErrorで測定が止まった。groupを使わないrecipeでは早期returnし、stampを発行しないよう修正する。
+GPU計算kernelは変更しない。性能比較は完成していないので、partial測定を採用の根拠から除外する。
+source SHA256 `e7cb12cc603b00b441cbb7e3e978a30f22e93e7985e33df64ce17235f11ca4a8`、
+result SHA256 `13eb28244ffabf3e639ff798887973b5f159ab858a47dc3f3b37bd9d86cded39`。
+source byte一致1584 files、manifest16 files、return1/cleanup ackを検証しfailed-jobsに保持。
+既存の71検査を緩めず、同じkernelの完全stepと両peakを修正後sourceで再測定する。

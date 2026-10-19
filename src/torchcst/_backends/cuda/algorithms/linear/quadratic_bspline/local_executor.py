@@ -45,17 +45,14 @@ def _h_launch(direction, atoms, recipe):
 
 
 def _group_tables(pos, count, atoms, sites, recipe):
-    _stamp("input_group_prepare", 0)
-    if getattr(recipe, "input_groups", False):
-        from .input_groups import prepare
+    if not getattr(recipe, "input_groups", False):
+        return ()
+    from .input_groups import prepare
 
-        table = prepare(
-            pos, count, atoms, sites, recipe.axis_atoms, recipe.min_block_log
-        )
-        # Counts are construction scratch; queries need only these four snapshots.
-        result = (table.ends, table.ids, table.chunk_ends, table.mapping)
-    else:
-        result = ()
+    _stamp("input_group_prepare", 0)
+    table = prepare(pos, count, atoms, sites, recipe.axis_atoms, recipe.min_block_log)
+    # Counts are construction scratch; queries need only these four snapshots.
+    result = (table.ends, table.ids, table.chunk_ends, table.mapping)
     _stamp("input_group_prepare", 1)
     return result
 
