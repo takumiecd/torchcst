@@ -583,7 +583,11 @@ def measure(args, run):
                             "coefficient_cache": recipe.coefficient_cache,
                             "cached_derivatives": recipe.coefficient_derivatives,
                             "edge_reduction": recipe.edge_reduce,
-                            "coefficient_scope": "fresh each forward; saved forward snapshot reused by backward",
+                            "coefficient_scope": (
+                                "fresh each forward; saved forward snapshot reused by backward"
+                                if recipe.coefficient_cache
+                                else "regenerated at use from immutable forward FP64 metadata; no coefficient snapshot"
+                            ),
                             "split_stage_scope": "h_query/back_query/y_inject/dx_inject are empty in fused mode; fused spans retain both query and injection",
                             "event_policy": "fresh integer histogram/scan/place per forward; no site-by-atom table"
                             if recipe.h_mode == "segmented"
@@ -592,7 +596,11 @@ def measure(args, run):
                             if recipe.h_mode != "fused"
                             else 0,
                             "capacity_policy": (
-                                "register-local H/G; forward coefficient snapshot reused in backward"
+                                (
+                                    "register-local H/G; forward coefficient snapshot reused in backward"
+                                    if recipe.coefficient_cache
+                                    else "register-local H/G; coefficients regenerated from immutable forward metadata"
+                                )
                                 if recipe.h_mode == "fused"
                                 else "one local B*A H or G workspace; forward coefficient snapshot reused in backward"
                             ),
