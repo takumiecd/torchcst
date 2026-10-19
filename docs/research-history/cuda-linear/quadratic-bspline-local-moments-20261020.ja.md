@@ -364,3 +364,20 @@ source `64e03a75c1e70e7960137adf64255c6f7d106ad5`、job `l4job-c91694d8b1ad4d9bb
 独立phaseのB64 native forward/backwardは約0.0092 /0.0102msへ下がった。canonicalではpack約0.042→0.002ms、unpack約0.0072→0.002ms（空stampにも計装費がある）。stream forward/backwardは各chunk約0.133 /0.241msで大差はなく、H/G投影・係数読み取り・source縮約が引き続き残る。完全stepのDense比はB32約9.83倍、B64約12.80倍で、2倍目標は未達。
 
 source SHA256 `3bcd3ab605234a47d8e802aa089440c60573c74ad8910d2a842fd8cccb5a4864`、result SHA256 `c2b2a4712067ef6abc3c4d94258cfb6f2e80cade62dd0be2334bfdc0826bcb64`。source byte一致1558 files、manifest 50 files、return0/cleanup ackを確認。CPU1991 passed /4103 skipped /既存warning18、wheel/sdist359 runtime filesはgit archive64e03a75とbyte一致。旧536de8c3の失敗runはsource/result SHA256 `f7dc0d9a7fca963dc6b60adb2f285d029568761dd3f67dc52b3a6055bbcc6701` / `251492c9bd5ffc9cd7e89eb58406472d89b95805463d1668f92406b3d2c86e43` と原本を保持し、性能表へは入れない。
+
+
+## v30のB64再測定とsmall/switch
+
+同じsource64e03a75、job `l4job-fb1c67d90e03422892a3479d573b7c08`。metadata catalog check後、全plan・3状態の独立FP64 full-shape gateを通過し、全52428 σの更新と初期X/P/targetの同一性も確認した。
+
+| case | v27 tile32 ms | v29 cap128 ms | canonical cap0 ms | canonical cap32 ms | canonical cap128 ms | Dense ms |
+|---|---:|---:|---:|---:|---:|---:|
+| B32 small |0.895500|0.851883|0.852726|0.810717|0.811594|0.081895|
+| B32 switch |0.890617|0.857977|0.858624|0.817696|0.819336|0.082014|
+| B64 mixed repeat |1.436804|1.383274|1.393154|1.342857|1.344755|0.103291|
+
+canonicalの両peakはsmall/switchで34.153 /98 MiB、B64で34.653 /100 MiB。Dense49.002 /106、49.502 /106をそれぞれ下回る。B64 cap32/128は再測定では同じ1.34ms帯で、初回の22µs差だけを恒常的な優位と解釈しない。B64 cap128は初回1.339208、再測定1.344755msで改善を再現した。small/switchの改善も維持するが、こちらの性能比較は1独立run。small/switchの名称はfixtureのσ分布を指し、全atomが同時に実行経路を切り替えるという意味ではない。
+
+2倍目標は未達。次の検討候補は係数のatom単位の配置と、小さいdyadic tileをまとめて同一CTAでprefix/restoreを行う方法。前者はH/Gの18係数/軸の読み取り、後者は多数の小CTAの仕事量を対象にする。数学の変更や精度基準の緩和は行わず、構築込みの完全stepと両peakで再度判断する。
+
+source SHA256 `7768b6f88574daadb65e456d0ca5bc1ca71057d7c8b862d2f021090b997d5491`、result SHA256 `7ee7ad85ddcb72443e40f30e603029611cb6c32ec3c18702d5638a638d26469e`。source byte一致1558 files、manifest 70 files、return0/cleanup ackを確認。
