@@ -169,10 +169,10 @@ def _inject(
 
     if FOLD_ZERO:  # noqa: SIM102 - constexpr guards the edge accumulators
         if any_edge:
-            address = (tl.program_id(0) % SHARDS) * 3 * B + b
-            tl.atomic_add(Edges + address, edge0, b < B, sem="relaxed")
-            tl.atomic_add(Edges + B + address, edge1, b < B, sem="relaxed")
-            tl.atomic_add(Edges + 2 * B + address, edge2, b < B, sem="relaxed")
+            edge_address = (tl.program_id(0) % SHARDS) * 3 * B + b
+            tl.atomic_add(Edges + edge_address, edge0, b < B, sem="relaxed")
+            tl.atomic_add(Edges + B + edge_address, edge1, b < B, sem="relaxed")
+            tl.atomic_add(Edges + 2 * B + edge_address, edge2, b < B, sem="relaxed")
 
 
 @tr.jit
