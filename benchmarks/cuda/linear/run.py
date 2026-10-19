@@ -632,10 +632,15 @@ def measure(args, run):
                             "missing or ambiguous persistent B-spline placement"
                         )
                     calls, rebuilds = caches[0]["stats"].cpu().tolist()
-                    if recipe.strategy == "matrix_range":
+                    if recipe.strategy == "matrix_range" or getattr(
+                        recipe, "prepared_h", False
+                    ):
                         native = int(caches[0]["count"].item())
                         hybrid_routing["final_device_native_atoms"] = native
-                        hybrid_routing["final_device_range_atoms"] = case.atoms - native
+                        route = "range" if recipe.strategy == "matrix_range" else "h"
+                        hybrid_routing[f"final_device_{route}_atoms"] = (
+                            case.atoms - native
+                        )
                     hybrid_routing.update(
                         {
                             "placement_calls": calls,

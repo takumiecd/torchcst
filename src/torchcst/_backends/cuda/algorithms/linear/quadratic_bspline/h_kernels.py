@@ -77,9 +77,14 @@ def _geometry(
         d0 = tl.load(Coeff + ((DIM * planes + 3) * 4 + KNOT) * A + a, a < A, 0)
         d1 = tl.load(Coeff + ((DIM * planes + 4) * 4 + KNOT) * A + a, a < A, 0)
     else:
-        half = tl.load(Spacing + DIM).to(tl.float64) * ((N - 1) * 0.5)
-        d0 = -c1 / half
-        d1 = -2.0 * c2 / half
+        if RECIPROCAL:
+            inverse_h = tl.load(Meta + a * 12 + 10 + DIM, a < A, 0)
+            inverse_half = inverse_h * (2.0 / (N - 1))
+        else:
+            half = tl.load(Spacing + DIM).to(tl.float64) * ((N - 1) * 0.5)
+            inverse_half = 1.0 / half
+        d0 = -c1 * inverse_half
+        d1 = -2.0 * c2 * inverse_half
     return cut, c0, c1, c2, d0, d1
 
 
@@ -241,10 +246,17 @@ def _inject(
             c = c0 if p == 0 else c1 if p == 1 else c2
             value = w * c[None, :]
             if EDGE_REDUCE:
-                edge = tl.sum(tl.where(mask & (cut[None, :] == 0), value, 0), 1)
-                tl.atomic_add(
-                    Delta + p * B * (N + 1) + b * (N + 1), edge, b < B, sem="relaxed"
+                has_edge = (
+                    tl.sum(((cut == 0) & (a < A) & (right > left)).to(tl.int32), 0) > 0
                 )
+                if has_edge:
+                    edge = tl.sum(tl.where(mask & (cut[None, :] == 0), value, 0), 1)
+                    tl.atomic_add(
+                        Delta + p * B * (N + 1) + b * (N + 1),
+                        edge,
+                        b < B,
+                        sem="relaxed",
+                    )
                 active = mask & (cut[None, :] > 0) & (cut[None, :] < N)
             else:
                 active = mask
