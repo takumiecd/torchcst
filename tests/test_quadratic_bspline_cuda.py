@@ -18,6 +18,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineLocalEndpointAlgorithm,
     BSplineLocalMomentAlgorithm,
     BSplineLocalNarrowAlgorithm,
+    BSplineLocalNativeBoundAlgorithm,
     BSplineLocalOwnerAlgorithm,
     BSplineLocalPaddedAlgorithm,
     BSplineLocalShardedAlgorithm,
@@ -48,6 +49,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineLocalEndpointRecipe,
     BSplineLocalMomentRecipe,
     BSplineLocalNarrowRecipe,
+    BSplineLocalNativeBoundRecipe,
     BSplineLocalOwnerRecipe,
     BSplineLocalPaddedRecipe,
     BSplineLocalShardedRecipe,
@@ -92,9 +94,15 @@ def case(n=64, a=17):
 def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     from dataclasses import replace
 
+    native_bound = strategy == "h_local_native_bound" or recipe_options.pop(
+        "_native_bound", False
+    )
     owner = strategy == "h_local_owner" or recipe_options.pop("_owner", False)
     chunked = (
-        strategy == "h_local_chunked" or recipe_options.pop("_chunked", False) or owner
+        strategy == "h_local_chunked"
+        or recipe_options.pop("_chunked", False)
+        or owner
+        or native_bound
     )
     narrow = (
         strategy == "h_local_narrow" or recipe_options.pop("_narrow", False) or chunked
@@ -168,6 +176,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineLocalNarrowAlgorithm())
     registry.register(BSplineLocalChunkedAlgorithm())
     registry.register(BSplineLocalOwnerAlgorithm())
+    registry.register(BSplineLocalNativeBoundAlgorithm())
     registry.register(BSplineNativeHAlgorithm())
     registry.register(BSplineNativeLoopAlgorithm())
     registry.register(BSplineRangeAlgorithm())
@@ -192,7 +201,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     tuned = bool(recipe_options) or strategy == "matrix_separable"
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v28"
+        "v29"
+        if native_bound
+        else "v28"
         if owner
         else "v27"
         if chunked
@@ -247,7 +258,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         else "v2"
         if tuned
         else "v1",
-        BSplineLocalOwnerRecipe(**recipe_options)
+        BSplineLocalNativeBoundRecipe(**recipe_options)
+        if native_bound
+        else BSplineLocalOwnerRecipe(**recipe_options)
         if owner
         else BSplineLocalChunkedRecipe(**recipe_options)
         if chunked
@@ -2391,6 +2404,16 @@ OWNER_OPTIONS = [
         "prepare_float32": False,
     },
 ]
+NATIVE_BOUND_OPTIONS = [
+    {"_native_bound": True},
+    {"_native_bound": True, "native_programs": 32, "batch_chunk": 16},
+    {
+        "_native_bound": True,
+        "native_programs": 256,
+        "active_levels": True,
+        "reciprocal": False,
+    },
+]
 ALL_QUERY_OPTIONS = (
     QUERY_OPTIONS
     + LEAN_OPTIONS
@@ -2408,6 +2431,10 @@ ALL_QUERY_OPTIONS = (
     + [pytest.param(opt, id=f"narrow-{i}") for i, opt in enumerate(NARROW_OPTIONS)]
     + [pytest.param(opt, id=f"chunked-{i}") for i, opt in enumerate(CHUNKED_OPTIONS)]
     + [pytest.param(opt, id=f"owner-{i}") for i, opt in enumerate(OWNER_OPTIONS)]
+    + [
+        pytest.param(opt, id=f"native-bound-{i}")
+        for i, opt in enumerate(NATIVE_BOUND_OPTIONS)
+    ]
 )
 
 
@@ -2643,7 +2670,11 @@ def test_local_recipe_roundtrip_and_bounds():
     + [pytest.param(opt, id=f"padded-{i}") for i, opt in enumerate(PADDED_OPTIONS)]
     + [pytest.param(opt, id=f"narrow-{i}") for i, opt in enumerate(NARROW_OPTIONS)]
     + [pytest.param(opt, id=f"chunked-{i}") for i, opt in enumerate(CHUNKED_OPTIONS)]
-    + [pytest.param(opt, id=f"owner-{i}") for i, opt in enumerate(OWNER_OPTIONS)],
+    + [pytest.param(opt, id=f"owner-{i}") for i, opt in enumerate(OWNER_OPTIONS)]
+    + [
+        pytest.param(opt, id=f"native-bound-{i}")
+        for i, opt in enumerate(NATIVE_BOUND_OPTIONS)
+    ],
 )
 def test_local_dyadic_boundaries_graph(options):
     import math
@@ -2655,14 +2686,20 @@ def test_local_dyadic_boundaries_graph(options):
         n=1024,
         a=33,
         sigma_cutoff=0.05
-        if options.get("_narrow") or options.get("_chunked") or options.get("_owner")
+        if options.get("_narrow")
+        or options.get("_chunked")
+        or options.get("_owner")
+        or options.get("_native_bound")
         else 0.2,
         **options,
     )
     ids = torch.arange(33, device="cuda")
     minimum = (
         2
-        if options.get("_narrow") or options.get("_chunked") or options.get("_owner")
+        if options.get("_narrow")
+        or options.get("_chunked")
+        or options.get("_owner")
+        or options.get("_native_bound")
         else 3
     )
     targets = (2.0 ** (minimum + ids % 6)) * 0.1 / math.sqrt(6)
@@ -3159,4 +3196,145 @@ def test_complete_bspline_catalog_decodes():
     )
     entries = decode_catalog(catalog)
     revisions = {entry.plan.algorithm_revision for entry in entries}
-    assert {"v26", "v27", "v28"} <= revisions
+    assert {"v26", "v27", "v28", "v29"} <= revisions
+
+
+def test_native_bound_recipe_roundtrip_and_bounds():
+    reg = Registry()
+    reg.register(BSplineLocalNativeBoundAlgorithm())
+    for options in NATIVE_BOUND_OPTIONS + [
+        {"_native_bound": True, "native_programs": 0, "native_float32": False}
+    ]:
+        options = {k: v for k, v in options.items() if k != "_native_bound"}
+        plan = ExecutionPlan(
+            "research_cuda_quadratic_bspline",
+            "v29",
+            BSplineLocalNativeBoundRecipe(**options),
+        )
+        assert reg.loads_plan(reg.dumps_plan(plan)) == plan
+    for value in (-1, 3, 1024, True):
+        with pytest.raises(ValueError):
+            BSplineLocalNativeBoundRecipe(native_programs=value)
+    with pytest.raises(ValueError):
+        BSplineLocalNativeBoundRecipe(native_float32=False)
+
+
+@GPU
+@pytest.mark.parametrize("batch", [33, 64])
+@pytest.mark.parametrize("floor", [1e-6, 1000.0])
+def test_native_bound_count_changes_across_graph(batch, floor):
+    import math
+
+    from benchmarks.cuda.linear.check_normalized import check
+
+    layer = model(
+        "h_local_native_bound",
+        n=64,
+        a=1025,
+        floor=floor,
+        sigma_cutoff=0.2,
+        native_programs=32,
+    )
+    ids = torch.arange(1025, device="cuda")
+    widths = torch.tensor([0.1, 0.4, 1.6], device="cuda", dtype=torch.float64)
+    x = torch.randn(batch, 128, device="cuda")[:, ::2].requires_grad_()
+    dy = torch.randn(batch, 64, device="cuda")
+
+    def update(step):
+        sigma = (
+            torch.full_like(ids, 0.1, dtype=torch.float64)
+            if step in (0, 3)
+            else widths[(ids + step) % 3]
+            if step == 1
+            else torch.full_like(ids, 0.4, dtype=torch.float64)
+        )
+        radius = (1 + 3 * (sigma / 0.1).log() / math.log(128)).sqrt()
+        centers = (ids.float() * 0.173 + step * 0.0037) % 5.9 + 0.2
+        with torch.no_grad():
+            layer.atoms.p[:, 0] = (0.6 * radius).float()
+            layer.atoms.p[:, 1] = (0.8 * radius).float()
+            layer.atoms.p[:, 2] = centers
+            layer.atoms.p[:, 3] = centers.roll(5)
+            if step != 2:
+                layer.atoms.p[::31, 2] = -0.15
+                layer.atoms.p[1::31, 3] = 6.5
+            x.copy_(torch.randn_like(x))
+
+    update(0)
+    gate(layer, x, dy)
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        y = layer(x)
+        dx, dp = torch.autograd.grad(y, (x, layer.atoms.p), dy)
+    for step in (1, 2, 3):
+        update(step)
+        graph.replay()
+        rx = x.detach().double().requires_grad_()
+        rp = layer.atoms.p.detach().double().requires_grad_()
+        ref = bs.oracle(copy.deepcopy(layer.kernel).double(), layer.chart, rp, rx)
+        rdx, rdp = torch.autograd.grad(ref, (rx, rp), dy.double())
+        for actual, expected in zip((y, dx, dp), (ref, rdx, rdp)):
+            error = check(actual, expected, 4e-4)
+            assert error["max"] < 4e-4 and error["rel_l2"] < 4e-4
+        count = (
+            layer.__dict__["_algorithm_states"][0]
+            .buffers["stream_layout"]["count"]
+            .item()
+        )
+        if step == 2:
+            assert count == 0
+        elif step == 3:
+            assert count == 1025
+        else:
+            assert 0 < count < 1025
+
+
+@GPU
+@pytest.mark.parametrize("which", ["x", "p"])
+def test_native_bound_strided_individual_gradients(which):
+    layer = model(
+        "h_local_native_bound", n=64, a=513, sigma_cutoff=0.2, native_programs=32
+    )
+    with torch.no_grad():
+        layer.atoms.p[:, 0] = 0.6
+        layer.atoms.p[:, 1] = 0.8
+        layer.atoms.p[:, 2:] = 3.15
+    layer.atoms.p.requires_grad_(which == "p")
+    x = torch.randn(33, 64, device="cuda", requires_grad=which == "x")
+    dy = torch.randn_like(x)
+    actual = torch.autograd.grad(layer(x), x if which == "x" else layer.atoms.p, dy)[0]
+    rx = x.detach().double().requires_grad_(which == "x")
+    rp = layer.atoms.p.detach().double().requires_grad_(which == "p")
+    ref = bs.oracle(copy.deepcopy(layer.kernel).double(), layer.chart, rp, rx)
+    expected = torch.autograd.grad(ref, rx if which == "x" else rp, dy.double())[0]
+    from benchmarks.cuda.linear.check_normalized import check
+
+    error = check(actual, expected, 4e-4)
+    assert error["max"] < 4e-4 and error["rel_l2"] < 4e-4
+
+
+@GPU
+def test_native_bound_retained_count_above_grid():
+    from benchmarks.cuda.linear.check_normalized import check
+
+    layer = model(
+        "h_local_native_bound", n=64, a=513, sigma_cutoff=0.2, native_programs=32
+    )
+    with torch.no_grad():
+        layer.atoms.p[:, 0] = 0.6
+        layer.atoms.p[:, 1] = 0.8
+        layer.atoms.p[:, 2:] = 3.15
+    x = torch.randn(33, 64, device="cuda", requires_grad=True)
+    dy = torch.randn_like(x)
+    gate(layer, x, dy)
+    y = layer(x)
+    expected = torch.autograd.grad(y, (x, layer.atoms.p), dy, retain_graph=True)
+    with torch.no_grad():
+        layer.atoms.p[:, :2].mul_(1.7)
+        layer.atoms.p[:, 2:].add_(0.037)
+    later = layer(torch.randn_like(x))
+    torch.autograd.grad(later.sum(), layer.atoms.p)
+    actual = torch.autograd.grad(y, (x, layer.atoms.p), dy)
+    for left, right in zip(actual, expected):
+        error = check(left, right, 4e-4)
+        assert error["max"] < 4e-4 and error["rel_l2"] < 4e-4

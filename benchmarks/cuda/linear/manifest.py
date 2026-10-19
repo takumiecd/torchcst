@@ -730,3 +730,10 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
 )
 
 REGISTRY.register(BSplineLocalOwnerAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalNativeBoundAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalNativeBoundAlgorithm())

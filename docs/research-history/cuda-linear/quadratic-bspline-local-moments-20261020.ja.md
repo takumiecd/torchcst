@@ -318,3 +318,12 @@ source SHA256 `c2d8e3bcc8148ea530343f197eebfb3a0653bcf52b58eebd9130c431494407cd`
 
 
 失敗runの検証済み原本hashも保持する。v27 catalog失敗06a0f7のsource/result SHA256は `20a271f59ed1b5d42142b049ccf975f46b388905371e78c9ffe538a3b13f93c2` / `d85070f3ebed8137330c7f36feb18fda10edb81cf8471974689f017a5e516d6c`。v28 test stream失敗4aed366は `713fc6fe5f73392cfc19d1cc7dc95dd176a9f6ba79752ec8e7300858e427923a` / `3d96dcd0edbf4e3cb912c995e85b32e616101e993cf6d65e67aa30476601d7a9`。両者はsource/manifest/return1/cleanup ackを確認した失敗記録で、primary性能へは混ぜない。
+
+
+## v29候補：nativeの起動量を対象atom数へ合わせる
+
+v27/tile32の通常小σは局所momentで処理する一方、native側は対象が少なくてもceil(A/native_atoms)個のCTAをhot/cold両方で起動していた。B64独立phaseのnative forward/backwardは約0.029 /0.040ms。v29ではnative gridを32/128/256 CTAに制限し、各CTAが元と同じAB個の連続atom群をgrid strideで担当する。Countは毎回GPUから読み、Count=0ならbodyを実行しない。追加scratchやCPU同期はない。
+
+hotのFP32とtiny/floor等のFP64 guardは元の関数を共通に呼ぶ。元のAB単位のsafe判定、profile計算、正規化、source pullbackは変えない。古いrecipeはBase=Noneの同じ起動法を使い、新revisionだけ明示的Baseとstrided loopを使う。native_float32=Falseのkernelには適用しない。native_programs=0は従来制御を残す。
+
+新しい検査ではA1025、cap32、AB4で単なる1周を超えるループを実行し、Count全数→一部→ゼロ→全数をGraph replay内で切り替える。B33/B64、2floor、境界tiny、noncontiguous input、個別勾配要求、retained forwardのCount保護を含める。メタデータ/全catalog decode後にGPUの独立照合と完全stepを測る。GPU評価前の候補で、default採用や2倍達成を意味しない。

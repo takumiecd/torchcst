@@ -691,6 +691,7 @@ def measure(args, run):
                             "local_events_per_axis": 6,
                             "batch_chunk": getattr(recipe, "batch_chunk", None),
                             "owner_events": getattr(recipe, "owner_events", None),
+                            "native_programs": getattr(recipe, "native_programs", None),
                             "minimum_local_block": 1
                             << getattr(recipe, "min_block_log", 3),
                             "endpoint_writes_skipped": bool(

@@ -127,8 +127,9 @@ def forward(
     BS: tl.constexpr,
     RECIPROCAL: tl.constexpr,
     CORE32: tl.constexpr,
+    Base=None,
 ):
-    base = tl.program_id(0) * AB
+    base = tl.program_id(0) * AB if Base is None else Base
     count = tl.load(Count)
     if base < count:
         slot = base + tl.arange(0, AB)
@@ -201,8 +202,9 @@ def backward(
     NEED_DP: tl.constexpr,
     CORE32: tl.constexpr,
     CONTRACT32: tl.constexpr,
+    Base=None,
 ):
-    base = tl.program_id(0) * AB
+    base = tl.program_id(0) * AB if Base is None else Base
     count = tl.load(Count)
     if base < count:
         slot = base + tl.arange(0, AB)

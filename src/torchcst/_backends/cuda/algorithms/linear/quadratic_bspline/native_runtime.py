@@ -6,11 +6,20 @@ from . import native_kernels as nk
 from .executor import _report, _stamp
 
 
+def _grid(a, recipe, mixed):
+    programs = tr.cdiv(a, recipe.native_atoms)
+    cap = getattr(recipe, "native_programs", 0) if mixed else 0
+    return (min(programs, cap) if cap else programs,)
+
+
 def forward(x, y, meta, count, origin, spacing, sizes, recipe):
     _stamp("native_forward", 0)
     mixed = getattr(recipe, "native_float32", False)
     if mixed:
         from . import native_mixed_kernels as mk
+
+        if getattr(recipe, "native_programs", 0):
+            from . import native_persistent_kernels as mk
 
         kernel = mk.forward
     else:
@@ -22,7 +31,7 @@ def forward(x, y, meta, count, origin, spacing, sizes, recipe):
         if getattr(recipe, "native_loop", False)
         else tr.next_power_of_2(len(x))
     )
-    compiled = kernel[(tr.cdiv(len(meta), recipe.native_atoms),)](
+    compiled = kernel[_grid(len(meta), recipe, mixed)](
         x,
         y,
         meta,
@@ -42,7 +51,7 @@ def forward(x, y, meta, count, origin, spacing, sizes, recipe):
     )
     _report("native_forward", compiled)
     if mixed:
-        cold = kernel[(tr.cdiv(len(meta), recipe.native_atoms),)](
+        cold = kernel[_grid(len(meta), recipe, mixed)](
             x,
             y,
             meta,
@@ -78,6 +87,9 @@ def backward(
     if mixed:
         from . import native_mixed_kernels as mk
 
+        if getattr(recipe, "native_programs", 0):
+            from . import native_persistent_kernels as mk
+
         kernel = mk.backward
     else:
         kernel = (
@@ -88,7 +100,7 @@ def backward(
         if getattr(recipe, "native_loop", False)
         else tr.next_power_of_2(len(x))
     )
-    compiled = kernel[(tr.cdiv(len(meta), recipe.native_atoms),)](
+    compiled = kernel[_grid(len(meta), recipe, mixed)](
         x,
         dy,
         dx,
@@ -112,7 +124,7 @@ def backward(
     )
     _report("native_backward", compiled)
     if mixed:
-        cold = kernel[(tr.cdiv(len(meta), recipe.native_atoms),)](
+        cold = kernel[_grid(len(meta), recipe, mixed)](
             x,
             dy,
             dx,

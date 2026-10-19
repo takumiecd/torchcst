@@ -609,3 +609,23 @@ class BSplineLocalOwnerRecipe(BSplineLocalChunkedRecipe):
         super().__post_init__()
         if type(self.owner_events) is not int or self.owner_events not in (32, 64, 128):
             raise ValueError("owner_events must be 32, 64 or 128")
+
+
+@dataclass(frozen=True)
+class BSplineLocalNativeBoundRecipe(BSplineLocalChunkedRecipe):
+    """Revision 29: bound native launch grids and stride over live rows only."""
+
+    native_programs: int = 128
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.native_programs) is not int or self.native_programs not in (
+            0,
+            32,
+            64,
+            128,
+            256,
+        ):
+            raise ValueError("native_programs must be 0, 32, 64, 128 or 256")
+        if self.native_programs and not self.native_float32:
+            raise ValueError("bounded native launches require the mixed native guard")
