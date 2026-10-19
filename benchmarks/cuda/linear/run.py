@@ -629,6 +629,26 @@ def measure(args, run):
                             else 0,
                         }
                     )
+                if getattr(recipe, "saved_h", False):
+                    hybrid_routing.update(
+                        {
+                            "forward_h_save": recipe.save_h,
+                            "backward_mode": recipe.backward_mode,
+                            "h_saved_capacity_bytes": (
+                                0
+                                if recipe.save_h == "none"
+                                else 1
+                                if recipe.save_h == "h"
+                                else 2
+                            )
+                            * case.atoms
+                            * m
+                            * 4,
+                            "h_snapshot_scope": "immutable per-forward FP32 unscaled H/Hmu, all-A fixed capacity; native slots unused; never reused across updated steps",
+                            "backward_staging_scope": "fused markers h_recompute/g_recompute/atom_contract/dx_inject are empty; staged mode adds materialized H/Hmu/G/Gmu and launches, not a partition of fused timing",
+                            "bank_recompute_skipped": recipe.save_h == "hp",
+                        }
+                    )
                 if recipe.strategy == "matrix_range":
                     hybrid_routing.update(
                         {
@@ -800,6 +820,7 @@ def measure(args, run):
                 getattr(run.entry(args.plan_id).plan.recipe, "range_planes", 3),
                 getattr(run.entry(args.plan_id).plan.recipe, "prepared_h", False),
                 getattr(run.entry(args.plan_id).plan.recipe, "coalesced_h", False),
+                getattr(run.entry(args.plan_id).plan.recipe, "saved_h", False),
             )
             backend_events = {
                 name: [

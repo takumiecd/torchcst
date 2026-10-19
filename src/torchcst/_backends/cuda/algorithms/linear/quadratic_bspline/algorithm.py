@@ -26,6 +26,7 @@ from .recipe import (
     BSplineRangeReuseRecipe,
     BSplineRangeSpatialRecipe,
     BSplineRecipe,
+    BSplineSavedHRecipe,
     BSplineSplitRecipe,
     BSplineStreamingMemoryRecipe,
     BSplineStreamingRecipe,
@@ -154,6 +155,8 @@ class BSplineAlgorithm(Algorithm[BSplineRecipe]):
                     from .h_executor import apply as stream_apply
                 if getattr(state.recipe, "coalesced_h", False):
                     from .coalesced_executor import apply as stream_apply
+                if getattr(state.recipe, "saved_h", False):
+                    from .saved_executor import apply as stream_apply
                 return stream_apply(
                     x,
                     p,
@@ -268,3 +271,9 @@ class BSplinePreparedHAlgorithm(BSplineStreamingAlgorithm):
 class BSplineCoalescedHAlgorithm(BSplineStreamingAlgorithm):
     revision: str = "v13"
     recipe_type: type = BSplineCoalescedHRecipe
+
+
+@dataclass(frozen=True)
+class BSplineSavedHAlgorithm(BSplineStreamingAlgorithm):
+    revision: str = "v14"
+    recipe_type: type = BSplineSavedHRecipe
