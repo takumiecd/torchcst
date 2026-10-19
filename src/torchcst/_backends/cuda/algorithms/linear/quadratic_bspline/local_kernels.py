@@ -119,6 +119,11 @@ def _poly(
 
 
 @tr.jit
+def _or_levels(left, right):
+    return left | right
+
+
+@tr.jit
 def prepare(
     Meta,
     Pos,
@@ -141,6 +146,7 @@ def prepare(
     Order=None,
     LAYOUT: tl.constexpr = "soa",
     COORDINATES: tl.constexpr = False,
+    ActiveMask=None,
 ):
     base = tl.load(Count) + tl.program_id(0) * AB
     if base < A:
@@ -165,6 +171,10 @@ def prepare(
             size = tl.where(size.to(tl.float64) < span, tl.minimum(2 * size, n), size)
             logsize = tl.log2(size.to(tl.float32)).to(tl.int32)
             level = logsize - MIN_LOG
+            if ActiveMask is not None:
+                bits = tl.where(a < A, 1 << level, 0)
+                used = tl.reduce(bits, 0, _or_levels)
+                tl.atomic_or(ActiveMask + dim, used, sem="relaxed")
             tiles = n >> logsize
             offset = level * n + 2 * (n >> MIN_LOG) - 2 * tiles
             half = spacing * size.to(tl.float64) * 0.5
@@ -376,10 +386,16 @@ def bank(
     ACTIVE: tl.constexpr = False,
     PAD: tl.constexpr = 0,
     MIN_LOG: tl.constexpr = 3,
+    MASK_MODE: tl.constexpr = False,
 ):
     pb: tl.constexpr = B + PAD
     size, tile, offset, level = _group(N, LOW, LEVELS, MIN_LOG)
-    enabled = tl.load(Active + DIM * ML + level) if ACTIVE else tl.full((), 1, tl.int32)
+    if MASK_MODE:
+        enabled = (tl.load(Active + DIM) & (1 << level)) != 0
+    else:
+        enabled = (
+            tl.load(Active + DIM * ML + level) if ACTIVE else tl.full((), 1, tl.int32)
+        )
     if enabled:
         i = tl.arange(0, SS)
         b = tl.program_id(1) * BB + tl.arange(0, BB)
@@ -423,10 +439,16 @@ def restore(
     SHARDS: tl.constexpr = 0,
     PAD: tl.constexpr = 0,
     MIN_LOG: tl.constexpr = 3,
+    MASK_MODE: tl.constexpr = False,
 ):
     pb: tl.constexpr = B + PAD
     size, tile, offset, level = _group(N, LOW, LEVELS, MIN_LOG)
-    enabled = tl.load(Active + DIM * ML + level) if ACTIVE else tl.full((), 1, tl.int32)
+    if MASK_MODE:
+        enabled = (tl.load(Active + DIM) & (1 << level)) != 0
+    else:
+        enabled = (
+            tl.load(Active + DIM * ML + level) if ACTIVE else tl.full((), 1, tl.int32)
+        )
     if enabled:
         i = tl.arange(0, SS)
         b = tl.program_id(1) * BB + tl.arange(0, BB)
@@ -513,10 +535,16 @@ def zero(
     DIM: tl.constexpr,
     PAD: tl.constexpr = 0,
     MIN_LOG: tl.constexpr = 3,
+    MASK_MODE: tl.constexpr = False,
 ):
     pb: tl.constexpr = B + PAD
     size, tile, offset, level = _group(N, LOW, LEVELS, MIN_LOG)
-    if tl.load(Active + DIM * ML + level):
+    enabled = (
+        ((tl.load(Active + DIM) & (1 << level)) != 0)
+        if MASK_MODE
+        else tl.load(Active + DIM * ML + level)
+    )
+    if enabled:
         i = tl.arange(0, SS)
         b = tl.program_id(1) * BB + tl.arange(0, BB)
         base = offset + tile * (size + 1)

@@ -460,3 +460,39 @@ metadata2件だけが通った（65.24秒）。static_range(2)のdimループ内
 
 failed source SHA256 `6d6a2faa1b457162afe05825f7798b069c82c70d952c949ab289a026f6c7f36a`、result SHA256 `8b08df6dea7e74d0b164163dc95a5bfad4e96c413ef357be624116961a568a1c`。
 source byte一致1607 files、manifest4 files。
+
+
+## v38 tail stress diagnosis and guarded FP64 contractions
+
+The f6ae6379 GPU run 5b88cf3c4ea84f61be732b8c6e62d49b observed33 passing checks and12 failing extra unscaled tail cases, with no primary timings. Remote cleanup timed out after archive download. Source/archive/manifest hashes match, and the pool-owned VM was stopped, but POOL_CLEANED is absent: this run stays under incomplete-jobs and is excluded from all accepted tables. Recovery completed before the next owned job.
+
+A separate fully verified diagnostic c211933039d74aaf907636948e9ccc87 at f6ae6379 compares the same P/X/dY for the old Gluon native path, cache3D and cache2D against the independent FP64 oracle. Cache3D equals old output/all gradients; cache2D differs by at most1.526e-5. The failures are shared with the previous path.
+
+At spacing.025/B33, a center gradient should be3.469e-12 but is-0.001616; the fixture's nearest-FP32 error is only1.822e-6. The guarded cold query accumulates in FP64, rounds H/Hmu/G/Gmu to FP32, then promotes them back before subtracting the L2 derivative. Commit c5c7ad68 removes this intermediate rounding for the cold branch only (KEEP64=True). Hot profiles, normalization mathematics, final gradient dtype and acceptance threshold are unchanged. This is being diagnosed before adoption.
+
+Other extreme floor cases have an unavoidable final FP32 precision limit: the FP64 gradient-17069.6205645 (B3,spacing.1) has minimum FP32 absolute error0.0005292;34530.0461711 (B33,spacing.3) has minimum error0.0007039. Both already exceed4e-4 even for the nearest representable value. Original unscaled fixtures and dtype limits remain as diagnostic evidence. The primary N1024/A52428 workloads and4e-4 gates are unchanged. A separate amplitude.125 diagnostic distinguishes representable stress inputs from this dtype limitation; it is not an accepted full-step run.
+
+Task-owned v39 work was preserved in stashes9ffbbaabb991cfa0af6e2473f4c000b40a79ad91 and9fc60dc58f6cd568c08398021376b5e2594793d6 to freeze exact f6/c5 sources. It was restored with byte checks after submission; these backups are retained.
+
+## v39：係数構築と使用尺度の記録をまとめる（検証前）
+
+係数の構築時に既に求めている各atomのlevelを、軸別の整数bitmaskへORする。
+新しいmaskはforwardごとに0初期化し、128 atomごとに2回のatomic ORで記録する。
+従来の独立した分類scanは実行しない。使用しないlevelのprefix bankとrestoreを省くが、
+bank/Deltaのshape、全係数・位置・L2・H/G・source pullbackの数式は保つ。
+
+使用尺度の集合は \(m_d=\bigvee_{a\ge C}(1\ll \ell_{a,d})\) とする。
+ここでCはnative atomの処理slot数で、\(\ell\) は既存の係数構築と同じ整数level。
+levelが有効なのは \((m_d\mathbin{\&}(1\ll\ell))\ne0\) の場合だけである。
+nativeだけのforwardではmask=0となる。maskは既存Active保存欄に保持し、
+後のforwardで古いbackward用maskを書き換えない。
+
+Deltaを全体0初期化する候補と、有効levelだけを0初期化する候補を分ける。
+後者の追加launchが損になる可能性もあるため、両方を同じ完全stepで測定する。
+Gluon lane1を基準とし、v38のnative cacheとは分けて効果を検証する。
+既存recipeは新引数のdefaultで旧処理を保ち、公開/default selectorは変更しない。
+
+旧classify_levelsとのmask一致、元の係数・位置・half/BP/Injectionのbit一致を確認する。
+Graph replayでS4→S64→S16→S256→S4へ切り替え、新しい尺度の有効化と初期化を検査する。
+Count all/partial/zero、retained、入力/全atom勾配、floor/tinyも既存の独立FP64基準で評価する。
+CPU2001 PASS /4509 skipped /既存warning18、38.87秒。Ruff・4 case宣言検査PASS。

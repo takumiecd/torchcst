@@ -29,6 +29,7 @@ from .recipe import (
     BSplineLocalEndpointRecipe,
     BSplineLocalGluonRecipe,
     BSplineLocalGroupedRecipe,
+    BSplineLocalLevelMaskRecipe,
     BSplineLocalMomentRecipe,
     BSplineLocalNarrowRecipe,
     BSplineLocalNativeBoundRecipe,
@@ -460,3 +461,9 @@ class BSplineLocalGluonAlgorithm(BSplineLocalBankBundleAlgorithm):
 class BSplineLocalNativeCacheAlgorithm(BSplineLocalGluonAlgorithm):
     revision: str = "v38"
     recipe_type: type = BSplineLocalNativeCacheRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalLevelMaskAlgorithm(BSplineLocalGluonAlgorithm):
+    revision: str = "v39"
+    recipe_type: type = BSplineLocalLevelMaskRecipe

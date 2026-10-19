@@ -770,3 +770,20 @@ class BSplineLocalNativeCacheRecipe(BSplineLocalGluonRecipe):
             raise ValueError(
                 "native profile cache requires eight sites and the mixed guard"
             )
+
+
+@dataclass(frozen=True)
+class BSplineLocalLevelMaskRecipe(BSplineLocalGluonRecipe):
+    """Revision 39: coefficient preparation also records the exact live levels."""
+
+    fused_levels = True
+    lane_atoms: int = 1
+    active_levels: bool = True
+    zero_active: bool = False
+
+    def __post_init__(self):
+        super().__post_init__()
+        if not self.active_levels:
+            raise ValueError("fused level mask requires active_levels")
+        if type(self.zero_active) is not bool:
+            raise ValueError("zero_active must be boolean")

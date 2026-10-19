@@ -800,3 +800,10 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
 )
 
 REGISTRY.register(BSplineLocalNativeCacheAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalLevelMaskAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalLevelMaskAlgorithm())

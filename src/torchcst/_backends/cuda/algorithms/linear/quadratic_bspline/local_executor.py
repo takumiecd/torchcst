@@ -130,6 +130,7 @@ def _bank(x, n, recipe, label, active, dim, ml, buffer=None):
             pad,
             getattr(recipe, "min_block_log", 3),
             **({"TB": tiles} if tiles > 1 else {}),
+            MASK_MODE=getattr(recipe, "fused_levels", False),
             num_warps=recipe.bank_warps,
             enable_fp_fusion=False,
         )
@@ -171,6 +172,7 @@ def _restore(delta, border, y, n, recipe, label, active, dim, ml):
             delta.shape[2] - len(y),
             getattr(recipe, "min_block_log", 3),
             **({"TB": tiles} if tiles > 1 else {}),
+            MASK_MODE=getattr(recipe, "fused_levels", False),
             num_warps=recipe.bank_warps,
             enable_fp_fusion=False,
         )
@@ -195,7 +197,7 @@ def _delta(x, n, recipe, active, dim, ml, buffers=None, label=None):
     else:
         delta, border = buffers
     pad = delta.shape[2] - len(x)
-    if getattr(recipe, "active_levels", False):
+    if getattr(recipe, "active_levels", False) and getattr(recipe, "zero_active", True):
         for k, sizes in enumerate(_groups(n, recipe)):
             compiled = lk.zero[
                 (sum(n // v for v in sizes), tr.cdiv(len(x), recipe.bank_batch))
@@ -213,6 +215,7 @@ def _delta(x, n, recipe, active, dim, ml, buffers=None, label=None):
                 dim,
                 pad,
                 getattr(recipe, "min_block_log", 3),
+                MASK_MODE=getattr(recipe, "fused_levels", False),
                 num_warps=recipe.bank_warps,
                 enable_fp_fusion=False,
             )
@@ -258,6 +261,8 @@ def _frame(x, p, value, chart, recipe, moments, routing, sizes, build_border=Tru
         if shards
         else x.new_empty(0, dtype=torch.int32)
     )
+    fused_levels = getattr(recipe, "fused_levels", False)
+    active = x.new_zeros(2, dtype=torch.int32) if fused_levels else None
     compiled = lk.prepare[(tr.cdiv(a, 128),)](
         meta,
         pos,
@@ -279,6 +284,7 @@ def _frame(x, p, value, chart, recipe, moments, routing, sizes, build_border=Tru
         Order=_source_order(order, recipe),
         LAYOUT=getattr(recipe, "coefficient_layout", "soa"),
         COORDINATES=getattr(recipe, "coefficient_coordinates", False),
+        ActiveMask=active,
         num_warps=4,
         enable_fp_fusion=False,
     )
@@ -306,7 +312,7 @@ def _frame(x, p, value, chart, recipe, moments, routing, sizes, build_border=Tru
         _stamp("native_cache_prepare", 1)
     ml = max(sizes).bit_length() - getattr(recipe, "min_block_log", 3)
     _stamp("active_levels", 0)
-    if getattr(recipe, "active_levels", False):
+    if getattr(recipe, "active_levels", False) and not fused_levels:
         active = x.new_empty((2, ml), dtype=torch.int32)
         compiled = lk.classify_levels[(2, ml)](
             pos,
@@ -321,7 +327,7 @@ def _frame(x, p, value, chart, recipe, moments, routing, sizes, build_border=Tru
             enable_fp_fusion=False,
         )
         _report("active_levels", compiled)
-    else:
+    elif not fused_levels:
         active = x.new_empty(0, dtype=torch.int32)
     _stamp("active_levels", 1)
     return (

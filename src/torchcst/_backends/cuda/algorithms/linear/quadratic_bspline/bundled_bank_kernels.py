@@ -52,10 +52,16 @@ def bank(
     PAD: tl.constexpr = 0,
     MIN_LOG: tl.constexpr = 3,
     TB: tl.constexpr = 1,
+    MASK_MODE: tl.constexpr = False,
 ):
     pb: tl.constexpr = B + PAD
     size, tile, tiles, offset, level = _group(N, LOW, LEVELS, MIN_LOG, TB)
-    enabled = tl.load(Active + DIM * ML + level) if ACTIVE else tl.full((), 1, tl.int32)
+    if MASK_MODE:
+        enabled = (tl.load(Active + DIM) & (1 << level)) != 0
+    else:
+        enabled = (
+            tl.load(Active + DIM * ML + level) if ACTIVE else tl.full((), 1, tl.int32)
+        )
     if enabled:
         i = tl.arange(0, SS)
         b = tl.program_id(1) * BB + tl.arange(0, BB)
@@ -108,10 +114,16 @@ def restore(
     PAD: tl.constexpr = 0,
     MIN_LOG: tl.constexpr = 3,
     TB: tl.constexpr = 1,
+    MASK_MODE: tl.constexpr = False,
 ):
     pb: tl.constexpr = B + PAD
     size, tile, tiles, offset, level = _group(N, LOW, LEVELS, MIN_LOG, TB)
-    enabled = tl.load(Active + DIM * ML + level) if ACTIVE else tl.full((), 1, tl.int32)
+    if MASK_MODE:
+        enabled = (tl.load(Active + DIM) & (1 << level)) != 0
+    else:
+        enabled = (
+            tl.load(Active + DIM * ML + level) if ACTIVE else tl.full((), 1, tl.int32)
+        )
     if enabled:
         i = tl.arange(0, SS)
         b = tl.program_id(1) * BB + tl.arange(0, BB)
