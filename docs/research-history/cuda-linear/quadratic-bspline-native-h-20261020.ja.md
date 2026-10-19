@@ -50,3 +50,45 @@ source SHA256 `7043c9440490df661bc23527deb0294f4dbc75c10fa81b13db4f693e3c46d0a0`
 既存の `16ef71a8` / `41751d40` のSmall Linear由来native batch-loopを参照した。旧cos⁴/Fourierの数学や当時の速度をB-splineへ転用しない。v19はnativeのbatch tileを8/16等に縮め、支持がsite tileに入るaxisではprofile/中心微分を一度作ってbatch間で再利用する。支持がtileを超える場合は全範囲のblock loopへ落とし、支持を切らない。batch部分ごとのHG/HGμ/HμGをFP64で足し、最後に同じsource pullbackを適用する。
 
 旧v18の意味は保持し、v19で保存量とlaunchを比較する。幅・配置は引き続きforwardごとに更新し、前stepのprofileを使い回さない。この候補の性能・精度はこれから検証する。
+
+## batch-loop結果
+
+job `l4job-b0f6353dd4d34a49bcd8698c26f796e0`、source `d5ec8fa4`。全record PASS。独立runは1件。
+
+| 方法 | B32完全step ms | B64完全step ms |
+|---|---:|---:|
+| 旧最速fma | 1.615691 | 2.491328 |
+| v18 W-free H/Hμ保存 | 2.455866 | 3.992452 |
+| v19 batch8 / atom4、H/Hμ保存 | 3.121620 | 5.349109 |
+| v19 batch16 / atom4、H/Hμ保存 | 3.095024 | 5.326941 |
+| v19 batch8 / atom8、H/Hμ保存 | 2.927328 | 5.152182 |
+| v19 batch8 / atom4、H保存 | 3.250105 | 5.602215 |
+| v19 batch8 / atom4、H非保存 | 3.344826 | 5.777541 |
+| Dense | .082143 | .103211 |
+
+保存方針ごとの両peakはv18と同じ。batch8/atom4のB64 backward registerは150、spill slots0へ減ったが、native backward診断は1.307→2.332msに増加した。batch16/atom4は245 registers / spill0、batch8/atom8は204 registers / spill0。それらも遅い。退避をなくすだけで高速になるという仮説は否定され、これ以上このlaunchの微調整を採用根拠なく続けない。40 CUDA +1 metadataがPASS。
+
+source SHA256 `0e9f5f59c3b6a1bd09c539bbb8813a5c4aefba1b9ac5eee5a4fdd3b42b5e9597`、result SHA256 `1f68f6860a8617ac0b29bc51241e9e28065ba700f63c659583470836d76f749d`。manifest54件、source1503ファイル、正常終了とcleanupを照合した。
+
+## 小σだけ・切替・共通経路回帰
+
+job `l4job-5827a7360a564f838b0dad088fe93e9c`、同じ最終runtime source `d5ec8fa4`。
+
+| B32方法 | 小σのみ ms | 切替 ms | allocated / reserved MiB |
+|---|---:|---:|---:|
+| 旧fma | 1.452436 | 1.730735 | 81.288 / 172 |
+| W-free H/Hμ保存 | 6.595954 | 6.548019 | 43.792 / 132 |
+| W-free H保存 | 6.625095 | 6.599522 | 38.143 / 134 |
+| W-free H非保存 | 6.627135 | 6.622745 | 31.743 / 94 |
+| 既存small W | 1.206630 | 未選択 | 50.231 / 114 |
+| Dense | .082603 | .082372 | 49.002 / 106 |
+
+小σをHで処理するだけではDense並みにならない。W経路のbatch再利用と、H経路のbatchごとの計算を区別する必要がある。小σ・切替とも数式/全勾配のgateはPASSしたが、この速度では採用しない。
+
+共通query/lean/native/loop経路の回帰224 passed /647 deselected（220 CUDA +4 metadata）、257.69秒、cuBLAS初期context warning1件。全871件をGPUで再実行したという意味ではない。最終runtimeのCPUは1979 passed /3635 skipped /18既存warning。Ruff、全Case宣言、wheel/sdist内350 runtimeファイルのbyte一致も確認した。
+
+source SHA256 `705a62128d895cdfac4c1f52c77d246d18ae05588d22c3df8fad5e9ab6ccf785`、result SHA256 `430a7d868de6eeba2f6162f065702f9841e17eeaf567daeae8ae720553a82073`。manifest45件、source1503ファイルを検証し、正常終了・cleanup acknowledgement・全owned L4停止を確認した。原本は `output/bspline-native-h-20261020/verified-jobs/` に保持する。
+
+メモリ条件を満たす設定は得たが、速度条件は未達で目標を継続する。次は[局所座標momentのCPU screen](quadratic-bspline-local-moment-screen-20261020.ja.md)で数値誤差を確認した方式をGPU候補として検証する。これは同じB-splineの座標・離散和の書き換えで、Gaussian化や別kernelへの置換ではない。
+
+3件全体のrunnerの最大誤差はY 1.113615e-5 / dX 9.283949e-6 / 全atom勾配3.036035e-5、relative L2 ≤3.595e-7。全35件のCST correctness recordで、同じsource勾配を与えた公開CSTOptimizerとのParameter/moments/step更新照合はmax/relative L2とも0。これは勾配自体の正しさを代替せず、勾配は別の独立FP64 gateで確認した。
