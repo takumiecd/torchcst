@@ -282,3 +282,40 @@ v32 SoAを基準に、query/injectの論理tileを[atom,batch]から[batch,atom]
 実際のlane割り当てはTritonの決定にも依存するため、論理axisの転置だけから物理的な
 coalescing改善とは主張しない。GPU jobで対象forward/backwardのTTGIR/PTXも保存して調べる。
 提出前CPU1998 PASS /4389 skipped /既存warning18、38.62秒。Ruff・両case宣言検査PASS。
+
+
+## v36結果：論理転置だけでは物理配置は変わらない
+
+source `904cf8a9b4a8c891f75441962ac8ba5a639f6bdf`、job
+`l4job-405c7ba7047849a594067964cb7d5c6c`。31 checks PASS /1586 deselected、256.30秒。
+両primaryの全plan・3状態の独立FP64 full-shape Y/dX/all4P gate、全52428 σ更新と同一初期条件を確認。
+
+| plan | B32 ms | B64 ms |
+|---|---:|---:|
+| v32 atom4 control |0.799208|1.296216|
+| v32 atom8 |0.907247|1.531436|
+| v36 論理転置atom4 |0.797977|1.300156|
+| v36 論理転置atom8 |0.908609|1.529766|
+| Dense |0.082785|0.103024|
+
+両peakは全CST同じ34.153/98、34.653/100MiBで、Dense49.002/106、49.502/106MiB以下。
+atom4のforward約0.134ms/backward約0.234msは同じ帯、atom8はforward約0.22msで遅い。
+register40、sharedはforward0/backward16(atom4)・32(atom8)、spill/local load/storeなし。
+
+jobのTTGIR/PTXを52組保存し、primaryの12ファイルを抽出すると、controlと転置candidateの
+対応する6組すべてでPTX命令列が一致した（debug/location等の非命令行を除外、register/address operandsは保持）。
+atom4 controlは[atom,batch]のthreadsPerWarp=[1,32], warpsPerCTA=[4,1]、
+転置後は[batch,atom]の[32,1],[1,4]で、物理的に同じbatch連続配置になっている。
+したがってこの結果は、論理axisを変えるだけではcompilerが同じ配置を選ぶことを示す。
+実際にatom laneを内側に固定した別実装が遅いと結論する根拠にはしない。
+比較には追加tensorもなく、既存の数式・勾配契約は通過した。速度改善として採用しない。
+原本はignored `compiled-tiles/`、抽出表は`transposed-primary-asm.json`と`transposed-asm-summary.json`。
+
+source SHA256 `fc1c6a834561f50e10b5c4621b7a6f940517e136c6a803949cb291fb3d8e3c3d`、result SHA256 `f36513ded91a8af7d982087426f43ea1d81b4013ec9eee2dd4091ee8842561b9`。
+source byte一致1595 files、manifest192 files、return0/cleanup ack確認。
+
+提出sourceのCPU1998 PASS /4389 skipped /既存warning18、38.62秒、Ruff、case宣言、CPU CI PASS。
+isolated wheel/sdistは365 runtime filesが同sourceとbyte一致。目標は依然未達。
+次は論理転置の繰り返しを避け、明示的なblocked lane layout（例：Gluon）の可否を調べる。
+実API・実際のTTGIR/命令と独立oracleを確認し、同じ完全stepと両peakで評価する。
+小さいσのprofileを既存native Co領域へ保存する案も別候補で、現時点で未実装・未測定。
