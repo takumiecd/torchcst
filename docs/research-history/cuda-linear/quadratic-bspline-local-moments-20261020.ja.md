@@ -130,3 +130,39 @@ source SHA256 `412648a09c6962ba5cdc258be2b895f62865845ef297d541802dc3358c4ecf8c`
 v23のbroad streamはB32 forward/backward 0.176/0.211msに対しB64は0.673/0.711ms。batch2倍に対し3倍以上の費用差があるため、物理strideに依存する挙動を切り分ける。現時点ではcache missやmemory partitionのhardware counterを取っておらず、原因は確定していない。
 
 bank/差分/border planeの物理行幅を`PB=B+padding`とし、実batchはBのまま、全load/store/query/inject/reductionは`b<B`でmaskする。X/Y/H/HPのshapeとstride、全ての演算式は変えない。bank/差分/borderのplane offsetだけをPBで計算する。paddingは4/8/16列、確保増加もpeakに含める。active尺度を使う場合のzeroも同じ物理幅で初期化し、padding列の未初期化値は読まない。比較controlはv24の16分散・split prepare。GPU gateと完全step/両peakが揃うまで有効とは判断しない。
+
+## 共通GPU回帰とcompiler原本
+
+v23 sourceの共通回帰job `l4job-1055ff96930845d9a71c2935d7e8d390` は384 passed /650 deselected /既存cuBLAS初期context warning1件、595.28秒。凍結testの再collectionで379 CUDA-marked +5 metadataと確認した。query/lean/native/loop/local/active/shard/endpointの共通autograd経路を含む。v24/v25がこの回帰に含まれたという意味ではない。
+
+source SHA256 `46a76db9e6bf492c9bfb97b27346aebb88d77ccf68927d441ffed521e638ddf4`、result SHA256 `72ab864ba1bf483e2836f14bb76c90f0f27c04a72955022dde37ec099afc2671`。manifest4 files、1522 source filesのcommit byte一致、return0/cleanup ack確認。
+
+compiler原本job `l4job-e8295e3e882744689ae9329666fc8520`、source `d3ede235`（runtimeはv23と同じ）はPTX/LLIR/TTGIR/SASSとregister/spill情報を保存した。source SHA256 `7e99b0da41b070b27ad364365289b335a28bc83177c1eed3ed75543f44b2994f`、result SHA256 `bba92968974e14ef4f0c51543ae42c7b6fccdfe00388339a3c084fd76eeb4064`、manifest184 files、source1522 filesを検証。
+
+静的PTXのstream forwardにはB32/B64それぞれF64 multiply 3/5、backwardには12/14、F64 divide/sqrtはない。主projectionはFP32で、broad streamのspillは0。FP64が投影全体の主要演算だとする説明は現在の実装には合わない。prepareには多数のF64演算とpotential fallbackが含まれるが、静的命令数は実行された命令数やhardware counterではない。B64 native forwardは2 spill、cold backwardは34 spillを引き続き記録する。
+
+## v24主要比較結果：分割だけでは準備時間は変わらない
+
+source `c720ccb9a0e7882a4d2173251b47faf9bbc41a8d`、job `l4job-0fa3baffd04044f286b26a306cd136ce`。36 targeted checks PASS（35 CUDA +1 metadata、1034 deselected）、全主要plan独立FP64 full-shape gate PASS。v23 endpoint32のB32改善はcontrol再測定で再現した。
+
+| plan | B32 ms | allocated/reserved MiB | B64 ms | allocated/reserved MiB |
+|---|---:|---:|---:|---:|
+| query-fma |1.618770|81.288 /172|2.506942|96.791 /188|
+| local-endpoint32 |1.461635|34.605 /98|2.617734|47.268 /142|
+| local-endpoint-noactive |1.452121|34.604 /98|2.641958|47.267 /142|
+| local-split-prepare |1.447287|34.604 /98|2.640997|47.267 /142|
+| local-split-prepare16 |1.452363|34.016 /98|2.623285|44.490 /102|
+| Dense |0.083214|49.002 /106|0.105458|49.502 /106|
+
+同一32分散/noactive control対比で、split prepareはB32約4.8µs、B64約1µs差。独立repeat前の小差で、準備を分割すれば大幅に改善するという仮説は成立しなかった。独立phaseではdecode約0.064ms（80 registers）、norm_init約0.073ms（180 registers）、合計prepare約0.142ms。fused controlは約0.145ms（230 registers）。norm_replayは4 warpsで約0.141ms、split normは1 warpであり、norm_replayをdecode時間と引き算して内訳を求めない。追加eventのあるphaseはprimaryより遅くなる場合がある。
+
+source SHA256 `a41895bd46d6e67b8ffa169b69b0a440af8d872044b73bd657aac39c4f53094d`、result SHA256 `efccd81c29de6583877f4907240fd5e43343861f513a77461d277d14b4f6bb2f`。manifest42、source1527 filesのcommit byte一致、return0/cleanup ack確認。CPU1984 passed /3829 skipped、wheel/sdist354 runtime files byte一致。16分散はB64の両peakを満たすが、依然query-fmaより遅い。small/switchとpaddingは別jobで検証中。
+
+## 次の数値screen（GPU未実装・未採用）
+
+CPUで5状態×B32/B64×floor1e-6/1000の20条件を確認した。原本とコードはignored `decode32-screen.*` と `norm-ratios32-screen.py` / `norm-ratios32-cpu-step*.json`。
+
+- 幅のlog/expだけFP32、shape/norm/contractionはFP64としたscreenは全20条件PASS。σ相対差は最大約4e-7。これはCUDA SFUの検証でもGPU高速化の結果でもない。tiny/floor近傍では正確な幅へ戻すguardを想定した。
+- 既存局所moment CPU screenに、denominator/inverse/gammaのFP32計算とtiny/floorのFP64 guardを加えたscreenも全20条件PASS。Y/dX/all-source maxabs上限6.297e-5 /9.630e-5 /7.664e-5、relative L2は6.952e-6以下。native projectionとsource縮約はCPUでFP64であり、GPU候補全体の保証にはしない。
+
+次の実装候補は、通常の正規化とFP64 guard経路を別kernelにし、必要なatomだけ正確な幅/正規化へ戻す方式。精度gateと完全step/両peakを同じ基準で検証するまで採用しない。
