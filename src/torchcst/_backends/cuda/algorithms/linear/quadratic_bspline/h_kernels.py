@@ -27,7 +27,7 @@ def prepare(
         a = base + tl.arange(0, AB)
         planes: tl.constexpr = 5 if DERIVATIVES else 3
         for dim in tl.static_range(2):
-            n: tl.constexpr = NO if dim == 0 else NI
+            n = NO if dim == 0 else NI
             for knot in tl.static_range(4):
                 cut, c0, c1, c2, d0, d1 = _jump(
                     Meta, Origin, Spacing, a, A, n, dim, knot, RECIPROCAL
