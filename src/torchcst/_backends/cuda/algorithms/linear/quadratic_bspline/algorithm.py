@@ -32,6 +32,7 @@ from .recipe import (
     BSplineLocalMomentRecipe,
     BSplineLocalNarrowRecipe,
     BSplineLocalNativeBoundRecipe,
+    BSplineLocalNativeCacheRecipe,
     BSplineLocalOwnerRecipe,
     BSplineLocalPaddedRecipe,
     BSplineLocalPersistentRecipe,
@@ -453,3 +454,9 @@ class BSplineLocalTransposedAlgorithm(BSplineLocalBankBundleAlgorithm):
 class BSplineLocalGluonAlgorithm(BSplineLocalBankBundleAlgorithm):
     revision: str = "v37"
     recipe_type: type = BSplineLocalGluonRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalNativeCacheAlgorithm(BSplineLocalGluonAlgorithm):
+    revision: str = "v38"
+    recipe_type: type = BSplineLocalNativeCacheRecipe

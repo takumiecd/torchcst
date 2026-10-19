@@ -751,3 +751,22 @@ class BSplineLocalGluonRecipe(BSplineLocalBankBundleRecipe):
             raise ValueError("lane_atoms must be 1, 2 or 4")
         if self.axis_warps != 4 or self.coefficient_layout != "soa":
             raise ValueError("explicit lane ownership requires four warps and SoA")
+
+
+@dataclass(frozen=True)
+class BSplineLocalNativeCacheRecipe(BSplineLocalGluonRecipe):
+    """Revision 38: native axis profiles share unused Co/Pos snapshot slots."""
+
+    native_cache = True
+    lane_atoms: int = 1
+    sigma_cutoff: float = 0.15
+    cache_unroll: bool = True
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.cache_unroll) is not bool:
+            raise ValueError("cache_unroll must be boolean")
+        if self.native_sites != 8 or not self.native_float32:
+            raise ValueError(
+                "native profile cache requires eight sites and the mixed guard"
+            )

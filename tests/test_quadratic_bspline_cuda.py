@@ -25,6 +25,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineLocalMomentAlgorithm,
     BSplineLocalNarrowAlgorithm,
     BSplineLocalNativeBoundAlgorithm,
+    BSplineLocalNativeCacheAlgorithm,
     BSplineLocalOwnerAlgorithm,
     BSplineLocalPaddedAlgorithm,
     BSplineLocalPersistentAlgorithm,
@@ -64,6 +65,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineLocalMomentRecipe,
     BSplineLocalNarrowRecipe,
     BSplineLocalNativeBoundRecipe,
+    BSplineLocalNativeCacheRecipe,
     BSplineLocalOwnerRecipe,
     BSplineLocalPaddedRecipe,
     BSplineLocalPersistentRecipe,
@@ -110,7 +112,14 @@ def case(n=64, a=17):
 def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     from dataclasses import replace
 
-    gluon = strategy == "h_local_gluon" or recipe_options.pop("_gluon", False)
+    native_cache = strategy == "h_local_native_cache" or recipe_options.pop(
+        "_native_cache", False
+    )
+    gluon = (
+        strategy == "h_local_gluon"
+        or recipe_options.pop("_gluon", False)
+        or native_cache
+    )
     transposed = strategy == "h_local_transposed" or recipe_options.pop(
         "_transposed", False
     )
@@ -225,6 +234,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineLocalChunkedAlgorithm())
     registry.register(BSplineLocalOwnerAlgorithm())
     registry.register(BSplineLocalNativeBoundAlgorithm())
+    registry.register(BSplineLocalNativeCacheAlgorithm())
     registry.register(BSplineLocalCanonicalAlgorithm())
     registry.register(BSplineLocalCoefficientAlgorithm())
     registry.register(BSplineLocalBankBundleAlgorithm())
@@ -257,7 +267,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     tuned = bool(recipe_options) or strategy == "matrix_separable"
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v37"
+        "v38"
+        if native_cache
+        else "v37"
         if gluon
         else "v36"
         if transposed
@@ -330,7 +342,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         else "v2"
         if tuned
         else "v1",
-        BSplineLocalGluonRecipe(**recipe_options)
+        BSplineLocalNativeCacheRecipe(**recipe_options)
+        if native_cache
+        else BSplineLocalGluonRecipe(**recipe_options)
         if gluon
         else BSplineLocalTransposedRecipe(**recipe_options)
         if transposed
@@ -2598,6 +2612,19 @@ TRANSPOSED_OPTIONS = [
     {"_transposed": True, "axis_atoms": 8, "batch_chunk": 16, "active_levels": True},
 ]
 GLUON_OPTIONS = [{"_gluon": True, "lane_atoms": lane} for lane in (1, 2, 4)]
+NATIVE_CACHE_OPTIONS = [
+    {"_native_cache": True},
+    {
+        "_native_cache": True,
+        "cache_unroll": False,
+        "reciprocal": False,
+        "active_levels": True,
+        "batch_chunk": 16,
+        "native_programs": 32,
+        "norm_float32": False,
+        "contract_float32": False,
+    },
+]
 ALL_QUERY_OPTIONS = (
     QUERY_OPTIONS
     + LEAN_OPTIONS
@@ -2645,6 +2672,10 @@ ALL_QUERY_OPTIONS = (
         for i, opt in enumerate(TRANSPOSED_OPTIONS)
     ]
     + [pytest.param(opt, id=f"gluon-{i}") for i, opt in enumerate(GLUON_OPTIONS)]
+    + [
+        pytest.param(opt, id=f"native-cache-{i}")
+        for i, opt in enumerate(NATIVE_CACHE_OPTIONS)
+    ]
 )
 
 
@@ -2910,7 +2941,11 @@ def test_local_recipe_roundtrip_and_bounds():
         pytest.param(opt, id=f"transposed-{i}")
         for i, opt in enumerate(TRANSPOSED_OPTIONS)
     ]
-    + [pytest.param(opt, id=f"gluon-{i}") for i, opt in enumerate(GLUON_OPTIONS)],
+    + [pytest.param(opt, id=f"gluon-{i}") for i, opt in enumerate(GLUON_OPTIONS)]
+    + [
+        pytest.param(opt, id=f"native-cache-{i}")
+        for i, opt in enumerate(NATIVE_CACHE_OPTIONS)
+    ],
 )
 def test_local_dyadic_boundaries_graph(options):
     import math
@@ -3493,6 +3528,7 @@ def test_native_bound_recipe_roundtrip_and_bounds():
         "h_local_coordinates",
         "h_local_transposed",
         "h_local_gluon",
+        "h_local_native_cache",
     ],
 )
 def test_native_bound_count_changes_across_graph(batch, floor, strategy):
@@ -3577,6 +3613,7 @@ def test_native_bound_count_changes_across_graph(batch, floor, strategy):
         "h_local_coordinates",
         "h_local_transposed",
         "h_local_gluon",
+        "h_local_native_cache",
     ],
 )
 def test_native_bound_strided_individual_gradients(which, strategy):
@@ -3612,6 +3649,7 @@ def test_native_bound_strided_individual_gradients(which, strategy):
         "h_local_coordinates",
         "h_local_transposed",
         "h_local_gluon",
+        "h_local_native_cache",
     ],
 )
 def test_native_bound_retained_count_above_grid(strategy):
@@ -4118,3 +4156,119 @@ def test_gluon_recipe_roundtrip_and_bounds():
     for bad in ({"axis_warps": 1}, {"coefficient_layout": "aos3"}):
         with pytest.raises(ValueError):
             BSplineLocalGluonRecipe(**bad)
+
+
+def test_native_cache_recipe_roundtrip_and_bounds():
+    reg = Registry()
+    reg.register(BSplineLocalNativeCacheAlgorithm())
+    for options in NATIVE_CACHE_OPTIONS:
+        options = {k: v for k, v in options.items() if k != "_native_cache"}
+        plan = ExecutionPlan(
+            "research_cuda_quadratic_bspline",
+            "v38",
+            BSplineLocalNativeCacheRecipe(**options),
+        )
+        assert reg.loads_plan(reg.dumps_plan(plan)) == plan
+    for bad in ({"cache_unroll": 1}, {"native_sites": 16}, {"native_float32": False}):
+        with pytest.raises(ValueError):
+            BSplineLocalNativeCacheRecipe(**bad)
+
+
+@GPU
+@pytest.mark.parametrize("unroll", [False, True])
+@pytest.mark.parametrize("spacing", [0.025, 0.1, 0.3])
+@pytest.mark.parametrize("batch", [3, 33])
+def test_native_cache_spacing_fallbacks(unroll, spacing, batch):
+    layer = model("h_local_native_cache", n=64, a=49, cache_unroll=unroll)
+    layer.chart.spacing.fill_(spacing)
+    layer.chart.origin.copy_(
+        torch.tensor([0.31, -0.27], device="cuda", dtype=torch.float64)
+    )
+    extent = 63 * spacing
+    centers = torch.linspace(0, extent, 49, device="cuda")
+    centers[:6] = centers.new_tensor(
+        [-0.245, -0.2448, 0, extent, extent + 0.2448, extent + 0.245]
+    )
+    with torch.no_grad():
+        layer.atoms.p[:, 0] = 0.6
+        layer.atoms.p[:, 1] = 0.8
+        layer.atoms.p[:, 2] = centers + 0.31
+        layer.atoms.p[:, 3] = centers.roll(11) - 0.27
+    for step in range(2):
+        if step:
+            with torch.no_grad():
+                layer.atoms.p[:, :2].mul_(1.0003)
+                layer.atoms.p[:, 2:].add_(0.0037)
+        x = torch.randn(batch, 128, device="cuda")[:, ::2].requires_grad_()
+        gate(layer, x, torch.randn(batch, 64, device="cuda"))
+
+
+@GPU
+@pytest.mark.parametrize("reciprocal", [False, True])
+def test_native_cache_profiles_and_disjoint_slots(reciprocal):
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        native_cache_kernels as nc,
+    )
+
+    a, count, n = 17, 5, 64
+    meta = torch.ones((a, 12), device="cuda", dtype=torch.float64)
+    meta[:, 1] = torch.linspace(0.12, 1.3, a, device="cuda", dtype=torch.float64)
+    meta[:, 9] = meta[:, 1].reciprocal()
+    meta[:, 2] = torch.linspace(-0.3, 6.7, a, device="cuda", dtype=torch.float64)
+    meta[:, 3] = meta[:, 2].flip(0)
+    origin = torch.tensor([0.31, -0.27], device="cuda", dtype=torch.float64)
+    spacing = torch.tensor([0.1, 0.025], device="cuda", dtype=torch.float64)
+    meta[:, 10:] = spacing.reciprocal()
+    order = torch.randperm(a, device="cuda")
+    pos = torch.full((2, 6, a), -77, device="cuda", dtype=torch.int32)
+    co = torch.full((2, 18, a), float("nan"), device="cuda")
+    nc.prepare[(1,)](
+        meta,
+        pos,
+        co,
+        pos.new_full((), count),
+        order,
+        origin,
+        spacing,
+        a,
+        n,
+        n,
+        reciprocal,
+        num_warps=4,
+        enable_fp_fusion=False,
+    )
+    selected = meta[order[:count]]
+    for dim in range(2):
+        r = selected[:, 1]
+        mu = selected[:, 2 + dim]
+        h, o = spacing[dim], origin[dim]
+        if reciprocal:
+            left = ((mu - r - o) * selected[:, 10 + dim]).ceil().clamp(0, n).int()
+            right = ((mu + r - o) * selected[:, 10 + dim]).ceil().clamp(0, n).int()
+        else:
+            left = ((mu - r - o) / h).ceil().clamp(0, n).int()
+            right = ((mu + r - o) / h).ceil().clamp(0, n).int()
+        assert torch.equal(pos[dim, 0, :count], left)
+        assert torch.equal(pos[dim, 1, :count], right)
+        distance = (o + left.double() * h - mu).float()
+        d = (
+            distance[:, None]
+            + torch.arange(8, device="cuda", dtype=torch.float32)[None, :] * h.float()
+        )
+        ir = selected[:, 9].float()[:, None]
+        rr = r.float()[:, None]
+        u = d * ir if reciprocal else d / rr
+        gap = (1 - u.abs()).clamp_min(0)
+        f = torch.where(u.abs() <= 1 / 3, 1 - 3 * u * u, 1.5 * gap * gap)
+        outer = 3 * torch.where(u >= 0, 1.0, -1.0) * gap
+        df = (
+            torch.where(u.abs() <= 1 / 3, 6 * u * ir, outer * ir)
+            if reciprocal
+            else torch.where(u.abs() <= 1 / 3, 6 * u / rr, outer / rr)
+        )
+        torch.testing.assert_close(co[dim, :8, :count].T, f, rtol=2e-7, atol=1e-6)
+        torch.testing.assert_close(co[dim, 8:16, :count].T, df, rtol=2e-7, atol=1e-6)
+    assert torch.all(pos[:, :, count:] == -77)
+    assert torch.all(pos[:, 2:] == -77)
+    assert torch.isnan(co[:, :, count:]).all()
+    assert torch.isnan(co[:, 16:, :count]).all()

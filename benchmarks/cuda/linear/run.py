@@ -926,6 +926,7 @@ def measure(args, run):
                 ),
                 bool(getattr(run.entry(args.plan_id).plan.recipe, "owner_events", 0)),
                 getattr(run.entry(args.plan_id).plan.recipe, "input_groups", False),
+                getattr(run.entry(args.plan_id).plan.recipe, "native_cache", False),
             )
             backend_events = {
                 name: [

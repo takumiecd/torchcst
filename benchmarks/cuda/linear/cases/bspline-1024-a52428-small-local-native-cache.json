@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "case": {
+    "id": "bspline-1024-a52428-small-local-native-cache",
+    "fixture": "quadratic_bspline",
+    "size": 1024,
+    "rows": 32,
+    "atoms": 52428,
+    "profile": "mixed",
+    "dtype": "float32",
+    "seed": 41,
+    "warmup": 5,
+    "rounds": 21,
+    "optimizer": {
+      "name": "AdamW",
+      "lr": 0.0001,
+      "weight_decay": 0.01,
+      "fused": true,
+      "capturable": true
+    },
+    "widths": {
+      "minimum": 0.1,
+      "birth": 0.1,
+      "maximum": 12.8,
+      "rho": [
+        0.1,
+        0.14,
+        0.18
+      ],
+      "fractions": [
+        0.3333333333333333,
+        0.3333333333333333,
+        0.3333333333333333
+      ],
+      "center_jitter": null
+    }
+  },
+  "plans": [
+    "local-gluon-lane1",
+    "local-native-old-cut15",
+    "local-native-cache-reduce",
+    "local-native-cache-unroll"
+  ],
+  "baseline": "local-gluon-lane1",
+  "dense": true
+}

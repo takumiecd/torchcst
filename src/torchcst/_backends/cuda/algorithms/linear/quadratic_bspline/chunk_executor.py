@@ -77,6 +77,7 @@ class _Chunked(torch.autograd.Function):
             sizes,
             recipe,
             order=_source_order(order, recipe),
+            cache=(pos, co) if getattr(recipe, "native_cache", False) else None,
         )
         bank = _workspace(x, sizes[1], tile, recipe)
         delta = _workspace(x, sizes[0], tile, recipe)
@@ -187,6 +188,7 @@ class _Chunked(torch.autograd.Function):
             need_dp,
             zero_dp=True,
             order=_source_order(order, recipe),
+            cache=(pos, co) if getattr(recipe, "native_cache", False) else None,
         )
         input_bank = _workspace(x, sizes[1], tile, recipe) if need_dp else None
         adjoint_bank = _workspace(x, sizes[0], tile, recipe)

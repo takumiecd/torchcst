@@ -13,7 +13,20 @@ def _grid(a, recipe, mixed):
     return (min(programs, cap) if cap else programs,)
 
 
-def forward(x, y, meta, count, origin, spacing, sizes, recipe, order=None):
+def _options(recipe, order, cache):
+    result = {"Order": order} if order is not None else {}
+    if getattr(recipe, "native_cache", False):
+        if cache is None:
+            raise ValueError(
+                "native cache recipe requires its forward Co/Pos snapshots"
+            )
+        result.update(
+            CachePos=cache[0], CacheCo=cache[1], CACHE_UNROLL=recipe.cache_unroll
+        )
+    return result
+
+
+def forward(x, y, meta, count, origin, spacing, sizes, recipe, order=None, cache=None):
     _stamp("native_forward", 0)
     destination = (
         torch.zeros_like(y, dtype=torch.float64)
@@ -26,6 +39,9 @@ def forward(x, y, meta, count, origin, spacing, sizes, recipe, order=None):
 
         if getattr(recipe, "native_programs", 0):
             from . import native_persistent_kernels as mk
+
+        if getattr(recipe, "native_cache", False):
+            from . import native_cache_kernels as mk
 
         kernel = mk.forward
     else:
@@ -52,7 +68,7 @@ def forward(x, y, meta, count, origin, spacing, sizes, recipe, order=None):
         recipe.native_sites,
         recipe.reciprocal,
         *((True,) if mixed else ()),
-        **({"Order": order} if order is not None else {}),
+        **_options(recipe, order, cache),
         num_warps=recipe.native_warps,
         enable_fp_fusion=False,
     )
@@ -73,7 +89,7 @@ def forward(x, y, meta, count, origin, spacing, sizes, recipe, order=None):
             recipe.native_sites,
             recipe.reciprocal,
             False,
-            **({"Order": order} if order is not None else {}),
+            **_options(recipe, order, cache),
             num_warps=recipe.native_warps,
             enable_fp_fusion=False,
         )
@@ -96,6 +112,7 @@ def backward(
     need_dp,
     zero_dp=False,
     order=None,
+    cache=None,
 ):
     dx = x.new_zeros(x.shape) if need_dx else None
     dp = (
@@ -115,6 +132,9 @@ def backward(
 
         if getattr(recipe, "native_programs", 0):
             from . import native_persistent_kernels as mk
+
+        if getattr(recipe, "native_cache", False):
+            from . import native_cache_kernels as mk
 
         kernel = mk.backward
     else:
@@ -145,7 +165,7 @@ def backward(
         need_dx,
         need_dp,
         *((True, recipe.contract_float32) if mixed else ()),
-        **({"Order": order} if order is not None else {}),
+        **_options(recipe, order, cache),
         num_warps=recipe.native_warps,
         enable_fp_fusion=False,
     )
@@ -171,7 +191,7 @@ def backward(
             need_dp,
             False,
             recipe.contract_float32,
-            **({"Order": order} if order is not None else {}),
+            **_options(recipe, order, cache),
             num_warps=recipe.native_warps,
             enable_fp_fusion=False,
         )

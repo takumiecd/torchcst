@@ -284,6 +284,26 @@ def _frame(x, p, value, chart, recipe, moments, routing, sizes, build_border=Tru
     )
     _report("coeff_prepare", compiled)
     _stamp("coeff_prepare", 1)
+    if getattr(recipe, "native_cache", False):
+        from . import native_cache_kernels as nc
+
+        _stamp("native_cache_prepare", 0)
+        compiled = nc.prepare[(tr.cdiv(a, 128),)](
+            meta,
+            pos,
+            co,
+            count,
+            _source_order(order, recipe),
+            origin,
+            spacing,
+            a,
+            *sizes,
+            recipe.reciprocal,
+            num_warps=4,
+            enable_fp_fusion=False,
+        )
+        _report("native_cache_prepare", compiled)
+        _stamp("native_cache_prepare", 1)
     ml = max(sizes).bit_length() - getattr(recipe, "min_block_log", 3)
     _stamp("active_levels", 0)
     if getattr(recipe, "active_levels", False):
@@ -361,6 +381,7 @@ class _Local(torch.autograd.Function):
             sizes,
             recipe,
             order=_source_order(order, recipe),
+            cache=(pos, co) if getattr(recipe, "native_cache", False) else None,
         )
         bank = _bank(x, sizes[1], recipe, "bank_input", active, 1, ml)
         delta, border = _delta(x, sizes[0], recipe, active, 0, ml)
@@ -470,6 +491,7 @@ class _Local(torch.autograd.Function):
             need_dx,
             need_dp,
             order=_source_order(order, recipe),
+            cache=(pos, co) if getattr(recipe, "native_cache", False) else None,
         )
         if need_dp and ctx.mode != "hp":
             input_bank = _bank(x, sizes[1], recipe, "bank_recompute", active, 1, ml)

@@ -401,3 +401,51 @@ raw結果は`local-split-probe.json`、driverと照合記録もignored outputへ
 
 診断source SHA256 `97bf850e9f9bdb991e6b9ffd494b6fe06b5301af91b3daf00fc4bb5f130cb922`、result SHA256 `c6335aae6b80c41939a540eabd7e41e7846f2f649111387317070c625e272749`。
 source byte一致1598 files、manifest4 files、return0/cleanup ack確認。
+
+
+## v37独立repeat：小さい改善は再現、Dense2倍は未達
+
+source `744e937c9a142f5e2c74738cf476bb790ee09aae`（runtimeはecbe66c7と同じ）、job
+`l4job-9d73003dfaaf423ea0bb31be8715e520`。catalog metadata1 check PASS、4 caseすべての
+全plan・3状態の独立FP64 full-shape gateと全52428 σ更新を確認した。
+
+| case | v32 ms | Gluon lane1 ms | Dense ms |
+|---|---:|---:|---:|
+| B32 mixed |0.787373|0.770304|0.083208|
+| B64 mixed |1.281540|1.243155|0.105507|
+| B32 small |0.786843|0.768025|0.083191|
+| B32 switch |0.792478|0.773918|0.083486|
+
+mixedの2.17%/3.00%短縮が独立runでも再現した。small/switchは各1runで2.39%/2.34%短縮。
+両peakは変わらず34.153/98、34.653/100MiBでDense49.002/106、49.502/106MiB以下。
+時間はまだDense約9.26/11.78倍で、2倍以内の目標を達成したことにはならない。
+主要backwardのPTXも確認し、同じwarp配置のcontrolにあったbar.sync7箇所がlane1では0に
+なっている（primary2組、debug行を除いた静的な命令検査）。raw抽出は`gluon-backward-barriers.json`。
+
+source SHA256 `f4d6ae035bee84c870c419652a3803dd1a37ba67945624358184c1600cf5b6a7`、result SHA256 `c03e959c27d02718116c6d4efe0a8efd9aacb4fb6ea58ae71dbbeddc19f6320b`。
+source byte一致1602 files、manifest44 files、return0/cleanup ack確認。
+
+## v38：nativeの軸profileをforwardごとに共有（検証前）
+
+小さいσのf/dfを既存Co[2,18,A]のnative処理slotの先頭16 fieldへ入れる。
+regular slot>=Countはこれまでの6 event×3係数を保ち、領域は重ならない。
+native Pos[2,6,A]のfield0/1へ軸別left/rightを保存する。追加tensorはない。
+canonical Parameter/Meta/optimizer orderは保ち、Orderでsource rowへ対応する。
+forwardごとのCo/Pos snapshotをそのbackwardで再利用し、step間のX/Hは再利用しない。
+
+半径R=√6σの同じB2 shape、同じFP32局所距離からf/dfを作る。
+各native CTAは、両軸で全atomの支持点数が3以上かつ8以下の場合だけcacheを使う。
+どれかが2以下なら従来のCTA単位FP64 cold pathへ、8より多いなら従来hot pathへ戻す。
+σだけから8点を仮定せず、spacingとclip後の実際のleft/rightで判定する。
+FP64 native Y/dX destination scratch、単一cast、exact sampled product L2、floor/tiny guard、
+全source pullbackは維持する。cache値のsumはFP32で、従来のH保存精度境界でFP64へ戻す。
+
+従来の3D支持点reductionを保つ候補と、8点を2D tileへ展開する候補を分ける。
+8点の加算順の差については独立FP64の同じ4e-4 gateを要求する。
+両候補はσ cutoff0.15、比較にはcacheなしの同cutoff0.15と、既存最速Gluon lane1 cutoff0.05を入れる。
+native_cache_prepareもphaseへ含め、mixed/B64/small/switchで完全step・両peakを測る。
+間隔0.025のoversize、0.3のtiny、非0原点、strided、retained、Graph、coincident nativeに加え、
+cacheのsource slot対応とregular fieldが上書きされないことを検査する。公開/defaultは変更しない。
+
+提出前CPU2000 PASS /4472 skipped /既存warning18、38.51秒。Ruff・4 case宣言検査PASS。
+GPU43 checks（共通native cache29とspacing/fallback/profile14）およびmetadata2件を先に確認する。
