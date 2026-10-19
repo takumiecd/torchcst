@@ -456,3 +456,48 @@ class BSplineNativeLoopRecipe(BSplineNativeHRecipe):
             32,
         ):
             raise ValueError("native_batch must be 4, 8, 16 or 32")
+
+
+@dataclass(frozen=True)
+class BSplineLocalMomentRecipe(BSplineNativeHRecipe):
+    """Revision 20: dyadic local polynomial banks and controlled FP32 cores."""
+
+    local_h = True
+    save_h: str = "none"
+    coefficient_derivatives: bool = False
+    bank_batch: int = 4
+    bank_group_levels: int = 3
+    bank_warps: int = 4
+    prepare_float32: bool = False
+    norm_float32: bool = False
+    native_float32: bool = False
+    contract_float32: bool = False
+
+    def __post_init__(self):
+        super().__post_init__()
+        if not self.coefficient_cache or self.coefficient_derivatives:
+            raise ValueError(
+                "local moments cache value coefficients and derive center derivatives"
+            )
+        if self.query_method != "fma":
+            raise ValueError("local moments require fma queries")
+        if self.norm_float32 and not self.norm_lookup:
+            raise ValueError("orthogonal local norm requires norm_lookup")
+        for name in (
+            "prepare_float32",
+            "norm_float32",
+            "native_float32",
+            "contract_float32",
+        ):
+            if type(getattr(self, name)) is not bool:
+                raise ValueError(f"{name} must be boolean")
+        for name, allowed in (
+            ("bank_batch", (1, 2, 4, 8)),
+            ("bank_group_levels", (1, 2, 3)),
+            ("bank_warps", (4, 8)),
+        ):
+            if (
+                type(getattr(self, name)) is not int
+                or getattr(self, name) not in allowed
+            ):
+                raise ValueError(f"{name} must be one of {allowed}")

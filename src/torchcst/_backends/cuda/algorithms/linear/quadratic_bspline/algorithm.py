@@ -20,6 +20,7 @@ from .recipe import (
     BSplineAdjointRecipe,
     BSplineCoalescedHRecipe,
     BSplineLeanHRecipe,
+    BSplineLocalMomentRecipe,
     BSplineNativeHRecipe,
     BSplineNativeLoopRecipe,
     BSplineParallelRecipe,
@@ -162,6 +163,8 @@ class BSplineAlgorithm(Algorithm[BSplineRecipe]):
                     from .coalesced_executor import apply as stream_apply
                 if getattr(state.recipe, "saved_h", False):
                     from .saved_executor import apply as stream_apply
+                if getattr(state.recipe, "local_h", False):
+                    from .local_executor import apply as stream_apply
                 return stream_apply(
                     x,
                     p,
@@ -312,3 +315,22 @@ class BSplineNativeHAlgorithm(BSplineStreamingAlgorithm):
 class BSplineNativeLoopAlgorithm(BSplineStreamingAlgorithm):
     revision: str = "v19"
     recipe_type: type = BSplineNativeLoopRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalMomentAlgorithm(BSplineStreamingAlgorithm):
+    revision: str = "v20"
+    recipe_type: type = BSplineLocalMomentRecipe
+
+    def supports(self, context, recipe):
+        result = super().supports(context, recipe)
+        reasons = list(result.reasons)
+        if isinstance(context, LinearContext):
+            try:
+                if any(n < 8 or n & (n - 1) for n in layout(context.operator)):
+                    reasons.append(
+                        "local moments require power-of-two axes with at least 8 sites"
+                    )
+            except (ValueError, TypeError, AttributeError):
+                pass
+        return SupportResult(tuple(reasons))

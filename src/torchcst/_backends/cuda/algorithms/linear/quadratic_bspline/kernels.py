@@ -119,6 +119,108 @@ def _norm(
 
 
 @tr.jit
+def _norm_ortho32(
+    center,
+    radius,
+    Origin,
+    Spacing,
+    Moments,
+    N: tl.constexpr,
+    dim: tl.constexpr,
+    ML: tl.constexpr,
+    RECIPROCAL: tl.constexpr,
+):
+    q = tl.full(center.shape, 0, tl.float32)
+    vjp = tl.full(center.shape, 0, tl.float32)
+    origin = tl.load(Origin + dim).to(tl.float64)
+    h = tl.load(Spacing + dim).to(tl.float64)
+    ir = 1 / radius
+    ih = 1 / h
+    for piece in tl.static_range(3):
+        left, right = _interval(
+            center, radius, Origin, Spacing, N, dim, piece, RECIPROCAL, ih
+        )
+        if piece == 0:
+            first = left
+        count = right - left
+        cn = count.to(tl.float32)
+        mid = (
+            origin
+            + (left.to(tl.float64) + (count.to(tl.float64) - 1) * 0.5) * h
+            - center
+        )
+        z = tl.where(count > 0, (mid * ir).to(tl.float32), 0)
+        w = (h * count.to(tl.float64) * 0.5 * ir).to(tl.float32)
+        if piece == 1:
+            a0 = 1 - 3 * z * z
+            a1 = -6 * z * w
+            a2 = -3 * w * w
+        else:
+            sign = 1 if piece == 0 else -1
+            base = 1 + sign * z
+            a0 = 1.5 * base * base
+            a1 = 3 * sign * base * w
+            a2 = 1.5 * w * w
+        m2 = tl.load(Moments + count).to(tl.float32)
+        mean2 = tl.load(Moments + 2 * ML + count).to(tl.float32)
+        variance = tl.load(Moments + 3 * ML + count).to(tl.float32)
+        inverse_half = (2 / h).to(tl.float32) * tl.load(Moments + 4 * ML + count).to(
+            tl.float32
+        )
+        mean = tl.fma(a2, mean2, a0)
+        q += tl.fma(mean * mean, cn, tl.fma(a1 * a1, m2, a2 * a2 * variance))
+        vjp += -a1 * inverse_half * tl.fma(cn, mean, 2 * a2 * m2)
+    return q.to(tl.float64), vjp.to(tl.float64), right - first
+
+
+@tr.jit
+def _norm_pair(
+    co,
+    ci,
+    radius,
+    Origin,
+    Spacing,
+    Moments,
+    NO: tl.constexpr,
+    NI: tl.constexpr,
+    ML: tl.constexpr,
+    RECIPROCAL: tl.constexpr,
+    LOOKUP: tl.constexpr,
+    FLOOR: tl.constexpr,
+    FMA: tl.constexpr,
+    CORE32: tl.constexpr,
+):
+    if CORE32:
+        qo, vo, no = _norm_ortho32(
+            co, radius, Origin, Spacing, Moments, NO, 0, ML, RECIPROCAL
+        )
+        qi, vi, ni = _norm_ortho32(
+            ci, radius, Origin, Spacing, Moments, NI, 1, ML, RECIPROCAL
+        )
+        d = lib.sqrt(qo * qi)
+        guard = (tl.minimum(no, ni) <= 2) | (
+            tl.abs(d - FLOOR) <= 32 * 1.1920928955078125e-7 * tl.maximum(d, FLOOR)
+        )
+        if tl.sum(guard.to(tl.int32), 0) > 0:
+            x, y = _norm(
+                co, radius, Origin, Spacing, Moments, NO, 0, ML, RECIPROCAL, LOOKUP, FMA
+            )
+            u, v = _norm(
+                ci, radius, Origin, Spacing, Moments, NI, 1, ML, RECIPROCAL, LOOKUP, FMA
+            )
+            qo, vo = tl.where(guard, x, qo), tl.where(guard, y, vo)
+            qi, vi = tl.where(guard, u, qi), tl.where(guard, v, vi)
+    else:
+        qo, vo = _norm(
+            co, radius, Origin, Spacing, Moments, NO, 0, ML, RECIPROCAL, LOOKUP, FMA
+        )
+        qi, vi = _norm(
+            ci, radius, Origin, Spacing, Moments, NI, 1, ML, RECIPROCAL, LOOKUP, FMA
+        )
+    return qo, vo, qi, vi
+
+
+@tr.jit
 def prepare(
     P,
     Meta,
@@ -134,6 +236,7 @@ def prepare(
     RECIPROCAL: tl.constexpr,
     LOOKUP: tl.constexpr,
     NORM_FMA: tl.constexpr = False,
+    NORM32: tl.constexpr = False,
 ):
     a = tl.program_id(0) * 64 + tl.arange(0, 64)
     z0 = tl.load(P + 4 * a, a < A, 0).to(tl.float64)
@@ -164,11 +267,21 @@ def prepare(
     radius = 2.449489742783178 * sigma
     co = tl.load(P + 4 * a + 2, a < A, 0).to(tl.float64)
     ci = tl.load(P + 4 * a + 3, a < A, 0).to(tl.float64)
-    qo, vo = _norm(
-        co, radius, Origin, Spacing, Moments, NO, 0, ML, RECIPROCAL, LOOKUP, NORM_FMA
-    )
-    qi, vi = _norm(
-        ci, radius, Origin, Spacing, Moments, NI, 1, ML, RECIPROCAL, LOOKUP, NORM_FMA
+    qo, vo, qi, vi = _norm_pair(
+        co,
+        ci,
+        radius,
+        Origin,
+        Spacing,
+        Moments,
+        NO,
+        NI,
+        ML,
+        RECIPROCAL,
+        LOOKUP,
+        FLOOR,
+        NORM_FMA,
+        NORM32,
     )
     denominator = lib.sqrt(qo * qi)
     correction = tl.where(r2 >= 1.1754943508222875e-38, z0 * inv / safe, 0)
@@ -209,6 +322,7 @@ def norm_replay(
     RECIPROCAL: tl.constexpr,
     LOOKUP: tl.constexpr,
     NORM_FMA: tl.constexpr = False,
+    NORM32: tl.constexpr = False,
 ):
     # Diagnostic re-evaluation from already decoded live geometry. Not on the
     # normal execution path; its timing is not subtracted from fused prepare.
@@ -216,11 +330,21 @@ def norm_replay(
     radius = tl.load(Meta + a * 12 + 1, a < A, 1)
     co = tl.load(Meta + a * 12 + 2, a < A, 0)
     ci = tl.load(Meta + a * 12 + 3, a < A, 0)
-    qo, vo = _norm(
-        co, radius, Origin, Spacing, Moments, NO, 0, ML, RECIPROCAL, LOOKUP, NORM_FMA
-    )
-    qi, vi = _norm(
-        ci, radius, Origin, Spacing, Moments, NI, 1, ML, RECIPROCAL, LOOKUP, NORM_FMA
+    qo, vo, qi, vi = _norm_pair(
+        co,
+        ci,
+        radius,
+        Origin,
+        Spacing,
+        Moments,
+        NO,
+        NI,
+        ML,
+        RECIPROCAL,
+        LOOKUP,
+        FLOOR,
+        NORM_FMA,
+        NORM32,
     )
     d = lib.sqrt(qo * qi)
     tl.store(Scratch + 4 * a, 1 / tl.maximum(d, FLOOR), a < A)

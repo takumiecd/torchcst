@@ -31,8 +31,25 @@ def diagnostic_components(
     saved_h=False,
     adjoint_h=False,
     native_h=False,
+    local_h=False,
 ):
     common = ("snapshot", "prepare", "norm_replay")
+    if local_h:
+        return common + (
+            "group",
+            "pack",
+            "coeff_prepare",
+            "native_forward",
+            "native_backward",
+            "bank_input",
+            "bank_recompute",
+            "bank_adjoint",
+            "stream_forward",
+            "stream_backward",
+            "scan_output",
+            "scan_input",
+            "unpack",
+        )
     if strategy == "matrix_range":
         substeps = tuple(
             f"range_{stage}_{start}"
@@ -338,6 +355,7 @@ def _prepare(p, value, chart, recipe, moments):
             recipe.reciprocal,
             recipe.norm_lookup,
             getattr(recipe, "norm_fma", False),
+            getattr(recipe, "norm_float32", False),
             num_warps=recipe.prepare_warps,
             enable_fp_fusion=False,
         )
@@ -360,6 +378,7 @@ def _prepare(p, value, chart, recipe, moments):
                 recipe.reciprocal,
                 recipe.norm_lookup,
                 getattr(recipe, "norm_fma", False),
+                getattr(recipe, "norm_float32", False),
                 num_warps=4,
                 enable_fp_fusion=False,
             )

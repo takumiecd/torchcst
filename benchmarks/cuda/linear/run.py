@@ -684,6 +684,31 @@ def measure(args, run):
                             * (1 if recipe.scatter_scope == "zero" else case.size + 1),
                         }
                     )
+                if getattr(recipe, "local_h", False):
+                    hybrid_routing.update(
+                        {
+                            "bank_layout": "FP32 plane,dyadic-local-point,batch; no periodic wrap",
+                            "local_events_per_axis": 6,
+                            "local_event_scope": "four knot jumps and up to two tile-boundary corrections",
+                            "coefficient_storage": "FP32 value polynomials in immutable forward snapshot",
+                            "coordinate_classification_dtype": "FP64",
+                            "coefficient_core_dtype": "FP32"
+                            if recipe.prepare_float32
+                            else "FP64",
+                            "norm_core_dtype": "positive FP32 discrete moments with FP64 tiny/floor guards"
+                            if recipe.norm_float32
+                            else "FP64",
+                            "native_core_dtype": "FP32 local offsets with separate FP64 tiny-support guard"
+                            if recipe.native_float32
+                            else "FP64",
+                            "contraction_core_dtype": "FP32 then FP64 source pullback"
+                            if recipe.contract_float32
+                            else "FP64",
+                            "bank_group_levels": recipe.bank_group_levels,
+                            "bank_batch": recipe.bank_batch,
+                            "split_stage_scope": "stream spans fuse local queries/injection; no separate global endpoint stages",
+                        }
+                    )
                 if recipe.strategy == "matrix_range":
                     hybrid_routing.update(
                         {
@@ -858,6 +883,7 @@ def measure(args, run):
                 getattr(run.entry(args.plan_id).plan.recipe, "saved_h", False),
                 getattr(run.entry(args.plan_id).plan.recipe, "adjoint_h", False),
                 getattr(run.entry(args.plan_id).plan.recipe, "native_h", False),
+                getattr(run.entry(args.plan_id).plan.recipe, "local_h", False),
             )
             backend_events = {
                 name: [
