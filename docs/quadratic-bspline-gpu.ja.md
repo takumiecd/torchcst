@@ -293,3 +293,8 @@ forwardのHのみ／Hと中心微分の保存を可変σで比較する。研究
 [G生成の共有とdX集約の比較](research-history/cuda-linear/quadratic-bspline-adjoint-20261019.ja.md)
 では、区間のsort/histogram、prefix読み取り共有、局所合算、FP64差分bufferの分散を
 研究用v15で比較する。完全step・capture込みpeakと全勾配を同条件で記録する。
+
+[FP64 query演算と係数・prefix読み取りの切り分け](research-history/cuda-linear/quadratic-bspline-query-20261020.ja.md)
+では、v16で共通因子と区間差分による同じB-splineの計算を比較する。
+診断用のchecksum・参照先共通化と、精度を保つ完全stepの候補を区別し、
+可変σ・正確なL2・全atom勾配を保った速度とメモリを記録する。

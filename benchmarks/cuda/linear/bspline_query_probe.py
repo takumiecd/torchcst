@@ -1,5 +1,6 @@
 """Diagnostic ablations only: altered operands/checksums are not CST candidates."""
 
+import json
 import re
 import statistics
 from pathlib import Path
@@ -222,6 +223,13 @@ def run(meta, cuts, coeff, count, origin, spacing, bank, output, batch):
                 "static_ptx_global_loads": len(re.findall(r"ld\.global", ptx)),
                 "static_ptx_barriers": len(re.findall(r"bar\.sync", ptx)),
             }
+        )
+        (output / f"probe-progress-b{batch}.json").write_text(
+            json.dumps(rows, indent=2)
+        )
+        print(
+            f"probe B{batch} {mode}: {rows[-1]['timing']['median_ms']:.6f} ms",
+            flush=True,
         )
     return {
         "rows": rows,
