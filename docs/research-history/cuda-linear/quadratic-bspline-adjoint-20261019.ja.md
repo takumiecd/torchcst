@@ -73,6 +73,8 @@ G側のprefix行要求は元167,768行に対して出力側sortで30,491行、dX
 
 これらは実装・診断の失敗として保持する。数学や誤差閾値を変更して通した結果ではない。
 
+補助条件の `l4job-2adb7dff4c7b4fa9a65de40557655f92` はColab実行応答のtimeoutで結果archiveを回収できなかった。停止要求もendpoint Not Foundとなりquarantineされたが、poolのrecoverを再実行し、serverのactive assignment消失と全slot stoppedを確認した。この回をkernelの遅さや精度失敗の証拠として扱わず、全比較から除外する。source archive・logと `resource-aux-recovered.json` / `lifecycle-aux-recovery.log` を保持し、切替・小σを分けて明示再提出した。
+
 CPU全体は1,975 passed / 3,415 skipped、39.80s、18件の既存warning。最終候補source `d7647d19` のwheel/sdist内347 runtimeファイルをcheckoutとbyte照合した。旧sourceの全回帰 `l4job-f21d77b9c52744e79a16d4686656ef3a` も同じ18件のfold compile失敗（609 passed）を含むため、最終版の全回帰合格とは扱わない。
 
 ## 全候補のB32探索比較
@@ -145,6 +147,34 @@ B64のbackward診断（2回目）は対照1.1325ms、4atom 1.1510ms、端点分�
 
 主比較の独立FP64最大誤差はY `1.218e-6`、dX `1.882e-6`、全atom勾配 `3.149e-5`、relative L2は `1.420e-7` 以下。全候補で3状態のmaxabs/relative L2両方を4e-4未満に維持した。
 
+## 切替付近と小σだけの再実行
+
+job `l4job-b138a8b69c7f4b43a5f78dfbab77b83f` / `l4job-38e0a34d185643398e7df6c8dd933319`、source `926993a2`、各1 process。応答を回収できなかった先のjobから条件を分割し、新しいL4 VMで対照も測り直した。runtime/test/runnerは主比較とbyte一致する。
+切替条件の初期σは `.1/.199999/.200001/.20001/1.6` 各20%、小σだけは `.1/.14/.18` 各約1/3。幅の上限は両条件とも12.8のまま。全CST候補で52,428/52,428 atomのσが変化した。
+
+| 方法 | 切替付近 ms | 小σだけ ms | allocated / reserved MiB |
+|---|---:|---:|---:|
+| 前回H/Hμ保存 | **1.7627** | 1.4542 | 81.288 / 172 |
+| backward 4atom | 1.7780 | 1.4591 | 81.288 / 172 |
+| 端点0だけ16分散 | 1.7673 | 1.4599 | 81.288 / 172 |
+| delta全体4分散 | 1.7700 | 1.4645 | 82.741 / 172 |
+| 出力histogram + 読み取り共有 | 1.7875 | 1.4676 | 81.688 / 172 |
+| 入力sort + 局所合算 | 1.9309 | 1.5255 | 81.688 / 172 |
+| 既存小支持点グループ版 | — | **1.2092** | **50.231 / 114** |
+| Dense | .0828 | .0829 | 49.002 / 106 |
+
+切替条件はσの診断で20,971 atomが経路を変更し、最終device分類はnative 41,942 / H 10,486。既存配置は52呼び出しのうち3回構築・49回再利用だった。小σだけは全52,428 atomがnativeで、配置構築1回・再利用51回。これらの呼び出し回数はwarmup/eager/capture/replayを含む。
+
+小σだけでは今回のG生成・dX差分注入kernelは全atomでskipする一方、H snapshotと係数の固定容量や、追加の順序作成・分散buffer/合算の費用は残る。新方式を適用する利点はなく、既存の小支持点グループ版が速く、省メモリだった。
+
+補助比較の独立FP64最大誤差はY `2.399e-6`、dX `3.118e-6`、全atom勾配 `2.049e-5`、relative L2は `1.744e-7` 以下。初期Pと、Denseを含む初期X/targetのhash一致、全候補3状態のmaxabs/relative L2両gate、結果archive/manifest/cleanupを確認した。
+
+## 判断
+
+**今回の範囲では、前回H/Hμ保存版を上回る安定した完全step高速化・省メモリ化は確認できなかった。** 混合σは前回版、小σだけでは既存グループ版を対照として維持する。B32で17候補、B64と切替・小σでは代表候補を検証した結果であり、未測定の実行方式全般が不可能という結論ではない。Denseとの差はB32約21倍、B64約27倍のまま。
+
+区間の共有によりprefix値の読み取りやglobal atomicの要求は減らせても、σと中心の異なるatomの係数積・勾配縮約は個別に残る。この実装では、それをまとめるscan/gatherや保持する値が増え、kernel時間が伸びた。元の公開dispatcherやKernelSpecへ新方式を採用していない。数学・精度を変えずに試した負の結果として、実装・計測条件・証拠を残す。
+
 ## 修正済みsourceの回帰
 
 job `l4job-af45937f16da44349d8b0414a5c4db02` は **647 passed（639実CUDA + 8宣言/metadata）**、791.41s。既存のAccumulateGrad stream warning 1件を含むが、Graph検証を含め全件完了した。runtimeと対象testは最終比較sourceとbyte一致。先の18件compile失敗を含む旧sourceの609 passedを、この合格数に足していない。
@@ -152,7 +182,7 @@ job `l4job-af45937f16da44349d8b0414a5c4db02` は **647 passed（639実CUDA + 8�
 
 ## 証拠と再現
 
-L4 / driver `580.82.07` / Python `3.13.15` / Torch `2.11.0+cu130` / CUDA `13.0` / Triton `3.6.0`。共有poolの1台を排他的に使用した。最終比較は同じ新しいVM上の独立processで、対照も同時に測り直す。
+L4 / driver `580.82.07` / Python `3.13.15` / Torch `2.11.0+cu130` / CUDA `13.0` / Triton `3.6.0`。共有poolの1台を排他的に使用した。主比較の2 processは同じ新しいVMを使用し、補助の再実行は別の新しいVMで対照も測り直した。
 
 | job | source archive SHA256 | result archive SHA256 |
 |---|---|---|
@@ -161,10 +191,12 @@ L4 / driver `580.82.07` / Python `3.13.15` / Torch `2.11.0+cu130` / CUDA `13.0` 
 | `l4job-af45937f16da44349d8b0414a5c4db02` | `88ae1cbceb361c85228bb29f67e6a05b57c43498c7ab15798e06354e2bca2a5c` | `d2734232adcb7ca5ea8c7e20d9f350d6f5c78f4bc82dbe8bf4c64822c4500e63` |
 | `l4job-990d4e4c746d42b0b9f0bda50e39a4ca` | `b0201b5aae6551fc07a4621c3dcd4cb9916acb5f50c4df6d1e1d96100d80cca3` | `fadf0b63ffdb706e7e66185ea461e6bb7e2216b3fe1c62c75f596d77bec32354` |
 | `l4job-f64906c7014b405383fa35b51f2b8055` | `6e7025059231b78db19627ff94fab1a9cf78d3b675b49541264031ca86264bc2` | `55881fb1c68f3b827266d3eed7feaa3210ba8fd824593b080dcbdc26c6eb595f` |
+| `l4job-b138a8b69c7f4b43a5f78dfbab77b83f` | `a78b8bf34d2e6c97afe2ecf0cd2ccb17c17c04aa9e0a7ff10249009d070f6f66` | `c7e1a9e7c48bd947a18b134e945f00ad92fbdbcadb967d47b174babb3159f135` |
+| `l4job-38e0a34d185643398e7df6c8dd933319` | `6c59f26c5b53324fe0659da92f4df063eec0a14f90979b0b75e5c0c487de010f` | `8c41243c2a76500f5f5c0233caf1df607916c64b0730a1092805c3e6c3cf31ff` |
 
-GPUへ送った凍結source、結果archive、全manifest、jobごとのcleanup応答を照合した。最終比較・全回帰・全候補探索の5 snapshotは、runtime 347ファイル、対象test、runnerが現checkoutとbyte一致する。catalogは候補追加のみで、これらのsnapshotに含まれた既存Planの内容は変えていない。初期切替点の件数診断は別の旧sourceで行ったものとして分ける。
+GPUへ送った凍結source、結果archive、全manifest、jobごとのcleanup応答を照合した。最終比較・全回帰・全候補探索の6 snapshotは、runtime 347ファイル、対象test、runnerが現checkoutとbyte一致する。catalogは候補追加のみで、これらのsnapshotに含まれた既存Planの内容は変えていない。初期切替点の件数診断は別の旧sourceで行ったものとして分ける。
 
-raw evidenceはworktreeの `output/bspline-adjoint-20261019/` に保存する。`verified-jobs/` に合格したarchive/manifest/receipt、`excluded-jobs/` に失敗実装・未完比較のarchiveを複製した。`audit-all-study.json` / `audit-primary.json` に全phase・精度・peak・routing、`source-byte-proof.json` にsource照合を残す。除外した初回接続失敗のVM停止とserver assignment消失は `resource-recovered.json` / `lifecycle-initial.log` に記録した。
+raw evidenceはworktreeの `output/bspline-adjoint-20261019/` に保存する。`verified-jobs/` に合格したarchive/manifest/receipt、`excluded-jobs/` に失敗実装・未完比較のarchiveを複製した。`audit-all-study.json` / `audit-primary.json` / `audit-aux.json` に全phase・精度・peak・routing、`source-byte-proof.json` にsource照合、`package-complete/proof.json` にwheel/sdistの347 runtime byte照合を残す。除外した初回接続失敗のVM停止とserver assignment消失は `resource-recovered.json` / `lifecycle-initial.log` に記録した。
 
 GPUホストでの再現例:
 
