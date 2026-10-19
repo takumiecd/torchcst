@@ -34,6 +34,7 @@ def prepare(pos, count, atoms, sites, chunk_atoms=4, minimum=2):
     import triton as tr
 
     from . import input_group_kernels as k
+    from .executor import _report
 
     capacity, bits = layout(atoms, sites, minimum)
     if type(chunk_atoms) is not int or chunk_atoms not in (2, 4, 8, 16):
@@ -53,16 +54,24 @@ def prepare(pos, count, atoms, sites, chunk_atoms=4, minimum=2):
     ends, chunks, chunk_ends = empty(capacity), empty(capacity), empty(capacity)
     bucket, ids, mapping = empty(atoms), empty(atoms), empty(atoms)
     if atoms:
-        k.members[(tr.cdiv(atoms, 128),)](
+        compiled = k.members[(tr.cdiv(atoms, 128),)](
             pos, count, keys, hist, bucket, atoms, capacity, bits
         )
+        _report("input_group_members", compiled)
     torch.cumsum(hist, 0, dtype=torch.int32, out=ends)
     if atoms:
-        k.place[(tr.cdiv(atoms, 128),)](bucket, hist, ends, cursor, ids, count, atoms)
-    k.chunk_counts[(tr.cdiv(capacity, 256),)](hist, chunks, capacity, chunk_atoms)
+        compiled = k.place[(tr.cdiv(atoms, 128),)](
+            bucket, hist, ends, cursor, ids, count, atoms
+        )
+        _report("input_group_place", compiled)
+    compiled = k.chunk_counts[(tr.cdiv(capacity, 256),)](
+        hist, chunks, capacity, chunk_atoms
+    )
+    _report("input_group_chunk_counts", compiled)
     torch.cumsum(chunks, 0, dtype=torch.int32, out=chunk_ends)
     if atoms:
-        k.chunk_map[(tr.cdiv(atoms, 128),)](
+        compiled = k.chunk_map[(tr.cdiv(atoms, 128),)](
             chunk_ends, mapping, atoms, capacity, capacity.bit_length()
         )
+        _report("input_group_chunk_map", compiled)
     return InputGroups(hist, ends, ids, chunk_ends, mapping, chunk_atoms)

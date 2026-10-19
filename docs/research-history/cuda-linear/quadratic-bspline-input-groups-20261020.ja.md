@@ -127,3 +127,29 @@ result SHA256 `00703e56710043a7913544e0571aa8510d3e3f303a931b539d925fec684e1225`
 source byte一致1579 files、manifest8 files、return0/cleanup ackを確認。
 次は共有input H queryと、同じinput eventへ戻すdXのgroup内reductionを同じframeで試す。
 個別G/Gmuと全source VJP、native guard、exact L2、完全stepと両peakのgateは維持する。
+
+
+## v34候補：共有H queryとgroup内dX reduction
+
+新しいresearch Algorithm v34はv32 bundle4/mid1を継承し、forwardの係数とexact sampled L2を
+そのまま使う。hash索引は各forwardで一度だけ構築し、ends/IDs/chunk ends/mapの4 Tensorを
+save_for_backwardで保持する。countはqueryに不要なので構築後に解放する。A52428では
+保持容量1,468,000 bytes（約1.400MiB）。構築時の一時確保とは区別して実測peakを確認する。
+
+1 CTAは同じ入力6点の最大axis_atoms個のslotを担当し、共通のBankを読み、各slotの係数でHを
+評価する。backwardのG/Gmuは従来のatom別query、source VJPも同じ関数を使う。dXの注入は
+既存と同じFP32 weight×coefficientを計算してgroup内で足し、各point/plane/batchへ一度だけ加える。
+boundaryのFMAによる座標shift、end node skip、origin/boundaryのshard planeも保つ。
+source/optimizer行は移動せず、共有するのはprefixの読み取りとdXへの同じeventの加算だけ。
+
+chunk数はgroupごとの端数でceil(A/axis_atoms)を超えるため、各CTAはgrid strideでchunkを
+担当する。少数CTAへ固定するv33とは異なり、起動gridはceil(A/axis_atoms)を維持する。
+全atomは一度ずつ所有し、全batchを同じCTAでreduceするのでsource DPのatomicは追加しない。
+B64などは従来どおりbatchを小分けにし、同じforward snapshotとgroup表を使い、DPは
+既存のserialized ADD_DPで足す。native prefixはgroupから除外する。
+
+共有Hだけ、dX reductionだけ、両方の3候補を、v32 controlとDenseで比較する。
+浮動小数点和の順序は変わるので、独立FP64 Y/dX/全4 source勾配gateを緩和しない。
+同じ入力点でもσ/係数が異なる257 atom、B17/33、動的Count全/一部/ゼロ、retained、
+個別勾配と共通のtiny/floor/dyadic条件を検査する。新方式は未検証のresearch候補で、defaultは変更しない。
+CPU1996 PASS /4312 skipped /既存warning18、38.53秒、Ruff/diff checkを確認。GPU成功とは数えない。

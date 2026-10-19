@@ -31,6 +31,10 @@ def _blocks(n, recipe):
 def _h_launch(direction, atoms, recipe):
     module = lk
     programs = tr.cdiv(atoms, recipe.axis_atoms)
+    if getattr(recipe, "input_groups", False):
+        from . import grouped_kernels
+
+        module = grouped_kernels
     cap = getattr(recipe, "h_programs", 0)
     if cap:
         from . import local_persistent_kernels
@@ -38,6 +42,37 @@ def _h_launch(direction, atoms, recipe):
         module = local_persistent_kernels
         programs = min(programs, cap)
     return getattr(module, direction)[(programs,)]
+
+
+def _group_tables(pos, count, atoms, sites, recipe):
+    _stamp("input_group_prepare", 0)
+    if getattr(recipe, "input_groups", False):
+        from .input_groups import prepare
+
+        table = prepare(
+            pos, count, atoms, sites, recipe.axis_atoms, recipe.min_block_log
+        )
+        # Counts are construction scratch; queries need only these four snapshots.
+        result = (table.ends, table.ids, table.chunk_ends, table.mapping)
+    else:
+        result = ()
+    _stamp("input_group_prepare", 1)
+    return result
+
+
+def _group_args(tables, recipe):
+    if not tables:
+        return {}
+    ends, ids, chunks, mapping = tables
+    return {
+        "GroupEnds": ends,
+        "GroupIDs": ids,
+        "ChunkEnds": chunks,
+        "ChunkMap": mapping,
+        "CAP": len(ends),
+        "SHARED_INPUT": recipe.shared_input,
+        "REDUCE_DX": recipe.group_dx,
+    }
 
 
 def _tile_bundle(n, sizes, recipe):
@@ -304,6 +339,7 @@ class _Local(torch.autograd.Function):
             shards,
             endpoints,
         ) = _frame(x, p, value, chart, recipe, moments, routing, sizes)
+        groups = _group_tables(pos, count, a, sizes[1], recipe)
         y = x.new_zeros((b, sizes[0]))
         native_forward(
             x,
@@ -348,6 +384,7 @@ class _Local(torch.autograd.Function):
             getattr(recipe, "bank_padding", 0),
             Order=_source_order(order, recipe),
             LAYOUT=getattr(recipe, "coefficient_layout", "soa"),
+            **_group_args(groups, recipe),
             num_warps=recipe.axis_warps,
             enable_fp_fusion=False,
         )
@@ -369,6 +406,7 @@ class _Local(torch.autograd.Function):
             active,
             bp,
             injection,
+            *groups,
         )
         return y
 
@@ -401,7 +439,8 @@ class _Local(torch.autograd.Function):
             active,
             bp,
             injection,
-        ) = ctx.saved_tensors
+        ) = ctx.saved_tensors[:14]
+        groups = ctx.saved_tensors[14:]
         dy = dy.contiguous()
         recipe, sizes = ctx.recipe, ctx.sizes
         a, b = len(meta), len(x)
@@ -463,6 +502,7 @@ class _Local(torch.autograd.Function):
             getattr(recipe, "bank_padding", 0),
             Order=_source_order(order, recipe),
             LAYOUT=getattr(recipe, "coefficient_layout", "soa"),
+            **_group_args(groups, recipe),
             num_warps=recipe.axis_warps,
             enable_fp_fusion=False,
         )

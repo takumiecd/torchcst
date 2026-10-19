@@ -692,3 +692,20 @@ class BSplineLocalPersistentRecipe(BSplineLocalCanonicalRecipe):
             1024,
         ):
             raise ValueError("h_programs must be 0, 128, 256, 512 or 1024")
+
+
+@dataclass(frozen=True)
+class BSplineLocalGroupedRecipe(BSplineLocalBankBundleRecipe):
+    """Revision 34: exact input-event groups, shared H and reduced input adjoint."""
+
+    input_groups = True
+    bank_tile_blocks: int = 4
+    bank_mid_blocks: int = 1
+    shared_input: bool = True
+    group_dx: bool = True
+
+    def __post_init__(self):
+        super().__post_init__()
+        for name in ("shared_input", "group_dx"):
+            if type(getattr(self, name)) is not bool:
+                raise ValueError(f"{name} must be boolean")

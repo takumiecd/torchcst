@@ -34,6 +34,7 @@ def diagnostic_components(
     local_h=False,
     chunk_count=1,
     event_owner=False,
+    input_groups=False,
 ):
     common = ("snapshot", "prepare", "norm_replay")
     if local_h:
@@ -57,6 +58,8 @@ def diagnostic_components(
             "scan_input",
             "unpack",
         )
+        if input_groups:
+            names += ("input_group_prepare",)
         if event_owner:
             names += ("owner_prepare", "owner_output", "owner_input")
         if chunk_count <= 1 and not event_owner:

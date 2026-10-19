@@ -10,6 +10,8 @@ from .local_executor import (
     _blocks,
     _delta,
     _frame,
+    _group_args,
+    _group_tables,
     _h_launch,
     _Local,
     _points,
@@ -63,6 +65,7 @@ class _Chunked(torch.autograd.Function):
             shards,
             endpoints,
         ) = _frame(x, p, value, chart, recipe, moments, routing, sizes)
+        groups = _group_tables(pos, count, a, sizes[1], recipe)
         y = x.new_zeros((b, sizes[0]))
         native_forward(
             x,
@@ -122,6 +125,7 @@ class _Chunked(torch.autograd.Function):
                 tile - actual,
                 Order=_source_order(order, recipe),
                 LAYOUT=getattr(recipe, "coefficient_layout", "soa"),
+                **_group_args(groups, recipe),
                 num_warps=recipe.axis_warps,
                 enable_fp_fusion=False,
             )
@@ -139,7 +143,19 @@ class _Chunked(torch.autograd.Function):
                 ml,
             )
         ctx.save_for_backward(
-            meta, x, origin, spacing, order, count, pos, co, half, active, bp, injection
+            meta,
+            x,
+            origin,
+            spacing,
+            order,
+            count,
+            pos,
+            co,
+            half,
+            active,
+            bp,
+            injection,
+            *groups,
         )
         return y
 
@@ -149,8 +165,9 @@ class _Chunked(torch.autograd.Function):
         if ctx.empty:
             return _Local.backward(ctx, dy)
         meta, x, origin, spacing, order, count, pos, co, half, active, bp, injection = (
-            ctx.saved_tensors
+            ctx.saved_tensors[:12]
         )
+        groups = ctx.saved_tensors[12:]
         dy = dy.contiguous()
         recipe, sizes = ctx.recipe, ctx.sizes
         a, b = len(meta), len(x)
@@ -247,6 +264,7 @@ class _Chunked(torch.autograd.Function):
                 True,
                 Order=_source_order(order, recipe),
                 LAYOUT=getattr(recipe, "coefficient_layout", "soa"),
+                **_group_args(groups, recipe),
                 num_warps=recipe.axis_warps,
                 enable_fp_fusion=False,
             )

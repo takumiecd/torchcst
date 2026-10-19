@@ -19,6 +19,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineLocalChunkedAlgorithm,
     BSplineLocalCoefficientAlgorithm,
     BSplineLocalEndpointAlgorithm,
+    BSplineLocalGroupedAlgorithm,
     BSplineLocalMomentAlgorithm,
     BSplineLocalNarrowAlgorithm,
     BSplineLocalNativeBoundAlgorithm,
@@ -54,6 +55,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineLocalChunkedRecipe,
     BSplineLocalCoefficientRecipe,
     BSplineLocalEndpointRecipe,
+    BSplineLocalGroupedRecipe,
     BSplineLocalMomentRecipe,
     BSplineLocalNarrowRecipe,
     BSplineLocalNativeBoundRecipe,
@@ -102,11 +104,14 @@ def case(n=64, a=17):
 def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     from dataclasses import replace
 
+    grouped = strategy == "h_local_grouped" or recipe_options.pop("_grouped", False)
     persistent = strategy == "h_local_persistent" or recipe_options.pop(
         "_persistent", False
     )
-    bank_bundle = strategy == "h_local_bank_bundle" or recipe_options.pop(
-        "_bank_bundle", False
+    bank_bundle = (
+        strategy == "h_local_bank_bundle"
+        or recipe_options.pop("_bank_bundle", False)
+        or grouped
     )
     coefficients = (
         strategy == "h_local_coefficient"
@@ -207,6 +212,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineLocalCanonicalAlgorithm())
     registry.register(BSplineLocalCoefficientAlgorithm())
     registry.register(BSplineLocalBankBundleAlgorithm())
+    registry.register(BSplineLocalGroupedAlgorithm())
     registry.register(BSplineLocalPersistentAlgorithm())
     registry.register(BSplineNativeHAlgorithm())
     registry.register(BSplineNativeLoopAlgorithm())
@@ -232,7 +238,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     tuned = bool(recipe_options) or strategy == "matrix_separable"
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v33"
+        "v34"
+        if grouped
+        else "v33"
         if persistent
         else "v32"
         if bank_bundle
@@ -297,7 +305,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         else "v2"
         if tuned
         else "v1",
-        BSplineLocalPersistentRecipe(**recipe_options)
+        BSplineLocalGroupedRecipe(**recipe_options)
+        if grouped
+        else BSplineLocalPersistentRecipe(**recipe_options)
         if persistent
         else BSplineLocalBankBundleRecipe(**recipe_options)
         if bank_bundle
@@ -2515,6 +2525,26 @@ PERSISTENT_OPTIONS = [
         "native_programs": 32,
     },
 ]
+GROUPED_OPTIONS = [
+    {"_grouped": True},
+    {
+        "_grouped": True,
+        "shared_input": False,
+        "axis_atoms": 8,
+        "active_levels": True,
+        "batch_chunk": 16,
+        "prepare_float32": False,
+        "contract_float32": False,
+    },
+    {
+        "_grouped": True,
+        "group_dx": False,
+        "coefficient_layout": "aos3",
+        "shard_origin": False,
+        "reciprocal": False,
+        "norm_float32": False,
+    },
+]
 ALL_QUERY_OPTIONS = (
     QUERY_OPTIONS
     + LEAN_OPTIONS
@@ -2552,6 +2582,7 @@ ALL_QUERY_OPTIONS = (
         pytest.param(opt, id=f"persistent-{i}")
         for i, opt in enumerate(PERSISTENT_OPTIONS)
     ]
+    + [pytest.param(opt, id=f"grouped-{i}") for i, opt in enumerate(GROUPED_OPTIONS)]
 )
 
 
@@ -2807,7 +2838,8 @@ def test_local_recipe_roundtrip_and_bounds():
     + [
         pytest.param(opt, id=f"persistent-{i}")
         for i, opt in enumerate(PERSISTENT_OPTIONS)
-    ],
+    ]
+    + [pytest.param(opt, id=f"grouped-{i}") for i, opt in enumerate(GROUPED_OPTIONS)],
 )
 def test_local_dyadic_boundaries_graph(options):
     import math
@@ -2827,6 +2859,7 @@ def test_local_dyadic_boundaries_graph(options):
         or options.get("_coefficients")
         or options.get("_bank_bundle")
         or options.get("_persistent")
+        or options.get("_grouped")
         else 0.2,
         **options,
     )
@@ -2841,6 +2874,7 @@ def test_local_dyadic_boundaries_graph(options):
         or options.get("_coefficients")
         or options.get("_bank_bundle")
         or options.get("_persistent")
+        or options.get("_grouped")
         else 3
     )
     targets = (2.0 ** (minimum + ids % 6)) * 0.1 / math.sqrt(6)
@@ -3337,7 +3371,7 @@ def test_complete_bspline_catalog_decodes():
     )
     entries = decode_catalog(catalog)
     revisions = {entry.plan.algorithm_revision for entry in entries}
-    assert {"v26", "v27", "v28", "v29", "v30", "v31", "v32", "v33"} <= revisions
+    assert {"v26", "v27", "v28", "v29", "v30", "v31", "v32", "v33", "v34"} <= revisions
 
 
 def test_native_bound_recipe_roundtrip_and_bounds():
@@ -3371,6 +3405,7 @@ def test_native_bound_recipe_roundtrip_and_bounds():
         "h_local_coefficient",
         "h_local_bank_bundle",
         "h_local_persistent",
+        "h_local_grouped",
     ],
 )
 def test_native_bound_count_changes_across_graph(batch, floor, strategy):
@@ -3451,6 +3486,7 @@ def test_native_bound_count_changes_across_graph(batch, floor, strategy):
         "h_local_coefficient",
         "h_local_bank_bundle",
         "h_local_persistent",
+        "h_local_grouped",
     ],
 )
 def test_native_bound_strided_individual_gradients(which, strategy):
@@ -3482,6 +3518,7 @@ def test_native_bound_strided_individual_gradients(which, strategy):
         "h_local_coefficient",
         "h_local_bank_bundle",
         "h_local_persistent",
+        "h_local_grouped",
     ],
 )
 def test_native_bound_retained_count_above_grid(strategy):
@@ -3747,3 +3784,50 @@ def test_local_persistent_recipe_roundtrip_and_bounds():
     for cap in (-1, 1, 127, 4096, True):
         with pytest.raises(ValueError):
             BSplineLocalPersistentRecipe(h_programs=cap)
+
+
+def test_local_grouped_recipe_roundtrip_and_bounds():
+    reg = Registry()
+    reg.register(BSplineLocalGroupedAlgorithm())
+    for options in GROUPED_OPTIONS:
+        options = {k: v for k, v in options.items() if k != "_grouped"}
+        plan = ExecutionPlan(
+            "research_cuda_quadratic_bspline",
+            "v34",
+            BSplineLocalGroupedRecipe(**options),
+        )
+        assert reg.loads_plan(reg.dumps_plan(plan)) == plan
+    for key in ("shared_input", "group_dx"):
+        with pytest.raises(ValueError):
+            BSplineLocalGroupedRecipe(**{key: 1})
+
+
+@GPU
+@pytest.mark.parametrize("batch", [17, 33])
+def test_grouped_shared_events_have_distinct_coefficients(batch):
+    import math
+
+    layer = model("h_local_grouped", n=64, a=257)
+    ids = torch.arange(257, device="cuda")
+    sigma = 0.4 + 0.0004 * torch.sin(ids.double())
+    radius = (1 + 3 * (sigma / 0.1).log() / math.log(128)).sqrt()
+    with torch.no_grad():
+        layer.atoms.p[:, 0] = (0.6 * radius).float()
+        layer.atoms.p[:, 1] = (0.8 * radius).float()
+        layer.atoms.p[:, 2] = 0.2 + (ids.float() * 0.027) % 5.8
+        layer.atoms.p[:, 3] = 3.15 + 0.004 * torch.cos(ids.float())
+    p = layer.atoms.p.detach().double()
+    actual_radius = (6**0.5) * bs.decode(layer.kernel, p)[:, 1].rsqrt()
+    cuts = torch.ceil(
+        (
+            p[:, 3, None]
+            + actual_radius[:, None] * p.new_tensor([-1.0, -1 / 3, 1 / 3, 1.0])
+            - layer.chart.origin[1]
+        )
+        / layer.chart.spacing[1]
+    )
+    assert len(torch.unique(cuts, dim=0)) == 1
+    assert len(torch.unique(p[:, 3])) > 200
+    x = torch.randn(batch, 64, device="cuda", requires_grad=True)
+    dy = torch.randn_like(x)
+    gate(layer, x, dy)

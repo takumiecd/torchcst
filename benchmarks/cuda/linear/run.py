@@ -695,6 +695,9 @@ def measure(args, run):
                             "canonical_meta": getattr(recipe, "canonical_meta", False),
                             "bank_tile_blocks": getattr(recipe, "bank_tile_blocks", 1),
                             "h_programs": getattr(recipe, "h_programs", 0),
+                            "input_groups": getattr(recipe, "input_groups", False),
+                            "shared_input": getattr(recipe, "shared_input", False),
+                            "group_dx": getattr(recipe, "group_dx", False),
                             "bank_mid_blocks": getattr(recipe, "bank_mid_blocks", 1),
                             "coefficient_layout": getattr(
                                 recipe, "coefficient_layout", "soa"
@@ -916,6 +919,7 @@ def measure(args, run):
                     )
                 ),
                 bool(getattr(run.entry(args.plan_id).plan.recipe, "owner_events", 0)),
+                getattr(run.entry(args.plan_id).plan.recipe, "input_groups", False),
             )
             backend_events = {
                 name: [
