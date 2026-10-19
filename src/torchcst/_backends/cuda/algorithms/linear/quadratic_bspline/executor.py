@@ -24,7 +24,12 @@ def _report(name, compiled):
 
 
 def diagnostic_components(
-    strategy, range_planes=3, prepared_h=False, coalesced_h=False, saved_h=False
+    strategy,
+    range_planes=3,
+    prepared_h=False,
+    coalesced_h=False,
+    saved_h=False,
+    adjoint_h=False,
 ):
     common = ("snapshot", "prepare", "norm_replay")
     if strategy == "matrix_range":
@@ -82,12 +87,11 @@ def diagnostic_components(
                     "h_recompute",
                     "g_recompute",
                     "atom_contract",
-                    "adjoint_order",
-                    "dx_reduce",
                 )
                 if saved_h
                 else ()
             )
+            + (("adjoint_order", "dx_reduce") if adjoint_h else ())
             + (
                 "group",
                 "pack",
