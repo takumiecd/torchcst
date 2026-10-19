@@ -291,3 +291,30 @@ source SHA256 `98fcc7b8c94380bcfc86135bd334113453e9b6c308065dfbd282ecb6c0dae182`
 
 
 v28初回job `l4job-4aed36623d514cc4ad107f25e036a21c` は42 checks PASSの後、追加テスト6件が失敗して性能測定に進まなかった。最初の失敗はretained forwardのYを保持したまま同じleafで別streamのGraph captureを開始し、PyTorchのAccumulateGrad stream mismatch / cudaErrorStreamCaptureImplicitとなったもの。その後5件はcapture失敗によるcontext状態エラー。整数event所属・mapの厳密検査と既存Graph系テストは通っている。retained forwardとGraph replayを別モデル/leafの独立テストへ分け、双方を維持して再検証する。数値基準やruntimeは変更しない。失敗runはprimary性能表から除外し、原本とcleanup ackを保持する。
+
+
+## v28結果：正しさは通るが、索引構築込みでは遅い
+
+source `a9819b5a48e2e35341398eb034f849ab5332dadd`（runtimeは0f5dd091と同じ）、job `l4job-5ca2561754954bb6a7adbb1d5406469b`。retained forwardとGraphのleafを分けた後、54 checks PASS /1212 deselected /既存cuBLAS warning1、25.51秒。整数event所属とmap、全勾配、動的σ/X、retained状態とGraph replayは全て通った。全主要planの3状態・全52428 atomの独立FP64 gateもPASS。構築・正規化・optimizer込みの完全step結果は次のとおり。
+
+| plan | B32 mixed ms | allocated/reserved MiB | B64 mixed ms | allocated/reserved MiB |
+|---|---:|---:|---:|---:|
+| query-fma |1.616055|81.288 /172|2.495933|96.791 /188|
+| v26 FP32係数 control |0.882864|35.317 /98|1.554901|47.302 /142|
+| v27 tile32 control |0.883285|35.317 /98|1.426235|35.817 /102|
+| owner32 events, tile32 |1.036062|37.727 /98|1.592634|38.227 /100|
+| owner64 events, tile32 |0.981830|37.689 /98|1.484491|38.189 /100|
+| owner128 events, tile32 |0.990570|37.671 /98|1.495176|38.171 /100|
+| owner64 events, tile16 |1.304982|31.145 /98|2.206131|31.645 /100|
+| Dense |0.082837|49.002 /106|0.103604|49.502 /106|
+
+owner64/tile32はv27 controlよりB32約11.2%、B64約4.1%遅い。allocatedも約2.37 MiB増える。一方B64のreservedは102→100 MiBとなるので、全memory指標で劣るという意味ではない。owner/tile16はさらにメモリを減らすが大幅に遅い。両peakがDense以下の条件で、現時点の速度基準はv27/tile32を維持する。小σ-only/switchでのv28性能比較は未実施で、採用根拠にはしない。
+
+独立phaseのowner64/tile32では索引構築がB32約0.116ms、B64約0.121ms。B64の1 chunkあたりH生成約0.055ms、H/G・center微分とsource VJP約0.205ms、Y/dX側のevent集約がそれぞれ約0.060ms、復元scan約0.022msだった。projection/ownerにはspillがなく、H/G生成とsource VJPも残る。atomic削減で一部phaseが軽くても、新しい索引構築のコストを完全stepで回収できなかった。別々の計装phaseの差し引きを、同じfused kernel内部の厳密な時間分解とは扱わない。
+
+B64 v27/tile32は別jobでも1.426235msと35.817 /102 MiBを再現し、初回1.414630msと同じ改善帯。最新同runのDense比はB32約10.66倍、B64約13.77倍。2倍目標は未達のまま。次の候補はCountが少なくても全atom分起動するnative側の起動量、Metaのpack/unpack、guardを維持した正規化準備と、入力区間を共有するqueryの読み取り削減。profileや精度基準は変更しない。
+
+source SHA256 `c2d8e3bcc8148ea530343f197eebfb3a0653bcf52b58eebd9130c431494407cd`、result SHA256 `7014bcee4e12d34bdb8611d0d2c5f1e5a08fbe6fa5573a0ab18c2a2736d02f62`。source byte一致1549 files、manifest 54 files、return0/cleanup ack確認。CPU最新1989 passed /4020 skipped /既存warning18。runtime358 filesは0f5dd091から不変で、先のwheel/sdist byte proofと一致する。全verified primaryのmaxabs上限はY6.583e-5 /dX7.542e-5 /all-source1.590e-4、relative L2は3.965e-6以下。
+
+
+失敗runの検証済み原本hashも保持する。v27 catalog失敗06a0f7のsource/result SHA256は `20a271f59ed1b5d42142b049ccf975f46b388905371e78c9ffe538a3b13f93c2` / `d85070f3ebed8137330c7f36feb18fda10edb81cf8471974689f017a5e516d6c`。v28 test stream失敗4aed366は `713fc6fe5f73392cfc19d1cc7dc95dd176a9f6ba79752ec8e7300858e427923a` / `3d96dcd0edbf4e3cb912c995e85b32e616101e993cf6d65e67aa30476601d7a9`。両者はsource/manifest/return1/cleanup ackを確認した失敗記録で、primary性能へは混ぜない。
