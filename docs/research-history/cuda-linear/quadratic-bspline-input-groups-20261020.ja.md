@@ -65,3 +65,39 @@ Parameterとoptimizer stateを並べ替えず、各forwardに独立した所属�
 0/一部/全native、0 atom、同一key、多数の異なるkeyと衝突、16bit pack上限、Graphの動的Countと
 位置、retained tableの独立性をGPUで確認し、同じTorch構築との時間・メモリをscreenする。
 このprimitiveだけのGPU検証を、H/Gや全atom勾配の照合・完全stepの速度改善とは扱わない。
+
+
+## ハッシュ構築のGPU screen
+
+source `5fc5ccff2620f4a09cd130415fa467d2aade2626`、job
+`l4job-1dcb77c9731943f1b287fa7dd37378a0`。26 checks PASS、7.61秒。
+0/一部/全native、空atom、同一key、4096-siteの16bit pack、Graphの動的Count/位置、
+retained所属表を確認した。実際のmixed/small/switchについてもCPU位置と全要素一致、
+group数・count・全atom IDの被覆が一致した。L4/Torch2.11.0+cu130/CUDA13/Triton3.6.0。
+
+| 初期分布 | Torch全構築 ms | ハッシュ全構築 ms | 構築の増分allocated MiB（Torch / hash） |
+|---|---:|---:|---|
+| mixed |0.139264|0.034816|2.433 /4.103|
+| small |0.139264|0.034816|2.433 /4.103|
+| switch |0.140288|0.034816|2.433 /4.103|
+
+辞書初期化、membership、count scan、ID配置、chunkのscan/mapまでを含む。
+元の位置は計時外。約4倍速いが構築時の増分memoryは増えた。これは索引primitiveのみの
+screenであり、完全stepの速度・メモリやY/dX/全atom勾配の照合結果ではない。
+large primaryでgroupの全memberと全6点が一致する検査を追加し、独立再測定してから
+H/G実行方式へ統合する。dispatcherへの採用はしない。
+
+source SHA256 `c32112dc64434e17797ce296b787c7576b2626e62d2eb5e0d1d1fb1211649a09`、
+result SHA256 `071e11eaf5c31b3746791a96ce92137a79f476c618601d094fd4724879aa4182`。
+source byte一致1579 files、manifest8 files、return0/cleanup ackを確認。
+CPUは1995 PASS /4269 skipped /既存warning18、38.46秒、Ruffとisolated sdist/wheelの
+363 runtime-file byte一致を確認。CPU skipをGPU成功と数えない。
+
+初回job `l4job-7c63b79cf747473c9b7b7b7080d51507` は26単体検査を通った後、
+測定driverの位置変換検査で失敗。次の `l4job-ad99c9c7ab6d48198fa7ea8fb76c5bf2` で、
+smallのsize8だけdriverがGPU log2を整数へ切り捨て、prefixのlevelを一つ下へ置くことが判明した。
+GPU log2の丸めを整数変換前に行い、CPU位置との全要素照合を追加した。runtimeのhashコードと
+精度基準は変更していない。7c63はsource/archive/manifest/cleanup ackを検証してfailed-jobsへ保存。
+ad99は結果download後のremote cleanupがWebSocket切断で失敗した。source/archive/manifestは照合したが
+cleanup ackがなく、incomplete-jobsへ区別して保存した。owned VMの停止はpoolが確認済み。
+両方とも性能の根拠から除外する。

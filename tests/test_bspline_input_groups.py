@@ -50,7 +50,7 @@ def check_groups(groups, pos, count):
     assert torch.equal(
         ids[: a - count].sort()[0], torch.arange(count, a, dtype=torch.int32)
     )
-    rows = pos[1, :4].T.cpu()
+    rows = pos[1].T.cpu()
     expected = {}
     for row in rows[count:].tolist():
         key = tuple(row)
@@ -137,3 +137,62 @@ def test_input_groups_one_key_and_graph_snapshots():
     ):
         # Unwritten ID/mapping suffixes remain private to the retained frame too.
         assert torch.equal(actual, expected)
+
+
+@GPU
+def test_input_groups_full_primary_geometry():
+    from types import SimpleNamespace as NS
+
+    from benchmarks.cuda.linear import bspline as bs
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.input_groups import (
+        prepare,
+    )
+
+    a, n = 52428, 1024
+    case = NS(
+        size=n,
+        atoms=a,
+        seed=41,
+        widths=NS(
+            minimum=0.1,
+            birth=0.1,
+            maximum=12.8,
+            rho=(0.1, 0.4, 1.6, 6.4, 12.0),
+            fractions=(0.2,) * 5,
+        ),
+    )
+    p = bs.initialize(case)
+    decoded = bs.decode(bs.fixture_state(case), p.double())
+    radius = (6.0**0.5) * decoded[:, 1].rsqrt()
+    spacing = float(torch.tensor(0.1))
+    size = (2 ** torch.ceil(torch.log2(radius / spacing))).clamp(4, n).long()
+    shift = size.double().log2().round().long()
+    tiles = n // size
+    cuts = (
+        torch.ceil(
+            (
+                p[:, 3, None].double()
+                + radius[:, None]
+                * torch.tensor([-1, -1 / 3, 1 / 3, 1], dtype=torch.float64)
+            )
+            / spacing
+        )
+        .clamp(0, n)
+        .long()
+    )
+    offset = (shift - 2) * n + 2 * (n >> 2) - 2 * tiles
+    tile = torch.minimum(((cuts - 1) // size[:, None]).clamp_min(0), tiles[:, None] - 1)
+    point = offset[:, None] + tile * (size[:, None] + 1) + cuts - tile * size[:, None]
+    pos = torch.full((2, 6, a), -1, dtype=torch.int32)
+    pos[1, :4] = point.T.int()
+    first = tile[:, 0]
+    for event in (4, 5):
+        boundary = (first + event - 3) * size
+        before = torch.minimum(first + event - 4, tiles - 1)
+        active = (boundary < n) & (boundary < cuts[:, 3])
+        point = offset + before * (size + 1) + size
+        pos[1, event] = torch.where(active, point, -1).int()
+    pos = pos.cuda()
+    groups = prepare(pos, pos.new_full((), 0), a, n)
+    # Check every member and all six positions, beyond group-size equality.
+    check_groups(groups, pos, 0)
