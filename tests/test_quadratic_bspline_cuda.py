@@ -1541,3 +1541,41 @@ def test_prepared_h_retained_forward_geometry_and_event_order(mode):
     actual = torch.autograd.grad(y, (x, layer.atoms.p), dy)
     for a, b in zip(actual, expected):
         torch.testing.assert_close(a, b)
+
+
+@GPU
+@pytest.mark.parametrize("mode", ["fused", "split", "segmented"])
+def test_prepared_h_broad_zero_amplitude_keeps_amplitude_gradient(mode):
+    import math
+
+    layer = model("h_prepared", n=128, a=1, h_mode=mode)
+    radius = math.sqrt(1 + 3 * math.log(1.6 / 0.1) / math.log(128.0))
+    with torch.no_grad():
+        layer.atoms.p[0, 0] = 0
+        layer.atoms.p[0, 1] = radius
+        layer.atoms.p[0, 2:] = 6.35
+    x = torch.randn(3, 128, device="cuda", requires_grad=True)
+    gate(layer, x, torch.randn_like(x))
+    dp = torch.autograd.grad(layer(x).sum(), layer.atoms.p)[0]
+    assert dp[0, 0].abs().item() > 1e-8
+
+
+@GPU
+@pytest.mark.parametrize("mode", ["split", "segmented"])
+@pytest.mark.parametrize("which", ["x", "p"])
+def test_prepared_h_individual_gradient_requests(mode, which):
+    layer = model("h_prepared", n=128, a=33, h_mode=mode, save_w=False)
+    layer.atoms.p.requires_grad_(which == "p")
+    x = torch.randn(3, 128, device="cuda", requires_grad=which == "x")
+    dy = torch.randn_like(x)
+    y = layer(x)
+    requested = x if which == "x" else layer.atoms.p
+    actual = torch.autograd.grad(y, requested, dy)[0]
+    rx = x.detach().double().requires_grad_(which == "x")
+    rp = layer.atoms.p.detach().double().requires_grad_(which == "p")
+    ref = bs.oracle(copy.deepcopy(layer.kernel).double(), layer.chart, rp, rx)
+    expected = torch.autograd.grad(ref, rx if which == "x" else rp, dy.double())[0]
+    from benchmarks.cuda.linear.check_normalized import check
+
+    error = check(actual, expected, 4e-4)
+    assert error["max"] < 4e-4 and error["rel_l2"] < 4e-4

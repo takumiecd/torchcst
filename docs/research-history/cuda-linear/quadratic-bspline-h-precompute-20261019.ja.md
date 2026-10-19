@@ -62,3 +62,7 @@ fused版のh_query/y_injectイベントは空で、stream_forward/backward span�
 
 raw source/results/logsとhash検証はignored `output/bspline-h-precompute-20261019/`に保全。
 性能と採否は実機結果の回収・検証後に記録する。
+
+初回 `l4job-15b6cb5104204de3927a664e0f5e1536`（7325d2f2）は、GPUの係数準備kernelで
+unrolled loop内のconstexpr再定義がコンパイルエラーになった。数値・性能結果は採用しない。
+修正ad0954d0で再提出。初回のsource/result/log/manifestは保全している。
