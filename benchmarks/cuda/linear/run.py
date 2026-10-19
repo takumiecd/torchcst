@@ -604,6 +604,31 @@ def measure(args, run):
                             "routing_count_scope": "sigma-only counts above; device route additionally keeps <=2-site clipped axis supports native",
                         }
                     )
+                if getattr(recipe, "coalesced_h", False):
+                    hybrid_routing.update(
+                        {
+                            "bank_layout": "plane,site,batch"
+                            if recipe.point_major
+                            else "plane,batch,site",
+                            "h_workspace_layout": "atom,batch",
+                            "shared_endpoint_reads": recipe.share_reads,
+                            "fresh_input_endpoint_sort": recipe.sort_input,
+                            "local_endpoint_reduction": recipe.reduce_writes,
+                            "endpoint_owner": recipe.site_owner,
+                            "event_policy": "fresh integer histogram/scan/place each forward; broad floating injection atomic-free; native W and integer histogram retain atomics"
+                            if recipe.site_owner
+                            else None,
+                            "owner_zero_partial_bytes": 3
+                            * (
+                                (4 * case.atoms + recipe.event_atoms - 1)
+                                // recipe.event_atoms
+                            )
+                            * m
+                            * 8
+                            if recipe.site_owner
+                            else 0,
+                        }
+                    )
                 if recipe.strategy == "matrix_range":
                     hybrid_routing.update(
                         {
@@ -774,6 +799,7 @@ def measure(args, run):
                 run.entry(args.plan_id).plan.recipe.strategy,
                 getattr(run.entry(args.plan_id).plan.recipe, "range_planes", 3),
                 getattr(run.entry(args.plan_id).plan.recipe, "prepared_h", False),
+                getattr(run.entry(args.plan_id).plan.recipe, "coalesced_h", False),
             )
             backend_events = {
                 name: [

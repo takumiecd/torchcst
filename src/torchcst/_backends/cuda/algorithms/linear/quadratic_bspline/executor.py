@@ -23,7 +23,9 @@ def _report(name, compiled):
         }
 
 
-def diagnostic_components(strategy, range_planes=3, prepared_h=False):
+def diagnostic_components(
+    strategy, range_planes=3, prepared_h=False, coalesced_h=False
+):
     common = ("snapshot", "prepare", "norm_replay")
     if strategy == "matrix_range":
         substeps = tuple(
@@ -74,6 +76,7 @@ def diagnostic_components(strategy, range_planes=3, prepared_h=False):
         return (
             common
             + extra
+            + (("input_sort", "layout_output", "layout_input") if coalesced_h else ())
             + (
                 "group",
                 "pack",

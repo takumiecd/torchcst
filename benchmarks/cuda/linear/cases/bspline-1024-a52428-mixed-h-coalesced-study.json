@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "case": {
+    "id": "bspline-1024-a52428-mixed-h-coalesced-study",
+    "fixture": "quadratic_bspline",
+    "size": 1024,
+    "rows": 32,
+    "atoms": 52428,
+    "profile": "mixed",
+    "dtype": "float32",
+    "seed": 41,
+    "warmup": 5,
+    "rounds": 21,
+    "optimizer": {
+      "name": "AdamW",
+      "lr": 0.0001,
+      "weight_decay": 0.01,
+      "fused": true,
+      "capturable": true
+    },
+    "widths": {
+      "minimum": 0.1,
+      "birth": 0.1,
+      "maximum": 12.8,
+      "rho": [
+        0.1,
+        0.4,
+        1.6,
+        6.4,
+        12.0
+      ],
+      "fractions": [
+        0.2,
+        0.2,
+        0.2,
+        0.2,
+        0.2
+      ],
+      "center_jitter": null
+    }
+  },
+  "plans": [
+    "range-reuse-a16w1",
+    "h-cache-edges-c02",
+    "h-row-split",
+    "h-point-split",
+    "h-point-fused",
+    "h-input-sort",
+    "h-input-share",
+    "h-local-reduce",
+    "h-site-owner",
+    "h-owner-share"
+  ],
+  "baseline": "range-reuse-a16w1",
+  "dense": true
+}

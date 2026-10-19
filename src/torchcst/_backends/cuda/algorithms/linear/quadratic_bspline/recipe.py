@@ -255,3 +255,33 @@ class BSplinePreparedHRecipe(BSplineStreamingMemoryRecipe):
                 raise ValueError(f"{name} must be one of {allowed}")
         if self.h_mode == "segmented" and not self.coefficient_cache:
             raise ValueError("segmented injection requires coefficient_cache")
+
+
+@dataclass(frozen=True)
+class BSplineCoalescedHRecipe(BSplinePreparedHRecipe):
+    """Revision 13: batch-contiguous H reads and optional endpoint owners."""
+
+    coalesced_h = True
+    point_major: bool = True
+    share_reads: bool = False
+    sort_input: bool = False
+    reduce_writes: bool = False
+    site_owner: bool = False
+
+    def __post_init__(self):
+        super().__post_init__()
+        for name in (
+            "point_major",
+            "share_reads",
+            "sort_input",
+            "reduce_writes",
+            "site_owner",
+        ):
+            if type(getattr(self, name)) is not bool:
+                raise ValueError(f"{name} must be boolean")
+        if not self.coefficient_cache or self.h_mode not in ("fused", "split"):
+            raise ValueError(
+                "coalesced H requires cached coefficients and fused/split mode"
+            )
+        if self.site_owner and (not self.point_major or self.h_mode != "split"):
+            raise ValueError("site_owner requires point_major split mode")
