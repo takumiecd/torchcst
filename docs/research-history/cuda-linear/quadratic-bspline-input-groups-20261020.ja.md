@@ -190,3 +190,58 @@ L2の3 pieceのnormalized inputsもN64/1024では一致し、N8192の9 pieceでz
 原点非0のfallbackでMeta正規化値と全係数・整数eventがbit一致することを確認する。
 CPU1997 PASS /4356 skipped /既存warning18、38.79秒を確認済み。v34の診断stamp修正を取り込んだ
 状態でもCPU確認し、GPUへ提出する。defaultは変更しない。
+
+
+## v34完全step結果：共有queryとgroup reductionは遅い
+
+診断stamp修正後source `e9a85ad6547e6ed49a26d850aa4d47d7d9b2e9e0`、job
+`l4job-a16c0570f73545978d0e6cb8bd4a6f29`。計算kernelは初回f27805faと同じ。
+初回71 checksの範囲を保持し、再runで両primaryの全plan・3状態の独立FP64 full-shape gateと
+全52428 σ更新、同一初期X/P/targetを通過してから完全stepを測った。
+
+| plan | B32 ms | B64 ms | B32 allocated/reserved MiB | B64 allocated/reserved MiB |
+|---|---:|---:|---|---|
+| v32 control |0.785760|1.275836|34.153 /98|34.653 /100|
+| 共有H+dX reduction |1.114874|2.028886|35.554 /102|36.054 /104|
+| 共有Hのみ |0.977199|1.634890|35.554 /102|36.054 /104|
+| dX reductionのみ |1.115971|2.006767|35.554 /102|36.054 /104|
+| Dense |0.082101|0.105121|49.002 /106|49.502 /106|
+
+全candidateは両peakがDense以下だが、時間は悪化。索引構築約0.0338ms、BT32 forwardは
+control約0.130msに対し共有群約0.174ms。backwardはcontrol約0.231ms、共有Hのみ約0.349ms、
+dX reduction込み約0.550ms。compiler reportはcontrol register40/shared16bytesに対し、
+共有Hのみ56/16、dX reduction込み72/512（B64）で、spill/local load/storeはない。
+メモリ読み取りを論理的に共有しatomicを減らしても、group内の端数、間接参照、reductionの
+実行コストを回収できなかった。hardware counterで原因比率を切り分けた結果とは扱わない。
+source/勾配精度を維持した負の結果として残し、defaultへ採用しない。2倍目標は未達。
+
+source SHA256 `add899130198de6bd4c59fcc33438ca5b97d024ea6d2ed04b1193b851c290b57`、
+result SHA256 `390328c318bb2ede9ca0ec699e443ea5ec887a210d26882dfd8dad92bfcd9884`。
+source byte一致1584 files、manifest42 files、return0/cleanup ackを確認。
+
+## v35完全step結果：座標共通化の差は小さい
+
+source `8875a7a979cbb95c2e4c7128f33818075a409021`、job
+`l4job-39ae5ab841924919b8ab837b948e6be2`。46 checks PASS /1537 deselected、306.11秒。
+原点非0でのMeta正規化値・係数・整数eventの一致、動的σ/X、個別/全勾配、retained、Graphを確認。
+両primaryの全plan・3状態の独立FP64 full-shape gateも通った。
+
+| plan | B32 ms | B64 ms |
+|---|---:|---:|
+| v32 control |0.789481|1.286653|
+| 係数+L2の座標共通化 |0.788440|1.279037|
+| 係数側のみ |0.788681|1.283025|
+| L2側のみ |0.789366|1.283044|
+| Dense |0.082565|0.105272|
+
+両peakは全candidateでcontrolと同じ34.153 /98、34.653 /100MiB、Dense以下。
+係数phaseは約1µs短縮する一方、norm_initは約0.073msのまま。B32は約0.1%、B64は約0.6%の差で、
+この1runだけを恒常的な速度改善と解釈しない。同じ速度帯として保持し、繰り返しの微調整を優先しない。
+source SHA256 `ff11bee8c048d7d7de389910981a23aaeb5e4c3d7fe43228705cbc84bb1ca4f5`、
+result SHA256 `bffb33d4e74ca41e1a45fa6eed9749f1e9f21a736f3228bbf03232373bf537ff`。
+source byte一致1588 files、manifest42 files、return0/cleanup ackを確認。
+isolated sdist/wheelの364 runtime filesと同sourceのbyte一致も確認。
+
+次は既存recipeのprepare_warps=1/2/4だけを比較する。64 atomを1 warpで処理する現在の
+decode/normはregister80/180（各spill0）で、複数warpに仕事を分ける影響を調べる。
+式・保存量・gridのatom単位は変更せず、Meta全体の一致と完全step・両peakで判定する。

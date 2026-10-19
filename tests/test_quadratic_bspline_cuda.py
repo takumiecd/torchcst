@@ -4008,3 +4008,41 @@ def test_coordinates_nonzero_origin_fallback_is_bit_identical(core32, mapped):
         else:
             for actual, expected in zip(values, reference):
                 assert torch.equal(actual, expected)
+
+
+@GPU
+@pytest.mark.parametrize("n", [64, 1024])
+@pytest.mark.parametrize("floor", [1e-6, 1000.0])
+def test_prepare_warp_layout_is_bit_identical(n, floor):
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.executor import (
+        _norm_moments,
+        _prepare,
+    )
+
+    layer = model("h_local_bank_bundle", n=n, a=257, floor=floor)
+    with torch.no_grad():
+        layer.atoms.p[::17, :2] = 0
+        layer.atoms.p[::31, 2] = -0.15
+        layer.atoms.p[::37, 3] = n * 0.1 + 0.2
+    m2, m4 = _norm_moments(n, "cuda")
+    count = torch.arange(n + 1, device="cuda", dtype=torch.float64)
+    safe = count.clamp_min(1)
+    moments = torch.stack(
+        (
+            m2,
+            m4,
+            m2 / safe,
+            (m4 - m2.square() / safe).clamp_min(0),
+            torch.where(count > 0, safe.reciprocal(), 0),
+        )
+    )
+    reference = None
+    for warps in (1, 2, 4):
+        recipe = BSplineLocalBankBundleRecipe(prepare_warps=warps)
+        meta, _, _, _ = _prepare(
+            layer.atoms.p, layer.kernel, layer.chart, recipe, moments
+        )
+        if reference is None:
+            reference = meta.clone()
+        else:
+            assert torch.equal(meta, reference)
