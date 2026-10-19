@@ -257,3 +257,14 @@ source `5cebc3685db552f86295357063af88bbcb707766`。主要比較job `l4job-354c9
 各atomの4成分勾配はbatch方向に線形な縮約なので、chunk Cに対し g_P=Σ_C pullback(Σ_{b∈C} HG, Σ_{b∈C} HGμ, Σ_{b∈C} HμG)。sourceのMeta・正規化係数は共通で、幅のstop-gradientも同じ。丸め順だけが変わるためCPU screenに続き実GPUの全成分gateで判断する。各kernelがatomを一意に所有し、chunkは同一stream上で順に実行するので、部分勾配の加算にatomicは不要。Y/dXのevent集約方式はこの候補では変えていない。
 
 局所bankの物理batch strideをTに固定し、端数chunkは実際のBでmaskする。3本のbankを使うbackward workspaceは12 P T bytes、borderは12 blocks shards T bytesに制限する。係数snapshotや入力/出力、optimizerを含む実測peakとは区別する。B≤Tでは既存v26演算をそのまま使う。公開選択器へは接続せず、GPU測定前の候補として登録した。
+
+
+v27初回job `l4job-06a0f726f1494ca9a0daad710db1d97c`、source `3df01b05478090cdd97a282ba30e55d8753668a8` は58 checks PASS /1158 deselected、266.94秒だったが、測定catalogへ誤って追加した`revision`キーでdriverがreturn1となった。正しいキーは`algorithm_revision`。速度測定前のエラーであり、このjobをprimary性能表へ入れない。catalog全体のdecodeをCPUテストへ追加し、修正後のsourceで明示的に測り直す。回収とcleanup ackは確認、原本をignored outputへ保持する。
+
+## v28候補：境界イベントを集約先でまとめる
+
+既存のendpoint-owner実装とは別の局所座標用kernelを用意する。各軸・atomの最大6イベントを対象に、histogram→整数prefix→索引配置を行う。各集約先のevent列を32/64/128件ずつに区切り、同じ先への寄与をCTA内でFP32加算する。1 CTAで足りる先にはstoreし、複数CTAの先だけatomicで足す。site×supportを列挙する方式ではないが、境界eventの圧縮索引(CSR形式)は毎forwardで構築し、そのコストと保持メモリを含める。
+
+weighted H/GはA×TのFP32 scratchに一時保存する。projection kernelが読み終わってから入力bankをdeltaへ再利用するので、同一kernel内の読み書きaliasはない。係数とevent索引はforwardごとのimmutable snapshotとしてbackwardまで保持する。Hμ/Gμは保存しない。全atom勾配はv27と同じ部分縮約で、native/tiny勾配も保持する。block境界は旧tile末尾の係数を次tile先頭へ移す同じFMA式を使い、border shard bufferは不要になる。
+
+CPUのevent-owner screenはmixedの5状態とsmallの1状態×B32/B64×2floorの24条件で既存gateを通った。ただしsource contractionはCPUのFP64であり、新GPU経路の保証ではない。v28はGPU未検証の研究候補。整数event所属の独立検査、retained forward、端数batch、動的σ/X、tiny/floor、全source勾配、Graph replayを確認後、索引構築込みの完全stepと両peakで判定する。

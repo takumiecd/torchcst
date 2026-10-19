@@ -597,3 +597,15 @@ class BSplineLocalChunkedRecipe(BSplineLocalNarrowRecipe):
             raise ValueError(
                 "chunked local moments recompute H from the saved forward state"
             )
+
+
+@dataclass(frozen=True)
+class BSplineLocalOwnerRecipe(BSplineLocalChunkedRecipe):
+    """Revision 28: group compact boundary events by their reconstruction row."""
+
+    owner_events: int = 64
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.owner_events) is not int or self.owner_events not in (32, 64, 128):
+            raise ValueError("owner_events must be 32, 64 or 128")

@@ -85,7 +85,7 @@ def _restore(delta, border, y, n, recipe, label, active, dim, ml):
             dim,
             getattr(recipe, "active_levels", False),
             border,
-            getattr(recipe, "boundary_shards", 0),
+            (getattr(recipe, "boundary_shards", 0) if border is not None else 0),
             delta.shape[2] - len(y),
             getattr(recipe, "min_block_log", 3),
             num_warps=recipe.bank_warps,
@@ -142,7 +142,7 @@ def _delta(x, n, recipe, active, dim, ml, buffers=None, label=None):
     return delta, border
 
 
-def _frame(x, p, value, chart, recipe, moments, routing, sizes):
+def _frame(x, p, value, chart, recipe, moments, routing, sizes, build_border=True):
     a = len(p)
     meta, origin, spacing, _source = _prepare(p, value, chart, recipe, moments)
     _stamp("group", 0)
@@ -161,7 +161,7 @@ def _frame(x, p, value, chart, recipe, moments, routing, sizes):
     pos = x.new_empty((2, 6, a), dtype=torch.int32)
     co = x.new_empty((2, 3, 6, a))
     half = x.new_empty((2, a))
-    shards = getattr(recipe, "boundary_shards", 0)
+    shards = getattr(recipe, "boundary_shards", 0) if build_border else 0
     bp = (
         x.new_empty((2, 2, a), dtype=torch.int32)
         if shards
@@ -431,7 +431,11 @@ def apply(x, p, value, chart, recipe, bases, moments, buffers):
             )
         moments = buffers["local_norm_moments"]
     function = _Local
-    if getattr(recipe, "batch_chunk", 0) and len(x) > recipe.batch_chunk:
+    if getattr(recipe, "owner_events", 0):
+        from .owner_executor import _Owner
+
+        function = _Owner
+    elif getattr(recipe, "batch_chunk", 0) and len(x) > recipe.batch_chunk:
         from .chunk_executor import _Chunked
 
         function = _Chunked

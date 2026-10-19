@@ -33,6 +33,7 @@ def diagnostic_components(
     native_h=False,
     local_h=False,
     chunk_count=1,
+    event_owner=False,
 ):
     common = ("snapshot", "prepare", "norm_replay")
     if local_h:
@@ -56,7 +57,9 @@ def diagnostic_components(
             "scan_input",
             "unpack",
         )
-        if chunk_count <= 1:
+        if event_owner:
+            names += ("owner_prepare", "owner_output", "owner_input")
+        if chunk_count <= 1 and not event_owner:
             return names
         split = {
             "bank_input",
@@ -68,6 +71,8 @@ def diagnostic_components(
             "stream_backward",
             "scan_output",
             "scan_input",
+            "owner_output",
+            "owner_input",
         }
         return tuple(
             value

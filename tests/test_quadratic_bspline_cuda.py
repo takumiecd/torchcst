@@ -18,6 +18,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineLocalEndpointAlgorithm,
     BSplineLocalMomentAlgorithm,
     BSplineLocalNarrowAlgorithm,
+    BSplineLocalOwnerAlgorithm,
     BSplineLocalPaddedAlgorithm,
     BSplineLocalShardedAlgorithm,
     BSplineLocalSplitAlgorithm,
@@ -47,6 +48,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineLocalEndpointRecipe,
     BSplineLocalMomentRecipe,
     BSplineLocalNarrowRecipe,
+    BSplineLocalOwnerRecipe,
     BSplineLocalPaddedRecipe,
     BSplineLocalShardedRecipe,
     BSplineLocalSplitRecipe,
@@ -90,7 +92,10 @@ def case(n=64, a=17):
 def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     from dataclasses import replace
 
-    chunked = strategy == "h_local_chunked" or recipe_options.pop("_chunked", False)
+    owner = strategy == "h_local_owner" or recipe_options.pop("_owner", False)
+    chunked = (
+        strategy == "h_local_chunked" or recipe_options.pop("_chunked", False) or owner
+    )
     narrow = (
         strategy == "h_local_narrow" or recipe_options.pop("_narrow", False) or chunked
     )
@@ -162,6 +167,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineLocalPaddedAlgorithm())
     registry.register(BSplineLocalNarrowAlgorithm())
     registry.register(BSplineLocalChunkedAlgorithm())
+    registry.register(BSplineLocalOwnerAlgorithm())
     registry.register(BSplineNativeHAlgorithm())
     registry.register(BSplineNativeLoopAlgorithm())
     registry.register(BSplineRangeAlgorithm())
@@ -186,7 +192,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     tuned = bool(recipe_options) or strategy == "matrix_separable"
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v27"
+        "v28"
+        if owner
+        else "v27"
         if chunked
         else "v26"
         if narrow
@@ -239,7 +247,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         else "v2"
         if tuned
         else "v1",
-        BSplineLocalChunkedRecipe(**recipe_options)
+        BSplineLocalOwnerRecipe(**recipe_options)
+        if owner
+        else BSplineLocalChunkedRecipe(**recipe_options)
         if chunked
         else BSplineLocalNarrowRecipe(**recipe_options)
         if narrow
@@ -2371,6 +2381,16 @@ CHUNKED_OPTIONS = [
         "prepare_float32": False,
     },
 ]
+OWNER_OPTIONS = [
+    {"_owner": True},
+    {"_owner": True, "batch_chunk": 16, "owner_events": 32},
+    {
+        "_owner": True,
+        "owner_events": 128,
+        "active_levels": True,
+        "prepare_float32": False,
+    },
+]
 ALL_QUERY_OPTIONS = (
     QUERY_OPTIONS
     + LEAN_OPTIONS
@@ -2387,6 +2407,7 @@ ALL_QUERY_OPTIONS = (
     + [pytest.param(opt, id=f"padded-{i}") for i, opt in enumerate(PADDED_OPTIONS)]
     + [pytest.param(opt, id=f"narrow-{i}") for i, opt in enumerate(NARROW_OPTIONS)]
     + [pytest.param(opt, id=f"chunked-{i}") for i, opt in enumerate(CHUNKED_OPTIONS)]
+    + [pytest.param(opt, id=f"owner-{i}") for i, opt in enumerate(OWNER_OPTIONS)]
 )
 
 
@@ -2621,7 +2642,8 @@ def test_local_recipe_roundtrip_and_bounds():
     ]
     + [pytest.param(opt, id=f"padded-{i}") for i, opt in enumerate(PADDED_OPTIONS)]
     + [pytest.param(opt, id=f"narrow-{i}") for i, opt in enumerate(NARROW_OPTIONS)]
-    + [pytest.param(opt, id=f"chunked-{i}") for i, opt in enumerate(CHUNKED_OPTIONS)],
+    + [pytest.param(opt, id=f"chunked-{i}") for i, opt in enumerate(CHUNKED_OPTIONS)]
+    + [pytest.param(opt, id=f"owner-{i}") for i, opt in enumerate(OWNER_OPTIONS)],
 )
 def test_local_dyadic_boundaries_graph(options):
     import math
@@ -2632,11 +2654,17 @@ def test_local_dyadic_boundaries_graph(options):
         "h_query",
         n=1024,
         a=33,
-        sigma_cutoff=0.05 if options.get("_narrow") or options.get("_chunked") else 0.2,
+        sigma_cutoff=0.05
+        if options.get("_narrow") or options.get("_chunked") or options.get("_owner")
+        else 0.2,
         **options,
     )
     ids = torch.arange(33, device="cuda")
-    minimum = 2 if options.get("_narrow") or options.get("_chunked") else 3
+    minimum = (
+        2
+        if options.get("_narrow") or options.get("_chunked") or options.get("_owner")
+        else 3
+    )
     targets = (2.0 ** (minimum + ids % 6)) * 0.1 / math.sqrt(6)
     centers = torch.tensor(
         [-0.2, 0.0, 0.03, 0.8, 1.6, 3.2, 51.2, 102.27, 102.3, 102.5], device="cuda"
@@ -3015,3 +3043,110 @@ def test_chunked_graph_dynamic_widths(batch):
         for actual, expected in zip((y, dx, dp), (ref, rdx, rdp)):
             error = check(actual, expected, 4e-4)
             assert error["max"] < 4e-4 and error["rel_l2"] < 4e-4
+
+
+def test_owner_recipe_roundtrip_and_bounds():
+    reg = Registry()
+    reg.register(BSplineLocalOwnerAlgorithm())
+    for options in OWNER_OPTIONS:
+        options = {k: v for k, v in options.items() if k != "_owner"}
+        plan = ExecutionPlan(
+            "research_cuda_quadratic_bspline", "v28", BSplineLocalOwnerRecipe(**options)
+        )
+        assert reg.loads_plan(reg.dumps_plan(plan)) == plan
+    for value in (0, 3, 256, True):
+        with pytest.raises(ValueError):
+            BSplineLocalOwnerRecipe(owner_events=value)
+
+
+@GPU
+@pytest.mark.parametrize("batch", [17, 33, 64])
+@pytest.mark.parametrize("floor", [1e-6, 1000.0])
+def test_owner_dynamic_graph_and_retained_frames(batch, floor):
+    from benchmarks.cuda.linear.check_normalized import check
+
+    layer = model("h_local_owner", n=128, a=257, floor=floor)
+    x = torch.randn(batch, 256, device="cuda")[:, ::2].requires_grad_()
+    dy = torch.randn(batch, 128, device="cuda")
+    gate(layer, x, dy)
+    y = layer(x)
+    expected = torch.autograd.grad(y, (x, layer.atoms.p), dy, retain_graph=True)
+    with torch.no_grad():
+        layer.atoms.p[:, :2].mul_(1.03)
+        layer.atoms.p[:, 2:].add_(0.037)
+    layer(torch.randn_like(x))
+    actual = torch.autograd.grad(y, (x, layer.atoms.p), dy)
+    for left, right in zip(actual, expected):
+        torch.testing.assert_close(left, right)
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        y = layer(x)
+        dx, dp = torch.autograd.grad(y, (x, layer.atoms.p), dy)
+    for _ in range(3):
+        with torch.no_grad():
+            layer.atoms.p[:, :2].mul_(1.02)
+            layer.atoms.p[:, 2:].add_(0.017)
+            x.copy_(torch.randn_like(x))
+        graph.replay()
+        rx = x.detach().double().requires_grad_()
+        rp = layer.atoms.p.detach().double().requires_grad_()
+        ref = bs.oracle(copy.deepcopy(layer.kernel).double(), layer.chart, rp, rx)
+        rdx, rdp = torch.autograd.grad(ref, (rx, rp), dy.double())
+        for actual, expected in zip((y, dx, dp), (ref, rdx, rdp)):
+            error = check(actual, expected, 4e-4)
+            assert error["max"] < 4e-4 and error["rel_l2"] < 4e-4
+
+
+@GPU
+@pytest.mark.parametrize("events", [32, 64, 128])
+def test_owner_event_table_exact_membership(events):
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        owner_runtime,
+    )
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.local_executor import (
+        _points,
+    )
+
+    a = 37
+    recipe = BSplineLocalOwnerRecipe(owner_events=events)
+    pos = torch.arange(2 * 6 * a, dtype=torch.int32).reshape(2, 6, a) % 5
+    pos[:, :, ::7] = -1
+    injection = torch.full((2, a), 1 | (2 << 2) | (1 << 6), dtype=torch.int16)
+    count = torch.tensor([3], device="cuda", dtype=torch.int32)
+    template = torch.empty(1, 64, device="cuda")
+    tables = owner_runtime.prepare(
+        template, pos.cuda(), injection.cuda(), count, a, (64, 64), recipe
+    )
+    for dim, table in enumerate(tables):
+        hist, ends, ids, chunk_ends, mapping = [v.cpu() for v in table]
+        expected = [[] for _ in range(_points(64, recipe))]
+        for event in range(6):
+            for atom in range(3, a):
+                point = pos[dim, event, atom].item()
+                mode = (injection[dim, atom].item() >> (2 * event)) & 3
+                if point >= 0 and (event >= 4 or mode):
+                    expected[point + (event >= 4)].append(event * a + atom)
+        assert hist.tolist() == [len(row) for row in expected]
+        previous = 0
+        expected_map = []
+        for row, values in enumerate(expected):
+            end = ends[row].item()
+            assert sorted(ids[previous:end].tolist()) == sorted(values)
+            previous = end
+            expected_map.extend([row] * ((len(values) + events - 1) // events))
+        assert mapping[: chunk_ends[-1]].tolist() == expected_map
+
+
+def test_complete_bspline_catalog_decodes():
+    import json
+    from pathlib import Path
+
+    from benchmarks.cuda.linear.manifest import decode_catalog
+
+    root = Path(__file__).resolve().parents[1]
+    catalog = json.loads(
+        (root / "benchmarks/cuda/linear/plans-quadratic-bspline.json").read_text()
+    )
+    entries = decode_catalog(catalog)
+    revisions = {entry.plan.algorithm_revision for entry in entries}
+    assert {"v26", "v27", "v28"} <= revisions
