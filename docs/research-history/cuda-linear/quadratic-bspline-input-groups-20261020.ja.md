@@ -343,3 +343,61 @@ Count all/partial/zeroのGraphを独立FP64基準で確認する。主条件はB
 
 提出前CPU1999 PASS /4429 skipped /既存warning18、38.81秒。Ruff・両case宣言検査PASS。
 GPUでは40 CUDA checksと2 metadata checksを実施後、主条件の全plan精度gate・完全stepを測る。
+
+
+## v37：配置を固定した結果と1 atom版の候補改善
+
+source `ecbe66c715949ec5faa43c5b08ace6ac530b1289`、job
+`l4job-351462f09071495d82116d6800eb1f12`。42 checks PASS /1616 deselected、150.28秒。
+全plan・両primaryで3状態の独立FP64 full-shape Y/dX/all4P gateと全52428 σ更新を確認。
+primary TTGIRにforward/backwardそれぞれ[1,32]/[2,16]/[4,8]の指定layoutが残ることも
+job内でassertしており、v36の論理転置とは別の実験である。
+
+| plan | B32 ms | B64 ms |
+|---|---:|---:|
+| v32 control |0.801867|1.308898|
+| Gluon atom lane1 |0.783794|1.269657|
+| Gluon atom lane2 |0.831758|1.379352|
+| Gluon atom lane4 |0.930261|1.579615|
+| Dense |0.082619|0.104033|
+
+両peakは全CST同じ34.153/98、34.653/100MiB、Dense49.002/106、49.502/106MiB以下。
+2/4 atomを同じwarpへ置く配置は遅い。lane1は2.25%/3.00%の候補改善で、次の独立repeatと
+small/switch条件で確認する。1 runだけを恒常的な改善とは扱わない。
+
+lane1 forwardはcontrolと約0.133msで同じだが、backward BT32は約0.236–0.240から
+0.218–0.219msへ短縮した。Gluon lane1ではbatch reduction後のatom vectorのSliceLayoutを
+保持でき、source pullbackへのshared conversionが消えている（control shared16、candidate0）。
+registerは40から48–52へ増えるがspill/local load/storeはない。lane2/4のbackward sharedは
+32/64bytesで、実際の配置変更が改善するとは限らない。hardware counterによる比率の因果分解ではない。
+
+source SHA256 `29444b52b8a9ab9f072c390eb8948fcb3ef7b61008feff3ed05219c0762af77f`、result SHA256 `de12adaa7b8b28b60cae1d1b0a8f790f708122707cacf55a5ee15e132edf523c`。
+source byte一致1598 files、manifest235 files、return0/cleanup ack確認。
+
+## 追加の成分診断：中間bufferの書き出しは別コスト
+
+同source、job `l4job-0996a5ef8ce44c66b2b3d5cc856e05b5`、N1024/A52428/B32 mixed。
+σ・中心・Xを更新する3状態で、既存v32 helperを別kernelへ分けた診断のみを行った。
+全atom勾配の分割/融合差は0、Y/dXの差は最大2.480e-5/1.979e-5、relative L2<1.079e-6。
+これは融合版との照合であり、独立FP64照合の追加結果とは区別する。主条件の独立検証は上記jobを使う。
+
+| 診断kernel | 3状態のmedian ms範囲 |
+|---|---:|
+| fused forward |0.140–0.161|
+| H query +H store |0.055–0.069|
+| H/Hμ query +2 stores |0.069–0.074|
+| Y injection +H load |0.144–0.152|
+| fused backward |0.312–0.327|
+| G/Gμ query +2 stores |0.071–0.072|
+| source pullback +H/Hμ/G/Gμ loads |0.189–0.194|
+| dX injection +G load |0.110|
+
+各kernelは21 graph replay×20 callsで測り、分割版では4枚の[A,B] bufferを追加している。
+これらの時間は余分なstore/load・cache状態・個別launchを含み、単純合算や完全step内の専有時間の
+比率として解釈しない。診断のfused backwardも主条件の0.24msと測定状態が異なる。
+queryだけを軽くしても書き戻しと中間buffer負担は残り、全H/Gを外部化する案の判断には
+完全stepでの再測定が必要である。追加26MiB前後の診断bufferをDenseとのmemory比較には使わない。
+raw結果は`local-split-probe.json`、driverと照合記録もignored outputへ保持する。
+
+診断source SHA256 `97bf850e9f9bdb991e6b9ffd494b6fe06b5301af91b3daf00fc4bb5f130cb922`、result SHA256 `c6335aae6b80c41939a540eabd7e41e7846f2f649111387317070c625e272749`。
+source byte一致1598 files、manifest4 files、return0/cleanup ack確認。
