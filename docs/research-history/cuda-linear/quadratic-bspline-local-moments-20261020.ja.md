@@ -62,3 +62,20 @@ prefix bankはnode0..Sを保持するが、復元はsite0..S-1のみを読む。
 domain先頭node0へ来るknotは有効な寄与なので省略しない。`shard_origin=true`では同じ尺度のfirst-block補助planeへ振り分け、境界補正と同じ復元で足す。falseでは終端skipだけを比較できる。内部block境界に一致するknotは前block終端としてskipされ、境界補正の後続pieceが次blockを初期化する。
 
 支持、L2、query、source pullbackを変えず、空区間・domain外中心・厳密なdyadic境界・all-native/broad切替をGPUで検証してから速度を比較する。v22との加算順序差も既存4e-4 gateで判定する。
+
+## v21検証結果：active尺度省略は不採用
+
+source `4441b276d45ccf250143a265e8d26b5193fa7ea0`、job `l4job-ea2c9dd7ec684a38af5690d6ce4e2581`。36 tests PASS（35 CUDA +1 metadata、937 deselected）。主要2条件の全plan独立FP64 gateもPASS。source/result archiveとmanifest 42 filesを検証し、1514 runtime/test/benchmark filesがcommitとbyte一致、return0/cleanup ackを確認。
+
+| plan | B32 ms | allocated/reserved MiB | B64 ms | allocated/reserved MiB |
+|---|---:|---:|---:|---:|
+| query-fma | 1.620070 | 81.288 /172 | 2.502822 | 96.791 /188 |
+| local-all32 | 1.509114 | 30.616 /98 | 2.915113 | 40.290 /100 |
+| local-all32-hp | 1.483581 | 40.322 /98 | 2.996097 | 59.703 /156 |
+| local-active | 1.527201 | 30.616 /98 | 2.919538 | 40.291 /100 |
+| local-active-hp | 1.507977 | 40.322 /98 | 2.996684 | 59.703 /156 |
+| Dense | 0.082651 | 49.002 /106 | 0.105586 | 49.502 /106 |
+
+v20のB32改善傾向は独立repeatで再現したが、v21自体には完全stepの改善がない。独立phaseではbank/restoreが約4–9µs縮んだ一方、尺度分類約29.7µsと差分初期化launchの増分が上回る。broad stream時間は変わらず、未使用bank削減だけではB64の遅さを説明・解消できなかった。これはcache容量やmiss率を測定した結果ではない。既定経路への採用は行わない。
+
+source SHA256 `0e34f2a8c6b306d8e14bfcb6cf89dd2e36190365ea55992231980859898acc9b`、result SHA256 `e96d5f27cc3a428ca03e1a6e4d6a01dba5bc8131a96d959932a5516f8016a310`。v20/v21通算の独立gate上限はY6.583e-5、dX7.542e-5、all-source6.261e-5、relative L2はいずれも3.965e-6以下。
