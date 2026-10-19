@@ -85,3 +85,31 @@ H/Hμ保存時は入力bank再構築も省ける（再計算版は別区間で�
 native側のatom VJPは別区間で約.110ms。dXのscan/多項式復元、native側GEMM、bank構築も完全stepに含まれるが、上の4つのkernel区間の外で記録する。stagedにはmaterializedなH/Hμ/G/Gμのwrite/readとlaunchが増え、保存なしで94.643/214MiBのpeakになった。この対照の時間を足して融合版.86msを再現したものとは扱わない。
 
 保存により入力H/Hμの仕事を減らせたが、G/GμはdYから生成する必要があり、dX差分注入も残る。staged対照ではdX注入が単独で最も長い区間だった。
+
+## 回帰検証
+
+- CUDA対象suite: **546 passed**（539実CUDA + 7宣言/metadata）、642.00s。job `l4job-4b93b9af98c3489c9b3b3e8bfc64bf1e`、source `4d8ba585`。
+- 新規対象: **61 passed**（60実CUDA + 1宣言）、71.17s。
+- CPU全体: **1974 passed / 3315 skipped**、42.68s、18件の既存warning。GPU/DBのskipは検証完了を意味しない。
+- wheel/sdistの345 runtimeファイルを現checkoutとbyte照合。
+
+新規テストはlive σ/中心・毎stepの別X、Graph replayでのcutoff切替とX変更、retained forwardのsnapshot、振幅0、dXのみ/dPのみ、空atom、B64を含む。誤差は独立FP64 oracleに対するmaxabsとrelative L2の両方を4e-4未満に維持した。full suiteのAccumulateGrad stream warningは既存経路の1件で、全件完了した。
+
+## 係数とnative Wの保持量を減らす追加対照
+
+job `l4job-0156aeede91d44cea70d78262a1b9ddd`、source `4d8ba585`、B32混合、各候補1 process。
+
+| 方法 | 完全step ms | allocated / reserved MiB |
+|---|---:|---:|
+| 再計算対照v13 | 1.9914 | 68.488 / 134 |
+| H保存 | 1.8271 | 74.888 / 174 |
+| H/Hμ保存 | 1.7092 | 81.288 / 172 |
+| H/Hμ保存 + compact係数 | 1.7793 | 75.688 / 158 |
+| H/Hμ保存 + native W再構築 | 1.7604 | 77.288 / 172 |
+| H/Hμ保存 + compact係数 + native W再構築 | 1.8295 | 71.688 / 140 |
+| H保存 + native W再構築 | 1.8742 | 70.888 / 174 |
+| Dense | .0834 | 49.002 / 106 |
+
+compactは係数5→3 planeで中心微分係数を既存の代数式から復元。native W再構築は同じforward metadataを使い、dXの後はその作業領域をdWへ再利用する。新しいL2近似や低精度保存ではない。全候補の全shape FP64 gateを通過した。
+
+ここではH/Hμ保存とcompact+W再構築が、再計算対照よりallocated/reservedそれぞれ3.2/6MiBの増加で約8%短縮する候補になった。主比較で別process測定を繰り返すまで採用判断は保留する。Denseの両peak以下という目標は未達。
