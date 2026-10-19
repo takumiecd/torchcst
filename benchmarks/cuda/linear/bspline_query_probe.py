@@ -71,7 +71,7 @@ def probe(
             # tests address diversity; it does not measure physical DRAM bytes.
             ca = (
                 tl.full((AB,), tl.load(Count), tl.int32)
-                if MODE in ("uniform_coeff", "uniform_both")
+                if (MODE == "uniform_coeff" or MODE == "uniform_both")
                 else a
             )
             for knot in tl.static_range(4):
@@ -91,7 +91,7 @@ def probe(
                     True,
                 )
                 cut = tl.load(Cuts + knot * A + a, a < A, 0)
-                if MODE in ("uniform_bank", "uniform_both"):
+                if MODE == "uniform_bank" or MODE == "uniform_both":
                     cut = tl.full(
                         (AB,), tl.load(Cuts + knot * A + tl.load(Count)), tl.int32
                     )
