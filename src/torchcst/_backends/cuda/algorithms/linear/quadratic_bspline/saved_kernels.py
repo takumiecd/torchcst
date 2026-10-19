@@ -30,10 +30,11 @@ def _input(
     CACHE: tl.constexpr,
     DERIVATIVES: tl.constexpr,
     MODE: tl.constexpr,
+    QUERY: tl.constexpr = "expanded",
 ):
     mask = (a[:, None] < A) & (b[None, :] < B)
     if MODE == "none":
-        h, hp = ck._query(
+        h, hp = _query(
             Bank,
             Meta,
             Cuts,
@@ -54,6 +55,7 @@ def _input(
             True,
             True,
             False,
+            QUERY,
         )
     else:
         h = tl.load(SavedH + a[:, None] * B + b[None, :], mask, 0).to(tl.float64)
@@ -81,8 +83,36 @@ def _input(
                 p0 = tl.load(Bank + addr, mask, 0)
                 p1 = tl.load(Bank + B * (N + 1) + addr, mask, 0)
                 hp -= p0 * d0[:, None] + p1 * d1[:, None]
-            left = tl.load(Cuts + 4 * A + a, a < A, 0)
-            right = tl.load(Cuts + 7 * A + a, a < A, 0)
+            left, _, _, _, _, _ = _geometry(
+                Meta,
+                Cuts,
+                Coeff,
+                Origin,
+                Spacing,
+                a,
+                A,
+                N,
+                1,
+                0,
+                RECIPROCAL,
+                CACHE,
+                DERIVATIVES,
+            )
+            right, _, _, _, _, _ = _geometry(
+                Meta,
+                Cuts,
+                Coeff,
+                Origin,
+                Spacing,
+                a,
+                A,
+                N,
+                1,
+                3,
+                RECIPROCAL,
+                CACHE,
+                DERIVATIVES,
+            )
             hp = (
                 tl.where(mask & (right > left)[:, None], hp, 0)
                 .to(tl.float32)
@@ -399,6 +429,7 @@ def backward(
                 CACHE,
                 DERIVATIVES,
                 SAVE_MODE,
+                QUERY,
             )
             _pullback(
                 Meta, DP, a, tl.sum(h * g, 1), tl.sum(h * gp, 1), tl.sum(hp * g, 1), A

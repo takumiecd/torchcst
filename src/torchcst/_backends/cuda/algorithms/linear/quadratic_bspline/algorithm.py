@@ -19,6 +19,7 @@ from torchcst.operators.execution import (
 from .recipe import (
     BSplineAdjointRecipe,
     BSplineCoalescedHRecipe,
+    BSplineLeanHRecipe,
     BSplineParallelRecipe,
     BSplinePreparedHRecipe,
     BSplineQueryRecipe,
@@ -291,3 +292,9 @@ class BSplineAdjointAlgorithm(BSplineStreamingAlgorithm):
 class BSplineQueryAlgorithm(BSplineStreamingAlgorithm):
     revision: str = "v16"
     recipe_type: type = BSplineQueryRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLeanHAlgorithm(BSplineStreamingAlgorithm):
+    revision: str = "v17"
+    recipe_type: type = BSplineLeanHRecipe
