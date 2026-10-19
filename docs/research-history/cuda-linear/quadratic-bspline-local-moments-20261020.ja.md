@@ -341,3 +341,26 @@ Meta/order/count/係数はforwardごとのsnapshotとして保持し、後のP�
 v29初回job `l4job-8557bf7fa5f048f1a10b9cd257bdb5cf`、source `536de8c3cea6553badb640dc368c9412f1985856` は40 checks PASS /2 FAILED /1265 deselected、244.41秒。A513を同位置へ重ねる追加検査でinput-only勾配maxabsが0.002896、retained検査の初期全gateが0.002480となり、既存4e-4基準を超えた。全数/一部/ゼロを跨ぐGraph等は通ったが、driverは性能測定前にreturn1。失敗runを性能表から除外し、source/manifest/hash/cleanup ackを検証して保持する。
 
 修正候補はnativeの加算先だけを[B,N]のFP64 scratchにし、hot/cold両方の加算後に一度だけFP32 Y/dXへ足す方式。nativeのprofile・query・正規化・source VJPは従来の計算で、coldのFP64値は加算先dtypeを保持する。新v29/v30だけに適用し、旧版は従来のFP32出力先のまま。scratchはB64/N1024で0.5 MiBをforward/backwardのそれぞれで一時使用する。構築/ゼロ化/加算コストと実測peakを含める。旧v27と新候補へ同じcoincident fixtureを与え、基準を変えずに原因と修正をGPUで確かめる。
+
+
+## v29/v30結果：精度修正とcopy除去で改善
+
+source `64e03a75c1e70e7960137adf64255c6f7d106ad5`、job `l4job-c91694d8b1ad4d9bb6c1c0bc65dde3d9`。先にA513・同位置のnative集約を旧v27と新v29/v30で同じX/dY/Pに対して照合した。floor1e-6の旧v27はY maxabs0.002480 /dX0.002896で、初回v29の失敗と一致した。native加算先をFP64にしたv29/v30はY7.443e-5 /dX1.268e-4、全source2.375e-6で基準内。floor1000でも通った。profile/queryを変えず、加算の丸めを減らすことで直ることを確認した。この診断はprimary性能比較とは分け、旧baselineの超過も原本に残す。
+
+その後、v29/v30の86 targeted checks PASS /1265 deselected、422.86秒。Count全数/一部/ゼロのGraph、複数周ループ、retained snapshot、元のParameter rowと非自明な置換、個別勾配、tiny/floor/dyadic/cutoffを含む。全主要planの独立3状態・全52428 atomのFP64 gateもPASS。完全stepは次のとおり。
+
+| plan | B32 mixed ms | allocated/reserved MiB | B64 mixed ms | allocated/reserved MiB |
+|---|---:|---:|---:|---:|
+| query-fma |1.618065|81.288 /172|2.492669|96.791 /188|
+| v27 tile32 control |0.890341|35.317 /98|1.427023|35.817 /102|
+| v29 native cap128 + FP64 destination |0.855261|35.317 /98|1.389752|35.817 /102|
+| v30 canonical cap0 |0.858384|34.153 /98|1.397697|34.653 /100|
+| v30 canonical cap32 |0.816385|34.153 /98|1.361398|34.653 /100|
+| v30 canonical cap128 |0.816666|34.153 /98|1.339208|34.653 /100|
+| Dense |0.083084|49.002 /106|0.104620|49.502 /106|
+
+同run v27比でcap128のみはB32約3.9%、B64約2.6%短縮。canonicalとの組合せはB32約8.3%、B64約6.2%短縮し、allocatedを各約1.164 MiB削減、B64 reserved102→100 MiB。FP64 native scratchを含めて両peakはDense以下。B32 cap32と128の0.28µs差は同じ速度帯として扱う。B64 cap128の改善は初回runで、再測定とsmall/switchを別jobで確認する。
+
+独立phaseのB64 native forward/backwardは約0.0092 /0.0102msへ下がった。canonicalではpack約0.042→0.002ms、unpack約0.0072→0.002ms（空stampにも計装費がある）。stream forward/backwardは各chunk約0.133 /0.241msで大差はなく、H/G投影・係数読み取り・source縮約が引き続き残る。完全stepのDense比はB32約9.83倍、B64約12.80倍で、2倍目標は未達。
+
+source SHA256 `3bcd3ab605234a47d8e802aa089440c60573c74ad8910d2a842fd8cccb5a4864`、result SHA256 `c2b2a4712067ef6abc3c4d94258cfb6f2e80cade62dd0be2334bfdc0826bcb64`。source byte一致1558 files、manifest 50 files、return0/cleanup ackを確認。CPU1991 passed /4103 skipped /既存warning18、wheel/sdist359 runtime filesはgit archive64e03a75とbyte一致。旧536de8c3の失敗runはsource/result SHA256 `f7dc0d9a7fca963dc6b60adb2f285d029568761dd3f67dc52b3a6055bbcc6701` / `251492c9bd5ffc9cd7e89eb58406472d89b95805463d1668f92406b3d2c86e43` と原本を保持し、性能表へは入れない。
