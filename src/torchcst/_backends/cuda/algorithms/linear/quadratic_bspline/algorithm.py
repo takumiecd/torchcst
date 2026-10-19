@@ -21,6 +21,7 @@ from .recipe import (
     BSplineCoalescedHRecipe,
     BSplineLeanHRecipe,
     BSplineLocalActiveRecipe,
+    BSplineLocalEndpointRecipe,
     BSplineLocalMomentRecipe,
     BSplineLocalShardedRecipe,
     BSplineNativeHRecipe,
@@ -348,3 +349,9 @@ class BSplineLocalActiveAlgorithm(BSplineLocalMomentAlgorithm):
 class BSplineLocalShardedAlgorithm(BSplineLocalActiveAlgorithm):
     revision: str = "v22"
     recipe_type: type = BSplineLocalShardedRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalEndpointAlgorithm(BSplineLocalShardedAlgorithm):
+    revision: str = "v23"
+    recipe_type: type = BSplineLocalEndpointRecipe

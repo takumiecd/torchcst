@@ -14,6 +14,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineCoalescedHAlgorithm,
     BSplineLeanHAlgorithm,
     BSplineLocalActiveAlgorithm,
+    BSplineLocalEndpointAlgorithm,
     BSplineLocalMomentAlgorithm,
     BSplineLocalShardedAlgorithm,
     BSplineNativeHAlgorithm,
@@ -38,6 +39,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineCoalescedHRecipe,
     BSplineLeanHRecipe,
     BSplineLocalActiveRecipe,
+    BSplineLocalEndpointRecipe,
     BSplineLocalMomentRecipe,
     BSplineLocalShardedRecipe,
     BSplineNativeHRecipe,
@@ -80,7 +82,12 @@ def case(n=64, a=17):
 def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     from dataclasses import replace
 
-    sharded = strategy == "h_local_sharded" or recipe_options.pop("_sharded", False)
+    endpoint = strategy == "h_local_endpoint" or recipe_options.pop("_endpoint", False)
+    sharded = (
+        strategy == "h_local_sharded"
+        or recipe_options.pop("_sharded", False)
+        or endpoint
+    )
     active = (
         strategy == "h_local_active" or recipe_options.pop("_active", False) or sharded
     )
@@ -126,6 +133,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineLocalMomentAlgorithm())
     registry.register(BSplineLocalActiveAlgorithm())
     registry.register(BSplineLocalShardedAlgorithm())
+    registry.register(BSplineLocalEndpointAlgorithm())
     registry.register(BSplineNativeHAlgorithm())
     registry.register(BSplineNativeLoopAlgorithm())
     registry.register(BSplineRangeAlgorithm())
@@ -150,7 +158,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     tuned = bool(recipe_options) or strategy == "matrix_separable"
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v22"
+        "v23"
+        if endpoint
+        else "v22"
         if sharded
         else "v21"
         if active
@@ -193,7 +203,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         else "v2"
         if tuned
         else "v1",
-        BSplineLocalShardedRecipe(**recipe_options)
+        BSplineLocalEndpointRecipe(**recipe_options)
+        if endpoint
+        else BSplineLocalShardedRecipe(**recipe_options)
         if sharded
         else BSplineLocalActiveRecipe(**recipe_options)
         if active
@@ -2272,6 +2284,10 @@ SHARDED_OPTIONS = [
     {"_sharded": True, "boundary_shards": 32},
     {"_sharded": True, "boundary_shards": 32, "save_h": "hp"},
 ]
+ENDPOINT_OPTIONS = [
+    {"_endpoint": True, "boundary_shards": 8, "shard_origin": False},
+    {"_endpoint": True, "boundary_shards": 32},
+]
 ALL_QUERY_OPTIONS = (
     QUERY_OPTIONS
     + LEAN_OPTIONS
@@ -2280,6 +2296,7 @@ ALL_QUERY_OPTIONS = (
     + [pytest.param(opt, id=f"local-{i}") for i, opt in enumerate(LOCAL_OPTIONS)]
     + [pytest.param(opt, id=f"active-{i}") for i, opt in enumerate(ACTIVE_OPTIONS)]
     + [pytest.param(opt, id=f"sharded-{i}") for i, opt in enumerate(SHARDED_OPTIONS)]
+    + [pytest.param(opt, id=f"endpoint-{i}") for i, opt in enumerate(ENDPOINT_OPTIONS)]
 )
 
 
@@ -2505,7 +2522,8 @@ def test_local_recipe_roundtrip_and_bounds():
     "options",
     [pytest.param(opt, id=f"local-{i}") for i, opt in enumerate(LOCAL_OPTIONS[:3])]
     + [pytest.param(opt, id=f"active-{i}") for i, opt in enumerate(ACTIVE_OPTIONS)]
-    + [pytest.param(opt, id=f"sharded-{i}") for i, opt in enumerate(SHARDED_OPTIONS)],
+    + [pytest.param(opt, id=f"sharded-{i}") for i, opt in enumerate(SHARDED_OPTIONS)]
+    + [pytest.param(opt, id=f"endpoint-{i}") for i, opt in enumerate(ENDPOINT_OPTIONS)],
 )
 def test_local_dyadic_boundaries_graph(options):
     import math
@@ -2601,14 +2619,14 @@ def test_active_recipe_roundtrip():
 
 @GPU
 @pytest.mark.parametrize("mode", ["none", "hp"])
-@pytest.mark.parametrize("sharded", [False, True], ids=["active", "sharded"])
-def test_active_all_native_to_broad_graph(mode, sharded):
+@pytest.mark.parametrize("route", ["active", "sharded", "endpoint"])
+def test_active_all_native_to_broad_graph(mode, route):
     import math
 
     from benchmarks.cuda.linear.check_normalized import check
 
     layer = model(
-        "h_local_sharded" if sharded else "h_local_active",
+        "h_local_" + route,
         n=1024,
         a=33,
         sigma_cutoff=0.2,
@@ -2656,3 +2674,18 @@ def test_sharded_recipe_roundtrip_and_bounds():
     for value in (0, 3, 128, True):
         with pytest.raises(ValueError):
             BSplineLocalShardedRecipe(boundary_shards=value)
+
+
+def test_endpoint_recipe_roundtrip_and_bounds():
+    reg = Registry()
+    reg.register(BSplineLocalEndpointAlgorithm())
+    for options in ENDPOINT_OPTIONS:
+        options = {k: v for k, v in options.items() if k != "_endpoint"}
+        plan = ExecutionPlan(
+            "research_cuda_quadratic_bspline",
+            "v23",
+            BSplineLocalEndpointRecipe(**options),
+        )
+        assert reg.loads_plan(reg.dumps_plan(plan)) == plan
+    with pytest.raises(ValueError):
+        BSplineLocalEndpointRecipe(shard_origin=1)

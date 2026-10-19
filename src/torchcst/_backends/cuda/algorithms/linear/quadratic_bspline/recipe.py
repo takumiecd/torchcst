@@ -529,3 +529,16 @@ class BSplineLocalShardedRecipe(BSplineLocalActiveRecipe):
             64,
         ):
             raise ValueError("boundary_shards must be 8, 16, 32 or 64")
+
+
+@dataclass(frozen=True)
+class BSplineLocalEndpointRecipe(BSplineLocalShardedRecipe):
+    """Revision 23: skip unconsumed end nodes and shard domain-start additions."""
+
+    skip_endpoints = True
+    shard_origin: bool = True
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.shard_origin) is not bool:
+            raise ValueError("shard_origin must be boolean")

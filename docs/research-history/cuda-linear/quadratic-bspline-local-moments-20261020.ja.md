@@ -52,3 +52,13 @@ Active[axis,level]は各forwardのimmutable snapshotとしてbackwardまで保�
 尺度Sのblock数をt=N/Sとすると、尺度先頭のglobal block番号は`2(N/8)-2t`。境界は次block `tile+1`へ入れる。補助容量は1軸`3(2N/8-1)KB`個のFP32、Kは8/16/32/64。N1024/B64/K32では5.977 MiB。位置snapshotは2軸×2event×A個のI32（A52428で0.800 MiB）。これらをpeakへ含める。K64は速度が上がってもメモリ目標を外れる可能性があるため、容量を明示して比較する。
 
 これは加算の順序・配置を変える実装仮説であり、atomic競合が原因だったという測定結果ではない。浮動小数点和の順序差を含め、独立FP64 gate、動的σ・全native/broad切替・retained backward・全atom勾配を同じ許容誤差で確認する。未使用尺度のborder planeも毎stepゼロ初期化し、stale値を使わない。
+
+## v23の検証仮説：未消費の終端nodeとdomain先頭
+
+初期mixed fixtureのCPU整数event集計では、S512の境界一つへ出力側6062 / 入力側5872 atomが加算し、knot側は最大4044 / 4127 atomが同じpointへ集まる。このlogical multiplicityはGPU性能counterではない。原本はignored `event-pressure.py/json`。
+
+prefix bankはnode0..Sを保持するが、復元はsite0..S-1のみを読む。したがってknotが前blockの終端node Sへ加える差分は復元に使われず、省略できる。次blockの初期多項式は既存の境界補正が担う。queryでは終端prefixが必要なので、queryのpoint/係数は変えない。v23は2bit×4knotの注入modeと3bitの尺度番号を、各軸/atomのI16 snapshot（A52428、2軸で0.200 MiB）へ保存する。
+
+domain先頭node0へ来るknotは有効な寄与なので省略しない。`shard_origin=true`では同じ尺度のfirst-block補助planeへ振り分け、境界補正と同じ復元で足す。falseでは終端skipだけを比較できる。内部block境界に一致するknotは前block終端としてskipされ、境界補正の後続pieceが次blockを初期化する。
+
+支持、L2、query、source pullbackを変えず、空区間・domain外中心・厳密なdyadic境界・all-native/broad切替をGPUで検証してから速度を比較する。v22との加算順序差も既存4e-4 gateで判定する。

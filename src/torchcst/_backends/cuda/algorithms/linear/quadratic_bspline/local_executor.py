@@ -129,6 +129,12 @@ class _Local(torch.autograd.Function):
         meta = meta.index_select(0, order)
         _stamp("pack", 1)
         _stamp("coeff_prepare", 0)
+        endpoints = getattr(recipe, "skip_endpoints", False)
+        injection = (
+            x.new_empty((2, a), dtype=torch.int16)
+            if endpoints
+            else x.new_empty(0, dtype=torch.int16)
+        )
         pos = x.new_empty((2, 6, a), dtype=torch.int32)
         co = x.new_empty((2, 3, 6, a))
         half = x.new_empty((2, a))
@@ -153,6 +159,8 @@ class _Local(torch.autograd.Function):
             recipe.prepare_float32,
             bp if shards else None,
             shards,
+            injection if endpoints else None,
+            endpoints,
             num_warps=4,
             enable_fp_fusion=False,
         )
@@ -205,6 +213,9 @@ class _Local(torch.autograd.Function):
             bp if shards else None,
             shards,
             2 * (sizes[0] // 8) - 1,
+            injection if endpoints else None,
+            endpoints,
+            getattr(recipe, "shard_origin", False),
             num_warps=recipe.axis_warps,
             enable_fp_fusion=False,
         )
@@ -212,7 +223,20 @@ class _Local(torch.autograd.Function):
         _stamp("stream_forward", 1)
         y = _restore(delta, border, y, sizes[0], recipe, "scan_output", active, 0, ml)
         ctx.save_for_backward(
-            meta, x, origin, spacing, order, count, pos, co, half, h, hp, active, bp
+            meta,
+            x,
+            origin,
+            spacing,
+            order,
+            count,
+            pos,
+            co,
+            half,
+            h,
+            hp,
+            active,
+            bp,
+            injection,
         )
         return y
 
@@ -230,14 +254,28 @@ class _Local(torch.autograd.Function):
                 None,
                 None,
             )
-        meta, x, origin, spacing, order, count, pos, co, half, h, hp, active, bp = (
-            ctx.saved_tensors
-        )
+        (
+            meta,
+            x,
+            origin,
+            spacing,
+            order,
+            count,
+            pos,
+            co,
+            half,
+            h,
+            hp,
+            active,
+            bp,
+            injection,
+        ) = ctx.saved_tensors
         dy = dy.contiguous()
         recipe, sizes = ctx.recipe, ctx.sizes
         a, b = len(meta), len(x)
         ml = max(sizes).bit_length() - 3
         shards = getattr(recipe, "boundary_shards", 0)
+        endpoints = getattr(recipe, "skip_endpoints", False)
         need_dx, need_dp = ctx.needs_input_grad[:2]
         dx, dp = native_backward(
             x, dy, meta, count, origin, spacing, sizes, recipe, need_dx, need_dp
@@ -277,6 +315,9 @@ class _Local(torch.autograd.Function):
             bp if shards else None,
             shards,
             2 * (sizes[1] // 8) - 1,
+            injection if endpoints else None,
+            endpoints,
+            getattr(recipe, "shard_origin", False),
             num_warps=recipe.axis_warps,
             enable_fp_fusion=False,
         )

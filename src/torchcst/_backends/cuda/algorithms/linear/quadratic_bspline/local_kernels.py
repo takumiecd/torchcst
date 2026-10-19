@@ -45,6 +45,8 @@ def prepare(
     CORE32: tl.constexpr,
     BorderPos=None,
     SHARDS: tl.constexpr = 0,
+    Injection=None,
+    ENDPOINTS: tl.constexpr = False,
 ):
     base = tl.load(Count) + tl.program_id(0) * AB
     if base < A:
@@ -80,6 +82,7 @@ def prepare(
                 center, radius, Origin, Spacing, n, dim, 2, RECIPROCAL, ih
             )
             first = tl.minimum(tl.maximum((left - 1) >> logsize, 0), tiles - 1)
+            code = level << 8
             for event in tl.static_range(6):
                 if event < 4:
                     cut = (
@@ -113,6 +116,9 @@ def prepare(
                         )
                         c0, c1, c2 = x0 - p0, x1 - p1, x2 - p2
                     active = a < A
+                    if ENDPOINTS:
+                        mode = tl.where(index == size, 0, tl.where(index == 0, 2, 1))
+                        code = code | (mode << (2 * event))
                 else:
                     boundary = (first + event - 3) * size
                     tile = tl.minimum(first + event - 4, tiles - 1)
@@ -150,6 +156,8 @@ def prepare(
                         tl.where(active, value, 0).to(tl.float32),
                         a < A,
                     )
+            if ENDPOINTS:
+                tl.store(Injection + dim * A + a, code.to(tl.int16), a < A)
 
 
 @tr.jit
@@ -392,6 +400,9 @@ def _inject(
     BorderPos,
     SHARDS: tl.constexpr,
     BLOCKS: tl.constexpr,
+    Injection,
+    ENDPOINTS: tl.constexpr,
+    SHARD_ORIGIN: tl.constexpr,
 ):
     scale = tl.load(Meta + 12 * a, a < A, 0) * tl.load(Meta + 12 * a + 4, a < A, 0)
     weight = (Value * scale[:, None]).to(tl.float32)
@@ -409,6 +420,12 @@ def _inject(
         # zero, but retain the original validity for a precise event mask.
         if event >= 4:
             mask &= point[:, None] > 0
+        if ENDPOINTS and event < 4:
+            code = tl.load(Injection + DIM * A + a, a < A, 0).to(tl.int32)
+            mode = (code >> (2 * event)) & 3
+            mask &= mode[:, None] != 0
+            if SHARD_ORIGIN:
+                origin_block = BLOCKS + 1 - ((BLOCKS + 1) >> (code >> 8))
         for p in tl.static_range(3):
             c = c0 if p == 0 else c1 if p == 1 else c2
             if SHARDS and event >= 4:
@@ -426,12 +443,17 @@ def _inject(
                     sem="relaxed",
                 )
             else:
-                tl.atomic_add(
-                    Delta + p * POINTS * B + point[:, None] * B + b[None, :],
-                    weight * c[:, None],
-                    mask,
-                    sem="relaxed",
-                )
+                addr = Delta + p * POINTS * B + point[:, None] * B + b[None, :]
+                if ENDPOINTS and SHARD_ORIGIN:
+                    shard = tl.program_id(0) % SHARDS
+                    border = (
+                        BorderDelta
+                        + p * BLOCKS * SHARDS * B
+                        + (origin_block[:, None] * SHARDS + shard) * B
+                        + b[None, :]
+                    )
+                    addr = tl.where(mode[:, None] == 2, border, addr)
+                tl.atomic_add(addr, weight * c[:, None], mask, sem="relaxed")
 
 
 @tr.jit
@@ -456,6 +478,9 @@ def forward(
     BorderPos=None,
     SHARDS: tl.constexpr = 0,
     BLOCKS: tl.constexpr = 0,
+    Injection=None,
+    ENDPOINTS: tl.constexpr = False,
+    SHARD_ORIGIN: tl.constexpr = False,
 ):
     base = tl.load(Count) + tl.program_id(0) * AB
     if base < A:
@@ -483,6 +508,9 @@ def forward(
             BorderPos,
             SHARDS,
             BLOCKS,
+            Injection,
+            ENDPOINTS,
+            SHARD_ORIGIN,
         )
 
 
@@ -513,6 +541,9 @@ def backward(
     BorderPos=None,
     SHARDS: tl.constexpr = 0,
     BLOCKS: tl.constexpr = 0,
+    Injection=None,
+    ENDPOINTS: tl.constexpr = False,
+    SHARD_ORIGIN: tl.constexpr = False,
 ):
     base = tl.load(Count) + tl.program_id(0) * AB
     if base < A:
@@ -563,4 +594,7 @@ def backward(
                 BorderPos,
                 SHARDS,
                 BLOCKS,
+                Injection,
+                ENDPOINTS,
+                SHARD_ORIGIN,
             )

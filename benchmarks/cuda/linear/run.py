@@ -689,6 +689,12 @@ def measure(args, run):
                         {
                             "bank_layout": "FP32 plane,dyadic-local-point,batch; no periodic wrap",
                             "local_events_per_axis": 6,
+                            "endpoint_writes_skipped": bool(
+                                getattr(recipe, "skip_endpoints", False)
+                            ),
+                            "domain_origin_sharded": bool(
+                                getattr(recipe, "shard_origin", False)
+                            ),
                             "boundary_shards": int(
                                 getattr(recipe, "boundary_shards", 0)
                             ),
