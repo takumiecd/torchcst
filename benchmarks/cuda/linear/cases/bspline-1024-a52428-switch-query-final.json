@@ -44,8 +44,7 @@
     "query-fma-chain",
     "query-fma-chain-compact",
     "query-fma",
-    "query-fma-compact",
-    "range-reuse-a16w1"
+    "query-fma-compact"
   ],
   "baseline": "h-save-hp-fused",
   "dense": true
