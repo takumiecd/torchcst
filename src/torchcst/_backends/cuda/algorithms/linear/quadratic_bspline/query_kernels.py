@@ -79,7 +79,7 @@ def _query(
         p1 = tl.load(Bank + B * (N + 1) + addr, mask, 0)
         p2 = tl.load(Bank + 2 * B * (N + 1) + addr, mask, 0)
         if METHOD == "factored":
-            offset: tl.constexpr = (
+            offset = (
                 -1.0
                 if knot == 0
                 else -1.0 / 3.0
@@ -106,7 +106,7 @@ def _query(
         else:
             if knot > 0:
                 d0, d1, d2 = p0 - previous0, p1 - previous1, p2 - previous2
-                offset: tl.constexpr = -1.0 if knot == 1 else 0.0 if knot == 2 else 1.0
+                offset = -1.0 if knot == 1 else 0.0 if knot == 2 else 1.0
                 z = zc + offset * zr
                 linear = d1 - z[:, None] * d0
                 quadratic = d2 - z[:, None] * (d1 + linear)
