@@ -634,3 +634,8 @@ REGISTRY.register(BSplinePreparedHAlgorithm())
 REGISTRY.register(BSplineCoalescedHAlgorithm())
 
 REGISTRY.register(BSplineSavedHAlgorithm())
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineAdjointAlgorithm,
+)
+
+REGISTRY.register(BSplineAdjointAlgorithm())

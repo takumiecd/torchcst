@@ -36,6 +36,12 @@ class _SavedH(torch.autograd.Function):
         _stamp("input_sort", 0)
         _stamp("input_sort", 1)
         cuts, co = _coefficients(meta, origin, spacing, count, sizes, recipe)
+        if getattr(recipe, "adjoint_h", False):
+            from .adjoint_runtime import order as adjoint_order
+
+            backward_order = adjoint_order(cuts, count, sizes, recipe)
+        else:
+            backward_order = x.new_empty(0, dtype=torch.int64)
         _out_order, _out_ends = _events(cuts, count, a, sizes[0], 0, recipe)
         in_order, in_ends = _events(cuts, count, a, sizes[1], 1, recipe)
         w = _build_w(meta, origin, spacing, count, sizes, recipe, x.device, "w_build")
@@ -106,6 +112,7 @@ class _SavedH(torch.autograd.Function):
             in_ends,
             values,
             saved_hp,
+            backward_order,
         )
         return y
 
@@ -138,6 +145,7 @@ class _SavedH(torch.autograd.Function):
             in_ends,
             saved_h,
             saved_hp,
+            backward_order,
         ) = ctx.saved_tensors
         recipe, sizes = ctx.recipe, ctx.sizes
         a, b = len(meta), len(dy)
@@ -207,7 +215,34 @@ class _SavedH(torch.autograd.Function):
             dp = dy.new_empty(0)
         _stamp("back_query", 0)
         _stamp("back_query", 1)
-        if recipe.backward_mode == "staged":
+        if getattr(recipe, "adjoint_h", False):
+            from .adjoint_runtime import backward as adjoint_backward
+
+            for stage in ("h_recompute", "g_recompute", "atom_contract", "dx_inject"):
+                _stamp(stage, 0)
+                _stamp(stage, 1)
+            delta = adjoint_backward(
+                backward_order,
+                input_bank,
+                saved_h,
+                saved_hp,
+                adjoint_bank,
+                meta,
+                cuts,
+                co,
+                delta,
+                dp,
+                count,
+                origin,
+                spacing,
+                sizes,
+                b,
+                recipe,
+                mode,
+                need_dx,
+                vjp,
+            )
+        elif recipe.backward_mode == "staged":
             h = (
                 saved_h
                 if mode != "none"

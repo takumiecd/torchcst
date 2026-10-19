@@ -77,7 +77,17 @@ def diagnostic_components(
             common
             + extra
             + (("input_sort", "layout_output", "layout_input") if coalesced_h else ())
-            + (("h_recompute", "g_recompute", "atom_contract") if saved_h else ())
+            + (
+                (
+                    "h_recompute",
+                    "g_recompute",
+                    "atom_contract",
+                    "adjoint_order",
+                    "dx_reduce",
+                )
+                if saved_h
+                else ()
+            )
             + (
                 "group",
                 "pack",
