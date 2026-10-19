@@ -105,3 +105,22 @@ source SHA256 `240bd170aaef03a2c6add186057239da8bfb62d82c812c533b1d3d8c3ad259af`
 v20–23のprepareはPolar復号と離散L2を一つのkernelで評価し、初回compiler reportは230 registers、spill0。v24は同じFP64復号式でMetaの幾何/振幅/source微分を保存し、次のkernelで既存`_norm_pair`をそのまま評価してMetaのinvD/gammaだけを書く。Metaの型・寿命・正規化式・floor・tiny/floor guardを維持する。追加の全atom Tensorはなく、二つのkernelを足したprepare時間と完全stepで判定する。register数だけで速度向上を主張しない。
 
 v21の負の結果に基づき、v24ではactive尺度走査を省くcontrol（split_prepare=false）も用意する。まずactive省略と二分割準備を分離して比較する。境界分散32/16を比較し、reservedもDense以下となる候補を選ぶ。デフォルト研究recipeは16分散、public/default dispatcherは変更しない。GPU未検証。
+
+## v23検証結果：終端skipとdomain先頭分散はB32で改善
+
+source `be6265dc5865f5ee016c9d69097947caa2ea172f`、job `l4job-90251ded5d384b17a496fe94a966a499`。25 tests PASS（24 CUDA +1 metadata、1009 deselected）。主要2条件の全plan独立FP64 gate PASS。1522 runtime/test/benchmark filesのcommit byte一致、manifest42 files、archive hash、return0/cleanup ackを確認。
+
+| plan | B32 ms | allocated/reserved MiB | B64 ms | allocated/reserved MiB |
+|---|---:|---:|---:|---:|
+| query-fma |1.622294|81.288 /172|2.494845|96.791 /188|
+| local-sharded32 |1.525449|34.405 /98|2.877334|47.067 /140|
+| local-drop-ends |1.475565|34.605 /98|2.752205|47.268 /142|
+| local-endpoint8 |1.469794|32.364 /100|2.654509|43.691 /102|
+| local-endpoint32 |1.461689|34.605 /98|2.620878|47.268 /142|
+| Dense |0.082300|49.002 /106|0.106153|49.502 /106|
+
+B32はquery-fma対比約9.9%速く、allocated/reservedともDense以下。B64は8分散なら両peakがDense以下だが、query-fmaより遅い。32分散は速度が良くてもreservedで未達。Denseの2倍以内にはいずれも届かない（B32約17.8倍、B64のメモリ適合8分散約25.0倍）。この改善率は初回run、v24比較にもcontrolを含めて再検証する。
+
+独立phaseのstream forward/backwardはB32 sharded32 0.203/0.237ms→endpoint32 0.176/0.211ms、B64 0.742/0.792ms→0.673/0.711ms。小支持native forward/backwardはB32約0.258/0.356ms、B64約0.305/0.404msで残る。準備約0.137ms、係数約0.043msも残る。部分phaseは別graphでありprimaryとの加算一致を要求しない。
+
+source SHA256 `412648a09c6962ba5cdc258be2b895f62865845ef297d541802dc3358c4ecf8c`、result SHA256 `697dacfb86561f31467f731898a748632ea8e05225af8a51528d4b663201494a`。通算gate maxabs上限はY6.583e-5 /dX7.542e-5 /all-source6.261e-5、relative L2はいずれも3.965e-6以下。CPU v23は1983 passed /3794 skipped。共通経路の追加GPU回帰とv24比較は別jobで実行中であり、この時点では完了扱いにしない。
