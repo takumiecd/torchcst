@@ -28,6 +28,22 @@ H_{ab}=-\sum_{r=0}^{3}\sum_{k=0}^{2}c_{i,ark}P_{bk}(t_{i,ar}),\qquad
 と計算する。差分配列のscanと多項式評価でYへ復元する。backwardもG、H/Gの中心微分、正規化微分とdXの同じ構造を使う。
 係数とcutは毎forwardで現在の幅・中心から作り、backwardにはそのforward時点のsnapshotを渡す。
 
+back queryが計算する縮約は、中心微分を添字μで表すと、
+
+\[
+S_a=\sum_b H_{ab}G_{ab},\quad
+T_{o,a}=\sum_b H_{ab}G_{\mu_o,ab},\quad
+T_{i,a}=\sum_b H_{\mu_i,ab}G_{ab},
+\]
+\[
+dA_a=S_a/D_a,\qquad
+d\mu_{d,a}=(A_a/D_a)\bigl(T_{d,a}-S_a\,\partial_{\mu_d}\log D_a\bigr).
+\]
+
+floorが有効なときはその枝の分母微分を0にする。振幅のtask勾配は既存Polarの2成分へ戻す。
+HとHμ、GとGμはそれぞれ同じmoment loadを使うが、別の係数積・FP64演算が必要になる。
+forwardのHを保存しないためbackwardは入力bankとHを再計算する。これらとbatch方向の縮約をback queryの時間に含む。
+
 ## 比較する実行方法
 
 - `h-row-split`: `[plane,batch,site]` bankと差分配列、H/Gを `[atom,batch]` に保存する分離対照。
@@ -86,3 +102,13 @@ cutoff .05（小さいσも広いσ側に振り分ける）は2.152ms、cutoff .
 compactな3係数planeでは2.086ms、allocatedは62.888MiBへ減るがreservedは142MiBだった。
 このlaunch探索はdriver成功・archive取得後のremote cleanupで接続を失い、poolがVM停止とserver assignment消失を確認した。正式な最終比較には含めず、負の探索記録として保持する。
 精度を緩めず両方のメモリ指標でDense以下にするという採用条件は、ここまでの候補では満たしていない。
+
+## 回帰検証
+
+- `tests/test_quadratic_bspline_cuda.py`: **485 passed**（6宣言/metadata + 479実CUDA）、624.87s。新規は1宣言 + 40実CUDA。job `l4job-095b17925f0d4244896778acbce9cec9`、source `329de44e`。
+- CPU全体: **1973 passed / 3255 skipped**、18件の既存warning、41.97s。skipはGPU/DB検証完了を意味しない。
+- 新方式の独立FP64 gateはY/dX/全Polar4成分のmaxabsとrelative-L2を両方 `<4e-4` とし、閾値を緩めていない。floor有効/無効、64/1024 site、strided X、各stepの新しいX、live幅・中心変更、Graph内切替、retained forward、ゼロ振幅、dXのみ/dPのみも検査した。
+- 完全step測定とstage診断は既存runnerを使い、CST候補間の初期P、およびDenseを含む全候補のX/targetの一致、全atomの幅更新を結果JSONで確認する。
+- wheel/sdistの343 runtimeファイルを現checkoutとbyte照合。package SHAはignored evidenceの`package/proof.json`に保存する。
+
+GPU suiteには既存経路のAccumulateGrad stream mismatch warningが1件あり、今回新設した警告ではない。検査は全件完了した。
