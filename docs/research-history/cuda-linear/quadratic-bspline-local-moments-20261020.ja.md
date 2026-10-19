@@ -99,3 +99,9 @@ B64は16分散でactive対比約3.3%の候補改善。ただし旧query-fmaに�
 独立phaseのB64 stream forward/backwardはactive 0.850/0.893ms→16分散0.796/0.834ms→32分散0.743/0.793msだが、初期化・復元と完全stepの費用が相殺する。broad streamは全てspill0、32分散の最大restoreは184 registers /shared8192 bytes。これを単純加算してprimary時間と見なさない。
 
 source SHA256 `240bd170aaef03a2c6add186057239da8bfb62d82c812c533b1d3d8c3ad259af`、result SHA256 `6ed22ce395601312d988b1950b75e946f205da21fab8c31fc3bc3c598b69e1b5`。v20–22通算gate maxabs上限はY6.583e-5、dX7.542e-5、all-source6.261e-5。CPU v22は1982 passed /3770 skipped。public/default経路への採用は行わない。
+
+## v24の検証仮説：準備のregister圧力を切り分ける
+
+v20–23のprepareはPolar復号と離散L2を一つのkernelで評価し、初回compiler reportは230 registers、spill0。v24は同じFP64復号式でMetaの幾何/振幅/source微分を保存し、次のkernelで既存`_norm_pair`をそのまま評価してMetaのinvD/gammaだけを書く。Metaの型・寿命・正規化式・floor・tiny/floor guardを維持する。追加の全atom Tensorはなく、二つのkernelを足したprepare時間と完全stepで判定する。register数だけで速度向上を主張しない。
+
+v21の負の結果に基づき、v24ではactive尺度走査を省くcontrol（split_prepare=false）も用意する。まずactive省略と二分割準備を分離して比較する。境界分散32/16を比較し、reservedもDense以下となる候補を選ぶ。デフォルト研究recipeは16分散、public/default dispatcherは変更しない。GPU未検証。

@@ -39,6 +39,8 @@ def diagnostic_components(
             "group",
             "pack",
             "coeff_prepare",
+            "decode",
+            "norm_init",
             "active_levels",
             "delta_output",
             "delta_input",
@@ -343,27 +345,70 @@ def _prepare(p, value, chart, recipe, moments):
     meta = torch.empty((len(p), 12), device=p.device, dtype=torch.float64)
     if len(p):
         _stamp("prepare", 0)
-        compiled = k.prepare[(tr.cdiv(len(p), 64),)](
-            source,
-            meta,
-            origin,
-            spacing,
-            polar_scalars(value),
-            len(p),
-            no,
-            ni,
-            value.spec.normalization.floor,
-            moments,
-            moments.shape[1],
-            recipe.reciprocal,
-            recipe.norm_lookup,
-            getattr(recipe, "norm_fma", False),
-            getattr(recipe, "norm_float32", False),
-            num_warps=recipe.prepare_warps,
-            enable_fp_fusion=False,
-        )
+        local = getattr(recipe, "local_h", False)
+        if local:
+            _stamp("decode", 0)
+        if getattr(recipe, "split_prepare", False):
+            from . import prepare_split_kernels as sk
+
+            compiled = sk.decode[(tr.cdiv(len(p), 64),)](
+                source,
+                meta,
+                origin,
+                spacing,
+                polar_scalars(value),
+                len(p),
+                num_warps=recipe.prepare_warps,
+                enable_fp_fusion=False,
+            )
+            _report("prepare_decode", compiled)
+            _stamp("decode", 1)
+            _stamp("norm_init", 0)
+            compiled = sk.normalize[(tr.cdiv(len(p), 64),)](
+                meta,
+                origin,
+                spacing,
+                moments,
+                len(p),
+                no,
+                ni,
+                moments.shape[1],
+                value.spec.normalization.floor,
+                recipe.reciprocal,
+                recipe.norm_lookup,
+                getattr(recipe, "norm_fma", False),
+                getattr(recipe, "norm_float32", False),
+                num_warps=recipe.prepare_warps,
+                enable_fp_fusion=False,
+            )
+            _report("prepare_norm", compiled)
+            _stamp("norm_init", 1)
+        else:
+            if local:
+                _stamp("decode", 1)
+                _stamp("norm_init", 0)
+                _stamp("norm_init", 1)
+            compiled = k.prepare[(tr.cdiv(len(p), 64),)](
+                source,
+                meta,
+                origin,
+                spacing,
+                polar_scalars(value),
+                len(p),
+                no,
+                ni,
+                value.spec.normalization.floor,
+                moments,
+                moments.shape[1],
+                recipe.reciprocal,
+                recipe.norm_lookup,
+                getattr(recipe, "norm_fma", False),
+                getattr(recipe, "norm_float32", False),
+                num_warps=recipe.prepare_warps,
+                enable_fp_fusion=False,
+            )
+            _report("prepare", compiled)
         _stamp("prepare", 1)
-        _report("prepare", compiled)
         if DIAGNOSTIC_EVENTS is not None:
             scratch = torch.empty((len(p), 4), device=p.device, dtype=torch.float64)
             _stamp("norm_replay", 0)

@@ -542,3 +542,18 @@ class BSplineLocalEndpointRecipe(BSplineLocalShardedRecipe):
         super().__post_init__()
         if type(self.shard_origin) is not bool:
             raise ValueError("shard_origin must be boolean")
+
+
+@dataclass(frozen=True)
+class BSplineLocalSplitRecipe(BSplineLocalEndpointRecipe):
+    """Revision 24: ablate split preparation and avoid the negative scale scan."""
+
+    active_levels: bool = False
+    split_prepare: bool = True
+    boundary_shards: int = 16
+
+    def __post_init__(self):
+        super().__post_init__()
+        for name in ("active_levels", "split_prepare"):
+            if type(getattr(self, name)) is not bool:
+                raise ValueError(f"{name} must be boolean")
