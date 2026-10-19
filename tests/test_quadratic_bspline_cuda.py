@@ -14,6 +14,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineCoalescedHAlgorithm,
     BSplineParallelAlgorithm,
     BSplinePreparedHAlgorithm,
+    BSplineQueryAlgorithm,
     BSplineRangeAlgorithm,
     BSplineRangeBlockedAlgorithm,
     BSplineRangeFusedAlgorithm,
@@ -31,6 +32,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineCoalescedHRecipe,
     BSplineParallelRecipe,
     BSplinePreparedHRecipe,
+    BSplineQueryRecipe,
     BSplineRangeBlockedRecipe,
     BSplineRangeFusedRecipe,
     BSplineRangeRecipe,
@@ -66,6 +68,9 @@ def case(n=64, a=17):
 def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     from dataclasses import replace
 
+    query = strategy == "h_query"
+    if query:
+        strategy = "h_saved"
     adjoint = strategy == "h_adjoint"
     saved = strategy in ("h_saved", "h_adjoint")
     coalesced = strategy in ("h_coalesced", "h_saved", "h_adjoint")
@@ -94,6 +99,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineCoalescedHAlgorithm())
     registry.register(BSplineSavedHAlgorithm())
     registry.register(BSplineAdjointAlgorithm())
+    registry.register(BSplineQueryAlgorithm())
     registry.register(BSplineRangeAlgorithm())
     registry.register(BSplineRangeFusedAlgorithm())
     registry.register(BSplineRangeSpatialAlgorithm())
@@ -116,7 +122,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     tuned = bool(recipe_options) or strategy == "matrix_separable"
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v15"
+        "v16"
+        if query
+        else "v15"
         if adjoint
         else "v14"
         if saved
@@ -145,7 +153,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         else "v2"
         if tuned
         else "v1",
-        BSplineAdjointRecipe(**recipe_options)
+        BSplineQueryRecipe(**recipe_options)
+        if query
+        else BSplineAdjointRecipe(**recipe_options)
         if adjoint
         else BSplineSavedHRecipe(**recipe_options)
         if saved
@@ -2136,3 +2146,159 @@ def test_adjoint_recipe_roundtrip_and_bounds():
     ):
         with pytest.raises(ValueError):
             BSplineAdjointRecipe(**options)
+
+
+QUERY_OPTIONS = [
+    {"query_method": "fma_chain"},
+    {"query_method": "fma_chain", "coefficient_derivatives": False},
+    {"query_method": "fma"},
+    {"query_method": "fma", "coefficient_derivatives": False},
+    {"query_method": "factored"},
+    {"query_method": "pieces"},
+    {"query_method": "factored", "coefficient_derivatives": False},
+    {"query_method": "pieces", "backward_mode": "staged", "reciprocal": False},
+]
+
+
+@GPU
+@pytest.mark.parametrize("options", QUERY_OPTIONS)
+@pytest.mark.parametrize("n", [64, 1024])
+@pytest.mark.parametrize("floor", [1e-6, 1000.0])
+def test_query_dynamic_full_gradients(options, n, floor):
+    layer = model("h_query", n=n, a=33, floor=floor, **options)
+    for step in range(3):
+        if step:
+            with torch.no_grad():
+                layer.atoms.p[:, :2].mul_(1.003)
+                layer.atoms.p[:, 2:].add_(0.0037)
+        x = torch.randn(3, 2 * n, device="cuda")[:, ::2].requires_grad_()
+        gate(layer, x, torch.randn(3, n, device="cuda"))
+
+
+@GPU
+@pytest.mark.parametrize("options", QUERY_OPTIONS)
+def test_query_retained_geometry_and_input_generation(options):
+    layer = model("h_query", n=128, a=33, sigma_cutoff=0.2, **options)
+    x = torch.randn(3, 128, device="cuda", requires_grad=True)
+    dy = torch.randn_like(x)
+    y = layer(x)
+    expected = torch.autograd.grad(y, (x, layer.atoms.p), dy, retain_graph=True)
+    with torch.no_grad():
+        layer.atoms.p[:, :2].mul_(1.2)
+        layer.atoms.p[:, 2:].add_(0.31)
+    layer(torch.randn_like(x))
+    actual = torch.autograd.grad(y, (x, layer.atoms.p), dy)
+    for a, b in zip(actual, expected):
+        torch.testing.assert_close(a, b)
+
+
+@GPU
+@pytest.mark.parametrize("options", QUERY_OPTIONS)
+@pytest.mark.parametrize("which", ["x", "p"])
+def test_query_individual_gradients(options, which):
+    layer = model("h_query", n=128, a=33, save_w=False, **options)
+    layer.atoms.p.requires_grad_(which == "p")
+    x = torch.randn(3, 128, device="cuda", requires_grad=which == "x")
+    dy = torch.randn_like(x)
+    y = layer(x)
+    requested = x if which == "x" else layer.atoms.p
+    actual = torch.autograd.grad(y, requested, dy)[0]
+    rx = x.detach().double().requires_grad_(which == "x")
+    rp = layer.atoms.p.detach().double().requires_grad_(which == "p")
+    ref = bs.oracle(copy.deepcopy(layer.kernel).double(), layer.chart, rp, rx)
+    expected = torch.autograd.grad(ref, rx if which == "x" else rp, dy.double())[0]
+    from benchmarks.cuda.linear.check_normalized import check
+
+    error = check(actual, expected, 4e-4)
+    assert error["max"] < 4e-4 and error["rel_l2"] < 4e-4
+
+
+@GPU
+@pytest.mark.parametrize("options", QUERY_OPTIONS)
+def test_query_zero_amplitude(options):
+    import math
+
+    layer = model("h_query", n=128, a=1, **options)
+    radius = math.sqrt(1 + 3 * math.log(1.6 / 0.1) / math.log(128.0))
+    with torch.no_grad():
+        layer.atoms.p[0, 0] = 0
+        layer.atoms.p[0, 1] = radius
+        layer.atoms.p[0, 2:] = 6.35
+    x = torch.randn(3, 128, device="cuda", requires_grad=True)
+    gate(layer, x, torch.randn_like(x))
+    dp = torch.autograd.grad(layer(x).sum(), layer.atoms.p)[0]
+    assert dp[0, 0].abs().item() > 1e-8
+
+
+@GPU
+@pytest.mark.parametrize("options", QUERY_OPTIONS)
+def test_query_empty_and_batch64(options):
+    empty = model("h_query", n=64, a=0, **options)
+    x = torch.randn(64, 64, device="cuda", requires_grad=True)
+    y = empty(x)
+    dx, dp = torch.autograd.grad(y.sum(), (x, empty.atoms.p))
+    assert (
+        torch.count_nonzero(y) == 0
+        and torch.count_nonzero(dx) == 0
+        and dp.shape == (0, 4)
+    )
+    layer = model("h_query", n=64, a=33, axis_atoms=4, axis_warps=4, **options)
+    gate(layer, x, torch.randn_like(x))
+
+
+@GPU
+@pytest.mark.parametrize("options", QUERY_OPTIONS)
+def test_query_graph_crosses_selected_cutoff(options):
+    import math
+
+    from benchmarks.cuda.linear.check_normalized import check
+
+    layer = model("h_query", n=1024, a=33, sigma_cutoff=0.2, **options)
+    widths = torch.tensor([0.1, 0.19, 0.21, 1.6], device="cuda", dtype=torch.float64)
+    ids = torch.arange(33, device="cuda")
+    with torch.no_grad():
+        layer.atoms.p[:, 2:] = 51.15
+
+    def update(step):
+        sigma = widths[(ids + step) % 4]
+        radius = (1 + 3 * (sigma / 0.1).log() / math.log(128.0)).sqrt()
+        with torch.no_grad():
+            layer.atoms.p[:, 0] = (0.6 * radius).float()
+            layer.atoms.p[:, 1] = (0.8 * radius).float()
+        return int((sigma <= 0.2).sum())
+
+    update(0)
+    x = torch.randn(3, 1024, device="cuda", requires_grad=True)
+    dy = torch.randn_like(x)
+    gate(layer, x, dy)
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        y = layer(x)
+        dx, dp = torch.autograd.grad(y, (x, layer.atoms.p), dy)
+    for step in range(1, 5):
+        native = update(step)
+        with torch.no_grad():
+            x.copy_(torch.randn_like(x))
+        graph.replay()
+        rx = x.detach().double().requires_grad_()
+        rp = layer.atoms.p.detach().double().requires_grad_()
+        ref = bs.oracle(copy.deepcopy(layer.kernel).double(), layer.chart, rp, rx)
+        rdx, rdp = torch.autograd.grad(ref, (rx, rp), dy.double())
+        for actual, expected in zip((y, dx, dp), (ref, rdx, rdp)):
+            error = check(actual, expected, 4e-4)
+            assert error["max"] < 4e-4 and error["rel_l2"] < 4e-4
+        cache = layer.__dict__["_algorithm_states"][0].buffers["stream_layout"]
+        assert cache["count"].item() == native
+
+
+def test_query_recipe_roundtrip_and_bounds():
+    reg = Registry()
+    reg.register(BSplineQueryAlgorithm())
+    for options in QUERY_OPTIONS:
+        p = ExecutionPlan(
+            "research_cuda_quadratic_bspline", "v16", BSplineQueryRecipe(**options)
+        )
+        assert reg.loads_plan(reg.dumps_plan(p)) == p
+    for options in ({"query_method": "bad"}, {"save_h": "none"}, {"save_h": "h"}):
+        with pytest.raises(ValueError):
+            BSplineQueryRecipe(**options)

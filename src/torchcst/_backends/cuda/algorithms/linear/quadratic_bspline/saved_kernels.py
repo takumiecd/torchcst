@@ -6,6 +6,7 @@ import triton.language as tl
 from . import coalesced_kernels as ck
 from .h_kernels import _geometry
 from .parallel_kernels import _pullback
+from .query_kernels import _query
 
 
 @tr.jit
@@ -161,12 +162,13 @@ def adjoint_query(
     RECIPROCAL: tl.constexpr,
     DERIVATIVES: tl.constexpr,
     VJP: tl.constexpr,
+    QUERY: tl.constexpr = "expanded",
 ):
     base = tl.load(Count) + tl.program_id(0) * AB
     if base < A:
         a = base + tl.arange(0, AB)
         b = tl.arange(0, BB)
-        g, gp = ck._query(
+        g, gp = _query(
             Bank,
             Meta,
             Cuts,
@@ -187,6 +189,7 @@ def adjoint_query(
             VJP,
             True,
             False,
+            QUERY,
         )
         mask = (a[:, None] < A) & (b[None, :] < B)
         tl.store(G + a[:, None] * B + b[None, :], g.to(tl.float32), mask)
@@ -249,12 +252,13 @@ def forward(
     POINT_MAJOR: tl.constexpr,
     SHARE_READS: tl.constexpr,
     REDUCE_WRITES: tl.constexpr,
+    QUERY: tl.constexpr = "expanded",
 ):
     base = tl.load(Count) + tl.program_id(0) * AB
     if base < A:
         a = base + tl.arange(0, AB)
         b = tl.arange(0, BB)
-        h, hp = ck._query(
+        h, hp = _query(
             Bank,
             Meta,
             Cuts,
@@ -275,6 +279,7 @@ def forward(
             SAVE_MODE == "hp",
             POINT_MAJOR,
             SHARE_READS,
+            QUERY,
         )
         if SAVE_MODE != "none":
             tl.store(
@@ -344,12 +349,13 @@ def backward(
     DX: tl.constexpr,
     VJP: tl.constexpr,
     SAVE_MODE: tl.constexpr,
+    QUERY: tl.constexpr = "expanded",
 ):
     base = tl.load(Count) + tl.program_id(0) * AB
     if base < A:
         a = base + tl.arange(0, AB)
         b = tl.arange(0, BB)
-        g, gp = ck._query(
+        g, gp = _query(
             AdjointBank,
             Meta,
             Cuts,
@@ -370,6 +376,7 @@ def backward(
             VJP,
             POINT_MAJOR,
             SHARE_READS,
+            QUERY,
         )
         if VJP:
             h, hp = _input(

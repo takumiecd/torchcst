@@ -362,3 +362,27 @@ class BSplineAdjointRecipe(BSplineSavedHRecipe):
             self.scatter_shards == 1 or self.scatter_scope != "zero"
         ):
             raise ValueError("fold_zero requires multiple zero-endpoint shards")
+
+
+@dataclass(frozen=True)
+class BSplineQueryRecipe(BSplineSavedHRecipe):
+    """Revision 16: FP64 truncated-power or interval-difference queries."""
+
+    query_h = True
+    save_h: str = "hp"
+    query_method: str = "factored"
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.save_h != "hp":
+            raise ValueError("query algebra requires save_h=hp")
+        if self.query_method not in (
+            "expanded",
+            "factored",
+            "pieces",
+            "fma",
+            "fma_chain",
+        ):
+            raise ValueError(
+                "query_method must be expanded, factored, pieces, fma or fma_chain"
+            )
