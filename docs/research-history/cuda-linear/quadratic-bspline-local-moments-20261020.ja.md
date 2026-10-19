@@ -79,3 +79,23 @@ source `4441b276d45ccf250143a265e8d26b5193fa7ea0`、job `l4job-ea2c9dd7ec684a38a
 v20のB32改善傾向は独立repeatで再現したが、v21自体には完全stepの改善がない。独立phaseではbank/restoreが約4–9µs縮んだ一方、尺度分類約29.7µsと差分初期化launchの増分が上回る。broad stream時間は変わらず、未使用bank削減だけではB64の遅さを説明・解消できなかった。これはcache容量やmiss率を測定した結果ではない。既定経路への採用は行わない。
 
 source SHA256 `0e34f2a8c6b306d8e14bfcb6cf89dd2e36190365ea55992231980859898acc9b`、result SHA256 `e96d5f27cc3a428ca03e1a6e4d6a01dba5bc8131a96d959932a5516f8016a310`。v20/v21通算の独立gate上限はY6.583e-5、dX7.542e-5、all-source6.261e-5、relative L2はいずれも3.965e-6以下。
+
+## v22検証結果：境界shardだけでは小幅の改善
+
+source `fffe7584623aa0b2f4c9b256ccddd9764271993e`、job `l4job-69b92f6d28bd4750b357f5873837aaf6`。36 tests PASS（35 CUDA +1 metadata、973 deselected）。主要2条件の全plan独立FP64 gateもPASS。source/result archive、manifest 48 files、1518 runtime/test/benchmark filesのcommit byte一致、return0/cleanup ackを検証。
+
+| plan | B32 ms | allocated/reserved MiB | B64 ms | allocated/reserved MiB |
+|---|---:|---:|---:|---:|
+| query-fma | 1.619552 |81.288 /172|2.494048|96.791 /188|
+| local-active |1.525143|30.616 /98|2.929224|40.291 /100|
+| local-sharded8 |1.540299|32.164 /100|2.855720|43.491 /100|
+| local-sharded16 |1.514146|33.816 /98|2.832875|44.290 /100|
+| local-sharded32 |1.527808|34.405 /98|2.872563|47.067 /140|
+| local-sharded64 |1.534911|37.393 /98|2.890271|53.091 /148|
+| Dense |0.083207|49.002 /106|0.107585|49.502 /106|
+
+B64は16分散でactive対比約3.3%の候補改善。ただし旧query-fmaに届かず、Denseの約26倍。B32には明確な完全step改善がない。32分散はB64でallocatedを満たしてもreservedがDenseを上回るため、メモリ目標未達。64分散は両peak未達。部分処理の短縮だけで候補を選ばない。
+
+独立phaseのB64 stream forward/backwardはactive 0.850/0.893ms→16分散0.796/0.834ms→32分散0.743/0.793msだが、初期化・復元と完全stepの費用が相殺する。broad streamは全てspill0、32分散の最大restoreは184 registers /shared8192 bytes。これを単純加算してprimary時間と見なさない。
+
+source SHA256 `240bd170aaef03a2c6add186057239da8bfb62d82c812c533b1d3d8c3ad259af`、result SHA256 `6ed22ce395601312d988b1950b75e946f205da21fab8c31fc3bc3c598b69e1b5`。v20–22通算gate maxabs上限はY6.583e-5、dX7.542e-5、all-source6.261e-5。CPU v22は1982 passed /3770 skipped。public/default経路への採用は行わない。
