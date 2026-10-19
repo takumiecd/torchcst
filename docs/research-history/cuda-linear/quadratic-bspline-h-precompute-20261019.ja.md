@@ -66,3 +66,57 @@ raw source/results/logsとhash検証はignored `output/bspline-h-precompute-2026
 初回 `l4job-15b6cb5104204de3927a664e0f5e1536`（7325d2f2）は、GPUの係数準備kernelで
 unrolled loop内のconstexpr再定義がコンパイルエラーになった。数値・性能結果は採用しない。
 修正ad0954d0で再提出。初回のsource/result/log/manifestは保全している。
+
+
+## 最初のB64 mixed比較
+
+L4、Torch 2.11.0+cu130 / CUDA 13.0 / Triton 3.6.0、全52428 atom、B64、1024×1024。
+各sigma群は `.1/.4/1.6/6.4/12`、各20%。以下は未計装完全stepの中央値。
+peakはMiB、capture/replay込みのallocated / reservedであり、GPUプロセス総量ではない。
+
+| 方式 | ms | allocated / reserved MiB |
+| --- | ---: | ---: |
+| 既存H stream-reuse8 | 7.388 | 54.194 / 114 |
+| 最速W range-reuse-a16w1 | 3.258 | 78.840 / 156 |
+| uncached split | 6.826 | 66.994 / 128 |
+| cache fused | 4.673 | 71.191 / 132 |
+| cache split | 5.046 | 83.991 / 160 |
+| compact cache fused | 5.915 | 65.591 / 140 |
+| cache fused + edge reduction | 4.461 | 71.191 / 132 |
+| cache segmented | 5.377 | 84.795 / 160 |
+| compact segmented | 6.621 | 79.392 / 156 |
+| Dense | 0.108 | 49.502 / 106 |
+
+分離したcache splitの別計装Graphでは、係数前計算0.060ms、H query 0.598ms、
+Y injection 0.879ms。back_query（G/G'/H/H'と全atom VJPを含む）は1.265ms、
+dX injection 0.855ms。input bankは約0.05ms、出力/input scanは各約0.024ms。
+これらは主時間に足し引きしない。fused版のH query/injectionは一つのkernel内であり、
+個別時間は分離版の測定値として読む。
+
+係数をforwardで一度準備してbackwardまで共有する効果が大きい。
+compact版は容量を減らしたが、中心微分の繰り返し除算などを含むbackwardが遅くなった。
+segmented版はevent構築が出力/入力各約0.042msだが、H/Gのglobal保存・event参照・
+segment reduction込みの完全stepで改善しなかった。atomic削減だけから高速化とは判断しない。
+compiler reportではcache fused backwardのspill_slots=132、edge版は0だが、
+物理DRAM転送・stall counterは測っておらず、この差だけで原因を断定しない。
+
+この時点ではH方式をWより速いとはいえず、Denseの速度/メモリ条件も満たさない。
+本番dispatcherへ採用しない。引き続きlaunchとcompact微分を別snapshotで検証する。
+
+実機検証：独立FP64全shape gateは全候補でY/dX/全atom勾配の両基準を通過。
+GPUの対象suiteは437 passed。可変sigma、cutoff跨ぎ、floor、保存snapshotを含む。
+source ad0954d0、job `l4job-98d29ac329a045dca008bb30998a35e3`。
+source archive SHA256 `4567df922efbf8aaab6b4c67f701a6c06f9a056fae91e4b9f6dfc84edda0f768`、
+result archive SHA256 `efeb2d2a6a9cae9f5fb39569f9b4bd1c1c206a38911acf40a9a631623058db4c`。
+36 manifest filesを照合し、returncode=0・timeoutなし・POOL_CLEANEDを確認した。
+
+
+実行粒度の比較（source 870f004a、job `l4job-65b2f94b86e94cc581c4cf5b9bf245e1`）では、
+full-cache fusedのatom4/warp1、atom8/warp1、atom8/warp2は各4.748/4.691/4.599msで、
+既定atom8/warp4の4.514msを上回らなかった。event16/warp1は4.684msに改善したが、
+allocated/reserved 84.795/160MiBと大きい。compact fusedは6.385〜7.745msで不採用。
+追加のゼロ振幅・片側だけの勾配・save_w=Falseを含む41 tests passed、全shape gateも通過。
+このsnapshotのcompact微分には除算が残っており、既存逆数の共有は次の8b404e77で検証する。
+source archive SHA256 `aa58ca1229ead0cd998ad95124808007f7c394b655f8f7f926942f8091c159b6`、
+result archive SHA256 `dff7d7ef607b94b9e8aee7595ff0a2122a215ed3529dd1b60540fdbc0f11f28c`。
+38 manifest filesを照合済み。

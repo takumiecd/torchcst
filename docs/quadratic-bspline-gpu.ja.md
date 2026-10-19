@@ -274,3 +274,10 @@ FP64境界と小支持の安定性guardを含む全勾配gate、独立repeat、�
 [係数面の寿命・scan/atom VJPの切り分け](research-history/cuda-linear/quadratic-bspline-range-reuse-20261018.ja.md)
 を参照。L2・形状・幅stop-gradientは同じで、16atom/1warpの実行構成も比較する。
 block scanと空間順の負の結果を含め、公開の既定採用とは区別する。
+
+
+[H方式の係数前計算と出力集約](research-history/cuda-linear/quadratic-bspline-h-precompute-20261019.ja.md)
+では、v12で係数をforward/backward間で共有し、H queryとY injectionの分離測定、
+終端書込の省略と局所集約、切替点eventのsegmented集約を比較する。
+従来H・最速W・Denseの完全stepと総peak、可変sigmaの全勾配gateを同条件で検証し、
+分離版の中間H/G保存と融合版のregister消費を区別する。公開の既定登録は変更しない。

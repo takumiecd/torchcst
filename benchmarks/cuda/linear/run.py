@@ -591,6 +591,17 @@ def measure(args, run):
                             "h_elements_per_buffer": m * case.atoms
                             if recipe.h_mode != "fused"
                             else 0,
+                            "capacity_policy": (
+                                "register-local H/G; forward coefficient snapshot reused in backward"
+                                if recipe.h_mode == "fused"
+                                else "one local B*A H or G workspace; forward coefficient snapshot reused in backward"
+                            ),
+                            "layout_policy": (
+                                "device-validated width buckets with tiny clipped-support native guard"
+                                if recipe.reuse_layout
+                                else "fresh width-bucket sort with tiny clipped-support native guard"
+                            ),
+                            "routing_count_scope": "sigma-only counts above; device route additionally keeps <=2-site clipped axis supports native",
                         }
                     )
                 if recipe.strategy == "matrix_range":
