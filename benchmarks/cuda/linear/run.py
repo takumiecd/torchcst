@@ -689,6 +689,7 @@ def measure(args, run):
                         {
                             "bank_layout": "FP32 plane,dyadic-local-point,batch; no periodic wrap",
                             "local_events_per_axis": 6,
+                            "batch_chunk": getattr(recipe, "batch_chunk", None),
                             "minimum_local_block": 1
                             << getattr(recipe, "min_block_log", 3),
                             "endpoint_writes_skipped": bool(
@@ -898,6 +899,12 @@ def measure(args, run):
                 getattr(run.entry(args.plan_id).plan.recipe, "adjoint_h", False),
                 getattr(run.entry(args.plan_id).plan.recipe, "native_h", False),
                 getattr(run.entry(args.plan_id).plan.recipe, "local_h", False),
+                -(
+                    -case.rows
+                    // getattr(
+                        run.entry(args.plan_id).plan.recipe, "batch_chunk", case.rows
+                    )
+                ),
             )
             backend_events = {
                 name: [

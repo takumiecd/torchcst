@@ -580,3 +580,20 @@ class BSplineLocalNarrowRecipe(BSplineLocalSplitRecipe):
     prepare_float32: bool = False
     boundary_shards: int = 8
     axis_atoms: int = 4
+
+
+@dataclass(frozen=True)
+class BSplineLocalChunkedRecipe(BSplineLocalNarrowRecipe):
+    """Revision 27: share coefficients and reuse bounded batch workspaces."""
+
+    batch_chunk: int = 32
+    prepare_float32: bool = True
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.batch_chunk) is not int or self.batch_chunk not in (16, 32, 64):
+            raise ValueError("batch_chunk must be 16, 32 or 64")
+        if self.save_h != "none":
+            raise ValueError(
+                "chunked local moments recompute H from the saved forward state"
+            )

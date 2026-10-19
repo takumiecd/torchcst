@@ -231,3 +231,29 @@ v26は最小block4、cutoff0.05、axis(4,4)、8分散を使う。sigma_min0.1の
 最小blockをm=2^sとすると尺度Sのlevel=log2(S)-s、prefix offset=level*N+2(N/m)-2(N/S)、全点数=(log2(N)-s+1)N+2(N/m)-1、全block数=2(N/m)-1。古いrecipeはs=3のまま、新revisionだけs=2にする。bank/restore/zero/分類/境界補正の全offsetを同じsで計算する。N1024では1 bankあたり1280 point増える。B64で1 bank約0.938 MiB増、3 banks約2.813 MiB増。分散を16→8にすることでborder容量増を抑えるが、実際の両peakはGPU測定で判定する。
 
 係数はまずFP64で生成してFP32 snapshotへ保存し、FP32係数生成も別ablationで確認する。S4のdyadic境界、tiny/空支持、retained forward、動的σ/Xと全4 source勾配を照合後に完全stepを比較する。public/defaultへの採用はまだ行わない。
+
+
+## v26のGPU結果：小さいσも局所momentへ送る方が速い
+
+source `5cebc3685db552f86295357063af88bbcb707766`。主要比較job `l4job-354c94eb3d734844a0c2fae54df3143f` は49 checks PASS /1121 deselected、314.76秒。small/switch job `l4job-575d2961e5e34b3aa33ddc5e9c74379f` も全planの独立3状態FP64 full-shape gate PASS。両jobのarchive/manifest/source byte/return0/cleanup ackを確認した。
+
+| plan | B32 mixed ms | allocated/reserved MiB | B64 mixed ms | allocated/reserved MiB |
+|---|---:|---:|---:|---:|
+| query-fma |1.619376|81.288 /172|2.496103|96.791 /188|
+| axis(4,4) v24 control |1.346797|34.016 /98|1.966296|44.490 /102|
+| local-narrow FP64係数生成 |0.915053|35.317 /98|1.592260|47.302 /142|
+| local-narrow FP32係数生成 |0.871054|35.317 /98|1.546751|47.302 /142|
+| cutoff0.2 control |1.390359|35.317 /98|2.050627|47.302 /142|
+| Dense |0.082758|49.002 /106|0.105428|49.502 /106|
+
+通常の小σをlocalへ送る変更は速くなった。B32は両peakを満たすが、B64はreserved142 MiBとなりメモリ条件を外れる。FP32係数生成のB32 small/switchは0.871807 /0.879837ms、両方35.317 /98 MiB。対応するDenseは0.082578 /0.082116ms。small Wは1.207156ms、50.231 /114 MiBで、今回は局所moment版より遅くメモリも多い。cutoff0.2はsmall/switchで3.340846 /2.873607msとなり、古い直接Hへの小σ振り分けが負担だったことを示す。
+
+主要job source/result SHA256は `55bcf3353f44fc54530150375e42ef2bb000f52a9e3fb952d8e4e1df982c0b95` / `bc2e8a072b55e674b32a4aa21a58e7ff984b7c07f60c8efac8f6225e34f79248`。small/switchは `5b1b6c1cdbd39d047ba391c4934e1ba92b0cde5170b7f1f59f658db6f1c9faaa` / `d20a823ab369ad61d83fa88bab325d465710739af35c8c9c91e543a2f810a637`。通算Y/dX/all-source maxabs上限は6.583e-5 /7.542e-5 /1.590e-4、relative L2は3.455e-6 /3.965e-6 /6.260e-7以下。全て既存4e-4 gate内。
+
+## v27候補：係数を共有したbatch workspace再利用
+
+係数・Meta・離散L2を一度だけ準備し、batch列をT=16/32/64ずつ処理する。H自体は保存せず、同じ入力moment bankからqueryし、各chunkの出力を復元する。backwardも入力/随伴moment bankとdeltaを使い回す。native/tiny経路はbatch全体を一度だけ処理し、その勾配を消さずに広い支持の勾配を加える。
+
+各atomの4成分勾配はbatch方向に線形な縮約なので、chunk Cに対し g_P=Σ_C pullback(Σ_{b∈C} HG, Σ_{b∈C} HGμ, Σ_{b∈C} HμG)。sourceのMeta・正規化係数は共通で、幅のstop-gradientも同じ。丸め順だけが変わるためCPU screenに続き実GPUの全成分gateで判断する。各kernelがatomを一意に所有し、chunkは同一stream上で順に実行するので、部分勾配の加算にatomicは不要。Y/dXのevent集約方式はこの候補では変えていない。
+
+局所bankの物理batch strideをTに固定し、端数chunkは実際のBでmaskする。3本のbankを使うbackward workspaceは12 P T bytes、borderは12 blocks shards T bytesに制限する。係数snapshotや入力/出力、optimizerを含む実測peakとは区別する。B≤Tでは既存v26演算をそのまま使う。公開選択器へは接続せず、GPU測定前の候補として登録した。

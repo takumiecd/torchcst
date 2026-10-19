@@ -18,21 +18,26 @@ def _atom_geometry(Meta, a, A: tl.constexpr):
 
 
 @tr.jit
-def _pullback(Meta, DP, a, total, dout, din, A: tl.constexpr):
+def _pullback(
+    Meta, DP, a, total, dout, din, A: tl.constexpr, ADD: tl.constexpr = False
+):
     inv = tl.load(Meta + a * 12 + 4, a < A, 0)
     scale = tl.load(Meta + a * 12, a < A, 0) * inv
-    tl.store(DP + 4 * a, total * inv * tl.load(Meta + a * 12 + 7, a < A, 0), a < A)
-    tl.store(DP + 4 * a + 1, total * inv * tl.load(Meta + a * 12 + 8, a < A, 0), a < A)
-    tl.store(
-        DP + 4 * a + 2,
-        scale * (dout - total * tl.load(Meta + a * 12 + 5, a < A, 0)),
-        a < A,
-    )
-    tl.store(
-        DP + 4 * a + 3,
-        scale * (din - total * tl.load(Meta + a * 12 + 6, a < A, 0)),
-        a < A,
-    )
+    for component in tl.static_range(4):
+        if component == 0:
+            value = total * inv * tl.load(Meta + a * 12 + 7, a < A, 0)
+        elif component == 1:
+            value = total * inv * tl.load(Meta + a * 12 + 8, a < A, 0)
+        elif component == 2:
+            value = scale * (dout - total * tl.load(Meta + a * 12 + 5, a < A, 0))
+        else:
+            value = scale * (din - total * tl.load(Meta + a * 12 + 6, a < A, 0))
+        if ADD:
+            # Each CTA owns distinct atoms; batch chunks execute on the same stream.
+            previous = tl.load(DP + 4 * a + component, a < A, 0)
+            tl.store(DP + 4 * a + component, previous + value.to(tl.float32), a < A)
+        else:
+            tl.store(DP + 4 * a + component, value, a < A)
 
 
 @tr.jit

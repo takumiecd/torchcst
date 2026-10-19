@@ -566,6 +566,7 @@ def backward(
     ENDPOINTS: tl.constexpr = False,
     SHARD_ORIGIN: tl.constexpr = False,
     PAD: tl.constexpr = 0,
+    ADD_DP: tl.constexpr = False,
 ):
     base = tl.load(Count) + tl.program_id(0) * AB
     if base < A:
@@ -613,6 +614,7 @@ def backward(
                 tl.sum(h * gp, 1).to(tl.float64),
                 tl.sum(hp * g, 1).to(tl.float64),
                 A,
+                ADD_DP,
             )
         if DX:
             _inject(

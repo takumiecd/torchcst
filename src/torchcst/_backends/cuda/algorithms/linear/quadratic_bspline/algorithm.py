@@ -21,6 +21,7 @@ from .recipe import (
     BSplineCoalescedHRecipe,
     BSplineLeanHRecipe,
     BSplineLocalActiveRecipe,
+    BSplineLocalChunkedRecipe,
     BSplineLocalEndpointRecipe,
     BSplineLocalMomentRecipe,
     BSplineLocalNarrowRecipe,
@@ -376,3 +377,9 @@ class BSplineLocalPaddedAlgorithm(BSplineLocalSplitAlgorithm):
 class BSplineLocalNarrowAlgorithm(BSplineLocalSplitAlgorithm):
     revision: str = "v26"
     recipe_type: type = BSplineLocalNarrowRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalChunkedAlgorithm(BSplineLocalNarrowAlgorithm):
+    revision: str = "v27"
+    recipe_type: type = BSplineLocalChunkedRecipe

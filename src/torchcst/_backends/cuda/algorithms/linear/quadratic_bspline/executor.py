@@ -32,10 +32,11 @@ def diagnostic_components(
     adjoint_h=False,
     native_h=False,
     local_h=False,
+    chunk_count=1,
 ):
     common = ("snapshot", "prepare", "norm_replay")
     if local_h:
-        return common + (
+        names = common + (
             "group",
             "pack",
             "coeff_prepare",
@@ -54,6 +55,28 @@ def diagnostic_components(
             "scan_output",
             "scan_input",
             "unpack",
+        )
+        if chunk_count <= 1:
+            return names
+        split = {
+            "bank_input",
+            "bank_recompute",
+            "bank_adjoint",
+            "delta_output",
+            "delta_input",
+            "stream_forward",
+            "stream_backward",
+            "scan_output",
+            "scan_input",
+        }
+        return tuple(
+            value
+            for name in names
+            for value in (
+                [f"{name}_chunk{k}" for k in range(chunk_count)]
+                if name in split
+                else [name]
+            )
         )
     if strategy == "matrix_range":
         substeps = tuple(

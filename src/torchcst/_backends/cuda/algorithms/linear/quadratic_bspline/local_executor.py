@@ -28,10 +28,15 @@ def _blocks(n, recipe):
     return 2 * (n >> getattr(recipe, "min_block_log", 3)) - 1
 
 
-def _bank(x, n, recipe, label, active, dim, ml):
-    bank = x.new_empty(
-        (3, _points(n, recipe), len(x) + getattr(recipe, "bank_padding", 0))
+def _bank(x, n, recipe, label, active, dim, ml, buffer=None):
+    bank = (
+        buffer
+        if buffer is not None
+        else x.new_empty(
+            (3, _points(n, recipe), len(x) + getattr(recipe, "bank_padding", 0))
+        )
     )
+    pad = bank.shape[2] - len(x)
     _stamp(label, 0)
     for k, sizes in enumerate(_groups(n, recipe)):
         compiled = lk.bank[
@@ -50,7 +55,7 @@ def _bank(x, n, recipe, label, active, dim, ml):
             ml,
             dim,
             getattr(recipe, "active_levels", False),
-            getattr(recipe, "bank_padding", 0),
+            pad,
             getattr(recipe, "min_block_log", 3),
             num_warps=recipe.bank_warps,
             enable_fp_fusion=False,
@@ -81,7 +86,7 @@ def _restore(delta, border, y, n, recipe, label, active, dim, ml):
             getattr(recipe, "active_levels", False),
             border,
             getattr(recipe, "boundary_shards", 0),
-            getattr(recipe, "bank_padding", 0),
+            delta.shape[2] - len(y),
             getattr(recipe, "min_block_log", 3),
             num_warps=recipe.bank_warps,
             enable_fp_fusion=False,
@@ -91,13 +96,23 @@ def _restore(delta, border, y, n, recipe, label, active, dim, ml):
     return y
 
 
-def _delta(x, n, recipe, active, dim, ml):
-    label = "delta_output" if dim == 0 else "delta_input"
+def _delta(x, n, recipe, active, dim, ml, buffers=None, label=None):
+    label = label or ("delta_output" if dim == 0 else "delta_input")
     _stamp(label, 0)
-    if getattr(recipe, "active_levels", False):
+    if buffers is None:
         delta = x.new_empty(
             (3, _points(n, recipe), len(x) + getattr(recipe, "bank_padding", 0))
         )
+        shards = getattr(recipe, "boundary_shards", 0)
+        border = (
+            x.new_empty((3, _blocks(n, recipe), shards, delta.shape[2]))
+            if shards
+            else None
+        )
+    else:
+        delta, border = buffers
+    pad = delta.shape[2] - len(x)
+    if getattr(recipe, "active_levels", False):
         for k, sizes in enumerate(_groups(n, recipe)):
             compiled = lk.zero[
                 (sum(n // v for v in sizes), tr.cdiv(len(x), recipe.bank_batch))
@@ -113,26 +128,104 @@ def _delta(x, n, recipe, active, dim, ml):
                 recipe.bank_batch,
                 ml,
                 dim,
-                getattr(recipe, "bank_padding", 0),
+                pad,
                 getattr(recipe, "min_block_log", 3),
                 num_warps=recipe.bank_warps,
                 enable_fp_fusion=False,
             )
             _report(label + f"_{k}", compiled)
     else:
-        delta = x.new_zeros(
-            (3, _points(n, recipe), len(x) + getattr(recipe, "bank_padding", 0))
-        )
-    shards = getattr(recipe, "boundary_shards", 0)
-    border = (
-        x.new_zeros(
-            (3, _blocks(n, recipe), shards, len(x) + getattr(recipe, "bank_padding", 0))
-        )
-        if shards
-        else None
-    )
+        delta.zero_()
+    if border is not None:
+        border.zero_()
     _stamp(label, 1)
     return delta, border
+
+
+def _frame(x, p, value, chart, recipe, moments, routing, sizes):
+    a = len(p)
+    meta, origin, spacing, _source = _prepare(p, value, chart, recipe, moments)
+    _stamp("group", 0)
+    order, count = placement(meta, origin, spacing, sizes, recipe, routing)
+    _stamp("group", 1)
+    _stamp("pack", 0)
+    meta = meta.index_select(0, order)
+    _stamp("pack", 1)
+    _stamp("coeff_prepare", 0)
+    endpoints = getattr(recipe, "skip_endpoints", False)
+    injection = (
+        x.new_empty((2, a), dtype=torch.int16)
+        if endpoints
+        else x.new_empty(0, dtype=torch.int16)
+    )
+    pos = x.new_empty((2, 6, a), dtype=torch.int32)
+    co = x.new_empty((2, 3, 6, a))
+    half = x.new_empty((2, a))
+    shards = getattr(recipe, "boundary_shards", 0)
+    bp = (
+        x.new_empty((2, 2, a), dtype=torch.int32)
+        if shards
+        else x.new_empty(0, dtype=torch.int32)
+    )
+    compiled = lk.prepare[(tr.cdiv(a, 128),)](
+        meta,
+        pos,
+        co,
+        half,
+        count,
+        origin,
+        spacing,
+        a,
+        *sizes,
+        128,
+        recipe.reciprocal,
+        recipe.prepare_float32,
+        bp if shards else None,
+        shards,
+        injection if endpoints else None,
+        endpoints,
+        getattr(recipe, "min_block_log", 3),
+        num_warps=4,
+        enable_fp_fusion=False,
+    )
+    _report("coeff_prepare", compiled)
+    _stamp("coeff_prepare", 1)
+    ml = max(sizes).bit_length() - getattr(recipe, "min_block_log", 3)
+    _stamp("active_levels", 0)
+    if getattr(recipe, "active_levels", False):
+        active = x.new_empty((2, ml), dtype=torch.int32)
+        compiled = lk.classify_levels[(2, ml)](
+            pos,
+            count,
+            active,
+            a,
+            *sizes,
+            ml,
+            512,
+            getattr(recipe, "min_block_log", 3),
+            num_warps=4,
+            enable_fp_fusion=False,
+        )
+        _report("active_levels", compiled)
+    else:
+        active = x.new_empty(0, dtype=torch.int32)
+    _stamp("active_levels", 1)
+    return (
+        meta,
+        origin,
+        spacing,
+        order,
+        count,
+        pos,
+        co,
+        half,
+        active,
+        bp,
+        injection,
+        ml,
+        shards,
+        endpoints,
+    )
 
 
 class _Local(torch.autograd.Function):
@@ -146,72 +239,22 @@ class _Local(torch.autograd.Function):
         if not a:
             ctx.save_for_backward(x)
             return x.new_zeros((b, sizes[0]))
-        meta, origin, spacing, _source = _prepare(p, value, chart, recipe, moments)
-        _stamp("group", 0)
-        order, count = placement(meta, origin, spacing, sizes, recipe, routing)
-        _stamp("group", 1)
-        _stamp("pack", 0)
-        meta = meta.index_select(0, order)
-        _stamp("pack", 1)
-        _stamp("coeff_prepare", 0)
-        endpoints = getattr(recipe, "skip_endpoints", False)
-        injection = (
-            x.new_empty((2, a), dtype=torch.int16)
-            if endpoints
-            else x.new_empty(0, dtype=torch.int16)
-        )
-        pos = x.new_empty((2, 6, a), dtype=torch.int32)
-        co = x.new_empty((2, 3, 6, a))
-        half = x.new_empty((2, a))
-        shards = getattr(recipe, "boundary_shards", 0)
-        bp = (
-            x.new_empty((2, 2, a), dtype=torch.int32)
-            if shards
-            else x.new_empty(0, dtype=torch.int32)
-        )
-        compiled = lk.prepare[(tr.cdiv(a, 128),)](
+        (
             meta,
+            origin,
+            spacing,
+            order,
+            count,
             pos,
             co,
             half,
-            count,
-            origin,
-            spacing,
-            a,
-            *sizes,
-            128,
-            recipe.reciprocal,
-            recipe.prepare_float32,
-            bp if shards else None,
+            active,
+            bp,
+            injection,
+            ml,
             shards,
-            injection if endpoints else None,
             endpoints,
-            getattr(recipe, "min_block_log", 3),
-            num_warps=4,
-            enable_fp_fusion=False,
-        )
-        _report("coeff_prepare", compiled)
-        _stamp("coeff_prepare", 1)
-        ml = max(sizes).bit_length() - getattr(recipe, "min_block_log", 3)
-        _stamp("active_levels", 0)
-        if getattr(recipe, "active_levels", False):
-            active = x.new_empty((2, ml), dtype=torch.int32)
-            compiled = lk.classify_levels[(2, ml)](
-                pos,
-                count,
-                active,
-                a,
-                *sizes,
-                ml,
-                512,
-                getattr(recipe, "min_block_log", 3),
-                num_warps=4,
-                enable_fp_fusion=False,
-            )
-            _report("active_levels", compiled)
-        else:
-            active = x.new_empty(0, dtype=torch.int32)
-        _stamp("active_levels", 1)
+        ) = _frame(x, p, value, chart, recipe, moments, routing, sizes)
         y = x.new_zeros((b, sizes[0]))
         native_forward(x, y, meta, count, origin, spacing, sizes, recipe)
         bank = _bank(x, sizes[1], recipe, "bank_input", active, 1, ml)
@@ -387,6 +430,11 @@ def apply(x, p, value, chart, recipe, bases, moments, buffers):
                 )
             )
         moments = buffers["local_norm_moments"]
-    return _Local.apply(
+    function = _Local
+    if getattr(recipe, "batch_chunk", 0) and len(x) > recipe.batch_chunk:
+        from .chunk_executor import _Chunked
+
+        function = _Chunked
+    return function.apply(
         x.contiguous(), p, value, chart, recipe, moments, buffers["stream_layout"]
     )

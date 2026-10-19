@@ -64,9 +64,15 @@ def forward(x, y, meta, count, origin, spacing, sizes, recipe):
     _stamp("native_forward", 1)
 
 
-def backward(x, dy, meta, count, origin, spacing, sizes, recipe, need_dx, need_dp):
+def backward(
+    x, dy, meta, count, origin, spacing, sizes, recipe, need_dx, need_dp, zero_dp=False
+):
     dx = x.new_zeros(x.shape) if need_dx else None
-    dp = x.new_empty((len(meta), 4)) if need_dp else x.new_empty(0)
+    dp = (
+        (x.new_zeros((len(meta), 4)) if zero_dp else x.new_empty((len(meta), 4)))
+        if need_dp
+        else x.new_empty(0)
+    )
     _stamp("native_backward", 0)
     mixed = getattr(recipe, "native_float32", False)
     if mixed:
