@@ -388,3 +388,10 @@ source SHA256 `7768b6f88574daadb65e456d0ca5bc1ca71057d7c8b862d2f021090b997d5491`
 旧Co[dim,plane,event,slot]を、同じFP32係数値のままCo[dim,slot,event,plane]へ置く。3要素のAoS3はpayload不変、4要素のAoS4は末尾zero paddingを付けて1回のvector loadからc0/c1/c2を取り出す。AoS4の増加はA52428で2,516,544 bytes、約2.4 MiB。係数生成式・ordered FMA・境界shift・単一floor・source VJPは変更しない。古いrecipeはSoAを使う。
 
 配列配置を逆変換した係数を、mapping有無とFP32/FP64生成で従来配置とbit単位照合する検査を追加。余白のzero、端数AとB、native prefix、動的σ/X、retained snapshot、Graph、全atom勾配も確認する。完全stepではAoS3/AoS4に加えaxis_atoms4/8/16を比較する。係数localityの改善は仮説であり、命令数やcachelineの推測だけを速度の証拠にしない。両peakがDense以下か実測し、default採用は行わない。
+
+
+## v32候補：小さいtileをCTA内でまとめる
+
+prefix/restoreの物理bank[3,point,batch]と各tile内の式は保ち、複数tileを[Tiles,site,batch]のtensorで同一CTAへまとめる。cumsumはsite軸だけで行い、tile間のcarryは作らない。4〜16-site側を4/8 tile、32〜128-site側を1/2/4 tileにまとめ、大きいtileは従来の1 CTAを使う。端数tileとbatchをmaskし、border shardのcarryもtileごとに足す。追加のPyTorch保存領域はない。
+
+N1024/B32/bank_batch4、3-level groupingでは1 passのCTA数が従来4088から8/2 bundleの728へ減る。これはdispatch数の計算で、速度の測定値ではない。scanの並列配置によりFP32加算順が変わり得るので、非bundleとのbank/restore照合に加え、独立FP64 full-step gateを維持する。N8/64/1024、B1/3/33、group1/2/3、active mask、padding、全native/一部/ゼロを跨ぐGraphを検査する。AoS4との組合せも別planで比較する。

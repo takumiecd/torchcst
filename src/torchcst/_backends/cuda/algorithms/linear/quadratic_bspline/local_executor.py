@@ -28,6 +28,13 @@ def _blocks(n, recipe):
     return 2 * (n >> getattr(recipe, "min_block_log", 3)) - 1
 
 
+def _tile_bundle(n, sizes, recipe):
+    if not hasattr(recipe, "bank_tile_blocks") or sizes[0] >= 256:
+        return 1
+    requested = recipe.bank_tile_blocks if sizes[0] < 32 else recipe.bank_mid_blocks
+    return min(requested, n // sizes[0])
+
+
 def _bank(x, n, recipe, label, active, dim, ml, buffer=None):
     bank = (
         buffer
@@ -39,8 +46,17 @@ def _bank(x, n, recipe, label, active, dim, ml, buffer=None):
     pad = bank.shape[2] - len(x)
     _stamp(label, 0)
     for k, sizes in enumerate(_groups(n, recipe)):
-        compiled = lk.bank[
-            (sum(n // s for s in sizes), tr.cdiv(len(x), recipe.bank_batch))
+        tiles = _tile_bundle(n, sizes, recipe)
+        kernel = lk.bank
+        if tiles > 1:
+            from . import bundled_bank_kernels as bk
+
+            kernel = bk.bank
+        compiled = kernel[
+            (
+                sum(tr.cdiv(n // s, tiles) for s in sizes),
+                tr.cdiv(len(x), recipe.bank_batch),
+            )
         ](
             x,
             bank,
@@ -57,6 +73,7 @@ def _bank(x, n, recipe, label, active, dim, ml, buffer=None):
             getattr(recipe, "active_levels", False),
             pad,
             getattr(recipe, "min_block_log", 3),
+            **({"TB": tiles} if tiles > 1 else {}),
             num_warps=recipe.bank_warps,
             enable_fp_fusion=False,
         )
@@ -68,8 +85,17 @@ def _bank(x, n, recipe, label, active, dim, ml, buffer=None):
 def _restore(delta, border, y, n, recipe, label, active, dim, ml):
     _stamp(label, 0)
     for k, sizes in enumerate(_groups(n, recipe)):
-        compiled = lk.restore[
-            (sum(n // s for s in sizes), tr.cdiv(len(y), recipe.bank_batch))
+        tiles = _tile_bundle(n, sizes, recipe)
+        kernel = lk.restore
+        if tiles > 1:
+            from . import bundled_bank_kernels as bk
+
+            kernel = bk.restore
+        compiled = kernel[
+            (
+                sum(tr.cdiv(n // s, tiles) for s in sizes),
+                tr.cdiv(len(y), recipe.bank_batch),
+            )
         ](
             delta,
             y,
@@ -88,6 +114,7 @@ def _restore(delta, border, y, n, recipe, label, active, dim, ml):
             (getattr(recipe, "boundary_shards", 0) if border is not None else 0),
             delta.shape[2] - len(y),
             getattr(recipe, "min_block_log", 3),
+            **({"TB": tiles} if tiles > 1 else {}),
             num_warps=recipe.bank_warps,
             enable_fp_fusion=False,
         )

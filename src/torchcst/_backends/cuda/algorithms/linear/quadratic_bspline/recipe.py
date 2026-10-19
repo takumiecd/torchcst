@@ -658,3 +658,19 @@ class BSplineLocalCoefficientRecipe(BSplineLocalCanonicalRecipe):
             "aos4",
         ):
             raise ValueError("coefficient_layout must be soa, aos3 or aos4")
+
+
+@dataclass(frozen=True)
+class BSplineLocalBankBundleRecipe(BSplineLocalCoefficientRecipe):
+    """Revision 32: several independent small prefix tiles per CTA."""
+
+    coefficient_layout: str = "soa"
+    bank_tile_blocks: int = 8
+    bank_mid_blocks: int = 2
+
+    def __post_init__(self):
+        super().__post_init__()
+        for name in ("bank_tile_blocks", "bank_mid_blocks"):
+            value = getattr(self, name)
+            if type(value) is not int or value not in (1, 2, 4, 8):
+                raise ValueError(f"{name} must be 1, 2, 4 or 8")

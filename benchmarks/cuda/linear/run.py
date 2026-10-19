@@ -693,6 +693,8 @@ def measure(args, run):
                             "owner_events": getattr(recipe, "owner_events", None),
                             "native_programs": getattr(recipe, "native_programs", None),
                             "canonical_meta": getattr(recipe, "canonical_meta", False),
+                            "bank_tile_blocks": getattr(recipe, "bank_tile_blocks", 1),
+                            "bank_mid_blocks": getattr(recipe, "bank_mid_blocks", 1),
                             "coefficient_layout": getattr(
                                 recipe, "coefficient_layout", "soa"
                             ),
