@@ -395,3 +395,23 @@ source SHA256 `7768b6f88574daadb65e456d0ca5bc1ca71057d7c8b862d2f021090b997d5491`
 prefix/restoreの物理bank[3,point,batch]と各tile内の式は保ち、複数tileを[Tiles,site,batch]のtensorで同一CTAへまとめる。cumsumはsite軸だけで行い、tile間のcarryは作らない。4〜16-site側を4/8 tile、32〜128-site側を1/2/4 tileにまとめ、大きいtileは従来の1 CTAを使う。端数tileとbatchをmaskし、border shardのcarryもtileごとに足す。追加のPyTorch保存領域はない。
 
 N1024/B32/bank_batch4、3-level groupingでは1 passのCTA数が従来4088から8/2 bundleの728へ減る。これはdispatch数の計算で、速度の測定値ではない。scanの並列配置によりFP32加算順が変わり得るので、非bundleとのbank/restore照合に加え、独立FP64 full-step gateを維持する。N8/64/1024、B1/3/33、group1/2/3、active mask、padding、全native/一部/ゼロを跨ぐGraphを検査する。AoS4との組合せも別planで比較する。
+
+
+## v31 GPU結果：atom-local係数配置は遅い
+
+source `b8a4f70e406db4605b70ad4ad215547c91cffb52`、job `l4job-51375dbbbf104d1c8339a4dbf0a3dec7`。50 checks PASS /1350 deselected、357.90秒。旧SoAとの係数bit一致（生成dtype・mappingの組合せ）、padding zero、動的Count/σ/X、個別勾配、retained、B33/64 chunk Graphを含む。両主要caseの全plan・3状態の独立FP64 full-shape Y/dX/全source勾配gateも通った。全52428 σの更新、初期X/P/targetの同一性も確認。
+
+| plan | B32完全step ms | B64完全step ms | B32 allocated/reserved MiB | B64 allocated/reserved MiB |
+|---|---:|---:|---|---|
+| v30 canonical cap128 |0.804370|1.316454|34.153 /98|34.653 /100|
+| AoS3 axis4 |0.837385|1.353520|34.153 /98|34.653 /100|
+| AoS4 axis4 |1.041915|1.734556|36.014 /98|36.514 /100|
+| AoS4 axis8 |0.997685|1.648889|36.014 /98|36.514 /100|
+| AoS4 axis16 |1.415705|2.509274|36.014 /98|36.514 /100|
+| Dense |0.083285|0.104789|49.002 /106|49.502 /106|
+
+AoS3は完全stepで約4.1% /2.8%遅く、AoS4も改善しない。独立phaseでは係数生成がSoA約0.057ms、AoS3約0.088ms、AoS4約0.127msへ増える。B64/axis4のfused forward/backwardはSoA約0.132 /0.237ms、AoS3約0.129 /0.243ms、AoS4約0.196 /0.355ms（各BT32）。compiler reportにはspill/local load/storeがない。registerや命令の変化だけをcache/帯域の実測counterとは扱わず、配置変更の主張は完全stepで否定する。公開/default採用はせず、SoAを基準に続ける。2倍目標は未達。
+
+source SHA256 `bd6baf0b2d37e370e9d52b2ec292751e1ff6db485107ba07a3144c25fc66dcdc`、result SHA256 `1471fc62e07a95901ebb523eac1dfef5c50b1d70e371775b94282071c569f770`。source byte一致1562 files、manifest48 files、return0/cleanup ackを確認した。
+
+v32 source `8c2d84342e2b3d9d09d92124bf08685283adf2c9` はCPU1993 PASS /4215 skipped /既存warning18、38.44秒。Ruffとdiff check、isolated build、sdist/wheelの全360 runtime filesとgit archiveとのbyte一致を確認。GPU検証は別job `l4job-d26ecbeda9b1410c84bb4eb3037cd848` に提出中で、このCPU記録はGPU精度や速度の証拠にはしない。
