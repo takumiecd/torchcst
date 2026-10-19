@@ -279,7 +279,9 @@ class BSplineCoalescedHRecipe(BSplinePreparedHRecipe):
         ):
             if type(getattr(self, name)) is not bool:
                 raise ValueError(f"{name} must be boolean")
-        if not self.coefficient_cache or self.h_mode not in ("fused", "split"):
+        if (
+            not self.coefficient_cache and not getattr(self, "lean_h", False)
+        ) or self.h_mode not in ("fused", "split"):
             raise ValueError(
                 "coalesced H requires cached coefficients and fused/split mode"
             )
@@ -386,3 +388,24 @@ class BSplineQueryRecipe(BSplineSavedHRecipe):
             raise ValueError(
                 "query_method must be expanded, factored, pieces, fma or fma_chain"
             )
+
+
+@dataclass(frozen=True)
+class BSplineLeanHRecipe(BSplineSavedHRecipe):
+    """Revision 17: regenerate endpoint coefficients and control H lifetime."""
+
+    lean_h = True
+    query_h = True
+    coefficient_cache: bool = False
+    save_h: str = "none"
+    query_method: str = "fma"
+    norm_fma: bool = False
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.query_method not in ("expanded", "fma"):
+            raise ValueError("lean H query_method must be expanded or fma")
+        if self.backward_mode != "fused":
+            raise ValueError("lean H requires fused backward")
+        if type(self.norm_fma) is not bool:
+            raise ValueError("norm_fma must be boolean")

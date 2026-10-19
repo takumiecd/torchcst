@@ -298,3 +298,8 @@ forwardのHのみ／Hと中心微分の保存を可変σで比較する。研究
 では、v16で共通因子と区間差分による同じB-splineの計算を比較する。
 診断用のchecksum・参照先共通化と、精度を保つ完全stepの候補を区別し、
 可変σ・正確なL2・全atom勾配を保った速度とメモリを記録する。
+
+[係数・Hの保持量と常駐割当の比較](research-history/cuda-linear/quadratic-bspline-lean-20261020.ja.md)
+では、v17で係数再生成・H保存量・sampled L2のFP64 FMAを比較する。
+再生成の遅化とreservedの増加も記録し、Denseの2倍以内・両peak以下という目標に対し、
+W/GEMM経路を含めて次の改善箇所を整理する。

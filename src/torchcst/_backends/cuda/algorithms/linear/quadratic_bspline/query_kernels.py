@@ -91,8 +91,36 @@ def _query(
                 )
                 if PRIME:
                     prime -= tl.fma(p1, d1[:, None], p0 * d0[:, None])
-        left = tl.load(Cuts + DIM * 4 * A + a, a < A, 0)
-        right = tl.load(Cuts + (DIM * 4 + 3) * A + a, a < A, 0)
+        left, _, _, _, _, _ = _geometry(
+            Meta,
+            Cuts,
+            Coeff,
+            Origin,
+            Spacing,
+            a,
+            A,
+            N,
+            DIM,
+            0,
+            RECIPROCAL,
+            CACHE,
+            DERIVATIVES,
+        )
+        right, _, _, _, _, _ = _geometry(
+            Meta,
+            Cuts,
+            Coeff,
+            Origin,
+            Spacing,
+            a,
+            A,
+            N,
+            DIM,
+            3,
+            RECIPROCAL,
+            CACHE,
+            DERIVATIVES,
+        )
         active = mask & (right[:, None] > left[:, None])
         return tl.where(active, value, 0).to(tl.float32).to(tl.float64), tl.where(
             active, prime, 0
