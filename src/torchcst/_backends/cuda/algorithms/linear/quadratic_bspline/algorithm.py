@@ -17,6 +17,7 @@ from torchcst.operators.execution import (
 )
 
 from .recipe import (
+    BSplineCoalescedHRecipe,
     BSplineParallelRecipe,
     BSplinePreparedHRecipe,
     BSplineRangeBlockedRecipe,
@@ -151,6 +152,8 @@ class BSplineAlgorithm(Algorithm[BSplineRecipe]):
 
                 if getattr(state.recipe, "prepared_h", False):
                     from .h_executor import apply as stream_apply
+                if getattr(state.recipe, "coalesced_h", False):
+                    from .coalesced_executor import apply as stream_apply
                 return stream_apply(
                     x,
                     p,
@@ -259,3 +262,9 @@ class BSplineRangeSpatialAlgorithm(BSplineStreamingAlgorithm):
 class BSplinePreparedHAlgorithm(BSplineStreamingAlgorithm):
     revision: str = "v12"
     recipe_type: type = BSplinePreparedHRecipe
+
+
+@dataclass(frozen=True)
+class BSplineCoalescedHAlgorithm(BSplineStreamingAlgorithm):
+    revision: str = "v13"
+    recipe_type: type = BSplineCoalescedHRecipe

@@ -47,7 +47,7 @@ def _coefficients(meta, origin, spacing, count, sizes, recipe):
 def _events(cuts, count, a, n, dim, recipe):
     stage = "event_output" if dim == 0 else "event_input"
     _stamp(stage, 0)
-    if recipe.h_mode == "segmented":
+    if recipe.h_mode == "segmented" or getattr(recipe, "site_owner", False):
         hist = torch.zeros(n, device=cuts.device, dtype=torch.int32)
         cursor = torch.zeros_like(hist)
         order = torch.empty(4 * a, device=cuts.device, dtype=torch.int32)

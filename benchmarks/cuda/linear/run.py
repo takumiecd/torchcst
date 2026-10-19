@@ -774,6 +774,7 @@ def measure(args, run):
                 run.entry(args.plan_id).plan.recipe.strategy,
                 getattr(run.entry(args.plan_id).plan.recipe, "range_planes", 3),
                 getattr(run.entry(args.plan_id).plan.recipe, "prepared_h", False),
+                getattr(run.entry(args.plan_id).plan.recipe, "coalesced_h", False),
             )
             backend_events = {
                 name: [
