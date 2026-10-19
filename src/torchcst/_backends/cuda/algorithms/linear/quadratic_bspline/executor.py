@@ -30,6 +30,7 @@ def diagnostic_components(
     coalesced_h=False,
     saved_h=False,
     adjoint_h=False,
+    native_h=False,
 ):
     common = ("snapshot", "prepare", "norm_replay")
     if strategy == "matrix_range":
@@ -92,6 +93,7 @@ def diagnostic_components(
                 else ()
             )
             + (("adjoint_order", "dx_reduce") if adjoint_h else ())
+            + (("native_forward", "native_backward") if native_h else ())
             + (
                 "group",
                 "pack",

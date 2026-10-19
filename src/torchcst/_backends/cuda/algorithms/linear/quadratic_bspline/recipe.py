@@ -409,3 +409,50 @@ class BSplineLeanHRecipe(BSplineSavedHRecipe):
             raise ValueError("lean H requires fused backward")
         if type(self.norm_fma) is not bool:
             raise ValueError("norm_fma must be boolean")
+
+
+@dataclass(frozen=True)
+class BSplineNativeHRecipe(BSplineLeanHRecipe):
+    """Revision 18: direct native H/G paths; no dense W or GEMM workspace."""
+
+    native_h = True
+    coefficient_cache: bool = True
+    save_h: str = "hp"
+    save_w: bool = False
+    native_atoms: int = 4
+    native_sites: int = 8
+    native_warps: int = 4
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.save_w:
+            raise ValueError("native H has no W to save")
+        for name, allowed in (
+            ("native_atoms", (4, 8, 16)),
+            ("native_sites", (4, 8, 16, 32)),
+            ("native_warps", (1, 2, 4, 8)),
+        ):
+            if (
+                type(getattr(self, name)) is not int
+                or getattr(self, name) not in allowed
+            ):
+                raise ValueError(f"{name} must be one of {allowed}")
+
+
+@dataclass(frozen=True)
+class BSplineNativeLoopRecipe(BSplineNativeHRecipe):
+    """Revision 19: reuse short-support profiles while looping small batch tiles."""
+
+    native_loop = True
+    native_batch: int = 8
+    native_sites: int = 16
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.native_batch) is not int or self.native_batch not in (
+            4,
+            8,
+            16,
+            32,
+        ):
+            raise ValueError("native_batch must be 4, 8, 16 or 32")

@@ -303,3 +303,8 @@ forwardのHのみ／Hと中心微分の保存を可変σで比較する。研究
 では、v17で係数再生成・H保存量・sampled L2のFP64 FMAを比較する。
 再生成の遅化とreservedの増加も記録し、Denseの2倍以内・両peak以下という目標に対し、
 W/GEMM経路を含めて次の改善箇所を整理する。
+
+[小σもWを持たないH/G経路](research-history/cuda-linear/quadratic-bspline-native-h-20261020.ja.md)
+ではv18/v19の軸別直接計算とbatch再利用を検証する。H非保存はDense以下の両peakを満たしたが、
+完全stepは遅化した。続く[局所momentのCPU screen](research-history/cuda-linear/quadratic-bspline-local-moment-screen-20261020.ja.md)
+に、同じB-splineと離散L2を局所座標へ書き直す式と、GPU検証前の数値誤差を記録する。

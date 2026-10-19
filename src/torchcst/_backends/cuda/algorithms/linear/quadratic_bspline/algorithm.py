@@ -20,6 +20,8 @@ from .recipe import (
     BSplineAdjointRecipe,
     BSplineCoalescedHRecipe,
     BSplineLeanHRecipe,
+    BSplineNativeHRecipe,
+    BSplineNativeLoopRecipe,
     BSplineParallelRecipe,
     BSplinePreparedHRecipe,
     BSplineQueryRecipe,
@@ -298,3 +300,15 @@ class BSplineQueryAlgorithm(BSplineStreamingAlgorithm):
 class BSplineLeanHAlgorithm(BSplineStreamingAlgorithm):
     revision: str = "v17"
     recipe_type: type = BSplineLeanHRecipe
+
+
+@dataclass(frozen=True)
+class BSplineNativeHAlgorithm(BSplineStreamingAlgorithm):
+    revision: str = "v18"
+    recipe_type: type = BSplineNativeHRecipe
+
+
+@dataclass(frozen=True)
+class BSplineNativeLoopAlgorithm(BSplineStreamingAlgorithm):
+    revision: str = "v19"
+    recipe_type: type = BSplineNativeLoopRecipe
