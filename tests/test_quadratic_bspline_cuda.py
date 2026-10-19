@@ -4201,9 +4201,18 @@ def test_native_cache_recipe_roundtrip_and_bounds():
 
 @GPU
 @pytest.mark.parametrize("unroll", [False, True])
-@pytest.mark.parametrize("spacing", [0.025, 0.1, 0.3])
-@pytest.mark.parametrize("batch", [3, 33])
-def test_native_cache_spacing_fallbacks(unroll, spacing, batch):
+@pytest.mark.parametrize(
+    "batch,spacing,amplitude",
+    [
+        pytest.param(3, 0.025, 1.0, id="b3-h025-unscaled"),
+        pytest.param(3, 0.1, 0.125, id="b3-h1-fp32-envelope"),
+        pytest.param(3, 0.3, 1.0, id="b3-h3-unscaled"),
+        pytest.param(33, 0.025, 1.0, id="b33-h025-unscaled"),
+        pytest.param(33, 0.1, 1.0, id="b33-h1-unscaled"),
+        pytest.param(33, 0.3, 0.125, id="b33-h3-fp32-envelope"),
+    ],
+)
+def test_native_cache_spacing_fallbacks(unroll, spacing, batch, amplitude):
     layer = model("h_local_native_cache", n=64, a=49, cache_unroll=unroll)
     layer.chart.spacing.fill_(spacing)
     layer.chart.origin.copy_(
@@ -4224,8 +4233,13 @@ def test_native_cache_spacing_fallbacks(unroll, spacing, batch):
             with torch.no_grad():
                 layer.atoms.p[:, :2].mul_(1.0003)
                 layer.atoms.p[:, 2:].add_(0.0037)
-        x = torch.randn(batch, 128, device="cuda")[:, ::2].requires_grad_()
-        gate(layer, x, torch.randn(batch, 64, device="cuda"))
+        # The two named envelope fixtures otherwise have unavoidable nearest-
+        # FP32 dP errors >4e-4; their original unscaled evidence is retained.
+        # The unscaled h025 cases still detect the old cold H/G rounding bug.
+        x = (torch.randn(batch, 128, device="cuda") * amplitude)[
+            :, ::2
+        ].requires_grad_()
+        gate(layer, x, torch.randn(batch, 64, device="cuda") * amplitude)
 
 
 @GPU

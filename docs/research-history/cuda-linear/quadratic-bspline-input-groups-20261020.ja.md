@@ -496,3 +496,21 @@ Gluon lane1を基準とし、v38のnative cacheとは分けて効果を検証す
 Graph replayでS4→S64→S16→S256→S4へ切り替え、新しい尺度の有効化と初期化を検査する。
 Count all/partial/zero、retained、入力/全atom勾配、floor/tinyも既存の独立FP64基準で評価する。
 CPU2001 PASS /4509 skipped /既存warning18、38.87秒。Ruff・4 case宣言検査PASS。
+
+## cold FP64保持の診断結果と追加stressの表現可能域
+
+source c5c7ad68、正常回収・cleanup済みjob
+`l4job-4ed8a67f9baa4e99b481bb4e2a081ebf`で、未scaleと振幅0.125を分けて72状態を記録した。
+spacing.025/B33の未scale全atom勾配差は0.001616から1.857e-5へ減り、B3も0.000802から
+3.970e-6へ減った。ほぼ0になるはずの勾配の問題は、入力を弱めずに改善した。
+
+未scaleの残りの大勾配差は最近傍FP32丸め誤差に一致した。B3/spacing.1は0.0005292、
+B33/spacing.3は0.0007039で、どのFP32結果でも4e-4を満たせない。
+この2組だけ追加stressのXとdYを0.125倍にし、test IDをfp32-envelopeと明記する。
+他の4組は未scaleのままにし、特にspacing.025は旧中間丸めを検出する回帰条件として残す。
+元の未scaleデータとdtype限界は診断archiveに保持し、成功した精度gateとして数えない。
+主要N1024/A52428の全4 case・3状態・入力振幅・4e-4基準は従来と同じで、
+この修正によってそれらを簡単な比較へ置き換えない。
+
+新しい振幅域を含む追加spacing testsも含め、改めて全cache回帰とprimary性能を確認する。
+診断jobだけでは完全step速度・メモリの採用根拠にしない。
