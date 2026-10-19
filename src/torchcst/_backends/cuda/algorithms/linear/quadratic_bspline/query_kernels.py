@@ -79,6 +79,9 @@ def _query(
         p1 = tl.load(Bank + B * (N + 1) + addr, mask, 0)
         p2 = tl.load(Bank + 2 * B * (N + 1) + addr, mask, 0)
         if METHOD == "factored":
+            if knot == 0:
+                anchor0, anchor1, anchor2 = p0, p1, p2
+            p0, p1, p2 = p0 - anchor0, p1 - anchor1, p2 - anchor2
             offset = (
                 -1.0
                 if knot == 0

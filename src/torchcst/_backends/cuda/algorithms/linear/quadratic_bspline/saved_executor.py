@@ -66,14 +66,15 @@ class _SavedH(torch.autograd.Function):
         _stamp("h_query", 1)
         _stamp("y_inject", 0)
         _stamp("y_inject", 1)
-        kernel = ck.forward if mode == "none" else hk.forward
+        original_no_save = mode == "none" and not getattr(recipe, "query_h", False)
+        kernel = ck.forward if original_no_save else hk.forward
         prefix = (
             (bank, meta, cuts, co, values)
-            if mode == "none"
+            if original_no_save
             else (bank, meta, cuts, co, values, saved_hp)
         )
         query_args = (recipe.query_method,) if getattr(recipe, "query_h", False) else ()
-        mode_arg = False if mode == "none" else mode
+        mode_arg = False if original_no_save else mode
         compiled = kernel[(tr.cdiv(a, recipe.axis_atoms),)](
             *prefix,
             delta,
@@ -348,13 +349,14 @@ class _SavedH(torch.autograd.Function):
             for stage in ("h_recompute", "g_recompute", "atom_contract", "dx_inject"):
                 _stamp(stage, 0)
                 _stamp(stage, 1)
-            kernel = ck.backward if mode == "none" else hk.backward
+            original_no_save = mode == "none" and not getattr(recipe, "query_h", False)
+            kernel = ck.backward if original_no_save else hk.backward
             prefix = (
                 (input_bank, adjoint_bank)
-                if mode == "none"
+                if original_no_save
                 else (input_bank, saved_h, saved_hp, adjoint_bank)
             )
-            extra = () if mode == "none" else (mode,)
+            extra = () if original_no_save else (mode,)
             if getattr(recipe, "query_h", False):
                 extra += (recipe.query_method,)
             compiled = kernel[(tr.cdiv(a, recipe.axis_atoms),)](
