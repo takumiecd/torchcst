@@ -327,3 +327,17 @@ v27/tile32の通常小σは局所momentで処理する一方、native側は対�
 hotのFP32とtiny/floor等のFP64 guardは元の関数を共通に呼ぶ。元のAB単位のsafe判定、profile計算、正規化、source pullbackは変えない。古いrecipeはBase=Noneの同じ起動法を使い、新revisionだけ明示的Baseとstrided loopを使う。native_float32=Falseのkernelには適用しない。native_programs=0は従来制御を残す。
 
 新しい検査ではA1025、cap32、AB4で単なる1周を超えるループを実行し、Count全数→一部→ゼロ→全数をGraph replay内で切り替える。B33/B64、2floor、境界tiny、noncontiguous input、個別勾配要求、retained forwardのCount保護を含める。メタデータ/全catalog decode後にGPUの独立照合と完全stepを測る。GPU評価前の候補で、default採用や2倍達成を意味しない。
+
+
+## v30候補：Metaを元のParameter順で保持する
+
+v30では、source atom iに対応するslot sの写像i=order[s]を使い、Meta_iを並べ替えずに保持する。Pos/Co/HalfInvは処理slot順で準備し、その各値を計算するときだけMeta_{order[s]}を参照する。H/G queryは従来と同じPos/Coを使い、振幅・正規化係数とsource pullbackだけ元のiへ写す。native側もslotをorderでsource indexへ写してから既存のprofile/guardを呼ぶ。
+
+元のParameterとoptimizer stateは並べ替えず、nativeとlocalのDPは両方とも元のrow iへ直接書く。各sourceを一度ずつ所有する置換なので、chunk間の部分加算以外のatomicや書き戻しcopyは不要。Metaのindex_selectとDPのindex_copyを外す。数学的なsum・単一floor・支持・勾配は同じで、Metaへの読み取りがgatherになる点が性能上の新しいコストとなる。
+
+Meta/order/count/係数はforwardごとのsnapshotとして保持し、後のP・σ・配置更新が以前のbackwardへ影響しないようにする。非自明な置換を作るA257のテストでParameter rowの不変性と、別forward後の独立FP64勾配を確認する。v29のCount全数/一部/ゼロを跨ぐGraph、2floor、B33/B64、個別勾配要求、ループ複数周の検査もv30へ適用する。比較にはcanonical cap0と32/128を入れ、起動量削減とcopy除去を分ける。GPU未検証の研究候補で、stageの約0.04/0.008msをそのまま完全step短縮量と決めつけない。
+
+
+v29初回job `l4job-8557bf7fa5f048f1a10b9cd257bdb5cf`、source `536de8c3cea6553badb640dc368c9412f1985856` は40 checks PASS /2 FAILED /1265 deselected、244.41秒。A513を同位置へ重ねる追加検査でinput-only勾配maxabsが0.002896、retained検査の初期全gateが0.002480となり、既存4e-4基準を超えた。全数/一部/ゼロを跨ぐGraph等は通ったが、driverは性能測定前にreturn1。失敗runを性能表から除外し、source/manifest/hash/cleanup ackを検証して保持する。
+
+修正候補はnativeの加算先だけを[B,N]のFP64 scratchにし、hot/cold両方の加算後に一度だけFP32 Y/dXへ足す方式。nativeのprofile・query・正規化・source VJPは従来の計算で、coldのFP64値は加算先dtypeを保持する。新v29/v30だけに適用し、旧版は従来のFP32出力先のまま。scratchはB64/N1024で0.5 MiBをforward/backwardのそれぞれで一時使用する。構築/ゼロ化/加算コストと実測peakを含める。旧v27と新候補へ同じcoincident fixtureを与え、基準を変えずに原因と修正をGPUで確かめる。

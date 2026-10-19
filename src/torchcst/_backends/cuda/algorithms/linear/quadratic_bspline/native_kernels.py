@@ -113,7 +113,7 @@ def _inject(
         v = weighted[:, :, None] * f[:, None, :]
         tl.atomic_add(
             Y + b[None, :, None] * N + j[:, None, :],
-            v.to(tl.float32),
+            v.to(Y.dtype.element_ty),
             mask,
             sem="relaxed",
         )

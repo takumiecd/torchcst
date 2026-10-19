@@ -142,6 +142,10 @@ def _delta(x, n, recipe, active, dim, ml, buffers=None, label=None):
     return delta, border
 
 
+def _source_order(order, recipe):
+    return order if getattr(recipe, "canonical_meta", False) else None
+
+
 def _frame(x, p, value, chart, recipe, moments, routing, sizes, build_border=True):
     a = len(p)
     meta, origin, spacing, _source = _prepare(p, value, chart, recipe, moments)
@@ -149,7 +153,8 @@ def _frame(x, p, value, chart, recipe, moments, routing, sizes, build_border=Tru
     order, count = placement(meta, origin, spacing, sizes, recipe, routing)
     _stamp("group", 1)
     _stamp("pack", 0)
-    meta = meta.index_select(0, order)
+    if not getattr(recipe, "canonical_meta", False):
+        meta = meta.index_select(0, order)
     _stamp("pack", 1)
     _stamp("coeff_prepare", 0)
     endpoints = getattr(recipe, "skip_endpoints", False)
@@ -185,6 +190,7 @@ def _frame(x, p, value, chart, recipe, moments, routing, sizes, build_border=Tru
         injection if endpoints else None,
         endpoints,
         getattr(recipe, "min_block_log", 3),
+        Order=_source_order(order, recipe),
         num_warps=4,
         enable_fp_fusion=False,
     )
@@ -256,7 +262,17 @@ class _Local(torch.autograd.Function):
             endpoints,
         ) = _frame(x, p, value, chart, recipe, moments, routing, sizes)
         y = x.new_zeros((b, sizes[0]))
-        native_forward(x, y, meta, count, origin, spacing, sizes, recipe)
+        native_forward(
+            x,
+            y,
+            meta,
+            count,
+            origin,
+            spacing,
+            sizes,
+            recipe,
+            order=_source_order(order, recipe),
+        )
         bank = _bank(x, sizes[1], recipe, "bank_input", active, 1, ml)
         delta, border = _delta(x, sizes[0], recipe, active, 0, ml)
         h = x.new_empty((a, b)) if ctx.mode != "none" else x.new_empty(0)
@@ -287,6 +303,7 @@ class _Local(torch.autograd.Function):
             endpoints,
             getattr(recipe, "shard_origin", False),
             getattr(recipe, "bank_padding", 0),
+            Order=_source_order(order, recipe),
             num_warps=recipe.axis_warps,
             enable_fp_fusion=False,
         )
@@ -349,7 +366,17 @@ class _Local(torch.autograd.Function):
         endpoints = getattr(recipe, "skip_endpoints", False)
         need_dx, need_dp = ctx.needs_input_grad[:2]
         dx, dp = native_backward(
-            x, dy, meta, count, origin, spacing, sizes, recipe, need_dx, need_dp
+            x,
+            dy,
+            meta,
+            count,
+            origin,
+            spacing,
+            sizes,
+            recipe,
+            need_dx,
+            need_dp,
+            order=_source_order(order, recipe),
         )
         if need_dp and ctx.mode != "hp":
             input_bank = _bank(x, sizes[1], recipe, "bank_recompute", active, 1, ml)
@@ -390,6 +417,7 @@ class _Local(torch.autograd.Function):
             endpoints,
             getattr(recipe, "shard_origin", False),
             getattr(recipe, "bank_padding", 0),
+            Order=_source_order(order, recipe),
             num_warps=recipe.axis_warps,
             enable_fp_fusion=False,
         )
@@ -403,7 +431,7 @@ class _Local(torch.autograd.Function):
             _stamp("scan_input", 0)
             _stamp("scan_input", 1)
         _stamp("unpack", 0)
-        if need_dp:
+        if need_dp and not getattr(recipe, "canonical_meta", False):
             dp = torch.empty_like(dp).index_copy_(0, order, dp)
         _stamp("unpack", 1)
         return dx, dp if need_dp else None, None, None, None, None, None

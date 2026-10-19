@@ -8,6 +8,13 @@ from .parallel_kernels import _pullback
 
 
 @tr.jit
+def _source(Order, slot, A: tl.constexpr):
+    if Order is not None:
+        return tl.load(Order + slot, slot < A, A).to(tl.int32)
+    return slot
+
+
+@tr.jit
 def _poly(
     mid,
     half,
@@ -48,18 +55,20 @@ def prepare(
     Injection=None,
     ENDPOINTS: tl.constexpr = False,
     MIN_LOG: tl.constexpr = 3,
+    Order=None,
 ):
     base = tl.load(Count) + tl.program_id(0) * AB
     if base < A:
         a = base + tl.arange(0, AB)
-        radius = tl.load(Meta + 12 * a + 1, a < A, 1)
-        ir = tl.load(Meta + 12 * a + 9, a < A, 1)
+        source = _source(Order, a, A)
+        radius = tl.load(Meta + 12 * source + 1, a < A, 1)
+        ir = tl.load(Meta + 12 * source + 9, a < A, 1)
         for dim in tl.static_range(2):
             n = NO if dim == 0 else NI
             origin = tl.load(Origin + dim).to(tl.float64)
             spacing = tl.load(Spacing + dim).to(tl.float64)
-            ih = tl.load(Meta + 12 * a + 10 + dim, a < A, 1)
-            center = tl.load(Meta + 12 * a + 2 + dim, a < A, 0)
+            ih = tl.load(Meta + 12 * source + 10 + dim, a < A, 1)
+            center = tl.load(Meta + 12 * source + 2 + dim, a < A, 0)
             span = radius * ih if RECIPROCAL else radius / spacing
             hint = tl.minimum(
                 tl.maximum(
@@ -420,8 +429,12 @@ def _inject(
     ENDPOINTS: tl.constexpr,
     SHARD_ORIGIN: tl.constexpr,
     PB: tl.constexpr,
+    Order=None,
 ):
-    scale = tl.load(Meta + 12 * a, a < A, 0) * tl.load(Meta + 12 * a + 4, a < A, 0)
+    source = _source(Order, a, A)
+    scale = tl.load(Meta + 12 * source, a < A, 0) * tl.load(
+        Meta + 12 * source + 4, a < A, 0
+    )
     weight = (Value * scale[:, None]).to(tl.float32)
     for event in tl.static_range(6):
         point = tl.load(Pos + (DIM * 6 + event) * A + a, a < A, -1)
@@ -499,6 +512,7 @@ def forward(
     ENDPOINTS: tl.constexpr = False,
     SHARD_ORIGIN: tl.constexpr = False,
     PAD: tl.constexpr = 0,
+    Order=None,
 ):
     base = tl.load(Count) + tl.program_id(0) * AB
     if base < A:
@@ -532,6 +546,7 @@ def forward(
             ENDPOINTS,
             SHARD_ORIGIN,
             B + PAD,
+            Order,
         )
 
 
@@ -567,6 +582,7 @@ def backward(
     SHARD_ORIGIN: tl.constexpr = False,
     PAD: tl.constexpr = 0,
     ADD_DP: tl.constexpr = False,
+    Order=None,
 ):
     base = tl.load(Count) + tl.program_id(0) * AB
     if base < A:
@@ -609,7 +625,7 @@ def backward(
             _pullback(
                 Meta,
                 DP,
-                a,
+                _source(Order, a, A),
                 tl.sum(h * g, 1).to(tl.float64),
                 tl.sum(h * gp, 1).to(tl.float64),
                 tl.sum(hp * g, 1).to(tl.float64),
@@ -637,4 +653,5 @@ def backward(
                 ENDPOINTS,
                 SHARD_ORIGIN,
                 B + PAD,
+                Order,
             )

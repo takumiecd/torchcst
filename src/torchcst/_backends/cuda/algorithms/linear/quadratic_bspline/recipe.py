@@ -616,6 +616,7 @@ class BSplineLocalNativeBoundRecipe(BSplineLocalChunkedRecipe):
     """Revision 29: bound native launch grids and stride over live rows only."""
 
     native_programs: int = 128
+    native_accum64 = True
 
     def __post_init__(self):
         super().__post_init__()
@@ -629,3 +630,15 @@ class BSplineLocalNativeBoundRecipe(BSplineLocalChunkedRecipe):
             raise ValueError("native_programs must be 0, 32, 64, 128 or 256")
         if self.native_programs and not self.native_float32:
             raise ValueError("bounded native launches require the mixed native guard")
+
+
+@dataclass(frozen=True)
+class BSplineLocalCanonicalRecipe(BSplineLocalNativeBoundRecipe):
+    """Revision 30: retain Meta in source order and write source VJP directly."""
+
+    canonical_meta = True
+
+    def __post_init__(self):
+        super().__post_init__()
+        if not self.native_float32:
+            raise ValueError("canonical Meta requires the mixed native guard")

@@ -23,6 +23,7 @@ def forward(
     BS: tl.constexpr,
     RECIPROCAL: tl.constexpr,
     CORE32: tl.constexpr,
+    Order=None,
 ):
     base = tl.program_id(0) * AB
     for start in range(base, tl.load(Count), tl.num_programs(0) * AB):
@@ -43,6 +44,7 @@ def forward(
             RECIPROCAL,
             CORE32,
             Base=start,
+            Order=Order,
         )
 
 
@@ -68,6 +70,7 @@ def backward(
     NEED_DP: tl.constexpr,
     CORE32: tl.constexpr,
     CONTRACT32: tl.constexpr,
+    Order=None,
 ):
     base = tl.program_id(0) * AB
     for start in range(base, tl.load(Count), tl.num_programs(0) * AB):
@@ -93,4 +96,5 @@ def backward(
             CORE32,
             CONTRACT32,
             Base=start,
+            Order=Order,
         )

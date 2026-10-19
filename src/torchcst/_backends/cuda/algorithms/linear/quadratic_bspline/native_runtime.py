@@ -1,5 +1,6 @@
 """Native small-support launch wrappers; no dense matrix temporaries."""
 
+import torch
 import triton as tr
 
 from . import native_kernels as nk
@@ -12,8 +13,13 @@ def _grid(a, recipe, mixed):
     return (min(programs, cap) if cap else programs,)
 
 
-def forward(x, y, meta, count, origin, spacing, sizes, recipe):
+def forward(x, y, meta, count, origin, spacing, sizes, recipe, order=None):
     _stamp("native_forward", 0)
+    destination = (
+        torch.zeros_like(y, dtype=torch.float64)
+        if getattr(recipe, "native_accum64", False)
+        else y
+    )
     mixed = getattr(recipe, "native_float32", False)
     if mixed:
         from . import native_mixed_kernels as mk
@@ -33,7 +39,7 @@ def forward(x, y, meta, count, origin, spacing, sizes, recipe):
     )
     compiled = kernel[_grid(len(meta), recipe, mixed)](
         x,
-        y,
+        destination,
         meta,
         count,
         origin,
@@ -46,6 +52,7 @@ def forward(x, y, meta, count, origin, spacing, sizes, recipe):
         recipe.native_sites,
         recipe.reciprocal,
         *((True,) if mixed else ()),
+        **({"Order": order} if order is not None else {}),
         num_warps=recipe.native_warps,
         enable_fp_fusion=False,
     )
@@ -53,7 +60,7 @@ def forward(x, y, meta, count, origin, spacing, sizes, recipe):
     if mixed:
         cold = kernel[_grid(len(meta), recipe, mixed)](
             x,
-            y,
+            destination,
             meta,
             count,
             origin,
@@ -66,15 +73,29 @@ def forward(x, y, meta, count, origin, spacing, sizes, recipe):
             recipe.native_sites,
             recipe.reciprocal,
             False,
+            **({"Order": order} if order is not None else {}),
             num_warps=recipe.native_warps,
             enable_fp_fusion=False,
         )
         _report("native_forward_cold", cold)
+    if destination is not y:
+        y.add_(destination)
     _stamp("native_forward", 1)
 
 
 def backward(
-    x, dy, meta, count, origin, spacing, sizes, recipe, need_dx, need_dp, zero_dp=False
+    x,
+    dy,
+    meta,
+    count,
+    origin,
+    spacing,
+    sizes,
+    recipe,
+    need_dx,
+    need_dp,
+    zero_dp=False,
+    order=None,
 ):
     dx = x.new_zeros(x.shape) if need_dx else None
     dp = (
@@ -83,6 +104,11 @@ def backward(
         else x.new_empty(0)
     )
     _stamp("native_backward", 0)
+    destination = (
+        torch.zeros_like(dx, dtype=torch.float64)
+        if need_dx and getattr(recipe, "native_accum64", False)
+        else dx
+    )
     mixed = getattr(recipe, "native_float32", False)
     if mixed:
         from . import native_mixed_kernels as mk
@@ -103,7 +129,7 @@ def backward(
     compiled = kernel[_grid(len(meta), recipe, mixed)](
         x,
         dy,
-        dx,
+        destination,
         dp,
         meta,
         count,
@@ -119,6 +145,7 @@ def backward(
         need_dx,
         need_dp,
         *((True, recipe.contract_float32) if mixed else ()),
+        **({"Order": order} if order is not None else {}),
         num_warps=recipe.native_warps,
         enable_fp_fusion=False,
     )
@@ -127,7 +154,7 @@ def backward(
         cold = kernel[_grid(len(meta), recipe, mixed)](
             x,
             dy,
-            dx,
+            destination,
             dp,
             meta,
             count,
@@ -144,9 +171,12 @@ def backward(
             need_dp,
             False,
             recipe.contract_float32,
+            **({"Order": order} if order is not None else {}),
             num_warps=recipe.native_warps,
             enable_fp_fusion=False,
         )
         _report("native_backward_cold", cold)
+    if need_dx and destination is not dx:
+        dx.add_(destination)
     _stamp("native_backward", 1)
     return dx, dp

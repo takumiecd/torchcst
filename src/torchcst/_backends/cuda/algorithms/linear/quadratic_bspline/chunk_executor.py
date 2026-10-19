@@ -6,7 +6,16 @@ from torch.autograd.function import once_differentiable
 
 from . import local_kernels as lk
 from .executor import _report, _stamp
-from .local_executor import _bank, _blocks, _delta, _frame, _Local, _points, _restore
+from .local_executor import (
+    _bank,
+    _blocks,
+    _delta,
+    _frame,
+    _Local,
+    _points,
+    _restore,
+    _source_order,
+)
 from .native_runtime import backward as native_backward
 from .native_runtime import forward as native_forward
 
@@ -55,7 +64,17 @@ class _Chunked(torch.autograd.Function):
             endpoints,
         ) = _frame(x, p, value, chart, recipe, moments, routing, sizes)
         y = x.new_zeros((b, sizes[0]))
-        native_forward(x, y, meta, count, origin, spacing, sizes, recipe)
+        native_forward(
+            x,
+            y,
+            meta,
+            count,
+            origin,
+            spacing,
+            sizes,
+            recipe,
+            order=_source_order(order, recipe),
+        )
         bank = _workspace(x, sizes[1], tile, recipe)
         delta = _workspace(x, sizes[0], tile, recipe)
         border = _border(x, sizes[0], tile, recipe)
@@ -101,6 +120,7 @@ class _Chunked(torch.autograd.Function):
                 endpoints,
                 recipe.shard_origin,
                 tile - actual,
+                Order=_source_order(order, recipe),
                 num_warps=recipe.axis_warps,
                 enable_fp_fusion=False,
             )
@@ -148,6 +168,7 @@ class _Chunked(torch.autograd.Function):
             need_dx,
             need_dp,
             zero_dp=True,
+            order=_source_order(order, recipe),
         )
         input_bank = _workspace(x, sizes[1], tile, recipe) if need_dp else None
         adjoint_bank = _workspace(x, sizes[0], tile, recipe)
@@ -223,6 +244,7 @@ class _Chunked(torch.autograd.Function):
                 recipe.shard_origin,
                 tile - actual,
                 True,
+                Order=_source_order(order, recipe),
                 num_warps=recipe.axis_warps,
                 enable_fp_fusion=False,
             )
@@ -243,7 +265,7 @@ class _Chunked(torch.autograd.Function):
             else:
                 _empty(_name("scan_input", index))
         _stamp("unpack", 0)
-        if need_dp:
+        if need_dp and not getattr(recipe, "canonical_meta", False):
             dp = torch.empty_like(dp).index_copy_(0, order, dp)
         _stamp("unpack", 1)
         return dx, dp if need_dp else None, None, None, None, None, None

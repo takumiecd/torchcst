@@ -128,12 +128,15 @@ def forward(
     RECIPROCAL: tl.constexpr,
     CORE32: tl.constexpr,
     Base=None,
+    Order=None,
 ):
     base = tl.program_id(0) * AB if Base is None else Base
     count = tl.load(Count)
     if base < count:
         slot = base + tl.arange(0, AB)
         a = tl.where(slot < count, slot, A)
+        if Order is not None:
+            a = tl.load(Order + slot, slot < count, A).to(tl.int32)
         b = tl.arange(0, BB)
         safe = _safe(Meta, Origin, Spacing, a, A, NO, NI, RECIPROCAL)
         active = safe if CORE32 else ~safe
@@ -203,12 +206,15 @@ def backward(
     CORE32: tl.constexpr,
     CONTRACT32: tl.constexpr,
     Base=None,
+    Order=None,
 ):
     base = tl.program_id(0) * AB if Base is None else Base
     count = tl.load(Count)
     if base < count:
         slot = base + tl.arange(0, AB)
         a = tl.where(slot < count, slot, A)
+        if Order is not None:
+            a = tl.load(Order + slot, slot < count, A).to(tl.int32)
         b = tl.arange(0, BB)
         safe = _safe(Meta, Origin, Spacing, a, A, NO, NI, RECIPROCAL)
         active = safe if CORE32 else ~safe
