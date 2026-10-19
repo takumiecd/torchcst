@@ -2174,6 +2174,7 @@ LEAN_OPTIONS = [
     {"_lean": True, "save_h": "hp"},
     {"_lean": True, "save_h": "none", "coefficient_cache": True},
     {"_lean": True, "save_h": "none", "reciprocal": False},
+    {"_lean": True, "save_h": "none", "norm_fma": True},
 ]
 
 

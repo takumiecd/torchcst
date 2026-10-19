@@ -399,6 +399,7 @@ class BSplineLeanHRecipe(BSplineSavedHRecipe):
     coefficient_cache: bool = False
     save_h: str = "none"
     query_method: str = "fma"
+    norm_fma: bool = False
 
     def __post_init__(self):
         super().__post_init__()
@@ -406,3 +407,5 @@ class BSplineLeanHRecipe(BSplineSavedHRecipe):
             raise ValueError("lean H query_method must be expanded or fma")
         if self.backward_mode != "fused":
             raise ValueError("lean H requires fused backward")
+        if type(self.norm_fma) is not bool:
+            raise ValueError("norm_fma must be boolean")

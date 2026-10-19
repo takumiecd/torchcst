@@ -7,7 +7,13 @@ from triton.language.extra.cuda import libdevice as lib
 
 @tr.jit
 def _coeff(
-    mid, half, radius, inverse_radius, piece: tl.constexpr, RECIPROCAL: tl.constexpr
+    mid,
+    half,
+    radius,
+    inverse_radius,
+    piece: tl.constexpr,
+    RECIPROCAL: tl.constexpr,
+    FMA: tl.constexpr = False,
 ):
     if RECIPROCAL:
         z = mid * inverse_radius
@@ -16,7 +22,8 @@ def _coeff(
         z = mid / radius
         v = half / radius
     if piece == 1:
-        a0, a1, a2 = 1.0 - 3.0 * z * z, -6.0 * z * v, -3.0 * v * v
+        a0 = tl.fma(-3.0 * z, z, 1.0) if FMA else 1.0 - 3.0 * z * z
+        a1, a2 = -6.0 * z * v, -3.0 * v * v
         if RECIPROCAL:
             b0, b1 = 6.0 * z * inverse_radius, 6.0 * v * inverse_radius
         else:
@@ -71,6 +78,7 @@ def _norm(
     ML: tl.constexpr,
     RECIPROCAL: tl.constexpr,
     LOOKUP: tl.constexpr,
+    FMA: tl.constexpr = False,
 ):
     q = tl.full((), 0, tl.float64)
     vjp = tl.full((), 0, tl.float64)
@@ -86,7 +94,7 @@ def _norm(
         safe = tl.maximum(count, 1)
         mid = o + (left.to(tl.float64) + (count - 1) * 0.5) * h - center
         a0, a1, a2, b0, b1 = _coeff(
-            mid, h * count * 0.5, radius, inverse_radius, piece, RECIPROCAL
+            mid, h * count * 0.5, radius, inverse_radius, piece, RECIPROCAL, FMA
         )
         if LOOKUP:
             index = (right - left).to(tl.int32)
@@ -97,8 +105,16 @@ def _norm(
             m4 = tl.where(
                 count > 1, count / 5 - 2 / (3 * safe) + 7 / (15 * safe * safe * safe), 0
             )
-        q += a0 * a0 * count + (a1 * a1 + 2 * a0 * a2) * m2 + a2 * a2 * m4
-        vjp += a0 * b0 * count + (a1 * b1 + a2 * b0) * m2
+        if FMA:
+            q += tl.fma(
+                a2 * a2,
+                m4,
+                tl.fma(tl.fma(a1, a1, 2 * a0 * a2), m2, a0 * a0 * count),
+            )
+            vjp += tl.fma(tl.fma(a1, b1, a2 * b0), m2, a0 * b0 * count)
+        else:
+            q += a0 * a0 * count + (a1 * a1 + 2 * a0 * a2) * m2 + a2 * a2 * m4
+            vjp += a0 * b0 * count + (a1 * b1 + a2 * b0) * m2
     return q, vjp
 
 
@@ -117,6 +133,7 @@ def prepare(
     ML: tl.constexpr,
     RECIPROCAL: tl.constexpr,
     LOOKUP: tl.constexpr,
+    NORM_FMA: tl.constexpr = False,
 ):
     a = tl.program_id(0) * 64 + tl.arange(0, 64)
     z0 = tl.load(P + 4 * a, a < A, 0).to(tl.float64)
@@ -147,8 +164,12 @@ def prepare(
     radius = 2.449489742783178 * sigma
     co = tl.load(P + 4 * a + 2, a < A, 0).to(tl.float64)
     ci = tl.load(P + 4 * a + 3, a < A, 0).to(tl.float64)
-    qo, vo = _norm(co, radius, Origin, Spacing, Moments, NO, 0, ML, RECIPROCAL, LOOKUP)
-    qi, vi = _norm(ci, radius, Origin, Spacing, Moments, NI, 1, ML, RECIPROCAL, LOOKUP)
+    qo, vo = _norm(
+        co, radius, Origin, Spacing, Moments, NO, 0, ML, RECIPROCAL, LOOKUP, NORM_FMA
+    )
+    qi, vi = _norm(
+        ci, radius, Origin, Spacing, Moments, NI, 1, ML, RECIPROCAL, LOOKUP, NORM_FMA
+    )
     denominator = lib.sqrt(qo * qi)
     correction = tl.where(r2 >= 1.1754943508222875e-38, z0 * inv / safe, 0)
     tl.store(Meta + a * 12, amp, a < A)
@@ -187,6 +208,7 @@ def norm_replay(
     FLOOR: tl.constexpr,
     RECIPROCAL: tl.constexpr,
     LOOKUP: tl.constexpr,
+    NORM_FMA: tl.constexpr = False,
 ):
     # Diagnostic re-evaluation from already decoded live geometry. Not on the
     # normal execution path; its timing is not subtracted from fused prepare.
@@ -194,8 +216,12 @@ def norm_replay(
     radius = tl.load(Meta + a * 12 + 1, a < A, 1)
     co = tl.load(Meta + a * 12 + 2, a < A, 0)
     ci = tl.load(Meta + a * 12 + 3, a < A, 0)
-    qo, vo = _norm(co, radius, Origin, Spacing, Moments, NO, 0, ML, RECIPROCAL, LOOKUP)
-    qi, vi = _norm(ci, radius, Origin, Spacing, Moments, NI, 1, ML, RECIPROCAL, LOOKUP)
+    qo, vo = _norm(
+        co, radius, Origin, Spacing, Moments, NO, 0, ML, RECIPROCAL, LOOKUP, NORM_FMA
+    )
+    qi, vi = _norm(
+        ci, radius, Origin, Spacing, Moments, NI, 1, ML, RECIPROCAL, LOOKUP, NORM_FMA
+    )
     d = lib.sqrt(qo * qi)
     tl.store(Scratch + 4 * a, 1 / tl.maximum(d, FLOOR), a < A)
     tl.store(

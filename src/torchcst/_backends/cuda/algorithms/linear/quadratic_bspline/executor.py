@@ -335,6 +335,7 @@ def _prepare(p, value, chart, recipe, moments):
             moments.shape[1],
             recipe.reciprocal,
             recipe.norm_lookup,
+            getattr(recipe, "norm_fma", False),
             num_warps=recipe.prepare_warps,
             enable_fp_fusion=False,
         )
@@ -356,6 +357,7 @@ def _prepare(p, value, chart, recipe, moments):
                 value.spec.normalization.floor,
                 recipe.reciprocal,
                 recipe.norm_lookup,
+                getattr(recipe, "norm_fma", False),
                 num_warps=4,
                 enable_fp_fusion=False,
             )
