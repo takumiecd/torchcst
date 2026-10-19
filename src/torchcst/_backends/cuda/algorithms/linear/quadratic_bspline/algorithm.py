@@ -21,6 +21,7 @@ from .recipe import (
     BSplineCoalescedHRecipe,
     BSplineLeanHRecipe,
     BSplineNativeHRecipe,
+    BSplineNativeLoopRecipe,
     BSplineParallelRecipe,
     BSplinePreparedHRecipe,
     BSplineQueryRecipe,
@@ -305,3 +306,9 @@ class BSplineLeanHAlgorithm(BSplineStreamingAlgorithm):
 class BSplineNativeHAlgorithm(BSplineStreamingAlgorithm):
     revision: str = "v18"
     recipe_type: type = BSplineNativeHRecipe
+
+
+@dataclass(frozen=True)
+class BSplineNativeLoopAlgorithm(BSplineStreamingAlgorithm):
+    revision: str = "v19"
+    recipe_type: type = BSplineNativeLoopRecipe

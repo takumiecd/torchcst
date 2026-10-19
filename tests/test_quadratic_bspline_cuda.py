@@ -14,6 +14,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineCoalescedHAlgorithm,
     BSplineLeanHAlgorithm,
     BSplineNativeHAlgorithm,
+    BSplineNativeLoopAlgorithm,
     BSplineParallelAlgorithm,
     BSplinePreparedHAlgorithm,
     BSplineQueryAlgorithm,
@@ -34,6 +35,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineCoalescedHRecipe,
     BSplineLeanHRecipe,
     BSplineNativeHRecipe,
+    BSplineNativeLoopRecipe,
     BSplineParallelRecipe,
     BSplinePreparedHRecipe,
     BSplineQueryRecipe,
@@ -72,7 +74,8 @@ def case(n=64, a=17):
 def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     from dataclasses import replace
 
-    native = strategy == "h_native" or recipe_options.pop("_native", False)
+    loop = strategy == "h_native_loop" or recipe_options.pop("_loop", False)
+    native = strategy == "h_native" or recipe_options.pop("_native", False) or loop
     lean = strategy == "h_lean" or recipe_options.pop("_lean", False)
     query = strategy == "h_query" and not lean and not native
     if query or lean or native:
@@ -108,6 +111,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineQueryAlgorithm())
     registry.register(BSplineLeanHAlgorithm())
     registry.register(BSplineNativeHAlgorithm())
+    registry.register(BSplineNativeLoopAlgorithm())
     registry.register(BSplineRangeAlgorithm())
     registry.register(BSplineRangeFusedAlgorithm())
     registry.register(BSplineRangeSpatialAlgorithm())
@@ -130,7 +134,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     tuned = bool(recipe_options) or strategy == "matrix_separable"
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v18"
+        "v19"
+        if loop
+        else "v18"
         if native
         else "v17"
         if lean
@@ -165,7 +171,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         else "v2"
         if tuned
         else "v1",
-        BSplineNativeHRecipe(**recipe_options)
+        BSplineNativeLoopRecipe(**recipe_options)
+        if loop
+        else BSplineNativeHRecipe(**recipe_options)
         if native
         else BSplineLeanHRecipe(**recipe_options)
         if lean
@@ -2192,10 +2200,17 @@ NATIVE_OPTIONS = [
     {"_native": True, "save_h": "none"},
     {"_native": True, "save_h": "h", "norm_fma": True},
 ]
+LOOP_OPTIONS = [
+    {"_loop": True, "save_h": "hp"},
+    {"_loop": True, "save_h": "h"},
+    {"_loop": True, "save_h": "none"},
+    {"_loop": True, "save_h": "h", "native_batch": 16, "norm_fma": True},
+]
 ALL_QUERY_OPTIONS = (
     QUERY_OPTIONS
     + LEAN_OPTIONS
     + [pytest.param(opt, id=f"native-{i}") for i, opt in enumerate(NATIVE_OPTIONS)]
+    + [pytest.param(opt, id=f"native-loop-{i}") for i, opt in enumerate(LOOP_OPTIONS)]
 )
 
 
@@ -2377,3 +2392,17 @@ def test_native_recipe_roundtrip_and_bounds():
     ):
         with pytest.raises(ValueError):
             BSplineNativeHRecipe(**options)
+
+
+def test_native_loop_recipe_roundtrip_and_bounds():
+    reg = Registry()
+    reg.register(BSplineNativeLoopAlgorithm())
+    for options in LOOP_OPTIONS:
+        options = {k: v for k, v in options.items() if k != "_loop"}
+        plan = ExecutionPlan(
+            "research_cuda_quadratic_bspline", "v19", BSplineNativeLoopRecipe(**options)
+        )
+        assert reg.loads_plan(reg.dumps_plan(plan)) == plan
+    for value in (0, 3, True):
+        with pytest.raises(ValueError):
+            BSplineNativeLoopRecipe(native_batch=value)

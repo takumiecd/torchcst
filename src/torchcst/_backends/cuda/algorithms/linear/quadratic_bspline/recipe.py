@@ -437,3 +437,22 @@ class BSplineNativeHRecipe(BSplineLeanHRecipe):
                 or getattr(self, name) not in allowed
             ):
                 raise ValueError(f"{name} must be one of {allowed}")
+
+
+@dataclass(frozen=True)
+class BSplineNativeLoopRecipe(BSplineNativeHRecipe):
+    """Revision 19: reuse short-support profiles while looping small batch tiles."""
+
+    native_loop = True
+    native_batch: int = 8
+    native_sites: int = 16
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.native_batch) is not int or self.native_batch not in (
+            4,
+            8,
+            16,
+            32,
+        ):
+            raise ValueError("native_batch must be 4, 8, 16 or 32")

@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "case": {
+    "id": "bspline-1024-a52428-small-native-h-loop",
+    "fixture": "quadratic_bspline",
+    "size": 1024,
+    "rows": 32,
+    "atoms": 52428,
+    "profile": "mixed",
+    "dtype": "float32",
+    "seed": 41,
+    "warmup": 5,
+    "rounds": 21,
+    "optimizer": {
+      "name": "AdamW",
+      "lr": 0.0001,
+      "weight_decay": 0.01,
+      "fused": true,
+      "capturable": true
+    },
+    "widths": {
+      "minimum": 0.1,
+      "birth": 0.1,
+      "maximum": 12.8,
+      "rho": [
+        0.1,
+        0.14,
+        0.18
+      ],
+      "fractions": [
+        0.3333333333333333,
+        0.3333333333333333,
+        0.3333333333333333
+      ],
+      "center_jitter": null
+    }
+  },
+  "plans": [
+    "query-fma",
+    "native-hp",
+    "loop-hp-b8a4",
+    "loop-hp-b16a4",
+    "loop-hp-b8a8",
+    "loop-h-b8a4",
+    "loop-none-b8a4",
+    "matrix-support4a16"
+  ],
+  "baseline": "query-fma",
+  "dense": true
+}

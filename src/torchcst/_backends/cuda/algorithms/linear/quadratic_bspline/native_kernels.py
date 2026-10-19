@@ -215,3 +215,238 @@ def backward(
             )
         if NEED_DX:
             _inject(g, DX, Meta, Origin, Spacing, a, b, A, B, NI, 1, BS, RECIPROCAL)
+
+
+@tr.jit
+def _cached_axis(
+    Meta,
+    Origin,
+    Spacing,
+    a,
+    A: tl.constexpr,
+    N: tl.constexpr,
+    DIM: tl.constexpr,
+    BS: tl.constexpr,
+    RECIPROCAL: tl.constexpr,
+):
+    radius, ir, center, origin, spacing, left, right = _axis(
+        Meta, Origin, Spacing, a, A, N, DIM, RECIPROCAL
+    )
+    j = left[:, None] + tl.arange(0, BS)[None, :]
+    f, df = _shape(
+        origin + j.to(tl.float64) * spacing - center[:, None],
+        radius[:, None],
+        ir[:, None],
+        RECIPROCAL,
+    )
+    valid = (a[:, None] < A) & (j < right[:, None])
+    return (
+        j,
+        tl.where(valid, f, 0),
+        tl.where(valid, df, 0),
+        right,
+        tl.max(right - left, 0) <= BS,
+    )
+
+
+@tr.jit
+def _cached_query(
+    X,
+    j,
+    f,
+    df,
+    right,
+    a,
+    b,
+    A: tl.constexpr,
+    B: tl.constexpr,
+    N: tl.constexpr,
+    PRIME: tl.constexpr,
+):
+    mask = (
+        (a[:, None, None] < A)
+        & (b[None, :, None] < B)
+        & (j[:, None, :] < right[:, None, None])
+    )
+    xx = tl.load(X + b[None, :, None] * N + j[:, None, :], mask, 0).to(tl.float64)
+    h = tl.sum(xx * f[:, None, :], 2).to(tl.float32).to(tl.float64)
+    hp = tl.full(h.shape, 0, tl.float64)
+    if PRIME:
+        hp = tl.sum(xx * df[:, None, :], 2).to(tl.float32).to(tl.float64)
+    return h, hp
+
+
+@tr.jit
+def _cached_inject(
+    Value,
+    Y,
+    j,
+    f,
+    right,
+    scale,
+    a,
+    b,
+    A: tl.constexpr,
+    B: tl.constexpr,
+    N: tl.constexpr,
+):
+    mask = (
+        (a[:, None, None] < A)
+        & (b[None, :, None] < B)
+        & (j[:, None, :] < right[:, None, None])
+    )
+    value = (Value * scale[:, None])[:, :, None] * f[:, None, :]
+    tl.atomic_add(
+        Y + b[None, :, None] * N + j[:, None, :],
+        value.to(tl.float32),
+        mask,
+        sem="relaxed",
+    )
+
+
+@tr.jit
+def forward_loop(
+    X,
+    Y,
+    Meta,
+    Count,
+    Origin,
+    Spacing,
+    A: tl.constexpr,
+    B: tl.constexpr,
+    NO: tl.constexpr,
+    NI: tl.constexpr,
+    AB: tl.constexpr,
+    BB: tl.constexpr,
+    BS: tl.constexpr,
+    RECIPROCAL: tl.constexpr,
+):
+    base = tl.program_id(0) * AB
+    count = tl.load(Count)
+    if base < count:
+        a = tl.where(base + tl.arange(0, AB) < count, base + tl.arange(0, AB), A)
+        ji, fi, dfi, ri, cached_i = _cached_axis(
+            Meta, Origin, Spacing, a, A, NI, 1, BS, RECIPROCAL
+        )
+        jo, fo, _dfo, ro, cached_o = _cached_axis(
+            Meta, Origin, Spacing, a, A, NO, 0, BS, RECIPROCAL
+        )
+        scale = tl.load(Meta + a * 12, a < A, 0) * tl.load(Meta + a * 12 + 4, a < A, 0)
+        for part in range(tl.cdiv(B, BB)):
+            b = part * BB + tl.arange(0, BB)
+            if cached_i:
+                h, _ = _cached_query(X, ji, fi, dfi, ri, a, b, A, B, NI, False)
+            else:
+                h, _ = _query(
+                    X,
+                    Meta,
+                    Origin,
+                    Spacing,
+                    a,
+                    b,
+                    A,
+                    B,
+                    NI,
+                    1,
+                    AB,
+                    BB,
+                    BS,
+                    RECIPROCAL,
+                    False,
+                )
+            if cached_o:
+                _cached_inject(h, Y, jo, fo, ro, scale, a, b, A, B, NO)
+            else:
+                _inject(h, Y, Meta, Origin, Spacing, a, b, A, B, NO, 0, BS, RECIPROCAL)
+
+
+@tr.jit
+def backward_loop(
+    X,
+    DY,
+    DX,
+    DP,
+    Meta,
+    Count,
+    Origin,
+    Spacing,
+    A: tl.constexpr,
+    B: tl.constexpr,
+    NO: tl.constexpr,
+    NI: tl.constexpr,
+    AB: tl.constexpr,
+    BB: tl.constexpr,
+    BS: tl.constexpr,
+    RECIPROCAL: tl.constexpr,
+    NEED_DX: tl.constexpr,
+    NEED_DP: tl.constexpr,
+):
+    base = tl.program_id(0) * AB
+    count = tl.load(Count)
+    if base < count:
+        a = tl.where(base + tl.arange(0, AB) < count, base + tl.arange(0, AB), A)
+        ji, fi, dfi, ri, cached_i = _cached_axis(
+            Meta, Origin, Spacing, a, A, NI, 1, BS, RECIPROCAL
+        )
+        jo, fo, dfo, ro, cached_o = _cached_axis(
+            Meta, Origin, Spacing, a, A, NO, 0, BS, RECIPROCAL
+        )
+        scale = tl.load(Meta + a * 12, a < A, 0) * tl.load(Meta + a * 12 + 4, a < A, 0)
+        total = tl.full((AB,), 0, tl.float64)
+        dout = tl.full((AB,), 0, tl.float64)
+        din = tl.full((AB,), 0, tl.float64)
+        for part in range(tl.cdiv(B, BB)):
+            b = part * BB + tl.arange(0, BB)
+            if cached_o:
+                g, gp = _cached_query(DY, jo, fo, dfo, ro, a, b, A, B, NO, NEED_DP)
+            else:
+                g, gp = _query(
+                    DY,
+                    Meta,
+                    Origin,
+                    Spacing,
+                    a,
+                    b,
+                    A,
+                    B,
+                    NO,
+                    0,
+                    AB,
+                    BB,
+                    BS,
+                    RECIPROCAL,
+                    NEED_DP,
+                )
+            if NEED_DP:
+                if cached_i:
+                    h, hp = _cached_query(X, ji, fi, dfi, ri, a, b, A, B, NI, True)
+                else:
+                    h, hp = _query(
+                        X,
+                        Meta,
+                        Origin,
+                        Spacing,
+                        a,
+                        b,
+                        A,
+                        B,
+                        NI,
+                        1,
+                        AB,
+                        BB,
+                        BS,
+                        RECIPROCAL,
+                        True,
+                    )
+                total += tl.sum(h * g, 1)
+                dout += tl.sum(h * gp, 1)
+                din += tl.sum(hp * g, 1)
+            if NEED_DX:
+                if cached_i:
+                    _cached_inject(g, DX, ji, fi, ri, scale, a, b, A, B, NI)
+                else:
+                    _inject(
+                        g, DX, Meta, Origin, Spacing, a, b, A, B, NI, 1, BS, RECIPROCAL
+                    )
+        if NEED_DP:
+            _pullback(Meta, DP, a, total, dout, din, A)

@@ -660,3 +660,10 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
 )
 
 REGISTRY.register(BSplineNativeHAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineNativeLoopAlgorithm,
+)
+
+REGISTRY.register(BSplineNativeLoopAlgorithm())

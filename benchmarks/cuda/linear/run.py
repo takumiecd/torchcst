@@ -574,6 +574,10 @@ def measure(args, run):
                         else "fresh sort of width buckets every forward",
                         "canonical_parameter_rows_moved": False,
                         "save_w": recipe.save_w,
+                        "native_batch_tile": getattr(recipe, "native_batch", None),
+                        "native_profile_reuse": bool(
+                            getattr(recipe, "native_loop", False)
+                        ),
                         "native_execution": "direct axis H/G; no W/dW or GEMM"
                         if getattr(recipe, "native_h", False)
                         else "matrix W/GEMM and dW VJP",
