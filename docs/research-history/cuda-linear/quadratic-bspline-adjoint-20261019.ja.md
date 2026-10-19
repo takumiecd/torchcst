@@ -41,6 +41,8 @@ Gμは同じPの0/1次planeと中心微分係数を使う。G側で共有する�
 
 並べ替えは毎forwardの現在の切替点から作り、対応するbackwardまで保存する。古いσに基づく順序を無検証で再利用しない。index順序は性能のためのもので、支持を近似・切捨て・量子化しない。順序作成・buffer初期化・最終合算を完全stepに含める。
 
+G/Gμは融合kernelのregister内で生成・使用し、全A×BのG Tensorは追加しない。H/Hμ保存量は対照と同じ。追加の順序snapshotはint64のA要素で、A=52,428なら.4MiB。端点0の16分散bufferはB32/B64で12/24KiB、delta全体4分散のtargetは約3.003/6.006MiBとなる。histogram方式はN=1024で11階級、hist/ends/cursor合計135,300 byteを一時利用する。これらはTensor容量であり、lifetimeの重なり、元のdelta、最終合算出力、allocator/capture poolを含む測定peakとは区別する。
+
 ## 検証範囲と測定条件
 
 L4一台、1024²、52,428 atom、spacing .1、FP32入力/Parameter、TF32 off、AdamW + fused Polar。混合σの初期値は `.1/.4/1.6/6.4/12` 各20%。幅の上限は12.8。warmup 5、21 replay median。主測定のX/targetは同じ固定fixtureとし、Xも変わる正しさはeager/Graphテストで別に確認する。
@@ -120,4 +122,60 @@ job `l4job-054761eb479b40b0b008f465b34b6a99`、source `d7647d19`。archive/manif
 
 全候補の独立FP64最大誤差はY `1.218e-6`、dX `1.336e-6`、全atom勾配 `2.089e-5`、relative L2は `1.020e-7` 以下。全52,428 atomのσが各CST測定で変化した。同じ初期Pと、Denseも含む同じ初期X/targetをhashで確認した。
 
-元の最速H保存版と代表候補のB32/B64・切替付近・小σだけの最終比較、および修正済みsourceのGPU全回帰を別jobで進める。
+## 最終比較: B32/B64混合σ、独立2 process
+
+job `l4job-990d4e4c746d42b0b9f0bda50e39a4ca` / `l4job-f64906c7014b405383fa35b51f2b8055`、source `e193a286`。新しいL4 VMで対照も測り直した。表の時間は2個の独立processそれぞれのmedianの範囲で、同じVMを使う。peakは両processで一致した。4atom版はbackwardだけの変更で、forwardは共通の8atom設定。
+
+| 方法 | B32 完全step ms | B32 allocated / reserved MiB | B64 完全step ms | B64 allocated / reserved MiB |
+|---|---:|---:|---:|---:|
+| 前回のH/Hμ保存 | **1.7064–1.7109** | 81.288 / 172 | **2.7703–2.8466** | 96.791 / 188 |
+| backward 4atom | 1.7898–1.7911 | 81.288 / 172 | 2.7899–2.8523 | 96.791 / 188 |
+| 端点0だけ16分散 | 1.7109–1.7126 | 81.288 / 172 | 2.7751–2.7798 | 96.791 / 188 |
+| delta全体4分散 | 1.7097–1.7109 | 82.741 / 172 | 2.8327–2.8553 | 101.689 / 188 |
+| 出力histogram + 読み取り共有 | 1.7921–1.7945 | 81.688 / 172 | 3.3263–3.3291 | 97.191 / 188 |
+| 入力sort + 局所合算 | 2.1466–2.1499 | 81.688 / 172 | 3.6621–3.6630 | 97.191 / 188 |
+| 既存W range reuse | 3.2227–3.2247 | 78.590 / 154 | 3.2479–3.2507 | 78.840 / 156 |
+| Dense | .0823–.0825 | 49.002 / 106 | .1038–.1050 | 49.502 / 106 |
+
+B64の端点分散は1回目に2.8466→2.7751ms（約2.5%短縮）だったが、2回目は2.7703→2.7798msと優劣が逆転した。サンプルにもばらつきがあり、安定した高速化とは判断しない。4atom版もB64で優劣が逆転し、B32では明確に遅い。delta全体4分散はB32で同じ時間帯だがallocatedが増え、B64では遅い。
+
+B64のbackward診断（2回目）は対照1.1325ms、4atom 1.1510ms、端点分散1.1438ms、全体4分散1.1530ms、出力histogram共有1.6763ms、入力sort局所合算1.9569ms。診断Graphでは分散後の最終合算と追加eventもこの区間に含む。4atom版はregister/threadを96→48へ減らしたが、完全stepで安定した改善はなかった。出力共有252 / 入力局所合算254 register/thread、全例spill 0。これはcompiler情報で、occupancyやDRAM trafficの実測ではない。
+
+全候補の初期P、Denseも含む初期X/targetは両process間もhash一致。全CST測定で52,428/52,428 atomのσが変化し、既存native/broad配置は52呼び出し中1回構築・51回再利用だった（warmup/eager/capture/replayを含む）。今回追加したbackwardの区間順序はこれとは別で、毎forwardに新しく作る。
+
+主比較の独立FP64最大誤差はY `1.218e-6`、dX `1.882e-6`、全atom勾配 `3.149e-5`、relative L2は `1.420e-7` 以下。全候補で3状態のmaxabs/relative L2両方を4e-4未満に維持した。
+
+## 修正済みsourceの回帰
+
+job `l4job-af45937f16da44349d8b0414a5c4db02` は **647 passed（639実CUDA + 8宣言/metadata）**、791.41s。既存のAccumulateGrad stream warning 1件を含むが、Graph検証を含め全件完了した。runtimeと対象testは最終比較sourceとbyte一致。先の18件compile失敗を含む旧sourceの609 passedを、この合格数に足していない。
+
+
+## 証拠と再現
+
+L4 / driver `580.82.07` / Python `3.13.15` / Torch `2.11.0+cu130` / CUDA `13.0` / Triton `3.6.0`。共有poolの1台を排他的に使用した。最終比較は同じ新しいVM上の独立processで、対照も同時に測り直す。
+
+| job | source archive SHA256 | result archive SHA256 |
+|---|---|---|
+| `l4job-6dc51a857da24c76941b0c931f5db1db` | `e1892614604aa3f2416be575f1270552f25059ba938e90484d16fe1ae425a39e` | `9e953ce913d2ec4cf8fae3685f58e564e77b91bb8acf27af1660ddc1844e519d` |
+| `l4job-054761eb479b40b0b008f465b34b6a99` | `61a69d49f18877e2594f6e8cfaba6b553f6360d22c2789d0dd31cc0686641bb3` | `65c1c6cad83d08ee26fb1faea27af3e42c961fade6f9b9b8f930480b6337554e` |
+| `l4job-af45937f16da44349d8b0414a5c4db02` | `88ae1cbceb361c85228bb29f67e6a05b57c43498c7ab15798e06354e2bca2a5c` | `d2734232adcb7ca5ea8c7e20d9f350d6f5c78f4bc82dbe8bf4c64822c4500e63` |
+| `l4job-990d4e4c746d42b0b9f0bda50e39a4ca` | `b0201b5aae6551fc07a4621c3dcd4cb9916acb5f50c4df6d1e1d96100d80cca3` | `fadf0b63ffdb706e7e66185ea461e6bb7e2216b3fe1c62c75f596d77bec32354` |
+| `l4job-f64906c7014b405383fa35b51f2b8055` | `6e7025059231b78db19627ff94fab1a9cf78d3b675b49541264031ca86264bc2` | `55881fb1c68f3b827266d3eed7feaa3210ba8fd824593b080dcbdc26c6eb595f` |
+
+GPUへ送った凍結source、結果archive、全manifest、jobごとのcleanup応答を照合した。最終比較・全回帰・全候補探索の5 snapshotは、runtime 347ファイル、対象test、runnerが現checkoutとbyte一致する。catalogは候補追加のみで、これらのsnapshotに含まれた既存Planの内容は変えていない。初期切替点の件数診断は別の旧sourceで行ったものとして分ける。
+
+raw evidenceはworktreeの `output/bspline-adjoint-20261019/` に保存する。`verified-jobs/` に合格したarchive/manifest/receipt、`excluded-jobs/` に失敗実装・未完比較のarchiveを複製した。`audit-all-study.json` / `audit-primary.json` に全phase・精度・peak・routing、`source-byte-proof.json` にsource照合を残す。除外した初回接続失敗のVM停止とserver assignment消失は `resource-recovered.json` / `lifecycle-initial.log` に記録した。
+
+GPUホストでの再現例:
+
+```bash
+PYTHONPATH=src python -m benchmarks.cuda.linear.run \
+  --plans benchmarks/cuda/linear/plans-quadratic-bspline.json \
+  --case benchmarks/cuda/linear/cases/bspline-1024-a52428-mixed-adjoint-final.json \
+  --polar-update fused --phase-diagnostics --kernel-diagnostics \
+  --source-commit "$(git rev-parse HEAD)" --output output/adjoint-reproduction.json
+python -m benchmarks.submissions check output/adjoint-reproduction.json
+PYTHONPATH=src python -m pytest tests/test_quadratic_bspline_cuda.py -q
+```
+
+`b64-mixed` / `switch` / `small` の対応するCase、全候補探索の `mixed-adjoint-all` も同じrunnerを使う。所有者L4では共有poolへ隔離snapshotを提出し、回収・照合・停止を行う。他世代GPU、hardware counter、実DB保存、公開dispatcher採用はこの比較の検証範囲に含めない。

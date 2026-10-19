@@ -289,3 +289,7 @@ block scanと空間順の負の結果を含め、公開の既定採用とは区�
 [forward H保存とbackwardの分解](research-history/cuda-linear/quadratic-bspline-h-save-20261019.ja.md)
 では、H/Hμの再計算・G/Gμ生成・atom勾配・dX差分集約を分離診断し、
 forwardのHのみ／Hと中心微分の保存を可変σで比較する。研究用v14で、数学と精度条件を維持する。
+
+[G生成の共有とdX集約の比較](research-history/cuda-linear/quadratic-bspline-adjoint-20261019.ja.md)
+では、区間のsort/histogram、prefix読み取り共有、局所合算、FP64差分bufferの分散を
+研究用v15で比較する。完全step・capture込みpeakと全勾配を同条件で記録する。
