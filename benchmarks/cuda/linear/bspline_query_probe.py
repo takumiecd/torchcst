@@ -40,7 +40,7 @@ def probe(
         a = base + tl.arange(0, AB)
         b = tl.arange(0, BB)
         mask = (a[:, None] < A) & (b[None, :] < B)
-        if MODE == "factored" or MODE == "pieces":
+        if MODE == "factored" or MODE == "pieces" or MODE == "fma":
             value, prime = _query(
                 Bank,
                 Meta,
@@ -170,6 +170,7 @@ def run(meta, cuts, coeff, count, origin, spacing, bank, output, batch):
         "uniform_both",
         "factored",
         "pieces",
+        "fma",
     ):
 
         def launch(mode=mode):
@@ -197,7 +198,7 @@ def run(meta, cuts, coeff, count, origin, spacing, bank, output, batch):
         if mode == "full":
             reference = (g.clone(), gp.clone())
         err = None
-        if mode in ("factored", "pieces"):
+        if mode in ("factored", "pieces", "fma"):
             start = int(count.item())
             err = {}
             for name, x, y in zip(("g", "gp"), (g, gp), reference):

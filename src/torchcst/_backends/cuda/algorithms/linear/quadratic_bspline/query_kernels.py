@@ -4,6 +4,7 @@ import triton as tr
 import triton.language as tl
 
 from . import coalesced_kernels as ck
+from .h_kernels import _geometry
 
 
 @tr.jit
@@ -53,6 +54,39 @@ def _query(
             POINT_MAJOR,
             SHARE_READS,
         )
+    if METHOD == "fma":
+        value = tl.full((AB, BB), 0, tl.float64)
+        prime = tl.full((AB, BB), 0, tl.float64)
+        mask = (a[:, None] < A) & (b[None, :] < B)
+        for knot in tl.static_range(4):
+            cut, c0, c1, c2, d0, d1 = _geometry(
+                Meta,
+                Cuts,
+                Coeff,
+                Origin,
+                Spacing,
+                a,
+                A,
+                N,
+                DIM,
+                knot,
+                RECIPROCAL,
+                CACHE,
+                DERIVATIVES,
+            )
+            addr = cut[:, None] * B + b[None, :]
+            p0 = tl.load(Bank + addr, mask, 0)
+            p1 = tl.load(Bank + B * (N + 1) + addr, mask, 0)
+            p2 = tl.load(Bank + 2 * B * (N + 1) + addr, mask, 0)
+            value -= tl.fma(p2, c2[:, None], tl.fma(p1, c1[:, None], p0 * c0[:, None]))
+            if PRIME:
+                prime -= tl.fma(p1, d1[:, None], p0 * d0[:, None])
+        left = tl.load(Cuts + DIM * 4 * A + a, a < A, 0)
+        right = tl.load(Cuts + (DIM * 4 + 3) * A + a, a < A, 0)
+        active = mask & (right[:, None] > left[:, None])
+        return tl.where(active, value, 0).to(tl.float32).to(tl.float64), tl.where(
+            active, prime, 0
+        ).to(tl.float32).to(tl.float64)
     mask = (a[:, None] < A) & (b[None, :] < B)
     radius = tl.load(Meta + a * 12 + 1, a < A, 1)
     ir = tl.load(Meta + a * 12 + 9, a < A, 1)

@@ -41,6 +41,8 @@
   },
   "plans": [
     "h-save-hp-fused",
+    "query-fma",
+    "query-fma-compact",
     "query-expanded-compact",
     "query-pieces-compact",
     "range-reuse-a16w1"

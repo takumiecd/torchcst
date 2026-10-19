@@ -376,5 +376,5 @@ class BSplineQueryRecipe(BSplineSavedHRecipe):
         super().__post_init__()
         if self.save_h != "hp":
             raise ValueError("query algebra requires save_h=hp")
-        if self.query_method not in ("expanded", "factored", "pieces"):
-            raise ValueError("query_method must be expanded, factored or pieces")
+        if self.query_method not in ("expanded", "factored", "pieces", "fma"):
+            raise ValueError("query_method must be expanded, factored, pieces or fma")

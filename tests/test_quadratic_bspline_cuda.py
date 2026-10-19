@@ -2149,6 +2149,8 @@ def test_adjoint_recipe_roundtrip_and_bounds():
 
 
 QUERY_OPTIONS = [
+    {"query_method": "fma"},
+    {"query_method": "fma", "coefficient_derivatives": False},
     {"query_method": "factored"},
     {"query_method": "pieces"},
     {"query_method": "factored", "coefficient_derivatives": False},
