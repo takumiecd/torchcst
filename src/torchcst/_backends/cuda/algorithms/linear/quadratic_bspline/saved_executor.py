@@ -44,12 +44,24 @@ class _SavedH(torch.autograd.Function):
             backward_order = x.new_empty(0, dtype=torch.int64)
         _out_order, _out_ends = _events(cuts, count, a, sizes[0], 0, recipe)
         in_order, in_ends = _events(cuts, count, a, sizes[1], 1, recipe)
-        w = _build_w(meta, origin, spacing, count, sizes, recipe, x.device, "w_build")
-        _stamp("y_gemm", 0)
-        y = x @ w.T
-        _stamp("y_gemm", 1)
-        saved_w = w if recipe.save_w else x.new_empty(0)
-        del w
+        if getattr(recipe, "native_h", False):
+            from .native_runtime import forward as native_forward
+
+            for stage in ("w_build", "y_gemm"):
+                _stamp(stage, 0)
+                _stamp(stage, 1)
+            y = x.new_zeros((b, sizes[0]))
+            saved_w = x.new_empty(0)
+            native_forward(x, y, meta, count, origin, spacing, sizes, recipe)
+        else:
+            w = _build_w(
+                meta, origin, spacing, count, sizes, recipe, x.device, "w_build"
+            )
+            _stamp("y_gemm", 0)
+            y = x @ w.T
+            _stamp("y_gemm", 1)
+            saved_w = w if recipe.save_w else x.new_empty(0)
+            del w
         _stamp("bank_input", 0)
         bank = _local_bank(x, bases[1], recipe)
         _stamp("bank_input", 1)
@@ -154,48 +166,67 @@ class _SavedH(torch.autograd.Function):
         a, b = len(meta), len(dy)
         dy = dy.contiguous()
         dx = dp = None
-        if not recipe.save_w and ctx.needs_input_grad[0]:
-            w = _build_w(
-                meta, origin, spacing, count, sizes, recipe, x.device, "w_rebuild"
-            )
-        else:
-            _stamp("w_rebuild", 0)
-            _stamp("w_rebuild", 1)
-        _stamp("dx_gemm", 0)
-        if ctx.needs_input_grad[0]:
-            dx = dy @ w
-        _stamp("dx_gemm", 1)
-        _stamp("dw_gemm", 0)
-        if ctx.needs_input_grad[1]:
-            if not recipe.save_w and ctx.needs_input_grad[0]:
-                dw = torch.mm(dy.T, x, out=w)
-            else:
-                dw = dy.T @ x
-        _stamp("dw_gemm", 1)
-        _stamp("matrix_atom_vjp", 0)
-        if ctx.needs_input_grad[1]:
-            dp = dy.new_empty((a, 4))
-            compiled = k.matrix_vjp[(tr.cdiv(a, recipe.matrix_atoms),)](
+        if getattr(recipe, "native_h", False):
+            from .native_runtime import backward as native_backward
+
+            for stage in ("w_rebuild", "dx_gemm", "dw_gemm", "matrix_atom_vjp"):
+                _stamp(stage, 0)
+                _stamp(stage, 1)
+            dx, dp = native_backward(
+                x,
+                dy,
                 meta,
-                dw,
-                dp,
+                count,
                 origin,
                 spacing,
-                a,
-                *sizes,
-                recipe.matrix_sites,
-                recipe.matrix_atoms,
-                recipe.reciprocal,
-                True,
-                Count=count,
-                PARTITIONED=True,
-                num_warps=recipe.matrix_warps,
-                enable_fp_fusion=False,
+                sizes,
+                recipe,
+                ctx.needs_input_grad[0],
+                ctx.needs_input_grad[1],
             )
-            _report("matrix_atom_vjp", compiled)
-            del dw
-        _stamp("matrix_atom_vjp", 1)
-        del w
+        else:
+            if not recipe.save_w and ctx.needs_input_grad[0]:
+                w = _build_w(
+                    meta, origin, spacing, count, sizes, recipe, x.device, "w_rebuild"
+                )
+            else:
+                _stamp("w_rebuild", 0)
+                _stamp("w_rebuild", 1)
+            _stamp("dx_gemm", 0)
+            if ctx.needs_input_grad[0]:
+                dx = dy @ w
+            _stamp("dx_gemm", 1)
+            _stamp("dw_gemm", 0)
+            if ctx.needs_input_grad[1]:
+                if not recipe.save_w and ctx.needs_input_grad[0]:
+                    dw = torch.mm(dy.T, x, out=w)
+                else:
+                    dw = dy.T @ x
+            _stamp("dw_gemm", 1)
+            _stamp("matrix_atom_vjp", 0)
+            if ctx.needs_input_grad[1]:
+                dp = dy.new_empty((a, 4))
+                compiled = k.matrix_vjp[(tr.cdiv(a, recipe.matrix_atoms),)](
+                    meta,
+                    dw,
+                    dp,
+                    origin,
+                    spacing,
+                    a,
+                    *sizes,
+                    recipe.matrix_sites,
+                    recipe.matrix_atoms,
+                    recipe.reciprocal,
+                    True,
+                    Count=count,
+                    PARTITIONED=True,
+                    num_warps=recipe.matrix_warps,
+                    enable_fp_fusion=False,
+                )
+                _report("matrix_atom_vjp", compiled)
+                del dw
+            _stamp("matrix_atom_vjp", 1)
+            del w
         _stamp("bank_recompute", 0)
         input_bank = (
             _local_bank(x, ctx.bases[1], recipe)
