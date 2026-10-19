@@ -449,3 +449,14 @@ cacheのsource slot対応とregular fieldが上書きされないことを検査
 
 提出前CPU2000 PASS /4472 skipped /既存warning18、38.51秒。Ruff・4 case宣言検査PASS。
 GPU43 checks（共通native cache29とspacing/fallback/profile14）およびmetadata2件を先に確認する。
+
+
+v38初回source `92d83dc173d038172c0821a82a0e743a0650c078`、job
+`l4job-d58e82c9fa864b0b9acd50cab3d709ff`は43 GPU checksが同じcompile errorで失敗し、
+metadata2件だけが通った（65.24秒）。static_range(2)のdimループ内で`n: tl.constexpr`を
+再宣言していた。既存lk.prepareと同じ通常のconstexpr値代入`n = NO if dim == 0 else NI`へ
+修正する。profile式・支持・dtype・cache配置は変えない。数値検証や性能結果はなく、
+失敗archive/source/manifest/cleanup ackを保存してprimary表から除外した。
+
+failed source SHA256 `6d6a2faa1b457162afe05825f7798b069c82c70d952c949ab289a026f6c7f36a`、result SHA256 `8b08df6dea7e74d0b164163dc95a5bfad4e96c413ef357be624116961a568a1c`。
+source byte一致1607 files、manifest4 files。

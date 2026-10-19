@@ -31,7 +31,7 @@ def prepare(
         valid = slot < count
         source = _source(Order, tl.where(valid, slot, A), A)
         for dim in tl.static_range(2):
-            n: tl.constexpr = NO if dim == 0 else NI
+            n = NO if dim == 0 else NI
             radius, ir, center, origin, spacing, left, right = nk._axis(
                 Meta, Origin, Spacing, source, A, n, dim, RECIPROCAL
             )
