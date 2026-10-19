@@ -281,3 +281,7 @@ block scanと空間順の負の結果を含め、公開の既定採用とは区�
 終端書込の省略と局所集約、切替点eventのsegmented集約を比較する。
 従来H・最速W・Denseの完全stepと総peak、可変sigmaの全勾配gateを同条件で検証し、
 分離版の中間H/G保存と融合版のregister消費を区別する。公開の既定登録は変更しない。
+
+[Hの連続配置とendpoint集約](research-history/cuda-linear/quadratic-bspline-h-coalesced-20261019.ja.md)
+では、batch連続のbank、入力区間の共有、局所reduction、出力担当によるatomic削減を
+同じL2・全atom勾配で比較する。研究用v13であり公開dispatcherは変更しない。
