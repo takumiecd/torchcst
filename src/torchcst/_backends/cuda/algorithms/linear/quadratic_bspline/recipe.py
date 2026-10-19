@@ -312,3 +312,53 @@ class BSplineSavedHRecipe(BSplineCoalescedHRecipe):
             raise ValueError(
                 "saved H requires point-major fused mode without sorting, sharing, owner or local reduction"
             )
+
+
+@dataclass(frozen=True)
+class BSplineAdjointRecipe(BSplineSavedHRecipe):
+    """Revision 15: backward endpoint grouping and FP64 scatter sharding."""
+
+    adjoint_h = True
+    save_h: str = "hp"
+    adjoint_atoms: int = 8
+    adjoint_warps: int = 4
+    adjoint_order: str = "none"
+    adjoint_share: bool = False
+    adjoint_reduce: bool = False
+    scatter_shards: int = 1
+    scatter_scope: str = "zero"
+    fold_zero: bool = False
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.backward_mode != "fused":
+            raise ValueError("adjoint requires fused backward")
+        for name, allowed in (
+            ("adjoint_atoms", (4, 8, 16, 32)),
+            ("adjoint_warps", (1, 2, 4, 8)),
+            ("scatter_shards", (1, 4, 16, 32)),
+        ):
+            if (
+                type(getattr(self, name)) is not int
+                or getattr(self, name) not in allowed
+            ):
+                raise ValueError(f"{name} must be one of {allowed}")
+        if self.adjoint_order not in (
+            "none",
+            "input",
+            "output",
+            "input_bucket",
+            "output_bucket",
+        ):
+            raise ValueError(
+                "adjoint_order must be none, input, output, input_bucket or output_bucket"
+            )
+        if self.scatter_scope not in ("zero", "full"):
+            raise ValueError("scatter_scope must be zero or full")
+        for name in ("adjoint_share", "adjoint_reduce", "fold_zero"):
+            if type(getattr(self, name)) is not bool:
+                raise ValueError(f"{name} must be boolean")
+        if self.fold_zero and (
+            self.scatter_shards == 1 or self.scatter_scope != "zero"
+        ):
+            raise ValueError("fold_zero requires multiple zero-endpoint shards")

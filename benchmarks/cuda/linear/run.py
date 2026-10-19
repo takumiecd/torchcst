@@ -649,6 +649,26 @@ def measure(args, run):
                             "bank_recompute_skipped": recipe.save_h == "hp",
                         }
                     )
+                if getattr(recipe, "adjoint_h", False):
+                    hybrid_routing.update(
+                        {
+                            "adjoint_order": recipe.adjoint_order,
+                            "adjoint_order_scope": "fresh forward snapshot; backward-only index permutation; no canonical rows moved",
+                            "adjoint_shared_reads": recipe.adjoint_share,
+                            "adjoint_local_reduction": recipe.adjoint_reduce,
+                            "scatter_shards": recipe.scatter_shards,
+                            "scatter_scope": recipe.scatter_scope,
+                            "fold_zero_endpoint": recipe.fold_zero,
+                            "adjoint_atoms": recipe.adjoint_atoms,
+                            "scatter_workspace_bytes": 0
+                            if recipe.scatter_shards == 1
+                            else recipe.scatter_shards
+                            * 3
+                            * m
+                            * 8
+                            * (1 if recipe.scatter_scope == "zero" else case.size + 1),
+                        }
+                    )
                 if recipe.strategy == "matrix_range":
                     hybrid_routing.update(
                         {
@@ -821,6 +841,7 @@ def measure(args, run):
                 getattr(run.entry(args.plan_id).plan.recipe, "prepared_h", False),
                 getattr(run.entry(args.plan_id).plan.recipe, "coalesced_h", False),
                 getattr(run.entry(args.plan_id).plan.recipe, "saved_h", False),
+                getattr(run.entry(args.plan_id).plan.recipe, "adjoint_h", False),
             )
             backend_events = {
                 name: [
