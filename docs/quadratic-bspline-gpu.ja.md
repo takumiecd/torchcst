@@ -285,3 +285,7 @@ block scanと空間順の負の結果を含め、公開の既定採用とは区�
 [Hの連続配置とendpoint集約](research-history/cuda-linear/quadratic-bspline-h-coalesced-20261019.ja.md)
 では、batch連続のbank、入力区間の共有、局所reduction、出力担当によるatomic削減を
 同じL2・全atom勾配で比較する。研究用v13であり公開dispatcherは変更しない。
+
+[forward H保存とbackwardの分解](research-history/cuda-linear/quadratic-bspline-h-save-20261019.ja.md)
+では、H/Hμの再計算・G/Gμ生成・atom勾配・dX差分集約を分離診断し、
+forwardのHのみ／Hと中心微分の保存を可変σで比較する。研究用v14で、数学と精度条件を維持する。

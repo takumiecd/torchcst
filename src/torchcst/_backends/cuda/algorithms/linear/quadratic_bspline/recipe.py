@@ -285,3 +285,30 @@ class BSplineCoalescedHRecipe(BSplinePreparedHRecipe):
             )
         if self.site_owner and (not self.point_major or self.h_mode != "split"):
             raise ValueError("site_owner requires point_major split mode")
+
+
+@dataclass(frozen=True)
+class BSplineSavedHRecipe(BSplineCoalescedHRecipe):
+    """Revision 14: per-forward H snapshots and explicit backward stages."""
+
+    saved_h = True
+    save_h: str = "none"
+    backward_mode: str = "fused"
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.save_h not in ("none", "h", "hp"):
+            raise ValueError("save_h must be none, h or hp")
+        if self.backward_mode not in ("fused", "staged"):
+            raise ValueError("backward_mode must be fused or staged")
+        if (
+            not self.point_major
+            or self.h_mode != "fused"
+            or self.site_owner
+            or self.share_reads
+            or self.sort_input
+            or self.reduce_writes
+        ):
+            raise ValueError(
+                "saved H requires point-major fused mode without sorting, sharing, owner or local reduction"
+            )

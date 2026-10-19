@@ -604,6 +604,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineRangeFusedAlgorithm,
     BSplineRangeReuseAlgorithm,
     BSplineRangeSpatialAlgorithm,
+    BSplineSavedHAlgorithm,
     BSplineSplitAlgorithm,
     BSplineStreamingAlgorithm,
     BSplineStreamingMemoryAlgorithm,
@@ -631,3 +632,5 @@ REGISTRY.register(BSplineRangeSpatialAlgorithm())
 REGISTRY.register(BSplinePreparedHAlgorithm())
 
 REGISTRY.register(BSplineCoalescedHAlgorithm())
+
+REGISTRY.register(BSplineSavedHAlgorithm())
