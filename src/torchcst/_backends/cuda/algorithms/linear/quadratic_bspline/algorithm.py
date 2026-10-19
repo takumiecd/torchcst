@@ -23,6 +23,7 @@ from .recipe import (
     BSplineLocalActiveRecipe,
     BSplineLocalCanonicalRecipe,
     BSplineLocalChunkedRecipe,
+    BSplineLocalCoefficientRecipe,
     BSplineLocalEndpointRecipe,
     BSplineLocalMomentRecipe,
     BSplineLocalNarrowRecipe,
@@ -404,3 +405,9 @@ class BSplineLocalNativeBoundAlgorithm(BSplineLocalChunkedAlgorithm):
 class BSplineLocalCanonicalAlgorithm(BSplineLocalNativeBoundAlgorithm):
     revision: str = "v30"
     recipe_type: type = BSplineLocalCanonicalRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalCoefficientAlgorithm(BSplineLocalCanonicalAlgorithm):
+    revision: str = "v31"
+    recipe_type: type = BSplineLocalCoefficientRecipe

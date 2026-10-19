@@ -16,6 +16,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineLocalActiveAlgorithm,
     BSplineLocalCanonicalAlgorithm,
     BSplineLocalChunkedAlgorithm,
+    BSplineLocalCoefficientAlgorithm,
     BSplineLocalEndpointAlgorithm,
     BSplineLocalMomentAlgorithm,
     BSplineLocalNarrowAlgorithm,
@@ -48,6 +49,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineLocalActiveRecipe,
     BSplineLocalCanonicalRecipe,
     BSplineLocalChunkedRecipe,
+    BSplineLocalCoefficientRecipe,
     BSplineLocalEndpointRecipe,
     BSplineLocalMomentRecipe,
     BSplineLocalNarrowRecipe,
@@ -96,8 +98,13 @@ def case(n=64, a=17):
 def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     from dataclasses import replace
 
-    canonical = strategy == "h_local_canonical" or recipe_options.pop(
-        "_canonical", False
+    coefficients = strategy == "h_local_coefficient" or recipe_options.pop(
+        "_coefficients", False
+    )
+    canonical = (
+        strategy == "h_local_canonical"
+        or recipe_options.pop("_canonical", False)
+        or coefficients
     )
     native_bound = (
         strategy == "h_local_native_bound"
@@ -185,6 +192,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineLocalOwnerAlgorithm())
     registry.register(BSplineLocalNativeBoundAlgorithm())
     registry.register(BSplineLocalCanonicalAlgorithm())
+    registry.register(BSplineLocalCoefficientAlgorithm())
     registry.register(BSplineNativeHAlgorithm())
     registry.register(BSplineNativeLoopAlgorithm())
     registry.register(BSplineRangeAlgorithm())
@@ -209,7 +217,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     tuned = bool(recipe_options) or strategy == "matrix_separable"
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v30"
+        "v31"
+        if coefficients
+        else "v30"
         if canonical
         else "v29"
         if native_bound
@@ -268,7 +278,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         else "v2"
         if tuned
         else "v1",
-        BSplineLocalCanonicalRecipe(**recipe_options)
+        BSplineLocalCoefficientRecipe(**recipe_options)
+        if coefficients
+        else BSplineLocalCanonicalRecipe(**recipe_options)
         if canonical
         else BSplineLocalNativeBoundRecipe(**recipe_options)
         if native_bound
@@ -2438,6 +2450,19 @@ CANONICAL_OPTIONS = [
         "prepare_float32": False,
     },
 ]
+COEFFICIENT_OPTIONS = [
+    {"_coefficients": True},
+    {"_coefficients": True, "coefficient_layout": "aos3"},
+    {
+        "_coefficients": True,
+        "coefficient_layout": "aos4",
+        "native_programs": 32,
+        "batch_chunk": 16,
+        "active_levels": True,
+        "reciprocal": False,
+        "prepare_float32": False,
+    },
+]
 ALL_QUERY_OPTIONS = (
     QUERY_OPTIONS
     + LEAN_OPTIONS
@@ -2462,6 +2487,10 @@ ALL_QUERY_OPTIONS = (
     + [
         pytest.param(opt, id=f"canonical-{i}")
         for i, opt in enumerate(CANONICAL_OPTIONS)
+    ]
+    + [
+        pytest.param(opt, id=f"coefficients-{i}")
+        for i, opt in enumerate(COEFFICIENT_OPTIONS)
     ]
 )
 
@@ -2706,6 +2735,10 @@ def test_local_recipe_roundtrip_and_bounds():
     + [
         pytest.param(opt, id=f"canonical-{i}")
         for i, opt in enumerate(CANONICAL_OPTIONS)
+    ]
+    + [
+        pytest.param(opt, id=f"coefficients-{i}")
+        for i, opt in enumerate(COEFFICIENT_OPTIONS)
     ],
 )
 def test_local_dyadic_boundaries_graph(options):
@@ -2723,6 +2756,7 @@ def test_local_dyadic_boundaries_graph(options):
         or options.get("_owner")
         or options.get("_native_bound")
         or options.get("_canonical")
+        or options.get("_coefficients")
         else 0.2,
         **options,
     )
@@ -2734,6 +2768,7 @@ def test_local_dyadic_boundaries_graph(options):
         or options.get("_owner")
         or options.get("_native_bound")
         or options.get("_canonical")
+        or options.get("_coefficients")
         else 3
     )
     targets = (2.0 ** (minimum + ids % 6)) * 0.1 / math.sqrt(6)
@@ -3230,7 +3265,7 @@ def test_complete_bspline_catalog_decodes():
     )
     entries = decode_catalog(catalog)
     revisions = {entry.plan.algorithm_revision for entry in entries}
-    assert {"v26", "v27", "v28", "v29", "v30"} <= revisions
+    assert {"v26", "v27", "v28", "v29", "v30", "v31"} <= revisions
 
 
 def test_native_bound_recipe_roundtrip_and_bounds():
@@ -3256,7 +3291,9 @@ def test_native_bound_recipe_roundtrip_and_bounds():
 @GPU
 @pytest.mark.parametrize("batch", [33, 64])
 @pytest.mark.parametrize("floor", [1e-6, 1000.0])
-@pytest.mark.parametrize("strategy", ["h_local_native_bound", "h_local_canonical"])
+@pytest.mark.parametrize(
+    "strategy", ["h_local_native_bound", "h_local_canonical", "h_local_coefficient"]
+)
 def test_native_bound_count_changes_across_graph(batch, floor, strategy):
     import math
 
@@ -3326,7 +3363,9 @@ def test_native_bound_count_changes_across_graph(batch, floor, strategy):
 
 @GPU
 @pytest.mark.parametrize("which", ["x", "p"])
-@pytest.mark.parametrize("strategy", ["h_local_native_bound", "h_local_canonical"])
+@pytest.mark.parametrize(
+    "strategy", ["h_local_native_bound", "h_local_canonical", "h_local_coefficient"]
+)
 def test_native_bound_strided_individual_gradients(which, strategy):
     layer = model(strategy, n=64, a=513, sigma_cutoff=0.2, native_programs=32)
     with torch.no_grad():
@@ -3348,7 +3387,9 @@ def test_native_bound_strided_individual_gradients(which, strategy):
 
 
 @GPU
-@pytest.mark.parametrize("strategy", ["h_local_native_bound", "h_local_canonical"])
+@pytest.mark.parametrize(
+    "strategy", ["h_local_native_bound", "h_local_canonical", "h_local_coefficient"]
+)
 def test_native_bound_retained_count_above_grid(strategy):
     from benchmarks.cuda.linear.check_normalized import check
 
@@ -3421,3 +3462,121 @@ def test_canonical_permutation_retains_original_parameter_rows(batch):
     for actual, expected in zip((y0, dx, dp), (ref, rdx, rdp)):
         error = check(actual, expected, 4e-4)
         assert error["max"] < 4e-4 and error["rel_l2"] < 4e-4
+
+
+def test_coefficient_recipe_roundtrip_and_bounds():
+    reg = Registry()
+    reg.register(BSplineLocalCoefficientAlgorithm())
+    for options in COEFFICIENT_OPTIONS + [
+        {"_coefficients": True, "coefficient_layout": "soa"}
+    ]:
+        options = {k: v for k, v in options.items() if k != "_coefficients"}
+        plan = ExecutionPlan(
+            "research_cuda_quadratic_bspline",
+            "v31",
+            BSplineLocalCoefficientRecipe(**options),
+        )
+        assert reg.loads_plan(reg.dumps_plan(plan)) == plan
+    for value in (None, True, "bad"):
+        with pytest.raises(ValueError):
+            BSplineLocalCoefficientRecipe(coefficient_layout=value)
+
+
+@GPU
+@pytest.mark.parametrize("core32", [False, True])
+@pytest.mark.parametrize("mapped", [False, True])
+def test_coefficient_storage_is_bit_identical(core32, mapped):
+    import triton as tr
+
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        local_kernels as lk,
+    )
+
+    a, count = 137, 3
+    meta = torch.zeros(a, 12, dtype=torch.float64, device="cuda")
+    radius = torch.logspace(-0.6, 1.5, a, dtype=torch.float64, device="cuda")
+    meta[:, 1] = radius
+    meta[:, 9] = radius.reciprocal()
+    meta[:, 2] = torch.linspace(-0.3, 13.0, a, device="cuda", dtype=torch.float64)
+    meta[:, 3] = torch.linspace(
+        -0.3, 103.0, a, device="cuda", dtype=torch.float64
+    ).roll(13)
+    meta[:, 10:] = 10.0
+    origin = torch.zeros(2, dtype=torch.float64, device="cuda")
+    spacing = torch.full((2,), 0.1, dtype=torch.float64, device="cuda")
+    order = torch.randperm(a, device="cuda") if mapped else None
+    native = torch.tensor([count], dtype=torch.int32, device="cuda")
+    reference = None
+    for co_layout in ("soa", "aos3", "aos4"):
+        pos = torch.full((2, 6, a), -17, dtype=torch.int32, device="cuda")
+        shape = (
+            (2, 3, 6, a)
+            if co_layout == "soa"
+            else (2, a, 6, 4 if co_layout == "aos4" else 3)
+        )
+        co = torch.full(shape, float("nan"), device="cuda")
+        half = torch.full((2, a), float("nan"), device="cuda")
+        bp = torch.full((2, 2, a), -17, dtype=torch.int32, device="cuda")
+        injection = torch.full((2, a), -1, dtype=torch.int16, device="cuda")
+        lk.prepare[(tr.cdiv(a, 128),)](
+            meta,
+            pos,
+            co,
+            half,
+            native,
+            origin,
+            spacing,
+            a,
+            128,
+            1024,
+            128,
+            True,
+            core32,
+            bp,
+            8,
+            injection,
+            True,
+            2,
+            Order=order,
+            LAYOUT=co_layout,
+            num_warps=4,
+            enable_fp_fusion=False,
+        )
+        unpacked = co.permute(0, 3, 2, 1) if co_layout == "soa" else co[..., :3]
+        values = (pos, bp, injection, half[:, count:], unpacked[:, count:])
+        if reference is None:
+            reference = tuple(value.clone() for value in values)
+        else:
+            for actual, expected in zip(values, reference):
+                assert torch.equal(actual, expected)
+        if co_layout == "aos4":
+            assert torch.count_nonzero(co[:, count:, :, 3]) == 0
+
+
+@GPU
+@pytest.mark.parametrize("layout", ["aos3", "aos4"])
+@pytest.mark.parametrize("batch", [33, 64])
+def test_coefficient_chunked_dynamic_graph(layout, batch):
+    from benchmarks.cuda.linear.check_normalized import check
+
+    layer = model("h_local_coefficient", n=128, a=137, coefficient_layout=layout)
+    x = torch.randn(batch, 256, device="cuda")[:, ::2].requires_grad_()
+    dy = torch.randn(batch, 128, device="cuda")
+    gate(layer, x, dy)
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        y = layer(x)
+        dx, dp = torch.autograd.grad(y, (x, layer.atoms.p), dy)
+    for _ in range(3):
+        with torch.no_grad():
+            layer.atoms.p[:, :2].mul_(1.02)
+            layer.atoms.p[:, 2:].add_(0.017)
+            x.copy_(torch.randn_like(x))
+        graph.replay()
+        rx = x.detach().double().requires_grad_()
+        rp = layer.atoms.p.detach().double().requires_grad_()
+        ref = bs.oracle(copy.deepcopy(layer.kernel).double(), layer.chart, rp, rx)
+        rdx, rdp = torch.autograd.grad(ref, (rx, rp), dy.double())
+        for actual, expected in zip((y, dx, dp), (ref, rdx, rdp)):
+            error = check(actual, expected, 4e-4)
+            assert error["max"] < 4e-4 and error["rel_l2"] < 4e-4

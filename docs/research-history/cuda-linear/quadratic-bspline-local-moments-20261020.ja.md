@@ -381,3 +381,10 @@ canonicalの両peakはsmall/switchで34.153 /98 MiB、B64で34.653 /100 MiB。De
 2倍目標は未達。次の検討候補は係数のatom単位の配置と、小さいdyadic tileをまとめて同一CTAでprefix/restoreを行う方法。前者はH/Gの18係数/軸の読み取り、後者は多数の小CTAの仕事量を対象にする。数学の変更や精度基準の緩和は行わず、構築込みの完全stepと両peakで再度判断する。
 
 source SHA256 `7768b6f88574daadb65e456d0ca5bc1ca71057d7c8b862d2f021090b997d5491`、result SHA256 `7ee7ad85ddcb72443e40f30e603029611cb6c32ec3c18702d5638a638d26469e`。source byte一致1558 files、manifest 70 files、return0/cleanup ackを確認。
+
+
+## v31候補：係数をatomごとに配置する
+
+旧Co[dim,plane,event,slot]を、同じFP32係数値のままCo[dim,slot,event,plane]へ置く。3要素のAoS3はpayload不変、4要素のAoS4は末尾zero paddingを付けて1回のvector loadからc0/c1/c2を取り出す。AoS4の増加はA52428で2,516,544 bytes、約2.4 MiB。係数生成式・ordered FMA・境界shift・単一floor・source VJPは変更しない。古いrecipeはSoAを使う。
+
+配列配置を逆変換した係数を、mapping有無とFP32/FP64生成で従来配置とbit単位照合する検査を追加。余白のzero、端数AとB、native prefix、動的σ/X、retained snapshot、Graph、全atom勾配も確認する。完全stepではAoS3/AoS4に加えaxis_atoms4/8/16を比較する。係数localityの改善は仮説であり、命令数やcachelineの推測だけを速度の証拠にしない。両peakがDense以下か実測し、default採用は行わない。

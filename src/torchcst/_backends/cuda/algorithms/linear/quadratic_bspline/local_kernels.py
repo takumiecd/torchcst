@@ -15,6 +15,48 @@ def _source(Order, slot, A: tl.constexpr):
 
 
 @tr.jit
+def _co_index(
+    a,
+    A: tl.constexpr,
+    dim: tl.constexpr,
+    event: tl.constexpr,
+    p: tl.constexpr,
+    LAYOUT: tl.constexpr,
+):
+    if LAYOUT == "soa":
+        return ((dim * 3 + p) * 6 + event) * A + a
+    width: tl.constexpr = 4 if LAYOUT == "aos4" else 3
+    return ((dim * A + a) * 6 + event) * width + p
+
+
+@tr.jit
+def _coeff(
+    Co, a, A: tl.constexpr, DIM: tl.constexpr, EVENT: tl.constexpr, LAYOUT: tl.constexpr
+):
+    if LAYOUT == "aos4":
+        p = tl.arange(0, 4)
+        packed = tl.load(
+            Co + ((DIM * A + a[:, None]) * 6 + EVENT) * 4 + p[None, :],
+            a[:, None] < A,
+            0,
+        )
+        c0 = tl.gather(packed, tl.full((a.shape[0], 1), 0, tl.int32), 1).reshape(
+            a.shape
+        )
+        c1 = tl.gather(packed, tl.full((a.shape[0], 1), 1, tl.int32), 1).reshape(
+            a.shape
+        )
+        c2 = tl.gather(packed, tl.full((a.shape[0], 1), 2, tl.int32), 1).reshape(
+            a.shape
+        )
+    else:
+        c0 = tl.load(Co + _co_index(a, A, DIM, EVENT, 0, LAYOUT), a < A, 0)
+        c1 = tl.load(Co + _co_index(a, A, DIM, EVENT, 1, LAYOUT), a < A, 0)
+        c2 = tl.load(Co + _co_index(a, A, DIM, EVENT, 2, LAYOUT), a < A, 0)
+    return c0, c1, c2
+
+
+@tr.jit
 def _poly(
     mid,
     half,
@@ -56,6 +98,7 @@ def prepare(
     ENDPOINTS: tl.constexpr = False,
     MIN_LOG: tl.constexpr = 3,
     Order=None,
+    LAYOUT: tl.constexpr = "soa",
 ):
     base = tl.load(Count) + tl.program_id(0) * AB
     if base < A:
@@ -164,10 +207,12 @@ def prepare(
                 for p in tl.static_range(3):
                     value = c0 if p == 0 else c1 if p == 1 else c2
                     tl.store(
-                        Co + ((dim * 3 + p) * 6 + event) * A + a,
+                        Co + _co_index(a, A, dim, event, p, LAYOUT),
                         tl.where(active, value, 0).to(tl.float32),
                         a < A,
                     )
+                if LAYOUT == "aos4":
+                    tl.store(Co + _co_index(a, A, dim, event, 3, LAYOUT), 0, a < A)
             if ENDPOINTS:
                 tl.store(Injection + dim * A + a, code.to(tl.int16), a < A)
 
@@ -385,6 +430,7 @@ def _query(
     BB: tl.constexpr,
     PRIME: tl.constexpr,
     PB: tl.constexpr,
+    LAYOUT: tl.constexpr = "soa",
 ):
     value = tl.full((AB, BB), 0, tl.float32)
     prime = tl.full((AB, BB), 0, tl.float32)
@@ -395,9 +441,7 @@ def _query(
         p0 = tl.load(Bank + point[:, None] * PB + b[None, :], mask, 0)
         p1 = tl.load(Bank + POINTS * PB + point[:, None] * PB + b[None, :], mask, 0)
         p2 = tl.load(Bank + 2 * POINTS * PB + point[:, None] * PB + b[None, :], mask, 0)
-        c0 = tl.load(Co + ((DIM * 3) * 6 + event) * A + a, a < A, 0)
-        c1 = tl.load(Co + ((DIM * 3 + 1) * 6 + event) * A + a, a < A, 0)
-        c2 = tl.load(Co + ((DIM * 3 + 2) * 6 + event) * A + a, a < A, 0)
+        c0, c1, c2 = _coeff(Co, a, A, DIM, event, LAYOUT)
         v = tl.fma(c2[:, None], p2, tl.fma(c1[:, None], p1, c0[:, None] * p0))
         sign = -1 if event < 4 else 1
         value += sign * v
@@ -430,6 +474,7 @@ def _inject(
     SHARD_ORIGIN: tl.constexpr,
     PB: tl.constexpr,
     Order=None,
+    LAYOUT: tl.constexpr = "soa",
 ):
     source = _source(Order, a, A)
     scale = tl.load(Meta + 12 * source, a < A, 0) * tl.load(
@@ -438,9 +483,7 @@ def _inject(
     weight = (Value * scale[:, None]).to(tl.float32)
     for event in tl.static_range(6):
         point = tl.load(Pos + (DIM * 6 + event) * A + a, a < A, -1)
-        c0 = tl.load(Co + ((DIM * 3) * 6 + event) * A + a, a < A, 0)
-        c1 = tl.load(Co + ((DIM * 3 + 1) * 6 + event) * A + a, a < A, 0)
-        c2 = tl.load(Co + ((DIM * 3 + 2) * 6 + event) * A + a, a < A, 0)
+        c0, c1, c2 = _coeff(Co, a, A, DIM, event, LAYOUT)
         if event >= 4:
             point = point + 1
             c0 = tl.fma(4.0, c2, tl.fma(2.0, c1, c0))
@@ -513,13 +556,28 @@ def forward(
     SHARD_ORIGIN: tl.constexpr = False,
     PAD: tl.constexpr = 0,
     Order=None,
+    LAYOUT: tl.constexpr = "soa",
 ):
     base = tl.load(Count) + tl.program_id(0) * AB
     if base < A:
         a = base + tl.arange(0, AB)
         b = tl.arange(0, BB)
         h, hp = _query(
-            Bank, Pos, Co, HalfInv, a, b, A, B, PI, 1, AB, BB, SAVE == "hp", B + PAD
+            Bank,
+            Pos,
+            Co,
+            HalfInv,
+            a,
+            b,
+            A,
+            B,
+            PI,
+            1,
+            AB,
+            BB,
+            SAVE == "hp",
+            B + PAD,
+            LAYOUT,
         )
         mask = (a[:, None] < A) & (b[None, :] < B)
         if SAVE != "none":
@@ -547,6 +605,7 @@ def forward(
             SHARD_ORIGIN,
             B + PAD,
             Order,
+            LAYOUT,
         )
 
 
@@ -583,13 +642,28 @@ def backward(
     PAD: tl.constexpr = 0,
     ADD_DP: tl.constexpr = False,
     Order=None,
+    LAYOUT: tl.constexpr = "soa",
 ):
     base = tl.load(Count) + tl.program_id(0) * AB
     if base < A:
         a = base + tl.arange(0, AB)
         b = tl.arange(0, BB)
         g, gp = _query(
-            AdjointBank, Pos, Co, HalfInv, a, b, A, B, PO, 0, AB, BB, VJP, B + PAD
+            AdjointBank,
+            Pos,
+            Co,
+            HalfInv,
+            a,
+            b,
+            A,
+            B,
+            PO,
+            0,
+            AB,
+            BB,
+            VJP,
+            B + PAD,
+            LAYOUT,
         )
         if VJP:
             mask = (a[:, None] < A) & (b[None, :] < B)
@@ -612,6 +686,7 @@ def backward(
                     BB,
                     True,
                     B + PAD,
+                    LAYOUT,
                 )
                 if SAVE == "h":
                     h = tl.load(H + a[:, None] * B + b[None, :], mask, 0).to(tl.float64)
@@ -654,4 +729,5 @@ def backward(
                 SHARD_ORIGIN,
                 B + PAD,
                 Order,
+                LAYOUT,
             )

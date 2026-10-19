@@ -121,6 +121,7 @@ class _Chunked(torch.autograd.Function):
                 recipe.shard_origin,
                 tile - actual,
                 Order=_source_order(order, recipe),
+                LAYOUT=getattr(recipe, "coefficient_layout", "soa"),
                 num_warps=recipe.axis_warps,
                 enable_fp_fusion=False,
             )
@@ -245,6 +246,7 @@ class _Chunked(torch.autograd.Function):
                 tile - actual,
                 True,
                 Order=_source_order(order, recipe),
+                LAYOUT=getattr(recipe, "coefficient_layout", "soa"),
                 num_warps=recipe.axis_warps,
                 enable_fp_fusion=False,
             )

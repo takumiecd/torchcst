@@ -642,3 +642,19 @@ class BSplineLocalCanonicalRecipe(BSplineLocalNativeBoundRecipe):
         super().__post_init__()
         if not self.native_float32:
             raise ValueError("canonical Meta requires the mixed native guard")
+
+
+@dataclass(frozen=True)
+class BSplineLocalCoefficientRecipe(BSplineLocalCanonicalRecipe):
+    """Revision 31: atom-local coefficient storage with identical FMA evaluation."""
+
+    coefficient_layout: str = "aos4"
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.coefficient_layout) is not str or self.coefficient_layout not in (
+            "soa",
+            "aos3",
+            "aos4",
+        ):
+            raise ValueError("coefficient_layout must be soa, aos3 or aos4")

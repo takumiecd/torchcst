@@ -164,7 +164,10 @@ def _frame(x, p, value, chart, recipe, moments, routing, sizes, build_border=Tru
         else x.new_empty(0, dtype=torch.int16)
     )
     pos = x.new_empty((2, 6, a), dtype=torch.int32)
-    co = x.new_empty((2, 3, 6, a))
+    layout = getattr(recipe, "coefficient_layout", "soa")
+    co = x.new_empty(
+        (2, 3, 6, a) if layout == "soa" else (2, a, 6, 4 if layout == "aos4" else 3)
+    )
     half = x.new_empty((2, a))
     shards = getattr(recipe, "boundary_shards", 0) if build_border else 0
     bp = (
@@ -191,6 +194,7 @@ def _frame(x, p, value, chart, recipe, moments, routing, sizes, build_border=Tru
         endpoints,
         getattr(recipe, "min_block_log", 3),
         Order=_source_order(order, recipe),
+        LAYOUT=getattr(recipe, "coefficient_layout", "soa"),
         num_warps=4,
         enable_fp_fusion=False,
     )
@@ -304,6 +308,7 @@ class _Local(torch.autograd.Function):
             getattr(recipe, "shard_origin", False),
             getattr(recipe, "bank_padding", 0),
             Order=_source_order(order, recipe),
+            LAYOUT=getattr(recipe, "coefficient_layout", "soa"),
             num_warps=recipe.axis_warps,
             enable_fp_fusion=False,
         )
@@ -418,6 +423,7 @@ class _Local(torch.autograd.Function):
             getattr(recipe, "shard_origin", False),
             getattr(recipe, "bank_padding", 0),
             Order=_source_order(order, recipe),
+            LAYOUT=getattr(recipe, "coefficient_layout", "soa"),
             num_warps=recipe.axis_warps,
             enable_fp_fusion=False,
         )
