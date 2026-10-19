@@ -41,8 +41,6 @@
     "query-fma-chain-compact",
     "query-fma",
     "query-fma-compact",
-    "query-expanded-compact",
-    "query-pieces-compact",
     "range-reuse-a16w1",
     "matrix-support4a16"
   ],
