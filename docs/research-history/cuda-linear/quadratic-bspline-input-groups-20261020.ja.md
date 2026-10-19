@@ -319,3 +319,27 @@ isolated wheel/sdistは365 runtime filesが同sourceとbyte一致。目標は依
 次は論理転置の繰り返しを避け、明示的なblocked lane layout（例：Gluon）の可否を調べる。
 実API・実際のTTGIR/命令と独立oracleを確認し、同じ完全stepと両peakで評価する。
 小さいσのprofileを既存native Co領域へ保存する案も別候補で、現時点で未実装・未測定。
+
+
+## v37：Gluonで物理的なlane配置を指定（検証前）
+
+論理転置をcompilerが元の配置へ戻したv36を受け、Gluon版のquery/inject/source pullbackを用意した。
+APIは[Triton v3.6.0のBlockedLayout/SliceLayout](https://github.com/triton-lang/triton/blob/v3.6.0/python/triton/experimental/gluon/language/_layouts.py)と
+[arange/full](https://github.com/triton-lang/triton/blob/v3.6.0/python/triton/experimental/gluon/language/_core.py)を確認した。
+Gluonと通常Tritonのtensor helperを混用せず、元のFMA・cast・event加算・source pullbackの式を
+Gluon演算へ移している。通常のprefix bank、係数、Meta正規化、native tiny guardとFP64 destination、
+Parameter/optimizer orderは変えない。追加tensorはない。
+
+[atom,batch] tileのthreadsPerWarpを[1,32]・[2,16]・[4,8]、warpsPerCTAを
+[min(AB/lane_atoms,4),4/min(AB/lane_atoms,4)]に固定し、4 atom/CTA・4 warpを基準に比較する。
+1 atom/warp版は旧配置とのlibrary差分のcontrol、2/4 atom版で物理的な読み取り割り当てを変える。
+係数はSoAだけ、axis_warps=4だけに限定してrecipeで厳密に拒否する。
+
+新Algorithm revision37はopt-in研究routeで、Gluon moduleは実行時だけimportする。
+公開/default selectorは変更しない。動的X/σ・floor/tiny・dyadic境界・個別勾配・retained・
+Count all/partial/zeroのGraphを独立FP64基準で確認する。主条件はB32/B64 mixed、N1024/A52428、
+全52428 σ更新・構築/L2/optimizer込みの未計装完全step・両peakで判断し、TTGIR/PTXも保存する。
+実測前にcoalescingや速度改善とは主張しない。
+
+提出前CPU1999 PASS /4429 skipped /既存warning18、38.81秒。Ruff・両case宣言検査PASS。
+GPUでは40 CUDA checksと2 metadata checksを実施後、主条件の全plan精度gate・完全stepを測る。

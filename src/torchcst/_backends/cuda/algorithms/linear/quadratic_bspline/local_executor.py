@@ -39,6 +39,10 @@ def _h_launch(direction, atoms, recipe):
         from . import transposed_kernels
 
         module = transposed_kernels
+    if getattr(recipe, "gluon_h", False):
+        from . import gluon_kernels
+
+        module = gluon_kernels
     cap = getattr(recipe, "h_programs", 0)
     if cap:
         from . import local_persistent_kernels
@@ -61,9 +65,13 @@ def _group_tables(pos, count, atoms, sites, recipe):
     return result
 
 
-def _group_args(tables, recipe):
+def _h_args(tables, recipe):
     if not tables:
-        return {}
+        return (
+            {"LANE_ATOMS": recipe.lane_atoms}
+            if getattr(recipe, "gluon_h", False)
+            else {}
+        )
     ends, ids, chunks, mapping = tables
     return {
         "GroupEnds": ends,
@@ -386,7 +394,7 @@ class _Local(torch.autograd.Function):
             getattr(recipe, "bank_padding", 0),
             Order=_source_order(order, recipe),
             LAYOUT=getattr(recipe, "coefficient_layout", "soa"),
-            **_group_args(groups, recipe),
+            **_h_args(groups, recipe),
             num_warps=recipe.axis_warps,
             enable_fp_fusion=False,
         )
@@ -504,7 +512,7 @@ class _Local(torch.autograd.Function):
             getattr(recipe, "bank_padding", 0),
             Order=_source_order(order, recipe),
             LAYOUT=getattr(recipe, "coefficient_layout", "soa"),
-            **_group_args(groups, recipe),
+            **_h_args(groups, recipe),
             num_warps=recipe.axis_warps,
             enable_fp_fusion=False,
         )

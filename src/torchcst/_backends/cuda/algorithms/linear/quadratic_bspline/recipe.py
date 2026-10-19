@@ -734,3 +734,20 @@ class BSplineLocalTransposedRecipe(BSplineLocalBankBundleRecipe):
     transposed_h = True
     bank_tile_blocks: int = 4
     bank_mid_blocks: int = 1
+
+
+@dataclass(frozen=True)
+class BSplineLocalGluonRecipe(BSplineLocalBankBundleRecipe):
+    """Revision 37: explicit Gluon atom/batch lane ownership; no extra buffers."""
+
+    gluon_h = True
+    bank_tile_blocks: int = 4
+    bank_mid_blocks: int = 1
+    lane_atoms: int = 4
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.lane_atoms) is not int or self.lane_atoms not in (1, 2, 4):
+            raise ValueError("lane_atoms must be 1, 2 or 4")
+        if self.axis_warps != 4 or self.coefficient_layout != "soa":
+            raise ValueError("explicit lane ownership requires four warps and SoA")

@@ -786,3 +786,10 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
 )
 
 REGISTRY.register(BSplineLocalTransposedAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalGluonAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalGluonAlgorithm())

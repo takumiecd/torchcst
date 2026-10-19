@@ -20,6 +20,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineLocalCoefficientAlgorithm,
     BSplineLocalCoordinatesAlgorithm,
     BSplineLocalEndpointAlgorithm,
+    BSplineLocalGluonAlgorithm,
     BSplineLocalGroupedAlgorithm,
     BSplineLocalMomentAlgorithm,
     BSplineLocalNarrowAlgorithm,
@@ -58,6 +59,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineLocalCoefficientRecipe,
     BSplineLocalCoordinatesRecipe,
     BSplineLocalEndpointRecipe,
+    BSplineLocalGluonRecipe,
     BSplineLocalGroupedRecipe,
     BSplineLocalMomentRecipe,
     BSplineLocalNarrowRecipe,
@@ -108,6 +110,7 @@ def case(n=64, a=17):
 def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     from dataclasses import replace
 
+    gluon = strategy == "h_local_gluon" or recipe_options.pop("_gluon", False)
     transposed = strategy == "h_local_transposed" or recipe_options.pop(
         "_transposed", False
     )
@@ -124,6 +127,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         or grouped
         or coordinates
         or transposed
+        or gluon
     )
     coefficients = (
         strategy == "h_local_coefficient"
@@ -225,6 +229,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineLocalCoefficientAlgorithm())
     registry.register(BSplineLocalBankBundleAlgorithm())
     registry.register(BSplineLocalGroupedAlgorithm())
+    registry.register(BSplineLocalGluonAlgorithm())
     registry.register(BSplineLocalCoordinatesAlgorithm())
     registry.register(BSplineLocalTransposedAlgorithm())
     registry.register(BSplineLocalPersistentAlgorithm())
@@ -252,7 +257,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     tuned = bool(recipe_options) or strategy == "matrix_separable"
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v36"
+        "v37"
+        if gluon
+        else "v36"
         if transposed
         else "v35"
         if coordinates
@@ -323,7 +330,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         else "v2"
         if tuned
         else "v1",
-        BSplineLocalTransposedRecipe(**recipe_options)
+        BSplineLocalGluonRecipe(**recipe_options)
+        if gluon
+        else BSplineLocalTransposedRecipe(**recipe_options)
         if transposed
         else BSplineLocalCoordinatesRecipe(**recipe_options)
         if coordinates
@@ -2588,6 +2597,7 @@ TRANSPOSED_OPTIONS = [
     {"_transposed": True},
     {"_transposed": True, "axis_atoms": 8, "batch_chunk": 16, "active_levels": True},
 ]
+GLUON_OPTIONS = [{"_gluon": True, "lane_atoms": lane} for lane in (1, 2, 4)]
 ALL_QUERY_OPTIONS = (
     QUERY_OPTIONS
     + LEAN_OPTIONS
@@ -2634,6 +2644,7 @@ ALL_QUERY_OPTIONS = (
         pytest.param(opt, id=f"transposed-{i}")
         for i, opt in enumerate(TRANSPOSED_OPTIONS)
     ]
+    + [pytest.param(opt, id=f"gluon-{i}") for i, opt in enumerate(GLUON_OPTIONS)]
 )
 
 
@@ -2898,7 +2909,8 @@ def test_local_recipe_roundtrip_and_bounds():
     + [
         pytest.param(opt, id=f"transposed-{i}")
         for i, opt in enumerate(TRANSPOSED_OPTIONS)
-    ],
+    ]
+    + [pytest.param(opt, id=f"gluon-{i}") for i, opt in enumerate(GLUON_OPTIONS)],
 )
 def test_local_dyadic_boundaries_graph(options):
     import math
@@ -3480,6 +3492,7 @@ def test_native_bound_recipe_roundtrip_and_bounds():
         "h_local_grouped",
         "h_local_coordinates",
         "h_local_transposed",
+        "h_local_gluon",
     ],
 )
 def test_native_bound_count_changes_across_graph(batch, floor, strategy):
@@ -3563,6 +3576,7 @@ def test_native_bound_count_changes_across_graph(batch, floor, strategy):
         "h_local_grouped",
         "h_local_coordinates",
         "h_local_transposed",
+        "h_local_gluon",
     ],
 )
 def test_native_bound_strided_individual_gradients(which, strategy):
@@ -3597,6 +3611,7 @@ def test_native_bound_strided_individual_gradients(which, strategy):
         "h_local_grouped",
         "h_local_coordinates",
         "h_local_transposed",
+        "h_local_gluon",
     ],
 )
 def test_native_bound_retained_count_above_grid(strategy):
@@ -4085,3 +4100,21 @@ def test_transposed_recipe_roundtrip():
             BSplineLocalTransposedRecipe(**options),
         )
         assert reg.loads_plan(reg.dumps_plan(plan)) == plan
+
+
+def test_gluon_recipe_roundtrip_and_bounds():
+    reg = Registry()
+    reg.register(BSplineLocalGluonAlgorithm())
+    for lane in (1, 2, 4):
+        plan = ExecutionPlan(
+            "research_cuda_quadratic_bspline",
+            "v37",
+            BSplineLocalGluonRecipe(lane_atoms=lane),
+        )
+        assert reg.loads_plan(reg.dumps_plan(plan)) == plan
+    for bad in (0, 3, 8, True):
+        with pytest.raises(ValueError):
+            BSplineLocalGluonRecipe(lane_atoms=bad)
+    for bad in ({"axis_warps": 1}, {"coefficient_layout": "aos3"}):
+        with pytest.raises(ValueError):
+            BSplineLocalGluonRecipe(**bad)

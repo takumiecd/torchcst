@@ -10,8 +10,8 @@ from .local_executor import (
     _blocks,
     _delta,
     _frame,
-    _group_args,
     _group_tables,
+    _h_args,
     _h_launch,
     _Local,
     _points,
@@ -125,7 +125,7 @@ class _Chunked(torch.autograd.Function):
                 tile - actual,
                 Order=_source_order(order, recipe),
                 LAYOUT=getattr(recipe, "coefficient_layout", "soa"),
-                **_group_args(groups, recipe),
+                **_h_args(groups, recipe),
                 num_warps=recipe.axis_warps,
                 enable_fp_fusion=False,
             )
@@ -264,7 +264,7 @@ class _Chunked(torch.autograd.Function):
                 True,
                 Order=_source_order(order, recipe),
                 LAYOUT=getattr(recipe, "coefficient_layout", "soa"),
-                **_group_args(groups, recipe),
+                **_h_args(groups, recipe),
                 num_warps=recipe.axis_warps,
                 enable_fp_fusion=False,
             )
