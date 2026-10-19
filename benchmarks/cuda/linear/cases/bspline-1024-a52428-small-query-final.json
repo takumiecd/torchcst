@@ -37,6 +37,8 @@
   },
   "plans": [
     "h-save-hp-fused",
+    "query-fma-chain",
+    "query-fma-chain-compact",
     "query-fma",
     "query-fma-compact",
     "query-expanded-compact",

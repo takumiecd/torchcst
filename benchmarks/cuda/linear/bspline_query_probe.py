@@ -106,8 +106,11 @@ def probe(
                         ^ p1.to(tl.int64, bitcast=True)
                         ^ p2.to(tl.int64, bitcast=True)
                     )
-                    for c in (c0, c1, c2, d0, d1):
-                        bits ^= c[:, None].to(tl.int64, bitcast=True)
+                    bits ^= c0[:, None].to(tl.int64, bitcast=True)
+                    bits ^= c1[:, None].to(tl.int64, bitcast=True)
+                    bits ^= c2[:, None].to(tl.int64, bitcast=True)
+                    bits ^= d0[:, None].to(tl.int64, bitcast=True)
+                    bits ^= d1[:, None].to(tl.int64, bitcast=True)
                 else:
                     value -= p0 * c0[:, None] + p1 * c1[:, None] + p2 * c2[:, None]
                     prime -= p0 * d0[:, None] + p1 * d1[:, None]

@@ -54,7 +54,7 @@ def _query(
             POINT_MAJOR,
             SHARE_READS,
         )
-    if METHOD == "fma":
+    if METHOD == "fma" or METHOD == "fma_chain":
         value = tl.full((AB, BB), 0, tl.float64)
         prime = tl.full((AB, BB), 0, tl.float64)
         mask = (a[:, None] < A) & (b[None, :] < B)
@@ -78,9 +78,19 @@ def _query(
             p0 = tl.load(Bank + addr, mask, 0)
             p1 = tl.load(Bank + B * (N + 1) + addr, mask, 0)
             p2 = tl.load(Bank + 2 * B * (N + 1) + addr, mask, 0)
-            value -= tl.fma(p2, c2[:, None], tl.fma(p1, c1[:, None], p0 * c0[:, None]))
-            if PRIME:
-                prime -= tl.fma(p1, d1[:, None], p0 * d0[:, None])
+            if METHOD == "fma_chain":
+                value = tl.fma(-p0, c0[:, None], value)
+                value = tl.fma(-p1, c1[:, None], value)
+                value = tl.fma(-p2, c2[:, None], value)
+                if PRIME:
+                    prime = tl.fma(-p0, d0[:, None], prime)
+                    prime = tl.fma(-p1, d1[:, None], prime)
+            else:
+                value -= tl.fma(
+                    p2, c2[:, None], tl.fma(p1, c1[:, None], p0 * c0[:, None])
+                )
+                if PRIME:
+                    prime -= tl.fma(p1, d1[:, None], p0 * d0[:, None])
         left = tl.load(Cuts + DIM * 4 * A + a, a < A, 0)
         right = tl.load(Cuts + (DIM * 4 + 3) * A + a, a < A, 0)
         active = mask & (right[:, None] > left[:, None])
