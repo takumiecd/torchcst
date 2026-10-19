@@ -512,3 +512,20 @@ class BSplineLocalActiveRecipe(BSplineLocalMomentRecipe):
     norm_float32: bool = True
     native_float32: bool = True
     contract_float32: bool = True
+
+
+@dataclass(frozen=True)
+class BSplineLocalShardedRecipe(BSplineLocalActiveRecipe):
+    """Revision 22: distribute block-boundary additions over small shard planes."""
+
+    boundary_shards: int = 32
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.boundary_shards) is not int or self.boundary_shards not in (
+            8,
+            16,
+            32,
+            64,
+        ):
+            raise ValueError("boundary_shards must be 8, 16, 32 or 64")

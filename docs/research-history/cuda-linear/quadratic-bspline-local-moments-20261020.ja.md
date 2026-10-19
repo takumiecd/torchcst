@@ -44,3 +44,11 @@ job `l4job-40738be78cd44a04a3fa8c3f459f59a2`、source archive SHA256 `98e4425fe7
 全8尺度のbank/差分初期化/復元を作るv20に対し、v21はeventの整数pointから、実際に使われる尺度をdevice上で毎forward選ぶ。σやPをCPUへ戻さない。first knot pointと尺度領域の整数比較なので、支持・幅を丸めない。未使用尺度のbank/差分は未初期化でもquery/injectから参照されない。使用尺度の全prefix node（終端を含む）は毎回初期化する。
 
 Active[axis,level]は各forwardのimmutable snapshotとしてbackwardまで保持。all-native→broad→all-native、dyadic境界跨ぎも再判定する。確保容量自体は固定のためpayload削減ではなく読み書き削減の仮説。bank/restoreのgridは変えず、各programがinactiveをskipする。v20の数学と離散L2を維持し、GPUで速度/精度/peakを再比較する。
+
+## v22の検証仮説：境界だけをshardへ分散
+
+各atomの4 knotは従来のpoint差分に加える。最大2つのblock境界補正だけは、next blockの始点に加える3係数を、`Border[plane,global-block,shard,batch]`へ加算する。shardはatom program IDの剰余。4 knotの支持判定・query・勾配式は不変。各blockの復元時にshard和を取り、全prefix nodeへ同じ3係数を足す。
+
+尺度Sのblock数をt=N/Sとすると、尺度先頭のglobal block番号は`2(N/8)-2t`。境界は次block `tile+1`へ入れる。補助容量は1軸`3(2N/8-1)KB`個のFP32、Kは8/16/32/64。N1024/B64/K32では5.977 MiB。位置snapshotは2軸×2event×A個のI32（A52428で0.800 MiB）。これらをpeakへ含める。K64は速度が上がってもメモリ目標を外れる可能性があるため、容量を明示して比較する。
+
+これは加算の順序・配置を変える実装仮説であり、atomic競合が原因だったという測定結果ではない。浮動小数点和の順序差を含め、独立FP64 gate、動的σ・全native/broad切替・retained backward・全atom勾配を同じ許容誤差で確認する。未使用尺度のborder planeも毎stepゼロ初期化し、stale値を使わない。

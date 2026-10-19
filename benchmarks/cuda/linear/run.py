@@ -689,6 +689,9 @@ def measure(args, run):
                         {
                             "bank_layout": "FP32 plane,dyadic-local-point,batch; no periodic wrap",
                             "local_events_per_axis": 6,
+                            "boundary_shards": int(
+                                getattr(recipe, "boundary_shards", 0)
+                            ),
                             "inactive_scales_skipped": bool(
                                 getattr(recipe, "active_levels", False)
                             ),

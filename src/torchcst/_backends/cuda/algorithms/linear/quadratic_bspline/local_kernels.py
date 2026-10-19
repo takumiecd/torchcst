@@ -43,6 +43,8 @@ def prepare(
     AB: tl.constexpr,
     RECIPROCAL: tl.constexpr,
     CORE32: tl.constexpr,
+    BorderPos=None,
+    SHARDS: tl.constexpr = 0,
 ):
     base = tl.load(Count) + tl.program_id(0) * AB
     if base < A:
@@ -130,6 +132,13 @@ def prepare(
                     c1 = tl.where(before, x1, tl.where(inner, p1, q1))
                     c2 = tl.where(before, x2, tl.where(inner, p2, q2))
                     active = (a < A) & (boundary < n) & (boundary < right)
+                if SHARDS and event >= 4:
+                    block = 2 * (n // 8) - 2 * tiles + tile + 1
+                    tl.store(
+                        BorderPos + (dim * 2 + event - 4) * A + a,
+                        tl.where(active, block, -1),
+                        a < A,
+                    )
                 point = offset + tile * (size + 1) + index
                 tl.store(
                     Pos + (dim * 6 + event) * A + a, tl.where(active, point, -1), a < A
@@ -225,6 +234,8 @@ def restore(
     ML: tl.constexpr = 0,
     DIM: tl.constexpr = 0,
     ACTIVE: tl.constexpr = False,
+    BorderDelta=None,
+    SHARDS: tl.constexpr = 0,
 ):
     size, tile, offset, level = _group(N, LOW, LEVELS)
     enabled = tl.load(Active + DIM * ML + level) if ACTIVE else tl.full((), 1, tl.int32)
@@ -237,6 +248,29 @@ def restore(
         p0 = tl.cumsum(tl.load(Delta + addr, mask, 0), 0)
         p1 = tl.cumsum(tl.load(Delta + POINTS * B + addr, mask, 0), 0)
         p2 = tl.cumsum(tl.load(Delta + 2 * POINTS * B + addr, mask, 0), 0)
+        if SHARDS:
+            block = 2 * (N // 8) - 2 * (N // size) + tile
+            shard = tl.arange(0, SHARDS)
+            blocks: tl.constexpr = 2 * (N // 8) - 1
+            addr_border = (block * SHARDS + shard[:, None]) * B + b[None, :]
+            v0 = tl.sum(tl.load(BorderDelta + addr_border, b[None, :] < B, 0), 0)
+            v1 = tl.sum(
+                tl.load(
+                    BorderDelta + blocks * SHARDS * B + addr_border, b[None, :] < B, 0
+                ),
+                0,
+            )
+            v2 = tl.sum(
+                tl.load(
+                    BorderDelta + 2 * blocks * SHARDS * B + addr_border,
+                    b[None, :] < B,
+                    0,
+                ),
+                0,
+            )
+            p0 += v0[None, :]
+            p1 += v1[None, :]
+            p2 += v2[None, :]
         z = 2 * i.to(tl.float32) / size.to(tl.float32) - 1
         value = tl.fma(z[:, None] * z[:, None], p2, tl.fma(z[:, None], p1, p0))
         tl.atomic_add(
@@ -354,6 +388,10 @@ def _inject(
     B: tl.constexpr,
     POINTS: tl.constexpr,
     DIM: tl.constexpr,
+    BorderDelta,
+    BorderPos,
+    SHARDS: tl.constexpr,
+    BLOCKS: tl.constexpr,
 ):
     scale = tl.load(Meta + 12 * a, a < A, 0) * tl.load(Meta + 12 * a + 4, a < A, 0)
     weight = (Value * scale[:, None]).to(tl.float32)
@@ -373,12 +411,27 @@ def _inject(
             mask &= point[:, None] > 0
         for p in tl.static_range(3):
             c = c0 if p == 0 else c1 if p == 1 else c2
-            tl.atomic_add(
-                Delta + p * POINTS * B + point[:, None] * B + b[None, :],
-                weight * c[:, None],
-                mask,
-                sem="relaxed",
-            )
+            if SHARDS and event >= 4:
+                block = tl.load(BorderPos + (DIM * 2 + event - 4) * A + a, a < A, -1)
+                shard = tl.program_id(0) % SHARDS
+                addr = (
+                    p * BLOCKS * SHARDS * B
+                    + (block[:, None] * SHARDS + shard) * B
+                    + b[None, :]
+                )
+                tl.atomic_add(
+                    BorderDelta + addr,
+                    weight * c[:, None],
+                    mask & (block[:, None] >= 0),
+                    sem="relaxed",
+                )
+            else:
+                tl.atomic_add(
+                    Delta + p * POINTS * B + point[:, None] * B + b[None, :],
+                    weight * c[:, None],
+                    mask,
+                    sem="relaxed",
+                )
 
 
 @tr.jit
@@ -399,6 +452,10 @@ def forward(
     AB: tl.constexpr,
     BB: tl.constexpr,
     SAVE: tl.constexpr,
+    BorderDelta=None,
+    BorderPos=None,
+    SHARDS: tl.constexpr = 0,
+    BLOCKS: tl.constexpr = 0,
 ):
     base = tl.load(Count) + tl.program_id(0) * AB
     if base < A:
@@ -410,7 +467,23 @@ def forward(
             tl.store(H + a[:, None] * B + b[None, :], h.to(tl.float32), mask)
         if SAVE == "hp":
             tl.store(HP + a[:, None] * B + b[None, :], hp.to(tl.float32), mask)
-        _inject(h, Delta, Meta, Pos, Co, a, b, A, B, PO, 0)
+        _inject(
+            h,
+            Delta,
+            Meta,
+            Pos,
+            Co,
+            a,
+            b,
+            A,
+            B,
+            PO,
+            0,
+            BorderDelta,
+            BorderPos,
+            SHARDS,
+            BLOCKS,
+        )
 
 
 @tr.jit
@@ -436,6 +509,10 @@ def backward(
     DX: tl.constexpr,
     VJP: tl.constexpr,
     CONTRACT32: tl.constexpr,
+    BorderDelta=None,
+    BorderPos=None,
+    SHARDS: tl.constexpr = 0,
+    BLOCKS: tl.constexpr = 0,
 ):
     base = tl.load(Count) + tl.program_id(0) * AB
     if base < A:
@@ -470,4 +547,20 @@ def backward(
                 A,
             )
         if DX:
-            _inject(g, Delta, Meta, Pos, Co, a, b, A, B, PI, 1)
+            _inject(
+                g,
+                Delta,
+                Meta,
+                Pos,
+                Co,
+                a,
+                b,
+                A,
+                B,
+                PI,
+                1,
+                BorderDelta,
+                BorderPos,
+                SHARDS,
+                BLOCKS,
+            )

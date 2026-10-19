@@ -22,6 +22,7 @@ from .recipe import (
     BSplineLeanHRecipe,
     BSplineLocalActiveRecipe,
     BSplineLocalMomentRecipe,
+    BSplineLocalShardedRecipe,
     BSplineNativeHRecipe,
     BSplineNativeLoopRecipe,
     BSplineParallelRecipe,
@@ -341,3 +342,9 @@ class BSplineLocalMomentAlgorithm(BSplineStreamingAlgorithm):
 class BSplineLocalActiveAlgorithm(BSplineLocalMomentAlgorithm):
     revision: str = "v21"
     recipe_type: type = BSplineLocalActiveRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalShardedAlgorithm(BSplineLocalActiveAlgorithm):
+    revision: str = "v22"
+    recipe_type: type = BSplineLocalShardedRecipe

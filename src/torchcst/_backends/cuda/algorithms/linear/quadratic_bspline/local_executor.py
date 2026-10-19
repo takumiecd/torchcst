@@ -49,7 +49,7 @@ def _bank(x, n, recipe, label, active, dim, ml):
     return bank
 
 
-def _restore(delta, y, n, recipe, label, active, dim, ml):
+def _restore(delta, border, y, n, recipe, label, active, dim, ml):
     _stamp(label, 0)
     for k, sizes in enumerate(_groups(n, recipe)):
         compiled = lk.restore[
@@ -68,6 +68,8 @@ def _restore(delta, y, n, recipe, label, active, dim, ml):
             ml,
             dim,
             getattr(recipe, "active_levels", False),
+            border,
+            getattr(recipe, "boundary_shards", 0),
             num_warps=recipe.bank_warps,
             enable_fp_fusion=False,
         )
@@ -102,8 +104,10 @@ def _delta(x, n, recipe, active, dim, ml):
             _report(label + f"_{k}", compiled)
     else:
         delta = x.new_zeros((3, _points(n), len(x)))
+    shards = getattr(recipe, "boundary_shards", 0)
+    border = x.new_zeros((3, 2 * (n // 8) - 1, shards, len(x))) if shards else None
     _stamp(label, 1)
-    return delta
+    return delta, border
 
 
 class _Local(torch.autograd.Function):
@@ -128,6 +132,12 @@ class _Local(torch.autograd.Function):
         pos = x.new_empty((2, 6, a), dtype=torch.int32)
         co = x.new_empty((2, 3, 6, a))
         half = x.new_empty((2, a))
+        shards = getattr(recipe, "boundary_shards", 0)
+        bp = (
+            x.new_empty((2, 2, a), dtype=torch.int32)
+            if shards
+            else x.new_empty(0, dtype=torch.int32)
+        )
         compiled = lk.prepare[(tr.cdiv(a, 128),)](
             meta,
             pos,
@@ -141,6 +151,8 @@ class _Local(torch.autograd.Function):
             128,
             recipe.reciprocal,
             recipe.prepare_float32,
+            bp if shards else None,
+            shards,
             num_warps=4,
             enable_fp_fusion=False,
         )
@@ -168,7 +180,7 @@ class _Local(torch.autograd.Function):
         y = x.new_zeros((b, sizes[0]))
         native_forward(x, y, meta, count, origin, spacing, sizes, recipe)
         bank = _bank(x, sizes[1], recipe, "bank_input", active, 1, ml)
-        delta = _delta(x, sizes[0], recipe, active, 0, ml)
+        delta, border = _delta(x, sizes[0], recipe, active, 0, ml)
         h = x.new_empty((a, b)) if ctx.mode != "none" else x.new_empty(0)
         hp = x.new_empty((a, b)) if ctx.mode == "hp" else x.new_empty(0)
         _stamp("stream_forward", 0)
@@ -189,14 +201,18 @@ class _Local(torch.autograd.Function):
             recipe.axis_atoms,
             tr.next_power_of_2(b),
             ctx.mode,
+            border,
+            bp if shards else None,
+            shards,
+            2 * (sizes[0] // 8) - 1,
             num_warps=recipe.axis_warps,
             enable_fp_fusion=False,
         )
         _report("stream_forward", compiled)
         _stamp("stream_forward", 1)
-        y = _restore(delta, y, sizes[0], recipe, "scan_output", active, 0, ml)
+        y = _restore(delta, border, y, sizes[0], recipe, "scan_output", active, 0, ml)
         ctx.save_for_backward(
-            meta, x, origin, spacing, order, count, pos, co, half, h, hp, active
+            meta, x, origin, spacing, order, count, pos, co, half, h, hp, active, bp
         )
         return y
 
@@ -214,13 +230,14 @@ class _Local(torch.autograd.Function):
                 None,
                 None,
             )
-        meta, x, origin, spacing, order, count, pos, co, half, h, hp, active = (
+        meta, x, origin, spacing, order, count, pos, co, half, h, hp, active, bp = (
             ctx.saved_tensors
         )
         dy = dy.contiguous()
         recipe, sizes = ctx.recipe, ctx.sizes
         a, b = len(meta), len(x)
         ml = max(sizes).bit_length() - 3
+        shards = getattr(recipe, "boundary_shards", 0)
         need_dx, need_dp = ctx.needs_input_grad[:2]
         dx, dp = native_backward(
             x, dy, meta, count, origin, spacing, sizes, recipe, need_dx, need_dp
@@ -232,7 +249,7 @@ class _Local(torch.autograd.Function):
             _stamp("bank_recompute", 0)
             _stamp("bank_recompute", 1)
         adjoint_bank = _bank(dy, sizes[0], recipe, "bank_adjoint", active, 0, ml)
-        delta = _delta(x, sizes[1], recipe, active, 1, ml)
+        delta, border = _delta(x, sizes[1], recipe, active, 1, ml)
         _stamp("stream_backward", 0)
         compiled = lk.backward[(tr.cdiv(a, recipe.axis_atoms),)](
             input_bank,
@@ -256,13 +273,19 @@ class _Local(torch.autograd.Function):
             need_dx,
             need_dp,
             recipe.contract_float32,
+            border,
+            bp if shards else None,
+            shards,
+            2 * (sizes[1] // 8) - 1,
             num_warps=recipe.axis_warps,
             enable_fp_fusion=False,
         )
         _report("stream_backward", compiled)
         _stamp("stream_backward", 1)
         if need_dx:
-            dx = _restore(delta, dx, sizes[1], recipe, "scan_input", active, 1, ml)
+            dx = _restore(
+                delta, border, dx, sizes[1], recipe, "scan_input", active, 1, ml
+            )
         else:
             _stamp("scan_input", 0)
             _stamp("scan_input", 1)
