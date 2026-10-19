@@ -90,6 +90,7 @@ def probe(
                     True,
                     True,
                 )
+                cut = tl.load(Cuts + knot * A + a, a < A, 0)
                 if MODE in ("uniform_bank", "uniform_both"):
                     cut = tl.full(
                         (AB,), tl.load(Cuts + knot * A + tl.load(Count)), tl.int32
