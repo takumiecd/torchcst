@@ -3062,9 +3062,7 @@ def test_owner_recipe_roundtrip_and_bounds():
 @GPU
 @pytest.mark.parametrize("batch", [17, 33, 64])
 @pytest.mark.parametrize("floor", [1e-6, 1000.0])
-def test_owner_dynamic_graph_and_retained_frames(batch, floor):
-    from benchmarks.cuda.linear.check_normalized import check
-
+def test_owner_retained_frames(batch, floor):
     layer = model("h_local_owner", n=128, a=257, floor=floor)
     x = torch.randn(batch, 256, device="cuda")[:, ::2].requires_grad_()
     dy = torch.randn(batch, 128, device="cuda")
@@ -3078,6 +3076,18 @@ def test_owner_dynamic_graph_and_retained_frames(batch, floor):
     actual = torch.autograd.grad(y, (x, layer.atoms.p), dy)
     for left, right in zip(actual, expected):
         torch.testing.assert_close(left, right)
+
+
+@GPU
+@pytest.mark.parametrize("batch", [17, 33, 64])
+@pytest.mark.parametrize("floor", [1e-6, 1000.0])
+def test_owner_dynamic_graph(batch, floor):
+    from benchmarks.cuda.linear.check_normalized import check
+
+    layer = model("h_local_owner", n=128, a=257, floor=floor)
+    x = torch.randn(batch, 256, device="cuda")[:, ::2].requires_grad_()
+    dy = torch.randn(batch, 128, device="cuda")
+    gate(layer, x, dy)
     graph = torch.cuda.CUDAGraph()
     with torch.cuda.graph(graph):
         y = layer(x)

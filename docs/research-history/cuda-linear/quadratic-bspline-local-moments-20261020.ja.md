@@ -268,3 +268,26 @@ v27初回job `l4job-06a0f726f1494ca9a0daad710db1d97c`、source `3df01b05478090cd
 weighted H/GはA×TのFP32 scratchに一時保存する。projection kernelが読み終わってから入力bankをdeltaへ再利用するので、同一kernel内の読み書きaliasはない。係数とevent索引はforwardごとのimmutable snapshotとしてbackwardまで保持する。Hμ/Gμは保存しない。全atom勾配はv27と同じ部分縮約で、native/tiny勾配も保持する。block境界は旧tile末尾の係数を次tile先頭へ移す同じFMA式を使い、border shard bufferは不要になる。
 
 CPUのevent-owner screenはmixedの5状態とsmallの1状態×B32/B64×2floorの24条件で既存gateを通った。ただしsource contractionはCPUのFP64であり、新GPU経路の保証ではない。v28はGPU未検証の研究候補。整数event所属の独立検査、retained forward、端数batch、動的σ/X、tiny/floor、全source勾配、Graph replayを確認後、索引構築込みの完全stepと両peakで判定する。
+
+
+## v27再測定：B64は速度・両peakが同時に改善
+
+source `0f5dd091fb80f576e459b03255254e0500c6ad7b`、job `l4job-fbf1eb44a75b437e99b59d47c0b681de`。catalog全体decodeとrecipeの2 metadata checks PASS後、全planが3連続状態の独立FP64 full-shape gateを通った。source/archive/manifest/return0/cleanup ackを検証した。v27本体の58 targeted checksは前述のcatalogエラーrunで通っているが、性能結果と混ぜず別の証拠として残す。
+
+| plan | B32 mixed ms | allocated/reserved MiB | B64 mixed ms | allocated/reserved MiB |
+|---|---:|---:|---:|---:|
+| query-fma |1.619748|81.288 /172|2.516370|96.791 /188|
+| v26 FP32係数 control |0.877047|35.317 /98|1.554642|47.302 /142|
+| batch tile16 |1.158095|28.940 /100|2.024972|29.440 /102|
+| batch tile32 |0.878878|35.317 /98|1.414630|35.817 /102|
+| batch tile64 |0.878025|35.317 /98|1.554262|47.302 /142|
+| Dense |0.083440|49.002 /106|0.104012|49.502 /106|
+
+B64 tile32は同run control比で約9.0%短縮し、allocatedを11.485 MiB、reservedを40 MiB削減した。両peakがDense以下のまま速度も改善する初回結果。B32のtile32/64は既存v26へ落ちるため同じ速度帯で、数µs差を新しい高速化と解釈しない。tile16はさらにallocatedを減らす一方、B32/B64両方で遅い。
+
+B64 tile32の独立phaseではstream forwardは2×約0.133msで、非分割control約0.430msより短い。backwardは2×約0.234msでcontrol約0.482msと近く、bank/scanはchunk数ぶん増える。H/G読み取りや書き込みの負担を完全に解消した結果ではない。primary完全step比はB32約10.53倍、B64約13.60倍で、2倍目標は未達。
+
+source SHA256 `98fcc7b8c94380bcfc86135bd334113453e9b6c308065dfbd282ecb6c0dae182`、result SHA256 `9b7d4241925aa63390c9fd80c17a73c2c68179c35a3e5136d009dcac2a22bffa`。source byte一致1549 files、manifest 42 files。CPU検査1989 passed /4014 skipped /既存warning18、wheel/sdist358 runtime filesのbyte一致も確認した。v28は引き続き別jobで測定中。
+
+
+v28初回job `l4job-4aed36623d514cc4ad107f25e036a21c` は42 checks PASSの後、追加テスト6件が失敗して性能測定に進まなかった。最初の失敗はretained forwardのYを保持したまま同じleafで別streamのGraph captureを開始し、PyTorchのAccumulateGrad stream mismatch / cudaErrorStreamCaptureImplicitとなったもの。その後5件はcapture失敗によるcontext状態エラー。整数event所属・mapの厳密検査と既存Graph系テストは通っている。retained forwardとGraph replayを別モデル/leafの独立テストへ分け、双方を維持して再検証する。数値基準やruntimeは変更しない。失敗runはprimary性能表から除外し、原本とcleanup ackを保持する。
