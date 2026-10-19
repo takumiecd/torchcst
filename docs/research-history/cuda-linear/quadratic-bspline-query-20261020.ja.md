@@ -73,3 +73,25 @@ compact候補は既存の3-plane snapshotを利用する。係数は40A doubles�
 ## 途中で除外した結果
 
 初回ede4ee55はunroll内のconstexpr再代入によるcompile失敗。87d46c95のc9ee5e2cでは35件合格・6件失敗。4件はdXだけを要求する経路のkernel引数、2件は左端差し引き前のfactoredによるGraph精度失敗（最大差5.920e-4）だった。引数と数値式を修正し、閾値は変更していない。9e683916は診断モードのTriton文字列比較でcompile失敗した。これらの失敗を速度比較や最終合格の根拠には使わない。
+
+## 初回B32探索
+
+job `l4job-17e9ea4b68954884ab9f6523b0aec0a9`、runtime source `6e5fa174`。archive・manifest・source・cleanupを照合し、全recordがPASS。新規41件（40 CUDA + 1 metadata）も34.65sで合格。1024²、A=52,428、B32、spacing .1、混合σ=.1/.4/1.6/6.4/12を各20%、上限12.8、TF32 off、AdamW+fused Polar、warmup5/21 replay median。
+
+| 方式 | 完全step ms | allocated / reserved MiB | forward / backward register |
+|---|---:|---:|---:|
+| v14 H/Hμ保存 | 1.705895 | 81.288 / 172 | 48 / 48 |
+| v16 expanded・同条件 | 1.711550 | 81.288 / 172 | 48 / 48 |
+| expanded + compact | 1.778371 | 75.688 / 158 | 56 / 64 |
+| factored | 1.823597 | 81.288 / 172 | 72 / 64 |
+| factored + compact | 1.804168 | 75.688 / 158 | 72 / 64 |
+| pieces | 1.709196 | 81.288 / 172 | 64 / 64 |
+| pieces + compact | 1.687377 | 75.688 / 158 | 64 / 64 |
+| W版 | 3.230818 | 78.590 / 154 | — |
+| Dense | .082738 | 49.002 / 106 | — |
+
+全H系候補のcompiler spillは0。新revisionのexpandedは対照と同じregister量・同じ時間帯であり、wrapper追加による改善とは扱わない。単に係数を縮小すると中心微分係数の再生成が必要で遅くなった。piecesは中心微分を式から求めるので、この追加演算を避けてcompact化できる。ただし初回の約1%差だけで安定した高速化とはしない。
+
+独立FP64 gateの全H系最大誤差はY 1.537410e-6、dX 1.511848e-6、dP 1.601655e-5、relative L2は1.281e-7以下。全52,428 atomのσが各測定で変化し、初期PとDenseを含むX/targetのhashは一致した。peakはcapture/replay込みのallocatedとreservedで、総GPUプロセス使用量は未測定。
+
+同じ測定の別Graph診断では対照のbank_adjoint .031744ms、scan_output .023552ms、scan_input .024576ms、係数構築 .061440ms、融合broad backward .592896msだった。norm_replay .214016msは診断だけの追加処理で、完全stepには存在しない。空markerは処理時間と扱わない。これらを足して主測定の時間内訳とはしない。
