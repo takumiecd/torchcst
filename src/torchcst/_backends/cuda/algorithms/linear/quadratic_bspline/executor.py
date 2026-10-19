@@ -409,6 +409,7 @@ def _prepare(p, value, chart, recipe, moments):
                 recipe.norm_lookup,
                 getattr(recipe, "norm_fma", False),
                 getattr(recipe, "norm_float32", False),
+                HOIST=getattr(recipe, "norm_coordinates", False),
                 num_warps=recipe.prepare_warps,
                 enable_fp_fusion=False,
             )
@@ -435,6 +436,7 @@ def _prepare(p, value, chart, recipe, moments):
                 recipe.norm_lookup,
                 getattr(recipe, "norm_fma", False),
                 getattr(recipe, "norm_float32", False),
+                HOIST=getattr(recipe, "norm_coordinates", False),
                 num_warps=recipe.prepare_warps,
                 enable_fp_fusion=False,
             )
@@ -458,6 +460,7 @@ def _prepare(p, value, chart, recipe, moments):
                 recipe.norm_lookup,
                 getattr(recipe, "norm_fma", False),
                 getattr(recipe, "norm_float32", False),
+                HOIST=getattr(recipe, "norm_coordinates", False),
                 num_warps=4,
                 enable_fp_fusion=False,
             )

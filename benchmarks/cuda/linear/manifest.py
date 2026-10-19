@@ -772,3 +772,10 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
 )
 
 REGISTRY.register(BSplineLocalGroupedAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalCoordinatesAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalCoordinatesAlgorithm())

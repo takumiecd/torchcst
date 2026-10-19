@@ -695,6 +695,12 @@ def measure(args, run):
                             "canonical_meta": getattr(recipe, "canonical_meta", False),
                             "bank_tile_blocks": getattr(recipe, "bank_tile_blocks", 1),
                             "h_programs": getattr(recipe, "h_programs", 0),
+                            "coefficient_coordinates": getattr(
+                                recipe, "coefficient_coordinates", False
+                            ),
+                            "norm_coordinates": getattr(
+                                recipe, "norm_coordinates", False
+                            ),
                             "input_groups": getattr(recipe, "input_groups", False),
                             "shared_input": getattr(recipe, "shared_input", False),
                             "group_dx": getattr(recipe, "group_dx", False),

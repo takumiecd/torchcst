@@ -129,6 +129,7 @@ def _norm_ortho32(
     dim: tl.constexpr,
     ML: tl.constexpr,
     RECIPROCAL: tl.constexpr,
+    HOIST: tl.constexpr = False,
 ):
     q = tl.full(center.shape, 0, tl.float32)
     vjp = tl.full(center.shape, 0, tl.float32)
@@ -144,13 +145,19 @@ def _norm_ortho32(
             first = left
         count = right - left
         cn = count.to(tl.float32)
-        mid = (
-            origin
-            + (left.to(tl.float64) + (count.to(tl.float64) - 1) * 0.5) * h
-            - center
-        )
-        z = tl.where(count > 0, (mid * ir).to(tl.float32), 0)
-        w = (h * count.to(tl.float64) * 0.5 * ir).to(tl.float32)
+        if HOIST and origin == 0.0:
+            index = left.to(tl.float64) + (count.to(tl.float64) - 1) * 0.5
+            step = h * ir
+            z = tl.where(count > 0, (-center * ir + index * step).to(tl.float32), 0)
+            w = (count.to(tl.float64) * 0.5 * step).to(tl.float32)
+        else:
+            mid = (
+                origin
+                + (left.to(tl.float64) + (count.to(tl.float64) - 1) * 0.5) * h
+                - center
+            )
+            z = tl.where(count > 0, (mid * ir).to(tl.float32), 0)
+            w = (h * count.to(tl.float64) * 0.5 * ir).to(tl.float32)
         if piece == 1:
             a0 = 1 - 3 * z * z
             a1 = -6 * z * w
@@ -189,13 +196,14 @@ def _norm_pair(
     FLOOR: tl.constexpr,
     FMA: tl.constexpr,
     CORE32: tl.constexpr,
+    HOIST: tl.constexpr = False,
 ):
     if CORE32:
         qo, vo, no = _norm_ortho32(
-            co, radius, Origin, Spacing, Moments, NO, 0, ML, RECIPROCAL
+            co, radius, Origin, Spacing, Moments, NO, 0, ML, RECIPROCAL, HOIST
         )
         qi, vi, ni = _norm_ortho32(
-            ci, radius, Origin, Spacing, Moments, NI, 1, ML, RECIPROCAL
+            ci, radius, Origin, Spacing, Moments, NI, 1, ML, RECIPROCAL, HOIST
         )
         d = lib.sqrt(qo * qi)
         guard = (tl.minimum(no, ni) <= 2) | (
@@ -237,6 +245,7 @@ def prepare(
     LOOKUP: tl.constexpr,
     NORM_FMA: tl.constexpr = False,
     NORM32: tl.constexpr = False,
+    HOIST: tl.constexpr = False,
 ):
     a = tl.program_id(0) * 64 + tl.arange(0, 64)
     z0 = tl.load(P + 4 * a, a < A, 0).to(tl.float64)
@@ -282,6 +291,7 @@ def prepare(
         FLOOR,
         NORM_FMA,
         NORM32,
+        HOIST,
     )
     denominator = lib.sqrt(qo * qi)
     correction = tl.where(r2 >= 1.1754943508222875e-38, z0 * inv / safe, 0)
@@ -323,6 +333,7 @@ def norm_replay(
     LOOKUP: tl.constexpr,
     NORM_FMA: tl.constexpr = False,
     NORM32: tl.constexpr = False,
+    HOIST: tl.constexpr = False,
 ):
     # Diagnostic re-evaluation from already decoded live geometry. Not on the
     # normal execution path; its timing is not subtracted from fused prepare.
@@ -345,6 +356,7 @@ def norm_replay(
         FLOOR,
         NORM_FMA,
         NORM32,
+        HOIST,
     )
     d = lib.sqrt(qo * qi)
     tl.store(Scratch + 4 * a, 1 / tl.maximum(d, FLOOR), a < A)

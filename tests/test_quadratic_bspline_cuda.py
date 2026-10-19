@@ -18,6 +18,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineLocalCanonicalAlgorithm,
     BSplineLocalChunkedAlgorithm,
     BSplineLocalCoefficientAlgorithm,
+    BSplineLocalCoordinatesAlgorithm,
     BSplineLocalEndpointAlgorithm,
     BSplineLocalGroupedAlgorithm,
     BSplineLocalMomentAlgorithm,
@@ -54,6 +55,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineLocalCanonicalRecipe,
     BSplineLocalChunkedRecipe,
     BSplineLocalCoefficientRecipe,
+    BSplineLocalCoordinatesRecipe,
     BSplineLocalEndpointRecipe,
     BSplineLocalGroupedRecipe,
     BSplineLocalMomentRecipe,
@@ -104,6 +106,9 @@ def case(n=64, a=17):
 def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     from dataclasses import replace
 
+    coordinates = strategy == "h_local_coordinates" or recipe_options.pop(
+        "_coordinates", False
+    )
     grouped = strategy == "h_local_grouped" or recipe_options.pop("_grouped", False)
     persistent = strategy == "h_local_persistent" or recipe_options.pop(
         "_persistent", False
@@ -112,6 +117,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         strategy == "h_local_bank_bundle"
         or recipe_options.pop("_bank_bundle", False)
         or grouped
+        or coordinates
     )
     coefficients = (
         strategy == "h_local_coefficient"
@@ -213,6 +219,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineLocalCoefficientAlgorithm())
     registry.register(BSplineLocalBankBundleAlgorithm())
     registry.register(BSplineLocalGroupedAlgorithm())
+    registry.register(BSplineLocalCoordinatesAlgorithm())
     registry.register(BSplineLocalPersistentAlgorithm())
     registry.register(BSplineNativeHAlgorithm())
     registry.register(BSplineNativeLoopAlgorithm())
@@ -238,7 +245,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     tuned = bool(recipe_options) or strategy == "matrix_separable"
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v34"
+        "v35"
+        if coordinates
+        else "v34"
         if grouped
         else "v33"
         if persistent
@@ -305,7 +314,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         else "v2"
         if tuned
         else "v1",
-        BSplineLocalGroupedRecipe(**recipe_options)
+        BSplineLocalCoordinatesRecipe(**recipe_options)
+        if coordinates
+        else BSplineLocalGroupedRecipe(**recipe_options)
         if grouped
         else BSplineLocalPersistentRecipe(**recipe_options)
         if persistent
@@ -2545,6 +2556,23 @@ GROUPED_OPTIONS = [
         "norm_float32": False,
     },
 ]
+COORDINATES_OPTIONS = [
+    {"_coordinates": True},
+    {
+        "_coordinates": True,
+        "coefficient_coordinates": False,
+        "prepare_float32": False,
+        "active_levels": True,
+        "batch_chunk": 16,
+    },
+    {
+        "_coordinates": True,
+        "norm_coordinates": False,
+        "reciprocal": False,
+        "norm_float32": False,
+        "coefficient_layout": "aos3",
+    },
+]
 ALL_QUERY_OPTIONS = (
     QUERY_OPTIONS
     + LEAN_OPTIONS
@@ -2583,6 +2611,10 @@ ALL_QUERY_OPTIONS = (
         for i, opt in enumerate(PERSISTENT_OPTIONS)
     ]
     + [pytest.param(opt, id=f"grouped-{i}") for i, opt in enumerate(GROUPED_OPTIONS)]
+    + [
+        pytest.param(opt, id=f"coordinates-{i}")
+        for i, opt in enumerate(COORDINATES_OPTIONS)
+    ]
 )
 
 
@@ -2839,7 +2871,11 @@ def test_local_recipe_roundtrip_and_bounds():
         pytest.param(opt, id=f"persistent-{i}")
         for i, opt in enumerate(PERSISTENT_OPTIONS)
     ]
-    + [pytest.param(opt, id=f"grouped-{i}") for i, opt in enumerate(GROUPED_OPTIONS)],
+    + [pytest.param(opt, id=f"grouped-{i}") for i, opt in enumerate(GROUPED_OPTIONS)]
+    + [
+        pytest.param(opt, id=f"coordinates-{i}")
+        for i, opt in enumerate(COORDINATES_OPTIONS)
+    ],
 )
 def test_local_dyadic_boundaries_graph(options):
     import math
@@ -2860,6 +2896,7 @@ def test_local_dyadic_boundaries_graph(options):
         or options.get("_bank_bundle")
         or options.get("_persistent")
         or options.get("_grouped")
+        or options.get("_coordinates")
         else 0.2,
         **options,
     )
@@ -2875,6 +2912,7 @@ def test_local_dyadic_boundaries_graph(options):
         or options.get("_bank_bundle")
         or options.get("_persistent")
         or options.get("_grouped")
+        or options.get("_coordinates")
         else 3
     )
     targets = (2.0 ** (minimum + ids % 6)) * 0.1 / math.sqrt(6)
@@ -3371,7 +3409,18 @@ def test_complete_bspline_catalog_decodes():
     )
     entries = decode_catalog(catalog)
     revisions = {entry.plan.algorithm_revision for entry in entries}
-    assert {"v26", "v27", "v28", "v29", "v30", "v31", "v32", "v33", "v34"} <= revisions
+    assert {
+        "v26",
+        "v27",
+        "v28",
+        "v29",
+        "v30",
+        "v31",
+        "v32",
+        "v33",
+        "v34",
+        "v35",
+    } <= revisions
 
 
 def test_native_bound_recipe_roundtrip_and_bounds():
@@ -3406,6 +3455,7 @@ def test_native_bound_recipe_roundtrip_and_bounds():
         "h_local_bank_bundle",
         "h_local_persistent",
         "h_local_grouped",
+        "h_local_coordinates",
     ],
 )
 def test_native_bound_count_changes_across_graph(batch, floor, strategy):
@@ -3487,6 +3537,7 @@ def test_native_bound_count_changes_across_graph(batch, floor, strategy):
         "h_local_bank_bundle",
         "h_local_persistent",
         "h_local_grouped",
+        "h_local_coordinates",
     ],
 )
 def test_native_bound_strided_individual_gradients(which, strategy):
@@ -3519,6 +3570,7 @@ def test_native_bound_strided_individual_gradients(which, strategy):
         "h_local_bank_bundle",
         "h_local_persistent",
         "h_local_grouped",
+        "h_local_coordinates",
     ],
 )
 def test_native_bound_retained_count_above_grid(strategy):
@@ -3831,3 +3883,128 @@ def test_grouped_shared_events_have_distinct_coefficients(batch):
     x = torch.randn(batch, 64, device="cuda", requires_grad=True)
     dy = torch.randn_like(x)
     gate(layer, x, dy)
+
+
+def test_local_coordinates_recipe_roundtrip_and_bounds():
+    reg = Registry()
+    reg.register(BSplineLocalCoordinatesAlgorithm())
+    for options in COORDINATES_OPTIONS:
+        options = {k: v for k, v in options.items() if k != "_coordinates"}
+        plan = ExecutionPlan(
+            "research_cuda_quadratic_bspline",
+            "v35",
+            BSplineLocalCoordinatesRecipe(**options),
+        )
+        assert reg.loads_plan(reg.dumps_plan(plan)) == plan
+    for key in ("coefficient_coordinates", "norm_coordinates"):
+        with pytest.raises(ValueError):
+            BSplineLocalCoordinatesRecipe(**{key: 1})
+
+
+@GPU
+@pytest.mark.parametrize("core32", [False, True])
+@pytest.mark.parametrize("mapped", [False, True])
+def test_coordinates_nonzero_origin_fallback_is_bit_identical(core32, mapped):
+    import triton as tr
+
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        local_kernels as lk,
+    )
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        prepare_split_kernels as nk,
+    )
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.executor import (
+        _norm_moments,
+    )
+
+    a, count, no, ni = 137, 3, 128, 1024
+    origin = torch.tensor([1.25, -2.0], device="cuda", dtype=torch.float64)
+    spacing = torch.full((2,), 0.1, dtype=torch.float64, device="cuda")
+    meta = torch.zeros(a, 12, dtype=torch.float64, device="cuda")
+    radius = torch.logspace(-0.6, 1.5, a, dtype=torch.float64, device="cuda")
+    meta[:, 1] = radius
+    meta[:, 9] = radius.reciprocal()
+    meta[:, 2] = origin[0] + torch.linspace(
+        -0.3, 13.0, a, device="cuda", dtype=torch.float64
+    )
+    meta[:, 3] = origin[1] + torch.linspace(
+        -0.3, 103.0, a, device="cuda", dtype=torch.float64
+    ).roll(13)
+    meta[:, 10:] = 10.0
+    order = torch.randperm(a, device="cuda") if mapped else None
+    native = torch.tensor([count], dtype=torch.int32, device="cuda")
+    m2, m4 = _norm_moments(ni, "cuda")
+    c = torch.arange(ni + 1, device="cuda", dtype=torch.float64)
+    safe = c.clamp_min(1)
+    moments = torch.stack(
+        (
+            m2,
+            m4,
+            m2 / safe,
+            (m4 - m2.square() / safe).clamp_min(0),
+            torch.where(c > 0, safe.reciprocal(), 0),
+        )
+    )
+    reference = None
+    for enabled in (False, True):
+        current = meta.clone()
+        nk.normalize[(tr.cdiv(a, 64),)](
+            current,
+            origin,
+            spacing,
+            moments,
+            a,
+            no,
+            ni,
+            ni + 1,
+            1e-6,
+            True,
+            True,
+            False,
+            True,
+            HOIST=enabled,
+            num_warps=1,
+            enable_fp_fusion=False,
+        )
+        pos = torch.full((2, 6, a), -17, dtype=torch.int32, device="cuda")
+        co = torch.full((2, 3, 6, a), float("nan"), device="cuda")
+        half = torch.full((2, a), float("nan"), device="cuda")
+        bp = torch.full((2, 2, a), -17, dtype=torch.int32, device="cuda")
+        injection = torch.full((2, a), -1, dtype=torch.int16, device="cuda")
+        lk.prepare[(tr.cdiv(a, 128),)](
+            current,
+            pos,
+            co,
+            half,
+            native,
+            origin,
+            spacing,
+            a,
+            no,
+            ni,
+            128,
+            True,
+            core32,
+            bp,
+            8,
+            injection,
+            True,
+            2,
+            Order=order,
+            COORDINATES=enabled,
+            num_warps=4,
+            enable_fp_fusion=False,
+        )
+        values = (
+            current[:, 4:7],
+            pos,
+            bp,
+            injection,
+            half[:, count:],
+            co[:, :, :, count:],
+        )
+        if reference is None:
+            reference = tuple(v.clone() for v in values)
+        else:
+            for actual, expected in zip(values, reference):
+                assert torch.equal(actual, expected)

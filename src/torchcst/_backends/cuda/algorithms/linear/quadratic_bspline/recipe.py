@@ -709,3 +709,19 @@ class BSplineLocalGroupedRecipe(BSplineLocalBankBundleRecipe):
         for name in ("shared_input", "group_dx"):
             if type(getattr(self, name)) is not bool:
                 raise ValueError(f"{name} must be boolean")
+
+
+@dataclass(frozen=True)
+class BSplineLocalCoordinatesRecipe(BSplineLocalBankBundleRecipe):
+    """Revision 35: hoist FP64 origin-zero geometry products before FP32 cores."""
+
+    bank_tile_blocks: int = 4
+    bank_mid_blocks: int = 1
+    coefficient_coordinates: bool = True
+    norm_coordinates: bool = True
+
+    def __post_init__(self):
+        super().__post_init__()
+        for name in ("coefficient_coordinates", "norm_coordinates"):
+            if type(getattr(self, name)) is not bool:
+                raise ValueError(f"{name} must be boolean")

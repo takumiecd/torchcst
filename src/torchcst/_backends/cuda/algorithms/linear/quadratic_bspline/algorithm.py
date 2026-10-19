@@ -25,6 +25,7 @@ from .recipe import (
     BSplineLocalCanonicalRecipe,
     BSplineLocalChunkedRecipe,
     BSplineLocalCoefficientRecipe,
+    BSplineLocalCoordinatesRecipe,
     BSplineLocalEndpointRecipe,
     BSplineLocalGroupedRecipe,
     BSplineLocalMomentRecipe,
@@ -432,3 +433,9 @@ class BSplineLocalPersistentAlgorithm(BSplineLocalCanonicalAlgorithm):
 class BSplineLocalGroupedAlgorithm(BSplineLocalBankBundleAlgorithm):
     revision: str = "v34"
     recipe_type: type = BSplineLocalGroupedRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalCoordinatesAlgorithm(BSplineLocalBankBundleAlgorithm):
+    revision: str = "v35"
+    recipe_type: type = BSplineLocalCoordinatesRecipe

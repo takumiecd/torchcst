@@ -165,3 +165,28 @@ source SHA256 `e7cb12cc603b00b441cbb7e3e978a30f22e93e7985e33df64ce17235f11ca4a8`
 result SHA256 `13eb28244ffabf3e639ff798887973b5f159ab858a47dc3f3b37bd9d86cded39`。
 source byte一致1584 files、manifest16 files、return1/cleanup ackを検証しfailed-jobsに保持。
 既存の71検査を緩めず、同じkernelの完全stepと両peakを修正後sourceで再測定する。
+
+
+## v35候補：FP64座標積の共通化
+
+v34とは独立に、v32 bundle4をcontrolとする準備処理の候補を追加する。原点0の軸で、
+局所tile中心indexをk、spacingをh、中心をmu、半径をRとして
+
+\[
+ z=(kh-\mu)/R=(-\mu/R)+k(h/R)
+\]
+
+を使う。h/Rと−mu/Rを共通項にし、FP64のまま計算した後、既存のFP32 coreへ同じ段階で変換する。
+係数式、支持区間のFP64判定、moment、source pullbackは変えない。原点が0でない軸は従来の
+計算順へ戻す。L2でもpieceの中央indexを使う同じ共通化を試し、正の離散moment式と
+FP64 tiny/floor guard、product全体の単一floorを保持する。新しい窓・積分近似は入れない。
+
+CPUサンプルのN64/1024/8192・各52428 atomでは、tileのFP32係数への入力は従来と一致した。
+L2の3 pieceのnormalized inputsもN64/1024では一致し、N8192の9 pieceでzの差が
+最大3.726e-9だった（wは一致）。有限サンプルであり、全条件のbit一致とは主張しない。
+原本はignored `geometry-screen.py/json` と `norm-coordinate-screen.py/json`。
+
+係数側だけ、L2側だけ、両方の3候補を完全stepで比較する。GPUでは共通の動的σ/Xと全勾配gateに加え、
+原点非0のfallbackでMeta正規化値と全係数・整数eventがbit一致することを確認する。
+CPU1997 PASS /4356 skipped /既存warning18、38.79秒を確認済み。v34の診断stamp修正を取り込んだ
+状態でもCPU確認し、GPUへ提出する。defaultは変更しない。

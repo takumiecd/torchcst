@@ -57,6 +57,43 @@ def _coeff(
 
 
 @tr.jit
+def _tile_coordinates(
+    origin,
+    spacing,
+    center,
+    tile,
+    size,
+    half,
+    radius,
+    ir,
+    RECIPROCAL: tl.constexpr,
+    HOIST: tl.constexpr,
+):
+    if HOIST:
+        if origin == 0.0:
+            step = spacing * ir if RECIPROCAL else spacing / radius
+            base = -center * ir if RECIPROCAL else -center / radius
+            index = tile * size + size // 2
+            z = base + index.to(tl.float64) * step
+            v = half * ir if RECIPROCAL else half / radius
+        else:
+            mid = (
+                origin
+                + tile.to(tl.float64) * size.to(tl.float64) * spacing
+                + half
+                - center
+            )
+            z = mid * ir if RECIPROCAL else mid / radius
+            v = half * ir if RECIPROCAL else half / radius
+        return z, v
+    else:
+        mid = (
+            origin + tile.to(tl.float64) * size.to(tl.float64) * spacing + half - center
+        )
+        return mid, half
+
+
+@tr.jit
 def _poly(
     mid,
     half,
@@ -65,9 +102,13 @@ def _poly(
     PIECE: tl.constexpr,
     RECIPROCAL: tl.constexpr,
     CORE32: tl.constexpr,
+    NORMALIZED: tl.constexpr = False,
 ):
-    z = mid * ir if RECIPROCAL else mid / radius
-    v = half * ir if RECIPROCAL else half / radius
+    if NORMALIZED:
+        z, v = mid, half
+    else:
+        z = mid * ir if RECIPROCAL else mid / radius
+        v = half * ir if RECIPROCAL else half / radius
     if CORE32:
         z, v = z.to(tl.float32), v.to(tl.float32)
     if PIECE == 1:
@@ -99,6 +140,7 @@ def prepare(
     MIN_LOG: tl.constexpr = 3,
     Order=None,
     LAYOUT: tl.constexpr = "soa",
+    COORDINATES: tl.constexpr = False,
 ):
     base = tl.load(Count) + tl.program_id(0) * AB
     if base < A:
@@ -151,23 +193,62 @@ def prepare(
                     )
                     tile = tl.minimum(tl.maximum((cut - 1) >> logsize, 0), tiles - 1)
                     index = cut - tile * size
-                    mid = (
-                        origin
-                        + tile.to(tl.float64) * size.to(tl.float64) * spacing
-                        + half
-                        - center
+                    mid, polynomial_half = _tile_coordinates(
+                        origin,
+                        spacing,
+                        center,
+                        tile,
+                        size,
+                        half,
+                        radius,
+                        ir,
+                        RECIPROCAL,
+                        COORDINATES,
                     )
+
                     if event == 0:
-                        c0, c1, c2 = _poly(mid, half, radius, ir, 0, RECIPROCAL, CORE32)
+                        c0, c1, c2 = _poly(
+                            mid,
+                            polynomial_half,
+                            radius,
+                            ir,
+                            0,
+                            RECIPROCAL,
+                            CORE32,
+                            COORDINATES,
+                        )
                     elif event == 3:
-                        x0, x1, x2 = _poly(mid, half, radius, ir, 2, RECIPROCAL, CORE32)
+                        x0, x1, x2 = _poly(
+                            mid,
+                            polynomial_half,
+                            radius,
+                            ir,
+                            2,
+                            RECIPROCAL,
+                            CORE32,
+                            COORDINATES,
+                        )
                         c0, c1, c2 = -x0, -x1, -x2
                     else:
                         x0, x1, x2 = _poly(
-                            mid, half, radius, ir, event, RECIPROCAL, CORE32
+                            mid,
+                            polynomial_half,
+                            radius,
+                            ir,
+                            event,
+                            RECIPROCAL,
+                            CORE32,
+                            COORDINATES,
                         )
                         p0, p1, p2 = _poly(
-                            mid, half, radius, ir, event - 1, RECIPROCAL, CORE32
+                            mid,
+                            polynomial_half,
+                            radius,
+                            ir,
+                            event - 1,
+                            RECIPROCAL,
+                            CORE32,
+                            COORDINATES,
                         )
                         c0, c1, c2 = x0 - p0, x1 - p1, x2 - p2
                     active = a < A
@@ -178,15 +259,49 @@ def prepare(
                     boundary = (first + event - 3) * size
                     tile = tl.minimum(first + event - 4, tiles - 1)
                     index = size
-                    mid = (
-                        origin
-                        + tile.to(tl.float64) * size.to(tl.float64) * spacing
-                        + half
-                        - center
+                    mid, polynomial_half = _tile_coordinates(
+                        origin,
+                        spacing,
+                        center,
+                        tile,
+                        size,
+                        half,
+                        radius,
+                        ir,
+                        RECIPROCAL,
+                        COORDINATES,
                     )
-                    x0, x1, x2 = _poly(mid, half, radius, ir, 0, RECIPROCAL, CORE32)
-                    p0, p1, p2 = _poly(mid, half, radius, ir, 1, RECIPROCAL, CORE32)
-                    q0, q1, q2 = _poly(mid, half, radius, ir, 2, RECIPROCAL, CORE32)
+
+                    x0, x1, x2 = _poly(
+                        mid,
+                        polynomial_half,
+                        radius,
+                        ir,
+                        0,
+                        RECIPROCAL,
+                        CORE32,
+                        COORDINATES,
+                    )
+                    p0, p1, p2 = _poly(
+                        mid,
+                        polynomial_half,
+                        radius,
+                        ir,
+                        1,
+                        RECIPROCAL,
+                        CORE32,
+                        COORDINATES,
+                    )
+                    q0, q1, q2 = _poly(
+                        mid,
+                        polynomial_half,
+                        radius,
+                        ir,
+                        2,
+                        RECIPROCAL,
+                        CORE32,
+                        COORDINATES,
+                    )
                     before = boundary < middle
                     inner = boundary < later
                     c0 = tl.where(before, x0, tl.where(inner, p0, q0))

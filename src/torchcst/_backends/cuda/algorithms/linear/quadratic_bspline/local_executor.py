@@ -266,6 +266,7 @@ def _frame(x, p, value, chart, recipe, moments, routing, sizes, build_border=Tru
         getattr(recipe, "min_block_log", 3),
         Order=_source_order(order, recipe),
         LAYOUT=getattr(recipe, "coefficient_layout", "soa"),
+        COORDINATES=getattr(recipe, "coefficient_coordinates", False),
         num_warps=4,
         enable_fp_fusion=False,
     )
