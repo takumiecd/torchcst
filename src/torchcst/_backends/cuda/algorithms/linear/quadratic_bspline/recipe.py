@@ -343,8 +343,16 @@ class BSplineAdjointRecipe(BSplineSavedHRecipe):
                 or getattr(self, name) not in allowed
             ):
                 raise ValueError(f"{name} must be one of {allowed}")
-        if self.adjoint_order not in ("none", "input", "output"):
-            raise ValueError("adjoint_order must be none, input or output")
+        if self.adjoint_order not in (
+            "none",
+            "input",
+            "output",
+            "input_bucket",
+            "output_bucket",
+        ):
+            raise ValueError(
+                "adjoint_order must be none, input, output, input_bucket or output_bucket"
+            )
         if self.scatter_scope not in ("zero", "full"):
             raise ValueError("scatter_scope must be zero or full")
         for name in ("adjoint_share", "adjoint_reduce", "fold_zero"):

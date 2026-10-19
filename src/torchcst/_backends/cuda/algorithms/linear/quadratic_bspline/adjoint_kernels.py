@@ -302,3 +302,50 @@ def backward(
                     SHARE_READS,
                     REDUCE_WRITES,
                 )
+
+
+@tr.jit
+def _bucket(Cuts, a, A: tl.constexpr, DIM: tl.constexpr, LEVELS: tl.constexpr):
+    left = tl.load(Cuts + DIM * 4 * A + a, a < A, 0)
+    right = tl.load(Cuts + (DIM * 4 + 3) * A + a, a < A, 0)
+    level = tl.minimum(
+        tl.log2(tl.maximum(right - left, 1).to(tl.float32)).to(tl.int32), LEVELS - 1
+    )
+    return left * LEVELS + level
+
+
+@tr.jit
+def bucket_hist(
+    Cuts,
+    Count,
+    Hist,
+    A: tl.constexpr,
+    DIM: tl.constexpr,
+    LEVELS: tl.constexpr,
+    AB: tl.constexpr,
+):
+    a = tl.program_id(0) * AB + tl.arange(0, AB)
+    key = _bucket(Cuts, a, A, DIM, LEVELS)
+    tl.atomic_add(Hist + key, 1, (a < A) & (a >= tl.load(Count)), sem="relaxed")
+
+
+@tr.jit
+def bucket_place(
+    Cuts,
+    Count,
+    Ends,
+    Cursor,
+    Rank,
+    A: tl.constexpr,
+    DIM: tl.constexpr,
+    LEVELS: tl.constexpr,
+    AB: tl.constexpr,
+):
+    a = tl.program_id(0) * AB + tl.arange(0, AB)
+    count = tl.load(Count)
+    active = (a < A) & (a >= count)
+    key = _bucket(Cuts, a, A, DIM, LEVELS)
+    start = tl.load(Ends + key - 1, active & (key > 0), 0)
+    offset = tl.atomic_add(Cursor + key, 1, active, sem="relaxed")
+    destination = tl.where(a < count, a, count + start + offset)
+    tl.store(Rank + destination, a.to(tl.int64), a < A)

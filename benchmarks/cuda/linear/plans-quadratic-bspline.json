@@ -3212,7 +3212,8 @@
           "adjoint_share": false,
           "adjoint_reduce": false,
           "scatter_shards": 1,
-          "scatter_scope": "zero"
+          "scatter_scope": "zero",
+          "fold_zero": false
         }
       }
     },
@@ -3259,7 +3260,8 @@
           "adjoint_share": false,
           "adjoint_reduce": false,
           "scatter_shards": 1,
-          "scatter_scope": "zero"
+          "scatter_scope": "zero",
+          "fold_zero": false
         }
       }
     },
@@ -3306,7 +3308,8 @@
           "adjoint_share": false,
           "adjoint_reduce": false,
           "scatter_shards": 1,
-          "scatter_scope": "zero"
+          "scatter_scope": "zero",
+          "fold_zero": false
         }
       }
     },
@@ -3353,7 +3356,8 @@
           "adjoint_share": false,
           "adjoint_reduce": false,
           "scatter_shards": 16,
-          "scatter_scope": "zero"
+          "scatter_scope": "zero",
+          "fold_zero": false
         }
       }
     },
@@ -3400,7 +3404,8 @@
           "adjoint_share": false,
           "adjoint_reduce": false,
           "scatter_shards": 16,
-          "scatter_scope": "zero"
+          "scatter_scope": "zero",
+          "fold_zero": false
         }
       }
     },
@@ -3447,7 +3452,8 @@
           "adjoint_share": false,
           "adjoint_reduce": false,
           "scatter_shards": 16,
-          "scatter_scope": "zero"
+          "scatter_scope": "zero",
+          "fold_zero": false
         }
       }
     },
@@ -3494,7 +3500,8 @@
           "adjoint_share": false,
           "adjoint_reduce": false,
           "scatter_shards": 4,
-          "scatter_scope": "full"
+          "scatter_scope": "full",
+          "fold_zero": false
         }
       }
     },
@@ -3541,7 +3548,8 @@
           "adjoint_share": false,
           "adjoint_reduce": false,
           "scatter_shards": 16,
-          "scatter_scope": "full"
+          "scatter_scope": "full",
+          "fold_zero": false
         }
       }
     },
@@ -3588,7 +3596,8 @@
           "adjoint_share": false,
           "adjoint_reduce": true,
           "scatter_shards": 16,
-          "scatter_scope": "zero"
+          "scatter_scope": "zero",
+          "fold_zero": false
         }
       }
     },
@@ -3635,7 +3644,8 @@
           "adjoint_share": true,
           "adjoint_reduce": false,
           "scatter_shards": 16,
-          "scatter_scope": "zero"
+          "scatter_scope": "zero",
+          "fold_zero": false
         }
       }
     },
@@ -3682,7 +3692,8 @@
           "adjoint_share": true,
           "adjoint_reduce": false,
           "scatter_shards": 16,
-          "scatter_scope": "zero"
+          "scatter_scope": "zero",
+          "fold_zero": false
         }
       }
     },
@@ -3827,6 +3838,150 @@
           "scatter_shards": 16,
           "scatter_scope": "zero",
           "fold_zero": true
+        }
+      }
+    },
+    {
+      "id": "adjoint-input-bucket16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_quadratic_bspline",
+        "algorithm_revision": "v15",
+        "recipe": {
+          "strategy": "sigma_stream",
+          "direct_sites": 32,
+          "block_sites": 16,
+          "reciprocal": true,
+          "norm_lookup": true,
+          "matrix_sites": 4,
+          "matrix_atoms": 16,
+          "matrix_warps": 1,
+          "axis_warps": 4,
+          "axis_atoms": 8,
+          "axis_batch": 8,
+          "matrix_pairs": 32,
+          "prepare_warps": 1,
+          "sigma_cutoff": 0.2,
+          "reuse_layout": true,
+          "save_w": true,
+          "h_mode": "fused",
+          "coefficient_cache": true,
+          "coefficient_derivatives": true,
+          "edge_reduce": true,
+          "event_atoms": 32,
+          "event_batch": 8,
+          "event_warps": 4,
+          "point_major": true,
+          "share_reads": false,
+          "sort_input": false,
+          "reduce_writes": false,
+          "site_owner": false,
+          "save_h": "hp",
+          "backward_mode": "fused",
+          "adjoint_atoms": 16,
+          "adjoint_warps": 4,
+          "adjoint_order": "input_bucket",
+          "adjoint_share": false,
+          "adjoint_reduce": true,
+          "scatter_shards": 16,
+          "scatter_scope": "zero",
+          "fold_zero": true
+        }
+      }
+    },
+    {
+      "id": "adjoint-input-bucket32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_quadratic_bspline",
+        "algorithm_revision": "v15",
+        "recipe": {
+          "strategy": "sigma_stream",
+          "direct_sites": 32,
+          "block_sites": 16,
+          "reciprocal": true,
+          "norm_lookup": true,
+          "matrix_sites": 4,
+          "matrix_atoms": 16,
+          "matrix_warps": 1,
+          "axis_warps": 4,
+          "axis_atoms": 8,
+          "axis_batch": 8,
+          "matrix_pairs": 32,
+          "prepare_warps": 1,
+          "sigma_cutoff": 0.2,
+          "reuse_layout": true,
+          "save_w": true,
+          "h_mode": "fused",
+          "coefficient_cache": true,
+          "coefficient_derivatives": true,
+          "edge_reduce": true,
+          "event_atoms": 32,
+          "event_batch": 8,
+          "event_warps": 4,
+          "point_major": true,
+          "share_reads": false,
+          "sort_input": false,
+          "reduce_writes": false,
+          "site_owner": false,
+          "save_h": "hp",
+          "backward_mode": "fused",
+          "adjoint_atoms": 32,
+          "adjoint_warps": 4,
+          "adjoint_order": "input_bucket",
+          "adjoint_share": false,
+          "adjoint_reduce": true,
+          "scatter_shards": 16,
+          "scatter_scope": "zero",
+          "fold_zero": true
+        }
+      }
+    },
+    {
+      "id": "adjoint-output-bucket16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_quadratic_bspline",
+        "algorithm_revision": "v15",
+        "recipe": {
+          "strategy": "sigma_stream",
+          "direct_sites": 32,
+          "block_sites": 16,
+          "reciprocal": true,
+          "norm_lookup": true,
+          "matrix_sites": 4,
+          "matrix_atoms": 16,
+          "matrix_warps": 1,
+          "axis_warps": 4,
+          "axis_atoms": 8,
+          "axis_batch": 8,
+          "matrix_pairs": 32,
+          "prepare_warps": 1,
+          "sigma_cutoff": 0.2,
+          "reuse_layout": true,
+          "save_w": true,
+          "h_mode": "fused",
+          "coefficient_cache": true,
+          "coefficient_derivatives": true,
+          "edge_reduce": true,
+          "event_atoms": 32,
+          "event_batch": 8,
+          "event_warps": 4,
+          "point_major": true,
+          "share_reads": false,
+          "sort_input": false,
+          "reduce_writes": false,
+          "site_owner": false,
+          "save_h": "hp",
+          "backward_mode": "fused",
+          "adjoint_atoms": 16,
+          "adjoint_warps": 4,
+          "adjoint_order": "output_bucket",
+          "adjoint_share": true,
+          "adjoint_reduce": false,
+          "scatter_shards": 16,
+          "scatter_scope": "zero",
+          "fold_zero": false
         }
       }
     }

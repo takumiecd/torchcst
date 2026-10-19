@@ -11,10 +11,23 @@ def order(cuts, count, sizes, recipe):
     _stamp("adjoint_order", 0)
     if recipe.adjoint_order != "none":
         a = cuts.shape[-1]
-        dim = 1 if recipe.adjoint_order == "input" else 0
-        keys = torch.empty(a, dtype=torch.int64, device=cuts.device)
-        ak.keys[(tr.cdiv(a, 128),)](cuts, count, keys, a, sizes[dim], dim, 128)
-        rank = keys.argsort(stable=True)
+        dim = 1 if recipe.adjoint_order.startswith("input") else 0
+        if recipe.adjoint_order.endswith("_bucket"):
+            levels = (sizes[dim] + 1).bit_length()
+            hist = torch.zeros(
+                (sizes[dim] + 1) * levels, dtype=torch.int32, device=cuts.device
+            )
+            cursor = torch.zeros_like(hist)
+            rank = torch.empty(a, dtype=torch.int64, device=cuts.device)
+            ak.bucket_hist[(tr.cdiv(a, 128),)](cuts, count, hist, a, dim, levels, 128)
+            ends = hist.cumsum(0, dtype=torch.int32)
+            ak.bucket_place[(tr.cdiv(a, 128),)](
+                cuts, count, ends, cursor, rank, a, dim, levels, 128
+            )
+        else:
+            keys = torch.empty(a, dtype=torch.int64, device=cuts.device)
+            ak.keys[(tr.cdiv(a, 128),)](cuts, count, keys, a, sizes[dim], dim, 128)
+            rank = keys.argsort(stable=True)
     else:
         rank = torch.empty(0, dtype=torch.int64, device=cuts.device)
     _stamp("adjoint_order", 1)
