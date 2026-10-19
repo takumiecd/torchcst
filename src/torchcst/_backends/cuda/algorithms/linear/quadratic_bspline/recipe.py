@@ -725,3 +725,12 @@ class BSplineLocalCoordinatesRecipe(BSplineLocalBankBundleRecipe):
         for name in ("coefficient_coordinates", "norm_coordinates"):
             if type(getattr(self, name)) is not bool:
                 raise ValueError(f"{name} must be boolean")
+
+
+@dataclass(frozen=True)
+class BSplineLocalTransposedRecipe(BSplineLocalBankBundleRecipe):
+    """Revision 36: atom lanes inside batch lanes for H/G and adjoint events."""
+
+    transposed_h = True
+    bank_tile_blocks: int = 4
+    bank_mid_blocks: int = 1

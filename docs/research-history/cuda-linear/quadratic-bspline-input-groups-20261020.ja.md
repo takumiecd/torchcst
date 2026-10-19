@@ -245,3 +245,40 @@ isolated sdist/wheelの364 runtime filesと同sourceのbyte一致も確認。
 次は既存recipeのprepare_warps=1/2/4だけを比較する。64 atomを1 warpで処理する現在の
 decode/normはregister80/180（各spill0）で、複数warpに仕事を分ける影響を調べる。
 式・保存量・gridのatom単位は変更せず、Meta全体の一致と完全step・両peakで判定する。
+
+
+## prepare_warps比較：並列度だけでは改善しない
+
+source `b652a12b2a1784bb8d3a11e86ca17997c9510b91`、job
+`l4job-f322ac4835634976b86608579f19322a`。5 checks PASS、Meta全体のwarp1/2/4 bit一致と
+両primary全planの独立FP64 full-shape 3状態gateを確認。
+
+| prepare warp | B32 ms | B64 ms |
+|---|---:|---:|
+|1 control|0.790743|1.286343|
+|2|0.794908|1.290294|
+|4|0.917073|1.424483|
+|Dense|0.082198|0.107521|
+
+全CSTのallocated/reservedは34.153/98、34.653/100MiBで同じ。Dense49.002/106、49.502/106MiB以下。
+warp2ではdecodeは約2µs減るがnorm_initが約3µs増え、完全stepは速くならない。warp4は64 atom CTAに
+対し仕事のないlaneが増え、decode/norm_initとも遅くなる。register減少のみでは速度を推測できない。
+なお`norm_replay`は診断時だけの独立測定で、未計装完全stepの実行項目ではない。phaseを単純合算しない。
+
+source SHA256 `cb67cf52cae7d3c755aa76a25f17c74b5d8de84e47e62bb4dccfb07697f4b20a`、result SHA256 `379004cc60ea30c43b374b96563664bb35394ab3f195bf578dbe987f68b52bcb`。
+source byte一致1592 files、manifest30 files、return0/cleanup ack確認。
+
+## v36：atom laneを内側に置くH/G tile（検証前）
+
+v32 SoAを基準に、query/injectの論理tileを[atom,batch]から[batch,atom]へ転置する。
+通常slot順のまま処理し、group hash・並べ替え・paddingは追加しない。係数・prefix bank・H保存形式、
+正規化・source pullback・optimizerは同じ。各eventのFMAと加算順は変えず、batch方向の3つの
+勾配内積だけが転置後のaxis0 reductionになる。4/8 atom per CTAを、既存4/8 atom layoutと比較する。
+係数のatom方向の読み取りをまとめ、bankのbatch方向の連続読み取りとの兼ね合いを測る。
+新しいtensorはないが、register/shared、実測両peakと完全stepを確認する。
+動的X/σ、dyadic境界、floor/tiny、個別勾配、retained、Count all/partial/zero Graphを既存の
+独立FP64基準で確認してから性能を評価する。目標は引き続きDense2倍以内かつ両peak Dense以下。
+
+実際のlane割り当てはTritonの決定にも依存するため、論理axisの転置だけから物理的な
+coalescing改善とは主張しない。GPU jobで対象forward/backwardのTTGIR/PTXも保存して調べる。
+提出前CPU1998 PASS /4389 skipped /既存warning18、38.62秒。Ruff・両case宣言検査PASS。

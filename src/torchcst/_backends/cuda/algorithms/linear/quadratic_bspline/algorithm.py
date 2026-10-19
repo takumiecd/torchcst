@@ -36,6 +36,7 @@ from .recipe import (
     BSplineLocalPersistentRecipe,
     BSplineLocalShardedRecipe,
     BSplineLocalSplitRecipe,
+    BSplineLocalTransposedRecipe,
     BSplineNativeHRecipe,
     BSplineNativeLoopRecipe,
     BSplineParallelRecipe,
@@ -439,3 +440,9 @@ class BSplineLocalGroupedAlgorithm(BSplineLocalBankBundleAlgorithm):
 class BSplineLocalCoordinatesAlgorithm(BSplineLocalBankBundleAlgorithm):
     revision: str = "v35"
     recipe_type: type = BSplineLocalCoordinatesRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalTransposedAlgorithm(BSplineLocalBankBundleAlgorithm):
+    revision: str = "v36"
+    recipe_type: type = BSplineLocalTransposedRecipe

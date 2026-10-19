@@ -35,6 +35,10 @@ def _h_launch(direction, atoms, recipe):
         from . import grouped_kernels
 
         module = grouped_kernels
+    if getattr(recipe, "transposed_h", False):
+        from . import transposed_kernels
+
+        module = transposed_kernels
     cap = getattr(recipe, "h_programs", 0)
     if cap:
         from . import local_persistent_kernels
