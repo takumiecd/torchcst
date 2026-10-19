@@ -1333,6 +1333,237 @@
           "range_tile": 64
         }
       }
+    },
+    {
+      "id": "h-uncached-split",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_quadratic_bspline",
+        "algorithm_revision": "v12",
+        "recipe": {
+          "strategy": "sigma_stream",
+          "direct_sites": 32,
+          "block_sites": 16,
+          "reciprocal": true,
+          "norm_lookup": true,
+          "matrix_sites": 4,
+          "matrix_atoms": 16,
+          "matrix_warps": 1,
+          "axis_warps": 4,
+          "axis_atoms": 8,
+          "axis_batch": 8,
+          "matrix_pairs": 32,
+          "prepare_warps": 1,
+          "sigma_cutoff": 0.5,
+          "reuse_layout": true,
+          "save_w": true,
+          "h_mode": "split",
+          "coefficient_cache": false,
+          "coefficient_derivatives": true,
+          "edge_reduce": false,
+          "event_atoms": 32,
+          "event_batch": 8,
+          "event_warps": 4
+        }
+      }
+    },
+    {
+      "id": "h-cache-fused",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_quadratic_bspline",
+        "algorithm_revision": "v12",
+        "recipe": {
+          "strategy": "sigma_stream",
+          "direct_sites": 32,
+          "block_sites": 16,
+          "reciprocal": true,
+          "norm_lookup": true,
+          "matrix_sites": 4,
+          "matrix_atoms": 16,
+          "matrix_warps": 1,
+          "axis_warps": 4,
+          "axis_atoms": 8,
+          "axis_batch": 8,
+          "matrix_pairs": 32,
+          "prepare_warps": 1,
+          "sigma_cutoff": 0.5,
+          "reuse_layout": true,
+          "save_w": true,
+          "h_mode": "fused",
+          "coefficient_cache": true,
+          "coefficient_derivatives": true,
+          "edge_reduce": false,
+          "event_atoms": 32,
+          "event_batch": 8,
+          "event_warps": 4
+        }
+      }
+    },
+    {
+      "id": "h-cache-split",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_quadratic_bspline",
+        "algorithm_revision": "v12",
+        "recipe": {
+          "strategy": "sigma_stream",
+          "direct_sites": 32,
+          "block_sites": 16,
+          "reciprocal": true,
+          "norm_lookup": true,
+          "matrix_sites": 4,
+          "matrix_atoms": 16,
+          "matrix_warps": 1,
+          "axis_warps": 4,
+          "axis_atoms": 8,
+          "axis_batch": 8,
+          "matrix_pairs": 32,
+          "prepare_warps": 1,
+          "sigma_cutoff": 0.5,
+          "reuse_layout": true,
+          "save_w": true,
+          "h_mode": "split",
+          "coefficient_cache": true,
+          "coefficient_derivatives": true,
+          "edge_reduce": false,
+          "event_atoms": 32,
+          "event_batch": 8,
+          "event_warps": 4
+        }
+      }
+    },
+    {
+      "id": "h-cache-compact",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_quadratic_bspline",
+        "algorithm_revision": "v12",
+        "recipe": {
+          "strategy": "sigma_stream",
+          "direct_sites": 32,
+          "block_sites": 16,
+          "reciprocal": true,
+          "norm_lookup": true,
+          "matrix_sites": 4,
+          "matrix_atoms": 16,
+          "matrix_warps": 1,
+          "axis_warps": 4,
+          "axis_atoms": 8,
+          "axis_batch": 8,
+          "matrix_pairs": 32,
+          "prepare_warps": 1,
+          "sigma_cutoff": 0.5,
+          "reuse_layout": true,
+          "save_w": true,
+          "h_mode": "fused",
+          "coefficient_cache": true,
+          "coefficient_derivatives": false,
+          "edge_reduce": false,
+          "event_atoms": 32,
+          "event_batch": 8,
+          "event_warps": 4
+        }
+      }
+    },
+    {
+      "id": "h-cache-edges",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_quadratic_bspline",
+        "algorithm_revision": "v12",
+        "recipe": {
+          "strategy": "sigma_stream",
+          "direct_sites": 32,
+          "block_sites": 16,
+          "reciprocal": true,
+          "norm_lookup": true,
+          "matrix_sites": 4,
+          "matrix_atoms": 16,
+          "matrix_warps": 1,
+          "axis_warps": 4,
+          "axis_atoms": 8,
+          "axis_batch": 8,
+          "matrix_pairs": 32,
+          "prepare_warps": 1,
+          "sigma_cutoff": 0.5,
+          "reuse_layout": true,
+          "save_w": true,
+          "h_mode": "fused",
+          "coefficient_cache": true,
+          "coefficient_derivatives": true,
+          "edge_reduce": true,
+          "event_atoms": 32,
+          "event_batch": 8,
+          "event_warps": 4
+        }
+      }
+    },
+    {
+      "id": "h-cache-events",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_quadratic_bspline",
+        "algorithm_revision": "v12",
+        "recipe": {
+          "strategy": "sigma_stream",
+          "direct_sites": 32,
+          "block_sites": 16,
+          "reciprocal": true,
+          "norm_lookup": true,
+          "matrix_sites": 4,
+          "matrix_atoms": 16,
+          "matrix_warps": 1,
+          "axis_warps": 4,
+          "axis_atoms": 8,
+          "axis_batch": 8,
+          "matrix_pairs": 32,
+          "prepare_warps": 1,
+          "sigma_cutoff": 0.5,
+          "reuse_layout": true,
+          "save_w": true,
+          "h_mode": "segmented",
+          "coefficient_cache": true,
+          "coefficient_derivatives": true,
+          "edge_reduce": false,
+          "event_atoms": 32,
+          "event_batch": 8,
+          "event_warps": 4
+        }
+      }
+    },
+    {
+      "id": "h-compact-events",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_quadratic_bspline",
+        "algorithm_revision": "v12",
+        "recipe": {
+          "strategy": "sigma_stream",
+          "direct_sites": 32,
+          "block_sites": 16,
+          "reciprocal": true,
+          "norm_lookup": true,
+          "matrix_sites": 4,
+          "matrix_atoms": 16,
+          "matrix_warps": 1,
+          "axis_warps": 4,
+          "axis_atoms": 8,
+          "axis_batch": 8,
+          "matrix_pairs": 32,
+          "prepare_warps": 1,
+          "sigma_cutoff": 0.5,
+          "reuse_layout": true,
+          "save_w": true,
+          "h_mode": "segmented",
+          "coefficient_cache": true,
+          "coefficient_derivatives": false,
+          "edge_reduce": false,
+          "event_atoms": 32,
+          "event_batch": 8,
+          "event_warps": 4
+        }
+      }
     }
   ]
 }

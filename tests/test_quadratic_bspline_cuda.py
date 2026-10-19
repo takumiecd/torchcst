@@ -11,6 +11,7 @@ from torchcst import CSTLinear, CSTOptimizer
 from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
     BSplineAlgorithm,
     BSplineParallelAlgorithm,
+    BSplinePreparedHAlgorithm,
     BSplineRangeAlgorithm,
     BSplineRangeBlockedAlgorithm,
     BSplineRangeFusedAlgorithm,
@@ -24,6 +25,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
 )
 from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineParallelRecipe,
+    BSplinePreparedHRecipe,
     BSplineRangeBlockedRecipe,
     BSplineRangeFusedRecipe,
     BSplineRangeRecipe,
@@ -58,6 +60,9 @@ def case(n=64, a=17):
 def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     from dataclasses import replace
 
+    prepared = strategy == "h_prepared"
+    if prepared:
+        strategy = "sigma_stream"
     spatial = strategy == "matrix_range_spatial"
     blocked = strategy == "matrix_range_blocked"
     reuse = strategy == "matrix_range_reuse"
@@ -76,6 +81,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     )
     registry = Registry()
     registry.register(BSplineAlgorithm())
+    registry.register(BSplinePreparedHAlgorithm())
     registry.register(BSplineRangeAlgorithm())
     registry.register(BSplineRangeFusedAlgorithm())
     registry.register(BSplineRangeSpatialAlgorithm())
@@ -98,7 +104,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     tuned = bool(recipe_options) or strategy == "matrix_separable"
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v11"
+        "v12"
+        if prepared
+        else "v11"
         if spatial
         else "v10"
         if blocked
@@ -119,7 +127,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         else "v2"
         if tuned
         else "v1",
-        BSplineRangeSpatialRecipe(**recipe_options)
+        BSplinePreparedHRecipe(**recipe_options)
+        if prepared
+        else BSplineRangeSpatialRecipe(**recipe_options)
         if spatial
         else BSplineRangeBlockedRecipe(**recipe_options)
         if blocked
@@ -155,6 +165,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
 def test_recipe_and_metadata_roundtrip():
     reg = Registry()
     reg.register(BSplineAlgorithm())
+    reg.register(BSplinePreparedHAlgorithm())
     reg.register(BSplineRangeAlgorithm())
     reg.register(BSplineRangeFusedAlgorithm())
     reg.register(BSplineRangeSpatialAlgorithm())
@@ -283,6 +294,7 @@ def test_live_width_all_gradients(strategy, n, floor):
         "sigma_split",
         "sigma_stream",
         "sigma_stream_memory",
+        "h_prepared",
         "matrix_range",
         "matrix_range_fused",
         "matrix_range_reuse",
@@ -436,6 +448,7 @@ def test_live_graph_optimizer_state(strategy, options):
         "sigma_split",
         "sigma_stream",
         "sigma_stream_memory",
+        "h_prepared",
         "matrix_range",
         "matrix_range_fused",
         "matrix_range_reuse",
@@ -491,6 +504,7 @@ def test_matrix_full_atom_gradient_gate(n, floor):
         "sigma_split",
         "sigma_stream",
         "sigma_stream_memory",
+        "h_prepared",
         "matrix_range",
         "matrix_range_fused",
         "matrix_range_reuse",
@@ -523,6 +537,7 @@ def test_tiny_single_axis_support_below_product_floor(strategy):
         "sigma_split",
         "sigma_stream",
         "sigma_stream_memory",
+        "h_prepared",
         "matrix_range",
         "matrix_range_fused",
         "matrix_range_reuse",
@@ -536,6 +551,7 @@ def test_rectangular_grid_distinct_spacing_and_origin(strategy):
     op = bs.fixture_operator(case())
     reg = Registry()
     reg.register(BSplineAlgorithm())
+    reg.register(BSplinePreparedHAlgorithm())
     reg.register(BSplineRangeAlgorithm())
     reg.register(BSplineRangeFusedAlgorithm())
     reg.register(BSplineRangeSpatialAlgorithm())
@@ -548,7 +564,9 @@ def test_rectangular_grid_distinct_spacing_and_origin(strategy):
     parallel = strategy in ("matrix_flat", "hybrid_grouped", "matrix_support_grouped")
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v11"
+        "v12"
+        if strategy == "h_prepared"
+        else "v11"
         if strategy == "matrix_range_spatial"
         else "v10"
         if strategy == "matrix_range_blocked"
@@ -567,7 +585,9 @@ def test_rectangular_grid_distinct_spacing_and_origin(strategy):
         else "v3"
         if parallel
         else "v1",
-        BSplineRangeSpatialRecipe()
+        BSplinePreparedHRecipe()
+        if strategy == "h_prepared"
+        else BSplineRangeSpatialRecipe()
         if strategy == "matrix_range_spatial"
         else BSplineRangeBlockedRecipe()
         if strategy == "matrix_range_blocked"
@@ -921,6 +941,7 @@ def test_stream_placement_reuse_and_graph_invalidation():
     [
         "sigma_stream",
         "sigma_stream_memory",
+        "h_prepared",
         "matrix_range",
         "matrix_range_fused",
         "matrix_range_reuse",
@@ -964,6 +985,7 @@ def test_stream_batch_tile_and_single_empty_axis(batch, atoms_per_tile):
     [
         "sigma_stream",
         "sigma_stream_memory",
+        "h_prepared",
         "matrix_range",
         "matrix_range_fused",
         "matrix_range_reuse",
@@ -992,6 +1014,7 @@ def test_stream_individual_gradient_requests(input_grad, strategy):
     [
         "sigma_stream",
         "sigma_stream_memory",
+        "h_prepared",
         "matrix_range",
         "matrix_range_fused",
         "matrix_range_reuse",
@@ -1411,3 +1434,110 @@ def test_selected_range_one_warp_graph_crosses_live_sigma_cutoff():
             assert error["max"] < 4e-4 and error["rel_l2"] < 4e-4
         cache = layer.__dict__["_algorithm_states"][0].buffers["stream_layout"]
         assert cache["count"].item() == native
+
+
+def test_prepared_h_recipe_roundtrip_and_rejections():
+    reg = Registry()
+    reg.register(BSplinePreparedHAlgorithm())
+    for mode in ("fused", "split", "segmented"):
+        p = ExecutionPlan(
+            "research_cuda_quadratic_bspline",
+            "v12",
+            BSplinePreparedHRecipe(h_mode=mode),
+        )
+        assert reg.loads_plan(reg.dumps_plan(p)) == p
+    for options in (
+        {"coefficient_cache": 1},
+        {"h_mode": "bad"},
+        {"event_atoms": 8},
+        {"event_batch": True},
+        {"h_mode": "segmented", "coefficient_cache": False},
+    ):
+        with pytest.raises(ValueError):
+            BSplinePreparedHRecipe(**options)
+
+
+@GPU
+@pytest.mark.parametrize(
+    "options",
+    [
+        {"h_mode": "split", "coefficient_cache": False},
+        {"h_mode": "fused"},
+        {"h_mode": "split"},
+        {"h_mode": "fused", "coefficient_derivatives": False},
+        {"h_mode": "fused", "edge_reduce": True},
+        {"h_mode": "segmented"},
+        {"h_mode": "segmented", "coefficient_derivatives": False},
+    ],
+)
+@pytest.mark.parametrize("n", [64, 1024])
+@pytest.mark.parametrize("floor", [1e-6, 1000.0])
+def test_prepared_h_dynamic_full_gradients(options, n, floor):
+    layer = model("h_prepared", n=n, a=33, floor=floor, **options)
+    for step in range(3):
+        if step:
+            with torch.no_grad():
+                layer.atoms.p[:, :2].mul_(1.003)
+                layer.atoms.p[:, 2:].add_(0.0037)
+        x = torch.randn(3, 2 * n, device="cuda")[:, ::2].requires_grad_()
+        gate(layer, x, torch.randn(3, n, device="cuda"))
+
+
+@GPU
+@pytest.mark.parametrize("mode", ["fused", "split", "segmented"])
+def test_prepared_h_graph_crosses_selected_cutoff(mode):
+    import math
+
+    from benchmarks.cuda.linear.check_normalized import check
+
+    layer = model("h_prepared", n=1024, a=33, sigma_cutoff=0.2, h_mode=mode)
+    widths = torch.tensor([0.1, 0.19, 0.21, 1.6], device="cuda", dtype=torch.float64)
+    ids = torch.arange(33, device="cuda")
+    with torch.no_grad():
+        layer.atoms.p[:, 2:] = 51.15
+
+    def update(step):
+        sigma = widths[(ids + step) % 4]
+        radius = (1 + 3 * (sigma / 0.1).log() / math.log(128.0)).sqrt()
+        with torch.no_grad():
+            layer.atoms.p[:, 0] = (0.6 * radius).float()
+            layer.atoms.p[:, 1] = (0.8 * radius).float()
+        return int((sigma <= 0.2).sum())
+
+    update(0)
+    x = torch.randn(3, 1024, device="cuda", requires_grad=True)
+    dy = torch.randn_like(x)
+    gate(layer, x, dy)
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        y = layer(x)
+        dx, dp = torch.autograd.grad(y, (x, layer.atoms.p), dy)
+    for step in range(1, 5):
+        native = update(step)
+        graph.replay()
+        rx = x.detach().double().requires_grad_()
+        rp = layer.atoms.p.detach().double().requires_grad_()
+        ref = bs.oracle(copy.deepcopy(layer.kernel).double(), layer.chart, rp, rx)
+        rdx, rdp = torch.autograd.grad(ref, (rx, rp), dy.double())
+        for actual, expected in zip((y, dx, dp), (ref, rdx, rdp)):
+            error = check(actual, expected, 4e-4)
+            assert error["max"] < 4e-4 and error["rel_l2"] < 4e-4
+        cache = layer.__dict__["_algorithm_states"][0].buffers["stream_layout"]
+        assert cache["count"].item() == native
+
+
+@GPU
+@pytest.mark.parametrize("mode", ["split", "segmented"])
+def test_prepared_h_retained_forward_geometry_and_event_order(mode):
+    layer = model("h_prepared", n=128, a=33, h_mode=mode, sigma_cutoff=0.2)
+    x = torch.randn(3, 128, device="cuda", requires_grad=True)
+    dy = torch.randn_like(x)
+    y = layer(x)
+    expected = torch.autograd.grad(y, (x, layer.atoms.p), dy, retain_graph=True)
+    with torch.no_grad():
+        layer.atoms.p[:, :2].mul_(1.2)
+        layer.atoms.p[:, 2:].add_(0.31)
+    layer(x)
+    actual = torch.autograd.grad(y, (x, layer.atoms.p), dy)
+    for a, b in zip(actual, expected):
+        torch.testing.assert_close(a, b)

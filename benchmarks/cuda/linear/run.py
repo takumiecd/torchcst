@@ -576,6 +576,23 @@ def measure(args, run):
                         "save_w": recipe.save_w,
                     }
                 )
+                if getattr(recipe, "prepared_h", False):
+                    hybrid_routing.update(
+                        {
+                            "prepared_h_mode": recipe.h_mode,
+                            "coefficient_cache": recipe.coefficient_cache,
+                            "cached_derivatives": recipe.coefficient_derivatives,
+                            "edge_reduction": recipe.edge_reduce,
+                            "coefficient_scope": "fresh each forward; saved forward snapshot reused by backward",
+                            "split_stage_scope": "h_query/back_query/y_inject/dx_inject are empty in fused mode; fused spans retain both query and injection",
+                            "event_policy": "fresh integer histogram/scan/place per forward; no site-by-atom table"
+                            if recipe.h_mode == "segmented"
+                            else None,
+                            "h_elements_per_buffer": m * case.atoms
+                            if recipe.h_mode != "fused"
+                            else 0,
+                        }
+                    )
                 if recipe.strategy == "matrix_range":
                     hybrid_routing.update(
                         {
@@ -740,6 +757,7 @@ def measure(args, run):
             names = executor.diagnostic_components(
                 run.entry(args.plan_id).plan.recipe.strategy,
                 getattr(run.entry(args.plan_id).plan.recipe, "range_planes", 3),
+                getattr(run.entry(args.plan_id).plan.recipe, "prepared_h", False),
             )
             backend_events = {
                 name: [
