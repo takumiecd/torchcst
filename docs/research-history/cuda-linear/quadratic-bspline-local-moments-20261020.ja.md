@@ -166,3 +166,30 @@ CPUで5状態×B32/B64×floor1e-6/1000の20条件を確認した。原本とコ�
 - 既存局所moment CPU screenに、denominator/inverse/gammaのFP32計算とtiny/floorのFP64 guardを加えたscreenも全20条件PASS。Y/dX/all-source maxabs上限6.297e-5 /9.630e-5 /7.664e-5、relative L2は6.952e-6以下。native projectionとsource縮約はCPUでFP64であり、GPU候補全体の保証にはしない。
 
 次の実装候補は、通常の正規化とFP64 guard経路を別kernelにし、必要なatomだけ正確な幅/正規化へ戻す方式。精度gateと完全step/両peakを同じ基準で検証するまで採用しない。
+
+## v25検証結果：paddingは負の結果
+
+source `cdf53068d29a7b63a5a4972ed8c2fdf16ae8f168`、job `l4job-6fa0a769c0ee4f8181aa474e3c9af35e`。local系回帰247 checks PASS /859 deselected、823.06秒。全主要planの独立FP64 full-shape gateもPASS。driver全体1089.45秒、timeoutなし。source1531 filesのcommit byte一致、manifest42 files、archive hash、return0/cleanup ackを検証した。
+
+| plan | B32 ms | allocated/reserved MiB | B64 ms | allocated/reserved MiB |
+|---|---:|---:|---:|---:|
+| query-fma |1.615172|81.288 /172|2.483848|96.791 /188|
+| local-split-prepare16 |1.449418|34.016 /98|2.620316|44.490 /102|
+| local-pad4 |1.527326|35.071 /98|2.772048|45.929 /102|
+| local-pad8 |1.495293|36.231 /98|2.697680|46.973 /142|
+| local-pad16 |1.473581|38.550 /98|2.668978|50.463 /142|
+| Dense |0.082248|49.002 /106|0.103549|49.502 /106|
+
+全padding候補が完全stepで遅くなった。B64の8列はreserved、16列はallocated/reservedの両方でDenseを上回る。B64 stream forward/backwardもcontrol0.677/0.715ms→padding4 0.754/0.802、8 0.713/0.757、16 0.694/0.739で改善しない。単に物理strideへ余白を足す方針は採用しない。この結果だけで特定cacheやpartitionを原因から完全に除外したとは主張しない。
+
+source SHA256 `a09afa44f435e806f6ce53940cd4ec58ffb856209f24d59de1b4016ac4bd7278`、result SHA256 `801ed6d32c68b3cd74ff34f35a16620b5651c9f4799a0fd7e1b1ec621b3e9e3e`。v20–25通算の誤差上限はY6.583e-5 /dX7.542e-5 /all-source6.261e-5、relative L2はいずれも3.965e-6以下。
+
+## cleanup失敗runの除外
+
+small/switch job `l4job-498058fb1bcd45c199035a92ce97ba6d` はdriver return0・timeoutなしで測定を終え、archive/manifest検証まで完了した。その後のremote cleanupが180秒でtimeoutし、Connection was lostを記録した。poolは所有VMを停止し、serverのNo active sessions foundも確認した。原本をignored `excluded-jobs/`へ保持し、このrunはprimary速度/メモリの表から除外した。source SHA256 `13ee4a3484d414c86a5cb38023a5ddb24a663ad2e71c29b6c03c7c2259596bf0`、result SHA256 `21d5041aaf2004d736b8ff0e60183315e7cba8a8b4793b4f3ba31f7093cb831f`。新L4で明示的な同条件再測定 `l4job-191754323fe74c96968dc8a74d48a495` を行う。既に検証済みの主要比較の証拠は失われていない。
+
+## launch設定の切り分けとbatch分割screen
+
+次は同じv24のruntime/recipeが既に受け付けるaxis_atoms/axis_warpsの(4,4)/(4,2)/(8,2)/(16,4)、およびnative_warps=8を個別に比較する。controlはaxis(8,4)、native_warps=4、padding0、16分散。FP32 projectionでB64の仕事量/プログラムが増える影響を切り分けるもので、8 warpsへ無条件に拡張する新仕様ではない。alias/Caseをcommitし、準備・L2・並べ替え・全勾配・optimizer込みの完全stepと両peakで採否を決める。
+
+batchを32列（1状態は16列）ずつ独立に縮約し、source pullbackの部分勾配をFP32加算するCPU screenも実施した。5状態×B32/B33/B64×2floorの30条件と、tile16の1状態6条件が全て4e-4 gate内。maxabsはY6.464e-5 /dX8.962e-5 /all-source7.827e-5、relative L2は7.021e-6以下。これはGPU未実装であり、native projectionはFP64のまま。コードと原本はignored `batch-partial-screen.py` と `batch-partial-cpu-tile*-step*.json`。

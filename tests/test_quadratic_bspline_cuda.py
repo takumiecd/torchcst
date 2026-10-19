@@ -2321,6 +2321,8 @@ SPLIT_PREPARE_OPTIONS = [
         "norm_float32": False,
         "save_h": "hp",
     },
+    {"_split_prepare": True, "axis_atoms": 4, "axis_warps": 4},
+    {"_split_prepare": True, "native_warps": 8},
 ]
 PADDED_OPTIONS = [
     {"_padded": True, "bank_padding": 4},
@@ -2426,7 +2428,8 @@ def test_query_empty_and_batch64(options):
         and torch.count_nonzero(dx) == 0
         and dp.shape == (0, 4)
     )
-    layer = model("h_query", n=64, a=33, axis_atoms=4, axis_warps=4, **options)
+    options = {"axis_atoms": 4, "axis_warps": 4, **options}
+    layer = model("h_query", n=64, a=33, **options)
     gate(layer, x, torch.randn_like(x))
 
 
@@ -2620,7 +2623,8 @@ def test_local_dyadic_boundaries_graph(options):
 
 @GPU
 @pytest.mark.parametrize("factor", [1 - 1e-6, 1 + 1e-6])
-def test_local_near_norm_floor(factor):
+@pytest.mark.parametrize("native_warps", [4, 8])
+def test_local_near_norm_floor(factor, native_warps):
     import math
 
     options = {
@@ -2629,6 +2633,7 @@ def test_local_near_norm_floor(factor):
         "prepare_float32": True,
         "contract_float32": True,
     }
+    options["native_warps"] = native_warps
     probe = model("h_local", n=64, a=1, **options)
     q = bs.decode(probe.kernel, probe.atoms.p.detach().double())
     radius = math.sqrt(6) * q[:, 1].rsqrt()
@@ -2768,3 +2773,19 @@ def test_padded_recipe_roundtrip_and_bounds():
     for value in (1, 3, 32, True):
         with pytest.raises(ValueError):
             BSplineLocalPaddedRecipe(bank_padding=value)
+
+
+@GPU
+@pytest.mark.parametrize("batch", [3, 64])
+def test_local_native_warp8_tiny_profiles(batch):
+    layer = model("h_local_split", n=64, a=9, sigma_cutoff=0.2, native_warps=8)
+    centers = torch.tensor(
+        [-0.3, -0.2, -0.15, 0.0, 6.3, 6.45, 6.5, 6.55, 6.7], device="cuda"
+    )
+    with torch.no_grad():
+        layer.atoms.p[:, 0] = 0.6
+        layer.atoms.p[:, 1] = 0.8
+        layer.atoms.p[:, 2] = centers
+        layer.atoms.p[:, 3] = centers.roll(3)
+    x = torch.randn(batch, 64, device="cuda", requires_grad=True)
+    gate(layer, x, torch.randn_like(x))
