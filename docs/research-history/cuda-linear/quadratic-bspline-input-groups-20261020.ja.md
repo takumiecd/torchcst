@@ -2486,3 +2486,79 @@ result SHA256 `9f122aa709da86a774fdf6260cb10f90044b1dd4335f43aa61f5c1bfaf83b430`
 そのためv66のescape planeが範囲外となる。batch分割側も6面を確保するよう修正し、
 従来v65は3面のままであることを含むshape検査と、分割scratchの全6面NaN埋めからの
 融合zero検査を追加する。GPU再実行で確認するまで、この修正の精度・速度・メモリは未検証。
+
+### Bernstein nodeの全atom勾配（CPU screen、GPU未実装）
+
+同じ二次B-splineの各pieceを、nodeの左右site座標をa,bとして
+`q(x)=c0*(1-t)^2+c1*2t(1-t)+c2*t^2`, `t=(x-a)/(b-a)`で表す。
+`c0=q(a)`, `c1=2*q((a+b)/2)-(q(a)+q(b))/2`, `c2=q(b)`は二次多項式なら厳密で、
+単一siteのnodeはbasisを(1,0,0)とする。実装screenでは端点のuの積から直接controlを作り、
+小さい値同士の差を避ける。二分区間を変更してもprofile自体と支持は変わらない。
+
+共通root `sqrt(D)`でcontrolを割り、nodeごとの3つのmomentを
+`B[node,p,batch]=sum_site basis_p(t)*X[batch,site]`と置く。
+`H[atom,batch]=sum_node,p C[atom,node,p]*B[node,p,batch]`となる。
+Y側は`Delta[node,p,batch]=sum_atom amp*H*C`を作り、各siteがancestor nodeの
+`basis_p(t)*Delta`を足す。prefixを全site・全levelへ保存せず、nodeごとの3数へ置換する案である。
+centerの微分はcontrolを微分し、既存の`gamma=dD/D`を全積に一度だけ適用する。
+piece境界の整数分類自体を微分せず、同一profileの多項式とそのcenter微分を使う。
+
+`bernstein-all4p-cpu.py/json`はN64/A513/B3,33、通常・513重複・floor・空支持・
+負振幅・ゼロ振幅の3step、計36状態を独立の元oracleと比較した。
+FP64 control/bankのY最大3.141e-12、dX4.292e-12、autograd全4P1.928e-12、
+明示式全4P1.051e-12、最大relL2 2.459e-14。これは数式のCPU同値性検査である。
+
+`bernstein-f32-node-cpu.py/json`では同じ36状態でcontrolとmoment bankのみFP32へ丸め、
+その後の積・node集約・復元・L2補正をFP64にした。Y最大2.566e-5、dX2.433e-5、
+明示式全4P1.297e-4、最大relL2 2.021e-6で、同じ4e-4 gateを通過した。
+全4P最大はB33/floor/step1である。FP32集約の可否やGPUでの丸め・速度・ピークの根拠にはしない。
+node ownerによる集約ならCSR型索引の構築も毎step必要となるため、その費用・容量を除外しない。
+
+追加のCPU切り分けでは`bernstein-f32-product-cpu.py/json`でqueryと注入の積もFP32へ変更した。
+36状態のY最大2.707e-5、dX2.071e-5、全4P1.614e-4、最大relL2 2.624e-6だった。
+`bernstein-f32-partial32-cpu.py/json`はH/Hmu/G/Gmuの和もFP32にし、nodeのatom和を
+最大32atomのFP32部分和に分けた後でFP64へ変換して合計した。
+Y最大1.332e-4、dX1.068e-4、全4P1.614e-4、最大relL2 2.625e-6で全36状態が通過した。
+部分和のFP64結合・復元・L2補正は残る。GPUのreduction順序、Graph、全shape、
+構築・並べ替え・正規化込みの速度と両peakは未検証で、CPU screenだけで採用しない。
+
+source190d7f86のCPU suiteは2044 passed/5614 skipped/18既存warning（39.53s）、Ruff、
+Git差分検査、CPU CI39414426603が通過。wheel/sdistの全382 runtimeファイルが当該Git bytesと一致した。
+sdist SHA256 `396c810ade76658bf400f4d54b64a5fc21b7bc60b23256d0de8e605b3bf11605`、
+wheel SHA256 `44327d6f48a548f8953251067d11f06978c7c2a6f9238784f782c7bfefd7ee3a`。
+
+### v65/v66のL4完全step（精度・メモリ通過、速度は悪化）
+
+source190d7f86、job `l4job-928b63c26acc469fa461342a3c60007f`はraw60/regression87件、
+両主条件3live状態の独立FP64全shape Y/dX/全4P gate、初期P/X/target hash一致、
+stepごとのsigma変更52428atomを通過した。新しい513重複・floor・空/単一支持・
+個別/全勾配・Graph・retained/concurrent検査を保持している。
+
+| L4、65round、完全step | v64 packed Bank ms | v65 normalized Co ms | v66 compensated ms | Dense ms |
+| --- | ---: | ---: | ---: | ---: |
+| B32 mixed | 4.523604 | 5.356592 | 5.820144 | .083544 |
+| B64 mixed | 9.108639 | 10.758507 | 11.452825 | .104212 |
+
+v64/v65のallocated/reserved peakはB32で34.255/96MiB、B64で34.755/100MiB。
+v66は38.867/96MiBと39.367/100MiBで、escape面のためallocatedが4.612MiB増えた。
+Denseは49.002/106MiBと49.502/106MiB。両peak条件は通過するが速度目標は全て未達。
+全候補の主gate最大Y1.233e-6、dX1.441e-6、全4P2.995e-5、最大relL2 1.042e-7。
+
+同一jobのv64比でv65はB32約18.4%/B64約18.1%遅く、v66は約28.7%/25.7%遅い。
+chunk16の診断ではv64/v65/v66のforwardがB32で.461/.817/.720ms、
+backwardが1.021/1.125/1.208ms、restoreが.112/.102/.169ms。
+B64でもforward .470/.839/.741、backward 1.049/1.175/1.251、restore .114/.105/.173msだった。
+v65では係数をFP64へ復号する注入側の処理が残り、v66では追加面の復元とguardも増える。
+streamのどの命令が何msかを単独測定した結果ではない。全候補streamにspill/local load/storeはなかった。
+FP64演算を減らす式変形だけでは高速化にならなかったため、両新案は速度候補として採用しない。
+診断stageを足して完全step時間を作ってはいない。独立jobは1件で、65roundを65runとは数えない。
+
+NVIDIA L4、driver580.82.07、Torch2.11.0+cu130/CUDA13.0/Triton3.6.0。
+source SHA256 `1ee6733bb28cd23fecb40cca012c4208f183efe775d04212406c8906ecdf907c`、
+result SHA256 `92f6352e51d6e718c836f684b8388844edf43c965f3fcb4502dff75a4101065a`。
+1708 sourcefiles/31 manifest byte検証、return0/no-timeout/cleanup ack、supervisor終了と所有VM停止を確認した。
+normal L4 primaryは45件、診断7件、G4 primary13件。上記失敗2jobはこのprimary数へ加えない。
+
+次のG4比較は、有望だったv64とDenseのみを主2条件で測る。
+`*-packed-bank-qualification.json`は従来mixed caseと同じ入力・optimizer・更新・精度・65roundを保ち、
+planだけv64に絞る。新profileや精度緩和、G4での広いparameter sweepは行わない。
