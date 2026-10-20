@@ -2265,3 +2265,60 @@ N64/1024、batch3/17とpadding、tile1/4、融合あり/なしのprefix値とscr
 513重複、動的σ/X、個別/全勾配、Graph、retained/concurrent、主条件のgateは緩めない。
 CPU2043 passed/5532 skipped/18既存warning(39.30s)、Ruff/両case declarationを確認。
 GPUの精度・性能・メモリは未確認であり、単体の誤差上界や同じpayloadだけで採用しない。
+
+### v64 L4: 分割共有で前回候補から約9–10%短縮、両peak維持
+
+source `7eed7ccc2541ae34daa6c64cf1665eed302b1a0c`、job
+`l4job-fa5c5b2d337c496a95b03b6ba80b68a1`。NVIDIA L4/driver580.82.07、
+Torch2.11.0+cu130/CUDA13/Triton3.6。
+raw53件PASS(74.44s)、回帰48件PASS(230.52s)。通常・混在・極端値のquery、tag/raw escape、
+prefix/fused zero/padding、513重複、動的σ、個別/全勾配、Graph、retained/concurrentを確認。
+両主条件・3状態の独立FP64全shape gate、初期hash一致、全52,428 sigma更新も全planでPASS。
+最大Y/dX/全4Pは1.233e-6/1.426e-6/2.829e-5、relL2各7.601e-8/7.957e-8/1.044e-7以下。
+
+|L4,65rounds|v60 FP64 ms|v63 bit split ms|v64 packed Bank ms|Dense ms|候補allocated/reserved MiB|
+|---|---:|---:|---:|---:|---:|
+|B32 mixed|5.073709|4.734830|4.307868|.082483|34.255/96|
+|B64 mixed|9.839006|9.433346|8.490546|.103204|34.755/100|
+
+v64は同一runのv63比で9.02%/10.00%、v60比15.09%/13.71%短い候補改善。
+独立jobは1回で、65時間sampleを65独立runとは数えない。
+全候補の両peakはDense49.002/106、49.502/106MiB以下。
+速度はDense比約52.23倍/82.27倍で目標未達。v63もこの正常完了runでは検証できたが、
+前回cleanup失敗runの区分を通常primaryへ移さない。
+
+v64の16行chunkはforward約.437〜.444ms、backward約.969〜.990ms、
+input Bank約.103〜.104ms/recompute約.100〜.102ms、各scan約.105〜.108ms。
+register40/54、shared16bytes、spill0/local load-storeなし。
+Bank writerにpackを足す費用を含めても完全stepは短くなったが、forward/backwardの集約も残っている。
+別Graphのcomponent値を主stepに加算したり異なるrun間で差し引いて因果比率としない。
+
+source archive `5e37f5dbb2f18c9c2393a63c8c74fb2c75931872c572c25387b4aaf7d347ed72`、
+result archive `b5c0ac4e7f23a208e78c242c48d4fe9f3aa2a40e58b566cf5bc22d1548276ecd`。
+1705source files/31manifest entries/Git-byte一致/return0/no-timeout/cleanup ack確認。
+source CPU CI PASS、wheel/sdist381runtimeファイルGit-byte一致。
+正常完了L4 primary44件、診断5件、G4 primary13件、cleanup失敗は別区分。
+所有GPU停止済み。defaultへは採用せず、2倍以内/両peak目標はactive/unmetのまま。
+
+### 同じprofileのBernstein基底と加算残差のCPU screen（GPU未実装）
+
+次の構造候補として、支持を3つのpolynomial pieceに分け、各pieceの整数site区間をdyadic coverし、
+各nodeを正のBernstein2基底[(1-t)^2,2t(1-t),t^2]で表すCPU screenを行った。
+profileの変更や窓の追加ではない。n=64、σ=.168/.472/1.6/12、B3/33、3状態、
+513個の同一atom・振幅.7・sampled product L2の24状態で、形とH/Hmu、Yの誤差を比べた。
+元のGPU gateと同じ乱数/Polar parameterではなく、全4PやGPUの検証でもない。
+
+形のFP64再現はmaxabs1e-13以下、center derivativeは1e-12以下。
+FP32形の最大誤差9.544e-8、H3.258e-6、Hmu1.734e-6、HをFP64で出力へ投影したY誤差5.197e-5。
+一方、FP32でnode係数を513回加算するとY誤差.003166となり、基底変更だけでは集約誤差を解決しなかった。
+各加算の丸め残差も別のFP32 laneへ蓄積し、FP64で復元する診断ではY誤差5.197e-5だった。
+これは加算処理を見直す動機であって、高速なGPU実装や全勾配PASSを示さない。
+
+N1024で2,003個の連続σ/中心を調べたdyadic node数は2/median12/max28。
+3basis bankは3*(2N-1)=6141 cellsだが、queryのnode数増加、係数保持/再計算、構築、
+GPU atomicの競合・残差の誤差・メモリpeakは未測定。値の保持量だけから速度を主張しない。
+原本はignored `bernstein-cpu-screen.py/json`。
+GPU atomicの実装案では通常のFP32加算と同じ丸め環境を仮定せず、
+[PTX ISAのatom仕様](https://docs.nvidia.com/cuda/parallel-thread-execution/#parallel-synchronization-and-communication-instructions-atom)
+が示すround-to-nearest-evenとglobal FP32のsubnormal処理も考慮する必要がある。
+この確認を理由に数式や4e-4 gateを変更しない。
