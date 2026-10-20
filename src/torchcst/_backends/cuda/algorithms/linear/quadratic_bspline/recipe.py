@@ -986,3 +986,24 @@ class BSplineLocalFrameArenaRecipe(BSplineLocalFreshPartitionRecipe):
         super().__post_init__()
         if self.coefficient_layout != "soa" or not self.canonical_meta:
             raise ValueError("frame arena requires source Meta and SoA coefficients")
+
+
+@dataclass(frozen=True)
+class BSplineLocalNumericArenaRecipe(BSplineLocalFrameArenaRecipe):
+    """Revision54: one numerical allocation and same-frame scratch reuse."""
+
+    numeric_arena = True
+    bank_padding: int = 0
+
+    def __post_init__(self):
+        super().__post_init__()
+        if (
+            self.batch_chunk != 64
+            or not self.fuse_bank_zero
+            or not self.save_input_bank
+        ):
+            raise ValueError(
+                "numeric arena requires full batch, fused zero and saved input bank"
+            )
+        if type(self.bank_padding) is not int or self.bank_padding != 0:
+            raise ValueError("numeric arena requires unpadded bank rows")

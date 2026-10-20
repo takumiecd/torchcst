@@ -1654,3 +1654,48 @@ B32はv52chunk32/v53、B64はv52chunk32/v52chunk64/v53chunk64とDenseを同条�
 v53 CPU2023 passed/5092 skipped/18既存warning(40.64s)、Ruff、両case、build PASS。
 その後追加したCUDA viewパラメータ6件はCPUではskipとなり、CPU view/recipe7件を再確認してPASS。
 GPUでは既存fresh分類3件+arena view CPU6/CUDA6件、その後実モデル共有33件と両primaryへ進む。
+
+### v53 G4: B32はreserved改善、B64の上限超過は解消せず
+
+初回job `colabjob-4020537352764c15bf516a8726132a71`はG4割当HTTP503でdriver実行前に中断。
+VMなし/slot stopped/結果archiveなしを確認し、source1686filesのGit-byte一致とlifecycleを
+allocation-failuresへ保存した。実行結果として数えない。pool recover後に明示的に再提出した。
+
+source `80f326a2bb784c083cdf0a68749e6d1f44cff91d`、成功job
+`colabjob-1fa4a486f14e4b3cbe632255b081b782`でraw15件PASS(4.56s、GPU9/CPU6)、
+共有33件PASS(53.93s)。両primary全planの3状態full-shape独立FP64 Y/dX/全4P、
+全52,428sigma更新、P/X/target hash一致PASS。全4P maxabs1.087e-4、relL2 6.291e-7。
+
+|G4,65rounds|v52chunk32 ms|v52chunk64 ms|v53 ms|Dense ms|v53 allocated/reserved MiB|
+|---|---:|---:|---:|---:|---:|
+|B32 mixed|.325980|—|.324579|.066090|33.305/94|
+|B64 mixed|.496319|.404410|.404220|.074930|45.687/138|
+
+B32はv52の33.544/98MiBからreservedが4MiB減った。速度差0.43%は強い改善と扱わない。
+B64は140→138MiBに留まり、Dense106MiB以下のreserved条件は満たさない。
+allocatedだけを根拠に一括処理を採用しない。通常chunk32の37.607/100MiBは両条件以内。
+source archive `1233352d56c37a7d9f813ed19ff755cf96d0ad1732f095d05818a86bf9b473f3`、
+result archive `57e2d9303afaf7a8d804f252f484747342b9270c2210ff5c7b850442bcbd3cca`。
+1686source files/28manifest entries/Git-byte一致、return0/no-timeout/cleanup ackを厳密検証。
+accepted G4は11job、診断/失敗/割当失敗/L4は別。所有GPU停止済み。source CPU CI PASS(2m14s)。
+
+## v54: 数値workspaceをまとめ、forward deltaをadjoint bankへ再利用（検証前）
+
+v53のimmutable係数frameとは別に、InputBank、AdjointBank、DeltaInput、Borderを
+一つのFP32 storageに256byte整列して確保する。forwardのDeltaOutputはAdjointBank領域を使う。
+Yへのrestoreが終わってからbackwardでその領域へdYのbankを書き、別のDeltaInputへdXを注入する。
+保存InputBankはどちらの書き込み領域とも重ならず、不変である。
+
+storageはsave_for_backwardで保存し、backward後まで残るctx属性にTensorを置かない。
+retained backwardは同じforward streamならscratchを再利用し、異なるstreamなら従来の独立scratchへ戻す。
+同じstreamへの複数host threadのlaunch列はframe別lockでまとめて投入し、異なるdyのbank/queryが混ざらないようにする。
+同期的GPU waitや数式変更は加えない。fused Triton zeroを必須にし、保存InputBankと同storageにある
+scratchの初期化でPyTorchの共有version counterを増やさない。入力bankの値は変更しない。
+
+full batch<=64、bank padding0、saved input bank、fused bank/zeroが数値arenaの支持条件。
+基本設定とsigma cutoff.5の混在native/H、viewの非重複、同時retained全勾配、共有動的gate、
+両主条件の完全stepとallocated/reservedで確認する。現段階で性能/メモリ改善は主張しない。
+
+v54 CPU2026 passed/5134 skipped/18既存warning(40.87s)、変更対象Ruff、両case、build PASS。
+raw分類/arena CPU/CUDA view19件（GPU11/CPU8）、実モデル共有+同時retained34件の後、
+両primaryでv52chunk32/v53chunk64/v54chunk64/Denseを比較する。

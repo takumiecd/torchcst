@@ -822,6 +822,10 @@ def measure(args, run):
                             ),
                         }
                     )
+                if getattr(recipe, "numeric_arena", False):
+                    hybrid_routing["numeric_allocation_policy"] = (
+                        "single frame-owned input/adjoint/delta/border storage; forward delta reused as adjoint bank; immutable input; per-stream scratch fallback and host launch serialization"
+                    )
                 if getattr(recipe, "frame_arena", False):
                     hybrid_routing["frame_allocation_policy"] = (
                         "single 256byte-aligned immutable frame storage for Meta/IDs/Pos/Co/half/borders/masks; separate persistent diagnostic count and numerical workspaces"

@@ -41,6 +41,7 @@ from .recipe import (
     BSplineLocalNativeCacheRecipe,
     BSplineLocalNativePointRecipe,
     BSplineLocalNativeShardsRecipe,
+    BSplineLocalNumericArenaRecipe,
     BSplineLocalOwnerRecipe,
     BSplineLocalPaddedRecipe,
     BSplineLocalPairedDecodeRecipe,
@@ -602,3 +603,9 @@ class BSplineLocalFreshPartitionAlgorithm(BSplineLocalBankZeroAlgorithm):
 class BSplineLocalFrameArenaAlgorithm(BSplineLocalFreshPartitionAlgorithm):
     revision: str = "v53"
     recipe_type: type = BSplineLocalFrameArenaRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalNumericArenaAlgorithm(BSplineLocalFrameArenaAlgorithm):
+    revision: str = "v54"
+    recipe_type: type = BSplineLocalNumericArenaRecipe

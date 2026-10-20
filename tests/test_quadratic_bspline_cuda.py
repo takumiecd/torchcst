@@ -34,6 +34,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineLocalNativeCacheAlgorithm,
     BSplineLocalNativePointAlgorithm,
     BSplineLocalNativeShardsAlgorithm,
+    BSplineLocalNumericArenaAlgorithm,
     BSplineLocalOwnerAlgorithm,
     BSplineLocalPaddedAlgorithm,
     BSplineLocalPairedDecodeAlgorithm,
@@ -89,6 +90,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineLocalNativeCacheRecipe,
     BSplineLocalNativePointRecipe,
     BSplineLocalNativeShardsRecipe,
+    BSplineLocalNumericArenaRecipe,
     BSplineLocalOwnerRecipe,
     BSplineLocalPaddedRecipe,
     BSplineLocalPairedDecodeRecipe,
@@ -142,8 +144,13 @@ def case(n=64, a=17):
 def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     from dataclasses import replace
 
-    frame_arena = strategy == "h_frame_arena" or recipe_options.pop(
-        "_frame_arena", False
+    numeric_arena = strategy == "h_numeric_arena" or recipe_options.pop(
+        "_numeric_arena", False
+    )
+    frame_arena = (
+        numeric_arena
+        or strategy == "h_frame_arena"
+        or recipe_options.pop("_frame_arena", False)
     )
     fresh_partition = (
         frame_arena
@@ -341,6 +348,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineLocalTableDecodeAlgorithm())
     registry.register(BSplineLocalFreshPartitionAlgorithm())
     registry.register(BSplineLocalFrameArenaAlgorithm())
+    registry.register(BSplineLocalNumericArenaAlgorithm())
     registry.register(BSplineLocalIntegerAlgorithm())
     registry.register(BSplineLocalVectorAlgorithm())
     registry.register(BSplineLocalUnifiedAlgorithm())
@@ -376,7 +384,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         recipe_options.setdefault("lane_atoms", 4)
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v53"
+        "v54"
+        if numeric_arena
+        else "v53"
         if frame_arena
         else "v52"
         if fresh_partition
@@ -481,7 +491,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         else "v2"
         if tuned
         else "v1",
-        BSplineLocalFrameArenaRecipe(**recipe_options)
+        BSplineLocalNumericArenaRecipe(**recipe_options)
+        if numeric_arena
+        else BSplineLocalFrameArenaRecipe(**recipe_options)
         if frame_arena
         else BSplineLocalFreshPartitionRecipe(**recipe_options)
         if fresh_partition
@@ -3035,6 +3047,13 @@ ALL_QUERY_OPTIONS = (
         pytest.param({"_frame_arena": True}, id="frame-arena-64"),
         pytest.param({"_frame_arena": True, "batch_chunk": 32}, id="frame-arena-32"),
     ]
+    + [
+        pytest.param({"_numeric_arena": True}, id="numeric-arena-0"),
+        pytest.param(
+            {"_numeric_arena": True, "sigma_cutoff": 0.5},
+            id="numeric-arena-cutoff",
+        ),
+    ]
     + [pytest.param(opt, id=f"vector-{i}") for i, opt in enumerate(VECTOR_OPTIONS)]
     + [pytest.param(opt, id=f"integer-{i}") for i, opt in enumerate(INTEGER_OPTIONS)]
     + [
@@ -3933,6 +3952,7 @@ def test_native_bound_recipe_roundtrip_and_bounds():
         "h_table_decode",
         "h_fresh_partition",
         "h_frame_arena",
+        "h_numeric_arena",
         "h_local_integer",
         "h_local_vector",
     ],
@@ -4034,6 +4054,7 @@ def test_native_bound_count_changes_across_graph(batch, floor, strategy):
         "h_table_decode",
         "h_fresh_partition",
         "h_frame_arena",
+        "h_numeric_arena",
         "h_local_integer",
         "h_local_vector",
     ],
@@ -4085,6 +4106,7 @@ def test_native_bound_strided_individual_gradients(which, strategy):
         "h_table_decode",
         "h_fresh_partition",
         "h_frame_arena",
+        "h_numeric_arena",
         "h_local_integer",
         "h_local_vector",
     ],
@@ -4629,6 +4651,7 @@ def test_native_cache_recipe_roundtrip_and_bounds():
         ("h_table_decode", True),
         ("h_fresh_partition", True),
         ("h_frame_arena", True),
+        ("h_numeric_arena", True),
         ("h_local_integer", True),
         ("h_local_vector", True),
     ],
@@ -4658,6 +4681,7 @@ def test_native_cache_spacing_fallbacks(strategy, unroll, spacing, batch, amplit
             "h_table_decode",
             "h_fresh_partition",
             "h_frame_arena",
+            "h_numeric_arena",
             "h_local_integer",
             "h_local_vector",
         )
@@ -6562,3 +6586,90 @@ def test_frame_arena_aligned_views_and_independent_lifetimes(atoms, extras, devi
     later = make_frame(source, atoms, shards=extras, endpoints=extras, active=extras)
     later["meta"].zero_()
     assert torch.equal(saved, expected)
+
+
+def test_numeric_arena_recipe_roundtrip_and_guards():
+    reg = Registry()
+    reg.register(BSplineLocalNumericArenaAlgorithm())
+    recipe = BSplineLocalNumericArenaRecipe()
+    plan = ExecutionPlan("research_cuda_quadratic_bspline", "v54", recipe)
+    assert reg.loads_plan(reg.dumps_plan(plan)) == plan
+    for bad in (
+        {"batch_chunk": 32},
+        {"save_input_bank": False},
+        {"fuse_bank_zero": False},
+        {"bank_padding": 4},
+    ):
+        with pytest.raises(ValueError):
+            BSplineLocalNumericArenaRecipe(**bad)
+
+
+@pytest.mark.parametrize("device", ["cpu", pytest.param("cuda", marks=GPU)])
+@pytest.mark.parametrize("shards", [0, 8])
+def test_numeric_arena_disjoint_input_and_reused_scratch(device, shards):
+    from itertools import pairwise
+
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.frame_buffers import (
+        numeric_workspace,
+    )
+
+    source = torch.empty(1, device=device)
+    options = {
+        "input_points": 7,
+        "output_points": 11,
+        "blocks": 5,
+        "batch": 3,
+        "shards": shards,
+    }
+    storage, views = numeric_workspace(source, **options)
+    views["input"].fill_(1.25)
+    views["adjoint"].fill_(2.5)  # Forward delta occupies the future adjoint bank.
+    expected = views["input"].clone()
+    _, restored = numeric_workspace(source, storage=storage, **options)
+    assert all(restored[k].data_ptr() == views[k].data_ptr() for k in views)
+    restored["adjoint"].fill_(3.5)
+    restored["delta"].zero_()
+    restored["border"].zero_()
+    assert torch.equal(views["input"], expected)
+    regions = sorted(
+        (
+            v.data_ptr() - storage.data_ptr(),
+            v.data_ptr() - storage.data_ptr() + v.numel() * 4,
+        )
+        for v in views.values()
+        if v.numel()
+    )
+    assert all(lo % 256 == 0 for lo, hi in regions)
+    assert all(a[1] <= b[0] for a, b in pairwise(regions))
+    with pytest.raises(ValueError):
+        numeric_workspace(source, storage=storage[:-1], **options)
+
+
+@GPU
+def test_numeric_arena_concurrent_retained_all_gradients():
+    from concurrent.futures import ThreadPoolExecutor
+
+    from benchmarks.cuda.linear.check_normalized import check
+
+    layer = model("h_numeric_arena", n=128, a=33)
+    x = torch.randn(33, 128, device="cuda", requires_grad=True)
+    y = layer(x)
+    dys = [torch.randn_like(y), torch.randn_like(y)]
+    rx = x.detach().double().requires_grad_()
+    rp = layer.atoms.p.detach().double().requires_grad_()
+    ref = bs.oracle(copy.deepcopy(layer.kernel).double(), layer.chart, rp, rx)
+    expected = [
+        torch.autograd.grad(ref, (rx, rp), d.double(), retain_graph=True) for d in dys
+    ]
+    torch.cuda.synchronize()
+
+    def backward(dy):
+        return torch.autograd.grad(y, (x, layer.atoms.p), dy, retain_graph=True)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        actual = list(pool.map(backward, dys))
+    torch.cuda.synchronize()
+    for left, right in zip(actual, expected):
+        for a, b in zip(left, right):
+            err = check(a, b, 4e-4)
+            assert err["max"] < 4e-4 and err["rel_l2"] < 4e-4

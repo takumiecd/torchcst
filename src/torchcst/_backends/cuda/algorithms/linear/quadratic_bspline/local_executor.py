@@ -641,6 +641,7 @@ class _Local(torch.autograd.Function):
         ctx.retain_input_bank = (
             getattr(recipe, "save_input_bank", False) and ctx.needs_input_grad[1]
         )
+        ctx.workspace_saved = False
         ctx.empty = not a
         if not a:
             ctx.save_for_backward(x)
@@ -675,6 +676,24 @@ class _Local(torch.autograd.Function):
             order=_source_order(order, recipe),
             cache=_cache_args(pos, co, active, recipe),
         )
+        workspace = None
+        numeric = None
+        if getattr(recipe, "numeric_arena", False):
+            import threading
+
+            from .frame_buffers import numeric_workspace
+
+            workspace, numeric = numeric_workspace(
+                x,
+                input_points=_points(sizes[1], recipe),
+                output_points=_points(sizes[0], recipe),
+                blocks=max(_blocks(n, recipe) for n in sizes),
+                batch=b,
+                shards=shards,
+            )
+            ctx.workspace_saved = True
+            ctx.workspace_stream = torch.cuda.current_stream(x.device).cuda_stream
+            ctx.workspace_lock = threading.Lock()
         bank, delta, border = _bank_and_delta(
             x,
             sizes[1],
@@ -686,6 +705,10 @@ class _Local(torch.autograd.Function):
             1,
             0,
             ml,
+            bank_buffer=numeric["input"] if numeric is not None else None,
+            delta_buffers=(numeric["adjoint"], numeric["border"] if shards else None)
+            if numeric is not None
+            else None,
         )
         h = x.new_empty((a, b)) if ctx.mode != "none" else x.new_empty(0)
         hp = x.new_empty((a, b)) if ctx.mode == "hp" else x.new_empty(0)
@@ -743,12 +766,23 @@ class _Local(torch.autograd.Function):
             injection,
             bank if ctx.retain_input_bank else h,
             *groups,
+            *((workspace,) if workspace is not None else ()),
         )
         return y
 
     @staticmethod
     @once_differentiable
     def backward(ctx, dy):
+        lock = getattr(ctx, "workspace_lock", None)
+        if lock is None:
+            return _Local._backward_impl(ctx, dy)
+        # Enqueue a whole backward before another host thread borrows scratch
+        # on the same CUDA stream. Other streams allocate independent scratch.
+        with lock:
+            return _Local._backward_impl(ctx, dy)
+
+    @staticmethod
+    def _backward_impl(ctx, dy):
         if ctx.empty:
             (x,) = ctx.saved_tensors
             return (
@@ -777,7 +811,9 @@ class _Local(torch.autograd.Function):
             injection,
             saved_bank,
         ) = ctx.saved_tensors[:15]
-        groups = ctx.saved_tensors[15:]
+        groups = (
+            ctx.saved_tensors[15:-1] if ctx.workspace_saved else ctx.saved_tensors[15:]
+        )
         dy = dy.contiguous()
         recipe, sizes = ctx.recipe, ctx.sizes
         a, b = len(meta), len(x)
@@ -815,6 +851,21 @@ class _Local(torch.autograd.Function):
             input_bank = None
             _stamp("bank_recompute", 0)
             _stamp("bank_recompute", 1)
+        numeric = None
+        if ctx.workspace_saved and (
+            torch.cuda.current_stream(dy.device).cuda_stream == ctx.workspace_stream
+        ):
+            from .frame_buffers import numeric_workspace
+
+            _, numeric = numeric_workspace(
+                dy,
+                input_points=_points(sizes[1], recipe),
+                output_points=_points(sizes[0], recipe),
+                blocks=max(_blocks(n, recipe) for n in sizes),
+                batch=b,
+                shards=shards,
+                storage=ctx.saved_tensors[-1],
+            )
         adjoint_bank, delta, border = _bank_and_delta(
             dy,
             sizes[0],
@@ -826,6 +877,10 @@ class _Local(torch.autograd.Function):
             0,
             1,
             ml,
+            bank_buffer=numeric["adjoint"] if numeric is not None else None,
+            delta_buffers=(numeric["delta"], numeric["border"] if shards else None)
+            if numeric is not None
+            else None,
         )
         _stamp("stream_backward", 0)
         compiled = _h_launch("backward", a, recipe)(
