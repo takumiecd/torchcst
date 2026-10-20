@@ -710,7 +710,18 @@ def measure(args, run):
                             **(
                                 {
                                     "coefficient_storage_dtype": "float64",
-                                    "range_accumulation_dtype": "float64",
+                                    "range_accumulation_dtype": "FP32 compensated pair plus FP64 escape"
+                                    if getattr(recipe, "paired_accum", False)
+                                    else "float64",
+                                    "normalization_in_coefficients": getattr(
+                                        recipe, "normalized_co", False
+                                    ),
+                                    "coefficient_representation": "47-bit tagged pair/raw FP64, common sqrt(D)"
+                                    if getattr(recipe, "normalized_co", False)
+                                    else "float64",
+                                    "escape_planes": 3
+                                    if getattr(recipe, "paired_accum", False)
+                                    else 0,
                                     "query_event_loop": getattr(
                                         recipe, "looped_query", False
                                     ),
@@ -723,7 +734,11 @@ def measure(args, run):
                                     "bit_split_query": getattr(
                                         recipe, "bit_split_query", False
                                     ),
-                                    "paired_query_scope": "query dot products in guarded FP32 pairs; FP64 coefficient/bank storage and injection; FP64 query fallback outside guard"
+                                    "paired_query_scope": "common sqrt(D) in tagged coefficients; FP32 pair queries; compensated FP32 RHS plus FP64 escapes"
+                                    if getattr(recipe, "paired_accum", False)
+                                    else "common sqrt(D) in tagged coefficients; FP32 pair queries; FP64 injection"
+                                    if getattr(recipe, "normalized_co", False)
+                                    else "query dot products in guarded FP32 pairs; FP64 coefficient/bank storage and injection; FP64 query fallback outside guard"
                                     if getattr(recipe, "paired_query", False)
                                     else None,
                                     "shared_quadratic_coefficient": getattr(

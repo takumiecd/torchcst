@@ -28,6 +28,7 @@ from .recipe import (
     BSplineLocalChunkedRecipe,
     BSplineLocalCoefficientRecipe,
     BSplineLocalCompactPositionsRecipe,
+    BSplineLocalCompensatedRecipe,
     BSplineLocalCoordinatesRecipe,
     BSplineLocalDecodeRatioRecipe,
     BSplineLocalEndpointRecipe,
@@ -44,6 +45,7 @@ from .recipe import (
     BSplineLocalNativeCacheRecipe,
     BSplineLocalNativePointRecipe,
     BSplineLocalNativeShardsRecipe,
+    BSplineLocalNormalizedCoRecipe,
     BSplineLocalNumericArenaRecipe,
     BSplineLocalOwnerRecipe,
     BSplineLocalPackedBankRecipe,
@@ -713,3 +715,15 @@ class BSplineLocalBitSplitQueryAlgorithm(BSplineLocalPairedQueryAlgorithm):
 class BSplineLocalPackedBankAlgorithm(BSplineLocalBitSplitQueryAlgorithm):
     revision: str = "v64"
     recipe_type: type = BSplineLocalPackedBankRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalNormalizedCoAlgorithm(BSplineLocalPackedBankAlgorithm):
+    revision: str = "v65"
+    recipe_type: type = BSplineLocalNormalizedCoRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalCompensatedAlgorithm(BSplineLocalNormalizedCoAlgorithm):
+    revision: str = "v66"
+    recipe_type: type = BSplineLocalCompensatedRecipe

@@ -1092,3 +1092,24 @@ class BSplineLocalPackedBankRecipe(BSplineLocalBitSplitQueryRecipe):
     """Revision64: self-tagged FP32 pair moments in the same eight-byte cells."""
 
     packed_bank = True
+
+
+@dataclass(frozen=True)
+class BSplineLocalNormalizedCoRecipe(BSplineLocalPackedBankRecipe):
+    """Revision65: embed the same common sqrt(D) in both packed coefficient sets."""
+
+    normalized_co = True
+
+
+@dataclass(frozen=True)
+class BSplineLocalCompensatedRecipe(BSplineLocalNormalizedCoRecipe):
+    """Revision66: normalized pair RHS and compensated atomic plus FP64 escapes."""
+
+    paired_accum = True
+
+    def __post_init__(self):
+        super().__post_init__()
+        if not self.fuse_bank_zero:
+            raise ValueError(
+                "compensated accumulation requires fused full scratch zero"
+            )

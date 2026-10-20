@@ -2416,3 +2416,38 @@ CPU FP64 screen `normalized-coefficient-cpu.py/json` はN64/A513、B3/33、ordin
 新しい1e-10のCPU relL2基準と4e-7のmaxabs基準を通過し、既存GPUの4e-4基準は変更しない。
 通常経路をFP32ペアで評価し範囲外をFP64へ戻す実装、extra escape面の両peak、完全step速度は未検証。
 現時点でruntime/recipeの追加や、目標達成・採用の主張は行わない。
+
+## v65/v66: 共通sqrt(D)係数とFP32ペア注入（GPU検証前）
+
+v65は前節のC^o=q^o/sqrt(D)、C^i=q^i/sqrt(D)をlocal係数の準備へ実装する。
+Metaの元のinvDとgamma、native経路は保持する。Coの各fieldをsqrt(invD)倍してから、
+Bankと同じ8byteのtagged pair/raw FP64で保存する。Coの通常範囲は2^-60..2^60へ広げるが、
+markerは同じ1..2のFP32 wordなのでraw escapeと区別できる。HalfInvは変えない。
+queryは正規化済みH/Gを返し、pullbackはinvD/amp*invDの代わりに1/ampを用いる。
+coの共有qの±3倍はFP32ペア乗算、範囲外のqueryはdecoded FP64 loopで評価する。
+v65の注入と復元は元のFP64のまま残し、数学の変更と集約の変更を分けて比較する。
+
+v66はv65の正規化済み係数を使い、通常のamp*H*CoをFP32ペアで評価する。
+source ampとHはatom/atom-batchごとに一度だけ整数bit分割し、イベントごとのF64積を避ける。
+各planeはhigh atomicのoldを返してTwoSum誤差をlowへ加える。global FP32のFTZに対して、
+通常rhsのhighをzeroまたは2^-60..2^60、lowをzeroまたはabs>=2^-89に制限する。
+このときlowのFP32 ulpは2^-112以上、highの誤差もその格子の倍数なので、
+ゼロ初期値からのlow集約がsubnormalの格子へ入らない。amp/係数の上限も事前に判定し、
+FP32中間積のoverflowや、非零因子がunderflowで零になる場合も通常経路から外す。
+
+通常範囲外、非有限値、tiny lowは同じ元のF64値/decoded係数から積を計算し、
+別のFP64 escape面へ加える。寄与を捨てたりclampしたりしない。
+Delta/Borderのfirst3 planesが8byteのFP32 high/low、last3 planesがFP64 escapeとなり、
+両面をF64へ復元してから従来のF64 scanを行う。従来3 planesから6 planesへ増えるため、
+同じpayloadの高速化とは扱わない。full scratch zeroのためv66はfuse_bank_zero=Trueを要求する。
+新しい全H/Gの保持は追加せず、batch_chunk16のまま同一frameの再計算を使う。
+
+新しいraw検査は、source順序を逆転したA137のCo準備について、位置/half/border/injectionの一致と、
+decoded Co=元Co*sqrt(invD)をlogspace norm factorで照合する。
+exact dyadic係数とH=[2^100,2^-100,1,0]ではnormal/正規化FP64/残差＋escapeの各planeをbit一致で比較する。
+巨大/微小Hがescape面に入り、normal面がzeroとなることも確認する。
+6 planesのscratchとescapeを融合zeroが全て初期化する検査を追加する。
+既存rawの許容値、513重複・空/部分/単一支持・floor・個別/全勾配・Graph・retained/concurrent、
+主2条件の独立FP64全shape 4e-4 gateは保持する。幅の量子化やprofileの変更は行わない。
+CPU2044 passed/5612 skipped/18既存warning(39.17s)、Ruff、両case declarationを確認。
+GPUでコンパイル・精度・完全step・両peakを確認するまでは採用しない。

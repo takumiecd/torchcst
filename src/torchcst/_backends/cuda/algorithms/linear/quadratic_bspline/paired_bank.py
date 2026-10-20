@@ -12,13 +12,17 @@ import triton.language as tl
 
 
 @tr.jit
-def pack(value):
+def pack(value, WIDE: tl.constexpr = False):
     bits = value.to(tl.uint64, bitcast=True)
     absolute = bits & 0x7FFFFFFFFFFFFFFF
     exponent = (absolute >> 52).to(tl.int32)
     mantissa = absolute & 0xFFFFFFFFFFFFF
     safe = (absolute == 0) | (
-        (exponent >= 993) & ((exponent < 1053) | ((exponent == 1053) & (mantissa == 0)))
+        (exponent >= (963 if WIDE else 993))
+        & (
+            (exponent < (1083 if WIDE else 1053))
+            | ((exponent == (1083 if WIDE else 1053)) & (mantissa == 0))
+        )
     )
     high = (
         ((bits >> 32) & 0x80000000)

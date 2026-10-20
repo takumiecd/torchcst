@@ -3,6 +3,7 @@
 import triton as tr
 import triton.language as tl
 
+from .compensated_accum import load as load_accum
 from .paired_bank import pack as pack_bank_word
 
 
@@ -127,6 +128,7 @@ def restore(
     MIN_LOG: tl.constexpr = 3,
     TB: tl.constexpr = 1,
     MASK_MODE: tl.constexpr = False,
+    PAIRED_ACCUM: tl.constexpr = False,
 ):
     pb: tl.constexpr = B + PAD
     size, tile, tiles, offset, level = _group(N, LOW, LEVELS, MIN_LOG, TB)
@@ -146,9 +148,17 @@ def restore(
             & (i[None, :, None] < size)
             & (b[None, None, :] < B)
         )
-        p0 = tl.cumsum(tl.load(Delta + addr, mask, 0), 1)
-        p1 = tl.cumsum(tl.load(Delta + POINTS * pb + addr, mask, 0), 1)
-        p2 = tl.cumsum(tl.load(Delta + 2 * POINTS * pb + addr, mask, 0), 1)
+        p0 = tl.cumsum(load_accum(Delta, addr, mask, 3 * POINTS * pb, PAIRED_ACCUM), 1)
+        p1 = tl.cumsum(
+            load_accum(Delta, POINTS * pb + addr, mask, 3 * POINTS * pb, PAIRED_ACCUM),
+            1,
+        )
+        p2 = tl.cumsum(
+            load_accum(
+                Delta, 2 * POINTS * pb + addr, mask, 3 * POINTS * pb, PAIRED_ACCUM
+            ),
+            1,
+        )
         if SHARDS:
             block = 2 * (N >> MIN_LOG) - 2 * (N // size) + tile
             shard = tl.arange(0, SHARDS)
@@ -157,13 +167,33 @@ def restore(
                 None, None, :
             ]
             border_mask = (tile[:, None, None] < tiles) & (b[None, None, :] < B)
-            v0 = tl.sum(tl.load(BorderDelta + border, border_mask, 0), 1)
+            v0 = tl.sum(
+                load_accum(
+                    BorderDelta,
+                    border,
+                    border_mask,
+                    3 * blocks * SHARDS * pb,
+                    PAIRED_ACCUM,
+                ),
+                1,
+            )
             v1 = tl.sum(
-                tl.load(BorderDelta + blocks * SHARDS * pb + border, border_mask, 0), 1
+                load_accum(
+                    BorderDelta,
+                    blocks * SHARDS * pb + border,
+                    border_mask,
+                    3 * blocks * SHARDS * pb,
+                    PAIRED_ACCUM,
+                ),
+                1,
             )
             v2 = tl.sum(
-                tl.load(
-                    BorderDelta + 2 * blocks * SHARDS * pb + border, border_mask, 0
+                load_accum(
+                    BorderDelta,
+                    2 * blocks * SHARDS * pb + border,
+                    border_mask,
+                    3 * blocks * SHARDS * pb,
+                    PAIRED_ACCUM,
                 ),
                 1,
             )

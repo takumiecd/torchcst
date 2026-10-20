@@ -21,6 +21,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineLocalChunkedAlgorithm,
     BSplineLocalCoefficientAlgorithm,
     BSplineLocalCompactPositionsAlgorithm,
+    BSplineLocalCompensatedAlgorithm,
     BSplineLocalCoordinatesAlgorithm,
     BSplineLocalDecodeRatioAlgorithm,
     BSplineLocalEndpointAlgorithm,
@@ -37,6 +38,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineLocalNativeCacheAlgorithm,
     BSplineLocalNativePointAlgorithm,
     BSplineLocalNativeShardsAlgorithm,
+    BSplineLocalNormalizedCoAlgorithm,
     BSplineLocalNumericArenaAlgorithm,
     BSplineLocalOwnerAlgorithm,
     BSplineLocalPackedBankAlgorithm,
@@ -87,6 +89,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineLocalChunkedRecipe,
     BSplineLocalCoefficientRecipe,
     BSplineLocalCompactPositionsRecipe,
+    BSplineLocalCompensatedRecipe,
     BSplineLocalCoordinatesRecipe,
     BSplineLocalDecodeRatioRecipe,
     BSplineLocalEndpointRecipe,
@@ -103,6 +106,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineLocalNativeCacheRecipe,
     BSplineLocalNativePointRecipe,
     BSplineLocalNativeShardsRecipe,
+    BSplineLocalNormalizedCoRecipe,
     BSplineLocalNumericArenaRecipe,
     BSplineLocalOwnerRecipe,
     BSplineLocalPackedBankRecipe,
@@ -164,6 +168,12 @@ def case(n=64, a=17):
 def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     from dataclasses import replace
 
+    compensated = strategy == "h_compensated" or recipe_options.pop(
+        "_compensated", False
+    )
+    normalized_co = strategy == "h_normalized_co" or recipe_options.pop(
+        "_normalized_co", False
+    )
     packed_bank = strategy == "h_packed_bank" or recipe_options.pop(
         "_packed_bank", False
     )
@@ -409,6 +419,8 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineLocalPairedQueryAlgorithm())
     registry.register(BSplineLocalBitSplitQueryAlgorithm())
     registry.register(BSplineLocalPackedBankAlgorithm())
+    registry.register(BSplineLocalNormalizedCoAlgorithm())
+    registry.register(BSplineLocalCompensatedAlgorithm())
     registry.register(BSplineLocalIntegerAlgorithm())
     registry.register(BSplineLocalVectorAlgorithm())
     registry.register(BSplineLocalUnifiedAlgorithm())
@@ -444,7 +456,11 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         recipe_options.setdefault("lane_atoms", 4)
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v64"
+        "v66"
+        if compensated
+        else "v65"
+        if normalized_co
+        else "v64"
         if packed_bank
         else "v63"
         if bit_split_query
@@ -571,7 +587,11 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         else "v2"
         if tuned
         else "v1",
-        BSplineLocalPackedBankRecipe(**recipe_options)
+        BSplineLocalCompensatedRecipe(**recipe_options)
+        if compensated
+        else BSplineLocalNormalizedCoRecipe(**recipe_options)
+        if normalized_co
+        else BSplineLocalPackedBankRecipe(**recipe_options)
         if packed_bank
         else BSplineLocalBitSplitQueryRecipe(**recipe_options)
         if bit_split_query
@@ -3194,6 +3214,14 @@ ALL_QUERY_OPTIONS = (
         pytest.param(
             {"_shared_unrolled": True, "prepare_warps": 2}, id="shared-unrolled-warp2"
         ),
+        pytest.param({"_normalized_co": True}, id="normalized-co-0"),
+        pytest.param(
+            {"_normalized_co": True, "prepare_warps": 2}, id="normalized-co-warp2"
+        ),
+        pytest.param({"_compensated": True}, id="compensated-0"),
+        pytest.param(
+            {"_compensated": True, "prepare_warps": 2}, id="compensated-warp2"
+        ),
         pytest.param({"_packed_bank": True}, id="packed-bank-0"),
         pytest.param(
             {"_packed_bank": True, "prepare_warps": 2}, id="packed-bank-warp2"
@@ -4116,6 +4144,8 @@ def test_native_bound_recipe_roundtrip_and_bounds():
         "h_paired_query",
         "h_bit_split_query",
         "h_packed_bank",
+        "h_normalized_co",
+        "h_compensated",
         "h_local_integer",
         "h_local_vector",
     ],
@@ -4228,6 +4258,8 @@ def test_native_bound_count_changes_across_graph(batch, floor, strategy):
         "h_paired_query",
         "h_bit_split_query",
         "h_packed_bank",
+        "h_normalized_co",
+        "h_compensated",
         "h_local_integer",
         "h_local_vector",
     ],
@@ -4290,6 +4322,8 @@ def test_native_bound_strided_individual_gradients(which, strategy):
         "h_paired_query",
         "h_bit_split_query",
         "h_packed_bank",
+        "h_normalized_co",
+        "h_compensated",
         "h_local_integer",
         "h_local_vector",
     ],
@@ -4851,6 +4885,8 @@ def test_native_cache_recipe_roundtrip_and_bounds():
         ("h_paired_query", False),
         ("h_bit_split_query", False),
         ("h_packed_bank", False),
+        ("h_normalized_co", False),
+        ("h_compensated", False),
         ("h_local_integer", True),
         ("h_local_vector", True),
     ],
@@ -4891,6 +4927,8 @@ def test_native_cache_spacing_fallbacks(strategy, unroll, spacing, batch, amplit
             "h_paired_query",
             "h_bit_split_query",
             "h_packed_bank",
+            "h_normalized_co",
+            "h_compensated",
             "h_local_integer",
             "h_local_vector",
         )
@@ -6869,6 +6907,8 @@ def test_numeric_arena_disjoint_input_and_reused_scratch(device, shards):
         "h_paired_query",
         "h_bit_split_query",
         "h_packed_bank",
+        "h_normalized_co",
+        "h_compensated",
     ],
 )
 def test_numeric_arena_concurrent_retained_all_gradients(strategy):
@@ -7131,6 +7171,8 @@ def test_small_boundary_recipe_roundtrip_and_legacy_rejection():
         "h_paired_query",
         "h_bit_split_query",
         "h_packed_bank",
+        "h_normalized_co",
+        "h_compensated",
     ],
 )
 @pytest.mark.parametrize("batch", [3, 33])
@@ -7713,3 +7755,253 @@ def test_packed_bank_writer_prefixes_padding_and_fused_zero(
     assert torch.equal(
         actual[:, :, batch:].view(torch.int64), expected[:, :, batch:].view(torch.int64)
     )
+
+
+def test_normalized_co_and_compensated_recipe_roundtrip():
+    reg = Registry()
+    for cls, alg, revision in (
+        (BSplineLocalNormalizedCoRecipe, BSplineLocalNormalizedCoAlgorithm, "v65"),
+        (BSplineLocalCompensatedRecipe, BSplineLocalCompensatedAlgorithm, "v66"),
+    ):
+        reg.register(alg())
+        recipe = cls()
+        plan = ExecutionPlan("research_cuda_quadratic_bspline", revision, recipe)
+        assert reg.loads_plan(reg.dumps_plan(plan)) == plan
+        assert recipe.normalized_co and recipe.packed_bank and not recipe.native_cache
+        assert getattr(recipe, "paired_accum", False) == (revision == "v66")
+    with pytest.raises(ValueError, match="full scratch zero"):
+        BSplineLocalCompensatedRecipe(fuse_bank_zero=False)
+
+
+@GPU
+def test_normalized_co_preparation_geometry_and_shared_sqrt_factor():
+    import triton as th
+
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        local_kernels as lk,
+    )
+
+    atoms = 137
+    meta = torch.zeros(atoms, 12, device="cuda", dtype=torch.float64)
+    meta[:, 0] = 0.7
+    meta[:, 1] = torch.logspace(-1.2, 1.3, atoms, device="cuda", dtype=torch.float64)
+    meta[:, 2] = torch.linspace(-0.3, 13, atoms, device="cuda", dtype=torch.float64)
+    meta[:, 3] = torch.linspace(
+        -0.3, 103, atoms, device="cuda", dtype=torch.float64
+    ).roll(13)
+    meta[:, 4] = torch.logspace(-6, 6, atoms, device="cuda", dtype=torch.float64)
+    meta[:, 9] = meta[:, 1].reciprocal()
+    meta[:, 10:] = 10
+    origin = torch.zeros(2, device="cuda", dtype=torch.float64)
+    spacing = torch.full((2,), 0.1, device="cuda", dtype=torch.float64)
+    order = torch.arange(atoms - 1, -1, -1, device="cuda", dtype=torch.int64)
+    count = torch.zeros(1, device="cuda", dtype=torch.int32)
+    frames = []
+    for normalized in (False, True):
+        pos = torch.empty(2, 6, atoms, device="cuda", dtype=torch.int16)
+        co = torch.empty(2, 13, atoms, device="cuda", dtype=torch.float64)
+        half = torch.empty(2, atoms, device="cuda", dtype=torch.float64)
+        bp = torch.empty(2, 2, atoms, device="cuda", dtype=torch.int16)
+        injection = torch.empty(2, atoms, device="cuda", dtype=torch.int16)
+        lk.prepare[(th.cdiv(atoms, 128),)](
+            meta,
+            pos,
+            co,
+            half,
+            count,
+            origin,
+            spacing,
+            atoms,
+            128,
+            1024,
+            128,
+            True,
+            False,
+            bp,
+            4,
+            injection,
+            True,
+            2,
+            Order=order,
+            LAYOUT="soa",
+            COORDINATES=True,
+            COMPACT_C2=True,
+            NORMALIZED_CO=normalized,
+            num_warps=4,
+            enable_fp_fusion=False,
+        )
+        frames.append((pos, co, half, bp, injection))
+    for i in (0, 2, 3, 4):
+        assert torch.equal(frames[0][i], frames[1][i])
+    word = frames[1][1].view(torch.int64)
+    code = (word >> 32) & 0xFFFFFFFF
+    safe = (code >= 0x3F800000) & (code <= 0x40000000)
+    hibits = torch.where(safe, word & 0xFFFFFFFF, 0)
+    high = hibits.to(torch.int32).view(torch.float32)
+    codebits = torch.where(safe, code, 0x3F800000).to(torch.int32)
+    residual = codebits.view(torch.float32) - 1
+    exponent = ((hibits >> 23) & 255).int()
+    low = torch.ldexp(
+        residual.double(), torch.where(exponent != 0, exponent - 150, -23)
+    )
+    low = torch.where((hibits & 0x80000000) != 0, -low, low)
+    decoded = torch.where(safe, high.double() + low, frames[1][1])
+    expected = frames[0][1] * meta[order, 4].sqrt()[None, None, :]
+    torch.testing.assert_close(decoded, expected, atol=0, rtol=3e-14)
+
+
+@GPU
+@pytest.mark.parametrize("dim", [0, 1])
+def test_compensated_injection_exact_dyadic_values_and_fp64_escapes(dim):
+    import triton as th
+    import triton.experimental.gluon as tr
+    import triton.experimental.gluon.language as tl
+    import triton.language as ctl
+
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        gluon_kernels as gk,
+    )
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        paired_bank as pb,
+    )
+
+    @th.jit
+    def encode(X, Y, N: ctl.constexpr):
+        i = ctl.program_id(0) * 128 + ctl.arange(0, 128)
+        ctl.store(Y + i, pb.pack(ctl.load(X + i, i < N, 0), WIDE=True), i < N)
+
+    @tr.jit
+    def raw(
+        Value,
+        Meta,
+        Pos,
+        Co,
+        Delta,
+        Border,
+        BP,
+        A: tl.constexpr,
+        DIM: tl.constexpr,
+        MODE: tl.constexpr,
+    ):
+        tile: tl.constexpr = tl.BlockedLayout([1, 1], [1, 32], [4, 1], [1, 0])
+        a = tl.program_id(0) * 4 + tl.arange(0, 4, layout=tl.SliceLayout(1, tile))
+        b = tl.arange(0, 4, layout=tl.SliceLayout(0, tile))
+        v = tl.load(Value + b)
+        v = tl.broadcast_to(v[None, :], (4, 4))
+        gk._inject(
+            v,
+            Delta,
+            Meta,
+            Pos,
+            Co,
+            a,
+            b,
+            A,
+            4,
+            8,
+            DIM,
+            Border,
+            BP,
+            4,
+            3,
+            None,
+            False,
+            False,
+            4,
+            LAYOUT="soa",
+            COMPACT_C2=True,
+            NORMALIZED_CO=MODE > 0,
+            PAIRED_ACCUM=MODE == 2,
+        )
+
+    atoms = 513
+    meta = torch.zeros(atoms, 12, device="cuda", dtype=torch.float64)
+    meta[:, 0] = 0.75
+    meta[:, 4] = 1
+    co = torch.empty(2, 13, atoms, device="cuda", dtype=torch.float64)
+    for d in range(2):
+        for event in range(6):
+            co[d, event] = 0.125 * (event + 1) * (d + 1)
+            co[d, 6 + event] = -0.25 * (d + 1)
+        co[d, 12] = 0.25 * (d + 1)
+    tagged = torch.empty_like(co)
+    encode[(th.cdiv(co.numel(), 128),)](
+        co, tagged, co.numel(), num_warps=4, enable_fp_fusion=False
+    )
+    pos = (
+        torch.arange(6, device="cuda", dtype=torch.int16)[None, :, None]
+        .expand(2, 6, atoms)
+        .contiguous()
+    )
+    pos[:, 4] |= 16384
+    bp = (
+        torch.arange(2, device="cuda", dtype=torch.int16)[None, :, None]
+        .expand(2, 2, atoms)
+        .contiguous()
+    )
+    values = torch.tensor(
+        [2.0**100, 2.0**-100, 1.0, 0.0], device="cuda", dtype=torch.float64
+    )
+    results = []
+    for mode in (0, 1, 2):
+        planes = 6 if mode == 2 else 3
+        delta = torch.zeros(planes, 8, 4, device="cuda", dtype=torch.float64)
+        border = torch.zeros(planes, 3, 4, 4, device="cuda", dtype=torch.float64)
+        raw[(th.cdiv(atoms, 4),)](
+            values,
+            meta,
+            pos,
+            tagged if mode else co,
+            delta,
+            border,
+            bp,
+            atoms,
+            dim,
+            mode,
+            num_warps=4,
+            enable_fp_fusion=False,
+        )
+        if mode == 2:
+            decoded = []
+            for tensor in (delta, border):
+                word = tensor[:3].view(torch.int64)
+                high = word.to(torch.int32).view(torch.float32).double()
+                low = (word >> 32).to(torch.int32).view(torch.float32).double()
+                decoded.append(high + low + tensor[3:])
+                assert torch.count_nonzero(tensor[:3, ..., :2].view(torch.int64)) == 0
+                assert torch.count_nonzero(tensor[3:, ..., :2]) > 0
+            results.append(decoded)
+        else:
+            results.append((delta, border))
+    for candidate in results[1:]:
+        for actual, expected in zip(candidate, results[0]):
+            torch.testing.assert_close(actual, expected, atol=0, rtol=0)
+
+
+@GPU
+def test_compensated_scratch_has_six_planes_and_fused_zero_covers_escapes():
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        local_executor as le,
+    )
+
+    recipe = BSplineLocalCompensatedRecipe()
+    x = torch.randn(3, 64, device="cuda")
+    active = torch.full((2,), 31, device="cuda", dtype=torch.int32)
+    delta, border = le._delta_buffers(x, 64, recipe)
+    assert delta.shape[0] == border.shape[0] == 6
+    delta.fill_(float("nan"))
+    border.fill_(float("nan"))
+    le._bank_and_delta(
+        x,
+        64,
+        64,
+        recipe,
+        "bank_input",
+        "delta_output",
+        active,
+        1,
+        0,
+        5,
+        delta_buffers=(delta, border),
+    )
+    assert torch.count_nonzero(delta) == 0 and torch.count_nonzero(border) == 0

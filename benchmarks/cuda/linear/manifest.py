@@ -950,6 +950,8 @@ REGISTRY.register(BSplineLocalSharedQuadraticAlgorithm())
 
 from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
     BSplineLocalBitSplitQueryAlgorithm,
+    BSplineLocalCompensatedAlgorithm,
+    BSplineLocalNormalizedCoAlgorithm,
     BSplineLocalPackedBankAlgorithm,
     BSplineLocalPairedQueryAlgorithm,
     BSplineLocalSharedUnrolledAlgorithm,
@@ -961,3 +963,6 @@ REGISTRY.register(BSplineLocalPairedQueryAlgorithm())
 REGISTRY.register(BSplineLocalBitSplitQueryAlgorithm())
 
 REGISTRY.register(BSplineLocalPackedBankAlgorithm())
+
+REGISTRY.register(BSplineLocalNormalizedCoAlgorithm())
+REGISTRY.register(BSplineLocalCompensatedAlgorithm())

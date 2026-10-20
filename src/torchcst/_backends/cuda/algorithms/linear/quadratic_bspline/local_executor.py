@@ -91,6 +91,10 @@ def _h_args(tables, recipe, tensor=None, geometry=None):
             result["LOOPED_QUERY"] = True
         if getattr(recipe, "compact_c2", False):
             result["COMPACT_C2"] = True
+        if getattr(recipe, "normalized_co", False):
+            result["NORMALIZED_CO"] = True
+        if getattr(recipe, "paired_accum", False):
+            result["PAIRED_ACCUM"] = True
         if getattr(recipe, "packed_bank", False):
             result["PACKED_BANK"] = True
         if getattr(recipe, "bit_split_query", False):
@@ -346,6 +350,9 @@ def _restore(delta, border, y, n, recipe, label, active, dim, ml):
             getattr(recipe, "min_block_log", 3),
             **({"TB": tiles} if tiles > 1 else {}),
             MASK_MODE=getattr(recipe, "fused_levels", False),
+            **(
+                {"PAIRED_ACCUM": True} if getattr(recipe, "paired_accum", False) else {}
+            ),
             num_warps=recipe.bank_warps,
             enable_fp_fusion=False,
         )
@@ -357,13 +364,22 @@ def _restore(delta, border, y, n, recipe, label, active, dim, ml):
 def _delta_buffers(x, n, recipe, buffers=None):
     if buffers is None:
         delta = x.new_empty(
-            (3, _points(n, recipe), len(x) + getattr(recipe, "bank_padding", 0)),
+            (
+                6 if getattr(recipe, "paired_accum", False) else 3,
+                _points(n, recipe),
+                len(x) + getattr(recipe, "bank_padding", 0),
+            ),
             dtype=_delta_dtype(x, recipe),
         )
         shards = getattr(recipe, "boundary_shards", 0)
         border = (
             x.new_empty(
-                (3, _blocks(n, recipe), shards, delta.shape[2]),
+                (
+                    6 if getattr(recipe, "paired_accum", False) else 3,
+                    _blocks(n, recipe),
+                    shards,
+                    delta.shape[2],
+                ),
                 dtype=_delta_dtype(x, recipe),
             )
             if shards
@@ -600,6 +616,7 @@ def _frame(
         COORDINATES=getattr(recipe, "coefficient_coordinates", False),
         ActiveMask=active,
         COMPACT_C2=getattr(recipe, "compact_c2", False),
+        NORMALIZED_CO=getattr(recipe, "normalized_co", False),
         num_warps=4,
         enable_fp_fusion=False,
     )

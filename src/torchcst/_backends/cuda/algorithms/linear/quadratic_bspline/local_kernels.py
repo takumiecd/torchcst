@@ -2,7 +2,9 @@
 
 import triton as tr
 import triton.language as tl
+from triton.language.extra.cuda import libdevice as lib
 
+from .compensated_accum import load as load_accum
 from .kernels import _interval
 from .paired_bank import pack as pack_bank_word
 from .parallel_kernels import _pullback
@@ -149,6 +151,7 @@ def prepare(
     COORDINATES: tl.constexpr = False,
     ActiveMask=None,
     COMPACT_C2: tl.constexpr = False,
+    NORMALIZED_CO: tl.constexpr = False,
 ):
     base = tl.load(Count) + tl.program_id(0) * AB
     if base < A:
@@ -156,6 +159,9 @@ def prepare(
         source = _source(Order, a, A)
         radius = tl.load(Meta + 12 * source + 1, a < A, 1)
         ir = tl.load(Meta + 12 * source + 9, a < A, 1)
+        if NORMALIZED_CO:
+            tl.static_assert(COMPACT_C2 and not CORE32)
+            norm_scale = lib.sqrt(tl.load(Meta + 12 * source + 4, a < A, 0))
         for dim in tl.static_range(2):
             n = NO if dim == 0 else NI
             origin = tl.load(Origin + dim).to(tl.float64)
@@ -338,14 +344,23 @@ def prepare(
                 if COMPACT_C2:
                     tl.static_assert(LAYOUT == "soa")
                     for p in tl.static_range(2):
-                        value = c0 if p == 0 else c1
+                        value = tl.where(active, c0 if p == 0 else c1, 0)
+                        if NORMALIZED_CO:
+                            value = pack_bank_word(
+                                value.to(tl.float64) * norm_scale, WIDE=True
+                            )
                         tl.store(
                             Co + ((dim * 13 + p * 6 + event) * A) + a,
-                            tl.where(active, value, 0),
+                            value,
                             a < A,
                         )
                     if event == 0:
-                        tl.store(Co + (dim * 13 + 12) * A + a, c2, a < A)
+                        value = (
+                            pack_bank_word(c2.to(tl.float64) * norm_scale, WIDE=True)
+                            if NORMALIZED_CO
+                            else c2
+                        )
+                        tl.store(Co + (dim * 13 + 12) * A + a, value, a < A)
                 else:
                     for p in tl.static_range(3):
                         value = c0 if p == 0 else c1 if p == 1 else c2
@@ -473,6 +488,7 @@ def restore(
     PAD: tl.constexpr = 0,
     MIN_LOG: tl.constexpr = 3,
     MASK_MODE: tl.constexpr = False,
+    PAIRED_ACCUM: tl.constexpr = False,
 ):
     pb: tl.constexpr = B + PAD
     size, tile, offset, level = _group(N, LOW, LEVELS, MIN_LOG)
@@ -488,26 +504,49 @@ def restore(
         base = offset + tile * (size + 1)
         addr = (base + i[:, None]) * pb + b[None, :]
         mask = (i[:, None] < size) & (b[None, :] < B)
-        p0 = tl.cumsum(tl.load(Delta + addr, mask, 0), 0)
-        p1 = tl.cumsum(tl.load(Delta + POINTS * pb + addr, mask, 0), 0)
-        p2 = tl.cumsum(tl.load(Delta + 2 * POINTS * pb + addr, mask, 0), 0)
+        p0 = tl.cumsum(load_accum(Delta, addr, mask, 3 * POINTS * pb, PAIRED_ACCUM), 0)
+        p1 = tl.cumsum(
+            load_accum(Delta, POINTS * pb + addr, mask, 3 * POINTS * pb, PAIRED_ACCUM),
+            0,
+        )
+        p2 = tl.cumsum(
+            load_accum(
+                Delta, 2 * POINTS * pb + addr, mask, 3 * POINTS * pb, PAIRED_ACCUM
+            ),
+            0,
+        )
         if SHARDS:
             block = 2 * (N >> MIN_LOG) - 2 * (N // size) + tile
             shard = tl.arange(0, SHARDS)
             blocks: tl.constexpr = 2 * (N >> MIN_LOG) - 1
             addr_border = (block * SHARDS + shard[:, None]) * pb + b[None, :]
-            v0 = tl.sum(tl.load(BorderDelta + addr_border, b[None, :] < B, 0), 0)
+            v0 = tl.sum(
+                load_accum(
+                    BorderDelta,
+                    addr_border,
+                    b[None, :] < B,
+                    3 * blocks * SHARDS * pb,
+                    PAIRED_ACCUM,
+                ),
+                0,
+            )
             v1 = tl.sum(
-                tl.load(
-                    BorderDelta + blocks * SHARDS * pb + addr_border, b[None, :] < B, 0
+                load_accum(
+                    BorderDelta,
+                    blocks * SHARDS * pb + addr_border,
+                    b[None, :] < B,
+                    3 * blocks * SHARDS * pb,
+                    PAIRED_ACCUM,
                 ),
                 0,
             )
             v2 = tl.sum(
-                tl.load(
-                    BorderDelta + 2 * blocks * SHARDS * pb + addr_border,
+                load_accum(
+                    BorderDelta,
+                    2 * blocks * SHARDS * pb + addr_border,
                     b[None, :] < B,
-                    0,
+                    3 * blocks * SHARDS * pb,
+                    PAIRED_ACCUM,
                 ),
                 0,
             )
