@@ -39,6 +39,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineLocalNativeShardsAlgorithm,
     BSplineLocalNumericArenaAlgorithm,
     BSplineLocalOwnerAlgorithm,
+    BSplineLocalPackedBankAlgorithm,
     BSplineLocalPaddedAlgorithm,
     BSplineLocalPairedDecodeAlgorithm,
     BSplineLocalPairedQueryAlgorithm,
@@ -104,6 +105,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineLocalNativeShardsRecipe,
     BSplineLocalNumericArenaRecipe,
     BSplineLocalOwnerRecipe,
+    BSplineLocalPackedBankRecipe,
     BSplineLocalPaddedRecipe,
     BSplineLocalPairedDecodeRecipe,
     BSplineLocalPairedQueryRecipe,
@@ -162,6 +164,9 @@ def case(n=64, a=17):
 def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     from dataclasses import replace
 
+    packed_bank = strategy == "h_packed_bank" or recipe_options.pop(
+        "_packed_bank", False
+    )
     bit_split_query = strategy == "h_bit_split_query" or recipe_options.pop(
         "_bit_split_query", False
     )
@@ -403,6 +408,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineLocalSharedUnrolledAlgorithm())
     registry.register(BSplineLocalPairedQueryAlgorithm())
     registry.register(BSplineLocalBitSplitQueryAlgorithm())
+    registry.register(BSplineLocalPackedBankAlgorithm())
     registry.register(BSplineLocalIntegerAlgorithm())
     registry.register(BSplineLocalVectorAlgorithm())
     registry.register(BSplineLocalUnifiedAlgorithm())
@@ -438,7 +444,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         recipe_options.setdefault("lane_atoms", 4)
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v63"
+        "v64"
+        if packed_bank
+        else "v63"
         if bit_split_query
         else "v62"
         if paired_query
@@ -563,7 +571,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         else "v2"
         if tuned
         else "v1",
-        BSplineLocalBitSplitQueryRecipe(**recipe_options)
+        BSplineLocalPackedBankRecipe(**recipe_options)
+        if packed_bank
+        else BSplineLocalBitSplitQueryRecipe(**recipe_options)
         if bit_split_query
         else BSplineLocalPairedQueryRecipe(**recipe_options)
         if paired_query
@@ -3184,6 +3194,10 @@ ALL_QUERY_OPTIONS = (
         pytest.param(
             {"_shared_unrolled": True, "prepare_warps": 2}, id="shared-unrolled-warp2"
         ),
+        pytest.param({"_packed_bank": True}, id="packed-bank-0"),
+        pytest.param(
+            {"_packed_bank": True, "prepare_warps": 2}, id="packed-bank-warp2"
+        ),
         pytest.param({"_bit_split_query": True}, id="bit-split-query-0"),
         pytest.param(
             {"_bit_split_query": True, "prepare_warps": 2}, id="bit-split-query-warp2"
@@ -4101,6 +4115,7 @@ def test_native_bound_recipe_roundtrip_and_bounds():
         "h_shared_unrolled",
         "h_paired_query",
         "h_bit_split_query",
+        "h_packed_bank",
         "h_local_integer",
         "h_local_vector",
     ],
@@ -4212,6 +4227,7 @@ def test_native_bound_count_changes_across_graph(batch, floor, strategy):
         "h_shared_unrolled",
         "h_paired_query",
         "h_bit_split_query",
+        "h_packed_bank",
         "h_local_integer",
         "h_local_vector",
     ],
@@ -4273,6 +4289,7 @@ def test_native_bound_strided_individual_gradients(which, strategy):
         "h_shared_unrolled",
         "h_paired_query",
         "h_bit_split_query",
+        "h_packed_bank",
         "h_local_integer",
         "h_local_vector",
     ],
@@ -4833,6 +4850,7 @@ def test_native_cache_recipe_roundtrip_and_bounds():
         ("h_shared_unrolled", False),
         ("h_paired_query", False),
         ("h_bit_split_query", False),
+        ("h_packed_bank", False),
         ("h_local_integer", True),
         ("h_local_vector", True),
     ],
@@ -4872,6 +4890,7 @@ def test_native_cache_spacing_fallbacks(strategy, unroll, spacing, batch, amplit
             "h_shared_unrolled",
             "h_paired_query",
             "h_bit_split_query",
+            "h_packed_bank",
             "h_local_integer",
             "h_local_vector",
         )
@@ -6849,6 +6868,7 @@ def test_numeric_arena_disjoint_input_and_reused_scratch(device, shards):
         "h_shared_unrolled",
         "h_paired_query",
         "h_bit_split_query",
+        "h_packed_bank",
     ],
 )
 def test_numeric_arena_concurrent_retained_all_gradients(strategy):
@@ -7110,6 +7130,7 @@ def test_small_boundary_recipe_roundtrip_and_legacy_rejection():
         "h_shared_unrolled",
         "h_paired_query",
         "h_bit_split_query",
+        "h_packed_bank",
     ],
 )
 @pytest.mark.parametrize("batch", [3, 33])
@@ -7236,17 +7257,21 @@ def test_shared_quadratic_frame_payload_and_flags():
 
 
 @GPU
-@pytest.mark.parametrize("bank_scale", [1.0, 1e100, 1e-100])
+@pytest.mark.parametrize("bank_scale", [1.0, 1e100, 1e-100, 1e-10])
 def test_shared_quadratic_prepare_query_and_injection_equivalence(bank_scale):
     import triton as triton_host
     import triton.experimental.gluon as tr
     import triton.experimental.gluon.language as tl
+    import triton.language as ctl
 
     from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
         gluon_kernels as gk,
     )
     from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
         local_kernels as lk,
+    )
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.paired_bank import (
+        pack as pack_word,
     )
 
     atoms, batch, pi, po = 137, 17, 9727, 831
@@ -7321,6 +7346,11 @@ def test_shared_quadratic_prepare_query_and_injection_equivalence(bank_scale):
         reconstructed[:, 2, event] = torch.where(decoded[:, event] >= 0, value, 0)
     assert torch.equal(reconstructed, frames[0][1])
 
+    @triton_host.jit
+    def encode(X, Y, N: ctl.constexpr):
+        i = ctl.program_id(0) * 128 + ctl.arange(0, 128)
+        ctl.store(Y + i, pack_word(ctl.load(X + i, i < N, 0)), i < N)
+
     @tr.jit
     def raw(
         Bank,
@@ -7359,9 +7389,10 @@ def test_shared_quadratic_prepare_query_and_injection_equivalence(bank_scale):
             B,
             tile,
             LAYOUT,
-            LOOPED=(Mode == 1) | (Mode == 2),
-            PAIRED=Mode >= 4,
-            BIT_SPLIT=Mode == 5,
+            LOOPED=(Mode == 1) | (Mode == 2) | (Mode == 7),
+            PAIRED=(Mode >= 4) & (Mode != 7),
+            BIT_SPLIT=Mode >= 5,
+            PACKED_BANK=Mode >= 6,
             COMPACT_C2=Mode >= 2,
         )
         mask = (a[:, None] < A) & (b[None, :] < B)
@@ -7393,15 +7424,19 @@ def test_shared_quadratic_prepare_query_and_injection_equivalence(bank_scale):
         )
 
     bank = torch.randn(3, pi, batch, device="cuda", dtype=torch.float64) * bank_scale
+    encoded_bank = torch.empty_like(bank)
+    encode[(triton_host.cdiv(bank.numel(), 128),)](
+        bank, encoded_bank, bank.numel(), num_warps=4, enable_fp_fusion=False
+    )
     values = torch.randn(atoms, batch, device="cuda", dtype=torch.float64)
     outputs = []
-    for mode in (0, 1, 2, 3, 4, 5):
+    for mode in (0, 1, 2, 3, 4, 5, 6, 7):
         pos, co, half, bp, injection = frames[int(mode >= 2)]
         out = torch.empty(2, atoms, batch, device="cuda", dtype=torch.float64)
         delta = torch.zeros(3, po, batch, device="cuda", dtype=torch.float64)
         border = torch.zeros(3, 63, 4, batch, device="cuda", dtype=torch.float64)
         raw[(triton_host.cdiv(atoms, 4),)](
-            bank,
+            encoded_bank if mode >= 6 else bank,
             pos,
             co,
             half,
@@ -7424,7 +7459,7 @@ def test_shared_quadratic_prepare_query_and_injection_equivalence(bank_scale):
         torch.testing.assert_close(
             candidate[0],
             outputs[0][0],
-            atol=1e-10 if bank_scale == 1.0 else 0,
+            atol=1e-10 * bank_scale if bank_scale in (1.0, 1e-10) else 0,
             rtol=1e-12,
         )
         for actual, expected in zip(candidate[1:], outputs[0][1:]):
@@ -7437,6 +7472,7 @@ def test_shared_quadratic_prepare_query_and_injection_equivalence(bank_scale):
         (BSplineLocalSharedUnrolledRecipe, BSplineLocalSharedUnrolledAlgorithm, "v61"),
         (BSplineLocalPairedQueryRecipe, BSplineLocalPairedQueryAlgorithm, "v62"),
         (BSplineLocalBitSplitQueryRecipe, BSplineLocalBitSplitQueryAlgorithm, "v63"),
+        (BSplineLocalPackedBankRecipe, BSplineLocalPackedBankAlgorithm, "v64"),
     ],
 )
 def test_shared_unrolled_and_paired_query_recipe_roundtrip(cls, alg, revision):
@@ -7451,8 +7487,9 @@ def test_shared_unrolled_and_paired_query_recipe_roundtrip(cls, alg, revision):
         and not recipe.looped_query
         and not recipe.native_cache
     )
-    assert getattr(recipe, "paired_query", False) == (revision in ("v62", "v63"))
-    assert getattr(recipe, "bit_split_query", False) == (revision == "v63")
+    assert getattr(recipe, "paired_query", False) == (revision in ("v62", "v63", "v64"))
+    assert getattr(recipe, "bit_split_query", False) == (revision in ("v63", "v64"))
+    assert getattr(recipe, "packed_bank", False) == (revision == "v64")
 
 
 @GPU
@@ -7516,3 +7553,163 @@ def test_bit_split_query_guard_edges_and_significand_accuracy():
         (restored[safe] - values[safe]).abs() <= values[safe].abs() * 2.0**-47
     )
     assert torch.all(hi[~safe] == 0) and torch.all(lo[~safe] == 0)
+
+
+@GPU
+def test_packed_bank_tag_roundtrip_and_raw_escape_words():
+    import triton as triton_host
+    import triton.experimental.gluon as tr
+    import triton.experimental.gluon.language as tl
+    import triton.language as ctl
+
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        paired_bank as pb,
+    )
+
+    @triton_host.jit
+    def encode(X, Y, N: ctl.constexpr):
+        i = ctl.program_id(0) * 128 + ctl.arange(0, 128)
+        ctl.store(Y + i, pb.pack(ctl.load(X + i, i < N, 0)), i < N)
+
+    @tr.jit
+    def decode(X, Y, Bad, N: tl.constexpr):
+        i = tl.program_id(0) * 128 + tl.arange(
+            0, 128, layout=tl.BlockedLayout([1], [32], [4], [0])
+        )
+        word = tl.load(X + i, i < N, 0)
+        _, _, escape = pb.unpack(word)
+        tl.store(Y + i, pb.restore(word), i < N)
+        tl.store(Bad + i, escape, i < N)
+
+    gen = torch.Generator().manual_seed(6423)
+    random = torch.ldexp(
+        torch.rand(10003, generator=gen, dtype=torch.float64) + 1,
+        torch.randint(-30, 30, (10003,), generator=gen),
+    )
+    limits = torch.tensor([2.0**-30, 2.0**30], dtype=torch.float64)
+    edges = torch.cat(
+        (
+            limits,
+            torch.nextafter(limits, torch.zeros_like(limits)),
+            torch.nextafter(limits, torch.full_like(limits, float("inf"))),
+        )
+    )
+    positive = torch.cat((random, edges))
+    values = torch.cat(
+        (
+            positive,
+            -positive,
+            torch.tensor(
+                [
+                    0.0,
+                    -0.0,
+                    1e100,
+                    -1e100,
+                    1e-100,
+                    -1e-100,
+                    float("inf"),
+                    -float("inf"),
+                    float("nan"),
+                ],
+                dtype=torch.float64,
+            ),
+        )
+    ).cuda()
+    encoded, restored = torch.empty_like(values), torch.empty_like(values)
+    escapes = torch.empty_like(values, dtype=torch.bool)
+    encode[(triton_host.cdiv(values.numel(), 128),)](
+        values, encoded, values.numel(), num_warps=4, enable_fp_fusion=False
+    )
+    decode[(triton_host.cdiv(values.numel(), 128),)](
+        encoded, restored, escapes, values.numel(), num_warps=4, enable_fp_fusion=False
+    )
+    safe = (values == 0) | ((values.abs() >= 2.0**-30) & (values.abs() <= 2.0**30))
+    assert torch.equal(escapes, ~safe)
+    assert torch.all(
+        (restored[safe] - values[safe]).abs() <= values[safe].abs() * 2.0**-47
+    )
+    assert torch.equal(
+        encoded[~safe].view(torch.int64), values[~safe].view(torch.int64)
+    )
+    assert torch.equal(
+        restored[~safe].view(torch.int64), values[~safe].view(torch.int64)
+    )
+    assert (
+        encoded.numel() * encoded.element_size()
+        == values.numel() * values.element_size()
+    )
+
+
+@GPU
+@pytest.mark.parametrize("fused", [False, True])
+@pytest.mark.parametrize(
+    "tiles,n,batch,physical", [(1, 64, 3, 8), (4, 64, 3, 8), (4, 1024, 17, 24)]
+)
+def test_packed_bank_writer_prefixes_padding_and_fused_zero(
+    fused, tiles, n, batch, physical
+):
+    import triton as triton_host
+    import triton.experimental.gluon as tr
+    import triton.experimental.gluon.language as tl
+
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        local_executor as le,
+    )
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        paired_bank as pb,
+    )
+
+    @tr.jit
+    def decode(X, Y, N: tl.constexpr):
+        i = tl.program_id(0) * 128 + tl.arange(
+            0, 128, layout=tl.BlockedLayout([1], [32], [4], [0])
+        )
+        tl.store(Y + i, pb.restore(tl.load(X + i, i < N, 0)), i < N)
+
+    old = BSplineLocalBitSplitQueryRecipe(bank_tile_blocks=tiles)
+    recipe = BSplineLocalPackedBankRecipe(bank_tile_blocks=tiles)
+    ml = n.bit_length() - recipe.min_block_log
+    active = torch.full((2,), (1 << ml) - 1, device="cuda", dtype=torch.int32)
+    x = torch.randn(batch, n, device="cuda")
+    shape = (3, le._points(n, recipe), physical)
+    expected = torch.full(shape, -777.0, device="cuda", dtype=torch.float64)
+    actual = expected.clone()
+    le._bank(x, n, old, "bank_input", active, 1, ml, expected)
+    if fused:
+        delta = torch.full_like(actual, float("nan"))
+        border = torch.full(
+            (3, le._blocks(n, recipe), recipe.boundary_shards, physical),
+            float("nan"),
+            device="cuda",
+            dtype=torch.float64,
+        )
+        result, d, b = le._bank_and_delta(
+            x,
+            n,
+            n,
+            recipe,
+            "bank_input",
+            "delta_output",
+            active,
+            1,
+            0,
+            ml,
+            actual,
+            (delta, border),
+        )
+        assert (
+            result.data_ptr() == actual.data_ptr()
+            and d.data_ptr() == delta.data_ptr()
+            and b.data_ptr() == border.data_ptr()
+        )
+        assert torch.count_nonzero(delta) == 0 and torch.count_nonzero(border) == 0
+    else:
+        le._bank(x, n, recipe, "bank_input", active, 1, ml, actual)
+    restored = torch.empty_like(actual)
+    decode[(triton_host.cdiv(actual.numel(), 128),)](
+        actual, restored, actual.numel(), num_warps=4, enable_fp_fusion=False
+    )
+    torch.testing.assert_close(restored, expected, atol=0, rtol=2.0**-47)
+    assert torch.equal(
+        actual[:, :, batch:].view(torch.int64), expected[:, :, batch:].view(torch.int64)
+    )

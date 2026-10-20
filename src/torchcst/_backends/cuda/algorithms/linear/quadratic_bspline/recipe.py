@@ -1085,3 +1085,10 @@ class BSplineLocalBitSplitQueryRecipe(BSplineLocalPairedQueryRecipe):
     """Revision63: integer extraction into guarded FP32 pairs; same FP64 frame."""
 
     bit_split_query = True
+
+
+@dataclass(frozen=True)
+class BSplineLocalPackedBankRecipe(BSplineLocalBitSplitQueryRecipe):
+    """Revision64: self-tagged FP32 pair moments in the same eight-byte cells."""
+
+    packed_bank = True

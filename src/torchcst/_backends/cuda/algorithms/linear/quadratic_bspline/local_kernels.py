@@ -4,6 +4,7 @@ import triton as tr
 import triton.language as tl
 
 from .kernels import _interval
+from .paired_bank import pack as pack_bank_word
 from .parallel_kernels import _pullback
 
 
@@ -410,6 +411,7 @@ def bank(
     MASK_MODE: tl.constexpr = False,
     PID0=None,
     PID1=None,
+    PACKED_BANK: tl.constexpr = False,
 ):
     pb: tl.constexpr = B + PAD
     size, tile, offset, level = _group(N, LOW, LEVELS, MIN_LOG, PID0)
@@ -436,12 +438,19 @@ def bank(
         base = offset + tile * (size + 1)
         for p in tl.static_range(3):
             value = p0 if p == 0 else p1 if p == 1 else p2
+            if PACKED_BANK:
+                tl.static_assert(Bank.dtype.element_ty == tl.float64)
+                value = pack_bank_word(value)
             tl.store(
                 Bank + p * POINTS * pb + (base + i[:, None] + 1) * pb + b[None, :],
                 value,
                 (i[:, None] < size) & (b[None, :] < B),
             )
-            tl.store(Bank + p * POINTS * pb + base * pb + b, 0, b < B)
+            tl.store(
+                Bank + p * POINTS * pb + base * pb + b,
+                0.0078125 if PACKED_BANK else 0,
+                b < B,
+            )
 
 
 @tr.jit

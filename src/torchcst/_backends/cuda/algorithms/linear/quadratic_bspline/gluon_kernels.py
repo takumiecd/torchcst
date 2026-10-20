@@ -4,6 +4,8 @@ import triton.experimental.gluon as tr
 import triton.experimental.gluon.language as tl
 
 from .integer_query_kernels import query as integer_query
+from .paired_bank import restore as restore_bank_word
+from .paired_bank import unpack as unpack_bank_word
 from .unit_delta_gluon import _add as pair_add
 from .unit_delta_gluon import _mul as pair_mul
 from .unit_delta_gluon import _retain64
@@ -96,6 +98,7 @@ def _query_loop(
     TILE: tl.constexpr,
     LAYOUT: tl.constexpr,
     COMPACT_C2: tl.constexpr,
+    PACKED_BANK: tl.constexpr = False,
 ):
     value = tl.full((AB, BB), 0, tl.float64, layout=TILE)
     prime = tl.full((AB, BB), 0, tl.float64, layout=TILE)
@@ -106,6 +109,10 @@ def _query_loop(
         p0 = tl.load(Bank + point[:, None] * PB + b[None, :], mask, 0)
         p1 = tl.load(Bank + POINTS * PB + point[:, None] * PB + b[None, :], mask, 0)
         p2 = tl.load(Bank + 2 * POINTS * PB + point[:, None] * PB + b[None, :], mask, 0)
+        if PACKED_BANK:
+            p0 = restore_bank_word(p0)
+            p1 = restore_bank_word(p1)
+            p2 = restore_bank_word(p2)
         c0, c1, c2 = _coeff(Co, a, A, DIM, event, LAYOUT, Pos, COMPACT_C2)
         term = tl.fma(c2[:, None], p2, tl.fma(c1[:, None], p1, c0[:, None] * p0))
         value += tl.where(event < 4, -1, 1) * term
@@ -176,6 +183,7 @@ def _query_pair(
     LAYOUT: tl.constexpr,
     COMPACT_C2: tl.constexpr,
     BIT_SPLIT: tl.constexpr = False,
+    PACKED_BANK: tl.constexpr = False,
 ):
     vh = tl.full((AB, BB), 0, tl.float32, layout=TILE)
     vl = tl.full((AB, BB), 0, tl.float32, layout=TILE)
@@ -192,14 +200,19 @@ def _query_pair(
         p0 = tl.load(Bank + point[:, None] * PB + b[None, :], mask, 0)
         p1 = tl.load(Bank + POINTS * PB + point[:, None] * PB + b[None, :], mask, 0)
         p2 = tl.load(Bank + 2 * POINTS * PB + point[:, None] * PB + b[None, :], mask, 0)
-        p0h, p0l, b0 = _split_pair(p0, BIT_SPLIT)
-        p1h, p1l, b1 = _split_pair(p1, BIT_SPLIT)
-        p2h, p2l, b2 = _split_pair(p2, BIT_SPLIT)
+        if PACKED_BANK:
+            p0h, p0l, b0 = unpack_bank_word(p0)
+            p1h, p1l, b1 = unpack_bank_word(p1)
+            p2h, p2l, b2 = unpack_bank_word(p2)
+        else:
+            p0h, p0l, b0 = _split_pair(p0, BIT_SPLIT)
+            p1h, p1l, b1 = _split_pair(p1, BIT_SPLIT)
+            p2h, p2l, b2 = _split_pair(p2, BIT_SPLIT)
         c0, c1, c2 = _coeff(Co, a, A, DIM, event, LAYOUT, Pos, COMPACT_C2)
         c0h, c0l, k0 = _split_pair(c0, BIT_SPLIT)
         c1h, c1l, k1 = _split_pair(c1, BIT_SPLIT)
         c2h, c2l, k2 = _split_pair(c2, BIT_SPLIT)
-        unsafe |= b0 | b1 | b2 | (k0 | k1 | k2)[:, None]
+        unsafe |= ((b0 | b1 | b2) & mask) | (k0 | k1 | k2)[:, None]
         t0h, t0l = pair_mul(c0h[:, None], c0l[:, None], p0h, p0l)
         t1h, t1l = pair_mul(c1h[:, None], c1l[:, None], p1h, p1l)
         t2h, t2l = pair_mul(c2h[:, None], c2l[:, None], p2h, p2l)
@@ -249,7 +262,9 @@ def _query(
     COMPACT_C2: tl.constexpr = False,
     PAIRED: tl.constexpr = False,
     BIT_SPLIT: tl.constexpr = False,
+    PACKED_BANK: tl.constexpr = False,
 ):
+    tl.static_assert(not PACKED_BANK or PAIRED or LOOPED)
     if PAIRED:
         tl.static_assert(not INTEGER)
         value, prime, unsafe = _query_pair(
@@ -271,6 +286,7 @@ def _query(
             LAYOUT,
             COMPACT_C2,
             BIT_SPLIT,
+            PACKED_BANK,
         )
         if unsafe:
             value, prime = _query_loop(
@@ -291,6 +307,7 @@ def _query(
                 TILE,
                 LAYOUT,
                 COMPACT_C2,
+                PACKED_BANK,
             )
         return value, prime
     if LOOPED:
@@ -313,6 +330,7 @@ def _query(
             TILE,
             LAYOUT,
             COMPACT_C2,
+            PACKED_BANK,
         )
     if INTEGER:
         return integer_query(
@@ -491,6 +509,7 @@ def forward(
     COMPACT_C2: tl.constexpr = False,
     PAIRED_QUERY: tl.constexpr = False,
     BIT_SPLIT_QUERY: tl.constexpr = False,
+    PACKED_BANK: tl.constexpr = False,
 ):
     base = tl.load(Count) + tl.program_id(0) * AB if Base is None else Base
     if base < A:
@@ -533,6 +552,7 @@ def forward(
             LOOPED=LOOPED_QUERY,
             PAIRED=PAIRED_QUERY,
             BIT_SPLIT=BIT_SPLIT_QUERY,
+            PACKED_BANK=PACKED_BANK,
             COMPACT_C2=COMPACT_C2,
         )
         mask = (a[:, None] < A) & (b[None, :] < B)
@@ -617,6 +637,7 @@ def backward(
     COMPACT_C2: tl.constexpr = False,
     PAIRED_QUERY: tl.constexpr = False,
     BIT_SPLIT_QUERY: tl.constexpr = False,
+    PACKED_BANK: tl.constexpr = False,
 ):
     base = tl.load(Count) + tl.program_id(0) * AB if Base is None else Base
     if base < A:
@@ -659,6 +680,7 @@ def backward(
             LOOPED=LOOPED_QUERY,
             PAIRED=PAIRED_QUERY,
             BIT_SPLIT=BIT_SPLIT_QUERY,
+            PACKED_BANK=PACKED_BANK,
             COMPACT_C2=COMPACT_C2,
         )
         if VJP:
@@ -694,6 +716,7 @@ def backward(
                     LOOPED=LOOPED_QUERY,
                     PAIRED=PAIRED_QUERY,
                     BIT_SPLIT=BIT_SPLIT_QUERY,
+                    PACKED_BANK=PACKED_BANK,
                     COMPACT_C2=COMPACT_C2,
                 )
                 if SAVE == "h":

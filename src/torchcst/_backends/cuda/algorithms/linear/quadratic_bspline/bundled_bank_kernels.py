@@ -3,6 +3,8 @@
 import triton as tr
 import triton.language as tl
 
+from .paired_bank import pack as pack_bank_word
+
 
 @tr.jit
 def _group(
@@ -56,6 +58,7 @@ def bank(
     MASK_MODE: tl.constexpr = False,
     PID0=None,
     PID1=None,
+    PACKED_BANK: tl.constexpr = False,
 ):
     pb: tl.constexpr = B + PAD
     size, tile, tiles, offset, level = _group(N, LOW, LEVELS, MIN_LOG, TB, PID0)
@@ -85,6 +88,9 @@ def bank(
         base = offset + tile * (size + 1)
         for plane in tl.static_range(3):
             value = p0 if plane == 0 else p1 if plane == 1 else p2
+            if PACKED_BANK:
+                tl.static_assert(Bank.dtype.element_ty == tl.float64)
+                value = pack_bank_word(value)
             tl.store(
                 Bank
                 + plane * POINTS * pb
@@ -95,7 +101,7 @@ def bank(
             )
             tl.store(
                 Bank + plane * POINTS * pb + base[:, None] * pb + b[None, :],
-                0,
+                0.0078125 if PACKED_BANK else 0,
                 (tile[:, None] < tiles) & (b[None, :] < B),
             )
 

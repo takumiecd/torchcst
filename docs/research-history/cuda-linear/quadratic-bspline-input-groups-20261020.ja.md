@@ -2226,3 +2226,42 @@ source CPU CI PASS、wheel/sdistの380runtimeファイルGit-byte一致。
 速度目標はactive/unmetのまま。次はBank作成時に分割を共有できる保存表現を検討し、
 前計算費用・fallbackの精度・保持領域増加を含めて判定する。旧v34のhash groupingは既に遅かったので、
 そのまま戻して改善と見なさない。
+
+## v64: Bank作成時に分割を共有する8byte表現（GPU検証前）
+
+v63では同じprefix momentをatomごとのqueryで繰り返し分割する。
+v64はFP64でprefixを作る演算を保ち、保存する直前だけ通常値をhi/residual codeへ変える。
+Co/HalfInv/Meta、FP64注入・復元、L2、width stop-gradient、全4P、optimizerはv63を継承する。
+全Hの保存や新しいflag配列は追加せず、Bankのshape/8byte cell数も変えない。
+
+元のFP64を符号s、biased exponent e、52bit mantissa mとし、m=2^29*u+rと分解する。
+通常範囲は従来と同じzeroまたは2^-30<=abs(v)<=2^30とする。
+
+\[
+h=(-1)^s(2^{23}+u)2^{e-1046},\quad
+k=\left\lfloor\frac{r+32}{64}\right\rfloor,\quad
+c=1+k2^{-23},\quad
+l=(-1)^s(c-1)2^{e-1046}.
+\]
+
+kは0..2^23で、cはFP32の1..2に正確に表せる。上位32bitにcのFP32ビット列、
+下位32bitにhのFP32ビット列を保存する。残差の整数丸めだけで再構成相対誤差<=2^-47。
+cの32bit wordは0x3f800000..0x40000000に収まる。
+範囲外の元FP64は上位wordがこの区間に入らないため、同じ8byte内で区別できる。
+範囲外/Inf/NaNのwordは元のFP64ビット列のまま保持し、pair側ではzero/escapeを返す。
+query内のどれかがescapeなら、通常wordはh+l、escape wordは元FP64として同じFP64 loopで再評価する。
+通常wordの丸めは残るので、混在退避でも元の47bit誤差を最終gateで検査する。
+
+先頭prefix zeroもencoded zero（0x3f80000000000000）として保存する。
+無効siteのmasked loadが返すraw zeroはunsafe判定からmaskで除外し、偽の全CTA退避を防ぐ。
+単独bank、複数tile/bank-zero融合の全writerへ同じflagを通す。未使用paddingは書き換えない。
+残差codeからh/lを取り出す処理にはFP64演算がなく、通常queryは係数だけv63の整数分割を使う。
+
+raw query比較は通常/loop/共有/pair/bit分割に加え、packed pairとpacked FP64退避を追加した。
+既存scale1/1e100/1e-100の許容値を維持し、safe/escapeが混在するscale1e-10を追加する。
+後者のatolは入力scaleに比例する1e-20、rtol1e-12で、元scale1の1e-10/1e-12に対応する。
+tagの範囲・符号・上下限直前直後・極端値のraw bit一致と47bit復元をGPUで検査する。
+N64/1024、batch3/17とpadding、tile1/4、融合あり/なしのprefix値とscratch zeroも検査する。
+513重複、動的σ/X、個別/全勾配、Graph、retained/concurrent、主条件のgateは緩めない。
+CPU2043 passed/5532 skipped/18既存warning(39.30s)、Ruff/両case declarationを確認。
+GPUの精度・性能・メモリは未確認であり、単体の誤差上界や同じpayloadだけで採用しない。

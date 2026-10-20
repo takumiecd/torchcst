@@ -702,6 +702,8 @@ def measure(args, run):
                         {
                             "bank_layout": "int64 reverse triple prefix plus per-batch exponent"
                             if getattr(recipe, "integer_query", False)
+                            else "eight-byte tagged 47-bit pair/raw FP64 plane,dyadic-local-point,batch; no periodic wrap"
+                            if getattr(recipe, "packed_bank", False)
                             else "FP64 plane,dyadic-local-point,batch; no periodic wrap"
                             if getattr(recipe, "precise_bank", False)
                             else "FP32 plane,dyadic-local-point,batch; no periodic wrap",
@@ -714,6 +716,9 @@ def measure(args, run):
                                     ),
                                     "paired_query": getattr(
                                         recipe, "paired_query", False
+                                    ),
+                                    "packed_bank": getattr(
+                                        recipe, "packed_bank", False
                                     ),
                                     "bit_split_query": getattr(
                                         recipe, "bit_split_query", False

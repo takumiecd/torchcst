@@ -46,6 +46,7 @@ from .recipe import (
     BSplineLocalNativeShardsRecipe,
     BSplineLocalNumericArenaRecipe,
     BSplineLocalOwnerRecipe,
+    BSplineLocalPackedBankRecipe,
     BSplineLocalPaddedRecipe,
     BSplineLocalPairedDecodeRecipe,
     BSplineLocalPairedQueryRecipe,
@@ -706,3 +707,9 @@ class BSplineLocalPairedQueryAlgorithm(BSplineLocalSharedUnrolledAlgorithm):
 class BSplineLocalBitSplitQueryAlgorithm(BSplineLocalPairedQueryAlgorithm):
     revision: str = "v63"
     recipe_type: type = BSplineLocalBitSplitQueryRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalPackedBankAlgorithm(BSplineLocalBitSplitQueryAlgorithm):
+    revision: str = "v64"
+    recipe_type: type = BSplineLocalPackedBankRecipe

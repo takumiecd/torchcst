@@ -33,6 +33,7 @@ def bank_and_zero(
     DELTA_ELEMENTS: tl.constexpr,
     BORDER_ELEMENTS: tl.constexpr,
     ZERO_BLOCK: tl.constexpr = 1024,
+    PACKED_BANK: tl.constexpr = False,
 ):
     pid = tl.program_id(0)
     bank_programs: tl.constexpr = GRID0 * GRID1
@@ -60,6 +61,7 @@ def bank_and_zero(
                 MASK_MODE,
                 PID0=pid0,
                 PID1=pid1,
+                PACKED_BANK=PACKED_BANK,
             )
         else:
             lk.bank(
@@ -81,6 +83,7 @@ def bank_and_zero(
                 MASK_MODE,
                 PID0=pid0,
                 PID1=pid1,
+                PACKED_BANK=PACKED_BANK,
             )
     else:
         j = (pid - bank_programs) * ZERO_BLOCK + tl.arange(0, ZERO_BLOCK)

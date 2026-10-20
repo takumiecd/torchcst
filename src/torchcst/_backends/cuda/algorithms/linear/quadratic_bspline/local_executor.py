@@ -91,6 +91,8 @@ def _h_args(tables, recipe, tensor=None, geometry=None):
             result["LOOPED_QUERY"] = True
         if getattr(recipe, "compact_c2", False):
             result["COMPACT_C2"] = True
+        if getattr(recipe, "packed_bank", False):
+            result["PACKED_BANK"] = True
         if getattr(recipe, "bit_split_query", False):
             result["BIT_SPLIT_QUERY"] = True
         if getattr(recipe, "paired_query", False):
@@ -300,6 +302,7 @@ def _bank(x, n, recipe, label, active, dim, ml, buffer=None, zero_buffers=None):
             getattr(recipe, "min_block_log", 3),
             **({"TB": tiles} if tiles > 1 or extra else {}),
             MASK_MODE=getattr(recipe, "fused_levels", False),
+            **({"PACKED_BANK": True} if getattr(recipe, "packed_bank", False) else {}),
             **extra,
             num_warps=recipe.bank_warps,
             enable_fp_fusion=False,
