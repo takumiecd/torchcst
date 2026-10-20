@@ -5181,12 +5181,13 @@ def test_spatial_layout_advisory_keys_and_exact_partition(tile):
         stream_layout as sl,
     )
 
-    a, n = 137, 64
+    # Even the largest tile must have an interior boundary to cross.
+    a, n = 137, 128
     recipe = BSplineLocalSpatialRecipe(range_tile=tile, layout_refresh=64)
     origin = torch.tensor([0.31, -0.27], device="cuda", dtype=torch.float64)
     spacing = torch.full((2,), 0.1, device="cuda", dtype=torch.float64)
     meta = torch.zeros((a, 12), device="cuda", dtype=torch.float64)
-    centers = torch.linspace(1.0, 4.0, a, device="cuda", dtype=torch.float64)
+    centers = torch.linspace(1.0, 8.0, a, device="cuda", dtype=torch.float64)
     meta[:, 1] = 0.5
     meta[:, 2] = centers + origin[0]
     meta[:, 3] = centers.roll(11) + origin[1]
