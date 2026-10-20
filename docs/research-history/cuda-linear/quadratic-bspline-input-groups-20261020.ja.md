@@ -949,3 +949,73 @@ failed-jobsに保全し、採用証拠に混ぜない。
 period64の短いcase（21rounds）は、warmup/eager/capture/replayを合わせても52forwardである。
 周期再構築を含む長期平均が必要なら64を超える測定で別途確認する。
 この短期中央値をperiod64再構築の償却費込みと解釈しない。
+
+### v45 L4実測: 空間順序を維持してもforwardが遅い
+
+修正後job `l4job-e72717e064434fea830ff2f123befed8`、source
+`00f2c3ba8be774510f09cb9dc9c96f0a13dab8d3`。
+38 targeted checks PASS（176.16s）。native所属変更・中心だけのtiny所属変更・
+advisory keyの変化時の順序再利用・周期更新・過去snapshot保持・124site容量を確認。
+全4条件の3状態全shape独立FP64 Y/dX/全4atom勾配、全σ更新、同条件初期hash一致もPASS。
+
+|条件|v44 control ms|tile32/毎step ms|tile32/64step ms|tile16/64step ms|Dense ms|
+|---|---:|---:|---:|---:|---:|
+|B32 mixed|0.750181|0.775475|0.763648|0.765992|0.083000|
+|B64 mixed|1.219921|1.271198|1.261517|1.257495|0.104395|
+|B32 small|0.693156|0.729895|0.719113|0.722609|0.082987|
+|B32 switch|0.722246|0.756508|0.745214|0.749533|0.083073|
+
+tile32のallocatedはB32/B64 **34.259/34.759 MiB**、tile16は **34.576/35.076 MiB**。
+reservedは全候補 **98/100 MiB**で、Dense49.002/49.502 allocated・106reserved以下。
+64step候補は52forward中1回の構築で51回再利用、毎step候補は52回とも再構築した。
+比較controlも52回中1回の構築なので、再利用を追加するだけで費用が消える状況ではない。
+
+groupはcontrol約0.0287ms、毎step候補約0.039–0.041ms、64step候補約0.029ms。
+しかしB32 mixedのstream forwardが0.1331→0.1577ms、smallは0.1311→0.1618msへ増え、
+backwardの0.2150→0.2130ms、small0.2181→0.2109ms程度の短縮を上回る。
+係数準備は約0.058–0.059msで同帯。正しい空間順序でもforwardが遅くなる実測であり、
+cache局所性の改善を自動的な速度改善とみなさない。atomic競合という原因の断定も避ける。
+
+source SHA256 `eed882219d0cdd068f613239eb622b3c491bd6a96ebe27ccbfd2957401243e7b`、
+result SHA256 `e200027970ccc5bba9456dea4465bfd65ef5ff897ce9ac5a2492f872c653f833`。
+source1647/manifest68、archive/manifest/Git bytes/return0/timeoutなし/cleanup ackを照合した。
+CPU2009pass/4767skip/18既存warning、Ruff/4caseと371 runtime-file package一致、
+00f2c3baのCPU CIもPASS。L4のv45は不採用。
+
+世代差の確認は、数値検証済みtile32/64step一設定に絞ってG4で行う。
+129roundsへ延長し、period64再構築を測定区間へ含め、v44とDenseも同じroundsで測る。
+この比較の準備・snapshot clone・再構築・L2・optimizer費用は除外しない。
+
+### v45 G4長期比較: 周期再構築を含めても不採用
+
+job `colabjob-195a662be03e4210a749ec8cd68f77a8`、source
+`e1102c645df2625fac09ab2808d30892ec05e6c6`（runtimeは626a8837/00f2c3baと同一）。
+実機・runtimeは前G4比較と同種。5件の配置検査と、B32/B64の3状態全shape独立FP64
+Y/dX/全4atom勾配、全52,428σ更新、同条件初期hashが全てPASS。
+
+|条件/方式|中央値 ms|平均 ms|p95 ms|最大 ms|allocated/reserved MiB|
+|---|---:|---:|---:|---:|---:|
+|B32 v44|0.353870|0.352733|0.356340|0.393910|34.154/98|
+|B32 spatial32/64step|0.363810|0.364554|0.368039|0.424749|34.259/98|
+|B32 Dense|0.066380|0.066480|0.067240|0.087090|49.002/106|
+|B64 v44|0.543549|0.540480|0.546189|0.585640|34.654/100|
+|B64 spatial32/64step|0.560740|0.561102|0.568010|0.613189|34.759/100|
+|B64 Dense|0.075140|0.075303|0.076050|0.095430|49.502/106|
+
+129roundsのGraph測定は周期更新を含む。warmup/eager/replay計268forward中、
+v44は構築1回、spatial候補は5回であり、後者は測定replay区間内でも再構築した。
+中央値で2.81%/3.16%、平均でも3.35%/3.82%遅い。最大値の個々の原因は未特定で、
+全ての長いsampleを再構築へ帰属させない。両memory peakはDense以下だが、候補は不採用。
+
+B32 stream forwardが約0.0508→0.0630ms、B64 chunk0は0.0508→0.0630msで、
+groupの中央値約0.018msは同帯。並べ替え費用を周期化するだけではforward悪化を解決しない。
+この結果は今回の出力tile優先・入力tile次順位の配置への負の証拠であり、
+あらゆる配置やCST全体の達成不能を示すものではない。
+最速controlもDense比5.33x/7.23xで速度2xは未達。目標はactiveのまま。
+
+source SHA256 `03604479957ed360664c3dc6dc075d2ee87a1f0c6fa772d8b855873821ea59c1`、
+result SHA256 `53f81bb83e4d42480921dd7a7ec5b92ecb42bdfec9550ebcd93b25ed1a6401d9`。
+source1649/manifest24、archive/manifest/Git bytes/return0/timeoutなし/cleanup ackを照合。
+G4記録は`verified-g4.json`/`audit-g4.json`、sample統計は`spatial-g4-summary.json`へ保全。
+追加metadataのCPU60checks、長期2case宣言、371 runtime-file package一致も確認した。
+所有supervisor正常終了とVM停止を確認し、公開/default dispatcherを変更しない。
