@@ -437,7 +437,28 @@ def _frame(x, p, value, chart, recipe, moments, routing, sizes, build_border=Tru
         p, value, chart, recipe, moments, width_table=routing.get("width_table")
     )
     _stamp("group", 0)
-    order, count = placement(meta, origin, spacing, sizes, recipe, routing)
+    if getattr(recipe, "fresh_partition", False):
+        from .fresh_partition_kernels import partition
+
+        order = p.new_empty((a,), dtype=torch.int64)
+        counts = p.new_zeros((2,), dtype=torch.int32)
+        partition[(tr.cdiv(a, 128),)](
+            meta,
+            origin,
+            spacing,
+            order,
+            counts,
+            a,
+            *sizes,
+            recipe.sigma_cutoff,
+            recipe.reciprocal,
+            num_warps=4,
+            enable_fp_fusion=False,
+        )
+        count = counts[:1]
+        routing["count"] = count
+    else:
+        order, count = placement(meta, origin, spacing, sizes, recipe, routing)
     _stamp("group", 1)
     _stamp("pack", 0)
     if not getattr(recipe, "canonical_meta", False):
@@ -828,7 +849,11 @@ def apply(x, p, value, chart, recipe, bases, moments, buffers):
     sizes = chart.grid_shape[0][0], chart.grid_shape[1][0]
     key = p.device, len(p), chart.grid_shape, recipe
     if buffers.get("stream_layout_key") != key:
-        buffers["stream_layout"] = make_layout(len(p), sizes, recipe, p.device)
+        buffers["stream_layout"] = (
+            {}
+            if getattr(recipe, "fresh_partition", False)
+            else make_layout(len(p), sizes, recipe, p.device)
+        )
         buffers["stream_layout_key"] = key
     if getattr(recipe, "table_decode", False):
         routing = buffers["stream_layout"]

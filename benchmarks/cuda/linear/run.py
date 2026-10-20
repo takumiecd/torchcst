@@ -822,6 +822,13 @@ def measure(args, run):
                             ),
                         }
                     )
+                if getattr(recipe, "fresh_partition", False):
+                    hybrid_routing.update(
+                        {
+                            "placement_policy": "fresh native front/broad back ID compaction; no width buckets/histogram/order clone",
+                            "placement_snapshot": "new immutable ID/count tensors each forward; source Parameters never permuted",
+                        }
+                    )
                 if getattr(recipe, "table_decode", False):
                     hybrid_routing.update(
                         {

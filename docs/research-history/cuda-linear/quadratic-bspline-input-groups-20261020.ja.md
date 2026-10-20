@@ -1549,3 +1549,45 @@ sourcee5052b44のjob `colabjob-f080d58a62874d818f8068ba9de6e4da`でraw13件PASS�
 最後のraw power範囲testは存在しないGluon cdiv helperを呼んだテストコードのミスで停止。
 Pythonの整数切上げ除算へ直す。runtimeは変更せず、全検査を再実行する。
 return1/no-timeout/source/manifest/hash/cleanupをfailed archiveへ保存、性能証拠に含めない。
+
+### v51 G4: 全精度PASS、速度差は0.1%前後で採用根拠なし
+
+source `8b5cd1967e715c0e46bf49ee9c1b330b02f058a4`、job
+`colabjob-180eaaa2a61445db91061269c78631f8`でraw14件、共有33件PASS。
+両primary全planの3状態full-shape独立FP64 Y/dX/全4P、全52,428sigma更新、初期P/X/target hash一致PASS。
+全4P maxabs1.362e-4、relL2 6.380e-7で元の4e-4基準以内。
+
+| G4,65rounds | v47 ms | v51 table ms | Dense ms | v51 allocated/reserved MiB |
+|---|---:|---:|---:|---:|
+|B32 mixed|.332249|.332010|.066330|34.157/98|
+|B64 mixed|.498930|.498340|.075310|38.219/100|
+
+差は0.072%/0.118%で、明確な高速化の根拠としない。メモリは固定表3072bytes分だけ増える。
+B32 decode spanは両方.019616ms、prepareも両方.045664ms。元のlog/expだけを置き換えても
+全stepの課題を解かない。v51は採用せず、v47を比較基準として保持する。
+両メモリ指標はDense以下だが、速度は約5.00x/6.62xで目標未達。
+source archive `5b1a9ec424165b88e039e5a95c6685c98b0df256059dfa6e1a746cb8e81b2508`、
+result archive `f9489da49252be969e4d1be0cd5cb294fe36f3b969c1380d3513154b535ed35b`。
+1678source files/25manifest entries/Git-byte一致、return0/no-timeout/cleanup ackを厳密検証。
+accepted G4は8job、失敗/診断/L4は別。所有GPU停止済み。runtime配布378filesのbyte一致もPASS。
+
+4箇所のjumpだけでqueryする重複局所block案もCPUで数値screenした。
+block幅>=4radius、stride=幅/2にすると支持域全体を一つのblockへ入れられ、内部の補正2箇所を省ける。
+ただし広いblockに対する係数/FP32 prefixの相殺誤差が増える。
+N128/B3とN1024/B32、各A128の6状態で、FMA queryでも全4P maxabs6.056e-4、
+FP64でjump係数を作ってFP32保存する案でも5.258e-4となった。元の4e-4基準を満たさないためGPUへ進めない。
+このscreenはqueryを調べ、出力側は直接乗算しており、atomic restoreや速度/peakを示さない。
+独立Torch oracleはvector_norm積のone-floorを使い、空支持での有限性もassertする。
+
+## v52: 幅バケットを作らないfresh二分割（検証前）
+
+H/G、局所bank、係数、native計算、L2、全4Pはv47と同じまま、振り分けだけを変更する候補。
+同じFP64 cutoffとclipped支持点<=2の判定を用い、CTA内prefixでnative/broad順位を求める。
+各CTAはnativeをID配列の先頭側、broadを末尾側から予約する。両総数の和がAなので予約域は重ならず、
+総native数を待つ二回目のscatterを不要にする。幅のsort/histogram/cursor/persistent order cloneを省く。
+新規ID/countはforwardごとに確保し、retained backwardへimmutable snapshotを渡す。
+Parameterやoptimizer状態の行は動かさない。新しいsigmaでは毎回分類し直す。
+原子の実行順は変わるので、元のfull-shape gateと完全step/peakを通過して初めて性能候補と扱う。
+
+v52 CPU2016 passed/5049 skipped/18既存warning(39.62s)、変更対象Ruff、両case宣言、build PASS。
+raw3形状のlive分類/permutation/Graph再生と共有33件の後、主B32/B64をv47/Denseと比較する。

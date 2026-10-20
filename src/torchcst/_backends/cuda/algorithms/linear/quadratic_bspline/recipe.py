@@ -960,3 +960,16 @@ class BSplineLocalTableDecodeRecipe(BSplineLocalBankZeroRecipe):
             raise ValueError("table_decode must be boolean")
         if not self.paired_decode or not self.ratio_decode or not self.split_prepare:
             raise ValueError("table decoding requires paired split ratio decoding")
+
+
+@dataclass(frozen=True)
+class BSplineLocalFreshPartitionRecipe(BSplineLocalBankZeroRecipe):
+    """Revision52: one-pass fresh native/broad placement without width buckets."""
+
+    fresh_partition = True
+    reuse_layout: bool = False
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.reuse_layout:
+            raise ValueError("fresh partition requires fresh immutable placement")

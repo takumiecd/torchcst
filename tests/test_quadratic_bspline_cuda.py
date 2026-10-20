@@ -22,6 +22,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineLocalCoordinatesAlgorithm,
     BSplineLocalDecodeRatioAlgorithm,
     BSplineLocalEndpointAlgorithm,
+    BSplineLocalFreshPartitionAlgorithm,
     BSplineLocalGluonAlgorithm,
     BSplineLocalGroupedAlgorithm,
     BSplineLocalIntegerAlgorithm,
@@ -75,6 +76,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineLocalCoordinatesRecipe,
     BSplineLocalDecodeRatioRecipe,
     BSplineLocalEndpointRecipe,
+    BSplineLocalFreshPartitionRecipe,
     BSplineLocalGluonRecipe,
     BSplineLocalGroupedRecipe,
     BSplineLocalIntegerRecipe,
@@ -138,6 +140,9 @@ def case(n=64, a=17):
 def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     from dataclasses import replace
 
+    fresh_partition = strategy == "h_fresh_partition" or recipe_options.pop(
+        "_fresh_partition", False
+    )
     table_decode = strategy == "h_table_decode" or recipe_options.pop(
         "_table_decode", False
     )
@@ -145,7 +150,8 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     integer = strategy == "h_local_integer" or recipe_options.pop("_integer", False)
     vector = strategy == "h_local_vector" or recipe_options.pop("_vector", False)
     bank_zero = (
-        table_decode
+        fresh_partition
+        or table_decode
         or unit_delta
         or integer
         or vector
@@ -326,6 +332,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineLocalBankZeroAlgorithm())
     registry.register(BSplineUnitDeltaAlgorithm())
     registry.register(BSplineLocalTableDecodeAlgorithm())
+    registry.register(BSplineLocalFreshPartitionAlgorithm())
     registry.register(BSplineLocalIntegerAlgorithm())
     registry.register(BSplineLocalVectorAlgorithm())
     registry.register(BSplineLocalUnifiedAlgorithm())
@@ -361,7 +368,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         recipe_options.setdefault("lane_atoms", 4)
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v51"
+        "v52"
+        if fresh_partition
+        else "v51"
         if table_decode
         else "v50"
         if unit_delta
@@ -462,7 +471,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         else "v2"
         if tuned
         else "v1",
-        BSplineLocalTableDecodeRecipe(**recipe_options)
+        BSplineLocalFreshPartitionRecipe(**recipe_options)
+        if fresh_partition
+        else BSplineLocalTableDecodeRecipe(**recipe_options)
         if table_decode
         else BSplineUnitDeltaRecipe(**recipe_options)
         if unit_delta
@@ -2998,6 +3009,13 @@ ALL_QUERY_OPTIONS = (
             id="table-decode-1",
         ),
     ]
+    + [
+        pytest.param({"_fresh_partition": True}, id="fresh-partition-0"),
+        pytest.param(
+            {"_fresh_partition": True, "save_input_bank": False, "batch_chunk": 16},
+            id="fresh-partition-1",
+        ),
+    ]
     + [pytest.param(opt, id=f"vector-{i}") for i, opt in enumerate(VECTOR_OPTIONS)]
     + [pytest.param(opt, id=f"integer-{i}") for i, opt in enumerate(INTEGER_OPTIONS)]
     + [
@@ -3894,6 +3912,7 @@ def test_native_bound_recipe_roundtrip_and_bounds():
         "h_local_bank_zero",
         "h_unit_delta",
         "h_table_decode",
+        "h_fresh_partition",
         "h_local_integer",
         "h_local_vector",
     ],
@@ -3993,6 +4012,7 @@ def test_native_bound_count_changes_across_graph(batch, floor, strategy):
         "h_local_bank_zero",
         "h_unit_delta",
         "h_table_decode",
+        "h_fresh_partition",
         "h_local_integer",
         "h_local_vector",
     ],
@@ -4042,6 +4062,7 @@ def test_native_bound_strided_individual_gradients(which, strategy):
         "h_local_bank_zero",
         "h_unit_delta",
         "h_table_decode",
+        "h_fresh_partition",
         "h_local_integer",
         "h_local_vector",
     ],
@@ -4584,6 +4605,7 @@ def test_native_cache_recipe_roundtrip_and_bounds():
         ("h_local_bank_zero", True),
         ("h_unit_delta", True),
         ("h_table_decode", True),
+        ("h_fresh_partition", True),
         ("h_local_integer", True),
         ("h_local_vector", True),
     ],
@@ -4611,6 +4633,7 @@ def test_native_cache_spacing_fallbacks(strategy, unroll, spacing, batch, amplit
             "h_local_bank_zero",
             "h_unit_delta",
             "h_table_decode",
+            "h_fresh_partition",
             "h_local_integer",
             "h_local_vector",
         )
@@ -6381,3 +6404,86 @@ def test_table_decode_power_range_and_bin_boundaries():
         )
         expected = (alpha * x.log()).exp()
         torch.testing.assert_close(actual.cpu(), expected, atol=0, rtol=3e-14)
+
+
+def test_fresh_partition_recipe_roundtrip_and_guards():
+    reg = Registry()
+    reg.register(BSplineLocalFreshPartitionAlgorithm())
+    recipe = BSplineLocalFreshPartitionRecipe()
+    plan = ExecutionPlan("research_cuda_quadratic_bspline", "v52", recipe)
+    assert reg.loads_plan(reg.dumps_plan(plan)) == plan
+    assert recipe.fresh_partition and not recipe.reuse_layout
+    with pytest.raises(ValueError):
+        BSplineLocalFreshPartitionRecipe(reuse_layout=True)
+
+
+@GPU
+@pytest.mark.parametrize("atoms", [1, 137, 1025])
+def test_fresh_partition_raw_live_membership_and_permutation(atoms):
+    import math
+
+    import triton as tr
+
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        fresh_partition_kernels as fp,
+    )
+
+    n = 128
+    origin = torch.tensor([0.31, -0.27], device="cuda", dtype=torch.float64)
+    spacing = torch.tensor([0.1, 0.3], device="cuda", dtype=torch.float64)
+    meta = torch.zeros(atoms, 12, device="cuda", dtype=torch.float64)
+    ids = torch.arange(atoms, device="cuda")
+    meta[:, 2] = (ids * 0.17) % 12.7 + 0.31
+    meta[:, 3] = (ids * 0.23) % 38.1 - 0.27
+    meta[:, 10:] = spacing.reciprocal()
+    order = torch.empty(atoms, device="cuda", dtype=torch.int64)
+    counts = torch.empty(2, device="cuda", dtype=torch.int32)
+
+    def run():
+        counts.zero_()
+        fp.partition[(tr.cdiv(atoms, 128),)](
+            meta,
+            origin,
+            spacing,
+            order,
+            counts,
+            atoms,
+            n,
+            n,
+            0.05,
+            True,
+            num_warps=4,
+            enable_fp_fusion=False,
+        )
+
+    meta[:, 1] = math.sqrt(6) * 0.4
+    run()
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        run()
+    for step in range(4):
+        sigma = torch.where((ids + step) % 3 == 0, 0.02, 1.6)
+        meta[:, 1] = math.sqrt(6) * sigma.double()
+        if step == 2:
+            meta[:, 2] = -200.0  # Empty clipped support is native regardless of sigma.
+        if step == 3:
+            meta[:, 2] = (ids * 0.17) % 12.7 + 0.31
+        graph.replay()
+        native = meta[:, 1] <= math.sqrt(6) * 0.05
+        for dim in range(2):
+            lo = (
+                ((meta[:, 2 + dim] - meta[:, 1] - origin[dim]) / spacing[dim])
+                .ceil()
+                .clamp(0, n)
+            )
+            hi = (
+                ((meta[:, 2 + dim] + meta[:, 1] - origin[dim]) / spacing[dim])
+                .ceil()
+                .clamp(0, n)
+            )
+            native |= hi - lo <= 2
+        nn = int(native.sum())
+        assert counts.cpu().tolist() == [nn, atoms - nn]
+        assert torch.equal(order.sort().values, ids)
+        assert torch.all(native[order[:nn]])
+        assert torch.all(~native[order[nn:]])

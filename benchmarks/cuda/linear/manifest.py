@@ -888,3 +888,10 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
 )
 
 REGISTRY.register(BSplineLocalTableDecodeAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalFreshPartitionAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalFreshPartitionAlgorithm())

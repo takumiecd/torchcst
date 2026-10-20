@@ -29,6 +29,7 @@ from .recipe import (
     BSplineLocalCoordinatesRecipe,
     BSplineLocalDecodeRatioRecipe,
     BSplineLocalEndpointRecipe,
+    BSplineLocalFreshPartitionRecipe,
     BSplineLocalGluonRecipe,
     BSplineLocalGroupedRecipe,
     BSplineLocalIntegerRecipe,
@@ -588,3 +589,9 @@ class BSplineUnitDeltaAlgorithm(BSplineLocalSavedBankAlgorithm):
 class BSplineLocalTableDecodeAlgorithm(BSplineLocalBankZeroAlgorithm):
     revision: str = "v51"
     recipe_type: type = BSplineLocalTableDecodeRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalFreshPartitionAlgorithm(BSplineLocalBankZeroAlgorithm):
+    revision: str = "v52"
+    recipe_type: type = BSplineLocalFreshPartitionRecipe
