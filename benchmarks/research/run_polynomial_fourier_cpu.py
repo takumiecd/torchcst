@@ -386,6 +386,15 @@ def benchmark():
                             "norm": norm,
                             "max_error": error,
                             "input_bank_payload": bank.payload,
+                            "prepared_coefficient_payload": sum(
+                                v.nbytes
+                                for terms in prepared_terms
+                                for term in terms
+                                for v in term.values()
+                                if isinstance(v, np.ndarray)
+                            ),
+                            "borrowed_X_bytes": values.nbytes,
+                            "output_three_projections_bytes": atoms * 8 * 3 * 8,
                             "geometry_payload": geometry_bank.payload,
                             "unique_tile_frequencies": bank.misses,
                             "atomwise_tile_frequencies": rebuilt,
@@ -395,6 +404,14 @@ def benchmark():
                             "input_build_products": bank.build_terms,
                             "mixed_norm_site_mode_products": mixed,
                             "sigma_changed": int(np.count_nonzero(sig != base_sigma)),
+                            "fixture_sha256": {
+                                name: hashlib.sha256(v.tobytes()).hexdigest()
+                                for name, v in [
+                                    ("X", values),
+                                    ("mu", mu),
+                                    ("sigma", sig),
+                                ]
+                            },
                         }
                     )
                 output.append(
