@@ -1481,3 +1481,11 @@ amp上限を既存decoderが同じlaunch中にsnapshotへ書き、保存bank/再
 CPU2014 passed/4978 skipped/18既存warning (39.51s)、変更対象Ruff PASS。
 新しいraw bank amplitude1/9とlive amplitude/retained検査を追加し、raw7件+共有35件を予定する。
 追加の高amplitude検査はFP64 norm/contraction設定を使う。標準のFP32 core検査/primary入力・4e-4基準は維持する。
+
+job `colabjob-473a909761044c4397b0c7a38ffb731a`、sourcef43d7decでraw7件PASS(11.32s)、
+共有18件PASS。以前失敗したP-only勾配も同じ基準で通過した。
+次のcutoff Graph検査では最初のreplayのY/dX/全4P照合を通過した後、
+旧stream_layoutのcount参照がKeyErrorとなった。新方式はfresh compactionなので、
+テストのcount参照だけをunit_native_countへ対応する。期待native数のassertと精度gateは維持する。
+性能測定には到達していない。return1/no-timeout、manifest/source/result hashとcleanup ackを
+failed-jobsへ厳密保存し、成功/性能証拠に含めない。runtimeはf43d7decと同一のまま再提出する。

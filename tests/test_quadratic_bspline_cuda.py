@@ -3117,8 +3117,13 @@ def test_query_graph_crosses_selected_cutoff(options):
         for actual, expected in zip((y, dx, dp), (ref, rdx, rdp)):
             error = check(actual, expected, 4e-4)
             assert error["max"] < 4e-4 and error["rel_l2"] < 4e-4
-        cache = layer.__dict__["_algorithm_states"][0].buffers["stream_layout"]
-        assert cache["count"].item() == native
+        buffers = layer.__dict__["_algorithm_states"][0].buffers
+        count = (
+            buffers["unit_native_count"]
+            if options.get("_unit_delta")
+            else buffers["stream_layout"]["count"]
+        )
+        assert count.item() == native
 
 
 def test_query_recipe_roundtrip_and_bounds():
