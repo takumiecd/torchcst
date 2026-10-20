@@ -2322,3 +2322,97 @@ GPU atomicの実装案では通常のFP32加算と同じ丸め環境を仮定せ
 [PTX ISAのatom仕様](https://docs.nvidia.com/cuda/parallel-thread-execution/#parallel-synchronization-and-communication-instructions-atom)
 が示すround-to-nearest-evenとglobal FP32のsubnormal処理も考慮する必要がある。
 この確認を理由に数式や4e-4 gateを変更しない。
+
+## 丸め残差を蓄積するatomicのGPU切り分け（runtimeへ未統合）
+
+FP64 atomicをFP32 high/lowへ変えられるかを、同じv64の実入力frameで比較した。
+highへatomic addして返されたoldを使い、TwoSumの加算誤差eを計算し、lowへ入力low+eを加える。
+highの再計算は明示的な`add.rn.ftz.f32`でglobal FP32 atomicの丸め環境へ合わせた。
+shapeはN1024/A52428/B64 mixed、およびN64/A513・radius_scale1.15/1.4・B3/33の重複条件。
+各3状態、forward/dXそれぞれ最初のbatch chunk（最大16行）を凍結した30記録である。
+σ、中心、入力とdYは状態ごとに更新する。独立FP64全演算/all4P gateや完全stepの代替ではない。
+
+初回job `l4job-82637501526d49d6b7d695ed73bc94b2` は診断のrestore label取得でKeyErrorになった。
+chunk executorのimportされた関数と`scan_output_chunk0`等の名前を捕捉するようdriverを修正した。
+失敗runはreturn1/cleanup ackとsource byte一致を検証してfailed-jobsに保全し、採用根拠から除外。
+source archive `294b1314ca7f7b7465f1e47764446e26c04b1d6d53e737093ccaab0117cb265f`、
+result archive `b8d10f429b5042f28f35836a1101f71e981cc38e40adbe593606135015b7976c`。
+
+### 凍結した寄与表: 精度は保てるが、表読み取りを含む時間である
+
+修正job `l4job-bfee45cdf29643a59683a98ecb3c80e8`、runtime sourcee78985b0、L4。
+実際のH/G、Meta、Co、位置と同じFP64積から寄与/書き込み先を作り、FP64/通常FP32/残差FP32を比較した。
+復元後の通常FP32の誤差は重複条件で最大.025779、残差FP32は全条件で9.537e-7以下だった。
+主条件のzero+injectは各方式約.849〜.860msで差が小さい。
+B33重複の一部ではFP64約.020〜.026msに対し残差FP32約.015〜.019msだったが、
+小さいB3では約.015msで揃った。register18/20、spill0。
+main chunkの寄与表は18*A*16個のvalue/addressを保持し、診断payloadだけで約345.6MiBになる。
+通常runtimeにこの表を導入する提案ではなく、表の読み取りを含むためatomic単体の因果判定にも使わない。
+時間は別Graph31samplesのzero+injectのみ。query/表構築/unpack/restoreは含まない。
+source archive `6b4974dc615095a9707f330c1d205914573bc757e05590718b4cc4c3ffadbb34`、
+result archive `54323d4743c23f812f1b3741ae73daf1c920dea7b2fbfa22616e950ead5ab002`。
+1705 sourcefiles/4 manifest entries/Git-byte一致/return0/no-timeout/cleanup ackを確認。
+
+### 注入式との融合: FP64の積を残す変更だけでは大幅に短縮しない
+
+job `l4job-c8a44f9585014b8a886a0ebcca66f8d3`、runtime sourcee78985b0、L4。
+同じH/G・係数frameからgk._injectと同じFP64のweight×coefficientを計算し、寄与表を作らず比較した。
+mode0は元のFP64 atomic、mode1は通常FP32、mode2はFP64→FP32丸めとFP64減算によるhi/lo分割＋残差atomic、
+mode3は2^-60..2^60を整数bitで48bitペアへ分割し、範囲外を別のFP64 escape面へ加える方式。
+escape面はmode3で元のDelta/Borderと同じbyte数を追加するため、同じ保存量の改善ではない。
+今回の実入力ではescape寄与は0個だった。極端値の退避を検証した結果としては扱わない。
+
+|主条件first16行chunk、zero+inject ms|FP64|通常FP32|FP64分割＋残差|整数分割＋残差/escape|
+|---|---:|---:|---:|---:|
+|forward|.33485〜.36352|.33690〜.34304|.83763〜.84275|.313344|
+|dX|.33178〜.33894|.33690〜.34202|.83763〜.84378|.31334〜.31437|
+
+通常FP32へ変えるだけでは大きな差はなく、追加FP64分割は約2.5倍遅かった。
+整数分割は主条件で少し短いが、重複B3では元の約.015〜.016msに対し約.018〜.022msで遅い。
+全modeのspill0、timed register32〜40。
+元のFP64注入/復元との出力差は残差方式で最大9.537e-7/relL2 6.739e-10以下。
+通常FP32は重複条件で最大.025779の差となった。
+F64 atomicの型だけを変更して目標へ届く根拠は得られず、FP64の積/係数処理を含む通常経路全体を見直す。
+この診断は最終CST全勾配や完全step/両peakを測っていないため、新runtimeやG4へ展開しない。
+source archive `64971684b8a06f410310d35f414f683a90a9aa4e0623f4bb0957d2a19c9626e4`、
+result archive `18c8cf3d206d5d72f6203b69324facba1c4498ef47b7bbb969f30b92aa633230`。
+1705 sourcefiles/4 manifest entries/Git-byte一致/return0/no-timeout/cleanup ackを確認。
+両診断ともNVIDIA L4/driver580.82.07/Torch2.11.0+cu130/CUDA13/Triton3.6。
+正常L4 primaryは44件のまま、診断は7件。raw artifactsはignoredに保持する。
+
+### 次のL2分解: 共通Dの平方根を両側の係数へ移すCPU確認
+
+通常経路のFP64の積を減らすため、同じraw profileの係数へ共通のnormalizationを含める候補を確認した。
+行列の向きはX[B,Ni]、Co[No,A]、Ci[Ni,A]で、
+
+\[
+D_a=\max(\|q^o_a\|_2\|q^i_a\|_2,\epsilon),\quad
+C^o_a=q^o_a/\sqrt{D_a},\quad C^i_a=q^i_a/\sqrt{D_a},\\
+H=XC^i,\quad G=dY C^o,\quad Y=(H\odot a)(C^o)^T.
+\]
+
+floorは全積の後に一度だけ。振幅aは係数へ含めないため、a=0でも振幅勾配を保持する。
+queryのcenter derivativeはnormalizerを微分せず、q_mu/sqrt(D)の係数としてHmu/Gmuを評価する。
+
+\[
+T_a=\sum_bH_{ba}G_{ba},\quad
+\partial_a\mathcal L=T_a,\quad
+dX=(G\odot a)(C^i)^T,\\
+\partial_{\mu_o}\mathcal L=a\left[\sum_bH G_{\mu_o}-T\gamma_o\right],\quad
+\partial_{\mu_i}\mathcal L=a\left[\sum_bH_{\mu_i}G-T\gamma_i\right],\\
+\gamma_d=\mathbf1_{\|q^o\|\|q^i\|>\epsilon}
+\frac{\langle q^d,q^d_{\mu_d}\rangle}{\|q^d\|^2}.
+\]
+
+全4Pの最初の2成分はTへ既存Polarの振幅Jacobianを掛ける。width stop-gradientは同じ。
+この式では現行pullbackのinvDとamp*invDを、それぞれ1とampへ読み替える。
+Metaの元のinvD/γはnative・正規化処理のため保持し、将来の実装で明示flagを分ける必要がある。
+
+CPU FP64 screen `normalized-coefficient-cpu.py/json` はN64/A513、B3/33、ordinary/重複/floor/empty/
+負振幅/零振幅を各3状態（36状態）比較した。raw profileとPolar decodeの式をoracleと揃え、
+因数分解と明示pullbackだけの違いを検査した。最終GPUの独立oracle照合の代替ではない。
+元のbs.oracleに対する最大誤差はY3.326e-12、dX4.292e-12、autograd全4P1.928e-12。
+上式による手書きdX/全4Pも4.292e-12/1.051e-12以下、relL2は全指標2.407e-14以下。
+新しい1e-10のCPU relL2基準と4e-7のmaxabs基準を通過し、既存GPUの4e-4基準は変更しない。
+通常経路をFP32ペアで評価し範囲外をFP64へ戻す実装、extra escape面の両peak、完全step速度は未検証。
+現時点でruntime/recipeの追加や、目標達成・採用の主張は行わない。
