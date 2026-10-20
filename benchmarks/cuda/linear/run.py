@@ -701,6 +701,17 @@ def measure(args, run):
                     hybrid_routing.update(
                         {
                             "bank_layout": "FP32 plane,dyadic-local-point,batch; no periodic wrap",
+                            "batch_values_per_thread": getattr(
+                                recipe, "batch_values", 1
+                            ),
+                            "vector_atomic_requested": getattr(
+                                recipe, "vector_atomic", False
+                            ),
+                            "vector_atomic_effective": getattr(
+                                recipe, "vector_atomic", False
+                            )
+                            and torch.cuda.get_device_capability(x.device)[0] >= 9,
+                            "vector_atomic_scope": "aligned contiguous full quads only; per-element masked scalar fallback; no additional scratch",
                             "bank_zero_fused": getattr(recipe, "fuse_bank_zero", False),
                             "bank_zero_diagnostic_scope": "when fused: scratch+border zero CTAs are included in the first bank kernel; delta markers contain no zero kernel",
                             "input_bank_retained": getattr(

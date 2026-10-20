@@ -902,3 +902,22 @@ class BSplineLocalBankZeroRecipe(BSplineLocalSavedBankRecipe):
             raise ValueError("fuse_bank_zero must be boolean")
         if self.fuse_bank_zero and self.zero_active:
             raise ValueError("bank-zero fusion requires full scratch initialization")
+
+
+@dataclass(frozen=True)
+class BSplineLocalVectorRecipe(BSplineLocalBankZeroRecipe):
+    """Revision 48: four batch values per thread and optional SM90+ vector RED."""
+
+    batch_values = 4
+    lane_atoms: int = 4
+    axis_atoms: int = 16
+    vector_atomic: bool = True
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.vector_atomic) is not bool:
+            raise ValueError("vector_atomic must be boolean")
+        if self.axis_atoms < 16 or self.lane_atoms != 4:
+            raise ValueError(
+                "batch4 ownership requires at least 16 atoms and four atom lanes"
+            )

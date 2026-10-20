@@ -41,6 +41,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineLocalSplitAlgorithm,
     BSplineLocalTransposedAlgorithm,
     BSplineLocalUnifiedAlgorithm,
+    BSplineLocalVectorAlgorithm,
     BSplineNativeHAlgorithm,
     BSplineNativeLoopAlgorithm,
     BSplineParallelAlgorithm,
@@ -90,6 +91,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineLocalSplitRecipe,
     BSplineLocalTransposedRecipe,
     BSplineLocalUnifiedRecipe,
+    BSplineLocalVectorRecipe,
     BSplineNativeHRecipe,
     BSplineNativeLoopRecipe,
     BSplineParallelRecipe,
@@ -130,8 +132,11 @@ def case(n=64, a=17):
 def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     from dataclasses import replace
 
-    bank_zero = strategy == "h_local_bank_zero" or recipe_options.pop(
-        "_bank_zero", False
+    vector = strategy == "h_local_vector" or recipe_options.pop("_vector", False)
+    bank_zero = (
+        vector
+        or strategy == "h_local_bank_zero"
+        or recipe_options.pop("_bank_zero", False)
     )
     saved_bank = (
         bank_zero
@@ -305,6 +310,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineLocalSpatialAlgorithm())
     registry.register(BSplineLocalSavedBankAlgorithm())
     registry.register(BSplineLocalBankZeroAlgorithm())
+    registry.register(BSplineLocalVectorAlgorithm())
     registry.register(BSplineLocalUnifiedAlgorithm())
     registry.register(BSplineLocalNativeShardsAlgorithm())
     registry.register(BSplineLocalNativePointAlgorithm())
@@ -333,9 +339,14 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         & {"axis_atoms", "axis_batch", "matrix_pairs", "prepare_warps"}
     )
     tuned = bool(recipe_options) or strategy == "matrix_separable"
+    if vector:
+        recipe_options.setdefault("axis_atoms", 16)
+        recipe_options.setdefault("lane_atoms", 4)
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v47"
+        "v48"
+        if vector
+        else "v47"
         if bank_zero
         else "v46"
         if saved_bank
@@ -428,7 +439,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         else "v2"
         if tuned
         else "v1",
-        BSplineLocalBankZeroRecipe(**recipe_options)
+        BSplineLocalVectorRecipe(**recipe_options)
+        if vector
+        else BSplineLocalBankZeroRecipe(**recipe_options)
         if bank_zero
         else BSplineLocalSavedBankRecipe(**recipe_options)
         if saved_bank
@@ -2817,6 +2830,17 @@ SAVED_BANK_OPTIONS = [
         "batch_chunk": 16,
     },
 ]
+VECTOR_OPTIONS = [
+    {"_vector": True, "axis_atoms": 16, "lane_atoms": 4},
+    {
+        "_vector": True,
+        "axis_atoms": 16,
+        "lane_atoms": 4,
+        "vector_atomic": False,
+        "save_input_bank": False,
+        "batch_chunk": 16,
+    },
+]
 BANK_ZERO_OPTIONS = [
     {"_bank_zero": True},
     {
@@ -2913,6 +2937,7 @@ ALL_QUERY_OPTIONS = (
         pytest.param(opt, id=f"bank-zero-{i}")
         for i, opt in enumerate(BANK_ZERO_OPTIONS)
     ]
+    + [pytest.param(opt, id=f"vector-{i}") for i, opt in enumerate(VECTOR_OPTIONS)]
 )
 
 
@@ -3796,6 +3821,7 @@ def test_native_bound_recipe_roundtrip_and_bounds():
         "h_local_spatial",
         "h_local_saved_bank",
         "h_local_bank_zero",
+        "h_local_vector",
     ],
 )
 def test_native_bound_count_changes_across_graph(batch, floor, strategy):
@@ -3890,6 +3916,7 @@ def test_native_bound_count_changes_across_graph(batch, floor, strategy):
         "h_local_spatial",
         "h_local_saved_bank",
         "h_local_bank_zero",
+        "h_local_vector",
     ],
 )
 def test_native_bound_strided_individual_gradients(which, strategy):
@@ -3935,6 +3962,7 @@ def test_native_bound_strided_individual_gradients(which, strategy):
         "h_local_spatial",
         "h_local_saved_bank",
         "h_local_bank_zero",
+        "h_local_vector",
     ],
 )
 def test_native_bound_retained_count_above_grid(strategy):
@@ -4473,6 +4501,7 @@ def test_native_cache_recipe_roundtrip_and_bounds():
         ("h_local_spatial", True),
         ("h_local_saved_bank", True),
         ("h_local_bank_zero", True),
+        ("h_local_vector", True),
     ],
 )
 @pytest.mark.parametrize(
@@ -4496,6 +4525,7 @@ def test_native_cache_spacing_fallbacks(strategy, unroll, spacing, batch, amplit
             "h_local_spatial",
             "h_local_saved_bank",
             "h_local_bank_zero",
+            "h_local_vector",
         )
         else {"cache_unroll": unroll}
     )
@@ -5491,3 +5521,107 @@ def test_bank_zero_exact_values_and_full_scratch_zero(
     # padded rows plus the other axis's independently-sized scratch.
     assert torch.count_nonzero(delta).item() == 0
     assert torch.count_nonzero(border).item() == 0
+
+
+def test_vector_recipe_roundtrip_and_guards():
+    reg = Registry()
+    reg.register(BSplineLocalVectorAlgorithm())
+    for flag in (False, True):
+        plan = ExecutionPlan(
+            "research_cuda_quadratic_bspline",
+            "v48",
+            BSplineLocalVectorRecipe(vector_atomic=flag),
+        )
+        assert reg.loads_plan(reg.dumps_plan(plan)) == plan
+    for bad in ({"vector_atomic": 1}, {"axis_atoms": 4}, {"lane_atoms": 1}):
+        with pytest.raises(ValueError):
+            BSplineLocalVectorRecipe(**bad)
+
+
+@GPU
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "aligned",
+        "offset",
+        "permuted",
+        "strided",
+        "alias",
+        "tail31",
+        "tail3",
+        "inactive",
+    ],
+)
+def test_vector_atomic_exact_collisions_tails_and_replay(kind):
+    if torch.cuda.get_device_capability()[0] < 9:
+        pytest.skip("vector RED requires SM90 or newer")
+    import triton.experimental.gluon as tr
+    import triton.experimental.gluon.language as tl
+
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.vector_atomic_kernels import (
+        add4,
+    )
+
+    @tr.jit
+    def raw(X, Out, Flags, KIND: tl.constexpr):
+        tile: tl.constexpr = tl.BlockedLayout([1, 4], [4, 8], [4, 1], [1, 0])
+        a = tl.program_id(0) * 16 + tl.arange(0, 16, layout=tl.SliceLayout(1, tile))
+        b = tl.arange(0, 32, layout=tl.SliceLayout(0, tile))
+        bb = b
+        if KIND == "permuted":
+            bb = b ^ 3
+        elif KIND == "strided":
+            bb = b * 2
+        elif KIND == "alias":
+            bb = b // 4
+        index = (a[:, None] % 7) * 128 + bb[None, :]
+        if KIND == "offset":
+            index += 1
+        limit: tl.constexpr = (
+            31
+            if KIND == "tail31"
+            else 3
+            if KIND == "tail3"
+            else 0
+            if KIND == "inactive"
+            else 32
+        )
+        mask = (a[:, None] < 113) & (b[None, :] < limit)
+        value = tl.load(X + a[:, None] * 32 + b[None, :], a[:, None] < 113, 0)
+        selected = add4(Out + index, value, mask)
+        tl.store(Flags + a[:, None] * 32 + b[None, :], selected, a[:, None] < 113)
+
+    source = ((torch.arange(113 * 32) % 7) - 3).float().reshape(113, 32) / 8
+    x = source.cuda()
+    out = torch.zeros(7 * 128, device="cuda")
+    flags = torch.empty((113, 32), device="cuda", dtype=torch.int32)
+    compiled = raw[(8,)](x, out, flags, kind, num_warps=4)
+    assert "red.relaxed.gpu.global.add.v4.f32" in compiled.asm["ptx"]
+    expected = torch.zeros(7 * 128)
+    limit = {"tail31": 31, "tail3": 3, "inactive": 0}.get(kind, 32)
+    for a in range(113):
+        for b in range(limit):
+            bb = (
+                b ^ 3
+                if kind == "permuted"
+                else 2 * b
+                if kind == "strided"
+                else b // 4
+                if kind == "alias"
+                else b
+            )
+            index = (a % 7) * 128 + bb + (kind == "offset")
+            expected[index] += source[a, b]
+    assert torch.equal(out.cpu(), expected)
+    if kind in ("aligned", "tail31"):
+        assert torch.count_nonzero(flags).item() > 0
+    else:
+        assert torch.count_nonzero(flags).item() == 0
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        out.zero_()
+        raw[(8,)](x, out, flags, kind, num_warps=4)
+    x.mul_(2)
+    for _ in range(2):
+        graph.replay()
+        assert torch.equal(out.cpu(), expected * 2)

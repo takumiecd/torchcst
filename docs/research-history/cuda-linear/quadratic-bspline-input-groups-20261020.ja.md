@@ -1169,3 +1169,68 @@ source SHA256 `4446fb6c50681169d38d9a236169aa191b641c5762b3b935169f205c987a3413`
 result SHA256 `10d24afdba089346a5bb7f93221ca69de00b608fb5c7450e3a5dc7f7652f756f`。
 source1662/manifest68、archive/manifest/Git bytes/return0/timeoutなし/cleanup ackを照合した。
 372 runtime-fileのsdist/wheel byte一致も確認。公開/defaultは変更しない。
+
+
+### v47 G4 129round比較: 小幅な追加改善、目標は未達
+
+job `colabjob-5d4ff77cc01b47ccab5a87889dbfed6d`、source `ac06d717`。
+9件のraw bank/zero検査と、両primaryの3状態全shape独立FP64 Y/dX/全4P gate、
+全52,428 sigma更新、同条件初期hash一致がPASS。
+
+|G4条件|v44 ms|v46保存 ms|v47保存+融合 ms|Dense ms|v47/Dense|
+|---|---:|---:|---:|---:|---:|
+|B32 mixed|0.351690|0.341910|0.339690|0.066160|5.13x|
+|B64 mixed|0.541630|0.522770|0.515100|0.074940|6.87x|
+
+v46比0.65%/1.47%短縮の候補改善であり、大きな構造改善ではない。
+allocated/reservedはB32 34.153809/98MiB、B64 38.215942/100MiBで、
+Dense 49.002441/106、49.502441/106MiB以下。速度2x目標は未達、goal active。
+bank spanはzero CTA込み0.0119→0.0139ms、独立delta zero spanは約0.0057msから
+空marker約0.000448msへ移る。spanの包含変更と未計装完全stepを区別する。
+G4全jobのmaxabs最大はY 3.300e-5、dX 3.330e-5、全4P 1.309e-4。
+relL2最大は1.731e-6/1.774e-6/6.385e-7で、4e-4基準を維持。
+source archive SHA256 `1ec2e505da4debc32e07232a848c4a64309b33535bfb8944e1df2ba4875e8334`、
+result archive SHA256 `9334140a657f9803a81a160a5ad5190a8585cd80b24c2188e110e61d1546b774`。
+1664 sourceファイル、manifest30件、git byte一致、return0、cleanup ackを検証した。
+全所有GPU停止、CLI active sessionなし。CI ac06 CPU PASS。
+
+## v48: batch4物理配置とSM90以降のvector RED（検証前）
+
+v47保存+初期化融合を継承し、H/G tileを16 atoms ×32 batch、
+BlockedLayout sizePerThread=[1,4], threadsPerWarp=[4,8], warpsPerCTA=[4,1]へ変える。
+実batchが32未満でも論理BBを32以上にし、各threadが異なる4要素を担当する。
+旧v37 lane4のsizePerThread=[1,1]とは異なる。動的native分岐やsigma値は量子化しない。
+
+同じ配置のscalar atomic対照と、SM90以降でvector REDを有効にする候補を用意する。
+inline asmのpack順を仮定せず、4アドレスの連続性・16byte整列・全mask trueを
+実行時に確認する。成立時だけred.relaxed.gpu.global.add.v4.f32を使用し、
+それ以外は各要素のmaskに従ったscalar REDへ戻す。古いSMでは全てscalar。
+FP32各成分の加算、FP64 metadata/最終pullback、単一floorのexact sampled L2、
+支持・task幅stop-gradient・入力/全atom勾配の4e-4 gateは維持する。
+新規GPU tensorや追加scratchはないが、register数・spillと実ピークは実測前。
+
+raw binary-rational衝突/端数/アドレス不揃い/重複アドレス/Graph再実行を検査し、
+vector経路の実行フラグとPTXを確認する。続いて独立FP64勾配・動的sigma・retainedを検査。
+完全stepはG4の両primary一設定だけで、v47・batch4 scalar・batch4 vector・Denseを比較する。
+公式仕様: https://docs.nvidia.com/cuda/archive/13.0.0/parallel-thread-execution/index.html#parallel-synchronization-and-communication-instructions-red
+
+### 別案: 3階差分からのW構築（CPU数値設計のみ、GPU未実装）
+
+同じsampled quadratic B-spline qは区分2次多項式なので、d=Δ³qは各節点付近のみ非零。
+因果prefix Pに対しq=P³d、従ってW=P_o³[sum_a A_a d_o d_i^T /D_a](P_i³)^T。
+D=max(||q_o||2 ||q_i||2, eps)の単一floorを保ち、U=q_o/sqrt(D), V=q_i/sqrt(D)とすると
+||U||2||V||2<=1である。差分係数の符号打消しを浮動小数点scanで失わないよう、
+52bit係数、32bit振幅、3 signed64 words・基数2^48の整数表現をCPUで試した。
+下位2wordをatomごとにbalanced carryしてから加え、各prefix段でもcarryを正規化する。
+重複impulse位置を統合し、tiny/危険な値は元の直接式へ戻す。
+
+ignored `integer-splitnorm-difference-cpu.py/.json`の843軸検査とN32/A64/B3で、
+整数word scanは任意精度整数scanと一致。W maxabs 9.017e-11、Y 4.378e-10、dX 2.628e-10、
+物理振幅/中心勾配2.246e-12。ただし全Polar4勾配の大規模gateではなく、GPU性能/peakの証拠でもない。
+一枚N1024の3word payloadは24MiBで、独立測定したpeakではない。
+中間overflow上限の検証、整数積/逆prefix VJP、fallback、全shape独立FP64 gate、実速度は未実装。
+source SHA256 `90d59892588e5a0e946cb74916158393e4c5e7519a9c40e266133a0c4768d855`。
+
+CPU validation: 2012 passed /4890 skipped /18既存warning (39.44s)。両case宣言と変更対象Ruff PASS。
+全src Ruffには既存torus_profile_productの15件があるため、全tree Ruff PASSとは記さない。
+wheel/sdist build成功。GPU検査はraw8件+独立参照等34件、primary2条件を予定。

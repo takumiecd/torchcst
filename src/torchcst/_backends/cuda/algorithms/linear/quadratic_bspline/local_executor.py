@@ -69,13 +69,25 @@ def _group_tables(pos, count, atoms, sites, recipe):
     return result
 
 
-def _h_args(tables, recipe):
+def _h_batch(batch, recipe):
+    return max(
+        tr.next_power_of_2(batch), 32 if getattr(recipe, "batch_values", 1) == 4 else 1
+    )
+
+
+def _h_args(tables, recipe, tensor=None):
     if not tables:
-        return (
+        result = (
             {"LANE_ATOMS": recipe.lane_atoms}
             if getattr(recipe, "gluon_h", False)
             else {}
         )
+        if getattr(recipe, "batch_values", 1) == 4:
+            major, _ = torch.cuda.get_device_capability(tensor.device)
+            result.update(
+                BATCH_VALUES=4, VECTOR_RED=recipe.vector_atomic and major >= 9
+            )
+        return result
     ends, ids, chunks, mapping = tables
     return {
         "GroupEnds": ends,
@@ -565,7 +577,7 @@ class _Local(torch.autograd.Function):
             _points(sizes[1], recipe),
             _points(sizes[0], recipe),
             recipe.axis_atoms,
-            tr.next_power_of_2(b),
+            _h_batch(b, recipe),
             ctx.mode,
             border,
             bp if shards else None,
@@ -577,7 +589,7 @@ class _Local(torch.autograd.Function):
             getattr(recipe, "bank_padding", 0),
             Order=_source_order(order, recipe),
             LAYOUT=getattr(recipe, "coefficient_layout", "soa"),
-            **_h_args(groups, recipe),
+            **_h_args(groups, recipe, x),
             **_native_h_args(x, None, native_y, sizes, recipe),
             num_warps=recipe.axis_warps,
             enable_fp_fusion=False,
@@ -705,7 +717,7 @@ class _Local(torch.autograd.Function):
             _points(sizes[1], recipe),
             _points(sizes[0], recipe),
             recipe.axis_atoms,
-            tr.next_power_of_2(b),
+            _h_batch(b, recipe),
             ctx.mode,
             need_dx,
             need_dp,
@@ -720,7 +732,7 @@ class _Local(torch.autograd.Function):
             getattr(recipe, "bank_padding", 0),
             Order=_source_order(order, recipe),
             LAYOUT=getattr(recipe, "coefficient_layout", "soa"),
-            **_h_args(groups, recipe),
+            **_h_args(groups, recipe, x),
             **_native_h_args(x, dy, native_dx, sizes, recipe),
             num_warps=recipe.axis_warps,
             enable_fp_fusion=False,

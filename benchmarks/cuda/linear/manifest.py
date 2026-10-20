@@ -863,3 +863,9 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
 )
 
 REGISTRY.register(BSplineLocalBankZeroAlgorithm())
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalVectorAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalVectorAlgorithm())

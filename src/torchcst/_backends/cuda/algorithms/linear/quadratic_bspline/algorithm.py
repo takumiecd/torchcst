@@ -48,6 +48,7 @@ from .recipe import (
     BSplineLocalSplitRecipe,
     BSplineLocalTransposedRecipe,
     BSplineLocalUnifiedRecipe,
+    BSplineLocalVectorRecipe,
     BSplineNativeHRecipe,
     BSplineNativeLoopRecipe,
     BSplineParallelRecipe,
@@ -538,3 +539,9 @@ class BSplineLocalSavedBankAlgorithm(BSplineLocalPairedDecodeAlgorithm):
 class BSplineLocalBankZeroAlgorithm(BSplineLocalSavedBankAlgorithm):
     revision: str = "v47"
     recipe_type: type = BSplineLocalBankZeroRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalVectorAlgorithm(BSplineLocalBankZeroAlgorithm):
+    revision: str = "v48"
+    recipe_type: type = BSplineLocalVectorRecipe

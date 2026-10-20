@@ -3,6 +3,8 @@
 import triton.experimental.gluon as tr
 import triton.experimental.gluon.language as tl
 
+from .vector_atomic_kernels import add4
+
 
 @tr.jit
 def _source(Order, slot, A: tl.constexpr):
@@ -108,6 +110,7 @@ def _inject(
     Order=None,
     LAYOUT: tl.constexpr = "soa",
     Program=None,
+    VECTOR_RED: tl.constexpr = False,
 ):
     program = tl.program_id(0) if Program is None else Program
     source = _source(Order, a, A)
@@ -143,12 +146,19 @@ def _inject(
                     + (block[:, None] * SHARDS + shard) * PB
                     + b[None, :]
                 )
-                tl.atomic_add(
-                    BorderDelta + addr,
-                    weight * c[:, None],
-                    mask & (block[:, None] >= 0),
-                    sem="relaxed",
-                )
+                if VECTOR_RED:
+                    add4(
+                        BorderDelta + addr,
+                        weight * c[:, None],
+                        mask & (block[:, None] >= 0),
+                    )
+                else:
+                    tl.atomic_add(
+                        BorderDelta + addr,
+                        weight * c[:, None],
+                        mask & (block[:, None] >= 0),
+                        sem="relaxed",
+                    )
             else:
                 addr = Delta + p * POINTS * PB + point[:, None] * PB + b[None, :]
                 if ENDPOINTS and SHARD_ORIGIN:
@@ -160,7 +170,10 @@ def _inject(
                         + b[None, :]
                     )
                     addr = tl.where(mode[:, None] == 2, border, addr)
-                tl.atomic_add(addr, weight * c[:, None], mask, sem="relaxed")
+                if VECTOR_RED:
+                    add4(addr, weight * c[:, None], mask)
+                else:
+                    tl.atomic_add(addr, weight * c[:, None], mask, sem="relaxed")
 
 
 @tr.jit
@@ -193,12 +206,17 @@ def forward(
     LAYOUT: tl.constexpr = "soa",
     Base=None,
     LANE_ATOMS: tl.constexpr = 4,
+    BATCH_VALUES: tl.constexpr = 1,
+    VECTOR_RED: tl.constexpr = False,
 ):
     base = tl.load(Count) + tl.program_id(0) * AB if Base is None else Base
     if base < A:
+        tl.static_assert(
+            BATCH_VALUES == 1 or (AB >= 16 and BB >= 32 and LANE_ATOMS == 4)
+        )
         atom_warps: tl.constexpr = min(AB // LANE_ATOMS, 4)
         tile: tl.constexpr = tl.BlockedLayout(
-            [1, 1],
+            [1, BATCH_VALUES],
             [LANE_ATOMS, 32 // LANE_ATOMS],
             [atom_warps, 4 // atom_warps],
             [1, 0],
@@ -251,6 +269,7 @@ def forward(
             Order,
             LAYOUT,
             Program=None if Base is None else (base - tl.load(Count)) // AB,
+            VECTOR_RED=VECTOR_RED,
         )
 
 
@@ -290,12 +309,17 @@ def backward(
     LAYOUT: tl.constexpr = "soa",
     Base=None,
     LANE_ATOMS: tl.constexpr = 4,
+    BATCH_VALUES: tl.constexpr = 1,
+    VECTOR_RED: tl.constexpr = False,
 ):
     base = tl.load(Count) + tl.program_id(0) * AB if Base is None else Base
     if base < A:
+        tl.static_assert(
+            BATCH_VALUES == 1 or (AB >= 16 and BB >= 32 and LANE_ATOMS == 4)
+        )
         atom_warps: tl.constexpr = min(AB // LANE_ATOMS, 4)
         tile: tl.constexpr = tl.BlockedLayout(
-            [1, 1],
+            [1, BATCH_VALUES],
             [LANE_ATOMS, 32 // LANE_ATOMS],
             [atom_warps, 4 // atom_warps],
             [1, 0],
@@ -387,4 +411,5 @@ def backward(
                 Order,
                 LAYOUT,
                 Program=None if Base is None else (base - tl.load(Count)) // AB,
+                VECTOR_RED=VECTOR_RED,
             )

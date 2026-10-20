@@ -20,6 +20,11 @@ def _report(name, compiled):
             "shared_bytes": getattr(compiled.metadata, "shared", None),
             "local_loads": "ld.local" in compiled.asm["ptx"],
             "local_stores": "st.local" in compiled.asm["ptx"],
+            "vector_red_instructions": compiled.asm["ptx"].count(
+                "red.relaxed.gpu.global.add.v4.f32"
+            ),
+            "gluon_batch4_layout": "sizePerThread = [1, 4]"
+            in compiled.asm.get("ttgir", ""),
         }
 
 

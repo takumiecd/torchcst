@@ -1,7 +1,6 @@
 """Shared immutable coefficients with bounded batch workspaces and full source VJP."""
 
 import torch
-import triton as tr
 from torch.autograd.function import once_differentiable
 
 from .executor import _report, _stamp
@@ -14,6 +13,7 @@ from .local_executor import (
     _frame,
     _group_tables,
     _h_args,
+    _h_batch,
     _h_launch,
     _Local,
     _native_h_args,
@@ -132,7 +132,7 @@ class _Chunked(torch.autograd.Function):
                 _points(sizes[1], recipe),
                 _points(sizes[0], recipe),
                 recipe.axis_atoms,
-                tr.next_power_of_2(actual),
+                _h_batch(actual, recipe),
                 "none",
                 border,
                 bp,
@@ -144,7 +144,7 @@ class _Chunked(torch.autograd.Function):
                 tile - actual,
                 Order=_source_order(order, recipe),
                 LAYOUT=getattr(recipe, "coefficient_layout", "soa"),
-                **_h_args(groups, recipe),
+                **_h_args(groups, recipe, x),
                 **_native_h_args(
                     xs,
                     None,
@@ -295,7 +295,7 @@ class _Chunked(torch.autograd.Function):
                 _points(sizes[1], recipe),
                 _points(sizes[0], recipe),
                 recipe.axis_atoms,
-                tr.next_power_of_2(actual),
+                _h_batch(actual, recipe),
                 "none",
                 need_dx,
                 need_dp,
@@ -311,7 +311,7 @@ class _Chunked(torch.autograd.Function):
                 True,
                 Order=_source_order(order, recipe),
                 LAYOUT=getattr(recipe, "coefficient_layout", "soa"),
-                **_h_args(groups, recipe),
+                **_h_args(groups, recipe, x),
                 **_native_h_args(
                     xs,
                     dys,
