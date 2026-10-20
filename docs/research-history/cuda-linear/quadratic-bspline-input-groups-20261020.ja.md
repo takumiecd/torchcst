@@ -831,3 +831,53 @@ NVIDIAのメモリtransaction数・占有率・速度改善もソースだけか
 Gluon/libdeviceのAPIは実行環境と同じ[Triton v3.6.0の公開ソース](https://github.com/triton-lang/triton/blob/v3.6.0/python/triton/experimental/gluon/language/extra/__init__.py)
 で確認した。CUDA importをCPUの宣言/recipe検査へ持ち込まず、実行時だけimportする。
 CPU・GPUの入口検証後、v39・v43・v44通常式・v44ratio式・Denseの4条件比較を行う。
+
+### v44実測と独立再測定
+
+主job `l4job-adbd4113eb194458afe6d4de2a02bc8b`、source
+`b569bd449fc9f271d651cd33a1d080828033f2da`。50 targeted checks PASS。
+12 fieldのbitwise一致、Graphの極端な幅への切替、実PTXのpair storeを確認した。
+全4条件の3状態全shape独立FP64 Y/dX/全4atom勾配、52,428σ更新、初期hash一致もPASS。
+
+|条件|v39 ms|v43 ratio ms|v44 pair通常式 ms|v44 pair+ratio ms|Dense ms|
+|---|---:|---:|---:|---:|---:|
+|B32 mixed|0.758131|0.753272|0.752920|0.747158|0.081924|
+|B64 mixed|1.227714|1.215445|1.216528|1.210881|0.103547|
+|B32 small|0.698458|0.693805|0.693803|0.687706|0.083080|
+|B32 switch|0.727817|0.722786|0.724165|0.717028|0.082975|
+
+decode診断は約0.064→0.052–0.053ms、prepare全体は約0.141–0.144→0.130–0.133ms。
+正規化・係数・H/Gは同帯。pair+ratioはregister80、shared0/spill0。
+新Tensorはなく、全候補のpeak allocated/reservedはB32 **34.154/98 MiB**、
+B64 **34.654/100 MiB**。Dense **49.002/106、49.502/106 MiB**以下を保つ。
+
+独立再測定job `l4job-d507bf5317f24d028ae17c35b0d43e20`、source
+`ee28e4495e3ea0c7e57f8a7dc7930f63cc2c77ce`（runtimeはb569と同一）も全gate PASS。
+
+|条件|v39 ms|v44 pair+ratio ms|Dense ms|
+|---|---:|---:|---:|
+|B32 mixed|0.768294|0.759292|0.084380|
+|B64 mixed|1.239294|1.231679|0.108056|
+|B32 small|0.706606|0.695316|0.084186|
+|B32 switch|0.735408|0.722767|0.084078|
+
+再測定も両peakは同一。v39比の短縮はB32/B64 mixedで1.17%/0.61%、
+small/switchで1.60%/1.72%。小さい改善は反復するが、Dense比は約9.00x/11.40xで
+2x目標には届かない。default dispatcherは変更しない。
+CPU2008pass/4730skip/18既存warning、Ruff/cases、371 runtime filesのwheel/sdist一致を確認。
+ee28のGitHub CPU validationもPASS。既知のv41追加テスト失敗とtargeted PASSは区別する。
+
+主job source SHA256 `70050d67a52bba00f4eec7a22528fda9f95d73444fd07961257aad40542d08ce`、
+result SHA256 `2263ae2b40dfdfb11a3cfe1ceade507615422076dcca5bfc161f5678f5bf6293`。
+両jobともarchive/manifest/sourceのGit bytes/return0/timeoutなし/cleanup ackまで照合し、
+正確な再測定hashは`verified-jobs/l4job-d507bf5317f24d028ae17c35b0d43e20/receipt.json`と
+`verified.json`へ保全した。全所有slotの停止も確認した。
+
+### G4比較の追加承認
+
+2026-10-20のユーザー指示により、G4でも同条件Denseの完全step時間2倍以内かつ
+capture/replayのpeak allocated/reservedが両方Dense以下なら、今回の目標達成とする。
+精度gate、σ/入力の動的条件、全4atom勾配、optimizerを含む比較契約は維持する。
+デバイス間で速度表を混ぜず、L4上のアルゴリズム改善とは区別する。
+検証済みv44とv39/Denseを同じsource/caseで短く比較し、実GPU・runtimeを記録する。
+G4結果は検証前であり、目標はactiveのまま。
