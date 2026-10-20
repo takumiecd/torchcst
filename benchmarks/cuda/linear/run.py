@@ -715,6 +715,9 @@ def measure(args, run):
                                     "paired_query": getattr(
                                         recipe, "paired_query", False
                                     ),
+                                    "bit_split_query": getattr(
+                                        recipe, "bit_split_query", False
+                                    ),
                                     "paired_query_scope": "query dot products in guarded FP32 pairs; FP64 coefficient/bank storage and injection; FP64 query fallback outside guard"
                                     if getattr(recipe, "paired_query", False)
                                     else None,

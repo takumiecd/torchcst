@@ -2131,3 +2131,62 @@ result archive `a4dbe73658602b931640ef16cd27463777957d6b95aa30e9125723715f4c5b27
 1700source files/31manifest entries/Git-byte一致/return0/no-timeout/cleanup ackを確認。
 CPU CI PASS(1m58s)。sdist/wheelの380runtimeファイルもGit-byte一致。
 L4 primary43件、G4 primary13件を区別。G4にはこの遅い候補を展開しない。
+
+### v62の退避率診断: FP64 fallbackの頻発ではない
+
+job `l4job-ced39e39b3b142bca0827a4abab557cc`、runtime source0ecb8fb6。
+B64 mixed・3状態の実際のforward/backward最初の16行chunkのBank/係数をcloneし、
+同じqueryを独立kernelで比較した。σと中心、入力は状態ごとに更新した。
+全13,107 CTAに対しunsafeはH系2/8/7、G系3/4/5 CTA、最大約.061%。
+
+|凍結queryのみ、L4、31samples|FP64 loop ms|guard付きpair ms|pairのみ ms|guardのみ ms|
+|---|---:|---:|---:|---:|
+|H|.231424|2.15552〜2.15757|2.152448|.960512|
+|G/Gmu|.581632|2.24051〜2.24461|2.23642〜2.23939|.985088|
+|H/Hmu|.581632|2.24051〜2.24154|2.236416|.985088|
+
+退避を外してもほぼ同じ時間なので、遅延をFP64再計算の頻発に帰属しない。
+guardだけでもFP64 loop全体より遅い。FP64値の検査/hi-lo分割/型変換を含むquery処理を
+前計算へ移す対照が必要。全modeでspill0。
+FP64 loopに対するguard付きpairのmaxabsは6.537e-12以下、退避なしでも3.009e-8以下だったが、
+これはこの凍結queryの比較だけで、最終Y/dX/全Pや極端な入力の許容範囲を拡張する根拠ではない。
+退避なしmodeは診断専用で、runtime/既存gateを変更しない。
+
+source archive `c0704ea9bf1cd34f8b083456dc7b5d218deb966bf678b7be816a3247b67db999`、
+result archive `820e95af6c28d7181f6e42aba81d88ddc6fbc302f61ab8877c4efe470e8205e3`。
+厳密な結果archive/manifest/sourcebyte/return0/no-timeout/cleanup ack検査は
+ignored `verified-l4-diagnostics.json` に保持し、主性能観測とは分離する。
+
+### hi/lo前計算のquery診断とv63の分割式（完全step未検証）
+
+job `l4job-71512951d5a14a02b00a6930db304894`、runtime source33e71f51、L4。
+同じB64 mixed/3状態の凍結Bank/係数についてFP64 loopと事前分割済みpairを比較した。
+前計算・range guardを除いたqueryのみの31samplesで、Hは.231424→.166912ms、
+G/Gmuは.581632→.229376〜.230400ms、H/Hmuは.581536〜.626688→.231424〜.234496ms。
+maxabs7.788e-12/relL2 2.208e-14以下、spill0。
+保存形式は診断用コピーなので、準備込み速度やpeakの改善を主張しない。
+圧縮c2のqをhi/loに分けた後の±3倍はpair乗算で復元し、各成分を独立に丸める誤差を避けた。
+source archive `3de3844ec76c1bd721eda3f9f18e0f447957a27285a2bdbada99f62becf5ab1e`、
+result archive `f36df5b318ec3f970297eddd9fb2acbf2c43502cc4f63292adf30516ed39dca2`。
+1700 sourcefiles/4 manifest entries/Git-byte一致/return0/no-timeout/cleanup ack確認。
+
+v63は保存形式やprepareを増やさず、v62の`_split_pair`だけを整数ビット抽出へ変える研究候補。
+FP64正規数を符号s、biased exponent e、52bit仮数mで表すと
+
+\[
+v=(-1)^s(2^{52}+m)2^{e-1075},\quad
+h=(-1)^s(2^{23}+\lfloor m/2^{29}\rfloor)2^{e-1046},\quad
+l=(-1)^s\operatorname{FP32}(m\bmod2^{29})2^{e-1075}.
+\]
+
+hの整数→FP32変換は正確。lの29bit整数→24bit FP32丸めだけで、再構成の相対誤差上界は2^-48。
+二つの2冪はFP32 exponent bitsから作る。queryでFP64減算・比較・FP64→FP32変換を行わない。
+元と同じzeroまたは2^-30<=abs(v)<=2^30をFP64 exponent/mantissaの整数比較で判定する。
+範囲外/NaN/Infは同じqueryのFP64 loopへ退避し、保存形式と範囲条件を変えない。
+係数共有のq倍、注入/復元、Meta、sampled product L2、全4P、optimizerはv62と同じ。
+追加bufferなし。raw queryはbit分割modeも含め、境界直前直後/負値/零/極端値のguardテストを追加した。
+単体数式の誤差上界は最終出力の精度gateの代わりにはならず、513重複を含む同じ回帰と主gateを通す。
+
+v63 CPU2042 passed/5486 skipped/18既存warning(39.52s)、Ruff、両case declaration、wheel/sdist build PASS。
+追加GPU単体テストのskip指定漏れによるCPU collection後のimport失敗を修正して全CPUを再実行した。
+GPU検証はこれから行い、未検証の速度改善や両peakを採用結果として扱わない。

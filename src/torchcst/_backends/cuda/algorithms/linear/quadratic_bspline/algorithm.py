@@ -23,6 +23,7 @@ from .recipe import (
     BSplineLocalActiveRecipe,
     BSplineLocalBankBundleRecipe,
     BSplineLocalBankZeroRecipe,
+    BSplineLocalBitSplitQueryRecipe,
     BSplineLocalCanonicalRecipe,
     BSplineLocalChunkedRecipe,
     BSplineLocalCoefficientRecipe,
@@ -699,3 +700,9 @@ class BSplineLocalSharedUnrolledAlgorithm(BSplineLocalSharedQuadraticAlgorithm):
 class BSplineLocalPairedQueryAlgorithm(BSplineLocalSharedUnrolledAlgorithm):
     revision: str = "v62"
     recipe_type: type = BSplineLocalPairedQueryRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalBitSplitQueryAlgorithm(BSplineLocalPairedQueryAlgorithm):
+    revision: str = "v63"
+    recipe_type: type = BSplineLocalBitSplitQueryRecipe

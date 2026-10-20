@@ -16,6 +16,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineLocalActiveAlgorithm,
     BSplineLocalBankBundleAlgorithm,
     BSplineLocalBankZeroAlgorithm,
+    BSplineLocalBitSplitQueryAlgorithm,
     BSplineLocalCanonicalAlgorithm,
     BSplineLocalChunkedAlgorithm,
     BSplineLocalCoefficientAlgorithm,
@@ -80,6 +81,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineLocalActiveRecipe,
     BSplineLocalBankBundleRecipe,
     BSplineLocalBankZeroRecipe,
+    BSplineLocalBitSplitQueryRecipe,
     BSplineLocalCanonicalRecipe,
     BSplineLocalChunkedRecipe,
     BSplineLocalCoefficientRecipe,
@@ -160,6 +162,9 @@ def case(n=64, a=17):
 def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     from dataclasses import replace
 
+    bit_split_query = strategy == "h_bit_split_query" or recipe_options.pop(
+        "_bit_split_query", False
+    )
     paired_query = strategy == "h_paired_query" or recipe_options.pop(
         "_paired_query", False
     )
@@ -397,6 +402,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineLocalSharedQuadraticAlgorithm())
     registry.register(BSplineLocalSharedUnrolledAlgorithm())
     registry.register(BSplineLocalPairedQueryAlgorithm())
+    registry.register(BSplineLocalBitSplitQueryAlgorithm())
     registry.register(BSplineLocalIntegerAlgorithm())
     registry.register(BSplineLocalVectorAlgorithm())
     registry.register(BSplineLocalUnifiedAlgorithm())
@@ -432,7 +438,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         recipe_options.setdefault("lane_atoms", 4)
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v62"
+        "v63"
+        if bit_split_query
+        else "v62"
         if paired_query
         else "v61"
         if shared_unrolled
@@ -555,7 +563,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         else "v2"
         if tuned
         else "v1",
-        BSplineLocalPairedQueryRecipe(**recipe_options)
+        BSplineLocalBitSplitQueryRecipe(**recipe_options)
+        if bit_split_query
+        else BSplineLocalPairedQueryRecipe(**recipe_options)
         if paired_query
         else BSplineLocalSharedUnrolledRecipe(**recipe_options)
         if shared_unrolled
@@ -3174,6 +3184,10 @@ ALL_QUERY_OPTIONS = (
         pytest.param(
             {"_shared_unrolled": True, "prepare_warps": 2}, id="shared-unrolled-warp2"
         ),
+        pytest.param({"_bit_split_query": True}, id="bit-split-query-0"),
+        pytest.param(
+            {"_bit_split_query": True, "prepare_warps": 2}, id="bit-split-query-warp2"
+        ),
         pytest.param({"_paired_query": True}, id="paired-query-0"),
         pytest.param(
             {"_paired_query": True, "prepare_warps": 2}, id="paired-query-warp2"
@@ -4086,6 +4100,7 @@ def test_native_bound_recipe_roundtrip_and_bounds():
         "h_shared_quadratic",
         "h_shared_unrolled",
         "h_paired_query",
+        "h_bit_split_query",
         "h_local_integer",
         "h_local_vector",
     ],
@@ -4196,6 +4211,7 @@ def test_native_bound_count_changes_across_graph(batch, floor, strategy):
         "h_shared_quadratic",
         "h_shared_unrolled",
         "h_paired_query",
+        "h_bit_split_query",
         "h_local_integer",
         "h_local_vector",
     ],
@@ -4256,6 +4272,7 @@ def test_native_bound_strided_individual_gradients(which, strategy):
         "h_shared_quadratic",
         "h_shared_unrolled",
         "h_paired_query",
+        "h_bit_split_query",
         "h_local_integer",
         "h_local_vector",
     ],
@@ -4815,6 +4832,7 @@ def test_native_cache_recipe_roundtrip_and_bounds():
         ("h_shared_quadratic", False),
         ("h_shared_unrolled", False),
         ("h_paired_query", False),
+        ("h_bit_split_query", False),
         ("h_local_integer", True),
         ("h_local_vector", True),
     ],
@@ -4853,6 +4871,7 @@ def test_native_cache_spacing_fallbacks(strategy, unroll, spacing, batch, amplit
             "h_shared_quadratic",
             "h_shared_unrolled",
             "h_paired_query",
+            "h_bit_split_query",
             "h_local_integer",
             "h_local_vector",
         )
@@ -6829,6 +6848,7 @@ def test_numeric_arena_disjoint_input_and_reused_scratch(device, shards):
         "h_shared_quadratic",
         "h_shared_unrolled",
         "h_paired_query",
+        "h_bit_split_query",
     ],
 )
 def test_numeric_arena_concurrent_retained_all_gradients(strategy):
@@ -7089,6 +7109,7 @@ def test_small_boundary_recipe_roundtrip_and_legacy_rejection():
         "h_shared_quadratic",
         "h_shared_unrolled",
         "h_paired_query",
+        "h_bit_split_query",
     ],
 )
 @pytest.mark.parametrize("batch", [3, 33])
@@ -7339,7 +7360,8 @@ def test_shared_quadratic_prepare_query_and_injection_equivalence(bank_scale):
             tile,
             LAYOUT,
             LOOPED=(Mode == 1) | (Mode == 2),
-            PAIRED=Mode == 4,
+            PAIRED=Mode >= 4,
+            BIT_SPLIT=Mode == 5,
             COMPACT_C2=Mode >= 2,
         )
         mask = (a[:, None] < A) & (b[None, :] < B)
@@ -7373,7 +7395,7 @@ def test_shared_quadratic_prepare_query_and_injection_equivalence(bank_scale):
     bank = torch.randn(3, pi, batch, device="cuda", dtype=torch.float64) * bank_scale
     values = torch.randn(atoms, batch, device="cuda", dtype=torch.float64)
     outputs = []
-    for mode in (0, 1, 2, 3, 4):
+    for mode in (0, 1, 2, 3, 4, 5):
         pos, co, half, bp, injection = frames[int(mode >= 2)]
         out = torch.empty(2, atoms, batch, device="cuda", dtype=torch.float64)
         delta = torch.zeros(3, po, batch, device="cuda", dtype=torch.float64)
@@ -7414,6 +7436,7 @@ def test_shared_quadratic_prepare_query_and_injection_equivalence(bank_scale):
     [
         (BSplineLocalSharedUnrolledRecipe, BSplineLocalSharedUnrolledAlgorithm, "v61"),
         (BSplineLocalPairedQueryRecipe, BSplineLocalPairedQueryAlgorithm, "v62"),
+        (BSplineLocalBitSplitQueryRecipe, BSplineLocalBitSplitQueryAlgorithm, "v63"),
     ],
 )
 def test_shared_unrolled_and_paired_query_recipe_roundtrip(cls, alg, revision):
@@ -7428,4 +7451,68 @@ def test_shared_unrolled_and_paired_query_recipe_roundtrip(cls, alg, revision):
         and not recipe.looped_query
         and not recipe.native_cache
     )
-    assert getattr(recipe, "paired_query", False) == (revision == "v62")
+    assert getattr(recipe, "paired_query", False) == (revision in ("v62", "v63"))
+    assert getattr(recipe, "bit_split_query", False) == (revision == "v63")
+
+
+@GPU
+def test_bit_split_query_guard_edges_and_significand_accuracy():
+    import triton as triton_host
+    import triton.experimental.gluon as tr
+    import triton.experimental.gluon.language as tl
+
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        gluon_kernels as gk,
+    )
+
+    @tr.jit
+    def split(X, Hi, Lo, Bad, N: tl.constexpr):
+        i = tl.program_id(0) * 128 + tl.arange(
+            0, 128, layout=tl.BlockedLayout([1], [32], [4], [0])
+        )
+        x = tl.load(X + i, i < N, 0)
+        hi, lo, bad = gk._split_pair(x, True)
+        tl.store(Hi + i, hi, i < N)
+        tl.store(Lo + i, lo, i < N)
+        tl.store(Bad + i, bad, i < N)
+
+    gen = torch.Generator().manual_seed(6329)
+    random = torch.ldexp(
+        torch.rand(10003, generator=gen, dtype=torch.float64) + 1,
+        torch.randint(-30, 30, (10003,), generator=gen),
+    )
+    lower, upper = torch.tensor([2.0**-30, 2.0**30], dtype=torch.float64)
+    edge = torch.stack(
+        (
+            lower,
+            torch.nextafter(lower, lower.new_tensor(0)),
+            torch.nextafter(lower, lower.new_tensor(float("inf"))),
+            upper,
+            torch.nextafter(upper, upper.new_tensor(0)),
+            torch.nextafter(upper, upper.new_tensor(float("inf"))),
+        )
+    )
+    positive = torch.cat((random, edge))
+    values = torch.cat(
+        (
+            positive,
+            -positive,
+            torch.tensor(
+                [0.0, -0.0, 1e-100, 1e100, float("inf"), float("nan")],
+                dtype=torch.float64,
+            ),
+        )
+    ).cuda()
+    hi = torch.empty_like(values, dtype=torch.float32)
+    lo = torch.empty_like(hi)
+    bad = torch.empty_like(values, dtype=torch.bool)
+    split[(triton_host.cdiv(values.numel(), 128),)](
+        values, hi, lo, bad, values.numel(), num_warps=4, enable_fp_fusion=False
+    )
+    safe = (values == 0) | ((values.abs() >= 2.0**-30) & (values.abs() <= 2.0**30))
+    assert torch.equal(bad, ~safe)
+    restored = hi.double() + lo.double()
+    assert torch.all(
+        (restored[safe] - values[safe]).abs() <= values[safe].abs() * 2.0**-47
+    )
+    assert torch.all(hi[~safe] == 0) and torch.all(lo[~safe] == 0)

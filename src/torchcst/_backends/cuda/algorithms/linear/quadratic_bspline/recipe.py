@@ -1078,3 +1078,10 @@ class BSplineLocalPairedQueryRecipe(BSplineLocalSharedUnrolledRecipe):
     """Revision62: guarded FP32-pair query; FP64 coefficients and accumulation."""
 
     paired_query = True
+
+
+@dataclass(frozen=True)
+class BSplineLocalBitSplitQueryRecipe(BSplineLocalPairedQueryRecipe):
+    """Revision63: integer extraction into guarded FP32 pairs; same FP64 frame."""
+
+    bit_split_query = True

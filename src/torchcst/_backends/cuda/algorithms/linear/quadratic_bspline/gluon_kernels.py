@@ -119,7 +119,31 @@ def _query_loop(
 
 
 @tr.jit
-def _split_pair(value):
+def _split_pair(value, BIT_SPLIT: tl.constexpr = False):
+    if BIT_SPLIT:
+        # Extract 24+29 significand bits using integers. Each integer->FP32
+        # conversion and power-of-two scaling is exact except rounding the low
+        # 29 bits to 24 bits. No FP64 arithmetic or comparison in this branch.
+        bits = value.to(tl.uint64, bitcast=True)
+        absolute = bits & 0x7FFFFFFFFFFFFFFF
+        exponent = (absolute >> 52).to(tl.int32)
+        mantissa = absolute & 0xFFFFFFFFFFFFF
+        safe = (absolute == 0) | (
+            (exponent >= 993)
+            & ((exponent < 1053) | ((exponent == 1053) & (mantissa == 0)))
+        )
+        active = safe & (absolute != 0)
+        exponent = tl.where(active, exponent, 1023)
+        high_bits = tl.where(active, ((mantissa >> 29) | 0x800000), 0).to(tl.uint32)
+        low_bits = tl.where(active, mantissa & 0x1FFFFFFF, 0).to(tl.uint32)
+        high_scale = ((exponent - 919).to(tl.uint32) << 23).to(tl.float32, bitcast=True)
+        low_scale = ((exponent - 948).to(tl.uint32) << 23).to(tl.float32, bitcast=True)
+        sign = tl.where((bits >> 63) != 0, -1.0, 1.0)
+        return (
+            sign * high_bits.to(tl.float32) * high_scale,
+            sign * low_bits.to(tl.float32) * low_scale,
+            ~safe,
+        )
     # Bound intermediate products and keep low components in a safe FP32 range.
     # Zeros are exact; other values outside the guard use the FP64 query.
     absolute = tl.abs(value)
@@ -151,6 +175,7 @@ def _query_pair(
     TILE: tl.constexpr,
     LAYOUT: tl.constexpr,
     COMPACT_C2: tl.constexpr,
+    BIT_SPLIT: tl.constexpr = False,
 ):
     vh = tl.full((AB, BB), 0, tl.float32, layout=TILE)
     vl = tl.full((AB, BB), 0, tl.float32, layout=TILE)
@@ -159,7 +184,7 @@ def _query_pair(
     unsafe = tl.full((AB, BB), False, tl.int1, layout=TILE)
     if PRIME:
         half = tl.load(HalfInv + DIM * A + a, a < A, 0)
-        hh, hl, hb = _split_pair(half)
+        hh, hl, hb = _split_pair(half, BIT_SPLIT)
         unsafe |= hb[:, None]
     for event in range(6):
         point = _point(Pos, a, A, DIM, event, COMPACT_C2)
@@ -167,13 +192,13 @@ def _query_pair(
         p0 = tl.load(Bank + point[:, None] * PB + b[None, :], mask, 0)
         p1 = tl.load(Bank + POINTS * PB + point[:, None] * PB + b[None, :], mask, 0)
         p2 = tl.load(Bank + 2 * POINTS * PB + point[:, None] * PB + b[None, :], mask, 0)
-        p0h, p0l, b0 = _split_pair(p0)
-        p1h, p1l, b1 = _split_pair(p1)
-        p2h, p2l, b2 = _split_pair(p2)
+        p0h, p0l, b0 = _split_pair(p0, BIT_SPLIT)
+        p1h, p1l, b1 = _split_pair(p1, BIT_SPLIT)
+        p2h, p2l, b2 = _split_pair(p2, BIT_SPLIT)
         c0, c1, c2 = _coeff(Co, a, A, DIM, event, LAYOUT, Pos, COMPACT_C2)
-        c0h, c0l, k0 = _split_pair(c0)
-        c1h, c1l, k1 = _split_pair(c1)
-        c2h, c2l, k2 = _split_pair(c2)
+        c0h, c0l, k0 = _split_pair(c0, BIT_SPLIT)
+        c1h, c1l, k1 = _split_pair(c1, BIT_SPLIT)
+        c2h, c2l, k2 = _split_pair(c2, BIT_SPLIT)
         unsafe |= b0 | b1 | b2 | (k0 | k1 | k2)[:, None]
         t0h, t0l = pair_mul(c0h[:, None], c0l[:, None], p0h, p0l)
         t1h, t1l = pair_mul(c1h[:, None], c1l[:, None], p1h, p1l)
@@ -223,6 +248,7 @@ def _query(
     LOOPED: tl.constexpr = False,
     COMPACT_C2: tl.constexpr = False,
     PAIRED: tl.constexpr = False,
+    BIT_SPLIT: tl.constexpr = False,
 ):
     if PAIRED:
         tl.static_assert(not INTEGER)
@@ -244,6 +270,7 @@ def _query(
             TILE,
             LAYOUT,
             COMPACT_C2,
+            BIT_SPLIT,
         )
         if unsafe:
             value, prime = _query_loop(
@@ -463,6 +490,7 @@ def forward(
     LOOPED_QUERY: tl.constexpr = False,
     COMPACT_C2: tl.constexpr = False,
     PAIRED_QUERY: tl.constexpr = False,
+    BIT_SPLIT_QUERY: tl.constexpr = False,
 ):
     base = tl.load(Count) + tl.program_id(0) * AB if Base is None else Base
     if base < A:
@@ -504,6 +532,7 @@ def forward(
             N=I_NI,
             LOOPED=LOOPED_QUERY,
             PAIRED=PAIRED_QUERY,
+            BIT_SPLIT=BIT_SPLIT_QUERY,
             COMPACT_C2=COMPACT_C2,
         )
         mask = (a[:, None] < A) & (b[None, :] < B)
@@ -587,6 +616,7 @@ def backward(
     LOOPED_QUERY: tl.constexpr = False,
     COMPACT_C2: tl.constexpr = False,
     PAIRED_QUERY: tl.constexpr = False,
+    BIT_SPLIT_QUERY: tl.constexpr = False,
 ):
     base = tl.load(Count) + tl.program_id(0) * AB if Base is None else Base
     if base < A:
@@ -628,6 +658,7 @@ def backward(
             N=I_NO,
             LOOPED=LOOPED_QUERY,
             PAIRED=PAIRED_QUERY,
+            BIT_SPLIT=BIT_SPLIT_QUERY,
             COMPACT_C2=COMPACT_C2,
         )
         if VJP:
@@ -662,6 +693,7 @@ def backward(
                     N=I_NI,
                     LOOPED=LOOPED_QUERY,
                     PAIRED=PAIRED_QUERY,
+                    BIT_SPLIT=BIT_SPLIT_QUERY,
                     COMPACT_C2=COMPACT_C2,
                 )
                 if SAVE == "h":
