@@ -35,6 +35,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineLocalPairedDecodeAlgorithm,
     BSplineLocalPersistentAlgorithm,
     BSplineLocalShardedAlgorithm,
+    BSplineLocalSpatialAlgorithm,
     BSplineLocalSplitAlgorithm,
     BSplineLocalTransposedAlgorithm,
     BSplineLocalUnifiedAlgorithm,
@@ -81,6 +82,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineLocalPairedDecodeRecipe,
     BSplineLocalPersistentRecipe,
     BSplineLocalShardedRecipe,
+    BSplineLocalSpatialRecipe,
     BSplineLocalSplitRecipe,
     BSplineLocalTransposedRecipe,
     BSplineLocalUnifiedRecipe,
@@ -124,8 +126,13 @@ def case(n=64, a=17):
 def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     from dataclasses import replace
 
-    paired_decode = strategy == "h_local_paired_decode" or recipe_options.pop(
-        "_paired_decode", False
+    spatial_layout = strategy == "h_local_spatial" or recipe_options.pop(
+        "_spatial_layout", False
+    )
+    paired_decode = (
+        spatial_layout
+        or strategy == "h_local_paired_decode"
+        or recipe_options.pop("_paired_decode", False)
     )
     decode_ratio = (
         paired_decode
@@ -282,6 +289,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineLocalLevelMaskAlgorithm())
     registry.register(BSplineLocalDecodeRatioAlgorithm())
     registry.register(BSplineLocalPairedDecodeAlgorithm())
+    registry.register(BSplineLocalSpatialAlgorithm())
     registry.register(BSplineLocalUnifiedAlgorithm())
     registry.register(BSplineLocalNativeShardsAlgorithm())
     registry.register(BSplineLocalNativePointAlgorithm())
@@ -312,7 +320,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     tuned = bool(recipe_options) or strategy == "matrix_separable"
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v44"
+        "v45"
+        if spatial_layout
+        else "v44"
         if paired_decode
         else "v43"
         if decode_ratio
@@ -399,7 +409,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         else "v2"
         if tuned
         else "v1",
-        BSplineLocalPairedDecodeRecipe(**recipe_options)
+        BSplineLocalSpatialRecipe(**recipe_options)
+        if spatial_layout
+        else BSplineLocalPairedDecodeRecipe(**recipe_options)
         if paired_decode
         else BSplineLocalDecodeRatioRecipe(**recipe_options)
         if decode_ratio
@@ -2758,6 +2770,19 @@ PAIRED_DECODE_OPTIONS = [
         "batch_chunk": 16,
     },
 ]
+SPATIAL_LAYOUT_OPTIONS = [
+    {"_spatial_layout": True},
+    {
+        "_spatial_layout": True,
+        "range_tile": 16,
+        "layout_refresh": 1,
+        "axis_atoms": 8,
+        "reciprocal": False,
+        "contract_float32": False,
+        "norm_float32": False,
+        "batch_chunk": 16,
+    },
+]
 ALL_QUERY_OPTIONS = (
     QUERY_OPTIONS
     + LEAN_OPTIONS
@@ -2829,6 +2854,10 @@ ALL_QUERY_OPTIONS = (
     + [
         pytest.param(opt, id=f"paired-decode-{i}")
         for i, opt in enumerate(PAIRED_DECODE_OPTIONS)
+    ]
+    + [
+        pytest.param(opt, id=f"spatial-layout-{i}")
+        for i, opt in enumerate(SPATIAL_LAYOUT_OPTIONS)
     ]
 )
 
@@ -3710,6 +3739,7 @@ def test_native_bound_recipe_roundtrip_and_bounds():
         "h_local_native_point",
         "h_local_decode_ratio",
         "h_local_paired_decode",
+        "h_local_spatial",
     ],
 )
 def test_native_bound_count_changes_across_graph(batch, floor, strategy):
@@ -3801,6 +3831,7 @@ def test_native_bound_count_changes_across_graph(batch, floor, strategy):
         "h_local_native_point",
         "h_local_decode_ratio",
         "h_local_paired_decode",
+        "h_local_spatial",
     ],
 )
 def test_native_bound_strided_individual_gradients(which, strategy):
@@ -3843,6 +3874,7 @@ def test_native_bound_strided_individual_gradients(which, strategy):
         "h_local_native_point",
         "h_local_decode_ratio",
         "h_local_paired_decode",
+        "h_local_spatial",
     ],
 )
 def test_native_bound_retained_count_above_grid(strategy):
@@ -4378,6 +4410,7 @@ def test_native_cache_recipe_roundtrip_and_bounds():
         ("h_local_native_point", True),
         ("h_local_decode_ratio", True),
         ("h_local_paired_decode", True),
+        ("h_local_spatial", True),
     ],
 )
 @pytest.mark.parametrize(
@@ -4394,7 +4427,8 @@ def test_native_cache_recipe_roundtrip_and_bounds():
 def test_native_cache_spacing_fallbacks(strategy, unroll, spacing, batch, amplitude):
     options = (
         {}
-        if strategy in ("h_local_decode_ratio", "h_local_paired_decode")
+        if strategy
+        in ("h_local_decode_ratio", "h_local_paired_decode", "h_local_spatial")
         else {"cache_unroll": unroll}
     )
     layer = model(strategy, n=64, a=49, **options)
@@ -5119,3 +5153,99 @@ def test_paired_decode_graph_changes_live_bounds(ratio):
         p[:, :2].mul_(1.003)
         graph.replay()
         assert torch.equal(new, old)
+
+
+def test_spatial_layout_recipe_roundtrip_and_guards():
+    reg = Registry()
+    reg.register(BSplineLocalSpatialAlgorithm())
+    for tile in (16, 32, 64):
+        for refresh in (1, 16, 64):
+            recipe = BSplineLocalSpatialRecipe(range_tile=tile, layout_refresh=refresh)
+            plan = ExecutionPlan("research_cuda_quadratic_bspline", "v45", recipe)
+            assert reg.loads_plan(reg.dumps_plan(plan)) == plan
+    for bad in (
+        {"range_tile": 8},
+        {"range_tile": True},
+        {"layout_refresh": 0},
+        {"layout_refresh": True},
+        {"reuse_layout": False},
+    ):
+        with pytest.raises(ValueError):
+            BSplineLocalSpatialRecipe(**bad)
+
+
+@GPU
+@pytest.mark.parametrize("tile", [16, 32, 64])
+def test_spatial_layout_advisory_keys_and_exact_partition(tile):
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        stream_layout as sl,
+    )
+
+    a, n = 137, 64
+    recipe = BSplineLocalSpatialRecipe(range_tile=tile, layout_refresh=64)
+    origin = torch.tensor([0.31, -0.27], device="cuda", dtype=torch.float64)
+    spacing = torch.full((2,), 0.1, device="cuda", dtype=torch.float64)
+    meta = torch.zeros((a, 12), device="cuda", dtype=torch.float64)
+    centers = torch.linspace(1.0, 4.0, a, device="cuda", dtype=torch.float64)
+    meta[:, 1] = 0.5
+    meta[:, 2] = centers + origin[0]
+    meta[:, 3] = centers.roll(11) + origin[1]
+    meta[:, 10:12] = 10.0
+    cache = sl.make_layout(a, (n, n), recipe, "cuda")
+
+    def place(expected, dirty):
+        order, count = sl.placement(meta, origin, spacing, (n, n), recipe, cache)
+        assert count.item() == expected
+        assert cache["dirty"].item() == dirty
+        assert torch.equal(order.sort().values, torch.arange(a, device="cuda"))
+        live_native = cache["keys"] < cache["radix"]
+        assert live_native[order[:expected]].all()
+        assert (~live_native[order[expected:]]).all()
+        if dirty:
+            keys = cache["keys"][order]
+            assert (keys[1:] >= keys[:-1]).all()
+        return order, count
+
+    old_order, old_count = place(0, 1)
+    old_keys = cache["keys"].clone()
+    meta[:, 2].add_(1.7)
+    meta[:, 3].sub_(0.3)
+    reused, _ = place(0, 0)
+    assert not torch.equal(old_keys, cache["keys"])
+    assert torch.equal(old_order, reused)
+    cache["stats"][0] = 64
+    place(0, 1)
+    # Radius change crossing native membership must rebuild immediately.
+    meta[:51, 1] = 0.05
+    place(51, 1)
+    assert old_count.item() == 0
+    assert torch.equal(old_order, reused)  # prior-frame immutable snapshots
+    meta[:, 1] = 0.5
+    place(0, 1)
+    # The clipped tiny/empty-support rule is also exact, even at unchanged sigma.
+    meta[:17, 2] = -2.0
+    place(17, 1)
+    meta[:17, 2] = centers[:17] + origin[0]
+    place(0, 1)
+
+
+@GPU
+def test_spatial_layout_full_width_histogram_capacity():
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        stream_layout as sl,
+    )
+
+    # ceil(124 / 4) = 31; floor(log2(31 + 1)) needs bin index 5.
+    # A bit_length(31)-sized bank would underallocate the broad histogram.
+    recipe = BSplineLocalSpatialRecipe(range_tile=16)
+    meta = torch.zeros((17, 12), device="cuda", dtype=torch.float64)
+    meta[:, 1] = 1000.0
+    meta[:, 2:4] = 6.0
+    meta[:, 10:12] = 10.0
+    origin = torch.zeros(2, device="cuda", dtype=torch.float64)
+    spacing = torch.full((2,), 0.1, device="cuda", dtype=torch.float64)
+    cache = sl.make_layout(17, (124, 124), recipe, "cuda")
+    order, count = sl.placement(meta, origin, spacing, (124, 124), recipe, cache)
+    assert count.item() == 0
+    assert cache["keys"].max().item() < cache["hist"].numel()
+    assert torch.equal(order.sort().values, torch.arange(17, device="cuda"))

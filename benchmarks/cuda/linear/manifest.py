@@ -842,3 +842,10 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
 )
 
 REGISTRY.register(BSplineLocalPairedDecodeAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalSpatialAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalSpatialAlgorithm())

@@ -881,3 +881,53 @@ capture/replayのpeak allocated/reservedが両方Dense以下なら、今回の�
 デバイス間で速度表を混ぜず、L4上のアルゴリズム改善とは区別する。
 検証済みv44とv39/Denseを同じsource/caseで短く比較し、実GPU・runtimeを記録する。
 G4結果は検証前であり、目標はactiveのまま。
+
+### G4実測: 差は縮むが、速度目標は未達
+
+job `colabjob-4d6b74524c224b71b4cc5fb3d202c083`、source ee28。
+実機は **NVIDIA RTX PRO 6000 Blackwell Server Edition**、表示メモリ97,887MiB、
+driver580.82.07、Torch2.11.0+cu130/CUDA13.0/Triton3.6.0。
+28 targeted checksと両primary条件の3状態全shape独立FP64 gateがPASS。
+全52,428σ更新・同条件の初期X/P/target hash一致も確認した。
+
+|条件|v39 ms|v44 pair+ratio ms|Dense ms|v44/Dense|
+|---|---:|---:|---:|---:|
+|B32 mixed|0.345440|0.343189|0.066210|5.18x|
+|B64 mixed|0.527840|0.525179|0.074770|7.02x|
+
+v44のpeak allocated/reservedはB32 **34.154/98 MiB**、B64 **34.654/100 MiB**。
+Dense **49.002/106、49.502/106 MiB**以下。Y/dX/全atom勾配のmaxabsは
+3.300e-5/2.855e-5/1.102e-4、relL2は全て1.686e-6以下で4e-4 gateを満たす。
+速度2xは未達なので達成扱いにしない。L4とは別の`verified-g4.json`/`audit-g4.json`へ記録。
+
+診断のB32 stream forward/backwardは約0.0467/0.0692ms、
+B64はchunkごと約0.0467/0.067–0.0692ms。decode約0.0196–0.0198ms、
+norm_init約0.0236–0.0247ms、係数約0.0226–0.0232ms、group約0.018ms。
+bank各約0.0139ms、scan各約0.0160msも残る。
+個別イベント診断を完全stepへ単純加算した内訳とは扱わない。
+G4上で絶対時間とDense比が変わることは確認できたが、キャッシュmissやFP64待ちを
+hardware counterで測定したものではなく、その機序までは断定しない。
+
+source SHA256 `d68b2ce8390e6b9a64f7322e3a23b498bc3c6201594f188b6dd9fb4147913ff2`、
+result SHA256 `29526154becc28d680c45f8eeb92180a4fb1249f8658ce11ba7deed4376cbeeb`。
+source1643/manifest24、archive/manifest/Git bytes/return0/timeoutなし/cleanup ackを照合。
+supervisorは正常終了し、所有VM停止を確認した。default変更なし。
+
+## v45: 古い空間順序の継続利用と、厳密なnative区分（検証前）
+
+v44の演算を保ち、broad atomを幅level・出力support開始tile・入力support開始tileで
+近い順へ並べる。tile幅は実行順のヒントであり、supportやσを量子化しない。
+Parameter/optimizer行は移さず、処理slotから元atom IDを参照する。
+
+順序を毎step再構築せず、native/broadの所属が一つでも変われば即時再構築する。
+所属が同じなら、空間keyが変わっても古い順序を使い、1/64stepの周期候補で更新する。
+幅cutoffに加えて、domain clip後のtiny/empty supportによるnative所属も毎step検査する。
+古い順序の利用は数学的な近似ではない。両区分内の順序は正しさの条件でなく、
+Meta・L2・係数・支持区間・全勾配は毎forwardの実際の値で計算する。
+order/countはforwardごとimmutable cloneを保持し、retained backwardを壊さない。
+
+追加histogram容量は幅keyの最大値`floor(log2(max_patch_count+1))`を含める。
+従来のrange配置でmax_patch_count=31等のときに一bin不足し得た計算も修正し、
+124sites/4site-patchの全幅を検査する。N1024の既存容量は変わらない。
+構築/clone/更新周期の費用と追加histogramメモリを含めてv44/Denseと比較する。
+空間局所性が改善してもatomic競合が増える可能性があり、実測前の速度改善は主張しない。

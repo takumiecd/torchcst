@@ -852,3 +852,26 @@ class BSplineLocalPairedDecodeRecipe(BSplineLocalDecodeRatioRecipe):
 
     paired_decode = True
     ratio_decode: bool = False
+
+
+@dataclass(frozen=True)
+class BSplineLocalSpatialRecipe(BSplineLocalPairedDecodeRecipe):
+    """Revision 45: advisory spatial order, exact live native partition."""
+
+    spatial_layout = True
+    ratio_decode: bool = True
+    range_tile: int = 32
+    layout_refresh: int = 64
+
+    def __post_init__(self):
+        super().__post_init__()
+        if not self.reuse_layout:
+            raise ValueError("spatial layout requires persistent placement")
+        if type(self.range_tile) is not int or self.range_tile not in (16, 32, 64):
+            raise ValueError("range_tile must be 16,32 or64")
+        if type(self.layout_refresh) is not int or self.layout_refresh not in (
+            1,
+            16,
+            64,
+        ):
+            raise ValueError("layout_refresh must be 1,16 or64")
