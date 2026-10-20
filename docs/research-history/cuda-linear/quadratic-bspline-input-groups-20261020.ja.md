@@ -1543,3 +1543,9 @@ v51初回job `colabjob-2cdb8f5dff054be49d7bb0a4860a05eb`、sourcec73b64c8で旧d
 新raw幅Graph照合が相対差4.976e-9となり、3e-13基準で停止した。モデル/性能測定には進めない。
 CPUとの差はGPU式の非2冪定数の型推論を疑い、表初期化・多項式係数・log2定数を明示FP64 fullへ統一する。
 原因の確定や修正成功は再検証前に主張しない。gateは変更しない。失敗archive/hash/source/cleanupを厳密保存した。
+
+sourcee5052b44のjob `colabjob-f080d58a62874d818f8068ba9de6e4da`でraw13件PASS。
+明示FP64定数にした幅Graph照合は元の3e-13基準で通過した。
+最後のraw power範囲testは存在しないGluon cdiv helperを呼んだテストコードのミスで停止。
+Pythonの整数切上げ除算へ直す。runtimeは変更せず、全検査を再実行する。
+return1/no-timeout/source/manifest/hash/cleanupをfailed archiveへ保存、性能証拠に含めない。

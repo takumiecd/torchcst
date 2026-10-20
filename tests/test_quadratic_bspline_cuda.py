@@ -6370,7 +6370,7 @@ def test_table_decode_power_range_and_bin_boundaries():
         table = torch.empty(384, device="cuda", dtype=torch.float64)
         td.initialize[(1,)](table, num_warps=4, enable_fp_fusion=False)
         actual = torch.empty(len(x), device="cuda", dtype=torch.float64)
-        raw[(tr.cdiv(len(x), 128),)](
+        raw[((len(x) + 127) // 128,)](
             x.cuda(),
             alpha.cuda(),
             actual,
