@@ -2667,3 +2667,19 @@ node32/part32/full32を明示recipeとして分けるが、まずnode64のみを
 CPU全suiteは2045 passed/5651 skipped/18既存warning（44.00s）。新moduleは1 passed/29 GPU skipped。
 宣言往復・support拒否・Ruff・git diff --checkも通過。GPU精度、完全step、両peakは未検証である。
 公開dispatcherの変更や精度gateの緩和は行わない。
+
+### 追試の失敗保全とユーザー指示による一時停止
+
+source d958f15cのL4 job `l4job-31aab502f4474e60978bec3f2a881cb0`はraw node部品8testを通過したが、
+新しいowner routeのprepare_idsでcompileに失敗した。static loop内の軸長nがconstexprとして
+_cover_nodeへ伝わらず、power-of-two static_assertをcompile時に判定できなかった。
+新routeのGPU精度・完全step・両peakは未評価であり、数値結果の不通過や速度の限界を示すrunではない。
+source/result/manifestのbyte/hash照合、return1/no-timeout/remote cleanup ackを確認し、
+ignored failed-jobsへ保存した。source SHA256 `7495cc899c43c8e3c2d06e007e046a3aa928f2543ea2fc29f54b33ff925de377`、
+result SHA256 `4b8249f816c02c3781c87ecbc6f2ce5448a1b4e585fc991cb6628f30ca09a2ec`、1719 sourcefiles/5 manifest。
+
+ユーザーの「一旦厳しければやめようか」を受け、高速化探索と追加GPU投入を一時停止する。
+このcompile修正・再投入は行わない。目標は未達のままであり、達成や構造的不可能性を主張しない。
+v67はCPUのみ通過した未検証routeとして研究branchに保持し、公開dispatcherは変更しない。
+中心/幅の有限共有bank、支持上限、配置/所有構造の固定など、kernel契約を制約する方向は
+別途の設計候補であり、現在の自由な全atom勾配を維持した実測済み高速化とは扱わない。
