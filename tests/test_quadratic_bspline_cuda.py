@@ -6838,12 +6838,27 @@ def test_compact_positions_query_and_injection_widen_before_offsets():
     )
 
     @tr.jit
-    def raw(Bank, Pos, Co, Half, Meta, V, BP, Out, Delta, Border):
+    def raw(Bank, Pos, Co, Half, Meta, V, BP, Out, Delta, Border, LAYOUT: tl.constexpr):
         tile: tl.constexpr = tl.BlockedLayout([1, 1], [1, 32], [4, 1], [1, 0])
         a = tl.arange(0, 4, layout=tl.SliceLayout(1, tile))
         b = tl.arange(0, 64, layout=tl.SliceLayout(0, tile))
         h, hp = gk._query(
-            Bank, Pos, Co, Half, a, b, 1, 64, 9727, 1, 4, 64, True, 64, tile
+            Bank,
+            Pos,
+            Co,
+            Half,
+            a,
+            b,
+            1,
+            64,
+            9727,
+            1,
+            4,
+            64,
+            True,
+            64,
+            tile,
+            LAYOUT=LAYOUT,
         )
         tl.store(Out + a[:, None] * 64 + b[None, :], h, a[:, None] < 1)
         tl.store(Out + 64 + a[:, None] * 64 + b[None, :], hp, a[:, None] < 1)
@@ -6868,6 +6883,7 @@ def test_compact_positions_query_and_injection_widen_before_offsets():
             False,
             False,
             64,
+            LAYOUT=LAYOUT,
         )
 
     bank = torch.randn(3, 9727, 64, device="cuda")
@@ -6903,6 +6919,7 @@ def test_compact_positions_query_and_injection_widen_before_offsets():
             out,
             delta,
             border,
+            LAYOUT="soa",
             num_warps=4,
             enable_fp_fusion=False,
         )

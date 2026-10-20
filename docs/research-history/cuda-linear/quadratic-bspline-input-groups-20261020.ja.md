@@ -1785,3 +1785,19 @@ rawでは既存分類/view19件+compact view CPU/CUDA2件+query/injection bit一
 共有33件+v54/v55/v56同時retained3件の計36件、その後主2条件の完全stepを検査する。
 post-run metadataのregister tileは実際のbatch chunk幅に対応させ、compilerのregister数と区別する。
 この表記修正は測定済みtime/peakや実行kernelには影響しない。過去raw artifactは変更しない。
+
+
+v56 source `f4530aff1e0fcab251ac1faeedb0a1a43f9d3b22`のG4初回
+`colabjob-f4494cb73e1d4a2e981712c97ed12ded`と明示再試行
+`colabjob-af01db36163c4325a685a430f35d19ee`は、両方とも割当Service Unavailableで
+VM/driver/resultsなし。1692source filesのGit-byte一致と停止状態を保存し、性能証拠から除外する。
+再試行source archiveは`ca57585a0f15d28cec0f46ce45ef8cf0b9b94d78cb20549f3dda7bb18b6fa760`。
+
+同じsourceをL4へ明示提出した`l4job-702985faf84744eba175804442b34472`は、
+raw21件PASS後、新query/injectionテストのGluonコンパイルで
+`AttributeError: str object has no attribute type`となった。モデル/性能測定は未実行で除外。
+呼出元raw kernelから`LAYOUT`を明示constexprで渡すテスト修正を行う。
+実行runtime/sourceの浮動小数点計算は変更しない。修正後CPU対象12 passed/24 skipped、Ruff PASS。
+失敗result archive `3ff2b2a5ec354c3fd0dbb0a07f73354b995fe401181e31a47502b33061104726`、
+source `e2a875cba21bb6a9cf876f39fe76d9fbfa158cd6657caa6b0a4c9fb46e9aba68`、
+1692source files/4manifest entries/return1/no-timeout/cleanup ackを確認し、所有session停止済み。
