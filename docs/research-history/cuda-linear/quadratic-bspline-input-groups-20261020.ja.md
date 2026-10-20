@@ -2587,3 +2587,11 @@ zero/negative amplitude、empty/edge/single supports、3状態のlive sigma/cent
 Graph replayでH/Hmu/G/Gmu、Y/dX、raw振幅/両中心のpullbackを独立Torch FP64と照合する。
 これはまだPolar全4P・GPU sampled L2実装・CST完全step・両peakの資格確認ではない。
 CPU2044 passed/5622 skipped/18既存warning（39.43s）、Ruffと差分検査を通過した。
+
+初回component job `l4job-f2c1dce895644619b08ef5fd4378be76`、source f2e2d29cは、
+restoreのstatic loop内で`width: tl.constexpr`を再宣言し、最初のtestのcompileで停止した。
+通常の`width = 1 << level`へ修正し、式とgateは変更しない。
+source SHA256 `cde36ec1e584d097cdc6dd8843d28480762707b19da9d3f9e3112c413095258c`、
+result SHA256 `e0b88300d80b90a9585f0fe724497a517187463ee8878dc74c798b99cffb3950`。
+1712 sourcefiles/5 manifest、return1/no-timeout/cleanup ackを検証してfailed-jobsへ保全した。
+この初回runから精度・速度・メモリの通過を主張しない。

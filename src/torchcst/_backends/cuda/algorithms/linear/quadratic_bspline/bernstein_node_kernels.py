@@ -250,7 +250,7 @@ def restore(
     value = tl.full((BI, BB), 0, tl.float64)
     tl.static_assert(N == (1 << LOG_N))
     for level in tl.static_range(0, LOG_N + 1):
-        width: tl.constexpr = 1 << level
+        width = 1 << level
         node = N // width - 1 + i // width
         t = (i % width).to(tl.float64) / max(width - 1, 1)
         for plane in tl.static_range(3):
