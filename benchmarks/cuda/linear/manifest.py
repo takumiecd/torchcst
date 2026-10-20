@@ -667,3 +667,302 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
 )
 
 REGISTRY.register(BSplineNativeLoopAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalMomentAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalMomentAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalActiveAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalActiveAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalShardedAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalShardedAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalEndpointAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalEndpointAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalSplitAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalSplitAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalPaddedAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalPaddedAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalNarrowAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalNarrowAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalChunkedAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalChunkedAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalOwnerAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalOwnerAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalNativeBoundAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalNativeBoundAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalCanonicalAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalCanonicalAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalCoefficientAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalCoefficientAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalBankBundleAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalBankBundleAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalPersistentAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalPersistentAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalGroupedAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalGroupedAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalCoordinatesAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalCoordinatesAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalTransposedAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalTransposedAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalGluonAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalGluonAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalNativeCacheAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalNativeCacheAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalLevelMaskAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalLevelMaskAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalUnifiedAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalUnifiedAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalNativeShardsAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalNativeShardsAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalNativePointAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalNativePointAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalDecodeRatioAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalDecodeRatioAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalPairedDecodeAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalPairedDecodeAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalSpatialAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalSpatialAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalSavedBankAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalSavedBankAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalBankZeroAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalBankZeroAlgorithm())
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalVectorAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalVectorAlgorithm())
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalIntegerAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalIntegerAlgorithm())
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineUnitDeltaAlgorithm,
+)
+
+REGISTRY.register(BSplineUnitDeltaAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalTableDecodeAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalTableDecodeAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalFreshPartitionAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalFreshPartitionAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalFrameArenaAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalFrameArenaAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalNumericArenaAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalNumericArenaAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalWholeFrameAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalWholeFrameAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalCompactPositionsAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalCompactPositionsAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalSmallBoundaryAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalSmallBoundaryAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalPreciseAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalPreciseAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalLoopQueryAlgorithm,
+    BSplineLocalSharedQuadraticAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalLoopQueryAlgorithm())
+REGISTRY.register(BSplineLocalSharedQuadraticAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalBitSplitQueryAlgorithm,
+    BSplineLocalCompensatedAlgorithm,
+    BSplineLocalNormalizedCoAlgorithm,
+    BSplineLocalPackedBankAlgorithm,
+    BSplineLocalPairedQueryAlgorithm,
+    BSplineLocalSharedUnrolledAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalSharedUnrolledAlgorithm())
+REGISTRY.register(BSplineLocalPairedQueryAlgorithm())
+
+REGISTRY.register(BSplineLocalBitSplitQueryAlgorithm())
+
+REGISTRY.register(BSplineLocalPackedBankAlgorithm())
+
+REGISTRY.register(BSplineLocalNormalizedCoAlgorithm())
+REGISTRY.register(BSplineLocalCompensatedAlgorithm())

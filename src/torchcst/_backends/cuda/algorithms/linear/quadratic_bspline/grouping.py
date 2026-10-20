@@ -26,6 +26,9 @@ def support_keys(
     WIDTH_ONLY: tl.constexpr = False,
     TINY_NATIVE: tl.constexpr = False,
     RANGE_TILE: tl.constexpr = 0,
+    PARTITION_TRACK: tl.constexpr = False,
+    LayoutStats=None,
+    REFRESH: tl.constexpr = 0,
 ):
     a = tl.program_id(0) * 128 + tl.arange(0, 128)
     radius = tl.load(Meta + a * 12 + 1, a < A, 1)
@@ -76,7 +79,17 @@ def support_keys(
             key += tl.where(radius <= 2.449489742783178 * CUTOFF, 0, offset)
     if TRACK:
         old = tl.load(Previous + a, a < A, -1)
-        changed = tl.sum(((key != old) & (a < A)).to(tl.int32), 0)
+        if PARTITION_TRACK:
+            tl.static_assert(WIDTH_ONLY and SPLIT and RANGE_TILE > 0 and REFRESH > 0)
+            # Only the live native/broad partition is a mathematical dispatch
+            # invariant. Spatial/width buckets are performance hints.
+            changed_key = (old < 0) | ((key < offset) != (old < offset))
+            if tl.program_id(0) == 0:  # noqa: SIM102 - only CTA 0 reads the counter
+                if tl.load(LayoutStats) % REFRESH == 0:
+                    tl.atomic_or(Dirty, 1, sem="relaxed")
+        else:
+            changed_key = key != old
+        changed = tl.sum((changed_key & (a < A)).to(tl.int32), 0)
         if changed > 0:
             tl.atomic_or(Dirty, 1, sem="relaxed")
         tl.store(Previous + a, key, a < A)

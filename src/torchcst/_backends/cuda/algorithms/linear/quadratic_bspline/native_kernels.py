@@ -47,6 +47,7 @@ def _query(
     BS: tl.constexpr,
     RECIPROCAL: tl.constexpr,
     PRIME: tl.constexpr,
+    KEEP64: tl.constexpr = False,
 ):
     radius, ir, center, origin, spacing, left, right = _axis(
         Meta, Origin, Spacing, a, A, N, DIM, RECIPROCAL
@@ -71,6 +72,8 @@ def _query(
         value += tl.sum(x * f[:, None, :], 2)
         if PRIME:
             prime += tl.sum(x * df[:, None, :], 2)
+    if KEEP64:
+        return value, prime
     # Same stored-H precision boundary as the broad endpoint route.
     return value.to(tl.float32).to(tl.float64), prime.to(tl.float32).to(tl.float64)
 
@@ -113,7 +116,7 @@ def _inject(
         v = weighted[:, :, None] * f[:, None, :]
         tl.atomic_add(
             Y + b[None, :, None] * N + j[:, None, :],
-            v.to(tl.float32),
+            v.to(Y.dtype.element_ty),
             mask,
             sem="relaxed",
         )

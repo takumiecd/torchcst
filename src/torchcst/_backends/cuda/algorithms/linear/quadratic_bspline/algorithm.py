@@ -20,6 +20,52 @@ from .recipe import (
     BSplineAdjointRecipe,
     BSplineCoalescedHRecipe,
     BSplineLeanHRecipe,
+    BSplineLocalActiveRecipe,
+    BSplineLocalBankBundleRecipe,
+    BSplineLocalBankZeroRecipe,
+    BSplineLocalBitSplitQueryRecipe,
+    BSplineLocalCanonicalRecipe,
+    BSplineLocalChunkedRecipe,
+    BSplineLocalCoefficientRecipe,
+    BSplineLocalCompactPositionsRecipe,
+    BSplineLocalCompensatedRecipe,
+    BSplineLocalCoordinatesRecipe,
+    BSplineLocalDecodeRatioRecipe,
+    BSplineLocalEndpointRecipe,
+    BSplineLocalFrameArenaRecipe,
+    BSplineLocalFreshPartitionRecipe,
+    BSplineLocalGluonRecipe,
+    BSplineLocalGroupedRecipe,
+    BSplineLocalIntegerRecipe,
+    BSplineLocalLevelMaskRecipe,
+    BSplineLocalLoopQueryRecipe,
+    BSplineLocalMomentRecipe,
+    BSplineLocalNarrowRecipe,
+    BSplineLocalNativeBoundRecipe,
+    BSplineLocalNativeCacheRecipe,
+    BSplineLocalNativePointRecipe,
+    BSplineLocalNativeShardsRecipe,
+    BSplineLocalNormalizedCoRecipe,
+    BSplineLocalNumericArenaRecipe,
+    BSplineLocalOwnerRecipe,
+    BSplineLocalPackedBankRecipe,
+    BSplineLocalPaddedRecipe,
+    BSplineLocalPairedDecodeRecipe,
+    BSplineLocalPairedQueryRecipe,
+    BSplineLocalPersistentRecipe,
+    BSplineLocalPreciseRecipe,
+    BSplineLocalSavedBankRecipe,
+    BSplineLocalShardedRecipe,
+    BSplineLocalSharedQuadraticRecipe,
+    BSplineLocalSharedUnrolledRecipe,
+    BSplineLocalSmallBoundaryRecipe,
+    BSplineLocalSpatialRecipe,
+    BSplineLocalSplitRecipe,
+    BSplineLocalTableDecodeRecipe,
+    BSplineLocalTransposedRecipe,
+    BSplineLocalUnifiedRecipe,
+    BSplineLocalVectorRecipe,
+    BSplineLocalWholeFrameRecipe,
     BSplineNativeHRecipe,
     BSplineNativeLoopRecipe,
     BSplineParallelRecipe,
@@ -36,6 +82,7 @@ from .recipe import (
     BSplineStreamingMemoryRecipe,
     BSplineStreamingRecipe,
     BSplineTuningRecipe,
+    BSplineUnitDeltaRecipe,
 )
 
 
@@ -162,6 +209,10 @@ class BSplineAlgorithm(Algorithm[BSplineRecipe]):
                     from .coalesced_executor import apply as stream_apply
                 if getattr(state.recipe, "saved_h", False):
                     from .saved_executor import apply as stream_apply
+                if getattr(state.recipe, "local_h", False):
+                    from .local_executor import apply as stream_apply
+                if getattr(state.recipe, "unit_delta", False):
+                    from .unit_delta_executor import apply as stream_apply
                 return stream_apply(
                     x,
                     p,
@@ -312,3 +363,367 @@ class BSplineNativeHAlgorithm(BSplineStreamingAlgorithm):
 class BSplineNativeLoopAlgorithm(BSplineStreamingAlgorithm):
     revision: str = "v19"
     recipe_type: type = BSplineNativeLoopRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalMomentAlgorithm(BSplineStreamingAlgorithm):
+    revision: str = "v20"
+    recipe_type: type = BSplineLocalMomentRecipe
+
+    def supports(self, context, recipe):
+        result = super().supports(context, recipe)
+        reasons = list(result.reasons)
+        if isinstance(context, LinearContext):
+            try:
+                if any(n < 8 or n & (n - 1) for n in layout(context.operator)):
+                    reasons.append(
+                        "local moments require power-of-two axes with at least 8 sites"
+                    )
+            except (ValueError, TypeError, AttributeError):
+                pass
+        return SupportResult(tuple(reasons))
+
+
+@dataclass(frozen=True)
+class BSplineLocalActiveAlgorithm(BSplineLocalMomentAlgorithm):
+    revision: str = "v21"
+    recipe_type: type = BSplineLocalActiveRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalShardedAlgorithm(BSplineLocalActiveAlgorithm):
+    revision: str = "v22"
+    recipe_type: type = BSplineLocalShardedRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalEndpointAlgorithm(BSplineLocalShardedAlgorithm):
+    revision: str = "v23"
+    recipe_type: type = BSplineLocalEndpointRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalSplitAlgorithm(BSplineLocalEndpointAlgorithm):
+    revision: str = "v24"
+    recipe_type: type = BSplineLocalSplitRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalPaddedAlgorithm(BSplineLocalSplitAlgorithm):
+    revision: str = "v25"
+    recipe_type: type = BSplineLocalPaddedRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalNarrowAlgorithm(BSplineLocalSplitAlgorithm):
+    revision: str = "v26"
+    recipe_type: type = BSplineLocalNarrowRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalChunkedAlgorithm(BSplineLocalNarrowAlgorithm):
+    revision: str = "v27"
+    recipe_type: type = BSplineLocalChunkedRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalOwnerAlgorithm(BSplineLocalChunkedAlgorithm):
+    revision: str = "v28"
+    recipe_type: type = BSplineLocalOwnerRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalNativeBoundAlgorithm(BSplineLocalChunkedAlgorithm):
+    revision: str = "v29"
+    recipe_type: type = BSplineLocalNativeBoundRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalCanonicalAlgorithm(BSplineLocalNativeBoundAlgorithm):
+    revision: str = "v30"
+    recipe_type: type = BSplineLocalCanonicalRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalCoefficientAlgorithm(BSplineLocalCanonicalAlgorithm):
+    revision: str = "v31"
+    recipe_type: type = BSplineLocalCoefficientRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalBankBundleAlgorithm(BSplineLocalCoefficientAlgorithm):
+    revision: str = "v32"
+    recipe_type: type = BSplineLocalBankBundleRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalPersistentAlgorithm(BSplineLocalCanonicalAlgorithm):
+    revision: str = "v33"
+    recipe_type: type = BSplineLocalPersistentRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalGroupedAlgorithm(BSplineLocalBankBundleAlgorithm):
+    revision: str = "v34"
+    recipe_type: type = BSplineLocalGroupedRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalCoordinatesAlgorithm(BSplineLocalBankBundleAlgorithm):
+    revision: str = "v35"
+    recipe_type: type = BSplineLocalCoordinatesRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalTransposedAlgorithm(BSplineLocalBankBundleAlgorithm):
+    revision: str = "v36"
+    recipe_type: type = BSplineLocalTransposedRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalGluonAlgorithm(BSplineLocalBankBundleAlgorithm):
+    revision: str = "v37"
+    recipe_type: type = BSplineLocalGluonRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalNativeCacheAlgorithm(BSplineLocalGluonAlgorithm):
+    revision: str = "v38"
+    recipe_type: type = BSplineLocalNativeCacheRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalLevelMaskAlgorithm(BSplineLocalGluonAlgorithm):
+    revision: str = "v39"
+    recipe_type: type = BSplineLocalLevelMaskRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalUnifiedAlgorithm(BSplineLocalNativeCacheAlgorithm):
+    revision: str = "v40"
+    recipe_type: type = BSplineLocalUnifiedRecipe
+
+    def supports(self, context, recipe):
+        result = super().supports(context, recipe)
+        reasons = list(result.reasons)
+        if isinstance(context, LinearContext):
+            try:
+                # Low bits 0..15 are levels; bits 16/17 describe fallbacks.
+                if any(
+                    n.bit_length() - recipe.min_block_log > 16
+                    for n in layout(context.operator)
+                ):
+                    reasons.append("unified mask supports at most 16 local levels")
+            except (ValueError, TypeError, AttributeError):
+                pass
+        return SupportResult(tuple(reasons))
+
+
+@dataclass(frozen=True)
+class BSplineLocalNativeShardsAlgorithm(BSplineLocalUnifiedAlgorithm):
+    revision: str = "v41"
+    recipe_type: type = BSplineLocalNativeShardsRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalNativePointAlgorithm(BSplineLocalUnifiedAlgorithm):
+    revision: str = "v42"
+    recipe_type: type = BSplineLocalNativePointRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalDecodeRatioAlgorithm(BSplineLocalLevelMaskAlgorithm):
+    revision: str = "v43"
+    recipe_type: type = BSplineLocalDecodeRatioRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalPairedDecodeAlgorithm(BSplineLocalDecodeRatioAlgorithm):
+    revision: str = "v44"
+    recipe_type: type = BSplineLocalPairedDecodeRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalSpatialAlgorithm(BSplineLocalPairedDecodeAlgorithm):
+    revision: str = "v45"
+    recipe_type: type = BSplineLocalSpatialRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalSavedBankAlgorithm(BSplineLocalPairedDecodeAlgorithm):
+    revision: str = "v46"
+    recipe_type: type = BSplineLocalSavedBankRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalBankZeroAlgorithm(BSplineLocalSavedBankAlgorithm):
+    revision: str = "v47"
+    recipe_type: type = BSplineLocalBankZeroRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalVectorAlgorithm(BSplineLocalBankZeroAlgorithm):
+    revision: str = "v48"
+    recipe_type: type = BSplineLocalVectorRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalIntegerAlgorithm(BSplineLocalBankZeroAlgorithm):
+    revision: str = "v49"
+    recipe_type: type = BSplineLocalIntegerRecipe
+
+    def supports(self, context, recipe):
+        result = super().supports(context, recipe)
+        reasons = list(result.reasons)
+        if isinstance(context, LinearContext):
+            try:
+                if max(layout(context.operator)) > 1024:
+                    reasons.append(
+                        "integer query bank requires axes no larger than 1024"
+                    )
+            except (ValueError, TypeError, AttributeError):
+                pass
+        return SupportResult(tuple(reasons))
+
+
+@dataclass(frozen=True)
+class BSplineUnitDeltaAlgorithm(BSplineLocalSavedBankAlgorithm):
+    revision: str = "v50"
+    recipe_type: type = BSplineUnitDeltaRecipe
+
+    def supports(self, context, recipe):
+        result = super().supports(context, recipe)
+        reasons = list(result.reasons)
+        if isinstance(context, LinearContext) and context.atom_count > 60000:
+            reasons.append("two-word profile accumulation supports at most 60000 atoms")
+        return SupportResult(tuple(reasons))
+
+
+@dataclass(frozen=True)
+class BSplineLocalTableDecodeAlgorithm(BSplineLocalBankZeroAlgorithm):
+    revision: str = "v51"
+    recipe_type: type = BSplineLocalTableDecodeRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalFreshPartitionAlgorithm(BSplineLocalBankZeroAlgorithm):
+    revision: str = "v52"
+    recipe_type: type = BSplineLocalFreshPartitionRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalFrameArenaAlgorithm(BSplineLocalFreshPartitionAlgorithm):
+    revision: str = "v53"
+    recipe_type: type = BSplineLocalFrameArenaRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalNumericArenaAlgorithm(BSplineLocalFrameArenaAlgorithm):
+    revision: str = "v54"
+    recipe_type: type = BSplineLocalNumericArenaRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalWholeFrameAlgorithm(BSplineLocalNumericArenaAlgorithm):
+    revision: str = "v55"
+    recipe_type: type = BSplineLocalWholeFrameRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalCompactPositionsAlgorithm(BSplineLocalNumericArenaAlgorithm):
+    revision: str = "v56"
+    recipe_type: type = BSplineLocalCompactPositionsRecipe
+
+    def supports(self, context, recipe):
+        result = super().supports(context, recipe)
+        reasons = list(result.reasons)
+        if isinstance(context, LinearContext):
+            try:
+                minimum = getattr(recipe, "min_block_log", 3)
+                for n in layout(context.operator):
+                    points = (n.bit_length() - minimum) * n + 2 * (n >> minimum) - 1
+                    if max(points, 2 * (n >> minimum) - 1) > 32768:
+                        reasons.append(
+                            "signed16 local positions exceed supported range"
+                        )
+                        break
+            except (ValueError, TypeError, AttributeError):
+                pass
+        return SupportResult(tuple(reasons))
+
+
+@dataclass(frozen=True)
+class BSplineLocalSmallBoundaryAlgorithm(BSplineLocalCompactPositionsAlgorithm):
+    revision: str = "v57"
+    recipe_type: type = BSplineLocalSmallBoundaryRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalPreciseAlgorithm(BSplineLocalCompactPositionsAlgorithm):
+    revision: str = "v58"
+    recipe_type: type = BSplineLocalPreciseRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalLoopQueryAlgorithm(BSplineLocalPreciseAlgorithm):
+    revision: str = "v59"
+    recipe_type: type = BSplineLocalLoopQueryRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalSharedQuadraticAlgorithm(BSplineLocalLoopQueryAlgorithm):
+    revision: str = "v60"
+    recipe_type: type = BSplineLocalSharedQuadraticRecipe
+
+    def supports(self, context, recipe):
+        result = super().supports(context, recipe)
+        reasons = list(result.reasons)
+        if isinstance(context, LinearContext):
+            try:
+                minimum = getattr(recipe, "min_block_log", 3)
+                for n in layout(context.operator):
+                    points = (n.bit_length() - minimum) * n + 2 * (n >> minimum) - 1
+                    if points > 16384:
+                        reasons.append(
+                            "shared quadratic point flag requires 14-bit local positions"
+                        )
+                        break
+            except (ValueError, TypeError, AttributeError):
+                pass
+        return SupportResult(tuple(reasons))
+
+
+@dataclass(frozen=True)
+class BSplineLocalSharedUnrolledAlgorithm(BSplineLocalSharedQuadraticAlgorithm):
+    revision: str = "v61"
+    recipe_type: type = BSplineLocalSharedUnrolledRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalPairedQueryAlgorithm(BSplineLocalSharedUnrolledAlgorithm):
+    revision: str = "v62"
+    recipe_type: type = BSplineLocalPairedQueryRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalBitSplitQueryAlgorithm(BSplineLocalPairedQueryAlgorithm):
+    revision: str = "v63"
+    recipe_type: type = BSplineLocalBitSplitQueryRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalPackedBankAlgorithm(BSplineLocalBitSplitQueryAlgorithm):
+    revision: str = "v64"
+    recipe_type: type = BSplineLocalPackedBankRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalNormalizedCoAlgorithm(BSplineLocalPackedBankAlgorithm):
+    revision: str = "v65"
+    recipe_type: type = BSplineLocalNormalizedCoRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalCompensatedAlgorithm(BSplineLocalNormalizedCoAlgorithm):
+    revision: str = "v66"
+    recipe_type: type = BSplineLocalCompensatedRecipe

@@ -456,3 +456,660 @@ class BSplineNativeLoopRecipe(BSplineNativeHRecipe):
             32,
         ):
             raise ValueError("native_batch must be 4, 8, 16 or 32")
+
+
+@dataclass(frozen=True)
+class BSplineLocalMomentRecipe(BSplineNativeHRecipe):
+    """Revision 20: dyadic local polynomial banks and controlled FP32 cores."""
+
+    local_h = True
+    save_h: str = "none"
+    coefficient_derivatives: bool = False
+    bank_batch: int = 4
+    bank_group_levels: int = 3
+    bank_warps: int = 4
+    prepare_float32: bool = False
+    norm_float32: bool = False
+    native_float32: bool = False
+    contract_float32: bool = False
+
+    def __post_init__(self):
+        super().__post_init__()
+        if not self.coefficient_cache or self.coefficient_derivatives:
+            raise ValueError(
+                "local moments cache value coefficients and derive center derivatives"
+            )
+        if self.query_method != "fma":
+            raise ValueError("local moments require fma queries")
+        if self.norm_float32 and not self.norm_lookup:
+            raise ValueError("orthogonal local norm requires norm_lookup")
+        for name in (
+            "prepare_float32",
+            "norm_float32",
+            "native_float32",
+            "contract_float32",
+        ):
+            if type(getattr(self, name)) is not bool:
+                raise ValueError(f"{name} must be boolean")
+        for name, allowed in (
+            ("bank_batch", (1, 2, 4, 8)),
+            ("bank_group_levels", (1, 2, 3)),
+            ("bank_warps", (4, 8)),
+        ):
+            if (
+                type(getattr(self, name)) is not int
+                or getattr(self, name) not in allowed
+            ):
+                raise ValueError(f"{name} must be one of {allowed}")
+
+
+@dataclass(frozen=True)
+class BSplineLocalActiveRecipe(BSplineLocalMomentRecipe):
+    """Revision 21: compute only scales referenced by the forward event snapshot."""
+
+    active_levels = True
+    prepare_float32: bool = True
+    norm_float32: bool = True
+    native_float32: bool = True
+    contract_float32: bool = True
+
+
+@dataclass(frozen=True)
+class BSplineLocalShardedRecipe(BSplineLocalActiveRecipe):
+    """Revision 22: distribute block-boundary additions over small shard planes."""
+
+    boundary_shards: int = 32
+    _boundary_shard_choices = (8, 16, 32, 64)
+
+    def __post_init__(self):
+        super().__post_init__()
+        if (
+            type(self.boundary_shards) is not int
+            or self.boundary_shards not in self._boundary_shard_choices
+        ):
+            raise ValueError(
+                f"boundary_shards must be one of {self._boundary_shard_choices}"
+            )
+
+
+@dataclass(frozen=True)
+class BSplineLocalEndpointRecipe(BSplineLocalShardedRecipe):
+    """Revision 23: skip unconsumed end nodes and shard domain-start additions."""
+
+    skip_endpoints = True
+    shard_origin: bool = True
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.shard_origin) is not bool:
+            raise ValueError("shard_origin must be boolean")
+
+
+@dataclass(frozen=True)
+class BSplineLocalSplitRecipe(BSplineLocalEndpointRecipe):
+    """Revision 24: ablate split preparation and avoid the negative scale scan."""
+
+    active_levels: bool = False
+    split_prepare: bool = True
+    boundary_shards: int = 16
+
+    def __post_init__(self):
+        super().__post_init__()
+        for name in ("active_levels", "split_prepare"):
+            if type(getattr(self, name)) is not bool:
+                raise ValueError(f"{name} must be boolean")
+
+
+@dataclass(frozen=True)
+class BSplineLocalPaddedRecipe(BSplineLocalSplitRecipe):
+    """Revision 25: physical bank row padding, independent of the real batch."""
+
+    bank_padding: int = 8
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.bank_padding) is not int or self.bank_padding not in (0, 4, 8, 16):
+            raise ValueError("bank_padding must be 0, 4, 8 or 16")
+
+
+@dataclass(frozen=True)
+class BSplineLocalNarrowRecipe(BSplineLocalSplitRecipe):
+    """Revision 26: four-site local blocks cover ordinary small-width atoms."""
+
+    min_block_log = 2
+    sigma_cutoff: float = 0.05
+    prepare_float32: bool = False
+    boundary_shards: int = 8
+    axis_atoms: int = 4
+
+
+@dataclass(frozen=True)
+class BSplineLocalChunkedRecipe(BSplineLocalNarrowRecipe):
+    """Revision 27: share coefficients and reuse bounded batch workspaces."""
+
+    batch_chunk: int = 32
+    prepare_float32: bool = True
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.batch_chunk) is not int or self.batch_chunk not in (16, 32, 64):
+            raise ValueError("batch_chunk must be 16, 32 or 64")
+        if self.save_h != "none":
+            raise ValueError(
+                "chunked local moments recompute H from the saved forward state"
+            )
+
+
+@dataclass(frozen=True)
+class BSplineLocalOwnerRecipe(BSplineLocalChunkedRecipe):
+    """Revision 28: group compact boundary events by their reconstruction row."""
+
+    owner_events: int = 64
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.owner_events) is not int or self.owner_events not in (32, 64, 128):
+            raise ValueError("owner_events must be 32, 64 or 128")
+
+
+@dataclass(frozen=True)
+class BSplineLocalNativeBoundRecipe(BSplineLocalChunkedRecipe):
+    """Revision 29: bound native launch grids and stride over live rows only."""
+
+    native_programs: int = 128
+    native_accum64 = True
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.native_programs) is not int or self.native_programs not in (
+            0,
+            32,
+            64,
+            128,
+            256,
+        ):
+            raise ValueError("native_programs must be 0, 32, 64, 128 or 256")
+        if self.native_programs and not self.native_float32:
+            raise ValueError("bounded native launches require the mixed native guard")
+
+
+@dataclass(frozen=True)
+class BSplineLocalCanonicalRecipe(BSplineLocalNativeBoundRecipe):
+    """Revision 30: retain Meta in source order and write source VJP directly."""
+
+    canonical_meta = True
+
+    def __post_init__(self):
+        super().__post_init__()
+        if not self.native_float32:
+            raise ValueError("canonical Meta requires the mixed native guard")
+
+
+@dataclass(frozen=True)
+class BSplineLocalCoefficientRecipe(BSplineLocalCanonicalRecipe):
+    """Revision 31: atom-local coefficient storage with identical FMA evaluation."""
+
+    coefficient_layout: str = "aos4"
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.coefficient_layout) is not str or self.coefficient_layout not in (
+            "soa",
+            "aos3",
+            "aos4",
+        ):
+            raise ValueError("coefficient_layout must be soa, aos3 or aos4")
+
+
+@dataclass(frozen=True)
+class BSplineLocalBankBundleRecipe(BSplineLocalCoefficientRecipe):
+    """Revision 32: several independent small prefix tiles per CTA."""
+
+    coefficient_layout: str = "soa"
+    bank_tile_blocks: int = 8
+    bank_mid_blocks: int = 2
+
+    def __post_init__(self):
+        super().__post_init__()
+        for name in ("bank_tile_blocks", "bank_mid_blocks"):
+            value = getattr(self, name)
+            if type(value) is not int or value not in (1, 2, 4, 8):
+                raise ValueError(f"{name} must be 1, 2, 4 or 8")
+
+
+@dataclass(frozen=True)
+class BSplineLocalPersistentRecipe(BSplineLocalCanonicalRecipe):
+    """Revision 33: strided H/G grid, identical logical border-shard mapping."""
+
+    h_programs: int = 512
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.h_programs) is not int or self.h_programs not in (
+            0,
+            128,
+            256,
+            512,
+            1024,
+        ):
+            raise ValueError("h_programs must be 0, 128, 256, 512 or 1024")
+
+
+@dataclass(frozen=True)
+class BSplineLocalGroupedRecipe(BSplineLocalBankBundleRecipe):
+    """Revision 34: exact input-event groups, shared H and reduced input adjoint."""
+
+    input_groups = True
+    bank_tile_blocks: int = 4
+    bank_mid_blocks: int = 1
+    shared_input: bool = True
+    group_dx: bool = True
+
+    def __post_init__(self):
+        super().__post_init__()
+        for name in ("shared_input", "group_dx"):
+            if type(getattr(self, name)) is not bool:
+                raise ValueError(f"{name} must be boolean")
+
+
+@dataclass(frozen=True)
+class BSplineLocalCoordinatesRecipe(BSplineLocalBankBundleRecipe):
+    """Revision 35: hoist FP64 origin-zero geometry products before FP32 cores."""
+
+    bank_tile_blocks: int = 4
+    bank_mid_blocks: int = 1
+    coefficient_coordinates: bool = True
+    norm_coordinates: bool = True
+
+    def __post_init__(self):
+        super().__post_init__()
+        for name in ("coefficient_coordinates", "norm_coordinates"):
+            if type(getattr(self, name)) is not bool:
+                raise ValueError(f"{name} must be boolean")
+
+
+@dataclass(frozen=True)
+class BSplineLocalTransposedRecipe(BSplineLocalBankBundleRecipe):
+    """Revision 36: atom lanes inside batch lanes for H/G and adjoint events."""
+
+    transposed_h = True
+    bank_tile_blocks: int = 4
+    bank_mid_blocks: int = 1
+
+
+@dataclass(frozen=True)
+class BSplineLocalGluonRecipe(BSplineLocalBankBundleRecipe):
+    """Revision 37: explicit Gluon atom/batch lane ownership; no extra buffers."""
+
+    gluon_h = True
+    bank_tile_blocks: int = 4
+    bank_mid_blocks: int = 1
+    lane_atoms: int = 4
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.lane_atoms) is not int or self.lane_atoms not in (1, 2, 4):
+            raise ValueError("lane_atoms must be 1, 2 or 4")
+        if self.axis_warps != 4 or self.coefficient_layout != "soa":
+            raise ValueError("explicit lane ownership requires four warps and SoA")
+
+
+@dataclass(frozen=True)
+class BSplineLocalNativeCacheRecipe(BSplineLocalGluonRecipe):
+    """Revision 38: native axis profiles share unused Co/Pos snapshot slots."""
+
+    native_cache = True
+    lane_atoms: int = 1
+    sigma_cutoff: float = 0.15
+    cache_unroll: bool = True
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.cache_unroll) is not bool:
+            raise ValueError("cache_unroll must be boolean")
+        if self.native_sites != 8 or not self.native_float32:
+            raise ValueError(
+                "native profile cache requires eight sites and the mixed guard"
+            )
+
+
+@dataclass(frozen=True)
+class BSplineLocalLevelMaskRecipe(BSplineLocalGluonRecipe):
+    """Revision 39: coefficient preparation also records the exact live levels."""
+
+    fused_levels = True
+    lane_atoms: int = 1
+    active_levels: bool = True
+    zero_active: bool = False
+
+    def __post_init__(self):
+        super().__post_init__()
+        if not self.active_levels:
+            raise ValueError("fused level mask requires active_levels")
+        if type(self.zero_active) is not bool:
+            raise ValueError("zero_active must be boolean")
+
+
+@dataclass(frozen=True)
+class BSplineLocalUnifiedRecipe(BSplineLocalNativeCacheRecipe):
+    """Revision 40: hot native and regular atoms share one fixed-slot grid."""
+
+    unified_native = True
+    fused_levels = True
+    active_levels: bool = True
+    zero_active: bool = False
+
+    def __post_init__(self):
+        super().__post_init__()
+        if not self.active_levels or self.zero_active:
+            raise ValueError("unified grid requires fused levels and full zeroing")
+        if self.native_atoms != self.axis_atoms or self.lane_atoms != 1:
+            raise ValueError("unified grid requires equal native/axis groups and lane1")
+        if not self.cache_unroll:
+            raise ValueError("unified grid requires unrolled native profiles")
+
+
+@dataclass(frozen=True)
+class BSplineLocalNativeShardsRecipe(BSplineLocalUnifiedRecipe):
+    """Revision 41: bounded FP32 hot partial sums, FP64 final reduction."""
+
+    native_hot_shards: int = 16
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.native_hot_shards) is not int or self.native_hot_shards not in (
+            4,
+            16,
+        ):
+            raise ValueError("native_hot_shards must be 4 or 16")
+
+
+@dataclass(frozen=True)
+class BSplineLocalNativePointRecipe(BSplineLocalUnifiedRecipe):
+    """Revision 42: batch-contiguous native reads and FP64 hot destination."""
+
+    native_pointmajor = True
+    native_hot_shards = 1
+    native_hot_float64 = True
+
+
+@dataclass(frozen=True)
+class BSplineLocalDecodeRatioRecipe(BSplineLocalLevelMaskRecipe):
+    """Revision 43: one-log FP64 geometric interpolation with guarded fallback."""
+
+    ratio_decode: bool = True
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.ratio_decode) is not bool:
+            raise ValueError("ratio_decode must be boolean")
+        if not self.split_prepare:
+            raise ValueError("ratio decoding requires split preparation")
+
+
+@dataclass(frozen=True)
+class BSplineLocalPairedDecodeRecipe(BSplineLocalDecodeRatioRecipe):
+    """Revision 44: keep atom ownership and store adjacent FP64 Meta pairs."""
+
+    paired_decode = True
+    ratio_decode: bool = False
+
+
+@dataclass(frozen=True)
+class BSplineLocalSpatialRecipe(BSplineLocalPairedDecodeRecipe):
+    """Revision 45: advisory spatial order, exact live native partition."""
+
+    spatial_layout = True
+    ratio_decode: bool = True
+    range_tile: int = 32
+    layout_refresh: int = 64
+
+    def __post_init__(self):
+        super().__post_init__()
+        if not self.reuse_layout:
+            raise ValueError("spatial layout requires persistent placement")
+        if type(self.range_tile) is not int or self.range_tile not in (16, 32, 64):
+            raise ValueError("range_tile must be 16,32 or64")
+        if type(self.layout_refresh) is not int or self.layout_refresh not in (
+            1,
+            16,
+            64,
+        ):
+            raise ValueError("layout_refresh must be 1,16 or64")
+
+
+@dataclass(frozen=True)
+class BSplineLocalSavedBankRecipe(BSplineLocalPairedDecodeRecipe):
+    """Revision 46: reuse immutable forward input banks in the same frame's VJP."""
+
+    ratio_decode: bool = True
+    save_input_bank: bool = True
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.save_input_bank) is not bool:
+            raise ValueError("save_input_bank must be boolean")
+
+
+@dataclass(frozen=True)
+class BSplineLocalBankZeroRecipe(BSplineLocalSavedBankRecipe):
+    """Revision 47: fuse independent first-group bank and scratch-zero CTAs."""
+
+    fuse_bank_zero: bool = True
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.fuse_bank_zero) is not bool:
+            raise ValueError("fuse_bank_zero must be boolean")
+        if self.fuse_bank_zero and self.zero_active:
+            raise ValueError("bank-zero fusion requires full scratch initialization")
+
+
+@dataclass(frozen=True)
+class BSplineLocalVectorRecipe(BSplineLocalBankZeroRecipe):
+    """Revision 48: four batch values per thread and optional SM90+ vector RED."""
+
+    batch_values = 4
+    lane_atoms: int = 4
+    axis_atoms: int = 16
+    vector_atomic: bool = True
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.vector_atomic) is not bool:
+            raise ValueError("vector_atomic must be boolean")
+        if self.axis_atoms < 16 or self.lane_atoms != 4:
+            raise ValueError(
+                "batch4 ownership requires at least 16 atoms and four atom lanes"
+            )
+
+
+@dataclass(frozen=True)
+class BSplineLocalIntegerRecipe(BSplineLocalBankZeroRecipe):
+    """Revision 49: int64 triple-prefix queries and signed128 cancellation."""
+
+    integer_query = True
+
+
+@dataclass(frozen=True)
+class BSplineUnitDeltaRecipe(BSplineLocalSavedBankRecipe):
+    """Revision 50: same sampled operator, unit axes, float pairs and word deltas."""
+
+    unit_delta = True
+    reuse_layout: bool = False
+    unit_shards: int = 8
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.reuse_layout or not self.split_prepare:
+            raise ValueError(
+                "unit delta requires fresh native compaction and split normalization"
+            )
+        if type(self.unit_shards) is not int or self.unit_shards not in (1, 4, 8, 16):
+            raise ValueError("unit_shards must be 1,4,8 or16")
+
+
+@dataclass(frozen=True)
+class BSplineLocalTableDecodeRecipe(BSplineLocalBankZeroRecipe):
+    """Revision 51: fixed-table FP64 range reduction for live width decoding."""
+
+    table_decode: bool = True
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.table_decode) is not bool:
+            raise ValueError("table_decode must be boolean")
+        if not self.paired_decode or not self.ratio_decode or not self.split_prepare:
+            raise ValueError("table decoding requires paired split ratio decoding")
+
+
+@dataclass(frozen=True)
+class BSplineLocalFreshPartitionRecipe(BSplineLocalBankZeroRecipe):
+    """Revision52: one-pass fresh native/broad placement without width buckets."""
+
+    fresh_partition = True
+    reuse_layout: bool = False
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.reuse_layout:
+            raise ValueError("fresh partition requires fresh immutable placement")
+
+
+@dataclass(frozen=True)
+class BSplineLocalFrameArenaRecipe(BSplineLocalFreshPartitionRecipe):
+    """Revision53: align immutable frame fields inside one owned allocation."""
+
+    frame_arena = True
+    batch_chunk: int = 64
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.coefficient_layout != "soa" or not self.canonical_meta:
+            raise ValueError("frame arena requires source Meta and SoA coefficients")
+
+
+@dataclass(frozen=True)
+class BSplineLocalNumericArenaRecipe(BSplineLocalFrameArenaRecipe):
+    """Revision54: one numerical allocation and same-frame scratch reuse."""
+
+    numeric_arena = True
+    bank_padding: int = 0
+
+    def __post_init__(self):
+        super().__post_init__()
+        if (
+            self.batch_chunk != 64
+            or not self.fuse_bank_zero
+            or not self.save_input_bank
+        ):
+            raise ValueError(
+                "numeric arena requires full batch, fused zero and saved input bank"
+            )
+        if type(self.bank_padding) is not int or self.bank_padding != 0:
+            raise ValueError("numeric arena requires unpadded bank rows")
+
+
+@dataclass(frozen=True)
+class BSplineLocalWholeFrameRecipe(BSplineLocalNumericArenaRecipe):
+    """Revision55: one owned frame allocation, excluding the persistent count."""
+
+    whole_frame = True
+
+
+@dataclass(frozen=True)
+class BSplineLocalCompactPositionsRecipe(BSplineLocalNumericArenaRecipe):
+    """Revision56: lossless signed16 local positions, widened before arithmetic."""
+
+    compact_positions = True
+
+
+@dataclass(frozen=True)
+class BSplineLocalSmallBoundaryRecipe(BSplineLocalCompactPositionsRecipe):
+    """Revision57: four border planes with unchanged sampled profile and L2."""
+
+    boundary_shards: int = 4
+    _boundary_shard_choices = (4,)
+
+
+@dataclass(frozen=True)
+class BSplineLocalPreciseRecipe(BSplineLocalFrameArenaRecipe):
+    """Revision58: FP64 local coefficients, queries and range accumulation."""
+
+    precise_local = True
+    precise_bank = True
+    compact_positions = True
+    _boundary_shard_choices = (4,)
+    boundary_shards: int = 4
+    batch_chunk: int = 16
+    prepare_float32: bool = False
+    save_input_bank: bool = False
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.prepare_float32:
+            raise ValueError("precise local coefficients require FP64 preparation")
+
+
+@dataclass(frozen=True)
+class BSplineLocalLoopQueryRecipe(BSplineLocalPreciseRecipe):
+    """Revision59: carry one FP64 event at a time through the same query sum."""
+
+    looped_query = True
+
+
+@dataclass(frozen=True)
+class BSplineLocalSharedQuadraticRecipe(BSplineLocalLoopQueryRecipe):
+    """Revision60: share the quadratic coefficient and encode a border-piece bit."""
+
+    compact_c2 = True
+    native_cache = False
+
+
+@dataclass(frozen=True)
+class BSplineLocalSharedUnrolledRecipe(BSplineLocalSharedQuadraticRecipe):
+    """Revision61: shared FP64 coefficients with the original unrolled query."""
+
+    looped_query = False
+
+
+@dataclass(frozen=True)
+class BSplineLocalPairedQueryRecipe(BSplineLocalSharedUnrolledRecipe):
+    """Revision62: guarded FP32-pair query; FP64 coefficients and accumulation."""
+
+    paired_query = True
+
+
+@dataclass(frozen=True)
+class BSplineLocalBitSplitQueryRecipe(BSplineLocalPairedQueryRecipe):
+    """Revision63: integer extraction into guarded FP32 pairs; same FP64 frame."""
+
+    bit_split_query = True
+
+
+@dataclass(frozen=True)
+class BSplineLocalPackedBankRecipe(BSplineLocalBitSplitQueryRecipe):
+    """Revision64: self-tagged FP32 pair moments in the same eight-byte cells."""
+
+    packed_bank = True
+
+
+@dataclass(frozen=True)
+class BSplineLocalNormalizedCoRecipe(BSplineLocalPackedBankRecipe):
+    """Revision65: embed the same common sqrt(D) in both packed coefficient sets."""
+
+    normalized_co = True
+
+
+@dataclass(frozen=True)
+class BSplineLocalCompensatedRecipe(BSplineLocalNormalizedCoRecipe):
+    """Revision66: normalized pair RHS and compensated atomic plus FP64 escapes."""
+
+    paired_accum = True
+
+    def __post_init__(self):
+        super().__post_init__()
+        if not self.fuse_bank_zero:
+            raise ValueError(
+                "compensated accumulation requires fused full scratch zero"
+            )

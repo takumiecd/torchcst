@@ -661,7 +661,8 @@ def measure(args, run):
                             * 4,
                             "h_snapshot_scope": "immutable per-forward FP32 unscaled H/Hmu, all-A fixed capacity; native slots unused; never reused across updated steps",
                             "backward_staging_scope": "fused markers h_recompute/g_recompute/atom_contract/dx_inject are empty; staged mode adds materialized H/Hmu/G/Gmu and launches, not a partition of fused timing",
-                            "bank_recompute_skipped": recipe.save_h == "hp",
+                            "bank_recompute_skipped": recipe.save_h == "hp"
+                            or getattr(recipe, "save_input_bank", False),
                         }
                     )
                 if getattr(recipe, "adjoint_h", False):
@@ -682,6 +683,169 @@ def measure(args, run):
                             * m
                             * 8
                             * (1 if recipe.scatter_scope == "zero" else case.size + 1),
+                        }
+                    )
+                if getattr(recipe, "local_h", False):
+                    bank_chunk = getattr(recipe, "batch_chunk", 0)
+                    bank_rows = (
+                        ((m + bank_chunk - 1) // bank_chunk) * bank_chunk
+                        if bank_chunk and m > bank_chunk
+                        else m + getattr(recipe, "bank_padding", 0)
+                    )
+                    bank_min_log = getattr(recipe, "min_block_log", 3)
+                    bank_points = (
+                        (n.bit_length() - bank_min_log) * n
+                        + 2 * (n >> bank_min_log)
+                        - 1
+                    )
+                    hybrid_routing.update(
+                        {
+                            "bank_layout": "int64 reverse triple prefix plus per-batch exponent"
+                            if getattr(recipe, "integer_query", False)
+                            else "eight-byte tagged 47-bit pair/raw FP64 plane,dyadic-local-point,batch; no periodic wrap"
+                            if getattr(recipe, "packed_bank", False)
+                            else "FP64 plane,dyadic-local-point,batch; no periodic wrap"
+                            if getattr(recipe, "precise_bank", False)
+                            else "FP32 plane,dyadic-local-point,batch; no periodic wrap",
+                            **(
+                                {
+                                    "coefficient_storage_dtype": "float64",
+                                    "range_accumulation_dtype": "FP32 compensated pair plus FP64 escape"
+                                    if getattr(recipe, "paired_accum", False)
+                                    else "float64",
+                                    "normalization_in_coefficients": getattr(
+                                        recipe, "normalized_co", False
+                                    ),
+                                    "coefficient_representation": "47-bit tagged pair/raw FP64, common sqrt(D)"
+                                    if getattr(recipe, "normalized_co", False)
+                                    else "float64",
+                                    "escape_planes": 3
+                                    if getattr(recipe, "paired_accum", False)
+                                    else 0,
+                                    "query_event_loop": getattr(
+                                        recipe, "looped_query", False
+                                    ),
+                                    "paired_query": getattr(
+                                        recipe, "paired_query", False
+                                    ),
+                                    "packed_bank": getattr(
+                                        recipe, "packed_bank", False
+                                    ),
+                                    "bit_split_query": getattr(
+                                        recipe, "bit_split_query", False
+                                    ),
+                                    "paired_query_scope": "common sqrt(D) in tagged coefficients; FP32 pair queries; compensated FP32 RHS plus FP64 escapes"
+                                    if getattr(recipe, "paired_accum", False)
+                                    else "common sqrt(D) in tagged coefficients; FP32 pair queries; FP64 injection"
+                                    if getattr(recipe, "normalized_co", False)
+                                    else "query dot products in guarded FP32 pairs; FP64 coefficient/bank storage and injection; FP64 query fallback outside guard"
+                                    if getattr(recipe, "paired_query", False)
+                                    else None,
+                                    "shared_quadratic_coefficient": getattr(
+                                        recipe, "compact_c2", False
+                                    ),
+                                    "coefficient_payload_bytes": (
+                                        26
+                                        if getattr(recipe, "compact_c2", False)
+                                        else 36
+                                    )
+                                    * case.atoms
+                                    * 8,
+                                    "point_border_piece_flag_bit": 14
+                                    if getattr(recipe, "compact_c2", False)
+                                    else None,
+                                }
+                                if getattr(recipe, "precise_local", False)
+                                else {}
+                            ),
+                            "integer_query": getattr(recipe, "integer_query", False),
+                            "integer_query_profile_bits": 52
+                            if getattr(recipe, "integer_query", False)
+                            else None,
+                            "integer_query_extra_coefficient_bytes": 176 * case.atoms
+                            if getattr(recipe, "integer_query", False)
+                            else 0,
+                            "integer_query_scope": "same sampled profiles and one-floor normalization; int64 bank and signed128 query; unsafe polynomial bound uses FP64 direct query",
+                            "batch_values_per_thread": getattr(
+                                recipe, "batch_values", 1
+                            ),
+                            "vector_atomic_requested": getattr(
+                                recipe, "vector_atomic", False
+                            ),
+                            "vector_atomic_effective": getattr(
+                                recipe, "vector_atomic", False
+                            )
+                            and torch.cuda.get_device_capability(x.device)[0] >= 9,
+                            "vector_atomic_scope": "aligned contiguous full quads only; per-element masked scalar fallback; no additional scratch",
+                            "bank_zero_fused": getattr(recipe, "fuse_bank_zero", False),
+                            "bank_zero_diagnostic_scope": "when fused: scratch+border zero CTAs are included in the first bank kernel; delta markers contain no zero kernel",
+                            "input_bank_retained": getattr(
+                                recipe, "save_input_bank", False
+                            ),
+                            "input_bank_snapshot_capacity_bytes": (
+                                (n + 1) * bank_rows * 8
+                                if getattr(recipe, "integer_query", False)
+                                else 3
+                                * bank_points
+                                * bank_rows
+                                * (8 if getattr(recipe, "precise_bank", False) else 4)
+                            )
+                            if getattr(recipe, "save_input_bank", False)
+                            else 0,
+                            "input_bank_snapshot_scope": "same-forward immutable numerical bank; rebuilt for every new X/geometry frame; no reuse across steps; H/Hmu still queried in backward",
+                            "local_events_per_axis": 6,
+                            "batch_chunk": getattr(recipe, "batch_chunk", None),
+                            "owner_events": getattr(recipe, "owner_events", None),
+                            "native_programs": getattr(recipe, "native_programs", None),
+                            "canonical_meta": getattr(recipe, "canonical_meta", False),
+                            "bank_tile_blocks": getattr(recipe, "bank_tile_blocks", 1),
+                            "h_programs": getattr(recipe, "h_programs", 0),
+                            "coefficient_coordinates": getattr(
+                                recipe, "coefficient_coordinates", False
+                            ),
+                            "norm_coordinates": getattr(
+                                recipe, "norm_coordinates", False
+                            ),
+                            "input_groups": getattr(recipe, "input_groups", False),
+                            "shared_input": getattr(recipe, "shared_input", False),
+                            "group_dx": getattr(recipe, "group_dx", False),
+                            "bank_mid_blocks": getattr(recipe, "bank_mid_blocks", 1),
+                            "coefficient_layout": getattr(
+                                recipe, "coefficient_layout", "soa"
+                            ),
+                            "native_accum64": getattr(recipe, "native_accum64", False),
+                            "minimum_local_block": 1
+                            << getattr(recipe, "min_block_log", 3),
+                            "endpoint_writes_skipped": bool(
+                                getattr(recipe, "skip_endpoints", False)
+                            ),
+                            "domain_origin_sharded": bool(
+                                getattr(recipe, "shard_origin", False)
+                            ),
+                            "boundary_shards": int(
+                                getattr(recipe, "boundary_shards", 0)
+                            ),
+                            "inactive_scales_skipped": bool(
+                                getattr(recipe, "active_levels", False)
+                            ),
+                            "local_event_scope": "four knot jumps and up to two tile-boundary corrections",
+                            "coefficient_storage": "FP32 value polynomials in immutable forward snapshot",
+                            "coordinate_classification_dtype": "FP64",
+                            "coefficient_core_dtype": "FP32"
+                            if recipe.prepare_float32
+                            else "FP64",
+                            "norm_core_dtype": "positive FP32 discrete moments with FP64 tiny/floor guards"
+                            if recipe.norm_float32
+                            else "FP64",
+                            "native_core_dtype": "FP32 local offsets with separate FP64 tiny-support guard"
+                            if recipe.native_float32
+                            else "FP64",
+                            "contraction_core_dtype": "FP32 then FP64 source pullback"
+                            if recipe.contract_float32
+                            else "FP64",
+                            "bank_group_levels": recipe.bank_group_levels,
+                            "bank_batch": recipe.bank_batch,
+                            "split_stage_scope": "stream spans fuse local queries/injection; no separate global endpoint stages",
                         }
                     )
                 if recipe.strategy == "matrix_range":
@@ -705,10 +869,93 @@ def measure(args, run):
                             ),
                             "routing_count_scope": "sigma-only counts above; device route additionally keeps <=2-site clipped axis supports native",
                             "layout_policy": (
-                                "device-validated broad width/spatial buckets with tiny clipped-support native guard"
+                                "exact live native membership; advisory width/spatial order refreshed periodically or on membership change"
+                                if getattr(recipe, "spatial_layout", False)
+                                else "device-validated broad width/spatial buckets with tiny clipped-support native guard"
                                 if getattr(recipe, "range_tile", None)
                                 else "device-validated width buckets with tiny clipped-support native guard"
                             ),
+                            "advisory_layout_refresh": getattr(
+                                recipe, "layout_refresh", None
+                            ),
+                        }
+                    )
+                if getattr(recipe, "batch_chunk", 0) and not getattr(
+                    recipe, "owner_events", 0
+                ):
+                    tile_rows = min(m, recipe.batch_chunk)
+                    tile_columns = max(
+                        1 << (tile_rows - 1).bit_length(),
+                        32 if getattr(recipe, "batch_values", 1) == 4 else 1,
+                    )
+                    hybrid_routing["register_tile_elements_per_value"] = (
+                        recipe.axis_atoms * tile_columns
+                    )
+                    hybrid_routing["register_tile_scope"] = (
+                        "one batch chunk; compiler register reports are separate"
+                    )
+                if getattr(recipe, "compact_positions", False):
+                    hybrid_routing["local_position_storage"] = (
+                        "lossless signed16 Pos/BorderPos; signed32 widening before pointer multiplication; source IDs remain signed64"
+                    )
+                if getattr(recipe, "whole_frame", False):
+                    hybrid_routing["whole_frame_allocation"] = (
+                        "immutable metadata and numerical views share one frame-owned allocation; persistent diagnostic count stays separate; only disjoint scratch regions are reused"
+                    )
+                if getattr(recipe, "numeric_arena", False):
+                    hybrid_routing["numeric_allocation_policy"] = (
+                        "single frame-owned input/adjoint/delta/border storage; forward delta reused as adjoint bank; immutable input; per-stream scratch fallback and host launch serialization"
+                    )
+                if getattr(recipe, "frame_arena", False):
+                    hybrid_routing["frame_allocation_policy"] = (
+                        "single 256byte-aligned immutable frame storage for Meta/IDs/Pos/Co/half/borders/masks; separate persistent diagnostic count and numerical workspaces"
+                    )
+                if getattr(recipe, "fresh_partition", False):
+                    hybrid_routing.update(
+                        {
+                            "placement_policy": "fresh native front/broad back ID compaction; no width buckets/histogram/order clone",
+                            "placement_snapshot": "new immutable ID/count tensors each forward; source Parameters never permuted",
+                        }
+                    )
+                if getattr(recipe, "table_decode", False):
+                    hybrid_routing.update(
+                        {
+                            "width_decode_table_bytes": 3072,
+                            "width_decode_method": "FP64 fixed-table range reduction; degree7 log1p and degree6 exp; same live geometric interpolation",
+                            "width_decode_guard": "normal finite ratio in [2^-64,2^64]; original libdevice fallback outside range",
+                            "width_decode_table_scope": "immutable geometry-independent table; no atom/sigma quantization or stale step values",
+                        }
+                    )
+                if getattr(recipe, "unit_delta", False):
+                    caches = [
+                        s.buffers["unit_native_count"]
+                        for s in model.product_site.__dict__.get(
+                            "_algorithm_states", []
+                        )
+                        if "unit_native_count" in s.buffers
+                    ]
+                    if len(caches) != 1:
+                        raise AssertionError(
+                            "missing unit-profile native compaction count"
+                        )
+                    hybrid_routing.update(
+                        {
+                            "bank_layout": "FP32 pairs for second/third reverse prefix with per-batch powers",
+                            "input_bank_snapshot_capacity_bytes": 4
+                            * (n + 1)
+                            * bank_rows
+                            * 4
+                            if recipe.save_input_bank
+                            else 0,
+                            "unit_delta": True,
+                            "unit_coefficient_payload_bytes": 352 * case.atoms,
+                            "unit_delta_policy": "balanced base2^48 signed int64 low/high;34bit per-batch weight;52bit unit-profile coefficient; canonical events before atomics",
+                            "unit_shards": recipe.unit_shards,
+                            "placement_policy": "fresh native-only compaction each forward; no parameter permutation or width sorting",
+                            "final_device_native_atoms": int(caches[0].item()),
+                            "routing_count_scope": "sigma cutoff, <=2 positive samples or unsafe unit polynomial bound; same FP64 native fallback",
+                            "unit_query_points": 12,
+                            "unit_prime_query_points": 8,
                         }
                     )
                 if recipe.reuse_layout:
@@ -858,6 +1105,19 @@ def measure(args, run):
                 getattr(run.entry(args.plan_id).plan.recipe, "saved_h", False),
                 getattr(run.entry(args.plan_id).plan.recipe, "adjoint_h", False),
                 getattr(run.entry(args.plan_id).plan.recipe, "native_h", False),
+                getattr(run.entry(args.plan_id).plan.recipe, "local_h", False),
+                -(
+                    -case.rows
+                    // getattr(
+                        run.entry(args.plan_id).plan.recipe, "batch_chunk", case.rows
+                    )
+                ),
+                bool(getattr(run.entry(args.plan_id).plan.recipe, "owner_events", 0)),
+                getattr(run.entry(args.plan_id).plan.recipe, "input_groups", False),
+                getattr(run.entry(args.plan_id).plan.recipe, "native_cache", False),
+                bool(
+                    getattr(run.entry(args.plan_id).plan.recipe, "native_hot_shards", 0)
+                ),
             )
             backend_events = {
                 name: [

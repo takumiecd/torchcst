@@ -63,9 +63,12 @@ def make_layout(a, sizes, recipe, device):
 
     tiles = getattr(recipe, "range_tile", 0)
     broad_bins = (
-        max(
-            tr.cdiv(sizes[0], recipe.matrix_sites),
-            tr.cdiv(sizes[1], recipe.matrix_sites),
+        (
+            max(
+                tr.cdiv(sizes[0], recipe.matrix_sites),
+                tr.cdiv(sizes[1], recipe.matrix_sites),
+            )
+            + 1
         ).bit_length()
         * tr.cdiv(sizes[0], tiles)
         * tr.cdiv(sizes[1], tiles)
@@ -124,6 +127,11 @@ def placement(meta, origin, spacing, sizes, recipe, cache):
         Previous=cache["keys"],
         Dirty=cache["dirty"],
         TRACK=True,
+        PARTITION_TRACK=getattr(recipe, "spatial_layout", False),
+        LayoutStats=cache["stats"]
+        if getattr(recipe, "spatial_layout", False)
+        else None,
+        REFRESH=getattr(recipe, "layout_refresh", 0),
         WIDTH_ONLY=True,
         TINY_NATIVE=getattr(recipe, "tiny_native", False),
         RANGE_TILE=getattr(recipe, "range_tile", 0),
@@ -133,7 +141,9 @@ def placement(meta, origin, spacing, sizes, recipe, cache):
     k = cache["hist"].numel()
     _clear[(tr.cdiv(k, 256),)](cache["hist"], cache["cursor"], cache["dirty"], k)
     _histogram[(tr.cdiv(a, 128),)](cache["keys"], cache["hist"], cache["dirty"], a)
-    # Static-size scan only. Histogram/order writes run exclusively on changed keys.
+    # Static-size scan only. The optional spatial order may be older than Keys;
+    # every live native/broad membership is nevertheless revalidated above.
+    # Histogram/order writes occur only on required or scheduled rebuilds.
     torch.cumsum(cache["hist"], 0, dtype=torch.int32, out=cache["ends"])
     _place[(tr.cdiv(a, 128),)](
         cache["keys"],

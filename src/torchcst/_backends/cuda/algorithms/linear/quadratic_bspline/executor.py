@@ -20,6 +20,11 @@ def _report(name, compiled):
             "shared_bytes": getattr(compiled.metadata, "shared", None),
             "local_loads": "ld.local" in compiled.asm["ptx"],
             "local_stores": "st.local" in compiled.asm["ptx"],
+            "vector_red_instructions": compiled.asm["ptx"].count(
+                "red.relaxed.gpu.global.add.v4.f32"
+            ),
+            "gluon_batch4_layout": "sizePerThread = [1, 4]"
+            in compiled.asm.get("ttgir", ""),
         }
 
 
@@ -31,8 +36,74 @@ def diagnostic_components(
     saved_h=False,
     adjoint_h=False,
     native_h=False,
+    local_h=False,
+    chunk_count=1,
+    event_owner=False,
+    input_groups=False,
+    native_cache=False,
+    native_shards=False,
 ):
     common = ("snapshot", "prepare", "norm_replay")
+    if local_h:
+        names = common + (
+            "group",
+            "pack",
+            "coeff_prepare",
+            "decode",
+            "norm_init",
+            "active_levels",
+            "delta_output",
+            "delta_input",
+            "native_forward",
+            "native_backward",
+            "bank_input",
+            "bank_recompute",
+            "bank_adjoint",
+            "stream_forward",
+            "stream_backward",
+            "scan_output",
+            "scan_input",
+            "unpack",
+        )
+        if input_groups:
+            names += ("input_group_prepare",)
+        if native_cache:
+            names += ("native_cache_prepare",)
+        if native_shards:
+            names += (
+                "native_hot_prepare_forward",
+                "native_hot_prepare_backward",
+                "native_finish_forward",
+                "native_finish_backward",
+            )
+        if event_owner:
+            names += ("owner_prepare", "owner_output", "owner_input")
+        if chunk_count <= 1 and not event_owner:
+            return names
+        split = {
+            "bank_input",
+            "bank_recompute",
+            "bank_adjoint",
+            "delta_output",
+            "delta_input",
+            "stream_forward",
+            "stream_backward",
+            "scan_output",
+            "scan_input",
+            "owner_output",
+            "owner_input",
+            "native_finish_forward",
+            "native_finish_backward",
+        }
+        return tuple(
+            value
+            for name in names
+            for value in (
+                [f"{name}_chunk{k}" for k in range(chunk_count)]
+                if name in split
+                else [name]
+            )
+        )
     if strategy == "matrix_range":
         substeps = tuple(
             f"range_{stage}_{start}"
@@ -309,7 +380,16 @@ def _scatter(
     return y
 
 
-def _prepare(p, value, chart, recipe, moments):
+def _prepare(
+    p,
+    value,
+    chart,
+    recipe,
+    moments,
+    amplitude_snapshot=None,
+    width_table=None,
+    meta_out=None,
+):
     import triton as tr
 
     from ..local_product.preparation import polar_scalars
@@ -320,29 +400,96 @@ def _prepare(p, value, chart, recipe, moments):
     source = p.contiguous().clone() if recipe.snapshot_source else p.contiguous()
     origin, spacing = chart.origin.clone(), chart.spacing.clone()
     _stamp("snapshot", 1)
-    meta = torch.empty((len(p), 12), device=p.device, dtype=torch.float64)
+    meta = (
+        meta_out
+        if meta_out is not None
+        else torch.empty(
+            (len(p), 14 if getattr(recipe, "unit_delta", False) else 12),
+            device=p.device,
+            dtype=torch.float64,
+        )
+    )
     if len(p):
         _stamp("prepare", 0)
-        compiled = k.prepare[(tr.cdiv(len(p), 64),)](
-            source,
-            meta,
-            origin,
-            spacing,
-            polar_scalars(value),
-            len(p),
-            no,
-            ni,
-            value.spec.normalization.floor,
-            moments,
-            moments.shape[1],
-            recipe.reciprocal,
-            recipe.norm_lookup,
-            getattr(recipe, "norm_fma", False),
-            num_warps=recipe.prepare_warps,
-            enable_fp_fusion=False,
-        )
+        local = getattr(recipe, "local_h", False)
+        if local:
+            _stamp("decode", 0)
+        if getattr(recipe, "split_prepare", False):
+            from . import prepare_split_kernels as sk
+
+            decode = sk.decode
+            decode_options = {"RATIO": getattr(recipe, "ratio_decode", False)}
+            if getattr(recipe, "paired_decode", False):
+                from . import paired_decode_kernels as pd
+
+                decode = pd.decode
+                decode_options["WARPS"] = recipe.prepare_warps
+                if amplitude_snapshot is not None:
+                    decode_options["AmpSnapshot"] = amplitude_snapshot
+                if width_table is not None:
+                    decode_options["WidthTable"] = width_table
+            compiled = decode[(tr.cdiv(len(p), 64),)](
+                source,
+                meta,
+                origin,
+                spacing,
+                polar_scalars(value),
+                len(p),
+                **decode_options,
+                num_warps=recipe.prepare_warps,
+                enable_fp_fusion=False,
+            )
+            _report("prepare_decode", compiled)
+            _stamp("decode", 1)
+            _stamp("norm_init", 0)
+            compiled = sk.normalize[(tr.cdiv(len(p), 64),)](
+                meta,
+                origin,
+                spacing,
+                moments,
+                len(p),
+                no,
+                ni,
+                moments.shape[1],
+                value.spec.normalization.floor,
+                recipe.reciprocal,
+                recipe.norm_lookup,
+                getattr(recipe, "norm_fma", False),
+                getattr(recipe, "norm_float32", False),
+                HOIST=getattr(recipe, "norm_coordinates", False),
+                UNIT=getattr(recipe, "unit_delta", False),
+                num_warps=recipe.prepare_warps,
+                enable_fp_fusion=False,
+            )
+            _report("prepare_norm", compiled)
+            _stamp("norm_init", 1)
+        else:
+            if local:
+                _stamp("decode", 1)
+                _stamp("norm_init", 0)
+                _stamp("norm_init", 1)
+            compiled = k.prepare[(tr.cdiv(len(p), 64),)](
+                source,
+                meta,
+                origin,
+                spacing,
+                polar_scalars(value),
+                len(p),
+                no,
+                ni,
+                value.spec.normalization.floor,
+                moments,
+                moments.shape[1],
+                recipe.reciprocal,
+                recipe.norm_lookup,
+                getattr(recipe, "norm_fma", False),
+                getattr(recipe, "norm_float32", False),
+                HOIST=getattr(recipe, "norm_coordinates", False),
+                num_warps=recipe.prepare_warps,
+                enable_fp_fusion=False,
+            )
+            _report("prepare", compiled)
         _stamp("prepare", 1)
-        _report("prepare", compiled)
         if DIAGNOSTIC_EVENTS is not None:
             scratch = torch.empty((len(p), 4), device=p.device, dtype=torch.float64)
             _stamp("norm_replay", 0)
@@ -360,6 +507,8 @@ def _prepare(p, value, chart, recipe, moments):
                 recipe.reciprocal,
                 recipe.norm_lookup,
                 getattr(recipe, "norm_fma", False),
+                getattr(recipe, "norm_float32", False),
+                HOIST=getattr(recipe, "norm_coordinates", False),
                 num_warps=4,
                 enable_fp_fusion=False,
             )
