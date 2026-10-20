@@ -1330,3 +1330,10 @@ bank payloadだけを省メモリ達成とは扱わない。GPU速度/全shape�
 
 CPU2013 passed /4936 skipped /18既存warning (40.01s)、変更対象Ruff・両case宣言・wheel/sdist build PASS。
 GPUは47件中metadata1件を除く46件と、主条件2caseを同じsnapshotから検証する。
+
+
+v49初回job `colabjob-a63b95bf20ca46d88dd7a8aa1feb71ad`、source9de1a0abはraw最初でコンパイル失敗。
+bank/zeroの別branchで同じj名をN要素/1024要素へ使い、Triton SSA型が一致しなかった。
+演算検証/性能測定には到達していない。独立のzero index名へ分離し、zero要素数0の静的guardも追加する。
+source/result/manifest/git bytes/return1/no-timeout/cleanup ackをfailed-jobsへ厳密保存、primary表から除外した。
+supervisor90362 exit0、修正を明示的な新snapshotで再提出する。精度基準の変更はない。

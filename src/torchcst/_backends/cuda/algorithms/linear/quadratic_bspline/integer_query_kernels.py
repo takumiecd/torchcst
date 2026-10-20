@@ -42,13 +42,13 @@ def bank(
             value = tl.cumsum(value, 0, reverse=True)
         tl.store(Bank + j * PB + pid, value)
         tl.store(Bank + N * PB + pid, p.to(tl.int64))
-    else:
-        j = (pid - PB) * 1024 + tl.arange(0, 1024)
+    elif DELTA_ELEMENTS + BORDER_ELEMENTS:
+        z = (pid - PB) * 1024 + tl.arange(0, 1024)
         if BORDER_ELEMENTS:
-            ptr = tl.where(j < DELTA_ELEMENTS, Delta + j, Border + j - DELTA_ELEMENTS)
+            ptr = tl.where(z < DELTA_ELEMENTS, Delta + z, Border + z - DELTA_ELEMENTS)
         else:
-            ptr = Delta + j
-        tl.store(ptr, 0, j < DELTA_ELEMENTS + BORDER_ELEMENTS)
+            ptr = Delta + z
+        tl.store(ptr, 0, z < DELTA_ELEMENTS + BORDER_ELEMENTS)
 
 
 @tr.jit
@@ -73,7 +73,7 @@ def prepare(
     ico = (Co + 36 * A).to(tl.pointer_type(tl.int64))
     cuts = (Co + 72 * A).to(tl.pointer_type(tl.int32))
     for dim in tl.static_range(2):
-        n: tl.constexpr = NO if dim == 0 else NI
+        n = NO if dim == 0 else NI
         center = tl.load(Meta + 12 * source + 2 + dim, live, 0.0)
         origin, h = tl.load(Origin + dim), tl.load(Spacing + dim)
         c0 = tl.minimum(
