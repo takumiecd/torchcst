@@ -40,6 +40,7 @@ from .recipe import (
     BSplineLocalShardedRecipe,
     BSplineLocalSplitRecipe,
     BSplineLocalTransposedRecipe,
+    BSplineLocalUnifiedRecipe,
     BSplineNativeHRecipe,
     BSplineNativeLoopRecipe,
     BSplineParallelRecipe,
@@ -467,3 +468,9 @@ class BSplineLocalNativeCacheAlgorithm(BSplineLocalGluonAlgorithm):
 class BSplineLocalLevelMaskAlgorithm(BSplineLocalGluonAlgorithm):
     revision: str = "v39"
     recipe_type: type = BSplineLocalLevelMaskRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalUnifiedAlgorithm(BSplineLocalNativeCacheAlgorithm):
+    revision: str = "v40"
+    recipe_type: type = BSplineLocalUnifiedRecipe

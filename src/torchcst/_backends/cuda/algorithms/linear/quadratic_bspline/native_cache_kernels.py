@@ -23,6 +23,8 @@ def prepare(
     NO: tl.constexpr,
     NI: tl.constexpr,
     RECIPROCAL: tl.constexpr,
+    GROUP_ATOMS: tl.constexpr = 0,
+    ActiveMask=None,
 ):
     base = tl.program_id(0) * 128
     count = tl.load(Count)
@@ -35,6 +37,10 @@ def prepare(
             radius, ir, center, origin, spacing, left, right = nk._axis(
                 Meta, Origin, Spacing, source, A, n, dim, RECIPROCAL
             )
+            if dim == 0:
+                count_o = right - left
+            else:
+                count_i = right - left
             tl.store(Pos + (dim * 6) * A + slot, left, valid)
             tl.store(Pos + (dim * 6 + 1) * A + slot, right, valid)
             distance = (origin + left.to(tl.float64) * spacing - center).to(tl.float32)
@@ -43,6 +49,28 @@ def prepare(
                 f, df = _shape(d, radius.to(tl.float32), ir.to(tl.float32), RECIPROCAL)
                 tl.store(Co + (dim * 18 + site) * A + slot, f, valid)
                 tl.store(Co + (dim * 18 + 8 + site) * A + slot, df, valid)
+
+        if GROUP_ATOMS:
+            tiny = valid & (tl.minimum(count_o, count_i) <= 2)
+            oversize = valid & (tl.maximum(count_o, count_i) > 8)
+            cold = tl.max(
+                tl.reshape(tiny.to(tl.int32), (128 // GROUP_ATOMS, GROUP_ATOMS)), 1
+            )
+            big = tl.max(
+                tl.reshape(oversize.to(tl.int32), (128 // GROUP_ATOMS, GROUP_ATOMS)), 1
+            )
+            kind = tl.where(cold != 0, 0, tl.where(big != 0, 2, 1))
+            start = base + tl.arange(0, 128 // GROUP_ATOMS) * GROUP_ATOMS
+            tl.store(Co + 16 * A + start, kind.to(tl.float32), start < count)
+            flags = tl.where((start < count) & (kind == 0), 1 << 16, 0) | tl.where(
+                (start < count) & (kind == 2), 1 << 17, 0
+            )
+            tl.atomic_or(ActiveMask, tl.reduce(flags, 0, _or_flags), sem="relaxed")
+
+
+@tr.jit
+def _or_flags(x, y):
+    return x | y
 
 
 @tr.jit

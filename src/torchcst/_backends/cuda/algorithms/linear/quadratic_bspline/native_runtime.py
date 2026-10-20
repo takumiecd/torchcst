@@ -23,6 +23,8 @@ def _options(recipe, order, cache):
         result.update(
             CachePos=cache[0], CacheCo=cache[1], CACHE_UNROLL=recipe.cache_unroll
         )
+        if getattr(recipe, "unified_native", False):
+            result["ActiveMask"] = cache[2]
     return result
 
 
@@ -42,6 +44,9 @@ def forward(x, y, meta, count, origin, spacing, sizes, recipe, order=None, cache
 
         if getattr(recipe, "native_cache", False):
             from . import native_cache_kernels as mk
+
+        if getattr(recipe, "unified_native", False):
+            from . import native_fallback_kernels as mk
 
         kernel = mk.forward
     else:
@@ -94,9 +99,10 @@ def forward(x, y, meta, count, origin, spacing, sizes, recipe, order=None, cache
             enable_fp_fusion=False,
         )
         _report("native_forward_cold", cold)
-    if destination is not y:
+    if destination is not y and not getattr(recipe, "unified_native", False):
         y.add_(destination)
     _stamp("native_forward", 1)
+    return destination if getattr(recipe, "unified_native", False) else None
 
 
 def backward(
@@ -135,6 +141,9 @@ def backward(
 
         if getattr(recipe, "native_cache", False):
             from . import native_cache_kernels as mk
+
+        if getattr(recipe, "unified_native", False):
+            from . import native_fallback_kernels as mk
 
         kernel = mk.backward
     else:
@@ -196,7 +205,13 @@ def backward(
             enable_fp_fusion=False,
         )
         _report("native_backward_cold", cold)
-    if need_dx and destination is not dx:
+    if (
+        need_dx
+        and destination is not dx
+        and not getattr(recipe, "unified_native", False)
+    ):
         dx.add_(destination)
     _stamp("native_backward", 1)
+    if getattr(recipe, "unified_native", False):
+        return dx, dp, destination
     return dx, dp

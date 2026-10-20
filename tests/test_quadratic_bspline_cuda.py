@@ -33,6 +33,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineLocalShardedAlgorithm,
     BSplineLocalSplitAlgorithm,
     BSplineLocalTransposedAlgorithm,
+    BSplineLocalUnifiedAlgorithm,
     BSplineNativeHAlgorithm,
     BSplineNativeLoopAlgorithm,
     BSplineParallelAlgorithm,
@@ -74,6 +75,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineLocalShardedRecipe,
     BSplineLocalSplitRecipe,
     BSplineLocalTransposedRecipe,
+    BSplineLocalUnifiedRecipe,
     BSplineNativeHRecipe,
     BSplineNativeLoopRecipe,
     BSplineParallelRecipe,
@@ -114,6 +116,7 @@ def case(n=64, a=17):
 def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     from dataclasses import replace
 
+    unified = strategy == "h_local_unified" or recipe_options.pop("_unified", False)
     level_mask = strategy == "h_local_level_mask" or recipe_options.pop(
         "_level_mask", False
     )
@@ -125,6 +128,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         or recipe_options.pop("_gluon", False)
         or native_cache
         or level_mask
+        or unified
     )
     transposed = strategy == "h_local_transposed" or recipe_options.pop(
         "_transposed", False
@@ -247,6 +251,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineLocalGroupedAlgorithm())
     registry.register(BSplineLocalGluonAlgorithm())
     registry.register(BSplineLocalLevelMaskAlgorithm())
+    registry.register(BSplineLocalUnifiedAlgorithm())
     registry.register(BSplineLocalCoordinatesAlgorithm())
     registry.register(BSplineLocalTransposedAlgorithm())
     registry.register(BSplineLocalPersistentAlgorithm())
@@ -274,7 +279,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     tuned = bool(recipe_options) or strategy == "matrix_separable"
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v39"
+        "v40"
+        if unified
+        else "v39"
         if level_mask
         else "v38"
         if native_cache
@@ -351,7 +358,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         else "v2"
         if tuned
         else "v1",
-        BSplineLocalLevelMaskRecipe(**recipe_options)
+        BSplineLocalUnifiedRecipe(**recipe_options)
+        if unified
+        else BSplineLocalLevelMaskRecipe(**recipe_options)
         if level_mask
         else BSplineLocalNativeCacheRecipe(**recipe_options)
         if native_cache
@@ -2639,6 +2648,18 @@ NATIVE_CACHE_OPTIONS = [
 LEVEL_MASK_OPTIONS = [
     {"_level_mask": True, "zero_active": zero} for zero in (False, True)
 ]
+UNIFIED_OPTIONS = [
+    {"_unified": True},
+    {
+        "_unified": True,
+        "axis_atoms": 8,
+        "native_atoms": 8,
+        "reciprocal": False,
+        "contract_float32": False,
+        "norm_float32": False,
+        "batch_chunk": 16,
+    },
+]
 ALL_QUERY_OPTIONS = (
     QUERY_OPTIONS
     + LEAN_OPTIONS
@@ -2694,6 +2715,7 @@ ALL_QUERY_OPTIONS = (
         pytest.param(opt, id=f"level-mask-{i}")
         for i, opt in enumerate(LEVEL_MASK_OPTIONS)
     ]
+    + [pytest.param(opt, id=f"unified-{i}") for i, opt in enumerate(UNIFIED_OPTIONS)]
 )
 
 
@@ -2967,7 +2989,8 @@ def test_local_recipe_roundtrip_and_bounds():
     + [
         pytest.param(opt, id=f"level-mask-{i}")
         for i, opt in enumerate(LEVEL_MASK_OPTIONS)
-    ],
+    ]
+    + [pytest.param(opt, id=f"unified-{i}") for i, opt in enumerate(UNIFIED_OPTIONS)],
 )
 def test_local_dyadic_boundaries_graph(options):
     import math
@@ -3552,6 +3575,7 @@ def test_native_bound_recipe_roundtrip_and_bounds():
         "h_local_gluon",
         "h_local_native_cache",
         "h_local_level_mask",
+        "h_local_unified",
     ],
 )
 def test_native_bound_count_changes_across_graph(batch, floor, strategy):
@@ -3638,6 +3662,7 @@ def test_native_bound_count_changes_across_graph(batch, floor, strategy):
         "h_local_gluon",
         "h_local_native_cache",
         "h_local_level_mask",
+        "h_local_unified",
     ],
 )
 def test_native_bound_strided_individual_gradients(which, strategy):
@@ -3675,6 +3700,7 @@ def test_native_bound_strided_individual_gradients(which, strategy):
         "h_local_gluon",
         "h_local_native_cache",
         "h_local_level_mask",
+        "h_local_unified",
     ],
 )
 def test_native_bound_retained_count_above_grid(strategy):
@@ -4200,7 +4226,14 @@ def test_native_cache_recipe_roundtrip_and_bounds():
 
 
 @GPU
-@pytest.mark.parametrize("unroll", [False, True])
+@pytest.mark.parametrize(
+    "strategy,unroll",
+    [
+        ("h_local_native_cache", False),
+        ("h_local_native_cache", True),
+        ("h_local_unified", True),
+    ],
+)
 @pytest.mark.parametrize(
     "batch,spacing,amplitude",
     [
@@ -4212,8 +4245,8 @@ def test_native_cache_recipe_roundtrip_and_bounds():
         pytest.param(33, 0.3, 0.125, id="b33-h3-fp32-envelope"),
     ],
 )
-def test_native_cache_spacing_fallbacks(unroll, spacing, batch, amplitude):
-    layer = model("h_local_native_cache", n=64, a=49, cache_unroll=unroll)
+def test_native_cache_spacing_fallbacks(strategy, unroll, spacing, batch, amplitude):
+    layer = model(strategy, n=64, a=49, cache_unroll=unroll)
     layer.chart.spacing.fill_(spacing)
     layer.chart.origin.copy_(
         torch.tensor([0.31, -0.27], device="cuda", dtype=torch.float64)
@@ -4445,3 +4478,81 @@ def test_level_mask_graph_activates_new_scales(zero):
         for actual, expected in zip((y, dx, dp), (ref, rdx, rdp)):
             err = check(actual, expected, 4e-4)
             assert err["max"] < 4e-4 and err["rel_l2"] < 4e-4
+
+
+def test_unified_recipe_roundtrip_and_guards():
+    reg = Registry()
+    reg.register(BSplineLocalUnifiedAlgorithm())
+    for options in UNIFIED_OPTIONS:
+        options = {k: v for k, v in options.items() if k != "_unified"}
+        plan = ExecutionPlan(
+            "research_cuda_quadratic_bspline",
+            "v40",
+            BSplineLocalUnifiedRecipe(**options),
+        )
+        assert reg.loads_plan(reg.dumps_plan(plan)) == plan
+    for bad in (
+        {"cache_unroll": False},
+        {"axis_atoms": 8},
+        {"lane_atoms": 2},
+        {"active_levels": False},
+        {"zero_active": True},
+    ):
+        with pytest.raises(ValueError):
+            BSplineLocalUnifiedRecipe(**bad)
+
+
+@GPU
+@pytest.mark.parametrize("count", [0, 1, 5, 17, 137])
+@pytest.mark.parametrize("group", [4, 8])
+def test_unified_classification_and_disjoint_slots(count, group):
+    import triton as tr
+
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        native_cache_kernels as nc,
+    )
+
+    a, n = 137, 64
+    meta = torch.ones((a, 12), device="cuda", dtype=torch.float64)
+    meta[:, 1] = torch.linspace(0.03, 0.5, a, device="cuda", dtype=torch.float64)
+    meta[:, 9] = meta[:, 1].reciprocal()
+    meta[:, 2] = torch.linspace(-0.4, 6.7, a, device="cuda", dtype=torch.float64)
+    meta[:, 3] = meta[:, 2].flip(0)
+    origin = torch.tensor([0.31, -0.27], device="cuda", dtype=torch.float64)
+    spacing = torch.tensor([0.1, 0.025], device="cuda", dtype=torch.float64)
+    meta[:, 10:] = spacing.reciprocal()
+    order = torch.randperm(a, device="cuda")
+    native = torch.full((), count, device="cuda", dtype=torch.int32)
+    pos = torch.full((2, 6, a), -991, device="cuda", dtype=torch.int32)
+    co = torch.full((2, 18, a), -777.0, device="cuda")
+    active = torch.tensor([3, 4], device="cuda", dtype=torch.int32)
+    nc.prepare[(tr.cdiv(a, 128),)](
+        meta,
+        pos,
+        co,
+        native,
+        order,
+        origin,
+        spacing,
+        a,
+        n,
+        n,
+        True,
+        GROUP_ATOMS=group,
+        ActiveMask=active,
+        num_warps=4,
+        enable_fp_fusion=False,
+    )
+    # Derive whole-CTA guards from the actual stored exact support bounds.
+    expected = 3
+    for start in range(0, count, group):
+        stop = min(start + group, count)
+        lengths = pos[:, 1, start:stop] - pos[:, 0, start:stop]
+        kind = 0 if lengths.min() <= 2 else (2 if lengths.max() > 8 else 1)
+        assert co[0, 16, start].item() == kind
+        expected |= (1 << 16) if kind == 0 else ((1 << 17) if kind == 2 else 0)
+    assert active.tolist() == [expected, 4]
+    assert torch.all(co[:, :, count:] == -777.0)
+    assert torch.all(co[:, 17, :] == -777.0)
+    assert torch.all(co[1, 16, :] == -777.0)
+    assert torch.all(pos[:, 2:, :] == -991)

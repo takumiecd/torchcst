@@ -577,3 +577,24 @@ l4job-910e94941d6f455fb89d4a543cc302e9: source SHA256 `48eb4638e3194ad8b4439c5ba
 l4job-c211933039d74aaf907636948e9ccc87: source SHA256 `d869cda997f2b00e5ef506f7b7a822a8cdb7d57bcf796c0797eca36164862439`, result SHA256 `51bf19679ef5da571c677b4cd446052d3434bb0fecc3f4e35c1ebe9365372477`, source byte-matched files 1607, manifest 4, return0/cleanup ack verified.
 
 l4job-4ed8a67f9baa4e99b481bb4e2a081ebf: source SHA256 `ce6d7d17277727223fd498d7b221b987c5c13de067881888ad8d4cd5770c46c7`, result SHA256 `2d58bfd36654077c6edbe30af35ef03fed07f8f4eede418e0b84d6f5434ad3fc`, source byte-matched files 1607, manifest 4, return0/cleanup ack verified.
+
+## v40: native hotとmomentの固定slot grid統合（検証前）
+
+v38 small診断では、全atomがnativeでもregular側13,107 CTAが空処理で起動され、
+native側は128 CTAの反復となった。v40は`ceil(A/AB)`個の共通gridで、
+slotがnative prefixなら保存済み8点profile、regular suffixなら既存momentを評価する。
+CountがCTA途中にあれば双方をマスクして処理する。元Parameter/Meta順序は保ち、
+H/Gの全体Tensorや追加のatom分類Tensorは作らない。
+
+native Coの未使用field16にCTA分類を置く。両軸の実支持点数の最小が2以下なら
+従来FP64 cold、最大が8超なら従来hot、それ以外はcached hotである。
+fallbackの存在を既存ActiveMaskの上位bitに記録し、該当群がなければfallback反復を省く。
+下位bitのbank/restore尺度はv39と同じである。fallbackは従来の全batchを処理し、
+cached hotとregularは既存batch chunkに従う。
+
+FP64 native destinationは統合gridの後に一度だけY/dXへ加え、regular restoreへ進む。
+その寿命は旧版より長くなるため、メモリ減少を仮定せずcapture/replayの両ピークを測る。
+小batchごとのatom勾配加算とborder shardの担当順序は変わるので、同じ独立FP64 gateで判定する。
+profile、支持、exact sampled product L2の単一floor、task-width stop-gradientとPolar則は変えない。
+cutoff .05/.15をv39最速版とDenseへ比較し、主混合B32/B64とsmall/switchの全stepで評価する。
+現段階ではGPUの正しさ・速度・メモリの主張はしない。

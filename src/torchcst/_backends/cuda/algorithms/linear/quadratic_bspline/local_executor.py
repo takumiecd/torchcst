@@ -43,6 +43,10 @@ def _h_launch(direction, atoms, recipe):
         from . import gluon_kernels
 
         module = gluon_kernels
+    if getattr(recipe, "unified_native", False):
+        from . import unified_kernels
+
+        module = unified_kernels
     cap = getattr(recipe, "h_programs", 0)
     if cap:
         from . import local_persistent_kernels
@@ -82,6 +86,24 @@ def _h_args(tables, recipe):
         "SHARED_INPUT": recipe.shared_input,
         "REDUCE_DX": recipe.group_dx,
     }
+
+
+def _native_h_args(x, dy, destination, sizes, recipe):
+    if not getattr(recipe, "unified_native", False):
+        return {}
+    return {
+        "RawX": x,
+        "RawDY": dy,
+        "NativeOut": destination,
+        "NO": sizes[0],
+        "NI": sizes[1],
+    }
+
+
+def _cache_args(pos, co, active, recipe):
+    if not getattr(recipe, "native_cache", False):
+        return None
+    return (pos, co, active) if getattr(recipe, "unified_native", False) else (pos, co)
 
 
 def _tile_bundle(n, sizes, recipe):
@@ -305,6 +327,10 @@ def _frame(x, p, value, chart, recipe, moments, routing, sizes, build_border=Tru
             a,
             *sizes,
             recipe.reciprocal,
+            GROUP_ATOMS=recipe.axis_atoms
+            if getattr(recipe, "unified_native", False)
+            else 0,
+            ActiveMask=active if getattr(recipe, "unified_native", False) else None,
             num_warps=4,
             enable_fp_fusion=False,
         )
@@ -377,7 +403,7 @@ class _Local(torch.autograd.Function):
         ) = _frame(x, p, value, chart, recipe, moments, routing, sizes)
         groups = _group_tables(pos, count, a, sizes[1], recipe)
         y = x.new_zeros((b, sizes[0]))
-        native_forward(
+        native_y = native_forward(
             x,
             y,
             meta,
@@ -387,7 +413,7 @@ class _Local(torch.autograd.Function):
             sizes,
             recipe,
             order=_source_order(order, recipe),
-            cache=(pos, co) if getattr(recipe, "native_cache", False) else None,
+            cache=_cache_args(pos, co, active, recipe),
         )
         bank = _bank(x, sizes[1], recipe, "bank_input", active, 1, ml)
         delta, border = _delta(x, sizes[0], recipe, active, 0, ml)
@@ -422,11 +448,14 @@ class _Local(torch.autograd.Function):
             Order=_source_order(order, recipe),
             LAYOUT=getattr(recipe, "coefficient_layout", "soa"),
             **_h_args(groups, recipe),
+            **_native_h_args(x, None, native_y, sizes, recipe),
             num_warps=recipe.axis_warps,
             enable_fp_fusion=False,
         )
         _report("stream_forward", compiled)
         _stamp("stream_forward", 1)
+        if native_y is not None:
+            y.add_(native_y)
         y = _restore(delta, border, y, sizes[0], recipe, "scan_output", active, 0, ml)
         ctx.save_for_backward(
             meta,
@@ -485,7 +514,7 @@ class _Local(torch.autograd.Function):
         shards = getattr(recipe, "boundary_shards", 0)
         endpoints = getattr(recipe, "skip_endpoints", False)
         need_dx, need_dp = ctx.needs_input_grad[:2]
-        dx, dp = native_backward(
+        native_result = native_backward(
             x,
             dy,
             meta,
@@ -497,8 +526,13 @@ class _Local(torch.autograd.Function):
             need_dx,
             need_dp,
             order=_source_order(order, recipe),
-            cache=(pos, co) if getattr(recipe, "native_cache", False) else None,
+            cache=_cache_args(pos, co, active, recipe),
         )
+        if getattr(recipe, "unified_native", False):
+            dx, dp, native_dx = native_result
+        else:
+            dx, dp = native_result
+            native_dx = None
         if need_dp and ctx.mode != "hp":
             input_bank = _bank(x, sizes[1], recipe, "bank_recompute", active, 1, ml)
         else:
@@ -541,12 +575,15 @@ class _Local(torch.autograd.Function):
             Order=_source_order(order, recipe),
             LAYOUT=getattr(recipe, "coefficient_layout", "soa"),
             **_h_args(groups, recipe),
+            **_native_h_args(x, dy, native_dx, sizes, recipe),
             num_warps=recipe.axis_warps,
             enable_fp_fusion=False,
         )
         _report("stream_backward", compiled)
         _stamp("stream_backward", 1)
         if need_dx:
+            if native_dx is not None:
+                dx.add_(native_dx)
             dx = _restore(
                 delta, border, dx, sizes[1], recipe, "scan_input", active, 1, ml
             )

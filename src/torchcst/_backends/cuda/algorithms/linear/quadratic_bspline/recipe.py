@@ -787,3 +787,22 @@ class BSplineLocalLevelMaskRecipe(BSplineLocalGluonRecipe):
             raise ValueError("fused level mask requires active_levels")
         if type(self.zero_active) is not bool:
             raise ValueError("zero_active must be boolean")
+
+
+@dataclass(frozen=True)
+class BSplineLocalUnifiedRecipe(BSplineLocalNativeCacheRecipe):
+    """Revision 40: hot native and regular atoms share one fixed-slot grid."""
+
+    unified_native = True
+    fused_levels = True
+    active_levels: bool = True
+    zero_active: bool = False
+
+    def __post_init__(self):
+        super().__post_init__()
+        if not self.active_levels or self.zero_active:
+            raise ValueError("unified grid requires fused levels and full zeroing")
+        if self.native_atoms != self.axis_atoms or self.lane_atoms != 1:
+            raise ValueError("unified grid requires equal native/axis groups and lane1")
+        if not self.cache_unroll:
+            raise ValueError("unified grid requires unrolled native profiles")

@@ -8,12 +8,14 @@ from .executor import _report, _stamp
 from .local_executor import (
     _bank,
     _blocks,
+    _cache_args,
     _delta,
     _frame,
     _group_tables,
     _h_args,
     _h_launch,
     _Local,
+    _native_h_args,
     _points,
     _restore,
     _source_order,
@@ -67,7 +69,7 @@ class _Chunked(torch.autograd.Function):
         ) = _frame(x, p, value, chart, recipe, moments, routing, sizes)
         groups = _group_tables(pos, count, a, sizes[1], recipe)
         y = x.new_zeros((b, sizes[0]))
-        native_forward(
+        native_y = native_forward(
             x,
             y,
             meta,
@@ -77,7 +79,7 @@ class _Chunked(torch.autograd.Function):
             sizes,
             recipe,
             order=_source_order(order, recipe),
-            cache=(pos, co) if getattr(recipe, "native_cache", False) else None,
+            cache=_cache_args(pos, co, active, recipe),
         )
         bank = _workspace(x, sizes[1], tile, recipe)
         delta = _workspace(x, sizes[0], tile, recipe)
@@ -127,11 +129,20 @@ class _Chunked(torch.autograd.Function):
                 Order=_source_order(order, recipe),
                 LAYOUT=getattr(recipe, "coefficient_layout", "soa"),
                 **_h_args(groups, recipe),
+                **_native_h_args(
+                    xs,
+                    None,
+                    None if native_y is None else native_y[start : start + tile],
+                    sizes,
+                    recipe,
+                ),
                 num_warps=recipe.axis_warps,
                 enable_fp_fusion=False,
             )
             _report(label, compiled)
             _stamp(label, 1)
+            if native_y is not None:
+                ys.add_(native_y[start : start + tile])
             _restore(
                 delta,
                 border,
@@ -175,7 +186,7 @@ class _Chunked(torch.autograd.Function):
         tile = recipe.batch_chunk
         ml = max(sizes).bit_length() - recipe.min_block_log
         need_dx, need_dp = ctx.needs_input_grad[:2]
-        dx, dp = native_backward(
+        native_result = native_backward(
             x,
             dy,
             meta,
@@ -188,8 +199,13 @@ class _Chunked(torch.autograd.Function):
             need_dp,
             zero_dp=True,
             order=_source_order(order, recipe),
-            cache=(pos, co) if getattr(recipe, "native_cache", False) else None,
+            cache=_cache_args(pos, co, active, recipe),
         )
+        if getattr(recipe, "unified_native", False):
+            dx, dp, native_dx = native_result
+        else:
+            dx, dp = native_result
+            native_dx = None
         input_bank = _workspace(x, sizes[1], tile, recipe) if need_dp else None
         adjoint_bank = _workspace(x, sizes[0], tile, recipe)
         delta = _workspace(x, sizes[1], tile, recipe)
@@ -267,12 +283,21 @@ class _Chunked(torch.autograd.Function):
                 Order=_source_order(order, recipe),
                 LAYOUT=getattr(recipe, "coefficient_layout", "soa"),
                 **_h_args(groups, recipe),
+                **_native_h_args(
+                    xs,
+                    dys,
+                    None if native_dx is None else native_dx[start : start + tile],
+                    sizes,
+                    recipe,
+                ),
                 num_warps=recipe.axis_warps,
                 enable_fp_fusion=False,
             )
             _report(label, compiled)
             _stamp(label, 1)
             if need_dx:
+                if native_dx is not None:
+                    dx[start : start + tile].add_(native_dx[start : start + tile])
                 _restore(
                     delta,
                     border,
