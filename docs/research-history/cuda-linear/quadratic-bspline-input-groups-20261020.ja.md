@@ -1337,3 +1337,10 @@ bank/zeroの別branchで同じj名をN要素/1024要素へ使い、Triton SSA型
 演算検証/性能測定には到達していない。独立のzero index名へ分離し、zero要素数0の静的guardも追加する。
 source/result/manifest/git bytes/return1/no-timeout/cleanup ackをfailed-jobsへ厳密保存、primary表から除外した。
 supervisor90362 exit0、修正を明示的な新snapshotで再提出する。精度基準の変更はない。
+
+
+job `colabjob-bbfef58a5d454a20b603c49c5485217b` (8c3767ec)でbank4件とsigned128残差1件PASS。
+queryのfallback内でint64のx名をFP64へ再代入したため、loop-carried SSA型エラーで停止。
+fallbackの入力値とsite indexを別名へ分離する。数式・量子化bits・基準は変えない。
+5PASS/1compileFAIL、性能なし、source/result/git/manifest/cleanupを厳密保存して除外。
+supervisor78435 exit0。次snapshotで同じ全検査を再実行する。

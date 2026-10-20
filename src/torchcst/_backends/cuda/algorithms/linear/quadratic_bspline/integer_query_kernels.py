@@ -229,20 +229,20 @@ def query(
         # truncated support or clamped coefficient is substituted into the model.
         direct = g.full((AB, BB), 0.0, g.float64, layout=TILE)
         dprime = g.full((AB, BB), 0.0, g.float64, layout=TILE)
-        for j in range(N):
-            u = (origin + h * j - center) * inv
+        for site in range(N):
+            u = (origin + h * site - center) * inv
             q = g.where(
                 u < -1.0 / 3.0,
                 1.5 * (u + 1.0) * (u + 1.0),
                 g.where(u <= 1.0 / 3.0, 1.0 - 3.0 * u * u, 1.5 * (u - 1.0) * (u - 1.0)),
             )
             q = g.where(g.abs(u) < 1.0, q, 0.0)
-            x = g.load(
-                Raw + b[None, :] * N + j,
+            direct_x = g.load(
+                Raw + b[None, :] * N + site,
                 (source[:, None] < A) & (b[None, :] < B) & bad[:, None],
                 0,
             ).to(g.float64)
-            direct += q[:, None] * x
+            direct += q[:, None] * direct_x
             if PRIME:
                 qp = g.where(
                     u < -1.0 / 3.0,
@@ -250,7 +250,7 @@ def query(
                     g.where(u <= 1.0 / 3.0, 6.0 * u * inv, -3.0 * (u - 1.0) * inv),
                 )
                 qp = g.where(g.abs(u) < 1.0, qp, 0.0)
-                dprime += qp[:, None] * x
+                dprime += qp[:, None] * direct_x
         value = g.where(bad[:, None], direct, value)
         prime = g.where(bad[:, None], dprime, prime)
     return value, prime
