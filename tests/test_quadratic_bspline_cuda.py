@@ -40,6 +40,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineLocalPaddedAlgorithm,
     BSplineLocalPairedDecodeAlgorithm,
     BSplineLocalPersistentAlgorithm,
+    BSplineLocalPreciseAlgorithm,
     BSplineLocalSavedBankAlgorithm,
     BSplineLocalShardedAlgorithm,
     BSplineLocalSmallBoundaryAlgorithm,
@@ -99,6 +100,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineLocalPaddedRecipe,
     BSplineLocalPairedDecodeRecipe,
     BSplineLocalPersistentRecipe,
+    BSplineLocalPreciseRecipe,
     BSplineLocalSavedBankRecipe,
     BSplineLocalShardedRecipe,
     BSplineLocalSmallBoundaryRecipe,
@@ -150,6 +152,9 @@ def case(n=64, a=17):
 def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     from dataclasses import replace
 
+    precise_local = strategy == "h_precise_local" or recipe_options.pop(
+        "_precise_local", False
+    )
     small_boundary = strategy == "h_small_boundary" or recipe_options.pop(
         "_small_boundary", False
     )
@@ -369,6 +374,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineLocalWholeFrameAlgorithm())
     registry.register(BSplineLocalCompactPositionsAlgorithm())
     registry.register(BSplineLocalSmallBoundaryAlgorithm())
+    registry.register(BSplineLocalPreciseAlgorithm())
     registry.register(BSplineLocalIntegerAlgorithm())
     registry.register(BSplineLocalVectorAlgorithm())
     registry.register(BSplineLocalUnifiedAlgorithm())
@@ -404,7 +410,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         recipe_options.setdefault("lane_atoms", 4)
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v57"
+        "v58"
+        if precise_local
+        else "v57"
         if small_boundary
         else "v56"
         if compact_positions
@@ -517,7 +525,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         else "v2"
         if tuned
         else "v1",
-        BSplineLocalSmallBoundaryRecipe(**recipe_options)
+        BSplineLocalPreciseRecipe(**recipe_options)
+        if precise_local
+        else BSplineLocalSmallBoundaryRecipe(**recipe_options)
         if small_boundary
         else BSplineLocalCompactPositionsRecipe(**recipe_options)
         if compact_positions
@@ -3106,6 +3116,13 @@ ALL_QUERY_OPTIONS = (
             id="small-boundary-warp2",
         ),
     ]
+    + [
+        pytest.param({"_precise_local": True}, id="precise-local-0"),
+        pytest.param(
+            {"_precise_local": True, "prepare_warps": 2},
+            id="precise-local-warp2",
+        ),
+    ]
     + [pytest.param(opt, id=f"vector-{i}") for i, opt in enumerate(VECTOR_OPTIONS)]
     + [pytest.param(opt, id=f"integer-{i}") for i, opt in enumerate(INTEGER_OPTIONS)]
     + [
@@ -4008,6 +4025,7 @@ def test_native_bound_recipe_roundtrip_and_bounds():
         "h_whole_frame",
         "h_compact_positions",
         "h_small_boundary",
+        "h_precise_local",
         "h_local_integer",
         "h_local_vector",
     ],
@@ -4113,6 +4131,7 @@ def test_native_bound_count_changes_across_graph(batch, floor, strategy):
         "h_whole_frame",
         "h_compact_positions",
         "h_small_boundary",
+        "h_precise_local",
         "h_local_integer",
         "h_local_vector",
     ],
@@ -4168,6 +4187,7 @@ def test_native_bound_strided_individual_gradients(which, strategy):
         "h_whole_frame",
         "h_compact_positions",
         "h_small_boundary",
+        "h_precise_local",
         "h_local_integer",
         "h_local_vector",
     ],
@@ -4267,7 +4287,8 @@ def test_coefficient_recipe_roundtrip_and_bounds():
 @GPU
 @pytest.mark.parametrize("core32", [False, True])
 @pytest.mark.parametrize("mapped", [False, True])
-def test_coefficient_storage_is_bit_identical(core32, mapped):
+@pytest.mark.parametrize("storage", [torch.float32, torch.float64])
+def test_coefficient_storage_is_bit_identical(core32, mapped, storage):
     import triton as tr
 
     from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
@@ -4296,8 +4317,8 @@ def test_coefficient_storage_is_bit_identical(core32, mapped):
             if co_layout == "soa"
             else (2, a, 6, 4 if co_layout == "aos4" else 3)
         )
-        co = torch.full(shape, float("nan"), device="cuda")
-        half = torch.full((2, a), float("nan"), device="cuda")
+        co = torch.full(shape, float("nan"), device="cuda", dtype=storage)
+        half = torch.full((2, a), float("nan"), device="cuda", dtype=storage)
         bp = torch.full((2, 2, a), -17, dtype=torch.int32, device="cuda")
         injection = torch.full((2, a), -1, dtype=torch.int16, device="cuda")
         lk.prepare[(tr.cdiv(a, 128),)](
@@ -4333,6 +4354,11 @@ def test_coefficient_storage_is_bit_identical(core32, mapped):
                 assert torch.equal(actual, expected)
         if co_layout == "aos4":
             assert torch.count_nonzero(co[:, count:, :, 3]) == 0
+
+        if storage == torch.float64 and not core32:
+            assert torch.any(
+                unpacked[:, count:] != unpacked[:, count:].float().double()
+            )
 
 
 @GPU
@@ -4716,6 +4742,7 @@ def test_native_cache_recipe_roundtrip_and_bounds():
         ("h_whole_frame", True),
         ("h_compact_positions", True),
         ("h_small_boundary", True),
+        ("h_precise_local", True),
         ("h_local_integer", True),
         ("h_local_vector", True),
     ],
@@ -4749,6 +4776,7 @@ def test_native_cache_spacing_fallbacks(strategy, unroll, spacing, batch, amplit
             "h_whole_frame",
             "h_compact_positions",
             "h_small_boundary",
+            "h_precise_local",
             "h_local_integer",
             "h_local_vector",
         )
@@ -6715,7 +6743,13 @@ def test_numeric_arena_disjoint_input_and_reused_scratch(device, shards):
 @GPU
 @pytest.mark.parametrize(
     "strategy",
-    ["h_numeric_arena", "h_whole_frame", "h_compact_positions", "h_small_boundary"],
+    [
+        "h_numeric_arena",
+        "h_whole_frame",
+        "h_compact_positions",
+        "h_small_boundary",
+        "h_precise_local",
+    ],
 )
 def test_numeric_arena_concurrent_retained_all_gradients(strategy):
     from concurrent.futures import ThreadPoolExecutor
@@ -6965,7 +6999,9 @@ def test_small_boundary_recipe_roundtrip_and_legacy_rejection():
 
 
 @GPU
-@pytest.mark.parametrize("strategy", ["h_compact_positions", "h_small_boundary"])
+@pytest.mark.parametrize(
+    "strategy", ["h_compact_positions", "h_small_boundary", "h_precise_local"]
+)
 @pytest.mark.parametrize("batch", [3, 33])
 @pytest.mark.parametrize("radius_scale", [1.15, 1.4])
 def test_small_boundary_broad_coincident_all_gradients(strategy, batch, radius_scale):
@@ -6985,3 +7021,54 @@ def test_small_boundary_broad_coincident_all_gradients(strategy, batch, radius_s
         )
         dy = torch.randn(batch, 64, device="cuda", generator=generator)
         gate(layer, x, dy)
+
+
+def test_precise_local_recipe_and_frame_dtypes():
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.frame_buffers import (
+        make_frame,
+    )
+
+    reg = Registry()
+    reg.register(BSplineLocalPreciseAlgorithm())
+    recipe = BSplineLocalPreciseRecipe()
+    plan = ExecutionPlan("research_cuda_quadratic_bspline", "v58", recipe)
+    assert reg.loads_plan(reg.dumps_plan(plan)) == plan
+    assert recipe.precise_local and recipe.precise_bank and not recipe.save_input_bank
+    with pytest.raises(ValueError, match="FP64 preparation"):
+        BSplineLocalPreciseRecipe(prepare_float32=True)
+    source = torch.empty(3, 64)
+    frame = make_frame(
+        source,
+        17,
+        shards=True,
+        endpoints=True,
+        active=True,
+        compact_positions=True,
+        coefficient_float64=True,
+    )
+    assert frame["co"].dtype == frame["half"].dtype == torch.float64
+    assert frame["pos"].dtype == torch.int16
+    base = frame["meta"].untyped_storage().data_ptr()
+    assert all(value.untyped_storage().data_ptr() == base for value in frame.values())
+
+
+@GPU
+def test_precise_local_gpu_buffer_dtypes():
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.chunk_executor import (
+        _border,
+        _workspace,
+    )
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.local_executor import (
+        _delta_buffers,
+        _query_buffer,
+    )
+
+    recipe = BSplineLocalPreciseRecipe()
+    source = torch.empty(3, 64, device="cuda")
+    for tensor in (
+        _query_buffer(source, 64, 3, recipe),
+        *_delta_buffers(source, 64, recipe),
+        _workspace(source, 64, 3, recipe),
+        _border(source, 64, 3, recipe),
+    ):
+        assert tensor.dtype == torch.float64

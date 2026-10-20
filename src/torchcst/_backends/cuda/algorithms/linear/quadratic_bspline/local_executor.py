@@ -194,10 +194,18 @@ def _tile_bundle(n, sizes, recipe):
     return min(requested, n // sizes[0])
 
 
+def _bank_dtype(x, recipe):
+    return torch.float64 if getattr(recipe, "precise_bank", False) else x.dtype
+
+
+def _delta_dtype(x, recipe):
+    return torch.float64 if getattr(recipe, "precise_local", False) else x.dtype
+
+
 def _query_buffer(x, n, batch, recipe):
     if getattr(recipe, "integer_query", False):
         return x.new_empty((n + 1, batch), dtype=torch.int64)
-    return x.new_empty((3, _points(n, recipe), batch))
+    return x.new_empty((3, _points(n, recipe), batch), dtype=_bank_dtype(x, recipe))
 
 
 def _bank(x, n, recipe, label, active, dim, ml, buffer=None, zero_buffers=None):
@@ -235,9 +243,7 @@ def _bank(x, n, recipe, label, active, dim, ml, buffer=None, zero_buffers=None):
     bank = (
         buffer
         if buffer is not None
-        else x.new_empty(
-            (3, _points(n, recipe), len(x) + getattr(recipe, "bank_padding", 0))
-        )
+        else _query_buffer(x, n, len(x) + getattr(recipe, "bank_padding", 0), recipe)
     )
     pad = bank.shape[2] - len(x)
     _stamp(label, 0)
@@ -340,11 +346,15 @@ def _restore(delta, border, y, n, recipe, label, active, dim, ml):
 def _delta_buffers(x, n, recipe, buffers=None):
     if buffers is None:
         delta = x.new_empty(
-            (3, _points(n, recipe), len(x) + getattr(recipe, "bank_padding", 0))
+            (3, _points(n, recipe), len(x) + getattr(recipe, "bank_padding", 0)),
+            dtype=_delta_dtype(x, recipe),
         )
         shards = getattr(recipe, "boundary_shards", 0)
         border = (
-            x.new_empty((3, _blocks(n, recipe), shards, delta.shape[2]))
+            x.new_empty(
+                (3, _blocks(n, recipe), shards, delta.shape[2]),
+                dtype=_delta_dtype(x, recipe),
+            )
             if shards
             else None
         )
@@ -468,6 +478,7 @@ def _frame(
             active=fused_levels,
             numeric_elements=numeric_elements,
             compact_positions=getattr(recipe, "compact_positions", False),
+            coefficient_float64=getattr(recipe, "precise_local", False),
         )
         if numeric_elements:
             numeric_out.append(frame["numeric"])

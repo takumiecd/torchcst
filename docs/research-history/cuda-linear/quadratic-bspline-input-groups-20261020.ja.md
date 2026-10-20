@@ -1928,3 +1928,39 @@ result archive `a57b1f8b1cab13609b91abe98c3524ded24887eb434cab3b304e34d7b528a3f0
 13tensorのCPU clone snapshotはローカルでweights_only reload/finite検査にもPASSし、
 反例Y max4.9819946e-3を再確認した。L4診断registry2件、L4 primary40件、G4 primary13件を分離。
 所有GPUは全停止・serverにactive sessionなし。goalは速度/両peak/同じ精度基準でactiveかつ未達。
+
+
+## 加算精度の切り分けとv58（GPU検証前）
+
+保存済み反例1条件をCPUで再計算した`overlap-scatter-cpu.py/json`では、同じFP32係数/重みの
+逐次FP32加算513回はY max約.007435、復元だけFP64へ変えても約.007443であった。
+FP32積をFP64で加算/復元すると約.00023937へ下がる。
+4/8/16/32個ずつ高精度で局所加算してFP32へ戻すCPU例は約.001532/.001018/.000724/.000500で、
+この1条件でも4e-4を満たさない。GPU atomic順序や全条件を再現した証明ではない。
+同snapshotの入力queryではGPU HをCPU FP32 FMA/和でbit再現し、参照H誤差2.4161e-6。
+積/FMAはFP32のまま和のみFP64で2.1926e-6、全内積FP64で1.1460e-6となった。
+
+L4 source `c000e0ef`、診断job `l4job-e746be15e027455e8ff812f22afe6f77`は
+v56/A1/513/B3/33/2幅/3状態、二つの精度上書きで48状態を完走。
+Delta/Border/復元だけFP64のA513では12状態中7失敗、Y max.000912061、dX max.001442384。
+Bankの生成/queryもFP64にしても12状態中7失敗、Y max.000923288、dX max.001501149。
+A1は両案全24状態PASS、全4Pは両案ともmax2.1287e-5以下。
+後者のH+Meta→FP64出力profile射影はmax.000170012まで改善したが、出力profile係数の保存、
+境界係数のshift、weightのcast、積にはFP32が残る。加算/入力だけの高精度化を完成扱いしない。
+source `23d0625ed362aee8a560fe6530716e9c9ed6217c6dcb6341c7d7c3650451af4a`、
+result `6d29f8b0be6b067d57376005ce18c8d8cd253e8bd5d6dc672373b3f8cffba621`、
+1694source files/7manifest entries/Git-byte一致/return0/no-timeout/cleanup ackを検証。
+L4診断registryへ分離し、速度/メモリ/採用の証拠とはしない。所有GPU停止確認。
+
+v58は同じ実数の局所多項式・支持・sampled product L2を保ち、
+係数CoとHalfInv、入力/随伴Bank、Delta/Border、重み*係数の積と復元をFP64でつなぐ。
+Meta/正規化/幅stop-gradient/Polar、全4Pの縮約設定と最終FP32出力・gradientは既存契約を保つ。
+旧recipeのFP32 store/load/castは同じdtypeのまま。新recipeだけFP64の型付きstoreを使う。
+整数位置はsigned16のまま直ちにsigned32へ戻す。境界はFP64の4分割、batch chunk16。
+各forwardの係数を全chunkで共有し、H全体は保存しない。入力Bankもbackwardへ保持せず、
+そのchunkで再生成するので精度用bufferの寿命を制限する。速度改善は未証明である。
+
+CPU2036 passed/5292 skipped/18既存warning(39.65s)、Ruff、両case declaration、build PASS。
+raw係数layout検査をFP32/FP64へ拡張し、FP64係数の下位bitがFP32へ落ちていないことを要求する。
+共有個別/全勾配・Graph更新・retained・同時backwardと新513重複試験も新routeへ適用する。
+4e-4 gateを通った場合だけ、v52とDenseに対して両主条件の完全step/両peakを測る。

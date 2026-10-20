@@ -702,7 +702,17 @@ def measure(args, run):
                         {
                             "bank_layout": "int64 reverse triple prefix plus per-batch exponent"
                             if getattr(recipe, "integer_query", False)
+                            else "FP64 plane,dyadic-local-point,batch; no periodic wrap"
+                            if getattr(recipe, "precise_bank", False)
                             else "FP32 plane,dyadic-local-point,batch; no periodic wrap",
+                            **(
+                                {
+                                    "coefficient_storage_dtype": "float64",
+                                    "range_accumulation_dtype": "float64",
+                                }
+                                if getattr(recipe, "precise_local", False)
+                                else {}
+                            ),
                             "integer_query": getattr(recipe, "integer_query", False),
                             "integer_query_profile_bits": 52
                             if getattr(recipe, "integer_query", False)
@@ -730,7 +740,10 @@ def measure(args, run):
                             "input_bank_snapshot_capacity_bytes": (
                                 (n + 1) * bank_rows * 8
                                 if getattr(recipe, "integer_query", False)
-                                else 3 * bank_points * bank_rows * 4
+                                else 3
+                                * bank_points
+                                * bank_rows
+                                * (8 if getattr(recipe, "precise_bank", False) else 4)
                             )
                             if getattr(recipe, "save_input_bank", False)
                             else 0,

@@ -14,15 +14,18 @@ def make_frame(
     active,
     numeric_elements=0,
     compact_positions=False,
+    coefficient_float64=False,
 ):
     position_dtype = torch.int16 if compact_positions else torch.int32
     position_bytes = 2 if compact_positions else 4
+    coefficient_dtype = torch.float64 if coefficient_float64 else torch.float32
+    coefficient_bytes = 8 if coefficient_float64 else 4
     entries = [
         ("meta", (atoms, 12), torch.float64, 8),
         ("order", (atoms,), torch.int64, 8),
         ("pos", (2, 6, atoms), position_dtype, position_bytes),
-        ("co", (2, 3, 6, atoms), torch.float32, 4),
-        ("half", (2, atoms), torch.float32, 4),
+        ("co", (2, 3, 6, atoms), coefficient_dtype, coefficient_bytes),
+        ("half", (2, atoms), coefficient_dtype, coefficient_bytes),
         ("bp", (2, 2, atoms) if shards else (0,), position_dtype, position_bytes),
         ("injection", (2, atoms) if endpoints else (0,), torch.int16, 2),
         ("active", (2,) if active else (0,), torch.int32, 4),

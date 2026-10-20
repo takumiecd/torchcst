@@ -1030,3 +1030,22 @@ class BSplineLocalSmallBoundaryRecipe(BSplineLocalCompactPositionsRecipe):
 
     boundary_shards: int = 4
     _boundary_shard_choices = (4,)
+
+
+@dataclass(frozen=True)
+class BSplineLocalPreciseRecipe(BSplineLocalFrameArenaRecipe):
+    """Revision58: FP64 local coefficients, queries and range accumulation."""
+
+    precise_local = True
+    precise_bank = True
+    compact_positions = True
+    _boundary_shard_choices = (4,)
+    boundary_shards: int = 4
+    batch_chunk: int = 16
+    prepare_float32: bool = False
+    save_input_bank: bool = False
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.prepare_float32:
+            raise ValueError("precise local coefficients require FP64 preparation")

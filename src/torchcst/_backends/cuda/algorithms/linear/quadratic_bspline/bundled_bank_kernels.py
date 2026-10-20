@@ -75,7 +75,9 @@ def bank(
             & (i[None, :, None] < size)
             & (b[None, None, :] < B)
         )
-        x = tl.load(X + b[None, None, :] * N + site[:, :, None], mask, 0)
+        x = tl.load(X + b[None, None, :] * N + site[:, :, None], mask, 0).to(
+            Bank.dtype.element_ty
+        )
         z = 2 * i.to(tl.float32) / size.to(tl.float32) - 1
         p0 = tl.cumsum(x, 1)
         p1 = tl.cumsum(x * z[None, :, None], 1)

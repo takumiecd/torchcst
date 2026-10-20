@@ -47,6 +47,7 @@ from .recipe import (
     BSplineLocalPaddedRecipe,
     BSplineLocalPairedDecodeRecipe,
     BSplineLocalPersistentRecipe,
+    BSplineLocalPreciseRecipe,
     BSplineLocalSavedBankRecipe,
     BSplineLocalShardedRecipe,
     BSplineLocalSmallBoundaryRecipe,
@@ -647,3 +648,9 @@ class BSplineLocalCompactPositionsAlgorithm(BSplineLocalNumericArenaAlgorithm):
 class BSplineLocalSmallBoundaryAlgorithm(BSplineLocalCompactPositionsAlgorithm):
     revision: str = "v57"
     recipe_type: type = BSplineLocalSmallBoundaryRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalPreciseAlgorithm(BSplineLocalCompactPositionsAlgorithm):
+    revision: str = "v58"
+    recipe_type: type = BSplineLocalPreciseRecipe

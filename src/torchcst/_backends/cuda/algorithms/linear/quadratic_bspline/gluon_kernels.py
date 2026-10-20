@@ -146,7 +146,7 @@ def _inject(
     scale = tl.load(Meta + 12 * source, a < A, 0) * tl.load(
         Meta + 12 * source + 4, a < A, 0
     )
-    weight = (Value * scale[:, None]).to(tl.float32)
+    weight = (Value * scale[:, None]).to(Delta.dtype.element_ty)
     for event in tl.static_range(6):
         point = tl.load(Pos + (DIM * 6 + event) * A + a, a < A, -1).to(tl.int32)
         c0, c1, c2 = _coeff(Co, a, A, DIM, event, LAYOUT)

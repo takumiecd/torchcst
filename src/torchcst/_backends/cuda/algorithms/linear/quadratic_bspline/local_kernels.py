@@ -178,7 +178,9 @@ def prepare(
             tiles = n >> logsize
             offset = level * n + 2 * (n >> MIN_LOG) - 2 * tiles
             half = spacing * size.to(tl.float64) * 0.5
-            tl.store(HalfInv + dim * A + a, (1 / half).to(tl.float32), a < A)
+            tl.store(
+                HalfInv + dim * A + a, (1 / half).to(HalfInv.dtype.element_ty), a < A
+            )
             left, _ = _interval(
                 center, radius, Origin, Spacing, n, dim, 0, RECIPROCAL, ih
             )
@@ -333,7 +335,7 @@ def prepare(
                     value = c0 if p == 0 else c1 if p == 1 else c2
                     tl.store(
                         Co + _co_index(a, A, dim, event, p, LAYOUT),
-                        tl.where(active, value, 0).to(tl.float32),
+                        tl.where(active, value, 0).to(Co.dtype.element_ty),
                         a < A,
                     )
                 if LAYOUT == "aos4":
@@ -411,7 +413,7 @@ def bank(
             X + b[None, :] * N + site[:, None],
             (i[:, None] < size) & (b[None, :] < B),
             0,
-        )
+        ).to(Bank.dtype.element_ty)
         z = 2 * i.to(tl.float32) / size.to(tl.float32) - 1
         p0 = tl.cumsum(x, 0)
         p1 = tl.cumsum(x * z[:, None], 0)

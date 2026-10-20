@@ -9,6 +9,7 @@ from .local_executor import (
     _bank_and_delta,
     _blocks,
     _cache_args,
+    _delta_dtype,
     _finish_native,
     _frame,
     _group_tables,
@@ -37,11 +38,14 @@ def _empty(stage):
 
 
 def _workspace(x, n, batch, recipe):
-    return x.new_empty((3, _points(n, recipe), batch))
+    return x.new_empty((3, _points(n, recipe), batch), dtype=_delta_dtype(x, recipe))
 
 
 def _border(x, n, batch, recipe):
-    return x.new_empty((3, _blocks(n, recipe), recipe.boundary_shards, batch))
+    return x.new_empty(
+        (3, _blocks(n, recipe), recipe.boundary_shards, batch),
+        dtype=_delta_dtype(x, recipe),
+    )
 
 
 class _Chunked(torch.autograd.Function):
