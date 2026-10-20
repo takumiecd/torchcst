@@ -1964,3 +1964,51 @@ CPU2036 passed/5292 skipped/18既存warning(39.65s)、Ruff、両case declaration
 raw係数layout検査をFP32/FP64へ拡張し、FP64係数の下位bitがFP32へ落ちていないことを要求する。
 共有個別/全勾配・Graph更新・retained・同時backwardと新513重複試験も新routeへ適用する。
 4e-4 gateを通った場合だけ、v52とDenseに対して両主条件の完全step/両peakを測る。
+
+
+### v58 L4: 重なり精度は修正、完全stepは大幅に遅く未採用
+
+source `c1500c698a2ce106bd11336e75b8d0920f3d8ea3`、job
+`l4job-94cfdf6b08354ad88aa72b146671f6b6`。NVIDIA L4/driver580.82.07、
+Torch2.11.0+cu130/CUDA13/Triton3.6。raw34件PASS(48.30s)、共有+重複+同時42件PASS(182.84s)。
+同じseedの513個の広いatom一致・B3/B33・2幅・3状態もPASSし、以前の反例をこのrouteで解消した。
+両主条件3状態全shape独立FP64 Y/dX/全4P、全52,428sigma更新、P/X/target初期hash一致もPASS。
+v58だけの最大誤差はY1.233e-6、dX1.199e-6、全4P2.811e-5、relL2は各7.601e-8/7.889e-8/1.035e-7以下。
+
+|L4,65rounds|v52 ms|v58 ms|Dense ms|v58 allocated/reserved MiB|
+|---|---:|---:|---:|---:|
+|B32 mixed|.709899|4.742494|.082511|38.255/104|
+|B64 mixed|1.268093|9.172595|.103275|38.755/108|
+
+v58のallocatedは両方Dense49.002/49.502MiB以下、reservedはB32だけDense106MiB以下。
+B64 reservedは2MiB超過し、速度も大幅に退行するため目標達成/高速化候補として採用しない。
+正しい高精度の計算経路と速度の両立は未完了であり、精度PASSを速度達成へ読み替えない。
+
+独立phase診断は16行chunkあたりforward約.37888ms、backward約1.45510ms、
+入力/再入力/随伴Bank約.07578/.07373/.07578ms、各restore約.08602ms。
+compiler reportはforward40 registers、backward128 registers、両方spill0/shared0/local load-storeなし。
+これだけでregister使用量が遅さの原因と確定はしないが、queryの係数live rangeを減らす対照を試す根拠とする。
+prepare約.13107msに含まれるnorm_init約.07270msと診断専用norm_replay約.14029msを二重加算しない。
+source archive `26966b6d2fa608002edb1677f9447d8cd7f378db26bce11c193e60695b6fda6f`、
+result archive `19e4637ecf1925cc10f4c35849ffd03f83d7e0b02a428e46e74057d4bd39b1f8`。
+1696source files/25manifest entries/Git-byte一致/return0/no-timeout/cleanup ackを確認。
+L4 primary41件、L4診断3件、G4 primary13件を分離。source CPU CI PASS(2m15s)。所有GPU全停止。
+
+### 次の係数共有式のCPU確認（GPU実装前）
+
+半tile幅/Rをvとすると、外側の2次係数q=(1.5*v)*v、中央の係数m=(-3*v)*v。
+4knotsの差分係数は[q,m-q,q-m,-q]=[q,-3q,3q,-q]で、tile境界係数はqか-2qである。
+各軸について6イベントのc0/c1とq一つを保持すれば、18→13個のFP64係数にできる。
+2軸・A52428では10*A*8=4,194,240bytes（約4MiB）の係数payload削減となる。
+これは実測peak/reservedの削減ではない。
+
+`compact-c2-cpu.py/json`はvを1e-8から約2まで100,003個取り、600,018係数で元のFP64演算と
+bit一致を確認した。境界が中央pieceかのflagはsigned16 Posのbit14へ保持できる。
+valid index0..9726へbit14を加えても最大26110で正のsigned16内、sentinel-1はそのまま。
+19,456通りのflag付き位置のlossless roundtripも確認した。
+この表現を使う全query/injectionで位置bitを復号し、旧native-cache等の通常layoutとの混用を防ぐ必要がある。
+未実装のGPU性能や全勾配のPASSとは扱わない。
+
+既存v28のevent-ownerも再確認した。各atom最大6イベントを整数histogram/scanで配置する方式であり、
+site*atom支持表は作らないがCSR型の索引は持つ。以前のFP32版は構築込みでv27より遅かったため、
+新精度routeの根拠なく採用しない。今回最も重いquery/全4Pの処理量を減らす案と比較して判断する。
