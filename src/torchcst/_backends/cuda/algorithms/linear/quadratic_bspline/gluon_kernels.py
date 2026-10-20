@@ -3,6 +3,7 @@
 import triton.experimental.gluon as tr
 import triton.experimental.gluon.language as tl
 
+from .integer_query_kernels import query as integer_query
 from .vector_atomic_kernels import add4
 
 
@@ -65,7 +66,35 @@ def _query(
     PB: tl.constexpr,
     TILE: tl.constexpr,
     LAYOUT: tl.constexpr = "soa",
+    INTEGER: tl.constexpr = False,
+    Meta=None,
+    Origin=None,
+    Spacing=None,
+    Raw=None,
+    Order=None,
+    N: tl.constexpr = 0,
 ):
+    if INTEGER:
+        return integer_query(
+            Bank,
+            Meta,
+            Co,
+            Origin,
+            Spacing,
+            Raw,
+            a,
+            _source(Order, a, A),
+            b,
+            A,
+            B,
+            N,
+            PB,
+            DIM,
+            AB,
+            BB,
+            PRIME,
+            TILE,
+        )
     value = tl.full((AB, BB), 0, tl.float32, layout=TILE)
     prime = tl.full((AB, BB), 0, tl.float32, layout=TILE)
     half = tl.load(HalfInv + DIM * A + a, a < A, 0)
@@ -208,6 +237,13 @@ def forward(
     LANE_ATOMS: tl.constexpr = 4,
     BATCH_VALUES: tl.constexpr = 1,
     VECTOR_RED: tl.constexpr = False,
+    INTEGER: tl.constexpr = False,
+    QueryOrigin=None,
+    QuerySpacing=None,
+    RawInput=None,
+    RawAdjoint=None,
+    I_NO: tl.constexpr = 0,
+    I_NI: tl.constexpr = 0,
 ):
     base = tl.load(Count) + tl.program_id(0) * AB if Base is None else Base
     if base < A:
@@ -240,6 +276,13 @@ def forward(
             B + PAD,
             tile,
             LAYOUT,
+            INTEGER=INTEGER,
+            Meta=Meta,
+            Origin=QueryOrigin,
+            Spacing=QuerySpacing,
+            Raw=RawInput,
+            Order=Order,
+            N=I_NI,
         )
         mask = (a[:, None] < A) & (b[None, :] < B)
         if SAVE != "none":
@@ -311,6 +354,13 @@ def backward(
     LANE_ATOMS: tl.constexpr = 4,
     BATCH_VALUES: tl.constexpr = 1,
     VECTOR_RED: tl.constexpr = False,
+    INTEGER: tl.constexpr = False,
+    QueryOrigin=None,
+    QuerySpacing=None,
+    RawInput=None,
+    RawAdjoint=None,
+    I_NO: tl.constexpr = 0,
+    I_NI: tl.constexpr = 0,
 ):
     base = tl.load(Count) + tl.program_id(0) * AB if Base is None else Base
     if base < A:
@@ -343,6 +393,13 @@ def backward(
             B + PAD,
             tile,
             LAYOUT,
+            INTEGER=INTEGER,
+            Meta=Meta,
+            Origin=QueryOrigin,
+            Spacing=QuerySpacing,
+            Raw=RawAdjoint,
+            Order=Order,
+            N=I_NO,
         )
         if VJP:
             mask = (a[:, None] < A) & (b[None, :] < B)
@@ -367,6 +424,13 @@ def backward(
                     B + PAD,
                     tile,
                     LAYOUT,
+                    INTEGER=INTEGER,
+                    Meta=Meta,
+                    Origin=QueryOrigin,
+                    Spacing=QuerySpacing,
+                    Raw=RawInput,
+                    Order=Order,
+                    N=I_NI,
                 )
                 if SAVE == "h":
                     h = tl.load(H + a[:, None] * B + b[None, :], mask, 0).to(tl.float64)

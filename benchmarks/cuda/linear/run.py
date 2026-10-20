@@ -700,7 +700,17 @@ def measure(args, run):
                     )
                     hybrid_routing.update(
                         {
-                            "bank_layout": "FP32 plane,dyadic-local-point,batch; no periodic wrap",
+                            "bank_layout": "int64 reverse triple prefix plus per-batch exponent"
+                            if getattr(recipe, "integer_query", False)
+                            else "FP32 plane,dyadic-local-point,batch; no periodic wrap",
+                            "integer_query": getattr(recipe, "integer_query", False),
+                            "integer_query_profile_bits": 52
+                            if getattr(recipe, "integer_query", False)
+                            else None,
+                            "integer_query_extra_coefficient_bytes": 176 * case.atoms
+                            if getattr(recipe, "integer_query", False)
+                            else 0,
+                            "integer_query_scope": "same sampled profiles and one-floor normalization; int64 bank and signed128 query; unsafe polynomial bound uses FP64 direct query",
                             "batch_values_per_thread": getattr(
                                 recipe, "batch_values", 1
                             ),
@@ -717,10 +727,11 @@ def measure(args, run):
                             "input_bank_retained": getattr(
                                 recipe, "save_input_bank", False
                             ),
-                            "input_bank_snapshot_capacity_bytes": 3
-                            * bank_points
-                            * bank_rows
-                            * 4
+                            "input_bank_snapshot_capacity_bytes": (
+                                (n + 1) * bank_rows * 8
+                                if getattr(recipe, "integer_query", False)
+                                else 3 * bank_points * bank_rows * 4
+                            )
                             if getattr(recipe, "save_input_bank", False)
                             else 0,
                             "input_bank_snapshot_scope": "same-forward immutable numerical bank; rebuilt for every new X/geometry frame; no reuse across steps; H/Hmu still queried in backward",

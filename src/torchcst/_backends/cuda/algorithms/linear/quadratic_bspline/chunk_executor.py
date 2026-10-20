@@ -19,6 +19,7 @@ from .local_executor import (
     _native_h_args,
     _native_part,
     _points,
+    _query_buffer,
     _restore,
     _source_order,
 )
@@ -87,7 +88,7 @@ class _Chunked(torch.autograd.Function):
             order=_source_order(order, recipe),
             cache=_cache_args(pos, co, active, recipe),
         )
-        bank = None if retain_bank else _workspace(x, sizes[1], tile, recipe)
+        bank = None if retain_bank else _query_buffer(x, sizes[1], tile, recipe)
         saved_banks = []
         delta = _workspace(x, sizes[0], tile, recipe)
         border = _border(x, sizes[0], tile, recipe)
@@ -98,7 +99,7 @@ class _Chunked(torch.autograd.Function):
             if retain_bank:
                 # Every chunk owns its forward snapshot. A later chunk/forward
                 # must never overwrite bank values needed by retained backward.
-                bank = _workspace(x, sizes[1], tile, recipe)
+                bank = _query_buffer(x, sizes[1], tile, recipe)
             bank, _, _ = _bank_and_delta(
                 xs,
                 sizes[1],
@@ -144,7 +145,7 @@ class _Chunked(torch.autograd.Function):
                 tile - actual,
                 Order=_source_order(order, recipe),
                 LAYOUT=getattr(recipe, "coefficient_layout", "soa"),
-                **_h_args(groups, recipe, x),
+                **_h_args(groups, recipe, x, (origin, spacing, sizes)),
                 **_native_h_args(
                     xs,
                     None,
@@ -235,11 +236,11 @@ class _Chunked(torch.autograd.Function):
             dx, dp = native_result
             native_dx = None
         input_bank = (
-            _workspace(x, sizes[1], tile, recipe)
+            _query_buffer(x, sizes[1], tile, recipe)
             if need_dp and not saved_count
             else None
         )
-        adjoint_bank = _workspace(x, sizes[0], tile, recipe)
+        adjoint_bank = _query_buffer(x, sizes[0], tile, recipe)
         delta = _workspace(x, sizes[1], tile, recipe)
         border = _border(x, sizes[1], tile, recipe)
         empty = x.new_empty(0)
@@ -311,7 +312,7 @@ class _Chunked(torch.autograd.Function):
                 True,
                 Order=_source_order(order, recipe),
                 LAYOUT=getattr(recipe, "coefficient_layout", "soa"),
-                **_h_args(groups, recipe, x),
+                **_h_args(groups, recipe, x, (origin, spacing, sizes)),
                 **_native_h_args(
                     xs,
                     dys,

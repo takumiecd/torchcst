@@ -1296,3 +1296,37 @@ N1024/B32のbank payloadは262,272bytes(値256KiB+尺度128bytes)で、
 次はH/G bankとquery単体を実装し、数学・精度を確認してから同条件完全stepへ進む。
 source SHA256 `27c47dfca1b2b7629f18d356bdac6c61a4010caa1bb62ecda6b49aefe84988eb`、
 再利用軸式source SHA256 `90d59892588e5a0e946cb74916158393e4c5e7519a9c40e266133a0c4768d855`。
+
+
+## v49: 整数H/G queryと小さい共有bank（検証前）
+
+v47の注入・FP32 dyadic delta/restore・Meta/L2・native tiny経路は保持し、
+X/dYからのquery bankのみint64 reverse triple prefixへ変える。N<=1024の研究recipe。
+最大絶対値からFP32の指数bitsを読み、normal/subnormal/zeroを含めてbatch別の整数尺度を決める。
+max|X_int|<2^34を保ち、各scan段の絶対値和上限2^34*C(N+2,3)<2^63を満たす。
+値と尺度を同じint64 tensorの(N+1)×physical_batchへ保存する。
+
+係数をqueryごとにFP64計算し直さず、Metaのradius/centerから52bit整数の区分2次係数を
+前計算してforward snapshotへ含める。sigmaは量子化せず、stepごとに更新する。
+元Coの先頭36A FP32要素の後に18A int64係数と8A int32 cutsを置く。
+Co全体は80A FP32 storage、追加payload176A bytes(約8.8MiB/A52428)。
+新規ctx slotは増やさず、1つのimmutable Co snapshotへ含める。
+中心微分の係数は同じ整数多項式から−c1/h,−2c2/hと導く。
+
+H=(Δ³q)^T reverse_prefix³(X)をsigned128の積/和で評価する。
+負の小さい残差はhigh/lowを別々に浮動小数点へ変換すると失われるため、
+整数の絶対値を取ってからFP64へ戻す。次数ごとの開始/終了impulseを正確に足す。
+各pieceの係数・区間長から保守上限を検査し、unsafeならclampした別のkernelへ変えず、
+Raw X/dYに対する同じprofileのFP64直接queryへ戻す。tiny native routingも保持。
+入力bankは同一forwardのbackwardまで保存でき、chunk間/retained間で上書きしない。
+新forwardの数値を前stepから再利用することはない。
+
+raw GPU予定: int64 bankのbit一致(subnormal/large/zero/padding含む)4件、
+signed128正負の小さい残差1件、query/prime/unsafe fallback8件。
+共有の全勾配・動的sigma・Count all/partial/zero・retained検査33件とCPU metadata1件を合わせる。
+その後、主N1024/A52428/B32/B64 mixedをv47/Denseと同条件で比較する。
+準備・係数構築・L2・更新込みの時間とallocated/reservedが必要であり、
+bank payloadだけを省メモリ達成とは扱わない。GPU速度/全shape精度はまだ未検証。
+
+CPU2013 passed /4936 skipped /18既存warning (40.01s)、変更対象Ruff・両case宣言・wheel/sdist build PASS。
+GPUは47件中metadata1件を除く46件と、主条件2caseを同じsnapshotから検証する。

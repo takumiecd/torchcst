@@ -921,3 +921,10 @@ class BSplineLocalVectorRecipe(BSplineLocalBankZeroRecipe):
             raise ValueError(
                 "batch4 ownership requires at least 16 atoms and four atom lanes"
             )
+
+
+@dataclass(frozen=True)
+class BSplineLocalIntegerRecipe(BSplineLocalBankZeroRecipe):
+    """Revision 49: int64 triple-prefix queries and signed128 cancellation."""
+
+    integer_query = True

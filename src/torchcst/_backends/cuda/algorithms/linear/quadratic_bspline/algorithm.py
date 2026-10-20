@@ -31,6 +31,7 @@ from .recipe import (
     BSplineLocalEndpointRecipe,
     BSplineLocalGluonRecipe,
     BSplineLocalGroupedRecipe,
+    BSplineLocalIntegerRecipe,
     BSplineLocalLevelMaskRecipe,
     BSplineLocalMomentRecipe,
     BSplineLocalNarrowRecipe,
@@ -545,3 +546,22 @@ class BSplineLocalBankZeroAlgorithm(BSplineLocalSavedBankAlgorithm):
 class BSplineLocalVectorAlgorithm(BSplineLocalBankZeroAlgorithm):
     revision: str = "v48"
     recipe_type: type = BSplineLocalVectorRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalIntegerAlgorithm(BSplineLocalBankZeroAlgorithm):
+    revision: str = "v49"
+    recipe_type: type = BSplineLocalIntegerRecipe
+
+    def supports(self, context, recipe):
+        result = super().supports(context, recipe)
+        reasons = list(result.reasons)
+        if isinstance(context, LinearContext):
+            try:
+                if max(layout(context.operator)) > 1024:
+                    reasons.append(
+                        "integer query bank requires axes no larger than 1024"
+                    )
+            except (ValueError, TypeError, AttributeError):
+                pass
+        return SupportResult(tuple(reasons))

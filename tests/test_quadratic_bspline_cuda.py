@@ -24,6 +24,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineLocalEndpointAlgorithm,
     BSplineLocalGluonAlgorithm,
     BSplineLocalGroupedAlgorithm,
+    BSplineLocalIntegerAlgorithm,
     BSplineLocalLevelMaskAlgorithm,
     BSplineLocalMomentAlgorithm,
     BSplineLocalNarrowAlgorithm,
@@ -74,6 +75,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineLocalEndpointRecipe,
     BSplineLocalGluonRecipe,
     BSplineLocalGroupedRecipe,
+    BSplineLocalIntegerRecipe,
     BSplineLocalLevelMaskRecipe,
     BSplineLocalMomentRecipe,
     BSplineLocalNarrowRecipe,
@@ -132,9 +134,11 @@ def case(n=64, a=17):
 def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     from dataclasses import replace
 
+    integer = strategy == "h_local_integer" or recipe_options.pop("_integer", False)
     vector = strategy == "h_local_vector" or recipe_options.pop("_vector", False)
     bank_zero = (
-        vector
+        integer
+        or vector
         or strategy == "h_local_bank_zero"
         or recipe_options.pop("_bank_zero", False)
     )
@@ -310,6 +314,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineLocalSpatialAlgorithm())
     registry.register(BSplineLocalSavedBankAlgorithm())
     registry.register(BSplineLocalBankZeroAlgorithm())
+    registry.register(BSplineLocalIntegerAlgorithm())
     registry.register(BSplineLocalVectorAlgorithm())
     registry.register(BSplineLocalUnifiedAlgorithm())
     registry.register(BSplineLocalNativeShardsAlgorithm())
@@ -344,7 +349,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         recipe_options.setdefault("lane_atoms", 4)
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v48"
+        "v49"
+        if integer
+        else "v48"
         if vector
         else "v47"
         if bank_zero
@@ -439,7 +446,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         else "v2"
         if tuned
         else "v1",
-        BSplineLocalVectorRecipe(**recipe_options)
+        BSplineLocalIntegerRecipe(**recipe_options)
+        if integer
+        else BSplineLocalVectorRecipe(**recipe_options)
         if vector
         else BSplineLocalBankZeroRecipe(**recipe_options)
         if bank_zero
@@ -2830,6 +2839,18 @@ SAVED_BANK_OPTIONS = [
         "batch_chunk": 16,
     },
 ]
+INTEGER_OPTIONS = [
+    {"_integer": True},
+    {
+        "_integer": True,
+        "save_input_bank": False,
+        "axis_atoms": 8,
+        "reciprocal": False,
+        "contract_float32": False,
+        "norm_float32": False,
+        "batch_chunk": 16,
+    },
+]
 VECTOR_OPTIONS = [
     {"_vector": True, "axis_atoms": 16, "lane_atoms": 4},
     {
@@ -2938,6 +2959,7 @@ ALL_QUERY_OPTIONS = (
         for i, opt in enumerate(BANK_ZERO_OPTIONS)
     ]
     + [pytest.param(opt, id=f"vector-{i}") for i, opt in enumerate(VECTOR_OPTIONS)]
+    + [pytest.param(opt, id=f"integer-{i}") for i, opt in enumerate(INTEGER_OPTIONS)]
 )
 
 
@@ -3821,6 +3843,7 @@ def test_native_bound_recipe_roundtrip_and_bounds():
         "h_local_spatial",
         "h_local_saved_bank",
         "h_local_bank_zero",
+        "h_local_integer",
         "h_local_vector",
     ],
 )
@@ -3916,6 +3939,7 @@ def test_native_bound_count_changes_across_graph(batch, floor, strategy):
         "h_local_spatial",
         "h_local_saved_bank",
         "h_local_bank_zero",
+        "h_local_integer",
         "h_local_vector",
     ],
 )
@@ -3962,6 +3986,7 @@ def test_native_bound_strided_individual_gradients(which, strategy):
         "h_local_spatial",
         "h_local_saved_bank",
         "h_local_bank_zero",
+        "h_local_integer",
         "h_local_vector",
     ],
 )
@@ -4501,6 +4526,7 @@ def test_native_cache_recipe_roundtrip_and_bounds():
         ("h_local_spatial", True),
         ("h_local_saved_bank", True),
         ("h_local_bank_zero", True),
+        ("h_local_integer", True),
         ("h_local_vector", True),
     ],
 )
@@ -4525,6 +4551,7 @@ def test_native_cache_spacing_fallbacks(strategy, unroll, spacing, batch, amplit
             "h_local_spatial",
             "h_local_saved_bank",
             "h_local_bank_zero",
+            "h_local_integer",
             "h_local_vector",
         )
         else {"cache_unroll": unroll}
@@ -5625,3 +5652,260 @@ def test_vector_atomic_exact_collisions_tails_and_replay(kind):
     for _ in range(2):
         graph.replay()
         assert torch.equal(out.cpu(), expected * 2)
+
+
+def test_integer_query_recipe_roundtrip():
+    reg = Registry()
+    reg.register(BSplineLocalIntegerAlgorithm())
+    for keep in (False, True):
+        plan = ExecutionPlan(
+            "research_cuda_quadratic_bspline",
+            "v49",
+            BSplineLocalIntegerRecipe(save_input_bank=keep),
+        )
+        assert reg.loads_plan(reg.dumps_plan(plan)) == plan
+
+
+@GPU
+@pytest.mark.parametrize(
+    "n,batch,physical", [(8, 3, 16), (64, 3, 16), (1024, 3, 16), (1024, 33, 48)]
+)
+def test_integer_query_bank_exact_and_fused_zero(n, batch, physical):
+    import math
+
+    import numpy as np
+    import triton
+
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        integer_query_kernels as iq,
+    )
+
+    cpu = torch.randn(batch, n).numpy()
+    cpu[0] = 0
+    cpu[1] *= 1e-39
+    cpu[2] *= 1e20
+    x = torch.from_numpy(cpu).cuda()
+    actual = torch.empty((n + 1, physical), device="cuda", dtype=torch.int64)
+    delta = torch.full((137,), float("nan"), device="cuda")
+    border = torch.full((51,), float("nan"), device="cuda")
+    iq.bank[(physical + triton.cdiv(188, 1024),)](
+        x,
+        actual,
+        n,
+        batch,
+        physical,
+        delta,
+        border,
+        137,
+        51,
+        num_warps=4,
+        enable_fp_fusion=False,
+    )
+    expected = np.zeros((n + 1, physical), dtype=np.int64)
+    for b in range(batch):
+        maximum = float(np.max(np.abs(cpu[b])))
+        power = 33 - (math.frexp(maximum)[1] - 1) if maximum else 0
+        q = np.rint(np.ldexp(cpu[b].astype(np.float64), power)).astype(np.int64)
+        assert int(np.max(np.abs(q))) * math.comb(n + 2, 3) < 1 << 63
+        for _ in range(3):
+            q = np.cumsum(q[::-1], dtype=np.int64)[::-1].copy()
+        expected[:n, b] = q
+        expected[n, b] = power
+    assert torch.equal(actual.cpu(), torch.from_numpy(expected))
+    assert torch.count_nonzero(delta).item() == 0
+    assert torch.count_nonzero(border).item() == 0
+
+
+@GPU
+def test_integer_query_signed128_negative_remainders():
+    import math
+
+    import triton.experimental.gluon as tr
+    import triton.experimental.gluon.language as tl
+
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.integer_query_kernels import (
+        _finish,
+        _mac,
+    )
+
+    @tr.jit
+    def raw(X, C, Out):
+        tile: tl.constexpr = tl.BlockedLayout([1], [32], [4], [0])
+        j = tl.arange(0, 128, layout=tile)
+        lo = tl.full((128,), 0, tl.uint64, layout=tile)
+        hi = tl.full((128,), 0, tl.int64, layout=tile)
+        for k in tl.static_range(18):
+            x = tl.load(X + k * 128 + j)
+            c = tl.load(C + k * 128 + j)
+            lo, hi = _mac(lo, hi, x, c)
+        tl.store(Out + j, _finish(lo, hi, tl.full((128,), 0, tl.int64, layout=tile)))
+
+    x = torch.randint(-(1 << 60), (1 << 60), (18, 128), dtype=torch.int64)
+    c = torch.randint(-(1 << 54), (1 << 54), (18, 128), dtype=torch.int64)
+    for j in range(8):
+        x[:, j] = 0
+        c[:, j] = 0
+        x[0, j] = (1 << 60) + 3
+        c[0, j] = (1 << 54) + 3
+        x[1, j] = x[0, j]
+        c[1, j] = -c[0, j]
+        x[2, j] = 1 if j % 2 else -1
+        c[2, j] = j + 1
+    out = torch.empty(128, device="cuda", dtype=torch.float64)
+    raw[(1,)](x.cuda(), c.cuda(), out, num_warps=4, enable_fp_fusion=False)
+    expected = torch.tensor(
+        [
+            math.ldexp(float(sum(int(x[k, j]) * int(c[k, j]) for k in range(18))), -52)
+            for j in range(128)
+        ],
+        dtype=torch.float64,
+    )
+    torch.testing.assert_close(out.cpu(), expected, rtol=3e-16, atol=0)
+    assert torch.equal(out[:8].cpu(), expected[:8])
+
+
+@GPU
+@pytest.mark.parametrize(
+    "n,batch,physical", [(64, 3, 16), (64, 33, 48), (1024, 3, 16), (1024, 33, 48)]
+)
+@pytest.mark.parametrize("dim", [0, 1])
+def test_integer_query_raw_values_and_fallback(n, batch, physical, dim):
+    import math
+
+    import triton
+    import triton.experimental.gluon as tr
+    import triton.experimental.gluon.language as tl
+
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        integer_query_kernels as iq,
+    )
+
+    @tr.jit
+    def raw(
+        Bank,
+        Meta,
+        Co,
+        Origin,
+        Spacing,
+        Raw,
+        Order,
+        Out,
+        Prime,
+        A: tl.constexpr,
+        B: tl.constexpr,
+        N: tl.constexpr,
+        PB: tl.constexpr,
+        DIM: tl.constexpr,
+        BB: tl.constexpr,
+    ):
+        tile: tl.constexpr = tl.BlockedLayout([1, 1], [1, 32], [4, 1], [1, 0])
+        slot = tl.program_id(0) * 4 + tl.arange(0, 4, layout=tl.SliceLayout(1, tile))
+        b = tl.arange(0, BB, layout=tl.SliceLayout(0, tile))
+        source = tl.load(Order + slot, slot < A, A).to(tl.int32)
+        q, qp = iq.query(
+            Bank,
+            Meta,
+            Co,
+            Origin,
+            Spacing,
+            Raw,
+            slot,
+            source,
+            b,
+            A,
+            B,
+            N,
+            PB,
+            DIM,
+            4,
+            BB,
+            True,
+            tile,
+        )
+        mask = (slot[:, None] < A) & (b[None, :] < B)
+        tl.store(Out + slot[:, None] * B + b[None, :], q, mask)
+        tl.store(Prime + slot[:, None] * B + b[None, :], qp, mask)
+
+    a = 17
+    origin = torch.tensor([0.31, -0.27], device="cuda", dtype=torch.float64)
+    spacing = torch.tensor([0.1, 0.13], device="cuda", dtype=torch.float64)
+    sigma = torch.tensor(
+        [0.1, 0.4, 1.6, 6.4, 12.8] * 4, device="cuda", dtype=torch.float64
+    )[:a]
+    if n == 64:
+        sigma[0] = 0.0001
+    meta = torch.zeros((a, 12), device="cuda", dtype=torch.float64)
+    meta[:, 1] = sigma * math.sqrt(6)
+    meta[:, 9] = meta[:, 1].reciprocal()
+    for d in range(2):
+        meta[:, 2 + d] = (
+            torch.linspace(
+                0, (n - 1) * spacing[d], a, device="cuda", dtype=torch.float64
+            )
+            + origin[d]
+        )
+        meta[1, 2 + d] = -100
+        meta[-1, 2 + d] = (n - 1) * spacing[d] + origin[d] + 0.2448
+    order = torch.randperm(a, device="cuda").to(torch.int64)
+    co = torch.empty(80 * a, device="cuda")
+    count = torch.zeros((), device="cuda", dtype=torch.int64)
+    iq.prepare[(triton.cdiv(a, 64),)](
+        meta,
+        co,
+        count,
+        order,
+        origin,
+        spacing,
+        a,
+        n,
+        n,
+        num_warps=4,
+        enable_fp_fusion=False,
+    )
+    x = torch.randn(batch, n, device="cuda")
+    bank = torch.empty((n + 1, physical), device="cuda", dtype=torch.int64)
+    iq.bank[(physical,)](
+        x, bank, n, batch, physical, num_warps=4, enable_fp_fusion=False
+    )
+    actual = torch.empty((a, batch), device="cuda", dtype=torch.float64)
+    prime = torch.empty_like(actual)
+    raw[(triton.cdiv(a, 4),)](
+        bank,
+        meta,
+        co,
+        origin,
+        spacing,
+        x,
+        order,
+        actual,
+        prime,
+        a,
+        batch,
+        n,
+        physical,
+        dim,
+        triton.next_power_of_2(batch),
+        num_warps=4,
+        enable_fp_fusion=False,
+    )
+    sites = (
+        origin[dim] + torch.arange(n, device="cuda", dtype=torch.float64) * spacing[dim]
+    )
+    mu = meta[:, 2 + dim].detach().clone().requires_grad_()
+    u = (sites[None, :] - mu[:, None]) / meta[:, 1, None]
+    q = torch.where(
+        u < -1 / 3,
+        1.5 * (u + 1).square(),
+        torch.where(u <= 1 / 3, 1 - 3 * u.square(), 1.5 * (u - 1).square()),
+    )
+    q = torch.where(u.abs() < 1, q, 0.0)
+    expected = q @ x.double().T
+    expected_prime = torch.stack(
+        [
+            torch.autograd.grad(expected[:, b].sum(), mu, retain_graph=True)[0]
+            for b in range(batch)
+        ],
+        1,
+    )
+    torch.testing.assert_close(actual, expected[order], rtol=1e-7, atol=2e-7)
+    torch.testing.assert_close(prime, expected_prime[order], rtol=1e-7, atol=2e-7)

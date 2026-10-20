@@ -75,7 +75,7 @@ def _h_batch(batch, recipe):
     )
 
 
-def _h_args(tables, recipe, tensor=None):
+def _h_args(tables, recipe, tensor=None, geometry=None):
     if not tables:
         result = (
             {"LANE_ATOMS": recipe.lane_atoms}
@@ -86,6 +86,15 @@ def _h_args(tables, recipe, tensor=None):
             major, _ = torch.cuda.get_device_capability(tensor.device)
             result.update(
                 BATCH_VALUES=4, VECTOR_RED=recipe.vector_atomic and major >= 9
+            )
+        if getattr(recipe, "integer_query", False):
+            origin, spacing, sizes = geometry
+            result.update(
+                INTEGER=True,
+                QueryOrigin=origin,
+                QuerySpacing=spacing,
+                I_NO=sizes[0],
+                I_NI=sizes[1],
             )
         return result
     ends, ids, chunks, mapping = tables
@@ -101,6 +110,8 @@ def _h_args(tables, recipe, tensor=None):
 
 
 def _native_h_args(x, dy, destination, sizes, recipe):
+    if getattr(recipe, "integer_query", False):
+        return {"RawInput": x, "RawAdjoint": dy}
     if not getattr(recipe, "unified_native", False):
         return {}
     result = {
@@ -183,7 +194,44 @@ def _tile_bundle(n, sizes, recipe):
     return min(requested, n // sizes[0])
 
 
+def _query_buffer(x, n, batch, recipe):
+    if getattr(recipe, "integer_query", False):
+        return x.new_empty((n + 1, batch), dtype=torch.int64)
+    return x.new_empty((3, _points(n, recipe), batch))
+
+
 def _bank(x, n, recipe, label, active, dim, ml, buffer=None, zero_buffers=None):
+    if getattr(recipe, "integer_query", False):
+        from . import integer_query_kernels as iq
+
+        bank = (
+            buffer
+            if buffer is not None
+            else _query_buffer(
+                x, n, len(x) + getattr(recipe, "bank_padding", 0), recipe
+            )
+        )
+        delta, border = zero_buffers if zero_buffers is not None else (None, None)
+        zero_count = (delta.numel() if delta is not None else 0) + (
+            border.numel() if border is not None else 0
+        )
+        _stamp(label, 0)
+        compiled = iq.bank[(bank.shape[1] + tr.cdiv(zero_count, 1024),)](
+            x,
+            bank,
+            n,
+            len(x),
+            bank.shape[1],
+            delta,
+            border,
+            delta.numel() if delta is not None else 0,
+            border.numel() if border is not None else 0,
+            num_warps=4,
+            enable_fp_fusion=False,
+        )
+        _report(label + "_integer", compiled)
+        _stamp(label, 1)
+        return bank
     bank = (
         buffer
         if buffer is not None
@@ -403,7 +451,11 @@ def _frame(x, p, value, chart, recipe, moments, routing, sizes, build_border=Tru
     pos = x.new_empty((2, 6, a), dtype=torch.int32)
     layout = getattr(recipe, "coefficient_layout", "soa")
     co = x.new_empty(
-        (2, 3, 6, a) if layout == "soa" else (2, a, 6, 4 if layout == "aos4" else 3)
+        (80 * a,)
+        if getattr(recipe, "integer_query", False)
+        else (2, 3, 6, a)
+        if layout == "soa"
+        else (2, a, 6, 4 if layout == "aos4" else 3)
     )
     half = x.new_empty((2, a))
     shards = getattr(recipe, "boundary_shards", 0) if build_border else 0
@@ -440,6 +492,22 @@ def _frame(x, p, value, chart, recipe, moments, routing, sizes, build_border=Tru
         enable_fp_fusion=False,
     )
     _report("coeff_prepare", compiled)
+    if getattr(recipe, "integer_query", False):
+        from . import integer_query_kernels as iq
+
+        compiled = iq.prepare[(tr.cdiv(a, 64),)](
+            meta,
+            co,
+            count,
+            _source_order(order, recipe),
+            origin,
+            spacing,
+            a,
+            *sizes,
+            num_warps=4,
+            enable_fp_fusion=False,
+        )
+        _report("coeff_prepare_integer", compiled)
     _stamp("coeff_prepare", 1)
     if getattr(recipe, "native_cache", False):
         from . import native_cache_kernels as nc
@@ -589,7 +657,7 @@ class _Local(torch.autograd.Function):
             getattr(recipe, "bank_padding", 0),
             Order=_source_order(order, recipe),
             LAYOUT=getattr(recipe, "coefficient_layout", "soa"),
-            **_h_args(groups, recipe, x),
+            **_h_args(groups, recipe, x, (origin, spacing, sizes)),
             **_native_h_args(x, None, native_y, sizes, recipe),
             num_warps=recipe.axis_warps,
             enable_fp_fusion=False,
@@ -732,7 +800,7 @@ class _Local(torch.autograd.Function):
             getattr(recipe, "bank_padding", 0),
             Order=_source_order(order, recipe),
             LAYOUT=getattr(recipe, "coefficient_layout", "soa"),
-            **_h_args(groups, recipe, x),
+            **_h_args(groups, recipe, x, (origin, spacing, sizes)),
             **_native_h_args(x, dy, native_dx, sizes, recipe),
             num_warps=recipe.axis_warps,
             enable_fp_fusion=False,
