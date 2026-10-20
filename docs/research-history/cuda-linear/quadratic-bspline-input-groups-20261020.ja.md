@@ -2038,3 +2038,45 @@ Injectionを比較する。さらにv58 static、v59 loop、v60 compact loopのH
 
 CPU2039 passed/5369 skipped/18既存warning(39.03s)、Ruff、両case declaration PASS。
 GPUのコンパイル・精度・速度・メモリは未検証。旧版の反例/閾値やbenchmark peak定義は変更しない。
+
+
+### v59/v60 L4: 係数共有は両memory条件を満たすが、loopは遅い
+
+source `abdb26ee3f90d0297eb1852be58d8fb8e35456db`、job
+`l4job-9594f10b9a514848bb88a748795d9ac0`。NVIDIA L4/driver580.82.07、
+Torch2.11.0+cu130/CUDA13/Triton3.6。raw38件PASS(52.27s)、共有/重複/同時81件PASS(218.40s)。
+展開係数・位置等の一致とstatic/loop/compactのquery/注入比較をPASS。
+両主3状態の独立FP64 Y/dX/全4P、全52,428sigma更新、初期hash一致も全planでPASS。
+全候補の最大はY1.233e-6、dX1.393e-6、全4P2.337e-5、relL2各7.601e-8/8.106e-8/1.046e-7以下。
+
+|L4,65rounds|v58 ms|v59 loop ms|v60 loop+shared ms|Dense ms|v60 allocated/reserved MiB|
+|---|---:|---:|---:|---:|---:|
+|B32 mixed|4.739051|5.155109|5.075741|.082035|34.255/96|
+|B64 mixed|9.170588|10.007950|9.835531|.103156|34.755/100|
+
+v60はv58からallocated約4MiB、reserved各8MiB減り、両条件ともDenseの49.002/106、
+49.502/106MiB以下に入った。ただしv58比でB32約7.10%、B64約7.25%遅く、速度目標は未達。
+v59だけでは約8.78%/9.13%遅かった。係数共有は保存量に有効だが、loopを高速化として採用しない。
+v60はnative-cacheを使わないので、速度差を係数圧縮だけの効果と断定しない。
+
+16行chunkのbackwardはv58約1.45408ms/128 registers、v59約1.66298ms/48 registers、
+v60約1.55341ms/40 registers。全てspill0。
+forwardはv58/v59約.37888ms/40 registers、v60約.44646ms/40 registers。
+係数prepareはv58/v59約.093184ms、v60約.089088ms。
+register数を減らしてもこの変更では高速化しなかった。全FP64処理量/依存関係を減らす対照が次の課題。
+source archive `f0ac9748a1ea743d036dd2e9ea9b6876b8e640b4730f16c67b7f1bd4ffff058f`、
+result archive `56570ea234ab302fdb24cad2dac1e621f1dc428af88a050892f99016e1f2c7fc`。
+1698source files/31manifest entries/Git-byte一致/return0/no-timeout/cleanup ackを確認。
+L4 primary42件、L4診断3件、G4 primary13件を分離。source CPU CI PASS(1m33s)。所有GPU全停止。
+
+### 既存float-pair演算の内積CPU screen（演算のみ、GPU未実装）
+
+次の対照として、unit_delta_gluon.pyに既存のtwo-sum/add/mulをqueryの内積部分へ使えるか調べた。
+単位格子の旧int128注入方式へ戻す提案ではない。FP64の係数/Bankをhi/loのFP32へ分けて
+既存pair演算で18項を評価し、最後にFP64へ戻すCPU screenである。
+`pair-dot-cpu.py/json`はlibc fmafで積の残差を取り、5,003内積（うち1,001個は強い相殺）を検査した。
+入力/係数の大きさは2^-8〜2^8倍の正規乱数で、profile全体や勾配の検証ではない。
+pair maxabs1.267e-9、relL2 4.115e-15、sum(abs(products))で割った最大誤差1.772e-14。
+通常FP32のmaxabsは.023616、relL2 8.616e-8、相殺組の誤差は.006247に対しpair3.548e-10。
+GPUでの精度・速度・メモリは未確認であり、既存4e-4 gateの代わりにはしない。
+次は圧縮係数のunrolled対照と、この内積だけのpair候補を区別して測る。
