@@ -7886,8 +7886,7 @@ def test_compensated_injection_exact_dyadic_values_and_fp64_escapes(dim):
         tile: tl.constexpr = tl.BlockedLayout([1, 1], [1, 32], [4, 1], [1, 0])
         a = tl.program_id(0) * 4 + tl.arange(0, 4, layout=tl.SliceLayout(1, tile))
         b = tl.arange(0, 4, layout=tl.SliceLayout(0, tile))
-        v = tl.load(Value + b)
-        v = tl.broadcast_to(v[None, :], (4, 4))
+        v = tl.load(Value + b[None, :] + 0 * a[:, None])
         gk._inject(
             v,
             Delta,

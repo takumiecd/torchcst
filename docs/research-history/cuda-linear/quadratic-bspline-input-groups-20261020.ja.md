@@ -2451,3 +2451,9 @@ exact dyadic係数とH=[2^100,2^-100,1,0]ではnormal/正規化FP64/残差＋esc
 主2条件の独立FP64全shape 4e-4 gateは保持する。幅の量子化やprofileの変更は行わない。
 CPU2044 passed/5612 skipped/18既存warning(39.17s)、Ruff、両case declarationを確認。
 GPUでコンパイル・精度・完全step・両peakを確認するまでは採用しない。
+
+v65/v66初回GPU job `l4job-3e5d0750cc4543668639518a643861cb`（source7bc27493）はraw55件を通過し、
+新しいexact dyadic注入テストでGluon未対応の`broadcast_to`を呼んでcompile errorとなった。
+テストのValue読み取りを既存の暗黙broadcastによる2D loadへ修正する。GPU演算本体・精度基準は変えない。
+当該runはreturn1/no-timeout/cleanup ackと1708 sourcefiles byte一致を検証してfailed-jobsに保持し、
+regression/主測定へ進んでいないため速度/メモリ/最終精度の採用根拠にはしない。
