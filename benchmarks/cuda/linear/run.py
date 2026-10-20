@@ -822,6 +822,10 @@ def measure(args, run):
                             ),
                         }
                     )
+                if getattr(recipe, "frame_arena", False):
+                    hybrid_routing["frame_allocation_policy"] = (
+                        "single 256byte-aligned immutable frame storage for Meta/IDs/Pos/Co/half/borders/masks; separate persistent diagnostic count and numerical workspaces"
+                    )
                 if getattr(recipe, "fresh_partition", False):
                     hybrid_routing.update(
                         {

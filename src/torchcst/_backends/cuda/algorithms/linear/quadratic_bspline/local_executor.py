@@ -433,14 +433,36 @@ def _source_order(order, recipe):
 
 def _frame(x, p, value, chart, recipe, moments, routing, sizes, build_border=True):
     a = len(p)
+    endpoints = getattr(recipe, "skip_endpoints", False)
+    shards = getattr(recipe, "boundary_shards", 0) if build_border else 0
+    fused_levels = getattr(recipe, "fused_levels", False)
+    frame = None
+    if getattr(recipe, "frame_arena", False):
+        from .frame_buffers import make_frame
+
+        frame = make_frame(
+            p, a, shards=shards, endpoints=endpoints, active=fused_levels
+        )
     meta, origin, spacing, _source = _prepare(
-        p, value, chart, recipe, moments, width_table=routing.get("width_table")
+        p,
+        value,
+        chart,
+        recipe,
+        moments,
+        width_table=routing.get("width_table"),
+        meta_out=frame["meta"] if frame is not None else None,
     )
     _stamp("group", 0)
     if getattr(recipe, "fresh_partition", False):
         from .fresh_partition_kernels import partition
 
-        order = p.new_empty((a,), dtype=torch.int64)
+        order = (
+            frame["order"]
+            if frame is not None
+            else p.new_empty((a,), dtype=torch.int64)
+        )
+        # The diagnostic count stays in routing after backward. Keep it outside
+        # the frame arena so it cannot retain the entire prior frame allocation.
         counts = p.new_zeros((2,), dtype=torch.int32)
         partition[(tr.cdiv(a, 128),)](
             meta,
@@ -465,30 +487,45 @@ def _frame(x, p, value, chart, recipe, moments, routing, sizes, build_border=Tru
         meta = meta.index_select(0, order)
     _stamp("pack", 1)
     _stamp("coeff_prepare", 0)
-    endpoints = getattr(recipe, "skip_endpoints", False)
     injection = (
-        x.new_empty((2, a), dtype=torch.int16)
+        frame["injection"]
+        if frame is not None
+        else x.new_empty((2, a), dtype=torch.int16)
         if endpoints
         else x.new_empty(0, dtype=torch.int16)
     )
-    pos = x.new_empty((2, 6, a), dtype=torch.int32)
-    layout = getattr(recipe, "coefficient_layout", "soa")
-    co = x.new_empty(
-        (80 * a,)
-        if getattr(recipe, "integer_query", False)
-        else (2, 3, 6, a)
-        if layout == "soa"
-        else (2, a, 6, 4 if layout == "aos4" else 3)
+    pos = (
+        frame["pos"] if frame is not None else x.new_empty((2, 6, a), dtype=torch.int32)
     )
-    half = x.new_empty((2, a))
-    shards = getattr(recipe, "boundary_shards", 0) if build_border else 0
+    layout = getattr(recipe, "coefficient_layout", "soa")
+    co = (
+        frame["co"]
+        if frame is not None
+        else x.new_empty(
+            (80 * a,)
+            if getattr(recipe, "integer_query", False)
+            else (2, 3, 6, a)
+            if layout == "soa"
+            else (2, a, 6, 4 if layout == "aos4" else 3)
+        )
+    )
+    half = frame["half"] if frame is not None else x.new_empty((2, a))
     bp = (
-        x.new_empty((2, 2, a), dtype=torch.int32)
+        frame["bp"]
+        if frame is not None
+        else x.new_empty((2, 2, a), dtype=torch.int32)
         if shards
         else x.new_empty(0, dtype=torch.int32)
     )
-    fused_levels = getattr(recipe, "fused_levels", False)
-    active = x.new_zeros(2, dtype=torch.int32) if fused_levels else None
+    active = (
+        (
+            frame["active"].zero_()
+            if frame is not None
+            else x.new_zeros(2, dtype=torch.int32)
+        )
+        if fused_levels
+        else None
+    )
     compiled = lk.prepare[(tr.cdiv(a, 128),)](
         meta,
         pos,

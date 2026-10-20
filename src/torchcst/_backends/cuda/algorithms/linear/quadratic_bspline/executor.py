@@ -381,7 +381,14 @@ def _scatter(
 
 
 def _prepare(
-    p, value, chart, recipe, moments, amplitude_snapshot=None, width_table=None
+    p,
+    value,
+    chart,
+    recipe,
+    moments,
+    amplitude_snapshot=None,
+    width_table=None,
+    meta_out=None,
 ):
     import triton as tr
 
@@ -393,10 +400,14 @@ def _prepare(
     source = p.contiguous().clone() if recipe.snapshot_source else p.contiguous()
     origin, spacing = chart.origin.clone(), chart.spacing.clone()
     _stamp("snapshot", 1)
-    meta = torch.empty(
-        (len(p), 14 if getattr(recipe, "unit_delta", False) else 12),
-        device=p.device,
-        dtype=torch.float64,
+    meta = (
+        meta_out
+        if meta_out is not None
+        else torch.empty(
+            (len(p), 14 if getattr(recipe, "unit_delta", False) else 12),
+            device=p.device,
+            dtype=torch.float64,
+        )
     )
     if len(p):
         _stamp("prepare", 0)

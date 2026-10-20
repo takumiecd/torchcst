@@ -29,6 +29,7 @@ from .recipe import (
     BSplineLocalCoordinatesRecipe,
     BSplineLocalDecodeRatioRecipe,
     BSplineLocalEndpointRecipe,
+    BSplineLocalFrameArenaRecipe,
     BSplineLocalFreshPartitionRecipe,
     BSplineLocalGluonRecipe,
     BSplineLocalGroupedRecipe,
@@ -595,3 +596,9 @@ class BSplineLocalTableDecodeAlgorithm(BSplineLocalBankZeroAlgorithm):
 class BSplineLocalFreshPartitionAlgorithm(BSplineLocalBankZeroAlgorithm):
     revision: str = "v52"
     recipe_type: type = BSplineLocalFreshPartitionRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalFrameArenaAlgorithm(BSplineLocalFreshPartitionAlgorithm):
+    revision: str = "v53"
+    recipe_type: type = BSplineLocalFrameArenaRecipe

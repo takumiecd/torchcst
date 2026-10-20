@@ -1616,3 +1616,41 @@ accepted G4は9job、失敗/診断/L4は別。所有GPU停止済み。配布379r
 再測定では同じv52のB64 chunk64も1案だけ比較する。現在のB64 peakとDenseの差が約12MiBあるため、
 大きい作業域でchunk境界のkernel起動を減らせるかを調べる。数学/勾配/幅の更新は同じ。
 B32はv47/v52、B64はv47/v52/chunk64を各129round、元の全shape3状態gateを通して比較する。
+
+### v52再測定とB64一括処理: 高速化とreserved制約の分離
+
+source `5d07445256c50dab09964d625d805e9f6e59f4e7`、job
+`colabjob-ef317beda8bd4b4db353f735430d0ea0`でraw3件、共有43件PASS(57.51s)。
+全planの3状態full-shape独立FP64 Y/dX/全4P、全52,428sigma更新、初期hash一致もPASS。
+
+|G4,129rounds|v47 ms|v52 chunk32 ms|v52 chunk64 ms|Dense ms|
+|---|---:|---:|---:|---:|
+|B32 mixed|.338100|.328440|—|.066240|
+|B64 mixed|.510630|.500650|.409600|.074910|
+
+fresh振り分けの短縮は2.86%/1.95%で再確認できた。
+chunk64はB64をchunk32より18.19%短縮したが、allocated/reserved45.688/140MiBとなった。
+Dense49.502/106MiBに対しallocatedは下回るがreservedを満たさないため、条件達成として採用しない。
+chunk32は33.544/98と37.607/100MiBを維持。chunk64の全4P maxabs1.281e-4、relL2 6.165e-7。
+source archive `6bcdce31e905795302377e4cafb26cf8a04b0872df34187758f471cfca75203f`、
+result archive `476675bcb24f6c3b196ec79a54c103804e1794e18b2f6fae5e96fdf751a3e663`。
+1683source files/28manifest entries/Git-byte一致、return0/no-timeout/cleanup ackを厳密検証。
+accepted G4は10job、診断/失敗/L4は別。所有GPU停止済み。
+
+## v53: 同じ寿命のforward状態を一つのarenaに確保（検証前）
+
+v52と同じ数式/係数構築/読み取り/atomicsを使い、immutable Meta、ID配列、Pos、Co、half、
+border位置、injection code、active maskを256byte境界で一つのuint8 storage内へ配置する。
+各viewのdtype/shape/配置は同じ。フレームごとに所有し、後続forward/retained backwardと共有しない。
+X/dYの数値bank、delta、勾配、optimizer状態は別のbufferを保つ。
+
+診断用native countはbackward後もroutingに残るためarenaへ入れない。
+countがarenaのviewだと古いframe全体を保持して次のframeと重なり、逆にpeakが増えるためである。
+長く残るcountは従来どおり独立8bytesで持つ。
+固定payloadが同じでも、allocatorのsegment/graph pool再利用でreservedが減るかは未検証。
+CPU/CUDAでviewの型・alignment・非重複・別frameとの独立性を確認し、共有33件と主完全stepで比較する。
+B32はv52chunk32/v53、B64はv52chunk32/v52chunk64/v53chunk64とDenseを同条件で測る。
+
+v53 CPU2023 passed/5092 skipped/18既存warning(40.64s)、Ruff、両case、build PASS。
+その後追加したCUDA viewパラメータ6件はCPUではskipとなり、CPU view/recipe7件を再確認してPASS。
+GPUでは既存fresh分類3件+arena view CPU6/CUDA6件、その後実モデル共有33件と両primaryへ進む。

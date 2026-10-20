@@ -895,3 +895,10 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
 )
 
 REGISTRY.register(BSplineLocalFreshPartitionAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalFrameArenaAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalFrameArenaAlgorithm())

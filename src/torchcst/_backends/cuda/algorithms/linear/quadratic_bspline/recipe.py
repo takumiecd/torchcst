@@ -973,3 +973,16 @@ class BSplineLocalFreshPartitionRecipe(BSplineLocalBankZeroRecipe):
         super().__post_init__()
         if self.reuse_layout:
             raise ValueError("fresh partition requires fresh immutable placement")
+
+
+@dataclass(frozen=True)
+class BSplineLocalFrameArenaRecipe(BSplineLocalFreshPartitionRecipe):
+    """Revision53: align immutable frame fields inside one owned allocation."""
+
+    frame_arena = True
+    batch_chunk: int = 64
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.coefficient_layout != "soa" or not self.canonical_meta:
+            raise ValueError("frame arena requires source Meta and SoA coefficients")
