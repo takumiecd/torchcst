@@ -34,6 +34,7 @@ from .recipe import (
     BSplineLocalNarrowRecipe,
     BSplineLocalNativeBoundRecipe,
     BSplineLocalNativeCacheRecipe,
+    BSplineLocalNativeShardsRecipe,
     BSplineLocalOwnerRecipe,
     BSplineLocalPaddedRecipe,
     BSplineLocalPersistentRecipe,
@@ -489,3 +490,9 @@ class BSplineLocalUnifiedAlgorithm(BSplineLocalNativeCacheAlgorithm):
             except (ValueError, TypeError, AttributeError):
                 pass
         return SupportResult(tuple(reasons))
+
+
+@dataclass(frozen=True)
+class BSplineLocalNativeShardsAlgorithm(BSplineLocalUnifiedAlgorithm):
+    revision: str = "v41"
+    recipe_type: type = BSplineLocalNativeShardsRecipe

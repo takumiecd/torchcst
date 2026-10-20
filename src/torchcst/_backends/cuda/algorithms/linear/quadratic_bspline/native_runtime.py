@@ -28,6 +28,24 @@ def _options(recipe, order, cache):
     return result
 
 
+def _with_hot_scratch(destination, recipe, label):
+    shards = getattr(recipe, "native_hot_shards", 0)
+    if not shards:
+        return destination
+    _stamp(label, 0)
+    if destination is None:
+        _stamp(label, 1)
+        return None
+    rows = min(len(destination), recipe.batch_chunk)
+    hot = torch.zeros(
+        (shards, rows, destination.shape[1]),
+        device=destination.device,
+        dtype=torch.float32,
+    )
+    _stamp(label, 1)
+    return destination, hot
+
+
 def forward(x, y, meta, count, origin, spacing, sizes, recipe, order=None, cache=None):
     _stamp("native_forward", 0)
     destination = (
@@ -102,7 +120,11 @@ def forward(x, y, meta, count, origin, spacing, sizes, recipe, order=None, cache
     if destination is not y and not getattr(recipe, "unified_native", False):
         y.add_(destination)
     _stamp("native_forward", 1)
-    return destination if getattr(recipe, "unified_native", False) else None
+    return (
+        _with_hot_scratch(destination, recipe, "native_hot_prepare_forward")
+        if getattr(recipe, "unified_native", False)
+        else None
+    )
 
 
 def backward(
@@ -213,5 +235,9 @@ def backward(
         dx.add_(destination)
     _stamp("native_backward", 1)
     if getattr(recipe, "unified_native", False):
-        return dx, dp, destination
+        return (
+            dx,
+            dp,
+            _with_hot_scratch(destination, recipe, "native_hot_prepare_backward"),
+        )
     return dx, dp

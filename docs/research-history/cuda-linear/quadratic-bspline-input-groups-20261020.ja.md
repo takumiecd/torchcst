@@ -598,3 +598,49 @@ FP64 native destinationは統合gridの後に一度だけY/dXへ加え、regular
 profile、支持、exact sampled product L2の単一floor、task-width stop-gradientとPolar則は変えない。
 cutoff .05/.15をv39最速版とDenseへ比較し、主混合B32/B64とsmall/switchの全stepで評価する。
 現段階ではGPUの正しさ・速度・メモリの主張はしない。
+
+### v40実測: 精度PASS、速度は負の結果
+
+job `l4job-1ef48d3105f7495f83c70150c5be9581`、source
+`8a1b77ead43ae3acc1f28e524fa39efeadffa593`。
+46 targeted checksがPASS（224.73s）。全4条件で3状態の全shape独立FP64 Y/dX/全4atom勾配、
+52,428個すべてのσ更新、初期X/P/target hash一致を確認した。
+
+|条件|v39 mask ms|統合cut.05 ms|統合cut.15 ms|Dense ms|
+|---|---:|---:|---:|---:|
+|B32 mixed|0.760142|0.759936|0.808702|0.083488|
+|B64 mixed|1.218178|1.225800|1.340873|0.110982|
+|B32 small|0.697337|0.698629|0.980522|0.083350|
+|B32 switch|0.725063|0.728123|0.779888|0.083831|
+
+統合版のpeak allocated/reservedはB32 **34.404/98 MiB**、B64 **35.154/100 MiB**。
+FP64 native scratchの寿命延長によりv39からallocatedが0.25/0.5MiB増え、
+reservedは同じ。Dense49.002/106、49.502/106MiB以下は保つが、速度改善はない。
+cut.05は同帯、cut.15は全条件で遅いので採用しない。
+small診断のstream forward/backwardは0.289792/0.368640ms、
+v39の0.131072/0.212992msより重い。native fallback自体は約0.005/0.006msまで減るが、
+cache構築0.014336msと直接集約側の実作業を相殺できない。
+統合hot backwardは56register、shared0、spill0である。
+ここからFP64 atomicだけを原因と断定はしない。
+
+source SHA256 `6838fd396320c4bfd53620b08ac8e1fe4502bab32ea63d306997b88475f1333f`、
+result SHA256 `a57c92ef42b17ec798eafda76d9c5cebc8bc58903913e1c8f8a45409e4d45403`。
+source1621 files、manifest56 files、return0、timeoutなし、cleanup ackを厳密確認。
+CPU2002pass/4554skip/18既存warning、Ruff/casesと369 runtime filesのwheel/sdist一致も確認。
+後続c93fd513は上位bit16/17の予約をsupport metadataへ明示し、16尺度を超える入力を拒否する。
+そのmetadata境界2件とroundtripの3CPU checksはPASS。主条件のkernelは変えていない。
+
+## v41: bounded native hot partial sums（検証前）
+
+v40のcached hotだけを4または16個のFP32部分和に分け、CTA番号で書き込み先を選ぶ。
+最後に各部分和をFP64へ変換して合計し、既存FP64 cold scratchと合わせてY/dXへ戻す。
+profile・H/G・全atom勾配の式や演算精度はv40と同じで、変わるのはcached hotの
+出力加算の順序と部分和のdtypeである。FP32部分和に丸め誤差が入るため、
+従来と同じ4e-4 gate・重なり支持・Graph切替・個別勾配を通るまで採用しない。
+cold/tiny/oversize fallbackは従来FP64 destinationのままとし、近似的な支持打切りはしない。
+
+部分和は`[shards, min(B,batch_chunk), N]`とし、全Bでは増やさない。
+finish kernelでFP64合計と使用済み行のzero resetを融合し、次chunkへ同じ領域を再利用する。
+B32/N1024では4shardsが0.5MiB、16shardsが2MiBの追加payloadだが、
+これは実測peakではない。初期zero、finish/reset、capture/replayを含め速度と両ピークを測る。
+v39最速版・v40cut.15・v41の4/16shards・Denseを同条件の完全stepで比較する。

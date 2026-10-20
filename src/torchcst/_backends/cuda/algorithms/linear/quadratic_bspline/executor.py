@@ -36,6 +36,7 @@ def diagnostic_components(
     event_owner=False,
     input_groups=False,
     native_cache=False,
+    native_shards=False,
 ):
     common = ("snapshot", "prepare", "norm_replay")
     if local_h:
@@ -63,6 +64,13 @@ def diagnostic_components(
             names += ("input_group_prepare",)
         if native_cache:
             names += ("native_cache_prepare",)
+        if native_shards:
+            names += (
+                "native_hot_prepare_forward",
+                "native_hot_prepare_backward",
+                "native_finish_forward",
+                "native_finish_backward",
+            )
         if event_owner:
             names += ("owner_prepare", "owner_output", "owner_input")
         if chunk_count <= 1 and not event_owner:
@@ -79,6 +87,8 @@ def diagnostic_components(
             "scan_input",
             "owner_output",
             "owner_input",
+            "native_finish_forward",
+            "native_finish_backward",
         }
         return tuple(
             value

@@ -91,13 +91,56 @@ def _h_args(tables, recipe):
 def _native_h_args(x, dy, destination, sizes, recipe):
     if not getattr(recipe, "unified_native", False):
         return {}
-    return {
+    result = {
         "RawX": x,
         "RawDY": dy,
         "NativeOut": destination,
         "NO": sizes[0],
         "NI": sizes[1],
     }
+    if isinstance(destination, tuple):
+        cold, hot = destination
+        result.update(
+            NativeOut=cold,
+            NativeHotOut=hot,
+            HOT_SHARDS=recipe.native_hot_shards,
+            HOT_STRIDE=hot.stride(0),
+        )
+    return result
+
+
+def _native_part(destination, start, actual):
+    if destination is None:
+        return None
+    if isinstance(destination, tuple):
+        cold, hot = destination
+        return cold[start : start + actual], hot[:, :actual]
+    return destination[start : start + actual]
+
+
+def _finish_native(output, destination, label):
+    if destination is None:
+        return
+    if not isinstance(destination, tuple):
+        output.add_(destination)
+        return
+    from . import native_shard_kernels as ns
+
+    cold, hot = destination
+    _stamp(label, 0)
+    compiled = ns.finish[(tr.cdiv(output.numel(), 256),)](
+        output,
+        cold,
+        hot,
+        output.numel(),
+        hot.stride(0),
+        hot.shape[0],
+        256,
+        num_warps=4,
+        enable_fp_fusion=False,
+    )
+    _report(label, compiled)
+    _stamp(label, 1)
 
 
 def _cache_args(pos, co, active, recipe):
@@ -454,8 +497,7 @@ class _Local(torch.autograd.Function):
         )
         _report("stream_forward", compiled)
         _stamp("stream_forward", 1)
-        if native_y is not None:
-            y.add_(native_y)
+        _finish_native(y, native_y, "native_finish_forward")
         y = _restore(delta, border, y, sizes[0], recipe, "scan_output", active, 0, ml)
         ctx.save_for_backward(
             meta,
@@ -582,8 +624,7 @@ class _Local(torch.autograd.Function):
         _report("stream_backward", compiled)
         _stamp("stream_backward", 1)
         if need_dx:
-            if native_dx is not None:
-                dx.add_(native_dx)
+            _finish_native(dx, native_dx, "native_finish_backward")
             dx = _restore(
                 delta, border, dx, sizes[1], recipe, "scan_input", active, 1, ml
             )

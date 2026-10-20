@@ -806,3 +806,18 @@ class BSplineLocalUnifiedRecipe(BSplineLocalNativeCacheRecipe):
             raise ValueError("unified grid requires equal native/axis groups and lane1")
         if not self.cache_unroll:
             raise ValueError("unified grid requires unrolled native profiles")
+
+
+@dataclass(frozen=True)
+class BSplineLocalNativeShardsRecipe(BSplineLocalUnifiedRecipe):
+    """Revision 41: bounded FP32 hot partial sums, FP64 final reduction."""
+
+    native_hot_shards: int = 16
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.native_hot_shards) is not int or self.native_hot_shards not in (
+            4,
+            16,
+        ):
+            raise ValueError("native_hot_shards must be 4 or 16")

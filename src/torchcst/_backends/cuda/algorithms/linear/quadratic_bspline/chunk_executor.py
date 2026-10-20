@@ -10,12 +10,14 @@ from .local_executor import (
     _blocks,
     _cache_args,
     _delta,
+    _finish_native,
     _frame,
     _group_tables,
     _h_args,
     _h_launch,
     _Local,
     _native_h_args,
+    _native_part,
     _points,
     _restore,
     _source_order,
@@ -132,7 +134,7 @@ class _Chunked(torch.autograd.Function):
                 **_native_h_args(
                     xs,
                     None,
-                    None if native_y is None else native_y[start : start + tile],
+                    _native_part(native_y, start, actual),
                     sizes,
                     recipe,
                 ),
@@ -141,8 +143,11 @@ class _Chunked(torch.autograd.Function):
             )
             _report(label, compiled)
             _stamp(label, 1)
-            if native_y is not None:
-                ys.add_(native_y[start : start + tile])
+            _finish_native(
+                ys,
+                _native_part(native_y, start, actual),
+                _name("native_finish_forward", index),
+            )
             _restore(
                 delta,
                 border,
@@ -286,7 +291,7 @@ class _Chunked(torch.autograd.Function):
                 **_native_h_args(
                     xs,
                     dys,
-                    None if native_dx is None else native_dx[start : start + tile],
+                    _native_part(native_dx, start, actual),
                     sizes,
                     recipe,
                 ),
@@ -296,8 +301,11 @@ class _Chunked(torch.autograd.Function):
             _report(label, compiled)
             _stamp(label, 1)
             if need_dx:
-                if native_dx is not None:
-                    dx[start : start + tile].add_(native_dx[start : start + tile])
+                _finish_native(
+                    dx[start : start + tile],
+                    _native_part(native_dx, start, actual),
+                    _name("native_finish_backward", index),
+                )
                 _restore(
                     delta,
                     border,

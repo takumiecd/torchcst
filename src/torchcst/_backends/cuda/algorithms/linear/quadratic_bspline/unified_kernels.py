@@ -85,15 +85,18 @@ def _native_inject(
     N: tl.constexpr,
     DIM: tl.constexpr,
     UNROLL: tl.constexpr,
+    SHARDS: tl.constexpr = 0,
+    STRIDE: tl.constexpr = 0,
 ):
     scale = tl.load(Meta + 12 * a, a < A, 0) * tl.load(Meta + 12 * a + 4, a < A, 0)
     weight = (Value * scale[:, None]).to(tl.float32)
+    offset = (tl.program_id(0) % SHARDS) * STRIDE if SHARDS else 0
     for site in tl.static_range(8):
         f = tl.load(Co + (DIM * 18 + site) * A + slot, a < A, 0)
         j = left + site
         mask = (a[:, None] < A) & (b[None, :] < B) & (j[:, None] < right[:, None])
         tl.atomic_add(
-            Y + b[None, :] * N + j[:, None],
+            Y + offset + b[None, :] * N + j[:, None],
             weight * f[:, None],
             mask,
             sem="relaxed",
@@ -135,6 +138,9 @@ def forward(
     NativeOut=None,
     NO: tl.constexpr = 0,
     NI: tl.constexpr = 0,
+    NativeHotOut=None,
+    HOT_SHARDS: tl.constexpr = 0,
+    HOT_STRIDE: tl.constexpr = 0,
 ):
     tl.static_assert(SAVE == "none")
     count = tl.load(Count)
@@ -163,7 +169,22 @@ def forward(
                     RawX, Co, ns, na, b, li, ri, A, B, NI, 1, AB, BB, False, True
                 )
                 _native_inject(
-                    nh, NativeOut, Meta, Co, ns, na, b, lo, ro, A, B, NO, 0, True
+                    nh,
+                    NativeHotOut if HOT_SHARDS else NativeOut,
+                    Meta,
+                    Co,
+                    ns,
+                    na,
+                    b,
+                    lo,
+                    ro,
+                    A,
+                    B,
+                    NO,
+                    0,
+                    True,
+                    HOT_SHARDS,
+                    HOT_STRIDE,
                 )
         if base + AB > count:
             h, hp = _query(
@@ -256,6 +277,9 @@ def backward(
     NativeOut=None,
     NO: tl.constexpr = 0,
     NI: tl.constexpr = 0,
+    NativeHotOut=None,
+    HOT_SHARDS: tl.constexpr = 0,
+    HOT_STRIDE: tl.constexpr = 0,
 ):
     tl.static_assert(SAVE == "none")
     count = tl.load(Count)
@@ -306,7 +330,22 @@ def backward(
                     )
                 if DX:
                     _native_inject(
-                        ng, NativeOut, Meta, Co, ns, na, b, li, ri, A, B, NI, 1, True
+                        ng,
+                        NativeHotOut if HOT_SHARDS else NativeOut,
+                        Meta,
+                        Co,
+                        ns,
+                        na,
+                        b,
+                        li,
+                        ri,
+                        A,
+                        B,
+                        NI,
+                        1,
+                        True,
+                        HOT_SHARDS,
+                        HOT_STRIDE,
                     )
         if base + AB > count:
             g, gp = _query(
