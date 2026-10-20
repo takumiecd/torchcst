@@ -402,6 +402,7 @@ def _prepare(p, value, chart, recipe, moments):
                 spacing,
                 polar_scalars(value),
                 len(p),
+                RATIO=getattr(recipe, "ratio_decode", False),
                 num_warps=recipe.prepare_warps,
                 enable_fp_fusion=False,
             )

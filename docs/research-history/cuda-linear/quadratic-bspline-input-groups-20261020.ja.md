@@ -749,3 +749,32 @@ CPU-only design probeではprimary範囲20万例のmax relative差1.236e-15、
 極端な幅範囲20万例では29,513例のfallback込みで2.025e-13。
 これはGPU精度gateや速度証拠ではない。別revisionとして動的σ・全勾配・境界・両peakを検証する。
 CPU式の確認だけで現decoderを書き換えたり、速度達成扱いにはしない。
+
+## v43: 1回のFP64 logによる幅復元（検証前）
+
+最速v39のH/G・routing・coefficient・exact sampled L2・pullback・Polar更新を保ち、
+split decoderの幾何補間だけを別recipeで切り替える。
+
+\[
+\sigma = \exp((1-\alpha)\log l+\alpha\log u)
+       = l\exp\!\left(\alpha\log\frac{u}{l}\right),\quad
+0\le\alpha\le1,\quad 0<l\le u.
+\]
+
+`u/l`が有限で正なら右辺をFP64で評価し、従来と同じ上下clipを適用する。
+CTA内の有効atomに非有限ratioがあれば、そのCTAは従来式で評価する。
+無効tail laneはfallback判定から除く。これにより有限の幾何平均を表せる極端な幅でも
+中間ratioのoverflowで結果を壊さない。runtimeのdevice scalarからl/uを計算し、
+hostに値を戻したり固定幅と仮定したりしない。
+
+既存recipeは`RATIO=False`のまま。新しいv43 `BSplineLocalDecodeRatioRecipe`は
+v39を継承し、native cache/統合/FP32部分和/point-majorの負の候補は組み込まない。
+Tensorを追加せず、Metaのdtype/形状とsnapshot寿命も変えない。
+数学的に同じ補間でもFP64加算順序は変わるので、全shape独立FP64の既存4e-4 gateを維持する。
+
+追加検証は、2種類のpowerと4種類のlive幅境界でのdecoder比較（8件）、
+Graph replayで通常幅→ratio overflow→通常幅へ切り替える1件、
+通常の動的σ・retained snapshot・個別勾配・floor・513重なり・非単位spacingを含む。
+radius/inverse以外のMeta fieldは旧decoderとbitwise一致、overflow fallbackもbitwise一致を要求する。
+radiusは独立Torch FP64式と比較する。この局所検証と全modelの誤差gateは別々に行う。
+B32/B64 mixedとsmall/switchをv39最速版・v43・Denseで比較し、準備/構築/L2/全勾配/更新と両peakを含める。

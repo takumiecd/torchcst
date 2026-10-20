@@ -830,3 +830,17 @@ class BSplineLocalNativePointRecipe(BSplineLocalUnifiedRecipe):
     native_pointmajor = True
     native_hot_shards = 1
     native_hot_float64 = True
+
+
+@dataclass(frozen=True)
+class BSplineLocalDecodeRatioRecipe(BSplineLocalLevelMaskRecipe):
+    """Revision 43: one-log FP64 geometric interpolation with guarded fallback."""
+
+    ratio_decode: bool = True
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.ratio_decode) is not bool:
+            raise ValueError("ratio_decode must be boolean")
+        if not self.split_prepare:
+            raise ValueError("ratio decoding requires split preparation")

@@ -19,6 +19,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineLocalChunkedAlgorithm,
     BSplineLocalCoefficientAlgorithm,
     BSplineLocalCoordinatesAlgorithm,
+    BSplineLocalDecodeRatioAlgorithm,
     BSplineLocalEndpointAlgorithm,
     BSplineLocalGluonAlgorithm,
     BSplineLocalGroupedAlgorithm,
@@ -63,6 +64,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineLocalChunkedRecipe,
     BSplineLocalCoefficientRecipe,
     BSplineLocalCoordinatesRecipe,
+    BSplineLocalDecodeRatioRecipe,
     BSplineLocalEndpointRecipe,
     BSplineLocalGluonRecipe,
     BSplineLocalGroupedRecipe,
@@ -120,6 +122,9 @@ def case(n=64, a=17):
 def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     from dataclasses import replace
 
+    decode_ratio = strategy == "h_local_decode_ratio" or recipe_options.pop(
+        "_decode_ratio", False
+    )
     native_point = strategy == "h_local_native_point" or recipe_options.pop(
         "_native_point", False
     )
@@ -132,8 +137,10 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         or strategy == "h_local_unified"
         or recipe_options.pop("_unified", False)
     )
-    level_mask = strategy == "h_local_level_mask" or recipe_options.pop(
-        "_level_mask", False
+    level_mask = (
+        decode_ratio
+        or strategy == "h_local_level_mask"
+        or recipe_options.pop("_level_mask", False)
     )
     native_cache = strategy == "h_local_native_cache" or recipe_options.pop(
         "_native_cache", False
@@ -266,6 +273,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineLocalGroupedAlgorithm())
     registry.register(BSplineLocalGluonAlgorithm())
     registry.register(BSplineLocalLevelMaskAlgorithm())
+    registry.register(BSplineLocalDecodeRatioAlgorithm())
     registry.register(BSplineLocalUnifiedAlgorithm())
     registry.register(BSplineLocalNativeShardsAlgorithm())
     registry.register(BSplineLocalNativePointAlgorithm())
@@ -296,7 +304,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     tuned = bool(recipe_options) or strategy == "matrix_separable"
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v42"
+        "v43"
+        if decode_ratio
+        else "v42"
         if native_point
         else "v41"
         if native_shards
@@ -379,7 +389,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         else "v2"
         if tuned
         else "v1",
-        BSplineLocalNativePointRecipe(**recipe_options)
+        BSplineLocalDecodeRatioRecipe(**recipe_options)
+        if decode_ratio
+        else BSplineLocalNativePointRecipe(**recipe_options)
         if native_point
         else BSplineLocalNativeShardsRecipe(**recipe_options)
         if native_shards
@@ -2710,6 +2722,17 @@ NATIVE_POINT_OPTIONS = [
         "batch_chunk": 16,
     },
 ]
+DECODE_RATIO_OPTIONS = [
+    {"_decode_ratio": True},
+    {
+        "_decode_ratio": True,
+        "axis_atoms": 8,
+        "reciprocal": False,
+        "contract_float32": False,
+        "norm_float32": False,
+        "batch_chunk": 16,
+    },
+]
 ALL_QUERY_OPTIONS = (
     QUERY_OPTIONS
     + LEAN_OPTIONS
@@ -2773,6 +2796,10 @@ ALL_QUERY_OPTIONS = (
     + [
         pytest.param(opt, id=f"native-point-{i}")
         for i, opt in enumerate(NATIVE_POINT_OPTIONS)
+    ]
+    + [
+        pytest.param(opt, id=f"decode-ratio-{i}")
+        for i, opt in enumerate(DECODE_RATIO_OPTIONS)
     ]
 )
 
@@ -3056,6 +3083,10 @@ def test_local_recipe_roundtrip_and_bounds():
     + [
         pytest.param(opt, id=f"native-point-{i}")
         for i, opt in enumerate(NATIVE_POINT_OPTIONS)
+    ]
+    + [
+        pytest.param(opt, id=f"decode-ratio-{i}")
+        for i, opt in enumerate(DECODE_RATIO_OPTIONS)
     ],
 )
 def test_local_dyadic_boundaries_graph(options):
@@ -3644,6 +3675,7 @@ def test_native_bound_recipe_roundtrip_and_bounds():
         "h_local_unified",
         "h_local_native_shards",
         "h_local_native_point",
+        "h_local_decode_ratio",
     ],
 )
 def test_native_bound_count_changes_across_graph(batch, floor, strategy):
@@ -3733,6 +3765,7 @@ def test_native_bound_count_changes_across_graph(batch, floor, strategy):
         "h_local_unified",
         "h_local_native_shards",
         "h_local_native_point",
+        "h_local_decode_ratio",
     ],
 )
 def test_native_bound_strided_individual_gradients(which, strategy):
@@ -3773,6 +3806,7 @@ def test_native_bound_strided_individual_gradients(which, strategy):
         "h_local_unified",
         "h_local_native_shards",
         "h_local_native_point",
+        "h_local_decode_ratio",
     ],
 )
 def test_native_bound_retained_count_above_grid(strategy):
@@ -4306,6 +4340,7 @@ def test_native_cache_recipe_roundtrip_and_bounds():
         ("h_local_unified", True),
         ("h_local_native_shards", True),
         ("h_local_native_point", True),
+        ("h_local_decode_ratio", True),
     ],
 )
 @pytest.mark.parametrize(
@@ -4784,3 +4819,133 @@ def test_native_point_finish_padding_and_reuse(capacity):
         assert torch.count_nonzero(hot[:, :, :actual]) == 0
         assert torch.equal(hot[:, :, actual:], before[:, :, actual:])
         hot.normal_()
+
+
+def test_decode_ratio_recipe_roundtrip_and_guards():
+    reg = Registry()
+    reg.register(BSplineLocalDecodeRatioAlgorithm())
+    for flag in (False, True):
+        plan = ExecutionPlan(
+            "research_cuda_quadratic_bspline",
+            "v43",
+            BSplineLocalDecodeRatioRecipe(ratio_decode=flag),
+        )
+        assert reg.loads_plan(reg.dumps_plan(plan)) == plan
+    for bad in ({"ratio_decode": 1}, {"split_prepare": False}):
+        with pytest.raises(ValueError):
+            BSplineLocalDecodeRatioRecipe(**bad)
+
+
+@GPU
+@pytest.mark.parametrize("power", [1.0, 2.0])
+@pytest.mark.parametrize(
+    "bounds",
+    [
+        (0.1, 0.1, 12.8),
+        (0.1, 0.5, 12.8),
+        (1e-150, 1e-150, 1e150),
+        (1e-250, 1e-250, 1e250),
+    ],
+)
+def test_decode_ratio_meta_and_overflow_fallback(power, bounds):
+    import triton as tr
+
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        prepare_split_kernels as sk,
+    )
+
+    a = 137
+    p = torch.randn((a, 4), device="cuda")
+    p[:4, :2] = p.new_tensor([[0.0, 0.0], [1e-24, 0.0], [1.0, 0.0], [2.0, 0.0]])
+    origin = torch.tensor([0.31, -0.27], device="cuda", dtype=torch.float64)
+    spacing = torch.tensor([0.1, 0.3], device="cuda", dtype=torch.float64)
+    lo, birth, hi = bounds
+    scalars = tuple(
+        torch.full((), v, device="cuda", dtype=torch.float64)
+        for v in (1.0, 1e6, 1.0, 6.0, power, lo, birth, hi, lo)
+    )
+    old = torch.full((a, 12), -777.0, device="cuda", dtype=torch.float64)
+    new = old.clone()
+    sk.decode[(tr.cdiv(a, 64),)](
+        p, old, origin, spacing, scalars, a, num_warps=1, enable_fp_fusion=False
+    )
+    sk.decode[(tr.cdiv(a, 64),)](
+        p,
+        new,
+        origin,
+        spacing,
+        scalars,
+        a,
+        RATIO=True,
+        num_warps=1,
+        enable_fp_fusion=False,
+    )
+    # Apart from radius/inverse radius, decoding is bitwise unchanged. Norm
+    # fields are still untouched; the full model gates check sampled L2/VJP.
+    exact = [0, 2, 3, 4, 5, 6, 7, 8, 10, 11]
+    assert torch.equal(old[:, exact], new[:, exact])
+    torch.testing.assert_close(new[:, [1, 9]], old[:, [1, 9]], atol=0, rtol=3e-13)
+    if lo == 1e-250:
+        assert torch.equal(new, old)
+    # Independent Torch FP64 scalar decoding, including live bounds and clips.
+    z = p[:, :2].double()
+    r2 = (z * z).sum(1)
+    safe = r2.clamp_min(1.1754943508222875e-38)
+    amp = z[:, 0] / safe.sqrt()
+    alpha = ((r2 - 1) / 3).clamp(0, 1)
+    x = (amp / 1e6).square()
+    upper = (lo + (hi - lo) / (1 + x.pow(power))).clamp_min(lo)
+    lower = lo + (birth - lo) / (1 + 6 * x)
+    upper = torch.maximum(upper, lower)
+    sigma = torch.exp((1 - alpha) * torch.log(lower) + alpha * torch.log(upper))
+    sigma = torch.minimum(torch.maximum(sigma, lower), upper)
+    torch.testing.assert_close(new[:, 1], 2.449489742783178 * sigma, atol=0, rtol=3e-13)
+
+
+@GPU
+def test_decode_ratio_graph_changes_live_bounds():
+    import triton as tr
+
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        prepare_split_kernels as sk,
+    )
+
+    a = 65
+    p = torch.randn(a, 4, device="cuda")
+    origin = torch.zeros(2, device="cuda", dtype=torch.float64)
+    spacing = torch.full((2,), 0.1, device="cuda", dtype=torch.float64)
+    scalars = tuple(
+        torch.full((), v, device="cuda", dtype=torch.float64)
+        for v in (1.0, 1e6, 1.0, 6.0, 1.0, 0.1, 0.1, 12.8, 0.1)
+    )
+    old = torch.full((a, 12), -777.0, device="cuda", dtype=torch.float64)
+    new = old.clone()
+
+    def run():
+        sk.decode[(tr.cdiv(a, 64),)](
+            p, old, origin, spacing, scalars, a, num_warps=1, enable_fp_fusion=False
+        )
+        sk.decode[(tr.cdiv(a, 64),)](
+            p,
+            new,
+            origin,
+            spacing,
+            scalars,
+            a,
+            RATIO=True,
+            num_warps=1,
+            enable_fp_fusion=False,
+        )
+
+    run()
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        run()
+    for lo, hi in ((0.2, 3.2), (1e-250, 1e250), (0.1, 12.8)):
+        for index, value in ((5, lo), (6, lo), (7, hi), (8, lo)):
+            scalars[index].fill_(value)
+        p[:, :2].mul_(1.003)
+        graph.replay()
+        torch.testing.assert_close(new, old, atol=0, rtol=3e-13)
+        if lo == 1e-250:
+            assert torch.equal(new, old)

@@ -8,7 +8,9 @@ from .kernels import _norm_pair
 
 
 @tr.jit
-def decode(P, Meta, Origin, Spacing, Scalars, A: tl.constexpr):
+def decode(
+    P, Meta, Origin, Spacing, Scalars, A: tl.constexpr, RATIO: tl.constexpr = False
+):
     a = tl.program_id(0) * 64 + tl.arange(0, 64)
     z0 = tl.load(P + 4 * a, a < A, 0).to(tl.float64)
     z1 = tl.load(P + 4 * a + 1, a < A, 0).to(tl.float64)
@@ -33,7 +35,18 @@ def decode(P, Meta, Origin, Spacing, Scalars, A: tl.constexpr):
     upper = tl.maximum(upper, tl.load(Scalars[8]).to(tl.float64))
     lower = minimum + (birth - minimum) / (1 + tl.load(Scalars[3]).to(tl.float64) * x)
     upper = tl.maximum(upper, lower)
-    sigma = lib.exp((1 - alpha) * lib.log(lower) + alpha * lib.log(upper))
+    if RATIO:
+        ratio = upper / lower
+        valid = (a >= A) | ((lower > 0) & (ratio > 0) & (ratio < float("inf")))
+        if tl.min(valid.to(tl.int32), 0) != 0:
+            # Masked tail lanes cannot make a valid CTA take the slow branch.
+            ratio = tl.where(a < A, ratio, 1.0)
+            sigma = lower * lib.exp(alpha * lib.log(ratio))
+        else:
+            # Avoid ratio overflow for otherwise representable geometric means.
+            sigma = lib.exp((1 - alpha) * lib.log(lower) + alpha * lib.log(upper))
+    else:
+        sigma = lib.exp((1 - alpha) * lib.log(lower) + alpha * lib.log(upper))
     sigma = tl.minimum(tl.maximum(sigma, lower), upper)
     radius = 2.449489742783178 * sigma
     co = tl.load(P + 4 * a + 2, a < A, 0).to(tl.float64)
