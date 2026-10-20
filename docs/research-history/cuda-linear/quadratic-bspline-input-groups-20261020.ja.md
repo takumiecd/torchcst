@@ -1137,3 +1137,35 @@ zero費用は最初のbankの診断区間へ含め、deltaの空markerを別のz
 CPU2011pass/4849skip/18既存warning、Ruffを確認した。GPUでは有効bankのbitwise一致と
 全scratchのzeroを、全level無効・異なる軸サイズ・端数batch・部分bundleでも確認する。
 全shape/3状態FP64 Y/dX/全4atom勾配と、構築/L2/optimizer込みの両peak・完全stepも必要である。
+
+### v47 L4実測: 初期化融合の候補改善、追加保存領域なし
+
+job `l4job-d68a681af8d44d5c9d620a2d9b56e7c4`、source
+`6aacb1d46e265e3ffd7fe05c8e6ab51eb243d57e`。
+42 targeted checks PASS（182.81s）。bank値のbitwise一致、全scratch zero、
+無効level・異軸サイズ・padding・部分tileを確認し、全4条件の3状態全shape独立FP64 gate、
+全σ更新、初期hash一致もPASS。最大誤差は従来の4e-4 gate内に収まる。
+
+|条件|v44 ms|v46保存 ms|v47融合/非保存 ms|v47融合/保存 ms|Dense ms|
+|---|---:|---:|---:|---:|---:|
+|B32 mixed|0.752383|0.728222|0.734732|0.717532|0.083635|
+|B64 mixed|1.206005|1.176789|1.203504|1.161727|0.107769|
+|B32 small|0.688394|0.682872|0.684964|0.676839|0.083088|
+|B32 switch|0.715669|0.704332|0.706898|0.697441|0.083167|
+
+v47融合/保存は同条件v46比1.47%/1.28%短縮（mixed）。
+融合単独の非保存はB64で同帯であり、一律な高速化と扱わない。
+全候補のB32 allocated/reservedは **34.154/98 MiB**。
+B64非保存 **34.654/100 MiB**、保存 **38.216/100 MiB**でv46と同じ。
+Dense49.002/106、49.502/106MiB以下。新しい保存payloadは増えていない。
+
+bank区間はzero CTAを含むため約0.0205→0.0246msへ増え、
+別のdelta/border zero約0.0082msが空markerへ変わる。費用を単に除外したものではない。
+完全stepは全起動・構築・L2・optimizerと、Graph capture/replay peak込み。
+前述のL4長期非定常性を踏まえ、短期主測定だけで普遍的な改善とはしない。
+検証済みの保存+融合一設定をG4で129rounds比較する。
+
+source SHA256 `4446fb6c50681169d38d9a236169aa191b641c5762b3b935169f205c987a3413`、
+result SHA256 `10d24afdba089346a5bb7f93221ca69de00b608fb5c7450e3a5dc7f7652f756f`。
+source1662/manifest68、archive/manifest/Git bytes/return0/timeoutなし/cleanup ackを照合した。
+372 runtime-fileのsdist/wheel byte一致も確認。公開/defaultは変更しない。
