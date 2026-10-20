@@ -1113,3 +1113,57 @@ class BSplineLocalCompensatedRecipe(BSplineLocalNormalizedCoRecipe):
             raise ValueError(
                 "compensated accumulation requires fused full scratch zero"
             )
+
+
+@dataclass(frozen=True)
+class BSplineBernsteinNodeRecipe:
+    """Revision67: positive node moments with one-axis-at-a-time owner CSR."""
+
+    strategy: str = "bernstein_nodes"
+    reciprocal: bool = True
+    norm_lookup: bool = True
+    prepare_warps: int = 1
+    batch_chunk: int = 32
+    bank_batch: int = 8
+    query_atoms: int = 4
+    query_batch: int = 8
+    owner_rows: int = 32
+    owner_batch: int = 16
+    control_float32: bool = False
+    owner_float32: bool = False
+    query_float32: bool = False
+    snapshot_source = True
+    local_h = True
+    split_prepare = True
+    ratio_decode = True
+    norm_float32 = False
+    node_capacity = 34
+
+    def __post_init__(self):
+        if self.strategy != "bernstein_nodes":
+            raise ValueError("requires bernstein_nodes strategy")
+        for name in (
+            "reciprocal",
+            "norm_lookup",
+            "control_float32",
+            "owner_float32",
+            "query_float32",
+        ):
+            if type(getattr(self, name)) is not bool:
+                raise ValueError(f"{name} must be boolean")
+        for name, choices in (
+            ("prepare_warps", (1, 2, 4)),
+            ("batch_chunk", (16, 32)),
+            ("bank_batch", (4, 8, 16)),
+            ("query_atoms", (4, 8)),
+            ("query_batch", (4, 8, 16)),
+            ("owner_rows", (16, 32)),
+            ("owner_batch", (8, 16, 32)),
+        ):
+            value = getattr(self, name)
+            if type(value) is not int or value not in choices:
+                raise ValueError(f"{name} must be one of {choices}")
+        if self.query_float32 and not self.control_float32:
+            raise ValueError("FP32 queries require FP32 controls")
+        if self.owner_float32 and not self.control_float32:
+            raise ValueError("FP32 owner partials require FP32 controls")

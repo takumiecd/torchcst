@@ -44,6 +44,29 @@ def diagnostic_components(
     native_shards=False,
 ):
     common = ("snapshot", "prepare", "norm_replay")
+    if strategy == "bernstein_nodes":
+        names = common + (
+            "decode",
+            "norm_init",
+            "node_prepare",
+            "bank_input",
+            "bank_adjoint",
+            "owner_prepare_output",
+            "owner_prepare_input",
+            "atom_finalize",
+        )
+        return names + tuple(
+            f"{stage}_chunk{k}"
+            for stage in (
+                "h_generate",
+                "g_vjp",
+                "node_reduce_output",
+                "node_restore_output",
+                "node_reduce_input",
+                "node_restore_input",
+            )
+            for k in range(chunk_count)
+        )
     if local_h:
         names = common + (
             "group",

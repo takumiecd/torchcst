@@ -987,6 +987,39 @@ def measure(args, run):
                             "placement_count_scope": "warmup/eager/captured-replay calls through primary measurement; not replay-only",
                         }
                     )
+        if getattr(recipe, "strategy", None) == "bernstein_nodes":
+            hybrid_routing = {
+                "sigma_fixed": False,
+                "layout_policy": "fresh bounded dyadic IDs and one-axis-at-a-time owner CSR each forward/backward",
+                "canonical_parameter_rows_moved": False,
+                "node_capacity_per_atom_axis": recipe.node_capacity,
+                "node_id_format": "signed16 storage; low10 left index, next4 log2 width, top2 piece; 0xffff invalid",
+                "node_id_snapshot_bytes": 2 * case.atoms * recipe.node_capacity * 2,
+                "node_counts_snapshot_bytes": 6 * case.atoms,
+                "owner_id_capacity_bytes": case.atoms * recipe.node_capacity * 4,
+                "owner_lifetime": "one axis at a time; output owner consumed in forward, input owner rebuilt in backward; never saved together",
+                "bank_layout": "node,three positive Bernstein moments,batch; FP32; no per-site prefix",
+                "input_bank_snapshot_capacity_bytes": 3 * (2 * n - 1) * m * 4,
+                "input_bank_retained": True,
+                "h_saved_capacity_bytes": 0,
+                "h_or_g_workspace_capacity_bytes": case.atoms
+                * min(m, recipe.batch_chunk)
+                * 8,
+                "batch_chunk": recipe.batch_chunk,
+                "coefficient_storage": "computed at use from immutable FP64 Meta and bounded node IDs",
+                "coefficient_core_dtype": "FP32 rounded controls"
+                if recipe.control_float32
+                else "FP64",
+                "query_arithmetic": "FP32 products/sums, FP64 H/G storage"
+                if recipe.query_float32
+                else "FP64 products/sums/H/G",
+                "node_accumulation": "up to32 FP32 atom partials combined in FP64"
+                if recipe.owner_float32
+                else "FP64 products and reduction",
+                "floating_projection_atomics": False,
+                "norm_core_dtype": "FP64 exact sampled product L2; floor once",
+                "capacity_scope": "payload declarations only; capture/replay allocated/reserved peaks measured separately",
+            }
         if getattr(recipe, "execution_route", None) in (
             "hybrid",
             "hybrid_support",

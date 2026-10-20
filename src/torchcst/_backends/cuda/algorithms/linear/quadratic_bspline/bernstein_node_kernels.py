@@ -1,7 +1,7 @@
 """Positive node moments for the same B-spline; component research kernels.
 
-No Linear dispatch selects these kernels yet. Each canonical dyadic node holds
-three Bernstein moments instead of a prefix at every site of every level.
+Each canonical dyadic node holds three Bernstein moments instead of a prefix
+at every site of every level. The opt-in Bernstein owner route uses this bank.
 The FP64 scatter is a correctness control, not the proposed owner reduction.
 """
 
@@ -244,6 +244,8 @@ def restore(
     BI: tl.constexpr,
     BB: tl.constexpr,
     LOG_N: tl.constexpr,
+    PAD: tl.constexpr = 0,
+    FIRST: tl.constexpr = 0,
 ):
     i = tl.program_id(0) * BI + tl.arange(0, BI)
     b = tl.program_id(1) * BB + tl.arange(0, BB)
@@ -262,11 +264,13 @@ def restore(
                 else t * t
             )
             delta = tl.load(
-                Delta + (node[:, None] * 3 + plane) * B + b[None, :],
+                Delta + (node[:, None] * 3 + plane) * (B + PAD) + b[None, :],
                 (i[:, None] < N) & (b[None, :] < B),
                 0,
             )
             value += weight[:, None] * delta
     tl.store(
-        Y + b[None, :] * N + i[:, None], value, (i[:, None] < N) & (b[None, :] < B)
+        Y + (FIRST + b[None, :]) * N + i[:, None],
+        value,
+        (i[:, None] < N) & (b[None, :] < B),
     )

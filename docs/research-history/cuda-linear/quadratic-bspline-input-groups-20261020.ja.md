@@ -2643,3 +2643,27 @@ source639fec98のCPU CI39418238927はsuccess。wheel/sdistの全383 runtimeフ�
 sdist SHA256 `30aa9c39474436c085323c9c8235bd41298442c6ccd216701833f02528cf0109`、
 wheel SHA256 `5fa9fc24a5b355a54ad3486de5fae6624e34b77f6f791aa67adc002e6477301b`。
 目標は未達のままactive。新しい区間表現のGPU部品を通したことと、完全stepの速度・メモリ達成は区別する。
+
+### v67 Bernstein node-owner routeの接続（GPU確認前）
+
+同じquadratic B-splineを3個の区分多項式として扱い、各区間をcanonical dyadic nodesへ分解する。
+軸長1024以下のpower-of-twoに限定し、1軸1atom最大34 nodeをint16 IDに保存する。
+profile・sigmaを量子化せず、exact sampled L2のD=max(norm(qo)*norm(qi),floor)を一度だけ適用する。
+Co=qo/sqrt(D), Ci=qi/sqrt(D), H=X Ci, G=dY Coで、全Polar4Pのpullbackを接続した。
+
+入力bankはnodeごとの3 Bernstein momentをFP32で保持する。node64対照ではcontrol、
+query積和、owner reduction、ancestor復元、norm補正はFP64。H/Gはbatch32以下のscratchに限定し、
+Hmu/Gmuはregister内で処理する。forwardのbankと不変meta/IDをbackwardへ保存し、
+owner表・H・deltaは保存しない。retained/concurrent backwardはそれぞれprivate scratchを確保する。
+
+nodeごとのCSR ownerを毎step作り、浮動小数atomicをnode内reductionへ置換した。
+CSR構築のinteger atomicとoffset scanは残る。これは以前のCSR routeの再採用判断ではなく、
+正のBernstein basisで大きな差分キャンセルを避けた新しい対照実装である。
+実測前なので高速化・ピーク削減は未確認。ID/owner/H/bankのpayload式はGPU peakの代用にしない。
+
+node32/part32/full32を明示recipeとして分けるが、まずnode64のみを既存v64/Denseと比較する。
+全4P、origin/spacing、513重複、floor、empty/単一点、zero/negative amplitude、
+3 live状態、Graph、retained/concurrent backwardのGPU検査を準備した。
+CPU全suiteは2045 passed/5651 skipped/18既存warning（44.00s）。新moduleは1 passed/29 GPU skipped。
+宣言往復・support拒否・Ruff・git diff --checkも通過。GPU精度、完全step、両peakは未検証である。
+公開dispatcherの変更や精度gateの緩和は行わない。

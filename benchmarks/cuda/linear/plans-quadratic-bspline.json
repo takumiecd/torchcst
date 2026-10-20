@@ -11751,6 +11751,98 @@
           "fuse_bank_zero": true
         }
       }
+    },
+    {
+      "id": "bernstein-node64",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_quadratic_bspline",
+        "algorithm_revision": "v67",
+        "recipe": {
+          "strategy": "bernstein_nodes",
+          "reciprocal": true,
+          "norm_lookup": true,
+          "prepare_warps": 1,
+          "batch_chunk": 32,
+          "bank_batch": 8,
+          "query_atoms": 4,
+          "query_batch": 8,
+          "owner_rows": 32,
+          "owner_batch": 16,
+          "control_float32": false,
+          "owner_float32": false,
+          "query_float32": false
+        }
+      }
+    },
+    {
+      "id": "bernstein-node32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_quadratic_bspline",
+        "algorithm_revision": "v67",
+        "recipe": {
+          "strategy": "bernstein_nodes",
+          "reciprocal": true,
+          "norm_lookup": true,
+          "prepare_warps": 1,
+          "batch_chunk": 32,
+          "bank_batch": 8,
+          "query_atoms": 4,
+          "query_batch": 8,
+          "owner_rows": 32,
+          "owner_batch": 16,
+          "control_float32": true,
+          "owner_float32": false,
+          "query_float32": false
+        }
+      }
+    },
+    {
+      "id": "bernstein-part32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_quadratic_bspline",
+        "algorithm_revision": "v67",
+        "recipe": {
+          "strategy": "bernstein_nodes",
+          "reciprocal": true,
+          "norm_lookup": true,
+          "prepare_warps": 1,
+          "batch_chunk": 32,
+          "bank_batch": 8,
+          "query_atoms": 4,
+          "query_batch": 8,
+          "owner_rows": 32,
+          "owner_batch": 16,
+          "control_float32": true,
+          "owner_float32": true,
+          "query_float32": false
+        }
+      }
+    },
+    {
+      "id": "bernstein-full32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_quadratic_bspline",
+        "algorithm_revision": "v67",
+        "recipe": {
+          "strategy": "bernstein_nodes",
+          "reciprocal": true,
+          "norm_lookup": true,
+          "prepare_warps": 1,
+          "batch_chunk": 32,
+          "bank_batch": 8,
+          "query_atoms": 4,
+          "query_batch": 8,
+          "owner_rows": 32,
+          "owner_batch": 16,
+          "control_float32": true,
+          "owner_float32": true,
+          "query_float32": true
+        }
+      }
     }
   ]
 }

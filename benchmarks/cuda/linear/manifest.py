@@ -966,3 +966,10 @@ REGISTRY.register(BSplineLocalPackedBankAlgorithm())
 
 REGISTRY.register(BSplineLocalNormalizedCoAlgorithm())
 REGISTRY.register(BSplineLocalCompensatedAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineBernsteinNodeAlgorithm,
+)
+
+REGISTRY.register(BSplineBernsteinNodeAlgorithm())

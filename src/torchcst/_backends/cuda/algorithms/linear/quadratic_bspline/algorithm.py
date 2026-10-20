@@ -18,6 +18,7 @@ from torchcst.operators.execution import (
 
 from .recipe import (
     BSplineAdjointRecipe,
+    BSplineBernsteinNodeRecipe,
     BSplineCoalescedHRecipe,
     BSplineLeanHRecipe,
     BSplineLocalActiveRecipe,
@@ -200,6 +201,17 @@ class BSplineAlgorithm(Algorithm[BSplineRecipe]):
             state.buffers["moments"] = _norm_moments(max(no, ni), x.device)
             state.buffers["basis_key"] = key
         with torch.cuda.device(x.device):
+            if state.recipe.strategy == "bernstein_nodes":
+                from .bernstein_executor import apply as node_apply
+
+                return node_apply(
+                    x,
+                    p,
+                    site.kernel,
+                    site.chart,
+                    state.recipe,
+                    state.buffers["moments"],
+                )
             if state.recipe.strategy == "sigma_stream":
                 from .stream_executor import apply as stream_apply
 
@@ -727,3 +739,26 @@ class BSplineLocalNormalizedCoAlgorithm(BSplineLocalPackedBankAlgorithm):
 class BSplineLocalCompensatedAlgorithm(BSplineLocalNormalizedCoAlgorithm):
     revision: str = "v66"
     recipe_type: type = BSplineLocalCompensatedRecipe
+
+
+@dataclass(frozen=True)
+class BSplineBernsteinNodeAlgorithm(BSplineAlgorithm):
+    revision: str = "v67"
+    recipe_type: type = BSplineBernsteinNodeRecipe
+
+    def supports(self, context, recipe):
+        result = super().supports(context, recipe)
+        reasons = list(result.reasons)
+        if isinstance(context, LinearContext):
+            try:
+                if any(n > 1024 or n & (n - 1) for n in layout(context.operator)):
+                    reasons.append(
+                        "Bernstein node IDs require power-of-two axes up to1024"
+                    )
+                if context.atom_count > (2**31 - 1) // (2 * recipe.node_capacity):
+                    reasons.append(
+                        "Bernstein node IDs exceed signed32 address capacity"
+                    )
+            except (ValueError, TypeError, AttributeError):
+                pass
+        return SupportResult(tuple(reasons))
