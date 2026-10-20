@@ -24,10 +24,17 @@ def _bank_buffer(x, n, rows):
     return x.new_empty((4, n + 1, rows))
 
 
-def _bank(x, out, label):
+def _bank(x, out, label, amplitude):
     _stamp(label, 0)
     kernel = uk.bank[(out.shape[2],)](
-        x, out, x.shape[1], len(x), out.shape[2], num_warps=4, enable_fp_fusion=False
+        x,
+        out,
+        x.shape[1],
+        len(x),
+        out.shape[2],
+        amplitude,
+        num_warps=4,
+        enable_fp_fusion=False,
     )
     _report(label, kernel)
     _stamp(label, 1)
@@ -70,7 +77,10 @@ class _Unit(torch.autograd.Function):
         tile = min(b, recipe.batch_chunk)
         chunks = tr.cdiv(b, tile)
         ctx.saved_banks = 0
-        meta, origin, spacing, _source = _prepare(p, value, chart, recipe, moments)
+        amplitude = p.new_empty((), dtype=torch.float64)
+        meta, origin, spacing, _source = _prepare(
+            p, value, chart, recipe, moments, amplitude_snapshot=amplitude
+        )
         for name in ("group", "pack", "active_levels"):
             _empty(name)
         _stamp("coeff_prepare", 0)
@@ -104,7 +114,7 @@ class _Unit(torch.autograd.Function):
             xs, ys = x[start : start + tile], y[start : start + tile]
             if bank is None or (recipe.save_input_bank and ctx.needs_input_grad[1]):
                 bank = _bank_buffer(x, ni, tile)
-            _bank(xs, bank, _name("bank_input", i, chunks))
+            _bank(xs, bank, _name("bank_input", i, chunks), amplitude)
             if recipe.save_input_bank and ctx.needs_input_grad[1]:
                 snapshots.append(bank)
             label = _name("delta_output", i, chunks)
@@ -135,7 +145,9 @@ class _Unit(torch.autograd.Function):
             _stamp(label, 1)
             _restore(delta, compact, bank, ys, recipe, _name("scan_output", i, chunks))
         ctx.saved_banks = len(snapshots)
-        ctx.save_for_backward(x, meta, co, ids, count, origin, spacing, *snapshots)
+        ctx.save_for_backward(
+            x, meta, co, ids, count, origin, spacing, amplitude, *snapshots
+        )
         return y
 
     @staticmethod
@@ -152,8 +164,8 @@ class _Unit(torch.autograd.Function):
                 None,
                 None,
             )
-        x, meta, co, ids, count, origin, spacing = ctx.saved_tensors[:7]
-        saved = ctx.saved_tensors[7:]
+        x, meta, co, ids, count, origin, spacing, amplitude = ctx.saved_tensors[:8]
+        saved = ctx.saved_tensors[8:]
         recipe = ctx.recipe
         no, ni = ctx.sizes
         a, b = len(meta), len(x)
@@ -192,10 +204,10 @@ class _Unit(torch.autograd.Function):
                 input_bank = saved[i]
                 _empty(label)
             elif need_dp:
-                _bank(xs, input_bank, label)
+                _bank(xs, input_bank, label, amplitude)
             else:
                 _empty(label)
-            _bank(dys, adjoint, _name("bank_adjoint", i, chunks))
+            _bank(dys, adjoint, _name("bank_adjoint", i, chunks), amplitude)
             label = _name("delta_input", i, chunks)
             _stamp(label, 0)
             if need_dx:

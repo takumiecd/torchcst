@@ -22,6 +22,7 @@ def decode(
     A: tl.constexpr,
     RATIO: tl.constexpr = False,
     WARPS: tl.constexpr = 1,
+    AmpSnapshot=None,
 ):
     tile: tl.constexpr = tl.BlockedLayout([1, 2], [32, 1], [WARPS, 1], [1, 0])
     a = tl.program_id(0) * 64 + tl.arange(0, 64, layout=tl.SliceLayout(1, tile))
@@ -31,6 +32,9 @@ def decode(
     safe = tl.maximum(r2, 1.1754943508222875e-38)
     inv = 1 / lib.sqrt(safe)
     maximum_amp = tl.load(Scalars[0]).to(tl.float64)
+    if AmpSnapshot is not None:  # noqa: SIM102 - specialize the optional GPU pointer first
+        if tl.program_id(0) == 0:
+            tl.store(AmpSnapshot, maximum_amp)
     amp = maximum_amp * z0 * inv
     alpha = tl.minimum(tl.maximum((r2 - 1) / 3, 0), 1)
     w = amp / tl.load(Scalars[1]).to(tl.float64)

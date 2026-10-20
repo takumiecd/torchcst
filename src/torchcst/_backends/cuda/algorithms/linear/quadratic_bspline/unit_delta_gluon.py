@@ -33,6 +33,15 @@ def _scale(power):
 
 
 @tr.jit
+def _retain64(value):
+    # Preserve the float-pair evaluation through consumers that immediately cast
+    # to FP32. A 64-bit bitwise identity does not change the numerical result.
+    return tl.inline_asm_elementwise(
+        "mov.b64 $0, $1;", "=d,d", [value], tl.float64, True, 1
+    )
+
+
+@tr.jit
 def _query(
     Bank,
     Co,
@@ -99,7 +108,7 @@ def _query(
         if PRIME
         else tl.full((AB, BB), 0.0, tl.float64, layout=TILE)
     )
-    return value, prime
+    return _retain64(value), _retain64(prime)
 
 
 @tr.jit

@@ -21,7 +21,7 @@ def _pair_add(ah, al, bh, bl):
 
 
 @tr.jit
-def bank(X, Bank, N: tl.constexpr, B: tl.constexpr, PB: tl.constexpr):
+def bank(X, Bank, N: tl.constexpr, B: tl.constexpr, PB: tl.constexpr, Amp=None):
     tl.static_assert(N <= 1024)
     row = tl.program_id(0)
     j = tl.arange(0, N)
@@ -40,8 +40,12 @@ def bank(X, Bank, N: tl.constexpr, B: tl.constexpr, PB: tl.constexpr):
     scaled64 = raw.to(tl.float64) * scale
     hi, lo = scaled64.to(tl.float32), tl.full((N,), 0, tl.float32)
     norm = lib.sqrt(tl.sum(scaled64 * scaled64, 0))
+    amplitude = tl.abs(tl.load(Amp).to(tl.float64)) if Amp is not None else 1.0
+    bound = norm * amplitude
     wp = tl.where(
-        norm > 0, 34 - lib.ceil(lib.log2(tl.where(norm > 0, norm, 1.0))).to(tl.int32), 0
+        bound > 0,
+        34 - lib.ceil(lib.log2(tl.where(bound > 0, bound, 1.0))).to(tl.int32),
+        0,
     )
     for level in tl.static_range(3):
         hi, lo = tl.associative_scan((hi, lo), 0, _pair_add, reverse=True)

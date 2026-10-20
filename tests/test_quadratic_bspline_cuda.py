@@ -5965,7 +5965,8 @@ def test_unit_delta_recipe_roundtrip_and_guards():
 
 @GPU
 @pytest.mark.parametrize("n,b,physical", [(8, 3, 16), (1024, 33, 48)])
-def test_unit_delta_float_pair_bank_values_and_scale(n, b, physical):
+@pytest.mark.parametrize("amplitude", [1.0, 9.0])
+def test_unit_delta_float_pair_bank_values_and_scale(n, b, physical, amplitude):
     import math
 
     from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
@@ -5978,7 +5979,14 @@ def test_unit_delta_float_pair_bank_values_and_scale(n, b, physical):
     x[2] *= 1e20
     actual = torch.empty((4, n + 1, physical), device="cuda")
     uk.bank[(physical,)](
-        x.cuda(), actual, n, b, physical, num_warps=4, enable_fp_fusion=False
+        x.cuda(),
+        actual,
+        n,
+        b,
+        physical,
+        torch.tensor(amplitude, device="cuda", dtype=torch.float64),
+        num_warps=4,
+        enable_fp_fusion=False,
     )
     value = actual.cpu().double()
     for row in range(physical):
@@ -5990,7 +5998,7 @@ def test_unit_delta_float_pair_bank_values_and_scale(n, b, physical):
         assert int(value[0, n, row]) == power
         scaled = torch.ldexp(x[row].double(), torch.tensor(power))
         norm = float(scaled.norm())
-        wp = 34 - math.ceil(math.log2(norm)) if norm else 0
+        wp = 34 - math.ceil(math.log2(norm * amplitude)) if norm else 0
         assert int(value[1, n, row]) == wp
         prefix = scaled
         for level in range(3):
@@ -6192,3 +6200,38 @@ def test_unit_delta_exact_atomic_words_and_compact_support():
     for k in range(b):
         expected[k, 0] = math.ldexp(float(c * sum(int(v) for v in wi[:, k])), -52 - 26)
     assert torch.equal(actual.cpu(), expected)
+
+
+@GPU
+@pytest.mark.parametrize("keep", [False, True])
+def test_unit_delta_live_amplitude_and_retained_snapshot(keep):
+    from benchmarks.cuda.linear.check_normalized import check
+
+    layer = model(
+        "h_unit_delta",
+        n=128,
+        a=33,
+        save_input_bank=keep,
+        norm_float32=False,
+        contract_float32=False,
+    )
+    x = torch.randn(33, 128, device="cuda", requires_grad=True)
+    dy = torch.randn_like(x)
+    for amp in (0.1, 1.0, 8.0):
+        with torch.no_grad():
+            layer.kernel.scalar("amplitude_max").fill_(amp)
+        gate(layer, x, dy)
+    with torch.no_grad():
+        layer.kernel.scalar("amplitude_max").fill_(1.0)
+    y = layer(x)
+    rp = layer.atoms.p.detach().double().requires_grad_()
+    rx = x.detach().double().requires_grad_()
+    ref = bs.oracle(copy.deepcopy(layer.kernel).double(), layer.chart, rp, rx)
+    expected = torch.autograd.grad(ref, (rx, rp), dy.double())
+    with torch.no_grad():
+        layer.kernel.scalar("amplitude_max").fill_(8.0)
+    layer(torch.randn_like(x))
+    actual = torch.autograd.grad(y, (x, layer.atoms.p), dy)
+    for av, bv in zip(actual, expected):
+        err = check(av, bv, 4e-4)
+        assert err["max"] < 4e-4 and err["rel_l2"] < 4e-4

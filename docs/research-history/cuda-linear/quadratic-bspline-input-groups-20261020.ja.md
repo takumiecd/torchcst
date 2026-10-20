@@ -1453,3 +1453,31 @@ v50初回job `colabjob-658a7b8162724c4fa21568a169a2a9f6` (78c05c9d): raw5件PASS
 新executorの空markerで上書きしない。数式/精度/入力量/基準を変えず再検証する。
 source/result/manifest/git bytes/return1/no-timeout/cleanup ackをfailed-jobsへ厳密保存。
 supervisor29380 exit0で旧jobはterminal。次snapshotを明示的に再提出する。
+
+
+### v50精度gateの失敗とquery/縮約の切り分け
+
+job `colabjob-f43395cab66a4586aedc27ccab0097c8`、source3ef46929でraw5件と共有12件がPASS後、
+N128/A33/B3のP-only勾配で停止。torch assertが示したfield20,2の差は0.000601446。
+診断で確認した全要素maxabsはfield20,3の0.000994889で、4e-4を超える。
+primary性能へ進めず、基準・入力を変えずfailed archiveを保存した。
+
+同sourceの診断job `colabjob-fc769c3d6e12446abc0d41d0e4014520`は、
+H/Hmu/G/GmuをFP64のtensorへ書き出すと、Metaから独立に評価したdotとの誤差が
+2.97e-11/3.15e-12/6.51e-11/1.80e-11だった。
+その値を保存する診断kernelの全4Pはmaxabs4.316e-7で、通常kernelとの差は0.000994921。
+Y自体は5.208e-8。消費側が直ちにFP32へcastする場合のprecision loweringを疑う証拠であり、
+特定のLLVM passやPTXAS変換を原因と確定はしていない。
+診断はreturn0だが、primary性能証拠ではない。厳密hash/source/manifest/cleanup検証後、
+`verified-g4-diagnostics.json`へ分け、accepted `verified-g4.json`と混ぜない。
+
+queryのF64戻り値にbitwise mov.b64のidentityを置き、消費側から精度を保持させる候補を用意する。
+数値演算やFP32縮約式を変えず、同じ失敗testと全gateで再検証する。まだ修正成功の主張はしない。
+同時に、整数重み尺度を入力normだけでなくlive amplitude_maxにも合わせる。
+amp上限を既存decoderが同じlaunch中にsnapshotへ書き、保存bank/再計算bank/adjoint bankが
+同じforwardのamp snapshotを使う。追加clone kernelを避け、live scalar変更後のretained VJPも検査する。
+旧recipeのoptional pointerはNoneで、元の出力は変えない。
+
+CPU2014 passed/4978 skipped/18既存warning (39.51s)、変更対象Ruff PASS。
+新しいraw bank amplitude1/9とlive amplitude/retained検査を追加し、raw7件+共有35件を予定する。
+追加の高amplitude検査はFP64 norm/contraction設定を使う。標準のFP32 core検査/primary入力・4e-4基準は維持する。
