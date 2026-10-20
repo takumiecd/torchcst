@@ -778,3 +778,9 @@ Graph replayで通常幅→ratio overflow→通常幅へ切り替える1件、
 radius/inverse以外のMeta fieldは旧decoderとbitwise一致、overflow fallbackもbitwise一致を要求する。
 radiusは独立Torch FP64式と比較する。この局所検証と全modelの誤差gateは別々に行う。
 B32/B64 mixedとsmall/switchをv39最速版・v43・Denseで比較し、準備/構築/L2/全勾配/更新と両peakを含める。
+
+初回job `l4job-d87b433ab7cc4f9393e33f588c55c4b9`、source5e684fedは29 checks PASSの後、
+共有spacing fixtureがnative専用`cache_unroll`をv43へ渡したTypeErrorで停止した。
+性能測定には進まず、数値/速度の採用証拠にはしない。幅・入力・gateを変えず、
+テストの引数だけをrecipeに応じて渡す修正で再実行する。
+failed archiveはsource/result/manifest/git source bytes/return1/cleanup ackまで確認して保全した。

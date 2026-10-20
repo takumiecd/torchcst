@@ -4355,7 +4355,8 @@ def test_native_cache_recipe_roundtrip_and_bounds():
     ],
 )
 def test_native_cache_spacing_fallbacks(strategy, unroll, spacing, batch, amplitude):
-    layer = model(strategy, n=64, a=49, cache_unroll=unroll)
+    options = {} if strategy == "h_local_decode_ratio" else {"cache_unroll": unroll}
+    layer = model(strategy, n=64, a=49, **options)
     layer.chart.spacing.fill_(spacing)
     layer.chart.origin.copy_(
         torch.tensor([0.31, -0.27], device="cuda", dtype=torch.float64)
