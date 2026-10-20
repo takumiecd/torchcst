@@ -844,3 +844,11 @@ class BSplineLocalDecodeRatioRecipe(BSplineLocalLevelMaskRecipe):
             raise ValueError("ratio_decode must be boolean")
         if not self.split_prepare:
             raise ValueError("ratio decoding requires split preparation")
+
+
+@dataclass(frozen=True)
+class BSplineLocalPairedDecodeRecipe(BSplineLocalDecodeRatioRecipe):
+    """Revision 44: keep atom ownership and store adjacent FP64 Meta pairs."""
+
+    paired_decode = True
+    ratio_decode: bool = False

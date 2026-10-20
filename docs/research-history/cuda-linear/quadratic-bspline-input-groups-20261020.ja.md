@@ -784,3 +784,21 @@ B32/B64 mixedとsmall/switchをv39最速版・v43・Denseで比較し、準備/�
 性能測定には進まず、数値/速度の採用証拠にはしない。幅・入力・gateを変えず、
 テストの引数だけをrecipeに応じて渡す修正で再実行する。
 failed archiveはsource/result/manifest/git source bytes/return1/cleanup ackまで確認して保全した。
+
+## v44: FP64 Metaの隣接pair書き込み（検証前）
+
+decoderが書く9個のFP64 fieldについて、(0,1)/(2,3)/(8,9)/(10,11)をpair、
+field7をscalarで保存する。物理Metaは従来の`[A,12]`のまま、field4/5/6は既存normalizeが書く。
+Gluonの2D layoutをsize-per-thread `[1,2]`、threads `[32,1]`、warps `[W,1]`とし、
+field方向の2値を同じthreadへ置く。1D atom計算はそのSliceLayoutを使い、
+隣のfieldを別threadへ割り当ててPolar計算を重複させる配置は使わない。
+
+FP64の元演算をそのまま移し、通常式とv43 ratio式の2設定を別々に比較する。
+新Tensor・Meta並べ替え・正規化変更はない。旧decoderとの全Meta bitwise一致、
+生成PTXでの128bit (`v2.b64/f64/u64`) storeの存在、通常→極端な幅→通常のGraph replayを要求する。
+実際にその命令が生成されるまではvector化できたと主張しない。
+NVIDIAのメモリtransaction数・占有率・速度改善もソースだけから推定確定しない。
+
+Gluon/libdeviceのAPIは実行環境と同じ[Triton v3.6.0の公開ソース](https://github.com/triton-lang/triton/blob/v3.6.0/python/triton/experimental/gluon/language/extra/__init__.py)
+で確認した。CUDA importをCPUの宣言/recipe検査へ持ち込まず、実行時だけimportする。
+CPU・GPUの入口検証後、v39・v43・v44通常式・v44ratio式・Denseの4条件比較を行う。

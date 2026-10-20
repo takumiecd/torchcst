@@ -395,14 +395,21 @@ def _prepare(p, value, chart, recipe, moments):
         if getattr(recipe, "split_prepare", False):
             from . import prepare_split_kernels as sk
 
-            compiled = sk.decode[(tr.cdiv(len(p), 64),)](
+            decode = sk.decode
+            decode_options = {"RATIO": getattr(recipe, "ratio_decode", False)}
+            if getattr(recipe, "paired_decode", False):
+                from . import paired_decode_kernels as pd
+
+                decode = pd.decode
+                decode_options["WARPS"] = recipe.prepare_warps
+            compiled = decode[(tr.cdiv(len(p), 64),)](
                 source,
                 meta,
                 origin,
                 spacing,
                 polar_scalars(value),
                 len(p),
-                RATIO=getattr(recipe, "ratio_decode", False),
+                **decode_options,
                 num_warps=recipe.prepare_warps,
                 enable_fp_fusion=False,
             )

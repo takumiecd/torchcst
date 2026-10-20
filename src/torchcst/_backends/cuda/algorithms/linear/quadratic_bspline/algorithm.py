@@ -39,6 +39,7 @@ from .recipe import (
     BSplineLocalNativeShardsRecipe,
     BSplineLocalOwnerRecipe,
     BSplineLocalPaddedRecipe,
+    BSplineLocalPairedDecodeRecipe,
     BSplineLocalPersistentRecipe,
     BSplineLocalShardedRecipe,
     BSplineLocalSplitRecipe,
@@ -510,3 +511,9 @@ class BSplineLocalNativePointAlgorithm(BSplineLocalUnifiedAlgorithm):
 class BSplineLocalDecodeRatioAlgorithm(BSplineLocalLevelMaskAlgorithm):
     revision: str = "v43"
     recipe_type: type = BSplineLocalDecodeRatioRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalPairedDecodeAlgorithm(BSplineLocalDecodeRatioAlgorithm):
+    revision: str = "v44"
+    recipe_type: type = BSplineLocalPairedDecodeRecipe
