@@ -785,6 +785,35 @@ B32/B64 mixedとsmall/switchをv39最速版・v43・Denseで比較し、準備/�
 テストの引数だけをrecipeに応じて渡す修正で再実行する。
 failed archiveはsource/result/manifest/git source bytes/return1/cleanup ackまで確認して保全した。
 
+### v43の修正後実測: decode短縮、完全stepは小差なので再測定中
+
+job `l4job-df8cd34450dd42ee944322805bd2bec6`、source
+`18c2ff94db2a71809dadacbd867e58030d652a75`。45 checks PASS（197.21s）。
+overflow時のbitwise fallback、Metaの非radius field一致、独立Torch FP64式、
+live scalarのGraph変更に加え、全4条件の3状態の全shape独立FP64 Y/dX/全4atom勾配がPASS。
+case原本はN1024/A52428、B32/B64を明示し、oracleはcase全体のP/Xから計算することを再確認した。
+全52,428σ更新と初期hash一致も確認した。
+
+|条件|v39 ms|v43 ratio ms|Dense ms|
+|---|---:|---:|---:|
+|B32 mixed|0.758281|0.752114|0.083489|
+|B64 mixed|1.216306|1.215121|0.103322|
+|B32 small|0.696890|0.692370|0.083035|
+|B32 switch|0.724995|0.721933|0.082741|
+
+両版ともpeak allocated/reservedはB32 **34.154/98 MiB**、B64 **34.654/100 MiB**で同じ。
+Dense49.002/106、49.502/106MiB以下を保つ。decode診断は約0.0635–0.0645→0.0594ms、
+register80→78、shared0/spill0。正規化・係数構築・H/G本体は同帯。
+B32 completeの0.81%、small0.65%、switch0.42%、B64の0.10%は小さい差であり、
+この1回だけで確立した高速化とはしない。次のv44比較にv43を含めて独立再測定する。
+
+source SHA256 `7874ba78afcd8e7787f8b6086027e3827699c5d05aafc2e9f5d1a2a5d7b3f703`、
+result SHA256 `da75b4b02942e45e67e94500f2a74b70cb91caee2fab09847037e12dd98030ec`。
+source1634 files、manifest44、return0/timeoutなし/cleanup ackを厳密確認。
+初回failureはsource SHA256 `892cf77d1fb4d90b0246c8ff23dfe75a905943717d13e88ead9611c6152b31ac`、
+result/manifest等は`failed-jobs/l4job-d87b433ab7cc4f9393e33f588c55c4b9/exclusion.json`に保全し、
+採用表へ混ぜない。入力振幅や4e-4基準の変更はない。
+
 ## v44: FP64 Metaの隣接pair書き込み（検証前）
 
 decoderが書く9個のFP64 fieldについて、(0,1)/(2,3)/(8,9)/(10,11)をpair、
