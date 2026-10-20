@@ -19,6 +19,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineLocalCanonicalAlgorithm,
     BSplineLocalChunkedAlgorithm,
     BSplineLocalCoefficientAlgorithm,
+    BSplineLocalCompactPositionsAlgorithm,
     BSplineLocalCoordinatesAlgorithm,
     BSplineLocalDecodeRatioAlgorithm,
     BSplineLocalEndpointAlgorithm,
@@ -76,6 +77,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineLocalCanonicalRecipe,
     BSplineLocalChunkedRecipe,
     BSplineLocalCoefficientRecipe,
+    BSplineLocalCompactPositionsRecipe,
     BSplineLocalCoordinatesRecipe,
     BSplineLocalDecodeRatioRecipe,
     BSplineLocalEndpointRecipe,
@@ -146,6 +148,9 @@ def case(n=64, a=17):
 def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     from dataclasses import replace
 
+    compact_positions = strategy == "h_compact_positions" or recipe_options.pop(
+        "_compact_positions", False
+    )
     whole_frame = strategy == "h_whole_frame" or recipe_options.pop(
         "_whole_frame", False
     )
@@ -357,6 +362,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineLocalFrameArenaAlgorithm())
     registry.register(BSplineLocalNumericArenaAlgorithm())
     registry.register(BSplineLocalWholeFrameAlgorithm())
+    registry.register(BSplineLocalCompactPositionsAlgorithm())
     registry.register(BSplineLocalIntegerAlgorithm())
     registry.register(BSplineLocalVectorAlgorithm())
     registry.register(BSplineLocalUnifiedAlgorithm())
@@ -392,7 +398,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         recipe_options.setdefault("lane_atoms", 4)
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v55"
+        "v56"
+        if compact_positions
+        else "v55"
         if whole_frame
         else "v54"
         if numeric_arena
@@ -501,7 +509,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         else "v2"
         if tuned
         else "v1",
-        BSplineLocalWholeFrameRecipe(**recipe_options)
+        BSplineLocalCompactPositionsRecipe(**recipe_options)
+        if compact_positions
+        else BSplineLocalWholeFrameRecipe(**recipe_options)
         if whole_frame
         else BSplineLocalNumericArenaRecipe(**recipe_options)
         if numeric_arena
@@ -3072,6 +3082,13 @@ ALL_QUERY_OPTIONS = (
             {"_whole_frame": True, "prepare_warps": 2}, id="whole-frame-warp2"
         ),
     ]
+    + [
+        pytest.param({"_compact_positions": True}, id="compact-positions-0"),
+        pytest.param(
+            {"_compact_positions": True, "prepare_warps": 2},
+            id="compact-positions-warp2",
+        ),
+    ]
     + [pytest.param(opt, id=f"vector-{i}") for i, opt in enumerate(VECTOR_OPTIONS)]
     + [pytest.param(opt, id=f"integer-{i}") for i, opt in enumerate(INTEGER_OPTIONS)]
     + [
@@ -3972,6 +3989,7 @@ def test_native_bound_recipe_roundtrip_and_bounds():
         "h_frame_arena",
         "h_numeric_arena",
         "h_whole_frame",
+        "h_compact_positions",
         "h_local_integer",
         "h_local_vector",
     ],
@@ -4075,6 +4093,7 @@ def test_native_bound_count_changes_across_graph(batch, floor, strategy):
         "h_frame_arena",
         "h_numeric_arena",
         "h_whole_frame",
+        "h_compact_positions",
         "h_local_integer",
         "h_local_vector",
     ],
@@ -4128,6 +4147,7 @@ def test_native_bound_strided_individual_gradients(which, strategy):
         "h_frame_arena",
         "h_numeric_arena",
         "h_whole_frame",
+        "h_compact_positions",
         "h_local_integer",
         "h_local_vector",
     ],
@@ -4674,6 +4694,7 @@ def test_native_cache_recipe_roundtrip_and_bounds():
         ("h_frame_arena", True),
         ("h_numeric_arena", True),
         ("h_whole_frame", True),
+        ("h_compact_positions", True),
         ("h_local_integer", True),
         ("h_local_vector", True),
     ],
@@ -4705,6 +4726,7 @@ def test_native_cache_spacing_fallbacks(strategy, unroll, spacing, batch, amplit
             "h_frame_arena",
             "h_numeric_arena",
             "h_whole_frame",
+            "h_compact_positions",
             "h_local_integer",
             "h_local_vector",
         )
@@ -6669,7 +6691,9 @@ def test_numeric_arena_disjoint_input_and_reused_scratch(device, shards):
 
 
 @GPU
-@pytest.mark.parametrize("strategy", ["h_numeric_arena", "h_whole_frame"])
+@pytest.mark.parametrize(
+    "strategy", ["h_numeric_arena", "h_whole_frame", "h_compact_positions"]
+)
 def test_numeric_arena_concurrent_retained_all_gradients(strategy):
     from concurrent.futures import ThreadPoolExecutor
 
@@ -6745,3 +6769,143 @@ def test_whole_frame_contains_disjoint_numeric_views(device, atoms):
     views["delta"].fill_(2.5)
     assert torch.all(views["input"] == 1.25)
     assert views["adjoint"].count_nonzero() == 0
+
+
+def test_compact_positions_recipe_roundtrip():
+    reg = Registry()
+    reg.register(BSplineLocalCompactPositionsAlgorithm())
+    recipe = BSplineLocalCompactPositionsRecipe()
+    plan = ExecutionPlan("research_cuda_quadratic_bspline", "v56", recipe)
+    assert reg.loads_plan(reg.dumps_plan(plan)) == plan
+    assert recipe.compact_positions and not getattr(recipe, "whole_frame", False)
+
+
+@pytest.mark.parametrize("sites,within_range", [(1024, True), (4096, False)])
+def test_compact_positions_declares_index_range(sites, within_range):
+    from torchcst._backends.schema import DeviceInfo
+    from torchcst.operators.context import LinearContext
+
+    ctx = LinearContext(
+        operator=bs.fixture_operator(case(n=sites)),
+        input_shape=(32, sites),
+        input_strides=(sites, 1),
+        dtype=torch.float32,
+        atom_count=17,
+        device=DeviceInfo("cuda", 0),
+        parameter_dim=4,
+    )
+    result = BSplineLocalCompactPositionsAlgorithm().supports(
+        ctx, BSplineLocalCompactPositionsRecipe()
+    )
+    assert (
+        "signed16 local positions exceed supported range" not in result.reasons
+    ) == within_range
+
+
+@pytest.mark.parametrize("device", ["cpu", pytest.param("cuda", marks=GPU)])
+def test_compact_positions_frame_preserves_values(device):
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.frame_buffers import (
+        make_frame,
+    )
+
+    frame = make_frame(
+        torch.empty(1, device=device),
+        4,
+        shards=True,
+        endpoints=True,
+        active=True,
+        compact_positions=True,
+    )
+    assert frame["pos"].dtype == frame["bp"].dtype == torch.int16
+    assert frame["order"].dtype == torch.int64
+    values = torch.tensor([-1, 0, 831, 9726], device=device, dtype=torch.int32)
+    frame["pos"].copy_(values)
+    frame["bp"].copy_(torch.tensor([-1, 0, 509, 510], device=device, dtype=torch.int32))
+    assert torch.equal(frame["pos"].int(), values.expand(2, 6, 4))
+    assert torch.equal(
+        frame["bp"].int(),
+        torch.tensor([-1, 0, 509, 510], device=device).expand(2, 2, 4),
+    )
+
+
+@GPU
+def test_compact_positions_query_and_injection_widen_before_offsets():
+    import triton.experimental.gluon as tr
+    import triton.experimental.gluon.language as tl
+
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        gluon_kernels as gk,
+    )
+
+    @tr.jit
+    def raw(Bank, Pos, Co, Half, Meta, V, BP, Out, Delta, Border):
+        tile: tl.constexpr = tl.BlockedLayout([1, 1], [1, 32], [4, 1], [1, 0])
+        a = tl.arange(0, 4, layout=tl.SliceLayout(1, tile))
+        b = tl.arange(0, 64, layout=tl.SliceLayout(0, tile))
+        h, hp = gk._query(
+            Bank, Pos, Co, Half, a, b, 1, 64, 9727, 1, 4, 64, True, 64, tile
+        )
+        tl.store(Out + a[:, None] * 64 + b[None, :], h, a[:, None] < 1)
+        tl.store(Out + 64 + a[:, None] * 64 + b[None, :], hp, a[:, None] < 1)
+        value = tl.load(V + a[:, None] * 64 + b[None, :], a[:, None] < 1, 0)
+        gk._inject(
+            value,
+            Delta,
+            Meta,
+            Pos,
+            Co,
+            a,
+            b,
+            1,
+            64,
+            9727,
+            1,
+            Border,
+            BP,
+            8,
+            511,
+            None,
+            False,
+            False,
+            64,
+        )
+
+    bank = torch.randn(3, 9727, 64, device="cuda")
+    co = torch.randn(2, 3, 6, 1, device="cuda")
+    pos = (
+        torch.tensor([-1, 831, 9726, 4096, 0, 0], device="cuda", dtype=torch.int32)
+        .view(1, 6, 1)
+        .expand(2, 6, 1)
+        .contiguous()
+    )
+    bp = (
+        torch.tensor([509, 510], device="cuda", dtype=torch.int32)
+        .view(1, 2, 1)
+        .expand(2, 2, 1)
+        .contiguous()
+    )
+    meta = torch.ones(1, 12, device="cuda", dtype=torch.float64)
+    half = torch.ones(2, 1, device="cuda")
+    value = torch.randn(1, 64, device="cuda", dtype=torch.float64)
+    outputs = []
+    for dtype in (torch.int32, torch.int16):
+        out = torch.empty(2, 1, 64, device="cuda", dtype=torch.float64)
+        delta = torch.zeros(3, 9727, 64, device="cuda")
+        border = torch.zeros(3, 511, 8, 64, device="cuda")
+        raw[(1,)](
+            bank,
+            pos.to(dtype),
+            co,
+            half,
+            meta,
+            value,
+            bp.to(dtype),
+            out,
+            delta,
+            border,
+            num_warps=4,
+            enable_fp_fusion=False,
+        )
+        outputs.append((out, delta, border))
+    for a, b in zip(*outputs):
+        assert torch.equal(a, b)

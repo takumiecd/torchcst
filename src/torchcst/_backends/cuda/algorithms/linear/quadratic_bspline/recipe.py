@@ -1014,3 +1014,10 @@ class BSplineLocalWholeFrameRecipe(BSplineLocalNumericArenaRecipe):
     """Revision55: one owned frame allocation, excluding the persistent count."""
 
     whole_frame = True
+
+
+@dataclass(frozen=True)
+class BSplineLocalCompactPositionsRecipe(BSplineLocalNumericArenaRecipe):
+    """Revision56: lossless signed16 local positions, widened before arithmetic."""
+
+    compact_positions = True

@@ -916,3 +916,10 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
 )
 
 REGISTRY.register(BSplineLocalWholeFrameAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalCompactPositionsAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalCompactPositionsAlgorithm())

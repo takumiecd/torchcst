@@ -1743,3 +1743,45 @@ benchmarkのstream/warmup/capture手順、memory統計の定義、精度基準�
 v55 CPU2029 passed/5170 skipped/18既存warning(40.46s)、変更対象Ruff、両case、build PASS。
 GPUではraw23件（GPU13/CPU10）、共有33件+v54/v55同時retained2件の計35件を先に検査し、
 両primaryでv52chunk32/v54chunk64/v55chunk64/Denseを完全stepで比較する。
+
+### v55 G4: 大きな単一確保でreservedが増加、不採用
+
+初回job `colabjob-3fed8f0ba8564a2993b5da2ecade6550`はG4割当HTTP503で実行前に中断。
+No VM/No結果とsource1690filesのGit-byte一致をallocation-failuresへ保存し、recover後に明示再提出。
+source `70c2b8ac7b8f41e49da2c29d4a61995b8b264e26`、成功job
+`colabjob-4241d37f4b274e238c19bb22e24762c4`でraw23件PASS(4.51s、GPU13/CPU10)、
+共有+同時retained35件PASS(60.86s)。全planの両主3状態full-shape独立FP64 Y/dX/全4P、
+全52,428sigma更新、初期hash一致もPASS。全4P maxabs1.069e-4、relL2 6.266e-7。
+
+|G4,65rounds|v52chunk32 ms|v54 ms|v55 ms|Dense ms|v55 allocated/reserved MiB|
+|---|---:|---:|---:|---:|---:|
+|B32 mixed|.326599|.329090|.326230|.066240|33.252/96|
+|B64 mixed|.495790|.410560|.409540|.074780|46.186/124|
+
+v54のreserved82/110MiBに対し、v55は96/124MiBと各14MiB増えた。
+単一allocationにまとめれば必ずreservedが減るわけではないという負の結果。
+B64はDense106MiB以下を満たさず採用しない。未測定のallocator内部原因は確定しない。
+source archive `7b04dccda52c15225f899cf0c5330752f12d1e48535b437ea1ed52c50337b69a`、
+result archive `1bc965fad64acdcec5dc96d158c94d2974a6a5ed1ffcb78b47fa5a50df4f2496`。
+1690source files/31manifest entries/Git-byte一致、return0/no-timeout/cleanup ackを厳密検証。
+accepted G4は13job、診断/失敗/割当失敗/L4は別。所有GPU停止済み。source CPU CI PASS(2m18s)。
+
+## v56: 局所位置番号のlossless signed16化（検証前）
+
+v54の分離した係数arena+数値arenaを基準に戻し、Pos/BorderPosのみsigned16で保存する。
+Aのsource ID配列はsigned64のまま。係数、Meta、bank、重み、正規化、勾配の浮動小数点精度は変えない。
+支持範囲のN<=1024、最小局所block4では点配列9727要素、border511要素で、
+最大有効index9726/510と無効値-1はsigned16内に正確に収まる。supportsにindex上限も宣言する。
+
+読み込み直後にsigned32へ戻し、batch stride・shard・planeの掛け算やpoint+1は32bitで行う。
+16bitのまま9726*64や510*8*64を計算してoverflowさせない。
+保存payloadはPosで24A、BorderPosで8A、計32Abytes減る（A52428で約1.600MiB）。
+これは予約メモリ改善の証拠ではなく、同じ既存capture/replay統計で確認する。
+rawでは最大index/負sentinel/大きなstride/shardを使い、32bit版のquery/injectionとbit一致を要求する。
+その後、元の全shape3状態FP64 Y/dX/全4P・動的sigma・retained・同時backward検査と完全stepで比較する。
+
+v56 CPU2033 passed/5206 skipped/18既存warning(42.01s)、Ruff、両case、build PASS。
+rawでは既存分類/view19件+compact view CPU/CUDA2件+query/injection bit一致1件の計22件（GPU13/CPU9）、
+共有33件+v54/v55/v56同時retained3件の計36件、その後主2条件の完全stepを検査する。
+post-run metadataのregister tileは実際のbatch chunk幅に対応させ、compilerのregister数と区別する。
+この表記修正は測定済みtime/peakや実行kernelには影響しない。過去raw artifactは変更しない。

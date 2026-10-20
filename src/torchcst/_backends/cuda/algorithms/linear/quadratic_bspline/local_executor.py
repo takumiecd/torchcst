@@ -467,6 +467,7 @@ def _frame(
             endpoints=endpoints,
             active=fused_levels,
             numeric_elements=numeric_elements,
+            compact_positions=getattr(recipe, "compact_positions", False),
         )
         if numeric_elements:
             numeric_out.append(frame["numeric"])

@@ -99,7 +99,7 @@ def _query(
     prime = tl.full((AB, BB), 0, tl.float32, layout=TILE)
     half = tl.load(HalfInv + DIM * A + a, a < A, 0)
     for event in tl.static_range(6):
-        point = tl.load(Pos + (DIM * 6 + event) * A + a, a < A, -1)
+        point = tl.load(Pos + (DIM * 6 + event) * A + a, a < A, -1).to(tl.int32)
         mask = (a[:, None] < A) & (b[None, :] < B) & (point[:, None] >= 0)
         p0 = tl.load(Bank + point[:, None] * PB + b[None, :], mask, 0)
         p1 = tl.load(Bank + POINTS * PB + point[:, None] * PB + b[None, :], mask, 0)
@@ -148,7 +148,7 @@ def _inject(
     )
     weight = (Value * scale[:, None]).to(tl.float32)
     for event in tl.static_range(6):
-        point = tl.load(Pos + (DIM * 6 + event) * A + a, a < A, -1)
+        point = tl.load(Pos + (DIM * 6 + event) * A + a, a < A, -1).to(tl.int32)
         c0, c1, c2 = _coeff(Co, a, A, DIM, event, LAYOUT)
         if event >= 4:
             point = point + 1
@@ -168,7 +168,9 @@ def _inject(
         for p in tl.static_range(3):
             c = c0 if p == 0 else c1 if p == 1 else c2
             if SHARDS and event >= 4:
-                block = tl.load(BorderPos + (DIM * 2 + event - 4) * A + a, a < A, -1)
+                block = tl.load(
+                    BorderPos + (DIM * 2 + event - 4) * A + a, a < A, -1
+                ).to(tl.int32)
                 shard = program % SHARDS
                 addr = (
                     p * BLOCKS * SHARDS * PB

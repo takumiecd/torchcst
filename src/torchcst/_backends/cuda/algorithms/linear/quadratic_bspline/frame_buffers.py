@@ -5,14 +5,25 @@ import math
 import torch
 
 
-def make_frame(source, atoms, *, shards, endpoints, active, numeric_elements=0):
+def make_frame(
+    source,
+    atoms,
+    *,
+    shards,
+    endpoints,
+    active,
+    numeric_elements=0,
+    compact_positions=False,
+):
+    position_dtype = torch.int16 if compact_positions else torch.int32
+    position_bytes = 2 if compact_positions else 4
     entries = [
         ("meta", (atoms, 12), torch.float64, 8),
         ("order", (atoms,), torch.int64, 8),
-        ("pos", (2, 6, atoms), torch.int32, 4),
+        ("pos", (2, 6, atoms), position_dtype, position_bytes),
         ("co", (2, 3, 6, atoms), torch.float32, 4),
         ("half", (2, atoms), torch.float32, 4),
-        ("bp", (2, 2, atoms) if shards else (0,), torch.int32, 4),
+        ("bp", (2, 2, atoms) if shards else (0,), position_dtype, position_bytes),
         ("injection", (2, atoms) if endpoints else (0,), torch.int16, 2),
         ("active", (2,) if active else (0,), torch.int32, 4),
     ]

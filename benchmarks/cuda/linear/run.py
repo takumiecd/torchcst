@@ -822,6 +822,24 @@ def measure(args, run):
                             ),
                         }
                     )
+                if getattr(recipe, "batch_chunk", 0) and not getattr(
+                    recipe, "owner_events", 0
+                ):
+                    tile_rows = min(m, recipe.batch_chunk)
+                    tile_columns = max(
+                        1 << (tile_rows - 1).bit_length(),
+                        32 if getattr(recipe, "batch_values", 1) == 4 else 1,
+                    )
+                    hybrid_routing["register_tile_elements_per_value"] = (
+                        recipe.axis_atoms * tile_columns
+                    )
+                    hybrid_routing["register_tile_scope"] = (
+                        "one batch chunk; compiler register reports are separate"
+                    )
+                if getattr(recipe, "compact_positions", False):
+                    hybrid_routing["local_position_storage"] = (
+                        "lossless signed16 Pos/BorderPos; signed32 widening before pointer multiplication; source IDs remain signed64"
+                    )
                 if getattr(recipe, "whole_frame", False):
                     hybrid_routing["whole_frame_allocation"] = (
                         "immutable metadata and numerical views share one frame-owned allocation; persistent diagnostic count stays separate; only disjoint scratch regions are reused"

@@ -26,6 +26,7 @@ from .recipe import (
     BSplineLocalCanonicalRecipe,
     BSplineLocalChunkedRecipe,
     BSplineLocalCoefficientRecipe,
+    BSplineLocalCompactPositionsRecipe,
     BSplineLocalCoordinatesRecipe,
     BSplineLocalDecodeRatioRecipe,
     BSplineLocalEndpointRecipe,
@@ -616,3 +617,26 @@ class BSplineLocalNumericArenaAlgorithm(BSplineLocalFrameArenaAlgorithm):
 class BSplineLocalWholeFrameAlgorithm(BSplineLocalNumericArenaAlgorithm):
     revision: str = "v55"
     recipe_type: type = BSplineLocalWholeFrameRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalCompactPositionsAlgorithm(BSplineLocalNumericArenaAlgorithm):
+    revision: str = "v56"
+    recipe_type: type = BSplineLocalCompactPositionsRecipe
+
+    def supports(self, context, recipe):
+        result = super().supports(context, recipe)
+        reasons = list(result.reasons)
+        if isinstance(context, LinearContext):
+            try:
+                minimum = getattr(recipe, "min_block_log", 3)
+                for n in layout(context.operator):
+                    points = (n.bit_length() - minimum) * n + 2 * (n >> minimum) - 1
+                    if max(points, 2 * (n >> minimum) - 1) > 32768:
+                        reasons.append(
+                            "signed16 local positions exceed supported range"
+                        )
+                        break
+            except (ValueError, TypeError, AttributeError):
+                pass
+        return SupportResult(tuple(reasons))
