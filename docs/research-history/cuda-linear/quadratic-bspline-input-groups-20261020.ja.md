@@ -1445,3 +1445,11 @@ forward input bankは必要なら同じframeのbackwardまで保存し、chunk/r
 CPU2014 passed /4974 skipped /18既存warning (40.38s)、変更対象Ruff、両case宣言とbuild PASS。
 GPU raw5件+共有全勾配/Graph/retained等33件の後、主B32/B64をv47/Denseと比較する。
 速度とallocated/reservedはまだ未検証で、採用や達成の主張はしない。
+
+
+v50初回job `colabjob-658a7b8162724c4fa21568a169a2a9f6` (78c05c9d): raw5件PASS(10.69s)。
+モデル側で共通_prepareの4戻り値を3変数へ受けた接続エラーで停止し、性能測定なし。
+従来と同じ4値の受け取りへ修正する。計装norm_replayは共通_prepareが記録済みのため、
+新executorの空markerで上書きしない。数式/精度/入力量/基準を変えず再検証する。
+source/result/manifest/git bytes/return1/no-timeout/cleanup ackをfailed-jobsへ厳密保存。
+supervisor29380 exit0で旧jobはterminal。次snapshotを明示的に再提出する。

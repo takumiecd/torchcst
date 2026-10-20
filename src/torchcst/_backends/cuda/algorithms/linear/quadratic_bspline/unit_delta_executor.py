@@ -70,8 +70,8 @@ class _Unit(torch.autograd.Function):
         tile = min(b, recipe.batch_chunk)
         chunks = tr.cdiv(b, tile)
         ctx.saved_banks = 0
-        meta, origin, spacing = _prepare(p, value, chart, recipe, moments)
-        for name in ("group", "pack", "norm_replay", "active_levels"):
+        meta, origin, spacing, _source = _prepare(p, value, chart, recipe, moments)
+        for name in ("group", "pack", "active_levels"):
             _empty(name)
         _stamp("coeff_prepare", 0)
         co = x.new_empty((44, a), dtype=torch.int64)
