@@ -1538,3 +1538,8 @@ CPU601,935条件（random ratio/alpha、bin境界、alpha0/1等）でFP64元式�
 これはGPUの精度/速度証拠ではない。raw範囲・live Graph bounds/fallback・旧decoderのbitwise契約、
 共有全4P/retained/動的sigma gateの後、同じ主B32/B64条件でv47/Denseと完全step比較する。
 公開dispatcherは変更しない。
+
+v51初回job `colabjob-2cdb8f5dff054be49d7bb0a4860a05eb`、sourcec73b64c8で旧decoder12件PASS後、
+新raw幅Graph照合が相対差4.976e-9となり、3e-13基準で停止した。モデル/性能測定には進めない。
+CPUとの差はGPU式の非2冪定数の型推論を疑い、表初期化・多項式係数・log2定数を明示FP64 fullへ統一する。
+原因の確定や修正成功は再検証前に主張しない。gateは変更しない。失敗archive/hash/source/cleanupを厳密保存した。
