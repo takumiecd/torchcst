@@ -37,10 +37,18 @@ def _with_hot_scratch(destination, recipe, label):
         _stamp(label, 1)
         return None
     rows = min(len(destination), recipe.batch_chunk)
+    pointmajor = getattr(recipe, "native_pointmajor", False)
+    shape = (
+        (shards, destination.shape[1], rows)
+        if pointmajor
+        else (shards, rows, destination.shape[1])
+    )
     hot = torch.zeros(
-        (shards, rows, destination.shape[1]),
+        shape,
         device=destination.device,
-        dtype=torch.float32,
+        dtype=torch.float64
+        if getattr(recipe, "native_hot_float64", False)
+        else torch.float32,
     )
     _stamp(label, 1)
     return destination, hot

@@ -821,3 +821,10 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
 )
 
 REGISTRY.register(BSplineLocalNativeShardsAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalNativePointAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalNativePointAlgorithm())

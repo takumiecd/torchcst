@@ -106,19 +106,31 @@ def _native_h_args(x, dy, destination, sizes, recipe):
             HOT_SHARDS=recipe.native_hot_shards,
             HOT_STRIDE=hot.stride(0),
         )
+    if getattr(recipe, "native_pointmajor", False):
+        result.update(
+            RawX=x.t().contiguous(),
+            RawDY=None if dy is None else dy.t().contiguous(),
+            NATIVE_POINT_MAJOR=True,
+            HOT_ROWS=destination[1].stride(1) if destination is not None else 0,
+        )
     return result
 
 
-def _native_part(destination, start, actual):
+def _native_part(destination, start, actual, recipe):
     if destination is None:
         return None
     if isinstance(destination, tuple):
         cold, hot = destination
-        return cold[start : start + actual], hot[:, :actual]
+        selected = (
+            hot[:, :, :actual]
+            if getattr(recipe, "native_pointmajor", False)
+            else hot[:, :actual]
+        )
+        return cold[start : start + actual], selected
     return destination[start : start + actual]
 
 
-def _finish_native(output, destination, label):
+def _finish_native(output, destination, label, recipe):
     if destination is None:
         return
     if not isinstance(destination, tuple):
@@ -136,6 +148,9 @@ def _finish_native(output, destination, label):
         hot.stride(0),
         hot.shape[0],
         256,
+        POINT_MAJOR=getattr(recipe, "native_pointmajor", False),
+        ROWS=hot.stride(1) if getattr(recipe, "native_pointmajor", False) else 0,
+        SITES=output.shape[1],
         num_warps=4,
         enable_fp_fusion=False,
     )
@@ -497,7 +512,7 @@ class _Local(torch.autograd.Function):
         )
         _report("stream_forward", compiled)
         _stamp("stream_forward", 1)
-        _finish_native(y, native_y, "native_finish_forward")
+        _finish_native(y, native_y, "native_finish_forward", recipe)
         y = _restore(delta, border, y, sizes[0], recipe, "scan_output", active, 0, ml)
         ctx.save_for_backward(
             meta,
@@ -624,7 +639,7 @@ class _Local(torch.autograd.Function):
         _report("stream_backward", compiled)
         _stamp("stream_backward", 1)
         if need_dx:
-            _finish_native(dx, native_dx, "native_finish_backward")
+            _finish_native(dx, native_dx, "native_finish_backward", recipe)
             dx = _restore(
                 delta, border, dx, sizes[1], recipe, "scan_input", active, 1, ml
             )

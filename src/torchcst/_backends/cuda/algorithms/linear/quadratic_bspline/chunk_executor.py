@@ -134,7 +134,7 @@ class _Chunked(torch.autograd.Function):
                 **_native_h_args(
                     xs,
                     None,
-                    _native_part(native_y, start, actual),
+                    _native_part(native_y, start, actual, recipe),
                     sizes,
                     recipe,
                 ),
@@ -145,8 +145,9 @@ class _Chunked(torch.autograd.Function):
             _stamp(label, 1)
             _finish_native(
                 ys,
-                _native_part(native_y, start, actual),
+                _native_part(native_y, start, actual, recipe),
                 _name("native_finish_forward", index),
+                recipe,
             )
             _restore(
                 delta,
@@ -291,7 +292,7 @@ class _Chunked(torch.autograd.Function):
                 **_native_h_args(
                     xs,
                     dys,
-                    _native_part(native_dx, start, actual),
+                    _native_part(native_dx, start, actual, recipe),
                     sizes,
                     recipe,
                 ),
@@ -303,8 +304,9 @@ class _Chunked(torch.autograd.Function):
             if need_dx:
                 _finish_native(
                     dx[start : start + tile],
-                    _native_part(native_dx, start, actual),
+                    _native_part(native_dx, start, actual, recipe),
                     _name("native_finish_backward", index),
+                    recipe,
                 )
                 _restore(
                     delta,

@@ -27,6 +27,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineLocalNarrowAlgorithm,
     BSplineLocalNativeBoundAlgorithm,
     BSplineLocalNativeCacheAlgorithm,
+    BSplineLocalNativePointAlgorithm,
     BSplineLocalNativeShardsAlgorithm,
     BSplineLocalOwnerAlgorithm,
     BSplineLocalPaddedAlgorithm,
@@ -70,6 +71,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineLocalNarrowRecipe,
     BSplineLocalNativeBoundRecipe,
     BSplineLocalNativeCacheRecipe,
+    BSplineLocalNativePointRecipe,
     BSplineLocalNativeShardsRecipe,
     BSplineLocalOwnerRecipe,
     BSplineLocalPaddedRecipe,
@@ -118,11 +120,15 @@ def case(n=64, a=17):
 def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     from dataclasses import replace
 
+    native_point = strategy == "h_local_native_point" or recipe_options.pop(
+        "_native_point", False
+    )
     native_shards = strategy == "h_local_native_shards" or recipe_options.pop(
         "_native_shards", False
     )
     unified = (
         native_shards
+        or native_point
         or strategy == "h_local_unified"
         or recipe_options.pop("_unified", False)
     )
@@ -262,6 +268,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineLocalLevelMaskAlgorithm())
     registry.register(BSplineLocalUnifiedAlgorithm())
     registry.register(BSplineLocalNativeShardsAlgorithm())
+    registry.register(BSplineLocalNativePointAlgorithm())
     registry.register(BSplineLocalCoordinatesAlgorithm())
     registry.register(BSplineLocalTransposedAlgorithm())
     registry.register(BSplineLocalPersistentAlgorithm())
@@ -289,7 +296,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     tuned = bool(recipe_options) or strategy == "matrix_separable"
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v41"
+        "v42"
+        if native_point
+        else "v41"
         if native_shards
         else "v40"
         if unified
@@ -370,7 +379,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         else "v2"
         if tuned
         else "v1",
-        BSplineLocalNativeShardsRecipe(**recipe_options)
+        BSplineLocalNativePointRecipe(**recipe_options)
+        if native_point
+        else BSplineLocalNativeShardsRecipe(**recipe_options)
         if native_shards
         else BSplineLocalUnifiedRecipe(**recipe_options)
         if unified
@@ -2687,6 +2698,18 @@ NATIVE_SHARDS_OPTIONS = [
         "batch_chunk": 16,
     },
 ]
+NATIVE_POINT_OPTIONS = [
+    {"_native_point": True},
+    {
+        "_native_point": True,
+        "axis_atoms": 8,
+        "native_atoms": 8,
+        "reciprocal": False,
+        "contract_float32": False,
+        "norm_float32": False,
+        "batch_chunk": 16,
+    },
+]
 ALL_QUERY_OPTIONS = (
     QUERY_OPTIONS
     + LEAN_OPTIONS
@@ -2746,6 +2769,10 @@ ALL_QUERY_OPTIONS = (
     + [
         pytest.param(opt, id=f"native-shards-{i}")
         for i, opt in enumerate(NATIVE_SHARDS_OPTIONS)
+    ]
+    + [
+        pytest.param(opt, id=f"native-point-{i}")
+        for i, opt in enumerate(NATIVE_POINT_OPTIONS)
     ]
 )
 
@@ -3025,6 +3052,10 @@ def test_local_recipe_roundtrip_and_bounds():
     + [
         pytest.param(opt, id=f"native-shards-{i}")
         for i, opt in enumerate(NATIVE_SHARDS_OPTIONS)
+    ]
+    + [
+        pytest.param(opt, id=f"native-point-{i}")
+        for i, opt in enumerate(NATIVE_POINT_OPTIONS)
     ],
 )
 def test_local_dyadic_boundaries_graph(options):
@@ -3612,6 +3643,7 @@ def test_native_bound_recipe_roundtrip_and_bounds():
         "h_local_level_mask",
         "h_local_unified",
         "h_local_native_shards",
+        "h_local_native_point",
     ],
 )
 def test_native_bound_count_changes_across_graph(batch, floor, strategy):
@@ -3700,6 +3732,7 @@ def test_native_bound_count_changes_across_graph(batch, floor, strategy):
         "h_local_level_mask",
         "h_local_unified",
         "h_local_native_shards",
+        "h_local_native_point",
     ],
 )
 def test_native_bound_strided_individual_gradients(which, strategy):
@@ -3739,6 +3772,7 @@ def test_native_bound_strided_individual_gradients(which, strategy):
         "h_local_level_mask",
         "h_local_unified",
         "h_local_native_shards",
+        "h_local_native_point",
     ],
 )
 def test_native_bound_retained_count_above_grid(strategy):
@@ -4271,6 +4305,7 @@ def test_native_cache_recipe_roundtrip_and_bounds():
         ("h_local_native_cache", True),
         ("h_local_unified", True),
         ("h_local_native_shards", True),
+        ("h_local_native_point", True),
     ],
 )
 @pytest.mark.parametrize(
@@ -4670,12 +4705,26 @@ def test_native_shards_finish_and_reuse(shards, batch):
 
 
 @GPU
-@pytest.mark.parametrize("shards", [4, 16])
+@pytest.mark.parametrize(
+    "strategy,shards",
+    [
+        ("h_local_native_shards", 4),
+        ("h_local_native_shards", 16),
+        ("h_local_native_point", 1),
+    ],
+)
 @pytest.mark.parametrize("batch", [3, 33])
-def test_native_shards_hot_overlap(shards, batch):
+def test_native_shards_hot_overlap(strategy, shards, batch):
     # The prior 513-coincident gate must cover both new shard counts, not only
     # the default recipe. These profiles have 4 sites and take cached hot.
-    layer = model("h_local_native_shards", n=64, a=513, native_hot_shards=shards)
+    layer = model(
+        strategy,
+        n=64,
+        a=513,
+        **(
+            {"native_hot_shards": shards} if strategy == "h_local_native_shards" else {}
+        ),
+    )
     with torch.no_grad():
         layer.atoms.p[:, 0] = 0.6
         layer.atoms.p[:, 1] = 0.8
@@ -4687,3 +4736,51 @@ def test_native_shards_hot_overlap(shards, batch):
                 layer.atoms.p[:, 2:].add_(0.0037)
         x = torch.randn(batch, 64, device="cuda", requires_grad=True)
         gate(layer, x, torch.randn_like(x))
+
+
+def test_native_point_recipe_roundtrip():
+    reg = Registry()
+    reg.register(BSplineLocalNativePointAlgorithm())
+    for options in NATIVE_POINT_OPTIONS:
+        recipe = BSplineLocalNativePointRecipe(
+            **{k: v for k, v in options.items() if k != "_native_point"}
+        )
+        plan = ExecutionPlan("research_cuda_quadratic_bspline", "v42", recipe)
+        assert reg.loads_plan(reg.dumps_plan(plan)) == plan
+        assert recipe.native_hot_float64 and recipe.native_hot_shards == 1
+        assert recipe.native_pointmajor
+
+
+@GPU
+@pytest.mark.parametrize("capacity", [3, 16, 32])
+def test_native_point_finish_padding_and_reuse(capacity):
+    import triton as tr
+
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        native_shard_kernels as ns,
+    )
+
+    hot = torch.randn(1, 64, capacity, device="cuda", dtype=torch.float64)
+    for actual in (capacity, 1, capacity):
+        output = torch.randn(actual, 64, device="cuda")
+        cold = torch.randn_like(output, dtype=torch.float64)
+        reference = (output.double() + cold + hot[0, :, :actual].t()).float()
+        before = hot.clone()
+        ns.finish[(tr.cdiv(output.numel(), 256),)](
+            output,
+            cold,
+            hot,
+            output.numel(),
+            hot.stride(0),
+            1,
+            256,
+            POINT_MAJOR=True,
+            ROWS=capacity,
+            SITES=64,
+            num_warps=4,
+            enable_fp_fusion=False,
+        )
+        torch.testing.assert_close(output, reference, atol=0, rtol=0)
+        assert torch.count_nonzero(hot[:, :, :actual]) == 0
+        assert torch.equal(hot[:, :, actual:], before[:, :, actual:])
+        hot.normal_()

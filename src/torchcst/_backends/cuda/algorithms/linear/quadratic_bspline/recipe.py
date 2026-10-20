@@ -821,3 +821,12 @@ class BSplineLocalNativeShardsRecipe(BSplineLocalUnifiedRecipe):
             16,
         ):
             raise ValueError("native_hot_shards must be 4 or 16")
+
+
+@dataclass(frozen=True)
+class BSplineLocalNativePointRecipe(BSplineLocalUnifiedRecipe):
+    """Revision 42: batch-contiguous native reads and FP64 hot destination."""
+
+    native_pointmajor = True
+    native_hot_shards = 1
+    native_hot_float64 = True

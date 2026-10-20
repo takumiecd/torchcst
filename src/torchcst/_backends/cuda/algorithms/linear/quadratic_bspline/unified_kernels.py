@@ -21,11 +21,17 @@ def _term(
     DIM: tl.constexpr,
     SITE: tl.constexpr,
     PRIME: tl.constexpr,
+    POINT_MAJOR: tl.constexpr = False,
 ):
     mask = (
         (a[:, None] < A) & (b[None, :] < B) & ((left + SITE)[:, None] < right[:, None])
     )
-    x = tl.load(X + b[None, :] * N + (left + SITE)[:, None], mask, 0)
+    addr = (
+        (left + SITE)[:, None] * B + b[None, :]
+        if POINT_MAJOR
+        else b[None, :] * N + (left + SITE)[:, None]
+    )
+    x = tl.load(X + addr, mask, 0)
     f = tl.load(Co + (DIM * 18 + SITE) * A + slot, a < A, 0)
     v = x * f[:, None]
     if PRIME:
@@ -53,18 +59,19 @@ def _native_query(
     BB: tl.constexpr,
     PRIME: tl.constexpr,
     UNROLL: tl.constexpr,
+    POINT_MAJOR: tl.constexpr = False,
 ):
-    v0, p0 = _term(X, Co, slot, a, b, left, right, A, B, N, DIM, 0, PRIME)
-    v1, p1 = _term(X, Co, slot, a, b, left, right, A, B, N, DIM, 1, PRIME)
+    v0, p0 = _term(X, Co, slot, a, b, left, right, A, B, N, DIM, 0, PRIME, POINT_MAJOR)
+    v1, p1 = _term(X, Co, slot, a, b, left, right, A, B, N, DIM, 1, PRIME, POINT_MAJOR)
     s0, t0 = v0 + v1, p0 + p1
-    v2, p2 = _term(X, Co, slot, a, b, left, right, A, B, N, DIM, 2, PRIME)
-    v3, p3 = _term(X, Co, slot, a, b, left, right, A, B, N, DIM, 3, PRIME)
+    v2, p2 = _term(X, Co, slot, a, b, left, right, A, B, N, DIM, 2, PRIME, POINT_MAJOR)
+    v3, p3 = _term(X, Co, slot, a, b, left, right, A, B, N, DIM, 3, PRIME, POINT_MAJOR)
     s1, t1 = v2 + v3, p2 + p3
-    v4, p4 = _term(X, Co, slot, a, b, left, right, A, B, N, DIM, 4, PRIME)
-    v5, p5 = _term(X, Co, slot, a, b, left, right, A, B, N, DIM, 5, PRIME)
+    v4, p4 = _term(X, Co, slot, a, b, left, right, A, B, N, DIM, 4, PRIME, POINT_MAJOR)
+    v5, p5 = _term(X, Co, slot, a, b, left, right, A, B, N, DIM, 5, PRIME, POINT_MAJOR)
     s2, t2 = v4 + v5, p4 + p5
-    v6, p6 = _term(X, Co, slot, a, b, left, right, A, B, N, DIM, 6, PRIME)
-    v7, p7 = _term(X, Co, slot, a, b, left, right, A, B, N, DIM, 7, PRIME)
+    v6, p6 = _term(X, Co, slot, a, b, left, right, A, B, N, DIM, 6, PRIME, POINT_MAJOR)
+    v7, p7 = _term(X, Co, slot, a, b, left, right, A, B, N, DIM, 7, PRIME, POINT_MAJOR)
     value, prime = (s0 + s1) + (s2 + (v6 + v7)), (t0 + t1) + (t2 + (p6 + p7))
     return value.to(tl.float64), prime.to(tl.float64)
 
@@ -87,6 +94,8 @@ def _native_inject(
     UNROLL: tl.constexpr,
     SHARDS: tl.constexpr = 0,
     STRIDE: tl.constexpr = 0,
+    POINT_MAJOR: tl.constexpr = False,
+    ROWS: tl.constexpr = 0,
 ):
     scale = tl.load(Meta + 12 * a, a < A, 0) * tl.load(Meta + 12 * a + 4, a < A, 0)
     weight = (Value * scale[:, None]).to(tl.float32)
@@ -95,8 +104,13 @@ def _native_inject(
         f = tl.load(Co + (DIM * 18 + site) * A + slot, a < A, 0)
         j = left + site
         mask = (a[:, None] < A) & (b[None, :] < B) & (j[:, None] < right[:, None])
+        addr = (
+            j[:, None] * ROWS + b[None, :]
+            if POINT_MAJOR
+            else b[None, :] * N + j[:, None]
+        )
         tl.atomic_add(
-            Y + offset + b[None, :] * N + j[:, None],
+            Y + offset + addr,
             weight * f[:, None],
             mask,
             sem="relaxed",
@@ -141,6 +155,8 @@ def forward(
     NativeHotOut=None,
     HOT_SHARDS: tl.constexpr = 0,
     HOT_STRIDE: tl.constexpr = 0,
+    NATIVE_POINT_MAJOR: tl.constexpr = False,
+    HOT_ROWS: tl.constexpr = 0,
 ):
     tl.static_assert(SAVE == "none")
     count = tl.load(Count)
@@ -166,7 +182,22 @@ def forward(
                 lo = tl.load(Pos + ns, ns < A, 0)
                 ro = tl.load(Pos + A + ns, ns < A, 0)
                 nh, _ = _native_query(
-                    RawX, Co, ns, na, b, li, ri, A, B, NI, 1, AB, BB, False, True
+                    RawX,
+                    Co,
+                    ns,
+                    na,
+                    b,
+                    li,
+                    ri,
+                    A,
+                    B,
+                    NI,
+                    1,
+                    AB,
+                    BB,
+                    False,
+                    True,
+                    NATIVE_POINT_MAJOR,
                 )
                 _native_inject(
                     nh,
@@ -185,6 +216,8 @@ def forward(
                     True,
                     HOT_SHARDS,
                     HOT_STRIDE,
+                    NATIVE_POINT_MAJOR,
+                    HOT_ROWS,
                 )
         if base + AB > count:
             h, hp = _query(
@@ -280,6 +313,8 @@ def backward(
     NativeHotOut=None,
     HOT_SHARDS: tl.constexpr = 0,
     HOT_STRIDE: tl.constexpr = 0,
+    NATIVE_POINT_MAJOR: tl.constexpr = False,
+    HOT_ROWS: tl.constexpr = 0,
 ):
     tl.static_assert(SAVE == "none")
     count = tl.load(Count)
@@ -305,11 +340,41 @@ def backward(
                 lo = tl.load(Pos + ns, ns < A, 0)
                 ro = tl.load(Pos + A + ns, ns < A, 0)
                 ng, ngp = _native_query(
-                    RawDY, Co, ns, na, b, lo, ro, A, B, NO, 0, AB, BB, VJP, True
+                    RawDY,
+                    Co,
+                    ns,
+                    na,
+                    b,
+                    lo,
+                    ro,
+                    A,
+                    B,
+                    NO,
+                    0,
+                    AB,
+                    BB,
+                    VJP,
+                    True,
+                    NATIVE_POINT_MAJOR,
                 )
                 if VJP:
                     nh, nhp = _native_query(
-                        RawX, Co, ns, na, b, li, ri, A, B, NI, 1, AB, BB, True, True
+                        RawX,
+                        Co,
+                        ns,
+                        na,
+                        b,
+                        li,
+                        ri,
+                        A,
+                        B,
+                        NI,
+                        1,
+                        AB,
+                        BB,
+                        True,
+                        True,
+                        NATIVE_POINT_MAJOR,
                     )
                     if CONTRACT32:
                         nh, ng, nhp, ngp = (
@@ -346,6 +411,8 @@ def backward(
                         True,
                         HOT_SHARDS,
                         HOT_STRIDE,
+                        NATIVE_POINT_MAJOR,
+                        HOT_ROWS,
                     )
         if base + AB > count:
             g, gp = _query(

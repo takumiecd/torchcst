@@ -644,3 +644,58 @@ finish kernelでFP64合計と使用済み行のzero resetを融合し、次chunk
 B32/N1024では4shardsが0.5MiB、16shardsが2MiBの追加payloadだが、
 これは実測peakではない。初期zero、finish/reset、capture/replayを含め速度と両ピークを測る。
 v39最速版・v40cut.15・v41の4/16shards・Denseを同条件の完全stepで比較する。
+
+### v41実測: 主条件PASSだが速度改善なし、4shardsは追加重なりgate失敗
+
+main job `l4job-a1eb7bd1cac74d1ca3dbc970d49eeaa9`、source
+`2cad75b693e56682ca6bb02b817edc12d15f46e1`。
+40 targeted checks PASS（221.60s）、全4条件の3状態全shape独立FP64 gatesと
+全52,428σ更新・初期hash一致を確認した。完全stepは以下。
+
+|条件|v39 mask ms|v40 cut.15 ms|4shards ms|16shards ms|Dense ms|
+|---|---:|---:|---:|---:|---:|
+|B32 mixed|0.752962|0.808455|0.812437|0.835889|0.084348|
+|B64 mixed|1.213115|1.339285|1.350247|1.381633|0.109249|
+|B32 small|0.691202|0.980342|0.974096|0.990540|0.083727|
+|B32 switch|0.719049|0.776596|0.782599|0.797327|0.084225|
+
+4shards peak allocated/reservedはB32 **34.904/98 MiB**、B64 **35.654/102 MiB**。
+16shardsはB32 **35.901/98 MiB**、B64 **36.651/100 MiB**。
+Denseの両ピーク以下だが、v39/v40に対する速度改善はない。
+smallのstream forward/backwardはv40が0.289792/0.367616ms、
+4shardsが0.286720/0.364544ms、16shardsが0.287744/0.366592msとほぼ同帯。
+4shardsのzero約0.004ms/方向、finish約0.007ms/方向、16shardsは約0.005/0.012ms。
+これらは別の診断Graphの時間であり、主時間から差し引いたり足して割合を算出しない。
+FP64 atomicをFP32の分割先へ変えても、直接側全体の重さはほぼ変わらなかった。
+この実験だけで個々の読み取り/atomicのハードウェア待ち時間を同定したとはしない。
+
+source SHA256 `884f797817f51091e6281597d525193015587014910b136fa0dd0caaecbbc719`、
+result SHA256 `d2c28be45a453c7c1e2e8be49f6851056cb4aa2c8e61d7140e8786bb9288ff8f`。
+source1626 files、manifest68 files、return0、timeoutなし、cleanup ack確認。
+CPU2005pass/4593skip/18既存warning、Ruff/cases、370 runtime filesのpackage byte一致確認。
+
+追加job `l4job-f58f02ede60f44e08ee8cd433fae0e2c`、tests-only source
+`4c921b316dbaa021d911b04daebeaa54c78849b1`（runtimeは2cadと同じ）では、
+513個のcached-hot支持を同じ場所へ重ね、B3/B33、3つのlive状態を照合した。
+**4shardsは両batchでmax誤差約0.00083844となり4e-4を超えて失敗、16shardsの2件はPASS**。
+入力振幅やgateを変更せず失敗を残す。4shardsは主条件の速度表がPASSでも採用不可。
+16shardsも速度改善がないので採用しない。
+追加jobはsource SHA256 `a811302d141f626d46630f7cbfe5ed0a9577200d55f153c830014719458d89cc`、
+result SHA256 `935b1b0c4ccd80446c004dc6015218921877b2044320d1cc753477f47bb88c0f`、
+source1626/manifest4、return1/timeoutなし/cleanup ackまで確認し、failed-jobsへ隔離した。
+主条件PASSと追加gate失敗を混同しない。速度目標は依然未達。
+
+## v42: nativeのbatch方向連続配置（検証前）
+
+v40/v41のhot atomはwarp内laneがbatch方向を担当するが、RawXとY/dXは`[B,N]`であり、
+隣のlaneのaddress差が`N * sizeof(value)`となる。一方moment bankは既にsite-majorである。
+この配置上の違いを次の比較対象とする。ハードウェアのtransaction数や待ち時間の実測ではない。
+
+v42はnative用のX/dYをchunkごとに`[N,B]`へコピーし、hotの出力も
+`[1,N,min(B,batch_chunk)]`のFP64 scratchへ蓄積する。隣接batch laneの要素を連続配置し、
+finishで元の`[B,N]`へ戻す。端数chunkは物理row capacityをstrideとして使い、
+利用した行だけzero resetして再利用する。cold/oversize fallbackのFP64 scratchは元配置のまま。
+hotのFP64加算を保ち、v41のFP32部分和は使わない。
+profile/H/G/atom勾配式はv40と同じで、copy・zero・transpose finish込みで完全stepを測る。
+追加payloadはB32/N1024でFP64 hot256KiBとX/dYコピー各128KiBであり、実測peakとは区別する。
+v39最速版・v40cut.15・v42・Denseを4条件で比較し、513重なりも同じgateで確認する。

@@ -34,6 +34,7 @@ from .recipe import (
     BSplineLocalNarrowRecipe,
     BSplineLocalNativeBoundRecipe,
     BSplineLocalNativeCacheRecipe,
+    BSplineLocalNativePointRecipe,
     BSplineLocalNativeShardsRecipe,
     BSplineLocalOwnerRecipe,
     BSplineLocalPaddedRecipe,
@@ -496,3 +497,9 @@ class BSplineLocalUnifiedAlgorithm(BSplineLocalNativeCacheAlgorithm):
 class BSplineLocalNativeShardsAlgorithm(BSplineLocalUnifiedAlgorithm):
     revision: str = "v41"
     recipe_type: type = BSplineLocalNativeShardsRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalNativePointAlgorithm(BSplineLocalUnifiedAlgorithm):
+    revision: str = "v42"
+    recipe_type: type = BSplineLocalNativePointRecipe

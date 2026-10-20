@@ -13,10 +13,14 @@ def finish(
     STRIDE: tl.constexpr,
     SHARDS: tl.constexpr,
     BLOCK: tl.constexpr,
+    POINT_MAJOR: tl.constexpr = False,
+    ROWS: tl.constexpr = 0,
+    SITES: tl.constexpr = 0,
 ):
     j = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     s = tl.arange(0, SHARDS)
-    addr = Hot + s[:, None] * STRIDE + j[None, :]
+    index = (j % SITES) * ROWS + j // SITES if POINT_MAJOR else j
+    addr = Hot + s[:, None] * STRIDE + index[None, :]
     partial = tl.load(addr, j[None, :] < N, 0).to(tl.float64)
     value = tl.load(Cold + j, j < N, 0) + tl.sum(partial, 0)
     previous = tl.load(Y + j, j < N, 0).to(tl.float64)
