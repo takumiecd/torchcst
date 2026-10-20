@@ -1699,3 +1699,11 @@ full batch<=64、bank padding0、saved input bank、fused bank/zeroが数値aren
 v54 CPU2026 passed/5134 skipped/18既存warning(40.87s)、変更対象Ruff、両case、build PASS。
 raw分類/arena CPU/CUDA view19件（GPU11/CPU8）、実モデル共有+同時retained34件の後、
 両primaryでv52chunk32/v53chunk64/v54chunk64/Denseを比較する。
+
+v54初回job `colabjob-5c2e4576f7114f909bd6b22996c78e07`、source04a2cdd0でraw19件PASS、
+実モデル9件（8つの動的full-gradient条件と標準retained検査）PASS。
+追加cutoff optionが共有retained testの明示sigma_cutoff=.2と衝突してTypeErrorで停止した。
+runtimeやgateを変えず、追加optionを既存のprepare_warps=2へ変更する。
+ALL_QUERY_OPTIONS各testのmodel呼び出しの明示keywordをASTで確認し、prepare_warpsと重複しないことを確認した。
+元の共有retained/Graph検査がcutoffを変更し、混在native/Hは引き続き検査する。
+return1/no-timeout/source/manifest/hash/cleanupをfailed archiveへ保存し、性能には数えない。

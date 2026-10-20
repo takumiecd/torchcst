@@ -3050,8 +3050,8 @@ ALL_QUERY_OPTIONS = (
     + [
         pytest.param({"_numeric_arena": True}, id="numeric-arena-0"),
         pytest.param(
-            {"_numeric_arena": True, "sigma_cutoff": 0.5},
-            id="numeric-arena-cutoff",
+            {"_numeric_arena": True, "prepare_warps": 2},
+            id="numeric-arena-warp2",
         ),
     ]
     + [pytest.param(opt, id=f"vector-{i}") for i, opt in enumerate(VECTOR_OPTIONS)]
