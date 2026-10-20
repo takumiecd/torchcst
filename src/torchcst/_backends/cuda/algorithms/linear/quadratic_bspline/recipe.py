@@ -519,16 +519,17 @@ class BSplineLocalShardedRecipe(BSplineLocalActiveRecipe):
     """Revision 22: distribute block-boundary additions over small shard planes."""
 
     boundary_shards: int = 32
+    _boundary_shard_choices = (8, 16, 32, 64)
 
     def __post_init__(self):
         super().__post_init__()
-        if type(self.boundary_shards) is not int or self.boundary_shards not in (
-            8,
-            16,
-            32,
-            64,
+        if (
+            type(self.boundary_shards) is not int
+            or self.boundary_shards not in self._boundary_shard_choices
         ):
-            raise ValueError("boundary_shards must be 8, 16, 32 or 64")
+            raise ValueError(
+                f"boundary_shards must be one of {self._boundary_shard_choices}"
+            )
 
 
 @dataclass(frozen=True)
@@ -1021,3 +1022,11 @@ class BSplineLocalCompactPositionsRecipe(BSplineLocalNumericArenaRecipe):
     """Revision56: lossless signed16 local positions, widened before arithmetic."""
 
     compact_positions = True
+
+
+@dataclass(frozen=True)
+class BSplineLocalSmallBoundaryRecipe(BSplineLocalCompactPositionsRecipe):
+    """Revision57: four border planes with unchanged sampled profile and L2."""
+
+    boundary_shards: int = 4
+    _boundary_shard_choices = (4,)

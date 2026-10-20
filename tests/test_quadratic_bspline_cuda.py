@@ -42,6 +42,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineLocalPersistentAlgorithm,
     BSplineLocalSavedBankAlgorithm,
     BSplineLocalShardedAlgorithm,
+    BSplineLocalSmallBoundaryAlgorithm,
     BSplineLocalSpatialAlgorithm,
     BSplineLocalSplitAlgorithm,
     BSplineLocalTableDecodeAlgorithm,
@@ -100,6 +101,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineLocalPersistentRecipe,
     BSplineLocalSavedBankRecipe,
     BSplineLocalShardedRecipe,
+    BSplineLocalSmallBoundaryRecipe,
     BSplineLocalSpatialRecipe,
     BSplineLocalSplitRecipe,
     BSplineLocalTableDecodeRecipe,
@@ -148,6 +150,9 @@ def case(n=64, a=17):
 def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     from dataclasses import replace
 
+    small_boundary = strategy == "h_small_boundary" or recipe_options.pop(
+        "_small_boundary", False
+    )
     compact_positions = strategy == "h_compact_positions" or recipe_options.pop(
         "_compact_positions", False
     )
@@ -363,6 +368,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineLocalNumericArenaAlgorithm())
     registry.register(BSplineLocalWholeFrameAlgorithm())
     registry.register(BSplineLocalCompactPositionsAlgorithm())
+    registry.register(BSplineLocalSmallBoundaryAlgorithm())
     registry.register(BSplineLocalIntegerAlgorithm())
     registry.register(BSplineLocalVectorAlgorithm())
     registry.register(BSplineLocalUnifiedAlgorithm())
@@ -398,7 +404,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         recipe_options.setdefault("lane_atoms", 4)
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v56"
+        "v57"
+        if small_boundary
+        else "v56"
         if compact_positions
         else "v55"
         if whole_frame
@@ -509,7 +517,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         else "v2"
         if tuned
         else "v1",
-        BSplineLocalCompactPositionsRecipe(**recipe_options)
+        BSplineLocalSmallBoundaryRecipe(**recipe_options)
+        if small_boundary
+        else BSplineLocalCompactPositionsRecipe(**recipe_options)
         if compact_positions
         else BSplineLocalWholeFrameRecipe(**recipe_options)
         if whole_frame
@@ -3089,6 +3099,13 @@ ALL_QUERY_OPTIONS = (
             id="compact-positions-warp2",
         ),
     ]
+    + [
+        pytest.param({"_small_boundary": True}, id="small-boundary-0"),
+        pytest.param(
+            {"_small_boundary": True, "prepare_warps": 2},
+            id="small-boundary-warp2",
+        ),
+    ]
     + [pytest.param(opt, id=f"vector-{i}") for i, opt in enumerate(VECTOR_OPTIONS)]
     + [pytest.param(opt, id=f"integer-{i}") for i, opt in enumerate(INTEGER_OPTIONS)]
     + [
@@ -3990,6 +4007,7 @@ def test_native_bound_recipe_roundtrip_and_bounds():
         "h_numeric_arena",
         "h_whole_frame",
         "h_compact_positions",
+        "h_small_boundary",
         "h_local_integer",
         "h_local_vector",
     ],
@@ -4094,6 +4112,7 @@ def test_native_bound_count_changes_across_graph(batch, floor, strategy):
         "h_numeric_arena",
         "h_whole_frame",
         "h_compact_positions",
+        "h_small_boundary",
         "h_local_integer",
         "h_local_vector",
     ],
@@ -4148,6 +4167,7 @@ def test_native_bound_strided_individual_gradients(which, strategy):
         "h_numeric_arena",
         "h_whole_frame",
         "h_compact_positions",
+        "h_small_boundary",
         "h_local_integer",
         "h_local_vector",
     ],
@@ -4695,6 +4715,7 @@ def test_native_cache_recipe_roundtrip_and_bounds():
         ("h_numeric_arena", True),
         ("h_whole_frame", True),
         ("h_compact_positions", True),
+        ("h_small_boundary", True),
         ("h_local_integer", True),
         ("h_local_vector", True),
     ],
@@ -4727,6 +4748,7 @@ def test_native_cache_spacing_fallbacks(strategy, unroll, spacing, batch, amplit
             "h_numeric_arena",
             "h_whole_frame",
             "h_compact_positions",
+            "h_small_boundary",
             "h_local_integer",
             "h_local_vector",
         )
@@ -6650,7 +6672,7 @@ def test_numeric_arena_recipe_roundtrip_and_guards():
 
 
 @pytest.mark.parametrize("device", ["cpu", pytest.param("cuda", marks=GPU)])
-@pytest.mark.parametrize("shards", [0, 8])
+@pytest.mark.parametrize("shards", [0, 4, 8])
 def test_numeric_arena_disjoint_input_and_reused_scratch(device, shards):
     from itertools import pairwise
 
@@ -6692,7 +6714,8 @@ def test_numeric_arena_disjoint_input_and_reused_scratch(device, shards):
 
 @GPU
 @pytest.mark.parametrize(
-    "strategy", ["h_numeric_arena", "h_whole_frame", "h_compact_positions"]
+    "strategy",
+    ["h_numeric_arena", "h_whole_frame", "h_compact_positions", "h_small_boundary"],
 )
 def test_numeric_arena_concurrent_retained_all_gradients(strategy):
     from concurrent.futures import ThreadPoolExecutor
@@ -6926,3 +6949,39 @@ def test_compact_positions_query_and_injection_widen_before_offsets():
         outputs.append((out, delta, border))
     for a, b in zip(*outputs):
         assert torch.equal(a, b)
+
+
+def test_small_boundary_recipe_roundtrip_and_legacy_rejection():
+    reg = Registry()
+    reg.register(BSplineLocalSmallBoundaryAlgorithm())
+    recipe = BSplineLocalSmallBoundaryRecipe()
+    plan = ExecutionPlan("research_cuda_quadratic_bspline", "v57", recipe)
+    assert reg.loads_plan(reg.dumps_plan(plan)) == plan
+    assert recipe.boundary_shards == 4 and recipe.compact_positions
+    with pytest.raises(ValueError, match="boundary_shards"):
+        BSplineLocalCompactPositionsRecipe(boundary_shards=4)
+    with pytest.raises(ValueError, match="boundary_shards"):
+        BSplineLocalSmallBoundaryRecipe(boundary_shards=8)
+
+
+@GPU
+@pytest.mark.parametrize("strategy", ["h_compact_positions", "h_small_boundary"])
+@pytest.mark.parametrize("batch", [3, 33])
+@pytest.mark.parametrize("radius_scale", [1.15, 1.4])
+def test_small_boundary_broad_coincident_all_gradients(strategy, batch, radius_scale):
+    layer = model(strategy, n=64, a=513)
+    generator = torch.Generator(device="cuda").manual_seed(377)
+    with torch.no_grad():
+        layer.atoms.p[:, 0] = 0.6 * radius_scale
+        layer.atoms.p[:, 1] = 0.8 * radius_scale
+        layer.atoms.p[:, 2:] = 3.15
+    for step in range(3):
+        if step:
+            with torch.no_grad():
+                layer.atoms.p[:, :2].mul_(1.0003)
+                layer.atoms.p[:, 2:].add_(0.0037)
+        x = torch.randn(
+            batch, 64, device="cuda", generator=generator, requires_grad=True
+        )
+        dy = torch.randn(batch, 64, device="cuda", generator=generator)
+        gate(layer, x, dy)

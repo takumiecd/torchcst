@@ -1801,3 +1801,59 @@ raw21件PASS後、新query/injectionテストのGluonコンパイルで
 失敗result archive `3ff2b2a5ec354c3fd0dbb0a07f73354b995fe401181e31a47502b33061104726`、
 source `e2a875cba21bb6a9cf876f39fe76d9fbfa158cd6657caa6b0a4c9fb46e9aba68`、
 1692source files/4manifest entries/return1/no-timeout/cleanup ackを確認し、所有session停止済み。
+
+
+### v56 L4: 精度PASS、B64は短縮するがreserved超過が残る
+
+source `4333aa1380e1d146579a4920a1b1b656738dfe86`、job
+`l4job-f90348a65dca4c7ca0a1887a041e8420`。実機NVIDIA L4、driver580.82.07、
+Torch2.11.0+cu130/CUDA13/Triton3.6。raw22件PASS(8.53s)、共有+同時retained36件PASS(148.89s)。
+両主3状態full-shape FP64 Y/dX/全4P、全52,428sigma更新、初期P/X/target hash一致をPASS。
+maxabsはY2.898e-5/dX2.471e-5/全4P1.2613e-4、relL2は1.882e-6/1.791e-6/6.330e-7以下。
+
+|L4,65rounds|v52chunk32 ms|v54full64 ms|v56full64 ms|Dense ms|v56 allocated/reserved MiB|
+|---|---:|---:|---:|---:|---:|
+|B32 mixed|.708585|.708379|.743448|.082532|31.653/80|
+|B64 mixed|1.297802|1.079157|1.008166|.105113|44.586/108|
+
+v54よりpayload/allocated約1.600MiB、reserved各2MiB減る。B64のこの測定では6.58%短縮、
+B32は4.95%遅延した。単独測定で普遍的な速度改善とはしない。B64はDense49.502/106MiBの
+reservedを2MiB超え、速度もDense2倍を満たさない。v56 G4は未測定、L4結果で代用しない。
+source archive `dd4257aabaf627999e24200568a89fee0af31f92c62ebebc67721ac6e71d8c9e`、
+result archive `312ff0610a05bb8be3b0915db9dc2c6bc58d39c793c2f512fca5268c96564901`。
+1692source files/31manifest entries、Git-byte一致、return0/no-timeout/cleanup ack確認。
+L4 primary registry40件、G4 primary13件とは別管理。source CPU CI PASS(2m26s)。
+
+### L4 backward consumer診断（完全stepの候補ではない）
+
+同source job `l4job-bda08f17495e4282a46405baad9a1a8c`、v52/B32の全shape3状態独立FP64 gateを
+先にPASSしてから、固定入力のbackward kernelを特殊化した。129回の中央値。
+
+|特殊化|ms|registers|spill slots|PTXのatomic命令行数|
+|---|---:|---:|---:|---:|
+|dX+全4P|.230400|52|0|18|
+|全4Pのみ|.161792|90|0|0|
+|dXのみ|.137216|40|0|18|
+|両方、境界1分割|.219136|48|0|18|
+
+atomicを除いた全4Pにも時間が残るためatomicだけの問題ではない。一方、
+削除するconsumerでregister数/生存期間/命令列が変わるので差を足し引きして内訳としない。
+PTXの静的FP64算術行数は順に10/8/2/10で、実行命令数やFP64占有率の証明ではない。
+全てspill0。境界1分割の出力/復元精度や完全step・メモリは検証していないので採用しない。
+`norm_replay`も診断専用でありprepareとの二重加算をしない。
+source archive `1984066eec6283abef74a858bb24edef8c90aa3166e01abacbece1835a9ab699`、
+result archive `cc12801157e4efd3bee3abb4823edaeba82f9706e680f4c735fd9bb0be1784cd`。
+1692source files/9manifest entries/return0/no-timeout/cleanup ack確認、L4診断registryへ分離保存。
+両job終了後、所有GPU停止とserver上のsessionなしを確認した。
+
+## v57: 境界4分割で数値scratchを減らす（検証前）
+
+v56のPos/BorderPos、係数・Meta・正規化・全4Pはそのまま、境界deltaの分割数のみ8→4へ変える。
+B64/N1024で3*511*(8-4)*64*4=1,569,792bytes（約1.497MiB）のscratch payloadを削る。
+復元は同じ全境界和であり実数演算の式は同じだが、FP32 atomicの加算順序は変わる。
+速度/両peakと誤差の実測前に改善扱いしない。
+新しいv57だけがboundary_shards=4を受け付け、旧版の許容値8/16/32/64は変えない。
+共有全勾配/retained/同時backward、動的sigmaに加え、v56/v57の513個の一致した広いatomを
+同じseedで3状態・B3/B33・2幅にわたり照合する。判定4e-4を維持する。
+CPU suite2034 passed/5240 skipped/18既存warning(40.87s)、追加scratch4分割/新GPU試験の
+対象4passed/25skipped。Ruff・両case declaration PASS。GPU検証は未実施。

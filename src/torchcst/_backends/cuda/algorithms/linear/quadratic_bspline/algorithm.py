@@ -49,6 +49,7 @@ from .recipe import (
     BSplineLocalPersistentRecipe,
     BSplineLocalSavedBankRecipe,
     BSplineLocalShardedRecipe,
+    BSplineLocalSmallBoundaryRecipe,
     BSplineLocalSpatialRecipe,
     BSplineLocalSplitRecipe,
     BSplineLocalTableDecodeRecipe,
@@ -640,3 +641,9 @@ class BSplineLocalCompactPositionsAlgorithm(BSplineLocalNumericArenaAlgorithm):
             except (ValueError, TypeError, AttributeError):
                 pass
         return SupportResult(tuple(reasons))
+
+
+@dataclass(frozen=True)
+class BSplineLocalSmallBoundaryAlgorithm(BSplineLocalCompactPositionsAlgorithm):
+    revision: str = "v57"
+    recipe_type: type = BSplineLocalSmallBoundaryRecipe
