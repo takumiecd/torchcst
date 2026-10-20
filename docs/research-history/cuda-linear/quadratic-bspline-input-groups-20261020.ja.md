@@ -908,6 +908,12 @@ bank各約0.0139ms、scan各約0.0160msも残る。
 G4上で絶対時間とDense比が変わることは確認できたが、キャッシュmissやFP64待ちを
 hardware counterで測定したものではなく、その機序までは断定しない。
 
+跨VM照合ではcase/seedとX/targetのhashは一致する一方、初期Pのhashは非一致だった。
+Pは`bspline.initialize`のCPU計算で生成されるが、差の発生原因や大きさは今回確定していない。
+各GPU内のCST候補同士は初期Pも一致し、DenseともX/targetが一致する。
+したがって各デバイス内の目標判定には使うが、Pまでbitwise同一に固定した
+GPU世代間アブレーションやcache効果の証明とは扱わない。
+
 source SHA256 `d68b2ce8390e6b9a64f7322e3a23b498bc3c6201594f188b6dd9fb4147913ff2`、
 result SHA256 `29526154becc28d680c45f8eeb92180a4fb1249f8658ce11ba7deed4376cbeeb`。
 source1643/manifest24、archive/manifest/Git bytes/return0/timeoutなし/cleanup ackを照合。
@@ -931,3 +937,15 @@ order/countはforwardごとimmutable cloneを保持し、retained backwardを壊
 124sites/4site-patchの全幅を検査する。N1024の既存容量は変わらない。
 構築/clone/更新周期の費用と追加histogramメモリを含めてv44/Denseと比較する。
 空間局所性が改善してもatomic競合が増える可能性があり、実測前の速度改善は主張しない。
+
+初回job `l4job-87d6cde1b58c4b35b7c6f9b968417ce6`、source626a8837は36 checks PASS後、
+tile64のテストで停止した。64site全体をtile64一個で覆うfixtureなのに、
+領域内移動でspatial keyが変わることを要求したテスト条件の誤りだった。
+N128/中心1–8へ変更し、最大tileでも実際の内部境界を跨ぐように修正した。
+入力振幅・数式・4e-4 gateに変更はない。修正00f2c3baのruntimeは626a8837と同一。
+初回は性能測定なし。archive/source/manifest/Git bytes/return1/cleanup ackを照合して
+failed-jobsに保全し、採用証拠に混ぜない。
+
+period64の短いcase（21rounds）は、warmup/eager/capture/replayを合わせても52forwardである。
+周期再構築を含む長期平均が必要なら64を超える測定で別途確認する。
+この短期中央値をperiod64再構築の償却費込みと解釈しない。

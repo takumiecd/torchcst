@@ -764,9 +764,14 @@ def measure(args, run):
                             ),
                             "routing_count_scope": "sigma-only counts above; device route additionally keeps <=2-site clipped axis supports native",
                             "layout_policy": (
-                                "device-validated broad width/spatial buckets with tiny clipped-support native guard"
+                                "exact live native membership; advisory width/spatial order refreshed periodically or on membership change"
+                                if getattr(recipe, "spatial_layout", False)
+                                else "device-validated broad width/spatial buckets with tiny clipped-support native guard"
                                 if getattr(recipe, "range_tile", None)
                                 else "device-validated width buckets with tiny clipped-support native guard"
+                            ),
+                            "advisory_layout_refresh": getattr(
+                                recipe, "layout_refresh", None
                             ),
                         }
                     )
