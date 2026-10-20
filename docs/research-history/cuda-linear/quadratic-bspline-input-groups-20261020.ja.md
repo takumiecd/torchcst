@@ -540,3 +540,40 @@ smallではそれぞれ0.0092/0.0123msへ減った。係数構築は約1µs増�
 独立分類scanを再投入せずに不要な集約を省けたが、Dense2倍の速度目標は依然未達。
 
 source SHA256 `e1d0254377823a6af07267a4831c054764f43c1a75d1f1e5a9939461f7142852`, result SHA256 `8042ac6ea82e8e9a91fc738818fa25aedd75a2bd23e64fc49fbb9c931a1ee61e`; source files 1611, manifest 56, return0/cleanup ack verified.
+
+
+## v38 complete steps: cached direct native is still slower
+
+Job d7589d0593064b129b85623ea416d5b6 at4c456877 passed45 checks (1695 deselected,222.18s), then all four primary case3-state independent FP64 gates,52428 sigma updates and paired initial hashes. The primary protocol and inputs are unchanged; only the two named supplemental stress fixtures use the documented representable amplitudes. All variants have allocated/reserved34.153/98MiB(B32) or34.653/100MiB(B64), below Dense49.002/106 and49.502/106MiB.
+
+|case|Gluon lane1 ms|old native cutoff.15 ms|cache3D ms|cache2D ms|Dense ms|
+|---|---:|---:|---:|---:|---:|
+|B32 mixed|0.773595|1.558422|0.914016|0.897113|0.082192|
+|B64 mixed|1.248735|2.252022|1.535784|1.496527|0.103639|
+|B32 small|0.772757|3.359884|1.206931|1.174840|0.082359|
+|B32 switch|0.774758|1.554710|0.915397|0.899675|0.082914|
+
+Cache reuse improves the old direct implementation substantially, but every case remains slower than the moment path. It is negative speed evidence, not an adopted improvement. In small-only, cache preparation is~0.0143ms; cache2D native forward/backward~0.289/0.377ms versus old direct1.195/1.664ms. Despite all atoms being native, regular stream forward/backward still cost~0.049/0.078ms: the static regular grid launches ceil(A/4)=13107 CTAs which return without useful regular work. Native launch grids remain capped at128 and loop over live groups. Forward/backward registers66/123(no hot spills), compared with64/109 old direct; cold reports4 spill slots but no local load/store and does not establish a primary hot-path cause.
+
+These observations motivate a future unified per-atom native/regular executor with cached class flags and isolated fallbacks. It has not been implemented or measured. Do not infer its speed from empty-grid times or occupancy assumptions.
+
+## v39 independent repeat
+
+Job910e94941d6f455fb89d4a543cc302e9 at7bbbc1f9 has runtime identical to9e928c3f. Catalog1 check passed(2.57s), followed by all four-case paired full-shape gates and sigma updates.
+
+|case|Gluon lane1 ms|fused mask/full-zero ms|Dense ms|
+|---|---:|---:|---:|
+|B32 mixed|0.771001|0.755559|0.083025|
+|B64 mixed|1.247267|1.211924|0.105716|
+|B32 small|0.769919|0.692880|0.082978|
+|B32 switch|0.774750|0.724852|0.082459|
+
+Mixed gains2.00%/2.83%, small10.01%, switch6.44% repeat independently. Peaks remain34.154/98 and34.654/100MiB for the mask version, below Dense in both allocated and reserved. The best validated ratios are still about9.10x/11.46x Dense, not the2x target. No public/default dispatcher is changed.
+
+l4job-d7589d0593064b129b85623ea416d5b6: source SHA256 `e81aa45d52b62e68b391b03e9de567ced116c3b0ea3ff9db938a5248ce80069b`, result SHA256 `31d07d8d24611efe0e31e5da26676741d3a29ce63a382898f46aafc27cd1c4e5`, source byte-matched files 1611, manifest 68, return0/cleanup ack verified.
+
+l4job-910e94941d6f455fb89d4a543cc302e9: source SHA256 `48eb4638e3194ad8b4439c5badfa717e94b8eb6b7475f7c3a1c8d77e0d5dc511`, result SHA256 `21bad0eb0e9a3139472b1e615e71f7f872d68a51915277df4e6607fc59786842`, source byte-matched files 1615, manifest 44, return0/cleanup ack verified.
+
+l4job-c211933039d74aaf907636948e9ccc87: source SHA256 `d869cda997f2b00e5ef506f7b7a822a8cdb7d57bcf796c0797eca36164862439`, result SHA256 `51bf19679ef5da571c677b4cd446052d3434bb0fecc3f4e35c1ebe9365372477`, source byte-matched files 1607, manifest 4, return0/cleanup ack verified.
+
+l4job-4ed8a67f9baa4e99b481bb4e2a081ebf: source SHA256 `ce6d7d17277727223fd498d7b221b987c5c13de067881888ad8d4cd5770c46c7`, result SHA256 `2d58bfd36654077c6edbe30af35ef03fed07f8f4eede418e0b84d6f5434ad3fc`, source byte-matched files 1607, manifest 4, return0/cleanup ack verified.
