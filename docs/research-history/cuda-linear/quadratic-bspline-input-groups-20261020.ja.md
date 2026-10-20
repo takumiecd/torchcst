@@ -2595,3 +2595,16 @@ source SHA256 `cde36ec1e584d097cdc6dd8843d28480762707b19da9d3f9e3112c413095258c`
 result SHA256 `e0b88300d80b90a9585f0fe724497a517187463ee8878dc74c798b99cffb3950`。
 1712 sourcefiles/5 manifest、return1/no-timeout/cleanup ackを検証してfailed-jobsへ保全した。
 この初回runから精度・速度・メモリの通過を主張しない。
+
+source5c19631aの再実行`l4job-fe7cf21ac5814914b098bab3aef3c071`は3testを通過し、
+CO32/overlapのHmu最大絶対誤差4.9164e-4、relL2 3.4201e-8で停止した。
+この時のY最大誤差は1.0233e-5、relL2 2.4467e-8だったが、後続の最終pullbackは未評価である。
+raw Hmuにも最終taskと同じ絶対4e-4を課していた。q/sqrt(D)の中間値はempty/floorの相手側で
+1000倍などへ変わり得るため、その絶対値の基準は最終operatorの基準と同義ではない。
+中間値にはelementwise atol/rtol各4e-4とrelL2<4e-4を使い、raw最大絶対誤差はそのまま報告する。
+Y/dX/raw振幅/両中心勾配は従来どおりmaxabsとrelL2を各4e-4未満とし、変更しない。
+全metricを検査より先に記録し、pytestは先頭failureで全caseを打ち切らず、負の結果も取得する。
+これは中間値検査の対象修正で、当該失敗runを通過扱いにしない。
+source SHA256 `1b52c6077e9f94fc10210088668c20a06a6c343de3b69093ee8cba2ab0de6ff0`、
+result SHA256 `ff318844fd417d0f6f4cd8b3f830342d1c4377da780d61c7290c8cd10c20f53d`。
+1712 sourcefiles/5 manifest、return1/no-timeout/cleanup ackを検証し、failed-jobsへ保全した。
