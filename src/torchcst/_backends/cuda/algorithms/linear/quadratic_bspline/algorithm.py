@@ -54,6 +54,7 @@ from .recipe import (
     BSplineLocalTransposedRecipe,
     BSplineLocalUnifiedRecipe,
     BSplineLocalVectorRecipe,
+    BSplineLocalWholeFrameRecipe,
     BSplineNativeHRecipe,
     BSplineNativeLoopRecipe,
     BSplineParallelRecipe,
@@ -609,3 +610,9 @@ class BSplineLocalFrameArenaAlgorithm(BSplineLocalFreshPartitionAlgorithm):
 class BSplineLocalNumericArenaAlgorithm(BSplineLocalFrameArenaAlgorithm):
     revision: str = "v54"
     recipe_type: type = BSplineLocalNumericArenaRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalWholeFrameAlgorithm(BSplineLocalNumericArenaAlgorithm):
+    revision: str = "v55"
+    recipe_type: type = BSplineLocalWholeFrameRecipe

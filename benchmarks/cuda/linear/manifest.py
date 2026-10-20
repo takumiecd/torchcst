@@ -909,3 +909,10 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
 )
 
 REGISTRY.register(BSplineLocalNumericArenaAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalWholeFrameAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalWholeFrameAlgorithm())

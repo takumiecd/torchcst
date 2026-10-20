@@ -1007,3 +1007,10 @@ class BSplineLocalNumericArenaRecipe(BSplineLocalFrameArenaRecipe):
             )
         if type(self.bank_padding) is not int or self.bank_padding != 0:
             raise ValueError("numeric arena requires unpadded bank rows")
+
+
+@dataclass(frozen=True)
+class BSplineLocalWholeFrameRecipe(BSplineLocalNumericArenaRecipe):
+    """Revision55: one owned frame allocation, excluding the persistent count."""
+
+    whole_frame = True

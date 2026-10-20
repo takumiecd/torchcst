@@ -431,18 +431,45 @@ def _source_order(order, recipe):
     return order if getattr(recipe, "canonical_meta", False) else None
 
 
-def _frame(x, p, value, chart, recipe, moments, routing, sizes, build_border=True):
+def _frame(
+    x,
+    p,
+    value,
+    chart,
+    recipe,
+    moments,
+    routing,
+    sizes,
+    build_border=True,
+    numeric_out=None,
+):
     a = len(p)
     endpoints = getattr(recipe, "skip_endpoints", False)
     shards = getattr(recipe, "boundary_shards", 0) if build_border else 0
     fused_levels = getattr(recipe, "fused_levels", False)
     frame = None
     if getattr(recipe, "frame_arena", False):
-        from .frame_buffers import make_frame
+        from .frame_buffers import make_frame, numeric_layout
 
+        numeric_elements = 0
+        if getattr(recipe, "whole_frame", False):
+            _, _, numeric_elements = numeric_layout(
+                input_points=_points(sizes[1], recipe),
+                output_points=_points(sizes[0], recipe),
+                blocks=max(_blocks(n, recipe) for n in sizes),
+                batch=len(x),
+                shards=shards,
+            )
         frame = make_frame(
-            p, a, shards=shards, endpoints=endpoints, active=fused_levels
+            p,
+            a,
+            shards=shards,
+            endpoints=endpoints,
+            active=fused_levels,
+            numeric_elements=numeric_elements,
         )
+        if numeric_elements:
+            numeric_out.append(frame["numeric"])
     meta, origin, spacing, _source = _prepare(
         p,
         value,
@@ -646,6 +673,7 @@ class _Local(torch.autograd.Function):
         if not a:
             ctx.save_for_backward(x)
             return x.new_zeros((b, sizes[0]))
+        shared_numeric = [] if getattr(recipe, "whole_frame", False) else None
         (
             meta,
             origin,
@@ -661,7 +689,17 @@ class _Local(torch.autograd.Function):
             ml,
             shards,
             endpoints,
-        ) = _frame(x, p, value, chart, recipe, moments, routing, sizes)
+        ) = _frame(
+            x,
+            p,
+            value,
+            chart,
+            recipe,
+            moments,
+            routing,
+            sizes,
+            numeric_out=shared_numeric,
+        )
         groups = _group_tables(pos, count, a, sizes[1], recipe)
         y = x.new_zeros((b, sizes[0]))
         native_y = native_forward(
@@ -690,6 +728,7 @@ class _Local(torch.autograd.Function):
                 blocks=max(_blocks(n, recipe) for n in sizes),
                 batch=b,
                 shards=shards,
+                storage=shared_numeric[0] if shared_numeric else None,
             )
             ctx.workspace_saved = True
             ctx.workspace_stream = torch.cuda.current_stream(x.device).cuda_stream

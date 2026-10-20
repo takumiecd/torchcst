@@ -5,7 +5,7 @@ import math
 import torch
 
 
-def make_frame(source, atoms, *, shards, endpoints, active):
+def make_frame(source, atoms, *, shards, endpoints, active, numeric_elements=0):
     entries = [
         ("meta", (atoms, 12), torch.float64, 8),
         ("order", (atoms,), torch.int64, 8),
@@ -16,6 +16,8 @@ def make_frame(source, atoms, *, shards, endpoints, active):
         ("injection", (2, atoms) if endpoints else (0,), torch.int16, 2),
         ("active", (2,) if active else (0,), torch.int32, 4),
     ]
+    if numeric_elements:
+        entries.append(("numeric", (numeric_elements,), torch.float32, 4))
     layout = []
     offset = 0
     for name, shape, dtype, itemsize in entries:
@@ -30,10 +32,7 @@ def make_frame(source, atoms, *, shards, endpoints, active):
     }
 
 
-def numeric_workspace(
-    source, *, input_points, output_points, blocks, batch, shards, storage=None
-):
-    """Keep input values immutable; reuse forward delta as the adjoint bank."""
+def numeric_layout(*, input_points, output_points, blocks, batch, shards):
     shapes = {
         "input": (3, input_points, batch),
         "adjoint": (3, output_points, batch),
@@ -47,6 +46,20 @@ def numeric_workspace(
         size = math.prod(shape)
         offsets[name] = offset, size
         offset += size
+    return shapes, offsets, offset
+
+
+def numeric_workspace(
+    source, *, input_points, output_points, blocks, batch, shards, storage=None
+):
+    """Keep input values immutable; reuse forward delta as the adjoint bank."""
+    shapes, offsets, offset = numeric_layout(
+        input_points=input_points,
+        output_points=output_points,
+        blocks=blocks,
+        batch=batch,
+        shards=shards,
+    )
     if storage is None:
         storage = source.new_empty((offset,), dtype=torch.float32)
     elif storage.dtype != torch.float32 or storage.numel() != offset:

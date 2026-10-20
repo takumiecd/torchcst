@@ -1707,3 +1707,39 @@ runtimeやgateを変えず、追加optionを既存のprepare_warps=2へ変更す
 ALL_QUERY_OPTIONS各testのmodel呼び出しの明示keywordをASTで確認し、prepare_warpsと重複しないことを確認した。
 元の共有retained/Graph検査がcutoffを変更し、混在native/Hは引き続き検査する。
 return1/no-timeout/source/manifest/hash/cleanupをfailed archiveへ保存し、性能には数えない。
+
+### v54 G4: reserved大幅減、B64はDenseより4MiB多く未採用
+
+source `f59c35968c8398e96e314489b6f02036ed95b746`、job
+`colabjob-f9ee5aa8e0994f58a3ff37658cb6c09a`でraw19件PASS(4.57s、GPU11/CPU8)、
+共有+同時retained34件PASS(61.14s)。全planの主3状態full-shape独立FP64 Y/dX/全4P、
+全52,428sigma更新、初期hash一致PASS。v54全4P maxabs1.167e-4、relL2 6.332e-7。
+
+|G4,65rounds|v52chunk32 ms|v53 ms|v54 ms|Dense ms|v54 allocated/reserved MiB|
+|---|---:|---:|---:|---:|---:|
+|B32 mixed|.320150|.319070|.322780|.065170|33.253/82|
+|B64 mixed|.485770|.396581|.401790|.073660|46.186/110|
+
+B32はreserved94→82MiB、B64は138→110MiBと減ったが、B64はDense106MiBを超える。
+allocatedはDense49.502MiB以下。速度はv53に対し1.16%/1.31%遅く、reserved制約も満たさないので
+一括処理の採用根拠とはしない。partialなallocated改善を目標達成と扱わない。
+source archive `ecd1f27bf5c538e5d2e484b76ecba63b2a2694aecc601fcc440129dcc509c64e`、
+result archive `648cfc8df622bd82e7e95239a3246268bb6f8a1407e341417663c3fb00afd49b`。
+1688source files/31manifest entries/Git-byte一致、return0/no-timeout/cleanup ackを厳密検証。
+accepted G4は12job、診断/失敗/割当失敗/L4は別。所有GPU停止済み。
+
+## v55: immutable状態と数値workspaceを一つのforward allocationへ（検証前）
+
+v54の入力/adjoint/delta/borderの形、値の再計算、scratch再利用、stream/host-thread保護を保ち、
+同じforwardのimmutable係数frameと数値workspaceを一つのstorageに確保する候補。
+Meta等のdtype別viewの末尾に256byte整列したFP32 numeric領域を置く。診断用countは引き続き別。
+読み取り専用領域とmutable scratchは重ならず、元のInputBank/Meta/Coはbackwardで変更しない。
+
+numeric領域の大きさをshapeだけから計画し、_frameは一時listへそのviewを返す。
+Tensorをctx属性や長く残るroutingに追加せず、全viewのstorage寿命をsave_for_backwardに合わせる。
+独立した二つの大きいallocationを一つにすることでreservedが下がるかを、同じ既存プロトコルで測る。
+benchmarkのstream/warmup/capture手順、memory統計の定義、精度基準は変更しない。
+
+v55 CPU2029 passed/5170 skipped/18既存warning(40.46s)、変更対象Ruff、両case、build PASS。
+GPUではraw23件（GPU13/CPU10）、共有33件+v54/v55同時retained2件の計35件を先に検査し、
+両primaryでv52chunk32/v54chunk64/v55chunk64/Denseを完全stepで比較する。

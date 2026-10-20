@@ -822,6 +822,10 @@ def measure(args, run):
                             ),
                         }
                     )
+                if getattr(recipe, "whole_frame", False):
+                    hybrid_routing["whole_frame_allocation"] = (
+                        "immutable metadata and numerical views share one frame-owned allocation; persistent diagnostic count stays separate; only disjoint scratch regions are reused"
+                    )
                 if getattr(recipe, "numeric_arena", False):
                     hybrid_routing["numeric_allocation_policy"] = (
                         "single frame-owned input/adjoint/delta/border storage; forward delta reused as adjoint bank; immutable input; per-stream scratch fallback and host launch serialization"

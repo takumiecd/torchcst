@@ -47,6 +47,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineLocalTransposedAlgorithm,
     BSplineLocalUnifiedAlgorithm,
     BSplineLocalVectorAlgorithm,
+    BSplineLocalWholeFrameAlgorithm,
     BSplineNativeHAlgorithm,
     BSplineNativeLoopAlgorithm,
     BSplineParallelAlgorithm,
@@ -103,6 +104,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineLocalTransposedRecipe,
     BSplineLocalUnifiedRecipe,
     BSplineLocalVectorRecipe,
+    BSplineLocalWholeFrameRecipe,
     BSplineNativeHRecipe,
     BSplineNativeLoopRecipe,
     BSplineParallelRecipe,
@@ -144,8 +146,13 @@ def case(n=64, a=17):
 def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     from dataclasses import replace
 
-    numeric_arena = strategy == "h_numeric_arena" or recipe_options.pop(
-        "_numeric_arena", False
+    whole_frame = strategy == "h_whole_frame" or recipe_options.pop(
+        "_whole_frame", False
+    )
+    numeric_arena = (
+        whole_frame
+        or strategy == "h_numeric_arena"
+        or recipe_options.pop("_numeric_arena", False)
     )
     frame_arena = (
         numeric_arena
@@ -349,6 +356,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineLocalFreshPartitionAlgorithm())
     registry.register(BSplineLocalFrameArenaAlgorithm())
     registry.register(BSplineLocalNumericArenaAlgorithm())
+    registry.register(BSplineLocalWholeFrameAlgorithm())
     registry.register(BSplineLocalIntegerAlgorithm())
     registry.register(BSplineLocalVectorAlgorithm())
     registry.register(BSplineLocalUnifiedAlgorithm())
@@ -384,7 +392,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         recipe_options.setdefault("lane_atoms", 4)
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v54"
+        "v55"
+        if whole_frame
+        else "v54"
         if numeric_arena
         else "v53"
         if frame_arena
@@ -491,7 +501,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         else "v2"
         if tuned
         else "v1",
-        BSplineLocalNumericArenaRecipe(**recipe_options)
+        BSplineLocalWholeFrameRecipe(**recipe_options)
+        if whole_frame
+        else BSplineLocalNumericArenaRecipe(**recipe_options)
         if numeric_arena
         else BSplineLocalFrameArenaRecipe(**recipe_options)
         if frame_arena
@@ -3054,6 +3066,12 @@ ALL_QUERY_OPTIONS = (
             id="numeric-arena-warp2",
         ),
     ]
+    + [
+        pytest.param({"_whole_frame": True}, id="whole-frame-0"),
+        pytest.param(
+            {"_whole_frame": True, "prepare_warps": 2}, id="whole-frame-warp2"
+        ),
+    ]
     + [pytest.param(opt, id=f"vector-{i}") for i, opt in enumerate(VECTOR_OPTIONS)]
     + [pytest.param(opt, id=f"integer-{i}") for i, opt in enumerate(INTEGER_OPTIONS)]
     + [
@@ -3953,6 +3971,7 @@ def test_native_bound_recipe_roundtrip_and_bounds():
         "h_fresh_partition",
         "h_frame_arena",
         "h_numeric_arena",
+        "h_whole_frame",
         "h_local_integer",
         "h_local_vector",
     ],
@@ -4055,6 +4074,7 @@ def test_native_bound_count_changes_across_graph(batch, floor, strategy):
         "h_fresh_partition",
         "h_frame_arena",
         "h_numeric_arena",
+        "h_whole_frame",
         "h_local_integer",
         "h_local_vector",
     ],
@@ -4107,6 +4127,7 @@ def test_native_bound_strided_individual_gradients(which, strategy):
         "h_fresh_partition",
         "h_frame_arena",
         "h_numeric_arena",
+        "h_whole_frame",
         "h_local_integer",
         "h_local_vector",
     ],
@@ -4652,6 +4673,7 @@ def test_native_cache_recipe_roundtrip_and_bounds():
         ("h_fresh_partition", True),
         ("h_frame_arena", True),
         ("h_numeric_arena", True),
+        ("h_whole_frame", True),
         ("h_local_integer", True),
         ("h_local_vector", True),
     ],
@@ -4682,6 +4704,7 @@ def test_native_cache_spacing_fallbacks(strategy, unroll, spacing, batch, amplit
             "h_fresh_partition",
             "h_frame_arena",
             "h_numeric_arena",
+            "h_whole_frame",
             "h_local_integer",
             "h_local_vector",
         )
@@ -6646,12 +6669,13 @@ def test_numeric_arena_disjoint_input_and_reused_scratch(device, shards):
 
 
 @GPU
-def test_numeric_arena_concurrent_retained_all_gradients():
+@pytest.mark.parametrize("strategy", ["h_numeric_arena", "h_whole_frame"])
+def test_numeric_arena_concurrent_retained_all_gradients(strategy):
     from concurrent.futures import ThreadPoolExecutor
 
     from benchmarks.cuda.linear.check_normalized import check
 
-    layer = model("h_numeric_arena", n=128, a=33)
+    layer = model(strategy, n=128, a=33)
     x = torch.randn(33, 128, device="cuda", requires_grad=True)
     y = layer(x)
     dys = [torch.randn_like(y), torch.randn_like(y)]
@@ -6673,3 +6697,51 @@ def test_numeric_arena_concurrent_retained_all_gradients():
         for a, b in zip(left, right):
             err = check(a, b, 4e-4)
             assert err["max"] < 4e-4 and err["rel_l2"] < 4e-4
+
+
+def test_whole_frame_recipe_roundtrip():
+    reg = Registry()
+    reg.register(BSplineLocalWholeFrameAlgorithm())
+    recipe = BSplineLocalWholeFrameRecipe()
+    plan = ExecutionPlan("research_cuda_quadratic_bspline", "v55", recipe)
+    assert reg.loads_plan(reg.dumps_plan(plan)) == plan
+    assert recipe.whole_frame and recipe.numeric_arena and recipe.frame_arena
+
+
+@pytest.mark.parametrize("device", ["cpu", pytest.param("cuda", marks=GPU)])
+@pytest.mark.parametrize("atoms", [0, 137])
+def test_whole_frame_contains_disjoint_numeric_views(device, atoms):
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.frame_buffers import (
+        make_frame,
+        numeric_layout,
+        numeric_workspace,
+    )
+
+    options = {
+        "input_points": 7,
+        "output_points": 11,
+        "blocks": 5,
+        "batch": 3,
+        "shards": 8,
+    }
+    _, _, size = numeric_layout(**options)
+    source = torch.empty(1, device=device)
+    frame = make_frame(
+        source, atoms, shards=True, endpoints=True, active=True, numeric_elements=size
+    )
+    metadata = {name: value for name, value in frame.items() if name != "numeric"}
+    for index, value in enumerate(metadata.values()):
+        value.fill_(index + 1)
+    base = frame["meta"].untyped_storage().data_ptr()
+    storage, views = numeric_workspace(source, storage=frame["numeric"], **options)
+    assert storage.untyped_storage().data_ptr() == base
+    assert (storage.data_ptr() - base) % 256 == 0
+    for value in views.values():
+        value.fill_(-99)
+    for index, value in enumerate(metadata.values()):
+        assert torch.all(value == index + 1)
+    views["input"].fill_(1.25)
+    views["adjoint"].zero_()
+    views["delta"].fill_(2.5)
+    assert torch.all(views["input"] == 1.25)
+    assert views["adjoint"].count_nonzero() == 0
