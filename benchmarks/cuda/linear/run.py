@@ -661,7 +661,8 @@ def measure(args, run):
                             * 4,
                             "h_snapshot_scope": "immutable per-forward FP32 unscaled H/Hmu, all-A fixed capacity; native slots unused; never reused across updated steps",
                             "backward_staging_scope": "fused markers h_recompute/g_recompute/atom_contract/dx_inject are empty; staged mode adds materialized H/Hmu/G/Gmu and launches, not a partition of fused timing",
-                            "bank_recompute_skipped": recipe.save_h == "hp",
+                            "bank_recompute_skipped": recipe.save_h == "hp"
+                            or getattr(recipe, "save_input_bank", False),
                         }
                     )
                 if getattr(recipe, "adjoint_h", False):
@@ -685,9 +686,31 @@ def measure(args, run):
                         }
                     )
                 if getattr(recipe, "local_h", False):
+                    bank_chunk = getattr(recipe, "batch_chunk", 0)
+                    bank_rows = (
+                        ((m + bank_chunk - 1) // bank_chunk) * bank_chunk
+                        if bank_chunk and m > bank_chunk
+                        else m + getattr(recipe, "bank_padding", 0)
+                    )
+                    bank_min_log = getattr(recipe, "min_block_log", 3)
+                    bank_points = (
+                        (n.bit_length() - bank_min_log) * n
+                        + 2 * (n >> bank_min_log)
+                        - 1
+                    )
                     hybrid_routing.update(
                         {
                             "bank_layout": "FP32 plane,dyadic-local-point,batch; no periodic wrap",
+                            "input_bank_retained": getattr(
+                                recipe, "save_input_bank", False
+                            ),
+                            "input_bank_snapshot_capacity_bytes": 3
+                            * bank_points
+                            * bank_rows
+                            * 4
+                            if getattr(recipe, "save_input_bank", False)
+                            else 0,
+                            "input_bank_snapshot_scope": "same-forward immutable numerical bank; rebuilt for every new X/geometry frame; no reuse across steps; H/Hmu still queried in backward",
                             "local_events_per_axis": 6,
                             "batch_chunk": getattr(recipe, "batch_chunk", None),
                             "owner_events": getattr(recipe, "owner_events", None),

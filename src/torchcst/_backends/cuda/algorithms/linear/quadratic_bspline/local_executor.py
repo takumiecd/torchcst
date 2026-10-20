@@ -439,6 +439,9 @@ class _Local(torch.autograd.Function):
         a, b = len(p), len(x)
         ctx.recipe, ctx.sizes = recipe, sizes
         ctx.mode = recipe.save_h if ctx.needs_input_grad[1] else "none"
+        ctx.retain_input_bank = (
+            getattr(recipe, "save_input_bank", False) and ctx.needs_input_grad[1]
+        )
         ctx.empty = not a
         if not a:
             ctx.save_for_backward(x)
@@ -529,6 +532,7 @@ class _Local(torch.autograd.Function):
             active,
             bp,
             injection,
+            bank if ctx.retain_input_bank else h,
             *groups,
         )
         return y
@@ -562,8 +566,9 @@ class _Local(torch.autograd.Function):
             active,
             bp,
             injection,
-        ) = ctx.saved_tensors[:14]
-        groups = ctx.saved_tensors[14:]
+            saved_bank,
+        ) = ctx.saved_tensors[:15]
+        groups = ctx.saved_tensors[15:]
         dy = dy.contiguous()
         recipe, sizes = ctx.recipe, ctx.sizes
         a, b = len(meta), len(x)
@@ -591,7 +596,12 @@ class _Local(torch.autograd.Function):
             dx, dp = native_result
             native_dx = None
         if need_dp and ctx.mode != "hp":
-            input_bank = _bank(x, sizes[1], recipe, "bank_recompute", active, 1, ml)
+            if ctx.retain_input_bank:
+                input_bank = saved_bank
+                _stamp("bank_recompute", 0)
+                _stamp("bank_recompute", 1)
+            else:
+                input_bank = _bank(x, sizes[1], recipe, "bank_recompute", active, 1, ml)
         else:
             input_bank = None
             _stamp("bank_recompute", 0)

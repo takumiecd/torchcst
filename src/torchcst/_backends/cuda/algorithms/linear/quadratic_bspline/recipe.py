@@ -875,3 +875,16 @@ class BSplineLocalSpatialRecipe(BSplineLocalPairedDecodeRecipe):
             64,
         ):
             raise ValueError("layout_refresh must be 1,16 or64")
+
+
+@dataclass(frozen=True)
+class BSplineLocalSavedBankRecipe(BSplineLocalPairedDecodeRecipe):
+    """Revision 46: reuse immutable forward input banks in the same frame's VJP."""
+
+    ratio_decode: bool = True
+    save_input_bank: bool = True
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.save_input_bank) is not bool:
+            raise ValueError("save_input_bank must be boolean")

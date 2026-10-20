@@ -53,6 +53,10 @@ class _Chunked(torch.autograd.Function):
         ctx.recipe, ctx.sizes = recipe, sizes
         a, b = len(p), len(x)
         tile = recipe.batch_chunk
+        retain_bank = (
+            getattr(recipe, "save_input_bank", False) and ctx.needs_input_grad[1]
+        )
+        ctx.saved_bank_count = 0
         (
             meta,
             origin,
@@ -83,14 +87,21 @@ class _Chunked(torch.autograd.Function):
             order=_source_order(order, recipe),
             cache=_cache_args(pos, co, active, recipe),
         )
-        bank = _workspace(x, sizes[1], tile, recipe)
+        bank = None if retain_bank else _workspace(x, sizes[1], tile, recipe)
+        saved_banks = []
         delta = _workspace(x, sizes[0], tile, recipe)
         border = _border(x, sizes[0], tile, recipe)
         empty = x.new_empty(0)
         for index, start in enumerate(range(0, b, tile)):
             xs, ys = x[start : start + tile], y[start : start + tile]
             actual = len(xs)
+            if retain_bank:
+                # Every chunk owns its forward snapshot. A later chunk/forward
+                # must never overwrite bank values needed by retained backward.
+                bank = _workspace(x, sizes[1], tile, recipe)
             _bank(xs, sizes[1], recipe, _name("bank_input", index), active, 1, ml, bank)
+            if retain_bank:
+                saved_banks.append(bank)
             _delta(
                 xs,
                 sizes[0],
@@ -160,6 +171,7 @@ class _Chunked(torch.autograd.Function):
                 0,
                 ml,
             )
+        ctx.saved_bank_count = len(saved_banks)
         ctx.save_for_backward(
             meta,
             x,
@@ -174,6 +186,7 @@ class _Chunked(torch.autograd.Function):
             bp,
             injection,
             *groups,
+            *saved_banks,
         )
         return y
 
@@ -185,7 +198,13 @@ class _Chunked(torch.autograd.Function):
         meta, x, origin, spacing, order, count, pos, co, half, active, bp, injection = (
             ctx.saved_tensors[:12]
         )
-        groups = ctx.saved_tensors[12:]
+        saved_count = ctx.saved_bank_count
+        groups = (
+            ctx.saved_tensors[12:-saved_count]
+            if saved_count
+            else ctx.saved_tensors[12:]
+        )
+        saved_banks = ctx.saved_tensors[-saved_count:] if saved_count else ()
         dy = dy.contiguous()
         recipe, sizes = ctx.recipe, ctx.sizes
         a, b = len(meta), len(x)
@@ -212,7 +231,11 @@ class _Chunked(torch.autograd.Function):
         else:
             dx, dp = native_result
             native_dx = None
-        input_bank = _workspace(x, sizes[1], tile, recipe) if need_dp else None
+        input_bank = (
+            _workspace(x, sizes[1], tile, recipe)
+            if need_dp and not saved_count
+            else None
+        )
         adjoint_bank = _workspace(x, sizes[0], tile, recipe)
         delta = _workspace(x, sizes[1], tile, recipe)
         border = _border(x, sizes[1], tile, recipe)
@@ -220,7 +243,10 @@ class _Chunked(torch.autograd.Function):
         for index, start in enumerate(range(0, b, tile)):
             xs, dys = x[start : start + tile], dy[start : start + tile]
             actual = len(xs)
-            if need_dp:
+            if need_dp and saved_count:
+                input_bank = saved_banks[index]
+                _empty(_name("bank_recompute", index))
+            elif need_dp:
                 _bank(
                     xs,
                     sizes[1],

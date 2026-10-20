@@ -34,6 +34,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineLocalPaddedAlgorithm,
     BSplineLocalPairedDecodeAlgorithm,
     BSplineLocalPersistentAlgorithm,
+    BSplineLocalSavedBankAlgorithm,
     BSplineLocalShardedAlgorithm,
     BSplineLocalSpatialAlgorithm,
     BSplineLocalSplitAlgorithm,
@@ -81,6 +82,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineLocalPaddedRecipe,
     BSplineLocalPairedDecodeRecipe,
     BSplineLocalPersistentRecipe,
+    BSplineLocalSavedBankRecipe,
     BSplineLocalShardedRecipe,
     BSplineLocalSpatialRecipe,
     BSplineLocalSplitRecipe,
@@ -126,11 +128,15 @@ def case(n=64, a=17):
 def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     from dataclasses import replace
 
+    saved_bank = strategy == "h_local_saved_bank" or recipe_options.pop(
+        "_saved_bank", False
+    )
     spatial_layout = strategy == "h_local_spatial" or recipe_options.pop(
         "_spatial_layout", False
     )
     paired_decode = (
-        spatial_layout
+        saved_bank
+        or spatial_layout
         or strategy == "h_local_paired_decode"
         or recipe_options.pop("_paired_decode", False)
     )
@@ -290,6 +296,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineLocalDecodeRatioAlgorithm())
     registry.register(BSplineLocalPairedDecodeAlgorithm())
     registry.register(BSplineLocalSpatialAlgorithm())
+    registry.register(BSplineLocalSavedBankAlgorithm())
     registry.register(BSplineLocalUnifiedAlgorithm())
     registry.register(BSplineLocalNativeShardsAlgorithm())
     registry.register(BSplineLocalNativePointAlgorithm())
@@ -320,7 +327,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     tuned = bool(recipe_options) or strategy == "matrix_separable"
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v45"
+        "v46"
+        if saved_bank
+        else "v45"
         if spatial_layout
         else "v44"
         if paired_decode
@@ -409,7 +418,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         else "v2"
         if tuned
         else "v1",
-        BSplineLocalSpatialRecipe(**recipe_options)
+        BSplineLocalSavedBankRecipe(**recipe_options)
+        if saved_bank
+        else BSplineLocalSpatialRecipe(**recipe_options)
         if spatial_layout
         else BSplineLocalPairedDecodeRecipe(**recipe_options)
         if paired_decode
@@ -2783,6 +2794,17 @@ SPATIAL_LAYOUT_OPTIONS = [
         "batch_chunk": 16,
     },
 ]
+SAVED_BANK_OPTIONS = [
+    {"_saved_bank": True},
+    {
+        "_saved_bank": True,
+        "axis_atoms": 8,
+        "reciprocal": False,
+        "contract_float32": False,
+        "norm_float32": False,
+        "batch_chunk": 16,
+    },
+]
 ALL_QUERY_OPTIONS = (
     QUERY_OPTIONS
     + LEAN_OPTIONS
@@ -2858,6 +2880,10 @@ ALL_QUERY_OPTIONS = (
     + [
         pytest.param(opt, id=f"spatial-layout-{i}")
         for i, opt in enumerate(SPATIAL_LAYOUT_OPTIONS)
+    ]
+    + [
+        pytest.param(opt, id=f"saved-bank-{i}")
+        for i, opt in enumerate(SAVED_BANK_OPTIONS)
     ]
 )
 
@@ -3740,6 +3766,7 @@ def test_native_bound_recipe_roundtrip_and_bounds():
         "h_local_decode_ratio",
         "h_local_paired_decode",
         "h_local_spatial",
+        "h_local_saved_bank",
     ],
 )
 def test_native_bound_count_changes_across_graph(batch, floor, strategy):
@@ -3832,6 +3859,7 @@ def test_native_bound_count_changes_across_graph(batch, floor, strategy):
         "h_local_decode_ratio",
         "h_local_paired_decode",
         "h_local_spatial",
+        "h_local_saved_bank",
     ],
 )
 def test_native_bound_strided_individual_gradients(which, strategy):
@@ -3875,6 +3903,7 @@ def test_native_bound_strided_individual_gradients(which, strategy):
         "h_local_decode_ratio",
         "h_local_paired_decode",
         "h_local_spatial",
+        "h_local_saved_bank",
     ],
 )
 def test_native_bound_retained_count_above_grid(strategy):
@@ -4411,6 +4440,7 @@ def test_native_cache_recipe_roundtrip_and_bounds():
         ("h_local_decode_ratio", True),
         ("h_local_paired_decode", True),
         ("h_local_spatial", True),
+        ("h_local_saved_bank", True),
     ],
 )
 @pytest.mark.parametrize(
@@ -4428,7 +4458,12 @@ def test_native_cache_spacing_fallbacks(strategy, unroll, spacing, batch, amplit
     options = (
         {}
         if strategy
-        in ("h_local_decode_ratio", "h_local_paired_decode", "h_local_spatial")
+        in (
+            "h_local_decode_ratio",
+            "h_local_paired_decode",
+            "h_local_spatial",
+            "h_local_saved_bank",
+        )
         else {"cache_unroll": unroll}
     )
     layer = model(strategy, n=64, a=49, **options)
@@ -5250,3 +5285,102 @@ def test_spatial_layout_full_width_histogram_capacity():
     assert count.item() == 0
     assert cache["keys"].max().item() < cache["hist"].numel()
     assert torch.equal(order.sort().values, torch.arange(17, device="cuda"))
+
+
+def test_saved_bank_recipe_roundtrip_and_guards():
+    reg = Registry()
+    reg.register(BSplineLocalSavedBankAlgorithm())
+    for flag in (False, True):
+        plan = ExecutionPlan(
+            "research_cuda_quadratic_bspline",
+            "v46",
+            BSplineLocalSavedBankRecipe(save_input_bank=flag),
+        )
+        assert reg.loads_plan(reg.dumps_plan(plan)) == plan
+    for bad in (1, None, "true"):
+        with pytest.raises(ValueError):
+            BSplineLocalSavedBankRecipe(save_input_bank=bad)
+
+
+@GPU
+@pytest.mark.parametrize("batch", [3, 33, 64])
+@pytest.mark.parametrize("save", [False, True])
+def test_saved_bank_exact_snapshots_and_retained_vjp(batch, save):
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        local_executor as le,
+    )
+
+    n, tile = 64, 16
+    layer = model(
+        "h_local_saved_bank", n=n, a=137, batch_chunk=tile, save_input_bank=save
+    )
+    recipe = BSplineLocalSavedBankRecipe(batch_chunk=tile, save_input_bank=save)
+    x = torch.randn(batch, n, device="cuda", requires_grad=True)
+    dy = torch.randn_like(x)
+    seen = []
+
+    def pack(t):
+        seen.append(t)
+        return t
+
+    with torch.autograd.graph.saved_tensors_hooks(pack, lambda t: t):
+        y = layer(x)
+    banks = [
+        t for t in seen if t.ndim == 3 and t.shape[:2] == (3, le._points(n, recipe))
+    ]
+    assert len(banks) == ((batch + tile - 1) // tile if save else 0)
+    active = next(t for t in seen if t.dtype == torch.int32 and t.shape == (2,))
+    snapshots = []
+    for index, bank in enumerate(banks):
+        xs = x.detach()[index * tile : (index + 1) * tile]
+        actual = len(xs)
+        expected = torch.empty_like(bank)
+        le._bank(
+            xs,
+            n,
+            recipe,
+            "bank_recompute",
+            active,
+            1,
+            n.bit_length() - recipe.min_block_log,
+            expected,
+        )
+        intervals = []
+        for level, logsize in enumerate(range(recipe.min_block_log, n.bit_length())):
+            if active[1].item() & (1 << level):
+                size = 1 << logsize
+                offset = level * n + 2 * (n >> recipe.min_block_log) - 2 * (n // size)
+                count = n + n // size
+                view = bank[:, offset : offset + count, :actual]
+                assert torch.equal(view, expected[:, offset : offset + count, :actual])
+                intervals.append((offset, count, actual, view.clone()))
+        snapshots.append(intervals)
+    reference = torch.autograd.grad(y, (x, layer.atoms.p), dy, retain_graph=True)
+    with torch.no_grad():
+        layer.atoms.p[:, :2].mul_(1.2)
+        layer.atoms.p[:, 2:].add_(0.31)
+    layer(torch.randn_like(x))
+    for bank, intervals in zip(banks, snapshots):
+        for offset, count, actual, old in intervals:
+            assert torch.equal(bank[:, offset : offset + count, :actual], old)
+    actual = torch.autograd.grad(y, (x, layer.atoms.p), dy)
+    for result, expected in zip(actual, reference):
+        torch.testing.assert_close(result, expected)
+
+
+@GPU
+@pytest.mark.parametrize("batch", [3, 33])
+def test_saved_bank_not_retained_without_atom_grad(batch):
+    layer = model("h_local_saved_bank", n=64, a=33, batch_chunk=16)
+    layer.atoms.p.requires_grad_(False)
+    seen = []
+    x = torch.randn(batch, 64, device="cuda", requires_grad=True)
+
+    def pack(t):
+        seen.append(t)
+        return t
+
+    with torch.autograd.graph.saved_tensors_hooks(pack, lambda t: t):
+        y = layer(x)
+    assert not any(t.ndim == 3 and t.shape[0] == 3 for t in seen)
+    assert torch.isfinite(torch.autograd.grad(y.sum(), x)[0]).all()

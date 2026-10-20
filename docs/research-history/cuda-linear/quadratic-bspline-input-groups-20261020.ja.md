@@ -1019,3 +1019,35 @@ source1649/manifest24、archive/manifest/Git bytes/return0/timeoutなし/cleanup
 G4記録は`verified-g4.json`/`audit-g4.json`、sample統計は`spatial-g4-summary.json`へ保全。
 追加metadataのCPU60checks、長期2case宣言、371 runtime-file package一致も確認した。
 所有supervisor正常終了とVM停止を確認し、公開/default dispatcherを変更しない。
+
+## v46: forward入力bankの不変snapshotをbackwardで使う（検証前）
+
+v44を基準にし、v45の空間順序は使わない。block幅s、開始site t*sに対して、
+
+\[
+B_{p,t,k,b}=\sum_{r=0}^{k-1}X_{b,ts+r}z_r^p,\qquad
+z_r=2r/s-1,\quad p\in\{0,1,2\}.
+\]
+
+H/Hμのqueryはこの3moment bankとforward時の係数を読む。
+backwardで同じX・同じbasisからbankを再構築していた部分を、そのforwardのbank保存で置き換える。
+bankの数値計算・dtype・query・注入・L2・全4atom pullbackは変更しない。
+新stepではX/σから新しいframeを作り、古いbankを再利用しない。
+active levelもframe固有のままで、過去VJPは過去Meta/係数/order/count/bankを使う。
+
+B≤batch_chunkではforward bankをそのままsave_for_backwardへ追加する。
+B>batch_chunkでは各chunkに個別のbankを確保し、後続chunkが上書きしないよう全て保持する。
+端数chunkの物理strideは従来と同じbatch_chunkであり、有効rowのみqueryする。
+atom勾配不要時は保持しない。dY bankと差分配列は別領域であり、query中の入力bankを上書きしない。
+retained backwardの再実行にもbankの不変性を維持する。
+
+N=1024/min_block=4ではlocal point数P=9727。保存payloadはB32で3*P*32*4byte=
+**3.562 MiB**、B64/chunk32で **7.124 MiB**。H/Hμを両方保持する12.800/25.600MiBより小さい。
+従来backwardの入力bank allocationも省くので、このpayload全量がpeakへ追加されるとは限らない。
+一方B64では従来の一個の使い回しから二個の保持になるため、総peak増加をGPUで検査する。
+payload式をallocated/reserved peakの達成証拠には使わない。
+
+`save_input_bank=False`は従来の再構築と同じ経路。新v46はTrueを標準にし、公開/defaultは変更しない。
+CPU2010pass/4808skip/18既存warning、Ruffを確認した。GPUでの42 targeted checksは、
+既存の動的σ/全勾配/Graph/tiny/floorに加え、3/33/64batchのbank一致・保存寿命、
+atom勾配なしでの非保存を含む。B32/B64 mixed・small/switchでv44/Denseと完全step/両peakを比較する。

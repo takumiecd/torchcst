@@ -41,6 +41,7 @@ from .recipe import (
     BSplineLocalPaddedRecipe,
     BSplineLocalPairedDecodeRecipe,
     BSplineLocalPersistentRecipe,
+    BSplineLocalSavedBankRecipe,
     BSplineLocalShardedRecipe,
     BSplineLocalSpatialRecipe,
     BSplineLocalSplitRecipe,
@@ -524,3 +525,9 @@ class BSplineLocalPairedDecodeAlgorithm(BSplineLocalDecodeRatioAlgorithm):
 class BSplineLocalSpatialAlgorithm(BSplineLocalPairedDecodeAlgorithm):
     revision: str = "v45"
     recipe_type: type = BSplineLocalSpatialRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalSavedBankAlgorithm(BSplineLocalPairedDecodeAlgorithm):
+    revision: str = "v46"
+    recipe_type: type = BSplineLocalSavedBankRecipe
