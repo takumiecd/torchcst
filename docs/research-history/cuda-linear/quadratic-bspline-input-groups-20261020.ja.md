@@ -2608,3 +2608,38 @@ Y/dX/raw振幅/両中心勾配は従来どおりmaxabsとrelL2を各4e-4未満�
 source SHA256 `1b52c6077e9f94fc10210088668c20a06a6c343de3b69093ee8cba2ab0de6ff0`、
 result SHA256 `ff318844fd417d0f6f4cd8b3f830342d1c4377da780d61c7290c8cd10c20f53d`。
 1712 sourcefiles/5 manifest、return1/no-timeout/cleanup ackを検証し、failed-jobsへ保全した。
+
+### Positive node部品のGPU照合（完全CST routeは未実装）
+
+source639fec98、job `l4job-5a6a59e023824b85824f9d80cded6776`は8test/24live状態を通過した。
+CO32=False/True各12状態で、N64/1024、A137/513、B3/33、通常/513重複/floor、
+origin/spacing差、zero/negative amplitude、empty/edge支持、3stepのsigma/center/X/dY更新とGraph replayを含む。
+
+| raw task metric 最大絶対誤差 | FP64 control + FP32 Bank | FP32 control + FP32 Bank |
+| --- | ---: | ---: |
+| Y | 4.558e-6 | 1.591e-5 |
+| dX | 1.467e-5 | 2.802e-5 |
+| dAmp | 1.238e-6 | 1.278e-6 |
+| dmu_o | 1.075e-6 | 7.873e-5 |
+| dmu_i | 5.429e-7 | 1.773e-6 |
+
+最終taskのmaxabs/relL2は全て4e-4未満（relL2最大3.269e-6）だった。
+raw中間H/Hmuの最大絶対誤差はFP64 controlで.001528/.000533、FP32 controlで.002260/.000724。
+これらには上記のelementwise atol/rtolとrelL2検査を使い、同じ絶対4e-4の通過とは扱わない。
+中間relL2最大は4.818e-8。prefixなしのancestor復元と同じB-splineのnode表現についてのGPU部品検査である。
+
+BankはFP32だが、queryの積/和・注入のatomic・ancestor復元・最後のnorm補正はFP64である。
+normalizerとraw幅/振幅はこの部品testでは独立Torchから与え、Polar全4PやCSTOptimizerをまだ接続していない。
+したがって「完全CSTのGPU全勾配/完全step/両peakが通過」「Denseに近づいた」とは主張しない。
+次は同じ数学のnode-owner集約と、保持するH/Gの寿命・構築費用・全stepを実装する段階である。
+Tensor payloadの式をGPUピークの代用にしない。default dispatcherは引き続き変更しない。
+
+source SHA256 `034b645e8478a9addb78e446188db1d9eee241dbdee6cab53ec30d1609711380`、
+result SHA256 `5e4d22f46fd3ae4ff1a6841ac52ea9666ae13c6aae9c601068ea8ca4b3737359`。
+1712 sourcefiles/5 manifest、return0/no-timeout/cleanup ack、supervisor終了と所有sessionなしを確認した。
+L4 normal primary45件、別診断8件、G4 primary13件。失敗やG4未割当は加算しない。
+
+source639fec98のCPU CI39418238927はsuccess。wheel/sdistの全383 runtimeファイルがGit bytesと一致した。
+sdist SHA256 `30aa9c39474436c085323c9c8235bd41298442c6ccd216701833f02528cf0109`、
+wheel SHA256 `5fa9fc24a5b355a54ad3486de5fae6624e34b77f6f791aa67adc002e6477301b`。
+目標は未達のままactive。新しい区間表現のGPU部品を通したことと、完全stepの速度・メモリ達成は区別する。
