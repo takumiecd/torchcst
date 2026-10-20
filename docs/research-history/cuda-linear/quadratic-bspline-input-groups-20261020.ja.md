@@ -2562,3 +2562,28 @@ normal L4 primaryは45件、診断7件、G4 primary13件。上記失敗2jobは�
 次のG4比較は、有望だったv64とDenseのみを主2条件で測る。
 `*-packed-bank-qualification.json`は従来mixed caseと同じ入力・optimizer・更新・精度・65roundを保ち、
 planだけv64に絞る。新profileや精度緩和、G4での広いparameter sweepは行わない。
+
+### G4確保失敗とpositive node部品のGPU検査準備
+
+source ed7fc0f9のG4 job `colabjob-5bd1799078d94b6b9a13661deff26943`と、
+復旧・残存VMなし確認後の単発再試行`colabjob-9911c868e0fd454e9a244f6bf4048662`は、
+いずれもColab assignの503 Service Unavailableで停止した。driverは実行されず、G4性能値はない。
+共有poolのrecover後、所有sessionがserver上に残らないことを確認した。
+source archive SHA256は順に`7ca63fe6f081a83373a09b597167bf0b05b59746984e06bc370a51c7d2c52cc9`、
+`54e112c4af07588922f25dcb4e54e46eaa9a360a02b17e5b9d7cdd85abefb8a3`。
+spec/archive/lifecycle/exclusionはignored `failed-allocation/JOB`へ保全する。
+G4 primary13件や正常診断の件数には加えず、連続した追加確保は行わない。
+
+`bernstein_node_kernels.py`は新しいLinear routeへ未接続の部品実装である。
+nodeごとにFP32の3momentを持ち、同じpieceをcanonical dyadic coverで読む。
+queryはFP64 controlまたはFP32へ丸めたcontrolを選び、その後の積・和はFP64。
+注入はFP64 atomicの対照、site復元はancestor nodeのbasis和で、prefix scanを使わない。
+このscatterを高速版として採用する意図はなく、owner集約へ変更する前の精度対照である。
+個別nodeのcontrolは入力mu/sigmaと共通sqrt(D)から求め、profileやsigmaの量子化をしない。
+非active laneのcontrolをzeroにして、他atomのcover loopが続く間のempty laneを汚染しない。
+
+GPU検査はN64/1024、A137/513、B3/33、通常・513重複・floor、異なるorigin/spacing、
+zero/negative amplitude、empty/edge/single supports、3状態のlive sigma/center/X/dYを使う。
+Graph replayでH/Hmu/G/Gmu、Y/dX、raw振幅/両中心のpullbackを独立Torch FP64と照合する。
+これはまだPolar全4P・GPU sampled L2実装・CST完全step・両peakの資格確認ではない。
+CPU2044 passed/5622 skipped/18既存warning（39.43s）、Ruffと差分検査を通過した。
