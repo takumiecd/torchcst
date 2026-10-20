@@ -1489,3 +1489,52 @@ job `colabjob-473a909761044c4397b0c7a38ffb731a`、sourcef43d7decでraw7件PASS(1
 テストのcount参照だけをunit_native_countへ対応する。期待native数のassertと精度gateは維持する。
 性能測定には到達していない。return1/no-timeout、manifest/source/result hashとcleanup ackを
 failed-jobsへ厳密保存し、成功/性能証拠に含めない。runtimeはf43d7decと同一のまま再提出する。
+
+### v50 G4: 精度・メモリを満たすが速度は悪化、不採用
+
+source `0fe9cd0c0bbbb98382633c30f68b9355e535d5b8`、job
+`colabjob-0d852c2f3a60453ea86b01a27d532206`でraw7件PASS(10.82s)、共有35件PASS(90.88s)。
+B32/B64それぞれ全planの3状態full-shape独立FP64 Y/dX/全4P照合、全52,428sigma更新、
+P/X/target hash一致がPASS。v50全4P maxabsはB32 2.049e-5/B64 2.342e-5。
+元の4e-4 maxabs/relL2 gateを維持した。
+
+| G4,65rounds | v47 ms | v50 ms | Dense ms | v50 allocated/reserved MiB |
+|---|---:|---:|---:|---:|
+|B32 mixed|.337040|1.081730|.066180|34.120/94|
+|B64 mixed|.505650|1.969150|.075070|35.120/96|
+
+v50はv47より3.21x/3.89x遅い。両メモリ指標はDense49.002/106、49.502/106MiB以下だが、
+速度目標に反するので採用しない。v47の同run対照もDense5.09x/6.74xで目標未達。
+B32計装span(ms)は係数.022624→.064448、forward.047808→.183840、
+backward.070336→.648800。scanは片側.015968→約.0098へ短縮したが、他の増加を補えない。
+v50 forward/backward registers40/48、spill0、local load/storeなし。特定のALU/cache stallの
+ハードウェアcounterは測っていないため、個々の命令を単独原因と確定しない。
+
+source archive SHA256 `91d019c522f7dc9473da6c4d3cdb6ab1285c9b9b42d527940b70b63bfe10bf61`、
+result archive `0158bedc2d13b1af86f0bb5e1a516c171df33b05ccd09cb5501f66dd8078cd99`。
+1675source files/25manifest entries/Git-byte一致、return0/no-timeout/cleanup ackを厳密検証。
+accepted G4 registry/auditは7job、診断専用とL4は別。supervisor14722 exit0、所有GPU停止済み。
+source CPU CI PASS(2m15s)。配布artifact377runtime filesも同sourceへbyte一致。
+
+## v51: 固定表によるFP64幅復元のrange reduction（検証前）
+
+v47のH方式・局所bank・全4P・sampled L2を保ち、毎stepのPolar幅復元
+`sigma=lower*exp(alpha*log(upper/lower))`の数値評価だけを固定表へ置き換える候補。
+表は128個の `v_i=1/(1+i/128)`、`-log(v_i)`、`exp(i*log(2)/128)`、計3072bytes。
+各値は初回にGPUのFP64 libdeviceで作り、atom/入力/幅によらず使えるimmutable定数とする。
+CPU由来tensorのcapture中コピーはしない。更新するsigma自体のcacheや量子化はしない。
+
+正規ratioを `ratio=2^e*m` として `f=fma(m,v_i,-1)` を取ると、
+`log(ratio)=e*log(2)-log(v_i)+log1p(f)`。
+丸めた逆数そのもののlogを表へ入れるので、逆数丸めの偏りを残さない。
+`|f|<=1/128+ulp`でdegree7のlog1p剰余は2e-18未満。
+`x=alpha*log(ratio)/log(2)`、`k=round(128*x)`、`j=k mod128`、`n=floor(k/128)`、
+`r=(x-k/128)*log(2)`として `exp(alpha*log(ratio))=2^n*tableExp[j]*exp(r)`。
+`|r|<=log(2)/256`でdegree6 exp剰余は3e-22未満。
+演算はFP64/FMAを使い、normal finite ratioが[2^-64,2^64]以外なら従来libdevice式へ戻す。
+元のratio overflow fallback・live scalar読み取り・clip・amplitude Jacobian・width stop-gradientは保持する。
+
+CPU601,935条件（random ratio/alpha、bin境界、alpha0/1等）でFP64元式との最大相対差1.022e-14。
+これはGPUの精度/速度証拠ではない。raw範囲・live Graph bounds/fallback・旧decoderのbitwise契約、
+共有全4P/retained/動的sigma gateの後、同じ主B32/B64条件でv47/Denseと完全step比較する。
+公開dispatcherは変更しない。

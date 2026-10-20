@@ -822,6 +822,15 @@ def measure(args, run):
                             ),
                         }
                     )
+                if getattr(recipe, "table_decode", False):
+                    hybrid_routing.update(
+                        {
+                            "width_decode_table_bytes": 3072,
+                            "width_decode_method": "FP64 fixed-table range reduction; degree7 log1p and degree6 exp; same live geometric interpolation",
+                            "width_decode_guard": "normal finite ratio in [2^-64,2^64]; original libdevice fallback outside range",
+                            "width_decode_table_scope": "immutable geometry-independent table; no atom/sigma quantization or stale step values",
+                        }
+                    )
                 if getattr(recipe, "unit_delta", False):
                     caches = [
                         s.buffers["unit_native_count"]

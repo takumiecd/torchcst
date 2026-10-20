@@ -4,6 +4,8 @@ import triton.experimental.gluon as tr
 import triton.experimental.gluon.language as tl
 from triton.experimental.gluon.language.extra import libdevice as lib
 
+from .table_decode_kernels import power_ratio
+
 
 @tr.jit
 def _pair(Meta, a, v0, v1, A: tl.constexpr, START: tl.constexpr, TILE: tl.constexpr):
@@ -23,6 +25,7 @@ def decode(
     RATIO: tl.constexpr = False,
     WARPS: tl.constexpr = 1,
     AmpSnapshot=None,
+    WidthTable=None,
 ):
     tile: tl.constexpr = tl.BlockedLayout([1, 2], [32, 1], [WARPS, 1], [1, 0])
     a = tl.program_id(0) * 64 + tl.arange(0, 64, layout=tl.SliceLayout(1, tile))
@@ -58,7 +61,16 @@ def decode(
         if tl.min(valid.to(tl.int32), 0) != 0:
             # Masked tail lanes cannot make a valid CTA take the slow branch.
             ratio = tl.where(a < A, ratio, 1.0)
-            sigma = lower * lib.exp(alpha * lib.log(ratio))
+            if WidthTable is not None:
+                bounded = (a >= A) | (
+                    (ratio >= 5.421010862427522e-20) & (ratio <= 18446744073709551616.0)
+                )
+                if tl.min(bounded.to(tl.int32), 0) != 0:
+                    sigma = lower * power_ratio(ratio, alpha, WidthTable)
+                else:
+                    sigma = lower * lib.exp(alpha * lib.log(ratio))
+            else:
+                sigma = lower * lib.exp(alpha * lib.log(ratio))
         else:
             # Avoid ratio overflow for otherwise representable geometric means.
             sigma = lib.exp((1 - alpha) * lib.log(lower) + alpha * lib.log(upper))

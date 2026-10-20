@@ -881,3 +881,10 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
 )
 
 REGISTRY.register(BSplineUnitDeltaAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalTableDecodeAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalTableDecodeAlgorithm())

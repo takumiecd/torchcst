@@ -380,7 +380,9 @@ def _scatter(
     return y
 
 
-def _prepare(p, value, chart, recipe, moments, amplitude_snapshot=None):
+def _prepare(
+    p, value, chart, recipe, moments, amplitude_snapshot=None, width_table=None
+):
     import triton as tr
 
     from ..local_product.preparation import polar_scalars
@@ -413,6 +415,8 @@ def _prepare(p, value, chart, recipe, moments, amplitude_snapshot=None):
                 decode_options["WARPS"] = recipe.prepare_warps
                 if amplitude_snapshot is not None:
                     decode_options["AmpSnapshot"] = amplitude_snapshot
+                if width_table is not None:
+                    decode_options["WidthTable"] = width_table
             compiled = decode[(tr.cdiv(len(p), 64),)](
                 source,
                 meta,

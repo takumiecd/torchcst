@@ -433,7 +433,9 @@ def _source_order(order, recipe):
 
 def _frame(x, p, value, chart, recipe, moments, routing, sizes, build_border=True):
     a = len(p)
-    meta, origin, spacing, _source = _prepare(p, value, chart, recipe, moments)
+    meta, origin, spacing, _source = _prepare(
+        p, value, chart, recipe, moments, width_table=routing.get("width_table")
+    )
     _stamp("group", 0)
     order, count = placement(meta, origin, spacing, sizes, recipe, routing)
     _stamp("group", 1)
@@ -828,6 +830,14 @@ def apply(x, p, value, chart, recipe, bases, moments, buffers):
     if buffers.get("stream_layout_key") != key:
         buffers["stream_layout"] = make_layout(len(p), sizes, recipe, p.device)
         buffers["stream_layout_key"] = key
+    if getattr(recipe, "table_decode", False):
+        routing = buffers["stream_layout"]
+        if "width_table" not in routing:
+            from .table_decode_kernels import initialize
+
+            table = p.new_empty((384,), dtype=torch.float64)
+            initialize[(1,)](table, num_warps=4, enable_fp_fusion=False)
+            routing["width_table"] = table
     if recipe.norm_float32:
         if "local_norm_moments" not in buffers:
             count = torch.arange(moments.shape[1], device=p.device, dtype=torch.float64)

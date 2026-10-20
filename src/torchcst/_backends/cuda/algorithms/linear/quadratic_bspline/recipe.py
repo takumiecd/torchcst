@@ -946,3 +946,17 @@ class BSplineUnitDeltaRecipe(BSplineLocalSavedBankRecipe):
             )
         if type(self.unit_shards) is not int or self.unit_shards not in (1, 4, 8, 16):
             raise ValueError("unit_shards must be 1,4,8 or16")
+
+
+@dataclass(frozen=True)
+class BSplineLocalTableDecodeRecipe(BSplineLocalBankZeroRecipe):
+    """Revision 51: fixed-table FP64 range reduction for live width decoding."""
+
+    table_decode: bool = True
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.table_decode) is not bool:
+            raise ValueError("table_decode must be boolean")
+        if not self.paired_decode or not self.ratio_decode or not self.split_prepare:
+            raise ValueError("table decoding requires paired split ratio decoding")

@@ -40,6 +40,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineLocalShardedAlgorithm,
     BSplineLocalSpatialAlgorithm,
     BSplineLocalSplitAlgorithm,
+    BSplineLocalTableDecodeAlgorithm,
     BSplineLocalTransposedAlgorithm,
     BSplineLocalUnifiedAlgorithm,
     BSplineLocalVectorAlgorithm,
@@ -92,6 +93,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineLocalShardedRecipe,
     BSplineLocalSpatialRecipe,
     BSplineLocalSplitRecipe,
+    BSplineLocalTableDecodeRecipe,
     BSplineLocalTransposedRecipe,
     BSplineLocalUnifiedRecipe,
     BSplineLocalVectorRecipe,
@@ -136,11 +138,15 @@ def case(n=64, a=17):
 def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     from dataclasses import replace
 
+    table_decode = strategy == "h_table_decode" or recipe_options.pop(
+        "_table_decode", False
+    )
     unit_delta = strategy == "h_unit_delta" or recipe_options.pop("_unit_delta", False)
     integer = strategy == "h_local_integer" or recipe_options.pop("_integer", False)
     vector = strategy == "h_local_vector" or recipe_options.pop("_vector", False)
     bank_zero = (
-        unit_delta
+        table_decode
+        or unit_delta
         or integer
         or vector
         or strategy == "h_local_bank_zero"
@@ -319,6 +325,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineLocalSavedBankAlgorithm())
     registry.register(BSplineLocalBankZeroAlgorithm())
     registry.register(BSplineUnitDeltaAlgorithm())
+    registry.register(BSplineLocalTableDecodeAlgorithm())
     registry.register(BSplineLocalIntegerAlgorithm())
     registry.register(BSplineLocalVectorAlgorithm())
     registry.register(BSplineLocalUnifiedAlgorithm())
@@ -354,7 +361,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         recipe_options.setdefault("lane_atoms", 4)
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v50"
+        "v51"
+        if table_decode
+        else "v50"
         if unit_delta
         else "v49"
         if integer
@@ -453,7 +462,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         else "v2"
         if tuned
         else "v1",
-        BSplineUnitDeltaRecipe(**recipe_options)
+        BSplineLocalTableDecodeRecipe(**recipe_options)
+        if table_decode
+        else BSplineUnitDeltaRecipe(**recipe_options)
         if unit_delta
         else BSplineLocalIntegerRecipe(**recipe_options)
         if integer
@@ -2980,6 +2991,13 @@ ALL_QUERY_OPTIONS = (
         pytest.param(opt, id=f"bank-zero-{i}")
         for i, opt in enumerate(BANK_ZERO_OPTIONS)
     ]
+    + [
+        pytest.param({"_table_decode": True}, id="table-decode-0"),
+        pytest.param(
+            {"_table_decode": True, "save_input_bank": False, "batch_chunk": 16},
+            id="table-decode-1",
+        ),
+    ]
     + [pytest.param(opt, id=f"vector-{i}") for i, opt in enumerate(VECTOR_OPTIONS)]
     + [pytest.param(opt, id=f"integer-{i}") for i, opt in enumerate(INTEGER_OPTIONS)]
     + [
@@ -3875,6 +3893,7 @@ def test_native_bound_recipe_roundtrip_and_bounds():
         "h_local_saved_bank",
         "h_local_bank_zero",
         "h_unit_delta",
+        "h_table_decode",
         "h_local_integer",
         "h_local_vector",
     ],
@@ -3973,6 +3992,7 @@ def test_native_bound_count_changes_across_graph(batch, floor, strategy):
         "h_local_saved_bank",
         "h_local_bank_zero",
         "h_unit_delta",
+        "h_table_decode",
         "h_local_integer",
         "h_local_vector",
     ],
@@ -4021,6 +4041,7 @@ def test_native_bound_strided_individual_gradients(which, strategy):
         "h_local_saved_bank",
         "h_local_bank_zero",
         "h_unit_delta",
+        "h_table_decode",
         "h_local_integer",
         "h_local_vector",
     ],
@@ -4562,6 +4583,7 @@ def test_native_cache_recipe_roundtrip_and_bounds():
         ("h_local_saved_bank", True),
         ("h_local_bank_zero", True),
         ("h_unit_delta", True),
+        ("h_table_decode", True),
         ("h_local_integer", True),
         ("h_local_vector", True),
     ],
@@ -4588,6 +4610,7 @@ def test_native_cache_spacing_fallbacks(strategy, unroll, spacing, batch, amplit
             "h_local_saved_bank",
             "h_local_bank_zero",
             "h_unit_delta",
+            "h_table_decode",
             "h_local_integer",
             "h_local_vector",
         )
@@ -6240,3 +6263,121 @@ def test_unit_delta_live_amplitude_and_retained_snapshot(keep):
     for av, bv in zip(actual, expected):
         err = check(av, bv, 4e-4)
         assert err["max"] < 4e-4 and err["rel_l2"] < 4e-4
+
+
+@GPU
+def test_table_decode_graph_live_bounds_and_fallback():
+    import triton as tr
+
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        paired_decode_kernels as pd,
+    )
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        prepare_split_kernels as sk,
+    )
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        table_decode_kernels as td,
+    )
+
+    table = torch.empty(384, device="cuda", dtype=torch.float64)
+    td.initialize[(1,)](table, num_warps=4, enable_fp_fusion=False)
+    a = 65
+    p = torch.randn(a, 4, device="cuda")
+    origin = torch.zeros(2, device="cuda", dtype=torch.float64)
+    spacing = torch.full((2,), 0.1, device="cuda", dtype=torch.float64)
+    scalars = tuple(
+        torch.full((), v, device="cuda", dtype=torch.float64)
+        for v in (1.0, 1e6, 1.0, 6.0, 1.0, 0.1, 0.1, 12.8, 0.1)
+    )
+    old = torch.full((a, 12), -777.0, device="cuda", dtype=torch.float64)
+    new = old.clone()
+
+    def run():
+        sk.decode[(tr.cdiv(a, 64),)](
+            p,
+            old,
+            origin,
+            spacing,
+            scalars,
+            a,
+            RATIO=True,
+            num_warps=1,
+            enable_fp_fusion=False,
+        )
+        pd.decode[(tr.cdiv(a, 64),)](
+            p,
+            new,
+            origin,
+            spacing,
+            scalars,
+            a,
+            RATIO=True,
+            WARPS=1,
+            WidthTable=table,
+            num_warps=1,
+            enable_fp_fusion=False,
+        )
+
+    run()
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        run()
+    for lo, hi in ((0.2, 3.2), (1e-250, 1e250), (0.1, 12.8)):
+        for index, value in ((5, lo), (6, lo), (7, hi), (8, lo)):
+            scalars[index].fill_(value)
+        p[:, :2].mul_(1.003)
+        graph.replay()
+        exact = [0, 2, 3, 4, 5, 6, 7, 8, 10, 11]
+        assert torch.equal(new[:, exact], old[:, exact])
+        torch.testing.assert_close(new[:, [1, 9]], old[:, [1, 9]], atol=0, rtol=3e-13)
+
+
+def test_table_decode_recipe_roundtrip_and_guards():
+    reg = Registry()
+    reg.register(BSplineLocalTableDecodeAlgorithm())
+    for enabled in (False, True):
+        recipe = BSplineLocalTableDecodeRecipe(table_decode=enabled)
+        plan = ExecutionPlan("research_cuda_quadratic_bspline", "v51", recipe)
+        assert reg.loads_plan(reg.dumps_plan(plan)) == plan
+    for bad in ({"table_decode": 1}, {"ratio_decode": False}, {"split_prepare": False}):
+        with pytest.raises(ValueError):
+            BSplineLocalTableDecodeRecipe(**bad)
+
+
+@GPU
+def test_table_decode_power_range_and_bin_boundaries():
+    import triton.experimental.gluon as tr
+    import triton.experimental.gluon.language as tl
+
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        table_decode_kernels as td,
+    )
+
+    @tr.jit
+    def raw(X, Alpha, Out, Table, N: tl.constexpr):
+        i = tl.program_id(0) * 128 + tl.arange(
+            0, 128, layout=tl.BlockedLayout([1], [32], [4], [0])
+        )
+        x = tl.load(X + i, i < N, 1.0)
+        alpha = tl.load(Alpha + i, i < N, 0.0)
+        tl.store(Out + i, td.power_ratio(x, alpha, Table), i < N)
+
+    x = torch.exp2(torch.linspace(-64, 64, 8193, dtype=torch.float64))
+    mantissa = 1 + torch.arange(128, dtype=torch.float64) / 128
+    bins = torch.cat([mantissa * 2.0**e for e in (-64, -1, 0, 1, 63)])
+    x = torch.cat((x, bins, torch.nextafter(bins, torch.zeros_like(bins))))
+    for alpha in (torch.zeros_like(x), torch.ones_like(x), torch.rand_like(x)):
+        table = torch.empty(384, device="cuda", dtype=torch.float64)
+        td.initialize[(1,)](table, num_warps=4, enable_fp_fusion=False)
+        actual = torch.empty(len(x), device="cuda", dtype=torch.float64)
+        raw[(tr.cdiv(len(x), 128),)](
+            x.cuda(),
+            alpha.cuda(),
+            actual,
+            table,
+            len(x),
+            num_warps=4,
+            enable_fp_fusion=False,
+        )
+        expected = (alpha * x.log()).exp()
+        torch.testing.assert_close(actual.cpu(), expected, atol=0, rtol=3e-14)

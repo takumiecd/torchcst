@@ -47,6 +47,7 @@ from .recipe import (
     BSplineLocalShardedRecipe,
     BSplineLocalSpatialRecipe,
     BSplineLocalSplitRecipe,
+    BSplineLocalTableDecodeRecipe,
     BSplineLocalTransposedRecipe,
     BSplineLocalUnifiedRecipe,
     BSplineLocalVectorRecipe,
@@ -581,3 +582,9 @@ class BSplineUnitDeltaAlgorithm(BSplineLocalSavedBankAlgorithm):
         if isinstance(context, LinearContext) and context.atom_count > 60000:
             reasons.append("two-word profile accumulation supports at most 60000 atoms")
         return SupportResult(tuple(reasons))
+
+
+@dataclass(frozen=True)
+class BSplineLocalTableDecodeAlgorithm(BSplineLocalBankZeroAlgorithm):
+    revision: str = "v51"
+    recipe_type: type = BSplineLocalTableDecodeRecipe
