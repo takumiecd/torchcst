@@ -4502,6 +4502,28 @@ def test_unified_recipe_roundtrip_and_guards():
             BSplineLocalUnifiedRecipe(**bad)
 
 
+@pytest.mark.parametrize("sites,accepted", [(131072, True), (262144, False)])
+def test_unified_mask_reserves_fallback_bits(sites, accepted):
+    from torchcst._backends.schema import DeviceInfo
+    from torchcst.operators.context import LinearContext
+
+    context = LinearContext(
+        operator=bs.fixture_operator(case(n=sites)),
+        input_shape=(32, sites),
+        input_strides=(sites, 1),
+        dtype=torch.float32,
+        atom_count=17,
+        device=DeviceInfo("cuda", 0),
+        parameter_dim=4,
+    )
+    result = BSplineLocalUnifiedAlgorithm().supports(
+        context, BSplineLocalUnifiedRecipe()
+    )
+    assert (
+        "unified mask supports at most 16 local levels" not in result.reasons
+    ) == accepted
+
+
 @GPU
 @pytest.mark.parametrize("count", [0, 1, 5, 17, 137])
 @pytest.mark.parametrize("group", [4, 8])

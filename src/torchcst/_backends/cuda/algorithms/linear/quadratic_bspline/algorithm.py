@@ -474,3 +474,18 @@ class BSplineLocalLevelMaskAlgorithm(BSplineLocalGluonAlgorithm):
 class BSplineLocalUnifiedAlgorithm(BSplineLocalNativeCacheAlgorithm):
     revision: str = "v40"
     recipe_type: type = BSplineLocalUnifiedRecipe
+
+    def supports(self, context, recipe):
+        result = super().supports(context, recipe)
+        reasons = list(result.reasons)
+        if isinstance(context, LinearContext):
+            try:
+                # Low bits 0..15 are levels; bits 16/17 describe fallbacks.
+                if any(
+                    n.bit_length() - recipe.min_block_log > 16
+                    for n in layout(context.operator)
+                ):
+                    reasons.append("unified mask supports at most 16 local levels")
+            except (ValueError, TypeError, AttributeError):
+                pass
+        return SupportResult(tuple(reasons))
