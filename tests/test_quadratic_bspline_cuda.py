@@ -4667,3 +4667,23 @@ def test_native_shards_finish_and_reuse(shards, batch):
         assert torch.count_nonzero(hot[:, :actual]) == 0
         assert torch.equal(hot[:, actual:], before[:, actual:])
         hot.normal_()
+
+
+@GPU
+@pytest.mark.parametrize("shards", [4, 16])
+@pytest.mark.parametrize("batch", [3, 33])
+def test_native_shards_hot_overlap(shards, batch):
+    # The prior 513-coincident gate must cover both new shard counts, not only
+    # the default recipe. These profiles have 4 sites and take cached hot.
+    layer = model("h_local_native_shards", n=64, a=513, native_hot_shards=shards)
+    with torch.no_grad():
+        layer.atoms.p[:, 0] = 0.6
+        layer.atoms.p[:, 1] = 0.8
+        layer.atoms.p[:, 2:] = 3.15
+    for step in range(3):
+        if step:
+            with torch.no_grad():
+                layer.atoms.p[:, :2].mul_(1.0003)
+                layer.atoms.p[:, 2:].add_(0.0037)
+        x = torch.randn(batch, 64, device="cuda", requires_grad=True)
+        gate(layer, x, torch.randn_like(x))
