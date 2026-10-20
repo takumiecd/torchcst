@@ -1344,3 +1344,63 @@ queryのfallback内でint64のx名をFP64へ再代入したため、loop-carried
 fallbackの入力値とsite indexを別名へ分離する。数式・量子化bits・基準は変えない。
 5PASS/1compileFAIL、性能なし、source/result/git/manifest/cleanupを厳密保存して除外。
 supervisor78435 exit0。次snapshotで同じ全検査を再実行する。
+
+
+### v49 G4: bank構築は短縮、query/係数構築増で不採用
+
+job `colabjob-2cff4e58e91d4055865d3360ec0ff69c`、source
+`caca65127feaf7f2b8b820504313bb7fb58f6501`。raw13件(8.68s)、共有参照33件(84.52s)PASS。
+両primaryの全plan・3状態全shape独立FP64 Y/dX/全4P、全52,428sigma更新、初期P/X/target hash一致もPASS。
+同じ4e-4 maxabs/relL2基準、sampled単一floor L2、task幅stop-gradient、AdamW/Polar更新を保持した。
+
+|G4,65rounds|v47 ms|v49整数query ms|Dense ms|v49 allocated/reserved MiB|
+|---|---:|---:|---:|---:|
+|B32 mixed|0.333270|0.597080|0.065810|35.790039/90|
+|B64 mixed|0.502040|0.978420|0.074490|36.540527/94|
+
+v49はv47比1.79x/1.95x遅い。v47自体もDense比約5.06x/6.74xで、速度目標は未達。
+v47 allocated/reservedは34.153809/98、38.216309/100MiB。
+v49はB64で両指標が下がるが、B32 allocatedは1.636MiB増える（reservedは減る）。
+Dense 49.002441/106、49.502441/106MiBよりは両方低いが、速度とメモリの同時改善ではない。
+旧最速v47を保持し、v49は採用しない。bankだけを速く/小さくしても全stepは改善しないという負の結果。
+
+B32計装span(ms): input bank 0.013920→0.007776、adjoint bank0.015072→0.008928。
+一方、係数準備0.022624→0.071776、forward query+注入0.047840→0.068288、
+backward query+全atom勾配+注入0.070368→0.273120。scanは両方向とも0.015968で同じ。
+backward registersは54→168、forward39→96、spill0/local load-storeなし。
+これは計装spanであり、未計装の完全stepと分けて記録する。
+整数積・読み取り・低占有率のどれが主因かを個別に特定するcounter/単体ablationは未採取。
+
+整数query候補の独立参照誤差はB32 Y2.381e-5/dX2.020e-5/全4P1.474e-5、
+B64 Y2.290e-5/dX2.136e-5/全4P1.953e-5(maxabs)。
+全4P relL2は約1e-7で、速度は負でもこの数値精度は確認できた。
+rawbankのsubnormal/large/zero/padding、正負signed128小残差、直接query fallbackも検査している。
+
+source archive SHA256 `6d0d903cfdc056875cdb8dcf96b4c04c98bdf3f57afffd3a364310f2605896f1`、
+result archive SHA256 `b193cb24243b453e13601fb94089a580f6ee3c3323cbbeb611d9c5a65618518c`。
+1670source files、manifest25件、Git byte一致、return0/no-timeout、cleanup ackを厳密検証。
+全6件G4 jobをauditし、L4 registryは変更していない。CPU CI caca PASS。
+supervisor16401 exit0、全所有GPU停止、CLI active sessionなし。
+
+### 次の圧縮の数式確認（CPUのみ）
+
+現v49 queryは3piecesの両端各3impulse、計18点をHにもHmuにも使う。
+同じ節点の開始/終了を合算すればqの3階差分は最大12点。
+qmuは区分1次なので、その2階差分は最大8点であり、
+Hmu=(Δ²qmu)^T reverse_prefix²(X)とすれば3階prefixを使う必要がない。
+H/Hmuを合わせると36→20積和だが、これはGPU速度の証拠ではない。
+
+`integer-query-events-cpu.py/.json`ではN64/128/1024の384軸例で整数の再構成が完全一致。
+H maxabs1.863e-9、Hmu1.394e-9。係数整数はv49と同じq polynomialから微分している。
+2階/3階bankのpayloadはN1024/B32で524,544bytes、保存event係数を全部持つ案は
+追加352A bytes(17.6MiB/A52428)となる。現v49より係数payloadが増えるため、
+単純に36→20積和だけで採用してはならない。GPU未実装、全shape/all4P/完全step未検証。
+source SHA256 `94137a89377c5c2b277dd77863f11cba39959fee7b6f8faf4a1be4380c2755ee`。
+
+さらに、整数の128bit積和をqueryの必須条件とせず、FP32二成分でprefix/queryの精度を保つ案もある。
+出力注入は成分別FP32 atomicだけでは和の丸め誤差を補えないため、単純なhi/lo分割では代用できない。
+unit-axis factorization U=q_o/||q_o||, V=q_i/||q_i||,
+λ=A ||q_o|| ||q_i||/max(||q_o|| ||q_i||,eps)なら同じ単一floor演算W=ΣλUV^Tとなる。
+入力側H生成、係数構築、出力の正確な加算を一緒に考える必要があり、
+unit profileの差分とbatch別尺度の重みを2word整数へ足してprefixで戻す設計は未検証の候補。
+現時点でこの案のGPU実装や速度・peak・精度の主張はしない。
