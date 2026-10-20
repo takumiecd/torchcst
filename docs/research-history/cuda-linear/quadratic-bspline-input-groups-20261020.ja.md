@@ -699,3 +699,53 @@ hotのFP64加算を保ち、v41のFP32部分和は使わない。
 profile/H/G/atom勾配式はv40と同じで、copy・zero・transpose finish込みで完全stepを測る。
 追加payloadはB32/N1024でFP64 hot256KiBとX/dYコピー各128KiBであり、実測peakとは区別する。
 v39最速版・v40cut.15・v42・Denseを4条件で比較し、513重なりも同じgateで確認する。
+
+### v42実測: 直接側の配置改善は効くが、最速momentを超えない
+
+job `l4job-2425cfa75f814786bcc1f5bbcff01d7d`、source
+`f5e2d4d07064ed37d40ba3a9442ee82a162e3778`。
+41 targeted checks PASS（231.59s）、513重なり・端数chunkの物理stride/zero再利用、
+全4条件の3状態全shape独立FP64 Y/dX/全4atom勾配、全52,428σ更新と初期hash一致を確認。
+
+|条件|v39 mask ms|v40 cut.15 ms|v42 point-major ms|Dense ms|
+|---|---:|---:|---:|---:|
+|B32 mixed|0.764634|0.812698|0.765297|0.083503|
+|B64 mixed|1.234458|1.353722|1.250661|0.107560|
+|B32 small|0.703778|0.974817|0.797884|0.082827|
+|B32 switch|0.731340|0.783509|0.733314|0.082374|
+
+v42 peak allocated/reservedはB32 **34.904/98 MiB**、B64 **35.654/102 MiB**。
+両方ともDense49.002/106、49.502/106MiB以下。
+しかしv39に対してB32 mixed/switchは同帯、B64とsmallは遅いので最速版へ採用しない。
+smallはv40比18.15%短縮するが、既に不採用の直接方式に対する改善であり、
+最速momentを超えたとは扱わない。
+
+smallのstream forward/backwardはv40 **0.289792/0.366592ms**から
+v42 **0.208896/0.270336ms**へ減る。ここにはX/dYのtranspose copyを含む。
+hot zero約0.003ms/方向、finish約0.006ms/方向も完全stepに含む。
+streamのregister40/56・shared0・spill0は同じ。finishは26register/shared2048bytes/spill0。
+配置変更は直接側の実行時間を減らした一方、FP64 atomicをFP32分割したv41だけでは減らなかった。
+これは実装の比較証拠であり、個別のhardware transaction/待ち時間を計測したという主張ではない。
+
+source SHA256 `9e4b3ac23164c32e9ed837148a9f541f8c18702c5e5c06e5222fa830e3352599`、
+result SHA256 `2b04b5e331ae9ef9d8f706160f12548584d0141bb0d9fe4fe991c85afdd7e61f`。
+source1630 files、manifest56、return0/timeoutなし/cleanup ackを厳密確認。
+CPU2006pass/4637skip/18既存warning、Ruff/cases、370 runtime filesのsdist/wheel一致、
+source f5e2d4d0のGitHub CPU validationもPASS。
+source内のv41 4shardsに対する追加重なりテストは失敗を再現するものであり、
+全CUDA routeの回帰suiteがPASSしたという意味ではない。v42 targeted PASSと区別する。
+
+目標は引き続き**同条件Denseの2倍以内かつ両memory peakがDense以下**。
+最速v39の今回再測定はDense比約9.16x/11.48xで、速度目標は未達。
+v40/v41/v42のいずれも公開/default dispatcherへ反映しない。
+
+### 次の準備改善候補（未実装）
+
+現decoderの幾何補間
+`sigma=exp((1-alpha)*log(lower)+alpha*log(upper))`は、数学的には
+`sigma=lower*exp(alpha*log(upper/lower))`と同じである。
+有限ratioの場合はFP64 logを2回から1回へ減らせる。ratio overflowでは元式へ戻す候補とする。
+CPU-only design probeではprimary範囲20万例のmax relative差1.236e-15、
+極端な幅範囲20万例では29,513例のfallback込みで2.025e-13。
+これはGPU精度gateや速度証拠ではない。別revisionとして動的σ・全勾配・境界・両peakを検証する。
+CPU式の確認だけで現decoderを書き換えたり、速度達成扱いにはしない。
