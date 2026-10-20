@@ -2190,3 +2190,39 @@ hの整数→FP32変換は正確。lの29bit整数→24bit FP32丸めだけで�
 v63 CPU2042 passed/5486 skipped/18既存warning(39.52s)、Ruff、両case declaration、wheel/sdist build PASS。
 追加GPU単体テストのskip指定漏れによるCPU collection後のimport失敗を修正して全CPUを再実行した。
 GPU検証はこれから行い、未検証の速度改善や両peakを採用結果として扱わない。
+
+### v63: 整数分割でv62の退行を抑えたが、2倍目標は未達（cleanup通信失敗run）
+
+source `ec30794924c78e6bfe5404d674361714f9b2a897`、job
+`l4job-f047499f906744cda32827a4e485f064`。NVIDIA L4/driver580.82.07、
+Torch2.11.0+cu130/CUDA13/Triton3.6。raw44件PASS(54.92s)、回帰47件PASS(208.33s)。
+bit分割の上下限直前/直後、正負/零/極端値と単体再構成精度、raw query、513重複、
+動的σ、個別/全勾配、Graph、retained/concurrentを確認した。
+両主条件・3状態・全planのFP64 full-shape gateと初期hash一致、全52,428 sigma更新もPASS。
+最大Y/dX/全4Pは1.233e-6/1.468e-6/2.808e-5、relL2各7.601e-8/7.969e-8/1.054e-7以下。
+
+ただしdriver return0/no-timeoutで結果を回収・archive/manifest照合した後、remote cleanup接続が切れ、
+CLIの外側180秒timeoutになった。supervisorは所有sessionを停止し、serverの割当なしを確認。
+結果は `verified-cleanup-failed.json`/`verified-cleanup-failed-jobs/` に保全し、
+通常完了したprimary43件や採用根拠には追加しない。以下はその区別を付けた観測値である。
+
+|L4,65rounds、cleanup失敗run|v60 FP64 ms|v62 pair ms|v63 integer split ms|Dense ms|候補allocated/reserved MiB|
+|---|---:|---:|---:|---:|---:|
+|B32 mixed|5.071606|15.563996|4.721374|.082336|34.255/96|
+|B64 mixed|9.837781|30.840628|9.394999|.103819|34.755/100|
+
+v63はv60比で約6.9%/4.5%短いが、Dense比約57.3倍/90.5倍であり目標を満たさない。
+両peakはDense49.002/106、49.502/106MiB以下だった。
+16行chunkのv63 forward約.544〜.553ms、backward約1.105〜1.125ms、register47/54、
+shared16bytes、spill0/local load-storeなし。別instrumented Graphのcomponent値を
+完全stepへ加算したり、異なるrunの値を差し引いて因果効果としない。
+最終注入をFP64に保っているため、query-onlyの前計算診断の短縮がそのまま完全stepに移るわけではない。
+小幅な改善と通信失敗を考慮し、この候補のG4展開や再測定を優先しない。defaultは変更しない。
+
+source archive `04294fcadf2b70564a97dfb05fd4b7f576f0d6245a51dee0cdcc90fb8afa8496`、
+result archive `4bda8bed91d59f529c480dcb91384054e0ca6c73c6b9cb83f89c52060b62c23c`。
+1702source files/31manifest entries/Git-byte一致。remote cleanup ackなし、所有VM停止は確認済み。
+source CPU CI PASS、wheel/sdistの380runtimeファイルGit-byte一致。
+速度目標はactive/unmetのまま。次はBank作成時に分割を共有できる保存表現を検討し、
+前計算費用・fallbackの精度・保持領域増加を含めて判定する。旧v34のhash groupingは既に遅かったので、
+そのまま戻して改善と見なさない。
