@@ -91,3 +91,129 @@ python -m pytest tests/test_polynomial_fourier_cpu_study.py -q
 
 結果JSONにはsource commit/2 source hash、環境、全測定sampleを保存する。
 raw結果と図はignored outputに保全し、この文書には検証後の要点のみ追記する。
+
+## 検証済み結果
+
+測定source `15dcbe88935f2826ef50eb53ccd1243db74540e7`、macOS arm64、numpy2.4.6、
+BLAS/OMP/Accelerateは各1thread。最終原本は `output/poly-fourier-cpu-20261021-qualified/`。
+results SHA256 `2356215c8af25c4a839a54a560944db0a2b53ebcacccf9b01d53bf0216001040`。
+source2本とtest1本のGit byte一致を確認し、proof.jsonへ保存した。
+先行 `*-final/` は旧sourceかつCPU testと並行したため時間の根拠から除外する。
+
+shape10,368条件、切替786記録、独立直接和120状態。
+係数/幅微分の独立quadrature誤差は3.06e-15/1.16e-15、
+norm²/そのmu/sigma内積誤差は5.69e-14/1.02e-14/6.76e-14、
+table geometryと有限等比級数geometryの誤差は5.69e-14以下。
+共有H/Hmu/Hsigmaの直接評価との差は2.06e-15/3.56e-15/6.94e-15。
+normalized profileの有限差分relL2誤差はmu1.67e-9、sigma3.47e-10。
+独立Torch quadrature/autograd・動的X・中心のtile越え・Cartesian product/floorは21test通過。
+CPU全suiteは2066 passed /5651 skipped /18既存warnings（42.12s）。
+GPU・CST完全step・全atom optimizer照合を通したという意味ではない。
+
+### 形・裾・勾配
+
+主条件T=3.2（32点）、L0=8T、smooth sigma/period + smooth tile集合、sigma=.1..10。
+以下は母形状pとの差やcandidate自身の特性の最大値である。
+母形状との差はnew candidateの数学的特性で、candidate内部の勾配計算誤差とは異なる。
+
+| 指標 | M4 | M8 |
+| --- | ---: | ---: |
+| sampled L2正規化後の母形状との相対L2差 | 12.063% | 0.6053% |
+| 母形状との中心勾配relL2差 | 33.405% | 2.8883% |
+| 母形状とのsigma勾配relL2差 | 202.75% | 10.941% |
+| native支持外の最大振幅 / peak | 7.0492% | 0.3624% |
+| native支持外のL2 energy / 全energy | 0.6532% | 0.001774% |
+| 負の振れ / peak | 7.0492% | 0.4297% |
+| energy RMS幅 / 母形状の幅 | .998139..1.264754 | .999828..1.000377 |
+| 空間xのtile端に残る値のjump / peak | 3.9871% | 0.1815% |
+
+M8の山の幅はよく保たれるが、非負性・xの連続性を厳密に満たさない。
+mu/sigmaに関する滑らかさと、空間xに関する滑らかさを同一視しない。
+
+| M8 / tile点数 | 母形状との最大相対L2差 | 最大裾振幅 / peak | native/Fourier重なりsigma |
+| --- | ---: | ---: | --- |
+| 32 | .6053% | .3624% | 約1.235..1.698 |
+| 64 | .5532% | .3544% | 約2.470..3.396 |
+| 128 | .1987% | .1421% | 約4.940..6.793 |
+
+大きいtileほど本調査範囲内でnativeに残るsigmaが増えるため、この表だけで大tileの方が
+Fourier精度・速度に優れるとは言えない。主条件のnative終端では支持直径は3.52T。
+local側は「1tileしか読まない」制約を置かず、約3.5tile幅まで読む必要があった。
+sigma=.1はnativeのままで、支持は約6～7site（1軸）。
+
+「支持直径が.8T..1.2T」で早期切替する対照は、M8でも母形状との差27.52%、
+裾振幅12.52%、energy幅比最大2.314となった。M4は形状差62.46%。
+L0=4Tの狭い周期対照もM8で形状差4.67%、裾2.53%となった。
+少数M、丸ごとのtileのみ、十分な余白、早期切替のすべてを同時には満たせていない。
+
+### 切替と連続性
+
+hardな周期/経路切替ではnormalized shape jumpはM4最大15.39%、M8最大.8097%。
+quintic重なりではsigmaを相対±1e-7ずらした差はM4で4.31e-7、M8で1.58e-7以下。
+これは有限差分幅での変化であり、数学的jumpの下限やゼロの測定ではない。
+重み端で2階まで微分が消え、同じ期間profileへ接続する構成にしている。
+
+hardなtile集合の入替ではmuをtile端±1e-9で比較したshape差がM4最大2.426%、M8最大.1128%。
+隣接2集合のsmooth混合では両Mとも1.33e-8以下、中心勾配差2.21e-8以下だった。
+代償は通常2集合、周期重なりで最大4集合を持つこと。空間xの端のjumpは上表のとおり残る。
+
+### 正規化込みの費用・保存量・再利用
+
+この実装では1軸native支持Kp、参照tile数Kt、batchBとすると、
+nativeはO(B Kp)、Fourier共有H/微分はO(B M Kt)。
+入力bank構築は要求されたtile/周波数のsiteを一度読む。
+同じXなら係数・sigmaが変わってもmomentを共有できる。Xが変わればそのmomentは無効。
+隣接周期の偶数周波数aliasも共有する。tile上のrange prefixを導入すればHのKt依存を
+減らす余地はあるが、この原型の時間には導入していない。
+
+L2の係数convolutionは直接O(M²)。geometryは有限等比級数でO(M)、保存表0。
+原型は全component組についてE/Emu/Esigmaを個別計算し、通常2集合で12回、
+2周期×2集合で48回のconvolutionを行う。対称性・同じ周波数の処理をまとめる余地が残る。
+native/Fourier重なりにはO(Kp M)の交差項が加わる。追加の空間窓やFourier境界直接補正はない。
+
+N1024、B8、A128、32点tile、3stepでmu/sigma/Xをすべて変更。
+同じA/stepのX/mu/sigma hashはMとtile条件をまたいで一致した。
+下表の時間は各step3時間sampleの中央値を3step平均したCPU Python原型で、
+CST完全stepやGPUの速度・ボトルネックを示すものではない。
+各部分は別測定であり、足し合わせて主測定の代わりにしない。
+
+| 1軸projectionとmu/sigma微分 | M4 | M8 |
+| --- | ---: | ---: |
+| 共有版（係数・新Xの構築・L2込み） | 137.819ms | 246.046ms |
+| 同じcandidateのsite直接評価 | 16.970ms | 22.455ms |
+| 係数生成だけ | 4.187ms | 4.217ms |
+| 入力bank構築・tile要求だけ | 6.755ms | 12.773ms |
+| L2とその微分だけ | 121.420ms | 226.524ms |
+
+Python原型の共有版にCPU速度の利益はなかった。特に個別のL2交差項・多数の小さい
+geometry/convolution呼び出しが重い。低階数の数学的構造をそのまま高性能実装と扱わない。
+
+step0の入力bankはM4が69KiB、M8が134KiB（complex128で正負を両方保存）。
+比較用に全atomのcoeff/omega/両微分arrayを保持したpayloadは62.02/117.14KiB、
+H/Hmu/Hsigmaの3出力は合計24KiB、元のXは64KiB。geometry表は0。
+Python object/index、一時buffer、autograd保存、optimizer、allocator peakは含まない。
+係数を全atom保持せずatom単位で処理する容量と混同しない。
+
+同じstepで独立atomごとにbankを作る対照のtile-frequency数は8558/16218、
+共有版は552/1072で構築重複を93.55%/93.39%減らした。
+これはqueryや全演算を93%削減した意味ではない。A8では約65%、A32では約87%だった。
+別の5step reuse検査では同じXならstep1以降に新規moment構築は0、
+毎step異なるXならstepごとにM4約552/M8約1072の構築が必要だった。
+
+2次元profile productのstraight tensor bank容量モデル（FP64 real packing、B32、1周期/level）:
+32×32tileでM4は9²=81 feature=20.25KiB、M8は17²=289 feature=72.25KiB。
+元の入力tileは256KiB。複数周期・入出力・勾配・metadataを加えた総peakではない。
+実際の2D bankをGPU/CPUで構築してこの容量を実測した値でもない。
+profileが軸別に分解できても任意入力Xが因数分解できるとは仮定せず、
+任意の2D Xで軸順の収縮と明示productの一致を検査した。
+
+`shape-and-tail.png`、`switch.png`、`tile-seam.png`を保存した。
+曲線の視認性のためshape/switch/seamのprofile描画はspacing=.0125を使う。
+上表の数値・shared contraction・timingはprotocolどおりspacing=.1である。
+
+## 現時点の判断
+
+M4はこの母形状/周期/余白では裾・形・幅の変化が大きく、そのまま採用しない。
+M8は狭いsigmaをnativeで残す条件では形とenergy幅が保たれ、連続mu/sigmaの共有計算も成立した。
+一方、1tile程度で即切替は失敗、空間tile端の微小jump、負の裾、幅方向の母形状との勾配差、
+混合L2費用が残る。候補の数学的な制約を詰める段階であり、GPUへ採用・再開する根拠にはしない。
