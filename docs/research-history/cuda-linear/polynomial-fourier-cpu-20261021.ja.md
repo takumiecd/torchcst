@@ -57,6 +57,9 @@ mu/sigmaが滑らかでも空間xのtile端が厳密に滑らかとは限らず�
 原型は正負を両方保存したcomplex128。real packingした容量モデルとは区別する。
 
 正規化用のgeometry moment `Z[t,k,L]=sum exp(2pi ik xi/L)` は入力にもatomにも依存しない。
+等間隔の連続siteでは、n点の和を `n*sinc(n theta/2pi)/sinc(theta/2pi)` と
+中央siteの位相で厳密に計算できる。最終CPU時間はこの経路を使い、geometry tableのpayloadは0。
+入力bankの構築が不要になるわけではない。geometry tile和を保存する対照とも照合する。
 Fourier同士のL2交差項は係数の線形convolutionと、集合の共通tileのgeometry momentで計算する。
 単一周期では正の2Mまで、隣接2周期の混合では長周期単位で正の4Mまで必要。
 直交性、積分による離散和の代用、tileごとの再正規化は使わない。

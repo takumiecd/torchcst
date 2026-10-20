@@ -251,6 +251,41 @@ class TileBank:
         return sum(v.nbytes for v in self.cache.values())
 
 
+class AnalyticGeometry:
+    """Exact sampled geometric sum on a contiguous regular grid, not an integral.
+
+    No normalization table is allocated. x is a borrowed fixed coordinate array.
+    Input-dependent moments still require reading and aggregating the current X.
+    """
+
+    def __init__(self, x, cfg):
+        self.x, self.cfg = x, cfg
+        if len(x) > 1 and not np.allclose(
+            np.diff(x), cfg.spacing, atol=1e-13, rtol=1e-13
+        ):
+            raise ValueError("analytic geometry requires a regular contiguous grid")
+
+    def moment(self, first, count, harmonic, period):
+        lo = np.searchsorted(self.x, first * self.cfg.tile, side="left")
+        hi = np.searchsorted(self.x, (first + count) * self.cfg.tile, side="left")
+        n = int(hi - lo)
+        if n <= 0:
+            return np.zeros(1, complex)
+        omega = 2 * np.pi * harmonic / period
+        theta = omega * self.cfg.spacing
+        value = (
+            n
+            * np.sinc(n * theta / (2 * np.pi))
+            / np.sinc(theta / (2 * np.pi))
+            * np.exp(1j * omega * (self.x[lo] + (n - 1) * self.cfg.spacing / 2))
+        )
+        return np.array([value])
+
+    @property
+    def payload(self):
+        return 0
+
+
 def geometry(first, count, period, harmonic, bank):
     """Exact sampled trig moment, using cached tile sums (not orthogonality)."""
     return bank.moment(first, count, harmonic, period)[0]

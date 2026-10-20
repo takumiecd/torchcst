@@ -6,6 +6,7 @@ import torch
 from numpy.polynomial.legendre import leggauss
 
 from benchmarks.research.polynomial_fourier_cpu import (
+    AnalyticGeometry,
     Config,
     TileBank,
     profile,
@@ -93,7 +94,7 @@ def test_smooth_tile_center_crossing(modes):
 def test_shared_norm_projection_dynamic_input(modes):
     cfg = Config(modes=modes, tile_blend=True)
     x = (np.arange(1024) - 512) * 0.1
-    geometry = TileBank(x, np.ones((1, len(x))), cfg)
+    geometry = AnalyticGeometry(x, cfg)
     rng = np.random.default_rng(58)
     for step in range(3):
         v = rng.normal(size=(4, len(x)))

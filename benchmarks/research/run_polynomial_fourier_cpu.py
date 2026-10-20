@@ -18,6 +18,7 @@ import numpy as np
 from scipy.integrate import quad
 
 from benchmarks.research.polynomial_fourier_cpu import (
+    AnalyticGeometry,
     Config,
     TileBank,
     components,
@@ -175,6 +176,7 @@ def independent_checks():
         "norm": 0.0,
         "norm_mu": 0.0,
         "norm_sigma": 0.0,
+        "analytic_geometry_norm": 0.0,
         "projection": 0.0,
         "projection_mu": 0.0,
         "projection_sigma": 0.0,
@@ -187,6 +189,7 @@ def independent_checks():
     for m, blend in ((4, False), (8, False), (4, True), (8, True)):
         cfg = Config(modes=m, tile_blend=blend)
         geom = TileBank(x, np.ones((1, len(x))), cfg)
+        analytic_geom = AnalyticGeometry(x, cfg)
         values = rng.normal(size=(4, len(x)))
         bank = TileBank(x, values, cfg)
         sigmas = [0.1, 0.17, 1.0, 1.4, 1.6, 2.3, 2.62, 2.9, 5.0, 9.0]
@@ -195,6 +198,11 @@ def independent_checks():
                 q, qm, qs = raw(x, mu, sigma, cfg)
                 n = normalize(q, qm, qs)
                 e, em, es, _ = sampled_norm(mu, sigma, cfg, geom)
+                fast = sampled_norm(mu, sigma, cfg, analytic_geom)
+                errors["analytic_geometry_norm"] = max(
+                    errors["analytic_geometry_norm"],
+                    float(np.max(abs(np.asarray(fast[:3]) - np.asarray([e, em, es])))),
+                )
                 for k, a, b in (
                     ("norm", e, q @ q),
                     ("norm_mu", em, q @ qm),
@@ -288,7 +296,7 @@ def benchmark():
                 rng = np.random.default_rng(823 + atoms)
                 base_mu = rng.uniform(-8, 8, atoms)
                 base_sigma = np.exp(rng.uniform(np.log(0.1), np.log(10), atoms))
-                geometry_bank = TileBank(x, np.ones((1, len(x))), cfg)
+                geometry_bank = AnalyticGeometry(x, cfg)
                 states = []
                 for step in range(3):
                     mu = base_mu + 0.023 * step
