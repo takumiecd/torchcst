@@ -2012,3 +2012,29 @@ valid index0..9726へbit14を加えても最大26110で正のsigned16内、senti
 既存v28のevent-ownerも再確認した。各atom最大6イベントを整数histogram/scanで配置する方式であり、
 site*atom支持表は作らないがCSR型の索引は持つ。以前のFP32版は構築込みでv27より遅かったため、
 新精度routeの根拠なく採用しない。今回最も重いquery/全4Pの処理量を減らす案と比較して判断する。
+
+
+## v59/v60: queryの係数寿命と2次係数の共有（GPU検証前）
+
+v59はv58のFP64 queryの6イベントを実行時loopで順に読み、FP64の累積値をloop-carriedとして持つ。
+同じFMA・event順序・正規化・pullbackを保つ。旧版は元のstatic unrollのまま。
+backward128 registersという観測への対照であり、register数低下/高速化を事前に断定しない。
+
+v60はv59のCoを軸別[6 c0,6 c1,1 q]の13*A個へ圧縮する。
+q=(1.5*v)*v、c2は4knotsで[q,-3q,3q,-q]、境界ではqか-2qからFP64で復元する。
+境界が中央pieceかをPosのbit14へ格納し、query/injectionはindex計算前に復号する。
+無効値-1、元index、strideのsigned32化、border block indexは保持する。
+Algorithmは14bitの位置範囲を宣言する。旧18*Aのnative-cacheとは混用せず、このrecipeだけ
+元のprofileを計算するnative経路を使うため、完全step比較にはこの差も含む。
+Meta/source order/幅stop-gradient/sample L2/Polar/all4Pの式、FP64 Bank/Delta/Border、
+batch chunk16、非保存H・再生成Bankというv58の契約を保つ。
+係数payloadの減少は80*Abytes（約4MiB）であり、実測peak/reservedの削減ではない。
+
+raw検査では同じMetaからv58/v60の係数を作り、圧縮の展開値・復号位置・HalfInv・BorderPos・
+Injectionを比較する。さらにv58 static、v59 loop、v60 compact loopのH/Hmu・Delta/Borderを比較し、
+端数A137/B17、2軸N128/1024、負sentinel、全6イベント、clippingを含める。
+その後、各候補に513重なり・3状態・個別/全勾配・Graph・retained・同時backwardを適用し、
+両主条件の独立FP64全shape gateを通してからv58/Denseとの完全step/両peakを測る。
+
+CPU2039 passed/5369 skipped/18既存warning(39.03s)、Ruff、両case declaration PASS。
+GPUのコンパイル・精度・速度・メモリは未検証。旧版の反例/閾値やbenchmark peak定義は変更しない。

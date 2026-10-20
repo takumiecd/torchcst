@@ -15,13 +15,39 @@ def _source(Order, slot, A: tl.constexpr):
 
 
 @tr.jit
+def _point(Pos, a, A: tl.constexpr, DIM: tl.constexpr, EVENT, COMPACT_C2: tl.constexpr):
+    point = tl.load(Pos + (DIM * 6 + EVENT) * A + a, a < A, -1).to(tl.int32)
+    if COMPACT_C2:
+        point = tl.where(point >= 0, point & ((1 << 14) - 1), point)
+    return point
+
+
+@tr.jit
 def _coeff(
-    Co, a, A: tl.constexpr, DIM: tl.constexpr, EVENT: tl.constexpr, LAYOUT: tl.constexpr
+    Co,
+    a,
+    A: tl.constexpr,
+    DIM: tl.constexpr,
+    EVENT,
+    LAYOUT: tl.constexpr,
+    Pos=None,
+    COMPACT_C2: tl.constexpr = False,
 ):
     tl.static_assert(LAYOUT == "soa")
-    c0 = tl.load(Co + ((DIM * 3) * 6 + EVENT) * A + a, a < A, 0)
-    c1 = tl.load(Co + ((DIM * 3 + 1) * 6 + EVENT) * A + a, a < A, 0)
-    c2 = tl.load(Co + ((DIM * 3 + 2) * 6 + EVENT) * A + a, a < A, 0)
+    if COMPACT_C2:
+        c0 = tl.load(Co + (DIM * 13 + EVENT) * A + a, a < A, 0)
+        c1 = tl.load(Co + (DIM * 13 + 6 + EVENT) * A + a, a < A, 0)
+        q = tl.load(Co + (DIM * 13 + 12) * A + a, a < A, 0)
+        raw = tl.load(Pos + (DIM * 6 + EVENT) * A + a, a < A, -1).to(tl.int32)
+        knot = tl.where(
+            EVENT == 0, 1, tl.where(EVENT == 1, -3, tl.where(EVENT == 2, 3, -1))
+        )
+        multiplier = tl.where(EVENT < 4, knot, tl.where((raw & (1 << 14)) != 0, -2, 1))
+        c2 = q * multiplier
+    else:
+        c0 = tl.load(Co + ((DIM * 3) * 6 + EVENT) * A + a, a < A, 0)
+        c1 = tl.load(Co + ((DIM * 3 + 1) * 6 + EVENT) * A + a, a < A, 0)
+        c2 = tl.load(Co + ((DIM * 3 + 2) * 6 + EVENT) * A + a, a < A, 0)
     return c0, c1, c2
 
 
@@ -49,6 +75,47 @@ def _pullback(
 
 
 @tr.jit
+def _query_loop(
+    Bank,
+    Pos,
+    Co,
+    HalfInv,
+    a,
+    b,
+    A: tl.constexpr,
+    B: tl.constexpr,
+    POINTS: tl.constexpr,
+    DIM: tl.constexpr,
+    AB: tl.constexpr,
+    BB: tl.constexpr,
+    PRIME: tl.constexpr,
+    PB: tl.constexpr,
+    TILE: tl.constexpr,
+    LAYOUT: tl.constexpr,
+    COMPACT_C2: tl.constexpr,
+):
+    value = tl.full((AB, BB), 0, tl.float64, layout=TILE)
+    prime = tl.full((AB, BB), 0, tl.float64, layout=TILE)
+    half = tl.load(HalfInv + DIM * A + a, a < A, 0)
+    for event in range(6):
+        point = _point(Pos, a, A, DIM, event, COMPACT_C2)
+        mask = (a[:, None] < A) & (b[None, :] < B) & (point[:, None] >= 0)
+        p0 = tl.load(Bank + point[:, None] * PB + b[None, :], mask, 0)
+        p1 = tl.load(Bank + POINTS * PB + point[:, None] * PB + b[None, :], mask, 0)
+        p2 = tl.load(Bank + 2 * POINTS * PB + point[:, None] * PB + b[None, :], mask, 0)
+        c0, c1, c2 = _coeff(Co, a, A, DIM, event, LAYOUT, Pos, COMPACT_C2)
+        term = tl.fma(c2[:, None], p2, tl.fma(c1[:, None], p1, c0[:, None] * p0))
+        value += tl.where(event < 4, -1, 1) * term
+        if PRIME:
+            d0 = -c1 * half
+            d1 = -2 * c2 * half
+            prime += tl.where(event < 4, -1, 1) * tl.fma(
+                d1[:, None], p1, d0[:, None] * p0
+            )
+    return value, prime
+
+
+@tr.jit
 def _query(
     Bank,
     Pos,
@@ -73,7 +140,30 @@ def _query(
     Raw=None,
     Order=None,
     N: tl.constexpr = 0,
+    LOOPED: tl.constexpr = False,
+    COMPACT_C2: tl.constexpr = False,
 ):
+    if LOOPED:
+        tl.static_assert(not INTEGER)
+        return _query_loop(
+            Bank,
+            Pos,
+            Co,
+            HalfInv,
+            a,
+            b,
+            A,
+            B,
+            POINTS,
+            DIM,
+            AB,
+            BB,
+            PRIME,
+            PB,
+            TILE,
+            LAYOUT,
+            COMPACT_C2,
+        )
     if INTEGER:
         return integer_query(
             Bank,
@@ -99,12 +189,12 @@ def _query(
     prime = tl.full((AB, BB), 0, tl.float32, layout=TILE)
     half = tl.load(HalfInv + DIM * A + a, a < A, 0)
     for event in tl.static_range(6):
-        point = tl.load(Pos + (DIM * 6 + event) * A + a, a < A, -1).to(tl.int32)
+        point = _point(Pos, a, A, DIM, event, COMPACT_C2)
         mask = (a[:, None] < A) & (b[None, :] < B) & (point[:, None] >= 0)
         p0 = tl.load(Bank + point[:, None] * PB + b[None, :], mask, 0)
         p1 = tl.load(Bank + POINTS * PB + point[:, None] * PB + b[None, :], mask, 0)
         p2 = tl.load(Bank + 2 * POINTS * PB + point[:, None] * PB + b[None, :], mask, 0)
-        c0, c1, c2 = _coeff(Co, a, A, DIM, event, LAYOUT)
+        c0, c1, c2 = _coeff(Co, a, A, DIM, event, LAYOUT, Pos, COMPACT_C2)
         v = tl.fma(c2[:, None], p2, tl.fma(c1[:, None], p1, c0[:, None] * p0))
         sign = -1 if event < 4 else 1
         value += sign * v
@@ -140,6 +230,7 @@ def _inject(
     LAYOUT: tl.constexpr = "soa",
     Program=None,
     VECTOR_RED: tl.constexpr = False,
+    COMPACT_C2: tl.constexpr = False,
 ):
     program = tl.program_id(0) if Program is None else Program
     source = _source(Order, a, A)
@@ -148,8 +239,8 @@ def _inject(
     )
     weight = (Value * scale[:, None]).to(Delta.dtype.element_ty)
     for event in tl.static_range(6):
-        point = tl.load(Pos + (DIM * 6 + event) * A + a, a < A, -1).to(tl.int32)
-        c0, c1, c2 = _coeff(Co, a, A, DIM, event, LAYOUT)
+        point = _point(Pos, a, A, DIM, event, COMPACT_C2)
+        c0, c1, c2 = _coeff(Co, a, A, DIM, event, LAYOUT, Pos, COMPACT_C2)
         if event >= 4:
             point = point + 1
             c0 = tl.fma(4.0, c2, tl.fma(2.0, c1, c0))
@@ -246,6 +337,8 @@ def forward(
     RawAdjoint=None,
     I_NO: tl.constexpr = 0,
     I_NI: tl.constexpr = 0,
+    LOOPED_QUERY: tl.constexpr = False,
+    COMPACT_C2: tl.constexpr = False,
 ):
     base = tl.load(Count) + tl.program_id(0) * AB if Base is None else Base
     if base < A:
@@ -285,6 +378,8 @@ def forward(
             Raw=RawInput,
             Order=Order,
             N=I_NI,
+            LOOPED=LOOPED_QUERY,
+            COMPACT_C2=COMPACT_C2,
         )
         mask = (a[:, None] < A) & (b[None, :] < B)
         if SAVE != "none":
@@ -315,6 +410,7 @@ def forward(
             LAYOUT,
             Program=None if Base is None else (base - tl.load(Count)) // AB,
             VECTOR_RED=VECTOR_RED,
+            COMPACT_C2=COMPACT_C2,
         )
 
 
@@ -363,6 +459,8 @@ def backward(
     RawAdjoint=None,
     I_NO: tl.constexpr = 0,
     I_NI: tl.constexpr = 0,
+    LOOPED_QUERY: tl.constexpr = False,
+    COMPACT_C2: tl.constexpr = False,
 ):
     base = tl.load(Count) + tl.program_id(0) * AB if Base is None else Base
     if base < A:
@@ -402,6 +500,8 @@ def backward(
             Raw=RawAdjoint,
             Order=Order,
             N=I_NO,
+            LOOPED=LOOPED_QUERY,
+            COMPACT_C2=COMPACT_C2,
         )
         if VJP:
             mask = (a[:, None] < A) & (b[None, :] < B)
@@ -433,6 +533,8 @@ def backward(
                     Raw=RawInput,
                     Order=Order,
                     N=I_NI,
+                    LOOPED=LOOPED_QUERY,
+                    COMPACT_C2=COMPACT_C2,
                 )
                 if SAVE == "h":
                     h = tl.load(H + a[:, None] * B + b[None, :], mask, 0).to(tl.float64)
@@ -478,4 +580,5 @@ def backward(
                 LAYOUT,
                 Program=None if Base is None else (base - tl.load(Count)) // AB,
                 VECTOR_RED=VECTOR_RED,
+                COMPACT_C2=COMPACT_C2,
             )

@@ -1049,3 +1049,18 @@ class BSplineLocalPreciseRecipe(BSplineLocalFrameArenaRecipe):
         super().__post_init__()
         if self.prepare_float32:
             raise ValueError("precise local coefficients require FP64 preparation")
+
+
+@dataclass(frozen=True)
+class BSplineLocalLoopQueryRecipe(BSplineLocalPreciseRecipe):
+    """Revision59: carry one FP64 event at a time through the same query sum."""
+
+    looped_query = True
+
+
+@dataclass(frozen=True)
+class BSplineLocalSharedQuadraticRecipe(BSplineLocalLoopQueryRecipe):
+    """Revision60: share the quadratic coefficient and encode a border-piece bit."""
+
+    compact_c2 = True
+    native_cache = False

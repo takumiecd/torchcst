@@ -36,6 +36,7 @@ from .recipe import (
     BSplineLocalGroupedRecipe,
     BSplineLocalIntegerRecipe,
     BSplineLocalLevelMaskRecipe,
+    BSplineLocalLoopQueryRecipe,
     BSplineLocalMomentRecipe,
     BSplineLocalNarrowRecipe,
     BSplineLocalNativeBoundRecipe,
@@ -50,6 +51,7 @@ from .recipe import (
     BSplineLocalPreciseRecipe,
     BSplineLocalSavedBankRecipe,
     BSplineLocalShardedRecipe,
+    BSplineLocalSharedQuadraticRecipe,
     BSplineLocalSmallBoundaryRecipe,
     BSplineLocalSpatialRecipe,
     BSplineLocalSplitRecipe,
@@ -654,3 +656,32 @@ class BSplineLocalSmallBoundaryAlgorithm(BSplineLocalCompactPositionsAlgorithm):
 class BSplineLocalPreciseAlgorithm(BSplineLocalCompactPositionsAlgorithm):
     revision: str = "v58"
     recipe_type: type = BSplineLocalPreciseRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalLoopQueryAlgorithm(BSplineLocalPreciseAlgorithm):
+    revision: str = "v59"
+    recipe_type: type = BSplineLocalLoopQueryRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalSharedQuadraticAlgorithm(BSplineLocalLoopQueryAlgorithm):
+    revision: str = "v60"
+    recipe_type: type = BSplineLocalSharedQuadraticRecipe
+
+    def supports(self, context, recipe):
+        result = super().supports(context, recipe)
+        reasons = list(result.reasons)
+        if isinstance(context, LinearContext):
+            try:
+                minimum = getattr(recipe, "min_block_log", 3)
+                for n in layout(context.operator):
+                    points = (n.bit_length() - minimum) * n + 2 * (n >> minimum) - 1
+                    if points > 16384:
+                        reasons.append(
+                            "shared quadratic point flag requires 14-bit local positions"
+                        )
+                        break
+            except (ValueError, TypeError, AttributeError):
+                pass
+        return SupportResult(tuple(reasons))

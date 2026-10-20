@@ -709,6 +709,22 @@ def measure(args, run):
                                 {
                                     "coefficient_storage_dtype": "float64",
                                     "range_accumulation_dtype": "float64",
+                                    "query_event_loop": getattr(
+                                        recipe, "looped_query", False
+                                    ),
+                                    "shared_quadratic_coefficient": getattr(
+                                        recipe, "compact_c2", False
+                                    ),
+                                    "coefficient_payload_bytes": (
+                                        26
+                                        if getattr(recipe, "compact_c2", False)
+                                        else 36
+                                    )
+                                    * case.atoms
+                                    * 8,
+                                    "point_border_piece_flag_bit": 14
+                                    if getattr(recipe, "compact_c2", False)
+                                    else None,
                                 }
                                 if getattr(recipe, "precise_local", False)
                                 else {}

@@ -147,6 +147,7 @@ def prepare(
     LAYOUT: tl.constexpr = "soa",
     COORDINATES: tl.constexpr = False,
     ActiveMask=None,
+    COMPACT_C2: tl.constexpr = False,
 ):
     base = tl.load(Count) + tl.program_id(0) * AB
     if base < A:
@@ -328,16 +329,30 @@ def prepare(
                         a < A,
                     )
                 point = offset + tile * (size + 1) + index
+                if COMPACT_C2 and event >= 4:
+                    point = point | tl.where(~before & inner, 1 << 14, 0)
                 tl.store(
                     Pos + (dim * 6 + event) * A + a, tl.where(active, point, -1), a < A
                 )
-                for p in tl.static_range(3):
-                    value = c0 if p == 0 else c1 if p == 1 else c2
-                    tl.store(
-                        Co + _co_index(a, A, dim, event, p, LAYOUT),
-                        tl.where(active, value, 0).to(Co.dtype.element_ty),
-                        a < A,
-                    )
+                if COMPACT_C2:
+                    tl.static_assert(LAYOUT == "soa")
+                    for p in tl.static_range(2):
+                        value = c0 if p == 0 else c1
+                        tl.store(
+                            Co + ((dim * 13 + p * 6 + event) * A) + a,
+                            tl.where(active, value, 0),
+                            a < A,
+                        )
+                    if event == 0:
+                        tl.store(Co + (dim * 13 + 12) * A + a, c2, a < A)
+                else:
+                    for p in tl.static_range(3):
+                        value = c0 if p == 0 else c1 if p == 1 else c2
+                        tl.store(
+                            Co + _co_index(a, A, dim, event, p, LAYOUT),
+                            tl.where(active, value, 0).to(Co.dtype.element_ty),
+                            a < A,
+                        )
                 if LAYOUT == "aos4":
                     tl.store(Co + _co_index(a, A, dim, event, 3, LAYOUT), 0, a < A)
             if ENDPOINTS:

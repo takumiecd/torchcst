@@ -29,6 +29,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineLocalGroupedAlgorithm,
     BSplineLocalIntegerAlgorithm,
     BSplineLocalLevelMaskAlgorithm,
+    BSplineLocalLoopQueryAlgorithm,
     BSplineLocalMomentAlgorithm,
     BSplineLocalNarrowAlgorithm,
     BSplineLocalNativeBoundAlgorithm,
@@ -43,6 +44,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineLocalPreciseAlgorithm,
     BSplineLocalSavedBankAlgorithm,
     BSplineLocalShardedAlgorithm,
+    BSplineLocalSharedQuadraticAlgorithm,
     BSplineLocalSmallBoundaryAlgorithm,
     BSplineLocalSpatialAlgorithm,
     BSplineLocalSplitAlgorithm,
@@ -89,6 +91,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineLocalGroupedRecipe,
     BSplineLocalIntegerRecipe,
     BSplineLocalLevelMaskRecipe,
+    BSplineLocalLoopQueryRecipe,
     BSplineLocalMomentRecipe,
     BSplineLocalNarrowRecipe,
     BSplineLocalNativeBoundRecipe,
@@ -103,6 +106,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineLocalPreciseRecipe,
     BSplineLocalSavedBankRecipe,
     BSplineLocalShardedRecipe,
+    BSplineLocalSharedQuadraticRecipe,
     BSplineLocalSmallBoundaryRecipe,
     BSplineLocalSpatialRecipe,
     BSplineLocalSplitRecipe,
@@ -152,6 +156,10 @@ def case(n=64, a=17):
 def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     from dataclasses import replace
 
+    shared_quadratic = strategy == "h_shared_quadratic" or recipe_options.pop(
+        "_shared_quadratic", False
+    )
+    loop_query = strategy == "h_loop_query" or recipe_options.pop("_loop_query", False)
     precise_local = strategy == "h_precise_local" or recipe_options.pop(
         "_precise_local", False
     )
@@ -375,6 +383,8 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineLocalCompactPositionsAlgorithm())
     registry.register(BSplineLocalSmallBoundaryAlgorithm())
     registry.register(BSplineLocalPreciseAlgorithm())
+    registry.register(BSplineLocalLoopQueryAlgorithm())
+    registry.register(BSplineLocalSharedQuadraticAlgorithm())
     registry.register(BSplineLocalIntegerAlgorithm())
     registry.register(BSplineLocalVectorAlgorithm())
     registry.register(BSplineLocalUnifiedAlgorithm())
@@ -410,7 +420,11 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         recipe_options.setdefault("lane_atoms", 4)
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v58"
+        "v60"
+        if shared_quadratic
+        else "v59"
+        if loop_query
+        else "v58"
         if precise_local
         else "v57"
         if small_boundary
@@ -525,7 +539,11 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         else "v2"
         if tuned
         else "v1",
-        BSplineLocalPreciseRecipe(**recipe_options)
+        BSplineLocalSharedQuadraticRecipe(**recipe_options)
+        if shared_quadratic
+        else BSplineLocalLoopQueryRecipe(**recipe_options)
+        if loop_query
+        else BSplineLocalPreciseRecipe(**recipe_options)
         if precise_local
         else BSplineLocalSmallBoundaryRecipe(**recipe_options)
         if small_boundary
@@ -3123,6 +3141,14 @@ ALL_QUERY_OPTIONS = (
             id="precise-local-warp2",
         ),
     ]
+    + [
+        pytest.param({"_loop_query": True}, id="loop-query-0"),
+        pytest.param({"_loop_query": True, "prepare_warps": 2}, id="loop-query-warp2"),
+        pytest.param({"_shared_quadratic": True}, id="shared-quadratic-0"),
+        pytest.param(
+            {"_shared_quadratic": True, "prepare_warps": 2}, id="shared-quadratic-warp2"
+        ),
+    ]
     + [pytest.param(opt, id=f"vector-{i}") for i, opt in enumerate(VECTOR_OPTIONS)]
     + [pytest.param(opt, id=f"integer-{i}") for i, opt in enumerate(INTEGER_OPTIONS)]
     + [
@@ -4026,6 +4052,8 @@ def test_native_bound_recipe_roundtrip_and_bounds():
         "h_compact_positions",
         "h_small_boundary",
         "h_precise_local",
+        "h_loop_query",
+        "h_shared_quadratic",
         "h_local_integer",
         "h_local_vector",
     ],
@@ -4132,6 +4160,8 @@ def test_native_bound_count_changes_across_graph(batch, floor, strategy):
         "h_compact_positions",
         "h_small_boundary",
         "h_precise_local",
+        "h_loop_query",
+        "h_shared_quadratic",
         "h_local_integer",
         "h_local_vector",
     ],
@@ -4188,6 +4218,8 @@ def test_native_bound_strided_individual_gradients(which, strategy):
         "h_compact_positions",
         "h_small_boundary",
         "h_precise_local",
+        "h_loop_query",
+        "h_shared_quadratic",
         "h_local_integer",
         "h_local_vector",
     ],
@@ -4743,6 +4775,8 @@ def test_native_cache_recipe_roundtrip_and_bounds():
         ("h_compact_positions", True),
         ("h_small_boundary", True),
         ("h_precise_local", True),
+        ("h_loop_query", True),
+        ("h_shared_quadratic", False),
         ("h_local_integer", True),
         ("h_local_vector", True),
     ],
@@ -4777,6 +4811,8 @@ def test_native_cache_spacing_fallbacks(strategy, unroll, spacing, batch, amplit
             "h_compact_positions",
             "h_small_boundary",
             "h_precise_local",
+            "h_loop_query",
+            "h_shared_quadratic",
             "h_local_integer",
             "h_local_vector",
         )
@@ -6749,6 +6785,8 @@ def test_numeric_arena_disjoint_input_and_reused_scratch(device, shards):
         "h_compact_positions",
         "h_small_boundary",
         "h_precise_local",
+        "h_loop_query",
+        "h_shared_quadratic",
     ],
 )
 def test_numeric_arena_concurrent_retained_all_gradients(strategy):
@@ -7000,7 +7038,14 @@ def test_small_boundary_recipe_roundtrip_and_legacy_rejection():
 
 @GPU
 @pytest.mark.parametrize(
-    "strategy", ["h_compact_positions", "h_small_boundary", "h_precise_local"]
+    "strategy",
+    [
+        "h_compact_positions",
+        "h_small_boundary",
+        "h_precise_local",
+        "h_loop_query",
+        "h_shared_quadratic",
+    ],
 )
 @pytest.mark.parametrize("batch", [3, 33])
 @pytest.mark.parametrize("radius_scale", [1.15, 1.4])
@@ -7072,3 +7117,241 @@ def test_precise_local_gpu_buffer_dtypes():
         _border(source, 64, 3, recipe),
     ):
         assert tensor.dtype == torch.float64
+
+
+@pytest.mark.parametrize(
+    "cls,alg,revision",
+    [
+        (BSplineLocalLoopQueryRecipe, BSplineLocalLoopQueryAlgorithm, "v59"),
+        (
+            BSplineLocalSharedQuadraticRecipe,
+            BSplineLocalSharedQuadraticAlgorithm,
+            "v60",
+        ),
+    ],
+)
+def test_loop_query_and_shared_quadratic_recipe_roundtrip(cls, alg, revision):
+    reg = Registry()
+    reg.register(alg())
+    recipe = cls()
+    plan = ExecutionPlan("research_cuda_quadratic_bspline", revision, recipe)
+    assert reg.loads_plan(reg.dumps_plan(plan)) == plan
+    assert recipe.looped_query and recipe.precise_local
+    if revision == "v60":
+        assert recipe.compact_c2 and not recipe.native_cache
+
+
+def test_shared_quadratic_frame_payload_and_flags():
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.frame_buffers import (
+        make_frame,
+    )
+
+    source = torch.empty(1)
+    frame = make_frame(
+        source,
+        137,
+        shards=True,
+        endpoints=True,
+        active=True,
+        compact_positions=True,
+        coefficient_float64=True,
+        compact_c2=True,
+    )
+    assert frame["co"].shape == (2, 13, 137) and frame["co"].dtype == torch.float64
+    assert frame["co"].numel() * 8 == 26 * 137 * 8
+    with pytest.raises(ValueError, match="FP64 storage"):
+        make_frame(source, 1, shards=True, endpoints=True, active=True, compact_c2=True)
+    points = torch.arange(-1, 9727, dtype=torch.int32)
+    for flag in (0, 1):
+        encoded = torch.where(points >= 0, points | (flag << 14), points).to(
+            torch.int16
+        )
+        decoded = torch.where(encoded.int() >= 0, encoded.int() & 16383, encoded.int())
+        assert torch.equal(decoded, points)
+
+
+@GPU
+def test_shared_quadratic_prepare_query_and_injection_equivalence():
+    import triton as triton_host
+    import triton.experimental.gluon as tr
+    import triton.experimental.gluon.language as tl
+
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        gluon_kernels as gk,
+    )
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        local_kernels as lk,
+    )
+
+    atoms, batch, pi, po = 137, 17, 9727, 831
+    meta = torch.zeros(atoms, 12, device="cuda", dtype=torch.float64)
+    radius = torch.logspace(-1.2, 1.3, atoms, device="cuda", dtype=torch.float64)
+    meta[:, 0] = 0.7
+    meta[:, 1] = radius
+    meta[:, 4] = 0.4
+    meta[:, 9] = radius.reciprocal()
+    meta[:, 10:] = 10
+    meta[:, 2] = torch.linspace(-0.3, 13, atoms, device="cuda", dtype=torch.float64)
+    meta[:, 3] = torch.linspace(
+        -0.3, 103, atoms, device="cuda", dtype=torch.float64
+    ).roll(13)
+    origin = torch.zeros(2, device="cuda", dtype=torch.float64)
+    spacing = torch.full((2,), 0.1, device="cuda", dtype=torch.float64)
+    count = torch.zeros(1, device="cuda", dtype=torch.int32)
+    frames = []
+    for compact in (False, True):
+        pos = torch.empty(2, 6, atoms, device="cuda", dtype=torch.int16)
+        co = torch.empty(
+            (2, 13, atoms) if compact else (2, 3, 6, atoms),
+            device="cuda",
+            dtype=torch.float64,
+        )
+        half = torch.empty(2, atoms, device="cuda", dtype=torch.float64)
+        bp = torch.empty(2, 2, atoms, device="cuda", dtype=torch.int16)
+        injection = torch.empty(2, atoms, device="cuda", dtype=torch.int16)
+        lk.prepare[(triton_host.cdiv(atoms, 128),)](
+            meta,
+            pos,
+            co,
+            half,
+            count,
+            origin,
+            spacing,
+            atoms,
+            128,
+            1024,
+            128,
+            True,
+            False,
+            bp,
+            4,
+            injection,
+            True,
+            2,
+            LAYOUT="soa",
+            COORDINATES=True,
+            COMPACT_C2=compact,
+            num_warps=4,
+            enable_fp_fusion=False,
+        )
+        frames.append((pos, co, half, bp, injection))
+    pos, co, half, bp, injection = frames[1]
+    decoded = torch.where(pos.int() >= 0, pos.int() & 16383, pos.int()).short()
+    assert torch.equal(decoded, frames[0][0])
+    assert (
+        torch.equal(half, frames[0][2])
+        and torch.equal(bp, frames[0][3])
+        and torch.equal(injection, frames[0][4])
+    )
+    reconstructed = torch.empty_like(frames[0][1])
+    reconstructed[:, :2] = co[:, :12].reshape(2, 2, 6, atoms)
+    for event, multiplier in enumerate((1, -3, 3, -1, 1, 1)):
+        multiplier = (
+            torch.where((pos[:, event].int() & 16384) != 0, -2, 1)
+            if event >= 4
+            else multiplier
+        )
+        value = co[:, 12] * multiplier
+        reconstructed[:, 2, event] = torch.where(decoded[:, event] >= 0, value, 0)
+    assert torch.equal(reconstructed, frames[0][1])
+
+    @tr.jit
+    def raw(
+        Bank,
+        Pos,
+        Co,
+        Half,
+        Meta,
+        V,
+        BP,
+        Injection,
+        Out,
+        Delta,
+        Border,
+        A: tl.constexpr,
+        B: tl.constexpr,
+        Mode: tl.constexpr,
+        LAYOUT: tl.constexpr,
+    ):
+        tile: tl.constexpr = tl.BlockedLayout([1, 1], [1, 32], [4, 1], [1, 0])
+        a = tl.program_id(0) * 4 + tl.arange(0, 4, layout=tl.SliceLayout(1, tile))
+        b = tl.arange(0, 32, layout=tl.SliceLayout(0, tile))
+        h, hp = gk._query(
+            Bank,
+            Pos,
+            Co,
+            Half,
+            a,
+            b,
+            A,
+            B,
+            9727,
+            1,
+            4,
+            32,
+            True,
+            B,
+            tile,
+            LAYOUT,
+            LOOPED=Mode > 0,
+            COMPACT_C2=Mode == 2,
+        )
+        mask = (a[:, None] < A) & (b[None, :] < B)
+        tl.store(Out + a[:, None] * B + b[None, :], h, mask)
+        tl.store(Out + A * B + a[:, None] * B + b[None, :], hp, mask)
+        value = tl.load(V + a[:, None] * B + b[None, :], mask, 0)
+        gk._inject(
+            value,
+            Delta,
+            Meta,
+            Pos,
+            Co,
+            a,
+            b,
+            A,
+            B,
+            831,
+            0,
+            Border,
+            BP,
+            4,
+            63,
+            Injection,
+            True,
+            True,
+            B,
+            LAYOUT=LAYOUT,
+            COMPACT_C2=Mode == 2,
+        )
+
+    bank = torch.randn(3, pi, batch, device="cuda", dtype=torch.float64)
+    values = torch.randn(atoms, batch, device="cuda", dtype=torch.float64)
+    outputs = []
+    for mode in (0, 1, 2):
+        pos, co, half, bp, injection = frames[int(mode == 2)]
+        out = torch.empty(2, atoms, batch, device="cuda", dtype=torch.float64)
+        delta = torch.zeros(3, po, batch, device="cuda", dtype=torch.float64)
+        border = torch.zeros(3, 63, 4, batch, device="cuda", dtype=torch.float64)
+        raw[(triton_host.cdiv(atoms, 4),)](
+            bank,
+            pos,
+            co,
+            half,
+            meta,
+            values,
+            bp,
+            injection,
+            out,
+            delta,
+            border,
+            atoms,
+            batch,
+            mode,
+            LAYOUT="soa",
+            num_warps=4,
+            enable_fp_fusion=False,
+        )
+        outputs.append((out, delta, border))
+    for candidate in outputs[1:]:
+        for actual, expected in zip(candidate, outputs[0]):
+            torch.testing.assert_close(actual, expected, atol=1e-10, rtol=1e-12)

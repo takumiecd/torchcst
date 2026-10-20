@@ -87,6 +87,10 @@ def _h_args(tables, recipe, tensor=None, geometry=None):
             result.update(
                 BATCH_VALUES=4, VECTOR_RED=recipe.vector_atomic and major >= 9
             )
+        if getattr(recipe, "looped_query", False):
+            result["LOOPED_QUERY"] = True
+        if getattr(recipe, "compact_c2", False):
+            result["COMPACT_C2"] = True
         if getattr(recipe, "integer_query", False):
             origin, spacing, sizes = geometry
             result.update(
@@ -479,6 +483,7 @@ def _frame(
             numeric_elements=numeric_elements,
             compact_positions=getattr(recipe, "compact_positions", False),
             coefficient_float64=getattr(recipe, "precise_local", False),
+            compact_c2=getattr(recipe, "compact_c2", False),
         )
         if numeric_elements:
             numeric_out.append(frame["numeric"])
@@ -587,6 +592,7 @@ def _frame(
         LAYOUT=getattr(recipe, "coefficient_layout", "soa"),
         COORDINATES=getattr(recipe, "coefficient_coordinates", False),
         ActiveMask=active,
+        COMPACT_C2=getattr(recipe, "compact_c2", False),
         num_warps=4,
         enable_fp_fusion=False,
     )
