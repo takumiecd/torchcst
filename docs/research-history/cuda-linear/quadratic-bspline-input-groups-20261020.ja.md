@@ -1051,3 +1051,31 @@ payload式をallocated/reserved peakの達成証拠には使わない。
 CPU2010pass/4808skip/18既存warning、Ruffを確認した。GPUでの42 targeted checksは、
 既存の動的σ/全勾配/Graph/tiny/floorに加え、3/33/64batchのbank一致・保存寿命、
 atom勾配なしでの非保存を含む。B32/B64 mixed・small/switchでv44/Denseと完全step/両peakを比較する。
+
+### v46 L4主測定: 再構築を省き2.4–2.7%短縮、メモリはDense以下
+
+job `l4job-773ac2292a2249cba0912f6e2c9389ea`、source
+`f26c4566`。42 targeted checks PASS（201.35s）。有効level/rowのbankが再構築値とbitwise一致し、
+別forward後の保存寿命・retained VJP、端数chunk、非atom勾配での非保存も確認した。
+全4条件の3状態全shape独立FP64 Y/dX/全4atom勾配、全52,428σ更新、初期hash一致もPASS。
+
+|条件|v44再計算 ms|v46保存 ms|Dense ms|
+|---|---:|---:|---:|
+|B32 mixed|0.751303|0.733227|0.082376|
+|B64 mixed|1.214298|1.181831|0.105295|
+|B32 small|0.689469|0.682789|0.083200|
+|B32 switch|0.719430|0.709110|0.083120|
+
+mixedの短縮は2.41%/2.67%。B32 small/switchは0.97%/1.43%。
+B32 allocated/reservedは **34.154/98 MiB**でcontrolと同じ。
+B64はallocatedが34.654→**38.216 MiB**（一bank分3.562MiB増）、reservedは **100 MiB**で同じ。
+Dense49.002/106、49.502/106MiB以下を保つ。
+入力bank再構築の診断約0.0205–0.0215ms/chunkが空のevent marker区間へ変わり、
+H/Gのstream区間は同帯。B64の追加payload全部ではなく、一bank分がpeakへ加わる実測だった。
+
+source SHA256 `d8c6938a66f91e1cef8534daafa5e44a2b1942f3746e4841435995dff0a6f080`、
+result SHA256 `49c081c06522743a96586f2cb67ded405b0927e60721b940d4cbd330ae206767`。
+source1653/manifest44、archive/manifest/Git bytes/return0/timeoutなし/cleanup ackを照合。
+371 runtime-file package一致とf26c4566のCPU CIもPASS。
+単回のcandidate改善なので、129roundsの独立L4再測定と、検証済み同候補の短いG4比較を行う。
+速度2x目標には依然未達であり、default選択器は変更しない。
