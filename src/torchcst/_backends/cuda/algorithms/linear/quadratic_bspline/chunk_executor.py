@@ -38,12 +38,20 @@ def _empty(stage):
 
 
 def _workspace(x, n, batch, recipe):
-    return x.new_empty((3, _points(n, recipe), batch), dtype=_delta_dtype(x, recipe))
+    return x.new_empty(
+        (6 if getattr(recipe, "paired_accum", False) else 3, _points(n, recipe), batch),
+        dtype=_delta_dtype(x, recipe),
+    )
 
 
 def _border(x, n, batch, recipe):
     return x.new_empty(
-        (3, _blocks(n, recipe), recipe.boundary_shards, batch),
+        (
+            6 if getattr(recipe, "paired_accum", False) else 3,
+            _blocks(n, recipe),
+            recipe.boundary_shards,
+            batch,
+        ),
         dtype=_delta_dtype(x, recipe),
     )
 

@@ -7978,7 +7978,34 @@ def test_compensated_injection_exact_dyadic_values_and_fp64_escapes(dim):
 
 
 @GPU
-def test_compensated_scratch_has_six_planes_and_fused_zero_covers_escapes():
+def test_compensated_chunk_workspace_has_six_planes():
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        chunk_executor as ce,
+    )
+
+    x = torch.empty(3, 64, device="cuda")
+    for recipe, planes in (
+        (BSplineLocalNormalizedCoRecipe(), 3),
+        (BSplineLocalCompensatedRecipe(), 6),
+    ):
+        delta = ce._workspace(x, 64, 16, recipe)
+        border = ce._border(x, 64, 16, recipe)
+        assert delta.shape == (planes, ce._points(64, recipe), 16)
+        assert border.shape == (
+            planes,
+            ce._blocks(64, recipe),
+            recipe.boundary_shards,
+            16,
+        )
+        assert delta.dtype == border.dtype == torch.float64
+
+
+@GPU
+@pytest.mark.parametrize("chunked", [False, True])
+def test_compensated_scratch_has_six_planes_and_fused_zero_covers_escapes(chunked):
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        chunk_executor as ce,
+    )
     from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
         local_executor as le,
     )
@@ -7986,7 +8013,11 @@ def test_compensated_scratch_has_six_planes_and_fused_zero_covers_escapes():
     recipe = BSplineLocalCompensatedRecipe()
     x = torch.randn(3, 64, device="cuda")
     active = torch.full((2,), 31, device="cuda", dtype=torch.int32)
-    delta, border = le._delta_buffers(x, 64, recipe)
+    delta, border = (
+        (ce._workspace(x, 64, len(x), recipe), ce._border(x, 64, len(x), recipe))
+        if chunked
+        else le._delta_buffers(x, 64, recipe)
+    )
     assert delta.shape[0] == border.shape[0] == 6
     delta.fill_(float("nan"))
     border.fill_(float("nan"))

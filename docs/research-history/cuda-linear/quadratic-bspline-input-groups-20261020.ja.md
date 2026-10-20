@@ -2457,3 +2457,32 @@ v65/v66初回GPU job `l4job-3e5d0750cc4543668639518a643861cb`（source7bc27493�
 テストのValue読み取りを既存の暗黙broadcastによる2D loadへ修正する。GPU演算本体・精度基準は変えない。
 当該runはreturn1/no-timeout/cleanup ackと1708 sourcefiles byte一致を検証してfailed-jobsに保持し、
 regression/主測定へ進んでいないため速度/メモリ/最終精度の採用根拠にはしない。
+
+### 次の区間表現の容量上限（CPU、GPU未実装）
+
+`node-cover-bound-cpu.py/json`は、隣接する3整数区間をdyadic区間へ分解する数を調べた。
+全ての[l,r)のcover数を正確に計算し、3区間の最大をdynamic programmingで全探索した。
+N=64/128/256/512/1024の一般上限は18/22/26/30/34。
+N1024のwitness[1,257,513,1023]は34区間となるので、以前のrandom sampleのmax28は容量上限には使わない。
+spacing=.1、sigma<=12.8のB-splineの3piece長を、丸めとstrict supportを含む長さのsupersetで調べると
+N1024では保守上限30（witness[1,171,341,511]）だった。実装の汎用容量なら一般上限34が安全である。
+
+N1024/B64でnodeごとに3つの正のBernstein momentを持つ案のbank payloadは1,572,096bytes、
+FP64のnode係数面は3,144,192bytesとなる。A52428のone-axis owner ID表は保守30で6,291,360bytes、
+一般34なら7,130,208bytes。これはsource Meta・H/G・勾配・optimizer・構築temporaryを含まない。
+ownerを持つ場合はCSR型索引となるため、既存v34/v28の負の結果を無視して採用しない。
+入力bankの再利用、出力ownerの集約、leafごとのancestor和を同じprofileで実装できるか検討する材料であり、
+GPU速度・ピークメモリの改善や新kernelの完成を示す結果ではない。
+
+### v66 batch分割scratchの修正
+
+source6ab52c67のjob `l4job-1003395ca03c40bf8ab2ae5b466d4706`はraw58件を通過し、
+regression34件通過後に`test_query_empty_and_batch64[compensated-0]`のYで不一致となった
+（maxabs74.6652）。完全step測定には進んでいない。失敗jobはreturn1/no-timeout/cleanup ack、
+1708 sourcefiles/5 manifest、source SHA256 `26d9b91766ebe42f975bc3258d8c6842253a57867995536dd5f1e4942a2e5af1`、
+result SHA256 `9f122aa709da86a774fdf6260cb10f90044b1dd4335f43aa61f5c1bfaf83b430`を検証し、failed-jobsへ保存した。
+
+`local_executor._delta_buffers`は6面だったが、`chunk_executor._workspace/_border`は3面のままだった。
+そのためv66のescape planeが範囲外となる。batch分割側も6面を確保するよう修正し、
+従来v65は3面のままであることを含むshape検査と、分割scratchの全6面NaN埋めからの
+融合zero検査を追加する。GPU再実行で確認するまで、この修正の精度・速度・メモリは未検証。
