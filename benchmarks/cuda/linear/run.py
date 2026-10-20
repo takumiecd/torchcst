@@ -712,6 +712,12 @@ def measure(args, run):
                                     "query_event_loop": getattr(
                                         recipe, "looped_query", False
                                     ),
+                                    "paired_query": getattr(
+                                        recipe, "paired_query", False
+                                    ),
+                                    "paired_query_scope": "query dot products in guarded FP32 pairs; FP64 coefficient/bank storage and injection; FP64 query fallback outside guard"
+                                    if getattr(recipe, "paired_query", False)
+                                    else None,
                                     "shared_quadratic_coefficient": getattr(
                                         recipe, "compact_c2", False
                                     ),

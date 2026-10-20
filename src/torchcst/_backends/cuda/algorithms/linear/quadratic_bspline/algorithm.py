@@ -47,11 +47,13 @@ from .recipe import (
     BSplineLocalOwnerRecipe,
     BSplineLocalPaddedRecipe,
     BSplineLocalPairedDecodeRecipe,
+    BSplineLocalPairedQueryRecipe,
     BSplineLocalPersistentRecipe,
     BSplineLocalPreciseRecipe,
     BSplineLocalSavedBankRecipe,
     BSplineLocalShardedRecipe,
     BSplineLocalSharedQuadraticRecipe,
+    BSplineLocalSharedUnrolledRecipe,
     BSplineLocalSmallBoundaryRecipe,
     BSplineLocalSpatialRecipe,
     BSplineLocalSplitRecipe,
@@ -685,3 +687,15 @@ class BSplineLocalSharedQuadraticAlgorithm(BSplineLocalLoopQueryAlgorithm):
             except (ValueError, TypeError, AttributeError):
                 pass
         return SupportResult(tuple(reasons))
+
+
+@dataclass(frozen=True)
+class BSplineLocalSharedUnrolledAlgorithm(BSplineLocalSharedQuadraticAlgorithm):
+    revision: str = "v61"
+    recipe_type: type = BSplineLocalSharedUnrolledRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalPairedQueryAlgorithm(BSplineLocalSharedUnrolledAlgorithm):
+    revision: str = "v62"
+    recipe_type: type = BSplineLocalPairedQueryRecipe

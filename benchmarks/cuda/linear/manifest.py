@@ -946,3 +946,12 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
 
 REGISTRY.register(BSplineLocalLoopQueryAlgorithm())
 REGISTRY.register(BSplineLocalSharedQuadraticAlgorithm())
+
+
+from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm import (
+    BSplineLocalPairedQueryAlgorithm,
+    BSplineLocalSharedUnrolledAlgorithm,
+)
+
+REGISTRY.register(BSplineLocalSharedUnrolledAlgorithm())
+REGISTRY.register(BSplineLocalPairedQueryAlgorithm())

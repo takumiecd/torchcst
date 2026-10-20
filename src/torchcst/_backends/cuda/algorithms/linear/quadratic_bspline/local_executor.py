@@ -91,6 +91,8 @@ def _h_args(tables, recipe, tensor=None, geometry=None):
             result["LOOPED_QUERY"] = True
         if getattr(recipe, "compact_c2", False):
             result["COMPACT_C2"] = True
+        if getattr(recipe, "paired_query", False):
+            result["PAIRED_QUERY"] = True
         if getattr(recipe, "integer_query", False):
             origin, spacing, sizes = geometry
             result.update(

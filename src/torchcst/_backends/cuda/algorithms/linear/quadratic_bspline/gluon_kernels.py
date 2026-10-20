@@ -4,6 +4,9 @@ import triton.experimental.gluon as tr
 import triton.experimental.gluon.language as tl
 
 from .integer_query_kernels import query as integer_query
+from .unit_delta_gluon import _add as pair_add
+from .unit_delta_gluon import _mul as pair_mul
+from .unit_delta_gluon import _retain64
 from .vector_atomic_kernels import add4
 
 
@@ -116,6 +119,83 @@ def _query_loop(
 
 
 @tr.jit
+def _split_pair(value):
+    # Bound intermediate products and keep low components in a safe FP32 range.
+    # Zeros are exact; other values outside the guard use the FP64 query.
+    absolute = tl.abs(value)
+    safe = (value == 0) | (
+        (absolute >= 0.000000000931322574615478515625) & (absolute <= 1073741824.0)
+    )
+    source = tl.where(safe, value, 0)
+    high = source.to(tl.float32)
+    low = (source - high.to(tl.float64)).to(tl.float32)
+    return high, low, ~safe
+
+
+@tr.jit
+def _query_pair(
+    Bank,
+    Pos,
+    Co,
+    HalfInv,
+    a,
+    b,
+    A: tl.constexpr,
+    B: tl.constexpr,
+    POINTS: tl.constexpr,
+    DIM: tl.constexpr,
+    AB: tl.constexpr,
+    BB: tl.constexpr,
+    PRIME: tl.constexpr,
+    PB: tl.constexpr,
+    TILE: tl.constexpr,
+    LAYOUT: tl.constexpr,
+    COMPACT_C2: tl.constexpr,
+):
+    vh = tl.full((AB, BB), 0, tl.float32, layout=TILE)
+    vl = tl.full((AB, BB), 0, tl.float32, layout=TILE)
+    ph = tl.full((AB, BB), 0, tl.float32, layout=TILE)
+    pl = tl.full((AB, BB), 0, tl.float32, layout=TILE)
+    unsafe = tl.full((AB, BB), False, tl.int1, layout=TILE)
+    if PRIME:
+        half = tl.load(HalfInv + DIM * A + a, a < A, 0)
+        hh, hl, hb = _split_pair(half)
+        unsafe |= hb[:, None]
+    for event in range(6):
+        point = _point(Pos, a, A, DIM, event, COMPACT_C2)
+        mask = (a[:, None] < A) & (b[None, :] < B) & (point[:, None] >= 0)
+        p0 = tl.load(Bank + point[:, None] * PB + b[None, :], mask, 0)
+        p1 = tl.load(Bank + POINTS * PB + point[:, None] * PB + b[None, :], mask, 0)
+        p2 = tl.load(Bank + 2 * POINTS * PB + point[:, None] * PB + b[None, :], mask, 0)
+        p0h, p0l, b0 = _split_pair(p0)
+        p1h, p1l, b1 = _split_pair(p1)
+        p2h, p2l, b2 = _split_pair(p2)
+        c0, c1, c2 = _coeff(Co, a, A, DIM, event, LAYOUT, Pos, COMPACT_C2)
+        c0h, c0l, k0 = _split_pair(c0)
+        c1h, c1l, k1 = _split_pair(c1)
+        c2h, c2l, k2 = _split_pair(c2)
+        unsafe |= b0 | b1 | b2 | (k0 | k1 | k2)[:, None]
+        t0h, t0l = pair_mul(c0h[:, None], c0l[:, None], p0h, p0l)
+        t1h, t1l = pair_mul(c1h[:, None], c1l[:, None], p1h, p1l)
+        t2h, t2l = pair_mul(c2h[:, None], c2l[:, None], p2h, p2l)
+        th, tlo = pair_add(t0h, t0l, t1h, t1l)
+        th, tlo = pair_add(th, tlo, t2h, t2l)
+        sign = tl.where(event < 4, -1, 1)
+        vh, vl = pair_add(vh, vl, sign * th, sign * tlo)
+        if PRIME:
+            d0h, d0l = pair_mul(-c1h, -c1l, hh, hl)
+            d1h, d1l = pair_mul(-2 * c2h, -2 * c2l, hh, hl)
+            t0h, t0l = pair_mul(d0h[:, None], d0l[:, None], p0h, p0l)
+            t1h, t1l = pair_mul(d1h[:, None], d1l[:, None], p1h, p1l)
+            th, tlo = pair_add(t0h, t0l, t1h, t1l)
+            ph, pl = pair_add(ph, pl, sign * th, sign * tlo)
+    value = _retain64(vh.to(tl.float64) + vl.to(tl.float64))
+    prime = _retain64(ph.to(tl.float64) + pl.to(tl.float64))
+    any_unsafe = tl.sum(tl.sum(unsafe.to(tl.int32), 1), 0) > 0
+    return value, prime, any_unsafe
+
+
+@tr.jit
 def _query(
     Bank,
     Pos,
@@ -142,7 +222,50 @@ def _query(
     N: tl.constexpr = 0,
     LOOPED: tl.constexpr = False,
     COMPACT_C2: tl.constexpr = False,
+    PAIRED: tl.constexpr = False,
 ):
+    if PAIRED:
+        tl.static_assert(not INTEGER)
+        value, prime, unsafe = _query_pair(
+            Bank,
+            Pos,
+            Co,
+            HalfInv,
+            a,
+            b,
+            A,
+            B,
+            POINTS,
+            DIM,
+            AB,
+            BB,
+            PRIME,
+            PB,
+            TILE,
+            LAYOUT,
+            COMPACT_C2,
+        )
+        if unsafe:
+            value, prime = _query_loop(
+                Bank,
+                Pos,
+                Co,
+                HalfInv,
+                a,
+                b,
+                A,
+                B,
+                POINTS,
+                DIM,
+                AB,
+                BB,
+                PRIME,
+                PB,
+                TILE,
+                LAYOUT,
+                COMPACT_C2,
+            )
+        return value, prime
     if LOOPED:
         tl.static_assert(not INTEGER)
         return _query_loop(
@@ -339,6 +462,7 @@ def forward(
     I_NI: tl.constexpr = 0,
     LOOPED_QUERY: tl.constexpr = False,
     COMPACT_C2: tl.constexpr = False,
+    PAIRED_QUERY: tl.constexpr = False,
 ):
     base = tl.load(Count) + tl.program_id(0) * AB if Base is None else Base
     if base < A:
@@ -379,6 +503,7 @@ def forward(
             Order=Order,
             N=I_NI,
             LOOPED=LOOPED_QUERY,
+            PAIRED=PAIRED_QUERY,
             COMPACT_C2=COMPACT_C2,
         )
         mask = (a[:, None] < A) & (b[None, :] < B)
@@ -461,6 +586,7 @@ def backward(
     I_NI: tl.constexpr = 0,
     LOOPED_QUERY: tl.constexpr = False,
     COMPACT_C2: tl.constexpr = False,
+    PAIRED_QUERY: tl.constexpr = False,
 ):
     base = tl.load(Count) + tl.program_id(0) * AB if Base is None else Base
     if base < A:
@@ -501,6 +627,7 @@ def backward(
             Order=Order,
             N=I_NO,
             LOOPED=LOOPED_QUERY,
+            PAIRED=PAIRED_QUERY,
             COMPACT_C2=COMPACT_C2,
         )
         if VJP:
@@ -534,6 +661,7 @@ def backward(
                     Order=Order,
                     N=I_NI,
                     LOOPED=LOOPED_QUERY,
+                    PAIRED=PAIRED_QUERY,
                     COMPACT_C2=COMPACT_C2,
                 )
                 if SAVE == "h":

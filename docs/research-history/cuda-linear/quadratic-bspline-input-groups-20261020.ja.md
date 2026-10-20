@@ -2080,3 +2080,27 @@ pair maxabs1.267e-9、relL2 4.115e-15、sum(abs(products))で割った最大誤�
 通常FP32のmaxabsは.023616、relL2 8.616e-8、相殺組の誤差は.006247に対しpair3.548e-10。
 GPUでの精度・速度・メモリは未確認であり、既存4e-4 gateの代わりにはしない。
 次は圧縮係数のunrolled対照と、この内積だけのpair候補を区別して測る。
+
+
+## v61/v62: 共有係数の通常queryとguard付きfloat-pair内積（GPU検証前）
+
+v61はv60の共有係数/bit14の位置表現/両FP64 Bank/Delta/Borderを保ち、queryを元のstatic unrollへ戻す。
+v62はその保存形式・最終集約を保ち、query中の3項内積/6イベント和を既存のfloat-pair primitiveで処理する。
+FP64値をhi=FP32(value), lo=FP32(value-FP64(hi))へ分け、two-sumとFMAの積残差からadd/mulを行う。
+H/Hmuはhi+loをFP64へ戻して返す。unit_delta_gluon._retain64のbitwise identityを通し、
+直後のFP32 contractionを理由にcompilerがpair再結合を粗くする既知のconsumer依存問題を防ぐ。
+旧unit-deltaのint128注入へ戻す変更ではない。Co/Bankのglobal保存はFP64、寄与の注入・復元もFP64のまま。
+
+ゼロ、または絶対値が2^-30〜2^30の範囲にある入力Bank値/係数/必要なHalfInvだけをpairに分ける。
+範囲外はpair側をゼロにしてunsafeを記録し、CTA内のどれかがunsafeなら同じqueryをFP64 loopで再計算する。
+NaN/Infも範囲に入らない。guardはGPU実行時に評価し、stepを跨いだσ/Xの変化にも追従する。
+finiteな大値/小値で既存FP64と一致するかをraw Bank scale1e100/1e-100でも検査する。
+非有限入力の結果を新しく有限化する約束はしない。範囲/精度の実測前に採用しない。
+
+raw query/注入検査に、通常共有queryとpair queryのmodeを追加した。
+通常scaleと両fallback scaleでv58/v59/v60/v61/v62のH/Hmu・注入を比較し、元の検査許容値を保つ。
+共有係数の展開値と位置等の一致検査、3状態/513重複/個別・全勾配/Graph/retained/同時backwardも維持する。
+両主条件ではv60/v61/v62/Denseの初期条件を揃え、構築・正規化・optimizer込みを比較する。
+profile、sampled L2、width stop-gradient、Polarと4e-4基準、peak統計は変更しない。
+CPU2041 passed/5447 skipped/18既存warning(39.09s)、Ruff、両case declaration、build PASS。
+GPU検証は未実施。

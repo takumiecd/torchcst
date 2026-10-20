@@ -1064,3 +1064,17 @@ class BSplineLocalSharedQuadraticRecipe(BSplineLocalLoopQueryRecipe):
 
     compact_c2 = True
     native_cache = False
+
+
+@dataclass(frozen=True)
+class BSplineLocalSharedUnrolledRecipe(BSplineLocalSharedQuadraticRecipe):
+    """Revision61: shared FP64 coefficients with the original unrolled query."""
+
+    looped_query = False
+
+
+@dataclass(frozen=True)
+class BSplineLocalPairedQueryRecipe(BSplineLocalSharedUnrolledRecipe):
+    """Revision62: guarded FP32-pair query; FP64 coefficients and accumulation."""
+
+    paired_query = True
