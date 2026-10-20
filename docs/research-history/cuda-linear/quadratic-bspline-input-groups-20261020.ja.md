@@ -1893,3 +1893,38 @@ HをFP64出力profileへ射影したY誤差max2.5501e-4に対し、元Y/射影�
 部分診断だが、atomic単体/係数単体/復元単体にはまだ分離できていない。
 保存用各viewを独立CPU cloneへ変え、状態ごとのpartial JSONも書く診断修正を行う。
 A1の誤差*513と、A513出力とA1出力*513の差も記録し、単独誤差の一様増幅と集約誤差を区別する。
+
+
+### 広いatom一致の48状態診断: 出力/入力集約で誤差が増幅
+
+完走source `602a13be`（fb1e647fから説明のみ変更）、L4 job
+`l4job-219eb24995c3454294aec156e60d01d9`。16構成*3状態の48状態を記録。
+単独atomはv56/v57計24状態全て4e-4以内、A513は両版計24状態全てYまたはdXで失敗。
+全4Pのmaxabsは全48状態で2.1287e-5以下だった。診断return0は状態収集の完了を示し、
+数値gate PASSを意味しない。主performance registryには登録しない。
+
+|A513の12状態最大|v56 境界8分割|v57 境界4分割|
+|---|---:|---:|
+|Y maxabs|.0159076|.0193256|
+|dX maxabs|.0166932|.0173951|
+|全4P maxabs|2.1287e-5|2.1287e-5|
+|H maxabs|3.6847e-6|3.6847e-6|
+|Meta scale maxabs|2.1500e-8|2.1500e-8|
+|GPU H+MetaからFP64出力profile射影と参照Yとの差|.000411497|.000411497|
+|実Yとその射影との差|.0158437|.0192616|
+|実Y513と実Y1*513との差|.0160556|.0194735|
+|実Y1の誤差*513|.00101287|.00101287|
+
+参照Y513と参照Y1*513はmax3.013e-12以下で一致し、atomの線形和という独立参照も確認した。
+単独誤差の一様増幅より、出力集約時の追加誤差が大きい。Hの精度を改善するだけでは
+出力profile係数/FP32注入/復元の合成誤差は消えない。一方、H+Meta射影自体も1条件で
+max4e-4をわずかに超えるため、出力側だけ直せば全条件PASSとも断定しない。
+FP64演算/係数cast/atomic/scanを個別に同定するには追加の対照が必要である。
+この負の結果によりv57の高速化/省メモリ化を採用せず、新たなG4性能測定も行わない。
+
+source archive `18375f77d9eada14f920db4c044a5fba9855e384a5ba752dfd9906a2ae9a04ea`、
+result archive `a57b1f8b1cab13609b91abe98c3524ded24887eb434cab3b304e34d7b528a3f0`。
+1694source files/6manifest entries/Git-byte一致、return0/no-timeout/cleanup ackを確認。
+13tensorのCPU clone snapshotはローカルでweights_only reload/finite検査にもPASSし、
+反例Y max4.9819946e-3を再確認した。L4診断registry2件、L4 primary40件、G4 primary13件を分離。
+所有GPUは全停止・serverにactive sessionなし。goalは速度/両peak/同じ精度基準でactiveかつ未達。
