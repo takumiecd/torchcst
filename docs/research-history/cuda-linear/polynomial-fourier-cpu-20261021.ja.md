@@ -1,5 +1,9 @@
 # 局所多項式 / Fourier共有の新kernel候補: CPU screen
 
+**契約の訂正:** ユーザーが支持[-L,L]、基本周期2Lと確認した後の調査は
+[CPU screen v2](compact-polynomial-fourier-cpu-20261021.ja.md)を参照。
+本v1はtile集合で切った別定義の結果であり、訂正後のkernelの評価ではない。
+
 2026-10-21。旧quadratic B-spline CUDA最適化は一時停止のまま。
 この調査は新しい数学的kernel候補の形・連続性・計算量をCPU FP64で比較する。
 runtimeのKernelSpec、既定dispatcher、optimizer、GPU実装は変更しない。
