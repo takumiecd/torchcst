@@ -2104,3 +2104,30 @@ raw query/注入検査に、通常共有queryとpair queryのmodeを追加した
 profile、sampled L2、width stop-gradient、Polarと4e-4基準、peak統計は変更しない。
 CPU2041 passed/5447 skipped/18既存warning(39.09s)、Ruff、両case declaration、build PASS。
 GPU検証は未実施。
+
+### v61/v62 L4結果: query内のfloat-pair化は約3倍遅く、採用しない
+
+source `0ecb8fb6fbbfa83d98f33619d11b1fa1ffad3315`、job
+`l4job-4aacf54621af4267926d60fc3ece0963`。NVIDIA L4/driver580.82.07、
+Torch2.11.0+cu130/CUDA13/Triton3.6。raw42件PASS(54.54s)、回帰83件PASS(230.96s)。
+513個の重複広幅atom、個別/全勾配、Graph、retained/concurrent backward、native-cache無効経路を含む。
+両主条件・3状態の独立FP64 Y/dX/全4P、全52,428個のsigma更新、初期hash一致も全planでPASS。
+最大誤差はY1.233e-6、dX1.366e-6、全4P2.959e-5、relL2各7.601e-8/8.090e-8/1.049e-7以下。
+
+|L4,65rounds|v60 loop ms|v61 unrolled ms|v62 guarded pair ms|Dense ms|候補allocated/reserved MiB|
+|---|---:|---:|---:|---:|---:|
+|B32 mixed|5.075409|5.075295|15.567272|.082566|34.255/96|
+|B64 mixed|9.840375|9.839418|30.849148|.103615|34.755/100|
+
+v61は有意な速度改善なし。v62はv60比で約3.07倍/3.13倍遅いので高速化として採用しない。
+全候補の両peakはDenseの49.002/106、49.502/106MiB以下だが、速度目標は未達。
+16行chunkのv60/v62 forwardは約.44749/2.37568ms、backwardは1.55443/4.864ms。
+v62 forward40regs、backward48regs、shared16bytes、spill0/local load-storeなし。
+したがってspillを遅延の根拠にはできない。guardの退避率とpair単体の負荷を次の独立診断で分ける。
+component測定は別Graphの診断であり、足し合わせて完全step時間に置き換えない。
+
+source archive `65e523f4fa6cb2c9e24a261c5e0669be492645da43d52d2f0c866108b148015b`、
+result archive `a4dbe73658602b931640ef16cd27463777957d6b95aa30e9125723715f4c5b27`。
+1700source files/31manifest entries/Git-byte一致/return0/no-timeout/cleanup ackを確認。
+CPU CI PASS(1m58s)。sdist/wheelの380runtimeファイルもGit-byte一致。
+L4 primary43件、G4 primary13件を区別。G4にはこの遅い候補を展開しない。
