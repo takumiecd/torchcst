@@ -3012,6 +3012,9 @@ ALL_QUERY_OPTIONS = (
     + [
         pytest.param({"_fresh_partition": True}, id="fresh-partition-0"),
         pytest.param(
+            {"_fresh_partition": True, "batch_chunk": 64}, id="fresh-partition-64"
+        ),
+        pytest.param(
             {"_fresh_partition": True, "save_input_bank": False, "batch_chunk": 16},
             id="fresh-partition-1",
         ),

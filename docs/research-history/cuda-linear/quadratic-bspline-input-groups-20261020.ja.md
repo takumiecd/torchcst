@@ -1591,3 +1591,28 @@ Parameterやoptimizer状態の行は動かさない。新しいsigmaでは毎回
 
 v52 CPU2016 passed/5049 skipped/18既存warning(39.62s)、変更対象Ruff、両case宣言、build PASS。
 raw3形状のlive分類/permutation/Graph再生と共有33件の後、主B32/B64をv47/Denseと比較する。
+
+### v52 G4: 振り分け時間とallocatedが減少、速度目標は未達
+
+source `81734c29b9c14bcfe06dd6fc90a3e6e45ab1b6e2`、job
+`colabjob-ed2fadb322624440ba8aa839de1e3c91`でraw3件PASS(4.60s)、共有33件PASS(55.63s)。
+両primaryの全plan・3状態full-shape独立FP64 Y/dX/全4P、全52,428sigma更新、P/X/target hash一致PASS。
+全4P maxabs1.077e-4、relL2 6.366e-7で元の4e-4基準以内。
+
+|G4,65rounds|v47 ms|v52 ms|Dense ms|v52 allocated/reserved MiB|
+|---|---:|---:|---:|---:|
+|B32 mixed|.335100|.326180|.066830|33.544/98|
+|B64 mixed|.504560|.495039|.075630|37.607/100|
+
+同run対照より2.66%/1.89%短縮、allocatedは各.609375MiB減り、reservedは同じ。
+B32group span .017984→.007712ms、main forward/backwardは.047840/.070368msで同じ。
+振り分け改善の候補だが、1回の比較であり129round再測定で確認する。
+Dense比4.88x/6.55x、両peakはDense以下だが速度目標は未達。公開dispatcherは変更しない。
+source archive `dc9c6bef0eb557cb239be861f96fea6cc83406e22e93b23b9376d87644568d67`、
+result archive `8d7f2e9835a0503934beadf74c527a9ac19a036fec691cce2c47af2a7b1c3cd3`。
+1681source files/25manifest entries/Git-byte一致、return0/no-timeout/cleanup ackを厳密検証。
+accepted G4は9job、失敗/診断/L4は別。所有GPU停止済み。配布379runtime filesのbyte一致PASS。
+
+再測定では同じv52のB64 chunk64も1案だけ比較する。現在のB64 peakとDenseの差が約12MiBあるため、
+大きい作業域でchunk境界のkernel起動を減らせるかを調べる。数学/勾配/幅の更新は同じ。
+B32はv47/v52、B64はv47/v52/chunk64を各129round、元の全shape3状態gateを通して比較する。
