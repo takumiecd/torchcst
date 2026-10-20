@@ -1857,3 +1857,39 @@ B64/N1024で3*511*(8-4)*64*4=1,569,792bytes（約1.497MiB）のscratch payload�
 同じseedで3状態・B3/B33・2幅にわたり照合する。判定4e-4を維持する。
 CPU suite2034 passed/5240 skipped/18既存warning(40.87s)、追加scratch4分割/新GPU試験の
 対象4passed/25skipped。Ruff・両case declaration PASS。GPU検証は未実施。
+
+
+### v57検証中断: 新しい広いatom一致試験が既存v56でも失敗
+
+source `fb1e647f1ca33bc825bdb65f09f7126de8d594cb`、L4 job
+`l4job-aff2ad7d7a9c40f0be50ef5d094faf78`。raw24件PASS(8.59s)、
+通常/retained等38件PASS後、新しい513重複・radial scale1.15・B3・step0の既存v56で
+Y gateに失敗した。本来ゼロの出力領域を含む誤差があり、assert_close最大報告は
+0.00498199462890625(index0,39)、11/192要素がatol/rtol4e-4を超えた。
+通常のmixed full-shape条件での以前のPASSを取り消すものではないが、
+その証拠だけでは重なり条件も精度保証するとはいえない。新テスト/閾値は変更しない。
+v57全精度検証と両primary完全stepは未完了なので、v57速度/メモリ結果を主張しない。
+source archive `4973196f83ba9ae9f58239441db9461e12de6fb85f4434bc2e064c4ad6c4321a`、
+result archive `290d435b53f2c8051bd1460d31dee63843f0d01b447ba4f43f87c1e9e77e32fc`。
+1694source files/5manifest entries/Git-byte一致、return1/no-timeout/cleanup ackを確認し、失敗として保存。
+source CPU CIはPASS(1m52s)。所有GPUは停止済み。
+
+次のL4診断ではv56/v57、A1/513、B3/33、radial scale1.15/1.4、3状態でY/dX/全4Pを記録する。
+元のforwardから係数とprefix bankを読み、同じkernelに独立delta/borderとH保存先を与えて
+Hを取得する。Hと独立FP64軸評価、Meta scaleと独立正規化を比べ、GPU H/Meta scaleから
+出力profileのみをFP64で評価した射影も保存する。この射影と実Yの差は出力profile係数/
+注入/復元/最終castの合成誤差であり、atomic単体の誤差とは断定しない。
+数値診断の完走を精度PASSに読み替えず、違反した状態数を明示する。
+
+
+最初の診断job `l4job-e35a6e4ff92b42a3ac40d61f7c0a61f6`は13状態をstdoutに記録後、
+異なるdtypeのarena viewを同時torch.saveしたため保存エラーでreturn1となった。
+実行済み部分でも完走/PASS扱いせず失敗registryへ保存した。1694source files/4manifest entries、
+source `20639bd3e521b0171203b9ff0d845e4fe5ebca1f989914f05c783af15a4e8ede`、
+result `bd48874e23ebba0f866470f6e4b005463d120f84035eb0f036c04c0b81410ff9`、cleanup ackを確認。
+対象のv56/A513/B3/scale1.15/step0ではH max2.4161e-6、Meta scale max1.6203e-8、
+HをFP64出力profileへ射影したY誤差max2.5501e-4に対し、元Y/射影間max4.981995e-3。
+元dX max1.062012e-2、全4P max8.2341e-6も記録した。出力側の合成誤差が大きいという
+部分診断だが、atomic単体/係数単体/復元単体にはまだ分離できていない。
+保存用各viewを独立CPU cloneへ変え、状態ごとのpartial JSONも書く診断修正を行う。
+A1の誤差*513と、A513出力とA1出力*513の差も記録し、単独誤差の一様増幅と集約誤差を区別する。
