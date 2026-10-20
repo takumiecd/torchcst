@@ -1234,3 +1234,65 @@ source SHA256 `90d59892588e5a0e946cb74916158393e4c5e7519a9c40e266133a0c4768d855`
 CPU validation: 2012 passed /4890 skipped /18既存warning (39.44s)。両case宣言と変更対象Ruff PASS。
 全src Ruffには既存torus_profile_productの15件があるため、全tree Ruff PASSとは記さない。
 wheel/sdist build成功。GPU検査はraw8件+独立参照等34件、primary2条件を予定。
+
+
+### v48 G4実測: vector REDは精度を保つが遅い（不採用）
+
+job `colabjob-c7f9175217ac4b5ab936251ed75ebf28`、source
+`c4c69a837627bbe0b7cc5d47ef8f542de1fc4f56`。
+raw8件(4.42s)、参照/動的sigma/Graph/Count all-partial-zero/retained等34件(62.34s)がPASS。
+両primary・全planの3状態全shape独立FP64 Y/dX/全4P、全52,428sigma更新、
+同条件P/X/target hash一致もPASS。旧4e-4基準・主入力振幅・optimizerを保持する。
+G4実機/ドライバ580.82.07、Torch2.11.0+cu130/CUDA13/Triton3.6.0。
+
+|G4条件,65rounds|v47最速対照 ms|batch4 scalar ms|batch4 vector ms|Dense ms|
+|---|---:|---:|---:|---:|
+|B32 mixed|0.336390|0.343080|0.347980|0.066580|
+|B64 mixed|0.504810|0.517280|0.523500|0.075490|
+
+batch4配置だけで1.99%/2.47%遅く、vector化はさらに遅い。
+v47対照が約5.05x/6.69x Denseで、目標未達のまま。v48は最速版へ採用しない。
+CST全候補のallocated/reservedはB32 34.153809/98MiB、B64 38.216309/100MiBで一致。
+Denseは49.002441/106、49.502441/106MiB。新規tensorを作らないことと実peakの一致を別々に確認した。
+
+コンパイル結果でsizePerThread=[1,4]を確認し、vector版のstream両方向にv4 RED18命令がある。
+raw検査では整列・全maskのquadでvectorフラグが立ち、offset/非連続/alias/短い端数はscalarへ戻る。
+従って未使用vector実装を測った結果ではない。ただし実streamのvector実行率counterは採取していない。
+stream forward register数はv47 39、batch4 scalar48/vector44、backwardは54→168、全てspill0/local load-storeなし。
+B32診断spanはforward0.047840→0.053984ms、backward0.070368→scalar0.074464/vector0.078560ms。
+register増加と時間悪化は観測できたが、占有率counterやキャッシュmissを直接測定した原因確定ではない。
+scanは両方向各0.015968msで変わらず、vector命令だけでは全経路を軽くできない。
+
+source archive SHA256 `9be0dd7b930943d9113b009f5ccec3982fa927e6386aa8156fdc7bbba46fd782`、
+result archive SHA256 `f382ccbb72bedfae1fa0f1e0095ec26535e735a7b294a1b66236798f690bdf25`。
+1667sourceファイル、manifest31件、git byte一致、return0/no-timeout、cleanup ackを検証。
+`verify-g4.py`と全G4 job対象の`audit-g4.py`を実行し、L4 registryを上書きしていない。
+supervisor52725 exit0、所有GPU全停止・CLI active sessionなし。
+
+### 次の数値設計: int64の3回prefixでH/G bankを縮める（CPUのみ）
+
+W全体を作る前節の差分案とは別に、H生成だけを同じ代数で置き換えられるか調べた。
+q=P³dなのでH=q^T X=d^T(P^T)³X。d=Δ³qとその中心微分を区分多項式から求める。
+qの係数を52bit整数へ、各batchのXをmax|X|に応じた34bit尺度へ丸め、
+後ろ向きprefixを3回int64で実行する。queryはsigned128積/和を完了してからFP64へ戻す。
+値が大きいprefixを先に浮動小数点へ変換しないことで、境界の大きい符号打消しを保つ。
+
+N<=1024ではmax|X_int|<=2^34、全prefix段の保守上限は
+2^34*C(N+2,3)<2^63。scan内部部分和も絶対値和の上限で覆う。
+係数と各積/部分和について別途signed64/signed128内のassertを入れた。
+Tiny support(<3)は直接式へ戻す。L2は真のsampled norm productと単一floorのままで、
+積分近似やsigma量子化は行わない。Y/dXの注入を変更しない想定で、入力bankの読み取りのみを代える。
+
+ignored `integer-h-cpu.py/.json`はN128/A128/B3およびN1024/A128/B32、
+各3step・floor1e-6/1000、atom別/step別sigma、空/端/zero ampを含む12状態。
+独立Torch FP64 autogradに対しY maxabs4.154e-11、dX2.848e-11、全Polar4P4.865e-10。
+H query maxabs3.518e-10、中心微分1.575e-9。最大整数積/部分和113bitだった。
+入力尺度0/1e-15/1e-6/1/1e6/1e15のquery relL2は最大5.811e-11。
+N1024/B32のbank payloadは262,272bytes(値256KiB+尺度128bytes)で、
+従来の3.562MiB input bankより小さい見積もり。ただしGPU peak/速度の証拠ではない。
+
+このCPU検査は主条件A52,428の独立GPU gateを代替しない。GPU実装、128bit積/和のコスト、
+係数生成/保存とnative fallback、Graph/retained寿命、完全stepとallocated/reservedは全て未検証。
+次はH/G bankとquery単体を実装し、数学・精度を確認してから同条件完全stepへ進む。
+source SHA256 `27c47dfca1b2b7629f18d356bdac6c61a4010caa1bb62ecda6b49aefe84988eb`、
+再利用軸式source SHA256 `90d59892588e5a0e946cb74916158393e4c5e7519a9c40e266133a0c4768d855`。
