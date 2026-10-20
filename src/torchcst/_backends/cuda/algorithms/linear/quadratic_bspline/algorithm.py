@@ -22,6 +22,7 @@ from .recipe import (
     BSplineLeanHRecipe,
     BSplineLocalActiveRecipe,
     BSplineLocalBankBundleRecipe,
+    BSplineLocalBankZeroRecipe,
     BSplineLocalCanonicalRecipe,
     BSplineLocalChunkedRecipe,
     BSplineLocalCoefficientRecipe,
@@ -531,3 +532,9 @@ class BSplineLocalSpatialAlgorithm(BSplineLocalPairedDecodeAlgorithm):
 class BSplineLocalSavedBankAlgorithm(BSplineLocalPairedDecodeAlgorithm):
     revision: str = "v46"
     recipe_type: type = BSplineLocalSavedBankRecipe
+
+
+@dataclass(frozen=True)
+class BSplineLocalBankZeroAlgorithm(BSplineLocalSavedBankAlgorithm):
+    revision: str = "v47"
+    recipe_type: type = BSplineLocalBankZeroRecipe

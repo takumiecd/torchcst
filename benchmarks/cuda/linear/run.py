@@ -701,6 +701,8 @@ def measure(args, run):
                     hybrid_routing.update(
                         {
                             "bank_layout": "FP32 plane,dyadic-local-point,batch; no periodic wrap",
+                            "bank_zero_fused": getattr(recipe, "fuse_bank_zero", False),
+                            "bank_zero_diagnostic_scope": "when fused: scratch+border zero CTAs are included in the first bank kernel; delta markers contain no zero kernel",
                             "input_bank_retained": getattr(
                                 recipe, "save_input_bank", False
                             ),

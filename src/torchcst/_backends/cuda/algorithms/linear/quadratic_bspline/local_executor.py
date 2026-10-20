@@ -171,7 +171,7 @@ def _tile_bundle(n, sizes, recipe):
     return min(requested, n // sizes[0])
 
 
-def _bank(x, n, recipe, label, active, dim, ml, buffer=None):
+def _bank(x, n, recipe, label, active, dim, ml, buffer=None, zero_buffers=None):
     bank = (
         buffer
         if buffer is not None
@@ -188,12 +188,27 @@ def _bank(x, n, recipe, label, active, dim, ml, buffer=None):
             from . import bundled_bank_kernels as bk
 
             kernel = bk.bank
-        compiled = kernel[
-            (
-                sum(tr.cdiv(n // s, tiles) for s in sizes),
-                tr.cdiv(len(x), recipe.bank_batch),
-            )
-        ](
+        grid0 = sum(tr.cdiv(n // s, tiles) for s in sizes)
+        grid1 = tr.cdiv(len(x), recipe.bank_batch)
+        extra = {}
+        if zero_buffers is not None and k == 0:
+            from .bank_zero_kernels import bank_and_zero
+
+            delta, border = zero_buffers
+            zero_count = delta.numel() + (border.numel() if border is not None else 0)
+            kernel = bank_and_zero
+            grid = (grid0 * grid1 + tr.cdiv(zero_count, 1024),)
+            extra = {
+                "Delta": delta,
+                "Border": border,
+                "GRID0": grid0,
+                "GRID1": grid1,
+                "DELTA_ELEMENTS": delta.numel(),
+                "BORDER_ELEMENTS": border.numel() if border is not None else 0,
+            }
+        else:
+            grid = (grid0, grid1)
+        compiled = kernel[grid](
             x,
             bank,
             n,
@@ -209,8 +224,9 @@ def _bank(x, n, recipe, label, active, dim, ml, buffer=None):
             getattr(recipe, "active_levels", False),
             pad,
             getattr(recipe, "min_block_log", 3),
-            **({"TB": tiles} if tiles > 1 else {}),
+            **({"TB": tiles} if tiles > 1 or extra else {}),
             MASK_MODE=getattr(recipe, "fused_levels", False),
+            **extra,
             num_warps=recipe.bank_warps,
             enable_fp_fusion=False,
         )
@@ -261,9 +277,7 @@ def _restore(delta, border, y, n, recipe, label, active, dim, ml):
     return y
 
 
-def _delta(x, n, recipe, active, dim, ml, buffers=None, label=None):
-    label = label or ("delta_output" if dim == 0 else "delta_input")
-    _stamp(label, 0)
+def _delta_buffers(x, n, recipe, buffers=None):
     if buffers is None:
         delta = x.new_empty(
             (3, _points(n, recipe), len(x) + getattr(recipe, "bank_padding", 0))
@@ -276,6 +290,51 @@ def _delta(x, n, recipe, active, dim, ml, buffers=None, label=None):
         )
     else:
         delta, border = buffers
+    return delta, border
+
+
+def _bank_and_delta(
+    x,
+    bank_n,
+    delta_n,
+    recipe,
+    bank_label,
+    delta_label,
+    active,
+    bank_dim,
+    delta_dim,
+    ml,
+    bank_buffer=None,
+    delta_buffers=None,
+):
+    if getattr(recipe, "fuse_bank_zero", False):
+        delta, border = _delta_buffers(x, delta_n, recipe, delta_buffers)
+        bank = _bank(
+            x,
+            bank_n,
+            recipe,
+            bank_label,
+            active,
+            bank_dim,
+            ml,
+            bank_buffer,
+            (delta, border),
+        )
+        # Zero CTAs are timed inside bank_label, not a separate zero kernel.
+        _stamp(delta_label, 0)
+        _stamp(delta_label, 1)
+    else:
+        bank = _bank(x, bank_n, recipe, bank_label, active, bank_dim, ml, bank_buffer)
+        delta, border = _delta(
+            x, delta_n, recipe, active, delta_dim, ml, delta_buffers, delta_label
+        )
+    return bank, delta, border
+
+
+def _delta(x, n, recipe, active, dim, ml, buffers=None, label=None):
+    label = label or ("delta_output" if dim == 0 else "delta_input")
+    _stamp(label, 0)
+    delta, border = _delta_buffers(x, n, recipe, buffers)
     pad = delta.shape[2] - len(x)
     if getattr(recipe, "active_levels", False) and getattr(recipe, "zero_active", True):
         for k, sizes in enumerate(_groups(n, recipe)):
@@ -476,8 +535,18 @@ class _Local(torch.autograd.Function):
             order=_source_order(order, recipe),
             cache=_cache_args(pos, co, active, recipe),
         )
-        bank = _bank(x, sizes[1], recipe, "bank_input", active, 1, ml)
-        delta, border = _delta(x, sizes[0], recipe, active, 0, ml)
+        bank, delta, border = _bank_and_delta(
+            x,
+            sizes[1],
+            sizes[0],
+            recipe,
+            "bank_input",
+            "delta_output",
+            active,
+            1,
+            0,
+            ml,
+        )
         h = x.new_empty((a, b)) if ctx.mode != "none" else x.new_empty(0)
         hp = x.new_empty((a, b)) if ctx.mode == "hp" else x.new_empty(0)
         _stamp("stream_forward", 0)
@@ -606,8 +675,18 @@ class _Local(torch.autograd.Function):
             input_bank = None
             _stamp("bank_recompute", 0)
             _stamp("bank_recompute", 1)
-        adjoint_bank = _bank(dy, sizes[0], recipe, "bank_adjoint", active, 0, ml)
-        delta, border = _delta(x, sizes[1], recipe, active, 1, ml)
+        adjoint_bank, delta, border = _bank_and_delta(
+            dy,
+            sizes[0],
+            sizes[1],
+            recipe,
+            "bank_adjoint",
+            "delta_input",
+            active,
+            0,
+            1,
+            ml,
+        )
         _stamp("stream_backward", 0)
         compiled = _h_launch("backward", a, recipe)(
             input_bank,

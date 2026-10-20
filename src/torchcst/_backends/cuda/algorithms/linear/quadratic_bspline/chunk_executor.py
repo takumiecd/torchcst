@@ -7,9 +7,9 @@ from torch.autograd.function import once_differentiable
 from .executor import _report, _stamp
 from .local_executor import (
     _bank,
+    _bank_and_delta,
     _blocks,
     _cache_args,
-    _delta,
     _finish_native,
     _frame,
     _group_tables,
@@ -99,19 +99,22 @@ class _Chunked(torch.autograd.Function):
                 # Every chunk owns its forward snapshot. A later chunk/forward
                 # must never overwrite bank values needed by retained backward.
                 bank = _workspace(x, sizes[1], tile, recipe)
-            _bank(xs, sizes[1], recipe, _name("bank_input", index), active, 1, ml, bank)
-            if retain_bank:
-                saved_banks.append(bank)
-            _delta(
+            bank, _, _ = _bank_and_delta(
                 xs,
+                sizes[1],
                 sizes[0],
                 recipe,
+                _name("bank_input", index),
+                _name("delta_output", index),
                 active,
+                1,
                 0,
                 ml,
+                bank,
                 (delta, border),
-                _name("delta_output", index),
             )
+            if retain_bank:
+                saved_banks.append(bank)
             label = _name("stream_forward", index)
             _stamp(label, 0)
             compiled = _h_launch("forward", a, recipe)(
@@ -259,25 +262,19 @@ class _Chunked(torch.autograd.Function):
                 )
             else:
                 _empty(_name("bank_recompute", index))
-            _bank(
+            adjoint_bank, _, _ = _bank_and_delta(
                 dys,
                 sizes[0],
-                recipe,
-                _name("bank_adjoint", index),
-                active,
-                0,
-                ml,
-                adjoint_bank,
-            )
-            _delta(
-                xs,
                 sizes[1],
                 recipe,
+                _name("bank_adjoint", index),
+                _name("delta_input", index),
                 active,
+                0,
                 1,
                 ml,
+                adjoint_bank,
                 (delta, border),
-                _name("delta_input", index),
             )
             label = _name("stream_backward", index)
             _stamp(label, 0)

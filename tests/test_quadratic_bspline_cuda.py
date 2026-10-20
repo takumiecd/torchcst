@@ -15,6 +15,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineLeanHAlgorithm,
     BSplineLocalActiveAlgorithm,
     BSplineLocalBankBundleAlgorithm,
+    BSplineLocalBankZeroAlgorithm,
     BSplineLocalCanonicalAlgorithm,
     BSplineLocalChunkedAlgorithm,
     BSplineLocalCoefficientAlgorithm,
@@ -63,6 +64,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineLeanHRecipe,
     BSplineLocalActiveRecipe,
     BSplineLocalBankBundleRecipe,
+    BSplineLocalBankZeroRecipe,
     BSplineLocalCanonicalRecipe,
     BSplineLocalChunkedRecipe,
     BSplineLocalCoefficientRecipe,
@@ -128,8 +130,13 @@ def case(n=64, a=17):
 def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     from dataclasses import replace
 
-    saved_bank = strategy == "h_local_saved_bank" or recipe_options.pop(
-        "_saved_bank", False
+    bank_zero = strategy == "h_local_bank_zero" or recipe_options.pop(
+        "_bank_zero", False
+    )
+    saved_bank = (
+        bank_zero
+        or strategy == "h_local_saved_bank"
+        or recipe_options.pop("_saved_bank", False)
     )
     spatial_layout = strategy == "h_local_spatial" or recipe_options.pop(
         "_spatial_layout", False
@@ -297,6 +304,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineLocalPairedDecodeAlgorithm())
     registry.register(BSplineLocalSpatialAlgorithm())
     registry.register(BSplineLocalSavedBankAlgorithm())
+    registry.register(BSplineLocalBankZeroAlgorithm())
     registry.register(BSplineLocalUnifiedAlgorithm())
     registry.register(BSplineLocalNativeShardsAlgorithm())
     registry.register(BSplineLocalNativePointAlgorithm())
@@ -327,7 +335,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     tuned = bool(recipe_options) or strategy == "matrix_separable"
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v46"
+        "v47"
+        if bank_zero
+        else "v46"
         if saved_bank
         else "v45"
         if spatial_layout
@@ -418,7 +428,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         else "v2"
         if tuned
         else "v1",
-        BSplineLocalSavedBankRecipe(**recipe_options)
+        BSplineLocalBankZeroRecipe(**recipe_options)
+        if bank_zero
+        else BSplineLocalSavedBankRecipe(**recipe_options)
         if saved_bank
         else BSplineLocalSpatialRecipe(**recipe_options)
         if spatial_layout
@@ -2805,6 +2817,18 @@ SAVED_BANK_OPTIONS = [
         "batch_chunk": 16,
     },
 ]
+BANK_ZERO_OPTIONS = [
+    {"_bank_zero": True},
+    {
+        "_bank_zero": True,
+        "save_input_bank": False,
+        "axis_atoms": 8,
+        "reciprocal": False,
+        "contract_float32": False,
+        "norm_float32": False,
+        "batch_chunk": 16,
+    },
+]
 ALL_QUERY_OPTIONS = (
     QUERY_OPTIONS
     + LEAN_OPTIONS
@@ -2884,6 +2908,10 @@ ALL_QUERY_OPTIONS = (
     + [
         pytest.param(opt, id=f"saved-bank-{i}")
         for i, opt in enumerate(SAVED_BANK_OPTIONS)
+    ]
+    + [
+        pytest.param(opt, id=f"bank-zero-{i}")
+        for i, opt in enumerate(BANK_ZERO_OPTIONS)
     ]
 )
 
@@ -3767,6 +3795,7 @@ def test_native_bound_recipe_roundtrip_and_bounds():
         "h_local_paired_decode",
         "h_local_spatial",
         "h_local_saved_bank",
+        "h_local_bank_zero",
     ],
 )
 def test_native_bound_count_changes_across_graph(batch, floor, strategy):
@@ -3860,6 +3889,7 @@ def test_native_bound_count_changes_across_graph(batch, floor, strategy):
         "h_local_paired_decode",
         "h_local_spatial",
         "h_local_saved_bank",
+        "h_local_bank_zero",
     ],
 )
 def test_native_bound_strided_individual_gradients(which, strategy):
@@ -3904,6 +3934,7 @@ def test_native_bound_strided_individual_gradients(which, strategy):
         "h_local_paired_decode",
         "h_local_spatial",
         "h_local_saved_bank",
+        "h_local_bank_zero",
     ],
 )
 def test_native_bound_retained_count_above_grid(strategy):
@@ -4441,6 +4472,7 @@ def test_native_cache_recipe_roundtrip_and_bounds():
         ("h_local_paired_decode", True),
         ("h_local_spatial", True),
         ("h_local_saved_bank", True),
+        ("h_local_bank_zero", True),
     ],
 )
 @pytest.mark.parametrize(
@@ -4463,6 +4495,7 @@ def test_native_cache_spacing_fallbacks(strategy, unroll, spacing, batch, amplit
             "h_local_paired_decode",
             "h_local_spatial",
             "h_local_saved_bank",
+            "h_local_bank_zero",
         )
         else {"cache_unroll": unroll}
     )
@@ -5384,3 +5417,77 @@ def test_saved_bank_not_retained_without_atom_grad(batch):
         y = layer(x)
     assert not any(t.ndim == 3 and t.shape[0] == 3 for t in seen)
     assert torch.isfinite(torch.autograd.grad(y.sum(), x)[0]).all()
+
+
+def test_bank_zero_recipe_roundtrip_and_guards():
+    reg = Registry()
+    reg.register(BSplineLocalBankZeroAlgorithm())
+    for flag in (False, True):
+        plan = ExecutionPlan(
+            "research_cuda_quadratic_bspline",
+            "v47",
+            BSplineLocalBankZeroRecipe(fuse_bank_zero=flag),
+        )
+        assert reg.loads_plan(reg.dumps_plan(plan)) == plan
+    for bad in ({"fuse_bank_zero": 1}, {"fuse_bank_zero": None}, {"zero_active": True}):
+        with pytest.raises(ValueError):
+            BSplineLocalBankZeroRecipe(**bad)
+
+
+@GPU
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize(
+    "bank_n,delta_n,batch,physical,tiles",
+    [
+        (16, 64, 3, 16, 4),
+        (64, 128, 3, 16, 1),
+        (64, 128, 3, 16, 4),
+        (1024, 64, 33, 48, 4),
+    ],
+)
+def test_bank_zero_exact_values_and_full_scratch_zero(
+    bank_n, delta_n, batch, physical, tiles, enabled
+):
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        local_executor as le,
+    )
+
+    recipe = BSplineLocalBankZeroRecipe(bank_tile_blocks=tiles)
+    ml = max(bank_n, delta_n).bit_length() - recipe.min_block_log
+    mask = (1 << ml) - 1 if enabled else 0
+    active = torch.full((2,), mask, device="cuda", dtype=torch.int32)
+    x = torch.randn(batch, bank_n, device="cuda")
+    shape = (3, le._points(bank_n, recipe), physical)
+    bank = torch.full(shape, -777.0, device="cuda")
+    expected = bank.clone()
+    delta = torch.full(
+        (3, le._points(delta_n, recipe), physical), float("nan"), device="cuda"
+    )
+    border = torch.full(
+        (3, le._blocks(delta_n, recipe), recipe.boundary_shards, physical),
+        float("nan"),
+        device="cuda",
+    )
+    le._bank(x, bank_n, recipe, "bank_input", active, 1, ml, expected)
+    actual, actual_delta, actual_border = le._bank_and_delta(
+        x,
+        bank_n,
+        delta_n,
+        recipe,
+        "bank_input",
+        "delta_output",
+        active,
+        1,
+        0,
+        ml,
+        bank,
+        (delta, border),
+    )
+    assert actual.data_ptr() == bank.data_ptr()
+    assert actual_delta.data_ptr() == delta.data_ptr()
+    assert actual_border.data_ptr() == border.data_ptr()
+    assert torch.equal(actual, expected)
+    # Zeroing must run even when all bank levels are disabled and must include
+    # padded rows plus the other axis's independently-sized scratch.
+    assert torch.count_nonzero(delta).item() == 0
+    assert torch.count_nonzero(border).item() == 0

@@ -344,9 +344,13 @@ def prepare(
 
 @tr.jit
 def _group(
-    N: tl.constexpr, LOW: tl.constexpr, LEVELS: tl.constexpr, MIN_LOG: tl.constexpr = 3
+    N: tl.constexpr,
+    LOW: tl.constexpr,
+    LEVELS: tl.constexpr,
+    MIN_LOG: tl.constexpr = 3,
+    PID0=None,
 ):
-    pid = tl.program_id(0)
+    pid = tl.program_id(0) if PID0 is None else PID0
     if LEVELS == 1:
         part = tl.full((), 0, tl.int32)
         tile = pid
@@ -387,9 +391,11 @@ def bank(
     PAD: tl.constexpr = 0,
     MIN_LOG: tl.constexpr = 3,
     MASK_MODE: tl.constexpr = False,
+    PID0=None,
+    PID1=None,
 ):
     pb: tl.constexpr = B + PAD
-    size, tile, offset, level = _group(N, LOW, LEVELS, MIN_LOG)
+    size, tile, offset, level = _group(N, LOW, LEVELS, MIN_LOG, PID0)
     if MASK_MODE:
         enabled = (tl.load(Active + DIM) & (1 << level)) != 0
     else:
@@ -398,7 +404,8 @@ def bank(
         )
     if enabled:
         i = tl.arange(0, SS)
-        b = tl.program_id(1) * BB + tl.arange(0, BB)
+        pid1 = tl.program_id(1) if PID1 is None else PID1
+        b = pid1 * BB + tl.arange(0, BB)
         site = tile * size + i
         x = tl.load(
             X + b[None, :] * N + site[:, None],

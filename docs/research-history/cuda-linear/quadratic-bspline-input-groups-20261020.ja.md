@@ -1079,3 +1079,61 @@ source1653/manifest44、archive/manifest/Git bytes/return0/timeoutなし/cleanup
 371 runtime-file package一致とf26c4566のCPU CIもPASS。
 単回のcandidate改善なので、129roundsの独立L4再測定と、検証済み同候補の短いG4比較を行う。
 速度2x目標には依然未達であり、default選択器は変更しない。
+
+### v46の129round再測定: G4改善、L4は条件依存
+
+source `428b5bd0b6d848abfff7dc89165ff29302bb9a67`（runtimeはf26と同一）。
+G4 job `colabjob-a8abc16c5eaf46f4b4206ccabeba606f`は9件の保存bank検査と
+両primary条件の全shape/3状態FP64 gate、全σ更新、初期hash一致がPASS。
+
+|G4条件|v44 ms|v46保存 ms|Dense ms|保存/Dense|
+|---|---:|---:|---:|---:|
+|B32 mixed|0.352320|0.342510|0.066420|5.16x|
+|B64 mixed|0.541890|0.523340|0.075320|6.95x|
+
+2.78%/3.42%短縮。peak allocated/reservedはB32 **34.154/98 MiB**、
+B64 **38.216/100 MiB**で、Dense49.002/106、49.502/106以下。
+再構築約0.0119ms/chunkが空event markerへ変わる。精度基準4e-4は維持する。
+
+独立L4 job `l4job-871b3dfb61f84330a85f18a8d7fc5b84`も全4条件の全shape/3状態gateがPASS。
+しかし長い測定の中央値は以下であり、初回の短い測定と一様には一致しない。
+
+|L4再測定条件|v44 ms|v46保存 ms|Dense ms|
+|---|---:|---:|---:|
+|B32 mixed|0.760738|0.821187|0.082184|
+|B64 mixed|1.447772|1.419492|0.104899|
+|B32 small|0.780025|0.755625|0.082031|
+|B32 switch|0.714776|0.794863|0.082018|
+
+両peakは初回と同じ。B32 mixed/switchは保存版が遅く、L4の無条件な最速とは扱わない。
+両方式とも時間系列が非定常だった。mixedの32sample区間中央値はcontrol
+0.745/0.760/0.762/0.845ms、保存0.727/0.786/0.844/0.856ms。
+B64もcontrol1.204→1.449ms、保存1.174→1.430msへ推移した。
+最終native countは全条件0で、stream診断はmixed両版約0.140/0.219msで同帯。
+ホスト/デバイスのclock・電力・OS待ちの同時記録はなく、原因は確定しない。
+都合のよい初期sampleだけを採用したり、L4の負の中央値を除外したりしない。
+G4での候補改善と、L4での再現性の制限を分けて記録する。速度2x目標は未達。
+
+G4 source SHA256 `9b41971ffcc65a8fe02e51e3f9db5ce0be8c859134ffeea9e25a31185ac22c05`、
+result `3b90013a6e767d613318c98eaca7f25cf626254c2eb0bfb93a179df8115f2c56`。
+L4 source `c6004315949bcab3d197ad5dcc73a44ad97506380d2622bacabb4641e013cf94`、
+result `ea5b8364de4268f4a1273a8caf0d8f0890aa5fd9a05ffbafe689f7978405b1c9`。
+各source1657、manifest24/44、archive/manifest/Git bytes/return0/timeoutなし/cleanup ackを照合した。
+
+## v47: bank構築と独立scratch初期化の起動融合（検証前）
+
+最初のbank groupのCTA群と、delta/borderのzero CTA群を一つの1D gridへ置く。
+bank CTAは従来と同じ2Dのtile/batch番号へ復元し、既存のscan関数を呼ぶ。
+zero CTAは別の出力領域をflatに全初期化する。bankとdelta/borderは別allocationであり、
+CTA間のデータ依存やgrid同期は追加しない。全bank levelが無効でもzero CTAは実行する。
+異なる入出力site数・物理batch padding・partial tileを含める。
+
+従来のbank算術、dtype、query、L2、注入式は維持し、起動を2回減らす候補である。
+zero費用は最初のbankの診断区間へ含め、deltaの空markerを別のzero実行時間とみなさない。
+追加の保存Tensorはない。bank保存あり/なしを別Planにし、v44/v46も同じ条件で比較する。
+元のbank関数のPID overrideは未指定なら従来のprogram_idを使う。
+公開/defaultの選択は変更しない。
+
+CPU2011pass/4849skip/18既存warning、Ruffを確認した。GPUでは有効bankのbitwise一致と
+全scratchのzeroを、全level無効・異なる軸サイズ・端数batch・部分bundleでも確認する。
+全shape/3状態FP64 Y/dX/全4atom勾配と、構築/L2/optimizer込みの両peak・完全stepも必要である。

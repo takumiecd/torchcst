@@ -11,8 +11,9 @@ def _group(
     LEVELS: tl.constexpr,
     MIN_LOG: tl.constexpr,
     TB: tl.constexpr,
+    PID0=None,
 ):
-    pid = tl.program_id(0)
+    pid = tl.program_id(0) if PID0 is None else PID0
     first: tl.constexpr = tr.cdiv(N // LOW, TB)
     second: tl.constexpr = tr.cdiv(N // (2 * LOW), TB)
     if LEVELS == 1:
@@ -53,9 +54,11 @@ def bank(
     MIN_LOG: tl.constexpr = 3,
     TB: tl.constexpr = 1,
     MASK_MODE: tl.constexpr = False,
+    PID0=None,
+    PID1=None,
 ):
     pb: tl.constexpr = B + PAD
-    size, tile, tiles, offset, level = _group(N, LOW, LEVELS, MIN_LOG, TB)
+    size, tile, tiles, offset, level = _group(N, LOW, LEVELS, MIN_LOG, TB, PID0)
     if MASK_MODE:
         enabled = (tl.load(Active + DIM) & (1 << level)) != 0
     else:
@@ -64,7 +67,8 @@ def bank(
         )
     if enabled:
         i = tl.arange(0, SS)
-        b = tl.program_id(1) * BB + tl.arange(0, BB)
+        pid1 = tl.program_id(1) if PID1 is None else PID1
+        b = pid1 * BB + tl.arange(0, BB)
         site = tile[:, None] * size + i[None, :]
         mask = (
             (tile[:, None, None] < tiles)

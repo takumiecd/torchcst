@@ -888,3 +888,17 @@ class BSplineLocalSavedBankRecipe(BSplineLocalPairedDecodeRecipe):
         super().__post_init__()
         if type(self.save_input_bank) is not bool:
             raise ValueError("save_input_bank must be boolean")
+
+
+@dataclass(frozen=True)
+class BSplineLocalBankZeroRecipe(BSplineLocalSavedBankRecipe):
+    """Revision 47: fuse independent first-group bank and scratch-zero CTAs."""
+
+    fuse_bank_zero: bool = True
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.fuse_bank_zero) is not bool:
+            raise ValueError("fuse_bank_zero must be boolean")
+        if self.fuse_bank_zero and self.zero_active:
+            raise ValueError("bank-zero fusion requires full scratch initialization")
