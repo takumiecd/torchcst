@@ -822,6 +822,38 @@ def measure(args, run):
                             ),
                         }
                     )
+                if getattr(recipe, "unit_delta", False):
+                    caches = [
+                        s.buffers["unit_native_count"]
+                        for s in model.product_site.__dict__.get(
+                            "_algorithm_states", []
+                        )
+                        if "unit_native_count" in s.buffers
+                    ]
+                    if len(caches) != 1:
+                        raise AssertionError(
+                            "missing unit-profile native compaction count"
+                        )
+                    hybrid_routing.update(
+                        {
+                            "bank_layout": "FP32 pairs for second/third reverse prefix with per-batch powers",
+                            "input_bank_snapshot_capacity_bytes": 4
+                            * (n + 1)
+                            * bank_rows
+                            * 4
+                            if recipe.save_input_bank
+                            else 0,
+                            "unit_delta": True,
+                            "unit_coefficient_payload_bytes": 352 * case.atoms,
+                            "unit_delta_policy": "balanced base2^48 signed int64 low/high;34bit per-batch weight;52bit unit-profile coefficient; canonical events before atomics",
+                            "unit_shards": recipe.unit_shards,
+                            "placement_policy": "fresh native-only compaction each forward; no parameter permutation or width sorting",
+                            "final_device_native_atoms": int(caches[0].item()),
+                            "routing_count_scope": "sigma cutoff, <=2 positive samples or unsafe unit polynomial bound; same FP64 native fallback",
+                            "unit_query_points": 12,
+                            "unit_prime_query_points": 8,
+                        }
+                    )
                 if recipe.reuse_layout:
                     states = model.product_site.__dict__.get("_algorithm_states", [])
                     caches = [

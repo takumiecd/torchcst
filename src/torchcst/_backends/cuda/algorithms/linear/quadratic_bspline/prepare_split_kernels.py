@@ -80,6 +80,7 @@ def normalize(
     FMA: tl.constexpr,
     CORE32: tl.constexpr,
     HOIST: tl.constexpr = False,
+    UNIT: tl.constexpr = False,
 ):
     a = tl.program_id(0) * 64 + tl.arange(0, 64)
     radius = tl.load(Meta + 12 * a + 1, a < A, 1)
@@ -102,6 +103,9 @@ def normalize(
         CORE32,
         HOIST,
     )
+    if UNIT:
+        tl.store(Meta + 12 * A + a, lib.sqrt(qo), a < A)
+        tl.store(Meta + 13 * A + a, lib.sqrt(qi), a < A)
     denominator = lib.sqrt(qo * qi)
     tl.store(Meta + a * 12 + 4, 1 / tl.maximum(denominator, FLOOR), a < A)
     tl.store(

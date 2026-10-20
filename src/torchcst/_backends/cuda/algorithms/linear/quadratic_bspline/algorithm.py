@@ -66,6 +66,7 @@ from .recipe import (
     BSplineStreamingMemoryRecipe,
     BSplineStreamingRecipe,
     BSplineTuningRecipe,
+    BSplineUnitDeltaRecipe,
 )
 
 
@@ -194,6 +195,8 @@ class BSplineAlgorithm(Algorithm[BSplineRecipe]):
                     from .saved_executor import apply as stream_apply
                 if getattr(state.recipe, "local_h", False):
                     from .local_executor import apply as stream_apply
+                if getattr(state.recipe, "unit_delta", False):
+                    from .unit_delta_executor import apply as stream_apply
                 return stream_apply(
                     x,
                     p,
@@ -564,4 +567,17 @@ class BSplineLocalIntegerAlgorithm(BSplineLocalBankZeroAlgorithm):
                     )
             except (ValueError, TypeError, AttributeError):
                 pass
+        return SupportResult(tuple(reasons))
+
+
+@dataclass(frozen=True)
+class BSplineUnitDeltaAlgorithm(BSplineLocalSavedBankAlgorithm):
+    revision: str = "v50"
+    recipe_type: type = BSplineUnitDeltaRecipe
+
+    def supports(self, context, recipe):
+        result = super().supports(context, recipe)
+        reasons = list(result.reasons)
+        if isinstance(context, LinearContext) and context.atom_count > 60000:
+            reasons.append("two-word profile accumulation supports at most 60000 atoms")
         return SupportResult(tuple(reasons))

@@ -928,3 +928,21 @@ class BSplineLocalIntegerRecipe(BSplineLocalBankZeroRecipe):
     """Revision 49: int64 triple-prefix queries and signed128 cancellation."""
 
     integer_query = True
+
+
+@dataclass(frozen=True)
+class BSplineUnitDeltaRecipe(BSplineLocalSavedBankRecipe):
+    """Revision 50: same sampled operator, unit axes, float pairs and word deltas."""
+
+    unit_delta = True
+    reuse_layout: bool = False
+    unit_shards: int = 8
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.reuse_layout or not self.split_prepare:
+            raise ValueError(
+                "unit delta requires fresh native compaction and split normalization"
+            )
+        if type(self.unit_shards) is not int or self.unit_shards not in (1, 4, 8, 16):
+            raise ValueError("unit_shards must be 1,4,8 or16")

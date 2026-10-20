@@ -1404,3 +1404,44 @@ unit-axis factorization U=q_o/||q_o||, V=q_i/||q_i||,
 入力側H生成、係数構築、出力の正確な加算を一緒に考える必要があり、
 unit profileの差分とbatch別尺度の重みを2word整数へ足してprefixで戻す設計は未検証の候補。
 現時点でこの案のGPU実装や速度・peak・精度の主張はしない。
+
+
+## v50: unit軸のFP32 pair queryと整数deltaによる出力集約（検証前）
+
+q_o,q_iをそれぞれsampled L2 norm n_o,n_iで割ったU,Vへ分け、
+λ=A*n_o*n_i/max(n_o*n_i,eps)とすると、元の演算はW=ΣλUV^Tのまま。
+軸ごとにfloorを入れない。既存Metaのinverse denominatorと条件付きGammaを保持し、
+norm kernelが既に求めたn_o,n_iをsuffixへ保存する。Metaは14A FP64 storageで、
+先頭12Aは従来のstride12 layout、末尾2Aはnorm用SoA。旧recipeは従来12Aのまま。
+振幅/幅・中心・task幅stop-gradient・単一floor・Polar更新は同じ定義を使う。
+
+CPU `unit-two-word-cpu.py/.json`ではN128/A128/B3、N1024/A128/B32、
+各3step・floor1e-6/1000の12状態を独立Torch FP64 autogradへ照合した。
+2成分FP32 prefix/queryと、52bit unit多項式×batch尺度34bit重みの正確な整数積/scanを使い、
+最終Y/dX/全4PをFP32へ丸めてmaxabs9.105e-8/1.031e-7/1.818e-6。
+H/Hmuは2.894e-7/3.899e-9。2word scanはPython任意精度整数と完全一致。
+これはA52428のGPU gateではなく、GPU時間/peakを示さない。
+source SHA256 `b06335aa581122dc82b683e865a8423353b82b34bcbf41545fb8fcb2c4eaaa14`。
+
+新GPU候補は入力X/dYをbatch別の2冪で正規化し、2階/3階reverse prefixを
+FP32二成分で保存する。TwoSum/FMA残差で精度を保ち、Hは12点、Hmuは8点でqueryする。
+出力は単純なFP32 hi/lo atomicにせず、各atomの重みを一度だけ整数化し、
+unit profileの差分との正確な積を、balanced base2^48のsigned64 low/highへ足す。
+3回prefixの各段でcarryを戻してからFP64へ変換し、元のbatch尺度へ戻す。
+
+同じatomの重複位置は係数構築で合算し、各pointへatomあたり一度だけ加える。
+これにより低wordの加算上限を保つ。N<=1024、A<=60000を数値支持範囲とする。
+低wordはatomごとに[-2^47,2^47)へbalanced化するため、atomic和とscan内部部分和がsigned64内。
+高wordはunit vectorの差分のL1上限とbatchの入力normから上限を取る。
+細かい係数の独立丸めでcompact supportを壊さず、連続sigmaを量子化しない。
+
+source順の全atomを処理し、nativeはcutoff・<=2支持点・unsafe係数だけのfresh compactionにする。
+full width sort/parameter permutationは行わず、nativeIDs/countもimmutable forward snapshotへ含める。
+unsafeなatomは従来の同じFP64 native式で計算する。Coは44A int64 storageで
+40A event係数+8A int32 cuts (352A bytes)。新規Meta norm suffixや整数delta/shardsもpeak対象。
+
+forward input bankは必要なら同じframeのbackwardまで保存し、chunk/retained間では上書きしない。
+構築・fresh compaction・L2・query/注入・整数restore・全4P・optimizerを全て含めて評価する。
+CPU2014 passed /4974 skipped /18既存warning (40.38s)、変更対象Ruff、両case宣言とbuild PASS。
+GPU raw5件+共有全勾配/Graph/retained等33件の後、主B32/B64をv47/Denseと比較する。
+速度とallocated/reservedはまだ未検証で、採用や達成の主張はしない。

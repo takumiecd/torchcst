@@ -391,7 +391,11 @@ def _prepare(p, value, chart, recipe, moments):
     source = p.contiguous().clone() if recipe.snapshot_source else p.contiguous()
     origin, spacing = chart.origin.clone(), chart.spacing.clone()
     _stamp("snapshot", 1)
-    meta = torch.empty((len(p), 12), device=p.device, dtype=torch.float64)
+    meta = torch.empty(
+        (len(p), 14 if getattr(recipe, "unit_delta", False) else 12),
+        device=p.device,
+        dtype=torch.float64,
+    )
     if len(p):
         _stamp("prepare", 0)
         local = getattr(recipe, "local_h", False)
@@ -436,6 +440,7 @@ def _prepare(p, value, chart, recipe, moments):
                 getattr(recipe, "norm_fma", False),
                 getattr(recipe, "norm_float32", False),
                 HOIST=getattr(recipe, "norm_coordinates", False),
+                UNIT=getattr(recipe, "unit_delta", False),
                 num_warps=recipe.prepare_warps,
                 enable_fp_fusion=False,
             )

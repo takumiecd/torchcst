@@ -58,6 +58,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
     BSplineStreamingAlgorithm,
     BSplineStreamingMemoryAlgorithm,
     BSplineTuningAlgorithm,
+    BSplineUnitDeltaAlgorithm,
     layout,
 )
 from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
@@ -110,6 +111,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.recipe import (
     BSplineStreamingMemoryRecipe,
     BSplineStreamingRecipe,
     BSplineTuningRecipe,
+    BSplineUnitDeltaRecipe,
 )
 from torchcst._backends.dispatch import FixedSelector
 from torchcst._backends.registry import Registry
@@ -134,10 +136,12 @@ def case(n=64, a=17):
 def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     from dataclasses import replace
 
+    unit_delta = strategy == "h_unit_delta" or recipe_options.pop("_unit_delta", False)
     integer = strategy == "h_local_integer" or recipe_options.pop("_integer", False)
     vector = strategy == "h_local_vector" or recipe_options.pop("_vector", False)
     bank_zero = (
-        integer
+        unit_delta
+        or integer
         or vector
         or strategy == "h_local_bank_zero"
         or recipe_options.pop("_bank_zero", False)
@@ -314,6 +318,7 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
     registry.register(BSplineLocalSpatialAlgorithm())
     registry.register(BSplineLocalSavedBankAlgorithm())
     registry.register(BSplineLocalBankZeroAlgorithm())
+    registry.register(BSplineUnitDeltaAlgorithm())
     registry.register(BSplineLocalIntegerAlgorithm())
     registry.register(BSplineLocalVectorAlgorithm())
     registry.register(BSplineLocalUnifiedAlgorithm())
@@ -349,7 +354,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         recipe_options.setdefault("lane_atoms", 4)
     plan = ExecutionPlan(
         "research_cuda_quadratic_bspline",
-        "v49"
+        "v50"
+        if unit_delta
+        else "v49"
         if integer
         else "v48"
         if vector
@@ -446,7 +453,9 @@ def model(strategy, n=64, a=17, floor=1e-6, **recipe_options):
         else "v2"
         if tuned
         else "v1",
-        BSplineLocalIntegerRecipe(**recipe_options)
+        BSplineUnitDeltaRecipe(**recipe_options)
+        if unit_delta
+        else BSplineLocalIntegerRecipe(**recipe_options)
         if integer
         else BSplineLocalVectorRecipe(**recipe_options)
         if vector
@@ -2839,6 +2848,19 @@ SAVED_BANK_OPTIONS = [
         "batch_chunk": 16,
     },
 ]
+UNIT_DELTA_OPTIONS = [
+    {"_unit_delta": True},
+    {
+        "_unit_delta": True,
+        "save_input_bank": False,
+        "axis_atoms": 8,
+        "lane_atoms": 2,
+        "batch_chunk": 16,
+        "contract_float32": False,
+        "norm_float32": False,
+        "unit_shards": 4,
+    },
+]
 INTEGER_OPTIONS = [
     {"_integer": True},
     {
@@ -2960,6 +2982,10 @@ ALL_QUERY_OPTIONS = (
     ]
     + [pytest.param(opt, id=f"vector-{i}") for i, opt in enumerate(VECTOR_OPTIONS)]
     + [pytest.param(opt, id=f"integer-{i}") for i, opt in enumerate(INTEGER_OPTIONS)]
+    + [
+        pytest.param(opt, id=f"unit-delta-{i}")
+        for i, opt in enumerate(UNIT_DELTA_OPTIONS)
+    ]
 )
 
 
@@ -3843,6 +3869,7 @@ def test_native_bound_recipe_roundtrip_and_bounds():
         "h_local_spatial",
         "h_local_saved_bank",
         "h_local_bank_zero",
+        "h_unit_delta",
         "h_local_integer",
         "h_local_vector",
     ],
@@ -3902,11 +3929,12 @@ def test_native_bound_count_changes_across_graph(batch, floor, strategy):
         for actual, expected in zip((y, dx, dp), (ref, rdx, rdp)):
             error = check(actual, expected, 4e-4)
             assert error["max"] < 4e-4 and error["rel_l2"] < 4e-4
+        cache = layer.__dict__["_algorithm_states"][0].buffers
         count = (
-            layer.__dict__["_algorithm_states"][0]
-            .buffers["stream_layout"]["count"]
-            .item()
-        )
+            cache["unit_native_count"]
+            if strategy == "h_unit_delta"
+            else cache["stream_layout"]["count"]
+        ).item()
         if step == 2:
             assert count == 0
         elif step == 3:
@@ -3939,6 +3967,7 @@ def test_native_bound_count_changes_across_graph(batch, floor, strategy):
         "h_local_spatial",
         "h_local_saved_bank",
         "h_local_bank_zero",
+        "h_unit_delta",
         "h_local_integer",
         "h_local_vector",
     ],
@@ -3986,6 +4015,7 @@ def test_native_bound_strided_individual_gradients(which, strategy):
         "h_local_spatial",
         "h_local_saved_bank",
         "h_local_bank_zero",
+        "h_unit_delta",
         "h_local_integer",
         "h_local_vector",
     ],
@@ -4526,6 +4556,7 @@ def test_native_cache_recipe_roundtrip_and_bounds():
         ("h_local_spatial", True),
         ("h_local_saved_bank", True),
         ("h_local_bank_zero", True),
+        ("h_unit_delta", True),
         ("h_local_integer", True),
         ("h_local_vector", True),
     ],
@@ -4551,6 +4582,7 @@ def test_native_cache_spacing_fallbacks(strategy, unroll, spacing, batch, amplit
             "h_local_spatial",
             "h_local_saved_bank",
             "h_local_bank_zero",
+            "h_unit_delta",
             "h_local_integer",
             "h_local_vector",
         )
@@ -5909,3 +5941,254 @@ def test_integer_query_raw_values_and_fallback(n, batch, physical, dim):
     )
     torch.testing.assert_close(actual, expected[order], rtol=1e-7, atol=2e-7)
     torch.testing.assert_close(prime, expected_prime[order], rtol=1e-7, atol=2e-7)
+
+
+def test_unit_delta_recipe_roundtrip_and_guards():
+    reg = Registry()
+    reg.register(BSplineUnitDeltaAlgorithm())
+    for keep in (True, False):
+        plan = ExecutionPlan(
+            "research_cuda_quadratic_bspline",
+            "v50",
+            BSplineUnitDeltaRecipe(save_input_bank=keep),
+        )
+        assert reg.loads_plan(reg.dumps_plan(plan)) == plan
+    for bad in (
+        {"reuse_layout": True},
+        {"split_prepare": False},
+        {"unit_shards": True},
+        {"unit_shards": 3},
+    ):
+        with pytest.raises(ValueError):
+            BSplineUnitDeltaRecipe(**bad)
+
+
+@GPU
+@pytest.mark.parametrize("n,b,physical", [(8, 3, 16), (1024, 33, 48)])
+def test_unit_delta_float_pair_bank_values_and_scale(n, b, physical):
+    import math
+
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        unit_delta_kernels as uk,
+    )
+
+    x = torch.randn(b, n)
+    x[0] = 0
+    x[1] *= 1e-39
+    x[2] *= 1e20
+    actual = torch.empty((4, n + 1, physical), device="cuda")
+    uk.bank[(physical,)](
+        x.cuda(), actual, n, b, physical, num_warps=4, enable_fp_fusion=False
+    )
+    value = actual.cpu().double()
+    for row in range(physical):
+        if row >= b:
+            assert torch.count_nonzero(value[:, :, row]).item() == 0
+            continue
+        maximum = float(x[row].abs().max())
+        power = -(math.frexp(maximum)[1] - 1) if maximum else 0
+        assert int(value[0, n, row]) == power
+        scaled = torch.ldexp(x[row].double(), torch.tensor(power))
+        norm = float(scaled.norm())
+        wp = 34 - math.ceil(math.log2(norm)) if norm else 0
+        assert int(value[1, n, row]) == wp
+        prefix = scaled
+        for level in range(3):
+            prefix = prefix.flip(0).cumsum(0).flip(0)
+            if level >= 1:
+                index = 2 * (level - 1)
+                torch.testing.assert_close(
+                    value[index, :n, row] + value[index + 1, :n, row],
+                    prefix,
+                    rtol=3e-12,
+                    atol=1e-6,
+                )
+
+
+@GPU
+@pytest.mark.parametrize("no,ni", [(64, 128), (1024, 64)])
+def test_unit_delta_canonical_coefficients_and_native_list(no, ni):
+    import math
+
+    import triton
+
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        unit_delta_kernels as uk,
+    )
+
+    a = 17
+    meta = torch.zeros(14 * a, device="cuda", dtype=torch.float64)
+    first = meta[: 12 * a].reshape(a, 12)
+    sigma = torch.tensor(
+        [0.0001, 0.1, 0.4, 1.6, 6.4, 12.8] * 3, device="cuda", dtype=torch.float64
+    )[:a]
+    first[:, 1] = math.sqrt(6) * sigma
+    first[:, 9] = first[:, 1].reciprocal()
+    origin = torch.tensor([0.31, -0.27], device="cuda", dtype=torch.float64)
+    spacing = torch.tensor([0.1, 0.13], device="cuda", dtype=torch.float64)
+    profiles = []
+    primes = []
+    for dim, n in enumerate((no, ni)):
+        first[:, 2 + dim] = origin[dim] + torch.linspace(
+            0, (n - 1) * float(spacing[dim]), a, device="cuda", dtype=torch.float64
+        )
+        first[1, 2 + dim] = -100
+        mu = first[:, 2 + dim].detach().clone().requires_grad_()
+        sites = (
+            origin[dim]
+            + torch.arange(n, device="cuda", dtype=torch.float64) * spacing[dim]
+        )
+        u = (sites[None, :] - mu[:, None]) / first[:, 1, None]
+        q = torch.where(
+            u < -1 / 3,
+            1.5 * (u + 1).square(),
+            torch.where(u <= 1 / 3, 1 - 3 * u.square(), 1.5 * (u - 1).square()),
+        )
+        q = torch.where(u.abs() < 1, q, 0.0)
+        qp = torch.autograd.grad(q.sum(), mu)[0]
+        # Elementwise analytic derivative, independent of cached integers.
+        dq = torch.where(
+            u < -1 / 3,
+            -3 * (u + 1) / first[:, 1, None],
+            torch.where(
+                u <= 1 / 3, 6 * u / first[:, 1, None], -3 * (u - 1) / first[:, 1, None]
+            ),
+        )
+        dq = torch.where(u.abs() < 1, dq, 0.0)
+        assert torch.allclose(qp, dq.sum(1))
+        norm = q.norm(dim=1).detach()
+        meta[12 * a + dim * a : 12 * a + (dim + 1) * a] = norm
+        profiles.append((q.detach() / norm.clamp_min(1e-300)[:, None]).cpu())
+        primes.append((dq.detach() / norm.clamp_min(1e-300)[:, None]).cpu())
+    co = torch.empty((44, a), device="cuda", dtype=torch.int64)
+    ids = torch.empty(a, device="cuda", dtype=torch.int64)
+    count = torch.zeros(1, device="cuda", dtype=torch.int32)
+    uk.prepare[(triton.cdiv(a, 64),)](
+        meta,
+        co,
+        ids,
+        count,
+        origin,
+        spacing,
+        a,
+        no,
+        ni,
+        0.05,
+        num_warps=4,
+        enable_fp_fusion=False,
+    )
+    co_cpu = co.cpu()
+    cuts = co_cpu.flatten()[40 * a :].view(torch.int32).reshape(2, 4, a)
+    native = cuts[0, 0] < 0
+    selected = ids[: count.item()].cpu().tolist()
+    assert set(selected) == set(torch.where(native)[0].tolist()) and len(
+        selected
+    ) == len(set(selected))
+    for dim, n in enumerate((no, ni)):
+        for atom in range(a):
+            if native[atom]:
+                continue
+            for prime, degree in ((False, 3), (True, 2)):
+                vals = [0] * n
+                seen = set()
+                for k in range(4):
+                    for j in range(2 if prime else 3):
+                        v = int(
+                            co_cpu[
+                                dim * 20 + (12 + k * 2 + j if prime else k * 3 + j),
+                                atom,
+                            ]
+                        )
+                        point = int(cuts[dim, k, atom]) + j
+                        if v:
+                            assert point not in seen and 0 <= point < n
+                            seen.add(point)
+                            vals[point] += v
+                for _ in range(degree):
+                    acc = 0
+                    for j in range(n):
+                        acc += vals[j]
+                        vals[j] = acc
+                actual = torch.tensor(vals, dtype=torch.float64) / (1 << 52)
+                if prime:
+                    actual /= float(spacing[dim])
+                torch.testing.assert_close(
+                    actual,
+                    primes[dim][atom] if prime else profiles[dim][atom],
+                    rtol=1e-7,
+                    atol=2e-8,
+                )
+
+
+@GPU
+def test_unit_delta_exact_atomic_words_and_compact_support():
+    import math
+
+    import triton
+    import triton.experimental.gluon as tr
+    import triton.experimental.gluon.language as tl
+
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        unit_delta_gluon as ug,
+    )
+    from torchcst._backends.cuda.algorithms.linear.quadratic_bspline import (
+        unit_delta_kernels as uk,
+    )
+
+    @tr.jit
+    def raw(
+        Value,
+        Meta,
+        Co,
+        Delta,
+        Bank,
+        A: tl.constexpr,
+        B: tl.constexpr,
+        N: tl.constexpr,
+        PB: tl.constexpr,
+    ):
+        tile: tl.constexpr = tl.BlockedLayout([1, 1], [1, 32], [4, 1], [1, 0])
+        a = tl.program_id(0) * 4 + tl.arange(0, 4, layout=tl.SliceLayout(1, tile))
+        b = tl.arange(0, 4, layout=tl.SliceLayout(0, tile))
+        v = tl.load(
+            Value + a[:, None] * B + b[None, :], (a[:, None] < A) & (b[None, :] < B), 0
+        )
+        ug._inject(v, Meta, Co, Delta, Bank, a, b, A, B, N, N, PB, 0, 8)
+
+    a, b, n, pb = 513, 3, 64, 16
+    wi = torch.randint(-(1 << 33), 1 << 33, (a, b), dtype=torch.int64)
+    value = wi.double().cuda() / (1 << 26)
+    c = (1 << 52) + 123456789
+    co = torch.zeros((44, a), device="cuda", dtype=torch.int64)
+    co[0] = c
+    co[1] = -3 * c
+    co[2] = 3 * c
+    co[3] = -c
+    cuts = co.flatten()[40 * a :].view(torch.int32).reshape(2, 4, a)
+    cuts[:, 0] = 0
+    cuts[:, 1] = 3
+    cuts[:, 2] = 20
+    cuts[:, 3] = 40
+    meta = torch.zeros(14 * a, device="cuda", dtype=torch.float64)
+    first = meta[: 12 * a].reshape(a, 12)
+    first[:, 0] = 1
+    first[:, 4] = 1
+    meta[12 * a :] = 1
+    bank = torch.zeros((4, n + 1, pb), device="cuda")
+    bank[1, n] = 26
+    delta = torch.zeros((2, 8, n, pb), device="cuda", dtype=torch.int64)
+    raw[(triton.cdiv(a, 4),)](
+        value, meta, co, delta, bank, a, b, n, pb, num_warps=4, enable_fp_fusion=False
+    )
+    compact = torch.empty((2, n, pb), device="cuda", dtype=torch.int64)
+    actual = torch.zeros((b, n), device="cuda")
+    uk.reduce_shards[(triton.cdiv(n * pb, 128),)](
+        delta, compact, n, pb, 8, num_warps=4, enable_fp_fusion=False
+    )
+    uk.restore[(b,)](
+        compact, bank, actual, n, b, pb, n, num_warps=4, enable_fp_fusion=False
+    )
+    expected = torch.zeros((b, n))
+    for k in range(b):
+        expected[k, 0] = math.ldexp(float(c * sum(int(v) for v in wi[:, k])), -52 - 26)
+    assert torch.equal(actual.cpu(), expected)
