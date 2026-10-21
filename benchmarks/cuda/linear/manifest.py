@@ -371,7 +371,11 @@ class BenchmarkCase:
         if self.seed >= 2**63:
             raise ValueError("seed must be less than 2**63")
         profiles = (
-            ("m4-mixed", "m8-mixed", "m4-small", "m8-small", "m4-large", "m8-large")
+            tuple(
+                f"m{m}-{kind}"
+                for m in (4, 8)
+                for kind in ("mixed", "small", "medium", "large", "large-cluster")
+            )
             if self.fixture == "hierarchical_fourier"
             else ("rho3", "rho8")
             if self.fixture == "polar_sphere_separable"

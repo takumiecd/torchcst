@@ -22,6 +22,8 @@ def mark_demand(
     A0: tl.constexpr,
     CUTOFF: tl.constexpr,
     BA: tl.constexpr,
+    COUNT: tl.constexpr = False,
+    Routes=None,
 ):
     a = tl.program_id(0) * BA + tl.arange(0, BA)
     c = tl.program_id(1)
@@ -50,6 +52,8 @@ def mark_demand(
         -1,
     )
     active = (a < A) & (bank >= 0)
+    if Routes is not None:
+        active = active & (tl.load(Routes + a * 4 + c, a < A, 0) > 0)
     size = tl.load(Banks + bank * 2, active, 1)
     offset = tl.load(Banks + bank * 2 + 1, active, 0)
     for axis in tl.static_range(2):
@@ -58,12 +62,20 @@ def mark_demand(
         first, last = (lo + size - 1) // size, hi // size
         count = tl.max(tl.where(active, tl.maximum(last - first, 0), 0), 0)
         for t in range(count):
-            tl.atomic_max(
-                Demand + axis * J + offset + first + t,
-                1,
-                active & (first + t < last),
-                sem="relaxed",
-            )
+            if COUNT:
+                tl.atomic_add(
+                    Demand + axis * J + offset + first + t,
+                    1,
+                    active & (first + t < last),
+                    sem="relaxed",
+                )
+            else:
+                tl.atomic_max(
+                    Demand + axis * J + offset + first + t,
+                    1,
+                    active & (first + t < last),
+                    sem="relaxed",
+                )
 
 
 @tr.jit
@@ -150,3 +162,65 @@ def moments_demand(
         acc,
         (b[:, None] < B) & (f[None, :] < R),
     )
+
+
+@tr.jit
+def select_routes(
+    P,
+    Lookup,
+    Banks,
+    Counts,
+    Routes,
+    A: tl.constexpr,
+    N: tl.constexpr,
+    J: tl.constexpr,
+    KMAX: tl.constexpr,
+    T0: tl.constexpr,
+    L0: tl.constexpr,
+    A0: tl.constexpr,
+    CUTOFF: tl.constexpr,
+    BA: tl.constexpr,
+    MINIMUM: tl.constexpr,
+):
+    a = tl.program_id(0) * BA + tl.arange(0, BA)
+    c = tl.program_id(1)
+    logit = tl.load(P + a * 4 + 3, a < A, 0).to(tl.float64)
+    sig = 1 / (1 + lib.exp(-logit))
+    width = 0.1 + 9.9 * sig
+    level = tl.full((BA,), 0, tl.int32)
+    for j in tl.static_range(1, 12):
+        level = tl.where(width >= A0 * 2.0**j, j, level)
+    lev = tl.where(c < 2, tl.maximum(level - 1, 0), level)
+    scale = lib.exp2(lev.to(tl.float64))
+    threshold = A0 * lib.exp2(level.to(tl.float64))
+    h, _ = _smooth((width - threshold) / tl.where(level > 0, 0.15 * threshold, 1.0))
+    h = tl.where(level > 0, h, 1.0)
+    outer = tl.where(c < 2, 1 - h, h)
+    tile, step = T0 * scale, L0 * scale
+    n = lib.ceil((width + tile / 2) / step)
+    low = n * step
+    w, _ = _smooth((width - low + tile / 2 + 0.25 * step) / (0.25 * step))
+    weight = outer * tl.where(c % 2 == 0, 1 - w, w)
+    length = low + (c % 2) * step
+    key = ((n + c % 2) * scale).to(tl.int32)
+    bank = tl.load(
+        Lookup + lev * (KMAX + 1) + key,
+        (a < A) & (key <= KMAX) & (weight > 0) & (width >= CUTOFF),
+        -1,
+    )
+    active = (a < A) & (bank >= 0)
+    size = tl.load(Banks + bank * 2, active, 1)
+    offset = tl.load(Banks + bank * 2 + 1, active, 0)
+    minimum = tl.full((BA,), 2147483647, tl.int32)
+    covered = tl.full((BA,), False, tl.int1)
+    for axis in tl.static_range(2):
+        mu = tl.load(P + a * 4 + axis + 1, a < A, 0).to(tl.float64)
+        lo, hi = _bounds(mu, length, N)
+        first, last = (lo + size - 1) // size, hi // size
+        count = tl.max(tl.where(active, tl.maximum(last - first, 0), 0), 0)
+        for t in range(count):
+            mask = active & (first + t < last)
+            n = tl.load(Counts + axis * J + offset + first + t, mask, 2147483647)
+            minimum = tl.minimum(minimum, n)
+            covered = covered | mask
+    tl.store(Routes + a * 4 + c, active & covered & (minimum >= MINIMUM), a < A)

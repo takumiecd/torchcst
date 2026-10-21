@@ -114,7 +114,7 @@ def tables(spec, recipe, device):
     }
 
 
-def _prepare(p, spec, recipe, tab):
+def _prepare(p, spec, recipe, tab, routes=None):
     import triton as tr
 
     from . import kernels as k
@@ -158,6 +158,7 @@ def _prepare(p, spec, recipe, tab):
         Fit=tab["fit"],
         DEGREE=len(tab["fit"]) if recipe.table_coefficients else 0,
         QLO=tab["qlo"],
+        Routes=routes,
         num_warps=4,
         enable_fp_fusion=False,
     )
@@ -201,7 +202,64 @@ def _prepare(p, spec, recipe, tab):
     return meta, co, ci, norm, beta, order, begin, native, bounds, cap
 
 
-def _demand(p, spec, recipe, tab):
+def _routes(p, spec, recipe, tab):
+    """Rebuild live component eligibility from complete-tile sharing counts.
+
+    Counts include all candidate components before selection. A component uses
+    shared evaluation only if every complete tile it needs on either axis has
+    at least minimum_sharing candidate components. This is a conservative cost
+    heuristic, not a fixed-point guarantee on the selected population. Routing
+    changes the execution path only; all rejected components remain evaluated.
+    """
+    import triton as tr
+
+    from . import demand_kernels as k
+
+    j = len(tab["nodes"])
+    if not recipe.minimum_sharing or not j:
+        return None
+    counts = torch.zeros((2, j), device=p.device, dtype=torch.int32)
+    routes = torch.empty((len(p), 4), device=p.device, dtype=torch.int32)
+    period = spec.period
+    a0 = (period.minimum_tile_width / 2 + 1.25 * period.minimum_half_period) / (
+        1 / period.relative_width_floor - 1
+    )
+    args = (
+        p,
+        tab["lookup"],
+        tab["banks"],
+        counts,
+    )
+    constants = (
+        len(p),
+        spec.size,
+        j,
+        tab["kmax"],
+        period.minimum_tile_width,
+        period.minimum_half_period,
+        a0,
+        recipe.width_cutoff,
+        32,
+    )
+    k.mark_demand[(tr.cdiv(len(p), 32), 4)](
+        *args,
+        *constants,
+        COUNT=True,
+        num_warps=4,
+        enable_fp_fusion=False,
+    )
+    k.select_routes[(tr.cdiv(len(p), 32), 4)](
+        *args,
+        routes,
+        *constants,
+        recipe.minimum_sharing,
+        num_warps=4,
+        enable_fp_fusion=False,
+    )
+    return routes
+
+
+def _demand(p, spec, recipe, tab, routes=None):
     import triton as tr
 
     from . import demand_kernels as k
@@ -228,6 +286,7 @@ def _demand(p, spec, recipe, tab):
         a0,
         recipe.width_cutoff,
         32,
+        Routes=routes,
         num_warps=4,
         enable_fp_fusion=False,
     )
@@ -478,15 +537,17 @@ def _reconstruct(c, spec, tab, y):
 class _Apply(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, p, spec, recipe, tab):
-        demand = _demand(p, spec, recipe, tab)
+        routes = _routes(p, spec, recipe, tab)
+        demand = _demand(p, spec, recipe, tab, routes)
         z = _moments(x, spec, tab, demand, 1)
         y = x.new_zeros((len(x), spec.size))
         c = x.new_zeros(z.shape)
-        saved = [x, p, demand]
+        saved = [x, p, demand, routes]
         records = []
         for start in range(0, len(p), recipe.atom_chunk):
             pc = p[start : start + recipe.atom_chunk]
-            prep = _prepare(pc, spec, recipe, tab)
+            rc = None if routes is None else routes[start : start + len(pc)]
+            prep = _prepare(pc, spec, recipe, tab, rc)
             retain = recipe.reuse in ("h", "all") or (
                 recipe.reuse == "chunk" and start == 0
             )
@@ -517,7 +578,7 @@ class _Apply(torch.autograd.Function):
         x, p = saved[:2]
         spec, recipe, tab = ctx.spec, ctx.recipe, ctx.tab
         dy = dy.contiguous()
-        demand = saved[2]
+        demand, routes = saved[2:4]
         zx = (
             _moments(x, spec, tab, demand, 1)
             if recipe.reuse in ("none", "chunk")
@@ -529,8 +590,9 @@ class _Apply(torch.autograd.Function):
         c = x.new_zeros(zg.shape)
         for start in range(0, len(p), recipe.atom_chunk):
             pc = p[start : start + recipe.atom_chunk]
+            rc = None if routes is None else routes[start : start + len(pc)]
             if recipe.reuse == "none" or (recipe.reuse == "chunk" and start > 0):
-                prep = _prepare(pc, spec, recipe, tab)
+                prep = _prepare(pc, spec, recipe, tab, rc)
                 h = _contract(x, pc, prep, spec, tab, zx, 1, True)
             else:
                 first, cap = ctx.records[start // recipe.atom_chunk]
@@ -538,7 +600,7 @@ class _Apply(torch.autograd.Function):
                     prep = (*saved[first : first + 9], cap)
                     h = saved[first + 9]
                 else:
-                    prep = _prepare(pc, spec, recipe, tab)
+                    prep = _prepare(pc, spec, recipe, tab, rc)
                     h = saved[first]
             g = _contract(dy, pc, prep, spec, tab, zg, 0, True)
             _deposit(g, pc, prep, spec, tab, dx, c, 1, demand)

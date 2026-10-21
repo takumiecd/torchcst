@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "case": {
+    "id": "hierarchical-fourier-sharing-m8-small-1024-a8192",
+    "fixture": "hierarchical_fourier",
+    "size": 1024,
+    "rows": 32,
+    "atoms": 8192,
+    "profile": "m8-small",
+    "dtype": "float32",
+    "seed": 41,
+    "warmup": 2,
+    "rounds": 7,
+    "optimizer": {
+      "name": "AdamW",
+      "lr": 0.0001,
+      "weight_decay": 0.01,
+      "fused": true,
+      "capturable": true
+    }
+  },
+  "plans": [
+    "direct-samples-h",
+    "tile32-samples-h-count0",
+    "tile32-samples-h-count8"
+  ],
+  "baseline": "direct-samples-h",
+  "dense": true
+}

@@ -32,11 +32,21 @@ def initialize(case):
     kind = case.profile.split("-")[1]
     if kind == "small":
         width = 0.101 + 0.25 * torch.rand(case.atoms, generator=gen)
+    elif kind == "medium":
+        width = 1.2 + 2.0 * torch.rand(case.atoms, generator=gen)
     elif kind == "large":
         width = 5.0 + 4.9 * torch.rand(case.atoms, generator=gen)
     else:
         width = torch.exp(
             torch.rand(case.atoms, generator=gen) * math.log(98.9) + math.log(0.101)
+        )
+    if case.profile.endswith("-cluster"):
+        # Centres remain independent continuous values, concentrated in four
+        # input/output regions to vary sharing without coordinate tying.
+        group = torch.arange(case.atoms) % 4
+        base = (group.float() + 0.5) * ((case.size - 1) * 0.1 / 4)
+        p[:, 1:3] = (
+            base[:, None] + (torch.rand(case.atoms, 2, generator=gen) - 0.5) * 1.6
         )
     p[:, 3] = torch.logit((width - 0.1) / 9.9)
     # Domain truncation, zero amp with nonzero amp derivative, floor-active

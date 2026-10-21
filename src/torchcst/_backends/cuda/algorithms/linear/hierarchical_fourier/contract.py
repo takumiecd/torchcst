@@ -56,8 +56,13 @@ class FourierRecipe:
     reuse: str = "none"
     moment_policy: str = "all"
     sample_cache: int = 0
+    minimum_sharing: int = 0
 
     def __post_init__(self):
+        if type(self.minimum_sharing) is not int or self.minimum_sharing < 0:
+            raise ValueError("minimum_sharing must be a nonnegative integer")
+        if self.minimum_sharing and self.strategy != "shared":
+            raise ValueError("minimum_sharing requires shared strategy")
         if type(self.sample_cache) is not int or self.sample_cache not in (0, 128, 512):
             raise ValueError("sample_cache must be 0,128,512")
         if self.sample_cache and not self.native_cache:

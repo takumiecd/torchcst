@@ -36,6 +36,7 @@ def prepare(
     Fit=None,
     DEGREE: tl.constexpr = 0,
     QLO: tl.constexpr = 0.0,
+    Routes=None,
 ):
     a = tl.program_id(0)
     logit = tl.load(P + a * 4 + 3).to(tl.float64)
@@ -71,6 +72,8 @@ def prepare(
             (k <= KMAX) & (weight > 0) & (width >= CUTOFF),
             -1,
         )
+    if Routes is not None:
+        bank = tl.where(tl.load(Routes + a * 4 + c) > 0, bank, -1)
     tl.store(Meta + (a * 4 + c) * 4 + 0, length)
     tl.store(Meta + (a * 4 + c) * 4 + 1, tile)
     tl.store(Meta + (a * 4 + c) * 4 + 2, bank.to(tl.float64))

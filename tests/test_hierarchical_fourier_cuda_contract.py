@@ -223,3 +223,34 @@ def test_independent_oracle_cache_uses_exact_inputs_and_verifies_bytes(
     (tmp_path / (key + ".pt")).write_bytes(b"corrupt")
     with pytest.raises(RuntimeError, match="integrity mismatch"):
         independent_gate(x, p, dy, spec)
+
+
+def test_sharing_route_declaration_validation_and_fixture_counts():
+    from pathlib import Path
+
+    from benchmarks.cuda.linear.fourier_sharing import routing_reference
+    from benchmarks.cuda.linear.hierarchical_fourier import initialize
+    from benchmarks.cuda.linear.manifest import load_run
+
+    for kw in (
+        {"minimum_sharing": True},
+        {"minimum_sharing": -1},
+        {"minimum_sharing": 1, "strategy": "direct"},
+    ):
+        with pytest.raises(ValueError):
+            FourierRecipe(**kw)
+    root = Path(__file__).resolve().parents[1] / "benchmarks/cuda/linear"
+    for modes in (4, 8):
+        name = f"hierarchical-fourier-sharing-m{modes}-large-cluster-1024-a1024"
+        case = load_run(
+            root / "cases" / (name + ".json"), root / "plans-hierarchical-fourier.json"
+        ).case
+        p = initialize(case)
+        # No tying of continuous centres or logits, even in the clustered case.
+        assert p[4:, 1].unique().numel() == len(p) - 4
+        spec = FourierLinearSpec(1024, modes)
+        recipe = FourierRecipe(minimum_sites=32, width_cutoff=0.1, minimum_sharing=8)
+        counts, routes, selected, _ = routing_reference(p, spec, recipe)
+        assert (selected <= counts).all() and routes.any()
+        rejected = routing_reference(p, spec, replace(recipe, minimum_sharing=10**6))[1]
+        assert not rejected.any()
