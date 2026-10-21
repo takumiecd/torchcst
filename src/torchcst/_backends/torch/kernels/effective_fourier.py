@@ -70,6 +70,42 @@ def values_and_derivatives(
     routing. At a whole-tile support jump, a classical derivative need not
     exist; the branch VJP is not a claim of global continuity.
     """
+    L, weights, derivatives, _ = period_components(period, width)
+    tiles = torch.full_like(L, period.tile_width)
+    return evaluate_components(
+        profile,
+        sites,
+        center,
+        width,
+        L,
+        tiles,
+        weights,
+        derivatives,
+        support=support,
+        normalization=normalization,
+        origin=origin,
+    )
+
+
+def evaluate_components(
+    profile,
+    sites,
+    center,
+    width,
+    L,
+    tiles,
+    weights,
+    derivatives,
+    *,
+    support,
+    normalization=None,
+    origin=0.0,
+):
+    """Evaluate an explicit mixture, normalizing only after all components.
+
+    L/tiles/weights/derivatives have one final component axis. Tile widths
+    may differ across components. Used by both integer and hierarchy rules.
+    """
     width = _width(width)
     center, width = torch.broadcast_tensors(center.double(), width)
     if (
@@ -94,7 +130,6 @@ def values_and_derivatives(
         raise ValueError(
             "reference normalization requires none or chart_sites discrete_l2 with a floor"
         )
-    L, weights, derivatives, _ = period_components(period, width)
     b, bq = coefficients(profile, width[..., None] / L)
     shift = sites.double().reshape((-1,) + (1,) * center.ndim) - center
     k = torch.arange(profile.modes + 1, dtype=torch.float64, device=sites.device)
@@ -107,9 +142,14 @@ def values_and_derivatives(
     if support == "centered":
         mask = shift.abs()[..., None] < L
     else:
-        left, right = tile_bounds(period, center, width, origin=origin)
+        left = origin + tiles * torch.floor(
+            (center[..., None] - width[..., None] - origin) / tiles
+        )
+        right = origin + tiles * torch.ceil(
+            (center[..., None] + width[..., None] - origin) / tiles
+        )
         x = sites.double().reshape((-1,) + (1,) * center.ndim)
-        mask = ((x >= left) & (x < right))[..., None]
+        mask = (x[..., None] >= left) & (x[..., None] < right)
     value = torch.where(mask, raw * weights, 0.0).sum(-1)
     center_grad = torch.where(mask, dm * weights, 0.0).sum(-1)
     width_grad = torch.where(mask, di * weights + raw * derivatives, 0.0).sum(-1)

@@ -1,7 +1,7 @@
 """Pure kernel declarations and compositional presets."""
 
 from . import presets
-from .fourier_period import IntegerFourierPeriodSpec
+from .fourier_period import HierarchicalFourierPeriodSpec, IntegerFourierPeriodSpec
 from .normalization import NormalizationSpec
 from .options import KernelOptions
 from .parameterizations import (
@@ -49,6 +49,7 @@ __all__ = [
     "FourierProductKernelSpec",
     "FourierTileSupportSpec",
     "GaussianSpec",
+    "HierarchicalFourierPeriodSpec",
     "IntegerFourierPeriodSpec",
     "KaiserSquareSpec",
     "KernelOptions",

@@ -112,6 +112,12 @@ transition are evaluated from each live I. This reference is currently used
 through explicit Torch mathematical functions, not the CSTLinear presets or
 CUDA dispatcher. See the [definition and CPU qualification](docs/effective-fourier-profile.ja.md).
 
+`HierarchicalFourierPeriodSpec` extends that research reference with logical
+tile levels and level-dependent integer-k strides over a common L_min.
+I remains continuous; period and hierarchy transitions are explicit mixtures.
+The [I=0.1..10 CPU study](docs/research-history/cuda-linear/hierarchical-fourier-range10-20261021.ja.md)
+compares M=4/8, sampled L2, sharing/storage, and same-profile local/direct routing.
+
 `presets.polar_torus_profile_product(profiles=(TriweightSpec(), TriweightSpec()),
 amplitude_max=1.0, bounds=bandwidth_bounds, w_c=0.1)` declares the centre-fibre
 chord product on a single S¹ × S² Torus Product/Strip chart. Profiles are ordered

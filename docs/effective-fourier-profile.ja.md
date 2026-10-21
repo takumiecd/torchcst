@@ -187,3 +187,81 @@ y, dmu, dI, raw_norm = values_and_derivatives(
 保証されず、階層Algorithm側で別に検証する。
 
 [CPU検証結果と適用限界](research-history/cuda-linear/effective-fourier-cpu-20261021.ja.md)を参照。
+
+## I=0.1〜10の階層選択
+
+`HierarchicalFourierPeriodSpec`を別の周期選択規則として追加した。
+元の`IntegerFourierPeriodSpec`の最小kの規則は変えない。
+共通の独立した`T_min`と`L_min`に対し、階層jを
+
+\[
+ T_j=2^jT_{\min},\quad r_j=2^j,\quad s_j=r_jL_{\min},\quad
+ k_j=r_j\left\lceil\frac{I+T_j/2}{s_j}\right\rceil
+\]
+
+と定める。使用するLは常に整数kと共通のL_minの積である。
+`k_stride="fixed"`はr_j=1の比較対象。
+profileの形状にはTやr_jを埋め込まない。
+
+周期内混合の幅を`eta*s_j`とすると、非零成分のLは
+`L <= I+T_j/2+(1+eta)*s_j`となる。
+そこで精度判定用のq下限を`q_*`とし、階層の使用開始Iを
+
+\[
+ A_j=\frac{T_j/2+(1+\eta)s_j}{1/q_*-1}
+\]
+
+と置く。I>=A_jなら、周期混合中を含めて全非零成分が
+`2L>=2I+T_j`と`I/L>=q_*`を満たす。
+I>=A_0を要求し、未満なら基底T_minまたはL_minを小さくする。
+**q条件から実際の裾の小ささを保証するには、形状族の別検証が必要**である。
+
+最も粗い使用可能階層jを選ぶが、I=A_jで即時に変更しない。
+旧階層j-1からjへの混合を
+
+\[
+ I\in[A_j,A_j+\gamma(A_j-A_{j-1})]
+\]
+
+でquintic smoothstepにより行う。両階層が使用可能になってから開始する。
+0<=gamma<1で接続区間は重ならない（A_jの差は減少しない）。
+既定eta=0.25、gamma=0.3。
+階層混合2成分×周期混合2成分で最大4成分。
+支持を適用した成分をすべて足し合わせた**後**に離散L2を一度だけ適用する。
+微分には内外の重みの変化を両方含める。
+
+```python
+from torchcst import FourierPeakSpec, HierarchicalFourierPeriodSpec
+from torchcst._backends.torch.kernels import hierarchical_fourier
+
+period = HierarchicalFourierPeriodSpec(
+    minimum_tile_width=0.1,
+    minimum_half_period=0.025,
+    relative_width_floor=0.54,
+    k_stride="dyadic",
+)
+# x, mu, Iは上と同じTensor。
+y = hierarchical_fourier.values(
+    FourierPeakSpec(modes=8), period, x, mu, I,
+    support="centered", normalization=NormalizationSpec(
+        kind="discrete_l2", domain="chart_sites", floor=1e-12,
+    ),
+)
+```
+
+Tの変更も数学的な選択規則の一部である。特にwhole_tilesでは支持が変わるので、
+単なるlaunch設定の変更とはしない。中心がタイル境界をまたぐ有限の裾の段差は残る。
+
+小さい支持では、同じFを各siteで局所直接評価する計算方式も使える。
+そのfをHと離散ノルムに使い回せば、momentとGramの構築を省ける。
+計算方式の切替はF、支持、L2の意味を変えず、学習するI・中心を固定しない。
+[全域の形状・勾配・容量・共有と直接評価の比較](research-history/cuda-linear/hierarchical-fourier-range10-20261021.ja.md)
+を参照。
+
+
+実行方式の幅閾値`I_cut`と、形状を決めるT_minは別に扱う。
+`I<I_cut`は同じFの局所直接評価、以上は十分大きいタイルの集約候補とする。
+T_min=0.2、spacing=0.1の2点にM8の17実成分を保存しない。
+保存側は例えば64/128点以上、共有atom数と全周期の合計byteを検査し、
+見合わない場合は直接評価する。これは研究CPU prototypeの実行規則であり、
+公開specの形状・支持を変更せず、CSTLinear dispatcherにはまだ統合しない。

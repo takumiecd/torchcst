@@ -168,6 +168,13 @@ Iを直接指定する`FourierPeakSpec`は形状だけ、`IntegerFourierPeriodSp
 CSTLinear presetにはまだ接続していない研究参照である。
 [定義とCPU検証](../../../docs/effective-fourier-profile.ja.md)を参照。
 
+`HierarchicalFourierPeriodSpec`は同じ独立したT_min・L_minの上で、
+Tの階層と許可する整数kの間隔、二種類の接続区間を宣言する。
+`torch/kernels/hierarchical_fourier.py`が四成分までの係数・支持を既存の
+明示的Torch評価器へ渡す。共有moment、Dirichletノルム、局所直接評価のCPU試作・
+容量計数は`benchmarks/research/hierarchical_fourier*_cpu.py`に置き、runtimeからimportしない。
+これは数学参照であり、CSTLinear dispatcherへの登録ではない。
+
 RegularGridのprofile-product Linearでは
 [Hの生成・再利用・寿命の設計方針](../../../docs/h-lifecycle-kernel-design.ja.md)を使い、
 具体的な分割・融合・routing・保存／再計算はAlgorithm/Recipeの実行方式として扱う。
