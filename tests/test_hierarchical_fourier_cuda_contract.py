@@ -197,3 +197,29 @@ def test_hierarchy_inherits_only_matching_even_frequencies():
                 )
             inherited += 1
         assert inherited == (6 if modes == 8 else 0)
+
+
+def test_independent_oracle_cache_uses_exact_inputs_and_verifies_bytes(
+    tmp_path, monkeypatch
+):
+    from benchmarks.cuda.linear.hierarchical_fourier import (
+        _ORACLE_CACHE_EVENTS,
+        independent_gate,
+    )
+
+    monkeypatch.setenv("CST_FOURIER_ORACLE_CACHE", str(tmp_path))
+    spec = FourierLinearSpec(64, 4)
+    x = torch.randn(2, 64, dtype=torch.float64)
+    p = torch.tensor([[0.4, 2.1, 3.2, -3.0]], dtype=torch.float64)
+    dy = torch.randn_like(x)
+    first = independent_gate(x, p, dy, spec)
+    second = independent_gate(x, p, dy, spec)
+    assert not _ORACLE_CACHE_EVENTS[-2]["hit"] and _ORACLE_CACHE_EVENTS[-1]["hit"]
+    for a, b in zip(first, second):
+        torch.testing.assert_close(a, b, atol=0, rtol=0)
+    independent_gate(x + 0.001, p, dy, spec)
+    assert not _ORACLE_CACHE_EVENTS[-1]["hit"]
+    key = _ORACLE_CACHE_EVENTS[-2]["key"]
+    (tmp_path / (key + ".pt")).write_bytes(b"corrupt")
+    with pytest.raises(RuntimeError, match="integrity mismatch"):
+        independent_gate(x, p, dy, spec)

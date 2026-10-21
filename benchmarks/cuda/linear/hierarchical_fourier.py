@@ -6,8 +6,12 @@ Results identify the distinct contract and are not a production dispatch claim.
 
 import gc
 import hashlib
+import json
 import math
+import os
 import statistics
+from dataclasses import asdict
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -128,7 +132,7 @@ def _axis(p, spec, axis):
     return total
 
 
-def independent_gate(x, p, dy, spec, chunk=32):
+def _compute_independent_gate(x, p, dy, spec, chunk=32):
     yy = torch.zeros_like(x, dtype=torch.float64)
     dx = torch.zeros_like(yy)
     grads = []
@@ -145,9 +149,67 @@ def independent_gate(x, p, dy, spec, chunk=32):
     return yy, dx, torch.cat(grads)
 
 
+_ORACLE_CACHE_EVENTS = []
+
+
+def independent_gate(x, p, dy, spec, chunk=32):
+    """Optional job-local reuse of independent truth, keyed by exact live inputs.
+
+    No candidate result enters this cache. It is never consulted by a timing
+    worker. Full FP64 Y/dX/all-P are computed independently on the first miss.
+    """
+    directory = os.environ.get("CST_FOURIER_ORACLE_CACHE")
+    if not directory:
+        return _compute_independent_gate(x, p, dy, spec, chunk)
+    identity = {
+        "oracle_source_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        "spec": asdict(spec),
+        "period": asdict(spec.period),
+        "chunk": chunk,
+        "torch": torch.__version__,
+        "inputs": [
+            {
+                "shape": list(t.shape),
+                "dtype": str(t.dtype),
+                "sha256": hashlib.sha256(
+                    t.detach().cpu().contiguous().numpy().tobytes()
+                ).hexdigest(),
+            }
+            for t in (x, p, dy)
+        ],
+    }
+    key = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
+    root = Path(directory)
+    root.mkdir(parents=True, exist_ok=True)
+    path, receipt = root / (key + ".pt"), root / (key + ".json")
+    if path.exists() and receipt.exists():
+        record = json.loads(receipt.read_text())
+        actual = hashlib.sha256(path.read_bytes()).hexdigest()
+        if record.get("identity") != identity or record.get("sha256") != actual:
+            raise RuntimeError("independent oracle cache integrity mismatch")
+        values = torch.load(path, map_location="cpu", weights_only=True)
+        expected = (x.shape, x.shape, p.shape)
+        if len(values) != 3 or any(
+            t.dtype != torch.float64 or t.shape != shape
+            for t, shape in zip(values, expected)
+        ):
+            raise RuntimeError("independent oracle cache shape/dtype mismatch")
+        _ORACLE_CACHE_EVENTS.append({"key": key, "hit": True, "sha256": actual})
+        return tuple(t.to(x.device) for t in values)
+    values = _compute_independent_gate(x, p, dy, spec, chunk)
+    # One correctness worker at a time in the existing runner. The receipt is
+    # written last; a partial cache is not admitted as an independent oracle.
+    torch.save(tuple(t.detach().cpu() for t in values), path)
+    actual = hashlib.sha256(path.read_bytes()).hexdigest()
+    receipt.write_text(json.dumps({"identity": identity, "sha256": actual}, indent=2))
+    _ORACLE_CACHE_EVENTS.append({"key": key, "hit": False, "sha256": actual})
+    return values
+
+
 def correctness(args, run, model_type):
     from .check_normalized import check
 
+    _ORACLE_CACHE_EVENTS.clear()
     case = run.case
     spec = fixture_operator(case)
     model = model_type(initialize(case).cuda(), spec, run.entry(args.plan_id).plan)
@@ -217,6 +279,7 @@ def correctness(args, run, model_type):
         "status": "PASS",
         "scope": "independent quadrature/KKT FP64 full sites/all atoms, live logit-I; retained backward and dynamic graph",
         "checks": reports,
+        "independent_oracle_cache": list(_ORACLE_CACHE_EVENTS),
     }
 
 
