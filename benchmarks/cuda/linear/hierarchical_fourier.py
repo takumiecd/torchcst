@@ -155,6 +155,7 @@ def correctness(args, run, model_type):
     x = torch.randn(case.rows, case.size, generator=gen).cuda().requires_grad_()
     dy = torch.randn(case.rows, case.size, generator=gen).cuda()
     reports = []
+    oracle_chunk = 256 if spec.size >= 1024 else 32
     for step in range(3):
         if step:
             with torch.no_grad():
@@ -164,7 +165,7 @@ def correctness(args, run, model_type):
         y = model(x)
         dx, dp = torch.autograd.grad(y, (x, model.p), dy, retain_graph=True)
         repeated = torch.autograd.grad(y, (x, model.p), dy)
-        truth, tx, tp = independent_gate(x, model.p, dy, spec)
+        truth, tx, tp = independent_gate(x, model.p, dy, spec, chunk=oracle_chunk)
         reports.append(
             {
                 "step": step,
@@ -203,7 +204,7 @@ def correctness(args, run, model_type):
         x.add_(0.02)
     graph.replay()
     torch.cuda.synchronize()
-    truth, tx, tp = independent_gate(x, model.p, dy, spec)
+    truth, tx, tp = independent_gate(x, model.p, dy, spec, chunk=oracle_chunk)
     reports.append(
         {
             "graph_dynamic": True,
