@@ -1,0 +1,90 @@
+# 階層Fourierタイルの再開用引継ぎ
+
+ユーザーの依頼で2026-10-21に探索を一旦終了した。
+**階層タイルはユーザーが最も有望と考えている方針として保持する。**
+この文書は次sessionの入口。自動再開、他chatへの送信、GPUの予約はしていない。
+
+## 保存場所と停止状態
+
+- branch: `kernel/hierarchical-fourier-tiles`
+- worktree: `/Users/ware10sai/.codex/worktrees/quadratic-bspline-reference/torchcst`
+- 数値実装checkpoint: `ecb6987cc224de79b6d96e27b3a9cbad636dede2`
+- [数式・測定・source/result hash](hierarchical-fourier-dispatch-20261021.ja.md)
+- [前sessionの通常密度比較](hierarchical-fourier-reuse-20261021.ja.md)
+- raw: worktree内 `output/hierarchical-fourier-dispatch-20261021/`
+- pool raw: `~/.local/state/colab-l4-pool/jobs/<job>/`
+- 所有する待機jobを取消済み。pool全slot stopped、serveプロセスなし。Kyutech未使用。
+- mainを変更せず、push/PR/mergeもしていない。worktreeとignored証拠は削除しない。
+
+## 保持する数学と実行設計
+
+研究専用profile-product linear。公開CSTLinear/Polar更新への採用ではない。
+Pの列は振幅・出力中心・入力中心・I logit。
+I=.1+9.9 sigmoid(logit) は有効半幅で、Gaussian標準偏差ではない。
+中心と幅をatomごとに独立・連続に学習する。固定アンカー・座標一致・幅量子化を仮定しない。
+
+既存Fourier係数、quintic周期/階層blend、中心±Lの支持、混合後の離散積L2とfloorを維持する。
+FP64 profile/geometry/norm、FP32共有縮約。同じ値を高速に計算する研究である。
+
+Xから必要なタイルのZを生成し、各atomの係数と縮約してHを作る。
+出力側はatomをタイル係数へ集約しsiteへ展開する。境界はL2計算で作った残差Rと微分を再利用する。
+Hはbackwardまで保存可能。入力依存のZ/Hは更新されたXに対して毎step再構築する。
+親の偶数周波数は子から継承できるが、奇数周波数は新しい読込を必要とする。
+
+実装は `src/torchcst/_backends/cuda/algorithms/linear/hierarchical_fourier/`。
+recipeに `minimum_sharing`、`boundary_cache`、`coefficient_norm`、
+`coefficient_norm_warps`、`sort_atoms` を追加済み。
+sortは一時的なpacked atomと逆順序書戻しを使い、optimizerのParameter/momentsは元の順序を保持する。
+
+現在の共有数gateは**成分が必要とする両軸の全完全タイル**で閾値を満たす場合だけ共有する。
+候補共有数で選ぶため、選択後の共有数が閾値以上になる固定点保証はない。
+atlas確保容量も最大形状のまま。細かいnode単位の振り分けや省メモリは未解決。
+
+## 検証済みと未確認
+
+修正後critical GPU gate 30件成功。各回収済みbenchmark caseでも独立FP64による
+Y/dX/全atom勾配、retained backward、変更後Graph replayを照合した。
+成功gateのsnapshotに対し、現checkoutの関連runtime/benchmark/test計1128ファイルのhash一致を確認済み。
+
+境界値再利用は初期A1024大Iで旧tile経路比30〜40%短縮したが、同条件directより遅い。
+幅sortは小atom数で悪化し、一部A8192で改善した。独立repeat未実施。
+一般有限和による離散係数L2は正しいが、測定したM8中Iでは大きく悪化した。
+この有限和の実装結果だけから階層タイル全体の不適合を結論しない。
+
+新候補の通常密度A52428、大Iの残り、cluster比較、全82 GPU regressionは待機中に取消した。
+一般的な共有数別損益分岐と最終dispatcherは未確定。Dense2倍以内は未達成。
+通信timeoutで回収不能となった長いmatrix jobは全結果を除外している。
+
+## 再開時の候補（未実装・未測定）
+
+1. 正確な離散Parsevalを適用できる一周期・非aliasの場合だけO(M)の係数L2を使い、
+   それ以外は既存sampled FP64 normへ戻す候補を独立kernel/recipeで試す。
+   現実装はParseval分岐があっても一般FF×FF有限和コードを同じkernelに含む。
+   一般行列経路をcompileから除外した効果はまだ測っていない。これを最初の小さい比較候補とする。
+2. 現在の成分全体gateに代えてnodeごとに共有/残差へ振り分ける案。
+   残差cacheで穴を表せる可能性があるが、atomの利用maskと階層依存maskを分け、
+   二重加算を防ぐ証明と独立照合が必要。未実装。
+3. まず短い単一caseでdirect・境界cache・新候補・Denseを比較し、
+   満たした候補だけを通常密度へ進める。長い全matrix一括jobは再利用しない。
+
+再開はユーザーの新しい依頼を受けてから行う。GPUはColabのみ、Kyutechは学習用なので使わない。
+Colab skillとpool運用を読み直し、所有権を確認する。raw logを成功扱いせず、
+archive回収・hash照合・全worker PASS・独立oracleを確認する。
+精度閾値atol=rtol=4e-4を緩めず、振り分け・sort・係数・L2・cache・AdamW込みの
+完全stepとGraph capture/replay込みallocated/reservedピークを測る。
+
+## ローカルで状態を確認する入口
+
+```bash
+cd /Users/ware10sai/.codex/worktrees/quadratic-bspline-reference/torchcst
+git status --short
+git log -3 --oneline
+python3 /Users/ware10sai/.codex/skills/colab-l4-pool/scripts/pool.py status
+python3 output/hierarchical-fourier-dispatch-20261021/collect.py
+```
+
+collectorは51測定行・11成功jobを復元する。`short-jobs.json`は投入時のstatusが古いため、
+停止時の状態は `stop-status.json` と `final-pool-status.json` を参照する。
+短い再現driverは `one-case.py`、精度gateは `critical-gates.py`。
+ベンチの実際の選択planは各jobのdriverとartifacts/case JSONを正本にする。
+local Pythonはprimary checkoutの `.venv/bin/python`、`PYTHONPATH=src:.` を指定する。

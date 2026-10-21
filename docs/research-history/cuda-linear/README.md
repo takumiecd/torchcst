@@ -23,3 +23,7 @@
 
 このディレクトリの GPU コードは CUDA/Triton を要する。GPU のない環境では
 関連テストが skip されるため、GPU 上の正確性・速度を別途確認する。
+
+階層Fourierタイルの探索は2026-10-21に一旦終了。
+[再開用引継ぎ](hierarchical-fourier-handoff-20261021.ja.md)と
+[回収済み比較・数式](hierarchical-fourier-dispatch-20261021.ja.md)を参照。
