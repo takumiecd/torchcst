@@ -46,26 +46,55 @@ def _coefficient_norm(
     acc = tl.full((), 0.0, tl.float64)
     am = tl.full((), 0.0, tl.float64)
     ai = tl.full((), 0.0, tl.float64)
-    # Runtime loops bound code size; inactive mixture components do no work.
-    for c in range(4):
-        if tl.load(Meta + (a * 4 + c) * 4 + 3) > 0:
-            lc = tl.load(Meta + (a * 4 + c) * 4)
-            bc = tl.load(Co + (a * 4 + c) * (M + 1) + mode, mode <= M, 0)
-            wc = angular / lc
-            for d in range(4):
-                if tl.load(Meta + (a * 4 + d) * 4 + 3) > 0:
-                    ld = tl.load(Meta + (a * 4 + d) * 4)
-                    bd = tl.load(Co + (a * 4 + d) * (M + 1) + mode, mode <= M, 0)
-                    di = tl.load(Ci + (a * 4 + d) * (M + 1) + mode, mode <= M, 0)
-                    wd = angular / ld
-                    lo, hi = _bounds(mu, tl.minimum(lc, ld), N)
-                    minus, plus = wc[:, None] - wd[None, :], wc[:, None] + wd[None, :]
-                    cm, sm = _finite_sum(minus, lo, hi, mu)
-                    cp, sp = _finite_sum(plus, lo, hi, mu)
-                    product = bc[:, None] * bd[None, :]
-                    acc += tl.sum(0.5 * product * (cm + cp))
-                    am += tl.sum(0.25 * product * (minus * sm + plus * sp))
-                    ai += tl.sum(0.5 * bc[:, None] * di[None, :] * (cm + cp))
+    active_count = tl.full((), 0, tl.int32)
+    single = tl.full((), 0, tl.int32)
+    length = tl.full((), 1.0, tl.float64)
+    for c in tl.static_range(4):
+        active = tl.load(Meta + (a * 4 + c) * 4 + 3) > 0
+        active_count += active.to(tl.int32)
+        single = tl.where(active, c, single)
+        length = tl.where(active, tl.load(Meta + (a * 4 + c) * 4), length)
+    period_sites = 2 * length / 0.1
+    integer_sites = lib.floor(period_sites + 0.5)
+    parseval = (
+        (active_count == 1)
+        & (mu - length >= 0)
+        & (mu + length <= (N - 1) * 0.1)
+        & (tl.abs(period_sites - integer_sites) < 1e-10)
+        & (integer_sites > 2 * M)
+    )
+    if parseval:
+        # The complete sampled period has orthogonal, nonaliased harmonics.
+        # A missing endpoint is exactly zero in the mathematical profile.
+        b = tl.load(Co + (a * 4 + single) * (M + 1) + mode, mode <= M, 0)
+        bi = tl.load(Ci + (a * 4 + single) * (M + 1) + mode, mode <= M, 0)
+        factor = tl.where(mode == 0, 1.0, 0.5)
+        acc = integer_sites * tl.sum(factor * b * b)
+        ai = integer_sites * tl.sum(factor * b * bi)
+    else:
+        # Runtime loops bound code size; inactive mixture components do no work.
+        for c in range(4):
+            if tl.load(Meta + (a * 4 + c) * 4 + 3) > 0:
+                lc = tl.load(Meta + (a * 4 + c) * 4)
+                bc = tl.load(Co + (a * 4 + c) * (M + 1) + mode, mode <= M, 0)
+                wc = angular / lc
+                for d in range(4):
+                    if tl.load(Meta + (a * 4 + d) * 4 + 3) > 0:
+                        ld = tl.load(Meta + (a * 4 + d) * 4)
+                        bd = tl.load(Co + (a * 4 + d) * (M + 1) + mode, mode <= M, 0)
+                        di = tl.load(Ci + (a * 4 + d) * (M + 1) + mode, mode <= M, 0)
+                        wd = angular / ld
+                        lo, hi = _bounds(mu, tl.minimum(lc, ld), N)
+                        minus, plus = (
+                            wc[:, None] - wd[None, :],
+                            wc[:, None] + wd[None, :],
+                        )
+                        cm, sm = _finite_sum(minus, lo, hi, mu)
+                        cp, sp = _finite_sum(plus, lo, hi, mu)
+                        product = bc[:, None] * bd[None, :]
+                        acc += tl.sum(0.5 * product * (cm + cp))
+                        am += tl.sum(0.25 * product * (minus * sm + plus * sp))
+                        ai += tl.sum(0.5 * bc[:, None] * di[None, :] * (cm + cp))
     tl.store(Norm + (a * 2 + axis) * 3, acc)
     tl.store(Norm + (a * 2 + axis) * 3 + 1, am)
     tl.store(Norm + (a * 2 + axis) * 3 + 2, ai)
