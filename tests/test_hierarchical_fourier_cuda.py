@@ -184,7 +184,7 @@ def test_live_sharing_routes_counts_and_all_gradients(modes, minimum_sharing):
 @pytest.mark.parametrize("modes", [4, 8])
 @pytest.mark.parametrize("minimum_sharing", [0, 8, 1000])
 def test_boundary_cache_reuses_only_partial_component_values(
-    modes, minimum_sharing, coefficient_norm=False, sample_cache=512
+    modes, minimum_sharing, coefficient_norm=False, sample_cache=512, norm_warps=4
 ):
     from dataclasses import replace
 
@@ -233,7 +233,12 @@ def test_boundary_cache_reuses_only_partial_component_values(
         truth, tx, tp = independent_gate(x, p, dy, spec)
         for recipe in (
             base,
-            replace(base, boundary_cache=True, coefficient_norm=coefficient_norm),
+            replace(
+                base,
+                boundary_cache=True,
+                coefficient_norm=coefficient_norm,
+                coefficient_norm_warps=norm_warps,
+            ),
         ):
             y = apply(x, p, spec, recipe)
             dx, dp = torch.autograd.grad(y, (x, p), dy)
@@ -244,9 +249,14 @@ def test_boundary_cache_reuses_only_partial_component_values(
 @pytest.mark.parametrize("modes", [4, 8])
 @pytest.mark.parametrize("minimum_sharing", [0, 8])
 @pytest.mark.parametrize("sample_cache", [128, 512])
+@pytest.mark.parametrize("norm_warps", [1, 4])
 def test_coefficient_norm_preserves_discrete_l2_and_all_gradients(
-    modes, minimum_sharing, sample_cache
+    modes, minimum_sharing, sample_cache, norm_warps
 ):
     test_boundary_cache_reuses_only_partial_component_values(
-        modes, minimum_sharing, coefficient_norm=True, sample_cache=sample_cache
+        modes,
+        minimum_sharing,
+        coefficient_norm=True,
+        sample_cache=sample_cache,
+        norm_warps=norm_warps,
     )

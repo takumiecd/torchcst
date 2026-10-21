@@ -56,11 +56,16 @@ class FourierRecipe:
     reuse: str = "none"
     moment_policy: str = "all"
     sample_cache: int = 0
+    coefficient_norm_warps: int = 4
     coefficient_norm: bool = False
     boundary_cache: bool = False
     minimum_sharing: int = 0
 
     def __post_init__(self):
+        if type(
+            self.coefficient_norm_warps
+        ) is not int or self.coefficient_norm_warps not in (1, 4):
+            raise ValueError("coefficient_norm_warps must be 1 or 4")
         if type(self.coefficient_norm) is not bool:
             raise ValueError("coefficient_norm must be bool")
         if self.coefficient_norm and not self.boundary_cache:

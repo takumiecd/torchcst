@@ -180,7 +180,7 @@ def _prepare(p, spec, recipe, tab, routes=None):
             cap,
             32,
             tr.next_power_of_2(m + 1),
-            num_warps=4,
+            num_warps=recipe.coefficient_norm_warps,
             enable_fp_fusion=False,
         )
     else:

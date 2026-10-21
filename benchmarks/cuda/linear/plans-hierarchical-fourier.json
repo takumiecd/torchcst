@@ -21,7 +21,8 @@
           "sample_cache": 0,
           "minimum_sharing": 0,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -45,7 +46,8 @@
           "sample_cache": 0,
           "minimum_sharing": 0,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -69,7 +71,8 @@
           "sample_cache": 0,
           "minimum_sharing": 0,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -93,7 +96,8 @@
           "sample_cache": 0,
           "minimum_sharing": 0,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -117,7 +121,8 @@
           "sample_cache": 0,
           "minimum_sharing": 0,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -141,7 +146,8 @@
           "sample_cache": 0,
           "minimum_sharing": 0,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -165,7 +171,8 @@
           "sample_cache": 0,
           "minimum_sharing": 0,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -189,7 +196,8 @@
           "sample_cache": 0,
           "minimum_sharing": 0,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -213,7 +221,8 @@
           "sample_cache": 0,
           "minimum_sharing": 0,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -237,7 +246,8 @@
           "sample_cache": 0,
           "minimum_sharing": 0,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -261,7 +271,8 @@
           "sample_cache": 0,
           "minimum_sharing": 0,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -285,7 +296,8 @@
           "sample_cache": 0,
           "minimum_sharing": 0,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -309,7 +321,8 @@
           "sample_cache": 0,
           "minimum_sharing": 0,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -333,7 +346,8 @@
           "sample_cache": 0,
           "minimum_sharing": 0,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -357,7 +371,8 @@
           "sample_cache": 0,
           "minimum_sharing": 0,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -381,7 +396,8 @@
           "sample_cache": 0,
           "minimum_sharing": 0,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -405,7 +421,8 @@
           "sample_cache": 0,
           "minimum_sharing": 0,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -429,7 +446,8 @@
           "sample_cache": 0,
           "minimum_sharing": 0,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -453,7 +471,8 @@
           "sample_cache": 0,
           "minimum_sharing": 0,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -477,7 +496,8 @@
           "sample_cache": 0,
           "minimum_sharing": 0,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -501,7 +521,8 @@
           "sample_cache": 0,
           "minimum_sharing": 0,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -525,7 +546,8 @@
           "sample_cache": 0,
           "minimum_sharing": 0,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -549,7 +571,8 @@
           "sample_cache": 0,
           "minimum_sharing": 0,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -573,7 +596,8 @@
           "sample_cache": 512,
           "minimum_sharing": 0,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -597,7 +621,8 @@
           "sample_cache": 512,
           "minimum_sharing": 0,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -621,7 +646,8 @@
           "sample_cache": 0,
           "minimum_sharing": 0,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -645,7 +671,8 @@
           "sample_cache": 0,
           "minimum_sharing": 0,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -669,7 +696,8 @@
           "sample_cache": 0,
           "minimum_sharing": 0,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -693,7 +721,8 @@
           "sample_cache": 0,
           "minimum_sharing": 0,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -717,7 +746,8 @@
           "sample_cache": 0,
           "minimum_sharing": 0,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -741,7 +771,8 @@
           "sample_cache": 0,
           "minimum_sharing": 0,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -765,7 +796,8 @@
           "sample_cache": 512,
           "minimum_sharing": 0,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -789,7 +821,8 @@
           "sample_cache": 512,
           "minimum_sharing": 8,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -813,7 +846,8 @@
           "sample_cache": 512,
           "minimum_sharing": 64,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -837,7 +871,8 @@
           "sample_cache": 512,
           "minimum_sharing": 0,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -861,7 +896,8 @@
           "sample_cache": 512,
           "minimum_sharing": 8,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -885,7 +921,8 @@
           "sample_cache": 512,
           "minimum_sharing": 64,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -909,7 +946,8 @@
           "sample_cache": 0,
           "minimum_sharing": 0,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -933,7 +971,8 @@
           "sample_cache": 0,
           "minimum_sharing": 8,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -957,7 +996,8 @@
           "sample_cache": 0,
           "minimum_sharing": 64,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -981,7 +1021,8 @@
           "sample_cache": 0,
           "minimum_sharing": 0,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -1005,7 +1046,8 @@
           "sample_cache": 0,
           "minimum_sharing": 8,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -1029,7 +1071,8 @@
           "sample_cache": 0,
           "minimum_sharing": 64,
           "boundary_cache": false,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -1053,7 +1096,8 @@
           "sample_cache": 512,
           "minimum_sharing": 0,
           "boundary_cache": true,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -1077,7 +1121,8 @@
           "sample_cache": 512,
           "minimum_sharing": 8,
           "boundary_cache": true,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -1101,7 +1146,8 @@
           "sample_cache": 512,
           "minimum_sharing": 64,
           "boundary_cache": true,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -1125,7 +1171,8 @@
           "sample_cache": 512,
           "minimum_sharing": 0,
           "boundary_cache": true,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -1149,7 +1196,8 @@
           "sample_cache": 512,
           "minimum_sharing": 8,
           "boundary_cache": true,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -1173,7 +1221,8 @@
           "sample_cache": 512,
           "minimum_sharing": 64,
           "boundary_cache": true,
-          "coefficient_norm": false
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -1197,7 +1246,8 @@
           "sample_cache": 512,
           "minimum_sharing": 0,
           "boundary_cache": true,
-          "coefficient_norm": true
+          "coefficient_norm": true,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -1221,7 +1271,8 @@
           "sample_cache": 512,
           "minimum_sharing": 8,
           "boundary_cache": true,
-          "coefficient_norm": true
+          "coefficient_norm": true,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -1245,7 +1296,8 @@
           "sample_cache": 512,
           "minimum_sharing": 64,
           "boundary_cache": true,
-          "coefficient_norm": true
+          "coefficient_norm": true,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -1269,7 +1321,8 @@
           "sample_cache": 512,
           "minimum_sharing": 0,
           "boundary_cache": true,
-          "coefficient_norm": true
+          "coefficient_norm": true,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -1293,7 +1346,8 @@
           "sample_cache": 512,
           "minimum_sharing": 8,
           "boundary_cache": true,
-          "coefficient_norm": true
+          "coefficient_norm": true,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -1317,7 +1371,8 @@
           "sample_cache": 512,
           "minimum_sharing": 64,
           "boundary_cache": true,
-          "coefficient_norm": true
+          "coefficient_norm": true,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -1341,7 +1396,8 @@
           "sample_cache": 512,
           "minimum_sharing": 8,
           "boundary_cache": true,
-          "coefficient_norm": true
+          "coefficient_norm": true,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -1365,7 +1421,8 @@
           "sample_cache": 512,
           "minimum_sharing": 8,
           "boundary_cache": true,
-          "coefficient_norm": true
+          "coefficient_norm": true,
+          "coefficient_norm_warps": 4
         }
       }
     },
@@ -1389,7 +1446,158 @@
           "sample_cache": 512,
           "minimum_sharing": 8,
           "boundary_cache": true,
-          "coefficient_norm": true
+          "coefficient_norm": true,
+          "coefficient_norm_warps": 4
+        }
+      }
+    },
+    {
+      "id": "tile32-coefficient-h-count0-w1",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_hierarchical_fourier",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "strategy": "shared",
+          "atom_chunk": 256,
+          "minimum_sites": 32,
+          "width_cutoff": 0.1,
+          "native_cache": true,
+          "table_coefficients": true,
+          "atom_block": 4,
+          "batch_block": 4,
+          "reuse": "h",
+          "moment_policy": "hierarchical",
+          "sample_cache": 512,
+          "minimum_sharing": 0,
+          "boundary_cache": true,
+          "coefficient_norm": true,
+          "coefficient_norm_warps": 1
+        }
+      }
+    },
+    {
+      "id": "tile32-coefficient-h-count8-w1",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_hierarchical_fourier",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "strategy": "shared",
+          "atom_chunk": 256,
+          "minimum_sites": 32,
+          "width_cutoff": 0.1,
+          "native_cache": true,
+          "table_coefficients": true,
+          "atom_block": 4,
+          "batch_block": 4,
+          "reuse": "h",
+          "moment_policy": "hierarchical",
+          "sample_cache": 512,
+          "minimum_sharing": 8,
+          "boundary_cache": true,
+          "coefficient_norm": true,
+          "coefficient_norm_warps": 1
+        }
+      }
+    },
+    {
+      "id": "tile64-coefficient-h-count0-w1",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_hierarchical_fourier",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "strategy": "shared",
+          "atom_chunk": 256,
+          "minimum_sites": 64,
+          "width_cutoff": 0.1,
+          "native_cache": true,
+          "table_coefficients": true,
+          "atom_block": 4,
+          "batch_block": 4,
+          "reuse": "h",
+          "moment_policy": "hierarchical",
+          "sample_cache": 512,
+          "minimum_sharing": 0,
+          "boundary_cache": true,
+          "coefficient_norm": true,
+          "coefficient_norm_warps": 1
+        }
+      }
+    },
+    {
+      "id": "tile64-coefficient-h-width4-count8-w1",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_hierarchical_fourier",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "strategy": "shared",
+          "atom_chunk": 256,
+          "minimum_sites": 64,
+          "width_cutoff": 4.0,
+          "native_cache": true,
+          "table_coefficients": true,
+          "atom_block": 4,
+          "batch_block": 4,
+          "reuse": "h",
+          "moment_policy": "hierarchical",
+          "sample_cache": 512,
+          "minimum_sharing": 8,
+          "boundary_cache": true,
+          "coefficient_norm": true,
+          "coefficient_norm_warps": 1
+        }
+      }
+    },
+    {
+      "id": "tile64-coefficient-h-width6-count8-w1",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_hierarchical_fourier",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "strategy": "shared",
+          "atom_chunk": 256,
+          "minimum_sites": 64,
+          "width_cutoff": 6.0,
+          "native_cache": true,
+          "table_coefficients": true,
+          "atom_block": 4,
+          "batch_block": 4,
+          "reuse": "h",
+          "moment_policy": "hierarchical",
+          "sample_cache": 512,
+          "minimum_sharing": 8,
+          "boundary_cache": true,
+          "coefficient_norm": true,
+          "coefficient_norm_warps": 1
+        }
+      }
+    },
+    {
+      "id": "tile32-coefficient-h-width7-count8-w1",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_hierarchical_fourier",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "strategy": "shared",
+          "atom_chunk": 256,
+          "minimum_sites": 32,
+          "width_cutoff": 7.0,
+          "native_cache": true,
+          "table_coefficients": true,
+          "atom_block": 4,
+          "batch_block": 4,
+          "reuse": "h",
+          "moment_policy": "hierarchical",
+          "sample_cache": 512,
+          "minimum_sharing": 8,
+          "boundary_cache": true,
+          "coefficient_norm": true,
+          "coefficient_norm_warps": 1
         }
       }
     }
