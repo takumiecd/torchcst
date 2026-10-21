@@ -323,7 +323,7 @@ class BenchmarkCase:
             (64, 128, 256, 1024)
             if self.fixture == "hierarchical_fourier"
             else (64, 128, 1024, 8192)
-            if self.fixture in ("quadratic_bspline", "hierarchical_fourier")
+            if self.fixture == "quadratic_bspline"
             else (64, 1024, 2048)
             if self.fixture == "polar_sphere_separable"
             else (1024, 2048)
@@ -352,6 +352,7 @@ class BenchmarkCase:
         if self.fixture in (
             "local_polar_product",
             "quadratic_bspline",
+            "hierarchical_fourier",
             "polar_profile_product",
             "polar_profile_product_strip",
             "polar_profile_product_square_strip",
