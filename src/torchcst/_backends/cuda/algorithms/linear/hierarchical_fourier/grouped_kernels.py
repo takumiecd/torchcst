@@ -45,30 +45,64 @@ def contract_grouped(
         cached = (count >= 0) & (a < A)
         if tl.sum(cached.to(tl.int32), 0) > 0:
             lo = tl.load(Bounds + (a * 2 + AXIS) * 2, a < A, 0)
-            s = tl.arange(0, NC)
-            mask = cached[:, None] & (s[None, :] < count[:, None])
-            xx = tl.load(
-                X + b[None, :, None] * N + lo[:, None, None] + s[None, None, :],
-                mask[:, None, :] & (b[None, :, None] < B),
-                0,
-            ).to(tl.float64)
-            fv = tl.load(
-                Native + ((a[:, None] * 2 + AXIS) * 3) * NC + s[None, :], mask, 0
-            ).to(tl.float64)
-            hv += tl.sum(xx * fv[:, None, :], 2)
-            if GRAD:
-                fm = tl.load(
-                    Native + ((a[:, None] * 2 + AXIS) * 3 + 1) * NC + s[None, :],
-                    mask,
+            if NC > 32:
+                maximum = tl.max(tl.where(cached, count, 0), 0)
+                for base in range(0, maximum, BS):
+                    s = base + tl.arange(0, BS)
+                    mask = cached[:, None] & (s[None, :] < count[:, None])
+                    xx = tl.load(
+                        X + b[None, :, None] * N + lo[:, None, None] + s[None, None, :],
+                        mask[:, None, :] & (b[None, :, None] < B),
+                        0,
+                    ).to(tl.float64)
+                    fv = tl.load(
+                        Native + ((a[:, None] * 2 + AXIS) * 3) * NC + s[None, :],
+                        mask,
+                        0,
+                    ).to(tl.float64)
+                    hv += tl.sum(xx * fv[:, None, :], 2)
+                    if GRAD:
+                        fm = tl.load(
+                            Native
+                            + ((a[:, None] * 2 + AXIS) * 3 + 1) * NC
+                            + s[None, :],
+                            mask,
+                            0,
+                        ).to(tl.float64)
+                        fi = tl.load(
+                            Native
+                            + ((a[:, None] * 2 + AXIS) * 3 + 2) * NC
+                            + s[None, :],
+                            mask,
+                            0,
+                        ).to(tl.float64)
+                        hm += tl.sum(xx * fm[:, None, :], 2)
+                        hi_ += tl.sum(xx * fi[:, None, :], 2)
+            else:
+                s = tl.arange(0, NC)
+                mask = cached[:, None] & (s[None, :] < count[:, None])
+                xx = tl.load(
+                    X + b[None, :, None] * N + lo[:, None, None] + s[None, None, :],
+                    mask[:, None, :] & (b[None, :, None] < B),
                     0,
                 ).to(tl.float64)
-                fi = tl.load(
-                    Native + ((a[:, None] * 2 + AXIS) * 3 + 2) * NC + s[None, :],
-                    mask,
-                    0,
+                fv = tl.load(
+                    Native + ((a[:, None] * 2 + AXIS) * 3) * NC + s[None, :], mask, 0
                 ).to(tl.float64)
-                hm += tl.sum(xx * fm[:, None, :], 2)
-                hi_ += tl.sum(xx * fi[:, None, :], 2)
+                hv += tl.sum(xx * fv[:, None, :], 2)
+                if GRAD:
+                    fm = tl.load(
+                        Native + ((a[:, None] * 2 + AXIS) * 3 + 1) * NC + s[None, :],
+                        mask,
+                        0,
+                    ).to(tl.float64)
+                    fi = tl.load(
+                        Native + ((a[:, None] * 2 + AXIS) * 3 + 2) * NC + s[None, :],
+                        mask,
+                        0,
+                    ).to(tl.float64)
+                    hm += tl.sum(xx * fm[:, None, :], 2)
+                    hi_ += tl.sum(xx * fi[:, None, :], 2)
     for c in tl.static_range(4):
         weight = tl.load(Meta + (a * 4 + c) * 4 + 3, a < A, 0)
         active = (a < A) & ~cached & (weight > 0)

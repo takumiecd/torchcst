@@ -651,19 +651,36 @@ def deposit_cached(
         if c == 0:
             b = tl.program_id(1) * BB + tl.arange(0, BB)
             lo = tl.load(Bounds + (a * 2 + AXIS) * 2)
-            s = tl.arange(0, NC)
-            f = tl.load(Native + ((a * 2 + AXIS) * 3) * NC + s, s < count, 0).to(
-                tl.float64
-            )
-            h = tl.load(H + (b * A + a) * 3, b < B, 0).to(tl.float64) * _alpha(
-                P, Norm, a
-            )
-            tl.atomic_add(
-                Y + b[:, None] * N + lo + s[None, :],
-                (h[:, None] * f[None, :]).to(tl.float32),
-                (b[:, None] < B) & (s[None, :] < count),
-                sem="relaxed",
-            )
+            if NC > 32:
+                for base in range(0, count, 32):
+                    s = base + tl.arange(0, 32)
+                    f = tl.load(
+                        Native + ((a * 2 + AXIS) * 3) * NC + s, s < count, 0
+                    ).to(tl.float64)
+                    h = tl.load(H + (b * A + a) * 3, b < B, 0).to(tl.float64) * _alpha(
+                        P, Norm, a
+                    )
+                    tl.atomic_add(
+                        Y + b[:, None] * N + lo + s[None, :],
+                        (h[:, None] * f[None, :]).to(tl.float32),
+                        (b[:, None] < B) & (s[None, :] < count),
+                        sem="relaxed",
+                    )
+            else:
+                s = tl.arange(0, NC)
+                f = tl.load(Native + ((a * 2 + AXIS) * 3) * NC + s, s < count, 0).to(
+                    tl.float64
+                )
+                h = tl.load(H + (b * A + a) * 3, b < B, 0).to(tl.float64) * _alpha(
+                    P, Norm, a
+                )
+                tl.atomic_add(
+                    Y + b[:, None] * N + lo + s[None, :],
+                    (h[:, None] * f[None, :]).to(tl.float32),
+                    (b[:, None] < B) & (s[None, :] < count),
+                    sem="relaxed",
+                )
+
     else:
         deposit(H, P, Meta, Co, Ci, Norm, Banks, Y, B, N, A, M, AXIS, BB, BS)
 

@@ -41,6 +41,8 @@ def test_metadata_roundtrip_and_rejections():
         {"batch_block": 3},
         {"reuse": "stale"},
         {"moment_policy": "stale"},
+        {"sample_cache": True},
+        {"sample_cache": 512},
     ):
         with pytest.raises(ValueError):
             FourierRecipe(**kw)

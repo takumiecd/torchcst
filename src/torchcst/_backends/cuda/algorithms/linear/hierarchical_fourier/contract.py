@@ -55,8 +55,13 @@ class FourierRecipe:
     batch_block: int = 1
     reuse: str = "none"
     moment_policy: str = "all"
+    sample_cache: int = 0
 
     def __post_init__(self):
+        if type(self.sample_cache) is not int or self.sample_cache not in (0, 128, 512):
+            raise ValueError("sample_cache must be 0,128,512")
+        if self.sample_cache and not self.native_cache:
+            raise ValueError("sample_cache requires native_cache")
         if type(self.atom_block) is not int or self.atom_block not in (1, 4):
             raise ValueError("atom_block must be 1 or 4")
         if type(self.batch_block) is not int or self.batch_block not in (1, 4, 8):

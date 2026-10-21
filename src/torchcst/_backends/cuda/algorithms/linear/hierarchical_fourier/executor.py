@@ -125,7 +125,7 @@ def _prepare(p, spec, recipe, tab):
     ci = torch.empty_like(co)
     norm = torch.empty((a, 2, 3), device=p.device, dtype=torch.float64)
     beta = torch.empty((2, a, 4, 2, 2 * m + 1), device=p.device, dtype=torch.float32)
-    cap = (16 if m == 4 else 32) if recipe.native_cache else 0
+    cap = (recipe.sample_cache or (16 if m == 4 else 32)) if recipe.native_cache else 0
     native = torch.empty((a, 2, 3, cap), device=p.device, dtype=torch.float32)
     bounds = torch.empty((a, 2, 2), device=p.device, dtype=torch.int32)
     period = spec.period

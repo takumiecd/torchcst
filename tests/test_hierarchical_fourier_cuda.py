@@ -27,7 +27,7 @@ pytestmark = pytest.mark.skipif(
     ],
 )
 def test_centered_support_dynamic_width_input_and_all_gradients(
-    modes, strategy, cached, table, grouped, reuse, moment_policy
+    modes, strategy, cached, table, grouped, reuse, moment_policy, sample_cache=0
 ):
     from benchmarks.cuda.linear.hierarchical_fourier import independent_gate
     from torchcst._backends.cuda.algorithms.linear.hierarchical_fourier.contract import (
@@ -52,6 +52,7 @@ def test_centered_support_dynamic_width_input_and_all_gradients(
             batch_block=4 if grouped else 1,
             reuse=reuse,
             moment_policy=moment_policy,
+            sample_cache=sample_cache,
         )
         p = torch.tensor(
             [
@@ -114,3 +115,11 @@ def test_saved_forward_parameter_version_is_checked(reuse):
             y.sum().backward()
     finally:
         torch.backends.cuda.matmul.allow_tf32 = previous
+
+
+@pytest.mark.parametrize("modes", [4, 8])
+@pytest.mark.parametrize("sample_cache", [128, 512])
+def test_streamed_sample_cache_matches_independent_oracle(modes, sample_cache):
+    test_centered_support_dynamic_width_input_and_all_gradients(
+        modes, "direct", True, True, True, "h", "all", sample_cache
+    )
