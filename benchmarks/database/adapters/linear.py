@@ -178,6 +178,11 @@ def project(value):
         raise ValueError("run must be completed with a record list")
     execution_identity(value)
     run = decode_snapshot(value["run"])
+    if run.case.fixture == "hierarchical_fourier":
+        raise ValueError(
+            "hierarchical Fourier live-I research needs a dedicated DB adapter; "
+            "it is not the normalized or Polar update contract"
+        )
     case = json.loads(json.dumps(asdict(run.case), allow_nan=False))
     strip = run.case.fixture in (
         "polar_profile_product_strip",
