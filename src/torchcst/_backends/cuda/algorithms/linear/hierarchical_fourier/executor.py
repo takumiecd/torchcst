@@ -402,6 +402,7 @@ def _contract(x, p, prepared, spec, tab, z, axis, grad):
             32,
             tr.next_power_of_2(r),
             cap,
+            BOUNDARY=recipe.boundary_cache,
             num_warps=4,
             enable_fp_fusion=False,
         )

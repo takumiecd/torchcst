@@ -32,6 +32,7 @@ def contract_grouped(
     BS: tl.constexpr,
     FF: tl.constexpr,
     NC: tl.constexpr,
+    BOUNDARY: tl.constexpr = False,
 ):
     a = tl.program_id(0) * BA + tl.arange(0, BA)
     b = tl.program_id(1) * BB + tl.arange(0, BB)
@@ -54,34 +55,76 @@ def contract_grouped(
                 for base in range(0, maximum, BS):
                     s = base + tl.arange(0, BS)
                     mask = available[:, None] & (s[None, :] < count[:, None])
-                    xx = tl.load(
-                        X + b[None, :, None] * N + lo[:, None, None] + s[None, None, :],
-                        mask[:, None, :] & (b[None, :, None] < B),
-                        0,
-                    ).to(tl.float64)
-                    fv = tl.load(
-                        Native + ((a[:, None] * 2 + AXIS) * 3) * NC + s[None, :],
-                        mask,
-                        0,
-                    ).to(tl.float64)
-                    hv += tl.sum(xx * fv[:, None, :], 2)
-                    if GRAD:
-                        fm = tl.load(
-                            Native
-                            + ((a[:, None] * 2 + AXIS) * 3 + 1) * NC
-                            + s[None, :],
+                    if BOUNDARY:
+                        fv = tl.load(
+                            Native + ((a[:, None] * 2 + AXIS) * 3) * NC + s[None, :],
                             mask,
                             0,
                         ).to(tl.float64)
-                        fi = tl.load(
-                            Native
-                            + ((a[:, None] * 2 + AXIS) * 3 + 2) * NC
-                            + s[None, :],
+                        live = mask & (fv != 0)
+                        if GRAD:
+                            fm = tl.load(
+                                Native
+                                + ((a[:, None] * 2 + AXIS) * 3 + 1) * NC
+                                + s[None, :],
+                                mask,
+                                0,
+                            ).to(tl.float64)
+                            fi = tl.load(
+                                Native
+                                + ((a[:, None] * 2 + AXIS) * 3 + 2) * NC
+                                + s[None, :],
+                                mask,
+                                0,
+                            ).to(tl.float64)
+                            live = live | (mask & ((fm != 0) | (fi != 0)))
+                        # Interior contributions are supplied by Z. Do not
+                        # reload X or multiply an entirely zero partial block.
+                        if tl.sum(live.to(tl.int32)) > 0:
+                            xx = tl.load(
+                                X
+                                + b[None, :, None] * N
+                                + lo[:, None, None]
+                                + s[None, None, :],
+                                live[:, None, :] & (b[None, :, None] < B),
+                                0,
+                            ).to(tl.float64)
+                            hv += tl.sum(xx * fv[:, None, :], 2)
+                            if GRAD:
+                                hm += tl.sum(xx * fm[:, None, :], 2)
+                                hi_ += tl.sum(xx * fi[:, None, :], 2)
+                    else:
+                        xx = tl.load(
+                            X
+                            + b[None, :, None] * N
+                            + lo[:, None, None]
+                            + s[None, None, :],
+                            mask[:, None, :] & (b[None, :, None] < B),
+                            0,
+                        ).to(tl.float64)
+                        fv = tl.load(
+                            Native + ((a[:, None] * 2 + AXIS) * 3) * NC + s[None, :],
                             mask,
                             0,
                         ).to(tl.float64)
-                        hm += tl.sum(xx * fm[:, None, :], 2)
-                        hi_ += tl.sum(xx * fi[:, None, :], 2)
+                        hv += tl.sum(xx * fv[:, None, :], 2)
+                        if GRAD:
+                            fm = tl.load(
+                                Native
+                                + ((a[:, None] * 2 + AXIS) * 3 + 1) * NC
+                                + s[None, :],
+                                mask,
+                                0,
+                            ).to(tl.float64)
+                            fi = tl.load(
+                                Native
+                                + ((a[:, None] * 2 + AXIS) * 3 + 2) * NC
+                                + s[None, :],
+                                mask,
+                                0,
+                            ).to(tl.float64)
+                            hm += tl.sum(xx * fm[:, None, :], 2)
+                            hi_ += tl.sum(xx * fi[:, None, :], 2)
             else:
                 s = tl.arange(0, NC)
                 mask = available[:, None] & (s[None, :] < count[:, None])
