@@ -288,3 +288,64 @@ def test_width_permutation_preserves_input_and_all_atom_gradients(modes, strateg
         sample_cache=512,
         sort_atoms=True,
     )
+
+
+@pytest.mark.parametrize("modes", [4, 8])
+def test_sorted_graph_replays_a_changed_width_permutation(modes):
+    from benchmarks.cuda.linear.hierarchical_fourier import independent_gate
+    from torchcst._backends.cuda.algorithms.linear.hierarchical_fourier.contract import (
+        FourierLinearSpec,
+        FourierRecipe,
+    )
+    from torchcst._backends.cuda.algorithms.linear.hierarchical_fourier.executor import (
+        apply,
+    )
+
+    torch.backends.cuda.matmul.allow_tf32 = False
+    spec = FourierLinearSpec(256, modes)
+    recipe = FourierRecipe(
+        sort_atoms=True,
+        atom_chunk=256,
+        minimum_sites=32,
+        width_cutoff=0.1,
+        native_cache=True,
+        table_coefficients=True,
+        atom_block=4,
+        batch_block=4,
+        reuse="h",
+        sample_cache=512,
+        boundary_cache=True,
+        coefficient_norm=True,
+        coefficient_norm_warps=1,
+        moment_policy="hierarchical",
+    )
+    gen = torch.Generator().manual_seed(415)
+    p = torch.randn(16, 4, generator=gen)
+    p[:, 1:3] = torch.rand(16, 2, generator=gen) * 25.5
+    p[:, 3] = torch.linspace(-6, 5, 16).roll(5)
+    p = p.cuda().requires_grad_()
+    x = torch.randn(3, 256, device="cuda", requires_grad=True)
+    dy = torch.randn_like(x)
+    stream = torch.cuda.Stream()
+    stream.wait_stream(torch.cuda.current_stream())
+    with torch.cuda.stream(stream):
+        for _ in range(2):
+            p.grad = None
+            x.grad = None
+            (apply(x, p, spec, recipe) * dy).sum().backward()
+    torch.cuda.current_stream().wait_stream(stream)
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph, stream=stream):
+        p.grad = None
+        x.grad = None
+        y = apply(x, p, spec, recipe)
+        (y * dy).sum().backward()
+    with torch.no_grad():
+        p[:, 3].copy_(p[:, 3].flip(0))
+        p[:, 1:3].add_(0.137)
+        x.add_(0.017)
+    graph.replay()
+    torch.cuda.synchronize()
+    truth, tx, tp = independent_gate(x, p, dy, spec)
+    for a, b in ((y, truth), (x.grad, tx), (p.grad, tp)):
+        torch.testing.assert_close(a.double(), b.double(), atol=4e-4, rtol=4e-4)
