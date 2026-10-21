@@ -42,6 +42,7 @@ def _coefficient_norm(
     a, axis = tl.program_id(0), tl.program_id(1)
     mu = tl.load(P + a * 4 + axis + 1).to(tl.float64)
     mode = tl.arange(0, F)
+    angular = mode.to(tl.float64) * 3.141592653589793
     acc = tl.full((), 0.0, tl.float64)
     am = tl.full((), 0.0, tl.float64)
     ai = tl.full((), 0.0, tl.float64)
@@ -50,13 +51,13 @@ def _coefficient_norm(
         if tl.load(Meta + (a * 4 + c) * 4 + 3) > 0:
             lc = tl.load(Meta + (a * 4 + c) * 4)
             bc = tl.load(Co + (a * 4 + c) * (M + 1) + mode, mode <= M, 0)
-            wc = 3.141592653589793 * mode / lc
+            wc = angular / lc
             for d in range(4):
                 if tl.load(Meta + (a * 4 + d) * 4 + 3) > 0:
                     ld = tl.load(Meta + (a * 4 + d) * 4)
                     bd = tl.load(Co + (a * 4 + d) * (M + 1) + mode, mode <= M, 0)
                     di = tl.load(Ci + (a * 4 + d) * (M + 1) + mode, mode <= M, 0)
-                    wd = 3.141592653589793 * mode / ld
+                    wd = angular / ld
                     lo, hi = _bounds(mu, tl.minimum(lc, ld), N)
                     minus, plus = wc[:, None] - wd[None, :], wc[:, None] + wd[None, :]
                     cm, sm = _finite_sum(minus, lo, hi, mu)
