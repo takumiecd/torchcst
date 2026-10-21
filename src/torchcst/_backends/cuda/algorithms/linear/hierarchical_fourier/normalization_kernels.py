@@ -49,11 +49,11 @@ def _coefficient_norm(
     active_count = tl.full((), 0, tl.int32)
     single = tl.full((), 0, tl.int32)
     length = tl.full((), 1.0, tl.float64)
-    for c in tl.static_range(4):
-        active = tl.load(Meta + (a * 4 + c) * 4 + 3) > 0
+    for component in tl.static_range(4):
+        active = tl.load(Meta + (a * 4 + component) * 4 + 3) > 0
         active_count += active.to(tl.int32)
-        single = tl.where(active, c, single)
-        length = tl.where(active, tl.load(Meta + (a * 4 + c) * 4), length)
+        single = tl.where(active, component, single)
+        length = tl.where(active, tl.load(Meta + (a * 4 + component) * 4), length)
     period_sites = 2 * length / 0.1
     integer_sites = lib.floor(period_sites + 0.5)
     parseval = (
@@ -121,10 +121,10 @@ def hybrid_norms(
     mu = tl.load(P + a * 4 + axis + 1).to(tl.float64)
     shared = tl.full((), False, tl.int1)
     max_length = tl.full((), 0.0, tl.float64)
-    for c in tl.static_range(4):
-        active = tl.load(Meta + (a * 4 + c) * 4 + 3) > 0
-        length = tl.load(Meta + (a * 4 + c) * 4)
-        shared = shared | (active & (tl.load(Meta + (a * 4 + c) * 4 + 2) >= 0))
+    for component in tl.static_range(4):
+        active = tl.load(Meta + (a * 4 + component) * 4 + 3) > 0
+        length = tl.load(Meta + (a * 4 + component) * 4)
+        shared = shared | (active & (tl.load(Meta + (a * 4 + component) * 4 + 2) >= 0))
         max_length = tl.maximum(max_length, tl.where(active, length, 0.0))
     lo, hi = _bounds(mu, max_length, N)
     # Broad profiles with an observed peak have a well-conditioned squared norm.
