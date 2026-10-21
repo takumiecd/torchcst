@@ -182,4 +182,8 @@ octave内の形状変化18〜20%とサイトprefix容量を残した。
 という条件は成立していない。次の設計では、形状変化の許容値か支持端の微小裾を
 明示してから数学的な自由度を決める必要がある。この候補のGPU最適化は開始しない。
 
+その後、ユーザーがsigma移行区間での多項式/Fourier混合を許容したため、
+[純粋多項式とFourierの混合・端tileのstream集約](tile-hybrid-profile-design-20261021.ja.md)を
+別候補として検討した。本ノートの18〜20%の形状変化を、その新候補の結果へ流用しない。
+
 ![shape and seam](../../../output/scale-matched-cosine-cpu-20261021/scale-matched-shape.png)

@@ -63,6 +63,7 @@ Q=(1-\alpha)P+\alpha[(1-\beta_j)F_{L_j,M}+\beta_jF_{2L_j,M}].
 sigmaが小さくなる場合は半減となる。移行時だけ2つのLを共存させる。
 各成分は自身の支持外0で、全体は最大active Lの外で0。
 eta=.12ではnative移行と最初の尺度移行は重ならず、同時に最大2成分。
+測定ではConfigへ`overlap=.12`を明示する（基底Configから継承する既定値は.08）。
 
 重みのsigma一次・二次微分は移行区間の端で0。
 PとFの厳密一致を課さず、**新しいQ自体をsigmaに関してC2**にする。
@@ -126,9 +127,122 @@ python -m benchmarks.research.run_tile_hybrid_profile_cpu \
   --output output/tile-hybrid-profile-cpu-20261021
 ```
 
-CPU結果は検証済みcheckpointで追記する。
+
 
 端tileを厳密処理できるため、余白のためだけにL0を広くする必要はない。
 最初のL0/T4/8測定を保存した後、追加のCPU測定でL0/T1/2も比較する。
 同じ入力seed・stepを維持し、既存条件の反復測定と混同しない。
 追加測定は`--benchmark-only --minimum-L-tiles 1 2`で実行する。
+
+## 検証結果と判断
+
+最初のsource `f3da519f6857e8130dbf2931e0b49dd1f8e557d8`、追加のsource
+`7b139a9e`。両sourceのkernel・helper・testは同じbyte。
+追加sourceはrunnerのL0/T選択とbenchmark-onlyのCLIを追加しただけ。
+原本はignored `output/tile-hybrid-profile-cpu-20261021/`と
+`output/tile-hybrid-profile-small-period-cpu-20261021/`。
+各proof.jsonにsource snapshot/hashとartifact hashを保存した。
+全M/tile/L0/Tのfixture hashをatom数・stepごとに照合し、一致を確認。
+Apple M4 Pro、NumPy、BLAS/OMP/Accelerate各1threadで逐次測定した。
+
+新規11test pass。独立Torch quadrature/autogradで、軸別の合成出力・入力勾配・
+全atomの振幅/中心/sigma勾配、および2軸profile productの値・入力/中心/sigma勾配を確認。
+照合toleranceはabs2e-10、rel2e-9（case別により厳しい検査もある）。
+CPU suiteは**2109 passed / 5651 skipped / 18 warnings (43.70s)**。Ruffとdiff checkもpass。
+完全CSTの2次元共有executorのgateではない。
+
+### 形とsigma
+
+形状1160条件、端tile省略を中心5phaseで別検査した。
+以下は中心・sigmaを固定した**母多項式との比較**であり、
+新しいQ自身の実装の微分誤差ではない。shapeはsampled L2正規化後のrelL2。
+
+| 指標の最大値 | M4 nu2 | M8 nu2 | M8 nu3 |
+| --- | ---: | ---: | ---: |
+| 形状差 | 5.2438% | 0.20508% | 0.2393% |
+| 中心勾配の差 | 13.748% | 1.2142% | 1.3656% |
+| sigma勾配の差 | 61.428% | 3.2651% | 4.2136% |
+| 負の振れ / 中心peak | 3.7038% | 0.16974% | 0.19915% |
+| 母多項式支持外の振幅 / peak | 3.4753% | 0.13636% | 0.15918% |
+| 母多項式支持外のL2 energy割合 | 0.15097% | 0.00016775% | 0.00018615% |
+
+M8 nu3のenergy RMS幅 / 母形状の幅は.999387〜1.000144。
+正の部分だけを取ったL1標準偏差 / sigmaは1〜1.009174。
+負の裾があるQを非負の確率分布として扱っていない。
+M4 nu2はそれぞれ最大1.06099、1.37437で、弱い遠方の裾も幅を変える。
+sigmaを連続学習する自由は残るが、混合後まで厳密な標準偏差とする校正は行っていない。
+spacing=.1、sigma=.1の小sigma域は両Mとも同じPで、中心17phaseでsampled幅の誤差は最大.04094%。
+
+端条件を増やしたM8 nu4はshape最大.27964%、sigma勾配差6.2142%。
+M4 nu3はshape10.524%、sigma勾配差116.68%。端を平坦化するだけでは形が改善しない。
+nu2は母形状への近さ、nu3は端の平坦さを優先する選択肢で、どちらも厳密な非負性は未保証。
+単純なmax(Q,0)はFourier集約を保たないため、実装に追加していない。
+
+### 接続と実装の精度
+
+sigmaを移行端の左右へ相対1e-8ずらした差は、値/勾配で最大1.61e-7。
+中心をtile境界の左右へ1e-10*Tずらした差も0へ近づく。元のQはC2接続で、
+stream方式は同じQを評価する。測定領域では正規化floorは無効。
+短い重なりに移行誤差を隠したhard切替ではない。
+H・Hmu・Hsigmaのstream対直接の最大絶対差は、全144動的benchmark状態で7.67e-14以下。
+検査用のE/Em/Esも直接和との差は8.53e-14以下。
+
+一方、端tileを捨てる近似は別のkernelになる。
+L0/T8のM8 nu3でも、中心tile境界の左右でshape差9.41e-7、sigma勾配差2.76e-4が残った。
+小さい誤差でも厳密な滑らかさと混同しない。**推奨するexact方式は端tileを捨てない。**
+
+### CPU時間とメモリ
+
+下表はA128、B8、N4096。時間は各step3回中央値、さらに動的3stepの中央値（ms）。
+M4はnu2、M8はnu3。元のsourceと追加sourceは同じ明示設定eta=.12で測定。
+Python参照の全係数・groupmetadata・入力bank構築・L2とH/pullbackを含む。
+GPUまたは完全CST step時間ではない。CPU共有版が直接版を上回る条件は観測しなかった。
+
+| M | tile点数 | L0/T | 全直接 ms | 全site prefix ms | coarse+stream ms | 全site prefix MiB | 常設tile bank MiB |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 4 | 32 | 1 | 33.042 | 106.477 | 117.672 | 16.504 | 0.520 |
+| 4 | 32 | 2 | 31.424 | 92.876 | 103.681 | 14.504 | 0.457 |
+| 4 | 32 | 8 | 28.182 | 67.426 | 73.326 | 10.503 | 0.331 |
+| 4 | 64 | 1 | 31.405 | 93.443 | 101.733 | 14.504 | 0.230 |
+| 4 | 128 | 1 | 29.383 | 78.925 | 85.346 | 12.503 | 0.101 |
+| 4 | 128 | 8 | 17.623 | 26.581 | 27.088 | 6.502 | 0.052 |
+| 8 | 32 | 1 | 44.951 | 183.093 | 205.946 | 32.508 | 1.024 |
+| 8 | 32 | 2 | 43.724 | 159.176 | 178.494 | 28.507 | 0.898 |
+| 8 | 32 | 8 | 37.670 | 109.819 | 124.588 | 20.505 | 0.646 |
+| 8 | 64 | 1 | 43.176 | 161.330 | 174.945 | 28.507 | 0.452 |
+| 8 | 128 | 1 | 40.618 | 135.389 | 146.578 | 24.506 | 0.197 |
+| 8 | 128 | 8 | 23.769 | 41.754 | 43.097 | 12.503 | 0.101 |
+
+代表例M8/tile32/L0=T/A128のtracemalloc追加peakは、直接2.916MiB、
+全siteprefix33.112MiB、coarse+stream2.105MiB。
+入力fixtureを除くcall内のPython/NumPy追跡値であり、RSS・GPU peak・モデル全体ではない。
+常設bank1.024MiBと、一時buffer・querymetadata・係数・結果・計算中の配列が別に必要。
+境界scratchのstatsは選択した配列の容量モデルであり、実測peakを代用しない。
+
+M8/tile32/L0=Tでは、共有atom数を16から128へ増やすと、端group構築の削減率は
+独立queryごとの構築に比べ約33%から76%になった。tile128/L0=T/A128では約90%。
+構築回数の削減率と速度向上率は別であり、Pythonのatom別L2/geometryとgroup処理は残る。
+CPU原型だけからGPUの律速箇所や最適なnative切替を決めない。
+
+### 実装に進める条件
+
+**M8は、近い山形を保つ混合kernelの候補として成立。M4は現設定で推奨しない。**
+小sigmaは純粋多項式、大sigmaは有限Fourier、移行では両方を使い、
+追加窓を掛けずに中心・sigmaの自由と厳密な支持・微分を維持できた。
+タイルbankと端tileのstreamにより、global siteprefixの常設保存を避けられた。
+ただし負の小さい裾を許容する設計であり、非負性を必須にする場合は未完成。
+CPU速度の利益はまだ出ておらず、GPU高速化・Dense目標の達成を示す結果ではない。
+
+sigma_min=.1、spacing=.1の小sigmaは6〜7siteのnative評価で済む。
+32点tileでL0=Tならnative/Fourier移行はsigma約.552〜.702、L0=2Tなら約1.104〜1.405。
+L0を広げるとnativeで処理する支持も広がる。最適値は構築・共有atom数込みの実測で選ぶ。
+sigma40まで測定したことは、40が数学的上限という意味ではない。
+上限は最大Lのbank容量と、許容する入力域切断の条件から別途決める。
+
+2次元ではprofile/L2の軸分解ができても、bank容量の周波数積は残る。
+1尺度complex128 bankとfloat64入力のpayload比は概ね2*(2M+1)^2/n^2で、
+M8/n32では.564、M8/n128では.0353。これは2D実測ではなく、1尺度だけの容量モデル。
+多尺度の全Fx*Fyを持てば増える。1軸で省メモリ化した結果を2D全体へ外挿しない。
+次に必要なのは、このM8候補の2D共有executorでの構築・L2・backward込みの評価である。
+
+![hybrid function and errors](../../../output/tile-hybrid-profile-cpu-20261021/hybrid-function.png)
