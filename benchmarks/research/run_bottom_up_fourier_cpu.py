@@ -82,6 +82,7 @@ def prewarm(geometry, data, cfg):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--output", type=Path, required=True)
+    p.add_argument("--scaling-only", action="store_true")
     args = p.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     files = [Path(__file__), Path(__file__).with_name("bottom_up_fourier_cpu.py")]
@@ -98,13 +99,21 @@ def main():
         "scope": "1D/2D normalized profile-bank H plus mu/sigma pullbacks, not a complete CST/GPU training step",
         "protocol": "3 dynamic steps; 3 timing samples per state; geometry tables prewarmed and reported separately",
         "rows": [],
+        "scaling_only": args.scaling_only,
     }
-    for dim, side, atom_counts in ((1, 256, (16, 128)), (2, 32, (8, 64))):
+    specs = (
+        ((2, 64, (64,)), (2, 128, (64,)))
+        if args.scaling_only
+        else ((1, 256, (16, 128)), (2, 32, (8, 64)))
+    )
+    for dim, side, atom_counts in specs:
         for modes in (4, 8):
-            for leaf in (4, 8, 16):
+            for leaf in (8,) if args.scaling_only else (4, 8, 16):
                 cfg = Config(dim=dim, side=side, modes=modes, leaf=leaf)
                 for atoms in atom_counts:
-                    for regime in ("small", "mixed"):
+                    for regime in (
+                        ("mixed",) if args.scaling_only else ("small", "mixed")
+                    ):
                         states = fixtures(dim, side, atoms, regime)
                         geometry = Geometry(cfg)
                         geometry_ms, keys = prewarm(geometry, states, cfg)
@@ -171,7 +180,8 @@ def main():
                             json.dumps(data, indent=2) + "\n"
                         )
                         print("done", dim, modes, leaf, atoms, regime, flush=True)
-    figures(data, args.output)
+    if not args.scaling_only:
+        figures(data, args.output)
 
 
 def figures(data, out):

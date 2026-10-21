@@ -83,3 +83,6 @@ python -m benchmarks.research.run_bottom_up_fourier_cpu \
 ```
 
 測定結果は検証済みcheckpointで追記する。
+
+最初の32²測定を保全後、`--scaling-only`で2D 64²/128²、A64、leaf8、mixedを追加する。
+M4/8を比較し、既存の32²測定は繰り返さない。kernel/helperのbyteは同じまま使用する。
