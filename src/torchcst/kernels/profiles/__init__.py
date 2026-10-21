@@ -10,6 +10,7 @@ from .fourier import (
     KaiserSquareSpec,
     PeriodicFourierSpec,
 )
+from .fourier_peak import FourierPeakSpec
 from .gaussian import GaussianSpec
 from .matern import MaternMixtureSpec
 
@@ -18,6 +19,7 @@ __all__ = [
     "ChebyshevSquareSpec",
     "DPSSSquareSpec",
     "DyadicFourierSpec",
+    "FourierPeakSpec",
     "GaussianSpec",
     "KaiserSquareSpec",
     "MaternMixtureSpec",

@@ -105,6 +105,13 @@ between adjacent L values. Use it in the same profile-product presets with Torch
 materialized/factored execution and actual sampled L2 normalization. Hierarchical
 tile execution remains separate; see the [definition and usage](docs/dyadic-fourier-profile.ja.md).
 
+`FourierPeakSpec(modes=4 or 8)` and `IntegerFourierPeriodSpec(tile_width=T,
+minimum_half_period=L_min)` declare the separate I-driven research reference.
+I, T and L_min are independent; the safe integer period and optional smooth
+transition are evaluated from each live I. This reference is currently used
+through explicit Torch mathematical functions, not the CSTLinear presets or
+CUDA dispatcher. See the [definition and CPU qualification](docs/effective-fourier-profile.ja.md).
+
 `presets.polar_torus_profile_product(profiles=(TriweightSpec(), TriweightSpec()),
 amplitude_max=1.0, bounds=bandwidth_bounds, w_c=0.1)` declares the centre-fibre
 chord product on a single S¹ × S² Torus Product/Strip chart. Profiles are ordered

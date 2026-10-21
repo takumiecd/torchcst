@@ -161,6 +161,13 @@ sigmaから支持半幅Lを選ぶ`DyadicFourierSpec`は`kernels/profiles/dyadic_
 既存の固定3タイルFourier支持とは別のprofileで、Torch profile-productへ接続する。
 [数式と検証範囲](../../../docs/dyadic-fourier-profile.ja.md)を参照。
 
+Iを直接指定する`FourierPeakSpec`は形状だけ、`IntegerFourierPeriodSpec`は
+独立したT・L_minと周期接続の数学的規則を宣言する。係数は
+`torch/profiles/fourier_peak.py`、明示的な支持・離散L2・接続のTorch参照は
+`torch/kernels/effective_fourier.py`に置く。これは既存のsigma parameterizationや
+CSTLinear presetにはまだ接続していない研究参照である。
+[定義とCPU検証](../../../docs/effective-fourier-profile.ja.md)を参照。
+
 RegularGridのprofile-product Linearでは
 [Hの生成・再利用・寿命の設計方針](../../../docs/h-lifecycle-kernel-design.ja.md)を使い、
 具体的な分割・融合・routing・保存／再計算はAlgorithm/Recipeの実行方式として扱う。

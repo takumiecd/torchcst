@@ -1,6 +1,7 @@
 """Pure kernel declarations and compositional presets."""
 
 from . import presets
+from .fourier_period import IntegerFourierPeriodSpec
 from .normalization import NormalizationSpec
 from .options import KernelOptions
 from .parameterizations import (
@@ -15,6 +16,7 @@ from .parameterizations import (
 from .profiles import (
     BiweightSpec,
     DyadicFourierSpec,
+    FourierPeakSpec,
     GaussianSpec,
     ProfileSpec,
     QuadraticBSplineSpec,
@@ -43,9 +45,11 @@ __all__ = [
     "DirectAmpWidthSpec",
     "DyadicFourierSpec",
     "FixedWidthSpec",
+    "FourierPeakSpec",
     "FourierProductKernelSpec",
     "FourierTileSupportSpec",
     "GaussianSpec",
+    "IntegerFourierPeriodSpec",
     "KaiserSquareSpec",
     "KernelOptions",
     "KernelSpec",

@@ -11,6 +11,8 @@ class ProfileSpec:
     instead declares a function of angle and relative width. MaternMixtureSpec
     uses physical periodic displacement and adjacent widths with decay sigma².
     DyadicFourierSpec uses physical distance and sigma with a declared minimum L.
+    FourierPeakSpec uses phase and relative effective half-width I/L; its
+    mathematical period binding is separate from the shape declaration.
 
     Bandwidth, center coordinates and normalization belong to separate
     declarations. No tensor evaluation methods belong on this type.
