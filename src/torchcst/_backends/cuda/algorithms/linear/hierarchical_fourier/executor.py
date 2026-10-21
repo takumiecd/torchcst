@@ -562,12 +562,17 @@ def _reconstruct(c, spec, tab, y):
 class _Apply(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, p, spec, recipe, tab):
+        original, atom_order = None, None
+        if recipe.sort_atoms:
+            original = p
+            atom_order = torch.argsort(p[:, 3], stable=True)
+            p = p.index_select(0, atom_order)
         routes = _routes(p, spec, recipe, tab)
         demand = _demand(p, spec, recipe, tab, routes)
         z = _moments(x, spec, tab, demand, 1)
         y = x.new_zeros((len(x), spec.size))
         c = x.new_zeros(z.shape)
-        saved = [x, p, demand, routes]
+        saved = [x, p, demand, routes, original, atom_order]
         records = []
         for start in range(0, len(p), recipe.atom_chunk):
             pc = p[start : start + recipe.atom_chunk]
@@ -642,6 +647,12 @@ class _Apply(torch.autograd.Function):
                 enable_fp_fusion=False,
             )
         _reconstruct(c, spec, tab, dx)
+        if saved[5] is not None:
+            # The permutation is bijective: no atomic atom-gradient reduction.
+            # Saving original P also enforces its normal Tensor version check.
+            unpermuted = torch.empty_like(dp)
+            unpermuted.index_copy_(0, saved[5], dp)
+            dp = unpermuted
         return dx, dp, None, None, None
 
 

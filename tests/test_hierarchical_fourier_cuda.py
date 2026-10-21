@@ -27,7 +27,15 @@ pytestmark = pytest.mark.skipif(
     ],
 )
 def test_centered_support_dynamic_width_input_and_all_gradients(
-    modes, strategy, cached, table, grouped, reuse, moment_policy, sample_cache=0
+    modes,
+    strategy,
+    cached,
+    table,
+    grouped,
+    reuse,
+    moment_policy,
+    sample_cache=0,
+    sort_atoms=False,
 ):
     from benchmarks.cuda.linear.hierarchical_fourier import independent_gate
     from torchcst._backends.cuda.algorithms.linear.hierarchical_fourier.contract import (
@@ -53,6 +61,7 @@ def test_centered_support_dynamic_width_input_and_all_gradients(
             reuse=reuse,
             moment_policy=moment_policy,
             sample_cache=sample_cache,
+            sort_atoms=sort_atoms,
         )
         p = torch.tensor(
             [
@@ -79,6 +88,8 @@ def test_centered_support_dynamic_width_input_and_all_gradients(
             if step:
                 with torch.no_grad():
                     p[:, 3].add_(0.13)
+                    if sort_atoms:
+                        p[0, 3].add_(5.0)
                     p[:, 1:3].add_(0.013)
                     x.add_(0.007)
             y = apply(x, p, spec, recipe)
@@ -92,7 +103,8 @@ def test_centered_support_dynamic_width_input_and_all_gradients(
 
 
 @pytest.mark.parametrize("reuse", ["none", "h", "all", "chunk"])
-def test_saved_forward_parameter_version_is_checked(reuse):
+@pytest.mark.parametrize("sort_atoms", [False, True])
+def test_saved_forward_parameter_version_is_checked(reuse, sort_atoms):
     from torchcst._backends.cuda.algorithms.linear.hierarchical_fourier.contract import (
         FourierLinearSpec,
         FourierRecipe,
@@ -259,4 +271,20 @@ def test_coefficient_norm_preserves_discrete_l2_and_all_gradients(
         coefficient_norm=True,
         sample_cache=sample_cache,
         norm_warps=norm_warps,
+    )
+
+
+@pytest.mark.parametrize("modes", [4, 8])
+@pytest.mark.parametrize("strategy", ["direct", "shared"])
+def test_width_permutation_preserves_input_and_all_atom_gradients(modes, strategy):
+    test_centered_support_dynamic_width_input_and_all_gradients(
+        modes,
+        strategy,
+        True,
+        True,
+        True,
+        "h",
+        "hierarchical",
+        sample_cache=512,
+        sort_atoms=True,
     )

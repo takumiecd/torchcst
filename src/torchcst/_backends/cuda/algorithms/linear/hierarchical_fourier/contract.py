@@ -45,6 +45,7 @@ class FourierLinearSpec:
 
 @dataclass(frozen=True)
 class FourierRecipe:
+    sort_atoms: bool = False
     strategy: str = "shared"
     atom_chunk: int = 4096
     minimum_sites: int = 64
