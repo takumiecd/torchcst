@@ -193,6 +193,7 @@ def _metadata(args, run):
         Path(reference.__file__),
         Path(__file__).with_name("fixtures.py"),
         Path(__file__).with_name("bspline.py"),
+        Path(__file__).with_name("hierarchical_fourier.py"),
         Path(__file__).with_name("check_normalized.py"),
         Path(__file__).with_name("manifest.py"),
         Path(__file__).with_name("local_product.py"),
