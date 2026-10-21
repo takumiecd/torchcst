@@ -3,6 +3,8 @@
 branch: `kernel/hierarchical-fourier-tiles`。
 shapeと階層の基礎は[CPU確認](hierarchical-fourier-range10-20261021.ja.md)。
 この実装は研究用Algorithmであり、公開CSTLinear dispatcherの採用ではない。
+後続の切り分け・ブロック化・値の再利用の実測は
+[再利用の研究記録](hierarchical-fourier-reuse-20261021.ja.md)に記録する。
 
 ## 数学と今回の実行契約
 
