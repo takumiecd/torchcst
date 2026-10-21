@@ -50,10 +50,13 @@ class FourierRecipe:
     minimum_sites: int = 64
     width_cutoff: float = 2.0
     native_cache: bool = False
+    table_coefficients: bool = False
 
     def __post_init__(self):
         if type(self.native_cache) is not bool:
             raise ValueError("native_cache must be bool")
+        if type(self.table_coefficients) is not bool:
+            raise ValueError("table_coefficients must be bool")
         if self.strategy not in ("shared", "direct"):
             raise ValueError("strategy must be shared or direct")
         if type(self.atom_chunk) is not int or self.atom_chunk not in (

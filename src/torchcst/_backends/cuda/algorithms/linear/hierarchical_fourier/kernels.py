@@ -33,6 +33,9 @@ def prepare(
     KMAX: tl.constexpr,
     CUTOFF: tl.constexpr,
     SHARED: tl.constexpr,
+    Fit=None,
+    DEGREE: tl.constexpr = 0,
+    QLO: tl.constexpr = 0.0,
 ):
     a = tl.program_id(0)
     logit = tl.load(P + a * 4 + 3).to(tl.float64)
@@ -77,43 +80,59 @@ def prepare(
     outi = tl.full((F,), 0.0, tl.float64)
     if (weight > 0) | (wi != 0):
         q = width / length
-        z = 3.141592653589793 * q * nmode
-        small = tl.abs(z) < 4
-        t = tl.where(small, z, 0.0)
-        term = tl.full((F,), 256 / 315, tl.float64)
-        integ, prime = term, tl.full((F,), 0, tl.float64)
-        for m in tl.static_range(20):
-            term *= -t * t / ((2 * m + 2) * (2 * m + 11))
-            integ += term
-            prime += (2 * m + 2) * term
-        v = tl.where(small, 4.0, z)
-        v2 = v * v
-        ss, cc = lib.sin(v), lib.cos(v)
-        large = (
-            768
-            * ((105 - 45 * v2 + v2 * v2) * ss - (105 * v - 10 * v * v2) * cc)
-            / (v * v * v * v * v * v * v * v * v)
-        )
-        largep = (
-            -768
-            * (
-                (945 - 420 * v2 + 15 * v2 * v2) * ss
-                - (945 * v - 105 * v * v2 + v * v2 * v2) * cc
+        if DEGREE:
+            t = (2 * q - 1 - QLO) / (1 - QLO)
+            b1 = tl.full((F,), 0.0, tl.float64)
+            b2 = tl.full((F,), 0.0, tl.float64)
+            d1 = tl.full((F,), 0.0, tl.float64)
+            d2 = tl.full((F,), 0.0, tl.float64)
+            for i in range(DEGREE - 1, 0, -1):
+                coefficient = tl.load(Fit + i * (M + 1) + nmode, nmode <= M, 0)
+                nb = coefficient + 2 * t * b1 - b2
+                nd = 2 * b1 + 2 * t * d1 - d2
+                b2, b1 = b1, nb
+                d2, d1 = d1, nd
+            first = tl.load(Fit + nmode, nmode <= M, 0)
+            b = first + t * b1 - b2
+            bq = (b1 + t * d1 - d2) * 2 / (1 - QLO)
+        else:
+            z = 3.141592653589793 * q * nmode
+            small = tl.abs(z) < 4
+            t = tl.where(small, z, 0.0)
+            term = tl.full((F,), 256 / 315, tl.float64)
+            integ, prime = term, tl.full((F,), 0, tl.float64)
+            for m in tl.static_range(20):
+                term *= -t * t / ((2 * m + 2) * (2 * m + 11))
+                integ += term
+                prime += (2 * m + 2) * term
+            v = tl.where(small, 4.0, z)
+            v2 = v * v
+            ss, cc = lib.sin(v), lib.cos(v)
+            large = (
+                768
+                * ((105 - 45 * v2 + v2 * v2) * ss - (105 * v - 10 * v * v2) * cc)
+                / (v * v * v * v * v * v * v * v * v)
             )
-            / (v * v * v * v * v * v * v * v * v)
-        )
-        integ, prime = tl.where(small, integ, large), tl.where(small, prime, largep)
-        factor = tl.where(nmode == 0, 0.5, 1.0)
-        raw = q * integ * factor
-        rawq = (integ + prime) * factor
-        mat = tl.load(
-            Matrix + nmode[:, None] * (M + 1) + nmode[None, :],
-            (nmode[:, None] <= M) & (nmode[None, :] <= M),
-            0,
-        )
-        off = tl.load(Offset + nmode, nmode <= M, 0)
-        b = tl.sum(raw[None, :] * mat, 1) + off
-        bq = tl.sum(rawq[None, :] * mat, 1)
+            largep = (
+                -768
+                * (
+                    (945 - 420 * v2 + 15 * v2 * v2) * ss
+                    - (945 * v - 105 * v * v2 + v * v2 * v2) * cc
+                )
+                / (v * v * v * v * v * v * v * v * v)
+            )
+            integ, prime = tl.where(small, integ, large), tl.where(small, prime, largep)
+            factor = tl.where(nmode == 0, 0.5, 1.0)
+            raw = q * integ * factor
+            rawq = (integ + prime) * factor
+            mat = tl.load(
+                Matrix + nmode[:, None] * (M + 1) + nmode[None, :],
+                (nmode[:, None] <= M) & (nmode[None, :] <= M),
+                0,
+            )
+            off = tl.load(Offset + nmode, nmode <= M, 0)
+            b = tl.sum(raw[None, :] * mat, 1) + off
+            bq = tl.sum(rawq[None, :] * mat, 1)
         outb = b * weight
         outi = bq / length * weight + b * wi
     addr = (a * 4 + c) * (M + 1) + nmode

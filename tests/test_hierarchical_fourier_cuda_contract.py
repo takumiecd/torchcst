@@ -117,12 +117,13 @@ def test_benchmark_catalog_and_case_snapshot_roundtrip():
 @pytest.mark.parametrize("modes", [4, 8])
 def test_benchmark_contains_nonempty_floor_and_empty_atom(modes):
     from pathlib import Path
-    from benchmarks.cuda.linear.manifest import load_run
+
     from benchmarks.cuda.linear.hierarchical_fourier import (
-        initialize,
         _axis,
         fixture_operator,
+        initialize,
     )
+    from benchmarks.cuda.linear.manifest import load_run
 
     root = Path(__file__).resolve().parents[1] / "benchmarks/cuda/linear"
     case = load_run(
@@ -135,3 +136,28 @@ def test_benchmark_contains_nonempty_floor_and_empty_atom(modes):
     d = u.norm(dim=0) * v.norm(dim=0)
     assert 0 < float(d[0]) < 1e-6
     assert float(d[1]) == 0.0
+
+
+@pytest.mark.parametrize("modes", [4, 8])
+def test_continuous_coefficient_table_value_and_width_derivative(modes):
+    from torchcst import FourierPeakSpec
+    from torchcst._backends.cuda.algorithms.linear.hierarchical_fourier.executor import (
+        coefficient_table,
+    )
+    from torchcst._backends.torch.profiles.fourier_peak import coefficients
+
+    table, lo = coefficient_table(modes)
+    q = torch.linspace(lo + 1e-12, 1 - 1e-12, 10001, dtype=torch.float64)
+    t = (2 * q - 1 - lo) / (1 - lo)
+    z = torch.zeros(len(q), modes + 1, dtype=torch.float64)
+    b1, b2, d1, d2 = z.clone(), z.clone(), z.clone(), z.clone()
+    for i in range(len(table) - 1, 0, -1):
+        nb = table[i] + 2 * t[:, None] * b1 - b2
+        nd = 2 * b1 + 2 * t[:, None] * d1 - d2
+        b2, b1 = b1, nb
+        d2, d1 = d1, nd
+    b = table[0] + t[:, None] * b1 - b2
+    db = (b1 + t[:, None] * d1 - d2) * 2 / (1 - lo)
+    expected, derivative = coefficients(FourierPeakSpec(modes=modes), q)
+    torch.testing.assert_close(b, expected, atol=1e-12, rtol=0)
+    torch.testing.assert_close(db, derivative, atol=5e-11, rtol=0)

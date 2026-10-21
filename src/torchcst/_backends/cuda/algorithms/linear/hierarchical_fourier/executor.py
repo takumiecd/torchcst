@@ -13,6 +13,30 @@ from torch.autograd.function import once_differentiable
 from .contract import FourierLinearSpec, FourierRecipe
 
 
+@cache
+def coefficient_table(modes):
+    """Continuous-q Clenshaw coefficients; no width snapping or atom sharing.
+
+    Nodes use the original FP64 transform/projection. CPU tests compare value
+    and analytic derivative on 10001 q values before CUDA qualification.
+    """
+    from torchcst import FourierPeakSpec
+    from torchcst._backends.torch.profiles.fourier_peak import coefficients
+
+    degree = 24 if modes == 4 else 32
+    lo = 0.69 if modes == 4 else 0.29
+    theta = (torch.arange(degree, dtype=torch.float64) + 0.5) * math.pi / degree
+    q = (1 + lo) / 2 + (1 - lo) / 2 * theta.cos()
+    b, _ = coefficients(FourierPeakSpec(modes=modes), q)
+    table = (
+        (2 / degree)
+        * torch.cos(torch.arange(degree, dtype=torch.float64)[:, None] * theta)
+        @ b
+    )
+    table[0] /= 2
+    return table.contiguous(), lo
+
+
 def bank_families(spec, recipe):
     """Conservative finite bank set over the declared bounded continuous I."""
     p = spec.period
@@ -55,6 +79,7 @@ def tables(spec, recipe, device):
         angle = x[:, None] * n * math.pi / (k * spec.period.minimum_half_period)
         basis.append(torch.cat((angle.cos(), angle[:, 1:].sin()), -1).float())
     r = 2 * spec.modes + 1
+    fit, qlo = coefficient_table(spec.modes)
     phi = torch.stack(basis) if basis else torch.empty(0, spec.size, r)
     return {
         "matrix": matrix.to(device),
@@ -64,11 +89,14 @@ def tables(spec, recipe, device):
         "nodes": torch.tensor(nodes, dtype=torch.int32, device=device).reshape(-1, 3),
         "phi": phi.to(device),
         "kmax": kmax,
+        "fit": fit.to(device),
+        "qlo": qlo,
         "static_bytes": sum(
             t.numel() * t.element_size() for t in (matrix, offset, lookup, phi)
         )
         + 8 * len(banks)
-        + 12 * len(nodes),
+        + 12 * len(nodes)
+        + fit.numel() * fit.element_size(),
     }
 
 
@@ -107,6 +135,9 @@ def _prepare(p, spec, recipe, tab):
         tab["kmax"],
         recipe.width_cutoff,
         recipe.strategy == "shared",
+        Fit=tab["fit"],
+        DEGREE=len(tab["fit"]) if recipe.table_coefficients else 0,
+        QLO=tab["qlo"],
         num_warps=4,
         enable_fp_fusion=False,
     )
