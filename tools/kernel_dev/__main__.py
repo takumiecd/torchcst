@@ -24,6 +24,7 @@ from benchmarks.cuda.linear.manifest import (
 
 ROOT = Path(__file__).resolve().parents[2]
 GPU_SUITES = {
+    "hierarchical-fourier": ("tests/test_hierarchical_fourier_cuda.py",),
     "sphere-polar": (
         "tests/test_sphere_polar_blocked.py",
         "tests/test_sphere_baseline.py",

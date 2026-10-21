@@ -167,8 +167,13 @@ def correctness(args, run, model_type):
         for a, b in zip((dx, dp), repeated):
             check(a, b, 4e-4)
     # Capture and replay with explicit live changes crossing the routing range.
+    # Retained eager graphs own AccumulateGrad nodes on the default stream.
+    # Release them before creating those nodes on the capture stream.
+    del y, dx, dp, repeated, truth, tx, tp
     model.zero_grad(set_to_none=True)
     x.grad = None
+    gc.collect()
+    torch.cuda.synchronize()
     stream = torch.cuda.Stream()
     stream.wait_stream(torch.cuda.current_stream())
     with torch.cuda.stream(stream):
