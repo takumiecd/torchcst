@@ -11,7 +11,8 @@
           "strategy": "direct",
           "atom_chunk": 4096,
           "minimum_sites": 64,
-          "width_cutoff": 2.0
+          "width_cutoff": 2.0,
+          "native_cache": false
         }
       }
     },
@@ -25,7 +26,8 @@
           "strategy": "shared",
           "atom_chunk": 4096,
           "minimum_sites": 32,
-          "width_cutoff": 2.0
+          "width_cutoff": 2.0,
+          "native_cache": false
         }
       }
     },
@@ -39,7 +41,8 @@
           "strategy": "shared",
           "atom_chunk": 4096,
           "minimum_sites": 64,
-          "width_cutoff": 2.0
+          "width_cutoff": 2.0,
+          "native_cache": false
         }
       }
     },
@@ -53,7 +56,8 @@
           "strategy": "shared",
           "atom_chunk": 4096,
           "minimum_sites": 128,
-          "width_cutoff": 2.0
+          "width_cutoff": 2.0,
+          "native_cache": false
         }
       }
     },
@@ -67,7 +71,8 @@
           "strategy": "shared",
           "atom_chunk": 1024,
           "minimum_sites": 64,
-          "width_cutoff": 2.0
+          "width_cutoff": 2.0,
+          "native_cache": false
         }
       }
     },
