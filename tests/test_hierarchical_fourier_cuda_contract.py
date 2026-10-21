@@ -37,6 +37,10 @@ def test_metadata_roundtrip_and_rejections():
         {"atom_chunk": True},
         {"minimum_sites": 2},
         {"width_cutoff": float("nan")},
+        {"atom_block": True},
+        {"batch_block": 3},
+        {"reuse": "stale"},
+        {"moment_policy": "stale"},
     ):
         with pytest.raises(ValueError):
             FourierRecipe(**kw)

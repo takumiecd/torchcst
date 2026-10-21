@@ -82,6 +82,7 @@ def tables(spec, recipe, device):
     fit, qlo = coefficient_table(spec.modes)
     phi = torch.stack(basis) if basis else torch.empty(0, spec.size, r)
     return {
+        "recipe": recipe,
         "matrix": matrix.to(device),
         "offset": offset.to(device),
         "lookup": lookup.to(device),
@@ -218,6 +219,41 @@ def _contract(x, p, prepared, spec, tab, z, axis, grad):
     b, a = len(x), len(p)
     r = 2 * spec.modes + 1
     h = x.new_empty((b, a, 3))
+    if tab["recipe"].atom_block > 1 or tab["recipe"].batch_block > 1:
+        from . import grouped_kernels as grouped
+
+        recipe = tab["recipe"]
+        grouped.contract_grouped[
+            (tr.cdiv(a, recipe.atom_block), tr.cdiv(b, recipe.batch_block))
+        ](
+            x,
+            p,
+            meta,
+            co,
+            ci,
+            beta,
+            tab["banks"],
+            z,
+            h,
+            native,
+            bounds,
+            b,
+            spec.size,
+            a,
+            spec.modes,
+            r,
+            len(tab["nodes"]),
+            axis,
+            grad,
+            recipe.atom_block,
+            recipe.batch_block,
+            32,
+            tr.next_power_of_2(r),
+            cap,
+            num_warps=4,
+            enable_fp_fusion=False,
+        )
+        return h
     kernel = k.contract_cached if cap else k.contract
     buffers = (
         x,
@@ -353,13 +389,22 @@ class _Apply(torch.autograd.Function):
         z = _moments(x, spec, tab)
         y = x.new_zeros((len(x), spec.size))
         c = x.new_zeros(z.shape)
+        saved = [x, p]
+        records = []
         for start in range(0, len(p), recipe.atom_chunk):
             pc = p[start : start + recipe.atom_chunk]
             prep = _prepare(pc, spec, recipe, tab)
-            h = _contract(x, pc, prep, spec, tab, z, 1, False)
+            h = _contract(x, pc, prep, spec, tab, z, 1, recipe.reuse != "none")
             _deposit(h, pc, prep, spec, tab, y, c, 0)
+            if recipe.reuse != "none":
+                first = len(saved)
+                if recipe.reuse == "all":
+                    saved.extend(prep[:9])
+                saved.append(h)
+                records.append((first, prep[9]))
         _reconstruct(c, spec, tab, y)
-        ctx.save_for_backward(x, p)
+        ctx.save_for_backward(*saved)
+        ctx.records = records
         ctx.spec, ctx.recipe, ctx.tab = spec, recipe, tab
         return y
 
@@ -370,7 +415,10 @@ class _Apply(torch.autograd.Function):
 
         from . import kernels as k
 
-        x, p = ctx.saved_tensors
+        saved = (
+            ctx.saved_tensors
+        )  # Checks P/X versions before using saved intermediates.
+        x, p = saved[:2]
         spec, recipe, tab = ctx.spec, ctx.recipe, ctx.tab
         dy = dy.contiguous()
         zx, zg = _moments(x, spec, tab), _moments(dy, spec, tab)
@@ -379,8 +427,17 @@ class _Apply(torch.autograd.Function):
         c = x.new_zeros(zx.shape)
         for start in range(0, len(p), recipe.atom_chunk):
             pc = p[start : start + recipe.atom_chunk]
-            prep = _prepare(pc, spec, recipe, tab)
-            h = _contract(x, pc, prep, spec, tab, zx, 1, True)
+            if recipe.reuse == "none":
+                prep = _prepare(pc, spec, recipe, tab)
+                h = _contract(x, pc, prep, spec, tab, zx, 1, True)
+            else:
+                first, cap = ctx.records[start // recipe.atom_chunk]
+                if recipe.reuse == "all":
+                    prep = (*saved[first : first + 9], cap)
+                    h = saved[first + 9]
+                else:
+                    prep = _prepare(pc, spec, recipe, tab)
+                    h = saved[first]
             g = _contract(dy, pc, prep, spec, tab, zg, 0, True)
             _deposit(g, pc, prep, spec, tab, dx, c, 1)
             k.vjp[(len(pc),)](

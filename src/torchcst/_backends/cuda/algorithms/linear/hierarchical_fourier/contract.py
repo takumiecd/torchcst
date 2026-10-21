@@ -51,8 +51,20 @@ class FourierRecipe:
     width_cutoff: float = 2.0
     native_cache: bool = False
     table_coefficients: bool = False
+    atom_block: int = 1
+    batch_block: int = 1
+    reuse: str = "none"
+    moment_policy: str = "all"
 
     def __post_init__(self):
+        if type(self.atom_block) is not int or self.atom_block not in (1, 4):
+            raise ValueError("atom_block must be 1 or 4")
+        if type(self.batch_block) is not int or self.batch_block not in (1, 4, 8):
+            raise ValueError("batch_block must be 1,4,8")
+        if self.reuse not in ("none", "h", "all"):
+            raise ValueError("reuse must be none,h,all")
+        if self.moment_policy not in ("all", "demand", "hierarchical"):
+            raise ValueError("invalid moment policy")
         if type(self.native_cache) is not bool:
             raise ValueError("native_cache must be bool")
         if type(self.table_coefficients) is not bool:

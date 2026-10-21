@@ -12,9 +12,19 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.mark.parametrize("modes", [4, 8])
 @pytest.mark.parametrize("strategy", ["direct", "shared"])
-@pytest.mark.parametrize("cached, table", [(False, False), (True, False), (True, True)])
+@pytest.mark.parametrize(
+    "cached, table, grouped, reuse",
+    [
+        (False, False, False, "none"),
+        (True, False, False, "none"),
+        (True, True, False, "none"),
+        (True, True, True, "none"),
+        (True, True, True, "h"),
+        (True, True, True, "all"),
+    ],
+)
 def test_centered_support_dynamic_width_input_and_all_gradients(
-    modes, strategy, cached, table
+    modes, strategy, cached, table, grouped, reuse
 ):
     from benchmarks.cuda.linear.hierarchical_fourier import independent_gate
     from torchcst._backends.cuda.algorithms.linear.hierarchical_fourier.contract import (
@@ -35,6 +45,9 @@ def test_centered_support_dynamic_width_input_and_all_gradients(
             minimum_sites=32 if modes == 4 else 64,
             native_cache=cached,
             table_coefficients=table,
+            atom_block=4 if grouped else 1,
+            batch_block=4 if grouped else 1,
+            reuse=reuse,
         )
         p = torch.tensor(
             [
@@ -73,7 +86,8 @@ def test_centered_support_dynamic_width_input_and_all_gradients(
         torch.backends.cuda.matmul.allow_tf32 = previous
 
 
-def test_saved_forward_parameter_version_is_checked():
+@pytest.mark.parametrize("reuse", ["none", "h", "all"])
+def test_saved_forward_parameter_version_is_checked(reuse):
     from torchcst._backends.cuda.algorithms.linear.hierarchical_fourier.contract import (
         FourierLinearSpec,
         FourierRecipe,
@@ -87,7 +101,9 @@ def test_saved_forward_parameter_version_is_checked():
     try:
         p = torch.tensor([[0.5, 3.0, 2.0, -3.0]], device="cuda", requires_grad=True)
         x = torch.randn(2, 64, device="cuda", requires_grad=True)
-        y = apply(x, p, FourierLinearSpec(64), FourierRecipe(strategy="direct"))
+        y = apply(
+            x, p, FourierLinearSpec(64), FourierRecipe(strategy="direct", reuse=reuse)
+        )
         with torch.no_grad():
             p.add_(0.001)
         with pytest.raises(RuntimeError, match="modified by an inplace operation"):
