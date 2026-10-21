@@ -100,4 +100,86 @@ python -m benchmarks.research.run_scale_matched_cosine_cpu \
   --output output/scale-matched-cosine-cpu-20261021
 ```
 
-結果は次の検証済みcheckpointで追記する。形のoctave内変化も失敗条件として残す。
+## CPU結果
+
+測定source `657345929815c85ad7cba7ec45d13c8e110af7d4`、Apple M4 Pro、
+NumPy/Python、BLAS thread1。原本・図・source snapshot・hash照合はignored
+`output/scale-matched-cosine-cpu-20261021/`に保存。
+Ruff pass、新規18test pass、CPU suite **2098 passed / 5651 skipped / 18 warnings (41.76s)**。
+skipをGPU確認と数えない。
+
+| 指標 | M4 | M8 |
+| --- | ---: | ---: |
+| rho | .1236925020 | .09785252465 |
+| 校正後の連続幅の最大相対誤差 | 7.58e-10 | 8.38e-10 |
+| 幅微分の最大相対誤差 | 7.44e-8 | 8.25e-8 |
+| octave内の標準化形状変化・最大relL2 | **20.06%** | **18.48%** |
+| 3sigma外の振幅 / 中心peak・最大 | 2.683% | 2.420% |
+| 3sigma外のL2エネルギー割合・最大 | .02028% | .02009% |
+| 実支持半径 / sigma・最大 | 5.392 | 6.817 |
+| spacing .1、sigma .1でのsampled幅誤差・最大 | **1.718%** | **.07892%** |
+| spacing .1、sigma .3でのsampled幅誤差・最大 | .04192% | .0006842% |
+
+形状変化は中心peak1の`q(sigma*u)`をt=0の形と比較。L2正規化済み振幅の誤差ではない。
+非負・片側単調は全129phaseで違反0。連続幅の表は513phase、sampled幅は中心17phase。
+sigma10まで有限格子上で検査しただけであり、10が数式上の上限ではない。
+大きいsigmaは新しい尺度とprefix周波数を必要とする。
+
+Lと2Lを**同じ切替sigma**で強制評価した場合、正規化値・mu微分・sigma微分は
+検査した全点で差0。左右にsigma*1e-7ずつずらした通常評価では、
+値relL2の変化<=1.69e-7、微分の変化<=9.21e-7で、有限のsigma変化に追従している。
+
+42動的状態で、直接式対Fourier式の最大絶対差は値5.02e-14、mu微分7.38e-14、
+sigma微分2.93e-12。共有Hとそのpullback対直接は最大1.53e-9。
+有限差分relL2はmu2.17e-10、sigma8.10e-10。
+L2geometryの相殺により、Eの最大差1.27e-9、Es=sum(q*q_sigma)の差2.57e-9が残る。
+FP64の有限サンプル検査であり、FP32、全CSTのY/dX/全atom勾配のgateではない。
+
+### 構築・正規化を含む軸別CPU時間と保存
+
+各step3回の中央値を取り、さらに動的3stepの中央値を下表に示す。単位ms。
+prefix容量は3step中の最大、complex128配列のpayloadでありCPU peak/RSSではない。
+
+| M | tile点数 | atom | 全直接 | 直接/共有の混在 | prefix MiB |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 4 | 32 | 16 | 1.038 | 9.578 | 1.627 |
+| 4 | 32 | 128 | 8.615 | 74.254 | 1.627 |
+| 4 | 64 | 16 | 1.050 | 6.318 | 1.376 |
+| 4 | 64 | 128 | 8.747 | 60.024 | 1.376 |
+| 4 | 128 | 16 | 1.041 | 5.464 | 1.126 |
+| 4 | 128 | 128 | 8.390 | 38.486 | 1.126 |
+| 8 | 32 | 16 | 1.100 | 16.579 | 3.128 |
+| 8 | 32 | 128 | 9.349 | 132.376 | 3.128 |
+| 8 | 64 | 16 | 1.180 | 11.011 | 2.127 |
+| 8 | 64 | 128 | 9.343 | 103.520 | 2.628 |
+| 8 | 128 | 16 | 1.173 | 9.111 | 2.127 |
+| 8 | 128 | 128 | 9.278 | 64.569 | 2.127 |
+
+原本fixture hashでM/tile間のX・mu・sigmaを一致させた。
+atom128では周波数prefixの構築本数を、共有atomごとに独立構築する場合から
+95.7〜97.3%削減した。それでもPythonの係数・geometry・L2処理をatomごとに行うため、
+この参照では共有版が速くなる損益分岐は観測できなかった。
+tileを広げると共有に回るatomが減るheuristicの影響もある。
+tile32²等の2次元tile集約を実装して測った値ではない。
+
+prefix保存は周波数本数Fに対し16*batch*(N+1)*F bytes。
+両経路の返却H/Hmu/Hsigmaは3*batch*atom*8 bytes（atom128で24KiB）、
+共通Xは64KiB。直接参照は3*Nのprofile配列（24KiB）等を一時生成する。
+校正tableはMごとに520bytesで、atom/sigmaごとのtable保存は不要。
+配列一時値やPythonオブジェクトを含むpeakメモリをこの算式で代用しない。
+
+計算量は共有前処理O(batch*N*F)、atomごとの縮約O(batch*M)、
+L2は小さい係数畳み込みO(M²)。直接の数学的な支持限定評価はO(batch*S)にできるが、
+今回の直接参照は長さNの配列と積を使うので、その部分はO(batch*N)。
+このCPU時間をGPU dispatcherの採用根拠やDenseとの速度比較に使わない。
+
+## 判断
+
+**切替点での形・勾配の厳密一致とsigma校正は成立したが、提案全体は未採用。**
+元の正係数cosine多項式はdyadic幅を覆えず、緩和した2piece方式も
+octave内の形状変化18〜20%とサイトprefix容量を残した。
+単一Fourierによるtile全体の集約だけで、厳密な支持半減・全区間一致も同時に満たす、
+という条件は成立していない。次の設計では、形状変化の許容値か支持端の微小裾を
+明示してから数学的な自由度を決める必要がある。この候補のGPU最適化は開始しない。
+
+![shape and seam](../../../output/scale-matched-cosine-cpu-20261021/scale-matched-shape.png)
