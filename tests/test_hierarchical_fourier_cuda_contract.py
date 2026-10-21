@@ -112,3 +112,26 @@ def test_benchmark_catalog_and_case_snapshot_roundtrip():
         run = load_run(path, root / "plans-hierarchical-fourier.json")
         assert decode_snapshot(run.snapshot()) == run
         assert measurement_operator(asdict(run.case)).modes == int(run.case.profile[1])
+
+
+@pytest.mark.parametrize("modes", [4, 8])
+def test_benchmark_contains_nonempty_floor_and_empty_atom(modes):
+    from pathlib import Path
+    from benchmarks.cuda.linear.manifest import load_run
+    from benchmarks.cuda.linear.hierarchical_fourier import (
+        initialize,
+        _axis,
+        fixture_operator,
+    )
+
+    root = Path(__file__).resolve().parents[1] / "benchmarks/cuda/linear"
+    case = load_run(
+        root / "cases" / f"hierarchical-fourier-m{modes}-mixed-256-a512.json",
+        root / "plans-hierarchical-fourier.json",
+    ).case
+    p = initialize(case).double()
+    u = _axis(p[2:4], fixture_operator(case), 0)
+    v = _axis(p[2:4], fixture_operator(case), 1)
+    d = u.norm(dim=0) * v.norm(dim=0)
+    assert 0 < float(d[0]) < 1e-6
+    assert float(d[1]) == 0.0

@@ -39,8 +39,17 @@ def initialize(case):
     # nonempty and empty profiles. No oracle atoms are sampled or omitted.
     p[0, 0] = 0.0
     p[1, 1:3] = -0.09
-    p[2, 1:3] = -0.27
-    p[3, 1:3] = case.size * 0.1 + 20
+    # I=.105 is in the base level and before its next period blend in BOTH
+    # declared M4/M8 policies. Put the sole supported site near that endpoint.
+    period = fixture_operator(case).period
+    width = 0.105
+    length = (
+        math.ceil((width + period.minimum_tile_width / 2) / period.minimum_half_period)
+        * period.minimum_half_period
+    )
+    p[2, 1:3] = -0.99 * length
+    p[2, 3] = math.log((width - 0.1) / (10 - width))
+    p[3, 1:3] = case.size * 0.1 + 200
     return p
 
 
@@ -56,7 +65,7 @@ def _axis(p, spec, axis):
     ]
     coarse = torch.tensor(coarse, device=p.device)
     fine = (coarse - 1).clamp_min(0)
-    th = a0 * 2.0**coarse.double()
+    th = a0 * 2.0 ** coarse.double()
     interval = torch.where(coarse > 0, 0.15 * th, 1.0)
     z = ((width - th) / interval).clamp(0, 1)
     h = 6 * z**5 - 15 * z**4 + 10 * z**3
@@ -95,8 +104,8 @@ def _axis(p, spec, axis):
     r = sites[:, None] - p[None, :, axis + 1]
     total = torch.zeros_like(r)
     for lev, outer in ((fine, 1 - h), (coarse, h)):
-        tile = per.minimum_tile_width * 2.0**lev.double()
-        step = per.minimum_half_period * 2.0**lev.double()
+        tile = per.minimum_tile_width * 2.0 ** lev.double()
+        step = per.minimum_half_period * 2.0 ** lev.double()
         low = torch.ceil((width.detach() + tile / 2) / step) * step
         z = ((width - low + tile / 2 + 0.25 * step) / (0.25 * step)).clamp(0, 1)
         w = 6 * z**5 - 15 * z**4 + 10 * z**3
