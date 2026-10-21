@@ -68,7 +68,7 @@ def prepare(x, mus, sigmas):
 def evaluate(x, values, mus, sigmas, block, method, dtype=np.float64):
     state = prepare(x, mus, sigmas)
     out = np.zeros((len(mus), 3, len(values)))
-    input_sites = sum(hi - lo for lo, hi, _ in state)
+    input_sites = int(sum(hi - lo for lo, hi, _ in state))
     if method == "direct":
         for j, (mu, sigma, (lo, hi, n)) in enumerate(zip(mus, sigmas, state)):
             out[j] = normalize(polynomial(x[lo:hi], mu, sigma) @ values[:, lo:hi].T, n)
