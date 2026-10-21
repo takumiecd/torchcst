@@ -298,6 +298,7 @@ class BenchmarkCase:
             "polar_sphere_separable",
             "local_polar_product",
             "quadratic_bspline",
+            "hierarchical_fourier",
             "polar_profile_product",
             "polar_profile_product_strip",
             "polar_profile_product_square_strip",
@@ -319,8 +320,10 @@ class BenchmarkCase:
         elif not self.optimizer.capturable:
             raise ValueError("existing fixtures require capturable AdamW")
         sizes = (
-            (64, 128, 1024, 8192)
-            if self.fixture == "quadratic_bspline"
+            (64, 128, 256, 1024)
+            if self.fixture == "hierarchical_fourier"
+            else (64, 128, 1024, 8192)
+            if self.fixture in ("quadratic_bspline", "hierarchical_fourier")
             else (64, 1024, 2048)
             if self.fixture == "polar_sphere_separable"
             else (1024, 2048)
@@ -367,7 +370,9 @@ class BenchmarkCase:
         if self.seed >= 2**63:
             raise ValueError("seed must be less than 2**63")
         profiles = (
-            ("rho3", "rho8")
+            ("m4-mixed", "m8-mixed", "m4-small", "m8-small", "m4-large", "m8-large")
+            if self.fixture == "hierarchical_fourier"
+            else ("rho3", "rho8")
             if self.fixture == "polar_sphere_separable"
             else (
                 "broad",
@@ -434,7 +439,9 @@ class BenchmarkRun:
         for entry in self.plans:
             algorithm = REGISTRY.validate_plan(entry.plan)
             if algorithm.operation_id != OPERATION or algorithm.semantics_id != (
-                "kernel-atom-sum-v1"
+                "hierarchical-fourier-centered-product-v1"
+                if self.case.fixture == "hierarchical_fourier"
+                else "kernel-atom-sum-v1"
                 if self.case.fixture
                 in (
                     "polar_profile_product",
@@ -973,3 +980,9 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
 )
 
 REGISTRY.register(BSplineBernsteinNodeAlgorithm())
+
+from torchcst._backends.cuda.algorithms.linear.hierarchical_fourier.algorithm import (
+    HierarchicalFourierAlgorithm,
+)
+
+REGISTRY.register(HierarchicalFourierAlgorithm())

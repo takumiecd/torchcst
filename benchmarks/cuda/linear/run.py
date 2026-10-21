@@ -54,6 +54,10 @@ class PlanLinear(nn.Module):
         self.local_state = None
         self.persistent_layout = None
         self.update_binding = None
+        if plan.algorithm_id == "research_cuda_hierarchical_fourier":
+            algorithm = REGISTRY.validate_plan(plan)
+            self.fourier_state = algorithm.create_state(self, recipe=plan.recipe)
+            return
         if plan.algorithm_id in (
             "research_profile_product",
             "research_cuda_quadratic_bspline",
@@ -144,6 +148,20 @@ class PlanLinear(nn.Module):
     algorithm_state = LinearBinding.algorithm_state
 
     def forward(self, x):
+        if self.plan.algorithm_id == "research_cuda_hierarchical_fourier":
+            from torchcst._backends.cuda.algorithms.linear.hierarchical_fourier.algorithm import (
+                FourierContext,
+                FourierInputs,
+            )
+
+            state = self.fourier_state
+            state.context = FourierContext(
+                self.operator, x.device.type, x.dtype, len(x), len(self.p)
+            )
+            support = state.algorithm.supports(state.context, state.recipe)
+            if not support.supported:
+                raise ValueError(support.reasons)
+            return state.algorithm.run(state, FourierInputs(x, self.p))
         flat = x.reshape(-1, self.operator.in_features).contiguous()
         binding = (
             self.product_site
@@ -222,6 +240,10 @@ def _metadata(args, run):
 
 
 def correctness(args, run):
+    if run.case.fixture == "hierarchical_fourier":
+        from .hierarchical_fourier import correctness
+
+        return correctness(args, run, PlanLinear)
     if run.case.fixture == "quadratic_bspline":
         from .bspline import correctness as bspline_check
 
@@ -302,6 +324,10 @@ def correctness(args, run):
 
 
 def measure(args, run):
+    if run.case.fixture == "hierarchical_fourier":
+        from .hierarchical_fourier import measure_case
+
+        return measure_case(args, run, PlanLinear)
     if run.case.fixture == "polar_sphere_separable":
         from .sphere_baseline import measure_case
 

@@ -28,6 +28,10 @@ LOCAL_OPTIMIZER_POLICY = (
 def measurement_operator(case):
     """Rebuild from a validated Case, never from arbitrary serialized types."""
     case = _case({"id": "stored-case", **case})
+    if case.fixture == "hierarchical_fourier":
+        from .hierarchical_fourier import fixture_operator as fourier_operator
+
+        return fourier_operator(case)
     if case.fixture == "quadratic_bspline":
         from .bspline import fixture_operator as bspline_operator
 

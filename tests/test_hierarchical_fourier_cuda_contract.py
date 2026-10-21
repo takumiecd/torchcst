@@ -77,3 +77,38 @@ def test_reference_has_live_width_and_zero_amplitude_derivative(modes):
     assert torch.isfinite(dx).all() and torch.isfinite(dp).all()
     assert dp[0, 0].abs() > 1e-8
     assert dp[1, 3].abs() > 1e-8
+
+
+@pytest.mark.parametrize("modes", [4, 8])
+def test_independent_fixture_oracle_matches_torch_reference(modes):
+    from benchmarks.cuda.linear.hierarchical_fourier import independent_gate
+
+    spec = FourierLinearSpec(64, modes)
+    gen = torch.Generator().manual_seed(41)
+    p = torch.randn(12, 4, generator=gen, dtype=torch.float64)
+    p[:, 1:3] = torch.rand(12, 2, generator=gen, dtype=torch.float64) * 6.3
+    p[0, 1:3] = -0.01
+    p[1, 1:3] = -20
+    p[2, 0] = 0
+    p.requires_grad_()
+    x = torch.randn(3, 64, generator=gen, dtype=torch.float64, requires_grad=True)
+    dy = torch.randn_like(x)
+    y = torch_reference(x, p, spec)
+    dx, dp = torch.autograd.grad(y, (x, p), dy)
+    yy, xx, pp = independent_gate(x, p, dy, spec, chunk=4)
+    for a, b in ((y, yy), (dx, xx), (dp, pp)):
+        torch.testing.assert_close(a, b, atol=2e-10, rtol=2e-9)
+
+
+def test_benchmark_catalog_and_case_snapshot_roundtrip():
+    from dataclasses import asdict
+    from pathlib import Path
+
+    from benchmarks.cuda.linear.manifest import decode_snapshot, load_run
+    from benchmarks.cuda.linear.protocol import measurement_operator
+
+    root = Path(__file__).resolve().parents[1] / "benchmarks/cuda/linear"
+    for path in sorted((root / "cases").glob("hierarchical-fourier-*.json")):
+        run = load_run(path, root / "plans-hierarchical-fourier.json")
+        assert decode_snapshot(run.snapshot()) == run
+        assert measurement_operator(asdict(run.case)).modes == int(run.case.profile[1])
