@@ -162,24 +162,46 @@ def _prepare(p, spec, recipe, tab, routes=None):
         num_warps=4,
         enable_fp_fusion=False,
     )
-    k.norms[(a, 2)](
-        p,
-        meta,
-        co,
-        ci,
-        norm,
-        a,
-        spec.size,
-        m,
-        32 if cap else 128,
-        Native=native,
-        Bounds=bounds,
-        NC=cap,
-        Banks=tab["banks"],
-        BOUNDARY=recipe.boundary_cache,
-        num_warps=1 if cap else 4,
-        enable_fp_fusion=False,
-    )
+    if recipe.coefficient_norm:
+        from .normalization_kernels import hybrid_norms
+
+        hybrid_norms[(a, 2)](
+            p,
+            meta,
+            co,
+            ci,
+            norm,
+            native,
+            bounds,
+            tab["banks"],
+            a,
+            spec.size,
+            m,
+            cap,
+            32,
+            tr.next_power_of_2(m + 1),
+            num_warps=4,
+            enable_fp_fusion=False,
+        )
+    else:
+        k.norms[(a, 2)](
+            p,
+            meta,
+            co,
+            ci,
+            norm,
+            a,
+            spec.size,
+            m,
+            32 if cap else 128,
+            Native=native,
+            Bounds=bounds,
+            NC=cap,
+            Banks=tab["banks"],
+            BOUNDARY=recipe.boundary_cache,
+            num_warps=1 if cap else 4,
+            enable_fp_fusion=False,
+        )
     k.pack[(a, 2)](
         p,
         meta,

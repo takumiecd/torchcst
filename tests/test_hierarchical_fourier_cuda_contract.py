@@ -1,5 +1,6 @@
 """Research declaration and complete bank coverage without importing Triton."""
 
+import math
 from dataclasses import replace
 
 import pytest
@@ -254,3 +255,47 @@ def test_sharing_route_declaration_validation_and_fixture_counts():
         assert (selected <= counts).all() and routes.any()
         rejected = routing_reference(p, spec, replace(recipe, minimum_sharing=10**6))[1]
         assert not rejected.any()
+
+
+@pytest.mark.parametrize("modes", [4, 8])
+def test_discrete_coefficient_norm_matches_sampled_value_and_gradients(modes):
+    from benchmarks.cuda.linear.fourier_sharing import discrete_norm_reference
+    from torchcst import FourierPeakSpec
+    from torchcst._backends.torch.kernels.hierarchical_fourier import values
+
+    spec = FourierLinearSpec(256, modes)
+    p = torch.tensor(
+        [
+            [0.4, 0.011, 8.371, z]
+            for z in (-2.0, -1.0, 0.0, 0.83, 2.0, math.log(6.25 / 3.65))
+        ],
+        dtype=torch.float64,
+        requires_grad=True,
+    )
+    actual = discrete_norm_reference(p, spec)
+    width = 0.1 + 9.9 * p[:, 3].sigmoid()
+    sites = torch.arange(spec.size, dtype=torch.float64) * 0.1
+    expected = []
+    for axis in range(2):
+        f = values(
+            FourierPeakSpec(modes=modes),
+            spec.period,
+            sites,
+            p[:, axis + 1],
+            width,
+            support="centered",
+        )
+        total = f.square().sum(0)
+        (derivative,) = torch.autograd.grad(total.sum(), p, retain_graph=True)
+        sig = p[:, 3].sigmoid()
+        expected.append(
+            torch.stack(
+                (
+                    total,
+                    derivative[:, axis + 1] / 2,
+                    derivative[:, 3] / (2 * 9.9 * sig * (1 - sig)),
+                ),
+                -1,
+            )
+        )
+    torch.testing.assert_close(actual, torch.stack(expected, 1), atol=3e-10, rtol=3e-10)

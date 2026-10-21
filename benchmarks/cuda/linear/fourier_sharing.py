@@ -81,3 +81,56 @@ def sharing_report(p, spec, recipe):
         "bank_count": len(bank_families(spec, recipe)),
         "count_scope": "distinct atoms per (period,level,axis,tile); preselection count is a heuristic, not a fixed point",
     }
+
+
+def discrete_norm_reference(p, spec):
+    """Closed Fourier-product sums, independently checked against sampled L2."""
+    import math
+
+    from torchcst import FourierPeakSpec
+    from torchcst._backends.torch.profiles.fourier_peak import coefficients
+
+    p = p.double()
+    width = 0.1 + 9.9 * p[:, 3].sigmoid()
+    lengths, _tiles, weights, dw, _keys, _levels = components(spec.period, width)
+    b, db = coefficients(FourierPeakSpec(modes=spec.modes), width[:, None] / lengths)
+    co, ci = (
+        b * weights[..., None],
+        (db * (weights / lengths)[..., None] + b * dw[..., None]),
+    )
+    mode = torch.arange(spec.modes + 1, dtype=p.dtype, device=p.device)
+    result = torch.zeros(len(p), 2, 3, dtype=p.dtype, device=p.device)
+    for axis in range(2):
+        mu = p[:, axis + 1]
+        for c in range(4):
+            for d in range(4):
+                length = torch.minimum(lengths[:, c], lengths[:, d])
+                lo = ((mu - length).div(0.1).floor() + 1).clamp(0, spec.size)
+                hi = ((mu + length).div(0.1).ceil()).clamp(0, spec.size)
+                count = hi - lo
+                wc = mode * math.pi / lengths[:, c, None]
+                wd = mode * math.pi / lengths[:, d, None]
+                minus, plus = (
+                    wc[:, :, None] - wd[:, None, :],
+                    wc[:, :, None] + wd[:, None, :],
+                )
+                sums = []
+                for omega in (minus, plus):
+                    z = omega * 0.05
+                    amplitude = (
+                        count[:, None, None]
+                        * torch.sinc(count[:, None, None] * z / math.pi)
+                        / torch.sinc(z / math.pi)
+                    )
+                    phase = omega * (0.1 * (lo + (count - 1) / 2) - mu)[:, None, None]
+                    sums.append((amplitude * phase.cos(), amplitude * phase.sin()))
+                (cm, sm), (cp, sp) = sums
+                product = co[:, c, :, None] * co[:, d, None, :]
+                result[:, axis, 0] += (0.5 * product * (cm + cp)).sum((1, 2))
+                result[:, axis, 1] += (0.25 * product * (minus * sm + plus * sp)).sum(
+                    (1, 2)
+                )
+                result[:, axis, 2] += (
+                    0.5 * co[:, c, :, None] * ci[:, d, None, :] * (cm + cp)
+                ).sum((1, 2))
+    return result

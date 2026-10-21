@@ -183,7 +183,9 @@ def test_live_sharing_routes_counts_and_all_gradients(modes, minimum_sharing):
 
 @pytest.mark.parametrize("modes", [4, 8])
 @pytest.mark.parametrize("minimum_sharing", [0, 8, 1000])
-def test_boundary_cache_reuses_only_partial_component_values(modes, minimum_sharing):
+def test_boundary_cache_reuses_only_partial_component_values(
+    modes, minimum_sharing, coefficient_norm=False, sample_cache=512
+):
     from dataclasses import replace
 
     from benchmarks.cuda.linear.hierarchical_fourier import independent_gate
@@ -206,7 +208,7 @@ def test_boundary_cache_reuses_only_partial_component_values(modes, minimum_shar
         atom_block=4,
         batch_block=4,
         reuse="h",
-        sample_cache=512,
+        sample_cache=sample_cache,
         moment_policy="hierarchical",
         minimum_sharing=minimum_sharing,
     )
@@ -216,6 +218,10 @@ def test_boundary_cache_reuses_only_partial_component_values(modes, minimum_shar
     p[:, 3] = torch.linspace(-6, 5, 64)
     p[0, 0] = 0
     p[1, 1:3] = -300
+    p[2, 1:3] = -0.99 * (0.1375 if modes == 4 else 0.25)
+    p[2, 3] = math.log(0.005 / 9.895)
+    p[-1, 3] = math.log((6.35 - 0.1) / (10 - 6.35))
+    p[-2, 3] = math.log((9.4 - 0.1) / (10 - 9.4))
     p = p.cuda().requires_grad_()
     x = torch.randn(5, 256, device="cuda", requires_grad=True)
     dy = torch.randn_like(x)
@@ -225,8 +231,22 @@ def test_boundary_cache_reuses_only_partial_component_values(modes, minimum_shar
                 p[:, 3].add_(0.37)
                 p[:, 1:3].add_(0.137)
         truth, tx, tp = independent_gate(x, p, dy, spec)
-        for recipe in (base, replace(base, boundary_cache=True)):
+        for recipe in (
+            base,
+            replace(base, boundary_cache=True, coefficient_norm=coefficient_norm),
+        ):
             y = apply(x, p, spec, recipe)
             dx, dp = torch.autograd.grad(y, (x, p), dy)
             for a, b in ((y, truth), (dx, tx), (dp, tp)):
                 torch.testing.assert_close(a.double(), b.double(), atol=4e-4, rtol=4e-4)
+
+
+@pytest.mark.parametrize("modes", [4, 8])
+@pytest.mark.parametrize("minimum_sharing", [0, 8])
+@pytest.mark.parametrize("sample_cache", [128, 512])
+def test_coefficient_norm_preserves_discrete_l2_and_all_gradients(
+    modes, minimum_sharing, sample_cache
+):
+    test_boundary_cache_reuses_only_partial_component_values(
+        modes, minimum_sharing, coefficient_norm=True, sample_cache=sample_cache
+    )

@@ -226,7 +226,7 @@ def norms(
                 f += v
                 fm += vm
                 fi += vi
-                if BOUNDARY:
+                if BOUNDARY:  # noqa: SIM102 - compile-time optional path
                     if not direct:
                         bank = tl.load(Meta + (a * 4 + c) * 4 + 2).to(tl.int32)
                         length = tl.load(Meta + (a * 4 + c) * 4)
@@ -245,7 +245,7 @@ def norms(
             if cached:
                 index = s - lo
                 valid = (s < hi) & (index < NC)
-                if BOUNDARY:
+                if BOUNDARY:  # noqa: SIM102 - compile-time optional path
                     if not direct:
                         f, fm, fi = partial, partial_m, partial_i
                 tl.store(Native + ((a * 2 + axis) * 3) * NC + index, f, valid)
