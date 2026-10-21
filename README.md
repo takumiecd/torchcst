@@ -117,6 +117,10 @@ tile levels and level-dependent integer-k strides over a common L_min.
 I remains continuous; period and hierarchy transitions are explicit mixtures.
 The [I=0.1..10 CPU study](docs/research-history/cuda-linear/hierarchical-fourier-range10-20261021.ja.md)
 compares M=4/8, sampled L2, sharing/storage, and same-profile local/direct routing.
+An explicit [CUDA research implementation](docs/research-history/cuda-linear/hierarchical-fourier-gpu-20261021.ja.md)
+now evaluates centered-support products through Z/H/C with bounded workspaces.
+It uses a separate live-I coordinate contract; it does not enable CSTLinear presets.
+L4 correctness gates pass, but complete-step speed remains far below the Dense target.
 
 `presets.polar_torus_profile_product(profiles=(TriweightSpec(), TriweightSpec()),
 amplitude_max=1.0, bounds=bandwidth_bounds, w_c=0.1)` declares the centre-fibre

@@ -175,6 +175,11 @@ Tの階層と許可する整数kの間隔、二種類の接続区間を宣言す
 容量計数は`benchmarks/research/hierarchical_fourier*_cpu.py`に置き、runtimeからimportしない。
 これは数学参照であり、CSTLinear dispatcherへの登録ではない。
 
+`cuda/algorithms/linear/hierarchical_fourier/`は中心支持のZ/H/C研究実装。
+直接座標の振幅・両中心・幅logitを入力とし、既存Polar更新とは区別する。
+runtimeはCPU研究prototypeをimportしない。独立oracle、Case/Plan、完全step測定は
+既存Linear runnerの専用fixtureに置く。公開CSTLinearとDBへの採用は別の検証対象。
+
 RegularGridのprofile-product Linearでは
 [Hの生成・再利用・寿命の設計方針](../../../docs/h-lifecycle-kernel-design.ja.md)を使い、
 具体的な分割・融合・routing・保存／再計算はAlgorithm/Recipeの実行方式として扱う。
