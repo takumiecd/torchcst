@@ -76,6 +76,8 @@ def prewarm(geometry, data, cfg):
                 keys.update(geometry.map(tuple(t["points"] for t in ts))[0])
     t = time.perf_counter_ns()
     geometry.basis(sorted(keys), (0,) * cfg.dim)
+    for d in range(cfg.dim):
+        geometry.axial_basis(sorted({key[d] for key in keys}), 0)
     return (time.perf_counter_ns() - t) / 1e6, len(keys)
 
 
@@ -83,6 +85,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--scaling-only", action="store_true")
+    p.add_argument("--separable-only", action="store_true")
     args = p.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     files = [Path(__file__), Path(__file__).with_name("bottom_up_fourier_cpu.py")]
@@ -100,19 +103,26 @@ def main():
         "protocol": "3 dynamic steps; 3 timing samples per state; geometry tables prewarmed and reported separately",
         "rows": [],
         "scaling_only": args.scaling_only,
+        "separable_only": args.separable_only,
     }
     specs = (
         ((2, 64, (64,)), (2, 128, (64,)))
         if args.scaling_only
         else ((1, 256, (16, 128)), (2, 32, (8, 64)))
     )
+    if args.separable_only:
+        specs = ((1, 256, (128,)), (2, 32, (64,)), (2, 64, (64,)), (2, 128, (64,)))
     for dim, side, atom_counts in specs:
         for modes in (4, 8):
-            for leaf in (8,) if args.scaling_only else (4, 8, 16):
+            for leaf in (
+                (8,) if args.scaling_only or args.separable_only else (4, 8, 16)
+            ):
                 cfg = Config(dim=dim, side=side, modes=modes, leaf=leaf)
                 for atoms in atom_counts:
                     for regime in (
-                        ("mixed",) if args.scaling_only else ("small", "mixed")
+                        ("mixed",)
+                        if args.scaling_only or args.separable_only
+                        else ("small", "mixed")
                     ):
                         states = fixtures(dim, side, atoms, regime)
                         geometry = Geometry(cfg)
@@ -122,7 +132,17 @@ def main():
                             results = {}
                             times = {}
                             errors = {}
-                            for method in ("direct", "independent", "bottom_up"):
+                            methods = (
+                                (
+                                    "direct",
+                                    "independent",
+                                    "bottom_up",
+                                    "bottom_up_separable",
+                                )
+                                if args.separable_only
+                                else ("direct", "independent", "bottom_up")
+                            )
+                            for method in methods:
 
                                 def fn(
                                     method=method,
@@ -167,9 +187,10 @@ def main():
                                 and atoms == max(atom_counts)
                                 and regime == "mixed"
                                 and step == 0
+                                and (not args.separable_only or side in (128, 256))
                             ):
                                 row["incremental_traced_peak"] = {}
-                                for method in ("direct", "independent", "bottom_up"):
+                                for method in methods:
                                     row["incremental_traced_peak"][method] = traced(
                                         lambda method=method, X=X, mu=mu, sigma=sigma, cfg=cfg, geometry=geometry: (
                                             run(X, mu, sigma, cfg, geometry, method)
@@ -180,7 +201,7 @@ def main():
                             json.dumps(data, indent=2) + "\n"
                         )
                         print("done", dim, modes, leaf, atoms, regime, flush=True)
-    if not args.scaling_only:
+    if not args.scaling_only and not args.separable_only:
         figures(data, args.output)
 
 

@@ -86,7 +86,7 @@ def test_bottom_up_all_gradients_and_input_jacobian(dim, modes, leaf):
         dx, dm, ds, da = torch.autograd.grad(
             y @ torch.tensor(upstream), (tx, tm, ts, ta)
         )
-        for method in ("independent", "bottom_up"):
+        for method in ("independent", "bottom_up", "bottom_up_separable"):
             h, _ = run(X, mu, sigma, cfg, geometry, method)
             np.testing.assert_allclose(
                 amplitude @ h[0], y.detach(), atol=2e-9, rtol=2e-9
@@ -108,10 +108,13 @@ def test_bottom_up_all_gradients_and_input_jacobian(dim, modes, leaf):
         # The operator is linear in X: identity inputs expose its full Jacobian.
         N = cfg.side**dim
         identity = np.eye(N).reshape((N,) + (cfg.side,) * dim)
-        jac, _ = run(identity, mu, sigma, cfg, geometry, "bottom_up")
-        np.testing.assert_allclose(jac[0], q.detach(), atol=2e-10, rtol=2e-9)
-        actual_dx = (upstream[:, None] * (amplitude @ jac[0])[None, :]).reshape(X.shape)
-        np.testing.assert_allclose(actual_dx, dx, atol=2e-9, rtol=2e-9)
+        for method in ("bottom_up", "bottom_up_separable"):
+            jac, _ = run(identity, mu, sigma, cfg, geometry, method)
+            np.testing.assert_allclose(jac[0], q.detach(), atol=2e-10, rtol=2e-9)
+            actual_dx = (upstream[:, None] * (amplitude @ jac[0])[None, :]).reshape(
+                X.shape
+            )
+            np.testing.assert_allclose(actual_dx, dx, atol=2e-9, rtol=2e-9)
 
 
 def test_parent_odd_frequency_requirements_are_not_free():

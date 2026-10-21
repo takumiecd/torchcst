@@ -86,3 +86,10 @@ python -m benchmarks.research.run_bottom_up_fourier_cpu \
 
 最初の32²測定を保全後、`--scaling-only`で2D 64²/128²、A64、leaf8、mixedを追加する。
 M4/8を比較し、既存の32²測定は繰り返さない。kernel/helperのbyteは同じまま使用する。
+
+その後、profile productの軸分解を入力moment準備にも使う追加候補を実装する。
+2D full momentは`Ex^T X Ey`の順で計算し、必要な(qx,qy)だけ取り出す。
+leaf辺長n、必要pair数K、異なるx周波数Fxに対し、
+従来のO(B*n²*K)からO(B*n²*Fx+B*n*K)へ変える。
+部分leafは従来の短いprefixを使い、同じXの連続ロードを共有する。
+これは近似やkernel変更ではない。`--separable-only`で1Dと2D 32²/64²/128²を同条件比較する。

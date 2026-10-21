@@ -124,6 +124,7 @@ class Geometry:
         self.cfg = cfg
         self.table = {}
         self.mapping = {}
+        self.axial_table = {}
         self.coords = np.indices((cfg.leaf,) * cfg.dim).reshape(cfg.dim, -1).T
 
     def map(self, points):
@@ -164,8 +165,25 @@ class Geometry:
 
     @property
     def payload(self):
-        return sum(v.nbytes for v in self.table.values()) + sum(
-            inv.nbytes + conj.nbytes for _, inv, conj in self.mapping.values()
+        return (
+            sum(v.nbytes for v in self.table.values())
+            + sum(inv.nbytes + conj.nbytes for _, inv, conj in self.mapping.values())
+            + sum(v.nbytes for v in self.axial_table.values())
+        )
+
+    def axial_basis(self, keys, start):
+        D = self.cfg.denominator
+        for key in keys:
+            if key not in self.axial_table:
+                q = key if key <= D / 2 else key - D
+                self.axial_table[key] = np.exp(
+                    2j * np.pi * q / D * np.arange(self.cfg.leaf)
+                )
+        q = np.array(keys, dtype=float)
+        q[q > D / 2] -= D
+        return (
+            np.stack([self.axial_table[k] for k in keys], axis=1)
+            * np.exp(2j * np.pi * q * start / D)[None, :]
         )
 
 
@@ -257,6 +275,9 @@ def counters():
         for k in (
             "input_values",
             "weighted_products",
+            "weighted_scratch_values",
+            "complex_products",
+            "intermediate_values",
             "basis_values",
             "prefix_values",
             "merge_adds",
@@ -286,10 +307,13 @@ def apply_full(tasks, keys, moments, h, stats):
         stats["query_output_updates"] += h.shape[0] * h.shape[2]
 
 
-def leaf_data(node, keys, tasks, X, cfg, geometry, h, stats):
+def leaf_data(node, keys, tasks, X, cfg, geometry, h, stats, values=None):
     start, size = node
     slices = (slice(None),) + tuple(slice(s, s + size) for s in start)
-    values = X[slices].copy().reshape(len(X), -1)
+    if values is None:
+        values = X[slices].copy().reshape(len(X), -1)
+        stats["input_values"] += values.size
+        stats["leaf_visits"] += 1
     moments = np.zeros((len(X), len(keys)), complex)
     lookup = {k: i for i, k in enumerate(keys)}
     operations = {}
@@ -302,14 +326,13 @@ def leaf_data(node, keys, tasks, X, cfg, geometry, h, stats):
             operations.setdefault(int(chunk), []).append(
                 (atom, indices[use] - chunk * cfg.chunk, coef[:, use], partial)
             )
-    stats["input_values"] += values.size
-    stats["leaf_visits"] += 1
     for first in range(0, len(keys), cfg.chunk):
         kk = keys[first : first + cfg.chunk]
         basis = geometry.basis(kk, start)
         weighted = values[:, :, None] * basis[None, :, :]
         moments[:, first : first + len(kk)] = weighted.sum(axis=1)
         stats["weighted_products"] += weighted.size
+        stats["weighted_scratch_values"] += weighted.size
         stats["basis_values"] += basis.size
         stats["moment_writes"] += len(X) * len(kk)
         scratch = values.nbytes + basis.nbytes + weighted.nbytes
@@ -346,6 +369,71 @@ def leaf_data(node, keys, tasks, X, cfg, geometry, h, stats):
     return moments
 
 
+def separable_leaf_data(node, keys, tasks, X, cfg, geometry, h, stats):
+    start, size = node
+    values = (
+        X[(slice(None),) + tuple(slice(s, s + size) for s in start)]
+        .copy()
+        .reshape(len(X), -1)
+    )
+    stats["input_values"] += values.size
+    stats["leaf_visits"] += 1
+    moments = np.zeros((len(X), len(keys)), complex)
+    lookup = {k: i for i, k in enumerate(keys)}
+    partial_tasks = [q for q in tasks if q[3] is not None]
+    partial_keys = sorted(query_keys(partial_tasks))
+    if partial_keys:
+        partial = leaf_data(
+            node, partial_keys, partial_tasks, X, cfg, geometry, h, stats, values=values
+        )
+        moments[:, [lookup[k] for k in partial_keys]] = partial
+    partial_set = set(partial_keys)
+    full = [k for k in keys if k not in partial_set]
+    if not full:
+        return moments
+    if cfg.dim == 1:
+        for first in range(0, len(full), cfg.chunk):
+            kk = full[first : first + cfg.chunk]
+            basis = geometry.basis(kk, start)
+            moments[:, [lookup[k] for k in kk]] = values @ basis
+            stats["weighted_products"] += len(X) * size * len(kk)
+            stats["basis_values"] += basis.size
+            stats["moment_writes"] += len(X) * len(kk)
+            stats["scratch_arrays_peak"] = max(
+                stats["scratch_arrays_peak"], values.nbytes + basis.nbytes
+            )
+        return moments
+    xs = sorted({k[0] for k in full})
+    xlookup = {k: i for i, k in enumerate(xs)}
+    Ex = geometry.axial_basis(xs, start[0])
+    G = np.einsum("bxy,xk->bky", values.reshape(len(X), size, size), Ex, optimize=True)
+    stats["weighted_products"] += len(X) * size * size * len(xs)
+    stats["basis_values"] += Ex.size
+    stats["intermediate_values"] += G.size
+    for first in range(0, len(full), cfg.chunk):
+        kk = full[first : first + cfg.chunk]
+        ys = sorted({k[1] for k in kk})
+        ylookup = {k: i for i, k in enumerate(ys)}
+        Ey = geometry.axial_basis(ys, start[1])
+        selected = G[:, [xlookup[k[0]] for k in kk], :]
+        weights = Ey[:, [ylookup[k[1]] for k in kk]].T
+        moments[:, [lookup[k] for k in kk]] = np.einsum("bky,ky->bk", selected, weights)
+        stats["complex_products"] += len(X) * size * len(kk)
+        stats["intermediate_values"] += 3 * selected.size
+        stats["basis_values"] += Ey.size + weights.size
+        stats["moment_writes"] += len(X) * len(kk)
+        stats["scratch_arrays_peak"] = max(
+            stats["scratch_arrays_peak"],
+            values.nbytes
+            + Ex.nbytes
+            + G.nbytes
+            + selected.nbytes
+            + Ey.nbytes
+            + weights.nbytes,
+        )
+    return moments
+
+
 def query_keys(tasks):
     return {k for _, keys, _, _ in tasks for k in keys}
 
@@ -354,7 +442,7 @@ def aggregate(X, profiles, cfg, geometry, method):
     tasks, active = make_plan(profiles, cfg, geometry)
     h = np.zeros((1 + 2 * cfg.dim, len(profiles), len(X)))
     stats = counters()
-    if method == "bottom_up":
+    if method.startswith("bottom_up"):
 
         def visit(node, parent_keys, retained):
             own = tasks.get(node, [])
@@ -362,7 +450,12 @@ def aggregate(X, profiles, cfg, geometry, method):
             if not keys and node not in active:
                 return None, keys
             if node[1] == cfg.leaf:
-                moments = leaf_data(node, keys, own, X, cfg, geometry, h, stats)
+                function = (
+                    separable_leaf_data
+                    if method == "bottom_up_separable"
+                    else leaf_data
+                )
+                moments = function(node, keys, own, X, cfg, geometry, h, stats)
                 stats["carry_arrays_peak"] = max(
                     stats["carry_arrays_peak"], retained + moments.nbytes
                 )
@@ -409,7 +502,8 @@ def aggregate(X, profiles, cfg, geometry, method):
     # Counts the main arrays/operations, not cache misses or GPU traffic.
     stats["traffic_model_bytes"] = int(
         8 * stats["input_values"]
-        + 32 * stats["weighted_products"]
+        + 32 * stats["weighted_scratch_values"]
+        + 16 * stats["intermediate_values"]
         + 16 * stats["basis_values"]
         + 32 * stats["prefix_values"]
         + 16 * (stats["moment_reads"] + stats["moment_writes"])
