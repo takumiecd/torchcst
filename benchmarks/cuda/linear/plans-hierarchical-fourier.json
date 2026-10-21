@@ -19,7 +19,8 @@
           "reuse": "none",
           "moment_policy": "all",
           "sample_cache": 0,
-          "minimum_sharing": 0
+          "minimum_sharing": 0,
+          "boundary_cache": false
         }
       }
     },
@@ -41,7 +42,8 @@
           "reuse": "none",
           "moment_policy": "all",
           "sample_cache": 0,
-          "minimum_sharing": 0
+          "minimum_sharing": 0,
+          "boundary_cache": false
         }
       }
     },
@@ -63,7 +65,8 @@
           "reuse": "none",
           "moment_policy": "all",
           "sample_cache": 0,
-          "minimum_sharing": 0
+          "minimum_sharing": 0,
+          "boundary_cache": false
         }
       }
     },
@@ -85,7 +88,8 @@
           "reuse": "none",
           "moment_policy": "all",
           "sample_cache": 0,
-          "minimum_sharing": 0
+          "minimum_sharing": 0,
+          "boundary_cache": false
         }
       }
     },
@@ -107,7 +111,8 @@
           "reuse": "none",
           "moment_policy": "all",
           "sample_cache": 0,
-          "minimum_sharing": 0
+          "minimum_sharing": 0,
+          "boundary_cache": false
         }
       }
     },
@@ -129,7 +134,8 @@
           "reuse": "none",
           "moment_policy": "all",
           "sample_cache": 0,
-          "minimum_sharing": 0
+          "minimum_sharing": 0,
+          "boundary_cache": false
         }
       }
     },
@@ -151,7 +157,8 @@
           "reuse": "none",
           "moment_policy": "all",
           "sample_cache": 0,
-          "minimum_sharing": 0
+          "minimum_sharing": 0,
+          "boundary_cache": false
         }
       }
     },
@@ -173,7 +180,8 @@
           "reuse": "none",
           "moment_policy": "all",
           "sample_cache": 0,
-          "minimum_sharing": 0
+          "minimum_sharing": 0,
+          "boundary_cache": false
         }
       }
     },
@@ -195,7 +203,8 @@
           "reuse": "none",
           "moment_policy": "all",
           "sample_cache": 0,
-          "minimum_sharing": 0
+          "minimum_sharing": 0,
+          "boundary_cache": false
         }
       }
     },
@@ -217,7 +226,8 @@
           "reuse": "none",
           "moment_policy": "all",
           "sample_cache": 0,
-          "minimum_sharing": 0
+          "minimum_sharing": 0,
+          "boundary_cache": false
         }
       }
     },
@@ -239,7 +249,8 @@
           "reuse": "none",
           "moment_policy": "all",
           "sample_cache": 0,
-          "minimum_sharing": 0
+          "minimum_sharing": 0,
+          "boundary_cache": false
         }
       }
     },
@@ -261,7 +272,8 @@
           "reuse": "none",
           "moment_policy": "all",
           "sample_cache": 0,
-          "minimum_sharing": 0
+          "minimum_sharing": 0,
+          "boundary_cache": false
         }
       }
     },
@@ -283,7 +295,8 @@
           "reuse": "none",
           "moment_policy": "all",
           "sample_cache": 0,
-          "minimum_sharing": 0
+          "minimum_sharing": 0,
+          "boundary_cache": false
         }
       }
     },
@@ -305,7 +318,8 @@
           "reuse": "h",
           "moment_policy": "all",
           "sample_cache": 0,
-          "minimum_sharing": 0
+          "minimum_sharing": 0,
+          "boundary_cache": false
         }
       }
     },
@@ -327,7 +341,8 @@
           "reuse": "all",
           "moment_policy": "all",
           "sample_cache": 0,
-          "minimum_sharing": 0
+          "minimum_sharing": 0,
+          "boundary_cache": false
         }
       }
     },
@@ -349,7 +364,8 @@
           "reuse": "all",
           "moment_policy": "all",
           "sample_cache": 0,
-          "minimum_sharing": 0
+          "minimum_sharing": 0,
+          "boundary_cache": false
         }
       }
     },
@@ -371,7 +387,8 @@
           "reuse": "all",
           "moment_policy": "demand",
           "sample_cache": 0,
-          "minimum_sharing": 0
+          "minimum_sharing": 0,
+          "boundary_cache": false
         }
       }
     },
@@ -393,7 +410,8 @@
           "reuse": "all",
           "moment_policy": "hierarchical",
           "sample_cache": 0,
-          "minimum_sharing": 0
+          "minimum_sharing": 0,
+          "boundary_cache": false
         }
       }
     },
@@ -415,7 +433,8 @@
           "reuse": "chunk",
           "moment_policy": "all",
           "sample_cache": 0,
-          "minimum_sharing": 0
+          "minimum_sharing": 0,
+          "boundary_cache": false
         }
       }
     },
@@ -437,7 +456,8 @@
           "reuse": "all",
           "moment_policy": "all",
           "sample_cache": 0,
-          "minimum_sharing": 0
+          "minimum_sharing": 0,
+          "boundary_cache": false
         }
       }
     },
@@ -459,7 +479,8 @@
           "reuse": "all",
           "moment_policy": "demand",
           "sample_cache": 0,
-          "minimum_sharing": 0
+          "minimum_sharing": 0,
+          "boundary_cache": false
         }
       }
     },
@@ -481,7 +502,8 @@
           "reuse": "all",
           "moment_policy": "hierarchical",
           "sample_cache": 0,
-          "minimum_sharing": 0
+          "minimum_sharing": 0,
+          "boundary_cache": false
         }
       }
     },
@@ -503,7 +525,8 @@
           "reuse": "none",
           "moment_policy": "all",
           "sample_cache": 0,
-          "minimum_sharing": 0
+          "minimum_sharing": 0,
+          "boundary_cache": false
         }
       }
     },
@@ -525,7 +548,8 @@
           "reuse": "none",
           "moment_policy": "all",
           "sample_cache": 512,
-          "minimum_sharing": 0
+          "minimum_sharing": 0,
+          "boundary_cache": false
         }
       }
     },
@@ -547,7 +571,8 @@
           "reuse": "h",
           "moment_policy": "all",
           "sample_cache": 512,
-          "minimum_sharing": 0
+          "minimum_sharing": 0,
+          "boundary_cache": false
         }
       }
     },
@@ -569,7 +594,8 @@
           "reuse": "h",
           "moment_policy": "all",
           "sample_cache": 0,
-          "minimum_sharing": 0
+          "minimum_sharing": 0,
+          "boundary_cache": false
         }
       }
     },
@@ -591,7 +617,8 @@
           "reuse": "h",
           "moment_policy": "demand",
           "sample_cache": 0,
-          "minimum_sharing": 0
+          "minimum_sharing": 0,
+          "boundary_cache": false
         }
       }
     },
@@ -613,7 +640,8 @@
           "reuse": "h",
           "moment_policy": "hierarchical",
           "sample_cache": 0,
-          "minimum_sharing": 0
+          "minimum_sharing": 0,
+          "boundary_cache": false
         }
       }
     },
@@ -635,7 +663,8 @@
           "reuse": "h",
           "moment_policy": "all",
           "sample_cache": 0,
-          "minimum_sharing": 0
+          "minimum_sharing": 0,
+          "boundary_cache": false
         }
       }
     },
@@ -657,7 +686,8 @@
           "reuse": "h",
           "moment_policy": "demand",
           "sample_cache": 0,
-          "minimum_sharing": 0
+          "minimum_sharing": 0,
+          "boundary_cache": false
         }
       }
     },
@@ -679,7 +709,8 @@
           "reuse": "h",
           "moment_policy": "hierarchical",
           "sample_cache": 0,
-          "minimum_sharing": 0
+          "minimum_sharing": 0,
+          "boundary_cache": false
         }
       }
     },
@@ -701,7 +732,8 @@
           "reuse": "h",
           "moment_policy": "hierarchical",
           "sample_cache": 512,
-          "minimum_sharing": 0
+          "minimum_sharing": 0,
+          "boundary_cache": false
         }
       }
     },
@@ -723,7 +755,8 @@
           "reuse": "h",
           "moment_policy": "hierarchical",
           "sample_cache": 512,
-          "minimum_sharing": 8
+          "minimum_sharing": 8,
+          "boundary_cache": false
         }
       }
     },
@@ -745,7 +778,8 @@
           "reuse": "h",
           "moment_policy": "hierarchical",
           "sample_cache": 512,
-          "minimum_sharing": 64
+          "minimum_sharing": 64,
+          "boundary_cache": false
         }
       }
     },
@@ -767,7 +801,8 @@
           "reuse": "h",
           "moment_policy": "hierarchical",
           "sample_cache": 512,
-          "minimum_sharing": 0
+          "minimum_sharing": 0,
+          "boundary_cache": false
         }
       }
     },
@@ -789,7 +824,8 @@
           "reuse": "h",
           "moment_policy": "hierarchical",
           "sample_cache": 512,
-          "minimum_sharing": 8
+          "minimum_sharing": 8,
+          "boundary_cache": false
         }
       }
     },
@@ -811,7 +847,8 @@
           "reuse": "h",
           "moment_policy": "hierarchical",
           "sample_cache": 512,
-          "minimum_sharing": 64
+          "minimum_sharing": 64,
+          "boundary_cache": false
         }
       }
     },
@@ -833,7 +870,8 @@
           "reuse": "h",
           "moment_policy": "hierarchical",
           "sample_cache": 0,
-          "minimum_sharing": 0
+          "minimum_sharing": 0,
+          "boundary_cache": false
         }
       }
     },
@@ -855,7 +893,8 @@
           "reuse": "h",
           "moment_policy": "hierarchical",
           "sample_cache": 0,
-          "minimum_sharing": 8
+          "minimum_sharing": 8,
+          "boundary_cache": false
         }
       }
     },
@@ -877,7 +916,8 @@
           "reuse": "h",
           "moment_policy": "hierarchical",
           "sample_cache": 0,
-          "minimum_sharing": 64
+          "minimum_sharing": 64,
+          "boundary_cache": false
         }
       }
     },
@@ -899,7 +939,8 @@
           "reuse": "h",
           "moment_policy": "hierarchical",
           "sample_cache": 0,
-          "minimum_sharing": 0
+          "minimum_sharing": 0,
+          "boundary_cache": false
         }
       }
     },
@@ -921,7 +962,8 @@
           "reuse": "h",
           "moment_policy": "hierarchical",
           "sample_cache": 0,
-          "minimum_sharing": 8
+          "minimum_sharing": 8,
+          "boundary_cache": false
         }
       }
     },
@@ -943,7 +985,146 @@
           "reuse": "h",
           "moment_policy": "hierarchical",
           "sample_cache": 0,
-          "minimum_sharing": 64
+          "minimum_sharing": 64,
+          "boundary_cache": false
+        }
+      }
+    },
+    {
+      "id": "tile32-boundary-h-count0",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_hierarchical_fourier",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "strategy": "shared",
+          "atom_chunk": 256,
+          "minimum_sites": 32,
+          "width_cutoff": 0.1,
+          "native_cache": true,
+          "table_coefficients": true,
+          "atom_block": 4,
+          "batch_block": 4,
+          "reuse": "h",
+          "moment_policy": "hierarchical",
+          "sample_cache": 512,
+          "minimum_sharing": 0,
+          "boundary_cache": true
+        }
+      }
+    },
+    {
+      "id": "tile32-boundary-h-count8",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_hierarchical_fourier",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "strategy": "shared",
+          "atom_chunk": 256,
+          "minimum_sites": 32,
+          "width_cutoff": 0.1,
+          "native_cache": true,
+          "table_coefficients": true,
+          "atom_block": 4,
+          "batch_block": 4,
+          "reuse": "h",
+          "moment_policy": "hierarchical",
+          "sample_cache": 512,
+          "minimum_sharing": 8,
+          "boundary_cache": true
+        }
+      }
+    },
+    {
+      "id": "tile32-boundary-h-count64",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_hierarchical_fourier",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "strategy": "shared",
+          "atom_chunk": 256,
+          "minimum_sites": 32,
+          "width_cutoff": 0.1,
+          "native_cache": true,
+          "table_coefficients": true,
+          "atom_block": 4,
+          "batch_block": 4,
+          "reuse": "h",
+          "moment_policy": "hierarchical",
+          "sample_cache": 512,
+          "minimum_sharing": 64,
+          "boundary_cache": true
+        }
+      }
+    },
+    {
+      "id": "tile64-boundary-h-count0",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_hierarchical_fourier",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "strategy": "shared",
+          "atom_chunk": 256,
+          "minimum_sites": 64,
+          "width_cutoff": 0.1,
+          "native_cache": true,
+          "table_coefficients": true,
+          "atom_block": 4,
+          "batch_block": 4,
+          "reuse": "h",
+          "moment_policy": "hierarchical",
+          "sample_cache": 512,
+          "minimum_sharing": 0,
+          "boundary_cache": true
+        }
+      }
+    },
+    {
+      "id": "tile64-boundary-h-count8",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_hierarchical_fourier",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "strategy": "shared",
+          "atom_chunk": 256,
+          "minimum_sites": 64,
+          "width_cutoff": 0.1,
+          "native_cache": true,
+          "table_coefficients": true,
+          "atom_block": 4,
+          "batch_block": 4,
+          "reuse": "h",
+          "moment_policy": "hierarchical",
+          "sample_cache": 512,
+          "minimum_sharing": 8,
+          "boundary_cache": true
+        }
+      }
+    },
+    {
+      "id": "tile64-boundary-h-count64",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_hierarchical_fourier",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "strategy": "shared",
+          "atom_chunk": 256,
+          "minimum_sites": 64,
+          "width_cutoff": 0.1,
+          "native_cache": true,
+          "table_coefficients": true,
+          "atom_block": 4,
+          "batch_block": 4,
+          "reuse": "h",
+          "moment_policy": "hierarchical",
+          "sample_cache": 512,
+          "minimum_sharing": 64,
+          "boundary_cache": true
         }
       }
     }

@@ -40,16 +40,20 @@ def contract_grouped(
     hm = tl.full((BA, BB), 0.0, tl.float64)
     hi_ = tl.full((BA, BB), 0.0, tl.float64)
     cached = tl.full((BA,), False, tl.int1)
+    partial_cached = tl.full((BA,), False, tl.int1)
     if NC:
         count = tl.load(Bounds + (a * 2 + AXIS) * 2 + 1, a < A, -1)
         cached = (count >= 0) & (a < A)
-        if tl.sum(cached.to(tl.int32), 0) > 0:
+        partial_cached = (count <= -2) & (a < A)
+        available = cached | partial_cached
+        count = tl.where(partial_cached, -count - 2, count)
+        if tl.sum(available.to(tl.int32), 0) > 0:
             lo = tl.load(Bounds + (a * 2 + AXIS) * 2, a < A, 0)
             if NC > 32:
-                maximum = tl.max(tl.where(cached, count, 0), 0)
+                maximum = tl.max(tl.where(available, count, 0), 0)
                 for base in range(0, maximum, BS):
                     s = base + tl.arange(0, BS)
-                    mask = cached[:, None] & (s[None, :] < count[:, None])
+                    mask = available[:, None] & (s[None, :] < count[:, None])
                     xx = tl.load(
                         X + b[None, :, None] * N + lo[:, None, None] + s[None, None, :],
                         mask[:, None, :] & (b[None, :, None] < B),
@@ -80,7 +84,7 @@ def contract_grouped(
                         hi_ += tl.sum(xx * fi[:, None, :], 2)
             else:
                 s = tl.arange(0, NC)
-                mask = cached[:, None] & (s[None, :] < count[:, None])
+                mask = available[:, None] & (s[None, :] < count[:, None])
                 xx = tl.load(
                     X + b[None, :, None] * N + lo[:, None, None] + s[None, None, :],
                     mask[:, None, :] & (b[None, :, None] < B),
@@ -172,6 +176,7 @@ def contract_grouped(
             for part in tl.static_range(2):
                 begin = tl.where(part == 0, lo, right)
                 end = tl.where(part == 0, left, hi)
+                end = tl.where(partial_cached, begin, end)
                 steps = tl.max(end - begin, 0)
                 for pos in range(0, steps, BS):
                     s = begin[:, None] + pos + tl.arange(0, BS)[None, :]

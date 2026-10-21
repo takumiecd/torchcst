@@ -179,3 +179,54 @@ def test_live_sharing_routes_counts_and_all_gradients(modes, minimum_sharing):
         target, tx, tp = independent_gate(x, p, dy, spec)
         for a, b in ((y, target), (dx, tx), (dp, tp)):
             torch.testing.assert_close(a.double(), b.double(), atol=4e-4, rtol=4e-4)
+
+
+@pytest.mark.parametrize("modes", [4, 8])
+@pytest.mark.parametrize("minimum_sharing", [0, 8, 1000])
+def test_boundary_cache_reuses_only_partial_component_values(modes, minimum_sharing):
+    from dataclasses import replace
+
+    from benchmarks.cuda.linear.hierarchical_fourier import independent_gate
+    from torchcst._backends.cuda.algorithms.linear.hierarchical_fourier.contract import (
+        FourierLinearSpec,
+        FourierRecipe,
+    )
+    from torchcst._backends.cuda.algorithms.linear.hierarchical_fourier.executor import (
+        apply,
+    )
+
+    torch.backends.cuda.matmul.allow_tf32 = False
+    spec = FourierLinearSpec(256, modes)
+    base = FourierRecipe(
+        atom_chunk=256,
+        minimum_sites=32,
+        width_cutoff=0.1,
+        native_cache=True,
+        table_coefficients=True,
+        atom_block=4,
+        batch_block=4,
+        reuse="h",
+        sample_cache=512,
+        moment_policy="hierarchical",
+        minimum_sharing=minimum_sharing,
+    )
+    gen = torch.Generator().manual_seed(414)
+    p = torch.randn(64, 4, generator=gen)
+    p[:, 1:3] = torch.rand(64, 2, generator=gen) * 25.5
+    p[:, 3] = torch.linspace(-6, 5, 64)
+    p[0, 0] = 0
+    p[1, 1:3] = -300
+    p = p.cuda().requires_grad_()
+    x = torch.randn(5, 256, device="cuda", requires_grad=True)
+    dy = torch.randn_like(x)
+    for step in range(2):
+        if step:
+            with torch.no_grad():
+                p[:, 3].add_(0.37)
+                p[:, 1:3].add_(0.137)
+        truth, tx, tp = independent_gate(x, p, dy, spec)
+        for recipe in (base, replace(base, boundary_cache=True)):
+            y = apply(x, p, spec, recipe)
+            dx, dp = torch.autograd.grad(y, (x, p), dy)
+            for a, b in ((y, truth), (dx, tx), (dp, tp)):
+                torch.testing.assert_close(a.double(), b.double(), atol=4e-4, rtol=4e-4)

@@ -220,7 +220,7 @@ def select_routes(
         count = tl.max(tl.where(active, tl.maximum(last - first, 0), 0), 0)
         for t in range(count):
             mask = active & (first + t < last)
-            n = tl.load(Counts + axis * J + offset + first + t, mask, 2147483647)
-            minimum = tl.minimum(minimum, n)
+            users = tl.load(Counts + axis * J + offset + first + t, mask, 2147483647)
+            minimum = tl.minimum(minimum, users)
             covered = covered | mask
     tl.store(Routes + a * 4 + c, active & covered & (minimum >= MINIMUM), a < A)

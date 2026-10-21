@@ -175,6 +175,8 @@ def _prepare(p, spec, recipe, tab, routes=None):
         Native=native,
         Bounds=bounds,
         NC=cap,
+        Banks=tab["banks"],
+        BOUNDARY=recipe.boundary_cache,
         num_warps=1 if cap else 4,
         enable_fp_fusion=False,
     )

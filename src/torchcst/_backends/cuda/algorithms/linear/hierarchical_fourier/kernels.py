@@ -189,6 +189,8 @@ def norms(
     Native=None,
     Bounds=None,
     NC: tl.constexpr = 0,
+    Banks=None,
+    BOUNDARY: tl.constexpr = False,
 ):
     a, axis = tl.program_id(0), tl.program_id(1)
     mu = tl.load(P + a * 4 + axis + 1).to(tl.float64)
@@ -202,9 +204,10 @@ def norms(
         direct = tl.full((), True, tl.int1)
         for c in tl.static_range(4):
             direct = direct & (tl.load(Meta + (a * 4 + c) * 4 + 2) < 0)
-        cached = direct & (hi - lo <= NC)
+        cached = (hi - lo <= NC) & (direct | BOUNDARY)
         tl.store(Bounds + (a * 2 + axis) * 2, lo)
-        tl.store(Bounds + (a * 2 + axis) * 2 + 1, tl.where(cached, hi - lo, -1))
+        encoded = tl.where(direct, hi - lo, -2 - (hi - lo))
+        tl.store(Bounds + (a * 2 + axis) * 2 + 1, tl.where(cached, encoded, -1))
     acc = tl.full((BS,), 0.0, tl.float64)
     am = tl.full((BS,), 0.0, tl.float64)
     ai = tl.full((BS,), 0.0, tl.float64)
@@ -213,12 +216,27 @@ def norms(
         f = tl.full((BS,), 0.0, tl.float64)
         fm = tl.full((BS,), 0.0, tl.float64)
         fi = tl.full((BS,), 0.0, tl.float64)
+        if BOUNDARY:
+            partial = tl.full((BS,), 0.0, tl.float64)
+            partial_m = tl.full((BS,), 0.0, tl.float64)
+            partial_i = tl.full((BS,), 0.0, tl.float64)
         for c in tl.static_range(4):
             if tl.load(Meta + (a * 4 + c) * 4 + 3) > 0:
                 v, vm, vi = _component(s, mu, a, c, Meta, Co, Ci, M, True)
                 f += v
                 fm += vm
                 fi += vi
+                if BOUNDARY:
+                    bank = tl.load(Meta + (a * 4 + c) * 4 + 2).to(tl.int32)
+                    length = tl.load(Meta + (a * 4 + c) * 4)
+                    c_lo, c_hi = _bounds(mu, length, N)
+                    size = tl.load(Banks + bank * 2, bank >= 0, 1)
+                    first, last = (c_lo + size - 1) // size, c_hi // size
+                    interior = (bank >= 0) & (last > first)
+                    boundary = ~interior | (s < first * size) | (s >= last * size)
+                    partial += tl.where(boundary, v, 0.0)
+                    partial_m += tl.where(boundary, vm, 0.0)
+                    partial_i += tl.where(boundary, vi, 0.0)
         acc += tl.where(s < hi, f * f, 0.0)
         am += tl.where(s < hi, f * fm, 0.0)
         ai += tl.where(s < hi, f * fi, 0.0)
@@ -226,6 +244,8 @@ def norms(
             if cached:
                 index = s - lo
                 valid = (s < hi) & (index < NC)
+                if BOUNDARY:
+                    f, fm, fi = partial, partial_m, partial_i
                 tl.store(Native + ((a * 2 + axis) * 3) * NC + index, f, valid)
                 tl.store(Native + ((a * 2 + axis) * 3 + 1) * NC + index, fm, valid)
                 tl.store(Native + ((a * 2 + axis) * 3 + 2) * NC + index, fi, valid)
@@ -650,7 +670,8 @@ def deposit_cached(
 ):
     a, c = tl.program_id(0) // 4, tl.program_id(0) % 4
     count = tl.load(Bounds + (a * 2 + AXIS) * 2 + 1)
-    if count >= 0:
+    if count != -1:
+        count = tl.where(count >= 0, count, -count - 2)
         if c == 0:
             b = tl.program_id(1) * BB + tl.arange(0, BB)
             lo = tl.load(Bounds + (a * 2 + AXIS) * 2)
@@ -666,7 +687,7 @@ def deposit_cached(
                     tl.atomic_add(
                         Y + b[:, None] * N + lo + s[None, :],
                         (h[:, None] * f[None, :]).to(tl.float32),
-                        (b[:, None] < B) & (s[None, :] < count),
+                        (b[:, None] < B) & (s[None, :] < count) & (f[None, :] != 0),
                         sem="relaxed",
                     )
             else:

@@ -56,9 +56,14 @@ class FourierRecipe:
     reuse: str = "none"
     moment_policy: str = "all"
     sample_cache: int = 0
+    boundary_cache: bool = False
     minimum_sharing: int = 0
 
     def __post_init__(self):
+        if type(self.boundary_cache) is not bool:
+            raise ValueError("boundary_cache must be bool")
+        if self.boundary_cache and (not self.sample_cache or self.atom_block == 1):
+            raise ValueError("boundary_cache requires streamed cache and grouped atoms")
         if type(self.minimum_sharing) is not int or self.minimum_sharing < 0:
             raise ValueError("minimum_sharing must be a nonnegative integer")
         if self.minimum_sharing and self.strategy != "shared":
