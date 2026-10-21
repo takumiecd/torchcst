@@ -127,3 +127,8 @@ python -m benchmarks.research.run_tile_hybrid_profile_cpu \
 ```
 
 CPU結果は検証済みcheckpointで追記する。
+
+端tileを厳密処理できるため、余白のためだけにL0を広くする必要はない。
+最初のL0/T4/8測定を保存した後、追加のCPU測定でL0/T1/2も比較する。
+同じ入力seed・stepを維持し、既存条件の反復測定と混同しない。
+追加測定は`--benchmark-only --minimum-L-tiles 1 2`で実行する。

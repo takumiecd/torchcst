@@ -194,12 +194,12 @@ def traced_peak(fn):
     return peak
 
 
-def benchmarks():
+def benchmarks(minimums=(4, 8)):
     x = -204.8 + np.arange(4096) * 0.1
     rows = []
     for m in (4, 8):
         for tile in (32, 64, 128):
-            for minimum in (4, 8):
+            for minimum in minimums:
                 cfg = Config(
                     modes=m,
                     tile_points=tile,
@@ -323,6 +323,14 @@ def figures(data, out):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--minimum-L-tiles",
+        nargs="+",
+        type=int,
+        default=[4, 8],
+        choices=[1, 2, 4, 8, 16],
+    )
+    parser.add_argument("--benchmark-only", action="store_true")
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     files = [Path(__file__), Path(__file__).with_name("tile_hybrid_profile_cpu.py")]
@@ -344,14 +352,20 @@ def main():
             "sigma_range": [0.1, 40],
             "timing_repeats": 3,
             "dynamic_steps": 3,
+            "minimum_L_tiles": args.minimum_L_tiles,
         },
     }
-    for name, fn in [
+    sections = [
         ("validation", validate),
         ("shapes", shape_study),
         ("sampled_width", sampled_width),
-        ("benchmarks", benchmarks),
-    ]:
+        ("benchmarks", lambda: benchmarks(tuple(args.minimum_L_tiles))),
+    ]
+    if args.benchmark_only:
+        sections = [
+            item for item in sections if item[0] in ("validation", "benchmarks")
+        ]
+    for name, fn in sections:
         print("start", name, flush=True)
         v = fn()
         if name == "shapes":
@@ -360,7 +374,8 @@ def main():
             data[name] = v
         (args.output / "results.json").write_text(json.dumps(data, indent=2) + "\n")
         print("done", name, flush=True)
-    figures(data, args.output)
+    if "shapes" in data:
+        figures(data, args.output)
 
 
 if __name__ == "__main__":
