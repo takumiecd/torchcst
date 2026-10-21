@@ -43,6 +43,14 @@ def test_centered_support_dynamic_width_input_and_all_gradients(
                 [-0.2, -30.0, 17.0, -4.0],
                 [0.7, -0.02, 25.31, -6.0],
                 [0.5, 12.011, 12.713, math.log((6.5 - 0.1) / (10 - 6.5))],
+                # Only the output axis is nonempty and near the floor. Keep
+                # the other axis in its core, including the width pullback.
+                [
+                    0.3,
+                    -0.999 * (0.1375 if modes == 4 else 0.25),
+                    12.713,
+                    math.log(0.005 / 9.895),
+                ],
             ],
             device="cuda",
             requires_grad=True,
