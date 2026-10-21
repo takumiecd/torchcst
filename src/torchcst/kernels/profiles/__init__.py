@@ -3,6 +3,7 @@
 from .base import ProfileSpec
 from .bspline import QuadraticBSplineSpec
 from .compact import BiweightSpec, TriangleSpec, TriweightSpec, WendlandC2Spec
+from .dyadic_fourier import DyadicFourierSpec
 from .fourier import (
     ChebyshevSquareSpec,
     DPSSSquareSpec,
@@ -16,6 +17,7 @@ __all__ = [
     "BiweightSpec",
     "ChebyshevSquareSpec",
     "DPSSSquareSpec",
+    "DyadicFourierSpec",
     "GaussianSpec",
     "KaiserSquareSpec",
     "MaternMixtureSpec",

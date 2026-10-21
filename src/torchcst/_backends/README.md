@@ -155,6 +155,12 @@ native評価は `_backends/torch/profiles/fourier.py`、直接productは
 `_backends/torch/algorithms/linear/fourier_tiles/` に置く。
 [意味と検証範囲](../../../docs/fourier-profile-product.ja.md)を参照。
 
+sigmaから支持半幅Lを選ぶ`DyadicFourierSpec`は`kernels/profiles/dyadic_fourier.py`、
+係数・微分・直接評価は`_backends/torch/profiles/dyadic_fourier.py`に置く。
+最小Lは関数の宣言、階層タイルの分割・moment共有はAlgorithmの実行方式として分ける。
+既存の固定3タイルFourier支持とは別のprofileで、Torch profile-productへ接続する。
+[数式と検証範囲](../../../docs/dyadic-fourier-profile.ja.md)を参照。
+
 RegularGridのprofile-product Linearでは
 [Hの生成・再利用・寿命の設計方針](../../../docs/h-lifecycle-kernel-design.ja.md)を使い、
 具体的な分割・融合・routing・保存／再計算はAlgorithm/Recipeの実行方式として扱う。

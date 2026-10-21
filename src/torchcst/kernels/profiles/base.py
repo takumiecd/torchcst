@@ -10,6 +10,7 @@ class ProfileSpec:
     Scalar profiles use dimensionless squared distance q. PeriodicFourierSpec
     instead declares a function of angle and relative width. MaternMixtureSpec
     uses physical periodic displacement and adjacent widths with decay sigma².
+    DyadicFourierSpec uses physical distance and sigma with a declared minimum L.
 
     Bandwidth, center coordinates and normalization belong to separate
     declarations. No tensor evaluation methods belong on this type.

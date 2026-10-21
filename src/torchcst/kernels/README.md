@@ -4,6 +4,10 @@
 関数で、演算するクラスではない。個別の Kernel / Profile Module、ABC、互換 alias、
 旧 checkpoint の読み替えは削除した。
 
+`DyadicFourierSpec()`はsigmaからLを選ぶ有限cosine級数を宣言する。
+支持範囲は`[-L,L]`、周期`2L`、L候補は最小半幅から2倍刻み。
+[定義とTorch参照](../../../docs/dyadic-fourier-profile.ja.md)を参照。
+
 `QuadraticBSplineSpec()`は中心曲率幅sigma、支持半幅`√6*sigma`の2次B-splineを宣言し、
 既存のprofile-product presetで使える。[定義とTorch参照](../../../docs/quadratic-bspline-profile.ja.md)を参照。
 累積moment／CUDA最適化は別のAlgorithmとして扱う。

@@ -98,6 +98,13 @@ presets. Torch reference evaluation, discrete L2 normalization and center
 derivatives are available; cumulative-moment and CUDA optimization are separate
 implementations. See the [definition and usage](docs/quadratic-bspline-profile.ja.md).
 
+`DyadicFourierSpec(modes=4 or 8, minimum_half_width=0.4)` extends the research
+sigma-driven scale selection down to smaller dyadic supports. It evaluates a
+finite cosine series inside `[-L, L]` (period `2L`), with smooth sigma transitions
+between adjacent L values. Use it in the same profile-product presets with Torch
+materialized/factored execution and actual sampled L2 normalization. Hierarchical
+tile execution remains separate; see the [definition and usage](docs/dyadic-fourier-profile.ja.md).
+
 `presets.polar_torus_profile_product(profiles=(TriweightSpec(), TriweightSpec()),
 amplitude_max=1.0, bounds=bandwidth_bounds, w_c=0.1)` declares the centre-fibre
 chord product on a single S¹ × S² Torus Product/Strip chart. Profiles are ordered

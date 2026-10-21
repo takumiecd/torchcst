@@ -4,6 +4,7 @@ from importlib import import_module
 
 from torchcst.kernels.profiles import (
     BiweightSpec,
+    DyadicFourierSpec,
     GaussianSpec,
     QuadraticBSplineSpec,
     TriangleSpec,
@@ -18,6 +19,7 @@ _TYPES = (
     TriangleSpec,
     WendlandC2Spec,
     QuadraticBSplineSpec,
+    DyadicFourierSpec,
 )
 
 
@@ -31,10 +33,14 @@ def _module(state):
         expected = None if type(state.binding.profile) is GaussianSpec else 1e-6
         if normalization.floor != expected:
             raise ValueError("unsupported profile normalization floor")
-    return import_module(
-        "torchcst._backends.torch.profiles."
-        + ("gaussian" if type(state.binding.profile) is GaussianSpec else "compact")
+    module = (
+        "gaussian"
+        if type(state.binding.profile) is GaussianSpec
+        else "dyadic_fourier"
+        if type(state.binding.profile) is DyadicFourierSpec
+        else "compact"
     )
+    return import_module("torchcst._backends.torch.profiles." + module)
 
 
 def invoke(state, operation, *args, **kwargs):

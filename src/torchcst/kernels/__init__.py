@@ -14,6 +14,7 @@ from .parameterizations import (
 )
 from .profiles import (
     BiweightSpec,
+    DyadicFourierSpec,
     GaussianSpec,
     ProfileSpec,
     QuadraticBSplineSpec,
@@ -40,6 +41,7 @@ __all__ = [
     "ChebyshevSquareSpec",
     "DPSSSquareSpec",
     "DirectAmpWidthSpec",
+    "DyadicFourierSpec",
     "FixedWidthSpec",
     "FourierProductKernelSpec",
     "FourierTileSupportSpec",
