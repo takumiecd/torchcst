@@ -13,18 +13,21 @@ pytestmark = pytest.mark.skipif(
 @pytest.mark.parametrize("modes", [4, 8])
 @pytest.mark.parametrize("strategy", ["direct", "shared"])
 @pytest.mark.parametrize(
-    "cached, table, grouped, reuse",
+    "cached, table, grouped, reuse, moment_policy",
     [
-        (False, False, False, "none"),
-        (True, False, False, "none"),
-        (True, True, False, "none"),
-        (True, True, True, "none"),
-        (True, True, True, "h"),
-        (True, True, True, "all"),
+        (False, False, False, "none", "all"),
+        (True, False, False, "none", "all"),
+        (True, True, False, "none", "all"),
+        (True, True, True, "none", "all"),
+        (True, True, True, "h", "all"),
+        (True, True, True, "all", "all"),
+        (True, True, True, "chunk", "all"),
+        (True, True, True, "none", "demand"),
+        (True, True, True, "h", "hierarchical"),
     ],
 )
 def test_centered_support_dynamic_width_input_and_all_gradients(
-    modes, strategy, cached, table, grouped, reuse
+    modes, strategy, cached, table, grouped, reuse, moment_policy
 ):
     from benchmarks.cuda.linear.hierarchical_fourier import independent_gate
     from torchcst._backends.cuda.algorithms.linear.hierarchical_fourier.contract import (
@@ -48,6 +51,7 @@ def test_centered_support_dynamic_width_input_and_all_gradients(
             atom_block=4 if grouped else 1,
             batch_block=4 if grouped else 1,
             reuse=reuse,
+            moment_policy=moment_policy,
         )
         p = torch.tensor(
             [
@@ -86,7 +90,7 @@ def test_centered_support_dynamic_width_input_and_all_gradients(
         torch.backends.cuda.matmul.allow_tf32 = previous
 
 
-@pytest.mark.parametrize("reuse", ["none", "h", "all"])
+@pytest.mark.parametrize("reuse", ["none", "h", "all", "chunk"])
 def test_saved_forward_parameter_version_is_checked(reuse):
     from torchcst._backends.cuda.algorithms.linear.hierarchical_fourier.contract import (
         FourierLinearSpec,

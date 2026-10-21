@@ -78,11 +78,23 @@ def tables(spec, recipe, device):
         nodes.extend((bank, t * ns, ns) for t in range(spec.size // ns))
         angle = x[:, None] * n * math.pi / (k * spec.period.minimum_half_period)
         basis.append(torch.cat((angle.cos(), angle[:, 1:].sin()), -1).float())
+    children = [
+        pairs.index((j - 1, k // 2, ns // 2))
+        if k % 2 == 0 and (j - 1, k // 2, ns // 2) in pairs
+        else -1
+        for j, k, ns in pairs
+    ]
+    ranges = []
+    for level in sorted({j for j, _, _ in pairs}):
+        selected = [i for i, (j, _, _) in enumerate(nodes) if pairs[j][0] == level]
+        ranges.append((selected[0], len(selected)))
     r = 2 * spec.modes + 1
     fit, qlo = coefficient_table(spec.modes)
     phi = torch.stack(basis) if basis else torch.empty(0, spec.size, r)
     return {
         "recipe": recipe,
+        "children": torch.tensor(children, dtype=torch.int32, device=device),
+        "level_ranges": ranges,
         "matrix": matrix.to(device),
         "offset": offset.to(device),
         "lookup": lookup.to(device),
@@ -97,7 +109,8 @@ def tables(spec, recipe, device):
         )
         + 8 * len(banks)
         + 12 * len(nodes)
-        + fit.numel() * fit.element_size(),
+        + fit.numel() * fit.element_size()
+        + 4 * len(children),
     }
 
 
@@ -182,7 +195,51 @@ def _prepare(p, spec, recipe, tab):
     return meta, co, ci, norm, beta, order, begin, native, bounds, cap
 
 
-def _moments(x, spec, tab):
+def _demand(p, spec, recipe, tab):
+    import triton as tr
+
+    from . import demand_kernels as k
+
+    j = len(tab["nodes"])
+    if recipe.moment_policy == "all" or not j:
+        return None
+    demand = torch.zeros((2, j), device=p.device, dtype=torch.int32)
+    period = spec.period
+    a0 = (period.minimum_tile_width / 2 + 1.25 * period.minimum_half_period) / (
+        1 / period.relative_width_floor - 1
+    )
+    k.mark_demand[(tr.cdiv(len(p), 32), 4)](
+        p,
+        tab["lookup"],
+        tab["banks"],
+        demand,
+        len(p),
+        spec.size,
+        j,
+        tab["kmax"],
+        period.minimum_tile_width,
+        period.minimum_half_period,
+        a0,
+        recipe.width_cutoff,
+        32,
+        num_warps=4,
+        enable_fp_fusion=False,
+    )
+    if recipe.moment_policy == "hierarchical":
+        for first, count in reversed(tab["level_ranges"]):
+            k.propagate[(count,)](
+                demand,
+                tab["nodes"],
+                tab["banks"],
+                tab["children"],
+                j,
+                first,
+                num_warps=1,
+            )
+    return demand
+
+
+def _moments(x, spec, tab, demand=None, axis=1):
     import triton as tr
 
     from . import kernels as k
@@ -191,7 +248,35 @@ def _moments(x, spec, tab):
     j = len(tab["nodes"])
     r = 2 * spec.modes + 1
     z = x.new_empty((b, j, r))
-    if j:
+    if j and demand is not None:
+        from . import demand_kernels as dk
+
+        hierarchical = tab["recipe"].moment_policy == "hierarchical"
+        ranges = tab["level_ranges"] if hierarchical else [(0, j)]
+        for first, count in ranges:
+            dk.moments_demand[(count, tr.cdiv(b, 16))](
+                x,
+                tab["phi"],
+                tab["nodes"],
+                tab["banks"],
+                tab["children"],
+                demand,
+                z,
+                b,
+                spec.size,
+                r,
+                j,
+                spec.modes,
+                axis,
+                first,
+                hierarchical,
+                16,
+                64,
+                tr.next_power_of_2(r),
+                num_warps=4,
+                enable_fp_fusion=False,
+            )
+    elif j:
         k.moments[(j, tr.cdiv(b, 16))](
             x,
             tab["phi"],
@@ -292,7 +377,7 @@ def _contract(x, p, prepared, spec, tab, z, axis, grad):
     return h
 
 
-def _deposit(h, p, prepared, spec, tab, y, c, axis):
+def _deposit(h, p, prepared, spec, tab, y, c, axis, demand=None):
     import triton as tr
 
     from . import kernels as k
@@ -321,6 +406,7 @@ def _deposit(h, p, prepared, spec, tab, y, c, axis):
             16,
             32,
             tr.next_power_of_2(r),
+            Active=demand,
             num_warps=4,
             enable_fp_fusion=False,
         )
@@ -386,19 +472,23 @@ def _reconstruct(c, spec, tab, y):
 class _Apply(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, p, spec, recipe, tab):
-        z = _moments(x, spec, tab)
+        demand = _demand(p, spec, recipe, tab)
+        z = _moments(x, spec, tab, demand, 1)
         y = x.new_zeros((len(x), spec.size))
         c = x.new_zeros(z.shape)
-        saved = [x, p]
+        saved = [x, p, demand]
         records = []
         for start in range(0, len(p), recipe.atom_chunk):
             pc = p[start : start + recipe.atom_chunk]
             prep = _prepare(pc, spec, recipe, tab)
-            h = _contract(x, pc, prep, spec, tab, z, 1, recipe.reuse != "none")
-            _deposit(h, pc, prep, spec, tab, y, c, 0)
-            if recipe.reuse != "none":
+            retain = recipe.reuse in ("h", "all") or (
+                recipe.reuse == "chunk" and start == 0
+            )
+            h = _contract(x, pc, prep, spec, tab, z, 1, retain)
+            _deposit(h, pc, prep, spec, tab, y, c, 0, demand)
+            if retain:
                 first = len(saved)
-                if recipe.reuse == "all":
+                if recipe.reuse in ("all", "chunk"):
                     saved.extend(prep[:9])
                 saved.append(h)
                 records.append((first, prep[9]))
@@ -421,25 +511,31 @@ class _Apply(torch.autograd.Function):
         x, p = saved[:2]
         spec, recipe, tab = ctx.spec, ctx.recipe, ctx.tab
         dy = dy.contiguous()
-        zx, zg = _moments(x, spec, tab), _moments(dy, spec, tab)
+        demand = saved[2]
+        zx = (
+            _moments(x, spec, tab, demand, 1)
+            if recipe.reuse in ("none", "chunk")
+            else None
+        )
+        zg = _moments(dy, spec, tab, demand, 0)
         dx = torch.zeros_like(x)
         dp = torch.empty_like(p)
-        c = x.new_zeros(zx.shape)
+        c = x.new_zeros(zg.shape)
         for start in range(0, len(p), recipe.atom_chunk):
             pc = p[start : start + recipe.atom_chunk]
-            if recipe.reuse == "none":
+            if recipe.reuse == "none" or (recipe.reuse == "chunk" and start > 0):
                 prep = _prepare(pc, spec, recipe, tab)
                 h = _contract(x, pc, prep, spec, tab, zx, 1, True)
             else:
                 first, cap = ctx.records[start // recipe.atom_chunk]
-                if recipe.reuse == "all":
+                if recipe.reuse in ("all", "chunk"):
                     prep = (*saved[first : first + 9], cap)
                     h = saved[first + 9]
                 else:
                     prep = _prepare(pc, spec, recipe, tab)
                     h = saved[first]
             g = _contract(dy, pc, prep, spec, tab, zg, 0, True)
-            _deposit(g, pc, prep, spec, tab, dx, c, 1)
+            _deposit(g, pc, prep, spec, tab, dx, c, 1, demand)
             k.vjp[(len(pc),)](
                 h,
                 g,

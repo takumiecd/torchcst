@@ -493,6 +493,7 @@ def aggregate(
     BB: tl.constexpr,
     BA: tl.constexpr,
     FF: tl.constexpr,
+    Active=None,
 ):
     node = tl.program_id(0)
     b = tl.program_id(1) * BB + tl.arange(0, BB)
@@ -501,6 +502,8 @@ def aggregate(
     first = tl.load(Nodes + node * 3 + 1)
     S = tl.load(Nodes + node * 3 + 2)
     begin, end = tl.load(Begin + bank), tl.load(Begin + bank + 1)
+    if Active is not None:
+        end = tl.where(tl.load(Active + AXIS * J + node) > 0, end, begin)
     acc = tl.full((BB, FF), 0.0, tl.float32)
     for base in range(begin, end, BA):
         pos = base + tl.arange(0, BA)

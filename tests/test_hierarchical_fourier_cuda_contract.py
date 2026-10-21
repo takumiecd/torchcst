@@ -165,3 +165,33 @@ def test_continuous_coefficient_table_value_and_width_derivative(modes):
     expected, derivative = coefficients(FourierPeakSpec(modes=modes), q)
     torch.testing.assert_close(b, expected, atol=1e-12, rtol=0)
     torch.testing.assert_close(db, derivative, atol=5e-11, rtol=0)
+
+
+def test_hierarchy_inherits_only_matching_even_frequencies():
+    from torchcst._backends.cuda.algorithms.linear.hierarchical_fourier.executor import (
+        tables,
+    )
+
+    for modes in (4, 8):
+        spec = FourierLinearSpec(1024, modes)
+        recipe = FourierRecipe(
+            minimum_sites=32 if modes == 4 else 64, moment_policy="hierarchical"
+        )
+        tab = tables(spec, recipe, torch.device("cpu"))
+        pairs = bank_families(spec, recipe)
+        inherited = 0
+        for parent, child in enumerate(tab["children"].tolist()):
+            if child < 0:
+                continue
+            jp, kp, sp = pairs[parent]
+            jc, kc, sc = pairs[child]
+            assert jp == jc + 1 and kp == 2 * kc and sp == 2 * sc
+            for n in range(0, modes + 1, 2):
+                torch.testing.assert_close(
+                    tab["phi"][parent, :, n],
+                    tab["phi"][child, :, n // 2],
+                    atol=0,
+                    rtol=0,
+                )
+            inherited += 1
+        assert inherited == (6 if modes == 8 else 0)

@@ -61,8 +61,8 @@ class FourierRecipe:
             raise ValueError("atom_block must be 1 or 4")
         if type(self.batch_block) is not int or self.batch_block not in (1, 4, 8):
             raise ValueError("batch_block must be 1,4,8")
-        if self.reuse not in ("none", "h", "all"):
-            raise ValueError("reuse must be none,h,all")
+        if self.reuse not in ("none", "h", "all", "chunk"):
+            raise ValueError("reuse must be none,h,all,chunk")
         if self.moment_policy not in ("all", "demand", "hierarchical"):
             raise ValueError("invalid moment policy")
         if type(self.native_cache) is not bool:
