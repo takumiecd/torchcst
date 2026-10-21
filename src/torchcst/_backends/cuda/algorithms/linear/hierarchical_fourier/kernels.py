@@ -12,7 +12,7 @@ import triton.language.extra.cuda.libdevice as lib
 @tr.jit
 def _smooth(z):
     z = tl.minimum(tl.maximum(z, 0.0), 1.0)
-    return z**3 * (10 + z * (-15 + 6 * z)), 30 * z * z * (1 - z) * (1 - z)
+    return z * z * z * (10 + z * (-15 + 6 * z)), 30 * z * z * (1 - z) * (1 - z)
 
 
 @tr.jit
