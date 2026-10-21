@@ -171,7 +171,7 @@ def _contract(x, p, prepared, spec, tab, z, axis, grad):
     b, a = len(x), len(p)
     r = 2 * spec.modes + 1
     h = x.new_empty((b, a, 3))
-    k.contract[(a, tr.cdiv(b, 4))](
+    k.contract[(a, b)](
         x,
         p,
         meta,

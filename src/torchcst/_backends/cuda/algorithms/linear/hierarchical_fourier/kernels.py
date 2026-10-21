@@ -293,11 +293,11 @@ def contract(
     FF: tl.constexpr,
 ):
     a = tl.program_id(0)
-    b = tl.program_id(1) * BB + tl.arange(0, BB)
+    b = tl.program_id(1)
     mu = tl.load(P + a * 4 + AXIS + 1).to(tl.float64)
-    hv = tl.full((BB,), 0.0, tl.float64)
-    hm = tl.full((BB,), 0.0, tl.float64)
-    hi_ = tl.full((BB,), 0.0, tl.float64)
+    hv = tl.full((), 0.0, tl.float64)
+    hm = tl.full((), 0.0, tl.float64)
+    hi_ = tl.full((), 0.0, tl.float64)
     for c in tl.static_range(4):
         if tl.load(Meta + (a * 4 + c) * 4 + 3) > 0:
             L = tl.load(Meta + (a * 4 + c) * 4)
@@ -328,14 +328,14 @@ def contract(
                         bm = tl.where(f <= M, -pb, pb) * (3.141592653589793 * n / L)
                     for tile in range(left, right):
                         z = tl.load(
-                            Z + (b[:, None] * J + offset + tile) * R + f[None, :],
-                            (b[:, None] < B) & (f[None, :] < R),
+                            Z + (b * J + offset + tile) * R + f,
+                            (b < B) & (f < R),
                             0,
                         ).to(tl.float64)
-                        hv += tl.sum(z * beta[None, :], 1)
+                        hv += tl.sum(z * beta, 0)
                         if GRAD:
-                            hm += tl.sum(z * bm[None, :], 1)
-                            hi_ += tl.sum(z * bi[None, :], 1)
+                            hm += tl.sum(z * bm, 0)
+                            hi_ += tl.sum(z * bi, 0)
                     left, right = left * S, right * S
                 else:
                     left, right = lo, lo
@@ -346,14 +346,14 @@ def contract(
                     s = start + tl.arange(0, BS)
                     fv, fm, fi = _component(s, mu, a, c, Meta, Co, Ci, M, GRAD)
                     xv = tl.load(
-                        X + b[:, None] * N + s[None, :],
-                        (b[:, None] < B) & (s[None, :] < end),
+                        X + b * N + s,
+                        (b < B) & (s < end),
                         0,
                     ).to(tl.float64)
-                    hv += tl.sum(xv * fv[None, :], 1)
+                    hv += tl.sum(xv * fv, 0)
                     if GRAD:
-                        hm += tl.sum(xv * fm[None, :], 1)
-                        hi_ += tl.sum(xv * fi[None, :], 1)
+                        hm += tl.sum(xv * fm, 0)
+                        hi_ += tl.sum(xv * fi, 0)
     tl.store(H + (b * A + a) * 3, hv, b < B)
     if GRAD:
         tl.store(H + (b * A + a) * 3 + 1, hm, b < B)
