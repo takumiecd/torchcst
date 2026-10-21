@@ -83,11 +83,14 @@ def _prepare(p, spec, recipe, tab):
     ci = torch.empty_like(co)
     norm = torch.empty((a, 2, 3), device=p.device, dtype=torch.float64)
     beta = torch.empty((2, a, 4, 2, 2 * m + 1), device=p.device, dtype=torch.float32)
+    cap = (16 if m == 4 else 32) if recipe.native_cache else 0
+    native = torch.empty((a, 2, 3, cap), device=p.device, dtype=torch.float32)
+    bounds = torch.empty((a, 2, 2), device=p.device, dtype=torch.int32)
     period = spec.period
     a0 = (period.minimum_tile_width / 2 + 1.25 * period.minimum_half_period) / (
         1 / period.relative_width_floor - 1
     )
-    k.prepare[(a,)](
+    k.prepare[(a, 4)](
         p,
         tab["matrix"],
         tab["offset"],
@@ -108,7 +111,20 @@ def _prepare(p, spec, recipe, tab):
         enable_fp_fusion=False,
     )
     k.norms[(a, 2)](
-        p, meta, co, ci, norm, a, spec.size, m, 128, num_warps=4, enable_fp_fusion=False
+        p,
+        meta,
+        co,
+        ci,
+        norm,
+        a,
+        spec.size,
+        m,
+        32 if cap else 128,
+        Native=native,
+        Bounds=bounds,
+        NC=cap,
+        num_warps=1 if cap else 4,
+        enable_fp_fusion=False,
     )
     k.pack[(a, 2)](
         p,
@@ -131,7 +147,7 @@ def _prepare(p, spec, recipe, tab):
         begin = torch.searchsorted(
             key, torch.arange(len(tab["banks"]) + 1, device=p.device, dtype=key.dtype)
         )
-    return meta, co, ci, norm, beta, order, begin
+    return meta, co, ci, norm, beta, order, begin, native, bounds, cap
 
 
 def _moments(x, spec, tab):
@@ -167,11 +183,12 @@ def _contract(x, p, prepared, spec, tab, z, axis, grad):
 
     from . import kernels as k
 
-    meta, co, ci, _norm, beta, _, _ = prepared
+    meta, co, ci, _norm, beta, _, _, native, bounds, cap = prepared
     b, a = len(x), len(p)
     r = 2 * spec.modes + 1
     h = x.new_empty((b, a, 3))
-    k.contract[(a, b)](
+    kernel = k.contract_cached if cap else k.contract
+    buffers = (
         x,
         p,
         meta,
@@ -181,6 +198,10 @@ def _contract(x, p, prepared, spec, tab, z, axis, grad):
         tab["banks"],
         z,
         h,
+    )
+    if cap:
+        buffers += (native, bounds)
+    constants = (
         b,
         spec.size,
         a,
@@ -192,6 +213,12 @@ def _contract(x, p, prepared, spec, tab, z, axis, grad):
         4,
         128,
         tr.next_power_of_2(r),
+    )
+    if cap:
+        constants += (cap,)
+    kernel[(a, b)](
+        *buffers,
+        *constants,
         num_warps=4,
         enable_fp_fusion=False,
     )
@@ -203,7 +230,7 @@ def _deposit(h, p, prepared, spec, tab, y, c, axis):
 
     from . import kernels as k
 
-    meta, co, ci, norm, beta, order, begin = prepared
+    meta, co, ci, norm, beta, order, begin, native, bounds, cap = prepared
     b, a = len(h), len(p)
     r = 2 * spec.modes + 1
     j = len(tab["nodes"])
@@ -230,7 +257,8 @@ def _deposit(h, p, prepared, spec, tab, y, c, axis):
             num_warps=4,
             enable_fp_fusion=False,
         )
-    k.deposit[(a * 4, tr.cdiv(b, 4))](
+    kernel = k.deposit_cached if cap else k.deposit
+    buffers = (
         h,
         p,
         meta,
@@ -239,6 +267,10 @@ def _deposit(h, p, prepared, spec, tab, y, c, axis):
         norm,
         tab["banks"],
         y,
+    )
+    if cap:
+        buffers += (native, bounds)
+    constants = (
         b,
         spec.size,
         a,
@@ -246,6 +278,12 @@ def _deposit(h, p, prepared, spec, tab, y, c, axis):
         axis,
         4,
         128,
+    )
+    if cap:
+        constants += (cap,)
+    kernel[(a * 4, tr.cdiv(b, 4))](
+        *buffers,
+        *constants,
         num_warps=4,
         enable_fp_fusion=False,
     )

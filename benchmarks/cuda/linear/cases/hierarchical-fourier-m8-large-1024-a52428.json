@@ -21,7 +21,8 @@
   },
   "plans": [
     "direct",
-    "shared64"
+    "direct-cached",
+    "shared64-cached"
   ],
   "baseline": "direct",
   "dense": true

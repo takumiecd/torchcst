@@ -41,7 +41,7 @@ def prepare(
     level = tl.full((), 0, tl.int32)
     for j in tl.static_range(1, 12):
         level = tl.where(width >= A0 * (2.0**j), j, level)
-    c = tl.arange(0, 4)
+    c = tl.program_id(1)
     lev = tl.where(c < 2, tl.maximum(level - 1, 0), level)
     scale = lib.exp2(lev.to(tl.float64))
     threshold = A0 * lib.exp2(level.to(tl.float64))
@@ -61,7 +61,7 @@ def prepare(
     weight, wi = outer * inner, do * inner + outer * di
     length = low + (c % 2) * step
     k = ((n + c % 2) * scale).to(tl.int32)
-    bank = tl.full((4,), -1, tl.int32)
+    bank = tl.full((), -1, tl.int32)
     if SHARED:
         bank = tl.load(
             Lookup + lev * (KMAX + 1) + k,
@@ -73,51 +73,52 @@ def prepare(
     tl.store(Meta + (a * 4 + c) * 4 + 2, bank.to(tl.float64))
     tl.store(Meta + (a * 4 + c) * 4 + 3, weight)
     nmode = tl.arange(0, F)
-    q = width / length
-    z = 3.141592653589793 * q[:, None] * nmode[None, :]
-    small = tl.abs(z) < 4
-    t = tl.where(small, z, 0.0)
-    term = tl.full((4, F), 256 / 315, tl.float64)
-    integ, prime = term, tl.full((4, F), 0, tl.float64)
-    for m in tl.static_range(20):
-        term *= -t * t / ((2 * m + 2) * (2 * m + 11))
-        integ += term
-        prime += (2 * m + 2) * term
-    v = tl.where(small, 4.0, z)
-    v2 = v * v
-    ss, cc = lib.sin(v), lib.cos(v)
-    large = (
-        768
-        * ((105 - 45 * v2 + v2 * v2) * ss - (105 * v - 10 * v * v2) * cc)
-        / (v * v * v * v * v * v * v * v * v)
-    )
-    largep = (
-        -768
-        * (
-            (945 - 420 * v2 + 15 * v2 * v2) * ss
-            - (945 * v - 105 * v * v2 + v * v2 * v2) * cc
+    outb = tl.full((F,), 0.0, tl.float64)
+    outi = tl.full((F,), 0.0, tl.float64)
+    if (weight > 0) | (wi != 0):
+        q = width / length
+        z = 3.141592653589793 * q * nmode
+        small = tl.abs(z) < 4
+        t = tl.where(small, z, 0.0)
+        term = tl.full((F,), 256 / 315, tl.float64)
+        integ, prime = term, tl.full((F,), 0, tl.float64)
+        for m in tl.static_range(20):
+            term *= -t * t / ((2 * m + 2) * (2 * m + 11))
+            integ += term
+            prime += (2 * m + 2) * term
+        v = tl.where(small, 4.0, z)
+        v2 = v * v
+        ss, cc = lib.sin(v), lib.cos(v)
+        large = (
+            768
+            * ((105 - 45 * v2 + v2 * v2) * ss - (105 * v - 10 * v * v2) * cc)
+            / (v * v * v * v * v * v * v * v * v)
         )
-        / (v * v * v * v * v * v * v * v * v)
-    )
-    integ, prime = tl.where(small, integ, large), tl.where(small, prime, largep)
-    factor = tl.where(nmode == 0, 0.5, 1.0)
-    raw = q[:, None] * integ * factor[None, :]
-    rawq = (integ + prime) * factor[None, :]
-    mat = tl.load(
-        Matrix + nmode[:, None] * (M + 1) + nmode[None, :],
-        (nmode[:, None] <= M) & (nmode[None, :] <= M),
-        0,
-    )
-    off = tl.load(Offset + nmode, nmode <= M, 0)
-    b = tl.sum(raw[:, None, :] * mat[None, :, :], 2) + off[None, :]
-    bq = tl.sum(rawq[:, None, :] * mat[None, :, :], 2)
-    addr = (a * 4 + c[:, None]) * (M + 1) + nmode[None, :]
-    tl.store(Co + addr, b * weight[:, None], nmode[None, :] <= M)
-    tl.store(
-        Ci + addr,
-        bq / length[:, None] * weight[:, None] + b * wi[:, None],
-        nmode[None, :] <= M,
-    )
+        largep = (
+            -768
+            * (
+                (945 - 420 * v2 + 15 * v2 * v2) * ss
+                - (945 * v - 105 * v * v2 + v * v2 * v2) * cc
+            )
+            / (v * v * v * v * v * v * v * v * v)
+        )
+        integ, prime = tl.where(small, integ, large), tl.where(small, prime, largep)
+        factor = tl.where(nmode == 0, 0.5, 1.0)
+        raw = q * integ * factor
+        rawq = (integ + prime) * factor
+        mat = tl.load(
+            Matrix + nmode[:, None] * (M + 1) + nmode[None, :],
+            (nmode[:, None] <= M) & (nmode[None, :] <= M),
+            0,
+        )
+        off = tl.load(Offset + nmode, nmode <= M, 0)
+        b = tl.sum(raw[None, :] * mat, 1) + off
+        bq = tl.sum(rawq[None, :] * mat, 1)
+        outb = b * weight
+        outi = bq / length * weight + b * wi
+    addr = (a * 4 + c) * (M + 1) + nmode
+    tl.store(Co + addr, outb, nmode <= M)
+    tl.store(Ci + addr, outi, nmode <= M)
 
 
 @tr.jit
@@ -163,6 +164,9 @@ def norms(
     N: tl.constexpr,
     M: tl.constexpr,
     BS: tl.constexpr,
+    Native=None,
+    Bounds=None,
+    NC: tl.constexpr = 0,
 ):
     a, axis = tl.program_id(0), tl.program_id(1)
     mu = tl.load(P + a * 4 + axis + 1).to(tl.float64)
@@ -172,6 +176,13 @@ def norms(
         w = tl.load(Meta + (a * 4 + c) * 4 + 3)
         maxL = tl.maximum(maxL, tl.where(w > 0, L, 0.0))
     lo, hi = _bounds(mu, maxL, N)
+    if NC:
+        direct = tl.full((), True, tl.int1)
+        for c in tl.static_range(4):
+            direct = direct & (tl.load(Meta + (a * 4 + c) * 4 + 2) < 0)
+        cached = direct & (hi - lo <= NC)
+        tl.store(Bounds + (a * 2 + axis) * 2, lo)
+        tl.store(Bounds + (a * 2 + axis) * 2 + 1, tl.where(cached, hi - lo, -1))
     acc = tl.full((BS,), 0.0, tl.float64)
     am = tl.full((BS,), 0.0, tl.float64)
     ai = tl.full((BS,), 0.0, tl.float64)
@@ -189,6 +200,13 @@ def norms(
         acc += tl.where(s < hi, f * f, 0.0)
         am += tl.where(s < hi, f * fm, 0.0)
         ai += tl.where(s < hi, f * fi, 0.0)
+        if NC:  # noqa: SIM102 - compile-time guard for the optional cache pointers
+            if cached:
+                index = s - lo
+                valid = (s < hi) & (index < NC)
+                tl.store(Native + ((a * 2 + axis) * 3) * NC + index, f, valid)
+                tl.store(Native + ((a * 2 + axis) * 3 + 1) * NC + index, fm, valid)
+                tl.store(Native + ((a * 2 + axis) * 3 + 2) * NC + index, fi, valid)
     tl.store(Norm + (a * 2 + axis) * 3 + 0, tl.sum(acc, 0))
     tl.store(Norm + (a * 2 + axis) * 3 + 1, tl.sum(am, 0))
     tl.store(Norm + (a * 2 + axis) * 3 + 2, tl.sum(ai, 0))
@@ -369,6 +387,74 @@ def _alpha(P, Norm, a):
 
 
 @tr.jit
+def contract_cached(
+    X,
+    P,
+    Meta,
+    Co,
+    Ci,
+    Beta,
+    Banks,
+    Z,
+    H,
+    Native,
+    Bounds,
+    B: tl.constexpr,
+    N: tl.constexpr,
+    A: tl.constexpr,
+    M: tl.constexpr,
+    R: tl.constexpr,
+    J: tl.constexpr,
+    AXIS: tl.constexpr,
+    GRAD: tl.constexpr,
+    BB: tl.constexpr,
+    BS: tl.constexpr,
+    FF: tl.constexpr,
+    NC: tl.constexpr,
+):
+    a, b = tl.program_id(0), tl.program_id(1)
+    count = tl.load(Bounds + (a * 2 + AXIS) * 2 + 1)
+    if count >= 0:
+        lo = tl.load(Bounds + (a * 2 + AXIS) * 2)
+        s = tl.arange(0, NC)
+        x = tl.load(X + b * N + lo + s, s < count, 0).to(tl.float64)
+        f = tl.load(Native + ((a * 2 + AXIS) * 3) * NC + s, s < count, 0).to(tl.float64)
+        tl.store(H + (b * A + a) * 3, tl.sum(x * f, 0))
+        if GRAD:
+            fm = tl.load(Native + ((a * 2 + AXIS) * 3 + 1) * NC + s, s < count, 0).to(
+                tl.float64
+            )
+            fi = tl.load(Native + ((a * 2 + AXIS) * 3 + 2) * NC + s, s < count, 0).to(
+                tl.float64
+            )
+            tl.store(H + (b * A + a) * 3 + 1, tl.sum(x * fm, 0))
+            tl.store(H + (b * A + a) * 3 + 2, tl.sum(x * fi, 0))
+    else:
+        contract(
+            X,
+            P,
+            Meta,
+            Co,
+            Ci,
+            Beta,
+            Banks,
+            Z,
+            H,
+            B,
+            N,
+            A,
+            M,
+            R,
+            J,
+            AXIS,
+            GRAD,
+            BB,
+            BS,
+            FF,
+        )
+
+
+@tr.jit
 def aggregate(
     H,
     P,
@@ -514,6 +600,50 @@ def deposit(
                     (b[:, None] < B) & (s[None, :] < end),
                     sem="relaxed",
                 )
+
+
+@tr.jit
+def deposit_cached(
+    H,
+    P,
+    Meta,
+    Co,
+    Ci,
+    Norm,
+    Banks,
+    Y,
+    Native,
+    Bounds,
+    B: tl.constexpr,
+    N: tl.constexpr,
+    A: tl.constexpr,
+    M: tl.constexpr,
+    AXIS: tl.constexpr,
+    BB: tl.constexpr,
+    BS: tl.constexpr,
+    NC: tl.constexpr,
+):
+    a, c = tl.program_id(0) // 4, tl.program_id(0) % 4
+    count = tl.load(Bounds + (a * 2 + AXIS) * 2 + 1)
+    if count >= 0:
+        if c == 0:
+            b = tl.program_id(1) * BB + tl.arange(0, BB)
+            lo = tl.load(Bounds + (a * 2 + AXIS) * 2)
+            s = tl.arange(0, NC)
+            f = tl.load(Native + ((a * 2 + AXIS) * 3) * NC + s, s < count, 0).to(
+                tl.float64
+            )
+            h = tl.load(H + (b * A + a) * 3, b < B, 0).to(tl.float64) * _alpha(
+                P, Norm, a
+            )
+            tl.atomic_add(
+                Y + b[:, None] * N + lo + s[None, :],
+                (h[:, None] * f[None, :]).to(tl.float32),
+                (b[:, None] < B) & (s[None, :] < count),
+                sem="relaxed",
+            )
+    else:
+        deposit(H, P, Meta, Co, Ci, Norm, Banks, Y, B, N, A, M, AXIS, BB, BS)
 
 
 @tr.jit

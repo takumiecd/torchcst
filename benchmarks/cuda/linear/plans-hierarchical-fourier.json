@@ -70,6 +70,66 @@
           "width_cutoff": 2.0
         }
       }
+    },
+    {
+      "id": "direct-cached",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_hierarchical_fourier",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "strategy": "direct",
+          "atom_chunk": 4096,
+          "minimum_sites": 64,
+          "width_cutoff": 2.0,
+          "native_cache": true
+        }
+      }
+    },
+    {
+      "id": "shared32-cached",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_hierarchical_fourier",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "strategy": "shared",
+          "atom_chunk": 4096,
+          "minimum_sites": 32,
+          "width_cutoff": 2.0,
+          "native_cache": true
+        }
+      }
+    },
+    {
+      "id": "shared64-cached",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_hierarchical_fourier",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "strategy": "shared",
+          "atom_chunk": 4096,
+          "minimum_sites": 64,
+          "width_cutoff": 2.0,
+          "native_cache": true
+        }
+      }
+    },
+    {
+      "id": "shared128-cached",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_hierarchical_fourier",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "strategy": "shared",
+          "atom_chunk": 4096,
+          "minimum_sites": 128,
+          "width_cutoff": 2.0,
+          "native_cache": true
+        }
+      }
     }
   ]
 }

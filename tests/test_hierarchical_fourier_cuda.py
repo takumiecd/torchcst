@@ -12,7 +12,10 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.mark.parametrize("modes", [4, 8])
 @pytest.mark.parametrize("strategy", ["direct", "shared"])
-def test_centered_support_dynamic_width_input_and_all_gradients(modes, strategy):
+@pytest.mark.parametrize("cached", [False, True])
+def test_centered_support_dynamic_width_input_and_all_gradients(
+    modes, strategy, cached
+):
     from benchmarks.cuda.linear.hierarchical_fourier import independent_gate
     from torchcst._backends.cuda.algorithms.linear.hierarchical_fourier.contract import (
         FourierLinearSpec,
@@ -27,7 +30,10 @@ def test_centered_support_dynamic_width_input_and_all_gradients(modes, strategy)
     try:
         spec = FourierLinearSpec(256, modes)
         recipe = FourierRecipe(
-            strategy=strategy, atom_chunk=256, minimum_sites=32 if modes == 4 else 64
+            strategy=strategy,
+            atom_chunk=256,
+            minimum_sites=32 if modes == 4 else 64,
+            native_cache=cached,
         )
         p = torch.tensor(
             [
