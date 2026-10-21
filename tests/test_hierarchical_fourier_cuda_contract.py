@@ -51,9 +51,10 @@ def test_metadata_roundtrip_and_rejections():
 
 @pytest.mark.parametrize("modes", [4, 8])
 @pytest.mark.parametrize("minimum_sites", [32, 64, 128])
-def test_no_missing_live_period_bank(modes, minimum_sites):
+@pytest.mark.parametrize("width_cutoff", [0.1, 2.0, 4.0, 6.0])
+def test_no_missing_live_period_bank(modes, minimum_sites, width_cutoff):
     spec = FourierLinearSpec(1024, modes)
-    recipe = FourierRecipe(minimum_sites=minimum_sites)
+    recipe = FourierRecipe(minimum_sites=minimum_sites, width_cutoff=width_cutoff)
     pairs = {(j, k) for j, k, _ in bank_families(spec, recipe)}
     widths = torch.linspace(0.1, 10, 10001, dtype=torch.float64)
     _L, T, w, _dw, k, j = components(spec.period, widths)
