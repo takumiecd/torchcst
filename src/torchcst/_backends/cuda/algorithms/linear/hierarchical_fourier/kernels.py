@@ -227,16 +227,17 @@ def norms(
                 fm += vm
                 fi += vi
                 if BOUNDARY:
-                    bank = tl.load(Meta + (a * 4 + c) * 4 + 2).to(tl.int32)
-                    length = tl.load(Meta + (a * 4 + c) * 4)
-                    c_lo, c_hi = _bounds(mu, length, N)
-                    size = tl.load(Banks + bank * 2, bank >= 0, 1)
-                    first, last = (c_lo + size - 1) // size, c_hi // size
-                    interior = (bank >= 0) & (last > first)
-                    boundary = ~interior | (s < first * size) | (s >= last * size)
-                    partial += tl.where(boundary, v, 0.0)
-                    partial_m += tl.where(boundary, vm, 0.0)
-                    partial_i += tl.where(boundary, vi, 0.0)
+                    if not direct:
+                        bank = tl.load(Meta + (a * 4 + c) * 4 + 2).to(tl.int32)
+                        length = tl.load(Meta + (a * 4 + c) * 4)
+                        c_lo, c_hi = _bounds(mu, length, N)
+                        size = tl.load(Banks + bank * 2, bank >= 0, 1)
+                        first, last = (c_lo + size - 1) // size, c_hi // size
+                        interior = (bank >= 0) & (last > first)
+                        boundary = ~interior | (s < first * size) | (s >= last * size)
+                        partial += tl.where(boundary, v, 0.0)
+                        partial_m += tl.where(boundary, vm, 0.0)
+                        partial_i += tl.where(boundary, vi, 0.0)
         acc += tl.where(s < hi, f * f, 0.0)
         am += tl.where(s < hi, f * fm, 0.0)
         ai += tl.where(s < hi, f * fi, 0.0)
@@ -245,7 +246,8 @@ def norms(
                 index = s - lo
                 valid = (s < hi) & (index < NC)
                 if BOUNDARY:
-                    f, fm, fi = partial, partial_m, partial_i
+                    if not direct:
+                        f, fm, fi = partial, partial_m, partial_i
                 tl.store(Native + ((a * 2 + axis) * 3) * NC + index, f, valid)
                 tl.store(Native + ((a * 2 + axis) * 3 + 1) * NC + index, fm, valid)
                 tl.store(Native + ((a * 2 + axis) * 3 + 2) * NC + index, fi, valid)
