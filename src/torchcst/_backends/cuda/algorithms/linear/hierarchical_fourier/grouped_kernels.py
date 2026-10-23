@@ -37,8 +37,8 @@ def contract_grouped(
     Start=None,
     Count=None,
 ):
-    first = tl.program_id(0) * BA if Start is None else Start
-    a = first + tl.arange(0, BA)
+    atom_first = tl.program_id(0) * BA if Start is None else Start
+    a = atom_first + tl.arange(0, BA)
     valid_atom = a < A
     if Count is not None:
         valid_atom &= tl.arange(0, BA) < Count

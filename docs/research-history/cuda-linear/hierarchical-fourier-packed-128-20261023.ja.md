@@ -34,3 +34,7 @@ N128/A128では後者だけで768 KiB、dense W FP32の64 KiBを超える。
 
 GPU結果は未取得。初期配置の39 groupはCPU設計からの予測であり、実機で検証する。
 profile cache削減は別変更として、この比較後に扱う。
+
+初回job `l4job-c36cc4846ca54127901d134680c18df1` (source `dee32f19`) は
+コンパイル段階で失敗。既存JIT内の`first`との変数名衝突とassociative_scanの
+引数指定を修正する。10 failed / 3 passedで、性能値は取得していない。

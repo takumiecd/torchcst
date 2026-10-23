@@ -99,7 +99,7 @@ def pack(
     category = sorted_key >> 24
     previous = tl.gather(category, tl.maximum(row - 1, 0), axis=0)
     head = valid & ((row == 0) | (category != previous))
-    start = tl.associative_scan(tl.where(head, row, 0), _maximum, axis=0)
+    start = tl.associative_scan(tl.where(head, row, 0), axis=0, combine_fn=_maximum)
     group_head = valid & (head | ((row - start) % 4 == 0))
     group = tl.cumsum(group_head.to(tl.int32), axis=0) - 1
     tl.store(Begin + group, row, group_head)
