@@ -4,6 +4,9 @@
 **新しいCUDA forwardの設計案であり、この融合構成は未実装・未検証。**
 本書の追加ではruntimeを変更せず、GPU実験も行っていない。
 
+追記：担当の割り当てと人数調整は、最初から**thread単位**で行う。
+各関数の中身は[thread単位の関数別擬似コード](hierarchical-fourier-thread-functions-20261023.ja.md)を参照。
+
 ## 1. 今回の方針
 
 担当する作業と領域を最初に決める。
@@ -38,16 +41,23 @@ Zを必要としない直接計算は、共通の準備が済み次第、Z生成
 | atom数 | 128 |
 | 1 blockの担当出力 | 32サイト × 4バッチ |
 | 1 blockのthreads | 128 threads、4 warps |
-| Z作成担当の例 | warp 0・1、固定64 threads |
-| 最初から計算する担当の例 | warp 2・3 |
+| Z作成担当の人数 | `prepare_threads`。1 thread刻みで指定する |
+| 一枚のZを作る集団の人数 | `z_group_threads`。準備担当の中を固定集団に分ける |
+| 一つの計算集団の人数 | `work_group_threads`。warpサイズとは独立に指定する |
+| 最初から計算する担当 | Z作成を担当しないthreads |
 | 最後のY書き込み | 出力要素ごとに一つのblockが所有 |
 
 バッチ4なら出力4 block、バッチ32なら4 × 8 = 32 blockになる。
 これは担当を理解するための初期候補で、GPUを十分使える最適な分割という意味ではない。
 
+タイルはデータの領域であり、warpやthreadと一対一には対応させない。
+例えば準備48 threadsを16人ずつ3集団に分け、残り80 threadsを8人ずつ10集団に分けられる。
+これは割り当ての例で、shared容量・実行可能性・速度を検証した構成ではない。
+
 Z作成担当も、自分たちの準備を終えた後は、あらかじめ割り当てた計算へ移れる。
-その場合の計算担当は最大4 warpsであり、Cと出力の部分和も最大4担当分を予算に含める。
-2担当分だけ確保した設計と混同しない。
+準備48人も8人ずつ計算する例では、計算集団は最終的に6 + 10 = 16個になる。
+Cと出力部分和、Hの縮約用scratch、同期状態は、実際の集団数で予算を取る。
+warp数が4だから部分和も4担当分で済む、という仮定は置かない。
 
 この最初の候補では、各blockが必要なZ・H・Cをblock内で作る。
 複数の出力blockに必要な値には重複計算が生じる。
@@ -56,7 +66,8 @@ Z作成担当も、自分たちの準備を終えた後は、あらかじめ割�
 ## 3. 短い擬似コード
 
 `prepare_team`はZ作成用の固定集団、`my_work`は計算担当に割り当てた仕事である。
-Z作成を担当しないwarpは、準備ループを通らず`do_work()`へ入る。
+Z作成を担当しないthreadは、準備ループを通らず`do_work()`へ入る。
+同じ同期に参加する固定集団内では、準備ループやatomループの継続判断を揃える。
 このコードは処理の約束を表すもので、そのままコンパイルするCUDAコードではない。
 
 ```cpp
@@ -82,6 +93,7 @@ do_work(my_work) {
         add_c_parts(atom, h);
     }
 
+    group_sync(my_work.team);  // この集団のCの書き込み完了
     expand_c_parts(my_work);
 }
 ```
@@ -98,7 +110,7 @@ do_work(my_work) {
 | `next_z_tile(team, tile)` | 担当に固定した入力タイル一覧から、次のタイルを取得する | 作成対象一枚。作成担当内で同じ継続・終了判断 |
 | `build_z_tile(tile)` | X、基底、必要な完成済み子Zを読み、協力して縮約する | 指定タイルのZ値。通知前の状態 |
 | `finish_z_tile(team, tile)` | Zの書き込みを作成担当内で同期し、完成を公開する | そのZを安全に読めるという通知 |
-| `compute_h(atom)` | 必要なZを待ち、直接部分も含めて入力支持全体を縮約する | そのatomの4バッチ分のH。まずはregister上の一時値 |
+| `compute_h(atom)` | 必要なZを待ち、直接部分も含めて入力支持全体を縮約する | 集団内で共有後、各threadがregisterへコピーした4バッチ分のH |
 | `add_direct_parts(atom, h)` | Hと出力profileから、割り当てた直接区間だけを計算する | 自分専用の出力部分和 |
 | `add_c_parts(atom, h)` | Hと出力係数を、所属する階層・タイル・基底へ加算する | 自分専用のC部分和 |
 | `expand_c_parts(my_work)` | 自分が担当する全atomの集約後、Cを有効な出力領域だけに展開する | 自分専用の出力部分和へ加算した値 |
@@ -149,6 +161,7 @@ C^{(w)}_{b,k,t,r}=
 \]
 
 \(\mathcal A_{w,k,t}\) は「担当wが処理し、出力タイルtへ割り当てられた成分」の集合である。
+担当wは固定されたthread集団であり、warp番号ではない。
 \(C^{(w)}\) はタイルtと担当blockの出力範囲が重なるサイトだけに展開し、
 最後に各担当の出力部分和を足す。異なる周期のC同士を、そのまま係数として足さない。
 
@@ -193,19 +206,20 @@ rhoだけで所属サイト数を断定せず、中心位置と厳密な支持�
 | Hの縮約・共有 | そのHを作り、使う固定集団 | 別のHの処理を続けられる |
 | 最終合算前 | block全員 | 全員の出力部分和を待つ |
 
-固定64人だけを同期させる概念例は次のとおり。
-これは作成担当内の同期であり、別warpへの完成通知までは含まない。
+指定人数の集団だけを同期させる概念例は次のとおり。
+参加者はthread番号から決め、人数を32の倍数へ丸めない。
+これは作成担当内の同期であり、別集団への完成通知までは含まない。
 
 ```cpp
-__shared__ cuda::barrier<cuda::thread_scope_block> prep_bar;
-
-if (threadIdx.x == 0)
-    init(&prep_bar, 64);
+if (threadIdx.x == 0) {
+    for (group : plan.prepare_groups)
+        init(&prep_bar[group.id], group.thread_count);
+}
 __syncthreads();
 
-if (threadIdx.x < 64) {
+if (ctx.has_prepare_group) {
     build_z_tile(tile);
-    prep_bar.arrive_and_wait();
+    prep_bar[ctx.prepare_group].arrive_and_wait();
 } else {
     compute_independent_work();
 }
@@ -225,7 +239,9 @@ if (threadIdx.x < 64) {
 - 最初はZを最後まで保持し、上書き・再利用しない。
   再利用を入れるときは、親Z生成と全H読者の利用完了も別に通知する。
 - `compute_h()`でHをregisterへ配布して同じwarpが消費するなら、
-  warp内の縮約・shuffle等で完結させる。shared Hを別の担当へ渡すなら追加の通知が要る。
+  warp内の縮約・shuffle等へ最適化できるが、基本の擬似コードは任意人数の集団を扱う。
+  全員参加を仮定したfull-warp maskを、部分warpの処理へそのまま使わない。
+  集団間でshared Hを受け渡す方式へ変えるなら追加の通知が要る。
 
 参照：NVIDIA公式の[非同期barrierとproducer/consumer](https://docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/async-barriers.html)、
 [Cooperative Groups](https://docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/cooperative-groups.html)。
@@ -237,15 +253,15 @@ if (threadIdx.x < 64) {
 | X・Parameter・準備済み係数・norm・所属表 | global。Xの小バッチ部分はsharedへ読む | 既存のforward/backward契約に従う |
 | block内で読むX | shared、4 × 128 | そのblockの入力利用完了まで |
 | Z | shared、需要と子依存から枠を決める | 最初はblock終了まで |
-| H | register上のatomごとの4バッチ分 | そのatomの直接部分と全C所属への加算が終わるまで |
+| H縮約scratch・集団ごとのH結果 | shared。任意人数の集団での縮約に使う | 集団内の全threadが結果をコピーするまで |
+| Hのローカルコピー | register上のatomごとの4バッチ分を意図 | そのatomの直接部分と全C所属への加算が終わるまで |
 | C部分和 | 担当別のshared領域 | その担当の全atom集約と出力展開が終わるまで |
-| 出力accumulator | 各threadのregisterを意図 | 最後の部分和引き渡しまで |
-| 最終合算用の出力部分和 | 担当別のshared領域 | `finish_output()`まで |
+| 出力部分和 | 集団別のshared領域。各要素の書き手をthread番号で一意にする | `finish_output()`まで |
 | 完成通知・barrier | shared | block終了まで |
 | Y | global | forwardの出力として返す |
 
 Cは一つの担当領域への書き込みを一意にするため、初期案では担当別に分ける。
-同じ担当内でも各係数をどのlaneが書くかを固定する。
+同じ担当内でも各係数をどのthreadが書くかを固定する。
 各担当は自分のCだけを展開してから、最終的に出力値として合算する。
 途中で担当間のCを共有更新するatomicは、この案では必要ない。
 
@@ -285,7 +301,7 @@ GPUでの並列実行の有無はtraceで、採用判断は未計装の完全ste
 
 | 決まった方向 | 実装・計測で詰めるもの |
 | --- | --- |
-| 担当と領域を固定し、必要な完成通知で進める | warpの担当比率と各仕事の粒度 |
+| thread単位で担当と領域を固定し、必要な完成通知で進める | 準備人数、Z作成集団・計算集団の人数と各仕事の粒度 |
 | 入力は階層Z、出力は階層・空間・基底別Cを使う | 各階層のタイル幅、直接計算との選択 |
 | 局所Hは一時値として使い切る | 広域Hのblock間再計算とglobal共有の境界 |
 | 有限支持、混合後の離散正規化を保つ | sigma・I・Lの表記の対応、厳密な所属算出 |

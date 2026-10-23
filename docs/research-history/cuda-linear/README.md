@@ -32,3 +32,5 @@
 [128サイト版：担当を固定したblock内の階層Fourier計算](hierarchical-fourier-block-design-20261023.ja.md)
 に整理した。処理名、部分同期、Z/H/Cと出力の保持、実装順をまとめた未実装のCUDA融合案であり、
 既存Triton経路の測定結果とは区別する。
+担当人数をthread単位で調整する[関数別擬似コード](hierarchical-fourier-thread-functions-20261023.ja.md)では、
+`init_block()`からZ/H/C・最終出力までの処理と、固定集団の同期・メモリ配置を具体化している。
