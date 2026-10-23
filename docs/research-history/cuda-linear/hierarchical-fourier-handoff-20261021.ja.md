@@ -1,6 +1,14 @@
 # 階層Fourierタイルの再開用引継ぎ
 
-2026-10-23最新：[N128 live packing・グループ一括縮約の実装と実測](hierarchical-fourier-packed-128-20261023.ja.md)。
+2026-10-23最新：[profile cache容量32/64/128の比較](hierarchical-fourier-cache-128-20261023.ja.md)。
+`656c1c7f`でGPU追加3 testsとrunner全9 workerがPASS。
+cache32はNative768→192 KiB、全step allocated1.529→0.940 MBへ減ったが、
+Graph時間1.037→1.606 msへ悪化。cache64も遅い。容量上限だけを下げる案は不採用。
+Norm/Meta/atom順序は旧cache128とbitwise一致。初期23 atomの境界cacheが全て
+失われるため、次は再利用の多い広いprofileも残し、未使用slot/穴/保持fieldを
+詰める候補を検討する。L2 hit率や物理転送量は未測定。job回収・停止確認済み。
+
+2026-10-23先行：[N128 live packing・グループ一括縮約の実装と実測](hierarchical-fourier-packed-128-20261023.ja.md)。
 `3327f8b3`でGPU 13 testsと既存runner全13 workerを通過。初期39 groupをGPU生成し、
 P/routesを物理配置、勾配は元IDへ戻す。Graph完全stepは従来local比8%短縮したが
 direct/denseに未達、Eager改善も未達。Native 768 KiBとH容量は据え置きで、
