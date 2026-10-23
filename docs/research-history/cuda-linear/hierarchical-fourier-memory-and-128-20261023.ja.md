@@ -1,5 +1,8 @@
 # メモリ保持の監査と128からの試作
 
+追記：[128の実機実行・保持と受け渡しの確認結果](hierarchical-fourier-128-execution-20261023.ja.md)。
+以下はGPU実行前に行ったshape/容量監査の記録。
+
 2026-10-23。ユーザーの「局所Hを保存しないのにメモリが増える理由」と、
 128程度から段階的に試作する方針に対応する。runtime/kernelは変更していない。
 以下の配列容量は現行executorとCPU上のshape確認によるpayload bytesであり、
@@ -110,5 +113,5 @@ PYTHONPATH=src:. python -m tools.kernel_dev check \
 宣言/JSON往復検査PASS。CPU上のtable形状・payload確認結果はignored
 `output/hierarchical-fourier-local-20261023/memory-audit-cpu.json`、再現scriptは同名`.py`。
 関連するcontract/localテストは40 passed / 5 skipped。GPUを要するskipは検証済みに含めない。
-128条件のCUDA correctness、速度、peak allocated/reservedはまだ測定していない。
-この監査で新しいGPU jobは投入していない。
+この監査時点では128条件のCUDA correctness、速度、peak allocated/reservedは未測定で、
+新しいGPU jobは投入していなかった。後続の実機検証は冒頭リンクを参照。
