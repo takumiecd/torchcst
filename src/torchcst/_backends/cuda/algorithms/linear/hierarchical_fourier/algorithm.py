@@ -8,6 +8,7 @@ from torchcst._backends.algorithm import Algorithm
 from torchcst._backends.schema import SupportResult
 
 from .contract import (
+    BoundedCacheFourierRecipe,
     FourierLinearSpec,
     FourierRecipe,
     LocalFourierRecipe,
@@ -91,3 +92,9 @@ class PackedHierarchicalFourierAlgorithm(HierarchicalFourierAlgorithm):
         ):
             reasons.append("packed prototype requires N128/M8/A1..128")
         return SupportResult(tuple(reasons))
+
+
+@dataclass(frozen=True)
+class BoundedCacheHierarchicalFourierAlgorithm(PackedHierarchicalFourierAlgorithm):
+    id: str = "research_cuda_hierarchical_fourier_bounded_cache"
+    recipe_type: type = BoundedCacheFourierRecipe

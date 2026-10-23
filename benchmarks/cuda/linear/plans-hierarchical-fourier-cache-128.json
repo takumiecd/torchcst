@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "plans": [
+    {
+      "id": "direct-samples-h",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_hierarchical_fourier",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "strategy": "direct",
+          "atom_chunk": 256,
+          "minimum_sites": 64,
+          "width_cutoff": 2.0,
+          "native_cache": true,
+          "table_coefficients": true,
+          "atom_block": 4,
+          "batch_block": 4,
+          "reuse": "h",
+          "moment_policy": "all",
+          "sample_cache": 128,
+          "minimum_sharing": 0,
+          "boundary_cache": false,
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4,
+          "sort_atoms": false
+        }
+      }
+    },
+    {
+      "id": "packed-overlap32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_hierarchical_fourier_packed",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "strategy": "shared",
+          "atom_chunk": 256,
+          "minimum_sites": 32,
+          "width_cutoff": 0.1,
+          "native_cache": true,
+          "table_coefficients": true,
+          "atom_block": 4,
+          "batch_block": 4,
+          "reuse": "none",
+          "moment_policy": "hierarchical",
+          "sample_cache": 128,
+          "minimum_sharing": 8,
+          "boundary_cache": true,
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4,
+          "sort_atoms": false,
+          "local_blocks": 8,
+          "local_overlap": true,
+          "local_width_cutoff": 0.35,
+          "group_workers": 32
+        }
+      }
+    },
+    {
+      "id": "cache64-overlap32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_hierarchical_fourier_bounded_cache",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "strategy": "shared",
+          "atom_chunk": 256,
+          "minimum_sites": 32,
+          "width_cutoff": 0.1,
+          "native_cache": true,
+          "table_coefficients": true,
+          "atom_block": 4,
+          "batch_block": 4,
+          "reuse": "none",
+          "moment_policy": "hierarchical",
+          "sample_cache": 128,
+          "minimum_sharing": 8,
+          "boundary_cache": true,
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4,
+          "sort_atoms": false,
+          "local_blocks": 8,
+          "local_overlap": true,
+          "local_width_cutoff": 0.35,
+          "group_workers": 32,
+          "cache_sites": 64
+        }
+      }
+    },
+    {
+      "id": "cache32-overlap32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_hierarchical_fourier_bounded_cache",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "strategy": "shared",
+          "atom_chunk": 256,
+          "minimum_sites": 32,
+          "width_cutoff": 0.1,
+          "native_cache": true,
+          "table_coefficients": true,
+          "atom_block": 4,
+          "batch_block": 4,
+          "reuse": "none",
+          "moment_policy": "hierarchical",
+          "sample_cache": 128,
+          "minimum_sharing": 8,
+          "boundary_cache": true,
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4,
+          "sort_atoms": false,
+          "local_blocks": 8,
+          "local_overlap": true,
+          "local_width_cutoff": 0.35,
+          "group_workers": 32,
+          "cache_sites": 32
+        }
+      }
+    }
+  ]
+}

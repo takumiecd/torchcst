@@ -227,7 +227,7 @@ def norms(
                 fm += vm
                 fi += vi
                 if BOUNDARY:  # noqa: SIM102 - compile-time optional path
-                    if not direct:
+                    if cached and not direct:
                         bank = tl.load(Meta + (a * 4 + c) * 4 + 2).to(tl.int32)
                         length = tl.load(Meta + (a * 4 + c) * 4)
                         c_lo, c_hi = _bounds(mu, length, N)

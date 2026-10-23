@@ -11,6 +11,7 @@ import torch
 from torch.autograd.function import once_differentiable
 
 from .contract import (
+    BoundedCacheFourierRecipe,
     FourierLinearSpec,
     FourierRecipe,
     LocalFourierRecipe,
@@ -131,6 +132,8 @@ def _prepare(p, spec, recipe, tab, routes=None):
     norm = torch.empty((a, 2, 3), device=p.device, dtype=torch.float64)
     beta = torch.empty((2, a, 4, 2, 2 * m + 1), device=p.device, dtype=torch.float32)
     cap = (recipe.sample_cache or (16 if m == 4 else 32)) if recipe.native_cache else 0
+    if type(recipe) is BoundedCacheFourierRecipe:
+        cap = recipe.cache_sites
     # The wider sample cache preserves the original FP64 profile evaluation.
     # Only the existing tiny native cache retains its original FP32 storage.
     native = torch.empty(
@@ -630,7 +633,7 @@ class _Apply(torch.autograd.Function):
         spec, recipe, tab = ctx.spec, ctx.recipe, ctx.tab
         dy = dy.contiguous()
         demand, routes = saved[2:4]
-        groups = saved[6:8] if type(recipe) is PackedFourierRecipe else None
+        groups = saved[6:8] if isinstance(recipe, PackedFourierRecipe) else None
         zx = (
             _moments(x, spec, tab, demand, 1)
             if recipe.reuse in ("none", "chunk")
@@ -683,6 +686,7 @@ def apply(x, p, spec, recipe):
         FourierRecipe,
         LocalFourierRecipe,
         PackedFourierRecipe,
+        BoundedCacheFourierRecipe,
     ):
         raise TypeError("requires FourierLinearSpec and FourierRecipe")
     if (
@@ -704,7 +708,7 @@ def apply(x, p, spec, recipe):
         raise ValueError("requires IEEE FP32, no autocast or TF32")
     if getattr(recipe, "local_blocks", 0) and len(p) > recipe.atom_chunk:
         raise ValueError("local prototype requires all atoms in one bounded chunk")
-    if type(recipe) is PackedFourierRecipe and (
+    if isinstance(recipe, PackedFourierRecipe) and (
         spec.size != 128 or spec.modes != 8 or len(p) > 128
     ):
         raise ValueError("packed prototype requires N128/M8/A1..128")
@@ -769,7 +773,7 @@ def _local_forward(ctx, x, p, spec, recipe, tab):
     routes = _routes(p, spec, recipe, tab)
     original = atom_order = None
     groups = ()
-    if type(recipe) is PackedFourierRecipe:
+    if isinstance(recipe, PackedFourierRecipe):
         original = p
         p, routes, atom_order, group_begin, group_count = _pack(
             p, routes, spec, recipe, tab

@@ -987,6 +987,7 @@ from torchcst._backends.cuda.algorithms.linear.quadratic_bspline.algorithm impor
 REGISTRY.register(BSplineBernsteinNodeAlgorithm())
 
 from torchcst._backends.cuda.algorithms.linear.hierarchical_fourier.algorithm import (
+    BoundedCacheHierarchicalFourierAlgorithm,
     HierarchicalFourierAlgorithm,
     LocalHierarchicalFourierAlgorithm,
     PackedHierarchicalFourierAlgorithm,
@@ -997,3 +998,4 @@ REGISTRY.register(HierarchicalFourierAlgorithm())
 REGISTRY.register(LocalHierarchicalFourierAlgorithm())
 
 REGISTRY.register(PackedHierarchicalFourierAlgorithm())
+REGISTRY.register(BoundedCacheHierarchicalFourierAlgorithm())

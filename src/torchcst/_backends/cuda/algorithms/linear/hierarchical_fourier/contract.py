@@ -182,6 +182,20 @@ class PackedFourierRecipe(LocalFourierRecipe):
             raise ValueError("packed prototype requires local output")
 
 
+@dataclass(frozen=True)
+class BoundedCacheFourierRecipe(PackedFourierRecipe):
+    """Cache only profiles that fit; wider supports remain fully evaluated."""
+
+    cache_sites: int = 32
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.cache_sites) is not int or self.cache_sites not in (32, 64, 128):
+            raise ValueError("cache_sites must be 32,64,128")
+        if self.sample_cache != 128 or self.coefficient_norm:
+            raise ValueError("bounded cache requires sampled FP64 preparation")
+
+
 def torch_reference(x, p, spec):
     from torchcst._backends.torch.kernels.hierarchical_fourier import values
 
