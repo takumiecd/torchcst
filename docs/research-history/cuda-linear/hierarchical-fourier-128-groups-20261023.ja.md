@@ -1,5 +1,9 @@
 # 128 atomのグループとHの生成・最終利用の担当案
 
+後続：[GPUでのlive packing・一括縮約の実装と検証](hierarchical-fourier-packed-128-20261023.ja.md)。
+以下は実装前の説明図。最新実装は39 groupをGPU生成するが、G番号の順序は異なり、
+Hscratchのwave再利用やC/残差consumer表の刷新はまだ行っていない。
+
 2026-10-23。[128で検証済みの初期データ](hierarchical-fourier-128-execution-20261023.ja.md)から
 具体的な並び替え・producer/consumer表を作成した。以下のG番号・block名・Hscratchは
 **次の実装の設計案**であり、新しいgrouped CUDAの実行結果ではない。

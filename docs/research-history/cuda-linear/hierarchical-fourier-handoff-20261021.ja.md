@@ -1,10 +1,19 @@
 # 階層Fourierタイルの再開用引継ぎ
 
+2026-10-23最新：[N128 live packing・グループ一括縮約の実装と実測](hierarchical-fourier-packed-128-20261023.ja.md)。
+`3327f8b3`でGPU 13 testsと既存runner全13 workerを通過。初期39 groupをGPU生成し、
+P/routesを物理配置、勾配は元IDへ戻す。Graph完全stepは従来local比8%短縮したが
+direct/denseに未達、Eager改善も未達。Native 768 KiBとH容量は据え置きで、
+構造的な省メモリ目標は未達。job回収・hash照合・VM停止確認済み。
+ユーザーは適量のメモリ使用を許容。極小H scratchのための多wave化は強制せず、
+次はcache容量・H保持・準備の分離を独立に比較する。公開dispatcherへは未採用。
+
 2026-10-23設計追記：[全128 atomの39グループとHの生成・最終利用の担当案](hierarchical-fourier-128-groups-20261023.ja.md)。
 保存済みGPU geometryからproducer/consumer表を作成し、CPUで所属と数値和を検査した。
-新しいgrouped CUDA・H領域再利用は未実装で、GPUの追加実行はしていない。
+この設計時点ではgrouped CUDA未実装。上の最新記録でpacking/縮約を実装・実測した。
+説明図のHscratch領域再利用とC/残差consumer表の刷新は未実装。
 
-2026-10-23最新：[128の実機実行・保持と受け渡しの確認結果](hierarchical-fourier-128-execution-20261023.ja.md)。
+2026-10-23先行実験：[128の実機実行・保持と受け渡しの確認結果](hierarchical-fourier-128-execution-20261023.ja.md)。
 Y/dX/全P勾配の検査を通過。局所Y→残差→C展開で同じY storageを使うことを確認。
 Hの全容量は残り、128では時間的な重なりは観測されなかった。job回収・停止確認済み。
 
