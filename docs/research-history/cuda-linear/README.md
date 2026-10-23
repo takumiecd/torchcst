@@ -27,3 +27,8 @@
 階層Fourierタイルの探索は2026-10-21に一旦終了。
 [再開用引継ぎ](hierarchical-fourier-handoff-20261021.ja.md)と
 [回収済み比較・数式](hierarchical-fourier-dispatch-20261021.ja.md)を参照。
+
+2026-10-23の設計相談は
+[128サイト版：担当を固定したblock内の階層Fourier計算](hierarchical-fourier-block-design-20261023.ja.md)
+に整理した。処理名、部分同期、Z/H/Cと出力の保持、実装順をまとめた未実装のCUDA融合案であり、
+既存Triton経路の測定結果とは区別する。
