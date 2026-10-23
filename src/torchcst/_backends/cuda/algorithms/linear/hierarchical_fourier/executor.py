@@ -10,7 +10,7 @@ from functools import cache
 import torch
 from torch.autograd.function import once_differentiable
 
-from .contract import FourierLinearSpec, FourierRecipe
+from .contract import FourierLinearSpec, FourierRecipe, LocalFourierRecipe
 
 
 @cache
@@ -384,7 +384,7 @@ def _moments(x, spec, tab, demand=None, axis=1):
     return z
 
 
-def _contract(x, p, prepared, spec, tab, z, axis, grad):
+def _contract(x, p, prepared, spec, tab, z, axis, grad, local=None):
     import triton as tr
 
     from . import kernels as k
@@ -425,6 +425,7 @@ def _contract(x, p, prepared, spec, tab, z, axis, grad):
             tr.next_power_of_2(r),
             cap,
             BOUNDARY=recipe.boundary_cache,
+            Local=local,
             num_warps=4,
             enable_fp_fusion=False,
         )
@@ -467,7 +468,7 @@ def _contract(x, p, prepared, spec, tab, z, axis, grad):
     return h
 
 
-def _deposit(h, p, prepared, spec, tab, y, c, axis, demand=None):
+def _deposit(h, p, prepared, spec, tab, y, c, axis, demand=None, local=None):
     import triton as tr
 
     from . import kernels as k
@@ -513,6 +514,11 @@ def _deposit(h, p, prepared, spec, tab, y, c, axis, demand=None):
     )
     if cap:
         buffers += (native, bounds)
+    if local is not None:
+        from .local_kernels import deposit_nonlocal
+
+        kernel = deposit_nonlocal
+        buffers += (local,)
     constants = (
         b,
         spec.size,
@@ -562,6 +568,8 @@ def _reconstruct(c, spec, tab, y):
 class _Apply(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, p, spec, recipe, tab):
+        if getattr(recipe, "local_blocks", 0):
+            return _local_forward(ctx, x, p, spec, recipe, tab)
         original, atom_order = None, None
         if recipe.sort_atoms:
             original = p
@@ -657,7 +665,10 @@ class _Apply(torch.autograd.Function):
 
 
 def apply(x, p, spec, recipe):
-    if type(spec) is not FourierLinearSpec or type(recipe) is not FourierRecipe:
+    if type(spec) is not FourierLinearSpec or type(recipe) not in (
+        FourierRecipe,
+        LocalFourierRecipe,
+    ):
         raise TypeError("requires FourierLinearSpec and FourierRecipe")
     if (
         x.device.type != "cuda"
@@ -676,5 +687,90 @@ def apply(x, p, spec, recipe):
         raise ValueError("requires contiguous CUDA FP32 X[B,N], P[A,4], B1..64")
     if torch.is_autocast_enabled("cuda") or torch.backends.cuda.matmul.allow_tf32:
         raise ValueError("requires IEEE FP32, no autocast or TF32")
+    if getattr(recipe, "local_blocks", 0) and len(p) > recipe.atom_chunk:
+        raise ValueError("local prototype requires all atoms in one bounded chunk")
     tab = tables(spec, recipe, x.device)
     return _Apply.apply(x, p, spec, recipe, tab)
+
+
+@cache
+def _local_stream(device):
+    return torch.cuda.Stream(device=device)
+
+
+def _local_forward(ctx, x, p, spec, recipe, tab):
+    """Fork local output and Z/H; join before nonlocal Y writes.
+
+    Shared preparation and fixed-capacity H scratch remain in this first
+    prototype. Local entries of H are neither computed, stored nor consumed.
+    Backward uses the existing complete, recomputing path for every atom.
+    """
+    import triton as tr
+
+    from . import local_kernels as lk
+
+    routes = _routes(p, spec, recipe, tab)
+    demand = _demand(p, spec, recipe, tab, routes)
+    prepared = _prepare(p, spec, recipe, tab, routes)
+    local = torch.empty(len(p), device=p.device, dtype=torch.int32)
+    keys = torch.empty(2 * len(p), device=p.device, dtype=torch.int32)
+    lk.layout[(tr.cdiv(len(p), 128),)](
+        p,
+        prepared[0],
+        prepared[8],
+        local,
+        keys,
+        len(p),
+        spec.size,
+        recipe.local_width_cutoff,
+        128,
+        num_warps=4,
+        enable_fp_fusion=False,
+    )
+    keys, order = keys.sort(stable=True)
+    begin = torch.searchsorted(
+        keys,
+        torch.arange(tr.cdiv(spec.size, 32) + 1, device=p.device, dtype=keys.dtype),
+    )
+    y = x.new_empty((len(x), spec.size))
+
+    def launch_local():
+        lk.output_local[(recipe.local_blocks,)](
+            x,
+            p,
+            prepared[3],
+            prepared[7],
+            prepared[8],
+            order,
+            begin,
+            y,
+            len(x),
+            spec.size,
+            len(p),
+            prepared[9],
+            recipe.local_blocks,
+            4,
+            4,
+            num_warps=4,
+            enable_fp_fusion=False,
+        )
+
+    parent = torch.cuda.current_stream(x.device)
+    if recipe.local_overlap:
+        side = _local_stream(x.device)
+        side.wait_stream(parent)
+        with torch.cuda.stream(side):
+            launch_local()
+    else:
+        launch_local()
+    z = _moments(x, spec, tab, demand, 1)
+    h = _contract(x, p, prepared, spec, tab, z, 1, False, local)
+    if recipe.local_overlap:
+        parent.wait_stream(side)
+    c = x.new_zeros(z.shape)
+    _deposit(h, p, prepared, spec, tab, y, c, 0, demand, local)
+    _reconstruct(c, spec, tab, y)
+    ctx.save_for_backward(x, p, demand, routes, None, None)
+    ctx.records = []
+    ctx.spec, ctx.recipe, ctx.tab = spec, recipe, tab
+    return y

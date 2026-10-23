@@ -36,11 +36,14 @@ def test_centered_support_dynamic_width_input_and_all_gradients(
     moment_policy,
     sample_cache=0,
     sort_atoms=False,
+    local_blocks=0,
+    local_overlap=False,
 ):
     from benchmarks.cuda.linear.hierarchical_fourier import independent_gate
     from torchcst._backends.cuda.algorithms.linear.hierarchical_fourier.contract import (
         FourierLinearSpec,
         FourierRecipe,
+        LocalFourierRecipe,
     )
     from torchcst._backends.cuda.algorithms.linear.hierarchical_fourier.executor import (
         apply,
@@ -50,7 +53,8 @@ def test_centered_support_dynamic_width_input_and_all_gradients(
     torch.backends.cuda.matmul.allow_tf32 = False
     try:
         spec = FourierLinearSpec(256, modes)
-        recipe = FourierRecipe(
+        recipe_type = LocalFourierRecipe if local_blocks else FourierRecipe
+        recipe = recipe_type(
             strategy=strategy,
             atom_chunk=256,
             minimum_sites=32 if modes == 4 else 64,
@@ -62,6 +66,11 @@ def test_centered_support_dynamic_width_input_and_all_gradients(
             moment_policy=moment_policy,
             sample_cache=sample_cache,
             sort_atoms=sort_atoms,
+            **(
+                {"local_blocks": local_blocks, "local_overlap": local_overlap}
+                if local_blocks
+                else {}
+            ),
         )
         p = torch.tensor(
             [

@@ -988,6 +988,9 @@ REGISTRY.register(BSplineBernsteinNodeAlgorithm())
 
 from torchcst._backends.cuda.algorithms.linear.hierarchical_fourier.algorithm import (
     HierarchicalFourierAlgorithm,
+    LocalHierarchicalFourierAlgorithm,
 )
 
 REGISTRY.register(HierarchicalFourierAlgorithm())
+
+REGISTRY.register(LocalHierarchicalFourierAlgorithm())

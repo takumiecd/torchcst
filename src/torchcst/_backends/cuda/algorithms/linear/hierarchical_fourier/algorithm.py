@@ -7,7 +7,7 @@ import torch
 from torchcst._backends.algorithm import Algorithm
 from torchcst._backends.schema import SupportResult
 
-from .contract import FourierLinearSpec, FourierRecipe
+from .contract import FourierLinearSpec, FourierRecipe, LocalFourierRecipe
 
 
 @dataclass(frozen=True)
@@ -38,9 +38,9 @@ class HierarchicalFourierAlgorithm(Algorithm[FourierRecipe]):
     input_type: type = FourierInputs
 
     def validate_recipe(self, recipe):
-        if type(recipe) is not FourierRecipe:
+        if type(recipe) is not self.recipe_type:
             raise TypeError("requires FourierRecipe")
-        FourierRecipe(**asdict(recipe))
+        self.recipe_type(**asdict(recipe))
 
     def supports(self, context, recipe):
         if type(context) is not FourierContext:
@@ -50,6 +50,8 @@ class HierarchicalFourierAlgorithm(Algorithm[FourierRecipe]):
             reasons.append("requires CUDA FP32")
         if not 1 <= context.batch <= 64 or context.parameter_dim != 4:
             reasons.append("requires batch1..64 and direct [A,4] parameters")
+        if getattr(recipe, "local_blocks", 0) and context.atoms > recipe.atom_chunk:
+            reasons.append("local prototype requires all atoms in one bounded chunk")
         return SupportResult(tuple(reasons))
 
     def workspace_bound(self, context, recipe):
@@ -59,3 +61,9 @@ class HierarchicalFourierAlgorithm(Algorithm[FourierRecipe]):
         from .executor import apply
 
         return apply(inputs.x, inputs.p, state.binding.operator, state.recipe)
+
+
+@dataclass(frozen=True)
+class LocalHierarchicalFourierAlgorithm(HierarchicalFourierAlgorithm):
+    id: str = "research_cuda_hierarchical_fourier_local"
+    recipe_type: type = LocalFourierRecipe

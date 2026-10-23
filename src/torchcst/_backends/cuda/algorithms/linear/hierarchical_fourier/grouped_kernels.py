@@ -33,23 +33,27 @@ def contract_grouped(
     FF: tl.constexpr,
     NC: tl.constexpr,
     BOUNDARY: tl.constexpr = False,
+    Local=None,
 ):
     a = tl.program_id(0) * BA + tl.arange(0, BA)
+    valid_atom = a < A
+    if Local is not None:
+        valid_atom = valid_atom & (tl.load(Local + a, a < A, 0) == 0)
     b = tl.program_id(1) * BB + tl.arange(0, BB)
-    mu = tl.load(P + a * 4 + AXIS + 1, a < A, 0).to(tl.float64)
+    mu = tl.load(P + a * 4 + AXIS + 1, valid_atom, 0).to(tl.float64)
     hv = tl.full((BA, BB), 0.0, tl.float64)
     hm = tl.full((BA, BB), 0.0, tl.float64)
     hi_ = tl.full((BA, BB), 0.0, tl.float64)
     cached = tl.full((BA,), False, tl.int1)
     partial_cached = tl.full((BA,), False, tl.int1)
     if NC:
-        count = tl.load(Bounds + (a * 2 + AXIS) * 2 + 1, a < A, -1)
-        cached = (count >= 0) & (a < A)
-        partial_cached = (count <= -2) & (a < A)
+        count = tl.load(Bounds + (a * 2 + AXIS) * 2 + 1, valid_atom, -1)
+        cached = (count >= 0) & (valid_atom)
+        partial_cached = (count <= -2) & (valid_atom)
         available = cached | partial_cached
         count = tl.where(partial_cached, -count - 2, count)
         if tl.sum(available.to(tl.int32), 0) > 0:
-            lo = tl.load(Bounds + (a * 2 + AXIS) * 2, a < A, 0)
+            lo = tl.load(Bounds + (a * 2 + AXIS) * 2, valid_atom, 0)
             if NC > 32:
                 maximum = tl.max(tl.where(available, count, 0), 0)
                 for base in range(0, maximum, BS):
@@ -151,11 +155,11 @@ def contract_grouped(
                     hm += tl.sum(xx * fm[:, None, :], 2)
                     hi_ += tl.sum(xx * fi[:, None, :], 2)
     for c in tl.static_range(4):
-        weight = tl.load(Meta + (a * 4 + c) * 4 + 3, a < A, 0)
-        active = (a < A) & ~cached & (weight > 0)
+        weight = tl.load(Meta + (a * 4 + c) * 4 + 3, valid_atom, 0)
+        active = (valid_atom) & ~cached & (weight > 0)
         if tl.sum(active.to(tl.int32), 0) > 0:
-            length = tl.load(Meta + (a * 4 + c) * 4, a < A, 1)
-            bank = tl.load(Meta + (a * 4 + c) * 4 + 2, a < A, -1).to(tl.int32)
+            length = tl.load(Meta + (a * 4 + c) * 4, valid_atom, 1)
+            bank = tl.load(Meta + (a * 4 + c) * 4 + 2, valid_atom, -1).to(tl.int32)
             lo, hi = _bounds(mu, length, N)
             lo = tl.where(active, lo, 0)
             hi = tl.where(active, hi, 0)
@@ -245,7 +249,7 @@ def contract_grouped(
                         hm += tl.sum(xx * fm[:, None, :], 2)
                         hi_ += tl.sum(xx * fi[:, None, :], 2)
     dest = (b[None, :] * A + a[:, None]) * 3
-    mask = (a[:, None] < A) & (b[None, :] < B)
+    mask = valid_atom[:, None] & (b[None, :] < B)
     tl.store(H + dest, hv, mask)
     if GRAD:
         tl.store(H + dest + 1, hm, mask)

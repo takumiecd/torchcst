@@ -117,6 +117,40 @@ class FourierRecipe:
             raise ValueError("width_cutoff must be .1..10")
 
 
+@dataclass(frozen=True)
+class LocalFourierRecipe(FourierRecipe):
+    """Separate serialized recipe for the bounded local-output prototype."""
+
+    local_blocks: int = 0
+    local_overlap: bool = False
+    local_width_cutoff: float = 0.35
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.local_blocks) is not int or not 0 <= self.local_blocks <= 4096:
+            raise ValueError("local_blocks must be an integer in 0..4096")
+        if type(self.local_overlap) is not bool:
+            raise ValueError("local_overlap must be bool")
+        if (
+            type(self.local_width_cutoff) not in (int, float)
+            or not 0.1 <= self.local_width_cutoff <= 0.5
+        ):
+            raise ValueError("local_width_cutoff must be .1..0.5")
+        if self.local_overlap and not self.local_blocks:
+            raise ValueError("local_overlap requires local_blocks")
+        if self.local_blocks and (
+            self.atom_block != 4
+            or not self.sample_cache
+            or self.reuse != "none"
+            or self.sort_atoms
+            or self.coefficient_norm
+            or self.strategy != "shared"
+        ):
+            raise ValueError(
+                "local prototype requires grouped sampled shared execution, reuse=none, no sort/coefficient norm"
+            )
+
+
 def torch_reference(x, p, spec):
     from torchcst._backends.torch.kernels.hierarchical_fourier import values
 

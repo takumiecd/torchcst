@@ -54,7 +54,10 @@ class PlanLinear(nn.Module):
         self.local_state = None
         self.persistent_layout = None
         self.update_binding = None
-        if plan.algorithm_id == "research_cuda_hierarchical_fourier":
+        if plan.algorithm_id in (
+            "research_cuda_hierarchical_fourier",
+            "research_cuda_hierarchical_fourier_local",
+        ):
             algorithm = REGISTRY.validate_plan(plan)
             self.fourier_state = algorithm.create_state(self, recipe=plan.recipe)
             return
@@ -148,7 +151,10 @@ class PlanLinear(nn.Module):
     algorithm_state = LinearBinding.algorithm_state
 
     def forward(self, x):
-        if self.plan.algorithm_id == "research_cuda_hierarchical_fourier":
+        if self.plan.algorithm_id in (
+            "research_cuda_hierarchical_fourier",
+            "research_cuda_hierarchical_fourier_local",
+        ):
             from torchcst._backends.cuda.algorithms.linear.hierarchical_fourier.algorithm import (
                 FourierContext,
                 FourierInputs,
