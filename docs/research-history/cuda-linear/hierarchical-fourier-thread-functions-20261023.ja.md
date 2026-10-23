@@ -14,6 +14,20 @@
 | `z_group_threads` | 一枚のZを協力して作る集団の人数 |
 | `work_group_threads` | H生成からC・出力部分和までを協力する集団の人数 |
 
+配列の長さやループには、次の名前を使う。
+
+```cpp
+batch_size        = 4;   // このblockが担当する小バッチ。全体のbatch数とは別
+input_site_count  = 128;
+output_tile_sites = 32;
+fourier_order     = 8;   // これまでMと呼んだFourierの次数
+basis_count       = 2 * fourier_order + 1;
+```
+
+`batch_size`は仕事表に記録し、各blockが同じ意味で参照する。
+全体のbatch数が割り切れないときは有効件数を別に持ち、範囲外を読まない。
+この文書の基本例は4件ずつちょうど分割できる場合とする。
+
 タイルはデータの範囲、thread集団はその処理担当、warpはGPUの実行単位である。
 これらを一対一に対応させない。各集団を1人にすることも表現できるが、
 その場合の部分和容量や実行効率まで良好になるとは仮定しない。
@@ -123,8 +137,8 @@ init_block(X, prepared_atoms, plan) {
             init(group.barrier, group.thread_count);
     }
 
-    for (i = ctx.tid; i < 4 * 128; i += blockDim.x)
-        shared.X[i] = X[plan.batch_begin * 128 + i];
+    for (i = ctx.tid; i < batch_size * input_site_count; i += blockDim.x)
+        shared.X[i] = X[plan.batch_begin * input_site_count + i];
 
     for (i : block_strided_indices(plan.C_storage_size, ctx.tid))
         shared.C[i] = 0;
@@ -184,12 +198,18 @@ build_z_tile(ctx, tile) {
     wait_z_tiles(tile.required_children);
 
     // (batch, basis)という出力要素をthreadで分ける。
-    for (q = team.rank; q < 4 * R; q += team.thread_count) {
-        batch = q / R;
-        basis = q % R;
+    for (q = team.rank; q < batch_size * basis_count; q += team.thread_count) {
+        batch = q / basis_count;
+        basis = q % basis_count;
 
-        if (tile.can_inherit[basis]) {
-            child_basis = tile.child_basis[basis];
+        // basisは配列index。modeは波の次数。cosとsinを区別する。
+        is_cosine = basis <= fourier_order;
+        mode = is_cosine ? basis : basis - fourier_order;
+        can_use_child_Z = tile.has_compatible_children && (mode % 2 == 0);
+
+        if (can_use_child_Z) {
+            child_mode = mode / 2;
+            child_basis = is_cosine ? child_mode : fourier_order + child_mode;
             value = shared.Z[tile.left][batch][child_basis]
                   + shared.Z[tile.right][batch][child_basis];
         } else {
@@ -203,7 +223,52 @@ build_z_tile(ctx, tile) {
 }
 ```
 
-`can_inherit`と`child_basis`は、既存の基底・子タイルとの正しい対応から作る。
+旧名`can_inherit`は「すでに計算した子Zを使えるか」という意味だった。
+その内容を隠さないため、条件を`can_use_child_Z`として上に展開した。
+`has_compatible_children`は、左右の空間タイルが親を分割し、子側のFourier半周期が
+親の半分である正しいbank対応が存在することを示す。子の完成確認は先頭で行う。
+最小階層や対応する子bankがない場合はfalseとなり、Xから計算する。
+
+### if側で行うこと：子で計算済みの積和を足す
+
+例えば親が64サイト、左右の子が32サイトずつなら、親の和は二つの区間へ分かれる。
+
+```text
+親：[0, 64)  =  左の子：[0, 32)  +  右の子：[32, 64)
+```
+
+ただし、**同じphiに対する積和である場合だけ**、子Zをそのまま足せる。
+対応する親の半周期をL、子の半周期をL/2とすると、cos基底では
+
+\[
+\phi^{\mathrm{parent}}_{2m}(x)
+=\cos\!\left(\frac{\pi(2m)x}{L}\right)
+=\cos\!\left(\frac{\pi m x}{L/2}\right)
+=\phi^{\mathrm{child}}_m(x).
+\]
+
+sinでも同じ対応が成り立つ。したがって、親の偶数modeについて
+
+\[
+Z^{\mathrm{parent}}_{b,2m}
+=\sum_{i\in\mathrm{left}}X_{b,i}\phi^{\mathrm{child}}_m(x_i)
+ +\sum_{i\in\mathrm{right}}X_{b,i}\phi^{\mathrm{child}}_m(x_i)
+=Z^{\mathrm{left}}_{b,m}+Z^{\mathrm{right}}_{b,m}.
+\]
+
+例えば「親のmode 2」は「子のmode 1」と同じ波形なので、
+`Z_parent[mode 2] = Z_left[mode 1] + Z_right[mode 1]`で作れる。
+親のmode 0も、左右の子のmode 0の和でよい。
+親の奇数modeは子の半整数modeに相当し、保存済みの整数modeにないためelseで計算する。
+
+`basis`は`cos(0)..cos(M), sin(1)..sin(M)`という配列のindexで、modeそのものとは限らない。
+例えばM=8なら、親のsin mode 2のindexは10、子のsin mode 1のindexは9である。
+この対応は現行の
+[`demand_kernels.py::moments_demand`](../../../src/torchcst/_backends/cuda/algorithms/linear/hierarchical_fourier/demand_kernels.py)と
+[`executor.py::tables`](../../../src/torchcst/_backends/cuda/algorithms/linear/hierarchical_fourier/executor.py)で確認した。
+現行phiは共通の座標xで定義されている。タイルごとの原点へ定義を変える場合は、
+位相も合わせる必要があり、そのまま子の和にしてはいけない。
+
 親の全周波数を子の和へ置き換えない。この初期案では出力係数を分担し、
 各係数内のsite和は一つのthreadが計算する。site方向も協調縮約する方式は後の候補。
 
@@ -231,26 +296,26 @@ Hは振幅・正規化係数を掛ける前の \(H_{b,a}=\sum_i X_{b,i}v_a(i)\)�
 compute_h(ctx, atom) {
     team = ctx.work;
     wait_z_tiles(atom.input_plan.required_Z);
-    local[4] = {0, 0, 0, 0};
+    h_partial[batch_size] = zeros(); // 自分の担当項だけの、バッチ別部分和
 
     for (term : strided(atom.input_plan.direct_terms, team.rank,
                         team.thread_count)) {
-        for (b = 0; b < 4; ++b)
-            local[b] += shared.X[b][term.site]
+        for (b = 0; b < batch_size; ++b)
+            h_partial[b] += shared.X[b][term.site]
                       * input_component(atom, term.component, term.site);
     }
 
     for (term : strided(atom.input_plan.Z_terms, team.rank,
                         team.thread_count)) {
-        for (b = 0; b < 4; ++b)
-            local[b] += shared.Z[term.tile][b][term.basis] * term.beta;
+        for (b = 0; b < batch_size; ++b)
+            h_partial[b] += shared.Z[term.tile][b][term.basis] * term.beta;
     }
 
-    shared.Hpart[ctx.tid] = local;  // そのthread専用の4値
+    shared.Hpart[ctx.tid] = h_partial;  // そのthread専用のbatch_size個の値
     group_sync(team);
 
     if (team.rank == 0) {
-        h[4] = {0, 0, 0, 0};
+        h[batch_size] = zeros();
         for (tid : team.members)
             h += shared.Hpart[tid];
         shared.Hslot[team.id] = h;
@@ -278,16 +343,16 @@ Hの入力支持を、担当する出力32サイトに切り詰めない。
 add_direct_parts(ctx, atom, h) {
     team = ctx.work;
 
-    for (q = team.rank; q < 4 * 32; q += team.thread_count) {
-        b = q / 32;
-        j = plan.output_begin + q % 32;
+    for (q = team.rank; q < batch_size * output_tile_sites; q += team.thread_count) {
+        b = q / output_tile_sites;
+        j = plan.output_begin + q % output_tile_sites;
         u = 0;
 
         for (part : atom.output_plan.direct_parts)
             if (part.contains(j))
                 u += output_component(atom, part.component, j);
 
-        shared.Ypart[team.id][b][q % 32] += atom.alpha * h[b] * u;
+        shared.Ypart[team.id][b][q % output_tile_sites] += atom.alpha * h[b] * u;
     }
 }
 ```
@@ -304,9 +369,9 @@ add_c_parts(ctx, atom, h) {
     for (member : atom.output_plan.C_members) {
         slot = plan.C_slot[team.id][member.node];
 
-        for (q = team.rank; q < 4 * R; q += team.thread_count) {
-            b = q / R;
-            basis = q % R;
+        for (q = team.rank; q < batch_size * basis_count; q += team.thread_count) {
+            b = q / basis_count;
+            basis = q % basis_count;
             shared.C[team.id][slot][b][basis] += atom.alpha * h[b]
                 * output_beta(atom, member.component, basis);
         }
@@ -325,21 +390,21 @@ Cの同じ要素を複数threadが書かないよう、係数番号の分担を�
 expand_c_parts(ctx) {
     team = ctx.work;
 
-    for (q = team.rank; q < 4 * 32; q += team.thread_count) {
-        b = q / 32;
-        j = plan.output_begin + q % 32;
+    for (q = team.rank; q < batch_size * output_tile_sites; q += team.thread_count) {
+        b = q / output_tile_sites;
+        j = plan.output_begin + q % output_tile_sites;
         value = 0;
 
         for (node : plan.C_nodes[team.id]) {
             if (node.contains(j)) {
                 slot = plan.C_slot[team.id][node.id];
-                for (basis = 0; basis < R; ++basis)
+                for (basis = 0; basis < basis_count; ++basis)
                     value += shared.C[team.id][slot][b][basis]
                            * phi(node, basis, j);
             }
         }
 
-        shared.Ypart[team.id][b][q % 32] += value;
+        shared.Ypart[team.id][b][q % output_tile_sites] += value;
     }
 }
 ```
@@ -374,9 +439,9 @@ sync_finish() {
 }
 
 finish_output(ctx, Y) {
-    for (q = ctx.tid; q < 4 * 32; q += blockDim.x) {
-        b = q / 32;
-        j = q % 32;
+    for (q = ctx.tid; q < batch_size * output_tile_sites; q += blockDim.x) {
+        b = q / output_tile_sites;
+        j = q % output_tile_sites;
         value = 0;
 
         for (group : plan.work_groups)
@@ -396,12 +461,12 @@ block間で出力要素の所有範囲を重ねず、global Yへのatomic加算�
 
 | 領域 | 論理的な大きさ |
 | --- | --- |
-| 入力X | `4 × 128` |
-| Z | `必要node数 × 4 × R` |
-| Hpart | `block_threads × 4` |
-| Hslot | `計算集団数 × 4` |
-| C | `各計算集団の使用node数の合計 × 4 × R` |
-| Ypart | `計算集団数 × 4 × 32` |
+| 入力X | `batch_size × input_site_count` |
+| Z | `必要node数 × batch_size × basis_count` |
+| Hpart | `block_threads × batch_size` |
+| Hslot | `計算集団数 × batch_size` |
+| C | `各計算集団の使用node数の合計 × batch_size × basis_count` |
+| Ypart | `計算集団数 × batch_size × output_tile_sites` |
 | 通知・同期 | `Zready`、作成集団と計算集団のbarrier、必要なalignment |
 
 thread単位の指定は、threadごとにC全体を複製するという意味ではない。
