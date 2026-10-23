@@ -151,6 +151,37 @@ class LocalFourierRecipe(FourierRecipe):
             )
 
 
+@dataclass(frozen=True)
+class PackedFourierRecipe(LocalFourierRecipe):
+    """N128/M8 live geometry packing, distinct from the existing recipes."""
+
+    atom_chunk: int = 256
+    minimum_sites: int = 32
+    width_cutoff: float = 0.1
+    native_cache: bool = True
+    table_coefficients: bool = True
+    atom_block: int = 4
+    batch_block: int = 4
+    moment_policy: str = "hierarchical"
+    sample_cache: int = 128
+    boundary_cache: bool = True
+    minimum_sharing: int = 8
+    local_blocks: int = 8
+    group_workers: int = 32
+
+    def __post_init__(self):
+        super().__post_init__()
+        if type(self.group_workers) is not int or self.group_workers not in (
+            0,
+            8,
+            16,
+            32,
+        ):
+            raise ValueError("group_workers must be 0,8,16,32")
+        if not self.local_blocks:
+            raise ValueError("packed prototype requires local output")
+
+
 def torch_reference(x, p, spec):
     from torchcst._backends.torch.kernels.hierarchical_fourier import values
 

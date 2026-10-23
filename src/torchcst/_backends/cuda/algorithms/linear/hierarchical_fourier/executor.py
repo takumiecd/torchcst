@@ -10,7 +10,12 @@ from functools import cache
 import torch
 from torch.autograd.function import once_differentiable
 
-from .contract import FourierLinearSpec, FourierRecipe, LocalFourierRecipe
+from .contract import (
+    FourierLinearSpec,
+    FourierRecipe,
+    LocalFourierRecipe,
+    PackedFourierRecipe,
+)
 
 
 @cache
@@ -384,7 +389,7 @@ def _moments(x, spec, tab, demand=None, axis=1):
     return z
 
 
-def _contract(x, p, prepared, spec, tab, z, axis, grad, local=None):
+def _contract(x, p, prepared, spec, tab, z, axis, grad, local=None, groups=None):
     import triton as tr
 
     from . import kernels as k
@@ -397,9 +402,16 @@ def _contract(x, p, prepared, spec, tab, z, axis, grad, local=None):
         from . import grouped_kernels as grouped
 
         recipe = tab["recipe"]
-        grouped.contract_grouped[
-            (tr.cdiv(a, recipe.atom_block), tr.cdiv(b, recipe.batch_block))
-        ](
+        kernel = grouped.contract_grouped
+        workers = tr.cdiv(a, recipe.atom_block)
+        extra = {}
+        if groups is not None and recipe.group_workers:
+            from .packing_kernels import contract_packed
+
+            kernel = contract_packed
+            workers = recipe.group_workers
+            extra = {"GroupBegin": groups[0], "GroupCount": groups[1], "WORKERS": workers}
+        kernel[(workers, tr.cdiv(b, recipe.batch_block))](
             x,
             p,
             meta,
@@ -426,6 +438,7 @@ def _contract(x, p, prepared, spec, tab, z, axis, grad, local=None):
             cap,
             BOUNDARY=recipe.boundary_cache,
             Local=local,
+            **extra,
             num_warps=4,
             enable_fp_fusion=False,
         )
@@ -617,6 +630,7 @@ class _Apply(torch.autograd.Function):
         spec, recipe, tab = ctx.spec, ctx.recipe, ctx.tab
         dy = dy.contiguous()
         demand, routes = saved[2:4]
+        groups = saved[6:8] if type(recipe) is PackedFourierRecipe else None
         zx = (
             _moments(x, spec, tab, demand, 1)
             if recipe.reuse in ("none", "chunk")
@@ -631,7 +645,7 @@ class _Apply(torch.autograd.Function):
             rc = None if routes is None else routes[start : start + len(pc)]
             if recipe.reuse == "none" or (recipe.reuse == "chunk" and start > 0):
                 prep = _prepare(pc, spec, recipe, tab, rc)
-                h = _contract(x, pc, prep, spec, tab, zx, 1, True)
+                h = _contract(x, pc, prep, spec, tab, zx, 1, True, groups=groups)
             else:
                 first, cap = ctx.records[start // recipe.atom_chunk]
                 if recipe.reuse in ("all", "chunk"):
@@ -640,7 +654,7 @@ class _Apply(torch.autograd.Function):
                 else:
                     prep = _prepare(pc, spec, recipe, tab, rc)
                     h = saved[first]
-            g = _contract(dy, pc, prep, spec, tab, zg, 0, True)
+            g = _contract(dy, pc, prep, spec, tab, zg, 0, True, groups=groups)
             _deposit(g, pc, prep, spec, tab, dx, c, 1, demand)
             k.vjp[(len(pc),)](
                 h,
@@ -668,6 +682,7 @@ def apply(x, p, spec, recipe):
     if type(spec) is not FourierLinearSpec or type(recipe) not in (
         FourierRecipe,
         LocalFourierRecipe,
+        PackedFourierRecipe,
     ):
         raise TypeError("requires FourierLinearSpec and FourierRecipe")
     if (
@@ -689,6 +704,10 @@ def apply(x, p, spec, recipe):
         raise ValueError("requires IEEE FP32, no autocast or TF32")
     if getattr(recipe, "local_blocks", 0) and len(p) > recipe.atom_chunk:
         raise ValueError("local prototype requires all atoms in one bounded chunk")
+    if type(recipe) is PackedFourierRecipe and (
+        spec.size != 128 or spec.modes != 8 or len(p) > 128
+    ):
+        raise ValueError("packed prototype requires N128/M8/A1..128")
     tab = tables(spec, recipe, x.device)
     return _Apply.apply(x, p, spec, recipe, tab)
 
@@ -696,6 +715,44 @@ def apply(x, p, spec, recipe):
 @cache
 def _local_stream(device):
     return torch.cuda.Stream(device=device)
+
+
+def _pack(p, routes, spec, recipe, tab):
+    import triton as tr
+
+    from .packing_kernels import pack
+
+    packed = torch.empty_like(p)
+    packed_routes = None if routes is None else torch.empty_like(routes)
+    order = torch.empty(len(p), device=p.device, dtype=torch.int64)
+    begin = torch.empty(len(p) + 1, device=p.device, dtype=torch.int32)
+    count = torch.empty((), device=p.device, dtype=torch.int32)
+    period = spec.period
+    a0 = (period.minimum_tile_width / 2 + 1.25 * period.minimum_half_period) / (
+        1 / period.relative_width_floor - 1
+    )
+    pack[(1,)](
+        p,
+        routes,
+        tab["lookup"],
+        packed,
+        packed_routes,
+        order,
+        begin,
+        count,
+        len(p),
+        spec.size,
+        tab["kmax"],
+        period.minimum_tile_width,
+        period.minimum_half_period,
+        a0,
+        recipe.width_cutoff,
+        recipe.local_width_cutoff,
+        tr.next_power_of_2(len(p)),
+        num_warps=4,
+        enable_fp_fusion=False,
+    )
+    return packed, packed_routes, order, begin, count
 
 
 def _local_forward(ctx, x, p, spec, recipe, tab):
@@ -710,6 +767,14 @@ def _local_forward(ctx, x, p, spec, recipe, tab):
     from . import local_kernels as lk
 
     routes = _routes(p, spec, recipe, tab)
+    original = atom_order = None
+    groups = ()
+    if type(recipe) is PackedFourierRecipe:
+        original = p
+        p, routes, atom_order, group_begin, group_count = _pack(
+            p, routes, spec, recipe, tab
+        )
+        groups = (group_begin, group_count)
     demand = _demand(p, spec, recipe, tab, routes)
     prepared = _prepare(p, spec, recipe, tab, routes)
     local = torch.empty(len(p), device=p.device, dtype=torch.int32)
@@ -764,13 +829,13 @@ def _local_forward(ctx, x, p, spec, recipe, tab):
     else:
         launch_local()
     z = _moments(x, spec, tab, demand, 1)
-    h = _contract(x, p, prepared, spec, tab, z, 1, False, local)
+    h = _contract(x, p, prepared, spec, tab, z, 1, False, local, groups or None)
     if recipe.local_overlap:
         parent.wait_stream(side)
     c = x.new_zeros(z.shape)
     _deposit(h, p, prepared, spec, tab, y, c, 0, demand, local)
     _reconstruct(c, spec, tab, y)
-    ctx.save_for_backward(x, p, demand, routes, None, None)
+    ctx.save_for_backward(x, p, demand, routes, original, atom_order, *groups)
     ctx.records = []
     ctx.spec, ctx.recipe, ctx.tab = spec, recipe, tab
     return y

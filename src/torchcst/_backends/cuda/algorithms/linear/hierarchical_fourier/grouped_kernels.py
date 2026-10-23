@@ -34,9 +34,14 @@ def contract_grouped(
     NC: tl.constexpr,
     BOUNDARY: tl.constexpr = False,
     Local=None,
+    Start=None,
+    Count=None,
 ):
-    a = tl.program_id(0) * BA + tl.arange(0, BA)
+    first = tl.program_id(0) * BA if Start is None else Start
+    a = first + tl.arange(0, BA)
     valid_atom = a < A
+    if Count is not None:
+        valid_atom &= tl.arange(0, BA) < Count
     if Local is not None:
         valid_atom = valid_atom & (tl.load(Local + a, a < A, 0) == 0)
     b = tl.program_id(1) * BB + tl.arange(0, BB)

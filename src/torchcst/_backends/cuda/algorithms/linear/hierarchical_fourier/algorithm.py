@@ -7,7 +7,12 @@ import torch
 from torchcst._backends.algorithm import Algorithm
 from torchcst._backends.schema import SupportResult
 
-from .contract import FourierLinearSpec, FourierRecipe, LocalFourierRecipe
+from .contract import (
+    FourierLinearSpec,
+    FourierRecipe,
+    LocalFourierRecipe,
+    PackedFourierRecipe,
+)
 
 
 @dataclass(frozen=True)
@@ -67,3 +72,22 @@ class HierarchicalFourierAlgorithm(Algorithm[FourierRecipe]):
 class LocalHierarchicalFourierAlgorithm(HierarchicalFourierAlgorithm):
     id: str = "research_cuda_hierarchical_fourier_local"
     recipe_type: type = LocalFourierRecipe
+
+
+@dataclass(frozen=True)
+class PackedHierarchicalFourierAlgorithm(HierarchicalFourierAlgorithm):
+    id: str = "research_cuda_hierarchical_fourier_packed"
+    recipe_type: type = PackedFourierRecipe
+
+    def supports(self, context, recipe):
+        base = super().supports(context, recipe)
+        if type(context) is not FourierContext:
+            return base
+        reasons = list(base.reasons)
+        if (
+            context.spec.size != 128
+            or context.spec.modes != 8
+            or not 1 <= context.atoms <= 128
+        ):
+            reasons.append("packed prototype requires N128/M8/A1..128")
+        return SupportResult(tuple(reasons))
