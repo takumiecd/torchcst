@@ -4,7 +4,8 @@
 既存階層Fourierと同じ有限支持・混合profile・離散L2/floor・live Iの数学を保つ。
 旧Algorithm/Recipeのserialized schemaは保持し、新規
 `research_cuda_hierarchical_fourier_local` / `LocalFourierRecipe`を研究registryへ追加。
-GPU検証・測定の結果は回収後に追記する。
+L4の独立2 jobを回収・hash照合済み。局所計算とZ/Hの時間的重なりは確認したが、
+今回の混在caseでは既存directの完全step時間を上回らず、採用はしない。
 
 ## forwardの処理
 
@@ -57,3 +58,67 @@ profiler計測を主性能値にしたり、kernel時間を足して完全step�
 Plan: `benchmarks/cuda/linear/plans-hierarchical-fourier-local.json`。
 Case: `benchmarks/cuda/linear/cases/local-fourier-m8-mixed-1024-a1024.json`。
 raw/driverはignored `output/hierarchical-fourier-local-20261023/`。
+
+## 回収した結果
+
+数値実装checkpoint `3bf1fb50`。`c47deac2`はserial32対照のcatalog追加のみで、
+runtimeは同一。GPUは両jobともNVIDIA L4、driver 580.82.07、Python 3.13.15、
+Torch 2.11.0+cu130、CUDA 13.0、Triton 3.6.0。GPU UUIDは異なる。
+N1024/B32/A1024/M8/mixed/seed41、IEEE FP32、初期X/target/Pのhashは全planで一致。
+各jobにcorrectness5 worker、性能5 worker、Dense性能1 workerがあり、全22 worker PASS。
+
+| plan | job 1 Graph完全step ms | job 2 Graph完全step ms | allocated MB | reserved MB |
+| --- | ---: | ---: | ---: | ---: |
+| direct-samples-h | 7.817216 | 7.805952 | 14.638080 | 27.262976 |
+| local-control | 7.818240 | 未実施 | 31.042048 | 56.623104 |
+| local-serial8 | 8.208384 | 8.271872 | 31.042048 | 56.623104 |
+| local-overlap8 | 8.032256 | 7.960576 | 31.042048 | 56.623104 |
+| local-serial32 | 未実施 | 7.940096 | 31.042048 | 56.623104 |
+| local-overlap32 | 7.902208 | 7.874560 | 31.042048 | 56.623104 |
+| Dense | 0.079872 | 0.078848 | 51.382784 | 111.149056 |
+
+MBは10^6 bytes。時間は各独立workerのGraph replay 7 samplesの中央値で、
+7 samplesを7独立runと数えない。job 2はplanの実行順を変更し、serial32対照を追加した。
+8 blockのoverlapは同数blockのserialに対し2.15%/3.76%短縮。
+32 blockのmatched対照はjob 2の1回だけで0.83%短縮。一般的な改善とは断定しない。
+overlap32はdirectより1.09%/0.88%遅く、Denseとの速度差も未解決。
+全atomを1 chunkで準備するため、prototypeは既存directよりメモリが多い。
+
+初回のforward profiler診断では、局所kernelとZ/H kernelの重なりは
+serial8で0、overlap8で567.772 us、overlap32で488.000 usだった。
+これは計装された1回のforwardのkernel区間の交差で、SM利用率の実測や主性能値ではない。
+同じtraceのlaunch情報は128 threads/block、shared 4096 bytes/block。
+register/threadはK8で56、K32で48。traceのestimated occupancyは実測稼働率として使わない。
+共通prepare/norm prefixが残り、stream制御だけで全費用が消えるわけではない。
+
+初回GPU検査は6 passed（M4/M8の全勾配とretained、所属リストと幅変更を含む）。
+runnerの各correctness workerは独立quadrature/KKT FP64 oracleで3つのlive状態と
+変更後Graph replayのY/dX/全atom勾配を照合した。atol=rtol=4e-4を維持。
+CPU全体は2259 passed / 5738 skipped / 18 warnings。GPU skipを成功には含めない。
+宣言検査とRuffも成功。全82 GPU regressionを実施したという記録ではない。
+
+## job・hash・停止確認
+
+- job 1: `l4job-231fc612c90741e3ba301ac5894c00aa`
+  - source archive SHA256: `fe6bf24dd1ac0e104a7694190aa4ee2ac2b2b083438d7f59fa4a683f2ea7201a`
+  - result archive SHA256: `f4c16ab44d95afc88aa1c57584ecabe06f950acd35c3b3d7c87f033e9099df52`
+- job 2: `l4job-97cbfeb054d44dcba16f79d7d120a84a`
+  - source archive SHA256: `fe13d91f25cec541c1c4f9ed305d1c435f291e6bad8fd642e9c4ecec995b3ce4`
+  - result archive SHA256: `997bb23fa1604dba9950640d03387eda21142c3ea8828d2ab6e2a456324eddff`
+
+両jobはreturncode0、timed_out=false、全worker PASS。
+各archiveをreceiptと照合し、driverの全artifact hashと各workerのsource file hashを照合した。
+source file照合は各jobで4466件。rawはhost共通poolの各jobの`results/`にも保持する。
+collectorは現在のruntime/benchmark sourceとの一致もassertする。
+
+```bash
+python3 output/hierarchical-fourier-local-20261023/collect.py \
+  l4job-231fc612c90741e3ba301ac5894c00aa \
+  l4job-97cbfeb054d44dcba16f79d7d120a84a
+```
+
+collectorが`verified-summary.json`を再生成する。
+`one-case.py`と`repeat.py`は既存runnerを呼ぶjob driverであり、新しい性能runnerではない。
+終了後のpool全slot stopped、Colab serverのactive sessionsなしを確認済み。
+停止状態の原本は同じoutput内の`final-pool-status.json`。
+追加jobは投入していない。PR/push/mergeは行わず、研究branchに保持する。
