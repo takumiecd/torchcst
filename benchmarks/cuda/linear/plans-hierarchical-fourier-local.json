@@ -142,6 +142,35 @@
           "local_width_cutoff": 0.35
         }
       }
+    },
+    {
+      "id": "local-serial32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_hierarchical_fourier_local",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "strategy": "shared",
+          "atom_chunk": 1024,
+          "minimum_sites": 32,
+          "width_cutoff": 0.1,
+          "native_cache": true,
+          "table_coefficients": true,
+          "atom_block": 4,
+          "batch_block": 4,
+          "reuse": "none",
+          "moment_policy": "hierarchical",
+          "sample_cache": 512,
+          "minimum_sharing": 8,
+          "boundary_cache": true,
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4,
+          "sort_atoms": false,
+          "local_blocks": 32,
+          "local_overlap": false,
+          "local_width_cutoff": 0.35
+        }
+      }
     }
   ]
 }
