@@ -1,5 +1,9 @@
 # 階層Fourierタイルの再開用引継ぎ
 
+2026-10-23設計追記：[全128 atomの39グループとHの生成・最終利用の担当案](hierarchical-fourier-128-groups-20261023.ja.md)。
+保存済みGPU geometryからproducer/consumer表を作成し、CPUで所属と数値和を検査した。
+新しいgrouped CUDA・H領域再利用は未実装で、GPUの追加実行はしていない。
+
 2026-10-23最新：[128の実機実行・保持と受け渡しの確認結果](hierarchical-fourier-128-execution-20261023.ja.md)。
 Y/dX/全P勾配の検査を通過。局所Y→残差→C展開で同じY storageを使うことを確認。
 Hの全容量は残り、128では時間的な重なりは観測されなかった。job回収・停止確認済み。
