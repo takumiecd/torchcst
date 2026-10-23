@@ -1,5 +1,10 @@
 # 階層Fourierタイルの再開用引継ぎ
 
+読み合わせ用：[output_localのCUDA C++例](examples/output_local_walkthrough.cu)。
+ユーザーがCUDA C++で設計・実装を学べるよう、4 warp×32 threadsの担当と
+profileのshared配置を明示した。数学的な処理を対応させる例であり、Tritonの
+実thread/shared配置の再現ではない。未compile・GPU未検証・runtime未接続。
+
 2026-10-23最新：[profile cache容量32/64/128の比較](hierarchical-fourier-cache-128-20261023.ja.md)。
 `656c1c7f`でGPU追加3 testsとrunner全9 workerがPASS。
 cache32はNative768→192 KiB、全step allocated1.529→0.940 MBへ減ったが、
