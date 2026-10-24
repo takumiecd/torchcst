@@ -257,3 +257,20 @@ std::vector<at::Tensor> block128_backward_cuda(at::Tensor x, at::Tensor p, at::T
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return {dx,dp};
 }
+
+std::vector<int64_t> block128_resources_cuda(at::Tensor x) {
+    TORCH_CHECK(x.is_cuda(), "resource query requires a CUDA tensor");
+    c10::cuda::CUDAGuard guard(x.device());
+    cudaFuncAttributes prep{}, forward{}, backward{};
+    C10_CUDA_CHECK(cudaFuncGetAttributes(&prep,prepare_norms));
+    C10_CUDA_CHECK(cudaFuncGetAttributes(&forward,block128<false>));
+    C10_CUDA_CHECK(cudaFuncGetAttributes(&backward,block128<true>));
+    std::vector<int64_t> result;
+    for (auto attr : {prep,forward,backward}) {
+        result.push_back(attr.numRegs);
+        result.push_back(attr.localSizeBytes);
+        result.push_back(attr.sharedSizeBytes);
+        result.push_back(attr.maxThreadsPerBlock);
+    }
+    return result;
+}

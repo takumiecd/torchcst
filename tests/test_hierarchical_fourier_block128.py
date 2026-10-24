@@ -56,6 +56,19 @@ def test_block128_metadata_and_scope():
             replace(recipe, **change)
 
 
+def test_block128_catalog_and_case_snapshot():
+    from benchmarks.cuda.linear.manifest import decode_snapshot, load_run
+
+    root = Path(__file__).resolve().parents[1] / "benchmarks/cuda/linear"
+    run = load_run(
+        root / "cases/block128-fourier-m8-mixed-128-a128.json",
+        root / "plans-hierarchical-fourier-block128.json",
+    )
+    restored = decode_snapshot(run.snapshot())
+    assert restored.snapshot() == run.snapshot()
+    assert run.entry("cuda-block128").plan.recipe == Block128FourierRecipe()
+
+
 @pytest.fixture(scope="module")
 def host_math(tmp_path_factory):
     """Compile the very same scalar header without CUDA to test its mathematics."""

@@ -3,6 +3,7 @@
 std::vector<at::Tensor> block128_forward_cuda(at::Tensor, at::Tensor, at::Tensor);
 std::vector<at::Tensor> block128_backward_cuda(
     at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor);
+std::vector<int64_t> block128_resources_cuda(at::Tensor);
 
 static void check(at::Tensor x, at::Tensor p, at::Tensor fit) {
     TORCH_CHECK(x.is_cuda() && p.device()==x.device() && fit.device()==x.device(),
@@ -35,4 +36,5 @@ static std::vector<at::Tensor> backward(at::Tensor x, at::Tensor p, at::Tensor d
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("forward", &forward);
     m.def("backward", &backward);
+    m.def("resource_info", &block128_resources_cuda);
 }
