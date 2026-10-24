@@ -13,6 +13,9 @@ Hは各threadが別のatomを担当して入力方向を最後まで計算する
 対応するbackwardの入口・G生成・入力側C・パラメータ勾配は
 [`backward128`の設計文書](hierarchical-fourier-backward-128-20261023.ja.md)に分けた。
 2026-10-24追記：同書のH保持方針（再計算・保存・一部保存）に対応する保存処理を加えた。
+一集団の比較基準について、担当番号・shared offset・Z/Cの領域再利用は
+[init128の具体化](hierarchical-fourier-init-128-20261024.ja.md)へ分けた。
+以下の動的job構成はZとCが同時に生存するため、その再利用offsetは直接流用しない。
 
 ## 1. 調整する人数を分ける
 

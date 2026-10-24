@@ -350,6 +350,11 @@ backwardでは、launch前に集団・atom群・Z作成順・勾配の書き手�
 「Gが軽ければH/Gを同じthreadへまとめる方が有利かもしれない」という仮説も含め、
 [backwardの固定担当表](hierarchical-fourier-backward-128-20261023.ja.md)に擬似コードと比較項目を記した。
 
+最初に同期と寿命を確認する一集団の比較基準は、[init128](hierarchical-fourier-init-128-20261024.ja.md)
+に担当番号・shared offset・Z/Cの領域再利用として具体化した。
+これは動的job版の性能を検証した結果ではない。blockごとの有用なpayloadと、
+一回の起動が全blockへ予約するshared量も区別して記録する。
+
 既存の[Hの寿命を軸にした設計](../../h-lifecycle-kernel-design.ja.md)に従う。
 [128で実行済みの保持・受け渡し](hierarchical-fourier-128-execution-20261023.ja.md)は
 別のTriton実装の測定であり、本書のCUDA融合案の実測ではない。

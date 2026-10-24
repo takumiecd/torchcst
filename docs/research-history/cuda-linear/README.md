@@ -43,3 +43,6 @@ H/Gを同じthreadで計算する`same_thread`と、別集団の`split_groups`�
 別集団ではsharedのatom別slotと完成通知を使い、H/G両方を読む勾配jobとGだけを読むdX jobへ渡す。
 将来の固定担当表ではjob取得を省き、G担当がHを受け取って勾配も計算する案を加えた。
 Gが軽い場合にH/Gを同じthreadへまとめる仮説と、その比較条件も記録した。
+[init128の具体化](hierarchical-fourier-init-128-20261024.ja.md)には、一集団の比較基準の担当番号、
+shared offset、縮約完了後のZ/C領域再利用と、CPUで実行できる容量計算例を記した。
+CUDA kernel・GPU同期・速度の検証は未実施である。
