@@ -2,8 +2,9 @@
 
 2026-10-24。[forwardの関数](hierarchical-fourier-thread-functions-20261023.ja.md)と
 [backward128](hierarchical-fourier-backward-128-20261023.ja.md)を、最初に確認する構成へ絞る。
-**CUDA kernelは未実装。本書で実行したのはCPU上のbank表照合、容量・offset・担当範囲の検査だけ。**
-GPUの正しさ・進行・register退避・速度・allocated/reservedピークは未検証。
+本書の数値はCPU上のbank表照合、容量・offset・担当範囲の検査から得た設計値。
+後続の[CUDA C++実装と検証記録](hierarchical-fourier-block128-cuda-20261024.ja.md)を別に作成した。
+以下の擬似コードや容量だけをGPUの正しさ・進行・速度・ピークの実測として扱わない。
 
 ## 1. 比較基準として固定するもの
 

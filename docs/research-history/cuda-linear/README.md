@@ -45,4 +45,7 @@ H/Gを同じthreadで計算する`same_thread`と、別集団の`split_groups`�
 Gが軽い場合にH/Gを同じthreadへまとめる仮説と、その比較条件も記録した。
 [init128の具体化](hierarchical-fourier-init-128-20261024.ja.md)には、一集団の比較基準の担当番号、
 shared offset、縮約完了後のZ/C領域再利用と、CPUで実行できる容量計算例を記した。
-CUDA kernel・GPU同期・速度の検証は未実施である。
+容量例はGPU同期・速度の検証を意味しない。
+後続の[CUDA C++ block128実装](hierarchical-fourier-block128-cuda-20261024.ja.md)では、
+same_thread・非保持・phase型のforward/backward、独立したCase/PlanとCPU数式検査を追加した。
+GPU実行の結果は同記録で区別する。

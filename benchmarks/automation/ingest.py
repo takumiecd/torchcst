@@ -15,7 +15,10 @@ def expected_worker_source(request):
     return {
         name: expected
         for name, expected in files.items()
-        if (name.startswith("src/torchcst/") and name.endswith(".py"))
+        if (
+            name.startswith("src/torchcst/")
+            and Path(name).suffix in {".py", ".cpp", ".cu", ".h", ".cuh"}
+        )
         or name in benchmark_names
     }
 

@@ -199,7 +199,11 @@ def _metadata(args, run):
 
     import torchcst
 
-    source_files = sorted(Path(torchcst.__file__).parent.rglob("*.py"))
+    source_files = sorted(
+        path
+        for path in Path(torchcst.__file__).parent.rglob("*")
+        if path.is_file() and path.suffix in {".py", ".cpp", ".cu", ".h", ".cuh"}
+    )
     source_files += [
         Path(__file__),
         Path(reference.__file__),

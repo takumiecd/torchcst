@@ -1,8 +1,10 @@
 """CUDA C++ block128: metadata, host/device scalar math and end-to-end VJP."""
 
 import ctypes
+import hashlib
 import shutil
 import subprocess
+import sys
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -67,6 +69,52 @@ def test_block128_catalog_and_case_snapshot():
     restored = decode_snapshot(run.snapshot())
     assert restored.snapshot() == run.snapshot()
     assert run.entry("cuda-block128").plan.recipe == Block128FourierRecipe()
+
+
+def test_benchmark_metadata_hashes_native_sources(monkeypatch):
+    from benchmarks.automation.ingest import expected_worker_source
+    from benchmarks.cuda.linear.manifest import load_run
+    from benchmarks.cuda.linear.run import _metadata
+
+    root = Path(__file__).resolve().parents[1] / "benchmarks/cuda/linear"
+    run = load_run(
+        root / "cases/block128-fourier-m8-mixed-128-a128.json",
+        root / "plans-hierarchical-fourier-block128.json",
+    )
+    monkeypatch.setitem(sys.modules, "triton", SimpleNamespace(__version__="test"))
+    monkeypatch.setattr(
+        torch.cuda,
+        "get_device_properties",
+        lambda device: SimpleNamespace(
+            name="metadata-only",
+            major=8,
+            minor=9,
+            multi_processor_count=1,
+            total_memory=1,
+        ),
+    )
+    args = SimpleNamespace(
+        device=0,
+        source_commit="unrecorded",
+        snapshot_sha256="0" * 64,
+        worker="correctness",
+        plan_id="cuda-block128",
+        polar_update=None,
+    )
+    metadata = _metadata(args, run)
+    selected = expected_worker_source(
+        {"request": {"source_files": metadata["source_hashes"]}}
+    )
+    for name in ("block128_math.h", "block128_bindings.cpp", "block128_kernels.cu"):
+        entries = [
+            (path, digest)
+            for path, digest in metadata["source_hashes"].items()
+            if path.endswith("/" + name)
+        ]
+        assert len(entries) == 1
+        path, digest = entries[0]
+        assert digest == hashlib.sha256(Path(path).read_bytes()).hexdigest()
+        assert selected[path] == digest
 
 
 @pytest.fixture(scope="module")
