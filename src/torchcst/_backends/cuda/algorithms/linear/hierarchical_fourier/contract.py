@@ -196,6 +196,27 @@ class BoundedCacheFourierRecipe(PackedFourierRecipe):
             raise ValueError("bounded cache requires sampled FP64 preparation")
 
 
+@dataclass(frozen=True)
+class Block128FourierRecipe:
+    """First CUDA C++ reference: one block-wide team, no retained global H."""
+
+    batch_size: int = 4
+    output_tile_sites: int = 32
+    hg_execution: str = "same_thread"
+    h_retention: str = "recompute"
+    scheduling: str = "phased"
+
+    def __post_init__(self):
+        if type(self.batch_size) is not int or self.batch_size != 4:
+            raise ValueError("block128 currently requires batch_size=4")
+        if type(self.output_tile_sites) is not int or self.output_tile_sites != 32:
+            raise ValueError("block128 currently requires output_tile_sites=32")
+        if self.hg_execution != "same_thread" or self.h_retention != "recompute":
+            raise ValueError("block128 currently requires same_thread/recompute")
+        if self.scheduling != "phased":
+            raise ValueError("block128 currently requires phased scheduling")
+
+
 def torch_reference(x, p, spec):
     from torchcst._backends.torch.kernels.hierarchical_fourier import values
 

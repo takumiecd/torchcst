@@ -8,6 +8,7 @@ from torchcst._backends.algorithm import Algorithm
 from torchcst._backends.schema import SupportResult
 
 from .contract import (
+    Block128FourierRecipe,
     BoundedCacheFourierRecipe,
     FourierLinearSpec,
     FourierRecipe,
@@ -98,3 +99,23 @@ class PackedHierarchicalFourierAlgorithm(HierarchicalFourierAlgorithm):
 class BoundedCacheHierarchicalFourierAlgorithm(PackedHierarchicalFourierAlgorithm):
     id: str = "research_cuda_hierarchical_fourier_bounded_cache"
     recipe_type: type = BoundedCacheFourierRecipe
+
+
+@dataclass(frozen=True)
+class Block128HierarchicalFourierAlgorithm(HierarchicalFourierAlgorithm):
+    id: str = "research_cuda_hierarchical_fourier_block128"
+    recipe_type: type = Block128FourierRecipe
+
+    def supports(self, context, recipe):
+        base = super().supports(context, recipe)
+        if type(context) is not FourierContext:
+            return base
+        reasons = list(base.reasons)
+        if context.spec.size != 128 or context.spec.modes != 8 or context.atoms != 128:
+            reasons.append("block128 prototype requires N128/M8/A128")
+        return SupportResult(tuple(reasons))
+
+    def execute(self, state, inputs):
+        from .block128_executor import apply
+
+        return apply(inputs.x, inputs.p, state.binding.operator, state.recipe)
