@@ -4,6 +4,7 @@
 **以下は未実装のCUDA風擬似コード。GPU correctness・同期・速度・総メモリは未検証。**
 本書作成ではruntimeを変更せず、GPUジョブも開始していない。
 2026-10-24追記：Hの保存・再計算・一部保存を選択できる設計にした。
+同日追記：H/Gを同じthreadで計算する方式と、別集団で計算して受け渡す方式を切り替える。
 
 ## 1. 何を受け取り、何を返すか
 
@@ -105,6 +106,27 @@ basis_count = 2 * fourier_order + 1;
 いずれもGはそのatomの出力支持全体から計算する。
 パラメータ勾配に使うHも入力支持全体から計算し、担当dXタイルへ切り詰めない。
 
+### H/Gの担当方式：`config.hg_execution`
+
+| 設定 | H/Gとパラメータ勾配の担当 | 中間値の受け渡し |
+| --- | --- | --- |
+| `same_thread` | 各threadが別atomのG・H・勾配を順に計算 | H/Gの微分項目はthread内。Gの値だけsharedへ |
+| `split_groups` | H群・G群・勾配計算を別jobにする | H/Gの項目をsharedへ置き、完成後に勾配jobが読む |
+
+これはHの保持方針とは独立の設定。例えば`hybrid × split_groups`も選べる。
+方式はlaunch前に選び、途中で切り替えない。方式ごとに仕事表とsharedの容量を決める。
+`same_thread`を最初の比較基準とし、速い方式を確定したとは扱わない。
+`split_groups`でもHとGそれぞれの内部は、各threadが別atomの縮約を最後まで計算する。
+H群とG群でthread数・thread番号が一致する必要はない。同じatomのH/Gを対応付けて読む。
+
+別集団の初期案も**同じblock内**で完結させる。固定メンバーの作業集団が、
+H job・G job・勾配job等を動的に取得する。H専用threadを実行中に移籍させる方式ではない。
+同時に走らせるには少なくとも二つの適合集団が必要で、GPU上の実際の重なりは未検証。
+集団が一つなら同じjobグラフを順次処理できるが、H/Gの並列実行にはならない。
+担当人数は`worker_group_sizes`、発行比率は`job_start_weights[level][policy_class]`等で調整する。
+backward用の分類にZ_X・Z_dY・H・G・勾配・dXを用意し、必要な作成jobの担当をなくさない。
+人数・発行比率は一人刻みの設定を保ち、warp数を配分の単位に固定しない。
+
 ## 3. 全体の入口：`backward128()`
 
 **入口の`while`は配分調査用の暫定構成。** 有効な配分と発行順が見つかれば、
@@ -136,7 +158,7 @@ backward128(X, dY, forward_state, block_plans, dX, dP_partial) {
             build_z_tile(shared.X, shared.Z_X, ctx.team, job.tile);
             publish_z_tile_ready(shared.Z_X_ready, ctx.team, job.tile);
         } else {
-            do_backward_work(ctx, job, dP_partial);
+            dispatch_backward_job(ctx, job, dP_partial);
         }
 
         complete_job(ctx, job);
@@ -163,6 +185,7 @@ make_backward_plan(forward_state, batch_group, input_tile, config) {
     plan.batch_group = batch_group;
     plan.input_tile = input_tile;
     plan.writes_param_grad = (input_tile.id == 0);
+    plan.hg_execution = config.hg_execution;
     plan.worker_groups = make_groups(config.worker_group_sizes);
 
     if (plan.writes_param_grad)
@@ -180,13 +203,14 @@ make_backward_plan(forward_state, batch_group, input_tile, config) {
 
     // dXの直接部分・C所属は担当input_tileとの重なりだけを登録する。
     plan.dx_parts = partition_input_support(atoms, input_tile);
-    plan.required_Z = build_job_dependencies(plan);
+    plan.jobs = build_backward_jobs(plan); // 下の方式別依存から作る。子Zも含む
     plan.shared_layout = allocate_bounded_backward_slots(plan);
     return plan;
 }
 ```
 
-Gだけを使うjobは`Z_dY`だけ、Hの再計算もあるjobは不足項目に必要な`Z_X`も待つ。
+`same_thread`のatom jobは、Gに必要な`Z_dY`とHの不足項目に必要な`Z_X`を待つ。
+`split_groups`ではH jobが`Z_X`、G jobが`Z_dY`を独立に待つ。
 保存済みのH項目のために入力Zを作らない。子Zは不足項目の依存から再帰的に含める。
 直接計算だけで済む場合は対応するZを作らない。入力側・出力側の経路を独立に判定する。
 
@@ -201,6 +225,8 @@ init_backward_block(X, dY, forward_state, plan) {
 
     clear_input_C_and_dx_partials(ctx);
     clear_Z_ready_flags(ctx);       // X由来とdY由来を分ける
+    if (plan.hg_execution == split_groups)
+        clear_HG_ready_flags(ctx);  // 群ごとのHready / Gready
     __syncthreads();
     return ctx;
 }
@@ -212,6 +238,24 @@ H側の再計算がないblockには、Xと入力Zのshared領域を用意しな
 直接項のみを再計算する場合はXだけを用意し、不要なZは確保しない。
 
 ## 5. atom群の仕事：`do_backward_work()`
+
+入口からは次のdispatchを呼ぶ。`BUILD_Z_*`は入口で処理済みとする。
+
+```cpp
+dispatch_backward_job(ctx, job, dP_partial) {
+    switch (job.kind) {
+    case ATOM_HG:      do_backward_work(ctx, job, dP_partial); break;
+    case H_GROUP:      produce_H_group(ctx, job); break;
+    case G_GROUP:      produce_G_group(ctx, job); break;
+    case PARAM_GROUP:  consume_HG_group(ctx, job, dP_partial); break;
+    case APPLY_G:      apply_G_group(ctx, job); break;
+    }
+}
+```
+
+### 同じthreadで計算：`same_thread`
+
+`ATOM_HG` jobを取得し、以下の処理を行う。
 
 ```cpp
 do_backward_work(ctx, job, dP_partial) {
@@ -248,7 +292,7 @@ compute_atom_backward_batch(ctx, job, dP_partial) {
 そのatomの小バッチ全件を計算する。集団の他threadは別のatomを計算する。
 128 atomsを128 threadsで担当するなら、一人一atom。人数が少なければstrideで次も担当する。
 
-パラメータ担当では同じthreadがG・H・自分のatomのパラメータ勾配までを計算する。
+この方式のパラメータ担当では同じthreadがG・H・自分のatomのパラメータ勾配までを計算する。
 Hと微分縮約値はまずローカル変数で使い切り、他threadへの受け渡し用にはGの値だけをsharedへ置く。
 ローカル配列が実際にregisterへ収まるか、退避が起きるかはコンパイル後に確認する。
 
@@ -256,6 +300,91 @@ Hと微分縮約値はまずローカル変数で使い切り、他threadへの�
 並べ替えがなければ恒等対応とする。
 最初から元IDへ書いた部分和を、最終合算時にもう一度逆並べ替えしない。
 担当blockは全atomの全パラメータ欄を、ゼロの場合も含めて必ず書く。
+
+### 別集団で計算：`split_groups`
+
+atom群ごとに、H job・G job・勾配jobを対応付ける。各jobは群の全atomを並列対象にする。
+ここでの「まとめる」は、**同じatomのHとGを取り出して勾配式へ渡すこと**であり、
+異なるatomのH/Gを一つの値へ足す操作ではない。
+
+```text
+群qの不足項目に必要なZ_X → H_GROUP(q) → Hready[q] ─┐
+                                                 ├→ PARAM_GROUP(q) → dP_partial
+群qに必要なZ_dY         → G_GROUP(q) → Gready[q] ─┘
+                                          └──────→ APPLY_G(q) → C_input / dXpart
+```
+
+| job | 開始条件 | 保存先・役割 |
+| --- | --- | --- |
+| `H_GROUP(q)` | H不足項目のZが完成。直接計算／全保存ならZ待ちはない | 保存Hを読み、不足分を計算し、`Htemp`へ書く |
+| `G_GROUP(q)` | Gに必要な出力側Zが完成 | Gの必要項目を`Gtemp`へ書く |
+| `PARAM_GROUP(q)` | HreadyとGreadyの両方が完成 | 同じatomのH/Gを読み、一意な担当がdP部分和を書く |
+| `APPLY_G(q)` | Greadyが完成 | Gのvalueから、そのblockのC・dX部分和を作る |
+
+dX専用blockにはH jobと勾配jobを作らず、Gにはvalueだけを用意する。
+パラメータ担当blockのH/Gはそれぞれvalue・center・widthを揃える。
+全項目をforwardで保存した場合も、初期のsplit案ではH jobが読み出して`Htemp`へ置く。
+後にglobal保存値を直接読む案と比較できるが、ここでは受け渡し方法を統一する。
+
+```cpp
+produce_H_group(ctx, job) {
+    for (atom : strided_atoms(job.atoms, ctx.team))
+        shared.Htemp[slot(atom)] = load_or_recompute_H_for_atom(ctx, atom);
+    publish_group_payload_ready(ctx.team, shared.Hready[job.group_id]);
+}
+
+produce_G_group(ctx, job) {
+    for (atom : strided_atoms(job.atoms, ctx.team))
+        shared.Gtemp[slot(atom)] = compute_G_for_atom(
+            shared.dY, shared.Z_dY, atom.output_plan, plan.writes_param_grad);
+    publish_group_payload_ready(ctx.team, shared.Gready[job.group_id]);
+}
+
+consume_HG_group(ctx, job, dP_partial) {
+    // 取得時にHreadyとGreadyをacquire確認済み。ここでは待たない。
+    for (atom : strided_atoms(job.atoms, ctx.team)) {
+        h = shared.Htemp[slot(atom)];
+        g = shared.Gtemp[slot(atom)];
+        grad = atom_parameter_vjp(atom, h, g, atom.norm);
+        original_id = forward_state.original_atom_id[atom.id];
+        dP_partial[plan.batch_group][original_id] = grad;
+    }
+}
+
+apply_G_group(ctx, job) {
+    // shared.GjobをGtempのvalue項目のviewとして読む。追加コピーはしない。
+    add_dx_direct_parts_batch(ctx, job);
+    add_input_c_parts_batch(ctx, job);
+}
+
+publish_group_payload_ready(team, ready_flag) {
+    group_sync(team);              // 作成者全員のpayload書き込み完了
+    if (team.rank == 0)
+        atomic_store_release(ready_flag, 1);
+}
+```
+
+`slot(atom)`はこのblock・小バッチで一意なatomのslot。H/G双方で同じatom表を使い、
+job内のthread順位で対応付けない。`strided_atoms()`はrankからthread数刻みで別atomを取るだけで、
+一つのatomの縮約を複数threadへ分割しない。勾配jobにも別の人数を割り当ててよい。
+勾配のbatch方向の和は担当thread内、atom間のdX集約は`APPLY_G`内で行う。
+
+完成通知はZと同様、集団barrier後のrelease公開と、取得側のacquire確認を組にする。
+単なるboolの書き換えや、分岐した一部threadだけの`__syncthreads()`で代用しない。
+`PARAM_GROUP`は両フラグをacquire確認してからatomicに一度だけ取得し、
+`APPLY_G`はGreadyだけで取得する。Hの完成を待つために計算集団を占有しない。
+各jobの終了は引き続き`complete_job()`で集団全員が確認し、その後に次のjobを取る。
+
+初期案の`Htemp`・`Gtemp`はatom別固定slotをblock終了まで保持し、読み手が複数でも上書きしない。
+`Gtemp`には勾配jobとdX jobの二つの読み手がある。早期再利用を入れるなら両者の読了確認が必要。
+保存用global Hとこの一時shared Hは別の寿命であり、保存値をscratchとして壊さない。
+最後のblock同期は全job完了後にだけ置く。全job完了件数には勾配job・dX jobも含める。
+
+`build_backward_jobs()`は方式に応じて`ATOM_HG`、または上記4種類へ分解し、
+必要なZだけを含めた依存グラフを作る。全jobに実行可能な集団が存在することを計画段階で確認する。
+readyな作成jobが取り続けられる発行規則とし、未完成のH/Gを待つjobだけで集団を埋めない。
+`same_thread`の基準案ではH/G双方のZを待ってからatom jobを始めるため、
+Gだけが先に準備できた際のdX先行は`split_groups`で比較する。
 
 ## 6. GとHの中身
 
@@ -460,16 +589,24 @@ reduce_parameter_gradients(dP_partial, dP) {
 | 保存対象のH項目 | global。選択したatom・batch・項目だけをforwardからbackward利用終了まで保持 |
 | 小バッチのX | Hの再計算があるパラメータ担当blockだけのshared |
 | Z_dY / Z_X | 別々のsharedと完成通知。最初は上書きしない |
-| atomのH/Gと中心・I微分縮約値 | 担当threadのローカル値。パラメータ勾配の計算まで |
-| Gjobの値 | job別の重ならないshared領域。dX・Cへの集約まで |
+| atomのH/Gと中心・I微分縮約値 | same_threadでは担当threadのローカル値。split_groupsではsharedのHtemp/Gtempから担当threadが読む |
+| Gjobの値 | same_threadではjob別shared。split_groupsではGtempのvalueへのview |
+| Htemp / Gtemp / Hready / Gready | split_groupsのみ。block内の受け渡しに使用。固定slotをblock終了まで保持 |
 | C_input / dXpart | 集団別shared。最後に一度展開・合算するまで |
 | job状態・集団の空き・barrier | block内shared。集団代表が取得・完了を管理 |
 | dX | 一つの所有blockからglobalへ最終値を保存 |
 | dP_partial | global。全小バッチの勾配合算まで |
 
 GjobはA128・batch_size4・FP64なら4,096 bytes/block。
+split_groupsのパラメータ担当blockでは、Htemp・Gtempを各3項目とすると
+`2 × 128 × 4 × 3 × 8 = 24,576 bytes/block`。
+Gjob用の4,096 bytesはこのGtempのvalueと兼用するので、重ねて数えない。
+same_threadのGjobだけの案との差は20,480 bytesで、通知・alignment・Z・C等は別途必要。
+dX専用blockではGのvalueだけなので4,096 bytes以下（対象atom数による）となる。
+split_groupsはregisterに保持する量を変える一方、sharedの使用量と読み書きが増える。
+総shared上限を超える計画は拒否し、実機の進行・占有率と完全stepで比較する。
 dP_partialはbatch32を4件ずつ、A128・4パラメータ・FP64なら32,768 bytes。
-どちらも部分配列の容量例であり、shared全体や完全stepのallocated/reservedピークではない。
+これらは部分配列の容量例であり、shared全体や完全stepのallocated/reservedピークではない。
 保持Hの容量は`有効な(atom, batch, field)の件数 × dtypeのbytes`。
 A128・全体batch4・FP64なら、全atomのvalueだけで4,096 bytes、3項目なら12,288 bytes。
 64 atomsの3項目だけなら6,144 bytes。これは4出力block分に複製せず、一度だけ保持する。
@@ -478,6 +615,7 @@ A128・全体batch4・FP64なら、全atomのvalueだけで4,096 bytes、3項目
 
 同期は、Z作成者内、Z完成の公開と取得、job内全Gの完成、job全員の完了、
 block内dXの最終合算前、batch間dPの合算前を区別する。
+split_groupsでは、H/Gのpayload完成公開と依存jobの取得も別々に確認する。
 jobの途中で一人だけ次のjobへ移らず、全員の読み書き終了後に集団を空きへ戻す。
 Zの生成／atom群処理の割合、空き管理、将来の入口ループ除去はforwardと同様に検討する。
 
@@ -490,7 +628,9 @@ Zの生成／atom群処理の割合、空き管理、将来の入口ループ除
 4. 入力tile 0のdP所有、batch間の合算、元atom IDへの対応に重複・抜けがないことを確認する。
 5. strict支持境界・空／単一site・幅変化・振幅0・norm floor・retained backward・Graphを確認する。
 6. 保存書き手の一意性、未訪問atom・端数batchの被覆、不足項目だけのZ依存を確認する。
-   その後、パラメータ担当の偏り、block間再計算、別block群への分離、3方式を比較する。
+   same_threadとsplit_groupsを各保持方針で比較し、H先行・G先行、空群・人数違い、
+   通知前の読み取りなし、dP／dXの二重実行なし、全job終了とslotの寿命を確認する。
+   その後、パラメータ担当の偏り、block間再計算、別block群への分離、保存の3方式を比較する。
 7. 独立Y/dX/全atom勾配を通した後、準備・更新まで含む未計装の完全stepと総ピークで判断する。
 
 初期の所有方法や配分を最適と断定しない。数学とjobのインターフェースを固定して、

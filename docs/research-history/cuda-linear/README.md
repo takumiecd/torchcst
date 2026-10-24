@@ -39,3 +39,5 @@ atom群の全Hを各threadで別々に生成し、空いた集団がready jobを
 [backward128の設計](hierarchical-fourier-backward-128-20261023.ja.md)には、G生成からdXへの展開、
 Hの再計算・保存・一部保存、正規化を含む全atom勾配、batch間合算と保存・同期の範囲を記した。
 保持するatom群とvalue／中心・幅の微分縮約値を選び、不足項目だけを再計算する未実装の候補である。
+H/Gを同じthreadで計算する`same_thread`と、別集団の`split_groups`を切り替える案も記した。
+別集団ではsharedのatom別slotと完成通知を使い、H/G両方を読む勾配jobとGだけを読むdX jobへ渡す。
