@@ -12,6 +12,7 @@ Hは各threadが別のatomを担当して入力方向を最後まで計算する
 
 対応するbackwardの入口・G生成・入力側C・パラメータ勾配は
 [`backward128`の設計文書](hierarchical-fourier-backward-128-20261023.ja.md)に分けた。
+2026-10-24追記：同書のH保持方針（再計算・保存・一部保存）に対応する保存処理を加えた。
 
 ## 1. 調整する人数を分ける
 
@@ -68,8 +69,10 @@ make_thread_plan(atom_plan, config) {
     require(sum(config.worker_group_sizes) == config.block_threads);
     plan.worker_groups = make_groups(config.worker_group_sizes);
 
-    plan.Z_jobs = make_Z_jobs(必要なZと、その子依存);
+    plan.H_retention = atom_plan.H_retention;  // 全block共通の保存対象と一意な書き手
     plan.atom_jobs = group_all_atoms_by_level_and_references(atom_plan);
+    add_missing_retention_atoms_to_owner_jobs(plan); // 通常の出力jobで訪れない保存対象
+    plan.Z_jobs = make_Z_jobs(必要なZと、その子依存);
     // 出力blockに寄与する各atomは、一つのATOM_GROUPへ所属させる。
     // job.required_Zには、その群のHに必要な全Zを登録する。
     // 混合成分が複数階層にまたがるatomも、Hの寄与を欠かさない。
@@ -86,6 +89,8 @@ make_thread_plan(atom_plan, config) {
 ```
 
 jobの依存グラフは、子Z→親Z、必要なZ→atom群とする。
+保存だけのために追加したatomにはC・直接出力の所属を持たせず、Yへ余分に加算しない。
+そのHと指定した微分縮約値に必要なZも依存へ含める。
 Z不要のatom群は初期状態から実行可能。Z一枚の実行担当はatomicな取得で一意にする。
 実行可能になったatom群は、空いた適合集団が取得する。
 階層ごとの所属は必要なbank・タイルの情報も含めて決め、sigmaだけで依存を省かない。
@@ -339,6 +344,7 @@ compute_h_batch(ctx, job) {
                 h[b] += shared.Z[term.tile][b][term.basis] * term.beta;
 
         shared.Hjob[job.h_offset + a] = h;
+        retain_H_fields_if_selected(ctx, atom, h);
     }
 }
 ```
@@ -354,11 +360,32 @@ H生成後の同期は、**別々のatomのHが揃い、C・出力の集約へ�
 `Hjob`はこのjobの全atomをC・出力集約で使うためのblock内shared領域。
 jobごとに重ならないoffsetを決め、各atomの値は担当thread一人だけが書く。
 初期案では全jobのatom総数を上限に枠を確保し、実行中の領域は重ならない。
-全atomのglobal H Tensorを保存したり、backwardまで保持したりする方式ではない。
+`Hjob`自体をbackwardまで保持するわけではない。
+保持方針で選んだ値だけを、次の関数で別のglobal領域へ保存する。
 直接部分を含むjobも、まずこの一括処理で確認し、保存を省く融合は後の候補とする。
 
 `input_component()`は指定成分だけを評価する。Z経由の寄与が別にある場所で
 全混合profileを直接評価して足すと二重加算になるので、直接項の成分情報を保持する。
+
+```cpp
+retain_H_fields_if_selected(ctx, atom, h_value) {
+    fields = plan.H_retention.fields_owned_by_this_block(atom);
+    if (fields.empty())
+        return;
+    saved = record_with_value(h_value);
+    if (fields.contains(center) || fields.contains(width))
+        saved.merge(compute_input_derivative_contractions_for_atom(
+                        shared.X, shared.Z, atom, fields - {value}));
+    store_selected_fields_to_global(plan.H_retention, atom, saved, fields);
+}
+```
+
+この関数も同じatom担当threadが呼ぶ。`center`・`width`を保存する設定では、
+forwardでその入力縮約を追加計算する費用が発生する。
+保存値は未正規化・振幅適用前で、全入力支持を含む。
+書き先は元atom IDとの対応を持つ専用slotとし、同じatomを他の出力blockで計算しても重複保存しない。
+保存対象の被覆と書き手はlaunch前に決め、後からbackward側の希望だけで保存済み扱いにしない。
+`recompute`ならこの関数は何も保存しない。
 Hの入力支持を、担当する出力32サイトに切り詰めない。
 
 ## 10. atom群の直接部分を集約：`add_direct_parts_batch()`
@@ -510,6 +537,11 @@ block間で出力要素の所有範囲を重ねず、global Yへのatomic加算�
 | C | `各計算集団の使用node数の合計 × batch_size × basis_count` |
 | Ypart | `計算集団数 × batch_size × output_tile_sites` |
 | 通知・同期 | `Zready`、job状態・残件数、集団barrier・dispatch、policyカウンタとalignment |
+
+これとは別に、保持方針で選んだHの項目をglobalへ保存する。
+容量は全体batchについて選択したatom・項目数から求め、block内sharedと分けて数える。
+forwardからbackwardまでの寿命・保存項目と不足分の再計算は
+[backwardの保持方針](hierarchical-fourier-backward-128-20261023.ja.md#hの保持方針make_h_retention_plan)を参照する。
 
 thread単位の指定は、threadごとにC全体を複製するという意味ではない。
 ただし、この部分和方式では計算集団を増やすほどC・Ypart・同期状態が増えるので、

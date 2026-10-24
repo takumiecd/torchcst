@@ -3,6 +3,7 @@
 2026-10-23。[forwardの関数別擬似コード](hierarchical-fourier-thread-functions-20261023.ja.md)に対応する設計案。
 **以下は未実装のCUDA風擬似コード。GPU correctness・同期・速度・総メモリは未検証。**
 本書作成ではruntimeを変更せず、GPUジョブも開始していない。
+2026-10-24追記：Hの保存・再計算・一部保存を選択できる設計にした。
 
 ## 1. 何を受け取り、何を返すか
 
@@ -22,12 +23,53 @@ backward：dY → 出力側Z → G → 入力側C → dX
 ```
 
 Hは入力Xを入力profileで縮約した値、GはdYを出力profileで縮約した値である。
-Hをbackwardまで保存するかは別の選択で、初期候補ではforwardの状態から再計算する。
+Hをbackwardまで保存するかは別の選択で、以下の3方式を比較できるようにする。
 Gは振幅を掛ける前の値とする。`dH`そのものは後述の`alpha * G`で、Gとは区別する。
 
 **atom群の全atomを並列対象にし、各threadが別のatomのH/Gを最後まで計算する。**
 一つのatomの入力部分和を複数threadで作って合算する方式には戻さない。
 Z一枚の生成や、複数atomからC・dXへの集約は、集団で協力する別の処理である。
+
+### Hの保持方針：`make_H_retention_plan()`
+
+| 方針 | forwardから保持するもの | backwardですること |
+| --- | --- | --- |
+| `recompute` | Hは保持しない | 必要なHの項目を再計算する |
+| `save` | 必要な全atomの、指定した項目 | 保存済みの項目を読み、不足分は再計算する |
+| `hybrid` | 選んだ階層・atom群の、指定した項目だけ | 保存対象と再計算対象を組み合わせる |
+
+保存する項目も独立に指定する。Hは以下の未正規化・振幅適用前の縮約値とする。
+
+| 項目 | 数式 | 用途 |
+| --- | --- | --- |
+| `value` | \(H_{b,a}=\sum_i X_{b,i}v_a(i)\) | 振幅勾配など |
+| `center` | \(\sum_i X_{b,i}\partial v_a(i)/\partial\mu_{in}\) | 入力中心の勾配 |
+| `width` | \(\sum_i X_{b,i}\partial v_a(i)/\partial I\) | 幅の勾配 |
+
+`save`でも`value`だけを指定すれば、中心・幅の縮約値はbackwardで再計算する。
+全パラメータ勾配に必要な3項目を保存した場合は、H側の再計算が不要になる。
+dXだけならHは不要で、Gから計算する。正規化分母とその微分は別途必要であり、
+Hの保存だけでそれらが省けるわけではない。
+
+```cpp
+make_H_retention_plan(config, atom_groups) {
+    for (group : atom_groups)
+        saved_fields[group] = choose_fields(config.mode, group, config);
+    return pack_saved_fields_and_assign_unique_writers(saved_fields);
+}
+```
+
+`recompute`なら全群で空集合、`save`なら全群で指定項目、`hybrid`なら群ごとに指定する。
+方針はforward前に決め、実際の保存先・atom ID対応・有効batch範囲とともに
+`forward_state.H_retention`へ記録する。未保存の項目を保存済みとして扱わない。
+階層ごとの再計算費用を見て保存対象を選ぶのは今後の調整対象で、sigmaだけの固定境界は置かない。
+
+保存先はforwardのblock終了後も残るglobal領域で、sharedの`Hjob`とは別である。
+同じatomを複数の出力blockで計算しても、保存する書き手は各atom・batch・項目につき一つ。
+通常の出力jobが訪れない保存対象にも担当を用意し、保存範囲を欠落させない。
+backwardはforward完了後に同じstream等の依存で読み、block内同期で代用しない。
+保存値は同じforwardの状態に結び付け、retained backward中に破壊・再利用しない。
+Xや元Parameterの保存・version検査は、Hの保存設定だけを理由に取り除かない。
 
 ## 2. 大きさと、勾配を書き込む担当
 
@@ -130,8 +172,11 @@ make_backward_plan(forward_state, batch_group, input_tile, config) {
 
     plan.atom_jobs = group_all_atoms_by_level_and_references(atoms);
     plan.Z_dY_jobs = required_output_moments(plan.atom_jobs);
-    plan.Z_X_jobs = plan.writes_param_grad
-                  ? required_input_moments(plan.atom_jobs) : empty;
+    plan.H_missing = plan.writes_param_grad
+                   ? missing_H_fields(forward_state.H_retention, atoms, batch_group,
+                                      {value, center, width}) : empty;
+    plan.Z_X_jobs = required_input_moments(plan.H_missing);
+    plan.needs_X = has_input_contractions(plan.H_missing);
 
     // dXの直接部分・C所属は担当input_tileとの重なりだけを登録する。
     plan.dx_parts = partition_input_support(atoms, input_tile);
@@ -141,7 +186,8 @@ make_backward_plan(forward_state, batch_group, input_tile, config) {
 }
 ```
 
-Gだけを使うjobは`Z_dY`だけ、パラメータ勾配も作るjobは必要な`Z_X`と`Z_dY`の両方を待つ。
+Gだけを使うjobは`Z_dY`だけ、Hの再計算もあるjobは不足項目に必要な`Z_X`も待つ。
+保存済みのH項目のために入力Zを作らない。子Zは不足項目の依存から再帰的に含める。
 直接計算だけで済む場合は対応するZを作らない。入力側・出力側の経路を独立に判定する。
 
 ```cpp
@@ -150,7 +196,7 @@ init_backward_block(X, dY, forward_state, plan) {
     initialize_group_barriers_job_states_and_policy(ctx);
 
     load_dY_batch_to_shared(dY, plan);
-    if (plan.writes_param_grad)
+    if (plan.needs_X)
         load_X_batch_to_shared(X, plan);
 
     clear_input_C_and_dx_partials(ctx);
@@ -162,7 +208,8 @@ init_backward_block(X, dY, forward_state, plan) {
 
 初期化の分担・barrierの構築はforwardの`init_block()`と同じ約束とする。
 Z・Gの一時値は使用前に全必要要素を書くので、無条件に全領域をゼロ初期化しない。
-Xを必要としないdX専用blockには、Xと入力Zのshared領域を用意しない。
+H側の再計算がないblockには、Xと入力Zのshared領域を用意しない。
+直接項のみを再計算する場合はXだけを用意し、不要なZは確保しない。
 
 ## 5. atom群の仕事：`do_backward_work()`
 
@@ -188,8 +235,7 @@ compute_atom_backward_batch(ctx, job, dP_partial) {
         shared.Gjob[job.g_offset + a] = g.value;
 
         if (plan.writes_param_grad) {
-            h = recompute_H_for_atom(shared.X, shared.Z_X,
-                                     atom.input_plan, true);
+            h = load_or_recompute_H_for_atom(ctx, atom);
             grad = atom_parameter_vjp(atom, h, g, atom.norm);
             original_id = forward_state.original_atom_id[atom.id];
             dP_partial[plan.batch_group][original_id] = grad;
@@ -198,7 +244,7 @@ compute_atom_backward_batch(ctx, job, dP_partial) {
 }
 ```
 
-`compute_G_for_atom()`と`recompute_H_for_atom()`は、**呼んだthread一人で**
+`compute_G_for_atom()`とHの再計算は、**呼んだthread一人で**
 そのatomの小バッチ全件を計算する。集団の他threadは別のatomを計算する。
 128 atomsを128 threadsで担当するなら、一人一atom。人数が少なければstrideで次も担当する。
 
@@ -213,12 +259,29 @@ Hと微分縮約値はまずローカル変数で使い切り、他threadへの�
 
 ## 6. GとHの中身
 
+保存方針による分岐は、次の関数へまとめる。
+
+```cpp
+load_or_recompute_H_for_atom(ctx, atom) {
+    required = {value, center, width};
+    h = load_saved_H_fields(forward_state.H_retention, atom, plan.batch_group);
+    missing = required - h.available_fields;
+    if (!missing.empty())
+        h.merge(recompute_H_fields(shared.X, shared.Z_X, atom.input_plan, missing));
+    return h;
+}
+```
+
+`recompute_H_fields()`は指定項目だけを縮約し、保存済み項目を上書きしない。
+必要なZとXは仕事表で先に準備する。ここで未完成のZを待つ構成にはしない。
+項目のmaskは少なくともjob計画で把握し、群を分けるか同じjob内で分岐するかは比較する。
+
 両方とも「sourceと、その側のprofileの積和」である。
 
 | 関数 | source | profile | 使う階層値 |
 | --- | --- | --- | --- |
 | `compute_G_for_atom()` | dY | 出力側u | Z_dY |
-| `recompute_H_for_atom()` | X | 入力側v | Z_X |
+| `recompute_H_fields()` | X | 入力側vの不足項目 | Z_X |
 
 値に加え、パラメータ勾配にはprofileの中心微分とlive幅I微分に対する積和が必要。
 例えばGについて、`g.value[b] = Σ dY u`、`g.center[b] = Σ dY ∂u/∂μ_out`、
@@ -245,6 +308,7 @@ contract_one_atom(source, Z, side_plan, need_derivatives) {
 ```
 
 上のレコードの加算は、値・中心微分・I微分の各fieldへそれぞれ加算する意味。
+Hの再計算では`need_derivatives`の代わりに不足項目maskを使い、同じ積和の該当fieldだけを計算する。
 パラメータ微分も既存の有限Fourier・混合・支持・離散正規化の数学を保つ。
 直接項と階層項は成分ごとに重複なく分解し、全混合profileを直接項へ重ねて足さない。
 GとHに正規化や振幅を先に混ぜず、後述のalphaと分母微分を一度だけ扱う。
@@ -393,7 +457,8 @@ reduce_parameter_gradients(dP_partial, dP) {
 | --- | --- |
 | forward時点のXとParameter等 | autogradの保存・version検査に従い、同じ状態を再参照／再計算 |
 | 小バッチのdY | 全blockのshared。G計算が完了するまで |
-| 小バッチのX | パラメータ担当blockだけのshared |
+| 保存対象のH項目 | global。選択したatom・batch・項目だけをforwardからbackward利用終了まで保持 |
+| 小バッチのX | Hの再計算があるパラメータ担当blockだけのshared |
 | Z_dY / Z_X | 別々のsharedと完成通知。最初は上書きしない |
 | atomのH/Gと中心・I微分縮約値 | 担当threadのローカル値。パラメータ勾配の計算まで |
 | Gjobの値 | job別の重ならないshared領域。dX・Cへの集約まで |
@@ -405,7 +470,11 @@ reduce_parameter_gradients(dP_partial, dP) {
 GjobはA128・batch_size4・FP64なら4,096 bytes/block。
 dP_partialはbatch32を4件ずつ、A128・4パラメータ・FP64なら32,768 bytes。
 どちらも部分配列の容量例であり、shared全体や完全stepのallocated/reservedピークではない。
-H/Gの微分fieldを全atom分globalへ保存する配列や、W・dW全体は初期案で作らない。
+保持Hの容量は`有効な(atom, batch, field)の件数 × dtypeのbytes`。
+A128・全体batch4・FP64なら、全atomのvalueだけで4,096 bytes、3項目なら12,288 bytes。
+64 atomsの3項目だけなら6,144 bytes。これは4出力block分に複製せず、一度だけ保持する。
+保持Hには別途offset等の管理情報が必要で、forwardのshared Hjobも依然として存在する。
+`recompute`ではこのglobal保持Hを作らない。W・dW全体はいずれの方式でも作らない。
 
 同期は、Z作成者内、Z完成の公開と取得、job内全Gの完成、job全員の完了、
 block内dXの最終合算前、batch間dPの合算前を区別する。
@@ -417,10 +486,11 @@ Zの生成／atom群処理の割合、空き管理、将来の入口ループ除
 1. Gの値・中心微分・I微分を、一つのatomについて独立参照と照合する。
    その後、各threadが別atomを担当する群全体の処理へ広げる。
 2. Gから直接部分と入力側Cを作り、最終dXを照合する。
-3. Hの再計算と正規化分母の微分を含む全dPを確認する。
+3. 再計算・全保存・一部保存（atom群と項目の両方）で、正規化微分を含む全dPの一致を確認する。
 4. 入力tile 0のdP所有、batch間の合算、元atom IDへの対応に重複・抜けがないことを確認する。
 5. strict支持境界・空／単一site・幅変化・振幅0・norm floor・retained backward・Graphを確認する。
-6. パラメータ担当の偏り、H/G・Zのblock間再計算、別block群への分離、保存／再計算を比較する。
+6. 保存書き手の一意性、未訪問atom・端数batchの被覆、不足項目だけのZ依存を確認する。
+   その後、パラメータ担当の偏り、block間再計算、別block群への分離、3方式を比較する。
 7. 独立Y/dX/全atom勾配を通した後、準備・更新まで含む未計装の完全stepと総ピークで判断する。
 
 初期の所有方法や配分を最適と断定しない。数学とjobのインターフェースを固定して、

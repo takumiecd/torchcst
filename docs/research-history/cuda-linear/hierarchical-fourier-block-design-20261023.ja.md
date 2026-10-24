@@ -66,6 +66,8 @@ warp数が4だから部分和も4担当分で済む、という仮定は置か�
 この最初の候補では、各blockが必要なZ・H・Cをblock内で作る。
 複数の出力blockに必要な値には重複計算が生じる。
 広域Hなどをglobalに一度保存して共有する方式は、後で比較する候補として残す。
+これとは別に、forwardからbackwardへのH保持は、再計算・保存・一部保存を選択可能とする。
+2026-10-24に追加した[backwardの保持方針](hierarchical-fourier-backward-128-20261023.ja.md)を参照。
 
 ## 3. 短い擬似コード
 
@@ -285,7 +287,10 @@ Hはjob内のatom数 × batch_size個をsharedで一時保持する。
 A128・batch_size4・FP64なら4,096 bytes/block。これはglobal Hの保存量ではなく、
 他のshared領域や完全stepのピークを含んだ数値でもない。
 
-全atomのHやWをglobalに保存する配列は、この最初のblock内完結版には用意しない。
+`recompute`ではHをglobalに保持しない。`save`・`hybrid`では、選択したatomの
+H項目を一意な書き手から別のglobal領域へ保存してbackwardへ渡す。
+Hのvalueだけを保存するか、入力中心・幅の微分縮約値も保存するかを区別する。
+この保持はforward内のblock間H共有とは別の選択である。W全体は作らない。
 ただし準備情報のglobal保存や、block間の再計算費用は残る。
 sharedへ置くことはL2常駐の指定ではなく、registerを意図した変数も退避の有無を要確認。
 
@@ -325,7 +330,7 @@ GPUでの並列実行の有無はtraceで、採用判断は未計装の完全ste
 | 初期はthread単位の固定集団で、空きを管理してready jobを取る | 集団人数・job発行比率、後の直接割り当てと入口ループの除去 |
 | atom群全体を並列対象にし、各threadが別のatomのHを計算する | atom数と担当人数の釣り合い、C・出力縮約内部の高速化 |
 | 入力は階層Z、出力は階層・空間・基底別Cを使う | 各階層のタイル幅、直接計算との選択 |
-| jobのHはsharedの一時値として群の集約に使う | 保存を省く融合と、広域Hのblock間再計算・global共有の境界 |
+| jobのHはsharedで群の集約に使い、backwardへの保持は3方式から選ぶ | 保存するatom群・項目、保存を省く融合、forward内のblock間共有 |
 | 有限支持、混合後の離散正規化を保つ | sigma・I・Lの表記の対応、厳密な所属算出 |
 | 初期案は担当別部分和、最終出力は一意な所有者が保存 | shared容量、dtype、後のbuffer再利用 |
 | 数学を保って128から確認する | 実際の速度、GPU並列性、完全stepの総メモリ |
