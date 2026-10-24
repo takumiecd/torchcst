@@ -5,6 +5,7 @@
 本書作成ではruntimeを変更せず、GPUジョブも開始していない。
 2026-10-24追記：Hの保存・再計算・一部保存を選択できる設計にした。
 同日追記：H/Gを同じthreadで計算する方式と、別集団で計算して受け渡す方式を切り替える。
+同日追記：動的job管理をなくした固定担当表と、Gが軽い場合にH/Gをまとめる仮説を追加した。
 
 ## 1. 何を受け取り、何を返すか
 
@@ -386,6 +387,80 @@ readyな作成jobが取り続けられる発行規則とし、未完成のH/Gを
 `same_thread`の基準案ではH/G双方のZを待ってからatom jobを始めるため、
 Gだけが先に準備できた際のdX先行は`split_groups`で比較する。
 
+### 将来の選択肢：job取得をなくす固定担当表
+
+発行方法を`config.scheduling = dynamic_jobs / static_table`として分ける案を残す。
+現在の入口は`dynamic_jobs`の擬似コードであり、`static_table`は将来比較する構成。
+Hの保持方針、H/Gの担当方式、発行方法は別の軸とする。
+例えば`hybrid × same_thread × static_table`も候補となる。runtimeの設定追加はまだ行わない。
+
+固定表は、各集団のthread範囲、担当atom群、必要なZと作成順、Hの書き手・読み手、
+dX／dPの書き手をlaunch前に決める。空き探索・job選択・atomicな取得・残job件数の管理をしない。
+支持・係数・H保持の情報は引き続き必要で、担当表を作る準備費用も完全stepへ含める。
+「固定」は一回のlaunch中の担当が固定という意味で、学習による幅・所属の変化に応じて表を更新する。
+
+`split_groups × static_table`の最初の例は、同じblockに入力側担当と出力側担当を一集団ずつ置く。
+入力側担当はZ_XとH、出力側担当はZ_dY・G・dX側の処理・パラメータ勾配を受け持つ。
+両者には対応するatom群qの表を渡す。集団内では各threadが別atomを処理する。
+
+```cpp
+backward128_static(ctx, table, dP_partial, dX) {
+    init_static_block(ctx, table);       // 共通初期化。queue・jobカウンタは作らない
+
+    if (ctx.team.role == INPUT_H) {
+        build_input_Z_in_dependency_order(ctx, table);  // 不足項目に必要なZだけ
+        for (q : table.H_groups)         // 担当表を進む。jobを取得しない
+            produce_H_group(ctx, q);    // shared.Htempへ書き、Hreadyを公開
+    } else {                            // OUTPUT_G_AND_GRAD
+        build_output_Z_in_dependency_order(ctx, table);
+        for (q : table.G_groups) {
+            produce_G_group(ctx, q);
+            apply_G_group(ctx, q);      // Hを待たず、C_input・dXpartを作る
+            if (plan.writes_param_grad) {
+                wait_for_H_group(ctx, q);
+                consume_HG_group(ctx, q, dP_partial);
+            }
+        }
+    }
+
+    group_sync(ctx.team);                // 担当集団のCへの全書き込みが完了
+    expand_input_c_parts(ctx);
+    __syncthreads();                     // 分岐を抜けたblock全員が参加
+    finish_dx(ctx, dX);
+}
+```
+
+qは上の関数が必要とするatom表・slot・C所属を持つ固定レコードで、動的取得対象ではない。
+各側のZはその側の集団が子から親へ作り、必要な箇所で集団同期する。
+この例は各側の必要Zを先に揃える単純な構成で、群ごとのZ準備と処理を重ねる案も後に比較する。
+初期化では入力担当のC・dX部分和も0にし、H/Gの固定slotと通知はblock終了まで保持する。
+dX専用blockは入力H担当を置かず、出力側の処理だけを割り当てる。
+
+`wait_for_H_group()`は代表がHreadyをacquire確認し、その確認を集団同期で全員へ伝える。
+Gは同じ集団が生成済みなので、job取得時の完成確認をこの明示的な確認に置き換える。
+H担当はGを待たずに進み、G担当が必要なHを待つ一方向の依存にして、循環待ちを作らない。
+待機中にH担当の進行を妨げない同期方法は、集団のthread配置も含めて実装時に検証する。
+固定表にしても依存の待機は残り、その内部に待機ループを使う可能性はある。
+除去するのは入口のjob取得用`while`であり、担当群・階層・積和の`for`や同期ではない。
+
+`same_thread × static_table`なら、必要な両側Zを依存順に準備してから、固定されたatom群ごとに
+各threadがH/G・勾配を計算し、Gの値を集団内でdX側へ渡す。HtempやH/G間の完成通知は不要。
+Z準備・Gからの集約・最終合算の同期は残す。
+固定表は全atomと全勾配の被覆、一意な書き手、依存順、shared容量を検査してから使う。
+
+### 検証する仮説：Gが軽ければH/Gを同じthreadへまとめる
+
+ユーザーの見立ては「Gの計算がHより軽くなり、同じthreadでH/Gを計算する方式へ寄るかもしれない」。
+Gが軽い条件では、別集団へ分けて重ねられる計算時間より、sharedへの受け渡し・通知や
+人数の偏りの費用が大きくなる可能性がある。その場合は`same_thread`、さらに
+`static_table`で管理を省く組み合わせを候補とする。現時点では未計測の仮説である。
+
+HとGはsourceがX／dYというだけで本質的に軽重が決まるわけではない。
+各側の支持・Z需要・必要な微分項目・Hの保存率で変わるので、
+`Z_X準備 + H不足分の計算`と`Z_dY準備 + G計算`、Hの保存値読み出し、受け渡し・待ち・管理費用を分けて記録する。
+保存率が高くH側が軽い場合や、register保持が増える場合も含め、
+動的／固定と同一thread／別集団を、独立勾配検証後の完全step時間・ピークメモリで比較する。
+
 ## 6. GとHの中身
 
 保存方針による分岐は、次の関数へまとめる。
@@ -630,6 +705,8 @@ Zの生成／atom群処理の割合、空き管理、将来の入口ループ除
 6. 保存書き手の一意性、未訪問atom・端数batchの被覆、不足項目だけのZ依存を確認する。
    same_threadとsplit_groupsを各保持方針で比較し、H先行・G先行、空群・人数違い、
    通知前の読み取りなし、dP／dXの二重実行なし、全job終了とslotの寿命を確認する。
+   固定担当表では全処理の被覆と一意な所有、待機の依存順、担当人数の違い、
+   H/Gの軽重が入れ替わる条件を確認し、動的job管理の案と同じ結果になることを照合する。
    その後、パラメータ担当の偏り、block間再計算、別block群への分離、保存の3方式を比較する。
 7. 独立Y/dX/全atom勾配を通した後、準備・更新まで含む未計装の完全stepと総ピークで判断する。
 
