@@ -14,6 +14,7 @@ from .contract import (
     FourierRecipe,
     LocalFourierRecipe,
     PackedFourierRecipe,
+    SortedBlock128FourierRecipe,
 )
 
 
@@ -119,3 +120,11 @@ class Block128HierarchicalFourierAlgorithm(HierarchicalFourierAlgorithm):
         from .block128_executor import apply
 
         return apply(inputs.x, inputs.p, state.binding.operator, state.recipe)
+
+
+@dataclass(frozen=True)
+class SortedBlock128HierarchicalFourierAlgorithm(Block128HierarchicalFourierAlgorithm):
+    """全atom版を比較基準に残し、ソートと範囲取得を別の方式として選べるようにする。"""
+
+    id: str = "research_cuda_hierarchical_fourier_block128_sorted"
+    recipe_type: type = SortedBlock128FourierRecipe

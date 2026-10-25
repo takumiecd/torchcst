@@ -992,6 +992,7 @@ from torchcst._backends.cuda.algorithms.linear.hierarchical_fourier.algorithm im
     HierarchicalFourierAlgorithm,
     LocalHierarchicalFourierAlgorithm,
     PackedHierarchicalFourierAlgorithm,
+    SortedBlock128HierarchicalFourierAlgorithm,
 )
 
 REGISTRY.register(HierarchicalFourierAlgorithm())
@@ -1001,3 +1002,4 @@ REGISTRY.register(LocalHierarchicalFourierAlgorithm())
 REGISTRY.register(PackedHierarchicalFourierAlgorithm())
 REGISTRY.register(BoundedCacheHierarchicalFourierAlgorithm())
 REGISTRY.register(Block128HierarchicalFourierAlgorithm())
+REGISTRY.register(SortedBlock128HierarchicalFourierAlgorithm())

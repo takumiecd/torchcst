@@ -217,6 +217,11 @@ class Block128FourierRecipe:
             raise ValueError("block128 currently requires phased scheduling")
 
 
+@dataclass(frozen=True)
+class SortedBlock128FourierRecipe(Block128FourierRecipe):
+    """同じ128版の数学で、atomソートとblock別get_rangeを追加する実行方式。"""
+
+
 def torch_reference(x, p, spec):
     from torchcst._backends.torch.kernels.hierarchical_fourier import values
 

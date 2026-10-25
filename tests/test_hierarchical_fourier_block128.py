@@ -21,6 +21,7 @@ from torchcst._backends.cuda.algorithms.linear.hierarchical_fourier.algorithm im
 from torchcst._backends.cuda.algorithms.linear.hierarchical_fourier.contract import (
     Block128FourierRecipe,
     FourierLinearSpec,
+    SortedBlock128FourierRecipe,
     torch_reference,
 )
 
@@ -105,7 +106,12 @@ def test_benchmark_metadata_hashes_native_sources(monkeypatch):
     selected = expected_worker_source(
         {"request": {"source_files": metadata["source_hashes"]}}
     )
-    for name in ("block128_math.h", "block128_bindings.cpp", "block128_kernels.cu"):
+    for name in (
+        "block128_math.h",
+        "block128_layout.h",
+        "block128_bindings.cpp",
+        "block128_kernels.cu",
+    ):
         entries = [
             (path, digest)
             for path, digest in metadata["source_hashes"].items()
@@ -255,13 +261,18 @@ def test_host_bank_beta_derivatives_match_shifted_series(host_math):
     not torch.cuda.is_available(), reason="requires NVIDIA CUDA and nvcc"
 )
 @pytest.mark.parametrize("batch", [1, 4, 5])
-def test_cuda_block128_y_dx_all_atom_gradients_and_retained_backward(batch):
+@pytest.mark.parametrize(
+    "recipe_type", [Block128FourierRecipe, SortedBlock128FourierRecipe]
+)
+def test_cuda_block128_y_dx_all_atom_gradients_and_retained_backward(
+    batch, recipe_type
+):
     from benchmarks.cuda.linear.hierarchical_fourier import initialize
     from torchcst._backends.cuda.algorithms.linear.hierarchical_fourier.block128_executor import (
         apply,
     )
 
-    spec, recipe = FourierLinearSpec(128), Block128FourierRecipe()
+    spec, recipe = FourierLinearSpec(128), recipe_type()
     p0 = initialize(SimpleNamespace(size=128, atoms=128, seed=41, profile="m8-mixed"))
     gen = torch.Generator().manual_seed(118)
     x0 = torch.randn(batch, 128, generator=gen)
@@ -288,7 +299,10 @@ def test_cuda_block128_y_dx_all_atom_gradients_and_retained_backward(batch):
     not torch.cuda.is_available(), reason="requires NVIDIA CUDA and nvcc"
 )
 @pytest.mark.parametrize("which", ["x", "p"])
-def test_cuda_block128_original_input_version_check(which):
+@pytest.mark.parametrize(
+    "recipe_type", [Block128FourierRecipe, SortedBlock128FourierRecipe]
+)
+def test_cuda_block128_original_input_version_check(which, recipe_type):
     from benchmarks.cuda.linear.hierarchical_fourier import initialize
     from torchcst._backends.cuda.algorithms.linear.hierarchical_fourier.block128_executor import (
         apply,
@@ -300,7 +314,7 @@ def test_cuda_block128_original_input_version_check(which):
         .requires_grad_()
     )
     x = torch.randn(4, 128, device="cuda", requires_grad=True)
-    y = apply(x, p, FourierLinearSpec(128), Block128FourierRecipe())
+    y = apply(x, p, FourierLinearSpec(128), recipe_type())
     with torch.no_grad():
         (x if which == "x" else p).add_(0.01)
     with pytest.raises(RuntimeError, match="modified by an inplace operation"):

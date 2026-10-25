@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "plans": [
+    {
+      "id": "direct-samples-h",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_hierarchical_fourier",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "strategy": "direct",
+          "atom_chunk": 256,
+          "minimum_sites": 64,
+          "width_cutoff": 2.0,
+          "native_cache": true,
+          "table_coefficients": true,
+          "atom_block": 4,
+          "batch_block": 4,
+          "reuse": "h",
+          "moment_policy": "all",
+          "sample_cache": 128,
+          "minimum_sharing": 0,
+          "boundary_cache": false,
+          "coefficient_norm": false,
+          "coefficient_norm_warps": 4,
+          "sort_atoms": false
+        }
+      }
+    },
+    {
+      "id": "cuda-block128",
+      "plan": {
+        "algorithm_id": "research_cuda_hierarchical_fourier_block128",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "batch_size": 4,
+          "h_retention": "recompute",
+          "hg_execution": "same_thread",
+          "output_tile_sites": 32,
+          "scheduling": "phased"
+        },
+        "schema_version": 1
+      }
+    },
+    {
+      "id": "cuda-block128-sorted",
+      "plan": {
+        "algorithm_id": "research_cuda_hierarchical_fourier_block128_sorted",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "batch_size": 4,
+          "h_retention": "recompute",
+          "hg_execution": "same_thread",
+          "output_tile_sites": 32,
+          "scheduling": "phased"
+        },
+        "schema_version": 1
+      }
+    }
+  ]
+}

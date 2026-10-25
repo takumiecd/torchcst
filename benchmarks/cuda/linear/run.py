@@ -60,6 +60,7 @@ class PlanLinear(nn.Module):
             "research_cuda_hierarchical_fourier_packed",
             "research_cuda_hierarchical_fourier_bounded_cache",
             "research_cuda_hierarchical_fourier_block128",
+            "research_cuda_hierarchical_fourier_block128_sorted",
         ):
             algorithm = REGISTRY.validate_plan(plan)
             self.fourier_state = algorithm.create_state(self, recipe=plan.recipe)
@@ -160,6 +161,7 @@ class PlanLinear(nn.Module):
             "research_cuda_hierarchical_fourier_packed",
             "research_cuda_hierarchical_fourier_bounded_cache",
             "research_cuda_hierarchical_fourier_block128",
+            "research_cuda_hierarchical_fourier_block128_sorted",
         ):
             from torchcst._backends.cuda.algorithms.linear.hierarchical_fourier.algorithm import (
                 FourierContext,
