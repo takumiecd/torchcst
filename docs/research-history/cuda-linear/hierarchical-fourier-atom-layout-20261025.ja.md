@@ -32,19 +32,27 @@ m_hやL_h=f(T_h)の具体形はまだ選んでいない。この式だけで既�
 本書の周期所属表現だけで、既存CUDAに周期評価を追加したことにはならない。
 空間の周期P_dと、Fourier基底の周期2Lを区別する。
 
-## 座標とタイル番号：各側で軸0を最速にする
+## 座標とタイル番号：横に読んでから次の行へ進む
 
-カーネル内部の座標番号は、軸0を最も速く進める規則とする。
+次の配置なら、A, B, C, D, E, Fと横に読んでから次の行へ進む。
+
+```text
+A B C
+D E F
+```
+
+既存Chartと同じrow-majorをカーネル内部でも使う。
+最後の座標軸の添字を先に進め、その軸を数え終えたら一つ外の軸を進める。
 軸dの要素数をN_d、添字をx_dとして、
 
 \[
-\operatorname{flat}_0(\mathbf x;\mathbf N)
- =\sum_{d=0}^{D-1}x_d\prod_{e=0}^{d-1}N_e
- =x_0+N_0x_1+N_0N_1x_2+\cdots.
+\operatorname{flat}(\mathbf x;\mathbf N)
+ =\sum_{d=0}^{D-1}x_d\prod_{e=d+1}^{D-1}N_e.
 \]
 
 空積は1。掛けるN_dは最大添字ではなく要素数であり、最大添字+1。
-例えば内部の入力shapeが(8,16)なら入力は128 sitesで、(5,9)の番号は5+8×9=77。
+2軸ならx_0 N_1+x_1、3軸ならx_0 N_1 N_2+x_1 N_2+x_2。
+例えば入力shapeが(8,16)なら入力は128 sitesで、(5,9)の番号は5×16+9=89。
 入力側と出力側で独立にこの式を使い、番号をi、oとする。
 論理行列の向きはW[out,in]のままで、行優先の行列添字は
 
@@ -54,7 +62,7 @@ m_hやL_h=f(T_h)の具体形はまだ選んでいない。この式だけで既�
 \]
 
 これはCST重みを密な配列として保存する指示ではなく、論理添字の対応である。
-後述の軸対応で内部番号と公開site番号を一致させ、batchを最外側に置く連続X/Yなら、
+内部番号と公開site番号を一致させ、batchを最外側に置く連続X/Yなら、
 Xの添字はbN_I+i、YはbN_O+o。
 座標の一次元化でEuclidean/FlatTorus等のmetricやperiodic支持を変更しない。
 
@@ -62,20 +70,18 @@ siteと同じ規則でタイル番号も作る。ただしstrideに使うのはs
 軸dのタイル内site数をt_dとするとM_d=ceil(N_d/t_d)で、
 
 \[
-tile\_id=\operatorname{flat}_0(\mathbf q;\mathbf M).
+tile\_id=\operatorname{flat}(\mathbf q;\mathbf M).
 \]
 
-例えば(8,16) sitesを(4,4)で区切ればタイル格子は(2,4)で、(1,2)のタイル番号は5。
+例えば(8,16) sitesを(4,4)で区切ればタイル格子は(2,4)で、(1,2)のタイル番号は1×4+2=6。
 siteの番号、タイルの番号、タイル内の局所番号は別々にこの式を適用する。
 タイル番号を作っただけでX全体がtile-majorにpackされたとはしない。
 X/Yのglobal配置と、atomのソート順・sharedでの配置をそれぞれ明示する。
 
 [既存のRegularGrid](../../regular-grid.ja.md)と[PeriodicGrid](../../periodic-grid.ja.md)は、
-公開座標では最後の軸を最速にするrow-majorを契約としている。
-今回の軸0最速は内部の規約として持ち、元のChart軸との対応axis_mapを記録する。
-各側の軸を逆順に対応させれば、内部の軸0が公開側の最内軸となり、同じglobal配列を読める。
-独立に別の軸順を使う方式ではload時の添字変換または明示的なpackが必要。
-profile・中心・spacingも同じ軸対応で解釈し、X/Yの公開されたsite順は保つ。
+このrow-majorを契約としている。今回も同じ軸順・site順で扱い、
+入力/出力の座標軸を逆順へ振り直す変換は追加しない。
+この配列の読み順は、W[out,in]とW[in,out]を入れ替える転置とは別の規則である。
 
 ## ソートkey：境界グループ、出力タイル座標、入力タイル座標
 
@@ -99,18 +105,18 @@ q_{a,d}=Q\!\left(\frac{\mu_{a,d}-o_d}{T_{h,d}}\right).
 
 o_dは軸の原点で、入力数・出力数ではない。Qはplanで定める量子化関数であり、
 以下の範囲探索例はfloorを使う。周期軸の中心は原点基準の代表範囲へwrapしてから量子化する。
-各側のタイル座標を上の軸0最速の規則で一次元化し、
+各側のタイル座標を上のrow-majorの規則で一次元化し、
 
 \[
 \begin{aligned}
-o^{tile}_a&=\operatorname{flat}_0(\mathbf q_{a,\mathrm{out}};\mathbf M_{h,\mathrm{out}}),\\
-i^{tile}_a&=\operatorname{flat}_0(\mathbf q_{a,\mathrm{in}};\mathbf M_{h,\mathrm{in}}),\\
+o^{tile}_a&=\operatorname{flat}(\mathbf q_{a,\mathrm{out}};\mathbf M_{h,\mathrm{out}}),\\
+i^{tile}_a&=\operatorname{flat}(\mathbf q_{a,\mathrm{in}};\mathbf M_{h,\mathrm{in}}),\\
 \boxed{key(a)}&=\boxed{\big(g_a,o^{tile}_a,i^{tile}_a\big)}.
 \end{aligned}
 \]
 
-の三つ組を辞書式に比較する。元の(q_0,q_1,...)をそのまま辞書式に比較すると
-q_0が最外側となるので、今回の軸0最速の番号順とは区別する。
+の三つ組を辞書式に比較する。同じgの固定shape内では、元の(q_0,q_1,...)の
+辞書順と、この一次元タイル番号の順序は一致する。
 gは階層hと、必要なら周期/bankの分類を含む。
 IDはソートkeyに必須ではなく、同値の順序を決定的にしたい方式だけで追加する。
 どちらでも元のatomへのID・行対応は保持する。
@@ -255,7 +261,7 @@ sigmaだけで割合を固定しない。各群のatom数、小バッチ数、
 ## 配置情報の版と更新
 
 実行状態のmetadataには、Algorithm ID/revision・semantics、方式固有の配置形式ID/版、
-planの内容、座標shape/spacing/周期、軸対応axis_map・stride規則、device/dtype、元の配置世代を対応付ける。
+planの内容、座標shape/spacing/周期・stride規則、device/dtype、元の配置世代を対応付ける。
 これらは実行情報であり、別deviceで復元が必須なモデルの学習情報ではない。
 既存のAlgorithmStateだけで以下の数値更新を自動追跡できると仮定しない。
 
