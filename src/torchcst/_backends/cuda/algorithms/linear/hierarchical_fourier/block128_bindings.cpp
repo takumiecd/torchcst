@@ -1,8 +1,8 @@
 #include <torch/extension.h>
 
-std::vector<at::Tensor> block128_forward_cuda(at::Tensor, at::Tensor, at::Tensor);
+std::vector<at::Tensor> block128_forward_cuda(at::Tensor, at::Tensor, at::Tensor, bool);
 std::vector<at::Tensor> block128_backward_cuda(
-    at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor);
+    at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, bool);
 std::vector<int64_t> block128_resources_cuda(at::Tensor);
 
 static void check(at::Tensor x, at::Tensor p, at::Tensor fit) {
@@ -18,23 +18,26 @@ static void check(at::Tensor x, at::Tensor p, at::Tensor fit) {
                 "block128 requires X[B1..64,128], P[128,4], fit[32,9]");
 }
 
-static std::vector<at::Tensor> forward(at::Tensor x, at::Tensor p, at::Tensor fit) {
+static std::vector<at::Tensor> forward(at::Tensor x, at::Tensor p, at::Tensor fit, bool profile) {
     check(x,p,fit);
-    return block128_forward_cuda(x,p,fit);
+    return block128_forward_cuda(x,p,fit,profile);
 }
 static std::vector<at::Tensor> backward(at::Tensor x, at::Tensor p, at::Tensor dy,
-                                      at::Tensor fit, at::Tensor norm) {
+                                      at::Tensor fit, at::Tensor norm, bool profile) {
     check(x,p,fit);
     TORCH_CHECK(dy.device()==x.device() && dy.scalar_type()==at::kFloat &&
                 dy.is_contiguous() && dy.sizes()==x.sizes(), "invalid block128 dY");
     TORCH_CHECK(norm.device()==x.device() && norm.scalar_type()==at::kDouble &&
                 norm.is_contiguous() && norm.dim()==3 && norm.size(0)==128 &&
                 norm.size(1)==2 && norm.size(2)==3, "invalid block128 saved norm");
-    return block128_backward_cuda(x,p,dy,fit,norm);
+    return block128_backward_cuda(x,p,dy,fit,norm,profile);
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-    m.def("forward", &forward);
-    m.def("backward", &backward);
+    m.def("forward", &forward, pybind11::arg("x"), pybind11::arg("p"),
+          pybind11::arg("fit"), pybind11::arg("profile")=false);
+    m.def("backward", &backward, pybind11::arg("x"), pybind11::arg("p"),
+          pybind11::arg("dy"), pybind11::arg("fit"), pybind11::arg("norm"),
+          pybind11::arg("profile")=false);
     m.def("resource_info", &block128_resources_cuda);
 }

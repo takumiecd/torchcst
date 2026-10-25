@@ -176,7 +176,8 @@ __device__ void store_output(const float* p, const double* fit, const double* no
 
 template<bool BACKWARD>
 __global__ void block128(const float* x, const float* p, const float* dy,
-    const double* fit, const double* norm, float* output, double* dp, int batch_count) {
+    const double* fit, const double* norm, float* output, double* dp, int batch_count,
+    int64_t* clocks) {
     extern __shared__ __align__(16) unsigned char arena[];
     int a=threadIdx.x, tile=blockIdx.x%4, batch_group=blockIdx.x/4;
     int batch_begin=batch_group*BATCH;
@@ -193,11 +194,13 @@ __global__ void block128(const float* x, const float* p, const float* dy,
         if (BACKWARD) sy[q]=b<batch_count ? dy[b*N+i] : 0.f;
     }
     __syncthreads();
+    if (clocks && a==0) clocks[blockIdx.x*5]=clock64();
     for (int node=0;node<NODES;++node) {
         if (!BACKWARD || owner) build_z_tile(sx,zx,node);
         if (BACKWARD) build_z_tile(sy,zg,node);
         __syncthreads();
     }
+    if (clocks && a==0) clocks[blockIdx.x*5+1]=clock64();
     // [atom] This thread handles the entire atom, all four batches and both sides.
     double h[3][BATCH]={}, g[3][BATCH]={};
     double width=.1+9.9*sigmoid(p[a*4+3]);
@@ -213,10 +216,16 @@ __global__ void block128(const float* x, const float* p, const float* dy,
     for (int b=0;b<BATCH;++b) values[a*BATCH+b]=BACKWARD ? g[0][b] : h[0][b];
     if (owner) write_parameter_partial(p,norm,h,g,dp,batch_group);
     __syncthreads(); // no thread can read Z after this point
+    if (clocks && a==0) clocks[blockIdx.x*5+2]=clock64();
     // [C] Reuse Z_X (or Z_dY for dX-only blocks) only after the above barrier.
     build_c(p,fit,norm,values,zx,BACKWARD?1:0,tile*32);
     __syncthreads();
+    if (clocks && a==0) clocks[blockIdx.x*5+3]=clock64();
     store_output(p,fit,norm,values,zx,output,batch_count,batch_begin,tile*32,BACKWARD?1:0);
+    if (clocks) {
+        __syncthreads(); // Diagnostic only: account for the last output writer.
+        if (a==0) clocks[blockIdx.x*5+4]=clock64();
+    }
 }
 
 __global__ void reduce_parameters(const double* partial, float* dp, int groups) {
@@ -228,33 +237,41 @@ __global__ void reduce_parameters(const double* partial, float* dp, int groups) 
 }
 } // namespace
 
-std::vector<at::Tensor> block128_forward_cuda(at::Tensor x, at::Tensor p, at::Tensor fit) {
+std::vector<at::Tensor> block128_forward_cuda(at::Tensor x, at::Tensor p, at::Tensor fit,
+                                            bool profile) {
     c10::cuda::CUDAGuard guard(x.device());
     auto stream=at::cuda::getCurrentCUDAStream(x.get_device());
     auto y=at::empty_like(x);
     auto norm=at::empty({128,2,3},x.options().dtype(at::kDouble));
+    auto clocks=profile ? at::empty({4*((x.size(0)+3)/4),5},x.options().dtype(at::kLong))
+                        : at::Tensor();
     prepare_norms<<<1,128,0,stream>>>(p.data_ptr<float>(),fit.data_ptr<double>(),norm.data_ptr<double>());
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     block128<false><<<4*((x.size(0)+3)/4),128,cst128::FORWARD_SHARED,stream>>>(
         x.data_ptr<float>(),p.data_ptr<float>(),nullptr,fit.data_ptr<double>(),
-        norm.data_ptr<double>(),y.data_ptr<float>(),nullptr,x.size(0));
+        norm.data_ptr<double>(),y.data_ptr<float>(),nullptr,x.size(0),
+        profile ? clocks.data_ptr<int64_t>() : nullptr);
     C10_CUDA_KERNEL_LAUNCH_CHECK();
+    if (profile) return {y,norm,clocks};
     return {y,norm};
 }
 
 std::vector<at::Tensor> block128_backward_cuda(at::Tensor x, at::Tensor p, at::Tensor dy,
-                                             at::Tensor fit, at::Tensor norm) {
+                                             at::Tensor fit, at::Tensor norm, bool profile) {
     c10::cuda::CUDAGuard guard(x.device());
     auto stream=at::cuda::getCurrentCUDAStream(x.get_device());
     int groups=(x.size(0)+3)/4;
     auto dx=at::empty_like(x), dp=at::empty_like(p);
     auto partial=at::empty({groups,128,4},x.options().dtype(at::kDouble));
+    auto clocks=profile ? at::empty({4*groups,5},x.options().dtype(at::kLong)) : at::Tensor();
     block128<true><<<4*groups,128,cst128::BACKWARD_SHARED,stream>>>(
         x.data_ptr<float>(),p.data_ptr<float>(),dy.data_ptr<float>(),fit.data_ptr<double>(),
-        norm.data_ptr<double>(),dx.data_ptr<float>(),partial.data_ptr<double>(),x.size(0));
+        norm.data_ptr<double>(),dx.data_ptr<float>(),partial.data_ptr<double>(),x.size(0),
+        profile ? clocks.data_ptr<int64_t>() : nullptr);
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     reduce_parameters<<<4,128,0,stream>>>(partial.data_ptr<double>(),dp.data_ptr<float>(),groups);
     C10_CUDA_KERNEL_LAUNCH_CHECK();
+    if (profile) return {dx,dp,clocks};
     return {dx,dp};
 }
 

@@ -305,3 +305,30 @@ def test_cuda_block128_original_input_version_check(which):
         (x if which == "x" else p).add_(0.01)
     with pytest.raises(RuntimeError, match="modified by an inplace operation"):
         y.sum().backward()
+
+
+@pytest.mark.skipif(
+    not torch.cuda.is_available(), reason="requires NVIDIA CUDA and nvcc"
+)
+def test_block128_phase_diagnostics_do_not_change_results():
+    from benchmarks.cuda.linear.hierarchical_fourier import initialize
+    from torchcst._backends.cuda.algorithms.linear.hierarchical_fourier.block128_executor import (
+        extension,
+        fit_table,
+    )
+
+    p = initialize(
+        SimpleNamespace(size=128, atoms=128, seed=41, profile="m8-mixed")
+    ).cuda()
+    x = torch.randn(4, 128, device="cuda")
+    dy = torch.randn_like(x)
+    fit, native = fit_table(x.device), extension()
+    y, norm = native.forward(x, p, fit)
+    yp, np, forward_clocks = native.forward(x, p, fit, True)
+    dx, dp = native.backward(x, p, dy, fit, norm)
+    dxp, dpp, backward_clocks = native.backward(x, p, dy, fit, np, True)
+    for left, right in ((y, yp), (norm, np), (dx, dxp), (dp, dpp)):
+        torch.testing.assert_close(left, right, atol=0, rtol=0)
+    for clocks in (forward_clocks, backward_clocks):
+        assert clocks.shape == (4, 5)
+        assert bool((clocks[:, 1:] >= clocks[:, :-1]).all())
