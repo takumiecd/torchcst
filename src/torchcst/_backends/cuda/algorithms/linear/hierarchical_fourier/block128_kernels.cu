@@ -94,6 +94,26 @@ __device__ void contract_component(const float* source, const double* z,
     }
 }
 
+// One thread completes one atom's H/G over its entire required input/output support.
+// The caller publishes the values to shared memory before the C phase.
+template<bool BACKWARD>
+__device__ __forceinline__ void compute_atom_responses(
+    const float* p, const double* fit, const float* sx, const float* sy,
+    const double* zx, const double* zg, bool owner,
+    double h[3][BATCH], double g[3][BATCH]) {
+    int a=threadIdx.x;
+    double width=.1+9.9*sigmoid(p[a*4+3]);
+    for (int k=0;k<4;++k) {
+        Component cp=component(width,k);
+        if (!(cp.weight>0. || cp.width_derivative!=0.)) continue;
+        double co[M+1],ci[M+1]; coefficients(fit,width,cp,co,ci);
+        if (!BACKWARD || owner)
+            contract_component(sx,zx,p[a*4+2],cp,co,ci,owner,h);
+        if (BACKWARD)
+            contract_component(sy,zg,p[a*4+1],cp,co,ci,owner,g);
+    }
+}
+
 __device__ void write_parameter_partial(const float* p, const double* norm,
     double h[3][BATCH], double g[3][BATCH], double* dp, int batch_group) {
     int a=threadIdx.x;
@@ -195,32 +215,26 @@ __global__ void block128(const float* x, const float* p, const float* dy,
     }
     __syncthreads();
     if (clocks && a==0) clocks[blockIdx.x*5]=clock64();
+    // [Z] Input tiles -> shared basis moments, with child-to-parent dependencies.
     for (int node=0;node<NODES;++node) {
         if (!BACKWARD || owner) build_z_tile(sx,zx,node);
         if (BACKWARD) build_z_tile(sy,zg,node);
         __syncthreads();
     }
     if (clocks && a==0) clocks[blockIdx.x*5+1]=clock64();
-    // [atom] This thread handles the entire atom, all four batches and both sides.
+    // [H/G] Shared Z -> one complete response per atom, owned by this thread.
     double h[3][BATCH]={}, g[3][BATCH]={};
-    double width=.1+9.9*sigmoid(p[a*4+3]);
-    for (int k=0;k<4;++k) {
-        Component cp=component(width,k);
-        if (!(cp.weight>0. || cp.width_derivative!=0.)) continue;
-        double co[M+1],ci[M+1]; coefficients(fit,width,cp,co,ci);
-        if (!BACKWARD || owner)
-            contract_component(sx,zx,p[a*4+2],cp,co,ci,owner,h);
-        if (BACKWARD)
-            contract_component(sy,zg,p[a*4+1],cp,co,ci,owner,g);
-    }
+    compute_atom_responses<BACKWARD>(p,fit,sx,sy,zx,zg,owner,h,g);
     for (int b=0;b<BATCH;++b) values[a*BATCH+b]=BACKWARD ? g[0][b] : h[0][b];
     if (owner) write_parameter_partial(p,norm,h,g,dp,batch_group);
     __syncthreads(); // no thread can read Z after this point
     if (clocks && a==0) clocks[blockIdx.x*5+2]=clock64();
-    // [C] Reuse Z_X (or Z_dY for dX-only blocks) only after the above barrier.
+    // [C] Shared H/G -> output-tile coefficients, with one writer per C element.
+    // Reuse Z_X (or Z_dY for dX-only blocks) only after the above barrier.
     build_c(p,fit,norm,values,zx,BACKWARD?1:0,tile*32);
     __syncthreads();
     if (clocks && a==0) clocks[blockIdx.x*5+3]=clock64();
+    // [Y/dX] Expand C and add direct/boundary terms; one writer per result element.
     store_output(p,fit,norm,values,zx,output,batch_count,batch_begin,tile*32,BACKWARD?1:0);
     if (clocks) {
         __syncthreads(); // Diagnostic only: account for the last output writer.

@@ -32,7 +32,7 @@ H保持と割り当ての比較案は設計文書に残すが、最初のrecipe�
 | --- | --- |
 | init・block/threadの担当番号 | `block128<BACKWARD>()`の先頭、source読込と最初のblock同期 |
 | 階層Z生成 | `build_z_tile()`。互換な子bankの偶数modeを継承し、残りをsourceから計算 |
-| atomごとのH/G | `contract_component()`。担当threadが直接残差とZ項を最後まで縮約 |
+| atomごとのH/G | `compute_atom_responses()` → `contract_component()`。担当threadが直接残差とZ項を最後まで縮約 |
 | atomごとのパラメータ勾配 | `write_parameter_partial()`。全batch方向の和とnorm微分 |
 | 入力側／出力側C | `build_c()`。一つのthreadが一つのC要素の全atom寄与を所有 |
 | 直接部分とCの展開・出力保存 | `store_output()`。各threadが一つの出力要素を保存 |
