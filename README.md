@@ -285,6 +285,16 @@ Pending/retained backward blocks relocation. One AtomState has one optimizer
 updater; custom state axes are declared with `OptimizerFieldSpec` via
 `CSTOptimizer(..., state_specs=...)`. See [Atom/Algorithm state ownership](docs/atom-state.ja.md).
 
+Atom order is arbitrary; no width, position or tile ordering is required from
+callers. Each Algorithm may sort or pack atoms and retain derived execution
+buffers in global memory. These buffers are reconstructible, device/method-specific
+state, excluded from model checkpoints and rebuilt as needed after device or
+method changes. Model reconstruction uses the atom parameters and the declared
+Chart/Geometry/Kernel state; optimizer state preserves training continuity.
+Permutation preserves the mathematical atom sum, while floating-point reduction
+order may change rounding. Neither an unchanged row layout nor its version
+certifies that cached supports, norms or input-dependent values are current.
+
 ## Documentation
 
 - [Contributing: code and GPU benchmark results](CONTRIBUTING.md)

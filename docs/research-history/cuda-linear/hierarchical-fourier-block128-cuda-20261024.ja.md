@@ -3,6 +3,8 @@
 2026-10-24。[init128の具体案](hierarchical-fourier-init-128-20261024.ja.md)を実装した研究用候補。
 source checkpoint：`dcb12057`。公開CSTLinearへの採用や速度改善の結論ではない。
 以下の検証結果は、動的job版・複数集団版・split_groups版へ一般化しない。
+2026-10-25の[任意順atomからのソートとglobal配置案](hierarchical-fourier-atom-layout-20261025.ja.md)は、
+この実装とは分けて検討する。以下の計測値は新しいソート・周期境界対応を検証したものではない。
 
 ## 実装した範囲
 
