@@ -133,4 +133,74 @@ source_rowsは順列なので、各元行に一度だけ保存できる。
 CPU検査は独立したTorchの成分/支持定義と比較し、両軸・全4担当タイルで必要なatomを
 範囲から落とさないこと、ソート順、元行対応、更新後の再準備を確認する。
 GPUでは同じ範囲の一致に加え、Y/dX/全atom勾配、retained backward、元Tensor変更検出と
-既存runnerの独立oracle・可変値のGraph replayを確認する。実行結果は検証後に追記する。
+既存runnerの独立oracle・可変値のGraph replayを確認した。結果は以下に記す。
+
+## 検証結果：128サイトの単一ケース
+
+GPUで実行したsourceは`4d0ba1ce5286e978389af7238fc987df56fdfc89`。
+jobは`l4job-c2c0e66412d8416c9d24f2f090c3a867`。NVIDIA L4、driver 580.82.07、
+Torch 2.11.0+cu130、CUDA 13.0、Triton 3.6.0、Python 3.13.16。
+GPU UUIDは`GPU-bd94f626-e729-188a-7792-7b8ca790c595`。
+
+- CPU全体：2,271 passed / 5,758 skipped、既存のTorch JIT警告18件。
+- 対象CPU検査：10 passed / 12 CUDA-dependent skipped。host C++で共有headerを実際にコンパイル。
+- L4対象検査：22 passed。CUDAのsort結果・rangesがCPU版と一致し、更新後も再準備される。
+  batch1/4/5でY/dX/全atom勾配、retained backward、元X/Pの変更検出を検査。
+- 既存runner：独立したquadrature/KKT FP64 oracleに対し、全sites・全atomを検査してPASS。
+  live値を更新した3状態と、更新後のGraph replayを含む。
+- ソート版の独立oracleに対する最大絶対誤差：Y 2.9321e-8、dX 2.9571e-8、dP 1.3888e-6。
+- Ruff、Plan/Case宣言往復、文書リンク、wheel/sdist buildを確認。
+  両packageに新しいblock128_layout.hが同じbytesで含まれる。
+  build backendは隔離環境に用意し、共有venvへ追加インストールしていない。
+
+同じjobのm8-mixed / atom128 / batch4 / FP32 / AdamW、warmup2・7回のreplayで、
+未計装の完全stepを測った。prepare・sort・norm・forward・backward・optimizerを含む。
+7 replayは一つの独立run内のサンプルであり、7回の独立実験ではない。
+
+| 方式 | Graph完全step中央値 ms | peak allocated bytes | peak reserved bytes |
+| --- | ---: | ---: | ---: |
+| 既存direct-samples-h | 0.572416 | 1,061,888 | 6,291,456 |
+| 全atom版cuda-block128 | 46.424065 | 33,792 | 6,291,456 |
+| ソート版cuda-block128-sorted | 41.463806 | 38,400 | 6,291,456 |
+| dense対照 | 0.032768 | 34,351,616 | 48,234,496 |
+
+この一例ではソート版は全atom版より短時間だが、既存direct/denseより遅い。
+汎用の速度採用・他の幅分布・他GPU・多次元へ一般化しない。
+allocatedとreservedは別であり、GPUプロセス全体やshared/register込みの総容量を示していない。
+
+### 実データのget_rangeの例
+
+このjobのソート後のgroup別atom数は、group0..7で8,16,23,21,20,17,19,4。
+例えばgroup2はslot [24,47)を占める。
+forwardの出力担当tile1、つまりsites32..63に対し、get_rangeはgroup2の[27,39)を返した。
+この12 atomを追加選別せずH → C/直接出力へ渡す。
+全source_rowsと両軸のrangesは下記layout-report.jsonに保存してある。
+
+### 証拠と再現
+
+ignored証拠はrepo内の
+`output/block128-sorted-20261026/l4job-c2c0e66412d8416c9d24f2f090c3a867/`へ保全した。
+source/result archive、spec、receipt、raw stdout/stderr、pytest.log、runner.log、
+benchmark.json、layout-report.json、verification.jsonを保持する。
+
+- source archive SHA256：`780c1072f3ffaf9c9b478bee150dd9f6468369a122e46a7c721efbd9ef4f2118`
+- result archive SHA256：`f14c5e15bef2d43211212f8b0e6e1944017684889c80a6dfad6a784703a8f530`
+- workerの全412 source hashを凍結archiveと照合。全7 recordのsource commit/hashが一致。
+  layout-reportのnative側5ファイルもarchive・現在の作業sourceと照合した。
+- 結果回収成功と、共有poolの全slot停止・未完了jobなしを確認した。
+
+```bash
+python -m pytest -q tests/test_hierarchical_fourier_block128.py \
+  tests/test_hierarchical_fourier_block128_layout.py
+python -m tools.kernel_dev check \
+  --plans benchmarks/cuda/linear/plans-hierarchical-fourier-block128-sorted.json \
+  --case benchmarks/cuda/linear/cases/block128-sorted-fourier-m8-mixed-128-a128.json
+python -m benchmarks.cuda.linear.run \
+  --plans benchmarks/cuda/linear/plans-hierarchical-fourier-block128-sorted.json \
+  --case benchmarks/cuda/linear/cases/block128-sorted-fourier-m8-mixed-128-a128.json \
+  --source-commit 4d0ba1ce5286e978389af7238fc987df56fdfc89 \
+  --output output/block128-sorted-reproduction.json
+```
+
+GPUコマンドは上のsourceをcheckoutした対応環境で実行する。
+最初の開発範囲は引き続き128サイト・各側1次元の有限区間で、周期格子や一般次元対応は未実装。

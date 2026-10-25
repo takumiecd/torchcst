@@ -5,6 +5,7 @@ source checkpoint：`dcb12057`。公開CSTLinearへの採用や速度改善の�
 以下の検証結果は、動的job版・複数集団版・split_groups版へ一般化しない。
 2026-10-25の[任意順atomからのソートとglobal配置案](hierarchical-fourier-atom-layout-20261025.ja.md)は、
 この実装とは分けて検討する。以下の計測値は新しいソート・周期境界対応を検証したものではない。
+2026-10-26の[ソート付き128版のコード解説・検証](hierarchical-fourier-block128-reading-20261026.ja.md)は別に記録する。
 
 ## 実装した範囲
 
