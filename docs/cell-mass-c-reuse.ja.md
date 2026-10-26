@@ -133,3 +133,6 @@ CUDA/nvcc/Ninja環境では
 `python -m pytest tests/test_cell_mass_coefficients.py tests/test_cell_mass_reference.py tests/test_cell_mass_cuda.py -q`。
 速度比較のdriverは上記ignored directoryとjob snapshotに保持する。
 2process/方式は1つのGPU job内で実行したもので、11サンプルを11独立runとは数えない。
+
+続く[block担当site数の比較](cell-mass-block-sites.ja.md)では、同じprofileのまま
+32/16/8siteの実行上の分担を切り替える。上記のC共有比較の測定条件は変更しない。

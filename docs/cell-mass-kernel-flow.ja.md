@@ -2,6 +2,8 @@
 
 現在のprofileは[1周期分のタイル窓](cell-mass-tile-window.ja.md)。
 選んだwhole tileを共通のセル積分基底で処理し、支持境界での個別積分は行わない。
+blockの担当site範囲は別の実行設定`sites_per_block`で分けられる。
+profileのtile幅・周期は固定し、[担当site数の比較](cell-mass-block-sites.ja.md)に結果を記録する。
 
 2026-10-26。[設計と数学契約](cell-integrated-profile.ja.md)に対応する、検討用の擬似コード。
 以下の関数名・引数は一般化した擬似コード。明示的なChebyshevSquare密度から始めた

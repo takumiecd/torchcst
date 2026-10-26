@@ -95,8 +95,11 @@ spec = CellMassLinearSpec(
     output=CellMassAxisSpec(profile=profile, site_count=128,
                            spacing=1., tile_sites=32, period_tiles=3),
 )
-y = physical_linear(spec, x, atoms, z_method="merge")
+y = physical_linear(spec, x, atoms, z_method="merge", sites_per_block=16)
 ```
+
+Y/dXのblock担当範囲は別の実行設定`sites_per_block=32/16/8`で比較できる。
+profileのtile_sitesや周期は変更しない。詳細は[担当site数の比較](cell-mass-block-sites.ja.md)。
 
 以前のsupport_half_widthを直接渡す研究APIは廃止。IとLの混同を避ける。
 今回は1軸1bank、128以下の2のべき乗site数、1024以下のatom。
