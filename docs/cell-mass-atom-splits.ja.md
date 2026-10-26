@@ -315,3 +315,8 @@ ignored `output/cell-mass-atom-splits-20261026/final/`へ保持する。
 再実行はこのjobのsource archiveの`__pool_driver__.py`を共有poolへ提出する。
 結果回収と所有pool slot停止を確認済み。公開dispatcher/optimizer/Graph/denseを含む
 完全学習stepの比較・採用判定は引き続き未実施であり、今回の速度比へ含めない。
+
+その後の[同じfused AdamWを含むdenseとのstep比較](cell-mass-dense-step.ja.md)では、
+この数値研究入口のCST/dense時間比が約4.3と分かった。
+目標はdenseの約2倍の所要時間であり、変更前CST比の改善とは分けて追跡する。
+公開CSTLinear/CSTOptimizer・Graph込みの統合は引き続き別の課題。
