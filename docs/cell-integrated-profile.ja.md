@@ -104,7 +104,8 @@ layoutは再構築できる実行用情報であり、数学的なprofileの定�
 | `compute_parameter_grad` | H/Gとprofileの微分情報からatomの勾配を作る | Parameter勾配 |
 
 prepareとX/dYの階層構築は、この5つに含めない。全体の起動数が5個で確定するわけではない。
-階層構築をlevelごとのkernelにするかなど、実際の起動単位は依存と容量を見て決める。
+階層構築の擬似コードは、全levelの直接生成を並列に行うkernelと、子Zを継承する
+levelごとのマージkernelに分ける。thread配分やlevel融合は依存と容量を見て比較する。
 関数名は仮名で、次の擬似コードも未実装である。
 
 ```cpp

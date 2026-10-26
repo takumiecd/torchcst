@@ -26,7 +26,8 @@ compute_parameter_grad(Zx, Zy, X, dY, H, G, packed_atoms, layout, grad);
 ```
 
 同じstreamへ依存順に投入する。階層構築は主要な5つの計算kernelに含めない。
-今回の擬似コードではlevelごとに起動し、親子の依存を前のkernelの完了で満たす。
+階層構築は「signalから直接作る要素」と「子Zから継承する要素」に分ける。
+前者はlevelをまたいで並列に作り、後者だけlevel順に起動して子の完成を待つ。
 CPU側で毎回同期するという意味ではない。
 以下ではgeometry・正規化設定などの引数を省略し、補助関数が同じspecを参照するものとする。
 compute系のatom番号はソート済みの行番号であり、H/Gもこの順序で保存する。
@@ -44,9 +45,10 @@ compute系のatom番号はソート済みの行番号であり、H/Gもこの順
 | `device_inclusive_scan` | GPUライブラリ呼び出し | 先頭フラグの累積和からグループ番号を作る |
 | `write_group_begins` | CUDA kernel | 各グループのキー・beginとグループ数を書く |
 | `write_group_ends` | CUDA kernel | 次のbeginから各グループのendを書く |
-| `build_input_hierarchy` | host側の起動関数 | Xを入力にlevelごとのZ生成を起動 |
-| `build_output_hierarchy` | host側の起動関数 | dYを入力にlevelごとのZ生成を起動 |
-| `build_z_level` | CUDA kernel | 指定levelのZを作る。入力側・出力側で共用 |
+| `build_input_hierarchy` | host側の起動関数 | Xからの直接生成と、level順のマージを起動 |
+| `build_output_hierarchy` | host側の起動関数 | dYからの直接生成と、level順のマージを起動 |
+| `build_z_direct` | CUDA kernel | 全levelの直接生成要素を並列に作る |
+| `merge_z_level` | CUDA kernel | 指定levelの継承要素を子Zから並列に作る |
 | `compute_h` / `compute_y` | CUDA kernel | 以下の第1・第2節 |
 | `compute_g` / `compute_dx` / `compute_parameter_grad` | CUDA kernel | 以下の第3〜第5節 |
 
@@ -215,19 +217,45 @@ group検索の索引は後で改善できるが、タイルごとのatomパラ�
 
 ## build_input_hierarchy：XからZxを作る起動関数
 
-host側で各levelを小さい順に起動する。二分マージを出発点にする。
+以前の`build_z_level`には、signalを読む処理と子Zを読む処理が一つに入っていた。
+ここを分ける。二分マージを出発点にする。
 nodesはタイルのsite範囲・bank・mode・子ノードを記述する実行設定で、atom値を含むZとは別。
 最初は宣言済みのbankとlevelの全ノードを作る単純な構成とし、必要ノードだけへの限定は後で考える。
 
+### 並列な部分と、依存で順序が必要な部分
+
+| 処理 | 並列にできる範囲 | 待つ相手 |
+| --- | --- | --- |
+| signalからZを直接生成 | 異なるlevel・タイル・batch・mode | 入力XまたはdYが利用可能になることだけ |
+| 一つのZへのsiteの加算 | siteを複数threadに分担し、部分和を作る | 部分和を合わせるときの担当thread |
+| 子Zから親Zを継承 | 同じlevelの異なる親・batch・mode | その要素で使う子Zの完成 |
+
+**親が子を使う依存は残るが、全levelの全処理が直列という意味ではない。**
+直接生成するmodeは、子Zがなくても作れる。最初に全level分をまとめて起動できる。
+マージのlevel単位の完了待ちは、必要な子ごとの待機より粗いが、安全で単純な基準になる。
+
+基底設定から、各`(node,mode)`を直接生成か継承のどちらかへ一度だけ割り当てる。
+`direct_jobs`は直接生成するmodeをnodeごとに束ねた記述、`merge_jobs[level]`は
+継承する要素と子modeの対応を記述する。GPUで空きthreadを監視するjob管理ではなく、固定の担当表である。
+同じZ要素を両方のkernelから書かない。これはatomの支持分類とは別の、基底間の対応である。
+
 ```cpp
-for (level = 0; level < input_level_count; ++level) {
-    build_z_level<<<input_grid(level), threads>>>(
-        X, input_nodes, input_basis, level, Zx);
+// 並列部分：直接生成する要素は全level分をまとめて処理。
+if (has_input_direct_jobs)
+    build_z_direct<<<input_direct_grid, threads>>>(X, input_direct_jobs, Zx);
+
+// 依存部分：子の完成後に次のlevelを起動。各起動の内部は並列。
+for (level = 1; level < input_level_count; ++level) {
+    if (has_input_merge_jobs(level))
+        merge_z_level<<<input_merge_grid(level), threads>>>(
+            input_merge_jobs[level], Zx);
 }
 ```
 
-grid.xはそのlevelのノード、grid.yはbatch範囲を担当する。
+forはCPU側から起動順序を記述するもの。タイルをCPUの一つのthreadで計算しているわけではない。
+各起動を同じstreamへ投入し、CPU側で毎levelのGPU完了を待つ呼び出しは入れない。
 例えば128サイト、最小タイル幅16なら、二分マージのノード数は8→4→2→1。
+マージでは4親を並列→2親を並列→1親へ進む。どのmodeを直接生成するかは基底の継承条件による。
 これは構造の例で、最小幅16や各levelの周波数・mode数を固定する決定ではない。
 
 ## build_output_hierarchy：dYからZyを作る起動関数
@@ -236,43 +264,108 @@ grid.xはそのlevelのノード、grid.yはbatch範囲を担当する。
 入力側と出力側で次元、spacing、タイル寸法、bankが異なっていてよい。
 
 ```cpp
-for (level = 0; level < output_level_count; ++level) {
-    build_z_level<<<output_grid(level), threads>>>(
-        dY, output_nodes, output_basis, level, Zy);
+if (has_output_direct_jobs)
+    build_z_direct<<<output_direct_grid, threads>>>(dY, output_direct_jobs, Zy);
+
+for (level = 1; level < output_level_count; ++level) {
+    if (has_output_merge_jobs(level))
+        merge_z_level<<<output_merge_grid(level), threads>>>(
+            output_merge_jobs[level], Zy);
 }
 ```
 
 Zyはbackwardで新しく作る。Zxを入力にしてZyを作るという意味ではない。
 
-## build_z_level：一つのlevelのZを生成するkernel
+## build_z_direct：site方向も複数threadで並列に足す
 
-一つのblockは一つのノードとbatch範囲を担当し、threadは`(batch, mode)`の要素を分担する。
-同じlevelの全ノードを並列に処理する。各Z要素の書き手は一つ。
+以前のコードも、タイル・batch・modeは並列だった。ただし、各Z要素のsite方向の加算は
+一つのthreadに任せていた。ここでは一つのZをP個のthreadで分担する案を示す。
+これはatomを複数threadで処理する話ではなく、複数atomが再利用するZの生成である。
+
+一つのblockは一つの直接生成nodeとbatch範囲を担当する。
+Pは調整可能な2のべき乗で、blockDim.xを割り切る値とする。warp単位に固定しない。
+例として128thread、P=4なら、32個のZ要素を同時に処理できる。
+
+| thread | 担当 | 分担するsiteの番号 |
+| --- | --- | --- |
+| 0〜3 | 一つ目の`(batch,mode)` | 0,4,8,… / 1,5,9,… / 2,6,10,… / 3,7,11,… |
+| 4〜7 | 二つ目の`(batch,mode)` | 同じ分割を次のZ要素に適用 |
+| … | … | … |
+| 124〜127 | 32個目の`(batch,mode)` | 同じ分割を次のZ要素に適用 |
+
+batch 4・直接生成mode 8なら32個のZなので、この例では全128threadに担当がある。
+要素が32個より多い場合は、次の波でまた32個を並列に処理する。
+下のteamはP個のthreadをまとめるソフトウェア上の番号であり、新しいCUDAの実行単位ではない。
 
 ```cpp
-node = nodes[level, blockIdx.x];
+job = direct_jobs[blockIdx.x];  // 異なるlevelのnodeも同じgridに含む。
+team = threadIdx.x / P;
+lane = threadIdx.x % P;
+team_count = blockDim.x / P;
+work_count = batch_size * job.direct_mode_count;
+__shared__ Scalar partials[THREADS];
 
-for (q = threadIdx.x; q < batch_size * node.mode_count; q += blockDim.x) {
-    (b, mode) = decode_batch_mode(q, blockIdx.y, node.mode_count);
-    if (b >= total_batch_size) continue;
+// 全threadが同じ回数繰り返す。各wave内の全teamは並列。
+for (wave = 0; wave < ceil_div(work_count, team_count); ++wave) {
+    q = wave * team_count + team;
+    (b, mode) = decode_direct_job(q, job, blockIdx.y);
+    valid = (q < work_count && b < total_batch_size);
 
-    if (can_inherit_same_basis(node, mode)) {
-        z = 0;
-        for (child : node.children)
-            z += Z[child, b, matching_child_mode(node, child, mode)];
-    } else {
-        z = 0;
-        for (site : node.sites)
-            z += signal[b, site] * integrated_basis(node, mode, site);
+    partial = 0;  // 各threadのregister。
+    if (valid) {
+        for (i = lane; i < job.site_count; i += P) {
+            site = job.site_at(i);
+            partial += signal[b, site] * integrated_basis(job.node, mode, site);
+        }
     }
-    Z[node, b, mode] = z;
+    partials[threadIdx.x] = partial;
+    __syncthreads();
+
+    // teamごとの部分和を並列reduction。P=4なら2段。
+    for (offset = P / 2; offset > 0; offset /= 2) {
+        if (lane < offset)
+            partials[threadIdx.x] += partials[threadIdx.x + offset];
+        __syncthreads();
+    }
+    if (valid && lane == 0)
+        Z[job.node, b, mode] = partials[threadIdx.x];
+    __syncthreads();  // 次のwaveでsharedを再利用する前の同期。
 }
 ```
 
-`signal`は入力側ならX、出力側ならdY。累積値zはregister、完成したZはglobalに置く。
-この単純な案ではsignalをglobalから直接読むので、block内sharedやbarrierは不要。
-子Zは前のlevelのkernelで完成済みなので、blockをまたぐbarrierや待機flagも不要である。
-共同ロードを導入するなら、signalを容量上限付きのshared chunkへ読み、全threadが同期する別案にする。
+`decode_direct_job`は範囲外qでも不正な配列を読まず、valid=falseとなる番兵を返す。
+担当のないthreadもpartial=0を書き、全barrierへ参加する。途中return/continueはしない。
+siteのループはthreadごとにsite数/P程度の加算をするものであり、全siteを一人で走査しない。
+足し算の依存は各thread内の部分和と、log2(P)段のreductionに残る。
+
+`signal`は入力側ならX、出力側ならdY。signalはglobal、部分和はregister/shared、完成Zはglobal。
+shared容量はこの例でTHREADS個のScalar分。128thread・FP32なら512 byteであり、
+タイル全体や全levelのZをsharedに置くという意味ではない。
+同じsignalをmode間で共有ロードする追加案もあるが、この擬似コードではまだ導入しない。
+P=1なら以前と同様に一人で一つのZを作る割り当てになる。短いタイルやmode数が多い場合は
+Pを増やさない方がよい可能性もあり、reductionと同期の費用を含めて比較する。
+
+## merge_z_level：子Zの完成後、親の各要素を並列に作る
+
+ここではsiteを走査しない。二つの子の完成値を足すだけなので、一つの親Z要素を
+一つのthreadへ割り当てる。他の親・batch・modeは別threadで並列に進む。
+
+```cpp
+q = blockIdx.x * blockDim.x + threadIdx.x;
+if (q >= merge_jobs.count * total_batch_size) return;
+(job, b) = decode_merge_job(q, merge_jobs);
+
+left = Z[job.left_child, b, job.left_mode];
+right = job.has_right_child ? Z[job.right_child, b, job.right_mode] : 0;
+Z[job.parent, b, job.parent_mode] = left + right;
+```
+
+子Zは先に起動したkernelで完成済みなので、ここにblock内barrierは不要。
+親要素の書き手も一つ。次のlevelはこのkernelの完了後に読む。
+rootが一つになってもbatch/modeは並列にできるが、上位ほど仕事が少なくなる点は残る。
+この縮小した並列度や起動費用は、後でlevel融合や複数nodeの同一block処理と比較する。
+
+## セル積分基底と継承条件
 
 `integrated_basis`はsiteの担当セル全体を積分した基底値。例えば共通原点のcos基底なら、
 
@@ -289,7 +382,10 @@ sin基底も同じ積分係数にsinを掛ける。多次元の積基底なら�
 sin/cosの種類、座標原点、spacing、セル積分係数が一致するときだけtrueにする。
 葉ノードや一方の子で該当modeがない場合はfalse。原点が異なる場合の位相変換は、この単純な継承には含めない。
 親を二つの子から作ることだけでは、基底まで一致するとは限らない。
-一致しないmodeはsignalから直接作る。周波数の継承率と再読込の費用は今後の比較対象である。
+一致しないmodeはdirect_jobsへ、一致するmodeだけmerge_jobsへ入れる。
+全levelの直接生成を先に行っても、継承できる要素までsignalから作り直すわけではない。
+必要なZの総要素数も変えない。signalの再読込は残り、処理順によるcacheの効き方や
+同時に扱う作業範囲は変わり得る。速さは未測定であり、元のlevel単位の混合kernelも比較候補として残す。
 
 ## 1. compute_h：入力側の全寄与をatomごとにまとめる
 
