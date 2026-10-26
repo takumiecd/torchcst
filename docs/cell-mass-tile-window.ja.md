@@ -14,6 +14,11 @@ atom中心の支持境界でセル積分をclipする旧試作を置き換える
 直近の時間改善は[投影微分の再利用](cell-mass-projection-cache.ja.md)、
 dense以下というメモリ制約は[時間・メモリの同時計測](cell-mass-memory-frontier.ja.md)を参照。
 
+現行の最小保存・速度設定は[実測状態](cell-mass-status.ja.md)にまとめる。
+以下の従来経路に加え、[owner Cの再利用](cell-mass-owner-coefficients.ja.md)、
+[GとParameter勾配の融合](cell-mass-fused-pullback.ja.md)、
+[共有Z窓と位相漸化式](cell-mass-owner-windows.ja.md)を選べる。
+
 ## 支持 I、周期 2L、タイル T
 
 site間隔d、1タイルのsite数n_T、奇数Kとして
@@ -72,7 +77,21 @@ ChebyshevSquareのraw side-lobe bound tauについて
 eta <= (P-2I)*tau/S も確認する。tauはpeak高さに対する密度の上界で、
 そのままYや勾配の相対誤差とは解釈しない。Y/dX/Parameter勾配の差も別に記録する。
 
-## メモリと処理順
+## owner方式のメモリと処理順
+
+`owner_coefficient_reduction=True`では、元atomとsorted_rowsに加え、
+(output owner,input owner)のbegin/end配列をglobalへ置く。atom本体のコピーはない。
+C producerは同じownerの32atom chunkをsharedに読み、各atomの係数を一度作る。
+Cの部分和はregisterからbounded global scratchへ書き、次kernelがsplitと隣接ownerを
+合計してsiteへ展開する。scratchはY/dX呼び出し内だけで、backwardの保存状態ではない。
+C全体が常にsharedだけにある、という意味ではない。
+
+`owner_window_moments=True`は全Z階層を窓ベクトルへ一度集約し、
+H/GとParameter勾配で再利用する。`fuse_g_parameter_grad=True`ならforward Hは保存せず、
+backwardで両軸を再投影し、Gと全atom勾配を同時に得る。H/Gの別生成・微分保存も比較用に残す。
+全52,428atomの更新ではdouble Zが必要だったため、精度とメモリも同時に検証する。
+
+## 従来経路のメモリと処理順
 
 - globalは元atom、sorted_rows、Zx/Zy、H/G、入出力・勾配。
   `cache_projection_derivatives=True`ならH/Gの幅・中心微分4本も保存し、
@@ -122,7 +141,8 @@ y = physical_linear(
 
 Y/dXのblock担当範囲は別の実行設定`sites_per_block=8/16/32/64/128/256`で比較できる。
 profileのtile_sitesや周期は変更しない。詳細は[担当site数の比較](cell-mass-block-sites.ja.md)。
-`atom_splits=1/2/4/8/16/32/64`はY/dXのatom集合をblock間で分担する。
+`atom_splits=1/2/4/8/16/32/64`は従来Y/dXのatom集合をblock間で分担する。
+owner C方式では128も選べ、C producerのthread数は`c_threads_per_block=32/64/128`で指定する。
 `atom_threads_per_block=16/32/64/128`はH/G・Parameter勾配のblock幅。
 省略時は従来通り32site/1split/128thread・微分再計算で、数式は全設定で同じ。
 `double_intermediates=True`はZx/Zyをdoubleで保存する。
@@ -136,7 +156,8 @@ scratch・同期・設定別の測定は[atom分担と位相共有](cell-mass-at
 
 以前のsupport_half_widthを直接渡す研究APIは廃止。IとLの混同を避ける。
 今回は1軸1bank、1024以下の2のべき乗site数、65536以下のatom。
-[1024向けの拡張](cell-mass-1024.ja.md)は128/256siteのC再利用と最大64splitを可能にする。
+[1024向けの拡張](cell-mass-1024.ja.md)は128/256site展開、
+owner方式は最大128splitのC集約を可能にする。
 性能・メモリの採否はshapeごとの実測を必要とする。
 CUDAのtile_sitesはsite_countを割り切る2のべき乗。sigma<=min(Pin,Pout)/3。
 複数のsigma bankへの分類やblockのbegin/endによる候補範囲の絞り込みは未実装。

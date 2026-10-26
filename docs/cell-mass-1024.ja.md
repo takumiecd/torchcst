@@ -3,6 +3,13 @@
 128から1024サイトへ拡張し、同じ面積正規化・whole-tile窓で検証する。
 公開dispatcherへの登録とは分離した数値研究入口。
 
+最新の設定・時間・メモリは[実測状態](cell-mass-status.ja.md)を参照。
+以下は1024拡張時の検証と、遅かった初回方式の記録も含む。
+その後は[owner C](cell-mass-owner-coefficients.ja.md) →
+[G/Parameter融合](cell-mass-fused-pullback.ja.md) →
+[mode定数](cell-mass-polynomial-constants.ja.md) →
+[共有Z窓・位相漸化式](cell-mass-owner-windows.ja.md)へ進めた。
+
 ## 固定する数学と変える実行設定
 
 - 入出力は各1024サイト、atom数はfloor(1024²×0.05)=52,428。
@@ -18,7 +25,8 @@
 - H/G/Parameter勾配は各threadが別atomを担当し、block幅16/32/64/128は別設定。
 
 モデルのatomをglobalに並べ替えコピーせず、元のParameter配列とsorted_rowsを使う。
-全site×atomのprofile表、全Fourier係数表、全C表をruntimeで作らない。
+全site×atomのprofile表、全atomのFourier係数表をruntimeで作らない。
+owner方式では小さなowner×modeのC部分和をscratchに置き、Y/dXの呼び出し内で解放する。
 CPU oracleのprofile表は検証専用で、256atomずつに制限する。
 
 ## 中間値の丸めと更新量の検証

@@ -11,8 +11,12 @@ H/G・Parameter勾配のblock幅を指定する`atom_threads_per_block`もある
 実コードの投影微分を保存／再計算する分岐は
 [projection cache](cell-mass-projection-cache.ja.md)、
 メモリ制約の採否は[完全step比較](cell-mass-memory-frontier.ja.md)を参照。
-以下の一般化されたgroup/range作成は、1bankの現runtimeでは未実装。
-現runtimeは値検査とkey生成を融合しstable sortした行番号のみを保持する。
+現在の1bank runtimeでは、値検査とkey生成を融合しstable sortした行番号を保持する。
+`owner_coefficient_reduction=True`は、その順序から(output owner,input owner)の
+begin/endも作る。[owner C](cell-mass-owner-coefficients.ja.md)で係数を一度生成し、
+[共有Z窓](cell-mass-owner-windows.ja.md)からH/Gを投影する。
+複数bank・多軸の分類は、以下の一般化した擬似コードの段階。
+現状と測定条件の入口は[実測状態](cell-mass-status.ja.md)。
 
 2026-10-26。[設計と数学契約](cell-integrated-profile.ja.md)に対応する、検討用の擬似コード。
 以下の関数名・引数は一般化した擬似コード。明示的なChebyshevSquare密度から始めた
@@ -39,7 +43,10 @@ compute_dx(G, atoms, layout, dX);
 compute_parameter_grad(Zx, Zy, X, dY, H, G, atoms, layout, grad);
 ```
 
-同じstreamへ依存順に投入する。階層構築は主要な5つの計算kernelに含めない。
+同じstreamへ依存順に投入する。上の名前は論理段階であり、実際のlaunch数ではない。
+owner方式のcompute_y/dxはC部分和を作るkernelと展開kernelに分かれる。
+`fuse_g_parameter_grad=True`ではcompute_gと再計算型Parameter勾配を一つに融合し、
+forward HはYで使用後に解放する。[融合経路](cell-mass-fused-pullback.ja.md)を参照。
 階層構築は「signalから直接作る要素」と「子Zから継承する要素」に分ける。
 前者はlevelをまたいで並列に作り、後者だけlevel順に起動して子の完成を待つ。
 CPU側で毎回同期するという意味ではない。
