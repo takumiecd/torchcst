@@ -5,6 +5,8 @@
 using Tensor = torch::Tensor;
 using Config = std::vector<double>;
 
+std::vector<Tensor> prepare_inputs(Tensor x, Tensor atoms, Config input_config,
+                                   Config output_config);
 Tensor build_z(Tensor signal, Config config, bool hierarchical, int team_size);
 Tensor compute_h(Tensor x, Tensor atoms, Tensor rows, Tensor z, Config config, int atom_threads);
 Tensor compute_y(Tensor h, Tensor atoms, Tensor rows, Config config, int sites_per_block,
@@ -17,6 +19,7 @@ Tensor compute_parameter_grad(Tensor x, Tensor dy, Tensor atoms, Tensor rows, Te
                               int atom_threads);
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+    m.def("prepare_inputs", &prepare_inputs);
     m.def("build_z", &build_z, pybind11::arg("signal"), pybind11::arg("config"),
           pybind11::arg("hierarchical") = false, pybind11::arg("team_size") = 4);
     m.def("compute_h", &compute_h, pybind11::arg("x"), pybind11::arg("atoms"),

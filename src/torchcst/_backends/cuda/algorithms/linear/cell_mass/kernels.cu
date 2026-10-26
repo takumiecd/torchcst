@@ -117,6 +117,48 @@ __device__ double wrap_center(double center, Axis a) {
     return v < 0 ? v + a.chart_period() : v;
 }
 
+// Routing uses the same FP64 cell edges as profile evaluation. The final mod
+// maps the seam owner back into the chart's tile range; stable sort resolves ties.
+__device__ int chart_tile_owner(double center, Axis a) {
+    int owner = static_cast<int>(
+        floor((wrap_center(center, a) + a.spacing / 2) / (a.tile_sites * a.spacing)));
+    return owner % (a.sites / a.tile_sites);
+}
+
+// One traversal replaces separate finite/width reductions and Torch key ops.
+// Bits: 1 = nonfinite X, 2 = nonfinite atom, 4 = invalid sigma.
+// The error word is zeroed on this stream first. Valid inputs perform no atomics.
+// Only keys are written: no packed atom or persistent coefficient copies.
+template <typename scalar_t>
+__global__ void prepare_inputs_kernel(const scalar_t *x, const scalar_t *atoms, int64_t *keys,
+                                      int *error_word, int64_t x_elements, int atom_count,
+                                      Axis input, Axis output, double maximum_sigma) {
+    int64_t q = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    int errors = 0;
+    if (q < x_elements && !isfinite(static_cast<double>(x[q])))
+        errors |= 1;
+    if (q < atom_count) {
+        bool finite_atom = true;
+        for (int field = 0; field < 4; ++field)
+            finite_atom &= isfinite(static_cast<double>(atoms[4 * q + field]));
+        keys[q] = 0;
+        if (!finite_atom) {
+            errors |= 2;
+        } else if (atoms[4 * q + 1] <= 0 ||
+                   atoms[4 * q + 1] > static_cast<scalar_t>(maximum_sigma)) {
+            // Torch compares a Python scalar to a Tensor in the Tensor's dtype.
+            // Preserve that rule at the upper width boundary, including FP32.
+            errors |= 4;
+        } else {
+            int qi = chart_tile_owner(atoms[4 * q + 3], input);
+            int qo = chart_tile_owner(atoms[4 * q + 2], output);
+            keys[q] = qo * (input.sites / input.tile_sites) + qi;
+        }
+    }
+    if (errors)
+        atomicOr(error_word, errors);
+}
+
 // Each atom evaluates these few scalar quantities in registers. The output
 // gather kernel stores only its current chunk's contexts in block shared memory.
 // No global atom copy, coefficient table or coefficient-Jacobian table exists.
@@ -660,6 +702,34 @@ torch::Tensor expand(torch::Tensor h, torch::Tensor atoms, torch::Tensor rows,
     return result;
 }
 } // namespace
+
+std::vector<torch::Tensor> prepare_inputs(torch::Tensor x, torch::Tensor atoms,
+                                          std::vector<double> input_config,
+                                          std::vector<double> output_config) {
+    check_signal(x);
+    check_like(atoms, x);
+    Axis input = parse_axis(input_config), output = parse_axis(output_config);
+    TORCH_CHECK(x.size(1) == input.sites, "signal shape differs from axis");
+    TORCH_CHECK(atoms.dim() == 2 && atoms.size(1) == 4 && atoms.size(0) <= 1024,
+                "prototype physical atoms require shape [A<=1024,4]");
+    c10::cuda::CUDAGuard guard(x.device());
+    auto keys = torch::empty({atoms.size(0)}, x.options().dtype(torch::kInt64));
+    auto errors = torch::zeros({}, x.options().dtype(torch::kInt32));
+    // Match the declaration's tile-width multiplication order for the bound.
+    double maximum_sigma = std::min(input.period_tiles * (input.tile_sites * input.spacing),
+                                    output.period_tiles * (output.tile_sites * output.spacing)) /
+                           3;
+    int64_t elements = std::max(x.numel(), atoms.size(0));
+    int blocks = static_cast<int>(std::max<int64_t>(1, (elements + THREADS - 1) / THREADS));
+    auto stream = c10::cuda::getCurrentCUDAStream();
+    AT_DISPATCH_FLOATING_TYPES(x.scalar_type(), "cell_mass_prepare_inputs", [&] {
+        prepare_inputs_kernel<<<blocks, THREADS, 0, stream>>>(
+            x.data_ptr<scalar_t>(), atoms.data_ptr<scalar_t>(), keys.data_ptr<int64_t>(),
+            errors.data_ptr<int>(), x.numel(), atoms.size(0), input, output, maximum_sigma);
+    });
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+    return {keys, errors};
+}
 
 torch::Tensor build_z(torch::Tensor signal, std::vector<double> config, bool hierarchical,
                       int team_size) {

@@ -11,8 +11,8 @@ from torchcst.kernels.cell_mass import CellMassAxisSpec, CellMassLinearSpec
 from ..profiles.fourier import kernel_coefficients
 
 
-def validate_inputs(spec: CellMassLinearSpec, x, atoms):
-    """Validate physical inputs before entering the research numeric route."""
+def validate_input_structure(spec: CellMassLinearSpec, x, atoms):
+    """Check metadata without reading Tensor values or synchronizing a device."""
     if not isinstance(spec, CellMassLinearSpec):
         raise TypeError("expected CellMassLinearSpec")
     if x.ndim != 2 or x.shape[1] != spec.input.site_count:
@@ -25,6 +25,11 @@ def validate_inputs(spec: CellMassLinearSpec, x, atoms):
         raise ValueError("X and atoms must share a device")
     if not x.is_contiguous() or not atoms.is_contiguous():
         raise ValueError("prototype requires contiguous X and physical atoms")
+
+
+def validate_inputs(spec: CellMassLinearSpec, x, atoms):
+    """Validate both metadata and values for the independent Torch reference."""
+    validate_input_structure(spec, x, atoms)
     if not bool(torch.isfinite(x).all()) or not bool(torch.isfinite(atoms).all()):
         raise ValueError("X and atoms must be finite")
     maximum_sigma = min(spec.input.profile_period, spec.output.profile_period) / 3

@@ -1,5 +1,7 @@
 """Y/dX/all physical atom-gradient gates for the native CUDA implementation."""
 
+import math
+
 import pytest
 import torch
 
@@ -7,6 +9,7 @@ from torchcst._backends.cuda.algorithms.linear.cell_mass.executor import (
     _axis_config,
     _extension,
     physical_linear,
+    prepare_inputs_and_layout,
     prepare_layout,
 )
 from torchcst._backends.torch.kernels.cell_mass import (
@@ -381,3 +384,81 @@ def test_split_outputs_cover_uneven_chunks_and_empty_work(
     )
     for value, truth in ((actual, expected), (dx, edx), (dp, edp)):
         torch.testing.assert_close(value.cpu(), truth, **tolerance)
+
+
+@requires_cuda
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_fused_prepare_keys_and_stable_rows(dtype):
+    binding = spec(128)
+    x, p, _ = inputs(binding, 12, 5, dtype)
+    offsets = [-1.2, -0.001, 0, 0.001, 0.7, 1.2, 2.1, 3.1, 4.0, 4.0, 6.2, -3.4]
+    for column, axis in [(2, binding.output), (3, binding.input)]:
+        p[:, column] = torch.tensor(
+            [axis.origin - axis.spacing / 2 + t * axis.tile_width for t in offsets],
+            dtype=dtype,
+        )
+
+    def tile(center, axis):
+        position = math.fmod(center - axis.origin, axis.period)
+        if position < 0:
+            position += axis.period
+        return math.floor((position + axis.spacing / 2) / axis.tile_width) % (
+            axis.site_count // axis.tile_sites
+        )
+
+    expected_keys = [
+        tile(row[2], binding.output) * (binding.input.site_count // binding.input.tile_sites)
+        + tile(row[3], binding.input)
+        for row in p.tolist()
+    ]
+    gx, gp = x.cuda(), p.cuda()
+    version = gp._version
+    native = _extension()
+    ci, co = _axis_config(binding.input), _axis_config(binding.output)
+    keys, errors = native.prepare_inputs(gx, gp, ci, co)
+    assert errors.item() == 0
+    assert keys.cpu().tolist() == expected_keys
+    rows = prepare_inputs_and_layout(native, gx, gp, ci, co)
+    assert rows.cpu().tolist() == sorted(range(len(expected_keys)), key=expected_keys.__getitem__)
+    assert gp._version == version
+    torch.testing.assert_close(gp.cpu(), p, rtol=0, atol=0)
+
+
+@requires_cuda
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "where,value,message",
+    [("x", float("nan"), "finite"), ("x", float("inf"), "finite")]
+    + [(column, value, "finite") for column in range(4) for value in (float("nan"), float("inf"))]
+    + [(1, 0.0, "sigma"), (1, -1.0, "sigma")],
+)
+def test_fused_prepare_value_rejection(where, value, message, dtype):
+    binding = spec(32)
+    x, p, _ = inputs(binding, 35, 5, dtype)
+    if where == "x":
+        x[-1, -1] = value
+    else:
+        p[-1, where] = value
+    with pytest.raises(ValueError, match=message):
+        physical_linear(binding, x.cuda(), p.cuda())
+
+
+@requires_cuda
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("spacing", [0.6, 0.7])
+def test_fused_prepare_preserves_dtype_width_limit_and_error_priority(dtype, spacing):
+    profile = ChebyshevSquareSpec(modes=8, tail_bound=1e-3)
+    axis = CellMassAxisSpec(profile=profile, site_count=32, spacing=spacing, tile_sites=8)
+    binding = CellMassLinearSpec(input=axis, output=axis)
+    x, p, _ = inputs(binding, 3, 1, dtype)
+    upper = torch.tensor(axis.profile_period / 3, dtype=dtype)
+    p[:, 1] = upper
+    gx, gp = x.cuda(), p.cuda()
+    # The Python scalar bound is compared in the Tensor dtype, as before.
+    physical_linear(binding, gx, gp)
+    gp[0, 1] = torch.nextafter(upper, torch.tensor(float("inf"), dtype=dtype)).item()
+    with pytest.raises(ValueError, match="sigma"):
+        physical_linear(binding, gx, gp)
+    gx[0, 0] = float("nan")
+    with pytest.raises(ValueError, match="finite"):
+        physical_linear(binding, gx, gp)

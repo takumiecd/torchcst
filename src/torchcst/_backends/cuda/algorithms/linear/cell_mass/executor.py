@@ -12,7 +12,7 @@ from pathlib import Path
 import torch
 from torch.autograd.function import once_differentiable
 
-from torchcst._backends.torch.kernels.cell_mass import validate_inputs
+from torchcst._backends.torch.kernels.cell_mass import validate_input_structure
 from torchcst.kernels.cell_mass import CellMassLinearSpec
 
 
@@ -68,6 +68,8 @@ def prepare_layout(spec, atoms):
     tile boundaries start at origin-spacing/2. The key is
     (output center tile, input center tile); multiple width banks will extend it
     with a hierarchy/bank prefix. No atom or coefficient values are packed.
+    This standalone helper is also the Torch sorting reference. Normal forward
+    uses prepare_inputs_and_layout to combine key generation with value checks.
     """
     input_leaf = spec.input.tile_sites
     output_leaf = spec.output.tile_sites
@@ -97,6 +99,22 @@ def prepare_layout(spec, atoms):
     return torch.argsort(key, stable=True)
 
 
+def prepare_inputs_and_layout(native, x, atoms, input_config, output_config):
+    """Generate only sort keys and validate values in one CUDA traversal.
+
+    Structural checks have already run on the host. The single scalar read
+    below preserves finite/width rejection before Z/H/Y can consume bad values.
+    Keys and the error word are temporary; only sorted row indices survive.
+    """
+    keys, error_word = native.prepare_inputs(x, atoms, input_config, output_config)
+    errors = error_word.item()
+    if errors & 3:
+        raise ValueError("X and atoms must be finite")
+    if errors & 4:
+        raise ValueError("sigma must lie in (0, min(profile_period)/3]")
+    return torch.argsort(keys, stable=True)
+
+
 class _CellMassFunction(torch.autograd.Function):
     @staticmethod
     def forward(
@@ -112,9 +130,9 @@ class _CellMassFunction(torch.autograd.Function):
         atom_threads_per_block,
     ):
         native = _extension()
-        rows = prepare_layout(spec, atoms)
         input_config = _axis_config(spec.input, coefficient_method)
         output_config = _axis_config(spec.output, coefficient_method)
+        rows = prepare_inputs_and_layout(native, x, atoms, input_config, output_config)
 
         # Same stream: H is complete before its consumers start. Z is global;
         # atom parameters are never copied into a second global parameter array.
@@ -182,7 +200,7 @@ def physical_linear(
 ):
     """Run the first-order tile-window approximation with continuous mass.
 
-    Validation currently reads reduction results on the host; this research
+    Validation reads one error word on the host; this research
     entry does not yet support CUDA Graph capture. sites_per_block is an execution
     limit for Y/dX (8, 16 or 32), separate from the profile's tile_sites and period.
     atom_splits (1, 2, 4 or 8) partitions their atom reduction across blocks.
@@ -193,7 +211,7 @@ def physical_linear(
     Tiny inputs retain the existing four-leaf bound. Build/JIT time is separate
     from execution timing. All inputs and support restrictions are explicit.
     """
-    validate_inputs(spec, x, atoms)
+    validate_input_structure(spec, x, atoms)
     _validate_cuda_support(spec, x, atoms)
     if z_method not in ("direct", "merge"):
         raise ValueError("z_method must be direct or merge")
