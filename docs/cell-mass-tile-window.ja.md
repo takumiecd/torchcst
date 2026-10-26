@@ -65,7 +65,8 @@ eta <= (P-2I)*tau/S も確認する。tauはpeak高さに対する密度の上�
 ## メモリと処理順
 
 - globalは元atom、sorted_rows、Zx/Zy、H/G、入出力・勾配のみ。atomや係数の全表を複製しない。
-- Y/dXのblockは最大4leaf×4batchのCをregisterへ蓄積する。
+- Y/dXのblockは最大4leaf×4batchの出力を担当する。その範囲のprofileタイルごとに
+  一つのCをregisterへ蓄積し、同じprofileタイル内のsiteで共有する。
 - 32atom chunkを一度読み、現在chunkのraw harmonicをsharedへ生成する。
   sin/cos・4batch・担当leafで共通のraw係数を使い回す。
 - 全chunkの後にCをsharedへ渡してY/dXへ展開する。出力atomicは不要。
@@ -103,7 +104,10 @@ CUDAのtile_sitesはsite_countを割り切る2のべき乗。sigma<=min(Pin,Pout
 複数のsigma bankへの分類やblockのbegin/endによる候補範囲の絞り込みは未実装。
 公開CSTLinear/optimizer/Graph/二階微分への接続も未実施。
 
-## 検証と128サイトでの実測
+## タイル窓初版の検証と128サイトでの実測
+
+以下はC共有最適化前の記録。[profileタイル内のC共有](cell-mass-c-reuse.ja.md)に
+同じ数学での変更前・変更後の比較を追記する。
 
 source commit `b0ed1754`、NVIDIA L4、Torch2.11.0+cu130、CUDA13.0。
 CPU全体は2006 passed / 2824 skipped / 既存JIT警告18件。
