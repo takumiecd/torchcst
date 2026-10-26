@@ -11,6 +11,8 @@ atom中心の支持境界でセル積分をclipする旧試作を置き換える
 [atom軸の分担とchunk内の位相共有](cell-mass-atom-splits.ja.md)を参照。
 目標の「denseの約2倍のstep時間」との距離は
 [AdamW込みのdense比較](cell-mass-dense-step.ja.md)で追跡する。
+直近の時間改善は[投影微分の再利用](cell-mass-projection-cache.ja.md)、
+dense以下というメモリ制約は[時間・メモリの同時計測](cell-mass-memory-frontier.ja.md)を参照。
 
 ## 支持 I、周期 2L、タイル T
 
@@ -73,8 +75,11 @@ eta <= (P-2I)*tau/S も確認する。tauはpeak高さに対する密度の上�
 ## メモリと処理順
 
 - globalは元atom、sorted_rows、Zx/Zy、H/G、入出力・勾配。
+  `cache_projection_derivatives=True`ならH/Gの幅・中心微分4本も保存し、
+  Zx/Zyはそれぞれの投影後に解放する。既定のFalseではParameter勾配で再投影する。
   atom分担が複数なら、Y/dXの呼び出し中だけ部分出力scratchも持つ。atomや係数の全表を複製しない。
-- Y/dXのblockは最大4leaf×4batchの出力を担当する。その範囲のprofileタイルごとに
+- Y/dXのblockは最大4profile tile×4batchの範囲を担当する。
+  `sites_per_block`以下に幅を抑え、wide tileはthreadごとに複数siteを展開する。その範囲のprofileタイルごとに
   担当atom集合からのCの部分和をregisterへ蓄積し、同じprofileタイル内のsiteで共有する。
 - 32atom chunkを一度読み、寄与するatomの係数だけをsharedへ生成する。
   profile tileが一つなら位相を掛けたsin/cosを全batchで共用する。
@@ -115,15 +120,19 @@ y = physical_linear(
 )
 ```
 
-Y/dXのblock担当範囲は別の実行設定`sites_per_block=32/16/8`で比較できる。
+Y/dXのblock担当範囲は別の実行設定`sites_per_block=8/16/32/64/128/256`で比較できる。
 profileのtile_sitesや周期は変更しない。詳細は[担当site数の比較](cell-mass-block-sites.ja.md)。
-`atom_splits=1/2/4/8`はY/dXのatom集合をblock間で分担する。
+`atom_splits=1/2/4/8/16/32/64`はY/dXのatom集合をblock間で分担する。
 `atom_threads_per_block=16/32/64/128`はH/G・Parameter勾配のblock幅。
-省略時は従来通り32site/1split/128threadで、数式は全設定で同じ。
+省略時は従来通り32site/1split/128thread・微分再計算で、数式は全設定で同じ。
+通常forwardの準備はmetadata検査、nativeの値検査・key生成、error wordのhost確認1回、
+stable argsortの順。atom本体のglobalコピーや係数全表は持たない。
 scratch・同期・設定別の測定は[atom分担と位相共有](cell-mass-atom-splits.ja.md)に記録する。
 
 以前のsupport_half_widthを直接渡す研究APIは廃止。IとLの混同を避ける。
-今回は1軸1bank、128以下の2のべき乗site数、1024以下のatom。
+今回は1軸1bank、1024以下の2のべき乗site数、65536以下のatom。
+1024向けの拡張は128/256siteのC再利用と最大64splitを可能にする。
+性能・メモリの採否はshapeごとの実測を必要とする。
 CUDAのtile_sitesはsite_countを割り切る2のべき乗。sigma<=min(Pin,Pout)/3。
 複数のsigma bankへの分類やblockのbegin/endによる候補範囲の絞り込みは未実装。
 公開CSTLinear/optimizer/Graph/二階微分への接続も未実施。

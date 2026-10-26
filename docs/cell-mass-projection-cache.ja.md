@@ -125,7 +125,10 @@ cacheは再計算より約15%速く、allocatedが113→200KiBへ87KiB増えた�
 追加配列104,832byteよりpeak増分89,088byteが小さいのはZ等の寿命も変わるため。
 既定Falseは維持し、これは当該caseの明示設定として記録する。
 denseには大きいBLAS等の常駐割当が含まれるため、この差を圧縮率とはしない。
-メモリはdense以下を必須条件とし、小メモリdenseとの追加比較も必要。
+メモリはdense以下を必須条件とする。追加した
+[workspaceなしdense・batch16との比較](cell-mass-memory-frontier.ja.md)で、
+B4は200<264.5 KiBだがB16の保存案は制約超過と確認した。
+dense既定の大きな割当は、隔離プロセスでclearしたcuBLAS workspaceの16.25 MiBと特定した。
 
 別のstage GPU event中央値は次の通り。和でstep wall時間を代用しない。
 
@@ -155,7 +158,8 @@ runtimeを固定し、別L4 jobで同じstepを再測定した。
 | 微分cache | **0.850 / 0.844ms** | **1.83 / 1.78** |
 
 allocated/reservedは初回と同じ。元のdense既定workspace条件のこのB4 caseでは、
-目標の約2倍以内を独立jobでも確認できた。小メモリdense・他batchは別に検査する。
+目標の約2倍以内を独立jobでも確認できた。小メモリdense・他batchは
+[メモリfrontier](cell-mass-memory-frontier.ja.md)の別jobで検査した。
 
 ```python
 y = physical_linear(

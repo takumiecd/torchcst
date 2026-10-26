@@ -8,6 +8,11 @@ profileのtile幅・周期は固定し、[担当site数の比較](cell-mass-bloc
 H/G・Parameter勾配のblock幅を指定する`atom_threads_per_block`もある。
 部分出力の寿命・合計kernel・係数sharedの具体的な実装は
 [atom分担と位相共有](cell-mass-atom-splits.ja.md)を参照する。
+実コードの投影微分を保存／再計算する分岐は
+[projection cache](cell-mass-projection-cache.ja.md)、
+メモリ制約の採否は[完全step比較](cell-mass-memory-frontier.ja.md)を参照。
+以下の一般化されたgroup/range作成は、1bankの現runtimeでは未実装。
+現runtimeは値検査とkey生成を融合しstable sortした行番号のみを保持する。
 
 2026-10-26。[設計と数学契約](cell-integrated-profile.ja.md)に対応する、検討用の擬似コード。
 以下の関数名・引数は一般化した擬似コード。明示的なChebyshevSquare密度から始めた

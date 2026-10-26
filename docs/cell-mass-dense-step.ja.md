@@ -15,6 +15,10 @@ r_{step}=\frac{t_{CST,step}}{t_{dense,step}},\qquad
 denseへの到達度とは区別する。以後、同じshape・batch・dtype・精度設定・optimizer・
 Graph条件で測ったdenseを基準にする。メモリも完全stepのallocated/reservedを比較する。
 
+最新の条件別結果は[投影微分の再利用](cell-mass-projection-cache.ja.md)と
+[メモリ制約を含む比較](cell-mass-memory-frontier.ja.md)を参照。
+128・batch4では約1.9倍の時間でdense以下のメモリ、batch16では両立未達。
+
 ## 今回の1stepの境界
 
 biasなしの1層、N128×128、batch4、FP32、CSTは819atom（N²の約5%）。
