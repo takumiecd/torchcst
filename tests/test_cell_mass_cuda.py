@@ -58,12 +58,13 @@ def inputs(binding, atoms=128, batch=4, dtype=torch.float64):
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 @pytest.mark.parametrize("z_method", ["direct", "merge"])
 @pytest.mark.parametrize("coefficient_method", ["polynomial", "dft"])
+@pytest.mark.parametrize("atom_threads_per_block", [16, 128])
 @pytest.mark.parametrize(
     "sites,atoms,batch",
     [(128, 819, 4), (128, 128, 4), (32, 35, 3), (8, 1, 5), (8, 0, 2)],
 )
 def test_cuda_y_dx_and_every_atom_gradient(
-    dtype, z_method, coefficient_method, sites, atoms, batch
+    dtype, z_method, coefficient_method, atom_threads_per_block, sites, atoms, batch
 ):
     binding = spec(sites)
     x, p, dy = inputs(binding, atoms, batch, dtype)
@@ -75,7 +76,12 @@ def test_cuda_y_dx_and_every_atom_gradient(
     gp = p.detach().cuda().requires_grad_()
     version = gp._version
     actual = physical_linear(
-        binding, gx, gp, z_method=z_method, coefficient_method=coefficient_method
+        binding,
+        gx,
+        gp,
+        z_method=z_method,
+        coefficient_method=coefficient_method,
+        atom_threads_per_block=atom_threads_per_block,
     )
     actual_dx, actual_dp = torch.autograd.grad(actual, (gx, gp), dy.cuda())
     tolerance = (
@@ -96,7 +102,8 @@ def test_cuda_y_dx_and_every_atom_gradient(
 
 
 @requires_cuda
-def test_each_projection_and_saved_state_reuse():
+@pytest.mark.parametrize("atom_splits", [1, 4])
+def test_each_projection_and_saved_state_reuse(atom_splits):
     binding = spec()
     x, p, dy = inputs(binding)
     x, p, dy = x.cuda(), p.cuda(), dy.cuda()
@@ -114,7 +121,7 @@ def test_each_projection_and_saved_state_reuse():
 
     x.requires_grad_()
     p.requires_grad_()
-    y = physical_linear(binding, x, p)
+    y = physical_linear(binding, x, p, atom_splits=atom_splits, atom_threads_per_block=16)
     first = torch.autograd.grad(y, (x, p), dy, retain_graph=True)
     second = torch.autograd.grad(y, (x, p), dy)
     for a, b in zip(first, second):
@@ -299,6 +306,9 @@ def test_invalid_execution_partition():
     for invalid in (0, 3, 16, True, 4.0):
         with pytest.raises(ValueError, match="atom_splits"):
             physical_linear(binding, x, p, atom_splits=invalid)
+    for invalid in (0, 8, 256, True, 16.0):
+        with pytest.raises(ValueError, match="atom_threads_per_block"):
+            physical_linear(binding, x, p, atom_threads_per_block=invalid)
     native = _extension()
     rows = prepare_layout(binding, p)
     with pytest.raises(RuntimeError, match="sites_per_block"):
@@ -318,6 +328,9 @@ def test_invalid_execution_partition():
             8,
             3,
         )
+    z = native.build_z(x, _axis_config(binding.input))
+    with pytest.raises(RuntimeError, match="atom_threads_per_block"):
+        native.compute_h(x, p, rows, z, _axis_config(binding.input), 8)
 
 
 @requires_cuda
@@ -352,7 +365,14 @@ def test_split_outputs_cover_uneven_chunks_and_empty_work(
     edx, edp = torch.autograd.grad(expected, (rx, rp), dy)
     gx = x.detach().cuda().requires_grad_()
     gp = atoms.detach().cuda().requires_grad_()
-    actual = physical_linear(binding, gx, gp, sites_per_block=16, atom_splits=atom_splits)
+    actual = physical_linear(
+        binding,
+        gx,
+        gp,
+        sites_per_block=16,
+        atom_splits=atom_splits,
+        atom_threads_per_block=16,
+    )
     dx, dp = torch.autograd.grad(actual, (gx, gp), dy.cuda())
     tolerance = (
         {"rtol": 5e-5, "atol": 2e-6}

@@ -109,6 +109,7 @@ class _CellMassFunction(torch.autograd.Function):
         coefficient_method,
         sites_per_block,
         atom_splits,
+        atom_threads_per_block,
     ):
         native = _extension()
         rows = prepare_layout(spec, atoms)
@@ -118,7 +119,7 @@ class _CellMassFunction(torch.autograd.Function):
         # Same stream: H is complete before its consumers start. Z is global;
         # atom parameters are never copied into a second global parameter array.
         zx = native.build_z(x, input_config, z_method == "merge", z_threads_per_element)
-        h = native.compute_h(x, atoms, rows, zx, input_config)
+        h = native.compute_h(x, atoms, rows, zx, input_config, atom_threads_per_block)
         y = native.compute_y(h, atoms, rows, output_config, sites_per_block, atom_splits)
 
         ctx.spec = spec
@@ -127,6 +128,7 @@ class _CellMassFunction(torch.autograd.Function):
         ctx.coefficient_method = coefficient_method
         ctx.sites_per_block = sites_per_block
         ctx.atom_splits = atom_splits
+        ctx.atom_threads_per_block = atom_threads_per_block
         ctx.save_for_backward(x, atoms, rows, zx, h)
         return y
 
@@ -144,14 +146,26 @@ class _CellMassFunction(torch.autograd.Function):
         zy = native.build_z(
             dy, output_config, ctx.z_method == "merge", ctx.z_threads_per_element
         )
-        g = native.compute_g(dy, atoms, rows, zy, output_config)
+        g = native.compute_g(
+            dy, atoms, rows, zy, output_config, ctx.atom_threads_per_block
+        )
         dx = native.compute_dx(
             g, atoms, rows, input_config, ctx.sites_per_block, ctx.atom_splits
         )
         grad_atoms = native.compute_parameter_grad(
-            x, dy, atoms, rows, h, g, zx, zy, input_config, output_config
+            x,
+            dy,
+            atoms,
+            rows,
+            h,
+            g,
+            zx,
+            zy,
+            input_config,
+            output_config,
+            ctx.atom_threads_per_block,
         )
-        return dx, grad_atoms, None, None, None, None, None, None
+        return dx, grad_atoms, None, None, None, None, None, None, None
 
 
 def physical_linear(
@@ -164,6 +178,7 @@ def physical_linear(
     coefficient_method="polynomial",
     sites_per_block=32,
     atom_splits=1,
+    atom_threads_per_block=128,
 ):
     """Run the first-order tile-window approximation with continuous mass.
 
@@ -173,6 +188,8 @@ def physical_linear(
     atom_splits (1, 2, 4 or 8) partitions their atom reduction across blocks.
     Split outputs use temporary global storage and a unique-writer reduction;
     they are not saved for backward. Neither knob changes the mathematical axis.
+    atom_threads_per_block (16/32/64/128) controls H/G/parameter-gradient blocks;
+    each thread still owns a different atom. Z and Y/dX keep 128-thread blocks.
     Tiny inputs retain the existing four-leaf bound. Build/JIT time is separate
     from execution timing. All inputs and support restrictions are explicit.
     """
@@ -192,6 +209,13 @@ def physical_linear(
         raise ValueError("sites_per_block must be 8, 16 or 32")
     if type(atom_splits) is not int or atom_splits not in (1, 2, 4, 8):
         raise ValueError("atom_splits must be 1, 2, 4 or 8")
+    if type(atom_threads_per_block) is not int or atom_threads_per_block not in (
+        16,
+        32,
+        64,
+        128,
+    ):
+        raise ValueError("atom_threads_per_block must be 16, 32, 64 or 128")
     return _CellMassFunction.apply(
         x,
         atoms,
@@ -201,4 +225,5 @@ def physical_linear(
         coefficient_method,
         sites_per_block,
         atom_splits,
+        atom_threads_per_block,
     )

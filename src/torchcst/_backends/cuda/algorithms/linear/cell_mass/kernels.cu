@@ -80,6 +80,13 @@ void check_signal(const torch::Tensor &x) {
                 "signal must be float32 or float64");
 }
 
+// H/G/parameter gradients have no block-wide reduction: one thread owns one
+// atom. Their block size can change independently of cooperative Z and Y/dX.
+void check_atom_thread_count(int threads) {
+    TORCH_CHECK(threads == 16 || threads == 32 || threads == 64 || threads == 128,
+                "atom_threads_per_block must be 16, 32, 64 or 128");
+}
+
 void check_like(const torch::Tensor &t, const torch::Tensor &x) {
     TORCH_CHECK(t.is_contiguous() && t.device() == x.device() && t.scalar_type() == x.scalar_type(),
                 "incompatible CUDA tensor");
@@ -571,8 +578,10 @@ __global__ void parameter_grad_kernel(const scalar_t *x, const scalar_t *dy, con
 }
 
 torch::Tensor project(torch::Tensor signal, torch::Tensor atoms, torch::Tensor rows,
-                      torch::Tensor z, std::vector<double> config, int center_column) {
+                      torch::Tensor z, std::vector<double> config, int center_column,
+                      int atom_threads) {
     check_signal(signal);
+    check_atom_thread_count(atom_threads);
     Axis a = parse_axis(config);
     TORCH_CHECK(signal.size(1) == a.sites, "signal shape differs from axis");
     check_atoms(atoms, rows, signal);
@@ -581,11 +590,11 @@ torch::Tensor project(torch::Tensor signal, torch::Tensor atoms, torch::Tensor r
     auto result = torch::empty({signal.size(0), atoms.size(0)}, signal.options());
     if (atoms.size(0) == 0 || signal.size(0) == 0)
         return result;
-    dim3 grid((atoms.size(0) + THREADS - 1) / THREADS,
+    dim3 grid((atoms.size(0) + atom_threads - 1) / atom_threads,
               (signal.size(0) + BATCH_TILE - 1) / BATCH_TILE);
     auto stream = c10::cuda::getCurrentCUDAStream();
     AT_DISPATCH_FLOATING_TYPES(signal.scalar_type(), "cell_mass_project", [&] {
-        project_atoms_kernel<<<grid, THREADS, 0, stream>>>(
+        project_atoms_kernel<<<grid, atom_threads, 0, stream>>>(
             signal.data_ptr<scalar_t>(), atoms.data_ptr<scalar_t>(), rows.data_ptr<int64_t>(),
             z.data_ptr<scalar_t>(), result.data_ptr<scalar_t>(), signal.size(0), atoms.size(0), a,
             center_column);
@@ -681,12 +690,12 @@ torch::Tensor build_z(torch::Tensor signal, std::vector<double> config, bool hie
 }
 
 torch::Tensor compute_h(torch::Tensor x, torch::Tensor atoms, torch::Tensor rows, torch::Tensor z,
-                        std::vector<double> config) {
-    return project(x, atoms, rows, z, config, 3);
+                        std::vector<double> config, int atom_threads) {
+    return project(x, atoms, rows, z, config, 3, atom_threads);
 }
 torch::Tensor compute_g(torch::Tensor dy, torch::Tensor atoms, torch::Tensor rows, torch::Tensor z,
-                        std::vector<double> config) {
-    return project(dy, atoms, rows, z, config, 2);
+                        std::vector<double> config, int atom_threads) {
+    return project(dy, atoms, rows, z, config, 2, atom_threads);
 }
 torch::Tensor compute_y(torch::Tensor h, torch::Tensor atoms, torch::Tensor rows,
                         std::vector<double> config, int sites_per_block, int atom_splits) {
@@ -701,8 +710,9 @@ torch::Tensor compute_parameter_grad(torch::Tensor x, torch::Tensor dy, torch::T
                                      torch::Tensor rows, torch::Tensor h, torch::Tensor g,
                                      torch::Tensor zx, torch::Tensor zy,
                                      std::vector<double> input_config,
-                                     std::vector<double> output_config) {
+                                     std::vector<double> output_config, int atom_threads) {
     check_signal(x);
+    check_atom_thread_count(atom_threads);
     check_signal(dy);
     check_like(dy, x);
     check_atoms(atoms, rows, x);
@@ -722,7 +732,8 @@ torch::Tensor compute_parameter_grad(torch::Tensor x, torch::Tensor dy, torch::T
         return grad;
     auto stream = c10::cuda::getCurrentCUDAStream();
     AT_DISPATCH_FLOATING_TYPES(x.scalar_type(), "cell_mass_parameter_grad", [&] {
-        parameter_grad_kernel<<<(atoms.size(0) + THREADS - 1) / THREADS, THREADS, 0, stream>>>(
+        parameter_grad_kernel<<<(atoms.size(0) + atom_threads - 1) / atom_threads, atom_threads, 0,
+                                stream>>>(
             x.data_ptr<scalar_t>(), dy.data_ptr<scalar_t>(), atoms.data_ptr<scalar_t>(),
             rows.data_ptr<int64_t>(), h.data_ptr<scalar_t>(), g.data_ptr<scalar_t>(),
             zx.data_ptr<scalar_t>(), zy.data_ptr<scalar_t>(), grad.data_ptr<scalar_t>(), x.size(0),
