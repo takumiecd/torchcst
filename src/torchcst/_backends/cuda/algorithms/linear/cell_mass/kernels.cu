@@ -856,7 +856,7 @@ __global__ void expand_tiles_kernel(const moment_t *h, const scalar_t *atoms, co
     }
 }
 
-template <bool WriteG, bool SingleBatchTile = false, typename scalar_t, typename moment_t>
+template <bool WriteG, typename scalar_t, typename moment_t>
 __global__ void parameter_grad_kernel(const scalar_t *x, const scalar_t *dy, const scalar_t *atoms,
                                       const int64_t *rows, const moment_t *zx, const moment_t *zy,
                                       scalar_t *g_output, scalar_t *grad, int batches,
@@ -866,44 +866,23 @@ __global__ void parameter_grad_kernel(const scalar_t *x, const scalar_t *dy, con
         return;
     int original = rows[slot];
     double amplitude = atoms[4 * original], sigma = atoms[4 * original + 1];
+    Profile input = make_profile(input_axis, sigma, atoms[4 * original + 3]);
+    Profile output = make_profile(output_axis, sigma, atoms[4 * original + 2]);
     double da = 0, ds = 0, dmu_out = 0, dmu_in = 0;
-    if constexpr (SingleBatchTile) {
-        // With at most four batches each axis is projected once. Finish the
-        // input profile before creating the output profile, shortening the
-        // lifetime of its register context. One thread still owns one atom.
-        Projection input_vjp;
-        {
-            Profile input = make_profile(input_axis, sigma, atoms[4 * original + 3]);
-            input_vjp = project_atom<true>(x, zx, batches, 0, input);
-        }
-        Profile output = make_profile(output_axis, sigma, atoms[4 * original + 2]);
-        Projection output_vjp = project_atom<true>(dy, zy, batches, 0, output);
-        for (int local = 0; local < batches; ++local) {
-            double hv = input_vjp.value[local], gv = output_vjp.value[local];
+    for (int begin = 0; begin < batches; begin += BATCH_TILE) {
+        Projection input_vjp = project_atom<true>(x, zx, batches, begin, input);
+        Projection output_vjp = project_atom<true>(dy, zy, batches, begin, output);
+        for (int local = 0; local < BATCH_TILE && begin + local < batches; ++local) {
+            // Reprojection already produced these double values. Avoid loading
+            // rounded H/G again when combining their parameter pullbacks.
+            double hv = input_vjp.value[local];
+            double gv = output_vjp.value[local];
             if (WriteG)
-                g_output[local * atom_count + slot] = gv;
+                g_output[(begin + local) * atom_count + slot] = gv;
             da += hv * gv;
             ds += amplitude * (gv * input_vjp.sigma[local] + hv * output_vjp.sigma[local]);
             dmu_in += amplitude * gv * input_vjp.center[local];
             dmu_out += amplitude * hv * output_vjp.center[local];
-        }
-    } else {
-        // General batches reuse both profile contexts over successive tiles.
-        Profile input = make_profile(input_axis, sigma, atoms[4 * original + 3]);
-        Profile output = make_profile(output_axis, sigma, atoms[4 * original + 2]);
-        for (int begin = 0; begin < batches; begin += BATCH_TILE) {
-            Projection input_vjp = project_atom<true>(x, zx, batches, begin, input);
-            Projection output_vjp = project_atom<true>(dy, zy, batches, begin, output);
-            for (int local = 0; local < BATCH_TILE && begin + local < batches; ++local) {
-                // Combine reprojected doubles, avoiding rounded H/G reloads.
-                double hv = input_vjp.value[local], gv = output_vjp.value[local];
-                if (WriteG)
-                    g_output[(begin + local) * atom_count + slot] = gv;
-                da += hv * gv;
-                ds += amplitude * (gv * input_vjp.sigma[local] + hv * output_vjp.sigma[local]);
-                dmu_in += amplitude * gv * input_vjp.center[local];
-                dmu_out += amplitude * hv * output_vjp.center[local];
-            }
         }
     }
     grad[4 * original] = da;
@@ -1503,12 +1482,10 @@ torch::Tensor compute_dx_from_owners(torch::Tensor g, torch::Tensor atoms, torch
 
 // Recomputed parameter pullbacks already contain G. Publish it for dX here,
 // avoiding a second output-axis projection and retaining no forward H buffer.
-std::vector<torch::Tensor> compute_g_parameter_grad(torch::Tensor x, torch::Tensor dy,
-                                                    torch::Tensor atoms, torch::Tensor rows,
-                                                    torch::Tensor zx, torch::Tensor zy,
-                                                    std::vector<double> input_config,
-                                                    std::vector<double> output_config,
-                                                    int atom_threads, bool specialize_batch) {
+std::vector<torch::Tensor>
+compute_g_parameter_grad(torch::Tensor x, torch::Tensor dy, torch::Tensor atoms, torch::Tensor rows,
+                         torch::Tensor zx, torch::Tensor zy, std::vector<double> input_config,
+                         std::vector<double> output_config, int atom_threads) {
     check_signal(x);
     check_signal(dy);
     check_like(dy, x);
@@ -1528,14 +1505,8 @@ std::vector<torch::Tensor> compute_g_parameter_grad(torch::Tensor x, torch::Tens
     auto stream = c10::cuda::getCurrentCUDAStream();
     AT_DISPATCH_FLOATING_TYPES(x.scalar_type(), "cell_mass_fused_g_parameter_grad", [&] {
         auto launch = [&](auto *input_moments, auto *output_moments) {
-            int blocks = (atoms.size(0) + atom_threads - 1) / atom_threads;
-            if (specialize_batch && x.size(0) <= BATCH_TILE)
-                parameter_grad_kernel<true, true><<<blocks, atom_threads, 0, stream>>>(
-                    x.data_ptr<scalar_t>(), dy.data_ptr<scalar_t>(), atoms.data_ptr<scalar_t>(),
-                    rows.data_ptr<int64_t>(), input_moments, output_moments, g.data_ptr<scalar_t>(),
-                    grad.data_ptr<scalar_t>(), x.size(0), atoms.size(0), input, output);
-            else
-                parameter_grad_kernel<true, false><<<blocks, atom_threads, 0, stream>>>(
+            parameter_grad_kernel<true>
+                <<<(atoms.size(0) + atom_threads - 1) / atom_threads, atom_threads, 0, stream>>>(
                     x.data_ptr<scalar_t>(), dy.data_ptr<scalar_t>(), atoms.data_ptr<scalar_t>(),
                     rows.data_ptr<int64_t>(), input_moments, output_moments, g.data_ptr<scalar_t>(),
                     grad.data_ptr<scalar_t>(), x.size(0), atoms.size(0), input, output);

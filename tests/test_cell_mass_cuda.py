@@ -788,21 +788,3 @@ def test_owner_c_thread_counts(dtype, c_threads, sites, atoms, batch, modes):
     tol = {"rtol":5e-5,"atol":2e-6} if dtype==torch.float32 else {"rtol":3e-8,"atol":3e-10}
     for value,truth in [(actual,expected),(dx,edx),(dp,edp)]:
         torch.testing.assert_close(value.cpu(),truth,**tol)
-
-
-@requires_cuda
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
-@pytest.mark.parametrize("batch", [0,1,4,5])
-def test_small_batch_pullback_matches_general(dtype,batch):
-    binding=spec(128)
-    x,p,dy=inputs(binding,35,batch,dtype)
-    x,p,dy=x.cuda(),p.cuda(),dy.cuda()
-    native=_extension()
-    ci,co=_axis_config(binding.input,"polynomial_recurrence"),_axis_config(binding.output,"polynomial_recurrence")
-    rows=prepare_layout(binding,p)
-    zx=native.build_z(x,ci,True,4,True,True)
-    zy=native.build_z(dy,co,True,4,True,True)
-    general=native.compute_g_parameter_grad(x,dy,p,rows,zx,zy,ci,co,32,False)
-    specialized=native.compute_g_parameter_grad(x,dy,p,rows,zx,zy,ci,co,32,True)
-    for value,truth in zip(specialized,general,strict=True):
-        torch.testing.assert_close(value,truth,rtol=3e-8,atol=3e-10)

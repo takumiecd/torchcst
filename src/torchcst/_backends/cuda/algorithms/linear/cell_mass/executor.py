@@ -106,7 +106,8 @@ def prepare_inputs_and_layout(
 
     Structural checks have already run on the host. The single scalar read
     below preserves finite/width rejection before Z/H/Y can consume bad values.
-    Keys and the error word are temporary; only sorted row indices survive.
+    Keys and the error word are temporary. Sorted row indices and, when
+    requested, group boundaries survive for forward/backward reuse.
     """
     keys, error_word = native.prepare_inputs(x, atoms, input_config, output_config)
     errors = error_word.item()

@@ -35,17 +35,13 @@ Tensor compute_dx_from_owners(Tensor g, Tensor atoms, Tensor rows, Tensor offset
 
 std::vector<Tensor> compute_g_parameter_grad(Tensor x, Tensor dy, Tensor atoms, Tensor rows,
                                              Tensor zx, Tensor zy, Config input_config,
-                                             Config output_config, int atom_threads,
-                                             bool specialize_batch);
+                                             Config output_config, int atom_threads);
 
 Tensor prepare_group_offsets(Tensor keys, Tensor rows, int groups);
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("prepare_group_offsets", &prepare_group_offsets);
-    m.def("compute_g_parameter_grad", &compute_g_parameter_grad, pybind11::arg("x"),
-          pybind11::arg("dy"), pybind11::arg("atoms"), pybind11::arg("rows"), pybind11::arg("zx"),
-          pybind11::arg("zy"), pybind11::arg("input_config"), pybind11::arg("output_config"),
-          pybind11::arg("atom_threads"), pybind11::arg("specialize_batch") = true);
+    m.def("compute_g_parameter_grad", &compute_g_parameter_grad);
     m.def("compute_y_from_owners", &compute_y_from_owners, pybind11::arg("h"),
           pybind11::arg("atoms"), pybind11::arg("rows"), pybind11::arg("offsets"),
           pybind11::arg("input_config"), pybind11::arg("output_config"),
