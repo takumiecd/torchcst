@@ -100,7 +100,8 @@ forward状態はautograd呼び出しが所有する。元のParameterをbackward
 
 ## 初版の対応範囲と比較スイッチ
 
-- 入出力とも1次元、各軸に明示的な一つのFourier bank。128以下の2のべき乗site数、128以下のatom。
+- 入出力とも1次元、各軸に明示的な一つのFourier bank。128以下の2のべき乗site数。
+  初版のatom上限128は、[5%条件の最適化](cell-mass-coefficient-optimization.ja.md)で1024へ拡張する。
 - ChebyshevSquareSpec、2〜16の偶数mode、float32/float64、連続した入力とphysical atom行。
 - CUDAでは支持の全幅2Lがchartの周期以下。CPU参照はより広い支持の複数像も検証する。
 - 初版の各bank内では全階層が同じ基底を持つ。leafは最大8site、階層の全ノードをZに保存する。
@@ -202,7 +203,7 @@ shared/registerやドライバの容量をTensorのallocated値へ混ぜない�
 ユーザー指定の今後の標準は正方N×Nに対してatom数を約0.05*N²とする。
 128×128では819.2、約819atomになる。端数処理の規則はまだ固定しない。
 上の実測は128atom（約0.78%）の初版検証であり、5%ケースの測定値ではない。
-現行CUDA entryの128atom上限を拡張・検証してから、同じ5%ケースで実測する必要がある。
+初版の128atom上限を拡張した5%ケースの実測は、上記の最適化文書へ記録する。
 
 同じFP32・batch 4・mode 8・leaf 8のまま819atomにした主要配列の理論容量は次の通り。
 これは確保単位の丸め、prepare/sortの一時領域、optimizer、Graph、ライブラリworkspaceを
@@ -223,7 +224,8 @@ denseの約20%になる。H/G等を加えた上の予算では約60%であり、
 Adamの二つのmomentを含める場合は、理論値にCST約25.6 KiB、dense 128 KiBがさらに加わるが、
 実際のoptimizer stepには方式ごとの一時領域があり、別の測定が必要である。
 
-source archive SHA256は`08e2b1e0bd64a624afb8f853c26d7624bc31618dcf5d9a11c6e1981cc929fe82`、
+上記128atomのfresh-process測定のsource archive SHA256は
+`08e2b1e0bd64a624afb8f853c26d7624bc31618dcf5d9a11c6e1981cc929fe82`、
 回収archive SHA256は`d6cb27b7eb90fafa35829845596aceec74fd2dfcc4fcd3cb9ca9ca0cdc3d8cf7`。
 両hashを再照合し、所有pool slotの停止を確認した。検証用jobと測定用jobを含め、旧研究の
 停止中の実験は再開していない。

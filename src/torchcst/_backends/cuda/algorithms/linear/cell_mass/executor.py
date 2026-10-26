@@ -16,7 +16,9 @@ from torchcst._backends.torch.kernels.cell_mass import validate_inputs
 from torchcst.kernels.cell_mass import CellMassLinearSpec
 
 
-def _axis_config(axis):
+def _axis_config(axis, coefficient_method="polynomial"):
+    if coefficient_method not in ("polynomial", "dft"):
+        raise ValueError("coefficient_method must be polynomial or dft")
     return [
         axis.site_count,
         axis.spacing,
@@ -24,6 +26,7 @@ def _axis_config(axis):
         axis.origin,
         axis.profile.modes,
         axis.profile.tail_bound,
+        int(coefficient_method == "polynomial"),
     ]
 
 
@@ -46,8 +49,8 @@ def _extension():
 def _validate_cuda_support(spec, x, atoms):
     if x.device.type != "cuda":
         raise ValueError("cell-mass CUDA entry requires CUDA inputs")
-    if atoms.shape[0] > 128:
-        raise ValueError("first CUDA prototype supports at most 128 atoms")
+    if atoms.shape[0] > 1024:
+        raise ValueError("CUDA prototype supports at most 1024 atoms")
     for axis in (spec.input, spec.output):
         if axis.site_count > 128 or axis.site_count & (axis.site_count - 1):
             raise ValueError("first CUDA prototype requires power-of-two sites <=128")
@@ -90,11 +93,13 @@ def prepare_layout(spec, atoms):
 
 class _CellMassFunction(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, x, atoms, spec, z_method, z_threads_per_element):
+    def forward(
+        ctx, x, atoms, spec, z_method, z_threads_per_element, coefficient_method
+    ):
         native = _extension()
         rows = prepare_layout(spec, atoms)
-        input_config = _axis_config(spec.input)
-        output_config = _axis_config(spec.output)
+        input_config = _axis_config(spec.input, coefficient_method)
+        output_config = _axis_config(spec.output, coefficient_method)
 
         # Same stream: H is complete before its consumers start. Z is global;
         # atom parameters are never copied into a second global parameter array.
@@ -105,6 +110,7 @@ class _CellMassFunction(torch.autograd.Function):
         ctx.spec = spec
         ctx.z_method = z_method
         ctx.z_threads_per_element = z_threads_per_element
+        ctx.coefficient_method = coefficient_method
         ctx.save_for_backward(x, atoms, rows, zx, h)
         return y
 
@@ -116,8 +122,8 @@ class _CellMassFunction(torch.autograd.Function):
         # Only dY may need canonicalization. Saved X/atoms are original tensors;
         # autograd's version checks reject mutation before their backward use.
         dy = grad_output.contiguous()
-        input_config = _axis_config(ctx.spec.input)
-        output_config = _axis_config(ctx.spec.output)
+        input_config = _axis_config(ctx.spec.input, ctx.coefficient_method)
+        output_config = _axis_config(ctx.spec.output, ctx.coefficient_method)
 
         zy = native.build_z(
             dy, output_config, ctx.z_method == "merge", ctx.z_threads_per_element
@@ -127,11 +133,17 @@ class _CellMassFunction(torch.autograd.Function):
         grad_atoms = native.compute_parameter_grad(
             x, dy, atoms, rows, h, g, zx, zy, input_config, output_config
         )
-        return dx, grad_atoms, None, None, None
+        return dx, grad_atoms, None, None, None, None
 
 
 def physical_linear(
-    spec: CellMassLinearSpec, x, atoms, *, z_method="direct", z_threads_per_element=4
+    spec: CellMassLinearSpec,
+    x,
+    atoms,
+    *,
+    z_method="direct",
+    z_threads_per_element=4,
+    coefficient_method="polynomial",
 ):
     """Run the exact, first-order physical prototype with no sampled-L2 fallback.
 
@@ -149,4 +161,8 @@ def physical_linear(
         or z_threads_per_element & (z_threads_per_element - 1)
     ):
         raise ValueError("Z thread count must be a power of two in [1,128]")
-    return _CellMassFunction.apply(x, atoms, spec, z_method, z_threads_per_element)
+    if coefficient_method not in ("polynomial", "dft"):
+        raise ValueError("coefficient_method must be polynomial or dft")
+    return _CellMassFunction.apply(
+        x, atoms, spec, z_method, z_threads_per_element, coefficient_method
+    )

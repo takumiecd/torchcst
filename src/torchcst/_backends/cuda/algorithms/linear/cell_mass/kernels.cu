@@ -21,6 +21,7 @@ constexpr double PI = 3.1415926535897932384626433832795;
 struct Axis {
     int sites, modes, leaf, leaves, nodes;
     double spacing, half_width, origin, tail_bound;
+    bool polynomial_coefficients;
     __host__ __device__ int basis_count() const {
         return 1 + 2 * modes;
     }
@@ -36,7 +37,7 @@ struct Axis {
 };
 
 Axis parse_axis(const std::vector<double> &c) {
-    TORCH_CHECK(c.size() == 6, "axis config requires six scalars");
+    TORCH_CHECK(c.size() == 7, "axis config requires seven scalars");
     for (double v : c)
         TORCH_CHECK(std::isfinite(v), "axis config must be finite");
     TORCH_CHECK(c[0] == std::floor(c[0]) && c[0] >= 1 && c[0] <= 128,
@@ -50,6 +51,8 @@ Axis parse_axis(const std::vector<double> &c) {
     a.origin = c[3];
     a.modes = static_cast<int>(c[4]);
     a.tail_bound = c[5];
+    TORCH_CHECK(c[6] == 0 || c[6] == 1, "invalid coefficient method");
+    a.polynomial_coefficients = c[6] == 1;
     TORCH_CHECK((a.sites & (a.sites - 1)) == 0, "site count must be a power of two");
     TORCH_CHECK(a.modes % 2 == 0 && a.spacing > 0 && a.half_width > 0, "invalid cell-mass axis");
     TORCH_CHECK(a.half_width <= a.chart_period() / 2,
@@ -77,8 +80,8 @@ void check_like(const torch::Tensor &t, const torch::Tensor &x) {
 
 void check_atoms(const torch::Tensor &atoms, const torch::Tensor &rows, const torch::Tensor &x) {
     check_like(atoms, x);
-    TORCH_CHECK(atoms.dim() == 2 && atoms.size(1) == 4 && atoms.size(0) <= 128,
-                "prototype physical atoms require shape [A<=128,4]");
+    TORCH_CHECK(atoms.dim() == 2 && atoms.size(1) == 4 && atoms.size(0) <= 1024,
+                "prototype physical atoms require shape [A<=1024,4]");
     TORCH_CHECK(rows.device() == x.device() && rows.is_contiguous() &&
                     rows.scalar_type() == torch::kInt64 && rows.dim() == 1 &&
                     rows.numel() == atoms.size(0),
@@ -133,7 +136,7 @@ __device__ ValueDerivative native_density(const Profile &p, double t) {
 
 // A degree-M density has exact Fourier coefficients from 2M+1 equispaced
 // samples. This small scalar DFT avoids a persistent prepared coefficient table.
-__device__ ValueDerivative raw_coefficient(const Profile &p, int harmonic) {
+__device__ ValueDerivative dft_coefficient(const Profile &p, int harmonic) {
     int samples = 2 * p.axis.modes + 1;
     double sum = 0, derivative = 0;
     for (int j = 0; j < samples; ++j) {
@@ -144,6 +147,57 @@ __device__ ValueDerivative raw_coefficient(const Profile &p, int harmonic) {
         derivative += density.sigma * factor;
     }
     return {sum, derivative};
+}
+
+// T_M(x)^2 = (1 + T_{2M}(x))/2. Let x=beta^2, t=x-1.
+// The k-th complex Fourier coefficient D_k of T_{2M}(beta*cos(theta/2)) is
+//   D_M = x^M/2,
+//   D_k = M/(M+k)*x^k * sum_{j=1..M-k}
+//         binom(M-k-1,j-1)*binom(M+k+j-1,j)*t^j.
+// All terms are nonnegative for beta>=1. Advancing adjacent terms avoids both
+// a sampling DFT and cancellation in an alternating power expansion.
+// The sigma derivative follows the same scalar recurrence. No arrays/tables.
+__device__ ValueDerivative polynomial_coefficient(const Profile &p, int harmonic) {
+    int m = p.axis.modes;
+    int k = harmonic;
+    double x = p.beta * p.beta;
+    double dx = 2 * p.beta * p.beta_sigma;
+    double t = x - 1;
+    double x_power = 1;
+    for (int j = 0; j < k; ++j)
+        x_power *= x;
+    double value, derivative;
+    if (k == m) {
+        value = 0.5 * x_power;
+        derivative = value * m * dx / x;
+    } else {
+        double term = (m + k) * t;
+        double dterm = (m + k) * dx;
+        double sum = term;
+        double dsum = dterm;
+        for (int j = 1; j < m - k; ++j) {
+            double ratio = static_cast<double>((m - k - j) * (m + k + j)) / (j * (j + 1));
+            dterm = ratio * (dterm * t + term * dx);
+            term *= ratio * t;
+            sum += term;
+            dsum += dterm;
+        }
+        double prefix = static_cast<double>(m) / (m + k) * x_power;
+        double dprefix = k == 0 ? 0 : prefix * k * dx / x;
+        value = prefix * sum;
+        derivative = dprefix * sum + prefix * dsum;
+    }
+    if (k == 0)
+        value += 1;
+    double denominator = 2 * p.denominator * p.denominator;
+    return {value / denominator,
+            (derivative - 2 * value * p.denominator_sigma / p.denominator) / denominator};
+}
+
+__device__ ValueDerivative raw_coefficient(const Profile &p, int harmonic) {
+    if (p.axis.polynomial_coefficients)
+        return polynomial_coefficient(p, harmonic);
+    return dft_coefficient(p, harmonic);
 }
 
 __device__ Profile make_profile(Axis a, double sigma, double center) {

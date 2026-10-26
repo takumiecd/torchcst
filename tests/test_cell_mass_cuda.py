@@ -57,10 +57,14 @@ def inputs(binding, atoms=128, batch=4, dtype=torch.float64):
 @requires_cuda
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 @pytest.mark.parametrize("z_method", ["direct", "merge"])
+@pytest.mark.parametrize("coefficient_method", ["polynomial", "dft"])
 @pytest.mark.parametrize(
-    "sites,atoms,batch", [(128, 128, 4), (32, 35, 3), (8, 1, 5), (8, 0, 2)]
+    "sites,atoms,batch",
+    [(128, 819, 4), (128, 128, 4), (32, 35, 3), (8, 1, 5), (8, 0, 2)],
 )
-def test_cuda_y_dx_and_every_atom_gradient(dtype, z_method, sites, atoms, batch):
+def test_cuda_y_dx_and_every_atom_gradient(
+    dtype, z_method, coefficient_method, sites, atoms, batch
+):
     binding = spec(sites)
     x, p, dy = inputs(binding, atoms, batch, dtype)
     tx, tp = x.requires_grad_(), p.requires_grad_()
@@ -70,7 +74,9 @@ def test_cuda_y_dx_and_every_atom_gradient(dtype, z_method, sites, atoms, batch)
     gx = x.detach().cuda().requires_grad_()
     gp = p.detach().cuda().requires_grad_()
     version = gp._version
-    actual = physical_linear(binding, gx, gp, z_method=z_method)
+    actual = physical_linear(
+        binding, gx, gp, z_method=z_method, coefficient_method=coefficient_method
+    )
     actual_dx, actual_dp = torch.autograd.grad(actual, (gx, gp), dy.cuda())
     tolerance = (
         {"rtol": 5e-5, "atol": 2e-6}
@@ -160,3 +166,22 @@ def test_no_cpu_fallback_or_implicit_packing():
     noncontiguous.copy_(p)
     with pytest.raises(ValueError, match="contiguous"):
         physical_linear(binding, x, noncontiguous)
+    with pytest.raises(ValueError, match="coefficient_method"):
+        _axis_config(binding.input, "unknown")
+
+
+@requires_cuda
+def test_expanded_atom_limit_and_its_rejection():
+    binding = spec(8)
+    x, p, dy = inputs(binding, 1024, 2)
+    rx, rp = x.requires_grad_(), p.requires_grad_()
+    expected = physical_linear_reference(binding, rx, rp)
+    expected_dx, expected_dp = torch.autograd.grad(expected, (rx, rp), dy)
+    gx, gp = x.detach().cuda().requires_grad_(), p.detach().cuda().requires_grad_()
+    y = physical_linear(binding, gx, gp)
+    dx, dp = torch.autograd.grad(y, (gx, gp), dy.cuda())
+    for a, b in ((y, expected), (dx, expected_dx), (dp, expected_dp)):
+        torch.testing.assert_close(a.cpu(), b, rtol=3e-8, atol=3e-10)
+    _, too_many, _ = inputs(binding, 1025, 2)
+    with pytest.raises(ValueError, match="1024 atoms"):
+        physical_linear(binding, gx, too_many.cuda())
