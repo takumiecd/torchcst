@@ -7,6 +7,8 @@
 
 関連する境界は[宣言と実行の配置規約](../src/torchcst/_backends/README.md)、
 状態の所有は[AtomとAlgorithmの契約](atom-state.ja.md)に従う。
+現行CUDAから何を変更するかと各関数の役割は
+[区間確率128版の処理分割](research-history/cuda-linear/hierarchical-fourier-cell-mass-pipeline-20261026.ja.md)に整理する。
 
 ## 今回決めたこと
 

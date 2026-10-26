@@ -4,6 +4,9 @@
 //   3. block128_backward_sorted_cuda：保存した並びで逆伝播し、勾配を元の行へ戻す。
 // 各threadは別atomを担当する。担当外のthreadもblock同期へ必ず到達する。
 // Parameterの列は、0=振幅、1=出力中心、2=入力中心、3=幅logit。
+// 現在の実装は離散L2版。continuous_mass/profile_supportにはまだ対応していない。
+// 区間確率版への処理分割案：
+// docs/research-history/cuda-linear/hierarchical-fourier-cell-mass-pipeline-20261026.ja.md
 #include <ATen/ATen.h>
 #include <ATen/cuda/CUDAContext.h>
 #include <c10/cuda/CUDAGuard.h>
@@ -93,6 +96,8 @@ __device__ double alpha(const float *p, const double *norm, int a) {
 // 各threadが一つのatomの正規化情報を作る。
 // norm[atom][出力/入力][3]に、二乗norm・中心微分との内積・幅微分との内積を保存する。
 // 混合成分を足してから全128 sitesで測る。タイル単位で正規化し直さない。
+// [新方式で差し替える箇所] 支持全体の面積から係数の正規化情報を準備する。
+// norm配列を単にmassという名前へ変えて同じ計算を使うものではない。
 __global__ void prepare_norms(const float *p, const double *fit, double *norm) {
     int a = threadIdx.x;
     double width = .1 + 9.9 * sigmoid(p[a * 4 + 3]);
@@ -129,6 +134,7 @@ __global__ void prepare_norms(const float *p, const double *fit, double *norm) {
 // 一つのZタイルを、(batch,basis)の要素ごとにthreadへ分けて作る。
 // 親の偶数modeは同じ周波数の子Zを足せる。それ以外は入力値から計算する。
 // z[node][batch][basis]を書き、親子間の同期は呼出し側で行う。
+// [新方式で差し替える箇所] siteのセル区間で積分した基底と、子Zを継承できる条件。
 __device__ void build_z_tile(const float *source, double *z, int node) {
     int bank = node_bank(node);
     int first = node_start(node);
@@ -155,6 +161,7 @@ __device__ void build_z_tile(const float *source, double *z, int node) {
 // result[field][batch]のfieldは値・中心微分・幅微分の3項目。
 // 支持内の完全なタイルはZを使い、端のsiteはsourceから直接足す。
 // 各atomを担当する一つのthreadが、この関数を必要な成分数だけ呼ぶ。
+// [新方式で差し替える箇所] 完全セルのZ縮約と、支持で切れるセルの区間積分を分ける。
 __device__ void contract_component(const float *source, const double *z, double center,
                                    Component comp, const double *co, const double *ci,
                                    bool derivatives, double result[3][BATCH]) {
@@ -233,6 +240,7 @@ compute_atom_responses(const float *p, const double *fit, const float *sx, const
 // HとGを使って、一つの小バッチ分のatom勾配を保存する。
 // 幅・中心にはnormの微分も含める。振幅0でも振幅勾配を計算する。
 // 出力はdp[batch_group][atom][parameter_field]で、後のkernelでbatch群を合算する。
+// [新方式で差し替える箇所] L2の微分補正を流用せず、面積で割る微分へ置き換える。
 __device__ void write_parameter_partial(const float *p, const double *norm, double h[3][BATCH],
                                         double g[3][BATCH], double *dp, int batch_group) {
     int a = threadIdx.x;
@@ -314,6 +322,7 @@ __device__ void build_c(const float *p, const double *fit, const double *norm, c
 
 // Cを基底へ展開し、直接成分・支持端の寄与を足してY/dXを保存する。
 // 各threadの保存先は一つの(batch,site)。同じ結果を別threadが上書きしない。
+// [新方式で差し替える箇所] Cの展開もセル積分基底を使う。入力側だけの変更では足りない。
 template <bool SORTED>
 __device__ void store_output(const float *p, const double *fit, const double *norm,
                              const double *values, const double *cbuf, float *output,
@@ -396,7 +405,8 @@ __global__ void block128(const float *x, const float *p, const float *dy, const 
         }
         p = shared_parameters;
     }
-    // [init] Each thread reads four source elements per required side.
+    // [入力のload] 必要な各側について、thread番号を起点に入力要素を分担して読む。
+    // ここではまだHを計算しない。batch末尾の範囲外は0で埋める。
     for (int q = a; q < BATCH * N; q += blockDim.x) {
         int b = batch_begin + q / N;
         int i = q % N;
@@ -411,7 +421,8 @@ __global__ void block128(const float *x, const float *p, const float *dy, const 
     if (clocks && a == 0) {
         clocks[blockIdx.x * 5] = clock64();
     }
-    // [Z] Input tiles -> shared basis moments, with child-to-parent dependencies.
+    // [Zの構築] 入力タイルを階層共通の基底へ集約する。
+    // 親が子Zを読む可能性があるため、各nodeの書き込み後にblock全員で同期する。
     for (int node = 0; node < NODES; ++node) {
         if (!BACKWARD || owner) {
             build_z_tile(sx, zx, node);
@@ -424,7 +435,8 @@ __global__ void block128(const float *x, const float *p, const float *dy, const 
     if (clocks && a == 0) {
         clocks[blockIdx.x * 5 + 1] = clock64();
     }
-    // [H/G] Shared Z -> one complete response per atom, owned by this thread.
+    // [H/Gの計算] ここではthread番号がatomの担当slotになる。
+    // sharedのZと直接部分を読み、自分のatomの全支持からH/Gを完成させる。
     double h[3][BATCH] = {}; // thread専用：Xからの縮約
     double g[3][BATCH] = {}; // thread専用：dYからの縮約
     bool needs_response = true;
@@ -434,24 +446,28 @@ __global__ void block128(const float *x, const float *p, const float *dy, const 
         needs_response = range.begin <= a && a < range.end;
     }
     compute_atom_responses<BACKWARD>(p, fit, sx, sy, zx, zg, owner, needs_response, h, g);
+    // [H/Gの公開] 値だけをsharedへ保存し、他threadのC計算から読めるようにする。
+    // 中心・幅の微分は担当thread内に残し、dP担当blockがその場で使う。
     for (int b = 0; b < BATCH; ++b) {
         values[a * BATCH + b] = BACKWARD ? g[0][b] : h[0][b];
     }
     if (owner) {
         write_parameter_partial(p, norm, h, g, dp, batch_group);
     }
-    __syncthreads(); // no thread can read Z after this point
+    // 全員がZの読み取りを終えてから、その保存領域をCへ転用する。
+    __syncthreads();
     if (clocks && a == 0) {
         clocks[blockIdx.x * 5 + 2] = clock64();
     }
-    // [C] Shared H/G -> output-tile coefficients, with one writer per C element.
-    // Reuse Z_X (or Z_dY for dX-only blocks) only after the above barrier.
+    // [Cの構築] H/Gから、担当出力タイルで使う基底係数を集約する。
+    // 各C要素の書き手は一つ。Z_X（dX専用blockではZ_dY）の領域を再利用する。
     build_c<SORTED>(p, fit, norm, values, zx, BACKWARD ? 1 : 0, tile * 32, ranges);
     __syncthreads();
     if (clocks && a == 0) {
         clocks[blockIdx.x * 5 + 3] = clock64();
     }
-    // [Y/dX] Expand C and add direct/boundary terms; one writer per result element.
+    // [出力] Cを展開し、Cへ含めなかった直接・境界部分を加えて保存する。
+    // 一つの出力要素は一threadだけが書く。
     store_output<SORTED>(p, fit, norm, values, zx, output, batch_count, batch_begin, tile * 32,
                          BACKWARD ? 1 : 0, ranges);
     if (clocks) {
