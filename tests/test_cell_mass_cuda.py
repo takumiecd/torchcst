@@ -209,8 +209,9 @@ def test_expanded_atom_limit_and_its_rejection():
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 @pytest.mark.parametrize("cache_projection_derivatives", [False, True])
 @pytest.mark.parametrize("sites_per_block,atom_splits", [(128, 16), (256, 64)])
+@pytest.mark.parametrize("double_intermediates", [False, True])
 def test_1024_wide_expansion_and_all_gradients(
-    dtype, cache_projection_derivatives, sites_per_block, atom_splits
+    dtype, cache_projection_derivatives, sites_per_block, atom_splits, double_intermediates
 ):
     # Keep the physical domain fixed while refining its site grid. Unequal axis
     # tiles exercise the one-profile-tile and multi-profile-tile C expansion.
@@ -233,6 +234,7 @@ def test_1024_wide_expansion_and_all_gradients(
         binding, gx, gp,
         sites_per_block=sites_per_block,
         atom_splits=atom_splits,
+        double_intermediates=double_intermediates,
         atom_threads_per_block=16,
         cache_projection_derivatives=cache_projection_derivatives,
     )
@@ -365,6 +367,9 @@ def test_invalid_execution_partition():
     for invalid in (0, 1, None, "yes"):
         with pytest.raises(ValueError, match="cache_projection_derivatives"):
             physical_linear(binding, x, p, cache_projection_derivatives=invalid)
+    for invalid in (0, 1, None, "yes"):
+        with pytest.raises(ValueError, match="double_intermediates"):
+            physical_linear(binding, x, p, double_intermediates=invalid)
     native = _extension()
     rows = prepare_layout(binding, p)
     with pytest.raises(RuntimeError, match="sites_per_block"):
@@ -565,3 +570,51 @@ def test_cached_forward_keeps_original_x_version_check():
         x[0, 0] += 1
     with pytest.raises(RuntimeError, match="modified by an inplace operation"):
         y.sum().backward()
+
+
+@requires_cuda
+@pytest.mark.parametrize("cache_projection_derivatives", [False, True])
+def test_near_zero_center_gradient_preserves_adamw_update(cache_projection_derivatives):
+    # A cancellation across four batches leaves an input-center gradient near
+    # 7e-10. Rounding stored Z/H/G can flip an FP32 parameter update by one ULP.
+    profile = ChebyshevSquareSpec(modes=8, tail_bound=1e-3)
+    binding = CellMassLinearSpec(
+        input=CellMassAxisSpec(
+            profile=profile, site_count=1024, spacing=0.125, tile_sites=128
+        ),
+        output=CellMassAxisSpec(
+            profile=profile, site_count=1024, spacing=0.125, tile_sites=256
+        ),
+    )
+    rng = torch.Generator().manual_seed(120)
+    full = torch.randn(52428, 4, generator=rng)
+    full[:, 1] = torch.linspace(0.2, 12, 52428)
+    full[:, 2:] *= 100
+    p = full[41564:41565].clone()
+    x = torch.randn(4, 1024, generator=rng)
+    dy = torch.randn(4, 1024, generator=rng)
+    rp = p.double().requires_grad_()
+    reference = physical_linear_reference(binding, x.double(), rp)
+    expected_gradient = torch.autograd.grad(reference, rp, dy.double())[0].float()
+    gp = p.cuda().requires_grad_()
+    reference_parameter = p.cuda().requires_grad_()
+    actual = physical_linear(
+        binding, x.cuda(), gp, z_method="merge", sites_per_block=256,
+        double_intermediates=True,
+        cache_projection_derivatives=cache_projection_derivatives,
+    )
+    actual.backward(dy.cuda())
+    torch.testing.assert_close(gp.grad.cpu(), expected_gradient, rtol=5e-5, atol=2e-6)
+    options = {
+        "lr": 1e-4, "betas": (0.9, 0.999), "eps": 1e-8,
+        "weight_decay": 0.01, "foreach": False, "fused": True,
+    }
+    optimizer = torch.optim.AdamW([gp], **options)
+    reference_optimizer = torch.optim.AdamW([reference_parameter], **options)
+    reference_parameter.grad = expected_gradient.cuda()
+    optimizer.step()
+    reference_optimizer.step()
+    torch.testing.assert_close(
+        gp.detach().cpu() - p, reference_parameter.detach().cpu() - p,
+        rtol=5e-5, atol=2e-6,
+    )

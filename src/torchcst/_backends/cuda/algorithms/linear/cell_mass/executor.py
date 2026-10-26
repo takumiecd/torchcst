@@ -129,6 +129,7 @@ class _CellMassFunction(torch.autograd.Function):
         atom_splits,
         atom_threads_per_block,
         cache_projection_derivatives,
+        double_intermediates,
     ):
         native = _extension()
         input_config = _axis_config(spec.input, coefficient_method)
@@ -137,7 +138,9 @@ class _CellMassFunction(torch.autograd.Function):
 
         # Same stream: H is complete before its consumers start. Z is global;
         # atom parameters are never copied into a second global parameter array.
-        zx = native.build_z(x, input_config, z_method == "merge", z_threads_per_element)
+        zx = native.build_z(
+            x, input_config, z_method == "merge", z_threads_per_element, double_intermediates
+        )
         if cache_projection_derivatives:
             h, h_sigma, h_center = native.compute_h_with_derivatives(
                 x, atoms, rows, zx, input_config, atom_threads_per_block
@@ -155,6 +158,7 @@ class _CellMassFunction(torch.autograd.Function):
         ctx.atom_splits = atom_splits
         ctx.atom_threads_per_block = atom_threads_per_block
         ctx.cache_projection_derivatives = cache_projection_derivatives
+        ctx.double_intermediates = double_intermediates
         if cache_projection_derivatives:
             # Keep original X/atoms for their autograd mutation/version checks.
             ctx.save_for_backward(x, atoms, rows, h, h_sigma, h_center)
@@ -177,7 +181,8 @@ class _CellMassFunction(torch.autograd.Function):
         output_config = _axis_config(ctx.spec.output, ctx.coefficient_method)
 
         zy = native.build_z(
-            dy, output_config, ctx.z_method == "merge", ctx.z_threads_per_element
+            dy, output_config, ctx.z_method == "merge", ctx.z_threads_per_element,
+            ctx.double_intermediates
         )
         if ctx.cache_projection_derivatives:
             g, g_sigma, g_center = native.compute_g_with_derivatives(
@@ -201,7 +206,7 @@ class _CellMassFunction(torch.autograd.Function):
                 x, dy, atoms, rows, h, g, zx, zy, input_config, output_config,
                 ctx.atom_threads_per_block,
             )
-        return dx, grad_atoms, None, None, None, None, None, None, None, None
+        return dx, grad_atoms, None, None, None, None, None, None, None, None, None
 
 
 def physical_linear(
@@ -216,6 +221,7 @@ def physical_linear(
     atom_splits=1,
     atom_threads_per_block=128,
     cache_projection_derivatives=False,
+    double_intermediates=False,
 ):
     """Run the first-order tile-window approximation with continuous mass.
 
@@ -230,8 +236,12 @@ def physical_linear(
     cache_projection_derivatives saves four [batch,atom] float64 pullbacks so
     parameter gradients reuse H/G work. This trades bounded memory for recompute;
     no per-site/per-mode Jacobian is stored. The default retains recomputation.
-    Each block covers at most four profile tiles, independent of site width. Build/JIT time is separate
-    from execution timing. All inputs and support restrictions are explicit.
+    double_intermediates preserves Z as float64 and, when caching derivatives,
+    also preserves H/G as float64. Recomputed pullbacks use their double values
+    directly. Inputs, outputs and parameter gradients retain the input dtype.
+    This can matter when a near-zero gradient is amplified by AdamW.
+    Each block covers at most four profile tiles, independent of site width.
+    Build/JIT time is separate from execution timing. Support is explicit.
     """
     validate_input_structure(spec, x, atoms)
     _validate_cuda_support(spec, x, atoms)
@@ -256,6 +266,8 @@ def physical_linear(
         128,
     ):
         raise ValueError("atom_threads_per_block must be 16, 32, 64 or 128")
+    if type(double_intermediates) is not bool:
+        raise ValueError("double_intermediates must be bool")
     if type(cache_projection_derivatives) is not bool:
         raise ValueError("cache_projection_derivatives must be bool")
     return _CellMassFunction.apply(
@@ -269,4 +281,5 @@ def physical_linear(
         atom_splits,
         atom_threads_per_block,
         cache_projection_derivatives,
+        double_intermediates,
     )

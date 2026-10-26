@@ -112,7 +112,9 @@ void check_atoms(const torch::Tensor &atoms, const torch::Tensor &rows, const to
 }
 
 void check_z(const torch::Tensor &z, const torch::Tensor &x, Axis a) {
-    check_like(z, x);
+    TORCH_CHECK(z.is_contiguous() && z.device() == x.device() &&
+                    (z.scalar_type() == x.scalar_type() || z.scalar_type() == torch::kFloat64),
+                "incompatible hierarchy tensor");
     TORCH_CHECK(z.dim() == 3 && z.size(0) == x.size(0) && z.size(1) == a.nodes &&
                     z.size(2) == a.basis_count(),
                 "invalid Z shape");
@@ -338,8 +340,8 @@ __device__ double integrated_basis(Axis a, int mode, int site) {
 
 // Z construction: a tunable team shares a single (batch,mode) sum. Distinct
 // teams, leaf tiles and batches are independent. Every thread reaches barriers.
-template <typename scalar_t>
-__global__ void build_z_direct_kernel(const scalar_t *signal, scalar_t *z, int batches, Axis a,
+template <typename scalar_t, typename moment_t>
+__global__ void build_z_direct_kernel(const scalar_t *signal, moment_t *z, int batches, Axis a,
                                       int team_size) {
     __shared__ double partials[THREADS];
     int team_count = THREADS / team_size;
@@ -396,8 +398,8 @@ struct Projection {
     double value[BATCH_TILE], center[BATCH_TILE], sigma[BATCH_TILE];
 };
 
-template <bool Derivatives, typename scalar_t>
-__device__ Projection project_atom(const scalar_t *signal, const scalar_t *z, int batches,
+template <bool Derivatives, typename scalar_t, typename moment_t>
+__device__ Projection project_atom(const scalar_t *signal, const moment_t *z, int batches,
                                    int batch_begin, const Profile &p) {
     (void)signal; // All input cells are consumed through the common Z basis.
     Axis a = p.axis;
@@ -450,9 +452,9 @@ __device__ Projection project_atom(const scalar_t *signal, const scalar_t *z, in
 
 // H/G: each thread owns a different sorted slot. Original atom parameters are
 // read through rows; all required input tiles complete locally before one store.
-template <bool Derivatives, typename scalar_t>
+template <bool Derivatives, typename scalar_t, typename moment_t, typename result_t>
 __global__ void project_atoms_kernel(const scalar_t *signal, const scalar_t *atoms,
-                                     const int64_t *rows, const scalar_t *z, scalar_t *h,
+                                     const int64_t *rows, const moment_t *z, result_t *h,
                                      int batches, int atom_count, Axis a, int center_column,
                                      double *sigma_projection, double *center_projection) {
     int slot = blockIdx.x * blockDim.x + threadIdx.x;
@@ -518,8 +520,8 @@ __device__ void cache_expansion_coefficients(const Profile &p, int first_profile
 // Within a split, C lives in registers, then shared; all owned sites use it.
 // Splits write disjoint partial outputs, which the next kernel sums without atomics.
 // Every thread reaches all barriers, including threads without a C or output site.
-template <typename scalar_t>
-__global__ void expand_tiles_kernel(const scalar_t *h, const scalar_t *atoms, const int64_t *rows,
+template <typename scalar_t, typename moment_t>
+__global__ void expand_tiles_kernel(const moment_t *h, const scalar_t *atoms, const int64_t *rows,
                                     scalar_t *output, int batches, int atom_count, Axis a,
                                     int center_column, int block_width, int atom_splits) {
     __shared__ double shared_center[ATOM_CHUNK];
@@ -628,10 +630,10 @@ __global__ void expand_tiles_kernel(const scalar_t *h, const scalar_t *atoms, co
     }
 }
 
-template <typename scalar_t>
+template <typename scalar_t, typename moment_t>
 __global__ void parameter_grad_kernel(const scalar_t *x, const scalar_t *dy, const scalar_t *atoms,
                                       const int64_t *rows, const scalar_t *h, const scalar_t *g,
-                                      const scalar_t *zx, const scalar_t *zy, scalar_t *grad,
+                                      const moment_t *zx, const moment_t *zy, scalar_t *grad,
                                       int batches, int atom_count, Axis input_axis,
                                       Axis output_axis) {
     int slot = blockIdx.x * blockDim.x + threadIdx.x;
@@ -664,9 +666,9 @@ __global__ void parameter_grad_kernel(const scalar_t *x, const scalar_t *dy, con
 
 // Cached derivatives are projected sums, NOT per-site or per-mode Jacobians.
 // One thread combines all batches for its atom; no Z/profile work remains here.
-template <typename scalar_t>
+template <typename scalar_t, typename moment_t>
 __global__ void cached_parameter_grad_kernel(const scalar_t *atoms, const int64_t *rows,
-                                             const scalar_t *h, const scalar_t *g,
+                                             const moment_t *h, const moment_t *g,
                                              const double *h_sigma, const double *h_center,
                                              const double *g_sigma, const double *g_center,
                                              scalar_t *grad, int batches, int atom_count) {
@@ -700,7 +702,8 @@ std::vector<torch::Tensor> project(torch::Tensor signal, torch::Tensor atoms, to
     check_atoms(atoms, rows, signal);
     check_z(z, signal, a);
     c10::cuda::CUDAGuard guard(signal.device());
-    auto result = torch::empty({signal.size(0), atoms.size(0)}, signal.options());
+    auto value_options = derivatives ? z.options() : signal.options();
+    auto result = torch::empty({signal.size(0), atoms.size(0)}, value_options);
     auto sigma = derivatives ? torch::empty(result.sizes(), signal.options().dtype(torch::kFloat64))
                              : torch::Tensor();
     auto center = derivatives ? torch::empty_like(sigma) : torch::Tensor();
@@ -710,17 +713,26 @@ std::vector<torch::Tensor> project(torch::Tensor signal, torch::Tensor atoms, to
               (signal.size(0) + BATCH_TILE - 1) / BATCH_TILE);
     auto stream = c10::cuda::getCurrentCUDAStream();
     AT_DISPATCH_FLOATING_TYPES(signal.scalar_type(), "cell_mass_project", [&] {
-        if (derivatives) {
-            project_atoms_kernel<true><<<grid, atom_threads, 0, stream>>>(
-                signal.data_ptr<scalar_t>(), atoms.data_ptr<scalar_t>(), rows.data_ptr<int64_t>(),
-                z.data_ptr<scalar_t>(), result.data_ptr<scalar_t>(), signal.size(0), atoms.size(0),
-                a, center_column, sigma.data_ptr<double>(), center.data_ptr<double>());
-        } else {
-            project_atoms_kernel<false><<<grid, atom_threads, 0, stream>>>(
-                signal.data_ptr<scalar_t>(), atoms.data_ptr<scalar_t>(), rows.data_ptr<int64_t>(),
-                z.data_ptr<scalar_t>(), result.data_ptr<scalar_t>(), signal.size(0), atoms.size(0),
-                a, center_column, nullptr, nullptr);
-        }
+        auto launch = [&](auto *moments, auto *values) {
+            if (derivatives) {
+                project_atoms_kernel<true><<<grid, atom_threads, 0, stream>>>(
+                    signal.data_ptr<scalar_t>(), atoms.data_ptr<scalar_t>(),
+                    rows.data_ptr<int64_t>(), moments, values, signal.size(0), atoms.size(0), a,
+                    center_column, sigma.data_ptr<double>(), center.data_ptr<double>());
+            } else {
+                project_atoms_kernel<false><<<grid, atom_threads, 0, stream>>>(
+                    signal.data_ptr<scalar_t>(), atoms.data_ptr<scalar_t>(),
+                    rows.data_ptr<int64_t>(), moments, values, signal.size(0), atoms.size(0), a,
+                    center_column, nullptr, nullptr);
+            }
+        };
+        if (z.scalar_type() == torch::kFloat64) {
+            if (derivatives)
+                launch(z.data_ptr<double>(), result.data_ptr<double>());
+            else
+                launch(z.data_ptr<double>(), result.data_ptr<scalar_t>());
+        } else
+            launch(z.data_ptr<scalar_t>(), result.data_ptr<scalar_t>());
     });
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return {result, sigma, center};
@@ -751,10 +763,14 @@ torch::Tensor expand(torch::Tensor h, torch::Tensor atoms, torch::Tensor rows,
                 "atom_splits must be a power of two in [1,64]");
     check_signal(h);
     Axis a = parse_axis(config);
-    check_atoms(atoms, rows, h);
+    check_signal(atoms);
+    check_atoms(atoms, rows, atoms);
+    TORCH_CHECK(h.device() == atoms.device() &&
+                    (h.scalar_type() == atoms.scalar_type() || h.scalar_type() == torch::kFloat64),
+                "incompatible projection values");
     TORCH_CHECK(h.size(1) == atoms.size(0), "H/G shape differs from atom count");
     c10::cuda::CUDAGuard guard(h.device());
-    auto result = torch::empty({h.size(0), a.sites}, h.options());
+    auto result = torch::empty({h.size(0), a.sites}, atoms.options());
     if (h.size(0) == 0)
         return result;
 
@@ -762,18 +778,25 @@ torch::Tensor expand(torch::Tensor h, torch::Tensor atoms, torch::Tensor rows,
     // directly into result and allocates no partial buffer or reduction kernel.
     int total_chunks = (atoms.size(0) + ATOM_CHUNK - 1) / ATOM_CHUNK;
     int atom_splits = std::max(1, std::min(requested_atom_splits, total_chunks));
-    auto partials =
-        atom_splits == 1 ? result : torch::empty({atom_splits, h.size(0), a.sites}, h.options());
+    auto partials = atom_splits == 1
+                        ? result
+                        : torch::empty({atom_splits, h.size(0), a.sites}, atoms.options());
     int block_width =
         std::min(a.sites, std::min(sites_per_block, MAX_PROFILE_TILES_PER_BLOCK * a.tile_sites));
     dim3 grid((a.sites + block_width - 1) / block_width, (h.size(0) + BATCH_TILE - 1) / BATCH_TILE,
               atom_splits);
     auto stream = c10::cuda::getCurrentCUDAStream();
-    AT_DISPATCH_FLOATING_TYPES(h.scalar_type(), "cell_mass_expand", [&] {
-        expand_tiles_kernel<<<grid, THREADS, 0, stream>>>(
-            h.data_ptr<scalar_t>(), atoms.data_ptr<scalar_t>(), rows.data_ptr<int64_t>(),
-            partials.data_ptr<scalar_t>(), h.size(0), atoms.size(0), a, center_column, block_width,
-            atom_splits);
+    AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "cell_mass_expand", [&] {
+        auto launch = [&](auto *values) {
+            expand_tiles_kernel<<<grid, THREADS, 0, stream>>>(
+                values, atoms.data_ptr<scalar_t>(), rows.data_ptr<int64_t>(),
+                partials.data_ptr<scalar_t>(), h.size(0), atoms.size(0), a, center_column,
+                block_width, atom_splits);
+        };
+        if (h.scalar_type() == torch::kFloat64)
+            launch(h.data_ptr<double>());
+        else
+            launch(h.data_ptr<scalar_t>());
         C10_CUDA_KERNEL_LAUNCH_CHECK();
         if (atom_splits > 1) {
             int elements = h.size(0) * a.sites;
@@ -815,29 +838,37 @@ std::vector<torch::Tensor> prepare_inputs(torch::Tensor x, torch::Tensor atoms,
 }
 
 torch::Tensor build_z(torch::Tensor signal, std::vector<double> config, bool hierarchical,
-                      int team_size) {
+                      int team_size, bool double_intermediates) {
     check_signal(signal);
     Axis a = parse_axis(config);
     TORCH_CHECK(team_size >= 1 && team_size <= THREADS && (team_size & (team_size - 1)) == 0,
                 "Z team size must be a power of two in [1,128]");
     TORCH_CHECK(signal.size(1) == a.sites, "signal shape differs from axis");
     c10::cuda::CUDAGuard guard(signal.device());
-    auto z = torch::empty({signal.size(0), a.nodes, a.basis_count()}, signal.options());
+    auto options =
+        double_intermediates ? signal.options().dtype(torch::kFloat64) : signal.options();
+    auto z = torch::empty({signal.size(0), a.nodes, a.basis_count()}, options);
     if (signal.size(0) == 0)
         return z;
     auto stream = c10::cuda::getCurrentCUDAStream();
     AT_DISPATCH_FLOATING_TYPES(signal.scalar_type(), "cell_mass_build_z", [&] {
-        dim3 grid(hierarchical ? a.leaves : a.nodes,
-                  (signal.size(0) + BATCH_TILE - 1) / BATCH_TILE);
-        build_z_direct_kernel<<<grid, THREADS, 0, stream>>>(
-            signal.data_ptr<scalar_t>(), z.data_ptr<scalar_t>(), signal.size(0), a, team_size);
-        C10_CUDA_KERNEL_LAUNCH_CHECK();
-        for (int level = 1; hierarchical && (a.leaves >> level) > 0; ++level) {
-            int count = signal.size(0) * (a.leaves >> level) * a.basis_count();
-            merge_z_level_kernel<<<(count + THREADS - 1) / THREADS, THREADS, 0, stream>>>(
-                z.data_ptr<scalar_t>(), signal.size(0), a, level);
+        auto launch = [&](auto *moments) {
+            dim3 grid(hierarchical ? a.leaves : a.nodes,
+                      (signal.size(0) + BATCH_TILE - 1) / BATCH_TILE);
+            build_z_direct_kernel<<<grid, THREADS, 0, stream>>>(
+                signal.data_ptr<scalar_t>(), moments, signal.size(0), a, team_size);
             C10_CUDA_KERNEL_LAUNCH_CHECK();
-        }
+            for (int level = 1; hierarchical && (a.leaves >> level) > 0; ++level) {
+                int count = signal.size(0) * (a.leaves >> level) * a.basis_count();
+                merge_z_level_kernel<<<(count + THREADS - 1) / THREADS, THREADS, 0, stream>>>(
+                    moments, signal.size(0), a, level);
+                C10_CUDA_KERNEL_LAUNCH_CHECK();
+            }
+        };
+        if (double_intermediates)
+            launch(z.data_ptr<double>());
+        else
+            launch(z.data_ptr<scalar_t>());
     });
     return z;
 }
@@ -872,7 +903,11 @@ torch::Tensor compute_parameter_grad_from_cache(torch::Tensor atoms, torch::Tens
                                                 int atom_threads) {
     check_signal(h);
     check_like(g, h);
-    check_atoms(atoms, rows, h);
+    check_signal(atoms);
+    check_atoms(atoms, rows, atoms);
+    TORCH_CHECK(h.device() == atoms.device() &&
+                    (h.scalar_type() == atoms.scalar_type() || h.scalar_type() == torch::kFloat64),
+                "incompatible projection values");
     check_atom_thread_count(atom_threads);
     TORCH_CHECK(h.size(1) == atoms.size(0) && g.sizes() == h.sizes(), "invalid H/G shapes");
     for (const auto &derivative : {h_sigma, h_center, g_sigma, g_center}) {
@@ -886,13 +921,18 @@ torch::Tensor compute_parameter_grad_from_cache(torch::Tensor atoms, torch::Tens
     if (atoms.size(0) == 0)
         return grad;
     auto stream = c10::cuda::getCurrentCUDAStream();
-    AT_DISPATCH_FLOATING_TYPES(h.scalar_type(), "cell_mass_cached_parameter_grad", [&] {
-        cached_parameter_grad_kernel<<<(atoms.size(0) + atom_threads - 1) / atom_threads,
-                                       atom_threads, 0, stream>>>(
-            atoms.data_ptr<scalar_t>(), rows.data_ptr<int64_t>(), h.data_ptr<scalar_t>(),
-            g.data_ptr<scalar_t>(), h_sigma.data_ptr<double>(), h_center.data_ptr<double>(),
-            g_sigma.data_ptr<double>(), g_center.data_ptr<double>(), grad.data_ptr<scalar_t>(),
-            h.size(0), atoms.size(0));
+    AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "cell_mass_cached_parameter_grad", [&] {
+        auto launch = [&](auto *hv, auto *gv) {
+            cached_parameter_grad_kernel<<<(atoms.size(0) + atom_threads - 1) / atom_threads,
+                                           atom_threads, 0, stream>>>(
+                atoms.data_ptr<scalar_t>(), rows.data_ptr<int64_t>(), hv, gv,
+                h_sigma.data_ptr<double>(), h_center.data_ptr<double>(), g_sigma.data_ptr<double>(),
+                g_center.data_ptr<double>(), grad.data_ptr<scalar_t>(), h.size(0), atoms.size(0));
+        };
+        if (h.scalar_type() == torch::kFloat64)
+            launch(h.data_ptr<double>(), g.data_ptr<double>());
+        else
+            launch(h.data_ptr<scalar_t>(), g.data_ptr<scalar_t>());
     });
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return grad;
@@ -931,13 +971,20 @@ torch::Tensor compute_parameter_grad(torch::Tensor x, torch::Tensor dy, torch::T
     if (atoms.size(0) == 0)
         return grad;
     auto stream = c10::cuda::getCurrentCUDAStream();
+    TORCH_CHECK(zx.scalar_type() == zy.scalar_type(), "hierarchy dtypes must match");
     AT_DISPATCH_FLOATING_TYPES(x.scalar_type(), "cell_mass_parameter_grad", [&] {
-        parameter_grad_kernel<<<(atoms.size(0) + atom_threads - 1) / atom_threads, atom_threads, 0,
-                                stream>>>(
-            x.data_ptr<scalar_t>(), dy.data_ptr<scalar_t>(), atoms.data_ptr<scalar_t>(),
-            rows.data_ptr<int64_t>(), h.data_ptr<scalar_t>(), g.data_ptr<scalar_t>(),
-            zx.data_ptr<scalar_t>(), zy.data_ptr<scalar_t>(), grad.data_ptr<scalar_t>(), x.size(0),
-            atoms.size(0), input, output);
+        auto launch = [&](auto *input_moments, auto *output_moments) {
+            parameter_grad_kernel<<<(atoms.size(0) + atom_threads - 1) / atom_threads, atom_threads,
+                                    0, stream>>>(
+                x.data_ptr<scalar_t>(), dy.data_ptr<scalar_t>(), atoms.data_ptr<scalar_t>(),
+                rows.data_ptr<int64_t>(), h.data_ptr<scalar_t>(), g.data_ptr<scalar_t>(),
+                input_moments, output_moments, grad.data_ptr<scalar_t>(), x.size(0), atoms.size(0),
+                input, output);
+        };
+        if (zx.scalar_type() == torch::kFloat64)
+            launch(zx.data_ptr<double>(), zy.data_ptr<double>());
+        else
+            launch(zx.data_ptr<scalar_t>(), zy.data_ptr<scalar_t>());
     });
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return grad;
