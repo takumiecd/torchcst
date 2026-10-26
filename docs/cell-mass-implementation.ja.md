@@ -1,5 +1,9 @@
 # 128サイトのcell-mass初版実装
 
+> 旧定義の実装・測定記録。ここでのatom中心の支持clipと境界セル経路は廃止した。
+> 現在の数学・API・測定は[1周期分のタイル窓](cell-mass-tile-window.ja.md)を参照。
+> 以下の旧数値を、新しい近似方式の同値なbaselineとして扱わない。
+
 2026-10-26。[全体設計](cell-integrated-profile.ja.md)と
 [kernelの擬似コード](cell-mass-kernel-flow.ja.md)を、まず一つの明示的な数式で検証する実装。
 本書は新しい既定profileや公開dispatcherへの採用を意味しない。

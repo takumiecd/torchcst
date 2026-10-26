@@ -22,11 +22,12 @@ def _axis_config(axis, coefficient_method="polynomial"):
     return [
         axis.site_count,
         axis.spacing,
-        axis.support_half_width,
+        axis.tile_sites,
         axis.origin,
         axis.profile.modes,
         axis.profile.tail_bound,
         int(coefficient_method == "polynomial"),
+        axis.period_tiles,
     ]
 
 
@@ -56,24 +57,26 @@ def _validate_cuda_support(spec, x, atoms):
             raise ValueError("first CUDA prototype requires power-of-two sites <=128")
         if axis.profile.modes > 16:
             raise ValueError("first CUDA prototype supports at most 16 Fourier modes")
-        if axis.support_half_width > axis.period / 2:
-            raise ValueError(
-                "first CUDA prototype requires support no wider than circle"
-            )
+        if axis.tile_sites & (axis.tile_sites - 1):
+            raise ValueError("CUDA prototype requires power-of-two tile_sites")
 
 
 def prepare_layout(spec, atoms):
     """Sort only indices; keep the sole parameter array in its original order.
 
-    The first supported case has one fixed Fourier bank per axis. The key is
+    The first supported case has one fixed Fourier bank per axis. Whole-cell
+    tile boundaries start at origin-spacing/2. The key is
     (output center tile, input center tile); multiple width banks will extend it
     with a hierarchy/bank prefix. No atom or coefficient values are packed.
     """
-    input_leaf = min(8, spec.input.site_count)
-    output_leaf = min(8, spec.output.site_count)
+    input_leaf = spec.input.tile_sites
+    output_leaf = spec.output.tile_sites
     qi = (
         (
-            (atoms[:, 3] - spec.input.origin).remainder(spec.input.period)
+            (
+                (atoms[:, 3] - spec.input.origin).remainder(spec.input.period)
+                + spec.input.spacing / 2
+            ).remainder(spec.input.period)
             / (input_leaf * spec.input.spacing)
         )
         .floor()
@@ -81,7 +84,10 @@ def prepare_layout(spec, atoms):
     )
     qo = (
         (
-            (atoms[:, 2] - spec.output.origin).remainder(spec.output.period)
+            (
+                (atoms[:, 2] - spec.output.origin).remainder(spec.output.period)
+                + spec.output.spacing / 2
+            ).remainder(spec.output.period)
             / (output_leaf * spec.output.spacing)
         )
         .floor()
@@ -145,7 +151,7 @@ def physical_linear(
     z_threads_per_element=4,
     coefficient_method="polynomial",
 ):
-    """Run the exact, first-order physical prototype with no sampled-L2 fallback.
+    """Run the first-order tile-window approximation with continuous mass.
 
     Validation currently reads reduction results on the host; this research
     entry does not yet support CUDA Graph capture. Build/JIT time is separate

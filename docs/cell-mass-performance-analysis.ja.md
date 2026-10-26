@@ -1,5 +1,9 @@
 # 128サイトcell-mass実装の時間分析
 
+> 旧定義の実装・測定記録。ここでのatom中心の支持clipと境界セル経路は廃止した。
+> 現在の数学・API・測定は[1周期分のタイル窓](cell-mass-tile-window.ja.md)を参照。
+> 以下の旧数値を、新しい近似方式の同値なbaselineとして扱わない。
+
 2026-10-26。[係数計算の最適化](cell-mass-coefficient-optimization.ja.md)後の追加診断。
 
 この記録は最適化後の同じ819atom / batch4 / FP32 / mode8ケースを分析する。

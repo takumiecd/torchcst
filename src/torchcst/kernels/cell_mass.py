@@ -1,8 +1,7 @@
-"""Explicit cell-mass mathematics for the first one-dimensional prototype.
+"""Cell masses of a periodic density on a tile-aligned, one-period window.
 
-These declarations do not select a backend or reinterpret a sampled-L2 plan.
-The first supported density family is the existing nonnegative Chebyshev square.
-The support period is a mathematical parameter, not a CUDA tile dimension.
+This research contract approximates the small Fourier tails as zero outside the
+selected tiles. It does not clip individual cells at an atom-centred support.
 """
 
 import math
@@ -14,33 +13,60 @@ from .profiles.fourier import ChebyshevSquareSpec
 
 @dataclass(frozen=True, kw_only=True)
 class CellMassAxisSpec:
-    """A circular grid of cells and a compact, periodized density.
+    """A cell grid with an explicit tile-window approximation contract.
 
-    Site i owns [origin + (i-.5)*spacing, origin + (i+.5)*spacing].
-    One native period is retained on [-support_half_width, +support_half_width]
-    around the atom center and then truly periodized onto the grid circle.
-    Sigma controls the existing native shape within that fixed support.
+    Each tile contains tile_sites whole cells. For odd K=period_tiles, keep
+    owner-K//2 .. owner+K//2, unwrapped around the atom centre. Their total width
+    P=K*T is exactly the local Fourier period. All other tiles have zero mass.
+    I=(K//2)*T is the bank's intended support half width; the extra tile supplies
+    zero-approximated padding. The coefficient density's small tails inside the
+    selected window are retained. Routing is piecewise constant in backward.
+
+    The window/period belong to the approximation, not a launch tuning option.
+    K=1 is allowed only when the sole tile covers the entire chart circle.
     """
 
     profile: ChebyshevSquareSpec
     site_count: int
     spacing: float
-    support_half_width: float
+    tile_sites: int
+    period_tiles: int = 3
     origin: float = 0.0
 
     def __post_init__(self):
         if type(self.profile) is not ChebyshevSquareSpec:
             raise TypeError("cell-mass prototype requires ChebyshevSquareSpec")
-        if type(self.site_count) is not int or self.site_count < 1:
-            raise ValueError("site_count must be a positive integer")
-        for name in ("spacing", "support_half_width", "origin"):
+        for name in ("site_count", "tile_sites", "period_tiles"):
+            value = getattr(self, name)
+            if type(value) is not int or value < 1:
+                raise ValueError(f"{name} must be a positive integer")
+        if self.site_count % self.tile_sites:
+            raise ValueError("tile_sites must divide site_count")
+        if self.period_tiles % 2 != 1 or self.period_tiles > self.tile_count:
+            raise ValueError("period_tiles must be odd and fit inside the chart")
+        if self.period_tiles == 1 and self.tile_count != 1:
+            raise ValueError("one-period tile requires a single chart tile")
+        for name in ("spacing", "origin"):
             value = getattr(self, name)
             if type(value) not in (int, float) or not math.isfinite(value):
                 raise ValueError(f"{name} must be finite")
-        if self.spacing <= 0 or self.support_half_width <= 0:
-            raise ValueError("spacing and support_half_width must be positive")
+        if self.spacing <= 0:
+            raise ValueError("spacing must be positive")
         if not math.isfinite(self.period) or not math.isfinite(self.profile_period):
             raise ValueError("grid and profile periods must be finite")
+
+    @property
+    def tile_count(self):
+        return self.site_count // self.tile_sites
+
+    @property
+    def tile_width(self):
+        return self.tile_sites * self.spacing
+
+    @property
+    def support_half_width(self):
+        """Intended bank support I; distinct from the Fourier half-period L."""
+        return (self.period_tiles // 2) * self.tile_width
 
     @property
     def period(self):
@@ -48,17 +74,16 @@ class CellMassAxisSpec:
 
     @property
     def profile_period(self):
-        return 2 * self.support_half_width
+        return self.period_tiles * self.tile_width
 
 
 @dataclass(frozen=True, kw_only=True)
 class CellMassLinearSpec:
     """Y[b,o] = sum_a amp[a] * u[a,o] * sum_i X[b,i] * v[a,i].
 
-    The research numeric entry points accept physical atom rows ordered
-    (amplitude, sigma, output_center, input_center). They are not Polar rows.
-    Sigma is shared by the two factors; its mathematical derivative includes
-    both factors. No optimizer/update policy is selected by this declaration.
+    Physical rows are (amplitude, sigma, output_center, input_center). Sigma is
+    shared by both factors and its derivative includes both paths. The retained
+    one-period window is the approximate profile's support for normalization.
     """
 
     input: CellMassAxisSpec

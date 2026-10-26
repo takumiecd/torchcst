@@ -1,5 +1,8 @@
 # 区間確率方式：prepareからbackwardまでのkernelの流れ
 
+現在のprofileは[1周期分のタイル窓](cell-mass-tile-window.ja.md)。
+選んだwhole tileを共通のセル積分基底で処理し、支持境界での個別積分は行わない。
+
 2026-10-26。[設計と数学契約](cell-integrated-profile.ja.md)に対応する、検討用の擬似コード。
 以下の関数名・引数は一般化した擬似コード。明示的なChebyshevSquare密度から始めた
 [初版の実コードと対応範囲](cell-mass-implementation.ja.md)は別に記録する。
@@ -395,7 +398,7 @@ return 2 * sin(omega * spacing / 2) / omega
 ```
 
 sin基底も同じ積分係数にsinを掛ける。多次元の積基底なら軸ごとのセル積分を掛ける。
-ここにはatomの中心・幅・振幅を混ぜない。atomごとの支持で切れたセルは後段の補正で扱う。
+ここにはatomの中心・幅・振幅を混ぜない。選択する領域はwhole tileのみなので、セル境界の補正は不要。
 
 `can_inherit_same_basis`は、子タイルのsite集合が親を重複なく覆い、該当modeの周波数、
 sin/cosの種類、座標原点、spacing、セル積分係数が一致するときだけtrueにする。
@@ -427,17 +430,14 @@ for (tile : full_input_tiles(atom)) {
     }
 }
 for (b : assigned_batches(blockIdx.y, batch_size)) {
-    h[local_batch(b)] += input_boundary_contribution(atom, b, X);
     H[b, slot] = h[local_batch(b)];
 }
 ```
 
-`full_input_tiles`は支持内部を重複なく覆うタイル集合。親とその子を二重に含めない。
+`full_input_tiles`は選択した1周期分の窓を重複なく覆うwhole tile集合。親とその子を二重に含めない。
 modeのループは`sum_k input_coefficient(atom,tile,k) * Zx[b,tile,k]`を計算する。
 係数には中心・幅と面積による正規化を含め、必要なmodeごとにregisterで評価し、batch間で再利用する。
-`input_boundary_contribution`は内部タイルに含めなかった残りのセルを、正確な積分で計算する。
-この分割の具体式は未確定だが、二つを合わせて全profileの寄与を一度ずつ数える契約にする。
-内部タイルがなくても境界側で必要な寄与を処理し、空支持なら0を書く。
+窓の外はタイル単位でゼロ扱いする。窓内は共通の積分基底を使い、端セルの直接積分は行わない。
 
 この案では異なるthreadのHを足す必要はない。thread自身が必要な入力寄与を全て足す。
 sharedへの共同ロードやblock内同期はまだ入れず、完成したHを一度globalへ書く。
@@ -458,7 +458,6 @@ for (bank : contributing_output_banks(output_tile)) {
     expand_output_c_into_y(bank, output_tile, shared_c, y);
     __syncthreads();  // 全員が読み終えてからshared_cを再利用する。
 }
-add_output_boundary_contributions(output_tile, H, atoms, layout, y);
 store_output_tile(output_tile, y, Y);
 ```
 
@@ -470,7 +469,7 @@ atomごとの部分Cを並列生成してreductionする案は後で比較する
 係数を作るthread配置と、Yのsiteを展開するthread配置は異なってよい。
 
 bankごとに基底が異なるため、C同士を混ぜず、展開したsite値をyへ足す。
-境界補正は内部のCで表した寄与と重複しない残りを加える。
+窓内の全寄与をCで表すので、境界セルの追加処理はない。
 bankのループと二つのbarrierには全threadが参加し、担当要素がないthreadも途中returnしない。
 globalのHは読み取り専用、Cはshared、yは各threadのregisterを基本とする。
 各threadが持つyの個数は担当タイル寸法とbatch範囲で決まり、容量に応じて変更する。
@@ -495,12 +494,11 @@ for (tile : full_output_tiles(atom)) {
     }
 }
 for (b : assigned_batches(blockIdx.y, batch_size)) {
-    g[local_batch(b)] += output_boundary_contribution(atom, b, dY);
     G[b, slot] = g[local_batch(b)];
 }
 ```
 
-`compute_h`と入出力の役割が逆になる。内部タイルと残りのセルの分割・係数の定義は、
+`compute_h`と入出力の役割が逆になる。選ぶタイル窓と係数の定義は、
 forwardで使う同じprofileに対応させる。G全体のほかにdH全体を保存することは前提にしない。
 
 ## 4. compute_dx：担当入力タイルの係数を作り、dXまで完成させる
@@ -517,12 +515,11 @@ for (bank : contributing_input_banks(input_tile)) {
     expand_input_c_into_dx(bank, input_tile, shared_c, dx);
     __syncthreads();
 }
-add_input_boundary_contributions(input_tile, G, atoms, layout, dx);
 store_input_tile(input_tile, dx, dX);
 ```
 
 内部部分の係数は`C_in[b,k] = sum_a alpha[a] * G[b,a] * input_coefficient(a,tile,k)`。
-振幅は一度だけ掛ける。bankごとに展開し、境界補正を加え、担当dXを完成させる。
+振幅は一度だけ掛ける。bankごとに展開して担当dXを完成させる。境界セル補正は不要。
 Gはglobal、集約したC_inはshared、dxはregisterを基本とする。barrierの規則は`compute_y`と同じ。
 atomのロードもYと同様に、元配列から必要なchunkだけをsharedへ集める。
 Y/dXの各要素を一つのblockが所有するため、block間の出力加算atomicは不要にできる。

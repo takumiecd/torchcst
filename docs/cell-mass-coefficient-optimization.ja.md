@@ -1,5 +1,9 @@
 # 5% atomでの係数計算の最適化
 
+> 旧定義の実装・測定記録。ここでのatom中心の支持clipと境界セル経路は廃止した。
+> 現在の数学・API・測定は[1周期分のタイル窓](cell-mass-tile-window.ja.md)を参照。
+> 以下の旧数値を、新しい近似方式の同値なbaselineとして扱わない。
+
 2026-10-26。[初版の実測](cell-mass-implementation.ja.md)では128atomのforward+backwardが
 約206msで、ZよりH/Y/G/dX/Parameter勾配の5段階に時間を使っていた。
 本比較は128×128、batch 4、819atom（128²の約5%）へ条件を揃える。

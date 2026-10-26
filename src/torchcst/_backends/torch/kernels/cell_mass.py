@@ -4,8 +4,6 @@ This is an intentionally direct reference. Its temporary Fourier/profile
 tensors are not the CUDA storage policy. It never materializes the full W.
 """
 
-import math
-
 import torch
 
 from torchcst.kernels.cell_mass import CellMassAxisSpec, CellMassLinearSpec
@@ -35,18 +33,17 @@ def validate_inputs(spec: CellMassLinearSpec, x, atoms):
 
 
 def profile_cell_masses(axis: CellMassAxisSpec, centers, sigma):
-    """Integrate the native even density on every cell, including all images.
+    """Integrate complete cells in the selected one-period tile window.
 
-    For g(t)=c0+2*sum_k ck*cos(k*omega*t), the full-support mass is period*c0.
-    The two clipped cell endpoints give exact elementary antiderivatives.
-    No point sampling or per-tile renormalization is used.
+    No atom-centred endpoint clamp or per-cell support test exists here. Integer
+    routing selects whole tiles; autograd differentiates the smooth branch.
+    The scalar quadrature oracle in tests does not use these coefficients.
     """
     if centers.ndim != 1 or sigma.shape != centers.shape:
         raise ValueError("centers and sigma must have equal one-dimensional shapes")
     if centers.device != sigma.device:
         raise ValueError("centers and sigma must share a device")
     if centers.numel() == 0:
-        # Keep empty references differentiable as well.
         return (centers[:, None] + sigma[:, None]).expand(0, axis.site_count).double()
 
     period = axis.profile_period
@@ -54,35 +51,25 @@ def profile_cell_masses(axis: CellMassAxisSpec, centers, sigma):
     coefficients = kernel_coefficients(axis.profile, sigma, period)
     constant = coefficients[:, modes]
     mass = period * constant
-
     center = (centers.double() - axis.origin).remainder(axis.period)
-    site = torch.arange(axis.site_count, device=centers.device, dtype=torch.float64)
-    left = site * axis.spacing - axis.spacing / 2
+    owner = ((center + axis.spacing / 2) / axis.tile_width).floor().long()
+    first_site = (owner - axis.period_tiles // 2) * axis.tile_sites
+    offsets = torch.arange(axis.period_tiles * axis.tile_sites, device=centers.device)
+    unwrapped = first_site[:, None] + offsets[None, :]
+    left = (unwrapped.double() - 0.5) * axis.spacing - center[:, None]
     right = left + axis.spacing
-    omega = (2 * math.pi / period) * torch.arange(
+    omega = (2 * torch.pi / period) * torch.arange(
         1, modes + 1, device=centers.device, dtype=torch.float64
     )
-    sine_weights = 2 * coefficients[:, modes + 1 :] / omega
-    result = (center[:, None] * 0).expand(-1, axis.site_count)
-
-    # A canonical center and this image bound cover the complete physical
-    # support even when it is wider than one chart period.
-    image_radius = math.ceil(axis.support_half_width / axis.period) + 1
-    for image in range(-image_radius, image_radius + 1):
-        shifted_center = center + image * axis.period
-        lo = (left[None, :] - shifted_center[:, None]).clamp(
-            -axis.support_half_width, axis.support_half_width
-        )
-        hi = (right[None, :] - shifted_center[:, None]).clamp(
-            -axis.support_half_width, axis.support_half_width
-        )
-        area = constant[:, None] * (hi - lo)
-        area = area + (
-            sine_weights[:, None, :]
-            * ((hi[..., None] * omega).sin() - (lo[..., None] * omega).sin())
-        ).sum(-1)
-        result = result + area / mass[:, None]
-    return result
+    area = constant[:, None] * axis.spacing
+    area = area + (
+        (2 * coefficients[:, modes + 1 :] / omega)[:, None, :]
+        * ((right[..., None] * omega).sin() - (left[..., None] * omega).sin())
+    ).sum(-1)
+    result = centers.new_zeros((centers.numel(), axis.site_count), dtype=torch.float64)
+    return result.scatter_add(
+        1, unwrapped.remainder(axis.site_count), area / mass[:, None]
+    )
 
 
 def physical_linear_reference(spec: CellMassLinearSpec, x, atoms):

@@ -1,5 +1,5 @@
-// First exact cell-mass CUDA implementation. The code intentionally spells out
-// ownership, temporary storage and synchronization before performance tuning.
+// Tile-window cell masses: Fourier tails are approximated as zero outside
+// selected whole tiles. No atom-centred cell clipping or fringe integration.
 #include <algorithm>
 #include <c10/cuda/CUDAException.h>
 #include <c10/cuda/CUDAGuard.h>
@@ -15,12 +15,14 @@ constexpr int OUTPUT_TILE = 32;
 constexpr int ATOM_CHUNK = 32;
 constexpr int MAX_MODES = 16;
 constexpr int MAX_BASIS = 1 + 2 * MAX_MODES;
-constexpr int COEFFICIENT_SLOTS = (BATCH_TILE * MAX_BASIS + THREADS - 1) / THREADS;
+constexpr int LEAVES_PER_BLOCK = 4;
+constexpr int COEFFICIENT_SLOTS =
+    (LEAVES_PER_BLOCK * BATCH_TILE * MAX_BASIS + THREADS - 1) / THREADS;
 constexpr double PI = 3.1415926535897932384626433832795;
 
 struct Axis {
-    int sites, modes, leaf, leaves, nodes;
-    double spacing, half_width, origin, tail_bound;
+    int sites, modes, leaf, leaves, nodes, tile_sites, period_tiles;
+    double spacing, origin, tail_bound;
     bool polynomial_coefficients;
     __host__ __device__ int basis_count() const {
         return 1 + 2 * modes;
@@ -29,7 +31,7 @@ struct Axis {
         return sites * spacing;
     }
     __host__ __device__ double profile_period() const {
-        return 2 * half_width;
+        return period_tiles * tile_sites * spacing;
     }
     __host__ __device__ int level_offset(int level) const {
         return 2 * leaves - 2 * (leaves >> level);
@@ -37,7 +39,7 @@ struct Axis {
 };
 
 Axis parse_axis(const std::vector<double> &c) {
-    TORCH_CHECK(c.size() == 7, "axis config requires seven scalars");
+    TORCH_CHECK(c.size() == 8, "tile-window axis config requires eight scalars");
     for (double v : c)
         TORCH_CHECK(std::isfinite(v), "axis config must be finite");
     TORCH_CHECK(c[0] == std::floor(c[0]) && c[0] >= 1 && c[0] <= 128,
@@ -47,20 +49,26 @@ Axis parse_axis(const std::vector<double> &c) {
     Axis a{};
     a.sites = static_cast<int>(c[0]);
     a.spacing = c[1];
-    a.half_width = c[2];
+    TORCH_CHECK(c[2] == std::floor(c[2]) && c[2] >= 1 && c[2] <= a.sites, "invalid tile_sites");
+    a.tile_sites = static_cast<int>(c[2]);
+    TORCH_CHECK((a.tile_sites & (a.tile_sites - 1)) == 0 && a.sites % a.tile_sites == 0,
+                "tile_sites must be a power-of-two divisor of sites");
+    TORCH_CHECK(c[7] == std::floor(c[7]) && c[7] >= 1 && c[7] <= a.sites / a.tile_sites,
+                "invalid period_tiles");
+    a.period_tiles = static_cast<int>(c[7]);
+    TORCH_CHECK(a.period_tiles % 2 == 1 && (a.period_tiles != 1 || a.tile_sites == a.sites),
+                "period_tiles must be odd; one tile must cover the chart");
     a.origin = c[3];
     a.modes = static_cast<int>(c[4]);
     a.tail_bound = c[5];
     TORCH_CHECK(c[6] == 0 || c[6] == 1, "invalid coefficient method");
     a.polynomial_coefficients = c[6] == 1;
     TORCH_CHECK((a.sites & (a.sites - 1)) == 0, "site count must be a power of two");
-    TORCH_CHECK(a.modes % 2 == 0 && a.spacing > 0 && a.half_width > 0, "invalid cell-mass axis");
-    TORCH_CHECK(a.half_width <= a.chart_period() / 2,
-                "CUDA prototype requires support no wider than the chart circle");
+    TORCH_CHECK(a.modes % 2 == 0 && a.spacing > 0, "invalid cell-mass axis");
     TORCH_CHECK(a.tail_bound > 0 && a.tail_bound < 1 &&
                     std::acosh(1 / std::sqrt(a.tail_bound)) / a.modes < std::acosh(2.0),
                 "invalid Chebyshev tail bound");
-    a.leaf = std::min(8, a.sites);
+    a.leaf = std::min(8, a.tile_sites);
     a.leaves = a.sites / a.leaf;
     a.nodes = 2 * a.leaves - 1;
     return a;
@@ -110,6 +118,7 @@ struct Profile {
     Axis axis;
     double center, beta, beta_sigma, denominator, denominator_sigma;
     double c0, c0_sigma;
+    int first_tile;
 };
 
 struct ValueDerivative {
@@ -204,6 +213,10 @@ __device__ Profile make_profile(Axis a, double sigma, double center) {
     Profile p{};
     p.axis = a;
     p.center = wrap_center(center, a);
+    // Tile edges are cell edges, not site centres. Keep an unwrapped index so
+    // chart-seam tiles can use the correct local Fourier image.
+    int owner = static_cast<int>(floor((p.center + a.spacing / 2) / (a.tile_sites * a.spacing)));
+    p.first_tile = owner - a.period_tiles / 2;
     double period = a.profile_period(), tile = period / 3;
     double shape = acosh(1 / sqrt(a.tail_bound)) / a.modes;
     double minimum = period / PI * acos(1 / cosh(shape));
@@ -252,40 +265,6 @@ __device__ double integrated_basis(Axis a, int mode, int site) {
     double factor = 2 * sin(omega * a.spacing / 2) / omega;
     double phase = omega * site * a.spacing;
     return factor * (mode % 2 == 1 ? cos(phase) : sin(phase));
-}
-
-struct CellMass {
-    double value, center, sigma;
-};
-
-template <bool Derivatives>
-__device__ CellMass cell_mass(const Profile &p, int site, double center) {
-    Axis a = p.axis;
-    double left = (site - 0.5) * a.spacing - center;
-    double right = left + a.spacing;
-    double lo = fmin(a.half_width, fmax(-a.half_width, left));
-    double hi = fmin(a.half_width, fmax(-a.half_width, right));
-    double mass = a.profile_period() * p.c0;
-    CellMass result{0, 0, 0};
-    if (Derivatives) {
-        double dl = fabs(left) <= a.half_width ? native_density(p, left).value : 0;
-        double dr = fabs(right) <= a.half_width ? native_density(p, right).value : 0;
-        result.center = (dl - dr) / mass;
-    }
-    if (hi <= lo)
-        return result;
-    double area = p.c0 * (hi - lo), derivative = p.c0_sigma * (hi - lo);
-    for (int k = 1; k <= a.modes; ++k) {
-        auto c = raw_coefficient(p, k);
-        double omega = 2 * PI * k / a.profile_period();
-        double factor = 2 * (sin(omega * hi) - sin(omega * lo)) / omega;
-        area += c.value * factor;
-        derivative += c.sigma * factor;
-    }
-    result.value = area / mass;
-    if (Derivatives)
-        result.sigma = (derivative - result.value * a.profile_period() * p.c0_sigma) / mass;
-    return result;
 }
 
 // Z construction: a tunable team shares a single (batch,mode) sum. Distinct
@@ -351,22 +330,24 @@ struct Projection {
 template <bool Derivatives, typename scalar_t>
 __device__ Projection project_atom(const scalar_t *signal, const scalar_t *z, int batches,
                                    int batch_begin, const Profile &p) {
+    (void)signal; // All input cells are consumed through the common Z basis.
     Axis a = p.axis;
     Projection result{};
+    int window_first = p.first_tile * a.tile_sites;
+    int window_end = window_first + a.period_tiles * a.tile_sites;
     for (int image = -1; image <= 1; ++image) {
-        double center = p.center + image * a.chart_period();
-        int first = max(0, static_cast<int>(ceil((center - a.half_width) / a.spacing + 0.5)));
-        int end =
-            min(a.sites, static_cast<int>(floor((center + a.half_width) / a.spacing - 0.5)) + 1);
-        int tiled_first = ((first + a.leaf - 1) / a.leaf) * a.leaf;
-        int tiled_end = (end / a.leaf) * a.leaf;
-
-        for (int mode = 0; mode < a.basis_count() && tiled_first < tiled_end; ++mode) {
+        int first = max(window_first, image * a.sites) - image * a.sites;
+        int end = min(window_end, (image + 1) * a.sites) - image * a.sites;
+        if (first >= end)
+            continue;
+        double center = p.center - image * a.chart_period();
+        for (int mode = 0; mode < a.basis_count(); ++mode) {
             auto c = coefficient(p, mode, center);
-            for (int site = tiled_first; site < tiled_end;) {
+            // All selected cells form whole aligned tiles. Greedily consume
+            // the largest available Z nodes; no cell needs a fringe fallback.
+            for (int site = first; site < end;) {
                 int level = 0, width = a.leaf;
-                while (width * 2 <= a.sites && site % (width * 2) == 0 &&
-                       site + width * 2 <= tiled_end) {
+                while (width * 2 <= a.sites && site % (width * 2) == 0 && site + width * 2 <= end) {
                     ++level;
                     width *= 2;
                 }
@@ -381,25 +362,6 @@ __device__ Projection project_atom(const scalar_t *signal, const scalar_t *z, in
                     }
                 }
                 site += width;
-            }
-        }
-        // Cells outside complete aligned tiles include partially covered cells
-        // and the short fringes of complete cells. They are counted exactly once.
-        int fringe_first =
-            max(0, static_cast<int>(floor((center - a.half_width) / a.spacing + 0.5)) - 1);
-        int fringe_end =
-            min(a.sites, static_cast<int>(floor((center + a.half_width) / a.spacing + 0.5)) + 2);
-        for (int site = fringe_first; site < fringe_end; ++site) {
-            if (site >= tiled_first && site < tiled_end)
-                continue;
-            auto cell = cell_mass<Derivatives>(p, site, center);
-            for (int local = 0; local < BATCH_TILE && batch_begin + local < batches; ++local) {
-                double x = signal[(batch_begin + local) * a.sites + site];
-                result.value[local] += cell.value * x;
-                if (Derivatives) {
-                    result.center[local] += cell.center * x;
-                    result.sigma[local] += cell.sigma * x;
-                }
             }
         }
     }
@@ -423,91 +385,98 @@ __global__ void project_atoms_kernel(const scalar_t *signal, const scalar_t *ato
         h[(batch_begin + local) * atom_count + slot] = result.value[local];
 }
 
-// Y/dX: each block owns 32 destination sites and four batches. It builds C for
-// each small aligned cell tile, expands it, adds exact residual contributions,
-// and stores each destination once. No inter-block output atomic is needed.
+// Y/dX: one block owns up to four leaf tiles and four batches. A chunk of
+// atoms is prepared once, then all owned C values consume it. Only the current
+// chunk's raw harmonic coefficients are shared; no global coefficient table.
+// Every thread reaches the barriers, including threads without an output site.
 template <typename scalar_t>
 __global__ void expand_tiles_kernel(const scalar_t *h, const scalar_t *atoms, const int64_t *rows,
                                     scalar_t *output, int batches, int atom_count, Axis a,
                                     int center_column) {
-    __shared__ Profile shared_atoms[ATOM_CHUNK];
+    __shared__ double shared_center[ATOM_CHUNK];
+    __shared__ int shared_first_tile[ATOM_CHUNK];
     __shared__ double shared_amplitude[ATOM_CHUNK];
     __shared__ double shared_h[BATCH_TILE * ATOM_CHUNK];
-    __shared__ double shared_c[BATCH_TILE * MAX_BASIS];
-    int local_b = threadIdx.x / OUTPUT_TILE;
-    int site = blockIdx.x * OUTPUT_TILE + threadIdx.x % OUTPUT_TILE;
-    int batch = blockIdx.y * BATCH_TILE + local_b;
-    bool owns_output = site < a.sites && batch < batches;
-    double accumulator = 0;
+    __shared__ double shared_harmonic[ATOM_CHUNK * MAX_MODES];
+    __shared__ double shared_c[LEAVES_PER_BLOCK * BATCH_TILE * MAX_BASIS];
 
-    int block_first = blockIdx.x * OUTPUT_TILE;
-    for (int first = block_first; first < min(block_first + OUTPUT_TILE, a.sites);
-         first += a.leaf) {
-        int end = min(first + a.leaf, a.sites);
-        double local_c[COEFFICIENT_SLOTS] = {0};
-        for (int base = 0; base < atom_count; base += ATOM_CHUNK) {
-            int count = min(ATOM_CHUNK, atom_count - base);
-            if (threadIdx.x < count) {
-                int original = rows[base + threadIdx.x];
-                shared_atoms[threadIdx.x] =
-                    make_profile(a, atoms[4 * original + 1], atoms[4 * original + center_column]);
-                shared_amplitude[threadIdx.x] = atoms[4 * original];
-            }
-            for (int q = threadIdx.x; q < BATCH_TILE * count; q += blockDim.x) {
-                int lb = q / count, j = q % count;
-                int b = blockIdx.y * BATCH_TILE + lb;
-                shared_h[lb * ATOM_CHUNK + j] = b < batches ? h[b * atom_count + base + j] : 0;
-            }
-            __syncthreads();
+    int block_width = min(a.sites, min(OUTPUT_TILE, LEAVES_PER_BLOCK * a.leaf));
+    int block_first = blockIdx.x * block_width;
+    int leaf_count = min(block_width, a.sites - block_first) / a.leaf;
+    int c_count = leaf_count * BATCH_TILE * a.basis_count();
+    double local_c[COEFFICIENT_SLOTS] = {0};
 
-            for (int v = 0; v < COEFFICIENT_SLOTS; ++v) {
-                int q = threadIdx.x + v * blockDim.x;
-                if (q >= BATCH_TILE * a.basis_count())
-                    continue;
-                int b = q / a.basis_count(), mode = q % a.basis_count();
-                for (int j = 0; j < count; ++j) {
-                    const Profile &p = shared_atoms[j];
-                    for (int image = -1; image <= 1; ++image) {
-                        double center = p.center + image * a.chart_period();
-                        bool whole_tile = (first - 0.5) * a.spacing >= center - a.half_width &&
-                                          (end - 0.5) * a.spacing <= center + a.half_width;
-                        if (whole_tile)
-                            local_c[v] += shared_amplitude[j] * shared_h[b * ATOM_CHUNK + j] *
-                                          coefficient(p, mode, center).value;
-                    }
-                }
-            }
-            if (owns_output && site >= first && site < end) {
-                for (int j = 0; j < count; ++j) {
-                    const Profile &p = shared_atoms[j];
-                    for (int image = -1; image <= 1; ++image) {
-                        double center = p.center + image * a.chart_period();
-                        bool whole_tile = (first - 0.5) * a.spacing >= center - a.half_width &&
-                                          (end - 0.5) * a.spacing <= center + a.half_width;
-                        if (!whole_tile)
-                            accumulator += shared_amplitude[j] *
-                                           shared_h[local_b * ATOM_CHUNK + j] *
-                                           cell_mass<false>(p, site, center).value;
-                    }
-                }
-            }
-            __syncthreads(); // Atom/H chunk is no longer in use.
+    for (int base = 0; base < atom_count; base += ATOM_CHUNK) {
+        int count = min(ATOM_CHUNK, atom_count - base);
+        if (threadIdx.x < count) {
+            int j = threadIdx.x;
+            int original = rows[base + j];
+            Profile p =
+                make_profile(a, atoms[4 * original + 1], atoms[4 * original + center_column]);
+            shared_center[j] = p.center;
+            shared_first_tile[j] = p.first_tile;
+            shared_amplitude[j] = atoms[4 * original];
+            for (int k = 1; k <= a.modes; ++k)
+                shared_harmonic[j * MAX_MODES + k - 1] =
+                    2 * raw_coefficient(p, k).value / (a.profile_period() * p.c0);
         }
+        for (int q = threadIdx.x; q < BATCH_TILE * count; q += blockDim.x) {
+            int local_batch = q / count, j = q % count;
+            int batch = blockIdx.y * BATCH_TILE + local_batch;
+            shared_h[local_batch * ATOM_CHUNK + j] =
+                batch < batches ? h[batch * atom_count + base + j] : 0;
+        }
+        __syncthreads(); // The shared atom/H chunk is ready for every C owner.
+
         for (int v = 0; v < COEFFICIENT_SLOTS; ++v) {
             int q = threadIdx.x + v * blockDim.x;
-            if (q < BATCH_TILE * a.basis_count())
-                shared_c[q] = local_c[v];
+            if (q >= c_count)
+                continue;
+            int mode = q % a.basis_count();
+            int local_batch = (q / a.basis_count()) % BATCH_TILE;
+            int leaf = q / (a.basis_count() * BATCH_TILE);
+            int target_tile = (block_first + leaf * a.leaf) / a.tile_sites;
+            int chart_tiles = a.sites / a.tile_sites;
+            for (int j = 0; j < count; ++j) {
+                int offset = (target_tile - shared_first_tile[j]) % chart_tiles;
+                if (offset < 0)
+                    offset += chart_tiles;
+                if (offset >= a.period_tiles)
+                    continue; // Entire tile is outside this atom's retained window.
+                int image = (shared_first_tile[j] + offset - target_tile) / chart_tiles;
+                double center = shared_center[j] - image * a.chart_period();
+                double value = 1 / a.profile_period();
+                if (mode != 0) {
+                    int k = (mode + 1) / 2;
+                    double phase = (2 * PI * k / a.profile_period()) * center;
+                    value = shared_harmonic[j * MAX_MODES + k - 1] *
+                            (mode % 2 == 1 ? cos(phase) : sin(phase));
+                }
+                local_c[v] += shared_amplitude[j] * shared_h[local_batch * ATOM_CHUNK + j] * value;
+            }
         }
-        __syncthreads();
-        if (owns_output && site >= first && site < end) {
-            for (int mode = 0; mode < a.basis_count(); ++mode)
-                accumulator +=
-                    shared_c[local_b * a.basis_count() + mode] * integrated_basis(a, mode, site);
-        }
-        __syncthreads(); // C is no longer in use.
+        __syncthreads(); // Every C owner has finished using this atom/H chunk.
     }
-    if (owns_output)
+
+    for (int v = 0; v < COEFFICIENT_SLOTS; ++v) {
+        int q = threadIdx.x + v * blockDim.x;
+        if (q < c_count)
+            shared_c[q] = local_c[v];
+    }
+    __syncthreads(); // Publish all C values once before the site expansion.
+
+    int local_batch = threadIdx.x / block_width;
+    int local_site = threadIdx.x % block_width;
+    int site = block_first + local_site;
+    int batch = blockIdx.y * BATCH_TILE + local_batch;
+    if (local_batch < BATCH_TILE && site < a.sites && batch < batches) {
+        int leaf = local_site / a.leaf;
+        int c_begin = (leaf * BATCH_TILE + local_batch) * a.basis_count();
+        double accumulator = 0;
+        for (int mode = 0; mode < a.basis_count(); ++mode)
+            accumulator += shared_c[c_begin + mode] * integrated_basis(a, mode, site);
         output[batch * a.sites + site] = accumulator;
+    }
 }
 
 template <typename scalar_t>
@@ -576,7 +545,8 @@ torch::Tensor expand(torch::Tensor h, torch::Tensor atoms, torch::Tensor rows,
     auto result = torch::empty({h.size(0), a.sites}, h.options());
     if (h.size(0) == 0)
         return result;
-    dim3 grid((a.sites + OUTPUT_TILE - 1) / OUTPUT_TILE, (h.size(0) + BATCH_TILE - 1) / BATCH_TILE);
+    int block_width = std::min(a.sites, std::min(OUTPUT_TILE, LEAVES_PER_BLOCK * a.leaf));
+    dim3 grid((a.sites + block_width - 1) / block_width, (h.size(0) + BATCH_TILE - 1) / BATCH_TILE);
     auto stream = c10::cuda::getCurrentCUDAStream();
     AT_DISPATCH_FLOATING_TYPES(h.scalar_type(), "cell_mass_expand", [&] {
         expand_tiles_kernel<<<grid, THREADS, 0, stream>>>(

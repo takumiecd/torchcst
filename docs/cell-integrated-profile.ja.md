@@ -1,5 +1,9 @@
 # 区間確率profileの設計と正規化宣言
 
+> 現在のprofile・周期・タイルの契約は[1周期分のタイル窓](cell-mass-tile-window.ja.md)。
+> 下記の一般的な積分定義と、旧clip試作の説明を区別する。現在のruntimeは
+> 支持外の裾を近似として扱い、セルごとのclip・境界積分は使わない。
+
 2026-10-26。新方式の設計は[Issue #120](https://github.com/takumiecd/torchcst/issues/120)で追う。
 このブランチはmainのa4ac5e507df4b766e8b5ab6f38769bbf51d8661cから作成した。
 旧研究の整理・復元先は[Issue #119](https://github.com/takumiecd/torchcst/issues/119)。
@@ -82,7 +86,7 @@ gは支持外で0とし、支持全体の面積Sは有限かつ正であるこ�
 完全な入力タイルでは`Z[b,t,k] = sum_i X[b,i] * B[t,k](i)`を共有できる。
 親Zを子Zから作れる条件は、周波数・原点・spacing・積分係数まで含めて確認する。
 atomごとに周波数を変える式を、そのまま共通Zで扱えるとはしない。
-支持で切れたセルは正確な境界積分で扱い、内部の寄与と二重に数えない。
+現在のタイル窓ではセルを支持境界で切らず、選んだwhole tileを同じ基底で処理する。
 
 ## 基準実装はH/Gを保存し、5つの計算kernelに分ける
 

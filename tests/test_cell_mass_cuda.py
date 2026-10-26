@@ -27,14 +27,14 @@ def spec(sites=128, modes=8):
             profile=ChebyshevSquareSpec(modes=modes, tail_bound=1e-3),
             site_count=sites,
             spacing=0.75,
-            support_half_width=sites * 0.75 / 4,
+            tile_sites=max(1, sites // 4),
             origin=-0.25,
         ),
         output=CellMassAxisSpec(
             profile=ChebyshevSquareSpec(modes=modes, tail_bound=1e-3),
             site_count=sites,
             spacing=1.25,
-            support_half_width=sites * 1.25 / 3,
+            tile_sites=max(1, sites // 4),
             origin=0.2,
         ),
     )
@@ -185,3 +185,45 @@ def test_expanded_atom_limit_and_its_rejection():
     _, too_many, _ = inputs(binding, 1025, 2)
     with pytest.raises(ValueError, match="1024 atoms"):
         physical_linear(binding, gx, too_many.cuda())
+
+
+@requires_cuda
+@pytest.mark.parametrize(
+    "sites,tile_sites,period_tiles", [(1, 1, 1), (2, 2, 1), (32, 4, 5), (32, 32, 1)]
+)
+def test_window_counts_single_site_and_route_edges(sites, tile_sites, period_tiles):
+    profile = ChebyshevSquareSpec(modes=8, tail_bound=1e-3)
+    ax = CellMassAxisSpec(
+        profile=profile,
+        site_count=sites,
+        spacing=0.75,
+        tile_sites=tile_sites,
+        period_tiles=period_tiles,
+        origin=0.2,
+    )
+    binding = CellMassLinearSpec(input=ax, output=ax)
+    x, p, dy = inputs(binding, 9, 5)
+    edge = ax.origin + ax.tile_width - ax.spacing / 2
+    p[:, 2] = torch.tensor(
+        [
+            edge - 1e-5,
+            edge + 1e-5,
+            ax.origin - 0.4,
+            ax.origin + ax.period - 0.1,
+            edge + 2 * ax.period,
+            -30.0,
+            50.0,
+            0.7,
+            1.4,
+        ],
+        dtype=p.dtype,
+    )
+    p[:, 3] = p[:, 2].flip(0)
+    rx, rp = x.requires_grad_(), p.requires_grad_()
+    y = physical_linear_reference(binding, rx, rp)
+    dx, dp = torch.autograd.grad(y, (rx, rp), dy)
+    gx, gp = x.detach().cuda().requires_grad_(), p.detach().cuda().requires_grad_()
+    actual = physical_linear(binding, gx, gp, z_method="merge")
+    adx, adp = torch.autograd.grad(actual, (gx, gp), dy.cuda())
+    for a, b in ((actual, y), (adx, dx), (adp, dp)):
+        torch.testing.assert_close(a.cpu(), b, rtol=3e-8, atol=3e-10)

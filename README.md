@@ -98,7 +98,7 @@ reject this rule. A separate, explicit Chebyshev-square cell-integral reference 
 CUDA research entry now provide the first numeric implementation; they are not
 connected to public `CSTLinear` dispatch or old Polar checkpoints. See the
 [cell-integrated profile design](docs/cell-integrated-profile.ja.md) and
-[prototype contract and execution](docs/cell-mass-implementation.ja.md).
+[tile-window approximation and execution](docs/cell-mass-tile-window.ja.md).
 
 `QuadraticBSplineSpec()` declares the peak-one C1 quadratic B-spline with
 curvature width sigma and support radius `sqrt(6) * sigma`. Use it in
