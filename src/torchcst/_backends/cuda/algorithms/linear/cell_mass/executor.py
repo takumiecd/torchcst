@@ -144,6 +144,7 @@ class _CellMassFunction(torch.autograd.Function):
         cache_projection_derivatives,
         double_intermediates,
         owner_coefficient_reduction,
+        fuse_g_parameter_grad,
     ):
         native = _extension()
         input_config = _axis_config(spec.input, coefficient_method)
@@ -187,9 +188,14 @@ class _CellMassFunction(torch.autograd.Function):
         ctx.cache_projection_derivatives = cache_projection_derivatives
         ctx.double_intermediates = double_intermediates
         ctx.owner_coefficient_reduction = owner_coefficient_reduction
+        ctx.fuse_g_parameter_grad = fuse_g_parameter_grad
         if cache_projection_derivatives:
             # Keep original X/atoms for their autograd mutation/version checks.
             ctx.save_for_backward(x, atoms, rows, h, h_sigma, h_center, group_offsets)
+        elif fuse_g_parameter_grad:
+            # H is consumed by Y above. The fused pullback reprojects its value
+            # and derivatives, so backward only retains the input hierarchy.
+            ctx.save_for_backward(x, atoms, rows, zx, group_offsets)
         else:
             ctx.save_for_backward(x, atoms, rows, zx, h, group_offsets)
         return y
@@ -200,6 +206,8 @@ class _CellMassFunction(torch.autograd.Function):
         native = _extension()
         if ctx.cache_projection_derivatives:
             x, atoms, rows, h, h_sigma, h_center, group_offsets = ctx.saved_tensors
+        elif ctx.fuse_g_parameter_grad:
+            x, atoms, rows, zx, group_offsets = ctx.saved_tensors
         else:
             x, atoms, rows, zx, h, group_offsets = ctx.saved_tensors
         # Only dY may need canonicalization. Saved X/atoms are original tensors;
@@ -217,6 +225,11 @@ class _CellMassFunction(torch.autograd.Function):
                 dy, atoms, rows, zy, output_config, ctx.atom_threads_per_block
             )
             del zy
+        elif ctx.fuse_g_parameter_grad:
+            g, grad_atoms = native.compute_g_parameter_grad(
+                x, dy, atoms, rows, zx, zy, input_config, output_config,
+                ctx.atom_threads_per_block,
+            )
         else:
             g = native.compute_g(
                 dy, atoms, rows, zy, output_config, ctx.atom_threads_per_block
@@ -235,12 +248,12 @@ class _CellMassFunction(torch.autograd.Function):
                 atoms, rows, h, g, h_sigma, h_center, g_sigma, g_center,
                 ctx.atom_threads_per_block,
             )
-        else:
+        elif not ctx.fuse_g_parameter_grad:
             grad_atoms = native.compute_parameter_grad(
                 x, dy, atoms, rows, h, g, zx, zy, input_config, output_config,
                 ctx.atom_threads_per_block,
             )
-        return dx, grad_atoms, None, None, None, None, None, None, None, None, None, None
+        return dx, grad_atoms, None, None, None, None, None, None, None, None, None, None, None
 
 
 def physical_linear(
@@ -257,6 +270,7 @@ def physical_linear(
     cache_projection_derivatives=False,
     double_intermediates=False,
     owner_coefficient_reduction=False,
+    fuse_g_parameter_grad=False,
 ):
     """Run the first-order tile-window approximation with continuous mass.
 
@@ -279,11 +293,23 @@ def physical_linear(
     Each atom generates C once for its owner; bounded double C partials are
     combined across neighbouring owners before a single site expansion.
     It supports up to 128 atom splits without a second atom permutation.
+    fuse_g_parameter_grad writes G while recomputing parameter pullbacks and
+    releases forward H after Y; it is available with derivative recomputation.
     Each block covers at most four profile tiles, independent of site width.
     Build/JIT time is separate from execution timing. Support is explicit.
     """
     validate_input_structure(spec, x, atoms)
     _validate_cuda_support(spec, x, atoms)
+    if type(owner_coefficient_reduction) is not bool:
+        raise ValueError("owner_coefficient_reduction must be bool")
+    if type(fuse_g_parameter_grad) is not bool:
+        raise ValueError("fuse_g_parameter_grad must be bool")
+    if type(double_intermediates) is not bool:
+        raise ValueError("double_intermediates must be bool")
+    if type(cache_projection_derivatives) is not bool:
+        raise ValueError("cache_projection_derivatives must be bool")
+    if fuse_g_parameter_grad and cache_projection_derivatives:
+        raise ValueError("fuse_g_parameter_grad requires derivative recomputation")
     if z_method not in ("direct", "merge"):
         raise ValueError("z_method must be direct or merge")
     if (
@@ -306,12 +332,6 @@ def physical_linear(
         128,
     ):
         raise ValueError("atom_threads_per_block must be 16, 32, 64 or 128")
-    if type(owner_coefficient_reduction) is not bool:
-        raise ValueError("owner_coefficient_reduction must be bool")
-    if type(double_intermediates) is not bool:
-        raise ValueError("double_intermediates must be bool")
-    if type(cache_projection_derivatives) is not bool:
-        raise ValueError("cache_projection_derivatives must be bool")
     return _CellMassFunction.apply(
         x,
         atoms,
@@ -325,4 +345,5 @@ def physical_linear(
         cache_projection_derivatives,
         double_intermediates,
         owner_coefficient_reduction,
+        fuse_g_parameter_grad,
     )

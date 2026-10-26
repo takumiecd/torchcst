@@ -111,8 +111,13 @@ def test_cuda_y_dx_and_every_atom_gradient(
 
 @requires_cuda
 @pytest.mark.parametrize("atom_splits", [1, 4])
-@pytest.mark.parametrize("cache_projection_derivatives", [False, True])
-def test_each_projection_and_saved_state_reuse(atom_splits, cache_projection_derivatives):
+@pytest.mark.parametrize(
+    "cache_projection_derivatives,fuse_g_parameter_grad",
+    [(False, False), (False, True), (True, False)],
+)
+def test_each_projection_and_saved_state_reuse(
+    atom_splits, cache_projection_derivatives, fuse_g_parameter_grad
+):
     binding = spec()
     x, p, dy = inputs(binding)
     x, p, dy = x.cuda(), p.cuda(), dy.cuda()
@@ -133,6 +138,8 @@ def test_each_projection_and_saved_state_reuse(atom_splits, cache_projection_der
     y = physical_linear(
         binding, x, p, atom_splits=atom_splits, atom_threads_per_block=16,
         cache_projection_derivatives=cache_projection_derivatives,
+        fuse_g_parameter_grad=fuse_g_parameter_grad,
+        owner_coefficient_reduction=fuse_g_parameter_grad,
     )
     first = torch.autograd.grad(y, (x, p), dy, retain_graph=True)
     second = torch.autograd.grad(y, (x, p), dy)
@@ -379,10 +386,16 @@ def test_invalid_execution_partition():
         with pytest.raises(ValueError, match="cache_projection_derivatives"):
             physical_linear(binding, x, p, cache_projection_derivatives=invalid)
     for invalid in (0, 1, None, "yes"):
+        with pytest.raises(ValueError, match="fuse_g_parameter_grad"):
+            physical_linear(binding, x, p, fuse_g_parameter_grad=invalid)
         with pytest.raises(ValueError, match="owner_coefficient_reduction"):
             physical_linear(binding, x, p, owner_coefficient_reduction=invalid)
         with pytest.raises(ValueError, match="double_intermediates"):
             physical_linear(binding, x, p, double_intermediates=invalid)
+    with pytest.raises(ValueError, match="requires derivative recomputation"):
+        physical_linear(binding, x, p, fuse_g_parameter_grad=True, cache_projection_derivatives=True)
+    with pytest.raises(ValueError, match="owner_coefficient_reduction"):
+        physical_linear(binding, x, p, owner_coefficient_reduction=torch.tensor([True, False]))
     native = _extension()
     rows = prepare_layout(binding, p)
     with pytest.raises(RuntimeError, match="sites_per_block"):
@@ -596,8 +609,13 @@ def test_cached_forward_keeps_original_x_version_check():
 
 
 @requires_cuda
-@pytest.mark.parametrize("cache_projection_derivatives", [False, True])
-def test_near_zero_center_gradient_preserves_adamw_update(cache_projection_derivatives):
+@pytest.mark.parametrize(
+    "cache_projection_derivatives,fuse_g_parameter_grad",
+    [(False, False), (False, True), (True, False)],
+)
+def test_near_zero_center_gradient_preserves_adamw_update(
+    cache_projection_derivatives, fuse_g_parameter_grad
+):
     # A cancellation across four batches leaves an input-center gradient near
     # 7e-10. Rounding stored Z/H/G can flip an FP32 parameter update by one ULP.
     profile = ChebyshevSquareSpec(modes=8, tail_bound=1e-3)
@@ -625,6 +643,8 @@ def test_near_zero_center_gradient_preserves_adamw_update(cache_projection_deriv
         binding, x.cuda(), gp, z_method="merge", sites_per_block=256,
         double_intermediates=True,
         cache_projection_derivatives=cache_projection_derivatives,
+        fuse_g_parameter_grad=fuse_g_parameter_grad,
+        owner_coefficient_reduction=fuse_g_parameter_grad,
     )
     actual.backward(dy.cuda())
     torch.testing.assert_close(gp.grad.cpu(), expected_gradient, rtol=5e-5, atol=2e-6)
@@ -641,3 +661,33 @@ def test_near_zero_center_gradient_preserves_adamw_update(cache_projection_deriv
         gp.detach().cpu() - p, reference_parameter.detach().cpu() - p,
         rtol=5e-5, atol=2e-6,
     )
+
+
+@requires_cuda
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("owner_coefficient_reduction", [False, True])
+@pytest.mark.parametrize("double_intermediates", [False, True])
+@pytest.mark.parametrize("z_method", ["direct", "merge"])
+@pytest.mark.parametrize("sites,atoms,batch", [(128, 819, 4), (32, 35, 5), (8, 0, 2), (8, 3, 0)])
+def test_fused_g_parameter_grad_all_columns(
+    dtype, owner_coefficient_reduction, double_intermediates, z_method, sites, atoms, batch
+):
+    binding = spec(sites)
+    x, p, dy = inputs(binding, atoms, batch, dtype)
+    rx, rp = x.requires_grad_(), p.requires_grad_()
+    expected = physical_linear_reference(binding, rx, rp)
+    expected_dx, expected_dp = torch.autograd.grad(expected, (rx, rp), dy)
+    gx = x.detach().cuda().requires_grad_()
+    gp = p.detach().cuda().requires_grad_()
+    actual = physical_linear(
+        binding, gx, gp, z_method=z_method, atom_splits=4,
+        owner_coefficient_reduction=owner_coefficient_reduction,
+        double_intermediates=double_intermediates, fuse_g_parameter_grad=True,
+    )
+    actual_dx, actual_dp = torch.autograd.grad(actual, (gx, gp), dy.cuda())
+    tolerance = (
+        {"rtol": 5e-5, "atol": 2e-6}
+        if dtype == torch.float32 else {"rtol": 3e-8, "atol": 3e-10}
+    )
+    for result, truth in ((actual, expected), (actual_dx, expected_dx), (actual_dp, expected_dp)):
+        torch.testing.assert_close(result.cpu(), truth, **tolerance)

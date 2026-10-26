@@ -33,7 +33,12 @@ Tensor compute_dx_from_owners(Tensor g, Tensor atoms, Tensor rows, Tensor offset
                               Config input_config, Config output_config, int sites_per_block,
                               int atom_splits);
 
+std::vector<Tensor> compute_g_parameter_grad(Tensor x, Tensor dy, Tensor atoms, Tensor rows,
+                                             Tensor zx, Tensor zy, Config input_config,
+                                             Config output_config, int atom_threads);
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+    m.def("compute_g_parameter_grad", &compute_g_parameter_grad);
     m.def("compute_y_from_owners", &compute_y_from_owners);
     m.def("compute_dx_from_owners", &compute_dx_from_owners);
     m.def("prepare_inputs", &prepare_inputs);

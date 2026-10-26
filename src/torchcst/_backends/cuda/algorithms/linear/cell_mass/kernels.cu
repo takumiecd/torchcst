@@ -630,12 +630,11 @@ __global__ void expand_tiles_kernel(const moment_t *h, const scalar_t *atoms, co
     }
 }
 
-template <typename scalar_t, typename moment_t>
+template <bool WriteG, typename scalar_t, typename moment_t>
 __global__ void parameter_grad_kernel(const scalar_t *x, const scalar_t *dy, const scalar_t *atoms,
-                                      const int64_t *rows, const scalar_t *h, const scalar_t *g,
-                                      const moment_t *zx, const moment_t *zy, scalar_t *grad,
-                                      int batches, int atom_count, Axis input_axis,
-                                      Axis output_axis) {
+                                      const int64_t *rows, const moment_t *zx, const moment_t *zy,
+                                      scalar_t *g_output, scalar_t *grad, int batches,
+                                      int atom_count, Axis input_axis, Axis output_axis) {
     int slot = blockIdx.x * blockDim.x + threadIdx.x;
     if (slot >= atom_count)
         return;
@@ -652,6 +651,8 @@ __global__ void parameter_grad_kernel(const scalar_t *x, const scalar_t *dy, con
             // rounded H/G again when combining their parameter pullbacks.
             double hv = input_vjp.value[local];
             double gv = output_vjp.value[local];
+            if (WriteG)
+                g_output[(begin + local) * atom_count + slot] = gv;
             da += hv * gv;
             ds += amplitude * (gv * input_vjp.sigma[local] + hv * output_vjp.sigma[local]);
             dmu_in += amplitude * gv * input_vjp.center[local];
@@ -1177,12 +1178,12 @@ torch::Tensor compute_parameter_grad(torch::Tensor x, torch::Tensor dy, torch::T
     TORCH_CHECK(zx.scalar_type() == zy.scalar_type(), "hierarchy dtypes must match");
     AT_DISPATCH_FLOATING_TYPES(x.scalar_type(), "cell_mass_parameter_grad", [&] {
         auto launch = [&](auto *input_moments, auto *output_moments) {
-            parameter_grad_kernel<<<(atoms.size(0) + atom_threads - 1) / atom_threads, atom_threads,
-                                    0, stream>>>(
-                x.data_ptr<scalar_t>(), dy.data_ptr<scalar_t>(), atoms.data_ptr<scalar_t>(),
-                rows.data_ptr<int64_t>(), h.data_ptr<scalar_t>(), g.data_ptr<scalar_t>(),
-                input_moments, output_moments, grad.data_ptr<scalar_t>(), x.size(0), atoms.size(0),
-                input, output);
+            parameter_grad_kernel<false>
+                <<<(atoms.size(0) + atom_threads - 1) / atom_threads, atom_threads, 0, stream>>>(
+                    x.data_ptr<scalar_t>(), dy.data_ptr<scalar_t>(), atoms.data_ptr<scalar_t>(),
+                    rows.data_ptr<int64_t>(), input_moments, output_moments,
+                    static_cast<scalar_t *>(nullptr), grad.data_ptr<scalar_t>(), x.size(0),
+                    atoms.size(0), input, output);
         };
         if (zx.scalar_type() == torch::kFloat64)
             launch(zx.data_ptr<double>(), zy.data_ptr<double>());
@@ -1207,4 +1208,44 @@ torch::Tensor compute_dx_from_owners(torch::Tensor g, torch::Tensor atoms, torch
                                      int atom_splits) {
     return expand_owner_coefficients(g, atoms, rows, offsets, input_config, output_config, 3,
                                      sites_per_block, atom_splits);
+}
+
+// Recomputed parameter pullbacks already contain G. Publish it for dX here,
+// avoiding a second output-axis projection and retaining no forward H buffer.
+std::vector<torch::Tensor>
+compute_g_parameter_grad(torch::Tensor x, torch::Tensor dy, torch::Tensor atoms, torch::Tensor rows,
+                         torch::Tensor zx, torch::Tensor zy, std::vector<double> input_config,
+                         std::vector<double> output_config, int atom_threads) {
+    check_signal(x);
+    check_signal(dy);
+    check_like(dy, x);
+    check_atoms(atoms, rows, x);
+    check_atom_thread_count(atom_threads);
+    Axis input = parse_axis(input_config), output = parse_axis(output_config);
+    TORCH_CHECK(x.size(0) == dy.size(0) && x.size(1) == input.sites && dy.size(1) == output.sites,
+                "input/output shapes differ from axes");
+    check_z(zx, x, input);
+    check_z(zy, dy, output);
+    TORCH_CHECK(zx.scalar_type() == zy.scalar_type(), "hierarchy dtypes must match");
+    c10::cuda::CUDAGuard guard(x.device());
+    auto g = torch::empty({x.size(0), atoms.size(0)}, x.options());
+    auto grad = torch::empty_like(atoms);
+    if (atoms.size(0) == 0)
+        return {g, grad};
+    auto stream = c10::cuda::getCurrentCUDAStream();
+    AT_DISPATCH_FLOATING_TYPES(x.scalar_type(), "cell_mass_fused_g_parameter_grad", [&] {
+        auto launch = [&](auto *input_moments, auto *output_moments) {
+            parameter_grad_kernel<true>
+                <<<(atoms.size(0) + atom_threads - 1) / atom_threads, atom_threads, 0, stream>>>(
+                    x.data_ptr<scalar_t>(), dy.data_ptr<scalar_t>(), atoms.data_ptr<scalar_t>(),
+                    rows.data_ptr<int64_t>(), input_moments, output_moments, g.data_ptr<scalar_t>(),
+                    grad.data_ptr<scalar_t>(), x.size(0), atoms.size(0), input, output);
+        };
+        if (zx.scalar_type() == torch::kFloat64)
+            launch(zx.data_ptr<double>(), zy.data_ptr<double>());
+        else
+            launch(zx.data_ptr<scalar_t>(), zy.data_ptr<scalar_t>());
+    });
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+    return {g, grad};
 }
