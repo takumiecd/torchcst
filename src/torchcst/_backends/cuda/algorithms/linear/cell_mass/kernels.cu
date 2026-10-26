@@ -21,7 +21,7 @@ constexpr double PI = 3.1415926535897932384626433832795;
 
 struct Axis {
     int sites, modes, leaf, leaves, nodes, tile_sites, period_tiles;
-    double spacing, origin, tail_bound;
+    double spacing, origin, tail_bound, radius_ratio4;
     bool polynomial_coefficients;
     __host__ __device__ int basis_count() const {
         return 1 + 2 * modes;
@@ -70,6 +70,12 @@ Axis parse_axis(const std::vector<double> &c) {
     a.leaf = std::min(8, a.tile_sites);
     a.leaves = a.sites / a.leaf;
     a.nodes = 2 * a.leaves - 1;
+    // Bank-only constants: compute once on the host, not once per atom.
+    double period = a.profile_period(), tile = period / 3;
+    double shape = std::acosh(1 / std::sqrt(a.tail_bound)) / a.modes;
+    double minimum = period / PI * std::acos(1 / std::cosh(shape));
+    double ratio = minimum / tile;
+    a.radius_ratio4 = ratio * ratio * ratio * ratio;
     return a;
 }
 
@@ -266,20 +272,25 @@ __device__ Profile make_profile(Axis a, double sigma, double center) {
     int owner = static_cast<int>(floor((p.center + a.spacing / 2) / (a.tile_sites * a.spacing)));
     p.first_tile = owner - a.period_tiles / 2;
     double period = a.profile_period(), tile = period / 3;
-    double shape = acosh(1 / sqrt(a.tail_bound)) / a.modes;
-    double minimum = period / PI * acos(1 / cosh(shape));
-    double ratio = minimum / tile;
-    double ratio4 = ratio * ratio * ratio * ratio;
+    double ratio4 = a.radius_ratio4;
     double s = sigma / tile;
     double base = ratio4 + (1 - ratio4) * s * s * s * s;
-    double radius = tile * pow(base, 0.25);
-    double radius_sigma = (1 - ratio4) * s * s * s * pow(base, -0.75);
+    double root = sqrt(sqrt(base));
+    double radius = tile * root;
+    double radius_sigma = (1 - ratio4) * s * s * s / (root * root * root);
     double angle = PI * radius / period;
     p.beta = 1 / cos(angle);
     p.beta_sigma = p.beta * tan(angle) * PI / period * radius_sigma;
-    double exponent = a.modes * acosh(p.beta);
-    p.denominator = cosh(exponent);
-    p.denominator_sigma = sinh(exponent) * a.modes / sqrt(p.beta * p.beta - 1) * p.beta_sigma;
+    if (a.polynomial_coefficients) {
+        // Every raw coefficient and its mass share T_M(beta)^-2. It cancels
+        // from the normalized value AND its sigma derivative. DFT keeps D.
+        p.denominator = 1;
+        p.denominator_sigma = 0;
+    } else {
+        double exponent = a.modes * acosh(p.beta);
+        p.denominator = cosh(exponent);
+        p.denominator_sigma = sinh(exponent) * a.modes / sqrt(p.beta * p.beta - 1) * p.beta_sigma;
+    }
     auto dc = raw_coefficient(p, 0);
     p.c0 = dc.value;
     p.c0_sigma = dc.sigma;
@@ -290,20 +301,30 @@ struct Coefficient {
     double value, center, sigma;
 };
 
-__device__ Coefficient coefficient(const Profile &p, int mode, double image_center) {
-    if (mode == 0)
-        return {1 / p.axis.profile_period(), 0, 0};
-    int k = (mode + 1) / 2;
-    double omega = 2 * PI * k / p.axis.profile_period();
-    auto c = raw_coefficient(p, k);
+struct CoefficientPair {
+    Coefficient cosine, sine;
+};
+
+// Paired modes share one raw harmonic, one normalization and one sincos.
+template <bool Derivatives>
+__device__ CoefficientPair coefficient_pair(const Profile &p, int harmonic, double image_center) {
+    if (harmonic == 0)
+        return {{1 / p.axis.profile_period(), 0, 0}, {0, 0, 0}};
+    double omega = 2 * PI * harmonic / p.axis.profile_period();
+    auto raw = raw_coefficient(p, harmonic);
     double scale = 2 / (p.axis.profile_period() * p.c0);
-    double normalized = c.value * scale;
-    double ds = (c.sigma - c.value * p.c0_sigma / p.c0) * scale;
-    double phase = omega * image_center;
-    bool cosine = mode % 2 == 1;
-    double f = cosine ? cos(phase) : sin(phase);
-    double df = omega * (cosine ? -sin(phase) : cos(phase));
-    return {normalized * f, normalized * df, ds * f};
+    double normalized = raw.value * scale;
+    double sine, cosine;
+    sincos(omega * image_center, &sine, &cosine);
+    CoefficientPair result{{normalized * cosine, 0, 0}, {normalized * sine, 0, 0}};
+    if (Derivatives) {
+        double ds = (raw.sigma - raw.value * p.c0_sigma / p.c0) * scale;
+        result.cosine.center = -omega * normalized * sine;
+        result.sine.center = omega * normalized * cosine;
+        result.cosine.sigma = ds * cosine;
+        result.sine.sigma = ds * sine;
+    }
+    return result;
 }
 
 __device__ double integrated_basis(Axis a, int mode, int site) {
@@ -389,8 +410,9 @@ __device__ Projection project_atom(const scalar_t *signal, const scalar_t *z, in
         if (first >= end)
             continue;
         double center = p.center - image * a.chart_period();
-        for (int mode = 0; mode < a.basis_count(); ++mode) {
-            auto c = coefficient(p, mode, center);
+        for (int harmonic = 0; harmonic <= a.modes; ++harmonic) {
+            int mode = harmonic == 0 ? 0 : 2 * harmonic - 1;
+            auto pair = coefficient_pair<Derivatives>(p, harmonic, center);
             // All selected cells form whole aligned tiles. Greedily consume
             // the largest available Z nodes; no cell needs a fringe fallback.
             for (int site = first; site < end;) {
@@ -403,10 +425,20 @@ __device__ Projection project_atom(const scalar_t *signal, const scalar_t *z, in
                 for (int local = 0; local < BATCH_TILE && batch_begin + local < batches; ++local) {
                     double moment =
                         z[((batch_begin + local) * a.nodes + node) * a.basis_count() + mode];
-                    result.value[local] += c.value * moment;
+                    result.value[local] += pair.cosine.value * moment;
                     if (Derivatives) {
-                        result.center[local] += c.center * moment;
-                        result.sigma[local] += c.sigma * moment;
+                        result.center[local] += pair.cosine.center * moment;
+                        result.sigma[local] += pair.cosine.sigma * moment;
+                    }
+                    if (harmonic != 0) {
+                        double sine_moment =
+                            z[((batch_begin + local) * a.nodes + node) * a.basis_count() + mode +
+                              1];
+                        result.value[local] += pair.sine.value * sine_moment;
+                        if (Derivatives) {
+                            result.center[local] += pair.sine.center * sine_moment;
+                            result.sigma[local] += pair.sine.sigma * sine_moment;
+                        }
                     }
                 }
                 site += width;
@@ -418,19 +450,26 @@ __device__ Projection project_atom(const scalar_t *signal, const scalar_t *z, in
 
 // H/G: each thread owns a different sorted slot. Original atom parameters are
 // read through rows; all required input tiles complete locally before one store.
-template <typename scalar_t>
+template <bool Derivatives, typename scalar_t>
 __global__ void project_atoms_kernel(const scalar_t *signal, const scalar_t *atoms,
                                      const int64_t *rows, const scalar_t *z, scalar_t *h,
-                                     int batches, int atom_count, Axis a, int center_column) {
+                                     int batches, int atom_count, Axis a, int center_column,
+                                     double *sigma_projection, double *center_projection) {
     int slot = blockIdx.x * blockDim.x + threadIdx.x;
     if (slot >= atom_count)
         return;
     int original = rows[slot];
     Profile p = make_profile(a, atoms[4 * original + 1], atoms[4 * original + center_column]);
     int batch_begin = blockIdx.y * BATCH_TILE;
-    Projection result = project_atom<false>(signal, z, batches, batch_begin, p);
-    for (int local = 0; local < BATCH_TILE && batch_begin + local < batches; ++local)
-        h[(batch_begin + local) * atom_count + slot] = result.value[local];
+    Projection result = project_atom<Derivatives>(signal, z, batches, batch_begin, p);
+    for (int local = 0; local < BATCH_TILE && batch_begin + local < batches; ++local) {
+        int offset = (batch_begin + local) * atom_count + slot;
+        h[offset] = result.value[local];
+        if (Derivatives) {
+            sigma_projection[offset] = result.sigma[local];
+            center_projection[offset] = result.center[local];
+        }
+    }
 }
 
 // Return the position of a chart tile in an atom's unwrapped retained window.
@@ -619,9 +658,37 @@ __global__ void parameter_grad_kernel(const scalar_t *x, const scalar_t *dy, con
     grad[4 * original + 3] = dmu_in;
 }
 
-torch::Tensor project(torch::Tensor signal, torch::Tensor atoms, torch::Tensor rows,
-                      torch::Tensor z, std::vector<double> config, int center_column,
-                      int atom_threads) {
+// Cached derivatives are projected sums, NOT per-site or per-mode Jacobians.
+// One thread combines all batches for its atom; no Z/profile work remains here.
+template <typename scalar_t>
+__global__ void cached_parameter_grad_kernel(const scalar_t *atoms, const int64_t *rows,
+                                             const scalar_t *h, const scalar_t *g,
+                                             const double *h_sigma, const double *h_center,
+                                             const double *g_sigma, const double *g_center,
+                                             scalar_t *grad, int batches, int atom_count) {
+    int slot = blockIdx.x * blockDim.x + threadIdx.x;
+    if (slot >= atom_count)
+        return;
+    int original = rows[slot];
+    double amplitude = atoms[4 * original];
+    double da = 0, ds = 0, dmu_in = 0, dmu_out = 0;
+    for (int batch = 0; batch < batches; ++batch) {
+        int offset = batch * atom_count + slot;
+        double hv = h[offset], gv = g[offset];
+        da += hv * gv;
+        ds += amplitude * (gv * h_sigma[offset] + hv * g_sigma[offset]);
+        dmu_in += amplitude * gv * h_center[offset];
+        dmu_out += amplitude * hv * g_center[offset];
+    }
+    grad[4 * original] = da;
+    grad[4 * original + 1] = ds;
+    grad[4 * original + 2] = dmu_out;
+    grad[4 * original + 3] = dmu_in;
+}
+
+std::vector<torch::Tensor> project(torch::Tensor signal, torch::Tensor atoms, torch::Tensor rows,
+                                   torch::Tensor z, std::vector<double> config, int center_column,
+                                   int atom_threads, bool derivatives) {
     check_signal(signal);
     check_atom_thread_count(atom_threads);
     Axis a = parse_axis(config);
@@ -630,19 +697,29 @@ torch::Tensor project(torch::Tensor signal, torch::Tensor atoms, torch::Tensor r
     check_z(z, signal, a);
     c10::cuda::CUDAGuard guard(signal.device());
     auto result = torch::empty({signal.size(0), atoms.size(0)}, signal.options());
+    auto sigma = derivatives ? torch::empty(result.sizes(), signal.options().dtype(torch::kFloat64))
+                             : torch::Tensor();
+    auto center = derivatives ? torch::empty_like(sigma) : torch::Tensor();
     if (atoms.size(0) == 0 || signal.size(0) == 0)
-        return result;
+        return {result, sigma, center};
     dim3 grid((atoms.size(0) + atom_threads - 1) / atom_threads,
               (signal.size(0) + BATCH_TILE - 1) / BATCH_TILE);
     auto stream = c10::cuda::getCurrentCUDAStream();
     AT_DISPATCH_FLOATING_TYPES(signal.scalar_type(), "cell_mass_project", [&] {
-        project_atoms_kernel<<<grid, atom_threads, 0, stream>>>(
-            signal.data_ptr<scalar_t>(), atoms.data_ptr<scalar_t>(), rows.data_ptr<int64_t>(),
-            z.data_ptr<scalar_t>(), result.data_ptr<scalar_t>(), signal.size(0), atoms.size(0), a,
-            center_column);
+        if (derivatives) {
+            project_atoms_kernel<true><<<grid, atom_threads, 0, stream>>>(
+                signal.data_ptr<scalar_t>(), atoms.data_ptr<scalar_t>(), rows.data_ptr<int64_t>(),
+                z.data_ptr<scalar_t>(), result.data_ptr<scalar_t>(), signal.size(0), atoms.size(0),
+                a, center_column, sigma.data_ptr<double>(), center.data_ptr<double>());
+        } else {
+            project_atoms_kernel<false><<<grid, atom_threads, 0, stream>>>(
+                signal.data_ptr<scalar_t>(), atoms.data_ptr<scalar_t>(), rows.data_ptr<int64_t>(),
+                z.data_ptr<scalar_t>(), result.data_ptr<scalar_t>(), signal.size(0), atoms.size(0),
+                a, center_column, nullptr, nullptr);
+        }
     });
     C10_CUDA_KERNEL_LAUNCH_CHECK();
-    return result;
+    return {result, sigma, center};
 }
 
 // Each thread owns one final (batch,site), after all split producers on this
@@ -761,11 +838,58 @@ torch::Tensor build_z(torch::Tensor signal, std::vector<double> config, bool hie
 
 torch::Tensor compute_h(torch::Tensor x, torch::Tensor atoms, torch::Tensor rows, torch::Tensor z,
                         std::vector<double> config, int atom_threads) {
-    return project(x, atoms, rows, z, config, 3, atom_threads);
+    return project(x, atoms, rows, z, config, 3, atom_threads, false)[0];
 }
 torch::Tensor compute_g(torch::Tensor dy, torch::Tensor atoms, torch::Tensor rows, torch::Tensor z,
                         std::vector<double> config, int atom_threads) {
-    return project(dy, atoms, rows, z, config, 2, atom_threads);
+    return project(dy, atoms, rows, z, config, 2, atom_threads, false)[0];
+}
+
+std::vector<torch::Tensor> compute_h_with_derivatives(torch::Tensor x, torch::Tensor atoms,
+                                                      torch::Tensor rows, torch::Tensor z,
+                                                      std::vector<double> config,
+                                                      int atom_threads) {
+    return project(x, atoms, rows, z, config, 3, atom_threads, true);
+}
+
+std::vector<torch::Tensor> compute_g_with_derivatives(torch::Tensor dy, torch::Tensor atoms,
+                                                      torch::Tensor rows, torch::Tensor z,
+                                                      std::vector<double> config,
+                                                      int atom_threads) {
+    return project(dy, atoms, rows, z, config, 2, atom_threads, true);
+}
+
+torch::Tensor compute_parameter_grad_from_cache(torch::Tensor atoms, torch::Tensor rows,
+                                                torch::Tensor h, torch::Tensor g,
+                                                torch::Tensor h_sigma, torch::Tensor h_center,
+                                                torch::Tensor g_sigma, torch::Tensor g_center,
+                                                int atom_threads) {
+    check_signal(h);
+    check_like(g, h);
+    check_atoms(atoms, rows, h);
+    check_atom_thread_count(atom_threads);
+    TORCH_CHECK(h.size(1) == atoms.size(0) && g.sizes() == h.sizes(), "invalid H/G shapes");
+    for (const auto &derivative : {h_sigma, h_center, g_sigma, g_center}) {
+        TORCH_CHECK(derivative.device() == h.device() && derivative.is_contiguous() &&
+                        derivative.scalar_type() == torch::kFloat64 &&
+                        derivative.sizes() == h.sizes(),
+                    "projection derivatives must be contiguous float64 tensors matching H/G");
+    }
+    c10::cuda::CUDAGuard guard(h.device());
+    auto grad = torch::empty_like(atoms);
+    if (atoms.size(0) == 0)
+        return grad;
+    auto stream = c10::cuda::getCurrentCUDAStream();
+    AT_DISPATCH_FLOATING_TYPES(h.scalar_type(), "cell_mass_cached_parameter_grad", [&] {
+        cached_parameter_grad_kernel<<<(atoms.size(0) + atom_threads - 1) / atom_threads,
+                                       atom_threads, 0, stream>>>(
+            atoms.data_ptr<scalar_t>(), rows.data_ptr<int64_t>(), h.data_ptr<scalar_t>(),
+            g.data_ptr<scalar_t>(), h_sigma.data_ptr<double>(), h_center.data_ptr<double>(),
+            g_sigma.data_ptr<double>(), g_center.data_ptr<double>(), grad.data_ptr<scalar_t>(),
+            h.size(0), atoms.size(0));
+    });
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+    return grad;
 }
 torch::Tensor compute_y(torch::Tensor h, torch::Tensor atoms, torch::Tensor rows,
                         std::vector<double> config, int sites_per_block, int atom_splits) {

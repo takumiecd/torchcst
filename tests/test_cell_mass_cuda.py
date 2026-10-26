@@ -61,13 +61,15 @@ def inputs(binding, atoms=128, batch=4, dtype=torch.float64):
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 @pytest.mark.parametrize("z_method", ["direct", "merge"])
 @pytest.mark.parametrize("coefficient_method", ["polynomial", "dft"])
+@pytest.mark.parametrize("cache_projection_derivatives", [False, True])
 @pytest.mark.parametrize("atom_threads_per_block", [16, 128])
 @pytest.mark.parametrize(
     "sites,atoms,batch",
     [(128, 819, 4), (128, 128, 4), (32, 35, 3), (8, 1, 5), (8, 0, 2)],
 )
 def test_cuda_y_dx_and_every_atom_gradient(
-    dtype, z_method, coefficient_method, atom_threads_per_block, sites, atoms, batch
+    dtype, z_method, coefficient_method, cache_projection_derivatives,
+    atom_threads_per_block, sites, atoms, batch
 ):
     binding = spec(sites)
     x, p, dy = inputs(binding, atoms, batch, dtype)
@@ -85,6 +87,7 @@ def test_cuda_y_dx_and_every_atom_gradient(
         z_method=z_method,
         coefficient_method=coefficient_method,
         atom_threads_per_block=atom_threads_per_block,
+        cache_projection_derivatives=cache_projection_derivatives,
     )
     actual_dx, actual_dp = torch.autograd.grad(actual, (gx, gp), dy.cuda())
     tolerance = (
@@ -106,7 +109,8 @@ def test_cuda_y_dx_and_every_atom_gradient(
 
 @requires_cuda
 @pytest.mark.parametrize("atom_splits", [1, 4])
-def test_each_projection_and_saved_state_reuse(atom_splits):
+@pytest.mark.parametrize("cache_projection_derivatives", [False, True])
+def test_each_projection_and_saved_state_reuse(atom_splits, cache_projection_derivatives):
     binding = spec()
     x, p, dy = inputs(binding)
     x, p, dy = x.cuda(), p.cuda(), dy.cuda()
@@ -124,7 +128,10 @@ def test_each_projection_and_saved_state_reuse(atom_splits):
 
     x.requires_grad_()
     p.requires_grad_()
-    y = physical_linear(binding, x, p, atom_splits=atom_splits, atom_threads_per_block=16)
+    y = physical_linear(
+        binding, x, p, atom_splits=atom_splits, atom_threads_per_block=16,
+        cache_projection_derivatives=cache_projection_derivatives,
+    )
     first = torch.autograd.grad(y, (x, p), dy, retain_graph=True)
     second = torch.autograd.grad(y, (x, p), dy)
     for a, b in zip(first, second):
@@ -132,12 +139,13 @@ def test_each_projection_and_saved_state_reuse(atom_splits):
 
 
 @requires_cuda
-def test_saved_original_parameters_reject_mutation():
+@pytest.mark.parametrize("cache_projection_derivatives", [False, True])
+def test_saved_original_parameters_reject_mutation(cache_projection_derivatives):
     binding = spec(8)
     x, p, _ = inputs(binding, 3, 1)
     x = x.cuda().requires_grad_()
     p = p.cuda().requires_grad_()
-    y = physical_linear(binding, x, p)
+    y = physical_linear(binding, x, p, cache_projection_derivatives=cache_projection_derivatives)
     with torch.no_grad():
         p[0, 2] += 0.1
     with pytest.raises(RuntimeError, match="modified by an inplace operation"):
@@ -312,6 +320,9 @@ def test_invalid_execution_partition():
     for invalid in (0, 8, 256, True, 16.0):
         with pytest.raises(ValueError, match="atom_threads_per_block"):
             physical_linear(binding, x, p, atom_threads_per_block=invalid)
+    for invalid in (0, 1, None, "yes"):
+        with pytest.raises(ValueError, match="cache_projection_derivatives"):
+            physical_linear(binding, x, p, cache_projection_derivatives=invalid)
     native = _extension()
     rows = prepare_layout(binding, p)
     with pytest.raises(RuntimeError, match="sites_per_block"):
@@ -338,6 +349,7 @@ def test_invalid_execution_partition():
 
 @requires_cuda
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("cache_projection_derivatives", [False, True])
 @pytest.mark.parametrize(
     "sites,atom_count,batches,modes,atom_splits",
     [
@@ -350,7 +362,7 @@ def test_invalid_execution_partition():
     ],
 )
 def test_split_outputs_cover_uneven_chunks_and_empty_work(
-    dtype, sites, atom_count, batches, modes, atom_splits
+    dtype, cache_projection_derivatives, sites, atom_count, batches, modes, atom_splits
 ):
     profile = ChebyshevSquareSpec(modes=modes, tail_bound=1e-3)
     axis = CellMassAxisSpec(
@@ -375,6 +387,7 @@ def test_split_outputs_cover_uneven_chunks_and_empty_work(
         sites_per_block=16,
         atom_splits=atom_splits,
         atom_threads_per_block=16,
+        cache_projection_derivatives=cache_projection_derivatives,
     )
     dx, dp = torch.autograd.grad(actual, (gx, gp), dy.cuda())
     tolerance = (
@@ -462,3 +475,51 @@ def test_fused_prepare_preserves_dtype_width_limit_and_error_priority(dtype, spa
     gx[0, 0] = float("nan")
     with pytest.raises(ValueError, match="finite"):
         physical_linear(binding, gx, gp)
+
+
+@requires_cuda
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_cached_projection_derivatives_against_independent_profile(dtype):
+    binding = spec(32, modes=16)
+    x, p, dy = inputs(binding, 35, 5, dtype)
+    native = _extension()
+    gx, gp, gdy = x.cuda(), p.cuda(), dy.cuda()
+    rows = prepare_layout(binding, gp)
+    results = []
+    for signal, axis, column, method in [
+        (gx, binding.input, 3, native.compute_h_with_derivatives),
+        (gdy, binding.output, 2, native.compute_g_with_derivatives),
+    ]:
+        config = _axis_config(axis)
+        z = native.build_z(signal, config, True, 4)
+        value, sigma, center = method(signal, gp, rows, z, config, 16)
+        assert sigma.dtype == center.dtype == torch.float64
+        cp = p.clone().requires_grad_()
+        profile = profile_cell_masses(axis, cp[:, column], cp[:, 1])
+        projection = signal.cpu().double() @ profile.T
+        gradient = torch.autograd.grad(projection.sum(), cp)[0]
+        tolerance = (
+            {"rtol": 5e-5, "atol": 2e-6}
+            if dtype == torch.float32 else {"rtol": 3e-8, "atol": 3e-10}
+        )
+        slots = rows.cpu()
+        torch.testing.assert_close(value.cpu(), projection[:, slots].to(dtype), **tolerance)
+        torch.testing.assert_close(sigma.sum(0).cpu(), gradient[slots, 1].double(), **tolerance)
+        torch.testing.assert_close(center.sum(0).cpu(), gradient[slots, column].double(), **tolerance)
+        results.append((value, sigma, center))
+    h, hs, hc = results[0]
+    g, gs, gc = results[1]
+    with pytest.raises(RuntimeError, match="projection derivatives"):
+        native.compute_parameter_grad_from_cache(gp, rows, h, g, hs.float(), hc, gs, gc, 16)
+
+
+@requires_cuda
+def test_cached_forward_keeps_original_x_version_check():
+    binding = spec(32)
+    x, p, _ = inputs(binding, 35, 5)
+    x, p = x.cuda().requires_grad_(), p.cuda().requires_grad_()
+    y = physical_linear(binding, x, p, cache_projection_derivatives=True)
+    with torch.no_grad():
+        x[0, 0] += 1
+    with pytest.raises(RuntimeError, match="modified by an inplace operation"):
+        y.sum().backward()

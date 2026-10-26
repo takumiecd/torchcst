@@ -128,6 +128,7 @@ class _CellMassFunction(torch.autograd.Function):
         sites_per_block,
         atom_splits,
         atom_threads_per_block,
+        cache_projection_derivatives,
     ):
         native = _extension()
         input_config = _axis_config(spec.input, coefficient_method)
@@ -137,7 +138,13 @@ class _CellMassFunction(torch.autograd.Function):
         # Same stream: H is complete before its consumers start. Z is global;
         # atom parameters are never copied into a second global parameter array.
         zx = native.build_z(x, input_config, z_method == "merge", z_threads_per_element)
-        h = native.compute_h(x, atoms, rows, zx, input_config, atom_threads_per_block)
+        if cache_projection_derivatives:
+            h, h_sigma, h_center = native.compute_h_with_derivatives(
+                x, atoms, rows, zx, input_config, atom_threads_per_block
+            )
+            del zx  # Cached pullbacks no longer need the input hierarchy.
+        else:
+            h = native.compute_h(x, atoms, rows, zx, input_config, atom_threads_per_block)
         y = native.compute_y(h, atoms, rows, output_config, sites_per_block, atom_splits)
 
         ctx.spec = spec
@@ -147,14 +154,22 @@ class _CellMassFunction(torch.autograd.Function):
         ctx.sites_per_block = sites_per_block
         ctx.atom_splits = atom_splits
         ctx.atom_threads_per_block = atom_threads_per_block
-        ctx.save_for_backward(x, atoms, rows, zx, h)
+        ctx.cache_projection_derivatives = cache_projection_derivatives
+        if cache_projection_derivatives:
+            # Keep original X/atoms for their autograd mutation/version checks.
+            ctx.save_for_backward(x, atoms, rows, h, h_sigma, h_center)
+        else:
+            ctx.save_for_backward(x, atoms, rows, zx, h)
         return y
 
     @staticmethod
     @once_differentiable
     def backward(ctx, grad_output):
         native = _extension()
-        x, atoms, rows, zx, h = ctx.saved_tensors
+        if ctx.cache_projection_derivatives:
+            x, atoms, rows, h, h_sigma, h_center = ctx.saved_tensors
+        else:
+            x, atoms, rows, zx, h = ctx.saved_tensors
         # Only dY may need canonicalization. Saved X/atoms are original tensors;
         # autograd's version checks reject mutation before their backward use.
         dy = grad_output.contiguous()
@@ -164,26 +179,29 @@ class _CellMassFunction(torch.autograd.Function):
         zy = native.build_z(
             dy, output_config, ctx.z_method == "merge", ctx.z_threads_per_element
         )
-        g = native.compute_g(
-            dy, atoms, rows, zy, output_config, ctx.atom_threads_per_block
-        )
+        if ctx.cache_projection_derivatives:
+            g, g_sigma, g_center = native.compute_g_with_derivatives(
+                dy, atoms, rows, zy, output_config, ctx.atom_threads_per_block
+            )
+            del zy
+        else:
+            g = native.compute_g(
+                dy, atoms, rows, zy, output_config, ctx.atom_threads_per_block
+            )
         dx = native.compute_dx(
             g, atoms, rows, input_config, ctx.sites_per_block, ctx.atom_splits
         )
-        grad_atoms = native.compute_parameter_grad(
-            x,
-            dy,
-            atoms,
-            rows,
-            h,
-            g,
-            zx,
-            zy,
-            input_config,
-            output_config,
-            ctx.atom_threads_per_block,
-        )
-        return dx, grad_atoms, None, None, None, None, None, None, None
+        if ctx.cache_projection_derivatives:
+            grad_atoms = native.compute_parameter_grad_from_cache(
+                atoms, rows, h, g, h_sigma, h_center, g_sigma, g_center,
+                ctx.atom_threads_per_block,
+            )
+        else:
+            grad_atoms = native.compute_parameter_grad(
+                x, dy, atoms, rows, h, g, zx, zy, input_config, output_config,
+                ctx.atom_threads_per_block,
+            )
+        return dx, grad_atoms, None, None, None, None, None, None, None, None
 
 
 def physical_linear(
@@ -197,6 +215,7 @@ def physical_linear(
     sites_per_block=32,
     atom_splits=1,
     atom_threads_per_block=128,
+    cache_projection_derivatives=False,
 ):
     """Run the first-order tile-window approximation with continuous mass.
 
@@ -208,6 +227,9 @@ def physical_linear(
     they are not saved for backward. Neither knob changes the mathematical axis.
     atom_threads_per_block (16/32/64/128) controls H/G/parameter-gradient blocks;
     each thread still owns a different atom. Z and Y/dX keep 128-thread blocks.
+    cache_projection_derivatives saves four [batch,atom] float64 pullbacks so
+    parameter gradients reuse H/G work. This trades bounded memory for recompute;
+    no per-site/per-mode Jacobian is stored. The default retains recomputation.
     Tiny inputs retain the existing four-leaf bound. Build/JIT time is separate
     from execution timing. All inputs and support restrictions are explicit.
     """
@@ -234,6 +256,8 @@ def physical_linear(
         128,
     ):
         raise ValueError("atom_threads_per_block must be 16, 32, 64 or 128")
+    if type(cache_projection_derivatives) is not bool:
+        raise ValueError("cache_projection_derivatives must be bool")
     return _CellMassFunction.apply(
         x,
         atoms,
@@ -244,4 +268,5 @@ def physical_linear(
         sites_per_block,
         atom_splits,
         atom_threads_per_block,
+        cache_projection_derivatives,
     )

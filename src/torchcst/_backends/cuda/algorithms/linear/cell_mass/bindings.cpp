@@ -12,6 +12,13 @@ Tensor compute_h(Tensor x, Tensor atoms, Tensor rows, Tensor z, Config config, i
 Tensor compute_y(Tensor h, Tensor atoms, Tensor rows, Config config, int sites_per_block,
                  int atom_splits);
 Tensor compute_g(Tensor dy, Tensor atoms, Tensor rows, Tensor z, Config config, int atom_threads);
+std::vector<Tensor> compute_h_with_derivatives(Tensor x, Tensor atoms, Tensor rows, Tensor z,
+                                               Config config, int atom_threads);
+std::vector<Tensor> compute_g_with_derivatives(Tensor dy, Tensor atoms, Tensor rows, Tensor z,
+                                               Config config, int atom_threads);
+Tensor compute_parameter_grad_from_cache(Tensor atoms, Tensor rows, Tensor h, Tensor g,
+                                         Tensor h_sigma, Tensor h_center, Tensor g_sigma,
+                                         Tensor g_center, int atom_threads);
 Tensor compute_dx(Tensor g, Tensor atoms, Tensor rows, Config config, int sites_per_block,
                   int atom_splits);
 Tensor compute_parameter_grad(Tensor x, Tensor dy, Tensor atoms, Tensor rows, Tensor h, Tensor g,
@@ -31,6 +38,9 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("compute_g", &compute_g, pybind11::arg("dy"), pybind11::arg("atoms"),
           pybind11::arg("rows"), pybind11::arg("z"), pybind11::arg("config"),
           pybind11::arg("atom_threads_per_block") = 128);
+    m.def("compute_h_with_derivatives", &compute_h_with_derivatives);
+    m.def("compute_g_with_derivatives", &compute_g_with_derivatives);
+    m.def("compute_parameter_grad_from_cache", &compute_parameter_grad_from_cache);
     m.def("compute_dx", &compute_dx, pybind11::arg("g"), pybind11::arg("atoms"),
           pybind11::arg("rows"), pybind11::arg("config"), pybind11::arg("sites_per_block") = 32,
           pybind11::arg("atom_splits") = 1);
