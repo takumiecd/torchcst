@@ -125,13 +125,18 @@ profileのtile_sitesや周期は変更しない。詳細は[担当site数の比�
 `atom_splits=1/2/4/8/16/32/64`はY/dXのatom集合をblock間で分担する。
 `atom_threads_per_block=16/32/64/128`はH/G・Parameter勾配のblock幅。
 省略時は従来通り32site/1split/128thread・微分再計算で、数式は全設定で同じ。
+`double_intermediates=True`はZx/Zyをdoubleで保存する。
+微分を保存する経路ではH/Gもdoubleで保存し、保存しない経路では
+Parameter勾配の再投影で得たdouble値を直接使う。
+入出力・元atom・Parameter勾配のdtypeは変えず、既定値はFalse。
+幅や中心の勾配の相殺が大きい場合は、この保存精度も検証対象にする。
 通常forwardの準備はmetadata検査、nativeの値検査・key生成、error wordのhost確認1回、
 stable argsortの順。atom本体のglobalコピーや係数全表は持たない。
 scratch・同期・設定別の測定は[atom分担と位相共有](cell-mass-atom-splits.ja.md)に記録する。
 
 以前のsupport_half_widthを直接渡す研究APIは廃止。IとLの混同を避ける。
 今回は1軸1bank、1024以下の2のべき乗site数、65536以下のatom。
-1024向けの拡張は128/256siteのC再利用と最大64splitを可能にする。
+[1024向けの拡張](cell-mass-1024.ja.md)は128/256siteのC再利用と最大64splitを可能にする。
 性能・メモリの採否はshapeごとの実測を必要とする。
 CUDAのtile_sitesはsite_countを割り切る2のべき乗。sigma<=min(Pin,Pout)/3。
 複数のsigma bankへの分類やblockのbegin/endによる候補範囲の絞り込みは未実装。
