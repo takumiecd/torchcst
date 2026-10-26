@@ -140,6 +140,7 @@ def test_each_projection_and_saved_state_reuse(
         cache_projection_derivatives=cache_projection_derivatives,
         fuse_g_parameter_grad=fuse_g_parameter_grad,
         owner_coefficient_reduction=fuse_g_parameter_grad,
+        owner_window_moments=atom_splits == 4,
     )
     first = torch.autograd.grad(y, (x, p), dy, retain_graph=True)
     second = torch.autograd.grad(y, (x, p), dy)
@@ -275,8 +276,9 @@ def test_1024_wide_expansion_and_all_gradients(
     ],
 )
 @pytest.mark.parametrize("owner_coefficient_reduction", [False, True])
+@pytest.mark.parametrize("owner_window_moments", [False, True])
 def test_window_counts_single_site_and_route_edges(
-    sites, tile_sites, period_tiles, owner_coefficient_reduction
+    sites, tile_sites, period_tiles, owner_coefficient_reduction, owner_window_moments
 ):
     profile = ChebyshevSquareSpec(modes=8, tail_bound=1e-3)
     ax = CellMassAxisSpec(
@@ -312,6 +314,7 @@ def test_window_counts_single_site_and_route_edges(
     actual = physical_linear(
         binding, gx, gp, z_method="merge",
         owner_coefficient_reduction=owner_coefficient_reduction,
+        owner_window_moments=owner_window_moments,
     )
     adx, adp = torch.autograd.grad(actual, (gx, gp), dy.cuda())
     for a, b in ((actual, y), (adx, dx), (adp, dp)):
@@ -386,6 +389,8 @@ def test_invalid_execution_partition():
         with pytest.raises(ValueError, match="cache_projection_derivatives"):
             physical_linear(binding, x, p, cache_projection_derivatives=invalid)
     for invalid in (0, 1, None, "yes"):
+        with pytest.raises(ValueError, match="owner_window_moments"):
+            physical_linear(binding, x, p, owner_window_moments=invalid)
         with pytest.raises(ValueError, match="fuse_g_parameter_grad"):
             physical_linear(binding, x, p, fuse_g_parameter_grad=invalid)
         with pytest.raises(ValueError, match="owner_coefficient_reduction"):
@@ -563,7 +568,10 @@ def test_fused_prepare_preserves_dtype_width_limit_and_error_priority(dtype, spa
 @requires_cuda
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 @pytest.mark.parametrize("coefficient_method", ["polynomial", "polynomial_table"])
-def test_cached_projection_derivatives_against_independent_profile(dtype, coefficient_method):
+@pytest.mark.parametrize("owner_window_moments", [False, True])
+def test_cached_projection_derivatives_against_independent_profile(
+    dtype, coefficient_method, owner_window_moments
+):
     binding = spec(32, modes=16)
     x, p, dy = inputs(binding, 35, 5, dtype)
     native = _extension()
@@ -575,7 +583,7 @@ def test_cached_projection_derivatives_against_independent_profile(dtype, coeffi
         (gdy, binding.output, 2, native.compute_g_with_derivatives),
     ]:
         config = _axis_config(axis, coefficient_method)
-        z = native.build_z(signal, config, True, 4)
+        z = native.build_z(signal, config, True, 4, False, owner_window_moments)
         value, sigma, center = method(signal, gp, rows, z, config, 16)
         assert sigma.dtype == center.dtype == torch.float64
         cp = p.clone().requires_grad_()
@@ -646,6 +654,7 @@ def test_near_zero_center_gradient_preserves_adamw_update(
         cache_projection_derivatives=cache_projection_derivatives,
         fuse_g_parameter_grad=fuse_g_parameter_grad,
         owner_coefficient_reduction=fuse_g_parameter_grad,
+        owner_window_moments=True,
     )
     actual.backward(dy.cuda())
     torch.testing.assert_close(gp.grad.cpu(), expected_gradient, rtol=5e-5, atol=2e-6)
@@ -671,9 +680,10 @@ def test_near_zero_center_gradient_preserves_adamw_update(
 @pytest.mark.parametrize("z_method", ["direct", "merge"])
 @pytest.mark.parametrize("sites,atoms,batch", [(128, 819, 4), (32, 35, 5), (8, 0, 2), (8, 3, 0)])
 @pytest.mark.parametrize("coefficient_method", ["polynomial", "polynomial_table"])
+@pytest.mark.parametrize("owner_window_moments", [False, True])
 def test_fused_g_parameter_grad_all_columns(
     dtype, owner_coefficient_reduction, double_intermediates, z_method, sites, atoms, batch,
-    coefficient_method
+    coefficient_method, owner_window_moments
 ):
     binding = spec(sites)
     x, p, dy = inputs(binding, atoms, batch, dtype)
@@ -687,6 +697,7 @@ def test_fused_g_parameter_grad_all_columns(
         owner_coefficient_reduction=owner_coefficient_reduction,
         double_intermediates=double_intermediates, fuse_g_parameter_grad=True,
         coefficient_method=coefficient_method,
+        owner_window_moments=owner_window_moments,
     )
     actual_dx, actual_dp = torch.autograd.grad(actual, (gx, gp), dy.cuda())
     tolerance = (
@@ -721,3 +732,26 @@ def test_polynomial_table_every_mode_bank(modes, cache_projection_derivatives):
     actual_dx, actual_dp = torch.autograd.grad(actual, (gx, gp), dy.cuda())
     for value, truth in ((actual,expected), (actual_dx,expected_dx), (actual_dp,expected_dp)):
         torch.testing.assert_close(value.cpu(),truth,rtol=3e-8,atol=3e-10)
+
+
+@requires_cuda
+@pytest.mark.parametrize("sites,tile_sites,period_tiles", [(1,1,1),(32,4,5),(128,16,3),(1024,128,3)])
+def test_owner_window_moments_preserve_unit_mass(sites, tile_sites, period_tiles):
+    axis = CellMassAxisSpec(
+        profile=ChebyshevSquareSpec(modes=8,tail_bound=1e-3), site_count=sites,
+        tile_sites=tile_sites, period_tiles=period_tiles, spacing=0.75, origin=0.2,
+    )
+    binding = CellMassLinearSpec(input=axis,output=axis)
+    x,p,_ = inputs(binding,35,5,torch.float32)
+    x = torch.ones_like(x).cuda()
+    p = p.cuda()
+    native = _extension()
+    config = _axis_config(axis,"polynomial_table")
+    rows = prepare_layout(binding,p)
+    z = native.build_z(x,config,True,4,True,True)
+    assert z.shape == (5,sites//tile_sites,17)
+    assert z.dtype == torch.float64
+    h,hs,hc = native.compute_h_with_derivatives(x,p,rows,z,config,128)
+    torch.testing.assert_close(h,torch.ones_like(h),rtol=3e-8,atol=3e-10)
+    torch.testing.assert_close(hs,torch.zeros_like(hs),rtol=0,atol=3e-10)
+    torch.testing.assert_close(hc,torch.zeros_like(hc),rtol=0,atol=3e-10)

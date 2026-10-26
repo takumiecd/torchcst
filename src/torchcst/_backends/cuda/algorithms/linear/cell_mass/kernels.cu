@@ -45,7 +45,7 @@ __device__ __constant__ PolynomialBanks polynomial_banks{};
 struct Axis {
     int sites, modes, leaf, leaves, nodes, tile_sites, period_tiles;
     double spacing, origin, tail_bound, radius_ratio4;
-    bool polynomial_coefficients, polynomial_table;
+    bool polynomial_coefficients, polynomial_table, owner_windows;
     __host__ __device__ int basis_count() const {
         return 1 + 2 * modes;
     }
@@ -135,13 +135,18 @@ void check_atoms(const torch::Tensor &atoms, const torch::Tensor &rows, const to
     // of every intermediate buffer at each native call.
 }
 
-void check_z(const torch::Tensor &z, const torch::Tensor &x, Axis a) {
+Axis check_z(const torch::Tensor &z, const torch::Tensor &x, Axis a) {
     TORCH_CHECK(z.is_contiguous() && z.device() == x.device() &&
                     (z.scalar_type() == x.scalar_type() || z.scalar_type() == torch::kFloat64),
                 "incompatible hierarchy tensor");
-    TORCH_CHECK(z.dim() == 3 && z.size(0) == x.size(0) && z.size(1) == a.nodes &&
-                    z.size(2) == a.basis_count(),
+    int owners = a.sites / a.tile_sites;
+    TORCH_CHECK(z.dim() == 3 && z.size(0) == x.size(0) &&
+                    (z.size(1) == a.nodes || z.size(1) == owners) && z.size(2) == a.basis_count(),
                 "invalid Z shape");
+    // The single-node case represents the same full-chart window either way.
+    a.owner_windows = z.size(1) != a.nodes;
+    a.nodes = z.size(1);
+    return a;
 }
 
 __device__ double wrap_center(double center, Axis a) {
@@ -448,6 +453,56 @@ __global__ void merge_z_level_kernel(scalar_t *z, int batches, Axis a, int level
         z[(b * a.nodes + left + 1) * a.basis_count() + mode];
 }
 
+// All atoms with the same owner use the same K-tile moment window. Aggregate
+// it once, including chart-seam basis rotations, instead of walking Z per atom.
+template <typename moment_t>
+__global__ void aggregate_owner_windows_kernel(const moment_t *z, moment_t *windows, int batches,
+                                               Axis a) {
+    int owners = a.sites / a.tile_sites;
+    int q = blockIdx.x * blockDim.x + threadIdx.x;
+    if (q >= batches * owners * a.basis_count())
+        return;
+    int mode = q % a.basis_count();
+    int owner = (q / a.basis_count()) % owners;
+    int batch = q / (a.basis_count() * owners);
+    int window_first = (owner - a.period_tiles / 2) * a.tile_sites;
+    int window_end = window_first + a.period_tiles * a.tile_sites;
+    double total = 0;
+    for (int image = -1; image <= 1; ++image) {
+        int first = max(window_first, image * a.sites) - image * a.sites;
+        int end = min(window_end, (image + 1) * a.sites) - image * a.sites;
+        if (first >= end)
+            continue;
+        double primary = 0, paired = 0;
+        int pair_mode = mode % 2 == 1 ? mode + 1 : mode - 1;
+        for (int site = first; site < end;) {
+            int level = 0, width = a.leaf;
+            while (width * 2 <= a.sites && site % (width * 2) == 0 && site + width * 2 <= end) {
+                ++level;
+                width *= 2;
+            }
+            int node = a.level_offset(level) + site / width;
+            int base = (batch * a.nodes + node) * a.basis_count();
+            primary += z[base + mode];
+            if (image != 0 && mode != 0)
+                paired += z[base + pair_mode];
+            site += width;
+        }
+        if (image == 0 || mode == 0) {
+            total += primary;
+        } else {
+            int harmonic = (mode + 1) / 2;
+            double sine, cosine;
+            sincos(2 * PI * harmonic * image * a.chart_period() / a.profile_period(), &sine,
+                   &cosine);
+            // Basis rotation has the opposite sign from the C rotation.
+            total +=
+                mode % 2 == 1 ? primary * cosine - paired * sine : primary * cosine + paired * sine;
+        }
+    }
+    windows[q] = total;
+}
+
 struct Projection {
     double value[BATCH_TILE], center[BATCH_TILE], sigma[BATCH_TILE];
 };
@@ -458,6 +513,34 @@ __device__ Projection project_atom(const scalar_t *signal, const moment_t *z, in
     (void)signal; // All input cells are consumed through the common Z basis.
     Axis a = p.axis;
     Projection result{};
+    if (a.owner_windows) {
+        int owners = a.sites / a.tile_sites;
+        int raw_owner = p.first_tile + a.period_tiles / 2;
+        int owner = raw_owner % owners;
+        double center = p.center - ((raw_owner - owner) / owners) * a.chart_period();
+        for (int harmonic = 0; harmonic <= a.modes; ++harmonic) {
+            int mode = harmonic == 0 ? 0 : 2 * harmonic - 1;
+            auto pair = coefficient_pair<Derivatives>(p, harmonic, center);
+            for (int local = 0; local < BATCH_TILE && batch_begin + local < batches; ++local) {
+                int base = ((batch_begin + local) * owners + owner) * a.basis_count();
+                double cosine = z[base + mode];
+                result.value[local] += pair.cosine.value * cosine;
+                if (Derivatives) {
+                    result.center[local] += pair.cosine.center * cosine;
+                    result.sigma[local] += pair.cosine.sigma * cosine;
+                }
+                if (harmonic != 0) {
+                    double sine = z[base + mode + 1];
+                    result.value[local] += pair.sine.value * sine;
+                    if (Derivatives) {
+                        result.center[local] += pair.sine.center * sine;
+                        result.sigma[local] += pair.sine.sigma * sine;
+                    }
+                }
+            }
+        }
+        return result;
+    }
     int window_first = p.first_tile * a.tile_sites;
     int window_end = window_first + a.period_tiles * a.tile_sites;
     for (int image = -1; image <= 1; ++image) {
@@ -760,7 +843,7 @@ std::vector<torch::Tensor> project(torch::Tensor signal, torch::Tensor atoms, to
     Axis a = parse_axis(config);
     TORCH_CHECK(signal.size(1) == a.sites, "signal shape differs from axis");
     check_atoms(atoms, rows, signal);
-    check_z(z, signal, a);
+    a = check_z(z, signal, a);
     c10::cuda::CUDAGuard guard(signal.device());
     auto value_options = derivatives ? z.options() : signal.options();
     auto result = torch::empty({signal.size(0), atoms.size(0)}, value_options);
@@ -1101,7 +1184,7 @@ std::vector<torch::Tensor> prepare_inputs(torch::Tensor x, torch::Tensor atoms,
 }
 
 torch::Tensor build_z(torch::Tensor signal, std::vector<double> config, bool hierarchical,
-                      int team_size, bool double_intermediates) {
+                      int team_size, bool double_intermediates, bool owner_windows) {
     check_signal(signal);
     Axis a = parse_axis(config);
     TORCH_CHECK(team_size >= 1 && team_size <= THREADS && (team_size & (team_size - 1)) == 0,
@@ -1111,8 +1194,11 @@ torch::Tensor build_z(torch::Tensor signal, std::vector<double> config, bool hie
     auto options =
         double_intermediates ? signal.options().dtype(torch::kFloat64) : signal.options();
     auto z = torch::empty({signal.size(0), a.nodes, a.basis_count()}, options);
-    if (signal.size(0) == 0)
+    if (signal.size(0) == 0) {
+        if (owner_windows)
+            return torch::empty({0, a.sites / a.tile_sites, a.basis_count()}, z.options());
         return z;
+    }
     auto stream = c10::cuda::getCurrentCUDAStream();
     AT_DISPATCH_FLOATING_TYPES(signal.scalar_type(), "cell_mass_build_z", [&] {
         auto launch = [&](auto *moments) {
@@ -1133,6 +1219,18 @@ torch::Tensor build_z(torch::Tensor signal, std::vector<double> config, bool hie
         else
             launch(z.data_ptr<scalar_t>());
     });
+    if (owner_windows) {
+        auto windows =
+            torch::empty({signal.size(0), a.sites / a.tile_sites, a.basis_count()}, z.options());
+        int elements = windows.numel();
+        AT_DISPATCH_FLOATING_TYPES(z.scalar_type(), "cell_mass_owner_windows", [&] {
+            aggregate_owner_windows_kernel<<<(elements + THREADS - 1) / THREADS, THREADS, 0,
+                                             stream>>>(
+                z.data_ptr<scalar_t>(), windows.data_ptr<scalar_t>(), signal.size(0), a);
+        });
+        C10_CUDA_KERNEL_LAUNCH_CHECK();
+        return windows;
+    }
     return z;
 }
 
@@ -1222,8 +1320,8 @@ torch::Tensor compute_parameter_grad(torch::Tensor x, torch::Tensor dy, torch::T
     Axis input = parse_axis(input_config), output = parse_axis(output_config);
     TORCH_CHECK(x.size(0) == dy.size(0) && x.size(1) == input.sites && dy.size(1) == output.sites,
                 "input/output shapes differ from axes");
-    check_z(zx, x, input);
-    check_z(zy, dy, output);
+    input = check_z(zx, x, input);
+    output = check_z(zy, dy, output);
     check_like(h, x);
     check_like(g, x);
     TORCH_CHECK(h.dim() == 2 && g.sizes() == h.sizes() && h.size(0) == x.size(0) &&
@@ -1283,8 +1381,8 @@ compute_g_parameter_grad(torch::Tensor x, torch::Tensor dy, torch::Tensor atoms,
     Axis input = parse_axis(input_config), output = parse_axis(output_config);
     TORCH_CHECK(x.size(0) == dy.size(0) && x.size(1) == input.sites && dy.size(1) == output.sites,
                 "input/output shapes differ from axes");
-    check_z(zx, x, input);
-    check_z(zy, dy, output);
+    input = check_z(zx, x, input);
+    output = check_z(zy, dy, output);
     TORCH_CHECK(zx.scalar_type() == zy.scalar_type(), "hierarchy dtypes must match");
     c10::cuda::CUDAGuard guard(x.device());
     auto g = torch::empty({x.size(0), atoms.size(0)}, x.options());

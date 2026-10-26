@@ -145,6 +145,7 @@ class _CellMassFunction(torch.autograd.Function):
         double_intermediates,
         owner_coefficient_reduction,
         fuse_g_parameter_grad,
+        owner_window_moments,
     ):
         native = _extension()
         input_config = _axis_config(spec.input, coefficient_method)
@@ -161,7 +162,8 @@ class _CellMassFunction(torch.autograd.Function):
         # Same stream: H is complete before its consumers start. Z is global;
         # atom parameters are never copied into a second global parameter array.
         zx = native.build_z(
-            x, input_config, z_method == "merge", z_threads_per_element, double_intermediates
+            x, input_config, z_method == "merge", z_threads_per_element, double_intermediates,
+            owner_window_moments
         )
         if cache_projection_derivatives:
             h, h_sigma, h_center = native.compute_h_with_derivatives(
@@ -189,6 +191,7 @@ class _CellMassFunction(torch.autograd.Function):
         ctx.double_intermediates = double_intermediates
         ctx.owner_coefficient_reduction = owner_coefficient_reduction
         ctx.fuse_g_parameter_grad = fuse_g_parameter_grad
+        ctx.owner_window_moments = owner_window_moments
         if cache_projection_derivatives:
             # Keep original X/atoms for their autograd mutation/version checks.
             ctx.save_for_backward(x, atoms, rows, h, h_sigma, h_center, group_offsets)
@@ -218,7 +221,7 @@ class _CellMassFunction(torch.autograd.Function):
 
         zy = native.build_z(
             dy, output_config, ctx.z_method == "merge", ctx.z_threads_per_element,
-            ctx.double_intermediates
+            ctx.double_intermediates, ctx.owner_window_moments
         )
         if ctx.cache_projection_derivatives:
             g, g_sigma, g_center = native.compute_g_with_derivatives(
@@ -253,7 +256,7 @@ class _CellMassFunction(torch.autograd.Function):
                 x, dy, atoms, rows, h, g, zx, zy, input_config, output_config,
                 ctx.atom_threads_per_block,
             )
-        return dx, grad_atoms, None, None, None, None, None, None, None, None, None, None, None
+        return dx, grad_atoms, None, None, None, None, None, None, None, None, None, None, None, None
 
 
 def physical_linear(
@@ -271,6 +274,7 @@ def physical_linear(
     double_intermediates=False,
     owner_coefficient_reduction=False,
     fuse_g_parameter_grad=False,
+    owner_window_moments=False,
 ):
     """Run the first-order tile-window approximation with continuous mass.
 
@@ -297,6 +301,8 @@ def physical_linear(
     releases forward H after Y; it is available with derivative recomputation.
     polynomial_table uses a mode-only constant bank and per-atom reciprocal
     reuse. It evaluates the same normalized polynomial as polynomial.
+    owner_window_moments sums each owner's K-tile Z window once, so all atoms
+    in that owner reuse a short moment vector in H/G and parameter pullbacks.
     Each block covers at most four profile tiles, independent of site width.
     Build/JIT time is separate from execution timing. Support is explicit.
     """
@@ -304,6 +310,8 @@ def physical_linear(
     _validate_cuda_support(spec, x, atoms)
     if type(owner_coefficient_reduction) is not bool:
         raise ValueError("owner_coefficient_reduction must be bool")
+    if type(owner_window_moments) is not bool:
+        raise ValueError("owner_window_moments must be bool")
     if type(fuse_g_parameter_grad) is not bool:
         raise ValueError("fuse_g_parameter_grad must be bool")
     if type(double_intermediates) is not bool:
@@ -348,4 +356,5 @@ def physical_linear(
         double_intermediates,
         owner_coefficient_reduction,
         fuse_g_parameter_grad,
+        owner_window_moments,
     )

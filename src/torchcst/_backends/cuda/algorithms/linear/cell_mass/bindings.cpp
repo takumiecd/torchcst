@@ -44,7 +44,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("prepare_inputs", &prepare_inputs);
     m.def("build_z", &build_z, pybind11::arg("signal"), pybind11::arg("config"),
           pybind11::arg("hierarchical") = false, pybind11::arg("team_size") = 4,
-          pybind11::arg("double_intermediates") = false);
+          pybind11::arg("double_intermediates") = false, pybind11::arg("owner_windows") = false);
     m.def("compute_h", &compute_h, pybind11::arg("x"), pybind11::arg("atoms"),
           pybind11::arg("rows"), pybind11::arg("z"), pybind11::arg("config"),
           pybind11::arg("atom_threads_per_block") = 128);
