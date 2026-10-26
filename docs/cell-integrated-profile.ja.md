@@ -88,7 +88,7 @@ atomごとに周波数を変える式を、そのまま共通Zで扱えるとは
 以前の「forwardはprepareとcomputeの2起動」という固定は、この基準実装では置き換える。
 以下は設計であり、対応するCUDAコードと性能結果はまだない。
 各kernelの担当・保持先と短い擬似コードは
-[5つの計算kernelの流れ](cell-mass-kernel-flow.ja.md)にまとめる。
+[prepareからbackwardまでのkernelの流れ](cell-mass-kernel-flow.ja.md)にまとめる。
 
 prepareは階層分類、ソート、pack、blockのbegin/endを作る。
 atomの順序は任意でよく、実行用コピーと元のParameter行への対応を保持する。
@@ -110,15 +110,16 @@ prepareとX/dYの階層構築は、この5つに含めない。全体の起動�
 ```cpp
 // forward: 同じstreamへ依存順に投入する。
 prepare_layout(atoms, spec, layout);
+packed_atoms = layout.packed_atoms;
 build_input_hierarchy(X, layout, Zx);
-compute_h(Zx, X, atoms, layout, H);
-compute_y(H, atoms, layout, Y);
+compute_h(Zx, X, packed_atoms, layout, H);
+compute_y(H, packed_atoms, layout, Y);
 
 // backward: forwardと同じatomの値・配置に対応する状態を使う。
 build_output_hierarchy(dY, layout, Zy);
-compute_g(Zy, dY, atoms, layout, G);
-compute_dx(G, atoms, layout, dX);
-compute_parameter_grad(Zx, Zy, X, dY, H, G, atoms, layout, grad);
+compute_g(Zy, dY, packed_atoms, layout, G);
+compute_dx(G, packed_atoms, layout, dX);
+compute_parameter_grad(Zx, Zy, X, dY, H, G, packed_atoms, layout, grad);
 ```
 
 X/dYは必要な支持境界の補正にも使う。Zxをbackwardまで保存しない場合は、
