@@ -508,6 +508,11 @@ def test_fused_prepare_keys_and_stable_rows(dtype):
     ci, co = _axis_config(binding.input), _axis_config(binding.output)
     keys, errors = native.prepare_inputs(gx, gp, ci, co)
     assert errors.item() == 0
+    assert keys.dtype == torch.int32
+    wide_keys, wide_errors = native.prepare_inputs(gx, gp, ci, co, True)
+    assert wide_errors.item() == 0
+    assert wide_keys.dtype == torch.int64
+    assert wide_keys.cpu().tolist() == expected_keys
     assert keys.cpu().tolist() == expected_keys
     rows = prepare_inputs_and_layout(native, gx, gp, ci, co)
     assert rows.cpu().tolist() == sorted(range(len(expected_keys)), key=expected_keys.__getitem__)
@@ -521,6 +526,10 @@ def test_fused_prepare_keys_and_stable_rows(dtype):
     assert group_offsets.cpu().tolist() == [
         sum(key < group for key in expected_keys) for group in range(group_count + 1)
     ]
+    wide_rows = torch.argsort(wide_keys, stable=True)
+    torch.testing.assert_close(wide_rows, rows, rtol=0, atol=0)
+    wide_offsets = native.prepare_group_offsets(wide_keys, wide_rows, group_count)
+    torch.testing.assert_close(wide_offsets, group_offsets, rtol=0, atol=0)
     assert gp._version == version
     torch.testing.assert_close(gp.cpu(), p, rtol=0, atol=0)
 
@@ -756,3 +765,44 @@ def test_owner_window_moments_preserve_unit_mass(sites, tile_sites, period_tiles
     torch.testing.assert_close(h,torch.ones_like(h),rtol=3e-8,atol=3e-10)
     torch.testing.assert_close(hs,torch.zeros_like(hs),rtol=0,atol=3e-10)
     torch.testing.assert_close(hc,torch.zeros_like(hc),rtol=0,atol=3e-10)
+
+
+@requires_cuda
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("c_threads", [32, 64])
+@pytest.mark.parametrize("sites,atoms,batch,modes", [(128,819,4,8),(32,35,5,16),(8,0,2,8),(8,3,0,8)])
+def test_owner_c_thread_counts(dtype, c_threads, sites, atoms, batch, modes):
+    binding = spec(sites, modes)
+    x,p,dy = inputs(binding,atoms,batch,dtype)
+    x.requires_grad_(); p.requires_grad_()
+    expected = physical_linear_reference(binding,x,p)
+    edx,edp = torch.autograd.grad(expected,(x,p),dy)
+    gx=x.detach().cuda().requires_grad_(); gp=p.detach().cuda().requires_grad_()
+    actual = physical_linear(
+        binding,gx,gp,z_method="merge",atom_splits=4,
+        coefficient_method="polynomial_recurrence",double_intermediates=True,
+        owner_window_moments=True,owner_coefficient_reduction=True,
+        fuse_g_parameter_grad=True,c_threads_per_block=c_threads,
+    )
+    dx,dp = torch.autograd.grad(actual,(gx,gp),dy.cuda())
+    tol = {"rtol":5e-5,"atol":2e-6} if dtype==torch.float32 else {"rtol":3e-8,"atol":3e-10}
+    for value,truth in [(actual,expected),(dx,edx),(dp,edp)]:
+        torch.testing.assert_close(value.cpu(),truth,**tol)
+
+
+@requires_cuda
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("batch", [0,1,4,5])
+def test_small_batch_pullback_matches_general(dtype,batch):
+    binding=spec(128)
+    x,p,dy=inputs(binding,35,batch,dtype)
+    x,p,dy=x.cuda(),p.cuda(),dy.cuda()
+    native=_extension()
+    ci,co=_axis_config(binding.input,"polynomial_recurrence"),_axis_config(binding.output,"polynomial_recurrence")
+    rows=prepare_layout(binding,p)
+    zx=native.build_z(x,ci,True,4,True,True)
+    zy=native.build_z(dy,co,True,4,True,True)
+    general=native.compute_g_parameter_grad(x,dy,p,rows,zx,zy,ci,co,32,False)
+    specialized=native.compute_g_parameter_grad(x,dy,p,rows,zx,zy,ci,co,32,True)
+    for value,truth in zip(specialized,general,strict=True):
+        torch.testing.assert_close(value,truth,rtol=3e-8,atol=3e-10)

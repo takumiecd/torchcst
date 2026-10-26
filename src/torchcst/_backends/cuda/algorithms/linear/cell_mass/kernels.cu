@@ -174,8 +174,8 @@ __device__ int chart_tile_owner(double center, Axis a) {
 // Bits: 1 = nonfinite X, 2 = nonfinite atom, 4 = invalid sigma.
 // The error word is zeroed on this stream first. Valid inputs perform no atomics.
 // Only keys are written: no packed atom or persistent coefficient copies.
-template <typename scalar_t>
-__global__ void prepare_inputs_kernel(const scalar_t *x, const scalar_t *atoms, int64_t *keys,
+template <typename scalar_t, typename key_t>
+__global__ void prepare_inputs_kernel(const scalar_t *x, const scalar_t *atoms, key_t *keys,
                                       int *error_word, int64_t x_elements, int atom_count,
                                       Axis input, Axis output, double maximum_sigma) {
     int64_t q = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
@@ -204,9 +204,27 @@ __global__ void prepare_inputs_kernel(const scalar_t *x, const scalar_t *atoms, 
         atomicOr(error_word, errors);
 }
 
-// Each atom evaluates these few scalar quantities in registers. The output
-// gather kernel stores only its current chunk's contexts in block shared memory.
-// No global atom copy, coefficient table or coefficient-Jacobian table exists.
+// One thread finds one lower bound in the sorted permutation. Empty groups
+// naturally have identical begin/end offsets; no sorted-key copy is required.
+template <typename key_t>
+__global__ void group_offsets_kernel(const key_t *keys, const int64_t *rows, int64_t *offsets,
+                                     int atoms, int groups) {
+    int group = blockIdx.x * blockDim.x + threadIdx.x;
+    if (group > groups)
+        return;
+    int first = 0, last = atoms;
+    while (first < last) {
+        int middle = first + (last - first) / 2;
+        if (keys[rows[middle]] < group)
+            first = middle + 1;
+        else
+            last = middle;
+    }
+    offsets[group] = first;
+}
+
+// Per-atom scalar context in registers; the C producer shares only one chunk.
+// No global atom copy or per-atom coefficient/Jacobian table exists.
 struct Profile {
     Axis axis;
     double center, beta, beta_sigma, denominator, denominator_sigma;
@@ -838,7 +856,7 @@ __global__ void expand_tiles_kernel(const moment_t *h, const scalar_t *atoms, co
     }
 }
 
-template <bool WriteG, typename scalar_t, typename moment_t>
+template <bool WriteG, bool SingleBatchTile = false, typename scalar_t, typename moment_t>
 __global__ void parameter_grad_kernel(const scalar_t *x, const scalar_t *dy, const scalar_t *atoms,
                                       const int64_t *rows, const moment_t *zx, const moment_t *zy,
                                       scalar_t *g_output, scalar_t *grad, int batches,
@@ -848,23 +866,44 @@ __global__ void parameter_grad_kernel(const scalar_t *x, const scalar_t *dy, con
         return;
     int original = rows[slot];
     double amplitude = atoms[4 * original], sigma = atoms[4 * original + 1];
-    Profile input = make_profile(input_axis, sigma, atoms[4 * original + 3]);
-    Profile output = make_profile(output_axis, sigma, atoms[4 * original + 2]);
     double da = 0, ds = 0, dmu_out = 0, dmu_in = 0;
-    for (int begin = 0; begin < batches; begin += BATCH_TILE) {
-        Projection input_vjp = project_atom<true>(x, zx, batches, begin, input);
-        Projection output_vjp = project_atom<true>(dy, zy, batches, begin, output);
-        for (int local = 0; local < BATCH_TILE && begin + local < batches; ++local) {
-            // Reprojection already produced these double values. Avoid loading
-            // rounded H/G again when combining their parameter pullbacks.
-            double hv = input_vjp.value[local];
-            double gv = output_vjp.value[local];
+    if constexpr (SingleBatchTile) {
+        // With at most four batches each axis is projected once. Finish the
+        // input profile before creating the output profile, shortening the
+        // lifetime of its register context. One thread still owns one atom.
+        Projection input_vjp;
+        {
+            Profile input = make_profile(input_axis, sigma, atoms[4 * original + 3]);
+            input_vjp = project_atom<true>(x, zx, batches, 0, input);
+        }
+        Profile output = make_profile(output_axis, sigma, atoms[4 * original + 2]);
+        Projection output_vjp = project_atom<true>(dy, zy, batches, 0, output);
+        for (int local = 0; local < batches; ++local) {
+            double hv = input_vjp.value[local], gv = output_vjp.value[local];
             if (WriteG)
-                g_output[(begin + local) * atom_count + slot] = gv;
+                g_output[local * atom_count + slot] = gv;
             da += hv * gv;
             ds += amplitude * (gv * input_vjp.sigma[local] + hv * output_vjp.sigma[local]);
             dmu_in += amplitude * gv * input_vjp.center[local];
             dmu_out += amplitude * hv * output_vjp.center[local];
+        }
+    } else {
+        // General batches reuse both profile contexts over successive tiles.
+        Profile input = make_profile(input_axis, sigma, atoms[4 * original + 3]);
+        Profile output = make_profile(output_axis, sigma, atoms[4 * original + 2]);
+        for (int begin = 0; begin < batches; begin += BATCH_TILE) {
+            Projection input_vjp = project_atom<true>(x, zx, batches, begin, input);
+            Projection output_vjp = project_atom<true>(dy, zy, batches, begin, output);
+            for (int local = 0; local < BATCH_TILE && begin + local < batches; ++local) {
+                // Combine reprojected doubles, avoiding rounded H/G reloads.
+                double hv = input_vjp.value[local], gv = output_vjp.value[local];
+                if (WriteG)
+                    g_output[(begin + local) * atom_count + slot] = gv;
+                da += hv * gv;
+                ds += amplitude * (gv * input_vjp.sigma[local] + hv * output_vjp.sigma[local]);
+                dmu_in += amplitude * gv * input_vjp.center[local];
+                dmu_out += amplitude * hv * output_vjp.center[local];
+            }
         }
     }
     grad[4 * original] = da;
@@ -1019,16 +1058,19 @@ torch::Tensor expand(torch::Tensor h, torch::Tensor atoms, torch::Tensor rows,
 // Group offsets describe lexicographic (output owner,input owner) ranges in
 // sorted_rows. Each atom contributes to ONE owner C, rather than rebuilding its
 // coefficients separately in every tile touched by its retained window.
-template <typename scalar_t, typename moment_t>
+template <int CThreads, typename scalar_t, typename moment_t>
 __global__ void owner_coefficients_kernel(const moment_t *h, const scalar_t *atoms,
                                           const int64_t *rows, const int64_t *offsets,
                                           double *partials, int batches, int atom_count, Axis a,
                                           int center_column, int input_tiles, int output_tiles,
                                           int atom_splits) {
-    __shared__ double amplitudes[ATOM_CHUNK];
-    __shared__ double values[BATCH_TILE * ATOM_CHUNK];
-    __shared__ double coefficients[ATOM_CHUNK * MAX_BASIS];
-    constexpr int slots = (BATCH_TILE * MAX_BASIS + THREADS - 1) / THREADS;
+    // Allocate only this mode count. All C owners share a 32-atom chunk;
+    // coefficient preparation assigns one distinct atom to each of 32 threads.
+    extern __shared__ double workspace[];
+    double *amplitudes = workspace;
+    double *values = amplitudes + ATOM_CHUNK;
+    double *coefficients = values + BATCH_TILE * ATOM_CHUNK;
+    constexpr int slots = (BATCH_TILE * MAX_BASIS + CThreads - 1) / CThreads;
     double local_c[slots] = {0};
     int owner = blockIdx.x;
     int owner_count = a.sites / a.tile_sites;
@@ -1069,7 +1111,7 @@ __global__ void owner_coefficients_kernel(const moment_t *h, const scalar_t *ato
                 amplitudes[j] = atoms[4 * original];
                 // All atoms in this range have the same owner. The coefficients
                 // use that owner's unwrapped chart image and are shared by B.
-                cache_expansion_coefficients(profile, owner, 1, coefficients + j * MAX_BASIS);
+                cache_expansion_coefficients(profile, owner, 1, coefficients + j * a.basis_count());
             }
             for (int q = threadIdx.x; q < BATCH_TILE * count; q += blockDim.x) {
                 int local_batch = q / count;
@@ -1087,7 +1129,7 @@ __global__ void owner_coefficients_kernel(const moment_t *h, const scalar_t *ato
                 int local_batch = q / a.basis_count();
                 for (int j = 0; j < count; ++j)
                     local_c[v] += amplitudes[j] * values[local_batch * ATOM_CHUNK + j] *
-                                  coefficients[j * MAX_BASIS + mode];
+                                  coefficients[j * a.basis_count() + mode];
             }
             __syncthreads();
         }
@@ -1170,7 +1212,7 @@ __global__ void sum_owner_coefficients_kernel(const double *partials, scalar_t *
 torch::Tensor expand_owner_coefficients(torch::Tensor h, torch::Tensor atoms, torch::Tensor rows,
                                         torch::Tensor offsets, std::vector<double> input_config,
                                         std::vector<double> output_config, int center_column,
-                                        int sites_per_block, int requested_splits) {
+                                        int sites_per_block, int requested_splits, int c_threads) {
     check_signal(h);
     check_signal(atoms);
     check_atoms(atoms, rows, atoms);
@@ -1191,6 +1233,8 @@ torch::Tensor expand_owner_coefficients(torch::Tensor h, torch::Tensor atoms, to
     TORCH_CHECK(requested_splits >= 1 && requested_splits <= 128 &&
                     (requested_splits & (requested_splits - 1)) == 0,
                 "owner atom_splits must be a power of two in [1,128]");
+    TORCH_CHECK(c_threads == 32 || c_threads == 64 || c_threads == 128,
+                "C producer threads must be 32, 64 or 128");
     c10::cuda::CUDAGuard guard(atoms.device());
     auto result = torch::empty({h.size(0), a.sites}, atoms.options());
     if (h.size(0) == 0)
@@ -1205,10 +1249,24 @@ torch::Tensor expand_owner_coefficients(torch::Tensor h, torch::Tensor atoms, to
     dim3 consumer(a.sites / width, (h.size(0) + BATCH_TILE - 1) / BATCH_TILE);
     AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "cell_mass_owner_coefficients", [&] {
         auto launch = [&](auto *values) {
-            owner_coefficients_kernel<<<producer, THREADS, 0, stream>>>(
-                values, atoms.data_ptr<scalar_t>(), rows.data_ptr<int64_t>(),
-                offsets.data_ptr<int64_t>(), partials.data_ptr<double>(), h.size(0), atoms.size(0),
-                a, center_column, input_tiles, output_tiles, splits);
+            size_t shared_bytes =
+                (ATOM_CHUNK + BATCH_TILE * ATOM_CHUNK + ATOM_CHUNK * a.basis_count()) *
+                sizeof(double);
+            if (c_threads == 32)
+                owner_coefficients_kernel<32><<<producer, 32, shared_bytes, stream>>>(
+                    values, atoms.data_ptr<scalar_t>(), rows.data_ptr<int64_t>(),
+                    offsets.data_ptr<int64_t>(), partials.data_ptr<double>(), h.size(0),
+                    atoms.size(0), a, center_column, input_tiles, output_tiles, splits);
+            else if (c_threads == 64)
+                owner_coefficients_kernel<64><<<producer, 64, shared_bytes, stream>>>(
+                    values, atoms.data_ptr<scalar_t>(), rows.data_ptr<int64_t>(),
+                    offsets.data_ptr<int64_t>(), partials.data_ptr<double>(), h.size(0),
+                    atoms.size(0), a, center_column, input_tiles, output_tiles, splits);
+            else
+                owner_coefficients_kernel<128><<<producer, 128, shared_bytes, stream>>>(
+                    values, atoms.data_ptr<scalar_t>(), rows.data_ptr<int64_t>(),
+                    offsets.data_ptr<int64_t>(), partials.data_ptr<double>(), h.size(0),
+                    atoms.size(0), a, center_column, input_tiles, output_tiles, splits);
         };
         if (h.scalar_type() == torch::kFloat64)
             launch(h.data_ptr<double>());
@@ -1226,7 +1284,7 @@ torch::Tensor expand_owner_coefficients(torch::Tensor h, torch::Tensor atoms, to
 
 std::vector<torch::Tensor> prepare_inputs(torch::Tensor x, torch::Tensor atoms,
                                           std::vector<double> input_config,
-                                          std::vector<double> output_config) {
+                                          std::vector<double> output_config, bool wide_keys) {
     check_signal(x);
     check_like(atoms, x);
     Axis input = parse_axis(input_config), output = parse_axis(output_config);
@@ -1234,7 +1292,8 @@ std::vector<torch::Tensor> prepare_inputs(torch::Tensor x, torch::Tensor atoms,
     TORCH_CHECK(atoms.dim() == 2 && atoms.size(1) == 4 && atoms.size(0) <= 65536,
                 "prototype physical atoms require shape [A<=65536,4]");
     c10::cuda::CUDAGuard guard(x.device());
-    auto keys = torch::empty({atoms.size(0)}, x.options().dtype(torch::kInt64));
+    auto key_dtype = wide_keys ? torch::kInt64 : torch::kInt32;
+    auto keys = torch::empty({atoms.size(0)}, x.options().dtype(key_dtype));
     auto errors = torch::zeros({}, x.options().dtype(torch::kInt32));
     // Match the declaration's tile-width multiplication order for the bound.
     double maximum_sigma = std::min(input.period_tiles * (input.tile_sites * input.spacing),
@@ -1244,9 +1303,15 @@ std::vector<torch::Tensor> prepare_inputs(torch::Tensor x, torch::Tensor atoms,
     int blocks = static_cast<int>(std::max<int64_t>(1, (elements + THREADS - 1) / THREADS));
     auto stream = c10::cuda::getCurrentCUDAStream();
     AT_DISPATCH_FLOATING_TYPES(x.scalar_type(), "cell_mass_prepare_inputs", [&] {
-        prepare_inputs_kernel<<<blocks, THREADS, 0, stream>>>(
-            x.data_ptr<scalar_t>(), atoms.data_ptr<scalar_t>(), keys.data_ptr<int64_t>(),
-            errors.data_ptr<int>(), x.numel(), atoms.size(0), input, output, maximum_sigma);
+        auto launch = [&](auto *key_data) {
+            prepare_inputs_kernel<<<blocks, THREADS, 0, stream>>>(
+                x.data_ptr<scalar_t>(), atoms.data_ptr<scalar_t>(), key_data,
+                errors.data_ptr<int>(), x.numel(), atoms.size(0), input, output, maximum_sigma);
+        };
+        if (wide_keys)
+            launch(keys.data_ptr<int64_t>());
+        else
+            launch(keys.data_ptr<int32_t>());
     });
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return {keys, errors};
@@ -1424,24 +1489,26 @@ torch::Tensor compute_parameter_grad(torch::Tensor x, torch::Tensor dy, torch::T
 torch::Tensor compute_y_from_owners(torch::Tensor h, torch::Tensor atoms, torch::Tensor rows,
                                     torch::Tensor offsets, std::vector<double> input_config,
                                     std::vector<double> output_config, int sites_per_block,
-                                    int atom_splits) {
+                                    int atom_splits, int c_threads) {
     return expand_owner_coefficients(h, atoms, rows, offsets, input_config, output_config, 2,
-                                     sites_per_block, atom_splits);
+                                     sites_per_block, atom_splits, c_threads);
 }
 torch::Tensor compute_dx_from_owners(torch::Tensor g, torch::Tensor atoms, torch::Tensor rows,
                                      torch::Tensor offsets, std::vector<double> input_config,
                                      std::vector<double> output_config, int sites_per_block,
-                                     int atom_splits) {
+                                     int atom_splits, int c_threads) {
     return expand_owner_coefficients(g, atoms, rows, offsets, input_config, output_config, 3,
-                                     sites_per_block, atom_splits);
+                                     sites_per_block, atom_splits, c_threads);
 }
 
 // Recomputed parameter pullbacks already contain G. Publish it for dX here,
 // avoiding a second output-axis projection and retaining no forward H buffer.
-std::vector<torch::Tensor>
-compute_g_parameter_grad(torch::Tensor x, torch::Tensor dy, torch::Tensor atoms, torch::Tensor rows,
-                         torch::Tensor zx, torch::Tensor zy, std::vector<double> input_config,
-                         std::vector<double> output_config, int atom_threads) {
+std::vector<torch::Tensor> compute_g_parameter_grad(torch::Tensor x, torch::Tensor dy,
+                                                    torch::Tensor atoms, torch::Tensor rows,
+                                                    torch::Tensor zx, torch::Tensor zy,
+                                                    std::vector<double> input_config,
+                                                    std::vector<double> output_config,
+                                                    int atom_threads, bool specialize_batch) {
     check_signal(x);
     check_signal(dy);
     check_like(dy, x);
@@ -1461,8 +1528,14 @@ compute_g_parameter_grad(torch::Tensor x, torch::Tensor dy, torch::Tensor atoms,
     auto stream = c10::cuda::getCurrentCUDAStream();
     AT_DISPATCH_FLOATING_TYPES(x.scalar_type(), "cell_mass_fused_g_parameter_grad", [&] {
         auto launch = [&](auto *input_moments, auto *output_moments) {
-            parameter_grad_kernel<true>
-                <<<(atoms.size(0) + atom_threads - 1) / atom_threads, atom_threads, 0, stream>>>(
+            int blocks = (atoms.size(0) + atom_threads - 1) / atom_threads;
+            if (specialize_batch && x.size(0) <= BATCH_TILE)
+                parameter_grad_kernel<true, true><<<blocks, atom_threads, 0, stream>>>(
+                    x.data_ptr<scalar_t>(), dy.data_ptr<scalar_t>(), atoms.data_ptr<scalar_t>(),
+                    rows.data_ptr<int64_t>(), input_moments, output_moments, g.data_ptr<scalar_t>(),
+                    grad.data_ptr<scalar_t>(), x.size(0), atoms.size(0), input, output);
+            else
+                parameter_grad_kernel<true, false><<<blocks, atom_threads, 0, stream>>>(
                     x.data_ptr<scalar_t>(), dy.data_ptr<scalar_t>(), atoms.data_ptr<scalar_t>(),
                     rows.data_ptr<int64_t>(), input_moments, output_moments, g.data_ptr<scalar_t>(),
                     grad.data_ptr<scalar_t>(), x.size(0), atoms.size(0), input, output);
@@ -1474,4 +1547,30 @@ compute_g_parameter_grad(torch::Tensor x, torch::Tensor dy, torch::Tensor atoms,
     });
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return {g, grad};
+}
+
+// Integer metadata only: rows remains the sole atom permutation. Int64 keys
+// are supported for controlled comparisons; the <=1024-site route fits int32.
+torch::Tensor prepare_group_offsets(torch::Tensor keys, torch::Tensor rows, int groups) {
+    TORCH_CHECK(keys.is_cuda() && keys.is_contiguous() && keys.dim() == 1 &&
+                    (keys.scalar_type() == torch::kInt32 || keys.scalar_type() == torch::kInt64),
+                "group keys must be contiguous CUDA int32 or int64");
+    TORCH_CHECK(rows.device() == keys.device() && rows.is_contiguous() && rows.dim() == 1 &&
+                    rows.scalar_type() == torch::kInt64 && rows.numel() == keys.numel(),
+                "invalid sorted group rows");
+    TORCH_CHECK(groups >= 1 && groups <= 1024 * 1024, "invalid group count");
+    c10::cuda::CUDAGuard guard(keys.device());
+    auto offsets = torch::empty({groups + 1}, rows.options());
+    auto stream = c10::cuda::getCurrentCUDAStream();
+    int blocks = (groups + 1 + THREADS - 1) / THREADS;
+    if (keys.scalar_type() == torch::kInt32)
+        group_offsets_kernel<<<blocks, THREADS, 0, stream>>>(
+            keys.data_ptr<int32_t>(), rows.data_ptr<int64_t>(), offsets.data_ptr<int64_t>(),
+            keys.numel(), groups);
+    else
+        group_offsets_kernel<<<blocks, THREADS, 0, stream>>>(
+            keys.data_ptr<int64_t>(), rows.data_ptr<int64_t>(), offsets.data_ptr<int64_t>(),
+            keys.numel(), groups);
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+    return offsets;
 }

@@ -121,10 +121,7 @@ def prepare_inputs_and_layout(
     # ranges serve both directions without a second permutation or atom copy.
     input_tiles = int(input_config[0] / input_config[2])
     output_tiles = int(output_config[0] / output_config[2])
-    boundaries = torch.arange(
-        input_tiles * output_tiles + 1, device=keys.device, dtype=torch.int64
-    )
-    offsets = torch.searchsorted(keys[rows], boundaries)
+    offsets = native.prepare_group_offsets(keys, rows, input_tiles * output_tiles)
     return rows, offsets
 
 
@@ -146,6 +143,7 @@ class _CellMassFunction(torch.autograd.Function):
         owner_coefficient_reduction,
         fuse_g_parameter_grad,
         owner_window_moments,
+        c_threads_per_block,
     ):
         native = _extension()
         input_config = _axis_config(spec.input, coefficient_method)
@@ -175,7 +173,7 @@ class _CellMassFunction(torch.autograd.Function):
         if owner_coefficient_reduction:
             y = native.compute_y_from_owners(
                 h, atoms, rows, group_offsets, input_config, output_config,
-                sites_per_block, atom_splits,
+                sites_per_block, atom_splits, c_threads_per_block,
             )
         else:
             y = native.compute_y(h, atoms, rows, output_config, sites_per_block, atom_splits)
@@ -191,6 +189,7 @@ class _CellMassFunction(torch.autograd.Function):
         ctx.double_intermediates = double_intermediates
         ctx.owner_coefficient_reduction = owner_coefficient_reduction
         ctx.fuse_g_parameter_grad = fuse_g_parameter_grad
+        ctx.c_threads_per_block = c_threads_per_block
         ctx.owner_window_moments = owner_window_moments
         if cache_projection_derivatives:
             # Keep original X/atoms for their autograd mutation/version checks.
@@ -240,7 +239,7 @@ class _CellMassFunction(torch.autograd.Function):
         if ctx.owner_coefficient_reduction:
             dx = native.compute_dx_from_owners(
                 g, atoms, rows, group_offsets, input_config, output_config,
-                ctx.sites_per_block, ctx.atom_splits,
+                ctx.sites_per_block, ctx.atom_splits, ctx.c_threads_per_block,
             )
         else:
             dx = native.compute_dx(
@@ -256,7 +255,7 @@ class _CellMassFunction(torch.autograd.Function):
                 x, dy, atoms, rows, h, g, zx, zy, input_config, output_config,
                 ctx.atom_threads_per_block,
             )
-        return dx, grad_atoms, None, None, None, None, None, None, None, None, None, None, None, None
+        return (dx, grad_atoms) + (None,) * 13
 
 
 def physical_linear(
@@ -275,6 +274,7 @@ def physical_linear(
     owner_coefficient_reduction=False,
     fuse_g_parameter_grad=False,
     owner_window_moments=False,
+    c_threads_per_block=128,
 ):
     """Run the first-order tile-window approximation with continuous mass.
 
@@ -284,8 +284,10 @@ def physical_linear(
     atom_splits (powers of two from 1 to 64) partitions their atom reduction across blocks.
     Split outputs use temporary global storage and a unique-writer reduction;
     they are not saved for backward. Neither knob changes the mathematical axis.
+    c_threads_per_block (32/64/128) controls the owner-C producer, independently
+    of the 128-thread site expansion. Its shared chunk is sized to the mode count.
     atom_threads_per_block (16/32/64/128) controls H/G/parameter-gradient blocks;
-    each thread still owns a different atom. Z and Y/dX keep 128-thread blocks.
+    each thread still owns a different atom. Z and site expansion keep 128-thread blocks.
     cache_projection_derivatives saves four [batch,atom] float64 pullbacks so
     parameter gradients reuse H/G work. This trades bounded memory for recompute;
     no per-site/per-mode Jacobian is stored. The default retains recomputation.
@@ -310,6 +312,8 @@ def physical_linear(
     """
     validate_input_structure(spec, x, atoms)
     _validate_cuda_support(spec, x, atoms)
+    if type(c_threads_per_block) is not int or c_threads_per_block not in (32, 64, 128):
+        raise ValueError("c_threads_per_block must be 32, 64 or 128")
     if type(owner_coefficient_reduction) is not bool:
         raise ValueError("owner_coefficient_reduction must be bool")
     if type(owner_window_moments) is not bool:
@@ -359,4 +363,5 @@ def physical_linear(
         owner_coefficient_reduction,
         fuse_g_parameter_grad,
         owner_window_moments,
+        c_threads_per_block,
     )
