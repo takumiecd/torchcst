@@ -87,6 +87,8 @@ atomごとに周波数を変える式を、そのまま共通Zで扱えるとは
 2026-10-26の合意。まず処理の所有者と依存を明確にするため、H/Gをglobalへ保存する。
 以前の「forwardはprepareとcomputeの2起動」という固定は、この基準実装では置き換える。
 以下は設計であり、対応するCUDAコードと性能結果はまだない。
+各kernelの担当・保持先と短い擬似コードは
+[5つの計算kernelの流れ](cell-mass-kernel-flow.ja.md)にまとめる。
 
 prepareは階層分類、ソート、pack、blockのbegin/endを作る。
 atomの順序は任意でよく、実行用コピーと元のParameter行への対応を保持する。
