@@ -1138,8 +1138,11 @@ __global__ void sum_owner_coefficients_kernel(const double *partials, scalar_t *
                 } else {
                     int harmonic = (mode + 1) / 2;
                     double sine, cosine;
-                    sincos(2 * PI * harmonic * image * a.chart_period() / a.profile_period(), &sine,
-                           &cosine);
+                    double angle =
+                        a.phase_recurrence
+                            ? mode_frequency(a, harmonic) * image * a.chart_period()
+                            : 2 * PI * harmonic * image * a.chart_period() / a.profile_period();
+                    sincos(angle, &sine, &cosine);
                     total += mode % 2 == 1 ? primary * cosine + paired * sine
                                            : primary * cosine - paired * sine;
                 }
