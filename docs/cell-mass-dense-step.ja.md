@@ -3,6 +3,8 @@
 2026-10-26。ユーザーの目標は速度がdenseの2倍になることではなく、
 **1stepの所要時間をdenseの約2倍程度に収めること**。
 比較指標は次で固定する。
+最新の[prepare融合](cell-mass-prepare.ja.md)では、同じ条件のCST/dense比が約3.1へ改善した。
+以下の約4.3は融合前の記録として残す。
 
 \[
 r_{step}=\frac{t_{CST,step}}{t_{dense,step}},\qquad

@@ -84,3 +84,55 @@ sigma0/負値、FP32上限の上下丸め、上限直後、複合エラーの優
 同じGPU fused AdamW、TF32=False、Graphなしで、dense・変更前CST・新CSTを比較する。
 検査とprepareを時間から除外しない。CPU参照勾配による更新delta・momentsの検証も行う。
 GPUの検証・時間・メモリ・source/result hashは、回収後に以下へ記録する。
+
+## L4での結果
+
+source commit `9f60fc7b`。NVIDIA L4、Torch2.11.0+cu130、CUDA13.0。
+対象suiteは211 passed / 0 failed / 0 skipped。
+Y/dX/全atom勾配の従来基準を維持し、CPU参照勾配を同じGPU fused AdamWへ渡す
+Parameter更新delta・moments・stepの検査も通過した。
+CSTのCPU参照への最大絶対誤差はY5.96e-8、dX4.47e-8、全Parameter勾配5.96e-8。
+更新deltaとstepは差0、exp_avg差7.45e-9、exp_avg_sq差5.82e-11で変更前と同じ。
+
+以下は同じjobのfresh process各2つ、2巡目は逆順、warmup10回後30サンプル。
+検査・prepare・部分出力合計・optimizer更新を含む同期wall時間である。
+
+| 方式 | forward/backward process1 / process2 | AdamW込みstep process1 / process2 | AdamW込みpeak allocated / reserved |
+| --- | ---: | ---: | ---: |
+| dense | 0.243 / 0.234ms | 0.455 / 0.437ms | 17,310,208byte / 22MiB |
+| 変更前CST | 1.867 / 1.876ms | 1.885 / 1.888ms | 115,712byte / 2MiB |
+| 検査・キー生成を融合したCST | 1.364 / 1.353ms | **1.379 / 1.368ms** | **115,712byte / 2MiB** |
+
+変更前CSTからstepが約26.9%/27.5%短縮した。CST/dense比は約3.03/3.13。
+目標の2程度には未到達で、このjobのdense基準では0.911/0.874msが目安になる。
+forward/backwardのみのallocated peakも88,576byteで変更前と同じだった。
+denseの大きい常駐割当の内訳は[先の比較](cell-mass-dense-step.ja.md)と同じく未分解で、
+このメモリ差を重み行列の圧縮率とは解釈しない。
+
+検査・キー構築・stable sort全体を別のGPU event envelopeで測ると、
+変更前0.615ms→変更後0.113ms。hostの読み戻しと起動の隙間も含む値で、
+GPUでのソート単体の時間ではない。この差を全stepから差し引いて採用判断することもしない。
+shape/configのhostメタデータ処理はこのstage診断の対象外。
+
+## 証拠と再実行
+
+job `l4job-aea4f391e9e24cbab4fc4ec8a7613656`。
+
+- source archive SHA256: `d3b46bcdf5ecaa83b911cc5e0656f1c729b174ec7729cd414ff09244cc646031`
+- result archive SHA256: `5288278468cedbfa3a2897739cb6611693756309d3bc0b3553a12043103aa919`
+- driver SHA256: `da95d3cfabefa853d5fc7c0e8cbb94968fdf94299f875c820a5a18cab00b768b`
+- 本体binary SHA256: `c2fcf1d3ef97cd6d8e6cae0316a31b68f5b6c9e30472dbe48a20b37912ee014f`
+
+両archive hash、25result manifest、321 runtime source filesと現行・wheel/sdist、
+driverに埋めた変更前executor/CUDA/validatorと回収物、回収binaryのhashを照合した。
+source/result・binary・JSON・CPU/build log・receipt/specは
+ignored `output/cell-mass-prepare-20261026/`に保持した。原本はhost共通poolのjob directory。
+結果回収と所有slot停止を確認済み。
+再実行はsource archiveを新しいdirectoryへ展開し、含まれるdriverを共有poolへ提出する。
+
+```bash
+python3 ~/.codex/skills/colab-l4-pool/scripts/pool.py submit \
+  --source /absolute/extracted-snapshot \
+  --script /absolute/extracted-snapshot/__pool_driver__.py \
+  --timeout 720 --label cell-mass-prepare-repeat
+```
