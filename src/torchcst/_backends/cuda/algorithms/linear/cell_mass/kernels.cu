@@ -384,23 +384,61 @@ __global__ void project_atoms_kernel(const scalar_t *signal, const scalar_t *ato
         h[(batch_begin + local) * atom_count + slot] = result.value[local];
 }
 
-// Y/dX: sites_per_block changes execution ownership only. The profile tile,
-// period, selected window and integrated basis are independent of this knob.
-// Within that range, C is built once per DISTINCT PROFILE TILE. Its coefficients
-// are shared by all leaf/site positions in that tile; only their basis differs.
-// A profile tile larger than a block is still recomputed across those blocks.
-// A chunk of atoms is prepared once, then all owned C values consume it. Only the current
-// chunk's raw harmonic coefficients are shared; no global coefficient table.
-// Every thread reaches the barriers, including threads without an output site.
+// Return the position of a chart tile in an atom's unwrapped retained window.
+// The same integer test is used both before heavy preparation and before C.
+__device__ int retained_tile_offset(Axis a, int target_tile, int first_tile) {
+    int offset = (target_tile - first_tile) % (a.sites / a.tile_sites);
+    return offset < 0 ? offset + a.sites / a.tile_sites : offset;
+}
+
+__device__ bool block_uses_atom(Axis a, int first_tile, int first_profile_tile,
+                                int profile_tile_count) {
+    for (int tile = 0; tile < profile_tile_count; ++tile) {
+        if (retained_tile_offset(a, first_profile_tile + tile, first_tile) < a.period_tiles)
+            return true;
+    }
+    return false;
+}
+
+// One thread prepares one atom into the CURRENT chunk's shared table.
+// For a single profile tile, cache both phased components once and reuse them
+// across batches. For multiple tiles, cache only raw harmonics: each tile may
+// need a different chart image, so its phase must be evaluated separately.
+// These two layouts share the same allocation; there is no second coefficient table.
+__device__ void cache_expansion_coefficients(const Profile &p, int first_profile_tile,
+                                             int profile_tile_count, double *coefficients) {
+    Axis a = p.axis;
+    coefficients[0] = 1 / a.profile_period();
+    int offset = retained_tile_offset(a, first_profile_tile, p.first_tile);
+    int image = (p.first_tile + offset - first_profile_tile) / (a.sites / a.tile_sites);
+    double center = p.center - image * a.chart_period();
+    for (int harmonic = 1; harmonic <= a.modes; ++harmonic) {
+        double normalized = 2 * raw_coefficient(p, harmonic).value / (a.profile_period() * p.c0);
+        if (profile_tile_count == 1) {
+            double sin_value, cos_value;
+            sincos((2 * PI * harmonic / a.profile_period()) * center, &sin_value, &cos_value);
+            coefficients[2 * harmonic - 1] = normalized * cos_value;
+            coefficients[2 * harmonic] = normalized * sin_value;
+        } else {
+            coefficients[harmonic] = normalized;
+        }
+    }
+}
+
+// Y/dX ownership has two independent axes: a site range and an atom-chunk range.
+// Profile tiles, periods and selected windows are unchanged by either setting.
+// Within a split, C lives in registers, then shared; all owned sites use it.
+// Splits write disjoint partial outputs, which the next kernel sums without atomics.
+// Every thread reaches all barriers, including threads without a C or output site.
 template <typename scalar_t>
 __global__ void expand_tiles_kernel(const scalar_t *h, const scalar_t *atoms, const int64_t *rows,
                                     scalar_t *output, int batches, int atom_count, Axis a,
-                                    int center_column, int block_width) {
+                                    int center_column, int block_width, int atom_splits) {
     __shared__ double shared_center[ATOM_CHUNK];
     __shared__ int shared_first_tile[ATOM_CHUNK];
     __shared__ double shared_amplitude[ATOM_CHUNK];
     __shared__ double shared_h[BATCH_TILE * ATOM_CHUNK];
-    __shared__ double shared_harmonic[ATOM_CHUNK * MAX_MODES];
+    __shared__ double shared_coefficients[ATOM_CHUNK * MAX_BASIS];
     __shared__ double shared_c[LEAVES_PER_BLOCK * BATCH_TILE * MAX_BASIS];
 
     // The host passes exactly the same width it used to construct the grid.
@@ -411,19 +449,31 @@ __global__ void expand_tiles_kernel(const scalar_t *h, const scalar_t *atoms, co
     int c_count = profile_tile_count * BATCH_TILE * a.basis_count();
     double local_c[COEFFICIENT_SLOTS] = {0};
 
-    for (int base = 0; base < atom_count; base += ATOM_CHUNK) {
-        int count = min(ATOM_CHUNK, atom_count - base);
+    // Split on whole chunks so every atom is owned exactly once for this range.
+    int total_chunks = (atom_count + ATOM_CHUNK - 1) / ATOM_CHUNK;
+    int first_atom = (total_chunks * blockIdx.z / atom_splits) * ATOM_CHUNK;
+    int end_atom = min(atom_count, (total_chunks * (blockIdx.z + 1) / atom_splits) * ATOM_CHUNK);
+
+    for (int base = first_atom; base < end_atom; base += ATOM_CHUNK) {
+        int count = min(ATOM_CHUNK, end_atom - base);
         if (threadIdx.x < count) {
             int j = threadIdx.x;
             int original = rows[base + j];
-            Profile p =
-                make_profile(a, atoms[4 * original + 1], atoms[4 * original + center_column]);
-            shared_center[j] = p.center;
-            shared_first_tile[j] = p.first_tile;
+            double center = atoms[4 * original + center_column];
+            double canonical_center = wrap_center(center, a);
+            int owner = static_cast<int>(
+                floor((canonical_center + a.spacing / 2) / (a.tile_sites * a.spacing)));
+            int first_tile = owner - a.period_tiles / 2;
+            shared_center[j] = canonical_center;
+            shared_first_tile[j] = first_tile;
             shared_amplitude[j] = atoms[4 * original];
-            for (int k = 1; k <= a.modes; ++k)
-                shared_harmonic[j * MAX_MODES + k - 1] =
-                    2 * raw_coefficient(p, k).value / (a.profile_period() * p.c0);
+
+            // Use only the existing whole-tile window. No support/cell clipping.
+            if (block_uses_atom(a, first_tile, first_profile_tile, profile_tile_count)) {
+                Profile p = make_profile(a, atoms[4 * original + 1], center);
+                cache_expansion_coefficients(p, first_profile_tile, profile_tile_count,
+                                             shared_coefficients + j * MAX_BASIS);
+            }
         }
         for (int q = threadIdx.x; q < BATCH_TILE * count; q += blockDim.x) {
             int local_batch = q / count, j = q % count;
@@ -443,18 +493,20 @@ __global__ void expand_tiles_kernel(const scalar_t *h, const scalar_t *atoms, co
             int target_tile = first_profile_tile + local_profile_tile;
             int chart_tiles = a.sites / a.tile_sites;
             for (int j = 0; j < count; ++j) {
-                int offset = (target_tile - shared_first_tile[j]) % chart_tiles;
-                if (offset < 0)
-                    offset += chart_tiles;
+                int offset = retained_tile_offset(a, target_tile, shared_first_tile[j]);
                 if (offset >= a.period_tiles)
                     continue; // Entire tile is outside this atom's retained window.
                 int image = (shared_first_tile[j] + offset - target_tile) / chart_tiles;
                 double center = shared_center[j] - image * a.chart_period();
-                double value = 1 / a.profile_period();
-                if (mode != 0) {
+                double value;
+                if (profile_tile_count == 1) {
+                    value = shared_coefficients[j * MAX_BASIS + mode];
+                } else if (mode == 0) {
+                    value = 1 / a.profile_period();
+                } else {
                     int k = (mode + 1) / 2;
                     double phase = (2 * PI * k / a.profile_period()) * center;
-                    value = shared_harmonic[j * MAX_MODES + k - 1] *
+                    value = shared_coefficients[j * MAX_BASIS + k] *
                             (mode % 2 == 1 ? cos(phase) : sin(phase));
                 }
                 local_c[v] += shared_amplitude[j] * shared_h[local_batch * ATOM_CHUNK + j] * value;
@@ -482,7 +534,7 @@ __global__ void expand_tiles_kernel(const scalar_t *h, const scalar_t *atoms, co
         double accumulator = 0;
         for (int mode = 0; mode < a.basis_count(); ++mode)
             accumulator += shared_c[c_begin + mode] * integrated_basis(a, mode, site);
-        output[batch * a.sites + site] = accumulator;
+        output[(blockIdx.z * batches + batch) * a.sites + site] = accumulator;
     }
 }
 
@@ -542,10 +594,28 @@ torch::Tensor project(torch::Tensor signal, torch::Tensor atoms, torch::Tensor r
     return result;
 }
 
+// Each thread owns one final (batch,site), after all split producers on this
+// stream finish. Only partial OUTPUTS are global; C remains local to its block.
+template <typename scalar_t>
+__global__ void sum_split_outputs_kernel(const scalar_t *partials, scalar_t *output, int elements,
+                                         int atom_splits) {
+    int element = blockIdx.x * blockDim.x + threadIdx.x;
+    if (element >= elements)
+        return;
+    double sum = 0;
+    for (int split = 0; split < atom_splits; ++split)
+        sum += static_cast<double>(partials[split * elements + element]);
+    output[element] = sum;
+}
+
 torch::Tensor expand(torch::Tensor h, torch::Tensor atoms, torch::Tensor rows,
-                     std::vector<double> config, int center_column, int sites_per_block) {
+                     std::vector<double> config, int center_column, int sites_per_block,
+                     int requested_atom_splits) {
     TORCH_CHECK(sites_per_block == 8 || sites_per_block == 16 || sites_per_block == 32,
                 "sites_per_block must be 8, 16 or 32");
+    TORCH_CHECK(requested_atom_splits == 1 || requested_atom_splits == 2 ||
+                    requested_atom_splits == 4 || requested_atom_splits == 8,
+                "atom_splits must be 1, 2, 4 or 8");
     check_signal(h);
     Axis a = parse_axis(config);
     check_atoms(atoms, rows, h);
@@ -554,15 +624,30 @@ torch::Tensor expand(torch::Tensor h, torch::Tensor atoms, torch::Tensor rows,
     auto result = torch::empty({h.size(0), a.sites}, h.options());
     if (h.size(0) == 0)
         return result;
+
+    // Avoid empty producers for small/empty atom sets. The one-split path writes
+    // directly into result and allocates no partial buffer or reduction kernel.
+    int total_chunks = (atoms.size(0) + ATOM_CHUNK - 1) / ATOM_CHUNK;
+    int atom_splits = std::max(1, std::min(requested_atom_splits, total_chunks));
+    auto partials =
+        atom_splits == 1 ? result : torch::empty({atom_splits, h.size(0), a.sites}, h.options());
     int block_width = std::min(a.sites, std::min(sites_per_block, LEAVES_PER_BLOCK * a.leaf));
-    dim3 grid((a.sites + block_width - 1) / block_width, (h.size(0) + BATCH_TILE - 1) / BATCH_TILE);
+    dim3 grid((a.sites + block_width - 1) / block_width, (h.size(0) + BATCH_TILE - 1) / BATCH_TILE,
+              atom_splits);
     auto stream = c10::cuda::getCurrentCUDAStream();
     AT_DISPATCH_FLOATING_TYPES(h.scalar_type(), "cell_mass_expand", [&] {
         expand_tiles_kernel<<<grid, THREADS, 0, stream>>>(
             h.data_ptr<scalar_t>(), atoms.data_ptr<scalar_t>(), rows.data_ptr<int64_t>(),
-            result.data_ptr<scalar_t>(), h.size(0), atoms.size(0), a, center_column, block_width);
+            partials.data_ptr<scalar_t>(), h.size(0), atoms.size(0), a, center_column, block_width,
+            atom_splits);
+        C10_CUDA_KERNEL_LAUNCH_CHECK();
+        if (atom_splits > 1) {
+            int elements = h.size(0) * a.sites;
+            sum_split_outputs_kernel<<<(elements + THREADS - 1) / THREADS, THREADS, 0, stream>>>(
+                partials.data_ptr<scalar_t>(), result.data_ptr<scalar_t>(), elements, atom_splits);
+            C10_CUDA_KERNEL_LAUNCH_CHECK();
+        }
     });
-    C10_CUDA_KERNEL_LAUNCH_CHECK();
     return result;
 }
 } // namespace
@@ -604,12 +689,12 @@ torch::Tensor compute_g(torch::Tensor dy, torch::Tensor atoms, torch::Tensor row
     return project(dy, atoms, rows, z, config, 2);
 }
 torch::Tensor compute_y(torch::Tensor h, torch::Tensor atoms, torch::Tensor rows,
-                        std::vector<double> config, int sites_per_block) {
-    return expand(h, atoms, rows, config, 2, sites_per_block);
+                        std::vector<double> config, int sites_per_block, int atom_splits) {
+    return expand(h, atoms, rows, config, 2, sites_per_block, atom_splits);
 }
 torch::Tensor compute_dx(torch::Tensor g, torch::Tensor atoms, torch::Tensor rows,
-                         std::vector<double> config, int sites_per_block) {
-    return expand(g, atoms, rows, config, 3, sites_per_block);
+                         std::vector<double> config, int sites_per_block, int atom_splits) {
+    return expand(g, atoms, rows, config, 3, sites_per_block, atom_splits);
 }
 
 torch::Tensor compute_parameter_grad(torch::Tensor x, torch::Tensor dy, torch::Tensor atoms,

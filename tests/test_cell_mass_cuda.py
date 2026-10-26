@@ -240,12 +240,13 @@ def test_window_counts_single_site_and_route_edges(sites, tile_sites, period_til
 
 @requires_cuda
 @pytest.mark.parametrize("sites_per_block", [32, 16, 8])
+@pytest.mark.parametrize("atom_splits", [1, 4])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 @pytest.mark.parametrize(
     "sites,atom_count,batches", [(128, 819, 4), (32, 35, 5), (8, 3, 5), (8, 0, 2)]
 )
 def test_execution_partition_preserves_profile_and_all_gradients(
-    sites_per_block, dtype, sites, atom_count, batches
+    sites_per_block, atom_splits, dtype, sites, atom_count, batches
 ):
     profile = ChebyshevSquareSpec(modes=8, tail_bound=1e-3)
     binding = CellMassLinearSpec(
@@ -270,7 +271,12 @@ def test_execution_partition_preserves_profile_and_all_gradients(
     edx, edp = torch.autograd.grad(expected, (rx, rp), dy)
     gx, gp = x.detach().cuda().requires_grad_(), p.detach().cuda().requires_grad_()
     y = physical_linear(
-        binding, gx, gp, z_method="merge", sites_per_block=sites_per_block
+        binding,
+        gx,
+        gp,
+        z_method="merge",
+        sites_per_block=sites_per_block,
+        atom_splits=atom_splits,
     )
     dx, dp = torch.autograd.grad(y, (gx, gp), dy.cuda())
     tolerance = (
@@ -290,6 +296,9 @@ def test_invalid_execution_partition():
     for invalid in (0, 7, 64, True, 8.0):
         with pytest.raises(ValueError, match="sites_per_block"):
             physical_linear(binding, x, p, sites_per_block=invalid)
+    for invalid in (0, 3, 16, True, 4.0):
+        with pytest.raises(ValueError, match="atom_splits"):
+            physical_linear(binding, x, p, atom_splits=invalid)
     native = _extension()
     rows = prepare_layout(binding, p)
     with pytest.raises(RuntimeError, match="sites_per_block"):
@@ -300,3 +309,55 @@ def test_invalid_execution_partition():
             _axis_config(binding.output),
             7,
         )
+    with pytest.raises(RuntimeError, match="atom_splits"):
+        native.compute_y(
+            torch.zeros(1, 3, device="cuda", dtype=x.dtype),
+            p,
+            rows,
+            _axis_config(binding.output),
+            8,
+            3,
+        )
+
+
+@requires_cuda
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "sites,atom_count,batches,modes,atom_splits",
+    [
+        (1, 3, 5, 16, 8),
+        (128, 819, 5, 8, 4),
+        (32, 35, 0, 16, 8),
+        (8, 0, 2, 8, 4),
+        (32, 33, 5, 8, 2),
+        (128, 1023, 1, 16, 8),
+    ],
+)
+def test_split_outputs_cover_uneven_chunks_and_empty_work(
+    dtype, sites, atom_count, batches, modes, atom_splits
+):
+    profile = ChebyshevSquareSpec(modes=modes, tail_bound=1e-3)
+    axis = CellMassAxisSpec(
+        profile=profile,
+        site_count=sites,
+        spacing=0.75,
+        tile_sites=max(1, sites // 4),
+        period_tiles=1 if sites == 1 else 3,
+        origin=0.2,
+    )
+    binding = CellMassLinearSpec(input=axis, output=axis)
+    x, atoms, dy = inputs(binding, atom_count, batches, dtype)
+    rx, rp = x.requires_grad_(), atoms.requires_grad_()
+    expected = physical_linear_reference(binding, rx, rp)
+    edx, edp = torch.autograd.grad(expected, (rx, rp), dy)
+    gx = x.detach().cuda().requires_grad_()
+    gp = atoms.detach().cuda().requires_grad_()
+    actual = physical_linear(binding, gx, gp, sites_per_block=16, atom_splits=atom_splits)
+    dx, dp = torch.autograd.grad(actual, (gx, gp), dy.cuda())
+    tolerance = (
+        {"rtol": 5e-5, "atol": 2e-6}
+        if dtype == torch.float32
+        else {"rtol": 3e-8, "atol": 3e-10}
+    )
+    for value, truth in ((actual, expected), (dx, edx), (dp, edp)):
+        torch.testing.assert_close(value.cpu(), truth, **tolerance)

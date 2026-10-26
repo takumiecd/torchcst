@@ -7,6 +7,8 @@ atom中心の支持境界でセル積分をclipする旧試作を置き換える
 現在のボトルネックと診断コピーによるatom分割・位相共有の実測は
 [atom走査・位相・同期の切り分け](cell-mass-deep-analysis.ja.md)を参照。
 同じ数学で約4.63→2.31msとなった診断結果であり、productionへの採用とは区別する。
+その後の本体実装・API・scratch寿命は
+[atom軸の分担とchunk内の位相共有](cell-mass-atom-splits.ja.md)を参照。
 
 ## 支持 I、周期 2L、タイル T
 

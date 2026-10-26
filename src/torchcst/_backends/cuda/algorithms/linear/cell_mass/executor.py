@@ -108,6 +108,7 @@ class _CellMassFunction(torch.autograd.Function):
         z_threads_per_element,
         coefficient_method,
         sites_per_block,
+        atom_splits,
     ):
         native = _extension()
         rows = prepare_layout(spec, atoms)
@@ -118,13 +119,14 @@ class _CellMassFunction(torch.autograd.Function):
         # atom parameters are never copied into a second global parameter array.
         zx = native.build_z(x, input_config, z_method == "merge", z_threads_per_element)
         h = native.compute_h(x, atoms, rows, zx, input_config)
-        y = native.compute_y(h, atoms, rows, output_config, sites_per_block)
+        y = native.compute_y(h, atoms, rows, output_config, sites_per_block, atom_splits)
 
         ctx.spec = spec
         ctx.z_method = z_method
         ctx.z_threads_per_element = z_threads_per_element
         ctx.coefficient_method = coefficient_method
         ctx.sites_per_block = sites_per_block
+        ctx.atom_splits = atom_splits
         ctx.save_for_backward(x, atoms, rows, zx, h)
         return y
 
@@ -143,11 +145,13 @@ class _CellMassFunction(torch.autograd.Function):
             dy, output_config, ctx.z_method == "merge", ctx.z_threads_per_element
         )
         g = native.compute_g(dy, atoms, rows, zy, output_config)
-        dx = native.compute_dx(g, atoms, rows, input_config, ctx.sites_per_block)
+        dx = native.compute_dx(
+            g, atoms, rows, input_config, ctx.sites_per_block, ctx.atom_splits
+        )
         grad_atoms = native.compute_parameter_grad(
             x, dy, atoms, rows, h, g, zx, zy, input_config, output_config
         )
-        return dx, grad_atoms, None, None, None, None, None
+        return dx, grad_atoms, None, None, None, None, None, None
 
 
 def physical_linear(
@@ -159,12 +163,16 @@ def physical_linear(
     z_threads_per_element=4,
     coefficient_method="polynomial",
     sites_per_block=32,
+    atom_splits=1,
 ):
     """Run the first-order tile-window approximation with continuous mass.
 
     Validation currently reads reduction results on the host; this research
     entry does not yet support CUDA Graph capture. sites_per_block is an execution
     limit for Y/dX (8, 16 or 32), separate from the profile's tile_sites and period.
+    atom_splits (1, 2, 4 or 8) partitions their atom reduction across blocks.
+    Split outputs use temporary global storage and a unique-writer reduction;
+    they are not saved for backward. Neither knob changes the mathematical axis.
     Tiny inputs retain the existing four-leaf bound. Build/JIT time is separate
     from execution timing. All inputs and support restrictions are explicit.
     """
@@ -182,6 +190,8 @@ def physical_linear(
         raise ValueError("coefficient_method must be polynomial or dft")
     if type(sites_per_block) is not int or sites_per_block not in (8, 16, 32):
         raise ValueError("sites_per_block must be 8, 16 or 32")
+    if type(atom_splits) is not int or atom_splits not in (1, 2, 4, 8):
+        raise ValueError("atom_splits must be 1, 2, 4 or 8")
     return _CellMassFunction.apply(
         x,
         atoms,
@@ -190,4 +200,5 @@ def physical_linear(
         z_threads_per_element,
         coefficient_method,
         sites_per_block,
+        atom_splits,
     )
