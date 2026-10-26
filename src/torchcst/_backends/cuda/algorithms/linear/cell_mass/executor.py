@@ -100,7 +100,14 @@ def prepare_layout(spec, atoms):
 class _CellMassFunction(torch.autograd.Function):
     @staticmethod
     def forward(
-        ctx, x, atoms, spec, z_method, z_threads_per_element, coefficient_method
+        ctx,
+        x,
+        atoms,
+        spec,
+        z_method,
+        z_threads_per_element,
+        coefficient_method,
+        sites_per_block,
     ):
         native = _extension()
         rows = prepare_layout(spec, atoms)
@@ -111,12 +118,13 @@ class _CellMassFunction(torch.autograd.Function):
         # atom parameters are never copied into a second global parameter array.
         zx = native.build_z(x, input_config, z_method == "merge", z_threads_per_element)
         h = native.compute_h(x, atoms, rows, zx, input_config)
-        y = native.compute_y(h, atoms, rows, output_config)
+        y = native.compute_y(h, atoms, rows, output_config, sites_per_block)
 
         ctx.spec = spec
         ctx.z_method = z_method
         ctx.z_threads_per_element = z_threads_per_element
         ctx.coefficient_method = coefficient_method
+        ctx.sites_per_block = sites_per_block
         ctx.save_for_backward(x, atoms, rows, zx, h)
         return y
 
@@ -135,11 +143,11 @@ class _CellMassFunction(torch.autograd.Function):
             dy, output_config, ctx.z_method == "merge", ctx.z_threads_per_element
         )
         g = native.compute_g(dy, atoms, rows, zy, output_config)
-        dx = native.compute_dx(g, atoms, rows, input_config)
+        dx = native.compute_dx(g, atoms, rows, input_config, ctx.sites_per_block)
         grad_atoms = native.compute_parameter_grad(
             x, dy, atoms, rows, h, g, zx, zy, input_config, output_config
         )
-        return dx, grad_atoms, None, None, None, None
+        return dx, grad_atoms, None, None, None, None, None
 
 
 def physical_linear(
@@ -150,11 +158,14 @@ def physical_linear(
     z_method="direct",
     z_threads_per_element=4,
     coefficient_method="polynomial",
+    sites_per_block=32,
 ):
     """Run the first-order tile-window approximation with continuous mass.
 
     Validation currently reads reduction results on the host; this research
-    entry does not yet support CUDA Graph capture. Build/JIT time is separate
+    entry does not yet support CUDA Graph capture. sites_per_block is an execution
+    limit for Y/dX (8, 16 or 32), separate from the profile's tile_sites and period.
+    Tiny inputs retain the existing four-leaf bound. Build/JIT time is separate
     from execution timing. All inputs and support restrictions are explicit.
     """
     validate_inputs(spec, x, atoms)
@@ -169,6 +180,14 @@ def physical_linear(
         raise ValueError("Z thread count must be a power of two in [1,128]")
     if coefficient_method not in ("polynomial", "dft"):
         raise ValueError("coefficient_method must be polynomial or dft")
+    if type(sites_per_block) is not int or sites_per_block not in (8, 16, 32):
+        raise ValueError("sites_per_block must be 8, 16 or 32")
     return _CellMassFunction.apply(
-        x, atoms, spec, z_method, z_threads_per_element, coefficient_method
+        x,
+        atoms,
+        spec,
+        z_method,
+        z_threads_per_element,
+        coefficient_method,
+        sites_per_block,
     )

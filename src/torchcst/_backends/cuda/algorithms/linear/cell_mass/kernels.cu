@@ -11,7 +11,6 @@
 namespace {
 constexpr int THREADS = 128;
 constexpr int BATCH_TILE = 4;
-constexpr int OUTPUT_TILE = 32;
 constexpr int ATOM_CHUNK = 32;
 constexpr int MAX_MODES = 16;
 constexpr int MAX_BASIS = 1 + 2 * MAX_MODES;
@@ -385,7 +384,8 @@ __global__ void project_atoms_kernel(const scalar_t *signal, const scalar_t *ato
         h[(batch_begin + local) * atom_count + slot] = result.value[local];
 }
 
-// Y/dX: the launch still owns up to four leaves and four batches per block.
+// Y/dX: sites_per_block changes execution ownership only. The profile tile,
+// period, selected window and integrated basis are independent of this knob.
 // Within that range, C is built once per DISTINCT PROFILE TILE. Its coefficients
 // are shared by all leaf/site positions in that tile; only their basis differs.
 // A profile tile larger than a block is still recomputed across those blocks.
@@ -395,7 +395,7 @@ __global__ void project_atoms_kernel(const scalar_t *signal, const scalar_t *ato
 template <typename scalar_t>
 __global__ void expand_tiles_kernel(const scalar_t *h, const scalar_t *atoms, const int64_t *rows,
                                     scalar_t *output, int batches, int atom_count, Axis a,
-                                    int center_column) {
+                                    int center_column, int block_width) {
     __shared__ double shared_center[ATOM_CHUNK];
     __shared__ int shared_first_tile[ATOM_CHUNK];
     __shared__ double shared_amplitude[ATOM_CHUNK];
@@ -403,7 +403,7 @@ __global__ void expand_tiles_kernel(const scalar_t *h, const scalar_t *atoms, co
     __shared__ double shared_harmonic[ATOM_CHUNK * MAX_MODES];
     __shared__ double shared_c[LEAVES_PER_BLOCK * BATCH_TILE * MAX_BASIS];
 
-    int block_width = min(a.sites, min(OUTPUT_TILE, LEAVES_PER_BLOCK * a.leaf));
+    // The host passes exactly the same width it used to construct the grid.
     int block_first = blockIdx.x * block_width;
     int block_end = min(block_first + block_width, a.sites);
     int first_profile_tile = block_first / a.tile_sites;
@@ -543,7 +543,9 @@ torch::Tensor project(torch::Tensor signal, torch::Tensor atoms, torch::Tensor r
 }
 
 torch::Tensor expand(torch::Tensor h, torch::Tensor atoms, torch::Tensor rows,
-                     std::vector<double> config, int center_column) {
+                     std::vector<double> config, int center_column, int sites_per_block) {
+    TORCH_CHECK(sites_per_block == 8 || sites_per_block == 16 || sites_per_block == 32,
+                "sites_per_block must be 8, 16 or 32");
     check_signal(h);
     Axis a = parse_axis(config);
     check_atoms(atoms, rows, h);
@@ -552,13 +554,13 @@ torch::Tensor expand(torch::Tensor h, torch::Tensor atoms, torch::Tensor rows,
     auto result = torch::empty({h.size(0), a.sites}, h.options());
     if (h.size(0) == 0)
         return result;
-    int block_width = std::min(a.sites, std::min(OUTPUT_TILE, LEAVES_PER_BLOCK * a.leaf));
+    int block_width = std::min(a.sites, std::min(sites_per_block, LEAVES_PER_BLOCK * a.leaf));
     dim3 grid((a.sites + block_width - 1) / block_width, (h.size(0) + BATCH_TILE - 1) / BATCH_TILE);
     auto stream = c10::cuda::getCurrentCUDAStream();
     AT_DISPATCH_FLOATING_TYPES(h.scalar_type(), "cell_mass_expand", [&] {
         expand_tiles_kernel<<<grid, THREADS, 0, stream>>>(
             h.data_ptr<scalar_t>(), atoms.data_ptr<scalar_t>(), rows.data_ptr<int64_t>(),
-            result.data_ptr<scalar_t>(), h.size(0), atoms.size(0), a, center_column);
+            result.data_ptr<scalar_t>(), h.size(0), atoms.size(0), a, center_column, block_width);
     });
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return result;
@@ -602,12 +604,12 @@ torch::Tensor compute_g(torch::Tensor dy, torch::Tensor atoms, torch::Tensor row
     return project(dy, atoms, rows, z, config, 2);
 }
 torch::Tensor compute_y(torch::Tensor h, torch::Tensor atoms, torch::Tensor rows,
-                        std::vector<double> config) {
-    return expand(h, atoms, rows, config, 2);
+                        std::vector<double> config, int sites_per_block) {
+    return expand(h, atoms, rows, config, 2, sites_per_block);
 }
 torch::Tensor compute_dx(torch::Tensor g, torch::Tensor atoms, torch::Tensor rows,
-                         std::vector<double> config) {
-    return expand(g, atoms, rows, config, 3);
+                         std::vector<double> config, int sites_per_block) {
+    return expand(g, atoms, rows, config, 3, sites_per_block);
 }
 
 torch::Tensor compute_parameter_grad(torch::Tensor x, torch::Tensor dy, torch::Tensor atoms,

@@ -236,3 +236,67 @@ def test_window_counts_single_site_and_route_edges(sites, tile_sites, period_til
     adx, adp = torch.autograd.grad(actual, (gx, gp), dy.cuda())
     for a, b in ((actual, y), (adx, dx), (adp, dp)):
         torch.testing.assert_close(a.cpu(), b, rtol=3e-8, atol=3e-10)
+
+
+@requires_cuda
+@pytest.mark.parametrize("sites_per_block", [32, 16, 8])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "sites,atom_count,batches", [(128, 819, 4), (32, 35, 5), (8, 3, 5), (8, 0, 2)]
+)
+def test_execution_partition_preserves_profile_and_all_gradients(
+    sites_per_block, dtype, sites, atom_count, batches
+):
+    profile = ChebyshevSquareSpec(modes=8, tail_bound=1e-3)
+    binding = CellMassLinearSpec(
+        input=CellMassAxisSpec(
+            profile=profile,
+            site_count=sites,
+            spacing=0.75,
+            tile_sites=max(1, sites // 8),
+            origin=-0.25,
+        ),
+        output=CellMassAxisSpec(
+            profile=profile,
+            site_count=sites,
+            spacing=1.25,
+            tile_sites=max(1, sites // 4),
+            origin=0.2,
+        ),
+    )
+    x, p, dy = inputs(binding, atom_count, batches, dtype)
+    rx, rp = x.requires_grad_(), p.requires_grad_()
+    expected = physical_linear_reference(binding, rx, rp)
+    edx, edp = torch.autograd.grad(expected, (rx, rp), dy)
+    gx, gp = x.detach().cuda().requires_grad_(), p.detach().cuda().requires_grad_()
+    y = physical_linear(
+        binding, gx, gp, z_method="merge", sites_per_block=sites_per_block
+    )
+    dx, dp = torch.autograd.grad(y, (gx, gp), dy.cuda())
+    tolerance = (
+        {"rtol": 5e-5, "atol": 2e-6}
+        if dtype == torch.float32
+        else {"rtol": 3e-8, "atol": 3e-10}
+    )
+    for actual, truth in ((y, expected), (dx, edx), (dp, edp)):
+        torch.testing.assert_close(actual.cpu(), truth, **tolerance)
+
+
+@requires_cuda
+def test_invalid_execution_partition():
+    binding = spec(8)
+    x, p, _ = inputs(binding, 3, 1)
+    x, p = x.cuda(), p.cuda()
+    for invalid in (0, 7, 64, True, 8.0):
+        with pytest.raises(ValueError, match="sites_per_block"):
+            physical_linear(binding, x, p, sites_per_block=invalid)
+    native = _extension()
+    rows = prepare_layout(binding, p)
+    with pytest.raises(RuntimeError, match="sites_per_block"):
+        native.compute_y(
+            torch.zeros(1, 3, device="cuda", dtype=x.dtype),
+            p,
+            rows,
+            _axis_config(binding.output),
+            7,
+        )
