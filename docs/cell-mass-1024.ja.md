@@ -107,3 +107,78 @@ manifest11ファイルと321runtime sourceを照合済み。
 raw `precision-gates/`に結果・source・binary・archive・verificationを保持する。
 再検証はCUDA/nvcc/Ninja環境で
 `python -m pytest tests/test_cell_mass_coefficients.py tests/test_cell_mass_reference.py tests/test_cell_mass_cuda.py -q`。
+
+## 全52,428atomの更新検証と初回完全step
+
+source `8c7378dc`、job `l4job-f2f184fa0de141a79dad88b177fa984e`。
+全atomをCPU float64のU/V行列で256atomずつ評価し、初期W、Y/dX、全4列の勾配を確認した。
+`double_intermediates=True`では、再計算・保存・幅128/256・split32/64の対象設定で
+Parameter更新deltaとstepの差が0。CSTの最大絶対誤差はY1.49e-8、dX2.98e-8、
+atom勾配2.91e-11、exp_avg3.64e-12、exp_avg_sq2.78e-17。
+固定した許容差を変更していない。
+
+比較用に実行したFalseの4設定は、全て同じatomの更新deltaで1 ULP差となった。
+再計算案でも、入力中心勾配の期待値7.2077e-10に対して1.2465e-9となる。
+通常の勾配atol内でも更新へ影響するため、これらは時間測定の採用候補から外した。
+Trueにすると同じ検証が通り、中間保存の精度が重要だと確認できた。
+
+各設定2fresh process、逆順での再測定、warmup10/同期wall30標本。
+次の表はforward/backward/fused AdamWを含む。時間の基準は通常dense。
+
+| N1024/B4 | step ms run0 / run1 | allocated MiB | reserved MiB | workspaceなしdense以下 |
+|---|---:|---:|---:|---|
+| dense通常 | 0.453 / 0.446 | 32.313 | 42 | 時間の基準 |
+| dense workspaceなし | 0.644 / 0.620 | 16.063 | 22 | メモリの基準 |
+| 再計算・幅128・split32・128thread | 9.639 / 9.651 | 5.530 | 8 | ○ |
+| 微分保存・幅256・split32・128thread | 15.278 / 15.255 | 13.265 | 26 | reserved超過 |
+
+再計算案の時間は通常denseの21.3/21.6倍で、目標の約2倍には未達。
+メモリはallocated/reservedとも制約を満たす。
+保存案は幅も異なるため、この時間差を「微分保存そのものが遅い」とは解釈しない。
+ただしreservedが上限を超えるので、この設定は採用しない。
+モデルのatom Parameter本体は約0.80MiBで、dense Wの4MiBの約20%。
+atom密度5%は、4列のphysical Parameterを含めるとパラメータ数5%にはならない。
+
+### 重い箇所
+
+同じjobでkernelを別測定したevent中央値。全体wall時間の代わりにはしない。
+
+| 処理 | ms |
+|---|---:|
+| 検査・key・sort | 0.190 |
+| Zx / Zy | 0.066 / 0.066 |
+| H / G（微分を含む投影） | 0.717 / 0.839 |
+| Y・幅128 / 256 | 3.727 / 2.882 |
+| dX・幅128 / 256 | 3.167 / 10.393 |
+| Parameter勾配・再計算 / 保存 | 1.428 / 0.029 |
+
+dXの幅256は入力profile tile128を2枚含み、位相評価をCの内側で繰り返すため重い。
+Y/dXではatom係数の再生成と、splitごとのsite展開が主な次の削減対象。
+[所属ownerのCとbegin/endによる再利用](cell-mass-owner-coefficients.ja.md)を候補として追加する。
+
+### 128の再確認
+
+同じruntimeのN128/A819/B4を独立した子プロセスで再確認した。
+入力dtypeの中間保存、微分保存True、幅16/split8/16thread。
+
+| 設定 | ms run0 / run1 | allocated KiB | reserved MiB |
+|---|---:|---:|---:|
+| dense通常 | 0.462 / 0.454 | 16904.5 | 22 |
+| dense workspaceなし | 0.642 / 0.647 | 264.5 | 2 |
+| CST微分保存 | 0.838 / 0.836 | 200 | 2 |
+
+時間比は1.81/1.84、メモリもworkspaceなしdense以下。
+この128/B4の達成を1024や他batchへ一般化しない。
+
+### 証拠
+
+- source SHA256: `52d7bf0c27cf6166c6d3d6bdaf81e762d1027189b4be6aab08db1e37dedb27bb`
+- result SHA256: `646b3cbe3e3c2a25d2903e0dd0f4d8e0a762b5f1b537f8f35257bb80150c2ea5`
+- driver SHA256: `5386568d7d27423ea6290ddf843641f23fed91feff7bf93c8214692a0d1acd0e`
+- binary SHA256: `1329e7399dd08c3fb654296d4d5e66ab8ad28f4096efbfa6c9f0ddc6b3a3b7fb`
+
+96 manifest files、321 runtime sources、driver、埋め込み128 helper、binaryを照合した。
+rawは`output/cell-mass-1024-20261027/step/`。
+再実行はそのsource archiveを展開し、srcとrootをPYTHONPATHに設定、
+`CST_JOB_OUTPUT`を空directoryに指定して`__pool_driver__.py`を実行する。
+所有pool slotは回収後に停止確認した。
