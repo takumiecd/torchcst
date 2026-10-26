@@ -150,3 +150,6 @@ source/result archiveはhost共通poolのjob directoryに保持する。owned L4
 再実行はCPUで`python -m tools.kernel_dev test --suite cpu`、CUDA/nvcc/Ninjaのある環境で
 `python -m pytest tests/test_cell_mass_coefficients.py tests/test_cell_mass_reference.py tests/test_cell_mass_cuda.py -q`。
 この819atom・単一profile/bankの結果を、別shapeやdense完全学習stepの速度勝利へ一般化しない。
+
+続く[時間分析](cell-mass-performance-analysis.ja.md)では、端セル経路の省略診断と
+Nsight Compute、正確な819atom入力の処理回数集計から残るボトルネックを整理した。
