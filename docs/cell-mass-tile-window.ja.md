@@ -102,3 +102,91 @@ y = physical_linear(spec, x, atoms, z_method="merge")
 CUDAのtile_sitesはsite_countを割り切る2のべき乗。sigma<=min(Pin,Pout)/3。
 複数のsigma bankへの分類やblockのbegin/endによる候補範囲の絞り込みは未実装。
 公開CSTLinear/optimizer/Graph/二階微分への接続も未実施。
+
+## 検証と128サイトでの実測
+
+source commit `b0ed1754`、NVIDIA L4、Torch2.11.0+cu130、CUDA13.0。
+CPU全体は2006 passed / 2824 skipped / 既存JIT警告18件。
+L4では対象76件（CUDA 48件、CPU/math 28件）がpassed、failed/skippedは0。
+3/5タイル窓、chart全体の1タイル、1/2site、非ゼロ原点、周期端とtileセル境界の両側、
+両Z方式、両係数方式、FP32/64、819atomと1024atom上限、全atom勾配を確認した。
+ownerが切り替わる点そのものの微分は主張せず、枝内の微分を検査する。
+
+同じ819atom workloadで、新方式のTorch参照に対するCUDAの最大絶対誤差は次の通り。
+
+| dtype | Y | dX | 全Parameter勾配 |
+| --- | ---: | ---: | ---: |
+| FP32 | 5.96e-8 | 3.73e-8 | 5.96e-8 |
+| FP64 | 1.80e-15 | 2.33e-15 | 1.50e-15 |
+
+元の固定誤差基準を緩和していない。ただし、参照する数学が旧clip方式から変わった。
+独立Gauss積分と全Parameter方向の差分は、新しいwhole-cell窓を対象にする。
+
+別途、同じraw密度をcore [-I,I]に制限し、core面積で再正規化したcompact oracleに対する
+近似誤差をFP64で測った。今回のsigma分布0.2〜12・819atomの結果であり、全条件の上界ではない。
+
+| 対象 | 最大絶対誤差 | 相対L2誤差 |
+| --- | ---: | ---: |
+| Y | 0.001283 | 0.2224% |
+| dX | 0.001283 | 0.2067% |
+| 全Parameter勾配 | 0.002186 | 0.2234% |
+
+入力/出力profileのL1誤差最大はそれぞれ0.00247250/0.00247253、
+core外の質量比最大は0.00123627。全819atomでL1<=2*etaを確認した。
+site確率の合計と1の差は入力最大8.88e-16、出力最大6.66e-16。
+合計を1に保つことと、compact profileへ近似することは別の検査。
+ここでのParameter相対L2は全要素のnormであり、各微小勾配の相対誤差保証ではない。
+
+時間とTensor確保ピークはoracleとは別のfresh processで測定した。
+128×128・819atom・batch4・FP32・mode8、spacing1、入力T=16/出力T=32、
+K=3、ローカル周期48/96、sigmaは0.2〜12の線形分布、seed120。
+Zはmerge・1要素4thread、係数は直接多項式。
+各processでwarmup3回の後9サンプル、2つの独立processを使った。
+
+| process | forward+backward中央値 | peak allocated | peak reserved |
+| --- | ---: | ---: | ---: |
+| 1 | 7.810 ms | 85,504 byte | 2 MiB |
+| 2 | 7.765 ms | 85,504 byte | 2 MiB |
+
+prepare・入力検査を含み、optimizer・Graph・公開CSTLinearは含まない。
+peak allocatedは83.5KiB、元のX/dY/atomの17KiBを含む。GPU process全体のVRAMではない。
+旧clip試作の約69msから小さくなったが、局所周期・選択窓・正規化対象も修正したため、
+同じ数学の演算に対する高速化率とは呼ばない。denseとの速度比較も未実施。
+
+別の段階別GPU event診断は以下。中央値の和で全体時間を置き換えない。
+
+| 処理 | 時間 |
+| --- | ---: |
+| prepare | 0.395 ms |
+| Zx | 0.0369 ms |
+| Zy | 0.0369 ms |
+| H | 0.197 ms |
+| Y | 3.518 ms |
+| G | 0.214 ms |
+| dX | 2.458 ms |
+| Parameter勾配 | 0.621 ms |
+
+Y/dXは今も各4blockで、候補atom範囲の絞り込みと並列度は今後の課題。
+コンパイル時のリソースはY/dXがregister90/thread・shared9,984byte/block（9.75KiB）・stack40、
+H/Gはregister86、Parameter勾配はregister166。表示上のLOCALは0。
+sharedは旧方式の6,176byteから増えたが、全atomのglobal係数表ではなく現在chunkのみ。
+これをwarp占有率やspill trafficの実測とは扱わない。
+
+## 証拠と再現
+
+L4 job `l4job-d08f27f4bc9648c4bd485d0513e62170`。
+source archive SHA256
+`791829e437236cd2a59b53d791d6a97637453e42f5edbd5619a132e2bfa222eb`、
+result archive SHA256
+`0549afe74ec77ed00f56c4c643214825c8acbe45d89e23856fb5932b494deab5`。
+両hashと321 runtime source filesのsnapshotとのbyte一致を再確認した。
+wheel/sdist buildと321 runtime source filesの両packageとのbyte一致も通過。
+
+raw evidence、driver、CPU log、packageと照合記録は
+ignored `output/cell-mass-tile-window-20261026/`、source/result archive原本はhost共通poolの
+job directoryへ保持した。job成功と所有slotの停止を確認済み。
+
+再実行: CPUは`python -m tools.kernel_dev test --suite cpu`。
+CUDA/nvcc/Ninja環境では
+`python -m pytest tests/test_cell_mass_coefficients.py tests/test_cell_mass_reference.py tests/test_cell_mass_cuda.py -q`。
+この近似設定をpublic dispatcherへ採用する判断は含まない。

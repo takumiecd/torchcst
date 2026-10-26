@@ -413,7 +413,7 @@ sin/cosの種類、座標原点、spacing、セル積分係数が一致すると
 
 blockはatom群とbatch範囲を担当する。各threadが別々のatomを担当し、
 そのatomに必要な全入力タイルを足す。最初の例では128thread、各threadに1atom、batch_size=4。
-Hは振幅を掛ける前の値。Zx/Xはglobalから読み、Hの累積値はregisterへ置く。
+Hは振幅を掛ける前の値。Zxはglobalから読み、Hの累積値はregisterへ置く。
 
 ```cpp
 slot = assigned_atom(blockIdx.x, threadIdx.x);
@@ -477,7 +477,7 @@ globalのHは読み取り専用、Cはshared、yは各threadのregisterを基本
 ## 3. compute_g：dY側でHと対称の集約を行う
 
 atom群とbatch範囲を担当し、各threadが別々のatomを処理する。
-Zy/dYを読み、振幅を掛ける前のGを完成させてglobalへ書く。
+Zyを読み、振幅を掛ける前のGを完成させてglobalへ書く。
 
 ```cpp
 slot = assigned_atom(blockIdx.x, threadIdx.x);
