@@ -4,8 +4,10 @@
 このブランチはmainのa4ac5e507df4b766e8b5ab6f38769bbf51d8661cから作成した。
 旧研究の整理・復元先は[Issue #119](https://github.com/takumiecd/torchcst/issues/119)。
 
-現時点で実装したのはNormalizationSpecの宣言と検査まで。
-対応するセル積分profile、KernelSpec、Torch参照、CUDA、dispatch登録は未追加である。
+NormalizationSpecの宣言に加え、明示的なChebyshevSquare密度をセル積分する
+[128サイトの初版実装](cell-mass-implementation.ja.md)を追加した。
+物理量を渡すCPU参照とCUDA numeric entryの段階であり、公開CSTLinearのKernelSpec・
+Parameterization・Algorithm/dispatchへの接続はまだ行っていない。
 旧L2版を新しい意味へ読み替えず、新しい数学契約と実装として進める。
 
 ## NormalizationSpecでの指定
@@ -86,7 +88,7 @@ atomごとに周波数を変える式を、そのまま共通Zで扱えるとは
 
 2026-10-26の合意。まず処理の所有者と依存を明確にするため、H/Gをglobalへ保存する。
 以前の「forwardはprepareとcomputeの2起動」という固定は、この基準実装では置き換える。
-以下は設計であり、対応するCUDAコードと性能結果はまだない。
+以下は一般化した設計。初版コードの対応範囲と検証は上記の実装文書で区別する。
 各kernelの担当・保持先と短い擬似コードは
 [prepareからbackwardまでのkernelの流れ](cell-mass-kernel-flow.ja.md)にまとめる。
 

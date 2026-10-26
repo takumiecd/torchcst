@@ -1,8 +1,9 @@
 # 区間確率方式：prepareからbackwardまでのkernelの流れ
 
 2026-10-26。[設計と数学契約](cell-integrated-profile.ja.md)に対応する、検討用の擬似コード。
-関数名・引数は仮名であり、CUDA実装ではない。profile族、係数とその微分、支持境界の
-数式が未確定なので、以下の補助関数を実装済みとは扱わない。
+以下の関数名・引数は一般化した擬似コード。明示的なChebyshevSquare密度から始めた
+[初版の実コードと対応範囲](cell-mass-implementation.ja.md)は別に記録する。
+全てのprofile族・複数bank分類・更新則まで実装済みとは扱わない。
 
 最初はH/GとZx/Zyをglobalへ保存し、Parameter勾配まで再利用する構成で考える。
 この保存量を基準に、HやZxの再計算・局所融合を後から比較する。
