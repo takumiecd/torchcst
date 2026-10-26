@@ -17,8 +17,8 @@ from torchcst.kernels.cell_mass import CellMassLinearSpec
 
 
 def _axis_config(axis, coefficient_method="polynomial"):
-    if coefficient_method not in ("polynomial", "polynomial_table", "dft"):
-        raise ValueError("coefficient_method must be polynomial, polynomial_table or dft")
+    if coefficient_method not in ("polynomial", "polynomial_table", "polynomial_recurrence", "dft"):
+        raise ValueError("coefficient_method must be polynomial, polynomial_table, polynomial_recurrence or dft")
     return [
         axis.site_count,
         axis.spacing,
@@ -26,7 +26,7 @@ def _axis_config(axis, coefficient_method="polynomial"):
         axis.origin,
         axis.profile.modes,
         axis.profile.tail_bound,
-        {"dft": 0, "polynomial": 1, "polynomial_table": 2}[coefficient_method],
+        {"dft": 0, "polynomial": 1, "polynomial_table": 2, "polynomial_recurrence": 3}[coefficient_method],
         axis.period_tiles,
     ]
 
@@ -303,6 +303,8 @@ def physical_linear(
     reuse. It evaluates the same normalized polynomial as polynomial.
     owner_window_moments sums each owner's K-tile Z window once, so all atoms
     in that owner reuse a short moment vector in H/G and parameter pullbacks.
+    polynomial_recurrence additionally shares one double sincos across up to
+    16 harmonics, using complex rotations for the higher modes.
     Each block covers at most four profile tiles, independent of site width.
     Build/JIT time is separate from execution timing. Support is explicit.
     """
@@ -328,8 +330,8 @@ def physical_linear(
         or z_threads_per_element & (z_threads_per_element - 1)
     ):
         raise ValueError("Z thread count must be a power of two in [1,128]")
-    if coefficient_method not in ("polynomial", "polynomial_table", "dft"):
-        raise ValueError("coefficient_method must be polynomial, polynomial_table or dft")
+    if coefficient_method not in ("polynomial", "polynomial_table", "polynomial_recurrence", "dft"):
+        raise ValueError("coefficient_method must be polynomial, polynomial_table, polynomial_recurrence or dft")
     if type(sites_per_block) is not int or sites_per_block not in (8, 16, 32, 64, 128, 256):
         raise ValueError("sites_per_block must be a power of two in [8,256]")
     allowed_splits = (1, 2, 4, 8, 16, 32, 64, 128) if owner_coefficient_reduction else (1, 2, 4, 8, 16, 32, 64)

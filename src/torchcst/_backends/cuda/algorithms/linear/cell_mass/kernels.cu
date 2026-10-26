@@ -44,8 +44,8 @@ __device__ __constant__ PolynomialBanks polynomial_banks{};
 
 struct Axis {
     int sites, modes, leaf, leaves, nodes, tile_sites, period_tiles;
-    double spacing, origin, tail_bound, radius_ratio4;
-    bool polynomial_coefficients, polynomial_table, owner_windows;
+    double spacing, origin, tail_bound, radius_ratio4, fundamental_omega;
+    bool polynomial_coefficients, polynomial_table, owner_windows, phase_recurrence;
     __host__ __device__ int basis_count() const {
         return 1 + 2 * modes;
     }
@@ -83,9 +83,10 @@ Axis parse_axis(const std::vector<double> &c) {
     a.origin = c[3];
     a.modes = static_cast<int>(c[4]);
     a.tail_bound = c[5];
-    TORCH_CHECK(c[6] == 0 || c[6] == 1 || c[6] == 2, "invalid coefficient method");
+    TORCH_CHECK(c[6] == 0 || c[6] == 1 || c[6] == 2 || c[6] == 3, "invalid coefficient method");
     a.polynomial_coefficients = c[6] != 0;
-    a.polynomial_table = c[6] == 2;
+    a.polynomial_table = c[6] >= 2;
+    a.phase_recurrence = c[6] == 3;
     TORCH_CHECK((a.sites & (a.sites - 1)) == 0, "site count must be a power of two");
     TORCH_CHECK(a.modes % 2 == 0 && a.spacing > 0, "invalid cell-mass axis");
     TORCH_CHECK(a.tail_bound > 0 && a.tail_bound < 1 &&
@@ -96,6 +97,7 @@ Axis parse_axis(const std::vector<double> &c) {
     a.nodes = 2 * a.leaves - 1;
     // Bank-only constants: compute once on the host, not once per atom.
     double period = a.profile_period(), tile = period / 3;
+    a.fundamental_omega = 2 * PI / period;
     double shape = std::acosh(1 / std::sqrt(a.tail_bound)) / a.modes;
     double minimum = period / PI * std::acos(1 / std::cosh(shape));
     double ratio = minimum / tile;
@@ -147,6 +149,12 @@ Axis check_z(const torch::Tensor &z, const torch::Tensor &x, Axis a) {
     a.owner_windows = z.size(1) != a.nodes;
     a.nodes = z.size(1);
     return a;
+}
+
+__device__ double mode_frequency(Axis a, int harmonic) {
+    if (a.phase_recurrence)
+        return harmonic * a.fundamental_omega;
+    return 2 * PI * harmonic / a.profile_period();
 }
 
 __device__ double wrap_center(double center, Axis a) {
@@ -358,12 +366,13 @@ struct CoefficientPair {
     Coefficient cosine, sine;
 };
 
-// Paired modes share one raw harmonic, one normalization and one sincos.
+// Paired modes share one raw harmonic, normalization and phase.
 template <bool Derivatives>
-__device__ CoefficientPair coefficient_pair(const Profile &p, int harmonic, double image_center) {
+__device__ CoefficientPair coefficient_pair_from_phase(const Profile &p, int harmonic,
+                                                       double cosine, double sine) {
     if (harmonic == 0)
         return {{1 / p.axis.profile_period(), 0, 0}, {0, 0, 0}};
-    double omega = 2 * PI * harmonic / p.axis.profile_period();
+    double omega = mode_frequency(p.axis, harmonic);
     auto raw = raw_coefficient(p, harmonic);
     double scale;
     if (p.axis.polynomial_table)
@@ -371,8 +380,6 @@ __device__ CoefficientPair coefficient_pair(const Profile &p, int harmonic, doub
     else
         scale = 2 / (p.axis.profile_period() * p.c0);
     double normalized = raw.value * scale;
-    double sine, cosine;
-    sincos(omega * image_center, &sine, &cosine);
     CoefficientPair result{{normalized * cosine, 0, 0}, {normalized * sine, 0, 0}};
     if (Derivatives) {
         double ds;
@@ -388,10 +395,44 @@ __device__ CoefficientPair coefficient_pair(const Profile &p, int harmonic, doub
     return result;
 }
 
+// Harmonics share one fundamental phase. The recurrence keeps double
+// precision and is bounded by MAX_MODES=16; no coefficient array is retained.
+struct HarmonicPhase {
+    double fundamental, step_sine, step_cosine;
+    double sine = 0, cosine = 1;
+    bool recurrence;
+    __device__ HarmonicPhase(const Profile &profile, double center) {
+        fundamental = profile.axis.fundamental_omega * center;
+        recurrence = profile.axis.phase_recurrence;
+        if (recurrence)
+            sincos(fundamental, &step_sine, &step_cosine);
+    }
+    __device__ void advance(int harmonic) {
+        if (harmonic == 0)
+            return;
+        if (recurrence) {
+            double next_cosine = cosine * step_cosine - sine * step_sine;
+            sine = sine * step_cosine + cosine * step_sine;
+            cosine = next_cosine;
+        } else {
+            sincos(harmonic * fundamental, &sine, &cosine);
+        }
+    }
+};
+
+// Non-recurrence uses the original omega*center evaluation order.
+template <bool Derivatives>
+__device__ CoefficientPair coefficient_pair(const Profile &p, int harmonic, double center) {
+    double sine = 0, cosine = 1;
+    if (harmonic != 0)
+        sincos(mode_frequency(p.axis, harmonic) * center, &sine, &cosine);
+    return coefficient_pair_from_phase<Derivatives>(p, harmonic, cosine, sine);
+}
+
 __device__ double integrated_basis(Axis a, int mode, int site) {
     if (mode == 0)
         return a.spacing;
-    double omega = 2 * PI * ((mode + 1) / 2) / a.profile_period();
+    double omega = mode_frequency(a, (mode + 1) / 2);
     double factor = 2 * sin(omega * a.spacing / 2) / omega;
     double phase = omega * site * a.spacing;
     return factor * (mode % 2 == 1 ? cos(phase) : sin(phase));
@@ -493,8 +534,10 @@ __global__ void aggregate_owner_windows_kernel(const moment_t *z, moment_t *wind
         } else {
             int harmonic = (mode + 1) / 2;
             double sine, cosine;
-            sincos(2 * PI * harmonic * image * a.chart_period() / a.profile_period(), &sine,
-                   &cosine);
+            double angle = a.phase_recurrence
+                               ? mode_frequency(a, harmonic) * image * a.chart_period()
+                               : 2 * PI * harmonic * image * a.chart_period() / a.profile_period();
+            sincos(angle, &sine, &cosine);
             // Basis rotation has the opposite sign from the C rotation.
             total +=
                 mode % 2 == 1 ? primary * cosine - paired * sine : primary * cosine + paired * sine;
@@ -518,9 +561,17 @@ __device__ Projection project_atom(const scalar_t *signal, const moment_t *z, in
         int raw_owner = p.first_tile + a.period_tiles / 2;
         int owner = raw_owner % owners;
         double center = p.center - ((raw_owner - owner) / owners) * a.chart_period();
+        HarmonicPhase phase(p, center);
         for (int harmonic = 0; harmonic <= a.modes; ++harmonic) {
             int mode = harmonic == 0 ? 0 : 2 * harmonic - 1;
-            auto pair = coefficient_pair<Derivatives>(p, harmonic, center);
+            CoefficientPair pair;
+            if (a.phase_recurrence) {
+                phase.advance(harmonic);
+                pair =
+                    coefficient_pair_from_phase<Derivatives>(p, harmonic, phase.cosine, phase.sine);
+            } else {
+                pair = coefficient_pair<Derivatives>(p, harmonic, center);
+            }
             for (int local = 0; local < BATCH_TILE && batch_begin + local < batches; ++local) {
                 int base = ((batch_begin + local) * owners + owner) * a.basis_count();
                 double cosine = z[base + mode];
@@ -549,9 +600,17 @@ __device__ Projection project_atom(const scalar_t *signal, const moment_t *z, in
         if (first >= end)
             continue;
         double center = p.center - image * a.chart_period();
+        HarmonicPhase phase(p, center);
         for (int harmonic = 0; harmonic <= a.modes; ++harmonic) {
             int mode = harmonic == 0 ? 0 : 2 * harmonic - 1;
-            auto pair = coefficient_pair<Derivatives>(p, harmonic, center);
+            CoefficientPair pair;
+            if (a.phase_recurrence) {
+                phase.advance(harmonic);
+                pair =
+                    coefficient_pair_from_phase<Derivatives>(p, harmonic, phase.cosine, phase.sine);
+            } else {
+                pair = coefficient_pair<Derivatives>(p, harmonic, center);
+            }
             // All selected cells form whole aligned tiles. Greedily consume
             // the largest available Z nodes; no cell needs a fringe fallback.
             for (int site = first; site < end;) {
@@ -639,6 +698,7 @@ __device__ void cache_expansion_coefficients(const Profile &p, int first_profile
     int offset = retained_tile_offset(a, first_profile_tile, p.first_tile);
     int image = (p.first_tile + offset - first_profile_tile) / (a.sites / a.tile_sites);
     double center = p.center - image * a.chart_period();
+    HarmonicPhase phase(p, center);
     for (int harmonic = 1; harmonic <= a.modes; ++harmonic) {
         double raw = raw_coefficient(p, harmonic).value;
         double normalized;
@@ -648,7 +708,13 @@ __device__ void cache_expansion_coefficients(const Profile &p, int first_profile
             normalized = 2 * raw / (a.profile_period() * p.c0);
         if (profile_tile_count == 1) {
             double sin_value, cos_value;
-            sincos((2 * PI * harmonic / a.profile_period()) * center, &sin_value, &cos_value);
+            if (a.phase_recurrence) {
+                phase.advance(harmonic);
+                sin_value = phase.sine;
+                cos_value = phase.cosine;
+            } else {
+                sincos(mode_frequency(a, harmonic) * center, &sin_value, &cos_value);
+            }
             coefficients[2 * harmonic - 1] = normalized * cos_value;
             coefficients[2 * harmonic] = normalized * sin_value;
         } else {
@@ -737,7 +803,7 @@ __global__ void expand_tiles_kernel(const moment_t *h, const scalar_t *atoms, co
                     value = 1 / a.profile_period();
                 } else {
                     int k = (mode + 1) / 2;
-                    double phase = (2 * PI * k / a.profile_period()) * center;
+                    double phase = mode_frequency(a, k) * center;
                     value = shared_coefficients[j * MAX_BASIS + k] *
                             (mode % 2 == 1 ? cos(phase) : sin(phase));
                 }
