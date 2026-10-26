@@ -197,6 +197,32 @@ shared/registerやドライバの容量をTensorのallocated値へ混ぜない�
 分け方にはなっていない。今後、係数のその場計算の頻度とblock/thread配分を調べる。
 この1回の小規模診断で、一般の採用方式や速さの原因を断定しない。
 
+### 標準atom数をN²の5%にする場合の容量
+
+ユーザー指定の今後の標準は正方N×Nに対してatom数を約0.05*N²とする。
+128×128では819.2、約819atomになる。端数処理の規則はまだ固定しない。
+上の実測は128atom（約0.78%）の初版検証であり、5%ケースの測定値ではない。
+現行CUDA entryの128atom上限を拡張・検証してから、同じ5%ケースで実測する必要がある。
+
+同じFP32・batch 4・mode 8・leaf 8のまま819atomにした主要配列の理論容量は次の通り。
+これは確保単位の丸め、prepare/sortの一時領域、optimizer、Graph、ライブラリworkspaceを
+含まない配列予算で、実測peakの予測値やdenseとの実測比較ではない。
+
+| 比較する配列 | CST：819atom | dense：128×128 |
+| --- | --- | --- |
+| パラメータ | 13,104 byte（約12.8 KiB） | W：65,536 byte（64 KiB） |
+| パラメータ勾配 | 13,104 byte | dW：65,536 byte |
+| H/G | 26,208 byte | なし |
+| Zx/Zy | 16,864 byte | なし |
+| ソート済み行番号 | 6,552 byte | なし |
+| X/dY/Y/dX | 8,192 byte | 8,192 byte |
+| 合計 | 84,024 byte（約82.1 KiB） | 139,264 byte（136 KiB） |
+
+1atomが振幅・sigma・二つの中心の4値を持つので、5%のatom数でもパラメータ保存量は
+denseの約20%になる。H/G等を加えた上の予算では約60%であり、5%の容量になるわけではない。
+Adamの二つのmomentを含める場合は、理論値にCST約25.6 KiB、dense 128 KiBがさらに加わるが、
+実際のoptimizer stepには方式ごとの一時領域があり、別の測定が必要である。
+
 source archive SHA256は`08e2b1e0bd64a624afb8f853c26d7624bc31618dcf5d9a11c6e1981cc929fe82`、
 回収archive SHA256は`d6cb27b7eb90fafa35829845596aceec74fd2dfcc4fcd3cb9ca9ca0cdc3d8cf7`。
 両hashを再照合し、所有pool slotの停止を確認した。検証用jobと測定用jobを含め、旧研究の
