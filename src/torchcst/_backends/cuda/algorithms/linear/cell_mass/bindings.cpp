@@ -8,7 +8,7 @@ using Config = std::vector<double>;
 std::vector<Tensor> prepare_inputs(Tensor x, Tensor atoms, Config input_config,
                                    Config output_config);
 Tensor build_z(Tensor signal, Config config, bool hierarchical, int team_size,
-               bool double_intermediates);
+               bool double_intermediates, bool owner_windows);
 Tensor compute_h(Tensor x, Tensor atoms, Tensor rows, Tensor z, Config config, int atom_threads);
 Tensor compute_y(Tensor h, Tensor atoms, Tensor rows, Config config, int sites_per_block,
                  int atom_splits);
