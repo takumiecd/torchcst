@@ -92,11 +92,55 @@ def test_activity_spec_is_independent_of_execution_options(preset, coordinate):
         {"kind": "discrete_l2"},
         {"kind": "discrete_l2", "domain": "chart_sites", "floor": 0},
         {"kind": "discrete_l2", "domain": "operator_sites", "floor": float("nan")},
+        {"kind": "discrete_l2", "domain": "profile_support"},
+        {"kind": "continuous_mass"},
+        {"kind": "continuous_mass", "domain": "chart_sites"},
+        {"kind": "continuous_mass", "domain": "operator_sites"},
+        {"kind": "continuous_mass", "domain": "profile_support", "floor": 1e-6},
+        {"kind": "continuous_mass", "domain": "profile_support", "floor": 0},
+        {"kind": "continuous_mass", "domain": "profile_support", "floor": float("nan")},
     ],
 )
 def test_invalid_normalization_rejects(kwargs):
     with pytest.raises(ValueError):
         NormalizationSpec(**kwargs)
+
+
+def test_continuous_mass_declaration_is_distinct_and_serializable():
+    from torchcst._backends.serialization import decode_json, encode_json
+
+    spec = NormalizationSpec(kind="continuous_mass", domain="profile_support")
+    restored = NormalizationSpec(**decode_json(encode_json(asdict(spec))))
+
+    assert restored == spec
+    assert spec.floor is None
+    assert spec != NormalizationSpec(
+        kind="discrete_l2", domain="operator_sites", floor=1e-6
+    )
+    with pytest.raises(FrozenInstanceError):
+        spec.kind = "discrete_l2"
+
+
+@pytest.mark.parametrize("shape", [GaussianSpec, TriweightSpec])
+def test_sampled_profiles_cannot_silently_use_continuous_mass(shape):
+    normalization = NormalizationSpec(kind="continuous_mass", domain="profile_support")
+
+    with pytest.raises(ValueError, match="cell-integrated profile contract"):
+        ProfileBinding(profile=shape(), normalization=normalization)
+
+
+def test_legacy_product_cannot_silently_use_continuous_mass():
+    normalization = NormalizationSpec(kind="continuous_mass", domain="profile_support")
+    bounds = BandwidthBounds(minimum=0.2, birth=0.4, maximum=1.0, upper_floor=0.2)
+
+    with pytest.raises(ValueError, match="operator L2 normalization"):
+        presets.polar_profile_product(
+            profiles=(TriweightSpec(), TriweightSpec()),
+            amplitude_max=1.0,
+            bounds=bounds,
+            w_c=0.1,
+            normalization=normalization,
+        )
 
 
 def test_width_is_declared_once():

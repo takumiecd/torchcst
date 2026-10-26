@@ -1,7 +1,8 @@
 # 区間確率profile：新しいCST数学契約の準備
 
 2026-10-26。等間隔siteの担当区間へ確率を割り当てる、新しいprofileの設計記録。
-本書は合意した目標と実装前の条件を定める。公開Spec・Torch参照・CUDA実装は未追加。
+本書は合意した目標と実装前の条件を定める。NormalizationSpecの正規化則を宣言として追加した。
+対応するprofile/kernel宣言・Torch参照・CUDA実装は未追加。
 旧版の離散L2正規化、既存checkpoint、既存Algorithmの意味は維持する。
 
 関連する境界は[宣言と実行の配置規約](../src/torchcst/_backends/README.md)、
@@ -19,6 +20,26 @@
 
 この目標の全体を満たすprofile族、幅の対応、境界の共有方法はまだ確定していない。
 以下の式だけで、有限支持全体のZ共有が解決済みとはしない。
+
+## NormalizationSpecでの指定
+
+```python
+from torchcst.kernels import NormalizationSpec
+
+normalization = NormalizationSpec(
+    kind="continuous_mass",
+    domain="profile_support",
+)
+```
+
+kindは支持全体の連続的な面積で割る規則、domainはその支持全体を表す。
+入力・出力の各座標profileについて使う。atomや階層によって面積が異なってもよい。
+floorはNoneのみを許す。chart_sites/operator_sitesやdiscrete_l2とは別の意味である。
+この指定自体はセル評価や周期境界の方式を選ばず、対応するprofile/kernel宣言も必要になる。
+
+現時点で作成・JSON往復できるのは正規化則の宣言までで、既存ProfileBindingや
+polar_profile_productへ接続すると明示的に拒否される。点で評価する旧実装が
+continuous_massをL2や無正規化と解釈して実行する経路は追加しない。
 
 ## 正規化定数とsiteへの割り当て
 
@@ -165,9 +186,10 @@ S=2L*c0ならdS=2L*dc0+2c0*dL。
 ## 新しい版として実装する順序
 
 1. profile族と係数、非負性、wとsigmaの関係、最小幅、支持・周期境界を確定する。
-2. 新Spec/presetと正規化・セル評価の宣言を追加し、数学契約のID/revisionを区別する。
-   現在NormalizationSpecはnone/discrete_l2のみで、KernelSpec.profile_productは
-   operator_sitesのL2とfloorを必須にしている。kind文字列だけ追加して実行可能にしない。
+2. 新profile/kernel Spec/presetとセル評価の宣言を追加し、数学契約のID/revisionを区別する。
+   NormalizationSpecにcontinuous_mass/profile_supportを追加済みだが、現行ProfileBindingは
+   非対応として拒否し、KernelSpec.profile_productもoperator_sitesのL2とfloorを必須にする。
+   正規化則の宣言追加だけで実行可能にしない。
 3. Torch直接参照と、独立した積分oracleでphi/W/Y・dX・微分対象の全atom勾配を検証する。
 4. 宣言・checkpoint往復と既存L2版の回帰を確認し、新契約に対応するAlgorithmだけを選ぶ。
 5. その後、正規化係数の準備、Z/H/C、境界処理をCUDAへ接続して実機検証する。
@@ -179,3 +201,13 @@ S=2L*c0ならdS=2L*dc0+2c0*dL。
 受け入れ条件には、全siteの合計1・非負性、中心移動、最小/広い幅、周期を跨ぐ支持、
 支持端のセル、階層遷移、多次元の完全直積、有限境界の規則、保存/再計算と勾配を含める。
 直接のセル積分と階層版が同じ演算になることを、性能測定の前に検証する。
+
+## 宣言追加時の検証
+
+2026-10-26、kernel/hierarchical-fourier-tilesで確認。
+test_kernel_declarations、test_profile_product、test_regular_grid、test_periodic_grid、
+test_effective_fourier_profile、test_hierarchical_fourier_profileのCPU検証は
+352 passed / 1 skipped。既存torch.jit由来の非推奨警告18件。
+新規則のJSON往復、floor/領域の拒否、旧binding/presetへの誤接続の拒否と、
+既存L2の参照計算・勾配を含む。変更PythonファイルのRuff検査・整形検査も通過した。
+この結果は新しいセル積分profileの数値検証やGPU検証を意味しない。
