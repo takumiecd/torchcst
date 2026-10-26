@@ -807,6 +807,209 @@ torch::Tensor expand(torch::Tensor h, torch::Tensor atoms, torch::Tensor rows,
     });
     return result;
 }
+// Group offsets describe lexicographic (output owner,input owner) ranges in
+// sorted_rows. Each atom contributes to ONE owner C, rather than rebuilding its
+// coefficients separately in every tile touched by its retained window.
+template <typename scalar_t, typename moment_t>
+__global__ void owner_coefficients_kernel(const moment_t *h, const scalar_t *atoms,
+                                          const int64_t *rows, const int64_t *offsets,
+                                          double *partials, int batches, int atom_count, Axis a,
+                                          int center_column, int input_tiles, int output_tiles,
+                                          int atom_splits) {
+    __shared__ double amplitudes[ATOM_CHUNK];
+    __shared__ double values[BATCH_TILE * ATOM_CHUNK];
+    __shared__ double coefficients[ATOM_CHUNK * MAX_BASIS];
+    constexpr int slots = (BATCH_TILE * MAX_BASIS + THREADS - 1) / THREADS;
+    double local_c[slots] = {0};
+    int owner = blockIdx.x;
+    int owner_count = a.sites / a.tile_sites;
+    int segments = center_column == 2 ? 1 : output_tiles;
+    int total_chunks = 0;
+    for (int segment = 0; segment < segments; ++segment) {
+        int first_group = center_column == 2 ? owner * input_tiles : segment * input_tiles + owner;
+        int last_group = center_column == 2 ? (owner + 1) * input_tiles : first_group + 1;
+        total_chunks += (offsets[last_group] - offsets[first_group] + ATOM_CHUNK - 1) / ATOM_CHUNK;
+    }
+    int assigned_first = total_chunks * blockIdx.z / atom_splits;
+    int assigned_last = total_chunks * (blockIdx.z + 1) / atom_splits;
+    int chunk_prefix = 0;
+
+    for (int segment = 0; segment < segments; ++segment) {
+        // Output owners are contiguous. An input owner is a sequence of one
+        // contiguous interval per output owner; no second atom copy is needed.
+        int first_group = center_column == 2 ? owner * input_tiles : segment * input_tiles + owner;
+        int last_group = center_column == 2 ? (owner + 1) * input_tiles : first_group + 1;
+        int begin = offsets[first_group];
+        int end = offsets[last_group];
+        int chunks = (end - begin + ATOM_CHUNK - 1) / ATOM_CHUNK;
+        int first_chunk = max(0, assigned_first - chunk_prefix);
+        int last_chunk = min(chunks, assigned_last - chunk_prefix);
+        chunk_prefix += chunks;
+        if (first_chunk >= last_chunk)
+            continue; // Uniform across this block; no thread skips a barrier.
+        int first = begin + first_chunk * ATOM_CHUNK;
+        int last = min(end, begin + last_chunk * ATOM_CHUNK);
+
+        for (int base = first; base < last; base += ATOM_CHUNK) {
+            int count = min(ATOM_CHUNK, last - base);
+            if (threadIdx.x < count) {
+                int j = threadIdx.x;
+                int original = rows[base + j];
+                Profile profile =
+                    make_profile(a, atoms[4 * original + 1], atoms[4 * original + center_column]);
+                amplitudes[j] = atoms[4 * original];
+                // All atoms in this range have the same owner. The coefficients
+                // use that owner's unwrapped chart image and are shared by B.
+                cache_expansion_coefficients(profile, owner, 1, coefficients + j * MAX_BASIS);
+            }
+            for (int q = threadIdx.x; q < BATCH_TILE * count; q += blockDim.x) {
+                int local_batch = q / count;
+                int j = q % count;
+                int batch = blockIdx.y * BATCH_TILE + local_batch;
+                values[local_batch * ATOM_CHUNK + j] =
+                    batch < batches ? h[batch * atom_count + base + j] : 0;
+            }
+            __syncthreads();
+            for (int v = 0; v < slots; ++v) {
+                int q = threadIdx.x + v * blockDim.x;
+                if (q >= BATCH_TILE * a.basis_count())
+                    continue;
+                int mode = q % a.basis_count();
+                int local_batch = q / a.basis_count();
+                for (int j = 0; j < count; ++j)
+                    local_c[v] += amplitudes[j] * values[local_batch * ATOM_CHUNK + j] *
+                                  coefficients[j * MAX_BASIS + mode];
+            }
+            __syncthreads();
+        }
+    }
+    for (int v = 0; v < slots; ++v) {
+        int q = threadIdx.x + v * blockDim.x;
+        if (q >= BATCH_TILE * a.basis_count())
+            continue;
+        int mode = q % a.basis_count();
+        int batch = blockIdx.y * BATCH_TILE + q / a.basis_count();
+        if (batch < batches)
+            partials[((blockIdx.z * batches + batch) * owner_count + owner) * a.basis_count() +
+                     mode] = local_c[v];
+    }
+}
+
+// Unique output owner: combine the neighbouring owner C values, rotate only
+// chart-seam images, then expand each site's basis ONCE for all four batches.
+template <typename scalar_t>
+__global__ void sum_owner_coefficients_kernel(const double *partials, scalar_t *output, int batches,
+                                              Axis a, int atom_splits, int block_width) {
+    __shared__ double c[BATCH_TILE * MAX_BASIS];
+    int first_site = blockIdx.x * block_width;
+    int target = first_site / a.tile_sites;
+    int owners = a.sites / a.tile_sites;
+    int basis_count = a.basis_count();
+    int half_window = a.period_tiles / 2;
+    for (int q = threadIdx.x; q < BATCH_TILE * basis_count; q += blockDim.x) {
+        int mode = q % basis_count;
+        int local_batch = q / basis_count;
+        int batch = blockIdx.y * BATCH_TILE + local_batch;
+        double total = 0;
+        if (batch < batches) {
+            for (int neighbour = -half_window; neighbour <= half_window; ++neighbour) {
+                int owner = (target + neighbour + owners) % owners;
+                int offset = (target - (owner - half_window) + owners) % owners;
+                int image = (owner - half_window + offset - target) / owners;
+                double primary = 0, paired = 0;
+                int pair_mode = mode % 2 == 1 ? mode + 1 : mode - 1;
+                for (int split = 0; split < atom_splits; ++split) {
+                    int base = ((split * batches + batch) * owners + owner) * basis_count;
+                    primary += partials[base + mode];
+                    if (image != 0 && mode != 0)
+                        paired += partials[base + pair_mode];
+                }
+                if (image == 0 || mode == 0) {
+                    total += primary;
+                } else {
+                    int harmonic = (mode + 1) / 2;
+                    double sine, cosine;
+                    sincos(2 * PI * harmonic * image * a.chart_period() / a.profile_period(), &sine,
+                           &cosine);
+                    total += mode % 2 == 1 ? primary * cosine + paired * sine
+                                           : primary * cosine - paired * sine;
+                }
+            }
+        }
+        c[q] = total;
+    }
+    __syncthreads();
+    for (int local_site = threadIdx.x; local_site < block_width; local_site += blockDim.x) {
+        int site = first_site + local_site;
+        double result[BATCH_TILE] = {0};
+        for (int mode = 0; mode < basis_count; ++mode) {
+            double basis = integrated_basis(a, mode, site);
+            for (int local_batch = 0; local_batch < BATCH_TILE; ++local_batch)
+                result[local_batch] += c[local_batch * basis_count + mode] * basis;
+        }
+        for (int local_batch = 0; local_batch < BATCH_TILE; ++local_batch) {
+            int batch = blockIdx.y * BATCH_TILE + local_batch;
+            if (batch < batches)
+                output[batch * a.sites + site] = result[local_batch];
+        }
+    }
+}
+
+torch::Tensor expand_owner_coefficients(torch::Tensor h, torch::Tensor atoms, torch::Tensor rows,
+                                        torch::Tensor offsets, std::vector<double> input_config,
+                                        std::vector<double> output_config, int center_column,
+                                        int sites_per_block, int requested_splits) {
+    check_signal(h);
+    check_signal(atoms);
+    check_atoms(atoms, rows, atoms);
+    TORCH_CHECK(h.device() == atoms.device() && h.size(1) == atoms.size(0) &&
+                    (h.scalar_type() == atoms.scalar_type() || h.scalar_type() == torch::kFloat64),
+                "incompatible owner projection values");
+    Axis input = parse_axis(input_config), output = parse_axis(output_config);
+    Axis a = center_column == 2 ? output : input;
+    int input_tiles = input.sites / input.tile_sites;
+    int output_tiles = output.sites / output.tile_sites;
+    TORCH_CHECK(offsets.device() == atoms.device() && offsets.is_contiguous() &&
+                    offsets.scalar_type() == torch::kInt64 && offsets.dim() == 1 &&
+                    offsets.numel() == input_tiles * output_tiles + 1,
+                "invalid owner group offsets");
+    TORCH_CHECK(sites_per_block >= 8 && sites_per_block <= 256 &&
+                    (sites_per_block & (sites_per_block - 1)) == 0,
+                "sites_per_block must be a power of two in [8,256]");
+    TORCH_CHECK(requested_splits >= 1 && requested_splits <= 128 &&
+                    (requested_splits & (requested_splits - 1)) == 0,
+                "owner atom_splits must be a power of two in [1,128]");
+    c10::cuda::CUDAGuard guard(atoms.device());
+    auto result = torch::empty({h.size(0), a.sites}, atoms.options());
+    if (h.size(0) == 0)
+        return result;
+    int chunks = (atoms.size(0) + ATOM_CHUNK - 1) / ATOM_CHUNK;
+    int splits = std::max(1, std::min(requested_splits, chunks));
+    auto partials = torch::empty({splits, h.size(0), a.sites / a.tile_sites, a.basis_count()},
+                                 h.options().dtype(torch::kFloat64));
+    auto stream = c10::cuda::getCurrentCUDAStream();
+    dim3 producer(a.sites / a.tile_sites, (h.size(0) + BATCH_TILE - 1) / BATCH_TILE, splits);
+    int width = std::min(a.sites, std::min(sites_per_block, a.tile_sites));
+    dim3 consumer(a.sites / width, (h.size(0) + BATCH_TILE - 1) / BATCH_TILE);
+    AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "cell_mass_owner_coefficients", [&] {
+        auto launch = [&](auto *values) {
+            owner_coefficients_kernel<<<producer, THREADS, 0, stream>>>(
+                values, atoms.data_ptr<scalar_t>(), rows.data_ptr<int64_t>(),
+                offsets.data_ptr<int64_t>(), partials.data_ptr<double>(), h.size(0), atoms.size(0),
+                a, center_column, input_tiles, output_tiles, splits);
+        };
+        if (h.scalar_type() == torch::kFloat64)
+            launch(h.data_ptr<double>());
+        else
+            launch(h.data_ptr<scalar_t>());
+        C10_CUDA_KERNEL_LAUNCH_CHECK();
+        sum_owner_coefficients_kernel<<<consumer, THREADS, 0, stream>>>(
+            partials.data_ptr<double>(), result.data_ptr<scalar_t>(), h.size(0), a, splits, width);
+        C10_CUDA_KERNEL_LAUNCH_CHECK();
+    });
+    return result;
+}
+
 } // namespace
 
 std::vector<torch::Tensor> prepare_inputs(torch::Tensor x, torch::Tensor atoms,
@@ -988,4 +1191,20 @@ torch::Tensor compute_parameter_grad(torch::Tensor x, torch::Tensor dy, torch::T
     });
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return grad;
+}
+
+// The same owner representation serves Y (output axis) and dX (input axis).
+torch::Tensor compute_y_from_owners(torch::Tensor h, torch::Tensor atoms, torch::Tensor rows,
+                                    torch::Tensor offsets, std::vector<double> input_config,
+                                    std::vector<double> output_config, int sites_per_block,
+                                    int atom_splits) {
+    return expand_owner_coefficients(h, atoms, rows, offsets, input_config, output_config, 2,
+                                     sites_per_block, atom_splits);
+}
+torch::Tensor compute_dx_from_owners(torch::Tensor g, torch::Tensor atoms, torch::Tensor rows,
+                                     torch::Tensor offsets, std::vector<double> input_config,
+                                     std::vector<double> output_config, int sites_per_block,
+                                     int atom_splits) {
+    return expand_owner_coefficients(g, atoms, rows, offsets, input_config, output_config, 3,
+                                     sites_per_block, atom_splits);
 }

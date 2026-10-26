@@ -99,7 +99,9 @@ def prepare_layout(spec, atoms):
     return torch.argsort(key, stable=True)
 
 
-def prepare_inputs_and_layout(native, x, atoms, input_config, output_config):
+def prepare_inputs_and_layout(
+    native, x, atoms, input_config, output_config, *, with_groups=False
+):
     """Generate only sort keys and validate values in one CUDA traversal.
 
     Structural checks have already run on the host. The single scalar read
@@ -112,7 +114,18 @@ def prepare_inputs_and_layout(native, x, atoms, input_config, output_config):
         raise ValueError("X and atoms must be finite")
     if errors & 4:
         raise ValueError("sigma must lie in (0, min(profile_period)/3]")
-    return torch.argsort(keys, stable=True)
+    rows = torch.argsort(keys, stable=True)
+    if not with_groups:
+        return rows
+    # A group is one exact (output owner,input owner) pair. The sorted row
+    # ranges serve both directions without a second permutation or atom copy.
+    input_tiles = int(input_config[0] / input_config[2])
+    output_tiles = int(output_config[0] / output_config[2])
+    boundaries = torch.arange(
+        input_tiles * output_tiles + 1, device=keys.device, dtype=torch.int64
+    )
+    offsets = torch.searchsorted(keys[rows], boundaries)
+    return rows, offsets
 
 
 class _CellMassFunction(torch.autograd.Function):
@@ -130,11 +143,19 @@ class _CellMassFunction(torch.autograd.Function):
         atom_threads_per_block,
         cache_projection_derivatives,
         double_intermediates,
+        owner_coefficient_reduction,
     ):
         native = _extension()
         input_config = _axis_config(spec.input, coefficient_method)
         output_config = _axis_config(spec.output, coefficient_method)
-        rows = prepare_inputs_and_layout(native, x, atoms, input_config, output_config)
+        prepared = prepare_inputs_and_layout(
+            native, x, atoms, input_config, output_config,
+            with_groups=owner_coefficient_reduction,
+        )
+        if owner_coefficient_reduction:
+            rows, group_offsets = prepared
+        else:
+            rows, group_offsets = prepared, None
 
         # Same stream: H is complete before its consumers start. Z is global;
         # atom parameters are never copied into a second global parameter array.
@@ -148,7 +169,13 @@ class _CellMassFunction(torch.autograd.Function):
             del zx  # Cached pullbacks no longer need the input hierarchy.
         else:
             h = native.compute_h(x, atoms, rows, zx, input_config, atom_threads_per_block)
-        y = native.compute_y(h, atoms, rows, output_config, sites_per_block, atom_splits)
+        if owner_coefficient_reduction:
+            y = native.compute_y_from_owners(
+                h, atoms, rows, group_offsets, input_config, output_config,
+                sites_per_block, atom_splits,
+            )
+        else:
+            y = native.compute_y(h, atoms, rows, output_config, sites_per_block, atom_splits)
 
         ctx.spec = spec
         ctx.z_method = z_method
@@ -159,11 +186,12 @@ class _CellMassFunction(torch.autograd.Function):
         ctx.atom_threads_per_block = atom_threads_per_block
         ctx.cache_projection_derivatives = cache_projection_derivatives
         ctx.double_intermediates = double_intermediates
+        ctx.owner_coefficient_reduction = owner_coefficient_reduction
         if cache_projection_derivatives:
             # Keep original X/atoms for their autograd mutation/version checks.
-            ctx.save_for_backward(x, atoms, rows, h, h_sigma, h_center)
+            ctx.save_for_backward(x, atoms, rows, h, h_sigma, h_center, group_offsets)
         else:
-            ctx.save_for_backward(x, atoms, rows, zx, h)
+            ctx.save_for_backward(x, atoms, rows, zx, h, group_offsets)
         return y
 
     @staticmethod
@@ -171,9 +199,9 @@ class _CellMassFunction(torch.autograd.Function):
     def backward(ctx, grad_output):
         native = _extension()
         if ctx.cache_projection_derivatives:
-            x, atoms, rows, h, h_sigma, h_center = ctx.saved_tensors
+            x, atoms, rows, h, h_sigma, h_center, group_offsets = ctx.saved_tensors
         else:
-            x, atoms, rows, zx, h = ctx.saved_tensors
+            x, atoms, rows, zx, h, group_offsets = ctx.saved_tensors
         # Only dY may need canonicalization. Saved X/atoms are original tensors;
         # autograd's version checks reject mutation before their backward use.
         dy = grad_output.contiguous()
@@ -193,9 +221,15 @@ class _CellMassFunction(torch.autograd.Function):
             g = native.compute_g(
                 dy, atoms, rows, zy, output_config, ctx.atom_threads_per_block
             )
-        dx = native.compute_dx(
-            g, atoms, rows, input_config, ctx.sites_per_block, ctx.atom_splits
-        )
+        if ctx.owner_coefficient_reduction:
+            dx = native.compute_dx_from_owners(
+                g, atoms, rows, group_offsets, input_config, output_config,
+                ctx.sites_per_block, ctx.atom_splits,
+            )
+        else:
+            dx = native.compute_dx(
+                g, atoms, rows, input_config, ctx.sites_per_block, ctx.atom_splits
+            )
         if ctx.cache_projection_derivatives:
             grad_atoms = native.compute_parameter_grad_from_cache(
                 atoms, rows, h, g, h_sigma, h_center, g_sigma, g_center,
@@ -206,7 +240,7 @@ class _CellMassFunction(torch.autograd.Function):
                 x, dy, atoms, rows, h, g, zx, zy, input_config, output_config,
                 ctx.atom_threads_per_block,
             )
-        return dx, grad_atoms, None, None, None, None, None, None, None, None, None
+        return dx, grad_atoms, None, None, None, None, None, None, None, None, None, None
 
 
 def physical_linear(
@@ -222,6 +256,7 @@ def physical_linear(
     atom_threads_per_block=128,
     cache_projection_derivatives=False,
     double_intermediates=False,
+    owner_coefficient_reduction=False,
 ):
     """Run the first-order tile-window approximation with continuous mass.
 
@@ -240,6 +275,10 @@ def physical_linear(
     also preserves H/G as float64. Recomputed pullbacks use their double values
     directly. Inputs, outputs and parameter gradients retain the input dtype.
     This can matter when a near-zero gradient is amplified by AdamW.
+    owner_coefficient_reduction builds begin/end metadata for exact owner groups.
+    Each atom generates C once for its owner; bounded double C partials are
+    combined across neighbouring owners before a single site expansion.
+    It supports up to 128 atom splits without a second atom permutation.
     Each block covers at most four profile tiles, independent of site width.
     Build/JIT time is separate from execution timing. Support is explicit.
     """
@@ -257,8 +296,9 @@ def physical_linear(
         raise ValueError("coefficient_method must be polynomial or dft")
     if type(sites_per_block) is not int or sites_per_block not in (8, 16, 32, 64, 128, 256):
         raise ValueError("sites_per_block must be a power of two in [8,256]")
-    if type(atom_splits) is not int or atom_splits not in (1, 2, 4, 8, 16, 32, 64):
-        raise ValueError("atom_splits must be a power of two in [1,64]")
+    allowed_splits = (1, 2, 4, 8, 16, 32, 64, 128) if owner_coefficient_reduction else (1, 2, 4, 8, 16, 32, 64)
+    if type(atom_splits) is not int or atom_splits not in allowed_splits:
+        raise ValueError("atom_splits must be a supported power of two (at most 64, or 128 for owner C)")
     if type(atom_threads_per_block) is not int or atom_threads_per_block not in (
         16,
         32,
@@ -266,6 +306,8 @@ def physical_linear(
         128,
     ):
         raise ValueError("atom_threads_per_block must be 16, 32, 64 or 128")
+    if type(owner_coefficient_reduction) is not bool:
+        raise ValueError("owner_coefficient_reduction must be bool")
     if type(double_intermediates) is not bool:
         raise ValueError("double_intermediates must be bool")
     if type(cache_projection_derivatives) is not bool:
@@ -282,4 +324,5 @@ def physical_linear(
         atom_threads_per_block,
         cache_projection_derivatives,
         double_intermediates,
+        owner_coefficient_reduction,
     )

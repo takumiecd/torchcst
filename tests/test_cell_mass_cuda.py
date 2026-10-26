@@ -63,13 +63,14 @@ def inputs(binding, atoms=128, batch=4, dtype=torch.float64):
 @pytest.mark.parametrize("coefficient_method", ["polynomial", "dft"])
 @pytest.mark.parametrize("cache_projection_derivatives", [False, True])
 @pytest.mark.parametrize("atom_threads_per_block", [16, 128])
+@pytest.mark.parametrize("owner_coefficient_reduction", [False, True])
 @pytest.mark.parametrize(
     "sites,atoms,batch",
     [(128, 819, 4), (128, 128, 4), (32, 35, 3), (8, 1, 5), (8, 0, 2)],
 )
 def test_cuda_y_dx_and_every_atom_gradient(
     dtype, z_method, coefficient_method, cache_projection_derivatives,
-    atom_threads_per_block, sites, atoms, batch
+    atom_threads_per_block, sites, atoms, batch, owner_coefficient_reduction
 ):
     binding = spec(sites)
     x, p, dy = inputs(binding, atoms, batch, dtype)
@@ -87,6 +88,7 @@ def test_cuda_y_dx_and_every_atom_gradient(
         z_method=z_method,
         coefficient_method=coefficient_method,
         atom_threads_per_block=atom_threads_per_block,
+        owner_coefficient_reduction=owner_coefficient_reduction,
         cache_projection_derivatives=cache_projection_derivatives,
     )
     actual_dx, actual_dp = torch.autograd.grad(actual, (gx, gp), dy.cuda())
@@ -210,8 +212,10 @@ def test_expanded_atom_limit_and_its_rejection():
 @pytest.mark.parametrize("cache_projection_derivatives", [False, True])
 @pytest.mark.parametrize("sites_per_block,atom_splits", [(128, 16), (256, 64)])
 @pytest.mark.parametrize("double_intermediates", [False, True])
+@pytest.mark.parametrize("owner_coefficient_reduction", [False, True])
 def test_1024_wide_expansion_and_all_gradients(
-    dtype, cache_projection_derivatives, sites_per_block, atom_splits, double_intermediates
+    dtype, cache_projection_derivatives, sites_per_block, atom_splits, double_intermediates,
+    owner_coefficient_reduction
 ):
     # Keep the physical domain fixed while refining its site grid. Unequal axis
     # tiles exercise the one-profile-tile and multi-profile-tile C expansion.
@@ -235,6 +239,7 @@ def test_1024_wide_expansion_and_all_gradients(
         sites_per_block=sites_per_block,
         atom_splits=atom_splits,
         double_intermediates=double_intermediates,
+        owner_coefficient_reduction=owner_coefficient_reduction,
         atom_threads_per_block=16,
         cache_projection_derivatives=cache_projection_derivatives,
     )
@@ -262,7 +267,10 @@ def test_1024_wide_expansion_and_all_gradients(
         (128, 128, 1),
     ],
 )
-def test_window_counts_single_site_and_route_edges(sites, tile_sites, period_tiles):
+@pytest.mark.parametrize("owner_coefficient_reduction", [False, True])
+def test_window_counts_single_site_and_route_edges(
+    sites, tile_sites, period_tiles, owner_coefficient_reduction
+):
     profile = ChebyshevSquareSpec(modes=8, tail_bound=1e-3)
     ax = CellMassAxisSpec(
         profile=profile,
@@ -294,7 +302,10 @@ def test_window_counts_single_site_and_route_edges(sites, tile_sites, period_til
     y = physical_linear_reference(binding, rx, rp)
     dx, dp = torch.autograd.grad(y, (rx, rp), dy)
     gx, gp = x.detach().cuda().requires_grad_(), p.detach().cuda().requires_grad_()
-    actual = physical_linear(binding, gx, gp, z_method="merge")
+    actual = physical_linear(
+        binding, gx, gp, z_method="merge",
+        owner_coefficient_reduction=owner_coefficient_reduction,
+    )
     adx, adp = torch.autograd.grad(actual, (gx, gp), dy.cuda())
     for a, b in ((actual, y), (adx, dx), (adp, dp)):
         torch.testing.assert_close(a.cpu(), b, rtol=3e-8, atol=3e-10)
@@ -368,6 +379,8 @@ def test_invalid_execution_partition():
         with pytest.raises(ValueError, match="cache_projection_derivatives"):
             physical_linear(binding, x, p, cache_projection_derivatives=invalid)
     for invalid in (0, 1, None, "yes"):
+        with pytest.raises(ValueError, match="owner_coefficient_reduction"):
+            physical_linear(binding, x, p, owner_coefficient_reduction=invalid)
         with pytest.raises(ValueError, match="double_intermediates"):
             physical_linear(binding, x, p, double_intermediates=invalid)
     native = _extension()
@@ -480,6 +493,16 @@ def test_fused_prepare_keys_and_stable_rows(dtype):
     assert keys.cpu().tolist() == expected_keys
     rows = prepare_inputs_and_layout(native, gx, gp, ci, co)
     assert rows.cpu().tolist() == sorted(range(len(expected_keys)), key=expected_keys.__getitem__)
+    grouped_rows, group_offsets = prepare_inputs_and_layout(
+        native, gx, gp, ci, co, with_groups=True
+    )
+    torch.testing.assert_close(grouped_rows, rows, rtol=0, atol=0)
+    group_count = (
+        binding.input.site_count // binding.input.tile_sites
+    ) * (binding.output.site_count // binding.output.tile_sites)
+    assert group_offsets.cpu().tolist() == [
+        sum(key < group for key in expected_keys) for group in range(group_count + 1)
+    ]
     assert gp._version == version
     torch.testing.assert_close(gp.cpu(), p, rtol=0, atol=0)
 
