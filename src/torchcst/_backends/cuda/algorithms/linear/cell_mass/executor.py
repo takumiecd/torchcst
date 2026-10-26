@@ -50,11 +50,11 @@ def _extension():
 def _validate_cuda_support(spec, x, atoms):
     if x.device.type != "cuda":
         raise ValueError("cell-mass CUDA entry requires CUDA inputs")
-    if atoms.shape[0] > 1024:
-        raise ValueError("CUDA prototype supports at most 1024 atoms")
+    if atoms.shape[0] > 65536:
+        raise ValueError("CUDA prototype supports at most 65536 atoms")
     for axis in (spec.input, spec.output):
-        if axis.site_count > 128 or axis.site_count & (axis.site_count - 1):
-            raise ValueError("first CUDA prototype requires power-of-two sites <=128")
+        if axis.site_count > 1024 or axis.site_count & (axis.site_count - 1):
+            raise ValueError("first CUDA prototype requires power-of-two sites <=1024")
         if axis.profile.modes > 16:
             raise ValueError("first CUDA prototype supports at most 16 Fourier modes")
         if axis.tile_sites & (axis.tile_sites - 1):
@@ -221,8 +221,8 @@ def physical_linear(
 
     Validation reads one error word on the host; this research
     entry does not yet support CUDA Graph capture. sites_per_block is an execution
-    limit for Y/dX (8, 16 or 32), separate from the profile's tile_sites and period.
-    atom_splits (1, 2, 4 or 8) partitions their atom reduction across blocks.
+    limit for Y/dX (powers of two from 8 to 256), separate from the profile's tile_sites and period.
+    atom_splits (powers of two from 1 to 64) partitions their atom reduction across blocks.
     Split outputs use temporary global storage and a unique-writer reduction;
     they are not saved for backward. Neither knob changes the mathematical axis.
     atom_threads_per_block (16/32/64/128) controls H/G/parameter-gradient blocks;
@@ -230,7 +230,7 @@ def physical_linear(
     cache_projection_derivatives saves four [batch,atom] float64 pullbacks so
     parameter gradients reuse H/G work. This trades bounded memory for recompute;
     no per-site/per-mode Jacobian is stored. The default retains recomputation.
-    Tiny inputs retain the existing four-leaf bound. Build/JIT time is separate
+    Each block covers at most four profile tiles, independent of site width. Build/JIT time is separate
     from execution timing. All inputs and support restrictions are explicit.
     """
     validate_input_structure(spec, x, atoms)
@@ -245,10 +245,10 @@ def physical_linear(
         raise ValueError("Z thread count must be a power of two in [1,128]")
     if coefficient_method not in ("polynomial", "dft"):
         raise ValueError("coefficient_method must be polynomial or dft")
-    if type(sites_per_block) is not int or sites_per_block not in (8, 16, 32):
-        raise ValueError("sites_per_block must be 8, 16 or 32")
-    if type(atom_splits) is not int or atom_splits not in (1, 2, 4, 8):
-        raise ValueError("atom_splits must be 1, 2, 4 or 8")
+    if type(sites_per_block) is not int or sites_per_block not in (8, 16, 32, 64, 128, 256):
+        raise ValueError("sites_per_block must be a power of two in [8,256]")
+    if type(atom_splits) is not int or atom_splits not in (1, 2, 4, 8, 16, 32, 64):
+        raise ValueError("atom_splits must be a power of two in [1,64]")
     if type(atom_threads_per_block) is not int or atom_threads_per_block not in (
         16,
         32,

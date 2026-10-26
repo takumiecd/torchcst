@@ -200,9 +200,51 @@ def test_expanded_atom_limit_and_its_rejection():
     dx, dp = torch.autograd.grad(y, (gx, gp), dy.cuda())
     for a, b in ((y, expected), (dx, expected_dx), (dp, expected_dp)):
         torch.testing.assert_close(a.cpu(), b, rtol=3e-8, atol=3e-10)
-    _, too_many, _ = inputs(binding, 1025, 2)
-    with pytest.raises(ValueError, match="1024 atoms"):
+    _, too_many, _ = inputs(binding, 65537, 2)
+    with pytest.raises(ValueError, match="65536 atoms"):
         physical_linear(binding, gx, too_many.cuda())
+
+
+@requires_cuda
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("cache_projection_derivatives", [False, True])
+@pytest.mark.parametrize("sites_per_block,atom_splits", [(128, 16), (256, 64)])
+def test_1024_wide_expansion_and_all_gradients(
+    dtype, cache_projection_derivatives, sites_per_block, atom_splits
+):
+    # Keep the physical domain fixed while refining its site grid. Unequal axis
+    # tiles exercise the one-profile-tile and multi-profile-tile C expansion.
+    profile = ChebyshevSquareSpec(modes=8, tail_bound=1e-3)
+    binding = CellMassLinearSpec(
+        input=CellMassAxisSpec(
+            profile=profile, site_count=1024, spacing=0.125, tile_sites=128
+        ),
+        output=CellMassAxisSpec(
+            profile=profile, site_count=1024, spacing=0.125, tile_sites=256
+        ),
+    )
+    x, p, dy = inputs(binding, atoms=257, batch=5, dtype=dtype)
+    rx, rp = x.requires_grad_(), p.requires_grad_()
+    expected = physical_linear_reference(binding, rx, rp)
+    expected_dx, expected_dp = torch.autograd.grad(expected, (rx, rp), dy)
+    gx = x.detach().cuda().requires_grad_()
+    gp = p.detach().cuda().requires_grad_()
+    actual = physical_linear(
+        binding, gx, gp,
+        sites_per_block=sites_per_block,
+        atom_splits=atom_splits,
+        atom_threads_per_block=16,
+        cache_projection_derivatives=cache_projection_derivatives,
+    )
+    actual_dx, actual_dp = torch.autograd.grad(actual, (gx, gp), dy.cuda())
+    tolerance = (
+        {"rtol": 5e-5, "atol": 2e-6}
+        if dtype == torch.float32 else {"rtol": 3e-8, "atol": 3e-10}
+    )
+    for result, truth in (
+        (actual, expected), (actual_dx, expected_dx), (actual_dp, expected_dp)
+    ):
+        torch.testing.assert_close(result.cpu(), truth, **tolerance)
 
 
 @requires_cuda
@@ -311,10 +353,10 @@ def test_invalid_execution_partition():
     binding = spec(8)
     x, p, _ = inputs(binding, 3, 1)
     x, p = x.cuda(), p.cuda()
-    for invalid in (0, 7, 64, True, 8.0):
+    for invalid in (0, 7, 512, True, 8.0):
         with pytest.raises(ValueError, match="sites_per_block"):
             physical_linear(binding, x, p, sites_per_block=invalid)
-    for invalid in (0, 3, 16, True, 4.0):
+    for invalid in (0, 3, 128, True, 4.0):
         with pytest.raises(ValueError, match="atom_splits"):
             physical_linear(binding, x, p, atom_splits=invalid)
     for invalid in (0, 8, 256, True, 16.0):

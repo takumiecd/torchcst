@@ -14,9 +14,9 @@ constexpr int BATCH_TILE = 4;
 constexpr int ATOM_CHUNK = 32;
 constexpr int MAX_MODES = 16;
 constexpr int MAX_BASIS = 1 + 2 * MAX_MODES;
-constexpr int LEAVES_PER_BLOCK = 4;
+constexpr int MAX_PROFILE_TILES_PER_BLOCK = 4;
 constexpr int COEFFICIENT_SLOTS =
-    (LEAVES_PER_BLOCK * BATCH_TILE * MAX_BASIS + THREADS - 1) / THREADS;
+    (MAX_PROFILE_TILES_PER_BLOCK * BATCH_TILE * MAX_BASIS + THREADS - 1) / THREADS;
 constexpr double PI = 3.1415926535897932384626433832795;
 
 struct Axis {
@@ -41,8 +41,8 @@ Axis parse_axis(const std::vector<double> &c) {
     TORCH_CHECK(c.size() == 8, "tile-window axis config requires eight scalars");
     for (double v : c)
         TORCH_CHECK(std::isfinite(v), "axis config must be finite");
-    TORCH_CHECK(c[0] == std::floor(c[0]) && c[0] >= 1 && c[0] <= 128,
-                "CUDA prototype supports 1..128 sites");
+    TORCH_CHECK(c[0] == std::floor(c[0]) && c[0] >= 1 && c[0] <= 1024,
+                "CUDA prototype supports 1..1024 sites");
     TORCH_CHECK(c[4] == std::floor(c[4]) && c[4] >= 2 && c[4] <= MAX_MODES,
                 "CUDA prototype supports 2..16 Fourier modes");
     Axis a{};
@@ -100,8 +100,8 @@ void check_like(const torch::Tensor &t, const torch::Tensor &x) {
 
 void check_atoms(const torch::Tensor &atoms, const torch::Tensor &rows, const torch::Tensor &x) {
     check_like(atoms, x);
-    TORCH_CHECK(atoms.dim() == 2 && atoms.size(1) == 4 && atoms.size(0) <= 1024,
-                "prototype physical atoms require shape [A<=1024,4]");
+    TORCH_CHECK(atoms.dim() == 2 && atoms.size(1) == 4 && atoms.size(0) <= 65536,
+                "prototype physical atoms require shape [A<=65536,4]");
     TORCH_CHECK(rows.device() == x.device() && rows.is_contiguous() &&
                     rows.scalar_type() == torch::kInt64 && rows.dim() == 1 &&
                     rows.numel() == atoms.size(0),
@@ -527,7 +527,7 @@ __global__ void expand_tiles_kernel(const scalar_t *h, const scalar_t *atoms, co
     __shared__ double shared_amplitude[ATOM_CHUNK];
     __shared__ double shared_h[BATCH_TILE * ATOM_CHUNK];
     __shared__ double shared_coefficients[ATOM_CHUNK * MAX_BASIS];
-    __shared__ double shared_c[LEAVES_PER_BLOCK * BATCH_TILE * MAX_BASIS];
+    __shared__ double shared_c[MAX_PROFILE_TILES_PER_BLOCK * BATCH_TILE * MAX_BASIS];
 
     // The host passes exactly the same width it used to construct the grid.
     int block_first = blockIdx.x * block_width;
@@ -610,19 +610,21 @@ __global__ void expand_tiles_kernel(const scalar_t *h, const scalar_t *atoms, co
     }
     __syncthreads(); // Publish all C values once before the site expansion.
 
-    int local_batch = threadIdx.x / block_width;
-    int local_site = threadIdx.x % block_width;
-    int site = block_first + local_site;
-    int batch = blockIdx.y * BATCH_TILE + local_batch;
-    if (local_batch < BATCH_TILE && site < a.sites && batch < batches) {
-        // All sites of a profile tile read the SAME C. integrated_basis below
-        // supplies the site-dependent value, so no output values are copied.
-        int local_profile_tile = site / a.tile_sites - first_profile_tile;
-        int c_begin = (local_profile_tile * BATCH_TILE + local_batch) * a.basis_count();
-        double accumulator = 0;
-        for (int mode = 0; mode < a.basis_count(); ++mode)
-            accumulator += shared_c[c_begin + mode] * integrated_basis(a, mode, site);
-        output[(blockIdx.z * batches + batch) * a.sites + site] = accumulator;
+    // The output tile can exceed the thread count. Each thread expands several
+    // independent (batch,site) positions while reusing the same shared C.
+    for (int q = threadIdx.x; q < BATCH_TILE * block_width; q += blockDim.x) {
+        int local_batch = q / block_width;
+        int local_site = q % block_width;
+        int site = block_first + local_site;
+        int batch = blockIdx.y * BATCH_TILE + local_batch;
+        if (site < a.sites && batch < batches) {
+            int local_profile_tile = site / a.tile_sites - first_profile_tile;
+            int c_begin = (local_profile_tile * BATCH_TILE + local_batch) * a.basis_count();
+            double accumulator = 0;
+            for (int mode = 0; mode < a.basis_count(); ++mode)
+                accumulator += shared_c[c_begin + mode] * integrated_basis(a, mode, site);
+            output[(blockIdx.z * batches + batch) * a.sites + site] = accumulator;
+        }
     }
 }
 
@@ -739,11 +741,12 @@ __global__ void sum_split_outputs_kernel(const scalar_t *partials, scalar_t *out
 torch::Tensor expand(torch::Tensor h, torch::Tensor atoms, torch::Tensor rows,
                      std::vector<double> config, int center_column, int sites_per_block,
                      int requested_atom_splits) {
-    TORCH_CHECK(sites_per_block == 8 || sites_per_block == 16 || sites_per_block == 32,
-                "sites_per_block must be 8, 16 or 32");
-    TORCH_CHECK(requested_atom_splits == 1 || requested_atom_splits == 2 ||
-                    requested_atom_splits == 4 || requested_atom_splits == 8,
-                "atom_splits must be 1, 2, 4 or 8");
+    TORCH_CHECK(sites_per_block >= 8 && sites_per_block <= 256 &&
+                    (sites_per_block & (sites_per_block - 1)) == 0,
+                "sites_per_block must be a power of two in [8,256]");
+    TORCH_CHECK(requested_atom_splits >= 1 && requested_atom_splits <= 64 &&
+                    (requested_atom_splits & (requested_atom_splits - 1)) == 0,
+                "atom_splits must be a power of two in [1,64]");
     check_signal(h);
     Axis a = parse_axis(config);
     check_atoms(atoms, rows, h);
@@ -759,7 +762,8 @@ torch::Tensor expand(torch::Tensor h, torch::Tensor atoms, torch::Tensor rows,
     int atom_splits = std::max(1, std::min(requested_atom_splits, total_chunks));
     auto partials =
         atom_splits == 1 ? result : torch::empty({atom_splits, h.size(0), a.sites}, h.options());
-    int block_width = std::min(a.sites, std::min(sites_per_block, LEAVES_PER_BLOCK * a.leaf));
+    int block_width =
+        std::min(a.sites, std::min(sites_per_block, MAX_PROFILE_TILES_PER_BLOCK * a.tile_sites));
     dim3 grid((a.sites + block_width - 1) / block_width, (h.size(0) + BATCH_TILE - 1) / BATCH_TILE,
               atom_splits);
     auto stream = c10::cuda::getCurrentCUDAStream();
@@ -787,8 +791,8 @@ std::vector<torch::Tensor> prepare_inputs(torch::Tensor x, torch::Tensor atoms,
     check_like(atoms, x);
     Axis input = parse_axis(input_config), output = parse_axis(output_config);
     TORCH_CHECK(x.size(1) == input.sites, "signal shape differs from axis");
-    TORCH_CHECK(atoms.dim() == 2 && atoms.size(1) == 4 && atoms.size(0) <= 1024,
-                "prototype physical atoms require shape [A<=1024,4]");
+    TORCH_CHECK(atoms.dim() == 2 && atoms.size(1) == 4 && atoms.size(0) <= 65536,
+                "prototype physical atoms require shape [A<=65536,4]");
     c10::cuda::CUDAGuard guard(x.device());
     auto keys = torch::empty({atoms.size(0)}, x.options().dtype(torch::kInt64));
     auto errors = torch::zeros({}, x.options().dtype(torch::kInt32));
