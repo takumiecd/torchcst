@@ -18,6 +18,8 @@
 - 正規化はprofileの支持全体の面積を使う。タイルやblockごとに正規化し直さない。
 - atom側の係数とsite側の基底を分離し、入力に依存するZを複数atomで共有する。
 - 積分は解析的に評価し、通常の実行で数値積分や全siteの分母reductionを要求しない。
+- 新128版のforwardはprepare（ソート・配置）とcomputeの2起動とし、
+  面積正規化はcompute内のdevice関数へ含める。独立した正規化用kernelを置かない。
 - 新しい意味の版として宣言・保存・対応判定を区別する。package全体の版番号の確定とは別。
 
 この目標の全体を満たすprofile族、幅の対応、境界の共有方法はまだ確定していない。
@@ -134,11 +136,12 @@ cosが端で0になることも窓条件を消さない。境界残差等の正�
 
 現行block128のprepare_normsは、各atomの入力・出力profileを全128 sitesで評価し、
 各側に二乗normと中心・幅の微分用内積を保存している。
-新方式では同じ配列の中身だけを変更せず、準備関数と配列の意味を区別する。
-以下の関数名は設計上の仮名で、公開APIとして追加済みではない。
+新方式では同じ配列の中身だけを変更せず、正規化処理と配列の意味を区別する。
+以下はcompute内部で使うdevice関数の設計上の仮名で、独立したkernelや公開APIではない。
+forwardはprepare（ソート・配置）→computeの2起動とする。
 
 ```cpp
-prepare_probability_profile(atom, axis, spec)
+make_atom_profile(atom, axis, spec)
 {
     // 幅・支持・階層・bankと、その基底に対する生係数を求める。
     raw = build_raw_profile_coefficients(atom, axis, spec);
