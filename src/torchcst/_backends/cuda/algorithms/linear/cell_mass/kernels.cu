@@ -646,8 +646,10 @@ __global__ void parameter_grad_kernel(const scalar_t *x, const scalar_t *dy, con
         Projection input_vjp = project_atom<true>(x, zx, batches, begin, input);
         Projection output_vjp = project_atom<true>(dy, zy, batches, begin, output);
         for (int local = 0; local < BATCH_TILE && begin + local < batches; ++local) {
-            double hv = h[(begin + local) * atom_count + slot];
-            double gv = g[(begin + local) * atom_count + slot];
+            // Reprojection already produced these double values. Avoid loading
+            // rounded H/G again when combining their parameter pullbacks.
+            double hv = input_vjp.value[local];
+            double gv = output_vjp.value[local];
             da += hv * gv;
             ds += amplitude * (gv * input_vjp.sigma[local] + hv * output_vjp.sigma[local]);
             dmu_in += amplitude * gv * input_vjp.center[local];
