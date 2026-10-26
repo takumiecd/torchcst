@@ -70,25 +70,31 @@ eta <= (P-2I)*tau/S も確認する。tauはpeak高さに対する密度の上�
 
 ## メモリと処理順
 
-- globalは元atom、sorted_rows、Zx/Zy、H/G、入出力・勾配のみ。atomや係数の全表を複製しない。
+- globalは元atom、sorted_rows、Zx/Zy、H/G、入出力・勾配。
+  atom分担が複数なら、Y/dXの呼び出し中だけ部分出力scratchも持つ。atomや係数の全表を複製しない。
 - Y/dXのblockは最大4leaf×4batchの出力を担当する。その範囲のprofileタイルごとに
-  一つのCをregisterへ蓄積し、同じprofileタイル内のsiteで共有する。
-- 32atom chunkを一度読み、現在chunkのraw harmonicをsharedへ生成する。
-  sin/cos・4batch・担当leafで共通のraw係数を使い回す。
-- 全chunkの後にCをsharedへ渡してY/dXへ展開する。出力atomicは不要。
-- H/GとParameter勾配は引き続き各threadが異なるatomを担当する。
+  担当atom集合からのCの部分和をregisterへ蓄積し、同じprofileタイル内のsiteで共有する。
+- 32atom chunkを一度読み、寄与するatomの係数だけをsharedへ生成する。
+  profile tileが一つなら位相を掛けたsin/cosを全batchで共用する。
+  複数tileならraw harmonicを同じshared領域に持ち、各tileのchart imageに応じて位相を計算する。
+- 全担当chunkの後にCをsharedへ渡して部分出力へ展開する。
+  複数splitなら別kernelで部分出力を合計する。出力atomicは不要。
+- H/GとParameter勾配は各threadが異なるatomを担当する。
+  そのblock幅はZ・Y/dXと独立に`atom_threads_per_block`で指定する。
 
 ```cpp
 Z = build_hierarchy(signal);
 H = project_selected_whole_tiles(Z, atoms);
-for (atom_chunk : atoms) {
-    prepare_chunk_and_harmonics_in_shared();
+for (atom_chunk : assigned_atom_range) {
+    prepare_contributing_chunk_coefficients_in_shared();
     sync();
     accumulate_C_for_owned_tiles();
     sync();
 }
 publish_C_in_shared(); sync();
-expand_C_and_store();
+expand_C_and_store_partial();
+// 複数splitのときだけ、同じstream上の次kernelで合計する。
+sum_split_outputs();
 ```
 
 ## 現在の研究用API
@@ -101,11 +107,18 @@ spec = CellMassLinearSpec(
     output=CellMassAxisSpec(profile=profile, site_count=128,
                            spacing=1., tile_sites=32, period_tiles=3),
 )
-y = physical_linear(spec, x, atoms, z_method="merge", sites_per_block=16)
+y = physical_linear(
+    spec, x, atoms, z_method="merge", sites_per_block=16,
+    atom_splits=4, atom_threads_per_block=16,
+)
 ```
 
 Y/dXのblock担当範囲は別の実行設定`sites_per_block=32/16/8`で比較できる。
 profileのtile_sitesや周期は変更しない。詳細は[担当site数の比較](cell-mass-block-sites.ja.md)。
+`atom_splits=1/2/4/8`はY/dXのatom集合をblock間で分担する。
+`atom_threads_per_block=16/32/64/128`はH/G・Parameter勾配のblock幅。
+省略時は従来通り32site/1split/128threadで、数式は全設定で同じ。
+scratch・同期・設定別の測定は[atom分担と位相共有](cell-mass-atom-splits.ja.md)に記録する。
 
 以前のsupport_half_widthを直接渡す研究APIは廃止。IとLの混同を避ける。
 今回は1軸1bank、128以下の2のべき乗site数、1024以下のatom。
@@ -179,11 +192,12 @@ peak allocatedは83.5KiB、元のX/dY/atomの17KiBを含む。GPU process全体�
 | dX | 2.458 ms |
 | Parameter勾配 | 0.621 ms |
 
-Y/dXは今も各4blockで、候補atom範囲の絞り込みと並列度は今後の課題。
-コンパイル時のリソースはY/dXがregister90/thread・shared9,984byte/block（9.75KiB）・stack40、
+この測定時点のY/dXは各4blockで、候補atom範囲の絞り込みと並列度が課題だった。
+当時のコンパイル時リソースはY/dXがregister90/thread・shared9,984byte/block（9.75KiB）・stack40、
 H/Gはregister86、Parameter勾配はregister166。表示上のLOCALは0。
 sharedは旧方式の6,176byteから増えたが、全atomのglobal係数表ではなく現在chunkのみ。
 これをwarp占有率やspill trafficの実測とは扱わない。
+現行の並列度・リソース・実測は[atom分担の記録](cell-mass-atom-splits.ja.md)を参照。
 
 ## 証拠と再現
 

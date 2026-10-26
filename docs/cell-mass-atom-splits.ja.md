@@ -245,4 +245,73 @@ jobの回収と所有slot停止を確認した。
 
 本体のatom_threads_per_block追加後はCPU全体2006 passed / 2929 skipped、
 既存警告18件（44.23秒）。wheel/sdistの321 runtime source filesもbyte一致した。
-GPUでの最終検証は以下へ追記する。
+GPUでの最終検証は以下の通り。
+
+## 最終の本体検証と選択
+
+source commit `ee131b7d`。診断用のAxis追加fieldsは含めず、
+実行設定は通常の関数引数として渡す。NVIDIA L4、Torch2.11.0+cu130、CUDA13.0。
+対象suiteは181 passed / 0 failed / 0 skipped。
+16/128threadのpolynomial/DFT・direct/merge・全atom勾配を確認し、
+split1/4のretained backward、16threadでの空batch/atom・端数chunk・M16も通過した。
+
+N128/A819/B4のFP32/FP64、5設定ではY/dX/全atom勾配が独立参照への従来基準を通過。
+全設定の最大絶対誤差はFP32で各5.96e-8以下、FP64はY1.96e-15/dX2.33e-15/勾配1.50e-15。
+変更前との全atom勾配の差は全設定で0。
+thread幅によって各atom内の演算順は変えず、splitの加算順による丸めも従来基準内に保った。
+面積正規化・窓・裾の近似は変更していない。
+
+同じjob・同じ入力と測定境界で、変更前runtimeと最終の本体を比較した。
+各設定2fresh process、2巡目は逆順、warmup5回後15サンプル。
+shape・profile・sigma分布・seedは前述の本体比較と同じ。
+
+| 設定 | process1中央値 | process2中央値 | peak allocated | peak reserved |
+| --- | ---: | ---: | ---: | ---: |
+| 変更前16site | 4.623 ms | 4.617 ms | 85,504 byte | 2 MiB |
+| 本体16site/4split/128thread | 2.313 ms | 2.318 ms | 同上 | 同上 |
+| 本体16site/4split/32thread | 2.094 ms | 2.114 ms | 同上 | 同上 |
+| 本体16site/4split/16thread | 2.024 ms | 2.026 ms | 同上 | 同上 |
+| 本体16site/8split/16thread | **1.883 ms** | **1.872 ms** | 88,576 byte | 2 MiB |
+
+最後の設定は変更前比約2.45/2.47倍、約59.3%/59.4%短縮。
+元のX/dY/atomを含むallocatedは83.5→86.5KiB。GPU process全体のVRAMは未測定。
+このcaseでは追加3KiBを許容する16site/8split/16threadを最短の設定として記録する。
+allocated据え置きを優先する場合は16site/4split/16thread。
+既定値の32site/1split/128threadは変えず、他のshape/GPUへの自動選択は追加しない。
+
+```python
+y = physical_linear(
+    spec, x, atoms, z_method="merge",
+    sites_per_block=16, atom_splits=8, atom_threads_per_block=16,
+)
+```
+
+最短設定の別GPU event中央値は、prepare0.392ms、Zx0.0379/Zy0.0358ms、
+H0.165ms、Y0.218ms、G0.169ms、dX0.187ms、Parameter勾配0.413ms。
+stage時間を足してwall時間の代用にはしない。
+NCUでも最終本体の勾配がgrid52/block16・REG166/thread・SHARED0で起動することを確認した。
+
+次の調査対象はprepareとParameter勾配。
+prepareはTorchで複数のキー構築演算を行ってからstable argsortを呼ぶため、
+キー生成の融合とsort自体の費用を分けて測る余地がある。
+入力検査はfinite/幅のreductionをhostのboolで読むため、こちらにも同期費用がある。
+両者を未検証のまま省略したり、時間の全てをsortの計算量へ帰属させない。
+勾配側は両軸のprofile・微分projectionに残る重複や数学的簡約を次の候補とする。
+このcheckpointの検証完了後、追加GPU sweepは行っていない。
+
+最終job `l4job-f64e4b84f2c34e97887f0d65e3e7810d`。
+
+- source archive SHA256: `ba6447c65bea21de5a2077e537b5800b70334e00e3961678b11a26d9009bbfa8`
+- result archive SHA256: `d290a70dd9abeabd1502996e417c33b886787ea507c1fb2bc8a05271bd9099bd`
+- driver SHA256: `62e1a1db702f44d5f3ec8108eb2d4869f7ca83f102084eee9d3a995000145f63`
+- 比較元binary SHA256: `5a290f84e988661aaed8ff34bdd5e2b9978e62227328589c96b4fb1f34cc5eeb`
+- 本体binary SHA256: `ba15b0cda4c52fe177594df99e4b81e22618f7afd76f5c225925c082040febe0`
+
+両archive hash、29result manifest、埋め込み比較元source、
+321 runtime source filesと現行・`ee131b7d`・wheel/sdistのbyte一致を照合した。
+最終jobはnative binary自体も回収し、各測定processのhashと一致した。
+source/result archive・JSON・NCU・binary・CPU/build log・検証receiptは
+ignored `output/cell-mass-atom-splits-20261026/final/`へ保持する。
+再実行はこのjobのsource archiveの`__pool_driver__.py`を共有poolへ提出する。
+結果回収と所有pool slot停止を確認済み。公開dispatcher/optimizer/Graph/denseを含む
+完全学習stepの比較・採用判定は引き続き未実施であり、今回の速度比へ含めない。
