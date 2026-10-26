@@ -131,6 +131,76 @@ python -m pytest tests/test_cell_mass_reference.py tests/test_cell_mass_cuda.py 
 GPUのない環境ではCUDA部分はskipされる。skipをGPU検証の成功とは扱わない。
 実装後のCPU suiteは1989 passed / 2795 skipped / 18件の既存JIT警告。
 新しい対象テスト単独では11 passed / 19 CUDA skipsで、Ruff検査も通過した。
-初版の経過・実測のjob IDと検証範囲は、この節へ追記する。
+wheel/sdist buildを通過し、321個のruntime sourceが両artifact内でcheckoutとbyte一致した。
+
+L4での初回correctnessは20 passed / 0 failed / 0 skipped。
+両Z方式、float32/64、Y/dX/全atomの4方向勾配、保存状態、空atomと末尾要素を含む。
+source commitは`94042a881f3fa8d5cb341ebc0ceda980bd1073ee`、jobは
+`l4job-709806652fc24d7b862424f0977523e2`。
+実機はNVIDIA L4、Torch 2.11.0+cu130、CUDA 13.0。
+source archive SHA256は`e3ed3eb48fba9adebe15b5893ee069f7f9ae81950ad4396db16601588ebec64a`、
+回収結果archive SHA256は`7d28d7396a3e33d080ab800f90d0219436781e1fb3b88e713008fd474797dc9a`。
+回収archiveのhashと、テストされたCUDAソースのbyte一致も手元で再確認した。
+
+最初の同一process内の診断ではforward+backwardは約206msで、速度改善の採用結果ではない。
+検証に使ったTorch計算の常駐allocationが残る可能性があるので、そのprocessの8,554,496 byteの
+peak allocatedを、新方式だけの必要容量とは解釈しない。fresh processの測定を別に記録する。
+測定専用の追加job `l4job-56dc6048ea8a41c992540cd61a2ff34d`は、driverがNinjaの準備を
+欠いてコンパイル前に停止した。正しさの失敗や有効な測定結果としては数えず、失敗ログも保持する。
+raw logs・JSON・driverとpackage照合記録はignored `output/cell-mass-implementation-20261026/`、
+元のsource/result archiveはhost共通poolの各job directoryに保持する。
+
+### fresh processでの診断値
+
+測定専用jobは`l4job-bd97107095ca4fef94e7e2df5f8d1053`。
+同じruntime sourceで、方式ごとに新しいprocessを起動した。
+128×128、128atom、batch 4、FP32、mode 8、1つのZに4thread。
+warmup後の5サンプルの中央値で、JITコンパイルを除く。
+forward+backwardはprepareと入力検査を含むwall時間である。
+
+| Z方式 | forward+backward | peak allocated | peak reserved |
+| --- | --- | --- | --- |
+| 全nodeを直接生成 | 206.483 ms | 34,816 byte（34 KiB） | 2,097,152 byte（2 MiB） |
+| leaf生成＋親マージ | 206.060 ms | 34,816 byte（34 KiB） | 2,097,152 byte（2 MiB） |
+
+これはTorch allocatorの計測で、GPU process全体のVRAM使用量ではない。
+shared/registerやドライバの容量をTensorのallocated値へ混ぜない。
+このケースで同時に存在する主なTensorの理論容量は以下の通り。
+
+| Tensor | 計算したbyte数 |
+| --- | --- |
+| X・dY・元のphysical_atoms | 6,144 |
+| ソート済み行番号（int64） | 1,024 |
+| Zx・Zy（各4×31node×17基底×FP32） | 16,864 |
+| H・G | 4,096 |
+| Y・dX・physical_atoms勾配 | 6,144 |
+| 合計（確保単位の丸めなどを含まない） | 34,272 |
+
+実測peakの34,816 byteと、Tensor値だけの34,272 byteは区別する。
+元atomのglobalコピー、全係数表、全係数微分表、全Wは含まれていない。
+
+別に実行したphase診断のGPU event中央値は次の通り。診断値の和を完全step時間の代用にはしない。
+
+| phase | 全node直接 | leaf＋マージ |
+| --- | --- | --- |
+| prepare | 0.359 ms | 0.342 ms |
+| Zx | 0.235 ms | 0.036 ms |
+| Zy | 0.233 ms | 0.036 ms |
+| H | 28.175 ms | 28.149 ms |
+| Y | 49.405 ms | 49.390 ms |
+| G | 18.204 ms | 18.193 ms |
+| dX | 47.443 ms | 47.426 ms |
+| Parameter勾配 | 61.887 ms | 61.872 ms |
+
+この実行ではZ単体はマージが速いが、主要な時間は5つの計算段階側にある。
+128atom・batch 4ではH/Gが各1block、Parameter勾配も1blockで、GPU全体を使い切れる仕事の
+分け方にはなっていない。今後、係数のその場計算の頻度とblock/thread配分を調べる。
+この1回の小規模診断で、一般の採用方式や速さの原因を断定しない。
+
+source archive SHA256は`08e2b1e0bd64a624afb8f853c26d7624bc31618dcf5d9a11c6e1981cc929fe82`、
+回収archive SHA256は`d6cb27b7eb90fafa35829845596aceec74fd2dfcc4fcd3cb9ca9ca0cdc3d8cf7`。
+両hashを再照合し、所有pool slotの停止を確認した。検証用jobと測定用jobを含め、旧研究の
+停止中の実験は再開していない。
+
 公式Linear runnerへの新fixture/semanticsの接続と完全optimizer step・Graph込みの比較は次の段階であり、
 この低水準entryのforward/backward時間だけを公開dispatcherの採用根拠にはしない。
