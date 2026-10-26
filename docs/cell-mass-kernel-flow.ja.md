@@ -13,16 +13,15 @@
 ```cpp
 // forward
 prepare_layout(atoms, spec, layout);
-packed_atoms = layout.packed_atoms;
 build_input_hierarchy(X, layout, Zx);
-compute_h(Zx, X, packed_atoms, layout, H);
-compute_y(H, packed_atoms, layout, Y);
+compute_h(Zx, X, atoms, layout, H);
+compute_y(H, atoms, layout, Y);
 
 // backward
 build_output_hierarchy(dY, layout, Zy);
-compute_g(Zy, dY, packed_atoms, layout, G);
-compute_dx(G, packed_atoms, layout, dX);
-compute_parameter_grad(Zx, Zy, X, dY, H, G, packed_atoms, layout, grad);
+compute_g(Zy, dY, atoms, layout, G);
+compute_dx(G, atoms, layout, dX);
+compute_parameter_grad(Zx, Zy, X, dY, H, G, atoms, layout, grad);
 ```
 
 同じstreamへ依存順に投入する。階層構築は主要な5つの計算kernelに含めない。
@@ -30,8 +29,9 @@ compute_parameter_grad(Zx, Zy, X, dY, H, G, packed_atoms, layout, grad);
 前者はlevelをまたいで並列に作り、後者だけlevel順に起動して子の完成を待つ。
 CPU側で毎回同期するという意味ではない。
 以下ではgeometry・正規化設定などの引数を省略し、補助関数が同じspecを参照するものとする。
-compute系のatom番号はソート済みの行番号であり、H/Gもこの順序で保存する。
-元のParameter行番号へ戻すのはParameter勾配の保存時である。
+compute系ではソート済みの位置slotと、元のatom行番号original_idを区別する。
+H/Gはslot順で保存する。atomの値は`atoms[layout.sorted_rows[slot]]`から読み、
+Parameter勾配はoriginal_idの行へ書く。atom全体のソート済みglobalコピーは作らない。
 
 ## 起動するものとkernel内で呼ぶものの区別
 
@@ -40,7 +40,6 @@ compute系のatom番号はソート済みの行番号であり、H/Gもこの順
 | `prepare_layout` | host側の起動関数 | 以下の分類・ソート・配置・範囲作成を順に起動 |
 | `classify_atom_keys` | CUDA kernel | 元のatom行から階層とソートキーを作る |
 | `device_sort_pairs` | GPUライブラリ呼び出し | キーと元の行番号を一緒にソート |
-| `pack_sorted_atoms` | CUDA kernel | ソート順の実行用atomと元の行との対応を作る |
 | `mark_group_heads` | CUDA kernel | 同じキーの連続区間の先頭を検出 |
 | `device_inclusive_scan` | GPUライブラリ呼び出し | 先頭フラグの累積和からグループ番号を作る |
 | `write_group_begins` | CUDA kernel | 各グループのキー・beginとグループ数を書く |
@@ -53,7 +52,7 @@ compute系のatom番号はソート済みの行番号であり、H/Gもこの順
 | `compute_g` / `compute_dx` / `compute_parameter_grad` | CUDA kernel | 以下の第3〜第5節 |
 
 各kernel節のコードブロックはkernelの本体を示す。
-`assigned_atom`や`contract_input_tile`などはkernel内のdevice補助関数で、追加のkernel起動ではない。
+`assigned_atom`や`input_coefficient`などはkernel内のdevice補助関数で、追加のkernel起動ではない。
 sort/scanの内部で使うkernel数はGPUライブラリに任せる。ライブラリ内部まで自作することは前提にしない。
 host側でshapeから出力・scratch容量を確保し、同じstreamを全起動・ライブラリ呼び出しへ渡す。
 以下の配列は明記しない限りglobalにある。
@@ -68,19 +67,18 @@ sort/scan用scratchはライブラリが要求する容量を別途数える。
 | --- | --- |
 | `keys[A]`, `source_rows[A]` | ソート前のキーと元のParameter行番号 |
 | `sorted_keys[A]`, `sorted_rows[A]` | ソート結果 |
-| `packed_atoms[A]` | ソート順の実行用atomコピー |
 | `head_flags[A]`, `group_numbers[A]` | グループ先頭とその累積和 |
 | `group_key[A]`, `group_begin[A]`, `group_end[A]` | 有効なグループだけを先頭から格納 |
 | `group_count[1]` | 有効グループ数。GPU上で後続kernelが読む |
 
-ここでpacked_atoms、sorted_rows、group関連の出力はlayoutが参照するbufferであり、
+ここでsorted_rowsとgroup関連の出力はlayoutが参照するbufferであり、
 擬似コード中の短い配列名はその別名とする。head_flagsやscan結果はprepareだけのscratch。
+atomのsigma・中心・振幅は元のParameter配列にだけ置き、prepareでは複製しない。
 
 ```cpp
 // host側。同じstreamへ順に起動する。
 classify_atom_keys<<<...>>>(atoms, spec, keys, source_rows);
 device_sort_pairs(keys, source_rows, sorted_keys, sorted_rows);
-pack_sorted_atoms<<<...>>>(atoms, sorted_rows, layout.packed_atoms);
 mark_group_heads<<<...>>>(sorted_keys, head_flags);
 device_inclusive_scan(head_flags, group_numbers);
 write_group_begins<<<...>>>(sorted_keys, head_flags, group_numbers, layout);
@@ -90,7 +88,7 @@ write_group_ends<<<...>>>(layout);
 A=0ならhost側でprepareの空経路を選び、group_count=0をstream順に設定する。
 以下のprepare kernelはA>0を対象とする。空のatom集合でも後段はY/dXへ必要な0を書く。
 その場合はH/G/Parameter勾配のatom用kernelを起動せず、Y/dXの所有blockで0を保存する。
-keysなどのscratchは最後の利用が済んだ後に再利用できるが、packed_atoms、sorted_rows、
+keysなどのscratchは最後の利用が済んだ後に再利用できるが、sorted_rowsと
 グループ範囲などbackwardで使う状態はforward呼び出しごとに保持する。
 
 ### classify_atom_keys：各atomの所属とキーを作る
@@ -129,19 +127,6 @@ source_rows[a] = a;
 
 atomのParameter本体やoptimizerのmomentsを並べ替える操作ではない。
 多wordキーを使う場合も辞書順を維持できるsort経路を選ぶ。
-
-### pack_sorted_atoms：計算用の連続配列を作る
-
-```cpp
-s = blockIdx.x * blockDim.x + threadIdx.x;
-if (s >= atom_count) return;
-
-original_row = sorted_rows[s];
-packed_atoms[s] = atoms[original_row];
-```
-
-一つのthreadが一つのソート済み行を書き、sorted_rowsをbackwardの勾配の戻し先に使う。
-成分ごとの実配列をSoAにするかなどは後で決める。この代入はatom一つの全情報をコピーする意味。
 
 ### mark_group_heads：同じキーの区間の先頭に印を付ける
 
@@ -197,7 +182,8 @@ gridは最大Aグループ分で起動でき、group_countをCPUへコピーし�
 ### blockが使うrangeはどう取得するか
 
 出力タイルや入力タイルに寄与するatomが、一つの連続区間に全て収まるとは限らない。
-各blockは必要なgroupの`[begin,end)`を順に読む。入力側の処理も同じpacked_atomsを使える。
+各blockは必要なgroupの`[begin,end)`を順に読む。この範囲はsorted_rows上の位置であり、
+元のatomパラメータがglobalで連続していることは要求しない。
 最初の128atomの説明形では、groupを走査するdevice補助関数から始められる。
 
 ```cpp
@@ -214,6 +200,38 @@ for (g = 0; g < layout.group_count; ++g) {
 支持が周期境界をまたいでも、同じgroupの区間を二重に消費しない。
 候補に含まれるが実際の寄与が0のatomを含めて処理してよい。範囲を狭めるためのatom別判定は必須にしない。
 group検索の索引は後で改善できるが、タイルごとのatomパラメータ全体の複製は前提にしない。
+
+### load_atom_chunk_together：必要なatomだけsharedへ集める
+
+追加のkernelではなく、Y/dXなどのblock内で呼ぶdevice補助関数。
+同じatomを複数threadで再利用するときに、そのblockが必要な小さなchunkだけを集める。
+
+```cpp
+// rangeとchunkのループはblock内で共通。全threadが参加する。
+for (base = range.begin; base < range.end; base += ATOM_CHUNK) {
+    count = min(ATOM_CHUNK, range.end - base);
+    for (j = threadIdx.x; j < count; j += blockDim.x) {
+        original_id = layout.sorted_rows[base + j];
+        shared_atoms[j] = atoms[original_id];
+    }
+    __syncthreads();
+
+    consume_atom_chunk(shared_atoms, count, base, H_or_G);
+    __syncthreads();  // 全員が使い終わってから次のchunkで上書き。
+}
+```
+
+shared_atoms[j]はソート順に並び、対応するH/Gの行は`H_or_G[b,base+j]`。
+実装では必要なparameter成分だけをロードしてよい。shared全量はATOM_CHUNKと成分数で制限する。
+Cの担当がないthreadもchunkロードと全barrierへ参加する。
+Cを保持するshared領域とは、同時に必要な間は別の領域を使い、容量を両方数える。
+globalからの最初のgatherは飛び飛びになり得る。sharedでの再利用とロード・同期の費用を測る。
+block間でsharedを共有することはできず、別blockはそれぞれ必要なchunkをロードする。
+
+一つのthreadが一つのatomだけを使うH/G・Parameter勾配では、sorted_rowsを介して元のatomを
+直接registerへ読む。共有する相手がいなければsharedを経由する必要はない。
+いずれの場合も、Fourier係数やその微分はsigma・中心・bankから利用時に計算する。
+全atom分の係数表や係数微分表をglobalへ用意しない。
 
 ## build_input_hierarchy：XからZxを作る起動関数
 
@@ -394,22 +412,28 @@ blockはatom群とbatch範囲を担当する。各threadが別々のatomを担�
 Hは振幅を掛ける前の値。Zx/Xはglobalから読み、Hの累積値はregisterへ置く。
 
 ```cpp
-atom = assigned_atom(blockIdx.x, threadIdx.x);
-if (atom >= atom_count) return;
+slot = assigned_atom(blockIdx.x, threadIdx.x);
+if (slot >= atom_count) return;
+original_id = layout.sorted_rows[slot];
+atom = atoms[original_id];  // 必要なparameterをregisterへ読む。
+h[batch_size] = {0};
 
-for (b : assigned_batches(blockIdx.y, batch_size)) {
-    h = 0;
-    for (tile : full_input_tiles(atom)) {
-        h += contract_input_tile(atom, tile, b, Zx);
+for (tile : full_input_tiles(atom)) {
+    for (mode : tile.modes) {
+        c = input_coefficient(atom, tile, mode);
+        for (b : assigned_batches(blockIdx.y, batch_size))
+            h[local_batch(b)] += c * Zx[b, tile, mode];
     }
-    h += input_boundary_contribution(atom, b, X);
-    H[b, atom] = h;
+}
+for (b : assigned_batches(blockIdx.y, batch_size)) {
+    h[local_batch(b)] += input_boundary_contribution(atom, b, X);
+    H[b, slot] = h[local_batch(b)];
 }
 ```
 
 `full_input_tiles`は支持内部を重複なく覆うタイル集合。親とその子を二重に含めない。
-`contract_input_tile`は`sum_k input_coefficient(atom,tile,k) * Zx[b,tile,k]`。
-係数には中心・幅と面積による正規化を含め、必要なmodeごとに評価する。
+modeのループは`sum_k input_coefficient(atom,tile,k) * Zx[b,tile,k]`を計算する。
+係数には中心・幅と面積による正規化を含め、必要なmodeごとにregisterで評価し、batch間で再利用する。
 `input_boundary_contribution`は内部タイルに含めなかった残りのセルを、正確な積分で計算する。
 この分割の具体式は未確定だが、二つを合わせて全profileの寄与を一度ずつ数える契約にする。
 内部タイルがなくても境界側で必要な寄与を処理し、空支持なら0を書く。
@@ -428,18 +452,20 @@ output_tile = assigned_output_tile(blockIdx.x);
 init_output_accumulator(y);  // 各threadの担当site/batchは重ならない。
 
 for (bank : contributing_output_banks(output_tile)) {
-    build_output_c_together(bank, output_tile, H, shared_c);
+    build_output_c_together(bank, output_tile, H, atoms, layout, shared_c);
     __syncthreads();
     expand_output_c_into_y(bank, output_tile, shared_c, y);
     __syncthreads();  // 全員が読み終えてからshared_cを再利用する。
 }
-add_output_boundary_contributions(output_tile, H, y);
+add_output_boundary_contributions(output_tile, H, atoms, layout, y);
 store_output_tile(output_tile, y, Y);
 ```
 
 内部部分でのCは`C[b,k] = sum_a alpha[a] * H[b,a] * output_coefficient(a,tile,k)`。
 `build_output_c_together`はCの各batch/modeに書き手を一つ決め、対応atomを走査して完成値を
-sharedへ書く方式を出発点にする。atomごとの部分Cを並列生成してreductionする案は後で比較する。
+sharedへ書く方式を出発点にする。その走査中、必要なatomを上記のchunkロードでsharedへ集める。
+係数を担当するthreadはchunk内のatomから係数をその場で算出する。
+atomごとの部分Cを並列生成してreductionする案は後で比較する。
 係数を作るthread配置と、Yのsiteを展開するthread配置は異なってよい。
 
 bankごとに基底が異なるため、C同士を混ぜず、展開したsite値をyへ足す。
@@ -454,16 +480,22 @@ atom群とbatch範囲を担当し、各threadが別々のatomを処理する。
 Zy/dYを読み、振幅を掛ける前のGを完成させてglobalへ書く。
 
 ```cpp
-atom = assigned_atom(blockIdx.x, threadIdx.x);
-if (atom >= atom_count) return;
+slot = assigned_atom(blockIdx.x, threadIdx.x);
+if (slot >= atom_count) return;
+original_id = layout.sorted_rows[slot];
+atom = atoms[original_id];
+g[batch_size] = {0};
 
-for (b : assigned_batches(blockIdx.y, batch_size)) {
-    g = 0;
-    for (tile : full_output_tiles(atom)) {
-        g += contract_output_tile(atom, tile, b, Zy);
+for (tile : full_output_tiles(atom)) {
+    for (mode : tile.modes) {
+        c = output_coefficient(atom, tile, mode);
+        for (b : assigned_batches(blockIdx.y, batch_size))
+            g[local_batch(b)] += c * Zy[b, tile, mode];
     }
-    g += output_boundary_contribution(atom, b, dY);
-    G[b, atom] = g;
+}
+for (b : assigned_batches(blockIdx.y, batch_size)) {
+    g[local_batch(b)] += output_boundary_contribution(atom, b, dY);
+    G[b, slot] = g[local_batch(b)];
 }
 ```
 
@@ -479,18 +511,19 @@ input_tile = assigned_input_tile(blockIdx.x);
 init_input_gradient_accumulator(dx);
 
 for (bank : contributing_input_banks(input_tile)) {
-    build_input_c_together(bank, input_tile, G, shared_c);
+    build_input_c_together(bank, input_tile, G, atoms, layout, shared_c);
     __syncthreads();
     expand_input_c_into_dx(bank, input_tile, shared_c, dx);
     __syncthreads();
 }
-add_input_boundary_contributions(input_tile, G, dx);
+add_input_boundary_contributions(input_tile, G, atoms, layout, dx);
 store_input_tile(input_tile, dx, dX);
 ```
 
 内部部分の係数は`C_in[b,k] = sum_a alpha[a] * G[b,a] * input_coefficient(a,tile,k)`。
 振幅は一度だけ掛ける。bankごとに展開し、境界補正を加え、担当dXを完成させる。
-Gはglobal、係数はshared、dxはregisterを基本とする。barrierの規則は`compute_y`と同じ。
+Gはglobal、集約したC_inはshared、dxはregisterを基本とする。barrierの規則は`compute_y`と同じ。
+atomのロードもYと同様に、元配列から必要なchunkだけをsharedへ集める。
 Y/dXの各要素を一つのblockが所有するため、block間の出力加算atomicは不要にできる。
 
 ## 5. compute_parameter_grad：H/Gと微分を組み合わせる
@@ -499,24 +532,26 @@ Y/dXの各要素を一つのblockが所有するため、block間の出力加算
 batch分割で複数blockが同じ勾配を書く方式は、追加reductionを伴う別候補にする。
 
 ```cpp
-atom = assigned_atom(blockIdx.x, threadIdx.x);
-if (atom >= atom_count) return;
+slot = assigned_atom(blockIdx.x, threadIdx.x);
+if (slot >= atom_count) return;
+original_id = layout.sorted_rows[slot];
+atom = atoms[original_id];
 
 grad_amp = 0;
 for (b : all_batches) {
-    grad_amp += H[b, atom] * G[b, atom];
+    grad_amp += H[b, slot] * G[b, slot];
 }
-store_original_amp_grad(atom, layout, grad_amp, grad);
+store_original_amp_grad(original_id, grad_amp, grad);
 
 for (parameter : profile_parameters(atom)) {
     grad_parameter = 0;
     for (b : all_batches) {
         dh = input_parameter_derivative(atom, parameter, b, Zx, X);
         dg = output_parameter_derivative(atom, parameter, b, Zy, dY);
-        grad_parameter += alpha[atom] *
-            (G[b, atom] * dh + H[b, atom] * dg);
+        grad_parameter += atom.amplitude *
+            (G[b, slot] * dh + H[b, slot] * dg);
     }
-    store_original_profile_grad(atom, parameter, layout, grad_parameter, grad);
+    store_original_profile_grad(original_id, parameter, grad_parameter, grad);
 }
 ```
 

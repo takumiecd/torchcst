@@ -90,8 +90,9 @@ atomごとに周波数を変える式を、そのまま共通Zで扱えるとは
 各kernelの担当・保持先と短い擬似コードは
 [prepareからbackwardまでのkernelの流れ](cell-mass-kernel-flow.ja.md)にまとめる。
 
-prepareは階層分類、ソート、pack、blockのbegin/endを作る。
-atomの順序は任意でよく、実行用コピーと元のParameter行への対応を保持する。
+prepareは階層分類、キーと行番号のソート、blockのbegin/endを作る。
+元のatom配列は複製せず、ソート順から元のParameter行を参照するsorted_rowsを保持する。
+必要なatomだけをblock内のshared chunkへ集め、一つのthreadだけで使う場合はregisterへ読む。
 支持とセルが重なる候補範囲を作り、境界セルを取りこぼさない。
 layoutは再構築できる実行用情報であり、数学的なprofileの定義とは分ける。
 
@@ -111,16 +112,15 @@ levelごとのマージkernelに分ける。thread配分やlevel融合は依存�
 ```cpp
 // forward: 同じstreamへ依存順に投入する。
 prepare_layout(atoms, spec, layout);
-packed_atoms = layout.packed_atoms;
 build_input_hierarchy(X, layout, Zx);
-compute_h(Zx, X, packed_atoms, layout, H);
-compute_y(H, packed_atoms, layout, Y);
+compute_h(Zx, X, atoms, layout, H);
+compute_y(H, atoms, layout, Y);
 
 // backward: forwardと同じatomの値・配置に対応する状態を使う。
 build_output_hierarchy(dY, layout, Zy);
-compute_g(Zy, dY, packed_atoms, layout, G);
-compute_dx(G, packed_atoms, layout, dX);
-compute_parameter_grad(Zx, Zy, X, dY, H, G, packed_atoms, layout, grad);
+compute_g(Zy, dY, atoms, layout, G);
+compute_dx(G, atoms, layout, dX);
+compute_parameter_grad(Zx, Zy, X, dY, H, G, atoms, layout, grad);
 ```
 
 X/dYは必要な支持境界の補正にも使う。Zxをbackwardまで保存しない場合は、
@@ -209,6 +209,7 @@ Qをセルの生の積分とすれば、係数・境界補正に使う正規化�
 | Zx | 複数blockで共有するならglobal | H生成、保存する場合はParameter勾配の最後の利用まで |
 | Zy | 複数blockで共有するならglobal | G生成からParameter勾配の最後の利用まで |
 | C・入力側の展開係数 | 担当blockのregister/shared | 対応するタイルの展開が終わるまで |
+| atomの必要な成分のchunk | 担当blockのshared、専有ならregister | そのchunkを全利用threadが読み終えるまで |
 | layout・X・forward状態 | 呼び出しごとの状態 | backwardの必要な読み取り・再計算が終わるまで |
 
 H/Gを両方保存する値だけの容量は、dtypeのbyte数s、batch数B、atom数Aに対し`2*s*B*A`。
@@ -237,7 +238,9 @@ Zxを保存しているならHだけの再計算、Zxも破棄するなら階層
 sharedだけにすれば必ず高速になるとはしない。Hの再計算、global読み書き、
 register退避、shared容量による同時実行block数の低下を含めて測る。
 面積Sと正規化係数はdevice関数で利用時に評価し、独立したnorm準備kernelや
-全atom分の係数表のglobal保存は前提にしない。
+全atom分の係数表・係数微分表はglobalへ作らない。係数はsigma・中心・bankから必要なmodeごとに
+registerで計算し、同じatomのbatch間で再利用する。Parameterのソート済みglobalコピーも作らない。
+sorted_rows・グループ情報とsort/scanの一時領域の容量は引き続き数える。
 H/Gを同じthreadで作る案、固定の担当表、局所経路の融合も後の比較候補として残す。
 
 ## 残る設計事項と検証順序
