@@ -189,7 +189,16 @@ def test_expanded_atom_limit_and_its_rejection():
 
 @requires_cuda
 @pytest.mark.parametrize(
-    "sites,tile_sites,period_tiles", [(1, 1, 1), (2, 2, 1), (32, 4, 5), (32, 32, 1)]
+    "sites,tile_sites,period_tiles",
+    [
+        (1, 1, 1),
+        (2, 2, 1),
+        (32, 4, 5),
+        (32, 32, 1),
+        (128, 16, 3),
+        (128, 32, 3),
+        (128, 128, 1),
+    ],
 )
 def test_window_counts_single_site_and_route_edges(sites, tile_sites, period_tiles):
     profile = ChebyshevSquareSpec(modes=8, tail_bound=1e-3)

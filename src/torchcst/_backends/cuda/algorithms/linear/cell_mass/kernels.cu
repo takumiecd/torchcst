@@ -385,8 +385,11 @@ __global__ void project_atoms_kernel(const scalar_t *signal, const scalar_t *ato
         h[(batch_begin + local) * atom_count + slot] = result.value[local];
 }
 
-// Y/dX: one block owns up to four leaf tiles and four batches. A chunk of
-// atoms is prepared once, then all owned C values consume it. Only the current
+// Y/dX: the launch still owns up to four leaves and four batches per block.
+// Within that range, C is built once per DISTINCT PROFILE TILE. Its coefficients
+// are shared by all leaf/site positions in that tile; only their basis differs.
+// A profile tile larger than a block is still recomputed across those blocks.
+// A chunk of atoms is prepared once, then all owned C values consume it. Only the current
 // chunk's raw harmonic coefficients are shared; no global coefficient table.
 // Every thread reaches the barriers, including threads without an output site.
 template <typename scalar_t>
@@ -402,8 +405,10 @@ __global__ void expand_tiles_kernel(const scalar_t *h, const scalar_t *atoms, co
 
     int block_width = min(a.sites, min(OUTPUT_TILE, LEAVES_PER_BLOCK * a.leaf));
     int block_first = blockIdx.x * block_width;
-    int leaf_count = min(block_width, a.sites - block_first) / a.leaf;
-    int c_count = leaf_count * BATCH_TILE * a.basis_count();
+    int block_end = min(block_first + block_width, a.sites);
+    int first_profile_tile = block_first / a.tile_sites;
+    int profile_tile_count = (block_end - 1) / a.tile_sites - first_profile_tile + 1;
+    int c_count = profile_tile_count * BATCH_TILE * a.basis_count();
     double local_c[COEFFICIENT_SLOTS] = {0};
 
     for (int base = 0; base < atom_count; base += ATOM_CHUNK) {
@@ -434,8 +439,8 @@ __global__ void expand_tiles_kernel(const scalar_t *h, const scalar_t *atoms, co
                 continue;
             int mode = q % a.basis_count();
             int local_batch = (q / a.basis_count()) % BATCH_TILE;
-            int leaf = q / (a.basis_count() * BATCH_TILE);
-            int target_tile = (block_first + leaf * a.leaf) / a.tile_sites;
+            int local_profile_tile = q / (a.basis_count() * BATCH_TILE);
+            int target_tile = first_profile_tile + local_profile_tile;
             int chart_tiles = a.sites / a.tile_sites;
             for (int j = 0; j < count; ++j) {
                 int offset = (target_tile - shared_first_tile[j]) % chart_tiles;
@@ -470,8 +475,10 @@ __global__ void expand_tiles_kernel(const scalar_t *h, const scalar_t *atoms, co
     int site = block_first + local_site;
     int batch = blockIdx.y * BATCH_TILE + local_batch;
     if (local_batch < BATCH_TILE && site < a.sites && batch < batches) {
-        int leaf = local_site / a.leaf;
-        int c_begin = (leaf * BATCH_TILE + local_batch) * a.basis_count();
+        // All sites of a profile tile read the SAME C. integrated_basis below
+        // supplies the site-dependent value, so no output values are copied.
+        int local_profile_tile = site / a.tile_sites - first_profile_tile;
+        int c_begin = (local_profile_tile * BATCH_TILE + local_batch) * a.basis_count();
         double accumulator = 0;
         for (int mode = 0; mode < a.basis_count(); ++mode)
             accumulator += shared_c[c_begin + mode] * integrated_basis(a, mode, site);
