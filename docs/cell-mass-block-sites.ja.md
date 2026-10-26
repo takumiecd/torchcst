@@ -3,6 +3,10 @@
 2026-10-26。[C共有](cell-mass-c-reuse.ja.md)後の数学・profile・周期を固定し、
 Y/dXの実行上の担当範囲だけを変える。初期の比較はsites_per_block=32/16/8。
 
+続く[atom走査・位相・同期の診断](cell-mass-deep-analysis.ja.md)では、
+site担当だけを小さくしても各blockの全atom走査が残ることを確認し、
+atom軸の分担と位相共有をproductionとは別の診断コピーで比較した。
+
 ## 数学のタイルと実行の担当範囲
 
 `CellMassAxisSpec.tile_sites`はprofileの周期・選択窓を決める宣言であり、
