@@ -33,6 +33,14 @@ class ProfileBinding:
         ):
             raise TypeError("invalid profile binding")
 
+        # Existing bindings evaluate profiles at points. They cannot silently
+        # interpret the new integral rule as sampled L2 normalization.
+        if self.normalization.kind == "continuous_mass":
+            raise ValueError(
+                "continuous mass normalization requires a compatible cell-integrated "
+                "profile contract; existing ProfileBinding does not support it"
+            )
+
 
 @dataclass(frozen=True, kw_only=True)
 class StatePolicySpec:
