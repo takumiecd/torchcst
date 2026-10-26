@@ -90,9 +90,10 @@ kernels.cuが実際のCUDA C++。コンパイルはCUDA実行時に遅延し、�
 H/Gの二方向はproject_atoms_kernel、Y/dXはexpand_tiles_kernelの同じ処理を使い、
 方向ごとに明示的なnative入口を設ける。Y/dXのblock間atomicは使わない。
 
-CUDAではChebyshevの漸化式と2M+1点の小さなDFTで、必要な係数とsigma微分を利用時に計算する。
-有限次数なのでここでのDFTは密度の近似fitではなく、同じ多項式の係数変換である。
-全atom分の係数表・係数微分表をglobalへ作らない。現時点では係数算出自体の最適化はしていない。
+CUDAでは必要な係数とsigma微分を利用時に計算する。初版の2M+1点のDFTは比較用に残し、
+現在は[同じ係数を直接求める正の多項式](cell-mass-coefficient-optimization.ja.md)を既定にする。
+いずれも密度の近似fitではなく、同じ多項式の係数変換である。
+全atom分の係数表・係数微分表をglobalへ作らない。
 
 Y/dXは必要なatomの32個ずつのchunkとH/Gをsharedへ集め、使用後の同期を挟んで上書きする。
 H/G・Parameter勾配では元のatomをregisterへ読む。保存するZ/H/Gはglobalで、
@@ -101,7 +102,7 @@ forward状態はautograd呼び出しが所有する。元のParameterをbackward
 ## 初版の対応範囲と比較スイッチ
 
 - 入出力とも1次元、各軸に明示的な一つのFourier bank。128以下の2のべき乗site数。
-  初版のatom上限128は、[5%条件の最適化](cell-mass-coefficient-optimization.ja.md)で1024へ拡張する。
+  初版のatom上限128は、[5%条件の最適化](cell-mass-coefficient-optimization.ja.md)で1024へ拡張した。
 - ChebyshevSquareSpec、2〜16の偶数mode、float32/float64、連続した入力とphysical atom行。
 - CUDAでは支持の全幅2Lがchartの周期以下。CPU参照はより広い支持の複数像も検証する。
 - 初版の各bank内では全階層が同じ基底を持つ。leafは最大8site、階層の全ノードをZに保存する。
