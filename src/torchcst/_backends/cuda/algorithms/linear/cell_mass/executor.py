@@ -1,4 +1,4 @@
-"""Readable five-kernel CUDA route for the physical cell-mass prototype.
+"""Readable CUDA routes for the physical cell-mass prototype.
 
 This numeric research entry is deliberately not registered with CSTLinear or
 the public dispatcher. It accepts physical rows, not an old Polar/L2 checkpoint.
@@ -17,8 +17,8 @@ from torchcst.kernels.cell_mass import CellMassLinearSpec
 
 
 def _axis_config(axis, coefficient_method="polynomial"):
-    if coefficient_method not in ("polynomial", "dft"):
-        raise ValueError("coefficient_method must be polynomial or dft")
+    if coefficient_method not in ("polynomial", "polynomial_table", "dft"):
+        raise ValueError("coefficient_method must be polynomial, polynomial_table or dft")
     return [
         axis.site_count,
         axis.spacing,
@@ -26,7 +26,7 @@ def _axis_config(axis, coefficient_method="polynomial"):
         axis.origin,
         axis.profile.modes,
         axis.profile.tail_bound,
-        int(coefficient_method == "polynomial"),
+        {"dft": 0, "polynomial": 1, "polynomial_table": 2}[coefficient_method],
         axis.period_tiles,
     ]
 
@@ -295,6 +295,8 @@ def physical_linear(
     It supports up to 128 atom splits without a second atom permutation.
     fuse_g_parameter_grad writes G while recomputing parameter pullbacks and
     releases forward H after Y; it is available with derivative recomputation.
+    polynomial_table uses a mode-only constant bank and per-atom reciprocal
+    reuse. It evaluates the same normalized polynomial as polynomial.
     Each block covers at most four profile tiles, independent of site width.
     Build/JIT time is separate from execution timing. Support is explicit.
     """
@@ -318,8 +320,8 @@ def physical_linear(
         or z_threads_per_element & (z_threads_per_element - 1)
     ):
         raise ValueError("Z thread count must be a power of two in [1,128]")
-    if coefficient_method not in ("polynomial", "dft"):
-        raise ValueError("coefficient_method must be polynomial or dft")
+    if coefficient_method not in ("polynomial", "polynomial_table", "dft"):
+        raise ValueError("coefficient_method must be polynomial, polynomial_table or dft")
     if type(sites_per_block) is not int or sites_per_block not in (8, 16, 32, 64, 128, 256):
         raise ValueError("sites_per_block must be a power of two in [8,256]")
     allowed_splits = (1, 2, 4, 8, 16, 32, 64, 128) if owner_coefficient_reduction else (1, 2, 4, 8, 16, 32, 64)

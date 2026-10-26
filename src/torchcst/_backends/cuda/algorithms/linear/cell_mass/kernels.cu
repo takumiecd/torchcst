@@ -19,10 +19,33 @@ constexpr int COEFFICIENT_SLOTS =
     (MAX_PROFILE_TILES_PER_BLOCK * BATCH_TILE * MAX_BASIS + THREADS - 1) / THREADS;
 constexpr double PI = 3.1415926535897932384626433832795;
 
+// These are mode-only rational factors, not atom coefficients. Build the small
+// table at compile time so each atom does not repeat dozens of double divides.
+constexpr int POLYNOMIAL_BANKS = MAX_MODES / 2 + 1;
+constexpr int MAX_POLYNOMIAL_RATIOS = MAX_MODES * (MAX_MODES - 1) / 2;
+struct PolynomialBanks {
+    double ratios[POLYNOMIAL_BANKS][MAX_POLYNOMIAL_RATIOS] = {};
+    double prefixes[POLYNOMIAL_BANKS][MAX_MODES + 1] = {};
+    __host__ __device__ constexpr PolynomialBanks() {
+        for (int bank = 1; bank < POLYNOMIAL_BANKS; ++bank) {
+            int modes = 2 * bank;
+            for (int harmonic = 0; harmonic <= modes; ++harmonic) {
+                prefixes[bank][harmonic] = static_cast<double>(modes) / (modes + harmonic);
+                int first = harmonic * (2 * modes - harmonic - 1) / 2;
+                for (int j = 1; j < modes - harmonic; ++j)
+                    ratios[bank][first + j - 1] =
+                        static_cast<double>((modes - harmonic - j) * (modes + harmonic + j)) /
+                        (j * (j + 1));
+            }
+        }
+    }
+};
+__device__ __constant__ PolynomialBanks polynomial_banks{};
+
 struct Axis {
     int sites, modes, leaf, leaves, nodes, tile_sites, period_tiles;
     double spacing, origin, tail_bound, radius_ratio4;
-    bool polynomial_coefficients;
+    bool polynomial_coefficients, polynomial_table;
     __host__ __device__ int basis_count() const {
         return 1 + 2 * modes;
     }
@@ -60,8 +83,9 @@ Axis parse_axis(const std::vector<double> &c) {
     a.origin = c[3];
     a.modes = static_cast<int>(c[4]);
     a.tail_bound = c[5];
-    TORCH_CHECK(c[6] == 0 || c[6] == 1, "invalid coefficient method");
-    a.polynomial_coefficients = c[6] == 1;
+    TORCH_CHECK(c[6] == 0 || c[6] == 1 || c[6] == 2, "invalid coefficient method");
+    a.polynomial_coefficients = c[6] != 0;
+    a.polynomial_table = c[6] == 2;
     TORCH_CHECK((a.sites & (a.sites - 1)) == 0, "site count must be a power of two");
     TORCH_CHECK(a.modes % 2 == 0 && a.spacing > 0, "invalid cell-mass axis");
     TORCH_CHECK(a.tail_bound > 0 && a.tail_bound < 1 &&
@@ -174,6 +198,7 @@ struct Profile {
     Axis axis;
     double center, beta, beta_sigma, denominator, denominator_sigma;
     double c0, c0_sigma;
+    double log_beta2_sigma, normalized_scale, normalization_sigma;
     int first_tile;
 };
 
@@ -234,21 +259,36 @@ __device__ ValueDerivative polynomial_coefficient(const Profile &p, int harmonic
     double value, derivative;
     if (k == m) {
         value = 0.5 * x_power;
-        derivative = value * m * dx / x;
+        if (p.axis.polynomial_table)
+            derivative = value * m * p.log_beta2_sigma;
+        else
+            derivative = value * m * dx / x;
     } else {
         double term = (m + k) * t;
         double dterm = (m + k) * dx;
         double sum = term;
         double dsum = dterm;
         for (int j = 1; j < m - k; ++j) {
-            double ratio = static_cast<double>((m - k - j) * (m + k + j)) / (j * (j + 1));
+            double ratio;
+            if (p.axis.polynomial_table) {
+                int first = k * (2 * m - k - 1) / 2;
+                ratio = polynomial_banks.ratios[m / 2][first + j - 1];
+            } else {
+                ratio = static_cast<double>((m - k - j) * (m + k + j)) / (j * (j + 1));
+            }
             dterm = ratio * (dterm * t + term * dx);
             term *= ratio * t;
             sum += term;
             dsum += dterm;
         }
-        double prefix = static_cast<double>(m) / (m + k) * x_power;
-        double dprefix = k == 0 ? 0 : prefix * k * dx / x;
+        double prefix, dprefix;
+        if (p.axis.polynomial_table) {
+            prefix = polynomial_banks.prefixes[m / 2][k] * x_power;
+            dprefix = prefix * k * p.log_beta2_sigma;
+        } else {
+            prefix = static_cast<double>(m) / (m + k) * x_power;
+            dprefix = k == 0 ? 0 : prefix * k * dx / x;
+        }
         value = prefix * sum;
         derivative = dprefix * sum + prefix * dsum;
     }
@@ -283,6 +323,8 @@ __device__ Profile make_profile(Axis a, double sigma, double center) {
     double angle = PI * radius / period;
     p.beta = 1 / cos(angle);
     p.beta_sigma = p.beta * tan(angle) * PI / period * radius_sigma;
+    if (a.polynomial_table)
+        p.log_beta2_sigma = 2 * p.beta_sigma / p.beta;
     if (a.polynomial_coefficients) {
         // Every raw coefficient and its mass share T_M(beta)^-2. It cancels
         // from the normalized value AND its sigma derivative. DFT keeps D.
@@ -296,6 +338,10 @@ __device__ Profile make_profile(Axis a, double sigma, double center) {
     auto dc = raw_coefficient(p, 0);
     p.c0 = dc.value;
     p.c0_sigma = dc.sigma;
+    if (a.polynomial_table) {
+        p.normalized_scale = 2 / (period * p.c0);
+        p.normalization_sigma = p.c0_sigma / p.c0;
+    }
     return p;
 }
 
@@ -314,13 +360,21 @@ __device__ CoefficientPair coefficient_pair(const Profile &p, int harmonic, doub
         return {{1 / p.axis.profile_period(), 0, 0}, {0, 0, 0}};
     double omega = 2 * PI * harmonic / p.axis.profile_period();
     auto raw = raw_coefficient(p, harmonic);
-    double scale = 2 / (p.axis.profile_period() * p.c0);
+    double scale;
+    if (p.axis.polynomial_table)
+        scale = p.normalized_scale;
+    else
+        scale = 2 / (p.axis.profile_period() * p.c0);
     double normalized = raw.value * scale;
     double sine, cosine;
     sincos(omega * image_center, &sine, &cosine);
     CoefficientPair result{{normalized * cosine, 0, 0}, {normalized * sine, 0, 0}};
     if (Derivatives) {
-        double ds = (raw.sigma - raw.value * p.c0_sigma / p.c0) * scale;
+        double ds;
+        if (p.axis.polynomial_table)
+            ds = (raw.sigma - raw.value * p.normalization_sigma) * scale;
+        else
+            ds = (raw.sigma - raw.value * p.c0_sigma / p.c0) * scale;
         result.cosine.center = -omega * normalized * sine;
         result.sine.center = omega * normalized * cosine;
         result.cosine.sigma = ds * cosine;
@@ -503,7 +557,12 @@ __device__ void cache_expansion_coefficients(const Profile &p, int first_profile
     int image = (p.first_tile + offset - first_profile_tile) / (a.sites / a.tile_sites);
     double center = p.center - image * a.chart_period();
     for (int harmonic = 1; harmonic <= a.modes; ++harmonic) {
-        double normalized = 2 * raw_coefficient(p, harmonic).value / (a.profile_period() * p.c0);
+        double raw = raw_coefficient(p, harmonic).value;
+        double normalized;
+        if (a.polynomial_table)
+            normalized = raw * p.normalized_scale;
+        else
+            normalized = 2 * raw / (a.profile_period() * p.c0);
         if (profile_tile_count == 1) {
             double sin_value, cos_value;
             sincos((2 * PI * harmonic / a.profile_period()) * center, &sin_value, &cos_value);

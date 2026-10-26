@@ -60,7 +60,7 @@ def inputs(binding, atoms=128, batch=4, dtype=torch.float64):
 @requires_cuda
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 @pytest.mark.parametrize("z_method", ["direct", "merge"])
-@pytest.mark.parametrize("coefficient_method", ["polynomial", "dft"])
+@pytest.mark.parametrize("coefficient_method", ["polynomial", "polynomial_table", "dft"])
 @pytest.mark.parametrize("cache_projection_derivatives", [False, True])
 @pytest.mark.parametrize("atom_threads_per_block", [16, 128])
 @pytest.mark.parametrize("owner_coefficient_reduction", [False, True])
@@ -562,7 +562,8 @@ def test_fused_prepare_preserves_dtype_width_limit_and_error_priority(dtype, spa
 
 @requires_cuda
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
-def test_cached_projection_derivatives_against_independent_profile(dtype):
+@pytest.mark.parametrize("coefficient_method", ["polynomial", "polynomial_table"])
+def test_cached_projection_derivatives_against_independent_profile(dtype, coefficient_method):
     binding = spec(32, modes=16)
     x, p, dy = inputs(binding, 35, 5, dtype)
     native = _extension()
@@ -573,7 +574,7 @@ def test_cached_projection_derivatives_against_independent_profile(dtype):
         (gx, binding.input, 3, native.compute_h_with_derivatives),
         (gdy, binding.output, 2, native.compute_g_with_derivatives),
     ]:
-        config = _axis_config(axis)
+        config = _axis_config(axis, coefficient_method)
         z = native.build_z(signal, config, True, 4)
         value, sigma, center = method(signal, gp, rows, z, config, 16)
         assert sigma.dtype == center.dtype == torch.float64
@@ -669,8 +670,10 @@ def test_near_zero_center_gradient_preserves_adamw_update(
 @pytest.mark.parametrize("double_intermediates", [False, True])
 @pytest.mark.parametrize("z_method", ["direct", "merge"])
 @pytest.mark.parametrize("sites,atoms,batch", [(128, 819, 4), (32, 35, 5), (8, 0, 2), (8, 3, 0)])
+@pytest.mark.parametrize("coefficient_method", ["polynomial", "polynomial_table"])
 def test_fused_g_parameter_grad_all_columns(
-    dtype, owner_coefficient_reduction, double_intermediates, z_method, sites, atoms, batch
+    dtype, owner_coefficient_reduction, double_intermediates, z_method, sites, atoms, batch,
+    coefficient_method
 ):
     binding = spec(sites)
     x, p, dy = inputs(binding, atoms, batch, dtype)
@@ -683,6 +686,7 @@ def test_fused_g_parameter_grad_all_columns(
         binding, gx, gp, z_method=z_method, atom_splits=4,
         owner_coefficient_reduction=owner_coefficient_reduction,
         double_intermediates=double_intermediates, fuse_g_parameter_grad=True,
+        coefficient_method=coefficient_method,
     )
     actual_dx, actual_dp = torch.autograd.grad(actual, (gx, gp), dy.cuda())
     tolerance = (
@@ -691,3 +695,29 @@ def test_fused_g_parameter_grad_all_columns(
     )
     for result, truth in ((actual, expected), (actual_dx, expected_dx), (actual_dp, expected_dp)):
         torch.testing.assert_close(result.cpu(), truth, **tolerance)
+
+
+@requires_cuda
+@pytest.mark.parametrize("modes", [2, 4, 6, 8, 10, 12, 14, 16])
+@pytest.mark.parametrize("cache_projection_derivatives", [False, True])
+def test_polynomial_table_every_mode_bank(modes, cache_projection_derivatives):
+    profile = ChebyshevSquareSpec(modes=modes, tail_bound=0.1 if modes==2 else 1e-3)
+    axis = CellMassAxisSpec(
+        profile=profile, site_count=32, tile_sites=8, spacing=0.75, origin=-0.2
+    )
+    binding = CellMassLinearSpec(input=axis, output=axis)
+    x, p, dy = inputs(binding, 35, 5)
+    rx, rp = x.requires_grad_(), p.requires_grad_()
+    expected = physical_linear_reference(binding, rx, rp)
+    expected_dx, expected_dp = torch.autograd.grad(expected, (rx, rp), dy)
+    gx = x.detach().cuda().requires_grad_()
+    gp = p.detach().cuda().requires_grad_()
+    actual = physical_linear(
+        binding, gx, gp, coefficient_method="polynomial_table",
+        owner_coefficient_reduction=True, atom_splits=4,
+        fuse_g_parameter_grad=not cache_projection_derivatives,
+        cache_projection_derivatives=cache_projection_derivatives,
+    )
+    actual_dx, actual_dp = torch.autograd.grad(actual, (gx, gp), dy.cuda())
+    for value, truth in ((actual,expected), (actual_dx,expected_dx), (actual_dp,expected_dp)):
+        torch.testing.assert_close(value.cpu(),truth,rtol=3e-8,atol=3e-10)
