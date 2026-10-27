@@ -568,9 +568,10 @@ struct Projection {
     double value[BATCH_TILE], center[BATCH_TILE], sigma[BATCH_TILE];
 };
 
-template <bool Derivatives, typename scalar_t, typename moment_t>
+template <bool Derivatives, bool CacheExpansion = false, typename scalar_t, typename moment_t>
 __device__ Projection project_atom(const scalar_t *signal, const moment_t *z, int batches,
-                                   int batch_begin, const Profile &p) {
+                                   int batch_begin, const Profile &p,
+                                   double *cached_coefficients = nullptr) {
     (void)signal; // All input cells are consumed through the common Z basis.
     Axis a = p.axis;
     Projection result{};
@@ -589,6 +590,13 @@ __device__ Projection project_atom(const scalar_t *signal, const moment_t *z, in
                     coefficient_pair_from_phase<Derivatives>(p, harmonic, phase.cosine, phase.sine);
             } else {
                 pair = coefficient_pair<Derivatives>(p, harmonic, center);
+            }
+            if constexpr (CacheExpansion) {
+                // The owner window and owner C use the same unwrapped frame.
+                // Export values while they are already in registers for H/dH.
+                cached_coefficients[mode] = pair.cosine.value;
+                if (harmonic != 0)
+                    cached_coefficients[mode + 1] = pair.sine.value;
             }
             for (int local = 0; local < BATCH_TILE && batch_begin + local < batches; ++local) {
                 int base = ((batch_begin + local) * owners + owner) * a.basis_count();
@@ -1125,6 +1133,105 @@ __global__ void owner_coefficients_kernel(const moment_t *h, const scalar_t *ato
     }
 }
 
+// Each block owns an input-owner/split range. For B<=4, every atom appears
+// in exactly one block, so parameter gradients have a unique writer.
+// The same input coefficients serve H/dH and C_in; no global G is produced.
+template <typename scalar_t, typename moment_t>
+__global__ void
+backward_owner_partials_kernel(const scalar_t *x, const scalar_t *dy, const scalar_t *atoms,
+                               const int64_t *rows, const int64_t *offsets, const moment_t *zx,
+                               const moment_t *zy, double *partials, scalar_t *grad, int batches,
+                               int atom_count, Axis input, Axis output, int atom_splits) {
+    int input_owners = input.sites / input.tile_sites;
+    int output_owners = output.sites / output.tile_sites;
+    int modes = input.basis_count();
+    int owner = blockIdx.x;
+
+    extern __shared__ double workspace[];
+    double *amplitudes = workspace;
+    double *values = amplitudes + ATOM_CHUNK;
+    double *coefficients = values + BATCH_TILE * ATOM_CHUNK;
+    double *c = coefficients + ATOM_CHUNK * modes;
+    // Keep C across chunks in shared, rather than keeping a C register array
+    // live through the much larger two-axis parameter projection.
+    for (int q = threadIdx.x; q < BATCH_TILE * modes; q += blockDim.x)
+        c[q] = 0;
+    __syncthreads();
+
+    int total_chunks = 0;
+    for (int segment = 0; segment < output_owners; ++segment) {
+        int group = segment * input_owners + owner;
+        total_chunks += (offsets[group + 1] - offsets[group] + ATOM_CHUNK - 1) / ATOM_CHUNK;
+    }
+    int assigned_first = total_chunks * blockIdx.z / atom_splits;
+    int assigned_last = total_chunks * (blockIdx.z + 1) / atom_splits;
+    int chunk_prefix = 0;
+    for (int segment = 0; segment < output_owners; ++segment) {
+        int group = segment * input_owners + owner;
+        int begin = offsets[group], end = offsets[group + 1];
+        int chunks = (end - begin + ATOM_CHUNK - 1) / ATOM_CHUNK;
+        int first_chunk = max(0, assigned_first - chunk_prefix);
+        int last_chunk = min(chunks, assigned_last - chunk_prefix);
+        chunk_prefix += chunks;
+        if (first_chunk >= last_chunk)
+            continue; // Uniform across the block; all barriers remain collective.
+        int first = begin + first_chunk * ATOM_CHUNK;
+        int last = min(end, begin + last_chunk * ATOM_CHUNK);
+        for (int base = first; base < last; base += ATOM_CHUNK) {
+            int count = min(ATOM_CHUNK, last - base);
+            if (threadIdx.x < count) {
+                int j = threadIdx.x;
+                int original = rows[base + j];
+                double amplitude = atoms[4 * original], sigma = atoms[4 * original + 1];
+                amplitudes[j] = amplitude;
+                Projection h;
+                {
+                    Profile profile = make_profile(input, sigma, atoms[4 * original + 3]);
+                    h = project_atom<true, true>(x, zx, batches, 0, profile,
+                                                 coefficients + j * modes);
+                }
+                Projection g;
+                {
+                    Profile profile = make_profile(output, sigma, atoms[4 * original + 2]);
+                    g = project_atom<true>(dy, zy, batches, 0, profile);
+                }
+                double da = 0, ds = 0, dmu_out = 0, dmu_in = 0;
+                for (int batch = 0; batch < BATCH_TILE; ++batch) {
+                    // Existing dX consumes input-dtype G. Preserve that cast
+                    // here, while parameter pullbacks keep the double value.
+                    values[batch * ATOM_CHUNK + j] =
+                        batch < batches ? static_cast<scalar_t>(g.value[batch]) : 0;
+                    if (batch < batches) {
+                        double hv = h.value[batch], gv = g.value[batch];
+                        da += hv * gv;
+                        ds += amplitude * (gv * h.sigma[batch] + hv * g.sigma[batch]);
+                        dmu_in += amplitude * gv * h.center[batch];
+                        dmu_out += amplitude * hv * g.center[batch];
+                    }
+                }
+                grad[4 * original] = da;
+                grad[4 * original + 1] = ds;
+                grad[4 * original + 2] = dmu_out;
+                grad[4 * original + 3] = dmu_in;
+            }
+            __syncthreads(); // Publish this chunk's G and input coefficients.
+            for (int q = threadIdx.x; q < BATCH_TILE * modes; q += blockDim.x) {
+                int mode = q % modes, batch = q / modes;
+                double sum = c[q];
+                for (int j = 0; j < count; ++j)
+                    sum += amplitudes[j] * values[batch * ATOM_CHUNK + j] *
+                           coefficients[j * modes + mode];
+                c[q] = sum;
+            }
+            __syncthreads(); // All consumers finish before reusing the chunk.
+        }
+    }
+    for (int q = threadIdx.x; q < batches * modes; q += blockDim.x) {
+        int mode = q % modes, batch = q / modes;
+        partials[((blockIdx.z * batches + batch) * input_owners + owner) * modes + mode] = c[q];
+    }
+}
+
 // Unique output owner: combine the neighbouring owner C values, rotate only
 // chart-seam images, then expand each site's basis ONCE for all four batches.
 template <typename scalar_t>
@@ -1592,4 +1699,66 @@ torch::Tensor compute_owner_partials(torch::Tensor h, torch::Tensor atoms, torch
 torch::Tensor expand_owner_partials(torch::Tensor partials, torch::Tensor like,
                                     std::vector<double> config, int sites_per_block) {
     return expand_owner_partials_impl(partials, like, config, sites_per_block);
+}
+
+// B<=4 keeps all batch contributions for an atom in its sole owner block.
+// Return only C_in partials and original-order atom gradients, never a G table.
+std::vector<torch::Tensor> compute_g_parameter_grad_cin(
+    torch::Tensor x, torch::Tensor dy, torch::Tensor atoms, torch::Tensor rows, torch::Tensor zx,
+    torch::Tensor zy, torch::Tensor offsets, std::vector<double> input_config,
+    std::vector<double> output_config, int requested_splits, int c_threads) {
+    check_signal(x);
+    check_signal(dy);
+    check_like(dy, x);
+    check_atoms(atoms, rows, x);
+    Axis input = parse_axis(input_config), output = parse_axis(output_config);
+    TORCH_CHECK(x.size(0) == dy.size(0) && x.size(0) <= BATCH_TILE && x.size(1) == input.sites &&
+                    dy.size(1) == output.sites,
+                "fused C_in requires matching batches <=4 and axis shapes");
+    input = check_z(zx, x, input);
+    output = check_z(zy, dy, output);
+    int input_owners = input.sites / input.tile_sites;
+    int output_owners = output.sites / output.tile_sites;
+    TORCH_CHECK(zx.scalar_type() == zy.scalar_type() && zx.size(1) == input_owners &&
+                    zy.size(1) == output_owners,
+                "fused C_in requires owner window moments");
+    // A single hierarchy node and a single full-chart owner window coincide.
+    input.owner_windows = output.owner_windows = true;
+    TORCH_CHECK(offsets.device() == x.device() && offsets.is_contiguous() &&
+                    offsets.scalar_type() == torch::kInt64 && offsets.dim() == 1 &&
+                    offsets.numel() == input_owners * output_owners + 1,
+                "invalid owner group offsets");
+    TORCH_CHECK(requested_splits >= 1 && requested_splits <= 128 &&
+                    (requested_splits & (requested_splits - 1)) == 0,
+                "owner atom_splits must be a power of two in [1,128]");
+    TORCH_CHECK(c_threads == 32 || c_threads == 64 || c_threads == 128,
+                "C producer threads must be 32, 64 or 128");
+    c10::cuda::CUDAGuard guard(x.device());
+    int chunks = (atoms.size(0) + ATOM_CHUNK - 1) / ATOM_CHUNK;
+    int splits = std::max(1, std::min(requested_splits, chunks));
+    auto partials = torch::empty({splits, x.size(0), input_owners, input.basis_count()},
+                                 x.options().dtype(torch::kFloat64));
+    auto grad = x.size(0) == 0 ? torch::zeros_like(atoms) : torch::empty_like(atoms);
+    if (x.size(0) == 0)
+        return {partials, grad};
+    size_t shared_bytes = (ATOM_CHUNK + BATCH_TILE * ATOM_CHUNK + ATOM_CHUNK * input.basis_count() +
+                           BATCH_TILE * input.basis_count()) *
+                          sizeof(double);
+    dim3 grid(input_owners, 1, splits);
+    auto stream = c10::cuda::getCurrentCUDAStream();
+    AT_DISPATCH_FLOATING_TYPES(x.scalar_type(), "cell_mass_fused_backward_C_in", [&] {
+        auto launch = [&](auto *input_moments, auto *output_moments) {
+            backward_owner_partials_kernel<<<grid, c_threads, shared_bytes, stream>>>(
+                x.data_ptr<scalar_t>(), dy.data_ptr<scalar_t>(), atoms.data_ptr<scalar_t>(),
+                rows.data_ptr<int64_t>(), offsets.data_ptr<int64_t>(), input_moments,
+                output_moments, partials.data_ptr<double>(), grad.data_ptr<scalar_t>(), x.size(0),
+                atoms.size(0), input, output, splits);
+        };
+        if (zx.scalar_type() == torch::kFloat64)
+            launch(zx.data_ptr<double>(), zy.data_ptr<double>());
+        else
+            launch(zx.data_ptr<scalar_t>(), zy.data_ptr<scalar_t>());
+    });
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+    return {partials, grad};
 }

@@ -807,3 +807,98 @@ def test_separate_owner_stages_match_combined(dtype,sites,atoms,batch,modes):
         actual=native.expand_owner_partials(partials,p,config,256)
         combined=(native.compute_dx_from_owners if column==3 else native.compute_y_from_owners)(h,p,rows,offsets,ci,co,256,128,128)
         torch.testing.assert_close(actual,combined,rtol=0,atol=0)
+
+
+@requires_cuda
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("coefficient_method", ["polynomial", "polynomial_table", "polynomial_recurrence", "dft"])
+@pytest.mark.parametrize("double_intermediates", [False, True])
+@pytest.mark.parametrize("c_threads", [32, 128])
+@pytest.mark.parametrize("sites,atoms,batch,modes", [(128,819,4,8),(32,35,3,16),(8,0,2,8),(8,3,0,8),(1,3,1,8)])
+def test_fused_backward_cin_all_columns(
+    dtype, coefficient_method, double_intermediates, c_threads, sites, atoms, batch, modes
+):
+    binding = spec(sites, modes)
+    x, p, dy = inputs(binding, atoms, batch, dtype)
+    x.requires_grad_()
+    p.requires_grad_()
+    expected = physical_linear_reference(binding, x, p)
+    expected_dx, expected_dp = torch.autograd.grad(expected, (x, p), dy)
+    gx = x.detach().cuda().requires_grad_()
+    gp = p.detach().cuda().requires_grad_()
+    actual = physical_linear(
+        binding, gx, gp, z_method="merge", coefficient_method=coefficient_method,
+        atom_splits=4, atom_threads_per_block=32, c_threads_per_block=c_threads,
+        double_intermediates=double_intermediates,
+        owner_coefficient_reduction=True, owner_window_moments=True,
+        fuse_backward_cin=True,
+    )
+    actual_dx, actual_dp = torch.autograd.grad(actual, (gx, gp), dy.cuda())
+    tolerance = (
+        {"rtol": 5e-5, "atol": 2e-6}
+        if dtype == torch.float32 else {"rtol": 3e-8, "atol": 3e-10}
+    )
+    for value, truth in [(actual, expected), (actual_dx, expected_dx), (actual_dp, expected_dp)]:
+        torch.testing.assert_close(value.cpu(), truth, **tolerance)
+
+
+@requires_cuda
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_fused_backward_cin_retained_and_moving_atoms(dtype):
+    binding = spec(128)
+    x, p, dy = inputs(binding, 35, 4, dtype)
+    gx = x.cuda().requires_grad_()
+    gp = p.cuda().requires_grad_()
+    options = {
+        "coefficient_method": "polynomial_recurrence", "double_intermediates": True,
+        "owner_coefficient_reduction": True, "owner_window_moments": True,
+        "atom_splits": 4, "c_threads_per_block": 32, "fuse_backward_cin": True,
+    }
+    actual = physical_linear(binding, gx, gp, **options)
+    first = torch.autograd.grad(actual, (gx, gp), dy.cuda(), retain_graph=True)
+    second = torch.autograd.grad(actual, (gx, gp), dy.cuda(), retain_graph=True)
+    for value, truth in zip(second, first, strict=True):
+        torch.testing.assert_close(value, truth, rtol=0, atol=0)
+    with torch.no_grad():
+        # Move through tile/chart seams; each new forward must rebuild its rows.
+        gp[:, 2] += binding.output.tile_width * 1.25
+        gp[:, 3] -= binding.input.period * 1.1
+        gp[:, 1] *= 0.95
+    rx = x.detach().requires_grad_()
+    rp = gp.detach().cpu().requires_grad_()
+    expected = physical_linear_reference(binding, rx, rp)
+    expected_dx, expected_dp = torch.autograd.grad(expected, (rx, rp), dy)
+    moved = physical_linear(binding, gx, gp, **options)
+    moved_dx, moved_dp = torch.autograd.grad(moved, (gx, gp), dy.cuda())
+    tolerance = {"rtol": 5e-5, "atol": 2e-6} if dtype == torch.float32 else {"rtol": 3e-8, "atol": 3e-10}
+    for value, truth in [(moved, expected), (moved_dx, expected_dx), (moved_dp, expected_dp)]:
+        torch.testing.assert_close(value.cpu(), truth, **tolerance)
+    with pytest.raises(RuntimeError, match="modified by an inplace operation"):
+        torch.autograd.grad(actual, (gx, gp), dy.cuda())
+
+
+@requires_cuda
+@pytest.mark.parametrize("bad", [
+    {"fuse_backward_cin": 1},
+    {"owner_coefficient_reduction": False},
+    {"owner_window_moments": False},
+    {"cache_projection_derivatives": True},
+])
+def test_fused_backward_cin_rejects_incompatible_flags(bad):
+    binding = spec(128)
+    x, p, _ = inputs(binding, 35, 4)
+    options = {"fuse_backward_cin": True, "owner_coefficient_reduction": True, "owner_window_moments": True}
+    options.update(bad)
+    with pytest.raises(ValueError):
+        physical_linear(binding, x.cuda(), p.cuda(), **options)
+
+
+@requires_cuda
+def test_fused_backward_cin_rejects_large_batch():
+    binding = spec(128)
+    x, p, _ = inputs(binding, 35, 5)
+    with pytest.raises(ValueError, match="batch_size <=4"):
+        physical_linear(
+            binding, x.cuda(), p.cuda(), fuse_backward_cin=True,
+            owner_coefficient_reduction=True, owner_window_moments=True,
+        )

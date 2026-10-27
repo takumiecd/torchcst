@@ -145,6 +145,7 @@ class _CellMassFunction(torch.autograd.Function):
         fuse_g_parameter_grad,
         owner_window_moments,
         c_threads_per_block,
+        fuse_backward_cin,
     ):
         native = _extension()
         input_config = _axis_config(spec.input, coefficient_method)
@@ -190,12 +191,13 @@ class _CellMassFunction(torch.autograd.Function):
         ctx.double_intermediates = double_intermediates
         ctx.owner_coefficient_reduction = owner_coefficient_reduction
         ctx.fuse_g_parameter_grad = fuse_g_parameter_grad
+        ctx.fuse_backward_cin = fuse_backward_cin
         ctx.c_threads_per_block = c_threads_per_block
         ctx.owner_window_moments = owner_window_moments
         if cache_projection_derivatives:
             # Keep original X/atoms for their autograd mutation/version checks.
             ctx.save_for_backward(x, atoms, rows, h, h_sigma, h_center, group_offsets)
-        elif fuse_g_parameter_grad:
+        elif fuse_g_parameter_grad or fuse_backward_cin:
             # H is consumed by Y above. The fused pullback reprojects its value
             # and derivatives, so backward only retains the input hierarchy.
             ctx.save_for_backward(x, atoms, rows, zx, group_offsets)
@@ -209,7 +211,7 @@ class _CellMassFunction(torch.autograd.Function):
         native = _extension()
         if ctx.cache_projection_derivatives:
             x, atoms, rows, h, h_sigma, h_center, group_offsets = ctx.saved_tensors
-        elif ctx.fuse_g_parameter_grad:
+        elif ctx.fuse_g_parameter_grad or ctx.fuse_backward_cin:
             x, atoms, rows, zx, group_offsets = ctx.saved_tensors
         else:
             x, atoms, rows, zx, h, group_offsets = ctx.saved_tensors
@@ -223,6 +225,17 @@ class _CellMassFunction(torch.autograd.Function):
             dy, output_config, ctx.z_method == "merge", ctx.z_threads_per_element,
             ctx.double_intermediates, ctx.owner_window_moments
         )
+        if ctx.fuse_backward_cin:
+            # One owner block computes each atom's pullback and C_in contribution.
+            # G and input coefficients stay in its shared chunk, not global.
+            partials, grad_atoms = native.compute_g_parameter_grad_cin(
+                x, dy, atoms, rows, zx, zy, group_offsets, input_config, output_config,
+                ctx.atom_splits, ctx.c_threads_per_block,
+            )
+            dx = native.expand_owner_partials(
+                partials, atoms, input_config, ctx.sites_per_block
+            )
+            return (dx, grad_atoms) + (None,) * 14
         if ctx.cache_projection_derivatives:
             g, g_sigma, g_center = native.compute_g_with_derivatives(
                 dy, atoms, rows, zy, output_config, ctx.atom_threads_per_block
@@ -256,7 +269,7 @@ class _CellMassFunction(torch.autograd.Function):
                 x, dy, atoms, rows, h, g, zx, zy, input_config, output_config,
                 ctx.atom_threads_per_block,
             )
-        return (dx, grad_atoms) + (None,) * 13
+        return (dx, grad_atoms) + (None,) * 14
 
 
 def physical_linear(
@@ -276,6 +289,7 @@ def physical_linear(
     fuse_g_parameter_grad=False,
     owner_window_moments=False,
     c_threads_per_block=128,
+    fuse_backward_cin=False,
 ):
     """Run the first-order tile-window approximation with continuous mass.
 
@@ -308,11 +322,24 @@ def physical_linear(
     in that owner reuse a short moment vector in H/G and parameter pullbacks.
     polynomial_recurrence additionally shares one double sincos across up to
     16 harmonics, using complex rotations for the higher modes.
+    fuse_backward_cin additionally fuses G/parameter pullbacks with C_in for
+    batch_size<=4, owner C/windows and derivative recomputation. Input coefficients
+    are reused in a shared chunk, and no global G is produced. C threads also
+    determine this fused block's size. Other batches keep the separate path.
     Each block covers at most four profile tiles, independent of site width.
     Build/JIT time is separate from execution timing. Support is explicit.
     """
     validate_input_structure(spec, x, atoms)
     _validate_cuda_support(spec, x, atoms)
+    if type(fuse_backward_cin) is not bool:
+        raise ValueError("fuse_backward_cin must be bool")
+    if fuse_backward_cin:
+        if not (owner_coefficient_reduction and owner_window_moments):
+            raise ValueError("fuse_backward_cin requires owner C and owner window moments")
+        if cache_projection_derivatives:
+            raise ValueError("fuse_backward_cin requires derivative recomputation")
+        if x.shape[0] > 4:
+            raise ValueError("fuse_backward_cin supports batch_size <=4")
     if type(c_threads_per_block) is not int or c_threads_per_block not in (32, 64, 128):
         raise ValueError("c_threads_per_block must be 32, 64 or 128")
     if type(owner_coefficient_reduction) is not bool:
@@ -365,4 +392,5 @@ def physical_linear(
         fuse_g_parameter_grad,
         owner_window_moments,
         c_threads_per_block,
+        fuse_backward_cin,
     )
