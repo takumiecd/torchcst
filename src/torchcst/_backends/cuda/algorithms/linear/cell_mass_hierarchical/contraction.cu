@@ -454,6 +454,11 @@ struct SplitPages {
 // dtype-rounded common sigma limit used by atom validation.
 __device__ inline bool compatible_sigma_banks(const Axis &a, int ai, const Axis &b, int bi,
                                               double maximum_sigma) {
+    // Disjoint sigma intervals imply an impossible pair only for a shared
+    // width law. Independent Polar sides may legitimately occupy that pair.
+    if (a.polar && (a.sigma_min != b.sigma_min || a.sigma_birth != b.sigma_birth ||
+                    a.sigma_max != b.sigma_max || a.upper_floor != b.upper_floor))
+        return true;
     double al = ai == 0 ? 0 : a.banks[ai - 1].tile_sites * a.spacing;
     double bl = bi == 0 ? 0 : b.banks[bi - 1].tile_sites * b.spacing;
     double au = a.banks[ai].full_chart ? maximum_sigma : a.banks[ai].tile_sites * a.spacing;
