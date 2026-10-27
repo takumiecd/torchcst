@@ -9,10 +9,11 @@ constexpr int MAX_ACCUMULATORS = (BATCH_TILE * 33 + CHUNK - 1) / CHUNK;
 // One thread completes H for a different atom and up to four batches. The
 // amplitude is not included. Neighbour Z tiles are rotated to the same
 // unwrapped chart image as the atom's retained one-period window.
-template <typename scalar_t>
+template <typename scalar_t, typename projection_t>
 __global__ void compute_h_kernel(const scalar_t *atoms, const int64_t *rows, const int *groups,
-                                 const int64_t *offsets, const double *z, double *h, int atom_count,
-                                 int group_count, int batches, Axis axis, bool output_side) {
+                                 const int64_t *offsets, const double *z, projection_t *h,
+                                 int atom_count, int group_count, int batches, Axis axis,
+                                 bool output_side) {
     int slot = blockIdx.x * blockDim.x + threadIdx.x;
     if (slot >= atom_count)
         return;
@@ -72,11 +73,11 @@ __device__ int lower_group(const int *groups, int count, int ho, int hi, int qo)
 // One block owns one output bank/owner. A lane builds the coefficients of a
 // different atom in a 32-atom chunk. Shared holds only this chunk's coefficients
 // and amp*H. C has one writer per element, without atom-sized partial C arrays.
-template <typename scalar_t>
+template <typename scalar_t, typename projection_t>
 __global__ void compute_c_kernel(const scalar_t *atoms, const int64_t *rows, const int *groups,
-                                 const int64_t *offsets, const double *h, double *c, int atom_count,
-                                 int group_count, int batches, Axis input, Axis output,
-                                 bool reverse) {
+                                 const int64_t *offsets, const projection_t *h, double *c,
+                                 int atom_count, int group_count, int batches, Axis input,
+                                 Axis output, bool reverse) {
     extern __shared__ double shared[];
     double *coefficients = shared;
     double *scaled_h = shared + CHUNK * output.basis_count();
@@ -195,23 +196,27 @@ __global__ void expand_c_kernel(const double *c, scalar_t *y, int batches, Axis 
 
 torch::Tensor compute_h(torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups,
                         torch::Tensor offsets, torch::Tensor z, std::vector<double> config,
-                        bool output_side) {
+                        bool output_side, bool float_storage) {
     check_layout(atoms, rows, groups, offsets);
     Axis axis = parse_axis(config);
     check_moments(z, atoms, axis);
     TORCH_CHECK(z.size(0) * atoms.size(0) <= INT_MAX, "H exceeds index capacity");
     c10::cuda::CUDAGuard guard(atoms.device());
-    auto h = torch::empty({z.size(0), atoms.size(0)}, z.options());
+    auto h = torch::empty({z.size(0), atoms.size(0)},
+                          z.options().dtype(float_storage ? torch::kFloat32 : torch::kFloat64));
     if (h.numel() == 0)
         return h;
     TORCH_CHECK(groups.size(0) > 0, "nonempty atoms need groups");
     dim3 grid((atoms.size(0) + THREADS - 1) / THREADS, (z.size(0) + BATCH_TILE - 1) / BATCH_TILE);
     auto stream = c10::cuda::getCurrentCUDAStream();
-    AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "hierarchical_compute_h", [&] {
-        compute_h_kernel<<<grid, THREADS, 0, stream>>>(
-            atoms.data_ptr<scalar_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
-            offsets.data_ptr<int64_t>(), z.data_ptr<double>(), h.data_ptr<double>(), atoms.size(0),
-            groups.size(0), z.size(0), axis, output_side);
+    AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "hierarchical_compute_h_atoms", [&] {
+        using atom_t = scalar_t;
+        AT_DISPATCH_FLOATING_TYPES(h.scalar_type(), "hierarchical_compute_h_storage", [&] {
+            compute_h_kernel<atom_t, scalar_t><<<grid, THREADS, 0, stream>>>(
+                atoms.data_ptr<atom_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
+                offsets.data_ptr<int64_t>(), z.data_ptr<double>(), h.data_ptr<scalar_t>(),
+                atoms.size(0), groups.size(0), z.size(0), axis, output_side);
+        });
     });
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return h;
@@ -223,23 +228,27 @@ torch::Tensor compute_c(torch::Tensor atoms, torch::Tensor rows, torch::Tensor g
     check_layout(atoms, rows, groups, offsets);
     Axis input = parse_axis(input_config), output = parse_axis(output_config);
     TORCH_CHECK(h.is_contiguous() && h.device() == atoms.device() && h.dim() == 2 &&
-                    h.scalar_type() == torch::kFloat64 && h.size(1) == atoms.size(0) &&
-                    h.numel() <= INT_MAX,
+                    (h.scalar_type() == torch::kFloat64 || h.scalar_type() == torch::kFloat32) &&
+                    h.size(1) == atoms.size(0) && h.numel() <= INT_MAX,
                 "invalid H");
     TORCH_CHECK(h.size(0) <= INT_MAX / (output.node_count * output.basis_count()),
                 "C exceeds index capacity");
     c10::cuda::CUDAGuard guard(atoms.device());
-    auto c = torch::empty({h.size(0), output.node_count, output.basis_count()}, h.options());
+    auto c = torch::empty({h.size(0), output.node_count, output.basis_count()},
+                          h.options().dtype(torch::kFloat64));
     if (c.numel() == 0)
         return c;
     dim3 grid(output.node_count, (h.size(0) + BATCH_TILE - 1) / BATCH_TILE);
     size_t shared = sizeof(double) * CHUNK * (output.basis_count() + BATCH_TILE);
     auto stream = c10::cuda::getCurrentCUDAStream();
-    AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "hierarchical_compute_c", [&] {
-        compute_c_kernel<<<grid, CHUNK, shared, stream>>>(
-            atoms.data_ptr<scalar_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
-            offsets.data_ptr<int64_t>(), h.data_ptr<double>(), c.data_ptr<double>(), atoms.size(0),
-            groups.size(0), h.size(0), input, output, reverse);
+    AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "hierarchical_compute_c_atoms", [&] {
+        using atom_t = scalar_t;
+        AT_DISPATCH_FLOATING_TYPES(h.scalar_type(), "hierarchical_compute_c_storage", [&] {
+            compute_c_kernel<atom_t, scalar_t><<<grid, CHUNK, shared, stream>>>(
+                atoms.data_ptr<atom_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
+                offsets.data_ptr<int64_t>(), h.data_ptr<scalar_t>(), c.data_ptr<double>(),
+                atoms.size(0), groups.size(0), h.size(0), input, output, reverse);
+        });
     });
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return c;

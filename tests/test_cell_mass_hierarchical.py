@@ -891,3 +891,32 @@ def test_hierarchical_adamw_rebuilds_layout_and_matches_all_moments():
             for p in (candidate, reference):
                 p[0, 1] = 4.001 if step == 0 else 3.999
                 p[0, 3] = 125.9 if step == 0 else -2.1
+
+
+@cuda_only
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_autograd_saves_h_in_input_dtype_and_keeps_z_double(dtype):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        hierarchical_linear,
+    )
+
+    axis = AxisPlan(site_count=8, min_tile_sites=4)
+    plan = HierarchyPlan(input=axis, output=axis)
+    atoms = torch.ones(3, 4, device="cuda", dtype=dtype, requires_grad=True)
+    x = torch.ones(4, 8, device="cuda", dtype=dtype, requires_grad=True)
+    saved = []
+
+    def record(tensor):
+        saved.append((tuple(tensor.shape), tensor.dtype))
+        return tensor
+
+    with torch.autograd.graph.saved_tensors_hooks(record, lambda tensor: tensor):
+        y = hierarchical_linear(plan, x, atoms)
+    assert ((4, 3), dtype) in saved
+    assert ((4, axis.node_count, axis.basis_count), torch.float64) in saved
+    dx, dp = torch.autograd.grad(y.sum(), (x, atoms))
+    torch.testing.assert_close(dp[:, 0], torch.full_like(dp[:, 0], 4))
+    torch.testing.assert_close(
+        dp[:, 1:], torch.zeros_like(dp[:, 1:]), atol=2e-6, rtol=0
+    )
+    assert dx.dtype == dtype

@@ -4,12 +4,12 @@
 using namespace cell_mass_hierarchy;
 
 namespace {
-template <typename scalar_t>
+template <typename scalar_t, typename projection_t>
 __global__ void parameter_grad_kernel(const scalar_t *atoms, const int64_t *rows, const int *groups,
                                       const int64_t *offsets, const double *zx, const double *zy,
-                                      const double *h, const double *g, scalar_t *gradient,
-                                      int atom_count, int group_count, int batches, Axis input,
-                                      Axis output) {
+                                      const projection_t *h, const projection_t *g,
+                                      scalar_t *gradient, int atom_count, int group_count,
+                                      int batches, Axis input, Axis output) {
     int slot = blockIdx.x * blockDim.x + threadIdx.x;
     if (slot >= atom_count)
         return;
@@ -55,23 +55,29 @@ torch::Tensor parameter_grad(torch::Tensor atoms, torch::Tensor rows, torch::Ten
     TORCH_CHECK(zx.size(0) == zy.size(0), "Zx/Zy batch mismatch");
     for (const auto &projection : {h, g}) {
         TORCH_CHECK(projection.is_contiguous() && projection.device() == atoms.device() &&
-                        projection.scalar_type() == torch::kFloat64 && projection.dim() == 2 &&
-                        projection.size(0) == zx.size(0) && projection.size(1) == atoms.size(0) &&
-                        projection.numel() <= INT_MAX,
+                        (projection.scalar_type() == torch::kFloat64 ||
+                         projection.scalar_type() == torch::kFloat32) &&
+                        projection.dim() == 2 && projection.size(0) == zx.size(0) &&
+                        projection.size(1) == atoms.size(0) && projection.numel() <= INT_MAX,
                     "invalid H/G");
     }
+    TORCH_CHECK(h.scalar_type() == g.scalar_type(), "H/G storage dtype mismatch");
     c10::cuda::CUDAGuard guard(atoms.device());
     auto gradient = torch::empty_like(atoms);
     if (atoms.size(0) == 0)
         return gradient;
     TORCH_CHECK(groups.size(0) > 0, "nonempty atoms need groups");
     auto stream = c10::cuda::getCurrentCUDAStream();
-    AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "hierarchical_parameter_grad", [&] {
-        parameter_grad_kernel<<<(atoms.size(0) + THREADS - 1) / THREADS, THREADS, 0, stream>>>(
-            atoms.data_ptr<scalar_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
-            offsets.data_ptr<int64_t>(), zx.data_ptr<double>(), zy.data_ptr<double>(),
-            h.data_ptr<double>(), g.data_ptr<double>(), gradient.data_ptr<scalar_t>(),
-            atoms.size(0), groups.size(0), zx.size(0), input, output);
+    AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "hierarchical_parameter_grad_atoms", [&] {
+        using atom_t = scalar_t;
+        AT_DISPATCH_FLOATING_TYPES(h.scalar_type(), "hierarchical_parameter_grad_storage", [&] {
+            parameter_grad_kernel<atom_t, scalar_t>
+                <<<(atoms.size(0) + THREADS - 1) / THREADS, THREADS, 0, stream>>>(
+                    atoms.data_ptr<atom_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
+                    offsets.data_ptr<int64_t>(), zx.data_ptr<double>(), zy.data_ptr<double>(),
+                    h.data_ptr<scalar_t>(), g.data_ptr<scalar_t>(), gradient.data_ptr<atom_t>(),
+                    atoms.size(0), groups.size(0), zx.size(0), input, output);
+        });
     });
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return gradient;

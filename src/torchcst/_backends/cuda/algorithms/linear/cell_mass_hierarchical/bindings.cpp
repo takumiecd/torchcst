@@ -9,7 +9,7 @@ std::vector<Tensor> classify_atoms(Tensor atoms, Config input, Config output);
 Tensor decode_groups(Tensor keys, Config input, Config output);
 Tensor build_hierarchy(Tensor signal, Config axis, bool merge, int team_size);
 Tensor compute_h(Tensor atoms, Tensor rows, Tensor groups, Tensor offsets, Tensor z, Config axis,
-                 bool output_side);
+                 bool output_side, bool float_storage);
 Tensor compute_c(Tensor atoms, Tensor rows, Tensor groups, Tensor offsets, Tensor h, Config input,
                  Config output, bool reverse);
 Tensor parameter_grad(Tensor atoms, Tensor rows, Tensor groups, Tensor offsets, Tensor zx,

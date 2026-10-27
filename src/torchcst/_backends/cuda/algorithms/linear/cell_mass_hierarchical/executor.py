@@ -139,12 +139,14 @@ def build_hierarchy(signal, axis, *, method="merge", team_size=4):
     )
 
 
-def compute_h(plan, atoms, layout, zx):
+def compute_h(plan, atoms, layout, zx, *, storage_dtype=torch.float64):
     """Complete H[batch,sorted_slot], before amplitude, from all retained tiles.
 
     One thread owns one atom; coefficients and mass normalization are generated
     in registers from the original sigma. This internal stage has no autograd.
     """
+    if storage_dtype not in (torch.float32, torch.float64):
+        raise ValueError("H/G storage must be float32 or float64")
     layout.validate_for(atoms, plan)
     return _extension().compute_h(
         atoms,
@@ -154,6 +156,7 @@ def compute_h(plan, atoms, layout, zx):
         zx,
         plan.input.native_config(),
         False,
+        storage_dtype == torch.float32,
     )
 
 
@@ -216,12 +219,14 @@ def forward_only(
     return expand_c(c, plan.output, x, sites_per_block=sites_per_block)
 
 
-def compute_g(plan, atoms, layout, zy):
+def compute_g(plan, atoms, layout, zy, *, storage_dtype=torch.float64):
     """Project dY onto each output profile: G[batch,sorted_slot], without amp.
 
     This uses the same contraction as H, with output levels/owners/centers.
     G can be reused by dX and all four atom-parameter gradients.
     """
+    if storage_dtype not in (torch.float32, torch.float64):
+        raise ValueError("H/G storage must be float32 or float64")
     layout.validate_for(atoms, plan)
     return _extension().compute_h(
         atoms,
@@ -231,6 +236,7 @@ def compute_g(plan, atoms, layout, zy):
         zy,
         plan.output.native_config(),
         True,
+        storage_dtype == torch.float32,
     )
 
 
@@ -280,7 +286,7 @@ class _HierarchicalLinear(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, atoms, plan, layout, z_method, team_size, sites_per_block):
         zx = build_hierarchy(x, plan.input, method=z_method, team_size=team_size)
-        h = compute_h(plan, atoms, layout, zx)
+        h = compute_h(plan, atoms, layout, zx, storage_dtype=atoms.dtype)
         c = compute_c(plan, atoms, layout, h)
         y = expand_c(c, plan.output, x, sites_per_block=sites_per_block)
         ctx.plan = plan
@@ -308,7 +314,7 @@ class _HierarchicalLinear(torch.autograd.Function):
         zy = build_hierarchy(
             dy, plan.output, method=ctx.z_method, team_size=ctx.team_size
         )
-        g = compute_g(plan, atoms, layout, zy)
+        g = compute_g(plan, atoms, layout, zy, storage_dtype=atoms.dtype)
         dx = datoms = None
         if ctx.needs_input_grad[0]:
             cin = compute_input_c(plan, atoms, layout, g)
@@ -328,6 +334,7 @@ def hierarchical_linear(
     Forward saves Zx/H only if atom gradients are requested. Backward builds Zy
     and G once, then uses them for dX and parameter gradients. No dense W, dW,
     packed atom values, global coefficient table, or separate dH is allocated.
+    H/G storage uses the input dtype; all contractions, Z and C remain double.
     Double backward and full-route CUDA Graph capture are not supported yet
     (preparation has dynamic output shapes and host checks).
     """
