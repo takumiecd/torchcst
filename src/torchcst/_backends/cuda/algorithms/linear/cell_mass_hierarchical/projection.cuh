@@ -6,7 +6,8 @@ namespace cell_mass_hierarchy {
 // Accumulate a weighted projection derivative in scalar registers. On the
 // output side, calculate G at the same time; input-side weights are the stored
 // rounded G multiplied by amplitude. Gradients reassociate FP64 batch sums.
-template <bool Value, int FixedModes, bool StoreCoefficients = false, typename projection_t>
+template <bool Value, int FixedModes, bool StoreCoefficients = false, bool Compensated = false,
+          typename projection_t>
 __device__ inline void
 project_weighted_derivatives(const double *z, int batches, int batch_begin, const Axis &axis,
                              const Bank &bank, int owner, const Profile &profile, double beta_sigma,
@@ -17,7 +18,9 @@ project_weighted_derivatives(const double *z, int batches, int batch_begin, cons
     int retained = windowed || bank.full_chart ? 1 : 3;
     int first_tile = windowed ? owner : (bank.full_chart ? 0 : owner - 1);
     int mode_count = FixedModes ? FixedModes : axis.modes;
-    HarmonicStream<true> stream(profile, mode_count);
+    // Only the optional polynomial value/derivative uses FP32 pairs. The
+    // profile geometry, phase, normalization and contractions remain double.
+    HarmonicStream<true, Compensated> stream(profile, mode_count);
     // The M=8 instantiation has a compile-time trip count. The generic
     // instantiation retains the runtime-selected profile mode count.
 #pragma unroll

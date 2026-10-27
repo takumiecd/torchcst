@@ -43,7 +43,7 @@ __global__ void parameter_grad_kernel(const scalar_t *atoms, const int64_t *rows
     gradient[4 * original + 3] = static_cast<scalar_t>(dmu_input);
 }
 
-template <typename scalar_t, typename projection_t, int FixedModes>
+template <typename scalar_t, typename projection_t, int FixedModes, bool Compensated = false>
 __global__ void compute_g_parameter_grad_kernel(
     const scalar_t *atoms, const int64_t *rows, const int *groups, const int64_t *offsets,
     const double *zx, const double *zy, const projection_t *h, projection_t *g, scalar_t *gradient,
@@ -58,8 +58,8 @@ __global__ void compute_g_parameter_grad_kernel(
     Bank output_bank = output.banks[bank_for_level(output, groups[4 * group])];
     double amplitude = atoms[4 * original], sigma = atoms[4 * original + 1];
     double input_center = atoms[4 * original + 3], output_center = atoms[4 * original + 2];
-    Profile output_profile =
-        make_profile<true, FixedModes>(output, output_bank, sigma, output_center, output_owner);
+    Profile output_profile = make_profile<true, FixedModes, Compensated>(
+        output, output_bank, sigma, output_center, output_owner);
     // Reuse the common width shape only when all of its dependencies match.
     // Center/image handling still uses the input axis and owner independently.
     bool same_shape = input.modes == output.modes && input.radius_ratio4 == output.radius_ratio4 &&
@@ -71,15 +71,15 @@ __global__ void compute_g_parameter_grad_kernel(
         input_profile = output_profile;
         input_profile.center = profile_center(input, input_bank, input_center, input_owner);
     } else {
-        input_profile =
-            make_profile<true, FixedModes>(input, input_bank, sigma, input_center, input_owner);
+        input_profile = make_profile<true, FixedModes, Compensated>(input, input_bank, sigma,
+                                                                    input_center, input_owner);
     }
     double beta_sigma_out = output_profile.beta_sigma;
     double beta_sigma_in = input_profile.beta_sigma;
     double da = 0, ds = 0, dmu_input = 0, dmu_output = 0;
     for (int begin = 0; begin < batches; begin += BATCH_TILE) {
         double gv[BATCH_TILE] = {};
-        project_weighted_derivatives<true, FixedModes>(
+        project_weighted_derivatives<true, FixedModes, false, Compensated>(
             zy, batches, begin, output, output_bank, output_owner, output_profile, beta_sigma_out,
             h, atom_count, slot, amplitude, gv, dmu_output, ds, windowed);
         for (int b = 0; b < BATCH_TILE && begin + b < batches; ++b) {
@@ -90,7 +90,7 @@ __global__ void compute_g_parameter_grad_kernel(
             da += h_value * g_value;
             gv[b] = amplitude * g_value;
         }
-        project_weighted_derivatives<false, FixedModes>(
+        project_weighted_derivatives<false, FixedModes, false, Compensated>(
             zx, batches, begin, input, input_bank, input_owner, input_profile, beta_sigma_in, h,
             atom_count, slot, amplitude, gv, dmu_input, ds, windowed);
     }
@@ -141,13 +141,20 @@ torch::Tensor parameter_grad(torch::Tensor atoms, torch::Tensor rows, torch::Ten
     return gradient;
 }
 
-std::vector<torch::Tensor> compute_g_and_parameter_grad(
-    torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups, torch::Tensor offsets,
-    torch::Tensor zx, torch::Tensor zy, torch::Tensor h, std::vector<double> input_config,
-    std::vector<double> output_config, int threads, bool windowed, bool specialize_modes) {
+std::vector<torch::Tensor>
+compute_g_and_parameter_grad(torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups,
+                             torch::Tensor offsets, torch::Tensor zx, torch::Tensor zy,
+                             torch::Tensor h, std::vector<double> input_config,
+                             std::vector<double> output_config, int threads, bool windowed,
+                             bool specialize_modes, bool compensated_grad) {
     TORCH_CHECK(power_of_two(threads) && threads >= 32 && threads <= 256, "invalid atom threads");
     check_layout(atoms, rows, groups, offsets);
     Axis input = parse_axis(input_config), output = parse_axis(output_config);
+    TORCH_CHECK(!compensated_grad ||
+                    (input.modes == 8 && output.modes == 8 && input.tail_bound == 1e-3 &&
+                     output.tail_bound == 1e-3 && atoms.scalar_type() == torch::kFloat32 &&
+                     h.scalar_type() == torch::kFloat32),
+                "compensated gradients require both axes M8, tail 1e-3 and FP32 atoms/H");
     check_moments(zx, atoms, input);
     check_moments(zy, atoms, output);
     TORCH_CHECK(zx.size(0) == zy.size(0), "Zx/Zy batch mismatch");
@@ -166,6 +173,30 @@ std::vector<torch::Tensor> compute_g_and_parameter_grad(
     AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "hierarchical_fused_grad_atoms", [&] {
         using atom_t = scalar_t;
         AT_DISPATCH_FLOATING_TYPES(h.scalar_type(), "hierarchical_fused_grad_storage", [&] {
+            if constexpr (std::is_same_v<atom_t, float> && std::is_same_v<scalar_t, float>) {
+                if (compensated_grad) {
+                    if (specialize_modes) {
+                        compute_g_parameter_grad_kernel<atom_t, scalar_t, 8, true>
+                            <<<(atoms.size(0) + threads - 1) / threads, threads, 0, stream>>>(
+                                atoms.data_ptr<atom_t>(), rows.data_ptr<int64_t>(),
+                                groups.data_ptr<int>(), offsets.data_ptr<int64_t>(),
+                                zx.data_ptr<double>(), zy.data_ptr<double>(),
+                                h.data_ptr<scalar_t>(), g.data_ptr<scalar_t>(),
+                                gradient.data_ptr<atom_t>(), atoms.size(0), groups.size(0),
+                                zx.size(0), input, output, windowed);
+                    } else {
+                        compute_g_parameter_grad_kernel<atom_t, scalar_t, 0, true>
+                            <<<(atoms.size(0) + threads - 1) / threads, threads, 0, stream>>>(
+                                atoms.data_ptr<atom_t>(), rows.data_ptr<int64_t>(),
+                                groups.data_ptr<int>(), offsets.data_ptr<int64_t>(),
+                                zx.data_ptr<double>(), zy.data_ptr<double>(),
+                                h.data_ptr<scalar_t>(), g.data_ptr<scalar_t>(),
+                                gradient.data_ptr<atom_t>(), atoms.size(0), groups.size(0),
+                                zx.size(0), input, output, windowed);
+                    }
+                    return;
+                }
+            }
             if (specialize_modes && input.modes == 8 && output.modes == 8) {
                 compute_g_parameter_grad_kernel<atom_t, scalar_t, 8>
                     <<<(atoms.size(0) + threads - 1) / threads, threads, 0, stream>>>(
