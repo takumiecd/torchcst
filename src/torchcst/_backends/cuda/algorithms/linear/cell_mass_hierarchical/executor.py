@@ -43,6 +43,7 @@ class PreparedLayout:
     """Forward-scoped cache: indices/ranges only, never packed atom values.
 
     groups[g] = (output_level, input_level, output_owner, input_owner).
+    Counting preparation includes empty Cartesian groups; sort omits them.
     rows[offsets[g]:offsets[g+1]] lists original atom rows in that group.
     Key/sort/count scratch is released before this object is returned.
     """
@@ -70,7 +71,7 @@ class PreparedLayout:
         )
 
 
-def prepare_layout(plan, atoms):
+def prepare_layout(plan, atoms, *, method="sort"):
     """Classify, stable-sort indices, and retain sparse nonempty group ranges.
 
     Values remain in the original Parameter. A library sort is the initial
@@ -78,6 +79,8 @@ def prepare_layout(plan, atoms):
     Width/finite rejection reads one error word. unique_consecutive also has a
     dynamic output shape, so this version does not claim CUDA Graph support.
     """
+    if method not in ("sort", "counting"):
+        raise ValueError("layout method must be sort or counting")
     if type(plan) is not HierarchyPlan:
         raise TypeError("plan must be HierarchyPlan")
     if atoms.device.type != "cuda" or atoms.dtype not in (torch.float32, torch.float64):
@@ -90,12 +93,22 @@ def prepare_layout(plan, atoms):
     native = _extension()
     input_config = plan.input.native_config()
     output_config = plan.output.native_config()
-    keys, errors = native.classify_atoms(atoms, input_config, output_config)
+    if method == "counting":
+        if plan.input.node_count * plan.output.node_count > 4096:
+            raise ValueError("counting layout supports at most 4096 Cartesian groups")
+        rows, groups, offsets, errors = native.prepare_counting_layout(
+            atoms, input_config, output_config
+        )
+    else:
+        keys, errors = native.classify_atoms(atoms, input_config, output_config)
     error_bits = errors.item()
     if error_bits & 1:
         raise ValueError("all atom fields must be finite")
     if error_bits & 2:
         raise ValueError("sigma must lie in (0, min(input period,output period)/3]")
+
+    if method == "counting":
+        return PreparedLayout(rows, groups, offsets, plan, atoms, atoms._version)
 
     sorted_keys, rows = torch.sort(keys, stable=True)
     group_keys, counts = torch.unique_consecutive(sorted_keys, return_counts=True)
@@ -106,7 +119,7 @@ def prepare_layout(plan, atoms):
     return PreparedLayout(rows, groups, offsets, plan, atoms, atoms._version)
 
 
-def build_hierarchy(signal, axis, *, method="merge", team_size=4):
+def build_hierarchy(signal, axis, *, method="merge", team_size=4, chunk_sites=0):
     """Return double Z[batch,node,1+2*M] for the banks declared by axis.
 
     One team cooperates on a single (node,batch,mode) sum. The merge route
@@ -134,6 +147,16 @@ def build_hierarchy(signal, axis, *, method="merge", team_size=4):
         or not signal.is_contiguous()
     ):
         raise ValueError("signal must be contiguous [batch,site_count]")
+    if (
+        type(chunk_sites) is not int
+        or chunk_sites < 0
+        or (chunk_sites and chunk_sites & (chunk_sites - 1))
+    ):
+        raise ValueError("chunk_sites must be zero or a positive power of two")
+    if chunk_sites:
+        return _extension().build_hierarchy_chunked(
+            signal, axis.native_config(), method == "merge", team_size, chunk_sites
+        )
     return _extension().build_hierarchy(
         signal, axis.native_config(), method == "merge", team_size
     )
@@ -327,8 +350,15 @@ class _HierarchicalLinear(torch.autograd.Function):
         sites_per_block,
         c_splits,
         fuse_g_grad,
+        z_chunk_sites,
     ):
-        zx = build_hierarchy(x, plan.input, method=z_method, team_size=team_size)
+        zx = build_hierarchy(
+            x,
+            plan.input,
+            method=z_method,
+            team_size=team_size,
+            chunk_sites=z_chunk_sites,
+        )
         h = compute_h(plan, atoms, layout, zx, storage_dtype=atoms.dtype)
         c = compute_c(plan, atoms, layout, h, splits=c_splits)
         y = expand_c(c, plan.output, x, sites_per_block=sites_per_block)
@@ -338,6 +368,7 @@ class _HierarchicalLinear(torch.autograd.Function):
         ctx.sites_per_block = sites_per_block
         ctx.c_splits = c_splits
         ctx.fuse_g_grad = fuse_g_grad
+        ctx.z_chunk_sites = z_chunk_sites
         ctx.source_version = atoms._version
         # save_for_backward checks atom AND layout-buffer mutations. Avoid
         # keeping the source x: Zx already contains the needed contractions.
@@ -357,7 +388,11 @@ class _HierarchicalLinear(torch.autograd.Function):
         layout.validate_for(atoms, plan)
         dy = dy.contiguous()
         zy = build_hierarchy(
-            dy, plan.output, method=ctx.z_method, team_size=ctx.team_size
+            dy,
+            plan.output,
+            method=ctx.z_method,
+            team_size=ctx.team_size,
+            chunk_sites=ctx.z_chunk_sites,
         )
         dx = datoms = None
         if ctx.needs_input_grad[1] and ctx.fuse_g_grad:
@@ -372,7 +407,7 @@ class _HierarchicalLinear(torch.autograd.Function):
         if ctx.needs_input_grad[1] and not ctx.fuse_g_grad:
             zx, h = forward_state
             datoms = parameter_grad(plan, atoms, layout, zx, zy, h, g)
-        return dx, datoms, None, None, None, None, None, None, None
+        return dx, datoms, None, None, None, None, None, None, None, None
 
 
 def hierarchical_linear(
@@ -386,6 +421,8 @@ def hierarchical_linear(
     sites_per_block=32,
     c_splits=1,
     fuse_g_grad=False,
+    layout_method="sort",
+    z_chunk_sites=0,
 ):
     """Private research autograd route, using this forward's bank/owner choices.
 
@@ -396,6 +433,8 @@ def hierarchical_linear(
     Double backward and full-route CUDA Graph capture are not supported yet
     (preparation has dynamic output shapes and host checks).
     """
+    if layout_method not in ("sort", "counting"):
+        raise ValueError("layout method must be sort or counting")
     if type(c_splits) is not int or not 1 <= c_splits <= 64:
         raise ValueError("C splits must be an integer in [1,64]")
     if type(fuse_g_grad) is not bool:
@@ -405,7 +444,7 @@ def hierarchical_linear(
     if not bool(torch.isfinite(x).all()):
         raise ValueError("X must be finite")
     if layout is None:
-        layout = prepare_layout(plan, atoms)
+        layout = prepare_layout(plan, atoms, method=layout_method)
     else:
         layout.validate_for(atoms, plan)
     return _HierarchicalLinear.apply(
@@ -418,4 +457,5 @@ def hierarchical_linear(
         sites_per_block,
         c_splits,
         fuse_g_grad,
+        z_chunk_sites,
     )

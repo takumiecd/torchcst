@@ -1030,3 +1030,127 @@ def test_phase_recurrence_large_root_m16_matches_quadrature(team):
     for method in ("direct", "merge"):
         actual = build_hierarchy(x.cuda(), axis, method=method, team_size=team)
         torch.testing.assert_close(actual.cpu(), expected, rtol=2e-11, atol=1e-10)
+
+
+@cuda_only
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("count", [0, 1, 37, 819])
+def test_counting_layout_ranges_and_original_rows(dtype, count):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        prepare_layout,
+    )
+
+    plan = HierarchyPlan(
+        input=AxisPlan(site_count=128, min_tile_sites=4, origin=-2),
+        output=AxisPlan(site_count=128, min_tile_sites=8, origin=3),
+    )
+    source = torch.randn(
+        count, 4, dtype=dtype, generator=torch.Generator().manual_seed(120)
+    )
+    source[:, 1] = torch.linspace(0.2, 40, count, dtype=dtype)
+    source[:, 2:] *= 150
+    p = source.cuda()
+    layout = prepare_layout(plan, p, method="counting")
+    rows = layout.rows.cpu().tolist()
+    groups = layout.groups.cpu().tolist()
+    offsets = layout.offsets.cpu().tolist()
+    assert len(groups) == plan.input.node_count * plan.output.node_count
+    assert groups == sorted(groups)
+    assert sorted(rows) == list(range(count))
+    assert offsets[0] == 0 and offsets[-1] == count
+    expected = {}
+    for index, row in enumerate(source.tolist()):
+        hi, qi = membership_oracle(row, plan.input, 3)
+        ho, qo = membership_oracle(row, plan.output, 2)
+        expected.setdefault((ho, hi, qo, qi), set()).add(index)
+    for group, begin, end in zip(groups, offsets, offsets[1:]):
+        assert set(rows[begin:end]) == expected.get(tuple(group), set())
+
+
+@cuda_only
+@pytest.mark.parametrize("fused", [False, True])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("batches,count", [(0, 37), (5, 257), (1, 3), (3, 0)])
+def test_counting_and_chunked_autograd_match_independent_fft(
+    fused, dtype, batches, count
+):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        hierarchical_linear,
+    )
+
+    plan = HierarchyPlan(
+        input=AxisPlan(site_count=128, min_tile_sites=4, origin=-2),
+        output=AxisPlan(site_count=128, min_tile_sites=8, origin=3),
+    )
+    rng = torch.Generator().manual_seed(120)
+    source = torch.randn(count, 4, dtype=dtype, generator=rng)
+    source[:, 1] = torch.linspace(0.2, 40, count, dtype=dtype)
+    source[:, 2:] *= 150
+    xcpu = torch.randn(batches, 128, dtype=dtype, generator=rng)
+    dy = torch.randn(batches, 128, dtype=dtype, generator=rng)
+    p = source.cuda().requires_grad_()
+    x = xcpu.cuda().requires_grad_()
+    y = hierarchical_linear(
+        plan,
+        x,
+        p,
+        c_splits=7,
+        fuse_g_grad=fused,
+        layout_method="counting",
+        z_chunk_sites=8,
+    )
+    dx, dp = torch.autograd.grad(y, (x, p), dy.cuda())
+    if not count:
+        torch.testing.assert_close(y, torch.zeros_like(y))
+        torch.testing.assert_close(dx, torch.zeros_like(dx))
+        assert dp.shape == p.shape
+        return
+    pr = source.double().requires_grad_()
+    xr = xcpu.double().requires_grad_()
+    v = differentiable_profile_matrix(pr, plan.input, 3)
+    u = differentiable_profile_matrix(pr, plan.output, 2)
+    yr = ((xr @ v.T) * pr[:, 0]) @ u
+    dxr, dpr = torch.autograd.grad(yr, (xr, pr), dy.double())
+    tol = (
+        {"rtol": 3e-6, "atol": 2e-7}
+        if dtype == torch.float32
+        else {"rtol": 3e-9, "atol": 2e-10}
+    )
+    for a, b in ((y, yr), (dx, dxr), (dp, dpr)):
+        torch.testing.assert_close(a.cpu().double(), b, **tol)
+
+
+@cuda_only
+@pytest.mark.parametrize(
+    "field,value", [(0, float("nan")), (1, 0.0), (1, 43.0), (2, float("inf"))]
+)
+def test_counting_layout_rejects_bad_values(field, value):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        prepare_layout,
+    )
+
+    axis = AxisPlan(site_count=128, min_tile_sites=4)
+    plan = HierarchyPlan(input=axis, output=axis)
+    p = torch.ones(3, 4, device="cuda")
+    p[1, field] = value
+    with pytest.raises(ValueError):
+        prepare_layout(plan, p, method="counting")
+
+
+@cuda_only
+@pytest.mark.parametrize("team", [1, 4, 32])
+@pytest.mark.parametrize("method", ["direct", "merge"])
+def test_chunked_z_matches_large_m16_quadrature(team, method):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        build_hierarchy,
+    )
+
+    axis = AxisPlan(
+        site_count=1024, min_tile_sites=32, spacing=0.125, origin=3, modes=16
+    )
+    x = torch.randn(
+        5, 1024, dtype=torch.float64, generator=torch.Generator().manual_seed(120)
+    )
+    expected = quadrature_oracle(x, axis)
+    z = build_hierarchy(x.cuda(), axis, team_size=team, method=method, chunk_sites=32)
+    torch.testing.assert_close(z.cpu(), expected, rtol=2e-11, atol=1e-10)

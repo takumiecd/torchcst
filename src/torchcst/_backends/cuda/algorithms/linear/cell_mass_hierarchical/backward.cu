@@ -43,53 +43,39 @@ __global__ void parameter_grad_kernel(const scalar_t *atoms, const int64_t *rows
     gradient[4 * original + 3] = static_cast<scalar_t>(dmu_input);
 }
 
-// Compute the output projection and its derivatives while the same profile,
-// phase, image and moments are live. Value coefficients deliberately use the
-// original raw_coefficient path: its evaluation order is part of reproducing
-// compute_h's rounded G, while derivatives retain their existing formula.
+// Compute the output projection and derivatives together while the same
+// coefficient stream, image and moments are live. G is rounded to its storage
+// dtype by the caller before it participates in the atom gradients.
 __device__ inline void project_value_derivatives(const double *z, int batches, int batch_begin,
                                                  const Axis &axis, const Bank &bank, int owner,
-                                                 const Profile &profile, double raw_zero,
-                                                 double raw_zero_beta, double beta_sigma,
+                                                 const Profile &profile, double beta_sigma,
                                                  double *value, double *dcenter, double *dsigma) {
     int retained = bank.full_chart ? 1 : 3;
     int first_tile = bank.full_chart ? 0 : owner - 1;
-    for (int offset = 0; offset < retained; ++offset) {
-        int tile = positive_mod(first_tile + offset, bank.tile_count);
-        int node = bank.node_offset + tile;
-        for (int b = 0; b < BATCH_TILE && batch_begin + b < batches; ++b) {
-            int base = ((batch_begin + b) * axis.node_count + node) * axis.basis_count();
-            value[b] += (1 / profile.period) * z[base];
-        }
-    }
-    for (int harmonic = 1; harmonic <= axis.modes; ++harmonic) {
-        double raw, raw_beta;
-        raw_coefficient_derivative(profile.beta, axis.modes, harmonic, raw, raw_beta);
+    HarmonicStream<true> stream(profile, axis.modes);
+    for (int harmonic = 0; harmonic <= axis.modes; ++harmonic) {
+        double cc, cs, cc_beta, cs_beta;
+        stream.next(cc, cs, cc_beta, cs_beta);
         double omega = 2 * PI * harmonic / bank.period;
-        double scale = 2 * raw / (bank.period * raw_zero);
-        double scale_sigma =
-            2 * beta_sigma / (bank.period * raw_zero) * (raw_beta - raw * raw_zero_beta / raw_zero);
-        double value_scale = 2 * raw_coefficient(profile.beta, axis.modes, harmonic) /
-                             (profile.period * profile.raw_zero);
-        double ps, pc;
-        sincos(omega * profile.center, &ps, &pc);
-        double cc = value_scale * pc, cs = value_scale * ps;
         for (int offset = 0; offset < retained; ++offset) {
             int raw_tile = first_tile + offset;
             int tile = positive_mod(raw_tile, bank.tile_count);
             int image = (raw_tile - tile) / bank.tile_count;
-            double rs = 0, rc = 1;
-            if (image != 0)
-                sincos(omega * image * axis.period, &rs, &rc);
+            double rs, rc;
+            image_rotation(bank, harmonic, image, rs, rc);
             int node = bank.node_offset + tile;
             for (int b = 0; b < BATCH_TILE && batch_begin + b < batches; ++b) {
                 int base = ((batch_begin + b) * axis.node_count + node) * axis.basis_count();
+                if (harmonic == 0) {
+                    value[b] += cc * z[base];
+                    continue;
+                }
                 double zc = z[base + 2 * harmonic - 1], zs = z[base + 2 * harmonic];
                 double rotated_cos = zc * rc - zs * rs;
                 double rotated_sin = zs * rc + zc * rs;
                 value[b] += cc * rotated_cos + cs * rotated_sin;
-                dcenter[b] += omega * scale * (-ps * rotated_cos + pc * rotated_sin);
-                dsigma[b] += scale_sigma * (pc * rotated_cos + ps * rotated_sin);
+                dcenter[b] += omega * (-cs * rotated_cos + cc * rotated_sin);
+                dsigma[b] += beta_sigma * (cc_beta * rotated_cos + cs_beta * rotated_sin);
             }
         }
     }
@@ -113,8 +99,6 @@ __global__ void compute_g_parameter_grad_kernel(const scalar_t *atoms, const int
     double amplitude = atoms[4 * original], sigma = atoms[4 * original + 1];
     double input_center = atoms[4 * original + 3], output_center = atoms[4 * original + 2];
     Profile output_profile = make_profile(output, output_bank, sigma, output_center, output_owner);
-    double raw_zero, raw_zero_beta;
-    raw_coefficient_derivative(output_profile.beta, output.modes, 0, raw_zero, raw_zero_beta);
     double beta_sigma = beta_sigma_derivative(output, output_bank, sigma, output_profile.beta);
     double da = 0, ds = 0, dmu_input = 0, dmu_output = 0;
     for (int begin = 0; begin < batches; begin += BATCH_TILE) {
@@ -123,8 +107,7 @@ __global__ void compute_g_parameter_grad_kernel(const scalar_t *atoms, const int
         project_derivatives(zx, batches, begin, input, input_bank, input_owner, sigma, input_center,
                             dh_mu, dh_sigma);
         project_value_derivatives(zy, batches, begin, output, output_bank, output_owner,
-                                  output_profile, raw_zero, raw_zero_beta, beta_sigma, gv, dg_mu,
-                                  dg_sigma);
+                                  output_profile, beta_sigma, gv, dg_mu, dg_sigma);
         for (int b = 0; b < BATCH_TILE && begin + b < batches; ++b) {
             projection_t rounded_g = static_cast<projection_t>(gv[b]);
             g[(begin + b) * atom_count + slot] = rounded_g;

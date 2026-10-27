@@ -24,20 +24,20 @@ __global__ void compute_h_kernel(const scalar_t *atoms, const int64_t *rows, con
     Profile profile =
         make_profile(axis, bank, static_cast<double>(atoms[4 * original + 1]),
                      static_cast<double>(atoms[4 * original + (output_side ? 2 : 3)]), owner);
+    HarmonicStream<false> stream(profile, axis.modes);
     double accum[BATCH_TILE] = {};
     int batch_begin = blockIdx.y * BATCH_TILE;
     int retained = bank.full_chart ? 1 : 3;
     int first_tile = bank.full_chart ? 0 : owner - 1;
     for (int harmonic = 0; harmonic <= axis.modes; ++harmonic) {
-        double cc, cs;
-        coefficient_pair(profile, axis.modes, harmonic, cc, cs);
+        double cc, cs, unused_cc_beta, unused_cs_beta;
+        stream.next(cc, cs, unused_cc_beta, unused_cs_beta);
         for (int offset = 0; offset < retained; ++offset) {
             int raw_tile = first_tile + offset;
             int tile = positive_mod(raw_tile, bank.tile_count);
             int image = (raw_tile - tile) / bank.tile_count;
-            double rs = 0, rc = 1;
-            if (harmonic != 0 && image != 0)
-                sincos(2 * PI * harmonic / bank.period * image * axis.period, &rs, &rc);
+            double rs, rc;
+            image_rotation(bank, harmonic, image, rs, rc);
             int node = bank.node_offset + tile;
             for (int local = 0; local < BATCH_TILE && batch_begin + local < batches; ++local) {
                 int base = ((batch_begin + local) * axis.node_count + node) * axis.basis_count();
@@ -116,9 +116,10 @@ __global__ void compute_c_kernel(const scalar_t *atoms, const int64_t *rows, con
                 Profile profile = make_profile(
                     output, bank, static_cast<double>(atoms[4 * original + 1]),
                     static_cast<double>(atoms[4 * original + (reverse ? 3 : 2)]), owner);
+                HarmonicStream<false> stream(profile, output.modes);
                 for (int harmonic = 0; harmonic <= output.modes; ++harmonic) {
-                    double cc, cs;
-                    coefficient_pair(profile, output.modes, harmonic, cc, cs);
+                    double cc, cs, unused_cc_beta, unused_cs_beta;
+                    stream.next(cc, cs, unused_cc_beta, unused_cs_beta);
                     if (harmonic == 0)
                         coefficients[lane] = cc;
                     else {
@@ -178,9 +179,10 @@ __device__ void split_consume_range(const scalar_t *atoms, const int64_t *rows,
             Profile profile =
                 make_profile(output, bank, static_cast<double>(atoms[4 * original + 1]),
                              static_cast<double>(atoms[4 * original + (reverse ? 3 : 2)]), owner);
+            HarmonicStream<false> stream(profile, output.modes);
             for (int harmonic = 0; harmonic <= output.modes; ++harmonic) {
-                double cc, cs;
-                coefficient_pair(profile, output.modes, harmonic, cc, cs);
+                double cc, cs, unused_cc_beta, unused_cs_beta;
+                stream.next(cc, cs, unused_cc_beta, unused_cs_beta);
                 if (harmonic == 0)
                     coefficients[lane] = cc;
                 else {

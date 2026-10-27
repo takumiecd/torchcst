@@ -169,11 +169,9 @@ static __device__ __constant__ HornerBanks horner_banks{};
 // positive polynomial and optionally its beta derivative together. Horner
 // avoids runtime coefficient divisions; no per-atom coefficient array exists.
 template <bool Derivative>
-__device__ inline void raw_horner(double beta, int modes, int harmonic, double &value,
-                                  double &derivative) {
-    double x = beta * beta, t = x - 1, power = 1;
-    for (int j = 0; j < harmonic; ++j)
-        power *= x;
+__device__ inline void raw_horner_power(double beta, int modes, int harmonic, double power,
+                                        double &value, double &derivative) {
+    double x = beta * beta, t = x - 1;
     double dpower = Derivative ? harmonic * power * (2 * beta / x) : 0;
     if (harmonic == modes) {
         value = 0.25 * power;
@@ -197,6 +195,15 @@ __device__ inline void raw_horner(double beta, int modes, int harmonic, double &
     value = factor * power * polynomial + (harmonic == 0 ? 0.5 : 0);
     if (Derivative)
         derivative = factor * (dpower * polynomial + power * slope * (2 * beta));
+}
+
+template <bool Derivative>
+__device__ inline void raw_horner(double beta, int modes, int harmonic, double &value,
+                                  double &derivative) {
+    double x = beta * beta, power = 1;
+    for (int j = 0; j < harmonic; ++j)
+        power *= x;
+    raw_horner_power<Derivative>(beta, modes, harmonic, power, value, derivative);
 }
 
 __device__ inline double raw_coefficient(double beta, int modes, int harmonic) {
@@ -247,6 +254,70 @@ __device__ inline void raw_coefficient_derivative(double beta, int modes, int ha
     raw_horner<true>(beta, modes, harmonic, value, derivative);
 }
 
+// A thread-local stream over harmonics 0..M, with one phase evaluation and a
+// running beta^(2k). Derivatives are with respect to beta at fixed bank,
+// owner and center. The caller must request each harmonic in order, once.
+template <bool Derivative> struct HarmonicStream {
+    double beta, beta_squared, power, inverse_period, normalized_scale, zero_log_beta;
+    double phase_sine, phase_cosine, step_sine, step_cosine;
+    int modes, harmonic;
+
+    __device__ HarmonicStream(const Profile &profile, int mode_count)
+        : beta(profile.beta), beta_squared(beta * beta), power(1),
+          inverse_period(1 / profile.period),
+          normalized_scale(2 / (profile.period * profile.raw_zero)), zero_log_beta(0),
+          phase_sine(0), phase_cosine(1), modes(mode_count), harmonic(0) {
+        sincos(2 * PI / profile.period * profile.center, &step_sine, &step_cosine);
+        if (Derivative) {
+            double raw_zero, zero_beta;
+            raw_coefficient_derivative(beta, modes, 0, raw_zero, zero_beta);
+            zero_log_beta = zero_beta / raw_zero;
+        }
+    }
+
+    __device__ inline void next(double &cc, double &cs, double &cc_beta, double &cs_beta) {
+        if (harmonic == 0) {
+            cc = inverse_period;
+            cs = cc_beta = cs_beta = 0;
+        } else {
+            power *= beta_squared;
+            double next_cosine = phase_cosine * step_cosine - phase_sine * step_sine;
+            phase_sine = phase_sine * step_cosine + phase_cosine * step_sine;
+            phase_cosine = next_cosine;
+            double raw, raw_beta = 0;
+            raw_horner_power<Derivative>(beta, modes, harmonic, power, raw, raw_beta);
+            double scale = normalized_scale * raw;
+            cc = scale * phase_cosine;
+            cs = scale * phase_sine;
+            if (Derivative) {
+                double scale_beta = normalized_scale * (raw_beta - raw * zero_log_beta);
+                cc_beta = scale_beta * phase_cosine;
+                cs_beta = scale_beta * phase_sine;
+            } else {
+                cc_beta = cs_beta = 0;
+            }
+        }
+        ++harmonic;
+    }
+};
+
+// A local bank spans three dyadic tiles, while the chart spans tile_count
+// tiles. Crossing a chart boundary therefore rotates by a cube root of unity.
+// Full-chart banks have no nonzero image in their retained window.
+__device__ inline void image_rotation(const Bank &bank, int harmonic, int image, double &sine,
+                                      double &cosine) {
+    if (image == 0 || harmonic == 0 || bank.full_chart) {
+        sine = 0;
+        cosine = 1;
+        return;
+    }
+    int residue = ((harmonic % 3) * (image % 3) * (bank.tile_count % 3)) % 3;
+    if (residue < 0)
+        residue += 3;
+    cosine = residue == 0 ? 1 : -0.5;
+    sine = residue == 0 ? 0 : (residue == 1 ? 0.86602540378443864676 : -0.86602540378443864676);
+}
+
 // The selected bank, owner and torus image are held fixed in backward. The
 // optimizer's next forward will classify again using the updated atom values.
 __device__ inline double beta_sigma_derivative(const Axis &axis, const Bank &bank, double sigma,
@@ -284,36 +355,31 @@ __device__ inline void project_derivatives(const double *z, int batches, int bat
                                            double sigma, double center, double *dcenter,
                                            double *dsigma) {
     Profile profile = make_profile(axis, bank, sigma, center, owner);
-    double raw_zero, raw_zero_beta;
-    raw_coefficient_derivative(profile.beta, axis.modes, 0, raw_zero, raw_zero_beta);
+    HarmonicStream<true> stream(profile, axis.modes);
     double beta_sigma = beta_sigma_derivative(axis, bank, sigma, profile.beta);
     int retained = bank.full_chart ? 1 : 3;
     int first_tile = bank.full_chart ? 0 : owner - 1;
     // The constant coefficient is 1/P, independent of both center and sigma.
-    for (int harmonic = 1; harmonic <= axis.modes; ++harmonic) {
-        double raw, raw_beta;
-        raw_coefficient_derivative(profile.beta, axis.modes, harmonic, raw, raw_beta);
+    for (int harmonic = 0; harmonic <= axis.modes; ++harmonic) {
+        double cc, cs, cc_beta, cs_beta;
+        stream.next(cc, cs, cc_beta, cs_beta);
+        if (harmonic == 0)
+            continue;
         double omega = 2 * PI * harmonic / bank.period;
-        double scale = 2 * raw / (bank.period * raw_zero);
-        double scale_sigma =
-            2 * beta_sigma / (bank.period * raw_zero) * (raw_beta - raw * raw_zero_beta / raw_zero);
-        double ps, pc;
-        sincos(omega * profile.center, &ps, &pc);
         for (int offset = 0; offset < retained; ++offset) {
             int raw_tile = first_tile + offset;
             int tile = positive_mod(raw_tile, bank.tile_count);
             int image = (raw_tile - tile) / bank.tile_count;
-            double rs = 0, rc = 1;
-            if (image != 0)
-                sincos(omega * image * axis.period, &rs, &rc);
+            double rs, rc;
+            image_rotation(bank, harmonic, image, rs, rc);
             int node = bank.node_offset + tile;
             for (int b = 0; b < BATCH_TILE && batch_begin + b < batches; ++b) {
                 int base = ((batch_begin + b) * axis.node_count + node) * axis.basis_count();
                 double zc = z[base + 2 * harmonic - 1], zs = z[base + 2 * harmonic];
                 double rotated_cos = zc * rc - zs * rs;
                 double rotated_sin = zs * rc + zc * rs;
-                dcenter[b] += omega * scale * (-ps * rotated_cos + pc * rotated_sin);
-                dsigma[b] += scale_sigma * (pc * rotated_cos + ps * rotated_sin);
+                dcenter[b] += omega * (-cs * rotated_cos + cc * rotated_sin);
+                dsigma[b] += beta_sigma * (cc_beta * rotated_cos + cs_beta * rotated_sin);
             }
         }
     }
@@ -327,7 +393,7 @@ inline void check_layout(const torch::Tensor &atoms, const torch::Tensor &rows,
                 "invalid rows");
     TORCH_CHECK(groups.is_contiguous() && groups.device() == atoms.device() && groups.dim() == 2 &&
                     groups.size(1) == 4 && groups.scalar_type() == torch::kInt32 &&
-                    groups.size(0) <= atoms.size(0),
+                    (groups.size(0) <= atoms.size(0) || groups.size(0) <= 4096),
                 "invalid groups");
     TORCH_CHECK(offsets.is_contiguous() && offsets.device() == atoms.device() &&
                     offsets.dim() == 1 && offsets.scalar_type() == torch::kInt64 &&
