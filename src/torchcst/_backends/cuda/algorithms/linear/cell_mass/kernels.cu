@@ -1188,16 +1188,19 @@ __global__ void sum_owner_coefficients_kernel(const double *partials, scalar_t *
     }
 }
 
-torch::Tensor expand_owner_coefficients(torch::Tensor h, torch::Tensor atoms, torch::Tensor rows,
-                                        torch::Tensor offsets, std::vector<double> input_config,
-                                        std::vector<double> output_config, int center_column,
-                                        int sites_per_block, int requested_splits, int c_threads) {
+// Return bounded [split,batch,owner,mode] scratch. This stage is also a
+// reusable boundary for timing and for the backward projection/C fusion.
+torch::Tensor make_owner_partials(torch::Tensor h, torch::Tensor atoms, torch::Tensor rows,
+                                  torch::Tensor offsets, std::vector<double> input_config,
+                                  std::vector<double> output_config, int center_column,
+                                  int requested_splits, int c_threads) {
     check_signal(h);
     check_signal(atoms);
     check_atoms(atoms, rows, atoms);
     TORCH_CHECK(h.device() == atoms.device() && h.size(1) == atoms.size(0) &&
                     (h.scalar_type() == atoms.scalar_type() || h.scalar_type() == torch::kFloat64),
                 "incompatible owner projection values");
+    TORCH_CHECK(center_column == 2 || center_column == 3, "invalid projection axis");
     Axis input = parse_axis(input_config), output = parse_axis(output_config);
     Axis a = center_column == 2 ? output : input;
     int input_tiles = input.sites / input.tile_sites;
@@ -1206,26 +1209,20 @@ torch::Tensor expand_owner_coefficients(torch::Tensor h, torch::Tensor atoms, to
                     offsets.scalar_type() == torch::kInt64 && offsets.dim() == 1 &&
                     offsets.numel() == input_tiles * output_tiles + 1,
                 "invalid owner group offsets");
-    TORCH_CHECK(sites_per_block >= 8 && sites_per_block <= 256 &&
-                    (sites_per_block & (sites_per_block - 1)) == 0,
-                "sites_per_block must be a power of two in [8,256]");
     TORCH_CHECK(requested_splits >= 1 && requested_splits <= 128 &&
                     (requested_splits & (requested_splits - 1)) == 0,
                 "owner atom_splits must be a power of two in [1,128]");
     TORCH_CHECK(c_threads == 32 || c_threads == 64 || c_threads == 128,
                 "C producer threads must be 32, 64 or 128");
     c10::cuda::CUDAGuard guard(atoms.device());
-    auto result = torch::empty({h.size(0), a.sites}, atoms.options());
-    if (h.size(0) == 0)
-        return result;
     int chunks = (atoms.size(0) + ATOM_CHUNK - 1) / ATOM_CHUNK;
     int splits = std::max(1, std::min(requested_splits, chunks));
     auto partials = torch::empty({splits, h.size(0), a.sites / a.tile_sites, a.basis_count()},
                                  h.options().dtype(torch::kFloat64));
+    if (h.size(0) == 0)
+        return partials;
     auto stream = c10::cuda::getCurrentCUDAStream();
     dim3 producer(a.sites / a.tile_sites, (h.size(0) + BATCH_TILE - 1) / BATCH_TILE, splits);
-    int width = std::min(a.sites, std::min(sites_per_block, a.tile_sites));
-    dim3 consumer(a.sites / width, (h.size(0) + BATCH_TILE - 1) / BATCH_TILE);
     AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "cell_mass_owner_coefficients", [&] {
         auto launch = [&](auto *values) {
             size_t shared_bytes =
@@ -1252,11 +1249,49 @@ torch::Tensor expand_owner_coefficients(torch::Tensor h, torch::Tensor atoms, to
         else
             launch(h.data_ptr<scalar_t>());
         C10_CUDA_KERNEL_LAUNCH_CHECK();
-        sum_owner_coefficients_kernel<<<consumer, THREADS, 0, stream>>>(
-            partials.data_ptr<double>(), result.data_ptr<scalar_t>(), h.size(0), a, splits, width);
-        C10_CUDA_KERNEL_LAUNCH_CHECK();
     });
+    return partials;
+}
+
+// Combine split/neighbor C values, then expand sites. No atom/profile work is
+// performed here. Each output element has a unique writer.
+torch::Tensor expand_owner_partials_impl(torch::Tensor partials, torch::Tensor like,
+                                         std::vector<double> config, int sites_per_block) {
+    check_signal(like);
+    Axis a = parse_axis(config);
+    TORCH_CHECK(partials.device() == like.device() && partials.is_contiguous() &&
+                    partials.scalar_type() == torch::kFloat64 && partials.dim() == 4 &&
+                    partials.size(0) >= 1 && partials.size(0) <= 128 &&
+                    partials.size(2) == a.sites / a.tile_sites &&
+                    partials.size(3) == a.basis_count(),
+                "invalid owner C partials");
+    TORCH_CHECK(sites_per_block >= 8 && sites_per_block <= 256 &&
+                    (sites_per_block & (sites_per_block - 1)) == 0,
+                "sites_per_block must be a power of two in [8,256]");
+    c10::cuda::CUDAGuard guard(like.device());
+    auto result = torch::empty({partials.size(1), a.sites}, like.options());
+    if (partials.size(1) == 0)
+        return result;
+    int width = std::min(a.sites, std::min(sites_per_block, a.tile_sites));
+    dim3 grid(a.sites / width, (partials.size(1) + BATCH_TILE - 1) / BATCH_TILE);
+    auto stream = c10::cuda::getCurrentCUDAStream();
+    AT_DISPATCH_FLOATING_TYPES(like.scalar_type(), "cell_mass_expand_owner_partials", [&] {
+        sum_owner_coefficients_kernel<<<grid, THREADS, 0, stream>>>(
+            partials.data_ptr<double>(), result.data_ptr<scalar_t>(), partials.size(1), a,
+            partials.size(0), width);
+    });
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
     return result;
+}
+
+torch::Tensor expand_owner_coefficients(torch::Tensor h, torch::Tensor atoms, torch::Tensor rows,
+                                        torch::Tensor offsets, std::vector<double> input_config,
+                                        std::vector<double> output_config, int center_column,
+                                        int sites_per_block, int requested_splits, int c_threads) {
+    auto partials = make_owner_partials(h, atoms, rows, offsets, input_config, output_config,
+                                        center_column, requested_splits, c_threads);
+    return expand_owner_partials_impl(
+        partials, atoms, center_column == 2 ? output_config : input_config, sites_per_block);
 }
 
 } // namespace
@@ -1544,4 +1579,17 @@ torch::Tensor prepare_group_offsets(torch::Tensor keys, torch::Tensor rows, int 
             keys.numel(), groups);
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return offsets;
+}
+
+// Private native boundaries used by split-stage diagnostics and the fused path.
+torch::Tensor compute_owner_partials(torch::Tensor h, torch::Tensor atoms, torch::Tensor rows,
+                                     torch::Tensor offsets, std::vector<double> input_config,
+                                     std::vector<double> output_config, int center_column,
+                                     int atom_splits, int c_threads) {
+    return make_owner_partials(h, atoms, rows, offsets, input_config, output_config, center_column,
+                               atom_splits, c_threads);
+}
+torch::Tensor expand_owner_partials(torch::Tensor partials, torch::Tensor like,
+                                    std::vector<double> config, int sites_per_block) {
+    return expand_owner_partials_impl(partials, like, config, sites_per_block);
 }

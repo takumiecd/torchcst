@@ -39,7 +39,14 @@ std::vector<Tensor> compute_g_parameter_grad(Tensor x, Tensor dy, Tensor atoms, 
 
 Tensor prepare_group_offsets(Tensor keys, Tensor rows, int groups);
 
+Tensor compute_owner_partials(Tensor h, Tensor atoms, Tensor rows, Tensor offsets,
+                              Config input_config, Config output_config, int center_column,
+                              int atom_splits, int c_threads);
+Tensor expand_owner_partials(Tensor partials, Tensor like, Config config, int sites_per_block);
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+    m.def("compute_owner_partials", &compute_owner_partials);
+    m.def("expand_owner_partials", &expand_owner_partials);
     m.def("prepare_group_offsets", &prepare_group_offsets);
     m.def("compute_g_parameter_grad", &compute_g_parameter_grad);
     m.def("compute_y_from_owners", &compute_y_from_owners, pybind11::arg("h"),

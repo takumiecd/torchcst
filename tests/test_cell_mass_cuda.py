@@ -788,3 +788,22 @@ def test_owner_c_thread_counts(dtype, c_threads, sites, atoms, batch, modes):
     tol = {"rtol":5e-5,"atol":2e-6} if dtype==torch.float32 else {"rtol":3e-8,"atol":3e-10}
     for value,truth in [(actual,expected),(dx,edx),(dp,edp)]:
         torch.testing.assert_close(value.cpu(),truth,**tol)
+
+
+@requires_cuda
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("sites,atoms,batch,modes", [(128,819,4,8),(32,35,5,16),(8,0,2,8),(8,3,0,8)])
+def test_separate_owner_stages_match_combined(dtype,sites,atoms,batch,modes):
+    binding=spec(sites,modes)
+    x,p,dy=inputs(binding,atoms,batch,dtype)
+    x,p,dy=x.cuda(),p.cuda(),dy.cuda()
+    native=_extension()
+    ci,co=_axis_config(binding.input,"polynomial_recurrence"),_axis_config(binding.output,"polynomial_recurrence")
+    rows,offsets=prepare_inputs_and_layout(native,x,p,ci,co,with_groups=True)
+    for signal,source_config,config,column in [(x,ci,co,2),(dy,co,ci,3)]:
+        z=native.build_z(signal,source_config,True,4,True,True)
+        h=(native.compute_h if column==2 else native.compute_g)(signal,p,rows,z,source_config,32)
+        partials=native.compute_owner_partials(h,p,rows,offsets,ci,co,column,128,128)
+        actual=native.expand_owner_partials(partials,p,config,256)
+        combined=(native.compute_dx_from_owners if column==3 else native.compute_y_from_owners)(h,p,rows,offsets,ci,co,256,128,128)
+        torch.testing.assert_close(actual,combined,rtol=0,atol=0)
