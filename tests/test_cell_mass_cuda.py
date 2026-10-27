@@ -31,6 +31,7 @@ def spec(sites=128, modes=8):
             site_count=sites,
             spacing=0.75,
             tile_sites=max(1, sites // 4),
+            period_tiles=1 if sites == 1 else 3,
             origin=-0.25,
         ),
         output=CellMassAxisSpec(
@@ -38,6 +39,7 @@ def spec(sites=128, modes=8):
             site_count=sites,
             spacing=1.25,
             tile_sites=max(1, sites // 4),
+            period_tiles=1 if sites == 1 else 3,
             origin=0.2,
         ),
     )
