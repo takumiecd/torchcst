@@ -84,6 +84,17 @@ layoutはstate_dictへ保存しない。Torch参照は同じ宣言からセル�
 評価時にsigmaを丸めたりlog-widthへ変換したりしない。普通のoptimizerを使う場合は
 呼び出し側が定義域を維持する。まだ二階微分・Graph学習を保証しない。
 
+**この接続と以下のMNIST結果はPolarを使わない。** 既存Polarは`[s,t,入力中心,出力中心]`
+から振幅とactivity由来の幅を取り出し、幅をtask lossからdetachする。今回の物理4列と
+同じshapeでも意味・並び・backward・更新則が違い、現在のAlgorithmはPolarを拒否する。
+以下のsigma直接学習の観測を、Polarでのsigma分布の検証として扱わない。
+
+Polarの状態・更新則と今回のセル積分/面積正規化profileは分離して組み合わせられる。
+後続で接続するならCUDA内でPolarから振幅・幅を取り出して分類・H/C評価へ渡し、
+既存の幅stop-gradientとPolar更新・moment輸送を維持する必要がある。
+物理atom表へのglobalコピーを前提にしない。現在のnativeは共通sigma一つなので、
+入出力の別幅を許す既存Polar全体への対応は別途決める。これはまだ実装していない。
+
 接続後のGPU検査は128/1024のY・dX・全atom勾配と更新を確認する。
 その後の最初の学習確認はMNIST全60,000/10,000件、3 epoch、B32、seed120。
 `784→width→width→10`の中央正方層をCST/denseで比較し、widthは128/1024、
@@ -100,7 +111,66 @@ sigma分位点・初期値からの変化・bank人数・owner偏り・group人�
 従来B4の合成完全step結果とB32の実学習結果は別の条件として記録する。
 2048/4096/8192対応は、この結果を見てから進める。
 
-現時点で接続CPU検査と全CPU suiteは通過。GPU接続・学習結果はまだ未確認。
+#### 公開接続とMNISTの実測結果
+
+source `bc39cb26` / snapshot SHA256
+`4427c57562a01b96f552a37a6334cc9e5fc939aac031b8f0a05635eaf94411ae`、
+job `l4job-186f9896e1094c1a8989758e90710752`。
+NVIDIA L4、Torch 2.11.0+cu130 / CUDA 13.0 / Python 3.13.16。
+CPU suite 2,043 passed/5,344 skipped、GPU新旧cell-mass suite 2,621 passed/12 skipped。
+公開CSTLinearと直接executorのY/dX/全4列勾配はbit一致。
+全819/52,428atomの3 step更新を、各stepの更新済み参照から独立CPU FFT/autogradへ照合した。
+Y/dX/全4列勾配はrtol3e-6/atol2e-7、Parameterは2e-6/2e-7、
+AdamW moments/stepは4e-6/2e-8を維持して通過。sigmaの射影は参照側にも明示的に適用した。
+Graph・二階微分は未検証ではなく、この新Algorithmの非対応条件として明示する。
+
+以下は全MNIST、3 epoch/B32/1 seedの結果。中央層だけを置き換え、外側はdenseのまま。
+初期test loss/accuracyと各epochのデータ順hashは両方式で一致した。
+初期化gainは128で4.34224833、1024で10.80467186。
+
+| 中央層 | epoch3 test accuracy CST / dense | 平均step CST / dense | 3 epoch合計時間比 | peak allocated CST / dense | peak reserved CST / dense |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 128×128 | 96.75 / 97.01% | 5.142 / 1.953ms | 2.633 | 213.633 / 213.264MiB | 366 / 364MiB |
+| 1024×1024 | 96.70 / 97.59% | 8.353 / 1.947ms | 4.290 | 242.322 / 239.883MiB | 392 / 382MiB |
+
+精度は最良epochの選び直しではなく固定epoch3。1024のCSTはepoch2が97.15%、
+epoch3が96.70%で、3 epochだけから一般的な精度同等性や優劣は主張しない。
+メモリはTorch allocatorの各epoch peakの最大、常駐MNISTデータを含む。
+実GPU process全体の使用量ではなく、Graph captureも行っていない。
+学習時間は実optimizer・gather/loss・外側dense層も含む同期wall。
+**このB32実学習では時間2倍以内・dense以下のメモリは未達**。
+前のB4単体合成stepの達成判定をこの条件へ拡張しない。
+
+1024のepoch2直前allocatedはCST 238,960,128B、dense 251,535,872Bで、
+CSTが11.993MiB少ない。一方、CSTの計時中peakはさらに14.432MiB増え、
+最終的にdenseより2.439MiB多い。128もpeakは0.369MiB多い。
+B32でH/Gはそれぞれ6.400MiBなので、H/G保存とC部分和の寿命が次の調査対象。
+ただしこのrunに演算別のallocator trace/時間分解はなく、peak発生箇所や
+CSTOptimizerの時間寄与を個別に確定したわけではない。
+
+sigmaの変化量の中央値/P90/最大は128で0.07963/0.21008/0.74673、
+1024で0.03507/0.09141/0.34975。1024のsigma中央値は21.04161→21.04075。
+全atomは有限で、正のsigma定義域を維持した。
+1024の入力bank人数（幅4/8/16/32/全周）は
+`[2821,5413,11086,22003,11105] → [2812,5418,11080,22013,11105]`。
+出力（幅8/16/32/全周）は
+`[8234,11086,22003,11105] → [8230,11080,22013,11105]`。
+階層が初期値から変わったatomは入力243/52,428、出力184/52,428、
+階層またはownerが変わったものは408/284。人数が同じでも個体の移動は起きている。
+128では階層変化が入力9/819、出力7/819、階層またはowner変化が12/14。
+
+3 epochでsigmaが強く偏る傾向は未確認。一方、1024では初期から全周owner一つに
+11,105atom、約21.18%が集中し、最終も同人数だった。最終の非空groupは847、
+最大group人数11,105、最大/平均は179.407。階層別の仕事量の偏りは残っている。
+この実学習fixtureでの保存領域と完全step時間を改善してから、大型化へ進む。
+新しい課題・seed・hyperparameterの追加は、この観測から次に判断する。
+
+source/result/spec/receipt/binary/初期fixture/最終model・optimizer checkpointを
+ignored `output/cell-mass-linear-integration-20261027/verified-run/`へ保全した。
+runtime 344ファイル＋tests/trainingを含む488sourceファイルをsnapshotへ照合し、
+配布物2つの全runtime 344ファイルも照合した。結果はpoolでSHA256検証済み。
+source取得・dataset checksum・raw epoch値・最終checkpointからのowner移動集計を残し、
+所有L4停止・supervisor終了も確認した。新規DB結果の提出や自動dispatch採用は行っていない。
 
 新しいlayout cacheにatom値や全atomキーは保持しない。基本のTensorは
 `rows[A]`（int64）、`groups[G,4]`（int32）、`offsets[G+1]`（int64）。
@@ -1868,7 +1938,8 @@ Z_{h,t,b,2j}^{\cos/\sin}
 全周bankはP=Qの別基底なので初版は直接生成する。atomがいないbankの子要素も親が使うなら準備する。
 
 - 実装: 既存profileとsigmaの分類、group offsets、bank別Z、H/G、C、Y/dX、Parameter勾配。検証範囲は冒頭の表と記録で追跡する。
-- 未実装: 公開CSTLinear/dispatcherへの統合、階層版の保存／再計算切替。
+- PR #122で接続: 公開CSTLinearの明示Plan。上の接続節で検証状態を追跡する。
+- 未実装: 階層版の保存／再計算切替、自動dispatchへの採用。
 - 継続検証: branch境界の誤差、完全step時間とメモリ、直接計算/融合等の速度比較。
 
 整数の階層・owner選択は微分せず、選択中のbankのprofileを微分する既存方針を維持する。

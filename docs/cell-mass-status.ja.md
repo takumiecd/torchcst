@@ -1,12 +1,36 @@
 # Cell-mass CUDAの実測状態
 
-2026-10-27。Issue #120 / Draft PR #121。
+2026-10-27。Issue #120 / merged PR #121。公開接続はDraft PR #122で進める。
 目的は、面積正規化の契約・Y/dX/全atom勾配を保ち、dense以下のメモリで
 forward/backward/AdamWを含む完全stepの所要時間をdenseの2倍以内にすること。
 2026-10-27にユーザーへ確認し、「時間半分が必須」という以前の解釈を訂正した。
 現在の階層版は128・1024とも時間とメモリの条件を達成した。
 denseと同等の時間は今後の任意の改善目標であり、今回の完了条件に追加しない。
 以下の固定bank版の過去結果と、現在の階層版を区別する。
+
+公開CSTLinear接続では`presets.cell_mass`と明示Planを追加した。自動dispatchは変更しない。
+これは物理`[amplitude,sigma,output_center,input_center]`の経路であり、Polar接続ではない。
+以下のMNIST結果はsigma直接学習の確認で、Polarの幅制御やsigma分布の評価には読み替えない。
+既存Polarと今回の面積profileを組み合わせる接続は未実装で、正本の接続節に違いを記した。
+CPU suiteは2,043 passed/5,344 skipped、Ruff/format/buildは通過し、配布物内のPython/native
+全runtime 344ファイルを作業sourceへ照合した。
+job `l4job-186f9896e1094c1a8989758e90710752`でGPU suite 2,621 passed/12 skipped、
+全819/52,428atomの独立Y/dX/4列勾配・3 step CSTOptimizer更新を通過した。
+
+全MNIST 3 epoch/B32/seed120、中央正方層だけの置換で、epoch3精度は
+128でCST 96.75% / dense 97.01%、1024で96.70 / 97.59%。
+平均学習stepは5.142/1.953ms、8.353/1.947msで、時間比2.633/4.290。
+peak allocatedは213.633/213.264MiB、242.322/239.883MiB、
+reservedは366/364MiB、392/382MiB（CST/dense、常駐データ込み）。
+**この実学習条件では速度・メモリ目標は未達**で、以下のB4合成step達成から分けて判定する。
+1024は計時直前allocatedがdenseより約12MiB少ない一方、計時中の一時領域で逆転する。
+
+1024のsigma変化量中央値は0.03507、階層人数はほぼ維持され、3 epochで強い偏りは未確認。
+ただし初期から全周owner一つに21.18%のatomが集中し、仕事量の偏りはある。
+詳細な初期化・各epoch・bank移動・メモリ寿命は正本の公開接続節に残した。
+保存と完全stepの調査を先に進め、2048/4096/8192はまだ拡張しない。
+raw/source/checkpointsは`output/cell-mass-linear-integration-20261027/verified-run/`、
+source/tests/training 488ファイルを照合済み。所有L4とsupervisorは停止済み。
 
 階層版`cell_mass_hierarchical/`は既存ChebyshevSquare・sigmaの意味を維持する。
 Zは2子ずつの階層、Rは同じ階層の3タイルを合算したH/G用の値である。
@@ -63,11 +87,13 @@ runtime338・検査141・manifest各50/43・driver/binary・fixture bit一致を
 source/results/spec/receiptをignored `output/cell-mass-opt-20261027/ragged-active-c/`と
 `ragged-confirmation/`へ保全した。所有GPUの停止とsupervisor終了を確認した。
 接続503で中断した追加試行03dfde6eは結果から除外し、pool recover後の確認jobだけを採用した。
-公開CSTLinear/dispatcher、二階微分、全体Graph学習は未接続。
+PR #121の時点では公開CSTLinear未接続。現在は上のPR #122で明示接続を進める。
+二階微分・全体Graph学習・自動dispatchは引き続き未対応。
 追加の位相評価試作は`kernel/cell-mass-phase-prototype`（a3fe9da9）へ保存し、
 現在の採用ブランチからrevertした。検証済みDouble位相とragged部分和を最終設定として残す。
 追加試験も回収・監査済み。G/勾配単体は短縮せず完全step差も約0.5%の未再確認値だったため、
-採用せず結果を正本へ残した。全所有GPUは停止済みで、新しい実験は追加しない。
+採用せず結果を正本へ残した。この最適化campaignの全所有GPUは停止して区切った。
+公開接続・MNISTの新しい実験は上のPR #122で別に追跡する。
 以下は別の幅分布・周期を使う固定bank版の記録である。
 
 ## 固定bank版：係数・微分のHorner評価とsigma分布

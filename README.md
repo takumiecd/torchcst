@@ -164,8 +164,9 @@ a concrete Euclidean/FlatTorus geometry. Use `polar_profile_product` for Euclide
 and `polar_periodic_profile_product` for shortest wrapped coordinate distances.
 The chart supports arbitrary grid dimension/grouping; `CSTLinear` requires two
 weight axes. Torch factored/materialized execution is available. Existing
-research CUDA routes still require `PeriodicGridChartSpec`; the new chart has no
-CUDA performance claim. See [the API and geometry contract](docs/regular-grid.ja.md).
+profile-product CUDA routes still require `PeriodicGridChartSpec`; the explicit
+cell-mass chart-pair route above has its own contract. See
+[the API and geometry contract](docs/regular-grid.ja.md).
 
 `chart_presets.periodic_grid((16, 32, 64), periods=(1.0, 2.0, 4.0),
 output_dims=2)` declares one equally spaced flat periodic chart with shape
