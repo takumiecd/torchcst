@@ -18,6 +18,33 @@ struct CdotBudget {
     double factor;
 };
 
+// A whole-call guard prevents a large FP64 prefix from preceding an otherwise
+// eligible DS chunk. The result stays on device and is consumed on this stream.
+__global__ void cdot_preflight_kernel(const float *atoms, const int64_t *rows,
+                                      const float *projection, int atom_count, int64_t elements,
+                                      int *unsafe) {
+    int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (i >= elements)
+        return;
+    int slot = i % atom_count;
+    int original = rows[slot];
+    double value = static_cast<double>(atoms[4 * original]) * projection[i];
+    if (!isfinite(value) || fabs(value) > 16)
+        atomicOr(unsafe, 1);
+}
+
+inline torch::Tensor make_cdot_preflight(const torch::Tensor &atoms, const torch::Tensor &rows,
+                                         const torch::Tensor &projection, cudaStream_t stream) {
+    auto flag = torch::zeros({1}, atoms.options().dtype(torch::kInt32));
+    if (projection.numel() > 0) {
+        cdot_preflight_kernel<<<(projection.numel() + 255) / 256, 256, 0, stream>>>(
+            atoms.data_ptr<float>(), rows.data_ptr<int64_t>(), projection.data_ptr<float>(),
+            atoms.size(0), projection.numel(), flag.data_ptr<int>());
+        C10_CUDA_KERNEL_LAUNCH_CHECK();
+    }
+    return flag;
+}
+
 inline CdotBudget cdot_budget(int64_t atoms, int splits, int grain, const Axis &target, int ranges,
                               bool legacy_reverse) {
     if (atoms == 0)
@@ -57,10 +84,12 @@ __device__ inline DoubleSingle unpack_cdot_pair(double payload) {
 // All 32 lanes call this after writing their own FP64 column, before the
 // existing chunk barrier. Unsafe values remain untouched for the FP64 route.
 __device__ inline bool prepare_cdot_chunk(double *coefficients, double *scaled, int basis,
-                                          CdotBudget budget) {
+                                          CdotBudget budget, double maximum_accumulator,
+                                          bool invalid_accumulator) {
     int lane = threadIdx.x;
     double maximum_coefficient = 0, maximum_scaled = 0;
-    bool unsafe = !(budget.absolute > 0 && isfinite(budget.absolute));
+    bool unsafe = invalid_accumulator || !isfinite(maximum_accumulator) ||
+                  !(budget.absolute > 0 && isfinite(budget.absolute));
     constexpr double LOWER = 0x1p-40, UPPER = 0x1p40;
     for (int mode = 0; mode < basis; ++mode) {
         double value = coefficients[mode * SHARED_STRIDE + lane];
@@ -79,9 +108,12 @@ __device__ inline bool prepare_cdot_chunk(double *coefficients, double *scaled, 
         maximum_coefficient =
             fmax(maximum_coefficient, __shfl_xor_sync(0xffffffffu, maximum_coefficient, offset));
         maximum_scaled = fmax(maximum_scaled, __shfl_xor_sync(0xffffffffu, maximum_scaled, offset));
+        maximum_accumulator =
+            fmax(maximum_accumulator, __shfl_xor_sync(0xffffffffu, maximum_accumulator, offset));
     }
     double sum_bound = CHUNK * maximum_coefficient * maximum_scaled;
-    double error_bound = budget.factor * sum_bound + 0x1p-120;
+    double error_bound =
+        budget.factor * sum_bound + 0x1p-120 + 64.0 * 0x1p-53 * maximum_accumulator;
     bool safe = bad == 0 && isfinite(error_bound) && error_bound <= budget.absolute;
     if (safe) {
         for (int mode = 0; mode < basis; ++mode) {
@@ -239,7 +271,8 @@ template <typename scalar_t, typename projection_t, int FixedModes, bool Compens
 __global__ void compute_c_kernel(const scalar_t *atoms, const int64_t *rows, const int *groups,
                                  const int64_t *offsets, const projection_t *h, double *c,
                                  int atom_count, int group_count, int batches, Axis input,
-                                 Axis output, bool reverse, CdotBudget budget) {
+                                 Axis output, bool reverse, CdotBudget budget,
+                                 const int *preflight) {
     extern __shared__ double shared[];
     double *coefficients = shared;
     double *scaled_h = shared + SHARED_STRIDE * output.basis_count();
@@ -291,8 +324,18 @@ __global__ void compute_c_kernel(const scalar_t *atoms, const int64_t *rows, con
                               h[(batch_begin + local) * atom_count + slot]
                         : 0;
             bool safe = false;
-            if constexpr (DotCompensated)
-                safe = prepare_cdot_chunk(coefficients, scaled_h, output.basis_count(), budget);
+            if constexpr (DotCompensated) {
+                if (*preflight == 0) {
+                    double maximum = 0;
+                    bool invalid = false;
+                    for (int a = 0; a < MAX_ACCUMULATORS; ++a) {
+                        invalid |= !isfinite(accum[a]);
+                        maximum = fmax(maximum, fabs(accum[a]));
+                    }
+                    safe = prepare_cdot_chunk(coefficients, scaled_h, output.basis_count(), budget,
+                                              maximum, invalid);
+                }
+            }
             __syncthreads();
             for (int work = lane, a = 0; work < elements; work += CHUNK, ++a) {
                 int batch = work / output.basis_count(), mode = work % output.basis_count();
@@ -321,12 +364,12 @@ __global__ void compute_c_kernel(const scalar_t *atoms, const int64_t *rows, con
 // lanes take the same branches and participate in every shared-memory barrier.
 template <typename scalar_t, typename projection_t, int FixedModes, bool Compensated = false,
           bool DotCompensated = false>
-__device__ void split_consume_range(const scalar_t *atoms, const int64_t *rows,
-                                    const projection_t *h, int atom_count, int batches, Axis output,
-                                    Bank bank, int owner, bool reverse, int batch_begin, int begin,
-                                    int end, int split_begin, int split_end, int &prefix,
-                                    double *coefficients, double *scaled_h,
-                                    double (&accum)[MAX_ACCUMULATORS], CdotBudget budget) {
+__device__ void
+split_consume_range(const scalar_t *atoms, const int64_t *rows, const projection_t *h,
+                    int atom_count, int batches, Axis output, Bank bank, int owner, bool reverse,
+                    int batch_begin, int begin, int end, int split_begin, int split_end,
+                    int &prefix, double *coefficients, double *scaled_h,
+                    double (&accum)[MAX_ACCUMULATORS], CdotBudget budget, const int *preflight) {
     int length = end - begin;
     int first = max(0, split_begin - prefix);
     int last = min(length, split_end - prefix);
@@ -354,8 +397,18 @@ __device__ void split_consume_range(const scalar_t *atoms, const int64_t *rows,
                           h[(batch_begin + local) * atom_count + slot]
                     : 0;
         bool safe = false;
-        if constexpr (DotCompensated)
-            safe = prepare_cdot_chunk(coefficients, scaled_h, output.basis_count(), budget);
+        if constexpr (DotCompensated) {
+            if (*preflight == 0) {
+                double maximum = 0;
+                bool invalid = false;
+                for (int a = 0; a < MAX_ACCUMULATORS; ++a) {
+                    invalid |= !isfinite(accum[a]);
+                    maximum = fmax(maximum, fabs(accum[a]));
+                }
+                safe = prepare_cdot_chunk(coefficients, scaled_h, output.basis_count(), budget,
+                                          maximum, invalid);
+            }
+        }
         __syncthreads();
         for (int work = lane, a = 0; work < elements; work += CHUNK, ++a) {
             int batch = work / output.basis_count(), mode = work % output.basis_count();
@@ -398,12 +451,12 @@ __device__ inline bool compatible_sigma_banks(const Axis &a, int ai, const Axis 
 
 template <typename scalar_t, typename projection_t, int FixedModes, bool Compensated = false,
           bool DotCompensated = false>
-__global__ void compute_c_split_kernel(const scalar_t *atoms, const int64_t *rows,
-                                       const int *groups, const int64_t *offsets,
-                                       const projection_t *h, SplitPages pages, int atom_count,
-                                       int group_count, int batches, Axis input, Axis output,
-                                       bool reverse, bool cartesian, int splits,
-                                       int atoms_per_split, CdotBudget budget) {
+__global__ void
+compute_c_split_kernel(const scalar_t *atoms, const int64_t *rows, const int *groups,
+                       const int64_t *offsets, const projection_t *h, SplitPages pages,
+                       int atom_count, int group_count, int batches, Axis input, Axis output,
+                       bool reverse, bool cartesian, int splits, int atoms_per_split,
+                       CdotBudget budget, const int *preflight) {
     extern __shared__ double shared[];
     double *coefficients = shared;
     double *scaled_h = shared + SHARED_STRIDE * output.basis_count();
@@ -443,7 +496,7 @@ __global__ void compute_c_split_kernel(const scalar_t *atoms, const int64_t *row
                                             DotCompensated>(
                             atoms, rows, h, atom_count, batches, output, bank, owner, reverse,
                             batch_begin, begin, end, split_begin, split_end, prefix, coefficients,
-                            scaled_h, accum, budget);
+                            scaled_h, accum, budget, preflight);
                 }
             }
         } else if (reverse) {
@@ -463,7 +516,7 @@ __global__ void compute_c_split_kernel(const scalar_t *atoms, const int64_t *row
                                             DotCompensated>(
                             atoms, rows, h, atom_count, batches, output, bank, owner, reverse,
                             batch_begin, begin, end, split_begin, split_end, prefix, coefficients,
-                            scaled_h, accum, budget);
+                            scaled_h, accum, budget, preflight);
                 }
             }
         } else {
@@ -486,10 +539,10 @@ __global__ void compute_c_split_kernel(const scalar_t *atoms, const int64_t *row
                     prefix += end - begin;
                 else
                     split_consume_range<scalar_t, projection_t, FixedModes, Compensated,
-                                        DotCompensated>(atoms, rows, h, atom_count, batches, output,
-                                                        bank, owner, reverse, batch_begin, begin,
-                                                        end, split_begin, split_end, prefix,
-                                                        coefficients, scaled_h, accum, budget);
+                                        DotCompensated>(
+                        atoms, rows, h, atom_count, batches, output, bank, owner, reverse,
+                        batch_begin, begin, end, split_begin, split_end, prefix, coefficients,
+                        scaled_h, accum, budget, preflight);
             }
         }
         if (pass == 0) {
@@ -946,7 +999,7 @@ reverse_cin_kernel(const atom_t *atoms, const int64_t *rows, const int *groups,
                    const double *zx, const double *zy, const projection_t *h, projection_t *g,
                    atom_t *gradient, SplitPages pages, int atom_count, int group_count, int batches,
                    Axis input, Axis output, int splits, int atoms_per_split, bool windowed,
-                   CdotBudget budget) {
+                   CdotBudget budget, const int *preflight) {
     static_assert(!Fused || !DotCompensated, "fused gradients keep FP64 C dots");
     int node = blockIdx.x, lane = threadIdx.x;
     int bank_index = 0;
@@ -1015,8 +1068,18 @@ reverse_cin_kernel(const atom_t *atoms, const int64_t *rows, const int *groups,
                 scaled_g[b * SHARED_STRIDE + lane] = 0;
         }
         bool safe = false;
-        if constexpr (DotCompensated)
-            safe = prepare_cdot_chunk(coefficients, scaled_g, input.basis_count(), budget);
+        if constexpr (DotCompensated) {
+            if (*preflight == 0) {
+                double maximum = 0;
+                bool invalid = false;
+                for (int work = lane; work < elements; work += CHUNK) {
+                    invalid |= !isfinite(totals[work]);
+                    maximum = fmax(maximum, fabs(totals[work]));
+                }
+                safe = prepare_cdot_chunk(coefficients, scaled_g, input.basis_count(), budget,
+                                          maximum, invalid);
+            }
+        }
         __syncthreads();
         for (int work = lane; work < elements; work += CHUNK) {
             int batch = work / input.basis_count(), mode = work % input.basis_count();
@@ -1187,6 +1250,10 @@ torch::Tensor compute_c(torch::Tensor atoms, torch::Tensor rows, torch::Tensor g
                             ? cdot_budget(atoms.size(0), 1, 0, output, input.bank_count, reverse)
                             : CdotBudget{};
     auto stream = c10::cuda::getCurrentCUDAStream();
+    torch::Tensor preflight_flag;
+    if (compensated_cdot)
+        preflight_flag = make_cdot_preflight(atoms, rows, h, stream);
+    const int *preflight = compensated_cdot ? preflight_flag.data_ptr<int>() : nullptr;
     AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "hierarchical_compute_c_atoms", [&] {
         using atom_t = scalar_t;
         AT_DISPATCH_FLOATING_TYPES(h.scalar_type(), "hierarchical_compute_c_storage", [&] {
@@ -1198,7 +1265,8 @@ torch::Tensor compute_c(torch::Tensor atoms, torch::Tensor rows, torch::Tensor g
                     <<<grid, CHUNK, shared, stream>>>(
                         atoms.data_ptr<atom_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
                         offsets.data_ptr<int64_t>(), h.data_ptr<scalar_t>(), c.data_ptr<double>(),
-                        atoms.size(0), groups.size(0), h.size(0), input, output, reverse, budget);
+                        atoms.size(0), groups.size(0), h.size(0), input, output, reverse, budget,
+                        preflight);
             };
             if constexpr (std::is_same_v<atom_t, float> && std::is_same_v<scalar_t, float>) {
                 if (compensated_cdot) {
@@ -1279,6 +1347,10 @@ torch::Tensor compute_c_split(torch::Tensor atoms, torch::Tensor rows, torch::Te
                                                        output, input.bank_count, reverse)
                                          : CdotBudget{};
     auto stream = c10::cuda::getCurrentCUDAStream();
+    torch::Tensor preflight_flag;
+    if (compensated_cdot)
+        preflight_flag = make_cdot_preflight(atoms, rows, h, stream);
+    const int *preflight = compensated_cdot ? preflight_flag.data_ptr<int>() : nullptr;
     AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "hierarchical_split_c_atoms", [&] {
         using atom_t = scalar_t;
         AT_DISPATCH_FLOATING_TYPES(h.scalar_type(), "hierarchical_split_c_storage", [&] {
@@ -1291,7 +1363,7 @@ torch::Tensor compute_c_split(torch::Tensor atoms, torch::Tensor rows, torch::Te
                         atoms.data_ptr<atom_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
                         offsets.data_ptr<int64_t>(), h.data_ptr<scalar_t>(), pages, atoms.size(0),
                         groups.size(0), h.size(0), input, output, reverse, cartesian, splits,
-                        atoms_per_split, budget);
+                        atoms_per_split, budget, preflight);
             };
             if constexpr (std::is_same_v<atom_t, float> && std::is_same_v<scalar_t, float>) {
                 if (compensated_cdot) {
@@ -1540,6 +1612,10 @@ static std::vector<torch::Tensor> compute_reverse_cin_impl(
                             ? cdot_budget(atoms.size(0), splits, atoms_per_split, input, 1, false)
                             : CdotBudget{};
     auto stream = c10::cuda::getCurrentCUDAStream();
+    torch::Tensor preflight_flag;
+    if (compensated_cdot)
+        preflight_flag = make_cdot_preflight(atoms, rows, h, stream);
+    const int *preflight = compensated_cdot ? preflight_flag.data_ptr<int>() : nullptr;
     AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "hierarchical_reverse_cin_atoms", [&] {
         using atom_t = scalar_t;
         AT_DISPATCH_FLOATING_TYPES(h.scalar_type(), "hierarchical_reverse_cin_projection", [&] {
@@ -1558,7 +1634,7 @@ static std::vector<torch::Tensor> compute_reverse_cin_impl(
                         Fused ? g.data_ptr<scalar_t>() : nullptr,
                         Fused ? gradient.data_ptr<atom_t>() : nullptr, pages, atoms.size(0),
                         Fused ? groups.size(0) : 0, h.size(0), input, output, splits,
-                        atoms_per_split, windowed, budget);
+                        atoms_per_split, windowed, budget, preflight);
             };
             if constexpr (!Fused && std::is_same_v<atom_t, float> &&
                           std::is_same_v<scalar_t, float>) {

@@ -2584,7 +2584,7 @@ def test_guarded_cdot_three_step_adamw_matches_fft(reverse):
 
 @cuda_only
 @pytest.mark.parametrize("side", ["output", "input"])
-@pytest.mark.parametrize("kind", ["large_cancel", "tiny", "mixed"])
+@pytest.mark.parametrize("kind", ["large_cancel", "tiny", "mixed", "bounded_mixed"])
 def test_guarded_cdot_unsafe_and_mixed_chunks_match_double(side, kind):
     from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
         compute_c,
@@ -2606,10 +2606,14 @@ def test_guarded_cdot_unsafe_and_mixed_chunks_match_double(side, kind):
         h.fill_(1e-35)
     elif kind == "mixed":
         h[:, 32:] = torch.linspace(-0.1, 0.1, 32, device="cuda")
+    elif kind == "bounded_mixed":
+        h[:, :32:2] = 8
+        h[:, 1:32:2] = -8
+        h[:, 32:] = torch.linspace(-0.1, 0.1, 32, device="cuda")
     fn = compute_c if side == "output" else compute_input_c
     baseline = fn(plan, atoms, layout, h, splits=1, compensated_cdot=False)
     candidate = fn(plan, atoms, layout, h, splits=1, compensated_cdot=True)
-    if kind != "mixed":
+    if kind in ("large_cancel", "tiny"):
         # Every nonempty chunk must take the original FP64 dot path.
         torch.testing.assert_close(candidate, baseline, rtol=0, atol=0)
     else:
@@ -2621,6 +2625,66 @@ def test_guarded_cdot_unsafe_and_mixed_chunks_match_double(side, kind):
             rtol=3e-6,
             atol=2e-7,
         )
+
+
+@cuda_only
+@pytest.mark.parametrize("side", ["output", "input"])
+@pytest.mark.parametrize("large_location", ["amplitude", "projection"])
+@pytest.mark.parametrize("splits", [1, 7])
+def test_guarded_cdot_global_preflight_falls_back_for_entire_call(
+    side, large_location, splits
+):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        compute_c,
+        compute_input_c,
+        expand_c,
+        prepare_layout,
+    )
+
+    # Same owner/profile and a huge-small-huge order reproduce the case where
+    # allowing individual small chunks after a large prefix changes FP64 sums.
+    # The old double route is the comparator; this adversarial cancellation is
+    # not required to satisfy the independent FFT tolerance itself.
+    axis = AxisPlan(site_count=128, min_tile_sites=8)
+    plan = HierarchyPlan(input=axis, output=axis)
+    count = 2048
+    huge = float(torch.tensor(1e12, dtype=torch.float32))
+    ulp = math.nextafter(huge / 24, math.inf) - huge / 24
+    low = float(torch.tensor(0.49 * ulp * 24, dtype=torch.float32))
+    high = float(torch.tensor(0.52 * ulp * 24, dtype=torch.float32))
+    values = torch.zeros(count, dtype=torch.float32)
+    values[0], values[1024] = huge, -huge
+    for chunk in range(1, 32):
+        n_high = 17 if chunk <= 5 else 16
+        values[chunk * 32 : chunk * 32 + n_high] = high
+        values[chunk * 32 + n_high : (chunk + 1) * 32] = low
+    source = torch.zeros(count, 4, dtype=torch.float32)
+    source[:, 0] = values if large_location == "amplitude" else 1
+    source[:, 1] = 4
+    source[:, 2:] = 0
+    atoms = source.cuda()
+    layout = prepare_layout(
+        plan,
+        atoms,
+        method="counting" if side == "input" else "sort",
+        reverse=side == "input",
+    )
+    original_projection = (
+        values if large_location == "projection" else torch.ones(count)
+    )
+    projection = original_projection.cuda()[layout.rows].expand(2, -1).contiguous()
+    fn = compute_c if side == "output" else compute_input_c
+    baseline = fn(
+        plan, atoms, layout, projection, splits=splits, compensated_cdot=False
+    )
+    candidate = fn(
+        plan, atoms, layout, projection, splits=splits, compensated_cdot=True
+    )
+    torch.testing.assert_close(candidate, baseline, rtol=0, atol=0)
+    like = torch.empty(2, axis.site_count, device="cuda")
+    torch.testing.assert_close(
+        expand_c(candidate, axis, like), expand_c(baseline, axis, like), rtol=0, atol=0
+    )
 
 
 @cuda_only
