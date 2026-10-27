@@ -101,3 +101,36 @@ def values(spec, displacement, sigma, period):
         )
         h_value = (torch.cos(angle[..., None] * k) * h).sum(-1)
     return h_value.square()
+
+
+def chebyshev_square_coefficient(spec, sigma, period, harmonic):
+    """One exact native coefficient, using a positive scalar polynomial.
+
+    This is a CPU-verifiable counterpart of the cell-mass CUDA optimization.
+    The existing FFT/convolution reference above is deliberately unchanged.
+    Sigma differentiation here uses Torch autograd, independently of the CUDA
+    function's explicitly propagated scalar derivative.
+    """
+    if type(spec) is not ChebyshevSquareSpec:
+        raise TypeError("positive coefficient polynomial requires ChebyshevSquareSpec")
+    m = spec.modes
+    if type(harmonic) is not int or not 0 <= harmonic <= m:
+        raise ValueError("harmonic must be an integer in [0,modes]")
+    k = harmonic
+    radius = effective_radius(spec, sigma, period)
+    beta = (math.pi * radius / period).cos().reciprocal()
+    x = beta.square()
+    t = x - 1
+    if k == m:
+        value = 0.5 * x.pow(m)
+    else:
+        term = (m + k) * t
+        total = term
+        for j in range(1, m - k):
+            term = term * ((m - k - j) * (m + k + j) / (j * (j + 1))) * t
+            total = total + term
+        value = (m / (m + k)) * x.pow(k) * total
+    if k == 0:
+        value = value + 1
+    denominator = (m * beta.acosh()).cosh()
+    return value / (2 * denominator.square())

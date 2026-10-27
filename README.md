@@ -91,6 +91,15 @@ The complete product is L2-normalized over all operator sites with one norm floo
 Torch materialized/factored execution is available; this adds no CUDA performance claim.
 See the [API and mathematical contract](docs/profile-product.ja.md).
 
+`NormalizationSpec(kind="continuous_mass", domain="profile_support")` declares
+the research rule of dividing a nonnegative density by its full-support integral,
+without a floor. Existing point-sampled profile bindings and profile-product presets
+reject this rule. A separate, explicit Chebyshev-square cell-integral reference and
+CUDA research entry now provide the first numeric implementation; they are not
+connected to public `CSTLinear` dispatch or old Polar checkpoints. See the
+[cell-integrated profile design](docs/cell-integrated-profile.ja.md) and
+[tile-window approximation and execution](docs/cell-mass-tile-window.ja.md).
+
 `QuadraticBSplineSpec()` declares the peak-one C1 quadratic B-spline with
 curvature width sigma and support radius `sqrt(6) * sigma`. Use it in
 `profiles=(QuadraticBSplineSpec(),) * D` with the existing profile-product
