@@ -758,7 +758,7 @@ runtime `e1a2caab`、job `l4job-3d4ee26009d34c4495de66fe7eceafc0`。
 値のコピーやatomごとの係数表は作らず、元のatom行番号とgroup範囲だけを保持する。
 128 fixtureではfull countingの1769 groupに対して849 groupとなる。
 空groupも含むため、非空groupだけのsort配置224 groupとは異なる。
-この版は逆方向indexに未対応で、`reverse_layout=True`との組み合わせを拒否する。
+この初版は逆方向indexに未対応で、`reverse_layout=True`との組み合わせを拒否する。
 
 | 128の配置、C積和は従来Double | 完全step | allocated | reserved |
 | --- | ---: | ---: | ---: |
@@ -786,7 +786,12 @@ CPU反例も見つかった。DC成分単独の反例と、全Yが旧経路だ�
 既存累積の大きさを含めた。非同期GPU上の1word flagを使い、host同期を増やさない。
 この閾値は数値計算方式の選択でありsigmaを制限するものではない。
 guardは工学的な判定であり、任意入力に対する誤差保証を証明したとは主張しない。
-後続版の独立gate・完全step結果は回収後に記録する。
+後続版job `l4job-d404ca089de64eafb5cba71d9065b1c3`はColab実行経路が1740秒で
+timeoutし、検証済みresult archiveを回収できなかった。精度・速度・peakの判断から除外する。
+poolの所有VM停止・server割当なしを確認し、正式recover後に次の検証へ進んだ。
+source `1dd22ae0448f291b09949521275e26bcc6ffad6916b991ec16c38210cdbe2dbe`と
+spec/transport logはignored `output/cell-mass-opt-20261027/cdot-preflight-interrupted/`へ保存した。
+timeoutの原因をCUDA kernelやcompileに断定できるログはなく、そうした主張もしない。
 
 初版jobは通常2487 passed / failed0 / skip12、選択したracecheck12件・hazard0。
 128全819atomと1024全52,428atomのY/dX/全4列勾配は独立FFT/autograd oracleへ通過した。
@@ -825,6 +830,27 @@ CPUの対応owner全件の整数検算と31 passed / 683 skippedを通過した�
 両配布物のruntime338ファイルのbyte照合も通過した。CUDA compileの代用にはしない。
 後続driverでは、非計装step/両peakとは別区間でhost呼び出しのprofileも保存する。
 profileに含まれる`.item()`等の待ち時間をCPUの演算時間と断定しない。
+
+### 最適化第16段：compact配置の逆方向index（GPU未検証）
+
+runtime `fca04158`。`counting_compact`でも`reverse_layout=True`を許可する。
+互換bank pairの開始group番号を使い、input ownerごとに該当output bank/ownerをたどる。
+group内の順位は既存のscatterでforward slotと対応づけ、既存のreverse Cinを再利用する。
+reverse=Falseの配置・allocations・kernel列は維持する。atom値をコピーしない。
+
+128/A819では保持する`reverse_slots[int32,A]`が3,276B、
+`reverse_offsets[int64,input_nodes+1]`が496B。準備中だけの
+`reverse_group_base[int32,G]`3,396Bも含めると追加論理量は7,168Bである。
+これは実測peakではない。512B丸めを仮定すると追加7,680Bとなり、
+第13段のcompactとdenseの差に等しいため、既存表のpeakへ単純加算して採用判断しない。
+準備とbackwardのallocation共存、C splitページ、reservedの再利用を含む完全stepで確認する。
+
+CPUモデルは1200のdyadic軸設定で、逆slotの一対一対応とowner/group順を照合した。
+CUDA検査にはFP32/64・空atom・異なる軸長・full-chart-only・sigma境界、
+保存buffer mutationとretained backward、S1/S7・grain0/32/128の独立FFT full routeを追加した。
+CPU実行は31 passed / 714 skippedであり、追加CUDA検査は未実行である。
+全CPU suiteは2037 passed / 5278 skipped / 既存警告18件、wheel/sdist buildと
+runtime338ファイルのbyte照合も通過した。
 
 ### 第12段までの再確認：完全stepと1024のAdamW状態
 

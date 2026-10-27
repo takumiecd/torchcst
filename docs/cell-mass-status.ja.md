@@ -57,9 +57,12 @@ full countingは285,184Bとなるため、この128条件ではメモリ条件�
 
 C積和自体の補償は1024で1.418197→1.585851msと悪化し、採用しない。
 初版chunk guardには大きなDouble累積との相殺を見落とす反例があり、初版を根拠にしない。
-後続`adf3908b`のC全体fallbackと、`7f337e80`のG/Parameter勾配の多項式補償はGPU検証中。
+後続`adf3908b`のC全体fallback検証は実行経路のtimeoutで結果未回収となり、判断から除外した。
+所有GPU停止を確認して共有poolをrecoverし、`7f337e80`のG/Parameter勾配の多項式補償を検証中。
 両方とも既定Falseで、sigma・周期・二分階層・面積正規化を変えない。
-追加job/source/result hashと検証範囲は[正本の第13・14段](cell-mass-kernel-flow.ja.md#最適化第13段互換bank-pairのcountingとc積和の負の結果)に記録する。
+`fca04158`ではcompact配置にも逆方向indexを追加した。追加索引は保持3,772B、準備中の一時分を
+含めて論理7,168Bであり、dense以下の実測peakを確認するまでは採用しない。
+追加job/source/result hashと検証範囲は[正本の第13〜16段](cell-mass-kernel-flow.ja.md#最適化第13段互換bank-pairのcountingとc積和の負の結果)に記録する。
 
 以下は別の幅分布・周期を使う固定bank版の記録である。
 
