@@ -968,7 +968,7 @@ Coutは2,019,328→461,856B。新しいcounts/prefixは各492B/236Bである。
 job `l4job-6004f86d063f4a009803a5509c49be59`で、通常2613 passed/12 skipped、
 複数active split・sort/counting/compactとretained backwardのracecheck4件/hazard0を確認した。
 全819/52,428atomのY/dX/全4列勾配をCPU FFT/autogradへ照合し、全9設定で通過した。
-1024の最大絶対差はY1.7711e-8、dX1.9916e-8、atom勾配2.7011e-8。
+1024の最大絶対差はY1.7711e-8、dX1.9915e-8、atom勾配2.7011e-8。
 rtol3e-6/atol2e-7は緩めていない。初回jobはoptimizer更新後の独立照合を含まない。
 
 | 1024の同条件比較 | 従来完全step | ragged完全step | 従来 / ragged allocated | 従来 / ragged reserved |
@@ -981,7 +981,7 @@ rtol3e-6/atol2e-7は緩めていない。初回jobはoptimizer更新後の独立
 各設定1 fresh process、warm5/同期wall21。matched dense1024は0.669952ms、
 16,843,264B/22MiB。128は既存設定だけを維持し0.852024ms、263,168B/2MiB、
 matched dense128は0.669300ms、270,848B/2MiBだった。
-全9設定で同process条件のdense以下のallocated/reservedをassertし、step.jsonから再計算した。
+全9設定で同jobのdense以下のallocated/reservedをassertし、step.jsonから再計算した。
 S128/H/C融合では約4.9%短縮・allocated約37.4%減となったが、独立再確認前の初回結果である。
 最終目標のdenseの時間半分は未達。
 
@@ -995,6 +995,62 @@ raw/archive/spec/receiptはignored `output/cell-mass-opt-20261027/ragged-active-
 所有runtime停止・pool recover後に再投入した。未回収の試行を精度・性能根拠に含めない。
 
 ### 最新の再確認と検証済み研究設定
+
+runtime `e4370477` / 文書込みsnapshot `2054143d`。
+job `l4job-8ac49377a31246e3888e4574f5a9dcfe`で、S128/grain64・H/C融合の
+ragged有無を各2 fresh process、2巡目の順番を逆転して比較した。
+検査/prepare/forward/全backward/fused AdamWを含み、warm5/同期wall21、TF32/Graph/workspaceなし。
+固定B4/FP32/M8/tail1e-3/Q128、物理T_min入力4/出力8、A=floor(.05*N*N)、seed120、
+sigma linspace(.2,40)を維持した。atoms/X/dY/初期dense Wは初回jobとbit一致した。
+
+| 設定 | 完全step（2 process） | allocated | reserved |
+| --- | ---: | ---: | ---: |
+| 128、既存compact、逆indexなし、Double値/勾配 | 0.872569 / 0.878817ms | 257KiB | 2MiB |
+| matched dense128 | 0.690231 / 0.713909ms | 264.5KiB | 2MiB |
+| 1024、S128/grain64・H/C融合、通常部分和 | 1.228739 / 1.242684ms | 9.602MiB | 12MiB |
+| 同上、ragged部分和 | 1.160396 / 1.164707ms | 6.007MiB | 8MiB |
+| matched dense1024 | 0.693952 / 0.698604ms | 16.063MiB | 22MiB |
+
+raggedは完全stepを約5.6/6.3%短縮し、allocatedを10,067,968→6,299,136B、約37.4%減らした。
+128の実行設定は変更しない。全6 memory gateで同repeatのdense以下のallocated/reservedを
+step.jsonから独立に再計算した。1024はdense比約1.67の時間で、
+**最終目標のdenseの2倍の速度＝時間半分は未達**である。
+Torch allocator peakをGPU process全体の使用量とは扱わない。
+
+全819/52,428atomを3step更新し、各stepの更新済み参照Parameterから独立CPU FFT/autogradで
+Y/dX/4列勾配を再計算した。FP32 rtol3e-6/atol2e-7、Parameter rtol2e-6/atol2e-7、
+AdamW moments/step rtol4e-6/atol2e-8を全stepで通過した。
+1024の最大勾配絶対差は3.1573e-8、最大Parameter差1.5259e-5は許容差内でありbit一致ではない。
+1024の3step gateはragged=True/HC=Trueだけで、HC=Falseや他splitへ一般化しない。
+通常2613件/racecheck4件は直前の初回jobを根拠にし、確認jobで繰り返したとは扱わない。
+
+```python
+settings128 = dict(
+    c_splits=2, fuse_g_grad=True, layout_method="counting_compact",
+    z_chunk_sites=0, atom_threads=128, window_moments=False,
+    reverse_layout=False, fuse_h_c=False, fuse_backward_cin=False,
+    compensated_values=False, compensated_grad=False,
+    reuse_shape_coefficients=False, compensated_cdot=False, ragged_c_splits=False,
+)
+settings1024 = dict(
+    c_splits=128, fuse_g_grad=True, layout_method="counting_compact",
+    z_chunk_sites=32, atom_threads=64, window_moments=True,
+    reverse_layout=True, atoms_per_split=64,
+    compensated_values=True, compensated_grad=True,
+    reuse_shape_coefficients=True, specialize_g_grad=True,
+    fuse_h_c=True, fuse_backward_cin=False, compensated_cdot=False,
+    ragged_c_splits=True,
+)
+```
+
+このfixtureの1024研究設定にraggedを選ぶ。公開dispatcherと研究APIの既定値は変更しない。
+全CPU2037 passed/5342 skipped/既存警告18件、Ruff/format/build、両配布物338runtime照合は通過した。
+確認snapshotのruntime338・検査141、manifest43、driver/binary、fixture bit一致を照合し、
+ignored `output/cell-mass-opt-20261027/ragged-confirmation/`にraw/archive/spec/receiptを保全した。
+source `cb8ab5a447d04982f1dade12d7e22cba78e824e162a765341cf3b74c48aa5845`、result `828254f5aa210735078d0f96fb0a35f1c30a3381133743065b16835f66530344`、driver `fd1b371d5787f1e301cc199895bcdb6d172531d01feba7dc24bb281430d0ec60`、binary `7d50b94353bf7dd3ec2337216833d3d517353c80908af744247196e03f73963f`。
+共有poolのsucceeded・全slot停止・supervisor終了を確認した。
+
+### 前回の再確認：S128の通常部分和
 
 runtime `8bc27c2e` / 文書込みsnapshot `9e2c7204`。
 job `l4job-cff5845718a6411fb10fb629b66ca143`で各設定2 fresh process、2巡目は順番を逆転した。
@@ -1212,7 +1268,7 @@ CPU全体2037 passed / 4751 skipped / 既存警告18件（44.17秒）。
 Ruff・format・差分検査・wheel/sdist buildを通過し、packageの337ファイルをsourceへbyte照合した。
 
 1024/B4/A52,428でも全atom4列を512atomずつ独立FFTセル積分参照へ再照合し、PASS。
-最大絶対誤差はY=1.7711e-8、dX=1.9916e-8、全atom勾配=2.7011e-8。
+最大絶対誤差はY=1.7711e-8、dX=1.9915e-8、全atom勾配=2.7011e-8。
 許容差は前段と同じFP32 rtol3e-6/atol2e-7である。1024のoptimizer状態の独立比較は未実施、
 128の全atom/AdamW状態比較は再通過した。
 

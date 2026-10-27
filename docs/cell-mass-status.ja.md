@@ -14,55 +14,54 @@ Zは2子ずつの階層、Rは同じ階層の3タイルを合算したH/G用の�
 任意でM8の多項式の値とbeta微分だけをFP32の2数表現で評価する。
 atom値のコピー、全atom係数表、密W/dWは作らない。
 
-runtime `8bc27c2e` / snapshot `9e2c7204`で、compact配置とG/勾配の再利用を検証した。
+runtime `e4370477` / snapshot `2054143d`で、有効なC部分和だけを保存する任意経路を検証した。
+ownerのatom数からactive splitを求め、device prefixで詰めた`[task,batch,mode]`へ書く。
+atomの担当範囲と加算順を維持し、空ownerの部分和は作らない。
+
 各設定2 fresh process、2巡目は測定順を逆転した完全stepの再確認は次の通り。
 
 | 条件 | 完全step（2 process） | allocated CST / dense | reserved CST / dense |
 | --- | ---: | ---: | ---: |
-| 128、compact・逆indexなし・Double値/勾配 | 0.853524 / 0.842994ms | 257 / 264.5KiB | 2 / 2MiB |
-| matched dense128 | 0.730834 / 0.694958ms | — | — |
-| 1024、S128/grain64・compact逆index・H/C融合・shared再利用 | 1.233614 / 1.232073ms | 9.602 / 16.063MiB | 12 / 22MiB |
-| matched dense1024 | 0.695166 / 0.684253ms | — | — |
+| 128、既存compact・逆indexなし・Double値/勾配 | 0.872569 / 0.878817ms | 257 / 264.5KiB | 2 / 2MiB |
+| matched dense128 | 0.690231 / 0.713909ms | — | — |
+| 1024、S128/grain64・H/C融合、通常部分和 | 1.228739 / 1.242684ms | 9.602 / 16.063MiB | 12 / 22MiB |
+| 同上、ragged部分和 | 1.160396 / 1.164707ms | 6.007 / 16.063MiB | 8 / 22MiB |
+| matched dense1024 | 0.693952 / 0.698604ms | — | — |
 
-検査/prepare/forward/backward/fused AdamWを含む完全layer step。
+検査/prepare/forward/全backward/fused AdamWを含む完全layer step。
 B4/FP32/M8/tail1e-3/Q128、A=floor(.05*N²)、初期sigma linspace(.2,40)、seed120、
 物理入力T_min4・出力8。TF32/Graph/workspaceなし、warm5/同期wall21。
-全10 memory gateで同repeatのdense以下のallocated/reservedをassertした。
-1024の時間比は約1.77/1.80で、中間目安の時間2倍以内を両方で確認した。
-**最終目標のdenseの2倍の速度＝時間半分は未達**であり、最適化を続ける。
+全6 memory gateを同repeatのdenseと比較し、step.jsonから独立に再計算した。
+1024は同設定の従来経路より約5.6/6.3%短縮、allocatedは10,067,968→6,299,136B、約37.4%減。
+dense比約1.67の時間で、**最終目標のdenseの2倍の速度＝時間半分は未達**である。
+上表はTorch allocator peakで、GPU process全体の使用量ではない。
 
-全819/52,428atomを3step更新し、毎stepの参照Parameterから独立CPU FFT/autogradで
-Y/dX/4列勾配を再計算した。FP32 rtol3e-6/atol2e-7、Parameter rtol2e-6/atol2e-7、
-AdamW moments/step rtol4e-6/atol2e-8で全step通過した。1024の最大Parameter差1.5259e-5は
-相対・絶対許容差内でありbit一致ではない。fixture atoms/X/dY/初期Wは先行jobとbit一致した。
+全819/52,428atomを3step更新し、各stepの更新済み参照Parameterから独立CPU FFT/autogradで
+Y/dX/全4列勾配を計算し直した。FP32 rtol3e-6/atol2e-7、Parameter rtol2e-6/atol2e-7、
+AdamW moments/step rtol4e-6/atol2e-8を維持して全stepを通過した。
+1024の最大勾配絶対差3.1573e-8、最大Parameter差1.5259e-5は許容差内でありbit一致ではない。
+1024の全3stepはragged=True・HC=Trueだけの検証である。
+fixture atoms/X/dY/初期Wは初回jobとbit一致した。
 
-先行GPU suite2580 passed/12 skipped、選択racecheck12件・hazard0、全fixture gateも通過。
-確認jobではsuiteを再実行せず、全atom optimizer・完全step・両peakを確認した。
-compile metadataでは補償G/勾配にshared再利用を加えるとREG255→218、dynamic sharedは8192B。
-別Graph-event診断は0.306176→0.282624ms。指標だけで因果やoccupancyを断定しない。
-1024の幅shape再利用対象は47,422atom、約90.45%。sigmaが一定のfixtureではない。
+初回GPU suite2613 passed/12 skipped、選択racecheck4件・hazard0、
+全819/52,428atomの独立Y/dX/4列勾配の全9設定、全9memory gateを確認した。
+確認jobではsuiteを繰り返さず、全atom optimizer・完全step・両peakを確認した。
+全CPU2037 passed/5342 skipped/既存警告18件、Ruff/format/buildと両配布物338runtime byte照合は通過。
+GPU検証の代用にはしない。PR head a2fbe377のCPU Actionsも通過した。
 
-128の逆indexはメモリを4KiB増やし、再利用なしcompactより速くなかったため選ばない。
-1024はcompact逆index・補償多項式の値/微分・shared再利用を明示kwargsで選ぶ。
-Cinは分離する。H/C融合の小差は順序で逆転し、融合の普遍的な優位とはしない。
-今回の全3stepはH/C融合ありだけを確認した。旧H/C融合、G/勾配/Cin融合、Cdotの負の結果も残す。
-公開dispatcherや研究APIの既定値は変えない。
+128は既存設定を維持する。1024はcompact逆index・補償多項式値/勾配・shared shape再利用、
+S128/grain64・H/C融合に`ragged_c_splits=True`を加える。
+FP32/M8/tail1e-3・正のgrain・逆indexに限定し、Cinは分離する。
+公開dispatcherと研究APIの既定値は変更しない。詳細なkwargsは正本に置く。
+H/C融合だけの普遍的な優位は主張しない。旧H/C融合・G/勾配/Cin融合・Cdotの負の結果も残す。
 
-このsourceは、既存64 pointerのpage容量内でC splitを256まで許す。
-1024のS128/grain64は分離1.234461ms、H/C融合1.215154ms、dense0.677338ms。
-allocated10,067,968B/reserved12MiBでdense16,843,264B/22MiB以下だった。
-S256はより多くのメモリを使ったが、S128より遅かった。128はS2を維持する。
-通常2580 passed/12 skipped、選択racecheck12件/hazard0、全fixture Y/dX/4列勾配を通過。
-job `l4job-cff5845718a6411fb10fb629b66ca143`で独立再確認し、上の表へ反映した。
-分離版の全3stepはこのjobの検証範囲に含めない。
-全CPU2037 passed/5309 skipped/既存警告18件、build/両配布物338runtime byte照合は通過した。
-これらをGPU検証の代用にはしない。
-
-数式・配列寿命・選択kwargs・負の結果・全hashは[設計の正本](cell-mass-kernel-flow.ja.md)。
-再確認job `l4job-cff5845718a6411fb10fb629b66ca143`、source/results/spec/receiptは
-ignored `output/cell-mass-opt-20261027/expanded-split-confirmation/`へ保全した。
-Cdot guard再検証の未回収jobは性能根拠から除外した。公開CSTLinear/dispatcher、二階微分、
-全体Graph学習は未接続。上表はTorch allocator peakで、GPU process全体の使用量ではない。
+数式・配列寿命・選択kwargs・全履歴・hashは[設計の正本](cell-mass-kernel-flow.ja.md)。
+初回job `l4job-6004f86d063f4a009803a5509c49be59`、確認job `l4job-8ac49377a31246e3888e4574f5a9dcfe`。
+runtime338・検査141・manifest各50/43・driver/binary・fixture bit一致を照合し、
+source/results/spec/receiptをignored `output/cell-mass-opt-20261027/ragged-active-c/`と
+`ragged-confirmation/`へ保全した。所有GPUの停止とsupervisor終了を確認した。
+接続503で中断した追加試行03dfde6eは結果から除外し、pool recover後の確認jobだけを採用した。
+公開CSTLinear/dispatcher、二階微分、全体Graph学習は未接続。
 以下は別の幅分布・周期を使う固定bank版の記録である。
 
 ## 固定bank版：係数・微分のHorner評価とsigma分布
