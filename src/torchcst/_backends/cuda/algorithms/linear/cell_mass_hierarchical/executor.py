@@ -103,7 +103,7 @@ def prepare_layout(plan, atoms, *, method="sort", signal=None, reverse=False):
     The sort method retains only nonempty groups in stable order. Counting
     retains the complete Cartesian group table (at most 4096), including empty
     ranges. Compact counting retains only compatible bank pairs, also with
-    fixed empty ranges; it currently has no reverse index. Counting methods
+    fixed empty ranges. Both counting methods support reverse indices and
     do not promise stable order within a group. No method
     copies atom values from the original Parameter or retains all atom keys.
     Width/finite rejection reads one error word. Sort/unique has dynamic output
@@ -111,7 +111,7 @@ def prepare_layout(plan, atoms, *, method="sort", signal=None, reverse=False):
     """
     if type(reverse) is not bool:
         raise ValueError("reverse must be bool")
-    if reverse and method != "counting":
+    if reverse and method not in ("counting", "counting_compact"):
         raise ValueError("reverse layout requires counting preparation")
     if method not in ("sort", "counting", "counting_compact"):
         raise ValueError("layout method must be sort, counting or counting_compact")
@@ -142,7 +142,17 @@ def prepare_layout(plan, atoms, *, method="sort", signal=None, reverse=False):
     input_config = plan.input.native_config()
     output_config = plan.output.native_config()
     if method == "counting_compact":
-        if signal is None:
+        if reverse:
+            if signal is None:
+                result = native.prepare_compact_layout_reverse(
+                    atoms, input_config, output_config
+                )
+            else:
+                result = native.prepare_compact_layout_reverse_signal(
+                    atoms, signal, input_config, output_config
+                )
+            rows, groups, offsets, errors, reverse_slots, reverse_offsets = result
+        elif signal is None:
             rows, groups, offsets, errors = native.prepare_compact_layout(
                 atoms, input_config, output_config
             )
@@ -970,7 +980,11 @@ def hierarchical_linear(
         reverse_layout or (layout is not None and layout.has_reverse)
     ):
         raise ValueError("atoms_per_split requires a reverse layout")
-    if reverse_layout and layout is None and layout_method != "counting":
+    if (
+        reverse_layout
+        and layout is None
+        and layout_method not in ("counting", "counting_compact")
+    ):
         raise ValueError("reverse layout requires counting preparation")
     if reverse_layout and layout is not None and not layout.has_reverse:
         raise ValueError("cached layout lacks reverse indices; rebuild it")

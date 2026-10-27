@@ -333,6 +333,80 @@ __global__ void prefix_reverse_groups_kernel(const int *counts, int *reverse_gro
         reverse_offsets[input.node_count] = node_prefix[input.node_count - 1];
 }
 
+// Compact pairs retain the same group order, but omit impossible pairs.
+__global__ void prefix_compact_reverse_groups_kernel(const int *counts, int *reverse_group_base,
+                                                     int64_t *reverse_offsets, Axis input,
+                                                     Axis output, CompactPairs pairs) {
+    constexpr int SCAN_THREADS = 256;
+    constexpr int MAX_INPUT_NODES = 2048;
+    constexpr int ITEMS = MAX_INPUT_NODES / SCAN_THREADS;
+    __shared__ int node_prefix[MAX_INPUT_NODES];
+    int tid = threadIdx.x;
+    for (int item = 0; item < ITEMS; ++item) {
+        int node = tid + item * SCAN_THREADS;
+        int count = 0;
+        if (node < input.node_count) {
+            int bank_index = 0;
+            while (bank_index + 1 < input.bank_count &&
+                   node >= input.banks[bank_index + 1].node_offset)
+                ++bank_index;
+            Bank bank = input.banks[bank_index];
+            int owner = node - bank.node_offset;
+            for (int range = 0; range < output.bank_count; ++range) {
+                Bank other = output.banks[range];
+                int pair_base = pairs.base[range * MAX_BANKS + bank_index];
+                if (pair_base < 0)
+                    continue;
+                int first = pair_base + owner;
+                for (int other_owner = 0; other_owner < other.tile_count; ++other_owner) {
+                    int group = first + other_owner * bank.tile_count;
+                    reverse_group_base[group] = count;
+                    count += counts[group];
+                }
+            }
+        }
+        node_prefix[node] = count;
+    }
+    __syncthreads();
+    for (int stride = 1; stride < MAX_INPUT_NODES; stride *= 2) {
+        int add[ITEMS];
+        for (int item = 0; item < ITEMS; ++item) {
+            int node = tid + item * SCAN_THREADS;
+            add[item] = node >= stride ? node_prefix[node - stride] : 0;
+        }
+        __syncthreads();
+        for (int item = 0; item < ITEMS; ++item)
+            node_prefix[tid + item * SCAN_THREADS] += add[item];
+        __syncthreads();
+    }
+    for (int item = 0; item < ITEMS; ++item) {
+        int node = tid + item * SCAN_THREADS;
+        if (node < input.node_count) {
+            int prefix = node == 0 ? 0 : node_prefix[node - 1];
+            reverse_offsets[node] = prefix;
+            int bank_index = 0;
+            while (bank_index + 1 < input.bank_count &&
+                   node >= input.banks[bank_index + 1].node_offset)
+                ++bank_index;
+            Bank bank = input.banks[bank_index];
+            int owner = node - bank.node_offset;
+            for (int range = 0; range < output.bank_count; ++range) {
+                Bank other = output.banks[range];
+                int pair_base = pairs.base[range * MAX_BANKS + bank_index];
+                if (pair_base < 0)
+                    continue;
+                int first = pair_base + owner;
+                for (int other_owner = 0; other_owner < other.tile_count; ++other_owner) {
+                    int group = first + other_owner * bank.tile_count;
+                    reverse_group_base[group] += prefix;
+                }
+            }
+        }
+    }
+    if (tid == 0)
+        reverse_offsets[input.node_count] = node_prefix[input.node_count - 1];
+}
+
 template <bool Reverse>
 __global__ void scatter_counting_rows_kernel(const int *keys, int atom_count,
                                              const int64_t *offsets, int *cursors, int64_t *rows,
@@ -701,12 +775,13 @@ prepare_counting_layout_reverse_signal(torch::Tensor atoms, torch::Tensor signal
 }
 
 // Compact counting keeps only geometrically compatible bank pairs; it does
-// not retain atom keys or reorder the Parameter values. Reverse indexing is a
-// separate feature and is not constructed by this entry point.
+// not retain atom keys or reorder the Parameter values. The optional reverse
+// view stores only forward-slot indices and input-owner offsets.
 static std::vector<torch::Tensor> prepare_compact_layout_impl(torch::Tensor atoms,
                                                               const torch::Tensor &signal,
                                                               std::vector<double> input_config,
-                                                              std::vector<double> output_config) {
+                                                              std::vector<double> output_config,
+                                                              bool reverse) {
     check_cuda_float_matrix(atoms);
     TORCH_CHECK(atoms.size(1) == 4 && atoms.size(0) <= 65536, "expected [A<=65536,4] atoms");
     Axis input = parse_axis(input_config), output = parse_axis(output_config);
@@ -728,6 +803,14 @@ static std::vector<torch::Tensor> prepare_compact_layout_impl(torch::Tensor atom
     auto groups = torch::empty({pairs.group_count, 4}, integer_options);
     auto offsets = torch::empty({pairs.group_count + 1}, atoms.options().dtype(torch::kInt64));
     auto rows = torch::empty({atoms.size(0)}, atoms.options().dtype(torch::kInt64));
+    torch::Tensor reverse_slots, reverse_offsets, reverse_group_base;
+    if (reverse) {
+        TORCH_CHECK(input.node_count <= 2048, "reverse layout supports at most 2048 input nodes");
+        reverse_slots = torch::empty({atoms.size(0)}, integer_options);
+        reverse_offsets =
+            torch::empty({input.node_count + 1}, atoms.options().dtype(torch::kInt64));
+        reverse_group_base = torch::empty({pairs.group_count}, integer_options);
+    }
     auto stream = c10::cuda::getCurrentCUDAStream();
     int64_t signal_count = signal.defined() ? signal.numel() : 0;
     int64_t work = std::max(atoms.size(0), signal_count);
@@ -745,26 +828,54 @@ static std::vector<torch::Tensor> prepare_compact_layout_impl(torch::Tensor atom
         counts.data_ptr<int>(), offsets.data_ptr<int64_t>(), groups.data_ptr<int>(), pairs, input,
         output);
     C10_CUDA_KERNEL_LAUNCH_CHECK();
-    if (atoms.size(0) > 0) {
-        int blocks = (atoms.size(0) + THREADS - 1) / THREADS;
-        scatter_counting_rows_kernel<false><<<blocks, THREADS, 0, stream>>>(
-            keys.data_ptr<int>(), atoms.size(0), offsets.data_ptr<int64_t>(),
-            cursors.data_ptr<int>(), rows.data_ptr<int64_t>(), nullptr, nullptr);
+    if (reverse) {
+        prefix_compact_reverse_groups_kernel<<<1, 256, 0, stream>>>(
+            counts.data_ptr<int>(), reverse_group_base.data_ptr<int>(),
+            reverse_offsets.data_ptr<int64_t>(), input, output, pairs);
         C10_CUDA_KERNEL_LAUNCH_CHECK();
     }
+    if (atoms.size(0) > 0) {
+        int blocks = (atoms.size(0) + THREADS - 1) / THREADS;
+        if (reverse) {
+            scatter_counting_rows_kernel<true><<<blocks, THREADS, 0, stream>>>(
+                keys.data_ptr<int>(), atoms.size(0), offsets.data_ptr<int64_t>(),
+                cursors.data_ptr<int>(), rows.data_ptr<int64_t>(),
+                reverse_group_base.data_ptr<int>(), reverse_slots.data_ptr<int>());
+        } else {
+            scatter_counting_rows_kernel<false><<<blocks, THREADS, 0, stream>>>(
+                keys.data_ptr<int>(), atoms.size(0), offsets.data_ptr<int64_t>(),
+                cursors.data_ptr<int>(), rows.data_ptr<int64_t>(), nullptr, nullptr);
+        }
+        C10_CUDA_KERNEL_LAUNCH_CHECK();
+    }
+    if (reverse)
+        return {rows, groups, offsets, errors, reverse_slots, reverse_offsets};
     return {rows, groups, offsets, errors};
 }
 
 std::vector<torch::Tensor> prepare_compact_layout(torch::Tensor atoms,
                                                   std::vector<double> input_config,
                                                   std::vector<double> output_config) {
-    return prepare_compact_layout_impl(atoms, torch::Tensor(), input_config, output_config);
+    return prepare_compact_layout_impl(atoms, torch::Tensor(), input_config, output_config, false);
 }
 
 std::vector<torch::Tensor> prepare_compact_layout_signal(torch::Tensor atoms, torch::Tensor signal,
                                                          std::vector<double> input_config,
                                                          std::vector<double> output_config) {
-    return prepare_compact_layout_impl(atoms, signal, input_config, output_config);
+    return prepare_compact_layout_impl(atoms, signal, input_config, output_config, false);
+}
+
+std::vector<torch::Tensor> prepare_compact_layout_reverse(torch::Tensor atoms,
+                                                          std::vector<double> input_config,
+                                                          std::vector<double> output_config) {
+    return prepare_compact_layout_impl(atoms, torch::Tensor(), input_config, output_config, true);
+}
+
+std::vector<torch::Tensor>
+prepare_compact_layout_reverse_signal(torch::Tensor atoms, torch::Tensor signal,
+                                      std::vector<double> input_config,
+                                      std::vector<double> output_config) {
+    return prepare_compact_layout_impl(atoms, signal, input_config, output_config, true);
 }
 
 torch::Tensor decode_groups(torch::Tensor keys, std::vector<double> input_config,

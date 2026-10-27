@@ -20,6 +20,9 @@ Tensor build_window_moments(Tensor z, Config axis);
 std::vector<Tensor> prepare_compact_layout(Tensor atoms, Config input, Config output);
 std::vector<Tensor> prepare_compact_layout_signal(Tensor atoms, Tensor signal, Config input,
                                                   Config output);
+std::vector<Tensor> prepare_compact_layout_reverse(Tensor atoms, Config input, Config output);
+std::vector<Tensor> prepare_compact_layout_reverse_signal(Tensor atoms, Tensor signal, Config input,
+                                                          Config output);
 Tensor compute_h(Tensor atoms, Tensor rows, Tensor groups, Tensor offsets, Tensor z, Config axis,
                  bool output_side, bool float_storage, int threads, bool windowed,
                  bool compensated);
@@ -63,6 +66,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("prepare_counting_layout_reverse_signal", &prepare_counting_layout_reverse_signal);
     m.def("prepare_compact_layout", &prepare_compact_layout);
     m.def("prepare_compact_layout_signal", &prepare_compact_layout_signal);
+    m.def("prepare_compact_layout_reverse", &prepare_compact_layout_reverse);
+    m.def("prepare_compact_layout_reverse_signal", &prepare_compact_layout_reverse_signal);
     m.def("build_hierarchy", &build_hierarchy);
     m.def("build_hierarchy_chunked", &build_hierarchy_chunked);
     m.def("build_window_moments", &build_window_moments);

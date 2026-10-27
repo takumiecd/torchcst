@@ -1329,8 +1329,9 @@ def test_counting_layout_ranges_and_original_rows(dtype, count):
 @cuda_only
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 @pytest.mark.parametrize("count", [0, 1, 37, 819])
+@pytest.mark.parametrize("method", ["counting", "counting_compact"])
 def test_reverse_counting_layout_is_forward_slot_permutation_and_group_concatenation(
-    dtype, count
+    dtype, count, method
 ):
     from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
         prepare_layout,
@@ -1346,7 +1347,9 @@ def test_reverse_counting_layout_is_forward_slot_permutation_and_group_concatena
     source[:, 1] = torch.linspace(0.2, 40, count, dtype=dtype)
     source[:, 2:] *= 150
     atoms = source.cuda()
-    layout = prepare_layout(plan, atoms, method="counting", reverse=True)
+    layout = prepare_layout(plan, atoms, method=method, reverse=True)
+    assert layout.method == method and layout.has_reverse
+    assert layout._source is atoms
     assert layout.reverse_slots.dtype == torch.int32
     assert layout.reverse_offsets.dtype == torch.int64
     assert layout.reverse_slots.shape == (count,)
@@ -1384,7 +1387,8 @@ def test_reverse_counting_layout_is_forward_slot_permutation_and_group_concatena
 
 @cuda_only
 @pytest.mark.parametrize("invalid", ["nan_atom", "bad_sigma", "nan_signal"])
-def test_reverse_preparation_rejects_invalid_atoms_and_signal(invalid):
+@pytest.mark.parametrize("method", ["counting", "counting_compact"])
+def test_reverse_preparation_rejects_invalid_atoms_and_signal(invalid, method):
     from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
         prepare_layout,
     )
@@ -1400,7 +1404,7 @@ def test_reverse_preparation_rejects_invalid_atoms_and_signal(invalid):
     else:
         signal[0, 0] = float("nan")
     with pytest.raises(ValueError):
-        prepare_layout(plan, atoms, method="counting", signal=signal, reverse=True)
+        prepare_layout(plan, atoms, method=method, signal=signal, reverse=True)
 
 
 @cuda_only
@@ -1426,7 +1430,8 @@ def test_reverse_layout_requires_counting_and_positive_threshold_requires_revers
 
 @cuda_only
 @pytest.mark.parametrize("mutated", ["reverse_slots", "reverse_offsets"])
-def test_reverse_cache_saved_tensor_mutation_is_rejected(mutated):
+@pytest.mark.parametrize("method", ["counting", "counting_compact"])
+def test_reverse_cache_saved_tensor_mutation_is_rejected(mutated, method):
     from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
         hierarchical_linear,
         prepare_layout,
@@ -1436,9 +1441,9 @@ def test_reverse_cache_saved_tensor_mutation_is_rejected(mutated):
     plan = HierarchyPlan(input=axis, output=axis)
     atoms = torch.ones(3, 4, device="cuda", requires_grad=True)
     x = torch.ones(4, 32, device="cuda", requires_grad=True)
-    layout = prepare_layout(plan, atoms, method="counting", reverse=True)
+    layout = prepare_layout(plan, atoms, method=method, reverse=True)
     y = hierarchical_linear(
-        plan, x, atoms, layout=layout, layout_method="counting", reverse_layout=True
+        plan, x, atoms, layout=layout, layout_method=method, reverse_layout=True
     )
     with torch.no_grad():
         getattr(layout, mutated).add_(0)
@@ -1447,7 +1452,8 @@ def test_reverse_cache_saved_tensor_mutation_is_rejected(mutated):
 
 
 @cuda_only
-def test_reverse_cache_rejects_changed_atom_version_and_supports_retained_graph():
+@pytest.mark.parametrize("method", ["counting", "counting_compact"])
+def test_reverse_cache_rejects_changed_atom_version_and_supports_retained_graph(method):
     from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
         hierarchical_linear,
         prepare_layout,
@@ -1457,13 +1463,13 @@ def test_reverse_cache_rejects_changed_atom_version_and_supports_retained_graph(
     plan = HierarchyPlan(input=axis, output=axis)
     atoms = torch.ones(3, 4, device="cuda", requires_grad=True)
     x = torch.randn(4, 32, device="cuda", requires_grad=True)
-    layout = prepare_layout(plan, atoms, method="counting", reverse=True)
+    layout = prepare_layout(plan, atoms, method=method, reverse=True)
     y = hierarchical_linear(
         plan,
         x,
         atoms,
         layout=layout,
-        layout_method="counting",
+        layout_method=method,
         reverse_layout=True,
         fuse_backward_cin=True,
     )
@@ -1476,7 +1482,7 @@ def test_reverse_cache_rejects_changed_atom_version_and_supports_retained_graph(
         atoms.add_(0)
     with pytest.raises(RuntimeError, match="rebuild the layout cache"):
         hierarchical_linear(
-            plan, x, atoms, layout=layout, layout_method="counting", reverse_layout=True
+            plan, x, atoms, layout=layout, layout_method=method, reverse_layout=True
         )
 
 
@@ -2740,7 +2746,10 @@ def test_guarded_cdot_rejects_unsupported_highlevel_combinations(incompatible):
 @cuda_only
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 @pytest.mark.parametrize("count", [0, 1, 37])
-def test_compact_counting_layout_groups_match_independent_membership(dtype, count):
+@pytest.mark.parametrize("reverse", [False, True])
+def test_compact_counting_layout_groups_match_independent_membership(
+    dtype, count, reverse
+):
     from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
         prepare_layout,
     )
@@ -2759,10 +2768,12 @@ def test_compact_counting_layout_groups_match_independent_membership(dtype, coun
         source[:3, 3] = torch.tensor([125.9, -2.0, -2.1], dtype=dtype)
     atoms = source.cuda()
     x = torch.ones(1, 128, dtype=dtype, device="cuda")
-    compact = prepare_layout(plan, atoms, method="counting_compact", signal=x)
-    complete = prepare_layout(plan, atoms, method="counting", signal=x)
+    compact = prepare_layout(
+        plan, atoms, method="counting_compact", signal=x, reverse=reverse
+    )
+    complete = prepare_layout(plan, atoms, method="counting", signal=x, reverse=reverse)
     assert compact.method == "counting_compact"
-    assert not compact.has_reverse
+    assert compact.has_reverse is reverse
     assert len(compact.groups) < len(complete.groups)
     assert compact.tensor_bytes < complete.tensor_bytes
     rows = compact.rows.cpu().tolist()
@@ -2788,17 +2799,22 @@ def test_compact_counting_layout_groups_match_independent_membership(dtype, coun
 
 @cuda_only
 @pytest.mark.parametrize(
-    "batches,count,dtype,windowed,fused",
+    "batches,count,dtype,windowed,fused,reverse,splits,grain",
     [
-        (0, 3, torch.float32, False, False),
-        (1, 3, torch.float64, True, False),
-        (4, 37, torch.float32, True, True),
-        (5, 37, torch.float64, False, True),
-        (4, 0, torch.float32, False, True),
+        (0, 3, torch.float32, False, False, False, 7, 0),
+        (1, 3, torch.float64, True, False, False, 7, 0),
+        (4, 37, torch.float32, True, True, False, 7, 0),
+        (5, 37, torch.float64, False, True, False, 7, 0),
+        (4, 0, torch.float32, False, True, False, 7, 0),
+        (0, 3, torch.float32, False, False, True, 1, 0),
+        (1, 3, torch.float64, True, False, True, 7, 32),
+        (4, 37, torch.float32, True, True, True, 7, 128),
+        (5, 37, torch.float64, False, True, True, 1, 0),
+        (4, 0, torch.float32, False, True, True, 7, 32),
     ],
 )
 def test_compact_counting_full_route_matches_independent_fft(
-    batches, count, dtype, windowed, fused
+    batches, count, dtype, windowed, fused, reverse, splits, grain
 ):
     from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
         hierarchical_linear,
@@ -2823,7 +2839,9 @@ def test_compact_counting_full_route_matches_independent_fft(
         atoms,
         layout_method="counting_compact",
         window_moments=windowed,
-        c_splits=7,
+        reverse_layout=reverse,
+        c_splits=splits,
+        atoms_per_split=grain,
         fuse_g_grad=fused,
         fuse_backward_cin=fused,
     )
@@ -2848,8 +2866,9 @@ def test_compact_counting_full_route_matches_independent_fft(
 
 
 @cuda_only
-@pytest.mark.parametrize("bad", ["reverse", "nan_atom", "bad_sigma", "nan_signal"])
-def test_compact_counting_rejects_reverse_and_invalid_values(bad):
+@pytest.mark.parametrize("bad", ["nan_atom", "bad_sigma", "nan_signal"])
+@pytest.mark.parametrize("reverse", [False, True])
+def test_compact_counting_rejects_invalid_values(bad, reverse):
     from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
         prepare_layout,
     )
@@ -2870,8 +2889,60 @@ def test_compact_counting_rejects_reverse_and_invalid_values(bad):
             atoms,
             method="counting_compact",
             signal=signal,
-            reverse=bad == "reverse",
+            reverse=reverse,
         )
+
+
+@cuda_only
+@pytest.mark.parametrize("input_full", [False, True])
+@pytest.mark.parametrize("count", [0, 3])
+def test_compact_reverse_unequal_axes_full_chart_and_sigma_boundary(input_full, count):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        prepare_layout,
+    )
+
+    full = AxisPlan(site_count=8, min_tile_sites=4, origin=3)
+    local = AxisPlan(site_count=64, min_tile_sites=1, origin=-2)
+    plan = HierarchyPlan(
+        input=full if input_full else local, output=local if input_full else full
+    )
+    source = torch.ones(count, 4, dtype=torch.float32)
+    if count:
+        boundary = torch.tensor(1.0)
+        source[:, 1] = torch.stack(
+            [
+                torch.nextafter(boundary, torch.tensor(0.0)),
+                boundary,
+                torch.nextafter(boundary, torch.tensor(float("inf"))),
+            ]
+        )
+        source[:, 2] = torch.tensor([2.9, 3.0, 10.9])
+        source[:, 3] = torch.tensor([-2.1, -2.0, 61.9])
+    atoms = source.cuda()
+    layout = prepare_layout(plan, atoms, method="counting_compact", reverse=True)
+    slots, offsets = (
+        layout.reverse_slots.cpu().tolist(),
+        layout.reverse_offsets.cpu().tolist(),
+    )
+    assert sorted(slots) == list(range(count))
+    assert offsets[0] == 0 and offsets[-1] == count
+    assert offsets == sorted(offsets)
+    if not count:
+        assert all(offset == 0 for offset in offsets)
+    rows, groups, group_offsets = (
+        layout.rows.cpu().tolist(),
+        layout.groups.cpu().tolist(),
+        layout.offsets.cpu().tolist(),
+    )
+    banks = {bank.level: bank for bank in plan.input.banks}
+    expected = [[] for _ in range(plan.input.node_count)]
+    for group, begin, end in zip(groups, group_offsets, group_offsets[1:]):
+        expected[banks[group[1]].node_offset + group[3]].extend(range(begin, end))
+    for node, (begin, end) in enumerate(itertools.pairwise(offsets)):
+        assert slots[begin:end] == expected[node]
+        for slot in slots[begin:end]:
+            level, owner = membership_oracle(source[rows[slot]].tolist(), plan.input, 3)
+            assert node == banks[level].node_offset + owner
 
 
 @cuda_only
