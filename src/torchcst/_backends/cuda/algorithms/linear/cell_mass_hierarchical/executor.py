@@ -27,7 +27,14 @@ def _extension():
         directory / "backward.cu",
     ]
     digest = hashlib.sha256(
-        b"".join(path.read_bytes() for path in [*sources, directory / "common.cuh"])
+        b"".join(
+            path.read_bytes()
+            for path in [
+                *sources,
+                directory / "common.cuh",
+                directory / "projection.cuh",
+            ]
+        )
     ).hexdigest()[:12]
     return load(
         name=f"torchcst_cell_mass_hierarchy_{digest}",
@@ -400,6 +407,35 @@ def compute_g_and_parameter_grad(
     )
 
 
+def compute_g_parameter_grad_cin(
+    plan, atoms, layout, zx, zy, h, *, splits=1, windowed=False
+):
+    """Build Cin, saved rounded G and original-row atom gradients together.
+
+    Each reverse owner/split visits an atom once. One lane computes its output
+    projection and gradients, then reuses the input derivative coefficients for
+    the shared C chunk. This native stage supports one to four batches only.
+    """
+    if type(splits) is not int or not 1 <= splits <= 64:
+        raise ValueError("C splits must be an integer in [1,64]")
+    if type(windowed) is not bool:
+        raise ValueError("windowed must be bool")
+    layout.validate_for(atoms, plan)
+    return _extension().compute_g_parameter_grad_cin(
+        atoms,
+        layout.rows,
+        layout.groups,
+        layout.offsets,
+        zx,
+        zy,
+        h,
+        plan.input.native_config(),
+        plan.output.native_config(),
+        splits,
+        windowed,
+    )
+
+
 class _HierarchicalLinear(torch.autograd.Function):
     @staticmethod
     def forward(
@@ -416,6 +452,7 @@ class _HierarchicalLinear(torch.autograd.Function):
         z_chunk_sites,
         atom_threads,
         window_moments,
+        fuse_backward_cin,
     ):
         zx = build_hierarchy(
             x,
@@ -448,6 +485,7 @@ class _HierarchicalLinear(torch.autograd.Function):
         ctx.z_chunk_sites = z_chunk_sites
         ctx.atom_threads = atom_threads
         ctx.window_moments = window_moments
+        ctx.fuse_backward_cin = fuse_backward_cin
         ctx.source_version = atoms._version
         # save_for_backward checks atom AND layout-buffer mutations. Avoid
         # keeping the source x: Zx already contains the needed contractions.
@@ -475,8 +513,25 @@ class _HierarchicalLinear(torch.autograd.Function):
         )
         if ctx.window_moments:
             zy = build_window_moments(zy, plan.output)
-        dx = datoms = None
-        if ctx.needs_input_grad[1] and ctx.fuse_g_grad:
+        dx = datoms = cin = None
+        if (
+            ctx.fuse_backward_cin
+            and ctx.needs_input_grad[0]
+            and ctx.needs_input_grad[1]
+            and 1 <= dy.shape[0] <= 4
+        ):
+            zx, h = forward_state
+            cin, g, datoms = compute_g_parameter_grad_cin(
+                plan,
+                atoms,
+                layout,
+                zx,
+                zy,
+                h,
+                splits=ctx.c_splits,
+                windowed=ctx.window_moments,
+            )
+        elif ctx.needs_input_grad[1] and ctx.fuse_g_grad:
             zx, h = forward_state
             g, datoms = compute_g_and_parameter_grad(
                 plan,
@@ -499,7 +554,8 @@ class _HierarchicalLinear(torch.autograd.Function):
                 windowed=ctx.window_moments,
             )
         if ctx.needs_input_grad[0]:
-            cin = compute_input_c(plan, atoms, layout, g, splits=ctx.c_splits)
+            if cin is None:
+                cin = compute_input_c(plan, atoms, layout, g, splits=ctx.c_splits)
             dx = expand_c(cin, plan.input, dy, sites_per_block=ctx.sites_per_block)
             del cin
         if ctx.needs_input_grad[1] and not ctx.fuse_g_grad:
@@ -515,7 +571,21 @@ class _HierarchicalLinear(torch.autograd.Function):
                 threads=ctx.atom_threads,
                 windowed=ctx.window_moments,
             )
-        return dx, datoms, None, None, None, None, None, None, None, None, None, None
+        return (
+            dx,
+            datoms,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
 
 
 def hierarchical_linear(
@@ -533,6 +603,7 @@ def hierarchical_linear(
     z_chunk_sites=0,
     atom_threads=128,
     window_moments=False,
+    fuse_backward_cin=False,
 ):
     """Private research autograd route, using this forward's bank/owner choices.
 
@@ -553,6 +624,11 @@ def hierarchical_linear(
         raise ValueError("C splits must be an integer in [1,64]")
     if type(fuse_g_grad) is not bool:
         raise ValueError("fuse_g_grad must be bool")
+    if type(fuse_backward_cin) is not bool:
+        raise ValueError("fuse_backward_cin must be bool")
+    # Larger/empty batches and one-sided gradients use the established route.
+    # Enabling Cin fusion also enables G/gradient fusion for that fallback.
+    fuse_g_grad = fuse_g_grad or fuse_backward_cin
     if x.device != atoms.device or x.dtype != atoms.dtype:
         raise ValueError("X and atoms must share device and dtype")
     if layout is None and layout_method == "counting":
@@ -578,4 +654,5 @@ def hierarchical_linear(
         z_chunk_sites,
         atom_threads,
         window_moments,
+        fuse_backward_cin,
     )

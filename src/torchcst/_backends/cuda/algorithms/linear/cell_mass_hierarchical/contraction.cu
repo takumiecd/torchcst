@@ -1,5 +1,5 @@
 // Existing profile mathematics, connected to varying-period Z and owner C.
-#include "common.cuh"
+#include "projection.cuh"
 #include <type_traits>
 using namespace cell_mass_hierarchy;
 
@@ -395,6 +395,178 @@ __global__ void reduce_c_splits_kernel(SplitPages pages, double *c, int64_t elem
     c[i] = value;
 }
 
+// One reverse-layout group belongs to this input owner. Each valid lane owns
+// a different atom and writes its G and all four gradients exactly once.
+// Every lane, including padding lanes, participates in the shared barriers.
+template <typename atom_t, typename projection_t, int FixedModes>
+__device__ void fused_grad_cin_range(const atom_t *atoms, const int64_t *rows, const int *groups,
+                                     const projection_t *h, const double *zx, const double *zy,
+                                     projection_t *g, atom_t *gradient, int atom_count, int batches,
+                                     const Axis &input, const Axis &output, const Bank &input_bank,
+                                     int input_owner, int group, int begin, int end,
+                                     int split_begin, int split_end, int &prefix, bool windowed,
+                                     double *coefficients, double *scaled_g, double *totals) {
+    int length = end - begin;
+    int first = max(0, split_begin - prefix);
+    int last = min(length, split_end - prefix);
+    prefix += length;
+    int lane = threadIdx.x;
+    int elements = BATCH_TILE * input.basis_count();
+    for (int chunk = begin + first; chunk < begin + last; chunk += CHUNK) {
+        int slot = chunk + lane;
+        bool valid = slot < begin + last;
+        if (valid) {
+            int original = rows[slot];
+            int output_owner = groups[4 * group + 2];
+            Bank output_bank = output.banks[bank_for_level(output, groups[4 * group])];
+            double amplitude = atoms[4 * original], sigma = atoms[4 * original + 1];
+            double output_center = atoms[4 * original + 2];
+            double input_center = atoms[4 * original + 3];
+            Profile out_profile = make_profile<true, FixedModes>(output, output_bank, sigma,
+                                                                 output_center, output_owner);
+            bool same_shape = input.modes == output.modes &&
+                              input.radius_ratio4 == output.radius_ratio4 &&
+                              input_bank.period == output_bank.period &&
+                              input_bank.inverse_period == output_bank.inverse_period &&
+                              input_bank.omega == output_bank.omega;
+            Profile in_profile;
+            if (same_shape) {
+                in_profile = out_profile;
+                in_profile.center = profile_center(input, input_bank, input_center, input_owner);
+            } else {
+                in_profile = make_profile<true, FixedModes>(input, input_bank, sigma, input_center,
+                                                            input_owner);
+            }
+            double da = 0, ds = 0, dmu_input = 0, dmu_output = 0;
+            double gv[BATCH_TILE] = {};
+            project_weighted_derivatives<true, FixedModes>(
+                zy, batches, 0, output, output_bank, output_owner, out_profile,
+                out_profile.beta_sigma, h, atom_count, slot, amplitude, gv, dmu_output, ds,
+                windowed);
+            for (int b = 0; b < BATCH_TILE; ++b) {
+                if (b < batches) {
+                    projection_t rounded = static_cast<projection_t>(gv[b]);
+                    g[b * atom_count + slot] = rounded;
+                    double g_value = static_cast<double>(rounded);
+                    da += static_cast<double>(h[b * atom_count + slot]) * g_value;
+                    gv[b] = amplitude * g_value;
+                    scaled_g[b * SHARED_STRIDE + lane] = gv[b];
+                } else {
+                    gv[b] = 0;
+                    scaled_g[b * SHARED_STRIDE + lane] = 0;
+                }
+            }
+            project_weighted_derivatives<false, FixedModes, true>(
+                zx, batches, 0, input, input_bank, input_owner, in_profile, in_profile.beta_sigma,
+                h, atom_count, slot, amplitude, gv, dmu_input, ds, windowed, coefficients,
+                SHARED_STRIDE, lane);
+            gradient[4 * original] = static_cast<atom_t>(da);
+            gradient[4 * original + 1] = static_cast<atom_t>(ds);
+            gradient[4 * original + 2] = static_cast<atom_t>(dmu_output);
+            gradient[4 * original + 3] = static_cast<atom_t>(dmu_input);
+        } else {
+            for (int mode = 0; mode < input.basis_count(); ++mode)
+                coefficients[mode * SHARED_STRIDE + lane] = 0;
+            for (int b = 0; b < BATCH_TILE; ++b)
+                scaled_g[b * SHARED_STRIDE + lane] = 0;
+        }
+        __syncthreads();
+        for (int work = lane; work < elements; work += CHUNK) {
+            int batch = work / input.basis_count(), mode = work % input.basis_count();
+            double total = totals[work];
+            for (int atom = 0; atom < CHUNK; ++atom)
+                total += scaled_g[batch * SHARED_STRIDE + atom] *
+                         coefficients[mode * SHARED_STRIDE + atom];
+            totals[work] = total;
+        }
+        __syncthreads();
+    }
+}
+
+template <typename atom_t, typename projection_t, int FixedModes>
+__global__ void fused_grad_cin_kernel(const atom_t *atoms, const int64_t *rows, const int *groups,
+                                      const int64_t *offsets, const double *zx, const double *zy,
+                                      const projection_t *h, projection_t *g, atom_t *gradient,
+                                      SplitPages pages, int atom_count, int group_count,
+                                      int batches, Axis input, Axis output, bool cartesian,
+                                      int splits, bool windowed) {
+    extern __shared__ double shared[];
+    double *coefficients = shared;
+    double *scaled_g = shared + SHARED_STRIDE * input.basis_count();
+    double *totals = scaled_g + SHARED_STRIDE * BATCH_TILE;
+    int lane = threadIdx.x;
+    int elements = BATCH_TILE * input.basis_count();
+    for (int work = lane; work < elements; work += CHUNK)
+        totals[work] = 0;
+    __syncthreads();
+    int node = blockIdx.x, bank_index = 0;
+    while (bank_index + 1 < input.bank_count && node >= input.banks[bank_index + 1].node_offset)
+        ++bank_index;
+    Bank bank = input.banks[bank_index];
+    int owner = node - bank.node_offset;
+    double maximum_sigma =
+        static_cast<double>(static_cast<atom_t>(fmin(input.period, output.period) / 3));
+    int split_begin = 0, split_end = 0;
+    for (int pass = 0; pass < 2; ++pass) {
+        int prefix = 0;
+        if (cartesian) {
+            for (int range = 0; range < output.bank_count; ++range) {
+                Bank other = output.banks[range];
+                if (!compatible_sigma_banks(input, bank_index, output, range, maximum_sigma))
+                    continue;
+                int first = other.node_offset * input.node_count +
+                            other.tile_count * bank.node_offset + owner;
+                for (int other_owner = 0; other_owner < other.tile_count; ++other_owner) {
+                    int group = first + other_owner * bank.tile_count;
+                    int begin = offsets[group], end = offsets[group + 1];
+                    if (pass == 0)
+                        prefix += end - begin;
+                    else
+                        fused_grad_cin_range<atom_t, projection_t, FixedModes>(
+                            atoms, rows, groups, h, zx, zy, g, gradient, atom_count, batches, input,
+                            output, bank, owner, group, begin, end, split_begin, split_end, prefix,
+                            windowed, coefficients, scaled_g, totals);
+                }
+            }
+        } else {
+            for (int base = 0; base < group_count; base += CHUNK) {
+                int group = base + lane;
+                bool matches = group < group_count && groups[4 * group + 1] == bank.level &&
+                               groups[4 * group + 3] == owner;
+                unsigned mask = __ballot_sync(0xffffffffu, matches);
+                while (mask) {
+                    int selected = base + __ffs(mask) - 1;
+                    mask &= mask - 1;
+                    int begin = offsets[selected], end = offsets[selected + 1];
+                    if (pass == 0)
+                        prefix += end - begin;
+                    else
+                        fused_grad_cin_range<atom_t, projection_t, FixedModes>(
+                            atoms, rows, groups, h, zx, zy, g, gradient, atom_count, batches, input,
+                            output, bank, owner, selected, begin, end, split_begin, split_end,
+                            prefix, windowed, coefficients, scaled_g, totals);
+                }
+            }
+        }
+        if (pass == 0) {
+            split_begin = static_cast<int>(static_cast<int64_t>(prefix) * blockIdx.z / splits);
+            split_end = static_cast<int>(static_cast<int64_t>(prefix) * (blockIdx.z + 1) / splits);
+        }
+    }
+    int local_split = blockIdx.z % pages.page_splits;
+    int page = blockIdx.z / pages.page_splits;
+    for (int work = lane; work < elements; work += CHUNK) {
+        int batch = work / input.basis_count(), mode = work % input.basis_count();
+        if (batch < batches) {
+            int64_t index =
+                ((static_cast<int64_t>(local_split) * batches + batch) * input.node_count + node) *
+                    input.basis_count() +
+                mode;
+            pages.pointers[page][index] = totals[work];
+        }
+    }
+}
+
 // Unique output site/batch ownership: add contributions from each bank after
 // evaluating C in that bank's basis. No Y atomic or mixed-basis C summation.
 template <typename scalar_t>
@@ -605,6 +777,76 @@ torch::Tensor compute_c_split(torch::Tensor atoms, torch::Tensor rows, torch::Te
         pages, c.data_ptr<double>(), elements, splits);
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return c;
+}
+
+// Joint backward experiment for a single batch tile. It preserves the saved
+// H/G storage dtype and bounds all partial C scratch by owners and splits.
+std::vector<torch::Tensor>
+compute_g_parameter_grad_cin(torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups,
+                             torch::Tensor offsets, torch::Tensor zx, torch::Tensor zy,
+                             torch::Tensor h, std::vector<double> input_config,
+                             std::vector<double> output_config, int splits, bool windowed) {
+    check_layout(atoms, rows, groups, offsets);
+    Axis input = parse_axis(input_config), output = parse_axis(output_config);
+    check_moments(zx, atoms, input);
+    check_moments(zy, atoms, output);
+    TORCH_CHECK(zx.size(0) >= 1 && zx.size(0) <= BATCH_TILE && zy.size(0) == zx.size(0),
+                "fused G/gradient/Cin requires 1 to 4 batches and matching moments");
+    TORCH_CHECK(splits >= 1 && splits <= 64, "splits must lie in [1,64]");
+    TORCH_CHECK(h.is_contiguous() && h.device() == atoms.device() && h.dim() == 2 &&
+                    (h.scalar_type() == torch::kFloat32 || h.scalar_type() == torch::kFloat64) &&
+                    h.size(0) == zx.size(0) && h.size(1) == atoms.size(0) && h.numel() <= INT_MAX,
+                "invalid H");
+    TORCH_CHECK(atoms.size(0) == 0 || groups.size(0) > 0, "nonempty atoms need groups");
+    c10::cuda::CUDAGuard guard(atoms.device());
+    auto c = torch::empty({h.size(0), input.node_count, input.basis_count()},
+                          h.options().dtype(torch::kFloat64));
+    auto g = torch::empty_like(h);
+    auto gradient = torch::empty_like(atoms);
+    constexpr int64_t PAGE_BYTES = 1024 * 1024;
+    int64_t c_bytes = c.numel() * static_cast<int64_t>(sizeof(double));
+    int page_splits =
+        static_cast<int>(std::min<int64_t>(splits, std::max<int64_t>(1, PAGE_BYTES / c_bytes)));
+    SplitPages pages{};
+    pages.page_splits = page_splits;
+    std::vector<torch::Tensor> partial_pages;
+    partial_pages.reserve((splits + page_splits - 1) / page_splits);
+    for (int begin = 0; begin < splits; begin += page_splits) {
+        int count = std::min(page_splits, splits - begin);
+        partial_pages.push_back(
+            torch::empty({count, h.size(0), input.node_count, input.basis_count()}, c.options()));
+        pages.pointers[partial_pages.size() - 1] = partial_pages.back().data_ptr<double>();
+    }
+    bool cartesian = groups.size(0) == input.node_count * output.node_count;
+    dim3 grid(input.node_count, 1, splits);
+    size_t shared = sizeof(double) * (SHARED_STRIDE * (input.basis_count() + BATCH_TILE) +
+                                      BATCH_TILE * input.basis_count());
+    auto stream = c10::cuda::getCurrentCUDAStream();
+    AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "hierarchical_fused_cin_atoms", [&] {
+        using atom_t = scalar_t;
+        AT_DISPATCH_FLOATING_TYPES(h.scalar_type(), "hierarchical_fused_cin_projection", [&] {
+            auto launch = [&](auto tag) {
+                constexpr int fixed_modes = decltype(tag)::value;
+                fused_grad_cin_kernel<atom_t, scalar_t, fixed_modes>
+                    <<<grid, CHUNK, shared, stream>>>(
+                        atoms.data_ptr<atom_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
+                        offsets.data_ptr<int64_t>(), zx.data_ptr<double>(), zy.data_ptr<double>(),
+                        h.data_ptr<scalar_t>(), g.data_ptr<scalar_t>(), gradient.data_ptr<atom_t>(),
+                        pages, atoms.size(0), groups.size(0), h.size(0), input, output, cartesian,
+                        splits, windowed);
+            };
+            if (input.modes == 8 && output.modes == 8)
+                launch(std::integral_constant<int, 8>{});
+            else
+                launch(std::integral_constant<int, 0>{});
+        });
+    });
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+    int64_t elements = c.numel();
+    reduce_c_splits_kernel<<<(elements + THREADS - 1) / THREADS, THREADS, 0, stream>>>(
+        pages, c.data_ptr<double>(), elements, splits);
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+    return {c, g, gradient};
 }
 
 torch::Tensor expand_c(torch::Tensor c, torch::Tensor like, std::vector<double> config, int width) {

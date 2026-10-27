@@ -27,6 +27,10 @@ std::vector<Tensor> compute_g_and_parameter_grad(Tensor atoms, Tensor rows, Tens
 Tensor parameter_grad(Tensor atoms, Tensor rows, Tensor groups, Tensor offsets, Tensor zx,
                       Tensor zy, Tensor h, Tensor g, Config input, Config output, int threads,
                       bool windowed);
+std::vector<Tensor> compute_g_parameter_grad_cin(Tensor atoms, Tensor rows, Tensor groups,
+                                                 Tensor offsets, Tensor zx, Tensor zy, Tensor h,
+                                                 Config input, Config output, int splits,
+                                                 bool windowed);
 Tensor expand_c(Tensor c, Tensor like, Config axis, int width);
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
@@ -43,4 +47,5 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("compute_c_split", &compute_c_split);
     m.def("compute_g_and_parameter_grad", &compute_g_and_parameter_grad);
     m.def("parameter_grad", &parameter_grad);
+    m.def("compute_g_parameter_grad_cin", &compute_g_parameter_grad_cin);
 }

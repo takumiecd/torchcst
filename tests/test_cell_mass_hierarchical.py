@@ -766,7 +766,11 @@ def test_hierarchical_backward_empty(batches, count):
 
 @cuda_only
 @pytest.mark.parametrize("target", ["x", "atoms", "both"])
-def test_hierarchical_backward_requested_gradients_and_retained_graph(target):
+@pytest.mark.parametrize("batches", [4, 5])
+@pytest.mark.parametrize("fuse_backward_cin", [False, True])
+def test_hierarchical_backward_requested_gradients_and_retained_graph(
+    target, batches, fuse_backward_cin
+):
     from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
         hierarchical_linear,
     )
@@ -774,7 +778,7 @@ def test_hierarchical_backward_requested_gradients_and_retained_graph(target):
     axis = AxisPlan(site_count=32, min_tile_sites=4)
     plan = HierarchyPlan(input=axis, output=axis)
     x = torch.randn(
-        5, 32, device="cuda", dtype=torch.float64, requires_grad=target != "atoms"
+        batches, 32, device="cuda", dtype=torch.float64, requires_grad=target != "atoms"
     )
     atoms = torch.tensor(
         [[1.0, 3.0, 31.9, 0.2], [-0.7, 9.0, 15.0, 30.0]],
@@ -783,12 +787,46 @@ def test_hierarchical_backward_requested_gradients_and_retained_graph(target):
         dtype=torch.float64,
     )
     arguments = [t for t in (x, atoms) if t.requires_grad]
-    y = hierarchical_linear(plan, x, atoms)
+    y = hierarchical_linear(plan, x, atoms, fuse_backward_cin=fuse_backward_cin)
     dy = torch.randn_like(y)
     first = torch.autograd.grad(y, arguments, dy, retain_graph=True)
     second = torch.autograd.grad(y, arguments, 2 * dy)
     for a, b in zip(first, second):
         torch.testing.assert_close(2 * a, b)
+
+
+@cuda_only
+@pytest.mark.parametrize("batches", [0, 1, 4, 5])
+@pytest.mark.parametrize("target", ["x", "atoms", "both"])
+def test_fused_backward_cin_dispatch_conditions(monkeypatch, batches, target):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical import (
+        executor,
+    )
+
+    axis = AxisPlan(site_count=8, min_tile_sites=4)
+    plan = HierarchyPlan(input=axis, output=axis)
+    x = torch.randn(batches, 8, device="cuda", requires_grad=target != "atoms")
+    atoms = torch.tensor(
+        [[1.0, 1.0, 7.9, 0.2], [-0.7, 2.0, 3.0, 7.9], [0.0, 0.1, 1.0, 0.0]],
+        device="cuda",
+        requires_grad=target != "x",
+    )
+    calls = []
+    original = executor.compute_g_parameter_grad_cin
+
+    def spy(*args, **kwargs):
+        calls.append((args, kwargs))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(executor, "compute_g_parameter_grad_cin", spy)
+    y = executor.hierarchical_linear(
+        plan, x, atoms, fuse_backward_cin=True, window_moments=True
+    )
+    arguments = [tensor for tensor in (x, atoms) if tensor.requires_grad]
+    torch.autograd.grad(y.sum(), arguments)
+    assert len(calls) == int(target == "both" and 1 <= batches <= 4)
+    if calls:
+        assert calls[0][1]["windowed"] is True
 
 
 @cuda_only
@@ -843,8 +881,9 @@ def test_hierarchical_backward_gradcheck_and_noncontiguous_dy():
 @cuda_only
 @pytest.mark.parametrize("layout_method", ["sort", "counting"])
 @pytest.mark.parametrize("window_moments", [False, True])
+@pytest.mark.parametrize("fuse_backward_cin", [False, True])
 def test_hierarchical_adamw_rebuilds_layout_and_matches_all_moments(
-    layout_method, window_moments
+    layout_method, window_moments, fuse_backward_cin
 ):
     """Complete 128-site step, all 819 atom gradients, then live width/owner moves."""
     from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
@@ -876,6 +915,7 @@ def test_hierarchical_adamw_rebuilds_layout_and_matches_all_moments(
             layout_method=layout_method,
             c_splits=2,
             fuse_g_grad=True,
+            fuse_backward_cin=fuse_backward_cin,
             z_chunk_sites=8,
             atom_threads=64,
             window_moments=window_moments,
@@ -1031,6 +1071,72 @@ def test_fused_g_and_grad_match_stages_and_mass(dtype):
 
 
 @cuda_only
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("layout_method", ["sort", "counting"])
+@pytest.mark.parametrize("window_moments", [False, True])
+def test_fused_g_grad_cin_matches_separate_stages(dtype, layout_method, window_moments):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        build_hierarchy,
+        build_window_moments,
+        compute_g,
+        compute_g_parameter_grad_cin,
+        compute_h,
+        compute_input_c,
+        parameter_grad,
+        prepare_layout,
+    )
+
+    plan = HierarchyPlan(
+        input=AxisPlan(site_count=128, min_tile_sites=4, origin=-2),
+        output=AxisPlan(site_count=128, min_tile_sites=8, origin=3),
+    )
+    boundary = torch.tensor(4.0, dtype=dtype)
+    widths = [
+        0.01,
+        torch.nextafter(boundary, torch.tensor(0.0, dtype=dtype)).item(),
+        4.0,
+        torch.nextafter(boundary, torch.tensor(float("inf"), dtype=dtype)).item(),
+        8.0,
+        40.0,
+    ]
+    atoms = torch.tensor(
+        [
+            [0.0, widths[0], 130.9, -2.1],
+            [1.0, widths[1], 3.0, 125.9],
+            [-0.7, widths[2], 2.9, -2.0],
+            [0.4, widths[3], -20.0, 18.0],
+            [0.2, widths[4], 131.0, 126.0],
+            [-0.3, widths[5], 130.8, 125.8],
+        ],
+        device="cuda",
+        dtype=dtype,
+    )
+    rng = torch.Generator().manual_seed(120)
+    x = torch.randn(4, 128, generator=rng, dtype=dtype).cuda()
+    dy = torch.randn(4, 128, generator=rng, dtype=dtype).cuda()
+    layout = prepare_layout(plan, atoms, method=layout_method)
+    zx = build_hierarchy(x, plan.input)
+    zy = build_hierarchy(dy, plan.output)
+    if window_moments:
+        zx = build_window_moments(zx, plan.input)
+        zy = build_window_moments(zy, plan.output)
+    h = compute_h(plan, atoms, layout, zx, storage_dtype=dtype, windowed=window_moments)
+    g = compute_g(plan, atoms, layout, zy, storage_dtype=dtype, windowed=window_moments)
+    dp = parameter_grad(plan, atoms, layout, zx, zy, h, g, windowed=window_moments)
+    cin = compute_input_c(plan, atoms, layout, g, splits=7)
+    fused_cin, fused_g, fused_dp = compute_g_parameter_grad_cin(
+        plan, atoms, layout, zx, zy, h, splits=7, windowed=window_moments
+    )
+    tol = (
+        {"rtol": 3e-6, "atol": 2e-7}
+        if dtype == torch.float32
+        else {"rtol": 3e-9, "atol": 2e-10}
+    )
+    for actual, expected in ((fused_g, g), (fused_dp, dp), (fused_cin, cin)):
+        torch.testing.assert_close(actual, expected, **tol)
+
+
+@cuda_only
 @pytest.mark.parametrize("team", [1, 32])
 def test_phase_recurrence_large_root_m16_matches_quadrature(team):
     from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
@@ -1085,12 +1191,14 @@ def test_counting_layout_ranges_and_original_rows(dtype, count):
 
 
 @cuda_only
-@pytest.mark.parametrize("fused", [False, True])
+@pytest.mark.parametrize(
+    "fused,fuse_backward_cin", [(False, False), (True, False), (True, True)]
+)
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
-@pytest.mark.parametrize("batches,count", [(0, 37), (5, 257), (1, 3), (3, 0)])
+@pytest.mark.parametrize("batches,count", [(0, 37), (5, 257), (1, 3), (4, 37), (3, 0)])
 @pytest.mark.parametrize("window_moments", [False, True])
 def test_counting_and_chunked_autograd_match_independent_fft(
-    fused, dtype, batches, count, window_moments
+    fused, fuse_backward_cin, dtype, batches, count, window_moments
 ):
     from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
         hierarchical_linear,
@@ -1104,6 +1212,20 @@ def test_counting_and_chunked_autograd_match_independent_fft(
     source = torch.randn(count, 4, dtype=dtype, generator=rng)
     source[:, 1] = torch.linspace(0.2, 40, count, dtype=dtype)
     source[:, 2:] *= 150
+    if count >= 3:
+        # Exercise a zero amplitude, selected-bank boundaries on either side,
+        # and both axes' periodic seams in the same original Parameter rows.
+        boundary = torch.tensor(4.0, dtype=dtype)
+        source[:3, 1] = torch.stack(
+            [
+                torch.nextafter(boundary, torch.tensor(0.0, dtype=dtype)),
+                boundary,
+                torch.nextafter(boundary, torch.tensor(float("inf"), dtype=dtype)),
+            ]
+        )
+        source[0, 0] = 0
+        source[:3, 2] = torch.tensor([130.9, 3.0, 2.9], dtype=dtype)
+        source[:3, 3] = torch.tensor([125.9, -2.0, -2.1], dtype=dtype)
     xcpu = torch.randn(batches, 128, dtype=dtype, generator=rng)
     dy = torch.randn(batches, 128, dtype=dtype, generator=rng)
     p = source.cuda().requires_grad_()
@@ -1114,6 +1236,7 @@ def test_counting_and_chunked_autograd_match_independent_fft(
         p,
         c_splits=7,
         fuse_g_grad=fused,
+        fuse_backward_cin=fuse_backward_cin,
         layout_method="counting",
         z_chunk_sites=8,
         window_moments=window_moments,
