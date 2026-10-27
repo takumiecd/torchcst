@@ -5,7 +5,32 @@
 CSTの1step時間をdenseの約2倍程度へ収めること。
 128はこの時間・メモリ条件を満たす設定を確認した。1024はメモリ条件を満たすが、時間は未達。
 
-## 最新：1024のC_in融合と展開幅の再調整
+## 最新：係数・微分のHorner評価とsigma分布
+
+runtime source `7c1404c1`。数学・精度・sigma分布を変えず、係数とその微分を
+Horner法で一緒に評価し、harmonic間でscalarの累乗を再利用する。
+1024の完全stepは同じjobで **1.740 / 1.732ms → 1.354 / 1.354ms**、約22%短縮。
+peak allocated **4.261MiB** / reserved **6MiB**で増加なし。
+通常dense0.446 / 0.449msとの時間比は3.04 / 3.02で、約2倍目標は未達。
+workspaceなしdense16.063MiB / reserved22MiB以下を維持する。
+
+下の1024差分に `coefficient_method="polynomial_horner"` を加える。
+既定値・公開dispatcher・128の採用設定は変更しない。
+全atomの係数表を保存せず、追加するmodule定数表は3,552bytesのみ
+（元の表と合わせ13,416bytes、Torch allocatorピーク外）。
+
+初期sigmaは全atom同じではなく、**0.2〜12の52,428個の等間隔値**。
+実際の学習モデル由来の分布ではない。現profileには集中半径の下限があり、
+入力半径は7.59〜12.32、出力半径は15.17〜16.42である。
+sigmaの範囲だけから小さな局所profileも多いと判断できない。
+現経路は同じM8/tile/K3の1bankで、sigma別階層分類・小sigma直接計算は未実装。
+
+GPU・数学1816 passed、CPU2006 passed / 4564 skipped / 既存警告18件。
+全52,428atomのY/dX/全4列勾配・AdamW更新/moments/stepも独立oracleへ照合した。
+最新の融合producerは約0.55msで引き続き主対象。
+[係数の数式・sigma分布と半径・完全step・hash](cell-mass-horner-and-sigma.ja.md)に詳細を残す。
+
+## 前段：1024のC_in融合と展開幅の再調整
 
 runtime source `660cb0ea`（実装`907132b3`、差分は単一siteのテストfixture修正のみ）。
 C生成とsite展開を分けて測定し、G/Parameter勾配とC_in生成を融合した。
@@ -149,6 +174,7 @@ kernel境界を同じstreamの順序でつなぎ、block間の自作spin待ち�
 
 ## 数学と実装の入口
 
+- [最新Horner評価とsigma分布・集中半径の注意](cell-mass-horner-and-sigma.ja.md)
 - [面積正規化・whole-tile窓・近似誤差](cell-mass-tile-window.ja.md)
 - [全段階の擬似コード](cell-mass-kernel-flow.ja.md)
 - [ownerごとのC・範囲・chart端の扱い](cell-mass-owner-coefficients.ja.md)

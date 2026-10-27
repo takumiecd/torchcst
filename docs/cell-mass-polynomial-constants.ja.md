@@ -1,5 +1,8 @@
 # Fourier係数のmode定数を先に用意する
 
+後続の[Horner評価](cell-mass-horner-and-sigma.ja.md)では、同じ正の多項式と微分を
+より少ない演算で評価する選択肢を追加した。以下は先行するtable方式の記録。
+
 `coefficient_method="polynomial_table"`は、従来の`polynomial`と同じ正規化済み
 ChebyshevSquareの係数を、少ない割り算で評価する方式。
 DFT・scalar polynomialも比較用に残す。既定値は従来のpolynomial。
