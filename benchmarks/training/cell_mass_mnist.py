@@ -111,18 +111,30 @@ def make_cst(width, atoms, *, dtype=torch.float32):
 def polar_bounds(width, *, site_scaled):
     spacing = 128 / width
     if site_scaled:
-        minimum = 0.25 * spacing
+        minimum = spacing
+        maximum = min(100 * minimum, 128 / 3)
+        # Scalar buffers are FP32 in training. Round the nonrepresentable
+        # Q/3 ceiling down so a later FP64 decode still fits the domain.
+        rounded = torch.tensor(maximum, dtype=torch.float32)
+        if float(rounded) > maximum:
+            rounded = torch.nextafter(rounded, torch.zeros_like(rounded))
         return BandwidthBounds(
             minimum=minimum,
             birth=8 * minimum,
-            maximum=100 * minimum,
+            maximum=float(rounded),
             upper_floor=2 * minimum,
         )
     return BandwidthBounds(minimum=2.0, birth=16.0, maximum=40.0, upper_floor=4.0)
 
 
 def make_polar_cst(
-    width, atoms, *, amplitude_scale=1.0, dtype=torch.float32, site_scaled=False
+    width,
+    atoms,
+    *,
+    amplitude_scale=1.0,
+    dtype=torch.float32,
+    site_scaled=False,
+    bounds=None,
 ):
     chart = chart_presets.regular_grid(
         ((width,),), spacing=128 / width, geometry="flat_torus"
@@ -132,7 +144,7 @@ def make_polar_cst(
         output_min_tile_sites=8 if site_scaled else width // 16,
         amplitude_max=amplitude_scale,
         w_c=0.3 * amplitude_scale,
-        input_bounds=polar_bounds(width, site_scaled=site_scaled),
+        input_bounds=bounds or polar_bounds(width, site_scaled=site_scaled),
         alpha_init=0.5,
     )
     plan = (
@@ -254,6 +266,14 @@ def make_model(initialization, kind):
                 initialization["atoms"].clone(),
                 amplitude_scale=initialization["amplitude_gain"],
                 site_scaled=initialization.get("cohort") == "site_scaled",
+                # Frozen fixtures carry their own bounds. In particular,
+                # earlier min/spacing=.25 runs must remain reproducible.
+                bounds=BandwidthBounds(
+                    **{
+                        name: initialization["kernel_settings"][name]
+                        for name in ("minimum", "birth", "maximum", "upper_floor")
+                    }
+                ),
             )
             if initialization.get("parameterization") == "polar"
             else make_cst(n, initialization["atoms"].clone())

@@ -13,7 +13,8 @@ denseと同等の時間は今後の任意の改善目標であり、今回の完
 物理atom表を複製せず、入出力の別幅にも対応する。CPU全2,047 passed/5,362 skipped。
 GPU全勾配/更新とMNIST3epochはjob `l4job-3b154a81ff6845b485d9a80332bb182e`で完了した。
 ただし先行設定minimum=2/maximum=40はユーザー指定のσ_min/spacing<=1を満たさなかった。
-今回の設定はσ_min=.25spacing、σ_max=100σ_min、birth=8σ_min、upper_floor=2σ_minへ訂正する。
+2026-10-28の最新指定でσ_min=spacing、σ_max=min(100σ_min,Q/3)、birth=8σ_min、upper_floor=2σ_minとする。
+128はσ_min=1/σ_max≈42.666664、1024は0.125/12.5。非表現可能な上限はFP32で下向きに丸める。
 最小tileも128/1024とも4/8sitesとし、明示SITE_SCALED Planで疎sortと逆indexを使う。
 この訂正後のGPU/学習検証は未完了。正本のσ範囲訂正節に旧結果と区別して残した。
 別幅のbank省略と保存FP32 H/Gによる勾配誤差を先行検査で検出し、

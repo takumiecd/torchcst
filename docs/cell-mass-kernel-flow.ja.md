@@ -115,26 +115,37 @@ C生成のCartesian経路にも共有sigmaを仮定したbankペア省略が残�
 両失敗runのsource/results/spec/receiptはignored `output/cell-mass-polar-integration-20261027/`
 の`failed-split-preflight/`と`failed-rounded-gradient/`へ保存した。
 
-#### σ範囲とsite単位の最小tile（2026-10-27訂正、現在の学習条件）
+#### σ範囲とsite単位の最小tile（2026-10-28訂正、現在の学習条件）
 
 ユーザー指定は`σ_min/spacing <= 1`、`σ_max ≈ 100 σ_min`。
 過去の[小幅混合の記録](research-history/local-product/20261004-subspacing-mixtures.md)にも
 `σ_min < spacing`と0.25の例がある。上の固定幅2..40はこの条件を満たさなかった。
+最新の指定により`σ_min/spacing = 1`を選ぶ。Qは座標空間の一周の長さで、Q=N*spacing。
+現在の実装の許容上限Q/3を適用し、128では希望の100倍より小さくなる。
 既存Polarの更新則・sigmaの意味を維持し、今回のMNIST harnessで次を明示設定する。
 ライブラリの一般的なPolar既定値を変更するものではない。
 
 ```text
 spacing = Q / N, Q = 128
-σ_min = 0.25 * spacing
-σ_max = 100 * σ_min
+σ_min = spacing
+σ_max = min(100 * σ_min, Q/3)
 σ_birth = 8 * σ_min, upper_floor = 2 * σ_min
 input T_min = 4 * spacing, output T_min = 8 * spacing
 ```
 
 | N | spacing | σ_min | σ_max | 入力/出力T_min（物理幅） |
 | --- | ---: | ---: | ---: | ---: |
-| 128 | 1 | 0.25 | 25 | 4 / 8 |
-| 1024 | 0.125 | 0.03125 | 3.125 | 0.5 / 1 |
+| 128 | 1 | 1 | 約42.666664 | 4 / 8 |
+| 1024 | 0.125 | 0.125 | 12.5 | 0.5 / 1 |
+
+FP32 scalarへの丸めでQ/3を超えないよう、非表現可能な上限は下向きに丸める。
+0.25spacing版はsource `7448590f`、job `l4job-7eee0a834b874bb0952e92f49857890e`へ
+固定投入した比較条件で、今回選択する1spacing版とは分ける。
+そのrunは24 passed/8 failedで学習開始前に停止した。sort経路の入口でreverse指定を
+prepareへ渡し忘れ、dXが必要とする逆indexが欠落したためである。今回その伝達を修正した。
+0.25版の速度・学習結果は存在しない。source/results/receiptは
+`output/cell-mass-polar-site-scaled-20261027/failed-missing-reverse/`へ保存した。
+fixtureの実際の幅設定を保存し、再読込時は当時の`kernel_settings`から復元する。
 
 T_h=2^h T_min、local bankのP_h=3T_h、σ<=T_hの最初のbankという分類は維持する。
 1024でも最小tileを4/8 **sites**にする。以前の32/64sitesを残したままσだけ縮めると、

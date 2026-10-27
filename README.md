@@ -104,13 +104,16 @@ load old Polar checkpoints. See the
 ### Hierarchical cell masses with an explicit CUDA Plan
 
 ```python
+import torch
 from torchcst import BandwidthBounds, CSTLinear, CSTOptimizer, FixedSelector, make_algorithm_registry
 from torchcst import chart_presets, presets
 from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.plans import SITE_SCALED
 
 n = 128  # also 1024
 spacing = 128 / n
-sigma_min = 0.25 * spacing
+sigma_min = spacing
+# FP32 ceiling immediately below Q/3, with Q=128.
+sigma_cap = float(torch.nextafter(torch.tensor(128 / 3), torch.tensor(0.0)))
 grid = chart_presets.regular_grid(((n,),), spacing=spacing, geometry="flat_torus")
 layer = CSTLinear(
     grid, grid, atoms=int(0.05 * n * n), device="cuda",
@@ -119,7 +122,7 @@ layer = CSTLinear(
         amplitude_max=1.0, w_c=0.3,
         input_bounds=BandwidthBounds(
             minimum=sigma_min, birth=8 * sigma_min,
-            maximum=100 * sigma_min, upper_floor=2 * sigma_min,
+            maximum=min(100 * sigma_min, sigma_cap), upper_floor=2 * sigma_min,
         ),
         alpha_init=0.5,
     ),

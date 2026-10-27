@@ -1204,7 +1204,9 @@ def hierarchical_linear(
         if not bool(torch.isfinite(x).all()):
             raise ValueError("X must be finite")
         if layout is None:
-            layout = prepare_layout(plan, atoms, method=layout_method)
+            layout = prepare_layout(
+                plan, atoms, method=layout_method, reverse=reverse_layout
+            )
         else:
             layout.validate_for(atoms, plan)
     return _HierarchicalLinear.apply(

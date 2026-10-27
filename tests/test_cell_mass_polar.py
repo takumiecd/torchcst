@@ -199,13 +199,36 @@ def test_site_scaled_bounds_and_plan_contract(n):
     from benchmarks.training.cell_mass_mnist import polar_bounds
 
     bounds = polar_bounds(n, site_scaled=True)
-    assert bounds.minimum / (128 / n) == 0.25
-    assert bounds.maximum / bounds.minimum == 100
+    assert bounds.minimum / (128 / n) == 1
+    assert bounds.maximum <= 128 / 3
+    assert bounds.maximum == pytest.approx(min(100 * bounds.minimum, 128 / 3), rel=1e-7)
+    assert float(torch.tensor(bounds.maximum, dtype=torch.float32)) <= 128 / 3
     model = layer(n, count=3, site_scaled=True, dtype=torch.float32)
     axis = hierarchy_from_operator(model.declaration())
     assert (axis.input.min_tile_sites, axis.output.min_tile_sites) == (4, 8)
     registry = get_registry()
     assert registry.loads_plan(registry.dumps_plan(SITE_SCALED)) == SITE_SCALED
+
+
+def test_polar_fixture_reconstruction_preserves_recorded_bounds():
+    from benchmarks.training.cell_mass_mnist import (
+        make_model,
+        make_polar_initialization,
+    )
+
+    fixture = make_polar_initialization(128)
+    # Simulate an older fixture, made before the default min/spacing changed.
+    fixture["kernel_settings"].update(
+        minimum=0.25, birth=2.0, maximum=25.0, upper_floor=0.5
+    )
+    restored = make_model(fixture, "cst")[2]
+    bounds = restored.kernel.spec.parameterization.input_bounds
+    assert (bounds.minimum, bounds.birth, bounds.maximum, bounds.upper_floor) == (
+        0.25,
+        2.0,
+        25.0,
+        0.5,
+    )
 
 
 @cuda_only
