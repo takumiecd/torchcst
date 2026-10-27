@@ -141,11 +141,10 @@ torch::Tensor parameter_grad(torch::Tensor atoms, torch::Tensor rows, torch::Ten
     return gradient;
 }
 
-std::vector<torch::Tensor>
-compute_g_and_parameter_grad(torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups,
-                             torch::Tensor offsets, torch::Tensor zx, torch::Tensor zy,
-                             torch::Tensor h, std::vector<double> input_config,
-                             std::vector<double> output_config, int threads, bool windowed) {
+std::vector<torch::Tensor> compute_g_and_parameter_grad(
+    torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups, torch::Tensor offsets,
+    torch::Tensor zx, torch::Tensor zy, torch::Tensor h, std::vector<double> input_config,
+    std::vector<double> output_config, int threads, bool windowed, bool specialize_modes) {
     TORCH_CHECK(power_of_two(threads) && threads >= 32 && threads <= 256, "invalid atom threads");
     check_layout(atoms, rows, groups, offsets);
     Axis input = parse_axis(input_config), output = parse_axis(output_config);
@@ -167,7 +166,7 @@ compute_g_and_parameter_grad(torch::Tensor atoms, torch::Tensor rows, torch::Ten
     AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "hierarchical_fused_grad_atoms", [&] {
         using atom_t = scalar_t;
         AT_DISPATCH_FLOATING_TYPES(h.scalar_type(), "hierarchical_fused_grad_storage", [&] {
-            if (input.modes == 8 && output.modes == 8) {
+            if (specialize_modes && input.modes == 8 && output.modes == 8) {
                 compute_g_parameter_grad_kernel<atom_t, scalar_t, 8>
                     <<<(atoms.size(0) + threads - 1) / threads, threads, 0, stream>>>(
                         atoms.data_ptr<atom_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),

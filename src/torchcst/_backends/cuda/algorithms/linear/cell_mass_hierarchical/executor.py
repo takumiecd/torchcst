@@ -525,17 +525,29 @@ def parameter_grad(plan, atoms, layout, zx, zy, h, g, *, threads=128, windowed=F
 
 
 def compute_g_and_parameter_grad(
-    plan, atoms, layout, zx, zy, h, *, threads=128, windowed=False
+    plan,
+    atoms,
+    layout,
+    zx,
+    zy,
+    h,
+    *,
+    threads=128,
+    windowed=False,
+    specialize_modes=True,
 ):
     """One thread builds rounded G and all atom gradients, sharing output work.
 
     G is stored in H's dtype before it participates in gradients, matching the
     separate kernels' intermediate precision. It remains available for dX.
+    Specialization is used only when both axes have M8.
     """
     if type(threads) is not int or threads not in (32, 64, 128, 256):
         raise ValueError("atom threads must be 32,64,128 or 256")
     if type(windowed) is not bool:
         raise ValueError("windowed must be bool")
+    if type(specialize_modes) is not bool:
+        raise ValueError("specialize_modes must be bool")
     layout.validate_for(atoms, plan)
     return _extension().compute_g_and_parameter_grad(
         atoms,
@@ -549,6 +561,7 @@ def compute_g_and_parameter_grad(
         plan.output.native_config(),
         threads,
         windowed,
+        specialize_modes,
     )
 
 
@@ -619,6 +632,7 @@ class _HierarchicalLinear(torch.autograd.Function):
         atoms_per_split,
         compensated_values,
         fuse_h_c,
+        specialize_g_grad,
     ):
         zx = build_hierarchy(
             x,
@@ -675,6 +689,7 @@ class _HierarchicalLinear(torch.autograd.Function):
         ctx.fuse_backward_cin = fuse_backward_cin
         ctx.atoms_per_split = atoms_per_split
         ctx.compensated_values = compensated_values
+        ctx.specialize_g_grad = specialize_g_grad
         ctx.source_version = atoms._version
         # save_for_backward checks atom AND layout-buffer mutations. Avoid
         # keeping the source x: Zx already contains the needed contractions.
@@ -750,6 +765,7 @@ class _HierarchicalLinear(torch.autograd.Function):
                 h,
                 threads=ctx.atom_threads,
                 windowed=ctx.window_moments,
+                specialize_modes=ctx.specialize_g_grad,
             )
         else:
             g = compute_g(
@@ -805,6 +821,7 @@ class _HierarchicalLinear(torch.autograd.Function):
             None,
             None,
             None,
+            None,
         )
 
 
@@ -828,6 +845,7 @@ def hierarchical_linear(
     atoms_per_split=0,
     compensated_values=False,
     fuse_h_c=False,
+    specialize_g_grad=True,
 ):
     """Private research autograd route, using this forward's bank/owner choices.
 
@@ -838,11 +856,14 @@ def hierarchical_linear(
     output C, standalone G and separate input C; fused gradients stay double.
     The optional fused H/C forward is used for M8 axes, with separate fallback
     for other mode counts.
+    specialize_g_grad controls standalone G/gradient fusion; fused Cin is unchanged.
     Double backward and full-route CUDA Graph capture are not supported yet
     (preparation has dynamic output shapes and host checks).
     """
     if type(fuse_h_c) is not bool:
         raise ValueError("fuse_h_c must be bool")
+    if type(specialize_g_grad) is not bool:
+        raise ValueError("specialize_g_grad must be bool")
     _validate_compensated(compensated_values, atoms, atoms.dtype, plan.input)
     _validate_compensated(compensated_values, atoms, atoms.dtype, plan.output)
     if type(reverse_layout) is not bool:
@@ -903,4 +924,5 @@ def hierarchical_linear(
         atoms_per_split,
         compensated_values,
         fuse_h_c,
+        specialize_g_grad,
     )

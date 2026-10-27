@@ -2259,3 +2259,143 @@ def test_fused_h_c_rejects_non_m8_direct_and_highlevel_falls_back(
     assert not calls
     for a, b in ((actual, reference), (dx, dxr), (dp, dpr)):
         torch.testing.assert_close(a, b, rtol=3e-6, atol=2e-7)
+
+
+@cuda_only
+@pytest.mark.parametrize(
+    "dtype,windowed,same_axes",
+    [
+        (torch.float32, False, True),
+        (torch.float32, True, False),
+        (torch.float64, False, False),
+        (torch.float64, True, True),
+    ],
+)
+def test_specialized_and_generic_fused_g_grad_match_independent_fft(
+    dtype, windowed, same_axes
+):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        build_hierarchy,
+        build_window_moments,
+        compute_g_and_parameter_grad,
+        compute_h,
+        prepare_layout,
+    )
+
+    input_axis = AxisPlan(site_count=128, min_tile_sites=4, spacing=0.5, origin=-2)
+    output_axis = (
+        input_axis
+        if same_axes
+        else AxisPlan(site_count=128, min_tile_sites=8, spacing=1, origin=3)
+    )
+    plan = HierarchyPlan(input=input_axis, output=output_axis)
+    rng = torch.Generator().manual_seed(120)
+    source = torch.randn(37, 4, dtype=dtype, generator=rng)
+    source[:, 1] = torch.linspace(0.2, 20, len(source), dtype=dtype)
+    source[:, 2:] *= 150
+    source[0] = torch.tensor([0, 2, 61.9 if same_axes else 130.9, -2.1], dtype=dtype)
+    boundary = torch.tensor(2.0, dtype=dtype)
+    source[1, 1] = torch.nextafter(boundary, torch.tensor(float("inf"), dtype=dtype))
+    x = torch.randn(5, 128, dtype=dtype, generator=rng)
+    dy = torch.randn(5, 128, dtype=dtype, generator=rng)
+    pr, xr = source.double().requires_grad_(), x.double().requires_grad_()
+    u = differentiable_profile_matrix(pr, output_axis, 2)
+    v = differentiable_profile_matrix(pr, input_axis, 3)
+    y = ((xr @ v.T) * pr[:, 0]) @ u
+    expected_dp = torch.autograd.grad(y, pr, dy.double())[0]
+    atoms = source.cuda()
+    layout = prepare_layout(plan, atoms, method="counting")
+    zx, zy = (
+        build_hierarchy(x.cuda(), input_axis),
+        build_hierarchy(dy.cuda(), output_axis),
+    )
+    if windowed:
+        zx = build_window_moments(zx, input_axis)
+        zy = build_window_moments(zy, output_axis)
+    h = compute_h(plan, atoms, layout, zx, storage_dtype=dtype, windowed=windowed)
+    expected_g = (dy.double() @ u.detach().T)[:, layout.rows.cpu().tolist()].to(dtype)
+    tol = (
+        {"rtol": 3e-6, "atol": 2e-7}
+        if dtype == torch.float32
+        else {"rtol": 3e-9, "atol": 2e-10}
+    )
+    for specialize in (False, True):
+        g, dp = compute_g_and_parameter_grad(
+            plan,
+            atoms,
+            layout,
+            zx,
+            zy,
+            h,
+            windowed=windowed,
+            specialize_modes=specialize,
+        )
+        torch.testing.assert_close(g.cpu(), expected_g, **tol)
+        torch.testing.assert_close(dp.cpu().double(), expected_dp, **tol)
+
+
+@cuda_only
+@pytest.mark.parametrize("fuse_h_c,compensated", [(False, False), (True, True)])
+def test_specialize_g_grad_highlevel_h_c_and_compensated(fuse_h_c, compensated):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        hierarchical_linear,
+    )
+
+    plan = HierarchyPlan(
+        input=AxisPlan(site_count=128, min_tile_sites=4, spacing=0.5, origin=-2),
+        output=AxisPlan(site_count=128, min_tile_sites=8, spacing=1, origin=3),
+    )
+    rng = torch.Generator().manual_seed(120)
+    source = torch.randn(37, 4, generator=rng)
+    source[:, 1] = torch.linspace(0.2, 20, len(source))
+    source[:, 2:] *= 150
+    source[0] = torch.tensor([0.0, 2.0, 130.9, 61.9])
+    xcpu = torch.randn(5, 128, generator=rng)
+    dy = torch.randn(5, 128, generator=rng)
+    xr, pr = xcpu.double().requires_grad_(), source.double().requires_grad_()
+    u = differentiable_profile_matrix(pr, plan.output, 2)
+    v = differentiable_profile_matrix(pr, plan.input, 3)
+    yr = ((xr @ v.T) * pr[:, 0]) @ u
+    dxr, dpr = torch.autograd.grad(yr, (xr, pr), dy.double())
+    atoms, x = source.cuda().requires_grad_(), xcpu.cuda().requires_grad_()
+    for specialize in (False, True):
+        y = hierarchical_linear(
+            plan,
+            x,
+            atoms,
+            layout_method="counting",
+            c_splits=7,
+            fuse_h_c=fuse_h_c,
+            compensated_values=compensated,
+            fuse_g_grad=True,
+            specialize_g_grad=specialize,
+            window_moments=True,
+        )
+        dx, dp = torch.autograd.grad(y, (x, atoms), dy.cuda())
+        for actual, expected in ((y, yr), (dx, dxr), (dp, dpr)):
+            torch.testing.assert_close(
+                actual.cpu().double(), expected, rtol=3e-6, atol=2e-7
+            )
+
+
+@cuda_only
+@pytest.mark.parametrize("bad", [1, None, "true"])
+def test_specialize_g_grad_flags_require_bool(bad):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        build_hierarchy,
+        compute_g_and_parameter_grad,
+        hierarchical_linear,
+        prepare_layout,
+    )
+
+    axis = AxisPlan(site_count=32, min_tile_sites=4)
+    plan = HierarchyPlan(input=axis, output=axis)
+    atoms = torch.ones(3, 4, device="cuda")
+    x = torch.ones(1, 32, device="cuda")
+    layout = prepare_layout(plan, atoms, method="counting")
+    z = build_hierarchy(x, axis)
+    h = torch.ones(1, 3, device="cuda")
+    with pytest.raises((TypeError, ValueError)):
+        compute_g_and_parameter_grad(plan, atoms, layout, z, z, h, specialize_modes=bad)
+    with pytest.raises((TypeError, ValueError)):
+        hierarchical_linear(plan, x, atoms, specialize_g_grad=bad)
