@@ -1,5 +1,10 @@
 # 区間確率方式：prepareからbackwardまでのkernelの流れ
 
+1024/B4の最新経路は[G/Parameter勾配とC_in生成の融合](cell-mass-cin-fusion.ja.md)。
+入力係数を現在のshared chunkで再利用し、global Gを作らない選択肢を追加した。
+以下の従来経路も対照として維持する。
+
+
 現在のprofileは[1周期分のタイル窓](cell-mass-tile-window.ja.md)。
 選んだwhole tileを共通のセル積分基底で処理し、支持境界での個別積分は行わない。
 blockの担当site範囲は別の実行設定`sites_per_block`で分けられる。

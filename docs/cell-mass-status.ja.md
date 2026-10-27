@@ -5,6 +5,37 @@
 CSTの1step時間をdenseの約2倍程度へ収めること。
 128はこの時間・メモリ条件を満たす設定を確認した。1024はメモリ条件を満たすが、時間は未達。
 
+## 最新：1024のC_in融合と展開幅の再調整
+
+runtime source `660cb0ea`（実装`907132b3`、差分は単一siteのテストfixture修正のみ）。
+C生成とsite展開を分けて測定し、G/Parameter勾配とC_in生成を融合した。
+Gのglobal表をなくし、入力係数をH/dHとC_inで再利用する。
+
+別jobでの2fresh process確認は、CST **1.706 / 1.710ms**、
+peak allocated **4.261MiB** / reserved **6MiB**。
+同じjobの通常denseは0.450 / 0.441msで、時間比3.79 / 3.88倍。約2倍目標は未達。
+workspaceなしdense16.063MiB / reserved22MiB以下のメモリを維持する。
+従来推奨からの短縮は8〜9%、thread/site幅を揃えた融合単独の効果は約4%。
+
+1024/B4では、下の従来settings1024に次の差分を加える。
+数学のtile_sitesや周期は変えない。
+
+```python
+settings1024.update(
+    sites_per_block=32, c_threads_per_block=32, fuse_backward_cin=True,
+)
+```
+
+GPU・数学1468 passed。全52,428atomのY/dX/全4列勾配・AdamW更新/moments/stepも照合済み。
+forwardは従来通り。backwardはZy構築後、G/Parameter勾配/C_in部分和を一つのkernelで作り、
+次kernelがC_inを合計・展開してdXを書く。Gは現在のshared chunk内だけに保持する。
+M8の融合sharedは6,176bytes/block。C_inの一時global部分和544KiBは残す。
+CPU2006 passed / 4216 skipped / 既存警告18件、Ruff・format・build・321runtime source照合も通過。
+
+[分離した実測・融合コードの順序・負の結果・再確認とhash](cell-mass-cin-fusion.ja.md)を正本とする。
+研究入口のflagは既定False、融合はbatch<=4のみ。公開dispatcher/Graphには未接続。
+128の推奨設定は従来の微分保存型を維持し、この回で128の完全stepを再測定したとは扱わない。
+
 ## 比較している条件
 
 N×N、atom数floor(0.05N²)、batch4、FP32、ChebyshevSquare M8、tail_bound1e-3。
@@ -22,7 +53,7 @@ CSTは4列のphysical atom、denseはWを学習するので、更新後の学習
 workspaceなしは`CUBLAS_WORKSPACE_CONFIG=:0:0` / `CUBLASLT_WORKSPACE_SIZE=0`。
 workspace削減をモデル圧縮と混同しない。全GPU process使用量は未測定。
 
-## 最終sourceの測定
+## 融合前の比較（source c9b67dd4）
 
 runtime source `c9b67dd4`、NVIDIA L4 / Torch2.11.0+cu130 / CUDA13.0。
 各設定2fresh process、2巡目は逆順、warmup10回後30個の同期wall標本。
@@ -69,7 +100,7 @@ phaseの和を完全step時間の代用にしない。
 registerを減らした小batch専用化は改善せず外した。
 [C thread数とprepareの切り分け](cell-mass-layout-tuning.ja.md)に負の結果も残す。
 
-## 保持する配列と寿命
+## C_in融合前の配列と寿命
 
 1024/A52428/B4/M8、勾配再計算・owner窓・owner C・G融合経路。
 
@@ -95,7 +126,7 @@ Cのglobal部分和はbounded scratchであり、永続したmodel状態でも�
 mode数のみのCUDA constant table9864bytesはTorch allocatorピーク外なので別に数える。
 atomが行列要素数の5%でも、1atomは4個のfloatなのでParameter数はdenseの約20%。
 
-## 現在の処理順
+## C_in融合前の処理順
 
 ```cpp
 // forward: 同じstream上の依存順。各kernel内は要素ごとに並列。
@@ -131,7 +162,7 @@ kernel境界を同じstreamの順序でつなぎ、block間の自作spin待ち�
 `kernels.cu`がZ・投影・C・展開・Parameter勾配を実行する。
 物理atomの並びは自由で、勾配は元の行番号へ戻す。
 
-## 最終検証と再現
+## 融合前sourceの検証と再現
 
 CPU2006 passed / 4041 skipped / 既存JIT警告18件（43.08秒）。
 CUDA・数学1293 passed（40.56秒）、failed/skippedなし。
