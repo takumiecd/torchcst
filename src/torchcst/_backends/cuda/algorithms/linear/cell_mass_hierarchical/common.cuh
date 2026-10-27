@@ -8,6 +8,7 @@
 #include <climits>
 #include <cmath>
 #include <torch/extension.h>
+#include <type_traits>
 #include <vector>
 
 namespace cell_mass_hierarchy {
@@ -160,18 +161,27 @@ __device__ inline int bank_for_level(const Axis &axis, int level) {
 
 // Integer coefficients of the positive polynomial, indexed by even M=2..16,
 // harmonic and degree. These depend only on the basis, never on atom values.
-// The 444 polynomial doubles, 72 prefactors and 17 harmonic reciprocals occupy
-// 4264 bytes of constant memory per CUDA translation unit. Polynomial
-// integers are exact in double; divisions are rounded once at compile time.
+// The double bank plus M=8 compensated coefficients occupy 4616 bytes of
+// constant memory per CUDA translation unit. No atom-dependent values are
+// stored here. The FP32 pairs are split from the existing double constants.
 __host__ __device__ constexpr int horner_bank_offset(int modes) {
     int bank = modes / 2;
     return (bank - 1) * bank * (4 * bank + 1) / 6;
 }
 constexpr int HORNER_VALUES = horner_bank_offset(16) + 16 * 17 / 2;
+struct DoubleSingle {
+    float hi, lo;
+};
+__host__ __device__ constexpr DoubleSingle split_constant(double value) {
+    float hi = static_cast<float>(value);
+    return {hi, static_cast<float>(value - static_cast<double>(hi))};
+}
 struct HornerBanks {
     double coefficients[HORNER_VALUES] = {};
     double factors[72] = {};
     double inverse_integer[17] = {};
+    DoubleSingle coefficients_m8[36] = {};
+    DoubleSingle factors_m8[8] = {};
     __host__ __device__ constexpr HornerBanks() {
         for (int k = 1; k <= 16; ++k)
             inverse_integer[k] = 1.0 / k;
@@ -188,10 +198,57 @@ struct HornerBanks {
                 }
             }
         }
+        for (int j = 0; j < 36; ++j)
+            coefficients_m8[j] = split_constant(coefficients[horner_bank_offset(8) + j]);
+        for (int k = 0; k < 8; ++k)
+            factors_m8[k] = split_constant(factors[12 + k]);
     }
 };
-static_assert(sizeof(HornerBanks) == 4264, "unexpected Horner constant-bank size");
+static_assert(sizeof(HornerBanks) == 4616, "unexpected Horner constant-bank size");
 static __device__ __constant__ HornerBanks horner_banks{};
+
+// Error-compensated FP32 pair arithmetic for the optional M=8 polynomial.
+// This is an experimental evaluation route, not an exact FP64 replacement.
+__device__ inline DoubleSingle ds_from_double(double value) {
+    float hi = static_cast<float>(value);
+    return {hi, static_cast<float>(value - static_cast<double>(hi))};
+}
+__device__ inline DoubleSingle ds_add(DoubleSingle a, DoubleSingle b) {
+    float sum = a.hi + b.hi;
+    float v = sum - a.hi;
+    float error = ((b.hi - v) + (a.hi - (sum - v))) + a.lo + b.lo;
+    float hi = sum + error;
+    return {hi, error - (hi - sum)};
+}
+__device__ inline DoubleSingle ds_multiply(DoubleSingle a, DoubleSingle b) {
+    float product = a.hi * b.hi;
+    float error = fmaf(a.hi, b.hi, -product) + a.hi * b.lo + a.lo * b.hi + a.lo * b.lo;
+    float hi = product + error;
+    return {hi, error - (hi - product)};
+}
+__device__ inline double ds_to_double(DoubleSingle value) {
+    return static_cast<double>(value.hi) + static_cast<double>(value.lo);
+}
+
+template <bool Compensated>
+using PolynomialNumber = typename std::conditional<Compensated, DoubleSingle, double>::type;
+
+template <bool Compensated>
+__device__ inline PolynomialNumber<Compensated> polynomial_number(double value) {
+    if constexpr (Compensated)
+        return ds_from_double(value);
+    else
+        return value;
+}
+
+template <bool Compensated>
+__device__ inline PolynomialNumber<Compensated>
+polynomial_multiply(PolynomialNumber<Compensated> a, PolynomialNumber<Compensated> b) {
+    if constexpr (Compensated)
+        return ds_multiply(a, b);
+    else
+        return a * b;
+}
 
 // For k > 0, use a precomputed sine when a caller already advances the
 // cell-half-phase by recurrence. Multiplying P by 1/pi first avoids overflow.
@@ -210,33 +267,72 @@ __device__ inline double cell_integral_factor(const Bank &bank, int harmonic, do
 // The common T_M(beta)^-2 cancels from c_k/(P*c_0). Evaluate the same
 // positive polynomial and optionally its beta derivative together. Horner
 // avoids runtime coefficient divisions; no per-atom coefficient array exists.
-template <bool Derivative>
-__device__ inline void raw_horner_power_impl(double beta, int modes, int harmonic, double power,
-                                             double dpower, double &value, double &derivative) {
-    double x = beta * beta, t = x - 1;
-    if (harmonic == modes) {
-        value = 0.25 * power;
-        if (Derivative)
-            derivative = 0.25 * dpower;
-        return;
-    }
-    int degree = modes - harmonic;
-    int offset = horner_bank_offset(modes) + harmonic * (2 * modes - harmonic + 1) / 2;
-    double polynomial = horner_banks.coefficients[offset + degree - 1];
-    double slope = 0;
-    for (int j = degree - 1; j >= 1; --j) {
+template <bool Derivative, bool Compensated = false>
+__device__ inline void
+raw_horner_power_impl(double beta, int modes, int harmonic, PolynomialNumber<Compensated> power,
+                      PolynomialNumber<Compensated> dpower, double &value, double &derivative,
+                      PolynomialNumber<Compensated> beta_number = {}) {
+    if constexpr (Compensated) {
+        // The compensated bank contains only M=8; callers must select it
+        // only after checking the axis mode count.
+        DoubleSingle x = ds_multiply(beta_number, beta_number);
+        DoubleSingle t = ds_add(x, {-1.0f, 0.0f});
+        if (harmonic == 8) {
+            value = ds_to_double(ds_multiply({0.25f, 0.0f}, power));
+            if constexpr (Derivative)
+                derivative = ds_to_double(ds_multiply({0.25f, 0.0f}, dpower));
+            return;
+        }
+        int degree = 8 - harmonic;
+        int offset = harmonic * (17 - harmonic) / 2;
+        DoubleSingle polynomial = horner_banks.coefficients_m8[offset + degree - 1];
+        DoubleSingle slope = {0, 0};
+        for (int j = degree - 1; j >= 1; --j) {
+            if constexpr (Derivative)
+                slope = ds_add(ds_multiply(slope, t), polynomial);
+            polynomial =
+                ds_add(ds_multiply(polynomial, t), horner_banks.coefficients_m8[offset + j - 1]);
+        }
+        if constexpr (Derivative)
+            slope = ds_add(ds_multiply(slope, t), polynomial);
+        polynomial = ds_multiply(polynomial, t);
+        DoubleSingle factor = horner_banks.factors_m8[harmonic];
+        DoubleSingle raw = ds_multiply(ds_multiply(factor, power), polynomial);
+        if (harmonic == 0)
+            raw = ds_add(raw, {0.5f, 0.0f});
+        value = ds_to_double(raw);
+        if constexpr (Derivative) {
+            DoubleSingle dx = ds_multiply({2.0f, 0.0f}, beta_number);
+            DoubleSingle d =
+                ds_add(ds_multiply(dpower, polynomial), ds_multiply(ds_multiply(power, slope), dx));
+            derivative = ds_to_double(ds_multiply(factor, d));
+        }
+    } else {
+        double x = beta * beta, t = x - 1;
+        if (harmonic == modes) {
+            value = 0.25 * power;
+            if (Derivative)
+                derivative = 0.25 * dpower;
+            return;
+        }
+        int degree = modes - harmonic;
+        int offset = horner_bank_offset(modes) + harmonic * (2 * modes - harmonic + 1) / 2;
+        double polynomial = horner_banks.coefficients[offset + degree - 1];
+        double slope = 0;
+        for (int j = degree - 1; j >= 1; --j) {
+            if (Derivative)
+                slope = slope * t + polynomial;
+            polynomial = polynomial * t + horner_banks.coefficients[offset + j - 1];
+        }
         if (Derivative)
             slope = slope * t + polynomial;
-        polynomial = polynomial * t + horner_banks.coefficients[offset + j - 1];
+        polynomial *= t; // The polynomial has zero constant term.
+        int bank = modes / 2;
+        double factor = horner_banks.factors[bank * (bank - 1) + harmonic];
+        value = factor * power * polynomial + (harmonic == 0 ? 0.5 : 0);
+        if (Derivative)
+            derivative = factor * (dpower * polynomial + power * slope * (2 * beta));
     }
-    if (Derivative)
-        slope = slope * t + polynomial;
-    polynomial *= t; // The polynomial has zero constant term.
-    int bank = modes / 2;
-    double factor = horner_banks.factors[bank * (bank - 1) + harmonic];
-    value = factor * power * polynomial + (harmonic == 0 ? 0.5 : 0);
-    if (Derivative)
-        derivative = factor * (dpower * polynomial + power * slope * (2 * beta));
 }
 
 template <bool Derivative>
@@ -246,13 +342,26 @@ __device__ inline void raw_horner_power(double beta, int modes, int harmonic, do
     raw_horner_power_impl<Derivative>(beta, modes, harmonic, power, dpower, value, derivative);
 }
 
-template <bool Derivative>
+template <bool Derivative, bool Compensated = false>
 __device__ inline void raw_horner(double beta, int modes, int harmonic, double &value,
                                   double &derivative) {
-    double x = beta * beta, power = 1;
-    for (int j = 0; j < harmonic; ++j)
-        power *= x;
-    raw_horner_power<Derivative>(beta, modes, harmonic, power, value, derivative);
+    if constexpr (Compensated) {
+        DoubleSingle bn = ds_from_double(beta), x = ds_multiply(bn, bn);
+        DoubleSingle power = {1, 0}, dpower = {0, 0};
+        for (int j = 0; j < harmonic; ++j) {
+            if constexpr (Derivative)
+                dpower = ds_add(ds_multiply(dpower, x),
+                                ds_multiply(power, ds_multiply({2.0f, 0.0f}, bn)));
+            power = ds_multiply(power, x);
+        }
+        raw_horner_power_impl<Derivative, true>(beta, modes, harmonic, power, dpower, value,
+                                                derivative, bn);
+    } else {
+        double x = beta * beta, power = 1;
+        for (int j = 0; j < harmonic; ++j)
+            power *= x;
+        raw_horner_power<Derivative>(beta, modes, harmonic, power, value, derivative);
+    }
 }
 
 __device__ inline double raw_coefficient(double beta, int modes, int harmonic) {
@@ -275,7 +384,7 @@ __device__ inline double profile_center(const Axis &axis, const Bank &bank, doub
     return relative - image * axis.period;
 }
 
-template <bool Derivative = false, int FixedModes = 0>
+template <bool Derivative = false, int FixedModes = 0, bool Compensated = false>
 __device__ inline Profile make_profile(const Axis &axis, const Bank &bank, double sigma,
                                        double center, int owner) {
     // Preserve effective_radius(sigma,P), including its concentration floor.
@@ -291,10 +400,15 @@ __device__ inline Profile make_profile(const Axis &axis, const Bank &bank, doubl
         double radius_sigma = (1 - axis.radius_ratio4) * s * s * s / (root * root * root);
         beta_sigma = beta * sqrt(fmax(0.0, beta * beta - 1)) * (0.5 * bank.omega) * radius_sigma;
         double zero_beta;
-        raw_horner<true>(beta, modes, 0, raw_zero, zero_beta);
+        raw_horner<true, Compensated>(beta, modes, 0, raw_zero, zero_beta);
         zero_log_beta = zero_beta / raw_zero;
     } else {
-        raw_zero = raw_coefficient(beta, modes, 0);
+        if constexpr (Compensated) {
+            double unused;
+            raw_horner<false, true>(beta, modes, 0, raw_zero, unused);
+        } else {
+            raw_zero = raw_coefficient(beta, modes, 0);
+        }
     }
     return {beta,
             raw_zero,
@@ -321,7 +435,8 @@ __device__ inline void coefficient_pair(const Profile &profile, int modes, int h
     sine = scale * phase_sine;
 }
 // Differentiate the same positive polynomial as raw_coefficient with respect
-// to beta. Carry value/derivative together; this is analytic, not finite differences.
+// to beta. Carry value/derivative together; this is analytic, not finite
+// differences.
 __device__ inline void raw_coefficient_derivative(double beta, int modes, int harmonic,
                                                   double &value, double &derivative) {
     raw_horner<true>(beta, modes, harmonic, value, derivative);
@@ -330,17 +445,20 @@ __device__ inline void raw_coefficient_derivative(double beta, int modes, int ha
 // A thread-local stream over harmonics 0..M, with one phase evaluation and a
 // running beta^(2k). Derivatives are with respect to beta at fixed bank,
 // owner and center. The caller must request each harmonic in order, once.
-template <bool Derivative> struct HarmonicStream {
-    double beta, beta_squared, power, power_beta, inverse_period, normalized_scale, zero_log_beta;
+template <bool Derivative, bool Compensated = false> struct HarmonicStream {
+    double beta, inverse_period, normalized_scale, zero_log_beta;
+    PolynomialNumber<Compensated> beta_number, beta_squared, power, power_beta;
     double phase_sine, phase_cosine, step_sine, step_cosine;
     int modes, harmonic;
 
     __device__ HarmonicStream(const Profile &profile, int mode_count)
-        : beta(profile.beta), beta_squared(beta * beta), power(1), power_beta(0),
-          inverse_period(profile.inverse_period),
+        : beta(profile.beta), inverse_period(profile.inverse_period),
           normalized_scale((2 * profile.inverse_period) / profile.raw_zero),
-          zero_log_beta(Derivative ? profile.zero_log_beta : 0), phase_sine(0), phase_cosine(1),
-          modes(mode_count), harmonic(0) {
+          zero_log_beta(Derivative ? profile.zero_log_beta : 0),
+          beta_number(polynomial_number<Compensated>(beta)),
+          beta_squared(polynomial_multiply<Compensated>(beta_number, beta_number)),
+          power(polynomial_number<Compensated>(1)), power_beta(polynomial_number<Compensated>(0)),
+          phase_sine(0), phase_cosine(1), modes(mode_count), harmonic(0) {
         sincos(profile.omega * profile.center, &step_sine, &step_cosine);
     }
 
@@ -349,15 +467,22 @@ template <bool Derivative> struct HarmonicStream {
             cc = inverse_period;
             cs = cc_beta = cs_beta = 0;
         } else {
-            if (Derivative)
-                power_beta = power_beta * beta_squared + power * (2 * beta);
-            power *= beta_squared;
+            if constexpr (Compensated) {
+                if constexpr (Derivative)
+                    power_beta = ds_add(ds_multiply(power_beta, beta_squared),
+                                        ds_multiply(power, ds_multiply({2.0f, 0.0f}, beta_number)));
+                power = ds_multiply(power, beta_squared);
+            } else {
+                if (Derivative)
+                    power_beta = power_beta * beta_squared + power * (2 * beta);
+                power *= beta_squared;
+            }
             double next_cosine = phase_cosine * step_cosine - phase_sine * step_sine;
             phase_sine = phase_sine * step_cosine + phase_cosine * step_sine;
             phase_cosine = next_cosine;
             double raw, raw_beta = 0;
-            raw_horner_power_impl<Derivative>(beta, modes, harmonic, power, power_beta, raw,
-                                              raw_beta);
+            raw_horner_power_impl<Derivative, Compensated>(beta, modes, harmonic, power, power_beta,
+                                                           raw, raw_beta, beta_number);
             double scale = normalized_scale * raw;
             cc = scale * phase_cosine;
             cs = scale * phase_sine;
