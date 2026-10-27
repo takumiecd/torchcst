@@ -13,16 +13,18 @@ backwardのZy→G→C_in→dX、全atomの4列勾配を実装した。分類はs
 128/819atomの全勾配・AdamW更新/moments/stepも独立参照へ照合した。
 
 現在の階層版は入力dtypeでH/Gを保存し、計算・Z/CはFP64を維持する。
-source `833e68dc`ではCの分割、係数/位相の再利用、counting配置、Zのmicrochunk、
-G/勾配融合・直接group参照・M8専用化・owner window RとAxisコピー回避を実装。
-GPU・数学2217件と全atom勾配を通過した。階層Zは2子ずつのマージを維持し、
-Rは同じ階層の3タイルを合算したH/G用の別の保存値である。
-128は完全step1.123588ms対dense0.677137ms、allocated242.5KiB対264.5KiB、reserved両方2MiB。
-1024は1.661862ms対dense0.666132ms、allocated7.396MiB対16.063MiB、reserved10MiB対22MiB。
-1024初版23.211msから約14倍短縮し、メモリ条件を維持したが、両サイズで最終速度目標は未達。
-128はC2/融合/sort/Z0/128threads、1024はC64/融合/counting/Z32/64threads、両方R有効。
-128ではRなし1.090994msの別jobもあり、一律有効化はせず独立再確認する。
-初期sigma0.2..40、入力T_min4・出力T_min8、1 fresh processずつの診断値。
+runtime `dcf48273`（snapshot `46b069e2`）ではC分割、係数/位相の再利用、counting配置、
+Zのmicrochunk、G/勾配融合・直接group参照・M8専用化・owner window RとAxisコピー回避を実装。
+GPU・数学は通常/tuned各2278件、全atom勾配と128 AdamWも通過した。
+階層Zは2子ずつのマージを維持し、Rは同じ階層の3タイルを合算したH/G用の別の保存値。
+別L4の2 fresh processで、1024完全step1.657808 / 1.655620ms、dense0.668562 / 0.683754ms。
+allocated7.396MiB対16.063MiB、reserved10MiB対22MiBでdense以下を再確認した。
+1024初版23.211msから約14倍短縮したが、最終速度目標は未達。
+128は設定によって1.12〜1.21ms、dense0.69〜0.70ms。allocated242.5KiB対264.5KiB、reserved両方2MiB。
+1024ではG/勾配とC_inの融合が2.24〜2.30msへ悪化したため、Cin分離を選ぶ。
+128の融合は同jobで小差の改善だったが、job間の変動を超えた普遍的勝者とはしない。
+明示的kwargs・同source比較・全hash・負の結果は正本の独立再確認節に記録。
+初期sigma0.2..40、物理入力T_min4・出力8、B4/FP32/M8の診断範囲に限る。
 FP64保存初版1024のreserved26MiBは条件未達であり、負の記録を正本に残す。
 公開CSTLinear/dispatcher、二階微分、全体Graph学習へは未接続。
 階層版の配列寿命・数式・検証・source/result hashは[設計の正本](cell-mass-kernel-flow.ja.md)を参照する。

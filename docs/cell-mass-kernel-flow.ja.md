@@ -468,7 +468,7 @@ C_out/C_in=0.359/0.316ms、融合G/勾配0.360ms、Zx/R_x0.049ms、Zy/R_y0.047ms
 
 ignored `output/cell-mass-opt-20261027/` の各candidateにsource/results/spec/receiptを保全。
 
-### 検証中：G・Parameter勾配・C_inの融合
+### 最適化第7段：G・Parameter勾配・C_in融合の負の結果
 
 source `dcf48273`。研究flag `fuse_backward_cin=True`を追加した。
 両方の勾配が必要で1<=batch<=4のとき、input owner/splitの各laneが別atomについて
@@ -477,8 +477,87 @@ Hの保存値と丸めたGを使う規約は維持する。C累積はsharedへ�
 M8/B4のsharedは6,088bytes/block。Gはglobalへ保存し、全atom係数表は追加しない。
 B0/B>4/片側だけの勾配は既存経路へ戻る。新header `projection.cuh`はJIT digestにも含める。
 CPU全体2037 passed / 4995 skipped / 既存警告18件、Ruff/format/diffは通過。
-GPUでは通常経路とtuned経路を別々に検査し、全atom oracle、optimizer、racecheck、完全step/peakを確認中。
-速度とメモリの採用結果はまだ出ていない。
+GPUでは通常経路2278 passed、tuned経路2278 passed、failed/skipped 0。
+全52,428atomの独立Y/dX/4列勾配、AdamW、fallback分岐のspy、racecheckも通過した。
+しかし1024完全stepはC16=2.259520、C32=2.176199、C64=2.276359ms、dense0.671774ms。
+128/C2は1.172671ms、dense0.674572ms。allocated/reservedは従来と同じでdense以下だが、
+source833分離版1.661862msより遅いため**速度面では不採用、既定Falseを維持**する。
+別sourceの小差を一般化せず、現在のsourceでflag False/Trueをfresh processずつ再確認する。
+
+1024/C32のGPU段階診断は融合1.153024ms、分離G/勾配0.360448ms、C_in0.319488ms。
+融合REG194、STACK40、LOCAL0であり、register増大が主因と断定できる証拠ではない。
+同じfixtureのgroup/splitをCPUで列挙すると、逆方向S64の32lane枠の実atom比は30.97%、
+S32は43.10%、S16は56.69%。S64は5291 chunkで、連続atomだけなら必要な1639 warpの約3.23倍。
+これはGPU stall計測でなく、group区間ごとの末尾paddingの構造的な集計である。
+重い勾配計算をその断片化したchunkへ移した影響は、今後の候補を設計する根拠になる。
+
+次の未実装候補は、atom値をコピーせず`reverse_slots[A]`にforward sorted slotを並べ、
+`reverse_offsets[input_nodes+1]`で入力ownerの連続範囲を渡す方法。
+正規rowsは出力→入力順を維持し、H/Gも従来slot、勾配は元Parameter行に対応させる。
+counting prepareでgroup内の既存scatter順位を再利用すれば、追加atomicなしにreverse配置を作れる。
+int32 slotなら1024の恒常増分は209,712bytes＋offsets496bytes。
+owner別の有効split数、追加prepare時間、group復元、保存状態の変更検出、全勾配とピークを検証するまで、
+改善や採用は主張しない。現在はこの逆indexを実装していない。
+
+job `l4job-6efb835e93b74ae48c03f8dbba502198`、source `23958a971ff86d7c328d24e3426f12c0795fa492e7e3c0fac04e7f17f249d72f`、result `161ab9561fc8af50862268ffbcf47fceacb3c7858f426bed7fa5833264932aec`、driver `ae0664bfc469ad720788d08f68341790f2f6118de254070cff79d63eace6075b`、binary `99cc6d5d0202d892753c71a584f619ee23795f82994e2854ddcdd0bd5f9cc14c`。
+327 runtimeとcommon/projectionの両header、検査ソース、結果35ファイルを照合。
+ignored `output/cell-mass-opt-20261027/fused-candidate/`へsource/results/spec/receiptを保存。
+wheel/sdistの338 runtimeファイルもsourceへ照合した。
+
+
+
+### 独立再確認と、現在使う研究設定
+
+runtime `dcf48273` / snapshot `46b069e2`（差は文書のみ）。別の所有L4で各設定2 fresh process、
+2巡目は測定順を逆転した。warm5/同期wall21、同じatom/X/dY/初期dense Wは前jobとbit一致。
+検査/prepare/全forward/backward/fused AdamWを含む。JIT/oracle/初期W構築は除外。
+TF32なし・Graphなし・cuBLAS workspaceなし。前jobの通常/tuned各2278 gateを根拠とし、
+このjobで正確性suiteを再実行したとは扱わない。
+
+| 条件 | 2 fresh processの完全step | allocated | reserved |
+| --- | ---: | ---: | ---: |
+| 128、C2/sort/Z0/128threads、Rなし、Cin分離 | 1.205635 / 1.121764ms | 242.5KiB | 2MiB |
+| 128、同上Rあり、Cin分離 | 1.148473 / 1.144093ms | 242.5KiB | 2MiB |
+| 128、同上Rあり、Cin融合 | 1.121268 / 1.120112ms | 242.5KiB | 2MiB |
+| dense128 | 0.699004 / 0.687199ms | 264.5KiB | 2MiB |
+| 1024、C16/counting/Z32/64threads、Rあり、Cin分離 | 1.704220 / 1.723238ms | 5.875MiB | 8MiB |
+| 1024、C64/同上、Cin分離 | 1.657808 / 1.655620ms | 7.396MiB | 10MiB |
+| 1024、C16/同上、Cin融合 | 2.238962 / 2.236008ms | 5.875MiB | 8MiB |
+| 1024、C64/同上、Cin融合 | 2.302701 / 2.263328ms | 7.396MiB | 10MiB |
+| dense1024 | 0.668562 / 0.683754ms | 16.063MiB | 22MiB |
+
+1024のCin融合は同sourceの比較でも悪化した。128のR/Cin融合はこのjobで小幅に速いが、
+過去jobとのゆらぎが小差を上回るため、全サイズ一律の自動採用はしない。
+通常のprivate API既定値は比較用に残し、公開dispatcherの既定は変更しない。
+現在の保守的な128設定と、確認した1024設定は次のkwargsで明示する。
+128でR/Cin融合を選ぶ場合も、同じ数学/メモリ契約の研究選択肢であり、普遍的勝者とはしない。
+
+```python
+from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import hierarchical_linear
+
+settings128 = dict(
+    c_splits=2, fuse_g_grad=True, layout_method="sort",
+    z_chunk_sites=0, atom_threads=128,
+    window_moments=False, fuse_backward_cin=False,
+)
+settings1024 = dict(
+    c_splits=64, fuse_g_grad=True, layout_method="counting",
+    z_chunk_sites=32, atom_threads=64,
+    window_moments=True, fuse_backward_cin=False,
+)
+y = hierarchical_linear(plan, x, atoms, **settings1024)
+```
+
+この設定はB4/FP32/M8/tail1e-3/Q128、A=floor(.05*N*N)、sigma初期linspace(.2,40)、
+物理T_min入力4/出力8のfixtureで確認したもの。別の幅分布・多軸・他GPUの勝者へ一般化しない。
+1024は初版23.211msから約14倍短縮したが、dense比約2.42〜2.48倍の時間であり、
+ユーザーの最終目標である**denseの2倍の速度＝時間半分**は未達。
+
+job `l4job-b3fdda00495f458d8706f9e0b74a4e13`、source `e87dda784b5b41dcf87505be5319242b002df6e8273659abdca9451d1a4eb872`、result `13aa1b7f83e6420a6948d79a564a596f0e56b5eab3561f0f2243645efdb38853`、driver `665b8c3f78fa1d0abcb383227891b188622f921f2cd70d122013182e0e8a7adf`、binary `b960d6fded186f6b49ddb96842bc02c25d88bd362616b1b75fb2318e04eb2219`。
+327 runtime＋両header・検査ソース、結果69ファイルとfixture bit一致を照合し、
+ignored `output/cell-mass-opt-20261027/confirmation/`へsource/result/spec/receiptを保全。
+所有L4は共有poolで停止を確認した。source `46b069e2`のCPU validationもsuccess。
+
 
 ### 現在：入力dtypeでH/Gを保存するbackward
 
