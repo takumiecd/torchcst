@@ -43,11 +43,15 @@ __global__ void parameter_grad_kernel(const scalar_t *atoms, const int64_t *rows
     gradient[4 * original + 3] = static_cast<scalar_t>(dmu_input);
 }
 
-template <typename scalar_t, typename projection_t, int FixedModes, bool Compensated = false>
+template <typename scalar_t, typename projection_t, int FixedModes, bool Compensated = false,
+          bool ReuseShape = false>
 __global__ void compute_g_parameter_grad_kernel(
     const scalar_t *atoms, const int64_t *rows, const int *groups, const int64_t *offsets,
     const double *zx, const double *zy, const projection_t *h, projection_t *g, scalar_t *gradient,
     int atom_count, int group_count, int batches, Axis input, Axis output, bool windowed) {
+    static_assert(!ReuseShape || FixedModes == 8, "shape cache requires M8 specialization");
+    // Every thread owns one column; the cache contains no cross-thread data.
+    extern __shared__ double magnitudes[];
     int slot = blockIdx.x * blockDim.x + threadIdx.x;
     if (slot >= atom_count)
         return;
@@ -79,9 +83,16 @@ __global__ void compute_g_parameter_grad_kernel(
     double da = 0, ds = 0, dmu_input = 0, dmu_output = 0;
     for (int begin = 0; begin < batches; begin += BATCH_TILE) {
         double gv[BATCH_TILE] = {};
-        project_weighted_derivatives<true, FixedModes, false, Compensated>(
-            zy, batches, begin, output, output_bank, output_owner, output_profile, beta_sigma_out,
-            h, atom_count, slot, amplitude, gv, dmu_output, ds, windowed);
+        if constexpr (ReuseShape) {
+            project_weighted_derivatives<true, FixedModes, false, Compensated, true>(
+                zy, batches, begin, output, output_bank, output_owner, output_profile,
+                beta_sigma_out, h, atom_count, slot, amplitude, gv, dmu_output, ds, windowed,
+                nullptr, 0, 0, magnitudes, blockDim.x, threadIdx.x);
+        } else {
+            project_weighted_derivatives<true, FixedModes, false, Compensated>(
+                zy, batches, begin, output, output_bank, output_owner, output_profile,
+                beta_sigma_out, h, atom_count, slot, amplitude, gv, dmu_output, ds, windowed);
+        }
         for (int b = 0; b < BATCH_TILE && begin + b < batches; ++b) {
             projection_t rounded_g = static_cast<projection_t>(gv[b]);
             g[(begin + b) * atom_count + slot] = rounded_g;
@@ -90,9 +101,22 @@ __global__ void compute_g_parameter_grad_kernel(
             da += h_value * g_value;
             gv[b] = amplitude * g_value;
         }
-        project_weighted_derivatives<false, FixedModes, false, Compensated>(
-            zx, batches, begin, input, input_bank, input_owner, input_profile, beta_sigma_in, h,
-            atom_count, slot, amplitude, gv, dmu_input, ds, windowed);
+        if constexpr (ReuseShape) {
+            if (same_shape) {
+                project_cached_input_derivatives<FixedModes>(
+                    zx, batches, begin, input, input_bank, input_owner, input_profile,
+                    beta_sigma_in, h, atom_count, slot, amplitude, gv, dmu_input, ds, windowed,
+                    magnitudes, blockDim.x, threadIdx.x);
+            } else {
+                project_weighted_derivatives<false, FixedModes, false, Compensated>(
+                    zx, batches, begin, input, input_bank, input_owner, input_profile,
+                    beta_sigma_in, h, atom_count, slot, amplitude, gv, dmu_input, ds, windowed);
+            }
+        } else {
+            project_weighted_derivatives<false, FixedModes, false, Compensated>(
+                zx, batches, begin, input, input_bank, input_owner, input_profile, beta_sigma_in, h,
+                atom_count, slot, amplitude, gv, dmu_input, ds, windowed);
+        }
     }
     gradient[4 * original] = static_cast<scalar_t>(da);
     gradient[4 * original + 1] = static_cast<scalar_t>(ds);
@@ -141,15 +165,18 @@ torch::Tensor parameter_grad(torch::Tensor atoms, torch::Tensor rows, torch::Ten
     return gradient;
 }
 
-std::vector<torch::Tensor>
-compute_g_and_parameter_grad(torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups,
-                             torch::Tensor offsets, torch::Tensor zx, torch::Tensor zy,
-                             torch::Tensor h, std::vector<double> input_config,
-                             std::vector<double> output_config, int threads, bool windowed,
-                             bool specialize_modes, bool compensated_grad) {
+std::vector<torch::Tensor> compute_g_and_parameter_grad(
+    torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups, torch::Tensor offsets,
+    torch::Tensor zx, torch::Tensor zy, torch::Tensor h, std::vector<double> input_config,
+    std::vector<double> output_config, int threads, bool windowed, bool specialize_modes,
+    bool compensated_grad, bool reuse_shape_coefficients) {
     TORCH_CHECK(power_of_two(threads) && threads >= 32 && threads <= 256, "invalid atom threads");
     check_layout(atoms, rows, groups, offsets);
     Axis input = parse_axis(input_config), output = parse_axis(output_config);
+    TORCH_CHECK(!reuse_shape_coefficients ||
+                    (specialize_modes && input.modes == 8 && output.modes == 8 &&
+                     atoms.scalar_type() == torch::kFloat32 && h.scalar_type() == torch::kFloat32),
+                "shape coefficient reuse requires specialized M8 axes and FP32 atoms/H");
     TORCH_CHECK(!compensated_grad ||
                     (input.modes == 8 && output.modes == 8 && input.tail_bound == 1e-3 &&
                      output.tail_bound == 1e-3 && atoms.scalar_type() == torch::kFloat32 &&
@@ -174,6 +201,29 @@ compute_g_and_parameter_grad(torch::Tensor atoms, torch::Tensor rows, torch::Ten
         using atom_t = scalar_t;
         AT_DISPATCH_FLOATING_TYPES(h.scalar_type(), "hierarchical_fused_grad_storage", [&] {
             if constexpr (std::is_same_v<atom_t, float> && std::is_same_v<scalar_t, float>) {
+                if (reuse_shape_coefficients) {
+                    size_t shared_bytes = 16 * threads * sizeof(double);
+                    if (compensated_grad) {
+                        compute_g_parameter_grad_kernel<atom_t, scalar_t, 8, true, true>
+                            <<<(atoms.size(0) + threads - 1) / threads, threads, shared_bytes,
+                               stream>>>(atoms.data_ptr<atom_t>(), rows.data_ptr<int64_t>(),
+                                         groups.data_ptr<int>(), offsets.data_ptr<int64_t>(),
+                                         zx.data_ptr<double>(), zy.data_ptr<double>(),
+                                         h.data_ptr<scalar_t>(), g.data_ptr<scalar_t>(),
+                                         gradient.data_ptr<atom_t>(), atoms.size(0), groups.size(0),
+                                         zx.size(0), input, output, windowed);
+                    } else {
+                        compute_g_parameter_grad_kernel<atom_t, scalar_t, 8, false, true>
+                            <<<(atoms.size(0) + threads - 1) / threads, threads, shared_bytes,
+                               stream>>>(atoms.data_ptr<atom_t>(), rows.data_ptr<int64_t>(),
+                                         groups.data_ptr<int>(), offsets.data_ptr<int64_t>(),
+                                         zx.data_ptr<double>(), zy.data_ptr<double>(),
+                                         h.data_ptr<scalar_t>(), g.data_ptr<scalar_t>(),
+                                         gradient.data_ptr<atom_t>(), atoms.size(0), groups.size(0),
+                                         zx.size(0), input, output, windowed);
+                    }
+                    return;
+                }
                 if (compensated_grad) {
                     if (specialize_modes) {
                         compute_g_parameter_grad_kernel<atom_t, scalar_t, 8, true>

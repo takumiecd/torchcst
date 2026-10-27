@@ -307,6 +307,21 @@ def _validate_compensated_grad(compensated_grad, atoms, projection_dtype, plan):
         )
 
 
+def _validate_shape_reuse(
+    reuse_shape_coefficients, atoms, projection_dtype, plan, specialize
+):
+    if type(reuse_shape_coefficients) is not bool:
+        raise ValueError("reuse_shape_coefficients must be bool")
+    if reuse_shape_coefficients and (
+        atoms.dtype != torch.float32
+        or projection_dtype != torch.float32
+        or plan.input.modes != 8
+        or plan.output.modes != 8
+        or not specialize
+    ):
+        raise ValueError("shape reuse requires FP32, both axes M8 and specialization")
+
+
 def compute_h(
     plan,
     atoms,
@@ -613,6 +628,7 @@ def compute_g_and_parameter_grad(
     windowed=False,
     specialize_modes=True,
     compensated_grad=False,
+    reuse_shape_coefficients=False,
 ):
     """One thread builds rounded G and all atom gradients, sharing output work.
 
@@ -621,6 +637,9 @@ def compute_g_and_parameter_grad(
     Specialization is used only when both axes have M8.
     compensated_grad changes only the raw profile polynomial and its beta
     derivative to FP32 pairs; phase and weighted contractions remain double.
+    Shape reuse caches 16 double magnitudes/slopes per thread in shared memory,
+    reused only when input/output profile shapes match exactly. No atom-sized
+    global coefficient buffer or cross-thread synchronization is needed.
     """
     if type(threads) is not int or threads not in (32, 64, 128, 256):
         raise ValueError("atom threads must be 32,64,128 or 256")
@@ -629,6 +648,9 @@ def compute_g_and_parameter_grad(
     if type(specialize_modes) is not bool:
         raise ValueError("specialize_modes must be bool")
     _validate_compensated_grad(compensated_grad, atoms, h.dtype, plan)
+    _validate_shape_reuse(
+        reuse_shape_coefficients, atoms, h.dtype, plan, specialize_modes
+    )
     layout.validate_for(atoms, plan)
     return _extension().compute_g_and_parameter_grad(
         atoms,
@@ -644,6 +666,7 @@ def compute_g_and_parameter_grad(
         windowed,
         specialize_modes,
         compensated_grad,
+        reuse_shape_coefficients,
     )
 
 
@@ -717,6 +740,7 @@ class _HierarchicalLinear(torch.autograd.Function):
         specialize_g_grad,
         compensated_cdot,
         compensated_grad,
+        reuse_shape_coefficients,
     ):
         zx = build_hierarchy(
             x,
@@ -777,6 +801,7 @@ class _HierarchicalLinear(torch.autograd.Function):
         ctx.specialize_g_grad = specialize_g_grad
         ctx.compensated_cdot = compensated_cdot
         ctx.compensated_grad = compensated_grad
+        ctx.reuse_shape_coefficients = reuse_shape_coefficients
         ctx.source_version = atoms._version
         ctx.layout_method = layout.method
         # save_for_backward checks atom AND layout-buffer mutations. Avoid
@@ -856,6 +881,7 @@ class _HierarchicalLinear(torch.autograd.Function):
                 windowed=ctx.window_moments,
                 specialize_modes=ctx.specialize_g_grad,
                 compensated_grad=ctx.compensated_grad,
+                reuse_shape_coefficients=ctx.reuse_shape_coefficients,
             )
         else:
             g = compute_g(
@@ -915,6 +941,7 @@ class _HierarchicalLinear(torch.autograd.Function):
             None,
             None,
             None,
+            None,
         )
 
 
@@ -941,6 +968,7 @@ def hierarchical_linear(
     specialize_g_grad=True,
     compensated_cdot=False,
     compensated_grad=False,
+    reuse_shape_coefficients=False,
 ):
     """Private research autograd route, using this forward's bank/owner choices.
 
@@ -951,6 +979,8 @@ def hierarchical_linear(
     output C, standalone G and separate input C. The independent compensated_grad
     option evaluates the raw polynomial and beta derivative in standalone
     G/gradient fusion with FP32 pairs; phase and contractions stay double.
+    Shape reuse holds width magnitudes/slopes only in this block's shared
+    memory, avoiding a second width evaluation when both profile shapes match.
     The optional fused H/C forward is used for M8 axes, with separate fallback
     for other mode counts.
     specialize_g_grad controls standalone G/gradient fusion; fused Cin is unchanged.
@@ -968,6 +998,11 @@ def hierarchical_linear(
     if compensated_cdot and (fuse_h_c or fuse_backward_cin):
         raise ValueError("compensated C dot requires separate H/C and separate Cin")
     _validate_compensated_grad(compensated_grad, atoms, atoms.dtype, plan)
+    _validate_shape_reuse(
+        reuse_shape_coefficients, atoms, atoms.dtype, plan, specialize_g_grad
+    )
+    if reuse_shape_coefficients and (not fuse_g_grad or fuse_backward_cin):
+        raise ValueError("shape reuse requires fuse_g_grad and separate Cin")
     if compensated_grad and (not fuse_g_grad or fuse_backward_cin):
         raise ValueError("compensated gradients require fuse_g_grad and separate Cin")
     _validate_compensated(compensated_values, atoms, atoms.dtype, plan.input)
@@ -1037,4 +1072,5 @@ def hierarchical_linear(
         specialize_g_grad,
         compensated_cdot,
         compensated_grad,
+        reuse_shape_coefficients,
     )

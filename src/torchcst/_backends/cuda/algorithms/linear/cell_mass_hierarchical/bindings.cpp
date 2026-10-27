@@ -38,7 +38,8 @@ std::vector<Tensor> compute_g_and_parameter_grad(Tensor atoms, Tensor rows, Tens
                                                  Tensor offsets, Tensor zx, Tensor zy, Tensor h,
                                                  Config input, Config output, int threads,
                                                  bool windowed, bool specialize_modes,
-                                                 bool compensated_grad);
+                                                 bool compensated_grad,
+                                                 bool reuse_shape_coefficients);
 Tensor parameter_grad(Tensor atoms, Tensor rows, Tensor groups, Tensor offsets, Tensor zx,
                       Tensor zy, Tensor h, Tensor g, Config input, Config output, int threads,
                       bool windowed);

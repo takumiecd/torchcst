@@ -462,10 +462,15 @@ template <bool Derivative, bool Compensated = false> struct HarmonicStream {
         sincos(profile.omega * profile.center, &step_sine, &step_cosine);
     }
 
-    __device__ inline void next(double &cc, double &cs, double &cc_beta, double &cs_beta) {
+    __device__ inline void next(double &cc, double &cs, double &cc_beta, double &cs_beta,
+                                double *magnitude = nullptr, double *beta_magnitude = nullptr) {
         if (harmonic == 0) {
             cc = inverse_period;
             cs = cc_beta = cs_beta = 0;
+            if (magnitude)
+                *magnitude = inverse_period;
+            if (beta_magnitude)
+                *beta_magnitude = 0;
         } else {
             if constexpr (Compensated) {
                 if constexpr (Derivative)
@@ -484,14 +489,20 @@ template <bool Derivative, bool Compensated = false> struct HarmonicStream {
             raw_horner_power_impl<Derivative, Compensated>(beta, modes, harmonic, power, power_beta,
                                                            raw, raw_beta, beta_number);
             double scale = normalized_scale * raw;
+            if (magnitude)
+                *magnitude = scale;
             cc = scale * phase_cosine;
             cs = scale * phase_sine;
             if (Derivative) {
                 double scale_beta = normalized_scale * (raw_beta - raw * zero_log_beta);
+                if (beta_magnitude)
+                    *beta_magnitude = scale_beta;
                 cc_beta = scale_beta * phase_cosine;
                 cs_beta = scale_beta * phase_sine;
             } else {
                 cc_beta = cs_beta = 0;
+                if (beta_magnitude)
+                    *beta_magnitude = 0;
             }
         }
         ++harmonic;
