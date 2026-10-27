@@ -1,5 +1,6 @@
 """Hierarchical forward gates against existing-profile cell masses and quadrature."""
 
+import itertools
 import math
 
 import numpy as np
@@ -882,14 +883,17 @@ def test_hierarchical_backward_gradcheck_and_noncontiguous_dy():
 @pytest.mark.parametrize("layout_method", ["sort", "counting"])
 @pytest.mark.parametrize("window_moments", [False, True])
 @pytest.mark.parametrize("fuse_backward_cin", [False, True])
+@pytest.mark.parametrize("reverse_layout", [False, True])
 def test_hierarchical_adamw_rebuilds_layout_and_matches_all_moments(
-    layout_method, window_moments, fuse_backward_cin
+    layout_method, window_moments, fuse_backward_cin, reverse_layout
 ):
     """Complete 128-site step, all 819 atom gradients, then live width/owner moves."""
     from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
         hierarchical_linear,
     )
 
+    if reverse_layout and layout_method != "counting":
+        pytest.skip("reverse layout is defined only for counting preparation")
     plan = HierarchyPlan(
         input=AxisPlan(site_count=128, min_tile_sites=4, origin=-2),
         output=AxisPlan(site_count=128, min_tile_sites=8, origin=3),
@@ -916,6 +920,7 @@ def test_hierarchical_adamw_rebuilds_layout_and_matches_all_moments(
             c_splits=2,
             fuse_g_grad=True,
             fuse_backward_cin=fuse_backward_cin,
+            reverse_layout=reverse_layout,
             z_chunk_sites=8,
             atom_threads=64,
             window_moments=window_moments,
@@ -1074,7 +1079,10 @@ def test_fused_g_and_grad_match_stages_and_mass(dtype):
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 @pytest.mark.parametrize("layout_method", ["sort", "counting"])
 @pytest.mark.parametrize("window_moments", [False, True])
-def test_fused_g_grad_cin_matches_separate_stages(dtype, layout_method, window_moments):
+@pytest.mark.parametrize("reverse,atoms_per_split", [(False, 0), (True, 0), (True, 32)])
+def test_fused_g_grad_cin_matches_separate_stages(
+    dtype, layout_method, window_moments, reverse, atoms_per_split
+):
     from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
         build_hierarchy,
         build_window_moments,
@@ -1086,6 +1094,8 @@ def test_fused_g_grad_cin_matches_separate_stages(dtype, layout_method, window_m
         prepare_layout,
     )
 
+    if reverse and layout_method != "counting":
+        pytest.skip("reverse layout is defined only for counting preparation")
     plan = HierarchyPlan(
         input=AxisPlan(site_count=128, min_tile_sites=4, origin=-2),
         output=AxisPlan(site_count=128, min_tile_sites=8, origin=3),
@@ -1114,7 +1124,7 @@ def test_fused_g_grad_cin_matches_separate_stages(dtype, layout_method, window_m
     rng = torch.Generator().manual_seed(120)
     x = torch.randn(4, 128, generator=rng, dtype=dtype).cuda()
     dy = torch.randn(4, 128, generator=rng, dtype=dtype).cuda()
-    layout = prepare_layout(plan, atoms, method=layout_method)
+    layout = prepare_layout(plan, atoms, method=layout_method, reverse=reverse)
     zx = build_hierarchy(x, plan.input)
     zy = build_hierarchy(dy, plan.output)
     if window_moments:
@@ -1123,9 +1133,19 @@ def test_fused_g_grad_cin_matches_separate_stages(dtype, layout_method, window_m
     h = compute_h(plan, atoms, layout, zx, storage_dtype=dtype, windowed=window_moments)
     g = compute_g(plan, atoms, layout, zy, storage_dtype=dtype, windowed=window_moments)
     dp = parameter_grad(plan, atoms, layout, zx, zy, h, g, windowed=window_moments)
-    cin = compute_input_c(plan, atoms, layout, g, splits=7)
+    cin = compute_input_c(
+        plan, atoms, layout, g, splits=7, atoms_per_split=atoms_per_split
+    )
     fused_cin, fused_g, fused_dp = compute_g_parameter_grad_cin(
-        plan, atoms, layout, zx, zy, h, splits=7, windowed=window_moments
+        plan,
+        atoms,
+        layout,
+        zx,
+        zy,
+        h,
+        splits=7,
+        windowed=window_moments,
+        atoms_per_split=atoms_per_split,
     )
     tol = (
         {"rtol": 3e-6, "atol": 2e-7}
@@ -1134,6 +1154,49 @@ def test_fused_g_grad_cin_matches_separate_stages(dtype, layout_method, window_m
     )
     for actual, expected in ((fused_g, g), (fused_dp, dp), (fused_cin, cin)):
         torch.testing.assert_close(actual, expected, **tol)
+
+
+@cuda_only
+@pytest.mark.parametrize("threshold", [0, 32, 128, 256])
+def test_reverse_split_thresholds_with_more_atoms_than_each_limit(threshold):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        build_hierarchy,
+        compute_g,
+        compute_g_parameter_grad_cin,
+        compute_h,
+        compute_input_c,
+        parameter_grad,
+        prepare_layout,
+    )
+
+    axis = AxisPlan(site_count=32, min_tile_sites=4)
+    plan = HierarchyPlan(input=axis, output=axis)
+    rng = torch.Generator().manual_seed(120)
+    atoms = torch.empty(300, 4, dtype=torch.float32)
+    atoms[:, 0] = torch.randn(300, generator=rng) * 0.1
+    atoms[0, 0] = 0
+    atoms[:, 1] = 4.0
+    atoms[:, 2] = 31.9
+    atoms[:, 3] = 0.1
+    atoms = atoms.cuda()
+    x = torch.randn(4, 32, generator=rng).cuda()
+    dy = torch.randn(4, 32, generator=rng).cuda()
+    layout = prepare_layout(plan, atoms, method="counting", reverse=True)
+    counts = layout.reverse_offsets[1:] - layout.reverse_offsets[:-1]
+    assert int(counts.max()) == 300
+    zx, zy = build_hierarchy(x, axis), build_hierarchy(dy, axis)
+    h = compute_h(plan, atoms, layout, zx, storage_dtype=atoms.dtype)
+    g = compute_g(plan, atoms, layout, zy, storage_dtype=atoms.dtype)
+    grad = parameter_grad(plan, atoms, layout, zx, zy, h, g)
+    expected = compute_input_c(plan, atoms, layout, g, splits=1)
+    actual = compute_input_c(
+        plan, atoms, layout, g, splits=64, atoms_per_split=threshold
+    )
+    cin, fused_g, fused_grad = compute_g_parameter_grad_cin(
+        plan, atoms, layout, zx, zy, h, splits=64, atoms_per_split=threshold
+    )
+    for a, b in ((actual, expected), (cin, expected), (fused_g, g), (fused_grad, grad)):
+        torch.testing.assert_close(a, b, rtol=3e-6, atol=2e-7)
 
 
 @cuda_only
@@ -1191,14 +1254,190 @@ def test_counting_layout_ranges_and_original_rows(dtype, count):
 
 
 @cuda_only
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("count", [0, 1, 37, 819])
+def test_reverse_counting_layout_is_forward_slot_permutation_and_group_concatenation(
+    dtype, count
+):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        prepare_layout,
+    )
+
+    plan = HierarchyPlan(
+        input=AxisPlan(site_count=128, min_tile_sites=4, origin=-2),
+        output=AxisPlan(site_count=128, min_tile_sites=8, origin=3),
+    )
+    source = torch.randn(
+        count, 4, dtype=dtype, generator=torch.Generator().manual_seed(120)
+    )
+    source[:, 1] = torch.linspace(0.2, 40, count, dtype=dtype)
+    source[:, 2:] *= 150
+    atoms = source.cuda()
+    layout = prepare_layout(plan, atoms, method="counting", reverse=True)
+    assert layout.reverse_slots.dtype == torch.int32
+    assert layout.reverse_offsets.dtype == torch.int64
+    assert layout.reverse_slots.shape == (count,)
+    assert layout.reverse_offsets.shape == (plan.input.node_count + 1,)
+    expected_bytes = sum(
+        tensor.numel() * tensor.element_size()
+        for tensor in (
+            layout.rows,
+            layout.groups,
+            layout.offsets,
+            layout.reverse_slots,
+            layout.reverse_offsets,
+        )
+    )
+    assert layout.tensor_bytes == expected_bytes
+    reverse_slots = layout.reverse_slots.tolist()
+    reverse_offsets = layout.reverse_offsets.tolist()
+    assert sorted(reverse_slots) == list(range(count))
+    assert reverse_offsets[0] == 0 and reverse_offsets[-1] == count
+    assert reverse_offsets == sorted(reverse_offsets)
+    rows = layout.rows.tolist()
+    groups = layout.groups.tolist()
+    offsets = layout.offsets.tolist()
+    banks = {bank.level: bank for bank in plan.input.banks}
+    expected = [[] for _ in range(plan.input.node_count)]
+    for group, begin, end in zip(groups, offsets, offsets[1:]):
+        _, level, _, owner = group
+        expected[banks[level].node_offset + owner].extend(range(begin, end))
+    for node, (begin, end) in enumerate(itertools.pairwise(reverse_offsets)):
+        assert reverse_slots[begin:end] == expected[node]
+        for slot in reverse_slots[begin:end]:
+            level, owner = membership_oracle(source[rows[slot]].tolist(), plan.input, 3)
+            assert banks[level].node_offset + owner == node
+
+
+@cuda_only
+@pytest.mark.parametrize("invalid", ["nan_atom", "bad_sigma", "nan_signal"])
+def test_reverse_preparation_rejects_invalid_atoms_and_signal(invalid):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        prepare_layout,
+    )
+
+    axis = AxisPlan(site_count=32, min_tile_sites=4)
+    plan = HierarchyPlan(input=axis, output=axis)
+    atoms = torch.ones(3, 4, device="cuda")
+    signal = torch.ones(2, axis.site_count, device="cuda")
+    if invalid == "nan_atom":
+        atoms[0, 2] = float("nan")
+    elif invalid == "bad_sigma":
+        atoms[0, 1] = 0
+    else:
+        signal[0, 0] = float("nan")
+    with pytest.raises(ValueError):
+        prepare_layout(plan, atoms, method="counting", signal=signal, reverse=True)
+
+
+@cuda_only
+def test_reverse_layout_requires_counting_and_positive_threshold_requires_reverse():
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        hierarchical_linear,
+        prepare_layout,
+    )
+
+    axis = AxisPlan(site_count=32, min_tile_sites=4)
+    plan = HierarchyPlan(input=axis, output=axis)
+    atoms = torch.ones(3, 4, device="cuda")
+    x = torch.ones(1, 32, device="cuda")
+    with pytest.raises(ValueError):
+        prepare_layout(plan, atoms, method="sort", reverse=True)
+    with pytest.raises(ValueError):
+        hierarchical_linear(plan, x, atoms, layout_method="sort", reverse_layout=True)
+    with pytest.raises(ValueError):
+        hierarchical_linear(
+            plan, x, atoms, layout_method="counting", atoms_per_split=32
+        )
+
+
+@cuda_only
+@pytest.mark.parametrize("mutated", ["reverse_slots", "reverse_offsets"])
+def test_reverse_cache_saved_tensor_mutation_is_rejected(mutated):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        hierarchical_linear,
+        prepare_layout,
+    )
+
+    axis = AxisPlan(site_count=32, min_tile_sites=4)
+    plan = HierarchyPlan(input=axis, output=axis)
+    atoms = torch.ones(3, 4, device="cuda", requires_grad=True)
+    x = torch.ones(4, 32, device="cuda", requires_grad=True)
+    layout = prepare_layout(plan, atoms, method="counting", reverse=True)
+    y = hierarchical_linear(
+        plan, x, atoms, layout=layout, layout_method="counting", reverse_layout=True
+    )
+    with torch.no_grad():
+        getattr(layout, mutated).add_(0)
+    with pytest.raises(RuntimeError, match="modified by an inplace operation"):
+        y.sum().backward()
+
+
+@cuda_only
+def test_reverse_cache_rejects_changed_atom_version_and_supports_retained_graph():
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        hierarchical_linear,
+        prepare_layout,
+    )
+
+    axis = AxisPlan(site_count=32, min_tile_sites=4)
+    plan = HierarchyPlan(input=axis, output=axis)
+    atoms = torch.ones(3, 4, device="cuda", requires_grad=True)
+    x = torch.randn(4, 32, device="cuda", requires_grad=True)
+    layout = prepare_layout(plan, atoms, method="counting", reverse=True)
+    y = hierarchical_linear(
+        plan,
+        x,
+        atoms,
+        layout=layout,
+        layout_method="counting",
+        reverse_layout=True,
+        fuse_backward_cin=True,
+    )
+    dy = torch.randn_like(y)
+    first = torch.autograd.grad(y, (x, atoms), dy, retain_graph=True)
+    second = torch.autograd.grad(y, (x, atoms), 2 * dy)
+    for a, b in zip(first, second):
+        torch.testing.assert_close(2 * a, b)
+    with torch.no_grad():
+        atoms.add_(0)
+    with pytest.raises(RuntimeError, match="rebuild the layout cache"):
+        hierarchical_linear(
+            plan, x, atoms, layout=layout, layout_method="counting", reverse_layout=True
+        )
+
+
+@cuda_only
 @pytest.mark.parametrize(
     "fused,fuse_backward_cin", [(False, False), (True, False), (True, True)]
 )
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
-@pytest.mark.parametrize("batches,count", [(0, 37), (5, 257), (1, 3), (4, 37), (3, 0)])
+@pytest.mark.parametrize(
+    "batches,count,reverse_layout,atoms_per_split,c_splits",
+    [
+        (0, 37, False, 0, 7),
+        (5, 257, False, 0, 7),
+        (1, 3, False, 0, 7),
+        (4, 37, False, 0, 7),
+        (3, 0, False, 0, 7),
+        (0, 37, True, 0, 1),
+        (1, 3, True, 32, 64),
+        (4, 37, True, 128, 7),
+        (5, 37, True, 256, 7),
+        (3, 0, True, 0, 64),
+    ],
+)
 @pytest.mark.parametrize("window_moments", [False, True])
 def test_counting_and_chunked_autograd_match_independent_fft(
-    fused, fuse_backward_cin, dtype, batches, count, window_moments
+    fused,
+    fuse_backward_cin,
+    dtype,
+    batches,
+    count,
+    reverse_layout,
+    atoms_per_split,
+    c_splits,
+    window_moments,
 ):
     from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
         hierarchical_linear,
@@ -1234,12 +1473,14 @@ def test_counting_and_chunked_autograd_match_independent_fft(
         plan,
         x,
         p,
-        c_splits=7,
+        c_splits=c_splits,
         fuse_g_grad=fused,
         fuse_backward_cin=fuse_backward_cin,
         layout_method="counting",
         z_chunk_sites=8,
         window_moments=window_moments,
+        reverse_layout=reverse_layout,
+        atoms_per_split=atoms_per_split,
     )
     dx, dp = torch.autograd.grad(y, (x, p), dy.cuda())
     if not count:

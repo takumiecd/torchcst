@@ -9,6 +9,9 @@ std::vector<Tensor> classify_atoms(Tensor atoms, Config input, Config output);
 std::vector<Tensor> prepare_counting_layout(Tensor atoms, Config input, Config output);
 std::vector<Tensor> prepare_counting_layout_signal(Tensor atoms, Tensor signal, Config input,
                                                    Config output);
+std::vector<Tensor> prepare_counting_layout_reverse(Tensor atoms, Config input, Config output);
+std::vector<Tensor> prepare_counting_layout_reverse_signal(Tensor atoms, Tensor signal,
+                                                           Config input, Config output);
 Tensor decode_groups(Tensor keys, Config input, Config output);
 Tensor build_hierarchy(Tensor signal, Config axis, bool merge, int team_size);
 Tensor build_hierarchy_chunked(Tensor signal, Config axis, bool merge, int team_size,
@@ -31,6 +34,15 @@ std::vector<Tensor> compute_g_parameter_grad_cin(Tensor atoms, Tensor rows, Tens
                                                  Tensor offsets, Tensor zx, Tensor zy, Tensor h,
                                                  Config input, Config output, int splits,
                                                  bool windowed);
+Tensor compute_input_c_reverse(Tensor atoms, Tensor rows, Tensor reverse_slots,
+                               Tensor reverse_offsets, Tensor g, Config input, int splits,
+                               int atoms_per_split);
+std::vector<Tensor> compute_g_parameter_grad_cin_reverse(Tensor atoms, Tensor rows, Tensor groups,
+                                                         Tensor offsets, Tensor reverse_slots,
+                                                         Tensor reverse_offsets, Tensor zx,
+                                                         Tensor zy, Tensor h, Config input,
+                                                         Config output, int splits, bool windowed,
+                                                         int atoms_per_split);
 Tensor expand_c(Tensor c, Tensor like, Config axis, int width);
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
@@ -38,6 +50,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("decode_groups", &decode_groups);
     m.def("prepare_counting_layout", &prepare_counting_layout);
     m.def("prepare_counting_layout_signal", &prepare_counting_layout_signal);
+    m.def("prepare_counting_layout_reverse", &prepare_counting_layout_reverse);
+    m.def("prepare_counting_layout_reverse_signal", &prepare_counting_layout_reverse_signal);
     m.def("build_hierarchy", &build_hierarchy);
     m.def("build_hierarchy_chunked", &build_hierarchy_chunked);
     m.def("build_window_moments", &build_window_moments);
@@ -48,4 +62,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("compute_g_and_parameter_grad", &compute_g_and_parameter_grad);
     m.def("parameter_grad", &parameter_grad);
     m.def("compute_g_parameter_grad_cin", &compute_g_parameter_grad_cin);
+    m.def("compute_input_c_reverse", &compute_input_c_reverse);
+    m.def("compute_g_parameter_grad_cin_reverse", &compute_g_parameter_grad_cin_reverse);
 }

@@ -52,6 +52,8 @@ class PreparedLayout:
     groups[g] = (output_level, input_level, output_owner, input_owner).
     Counting preparation includes empty Cartesian groups; sort omits them.
     rows[offsets[g]:offsets[g+1]] lists original atom rows in that group.
+    Optional reverse_slots maps input-owner order back to these forward slots;
+    reverse_offsets gives the owner intervals. It never copies atom values.
     Key/sort/count scratch is released before this object is returned.
     """
 
@@ -61,6 +63,13 @@ class PreparedLayout:
     plan: HierarchyPlan
     _source: torch.Tensor = field(repr=False)
     _source_version: int = field(repr=False)
+    reverse_slots: torch.Tensor | None = field(default=None, repr=False)
+    reverse_offsets: torch.Tensor | None = field(default=None, repr=False)
+
+    @property
+    def has_reverse(self):
+        """Whether input-owner ranges have a cached view of forward slots."""
+        return self.reverse_slots is not None and self.reverse_offsets is not None
 
     def validate_for(self, atoms, plan):
         if (
@@ -74,11 +83,19 @@ class PreparedLayout:
     def tensor_bytes(self):
         """Retained cache payload, not an allocator peak or whole-step budget."""
         return sum(
-            t.numel() * t.element_size() for t in (self.rows, self.groups, self.offsets)
+            t.numel() * t.element_size()
+            for t in (
+                self.rows,
+                self.groups,
+                self.offsets,
+                self.reverse_slots,
+                self.reverse_offsets,
+            )
+            if t is not None
         )
 
 
-def prepare_layout(plan, atoms, *, method="sort", signal=None):
+def prepare_layout(plan, atoms, *, method="sort", signal=None, reverse=False):
     """Classify atom indices into lexicographic hierarchy/owner group ranges.
 
     The sort method retains only nonempty groups in stable order. Counting
@@ -88,6 +105,10 @@ def prepare_layout(plan, atoms, *, method="sort", signal=None):
     Width/finite rejection reads one error word. Sort/unique has dynamic output
     shapes; host checks remain, so full-route CUDA Graph support is not claimed.
     """
+    if type(reverse) is not bool:
+        raise ValueError("reverse must be bool")
+    if reverse and method != "counting":
+        raise ValueError("reverse layout requires counting preparation")
     if method not in ("sort", "counting"):
         raise ValueError("layout method must be sort or counting")
     if type(plan) is not HierarchyPlan:
@@ -119,7 +140,17 @@ def prepare_layout(plan, atoms, *, method="sort", signal=None):
     if method == "counting":
         if plan.input.node_count * plan.output.node_count > 4096:
             raise ValueError("counting layout supports at most 4096 Cartesian groups")
-        if signal is None:
+        if reverse:
+            if signal is None:
+                result = native.prepare_counting_layout_reverse(
+                    atoms, input_config, output_config
+                )
+            else:
+                result = native.prepare_counting_layout_reverse_signal(
+                    atoms, signal, input_config, output_config
+                )
+            rows, groups, offsets, errors, reverse_slots, reverse_offsets = result
+        elif signal is None:
             rows, groups, offsets, errors = native.prepare_counting_layout(
                 atoms, input_config, output_config
             )
@@ -138,7 +169,16 @@ def prepare_layout(plan, atoms, *, method="sort", signal=None):
         raise ValueError("sigma must lie in (0, min(input period,output period)/3]")
 
     if method == "counting":
-        return PreparedLayout(rows, groups, offsets, plan, atoms, atoms._version)
+        return PreparedLayout(
+            rows,
+            groups,
+            offsets,
+            plan,
+            atoms,
+            atoms._version,
+            reverse_slots=reverse_slots if reverse else None,
+            reverse_offsets=reverse_offsets if reverse else None,
+        )
 
     sorted_keys, rows = torch.sort(keys, stable=True)
     group_keys, counts = torch.unique_consecutive(sorted_keys, return_counts=True)
@@ -325,17 +365,37 @@ def compute_g(
     )
 
 
-def compute_input_c(plan, atoms, layout, g, *, splits=1):
+def _validate_reverse_grain(layout, atoms_per_split):
+    if type(atoms_per_split) is not int or not 0 <= atoms_per_split <= 65536:
+        raise ValueError("atoms_per_split must be an integer in [0,65536]")
+    if atoms_per_split and not layout.has_reverse:
+        raise ValueError("atoms_per_split requires a reverse layout")
+
+
+def compute_input_c(plan, atoms, layout, g, *, splits=1, atoms_per_split=0):
     """Accumulate amp*G into input owner C; no dX atomic or packed atom copy.
 
-    Input owners are not contiguous in the output-sorted layout. The first
-    implementation scans sparse group descriptors and loads matching ranges.
-    This is a correctness baseline; an input-group index can replace that scan.
+    A reverse index gathers forward slots in contiguous input-owner intervals.
+    Without one, the reference route visits matching output-sorted group ranges.
+    A positive atoms_per_split bounds active split count by each owner's work;
+    zero retains the requested fixed split count.
     """
     if type(splits) is not int or not 1 <= splits <= 64:
         raise ValueError("C splits must be an integer in [1,64]")
     layout.validate_for(atoms, plan)
+    _validate_reverse_grain(layout, atoms_per_split)
     native = _extension()
+    if layout.has_reverse:
+        return native.compute_input_c_reverse(
+            atoms,
+            layout.rows,
+            layout.reverse_slots,
+            layout.reverse_offsets,
+            g,
+            plan.input.native_config(),
+            splits,
+            atoms_per_split,
+        )
     arguments = (
         atoms,
         layout.rows,
@@ -408,7 +468,7 @@ def compute_g_and_parameter_grad(
 
 
 def compute_g_parameter_grad_cin(
-    plan, atoms, layout, zx, zy, h, *, splits=1, windowed=False
+    plan, atoms, layout, zx, zy, h, *, splits=1, windowed=False, atoms_per_split=0
 ):
     """Build Cin, saved rounded G and original-row atom gradients together.
 
@@ -421,6 +481,24 @@ def compute_g_parameter_grad_cin(
     if type(windowed) is not bool:
         raise ValueError("windowed must be bool")
     layout.validate_for(atoms, plan)
+    _validate_reverse_grain(layout, atoms_per_split)
+    if layout.has_reverse:
+        return _extension().compute_g_parameter_grad_cin_reverse(
+            atoms,
+            layout.rows,
+            layout.groups,
+            layout.offsets,
+            layout.reverse_slots,
+            layout.reverse_offsets,
+            zx,
+            zy,
+            h,
+            plan.input.native_config(),
+            plan.output.native_config(),
+            splits,
+            windowed,
+            atoms_per_split,
+        )
     return _extension().compute_g_parameter_grad_cin(
         atoms,
         layout.rows,
@@ -453,6 +531,7 @@ class _HierarchicalLinear(torch.autograd.Function):
         atom_threads,
         window_moments,
         fuse_backward_cin,
+        atoms_per_split,
     ):
         zx = build_hierarchy(
             x,
@@ -486,11 +565,19 @@ class _HierarchicalLinear(torch.autograd.Function):
         ctx.atom_threads = atom_threads
         ctx.window_moments = window_moments
         ctx.fuse_backward_cin = fuse_backward_cin
+        ctx.atoms_per_split = atoms_per_split
         ctx.source_version = atoms._version
         # save_for_backward checks atom AND layout-buffer mutations. Avoid
         # keeping the source x: Zx already contains the needed contractions.
         # Input-only backward does not need Zx/H, so release those immediately.
-        saved = (atoms, layout.rows, layout.groups, layout.offsets)
+        saved = (
+            atoms,
+            layout.rows,
+            layout.groups,
+            layout.offsets,
+            layout.reverse_slots,
+            layout.reverse_offsets,
+        )
         if ctx.needs_input_grad[1]:
             saved += (zx, h)
         ctx.save_for_backward(*saved)
@@ -499,9 +586,20 @@ class _HierarchicalLinear(torch.autograd.Function):
     @staticmethod
     @torch.autograd.function.once_differentiable
     def backward(ctx, dy):
-        atoms, rows, groups, offsets, *forward_state = ctx.saved_tensors
+        atoms, rows, groups, offsets, reverse_slots, reverse_offsets, *forward_state = (
+            ctx.saved_tensors
+        )
         plan = ctx.plan
-        layout = PreparedLayout(rows, groups, offsets, plan, atoms, ctx.source_version)
+        layout = PreparedLayout(
+            rows,
+            groups,
+            offsets,
+            plan,
+            atoms,
+            ctx.source_version,
+            reverse_slots=reverse_slots,
+            reverse_offsets=reverse_offsets,
+        )
         layout.validate_for(atoms, plan)
         dy = dy.contiguous()
         zy = build_hierarchy(
@@ -530,6 +628,7 @@ class _HierarchicalLinear(torch.autograd.Function):
                 h,
                 splits=ctx.c_splits,
                 windowed=ctx.window_moments,
+                atoms_per_split=ctx.atoms_per_split,
             )
         elif ctx.needs_input_grad[1] and ctx.fuse_g_grad:
             zx, h = forward_state
@@ -555,10 +654,17 @@ class _HierarchicalLinear(torch.autograd.Function):
             )
         if ctx.needs_input_grad[0]:
             if cin is None:
-                cin = compute_input_c(plan, atoms, layout, g, splits=ctx.c_splits)
+                cin = compute_input_c(
+                    plan,
+                    atoms,
+                    layout,
+                    g,
+                    splits=ctx.c_splits,
+                    atoms_per_split=ctx.atoms_per_split,
+                )
             dx = expand_c(cin, plan.input, dy, sites_per_block=ctx.sites_per_block)
             del cin
-        if ctx.needs_input_grad[1] and not ctx.fuse_g_grad:
+        if ctx.needs_input_grad[1] and datoms is None:
             zx, h = forward_state
             datoms = parameter_grad(
                 plan,
@@ -574,6 +680,7 @@ class _HierarchicalLinear(torch.autograd.Function):
         return (
             dx,
             datoms,
+            None,
             None,
             None,
             None,
@@ -604,6 +711,8 @@ def hierarchical_linear(
     atom_threads=128,
     window_moments=False,
     fuse_backward_cin=False,
+    reverse_layout=False,
+    atoms_per_split=0,
 ):
     """Private research autograd route, using this forward's bank/owner choices.
 
@@ -614,6 +723,18 @@ def hierarchical_linear(
     Double backward and full-route CUDA Graph capture are not supported yet
     (preparation has dynamic output shapes and host checks).
     """
+    if type(reverse_layout) is not bool:
+        raise ValueError("reverse_layout must be bool")
+    if type(atoms_per_split) is not int or not 0 <= atoms_per_split <= 65536:
+        raise ValueError("atoms_per_split must be an integer in [0,65536]")
+    if atoms_per_split and not (
+        reverse_layout or (layout is not None and layout.has_reverse)
+    ):
+        raise ValueError("atoms_per_split requires a reverse layout")
+    if reverse_layout and layout is None and layout_method != "counting":
+        raise ValueError("reverse layout requires counting preparation")
+    if reverse_layout and layout is not None and not layout.has_reverse:
+        raise ValueError("cached layout lacks reverse indices; rebuild it")
     if type(window_moments) is not bool:
         raise ValueError("window_moments must be bool")
     if type(atom_threads) is not int or atom_threads not in (32, 64, 128, 256):
@@ -633,7 +754,9 @@ def hierarchical_linear(
         raise ValueError("X and atoms must share device and dtype")
     if layout is None and layout_method == "counting":
         # One error word validates both X and atoms; no separate all/item sync.
-        layout = prepare_layout(plan, atoms, method=layout_method, signal=x)
+        layout = prepare_layout(
+            plan, atoms, method=layout_method, signal=x, reverse=reverse_layout
+        )
     else:
         if not bool(torch.isfinite(x).all()):
             raise ValueError("X must be finite")
@@ -655,4 +778,5 @@ def hierarchical_linear(
         atom_threads,
         window_moments,
         fuse_backward_cin,
+        atoms_per_split,
     )
