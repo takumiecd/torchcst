@@ -13,17 +13,20 @@ Tensor decode_groups(Tensor keys, Config input, Config output);
 Tensor build_hierarchy(Tensor signal, Config axis, bool merge, int team_size);
 Tensor build_hierarchy_chunked(Tensor signal, Config axis, bool merge, int team_size,
                                int chunk_sites);
+Tensor build_window_moments(Tensor z, Config axis);
 Tensor compute_h(Tensor atoms, Tensor rows, Tensor groups, Tensor offsets, Tensor z, Config axis,
-                 bool output_side, bool float_storage, int threads);
+                 bool output_side, bool float_storage, int threads, bool windowed);
 Tensor compute_c(Tensor atoms, Tensor rows, Tensor groups, Tensor offsets, Tensor h, Config input,
                  Config output, bool reverse);
 Tensor compute_c_split(Tensor atoms, Tensor rows, Tensor groups, Tensor offsets, Tensor h,
                        Config input, Config output, bool reverse, int splits);
 std::vector<Tensor> compute_g_and_parameter_grad(Tensor atoms, Tensor rows, Tensor groups,
                                                  Tensor offsets, Tensor zx, Tensor zy, Tensor h,
-                                                 Config input, Config output, int threads);
+                                                 Config input, Config output, int threads,
+                                                 bool windowed);
 Tensor parameter_grad(Tensor atoms, Tensor rows, Tensor groups, Tensor offsets, Tensor zx,
-                      Tensor zy, Tensor h, Tensor g, Config input, Config output, int threads);
+                      Tensor zy, Tensor h, Tensor g, Config input, Config output, int threads,
+                      bool windowed);
 Tensor expand_c(Tensor c, Tensor like, Config axis, int width);
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
@@ -33,6 +36,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("prepare_counting_layout_signal", &prepare_counting_layout_signal);
     m.def("build_hierarchy", &build_hierarchy);
     m.def("build_hierarchy_chunked", &build_hierarchy_chunked);
+    m.def("build_window_moments", &build_window_moments);
     m.def("compute_h", &compute_h);
     m.def("compute_c", &compute_c);
     m.def("expand_c", &expand_c);

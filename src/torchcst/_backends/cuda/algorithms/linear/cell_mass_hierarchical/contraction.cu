@@ -73,7 +73,7 @@ template <typename scalar_t, typename projection_t, int FixedModes>
 __global__ void compute_h_kernel(const scalar_t *atoms, const int64_t *rows, const int *groups,
                                  const int64_t *offsets, const double *z, projection_t *h,
                                  int atom_count, int group_count, int batches, Axis axis,
-                                 bool output_side) {
+                                 bool output_side, bool windowed) {
     int slot = blockIdx.x * blockDim.x + threadIdx.x;
     if (slot >= atom_count)
         return;
@@ -89,8 +89,11 @@ __global__ void compute_h_kernel(const scalar_t *atoms, const int64_t *rows, con
     HarmonicStream<false> stream(profile, axis.modes);
     double accum[BATCH_TILE] = {};
     int batch_begin = blockIdx.y * BATCH_TILE;
-    int retained = bank.full_chart ? 1 : 3;
-    int first_tile = bank.full_chart ? 0 : owner - 1;
+    // Window Z has already combined and rotated the retained tiles into the
+    // owner's chart. Read that owner once; its computed image is zero, so the
+    // harmonic helper does not rotate the window a second time.
+    int retained = (windowed || bank.full_chart) ? 1 : 3;
+    int first_tile = windowed ? owner : (bank.full_chart ? 0 : owner - 1);
     if (FixedModes == 8) {
 #pragma unroll
         for (int harmonic = 0; harmonic <= 8; ++harmonic)
@@ -469,7 +472,7 @@ __global__ void expand_c_kernel(const double *c, scalar_t *y, int batches, Axis 
 
 torch::Tensor compute_h(torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups,
                         torch::Tensor offsets, torch::Tensor z, std::vector<double> config,
-                        bool output_side, bool float_storage, int threads) {
+                        bool output_side, bool float_storage, int threads, bool windowed) {
     check_layout(atoms, rows, groups, offsets);
     Axis axis = parse_axis(config);
     check_moments(z, atoms, axis);
@@ -491,7 +494,7 @@ torch::Tensor compute_h(torch::Tensor atoms, torch::Tensor rows, torch::Tensor g
                 compute_h_kernel<atom_t, scalar_t, fixed_modes><<<grid, threads, 0, stream>>>(
                     atoms.data_ptr<atom_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
                     offsets.data_ptr<int64_t>(), z.data_ptr<double>(), h.data_ptr<scalar_t>(),
-                    atoms.size(0), groups.size(0), z.size(0), axis, output_side);
+                    atoms.size(0), groups.size(0), z.size(0), axis, output_side, windowed);
             };
             if (axis.modes == 8)
                 launch(std::integral_constant<int, 8>{});

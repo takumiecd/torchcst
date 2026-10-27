@@ -419,12 +419,12 @@ __device__ inline int group_for_slot(const int64_t *offsets, int count, int slot
 __device__ inline void project_derivatives(const double *z, int batches, int batch_begin,
                                            const Axis &axis, const Bank &bank, int owner,
                                            double sigma, double center, double *dcenter,
-                                           double *dsigma) {
+                                           double *dsigma, bool windowed) {
     Profile profile = make_profile<true>(axis, bank, sigma, center, owner);
     HarmonicStream<true> stream(profile, axis.modes);
     double beta_sigma = profile.beta_sigma;
-    int retained = bank.full_chart ? 1 : 3;
-    int first_tile = bank.full_chart ? 0 : owner - 1;
+    int retained = windowed || bank.full_chart ? 1 : 3;
+    int first_tile = windowed ? owner : (bank.full_chart ? 0 : owner - 1);
     // The constant coefficient is 1/P, independent of both center and sigma.
     for (int harmonic = 0; harmonic <= axis.modes; ++harmonic) {
         double cc, cs, cc_beta, cs_beta;

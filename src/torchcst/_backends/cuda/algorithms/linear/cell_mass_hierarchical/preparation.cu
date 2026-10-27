@@ -333,6 +333,43 @@ __global__ void merge_bank_kernel(double *z, int batches, Axis axis, int bank_in
         z[(batch * axis.node_count + left) * axis.basis_count() + child_mode] +
         z[(batch * axis.node_count + left + 1) * axis.basis_count() + child_mode];
 }
+// Collapse each owner's retained period after every raw hierarchy merge.
+// This is independent of atom values. Never feed these windows into merge_bank.
+__global__ void build_window_moments_kernel(const double *z, double *window, int elements,
+                                            Axis axis) {
+    int work = blockIdx.x * blockDim.x + threadIdx.x;
+    if (work >= elements)
+        return;
+    int mode = work % axis.basis_count();
+    int node = (work / axis.basis_count()) % axis.node_count;
+    int batch = work / (axis.basis_count() * axis.node_count);
+    int bank_index = 0;
+    while (bank_index + 1 < axis.bank_count && node >= axis.banks[bank_index + 1].node_offset)
+        ++bank_index;
+    Bank bank = axis.banks[bank_index];
+    if (bank.full_chart) {
+        window[work] = z[work];
+        return;
+    }
+    int owner = node - bank.node_offset;
+    int harmonic = (mode + 1) / 2;
+    double total = 0;
+    for (int offset = -1; offset <= 1; ++offset) {
+        int raw_tile = owner + offset;
+        int tile = positive_mod(raw_tile, bank.tile_count);
+        int image = (raw_tile - tile) / bank.tile_count;
+        int base = (batch * axis.node_count + bank.node_offset + tile) * axis.basis_count();
+        if (mode == 0) {
+            total += z[base];
+        } else {
+            double rs, rc;
+            image_rotation(bank, harmonic, image, rs, rc);
+            double zc = z[base + 2 * harmonic - 1], zs = z[base + 2 * harmonic];
+            total += mode % 2 ? zc * rc - zs * rs : zs * rc + zc * rs;
+        }
+    }
+    window[work] = total;
+}
 } // namespace
 
 std::vector<torch::Tensor> classify_atoms(torch::Tensor atoms, std::vector<double> input_config,
@@ -518,4 +555,24 @@ torch::Tensor build_hierarchy_chunked(torch::Tensor signal, std::vector<double> 
         C10_CUDA_KERNEL_LAUNCH_CHECK();
     }
     return z;
+}
+
+// Same shape as raw Z, but each local owner now spans its full retained period.
+// Consumers must explicitly request windowed projection; shape alone cannot
+// distinguish the two mathematical layouts.
+torch::Tensor build_window_moments(torch::Tensor z, std::vector<double> config) {
+    Axis axis = parse_axis(config);
+    TORCH_CHECK(z.is_cuda() && z.is_contiguous() && z.dim() == 3 &&
+                    z.scalar_type() == torch::kFloat64 && z.size(1) == axis.node_count &&
+                    z.size(2) == axis.basis_count() && z.numel() <= INT_MAX,
+                "expected raw FP64 hierarchy moments for this axis");
+    c10::cuda::CUDAGuard guard(z.device());
+    auto window = torch::empty_like(z);
+    if (z.numel() > 0) {
+        auto stream = c10::cuda::getCurrentCUDAStream();
+        build_window_moments_kernel<<<(z.numel() + THREADS - 1) / THREADS, THREADS, 0, stream>>>(
+            z.data_ptr<double>(), window.data_ptr<double>(), z.numel(), axis);
+        C10_CUDA_KERNEL_LAUNCH_CHECK();
+    }
+    return window;
 }

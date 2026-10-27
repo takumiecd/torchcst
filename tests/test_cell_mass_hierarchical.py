@@ -688,8 +688,9 @@ def differentiable_profile_matrix(atoms, axis, center_column):
         (1024, 128, 32, 8, 3, 35),
     ],
 )
+@pytest.mark.parametrize("window_moments", [False, True])
 def test_hierarchical_backward_all_gradients_against_existing_fft(
-    dtype, method, ni, no, minimum, modes, batches, count
+    dtype, method, ni, no, minimum, modes, batches, count, window_moments
 ):
     from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
         hierarchical_linear,
@@ -731,7 +732,9 @@ def test_hierarchical_backward_all_gradients_against_existing_fft(
 
     p_gpu = source.cuda().requires_grad_()
     x_gpu = x.cuda().requires_grad_()
-    actual = hierarchical_linear(plan, x_gpu, p_gpu, z_method=method)
+    actual = hierarchical_linear(
+        plan, x_gpu, p_gpu, z_method=method, window_moments=window_moments
+    )
     dx, dp = torch.autograd.grad(actual, (x_gpu, p_gpu), dy.cuda())
     tolerance = (
         {"rtol": 3e-6, "atol": 2e-7}
@@ -839,7 +842,10 @@ def test_hierarchical_backward_gradcheck_and_noncontiguous_dy():
 
 @cuda_only
 @pytest.mark.parametrize("layout_method", ["sort", "counting"])
-def test_hierarchical_adamw_rebuilds_layout_and_matches_all_moments(layout_method):
+@pytest.mark.parametrize("window_moments", [False, True])
+def test_hierarchical_adamw_rebuilds_layout_and_matches_all_moments(
+    layout_method, window_moments
+):
     """Complete 128-site step, all 819 atom gradients, then live width/owner moves."""
     from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
         hierarchical_linear,
@@ -872,6 +878,7 @@ def test_hierarchical_adamw_rebuilds_layout_and_matches_all_moments(layout_metho
             fuse_g_grad=True,
             z_chunk_sites=8,
             atom_threads=64,
+            window_moments=window_moments,
         )
         y.backward(dy)
         p_ref = reference.detach().cpu().double().requires_grad_()
@@ -1081,8 +1088,9 @@ def test_counting_layout_ranges_and_original_rows(dtype, count):
 @pytest.mark.parametrize("fused", [False, True])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 @pytest.mark.parametrize("batches,count", [(0, 37), (5, 257), (1, 3), (3, 0)])
+@pytest.mark.parametrize("window_moments", [False, True])
 def test_counting_and_chunked_autograd_match_independent_fft(
-    fused, dtype, batches, count
+    fused, dtype, batches, count, window_moments
 ):
     from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
         hierarchical_linear,
@@ -1108,6 +1116,7 @@ def test_counting_and_chunked_autograd_match_independent_fft(
         fuse_g_grad=fused,
         layout_method="counting",
         z_chunk_sites=8,
+        window_moments=window_moments,
     )
     dx, dp = torch.autograd.grad(y, (x, p), dy.cuda())
     if not count:
@@ -1290,3 +1299,52 @@ def test_chart_remainder_extreme_centers_matches_canonical_fft(spacing):
     dxr, dpr = torch.autograd.grad(yr, (xr, pr), dy)
     for actual, expected in ((y, yr), (dx, dxr), (dp, dpr)):
         torch.testing.assert_close(actual.cpu(), expected, rtol=3e-9, atol=2e-10)
+
+
+@cuda_only
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("batches", [0, 5])
+@pytest.mark.parametrize("modes,sites,minimum", [(2, 128, 4), (8, 128, 4), (16, 8, 4)])
+def test_window_moments_match_unwrapped_cell_quadrature(
+    dtype, batches, modes, sites, minimum
+):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        build_hierarchy,
+        build_window_moments,
+    )
+
+    axis = AxisPlan(
+        site_count=sites,
+        min_tile_sites=minimum,
+        spacing=0.9,
+        origin=-2,
+        modes=modes,
+        tail_bound=0.1 if modes == 2 else 1e-3,
+    )
+    signal = torch.randn(
+        batches, sites, dtype=dtype, generator=torch.Generator().manual_seed(120)
+    )
+    raw = build_hierarchy(signal.cuda(), axis)
+    actual = build_window_moments(raw, axis).cpu()
+    # Integrate over unwrapped cell coordinates directly. This does not sum
+    # existing Z nodes or reuse the CUDA image-rotation formula.
+    sample, weights = np.polynomial.legendre.leggauss(24)
+    expected = np.empty((batches, axis.node_count, axis.basis_count))
+    for bank in axis.banks:
+        for owner in range(bank.tile_count):
+            first = 0 if bank.full_chart else (owner - 1) * bank.tile_sites
+            length = sites if bank.full_chart else 3 * bank.tile_sites
+            indices = np.arange(first, first + length)
+            positions = (indices[:, None] + sample / 2) * axis.spacing
+            basis = np.empty((length, axis.basis_count))
+            basis[:, 0] = axis.spacing
+            for harmonic in range(1, modes + 1):
+                phase = 2 * np.pi * harmonic * positions / bank.period
+                basis[:, 2 * harmonic - 1] = np.cos(phase) @ weights * axis.spacing / 2
+                basis[:, 2 * harmonic] = np.sin(phase) @ weights * axis.spacing / 2
+            expected[:, bank.node_offset + owner] = (
+                signal.double().numpy()[:, indices % sites] @ basis
+            )
+    torch.testing.assert_close(
+        actual, torch.from_numpy(expected), rtol=3e-11, atol=3e-11
+    )

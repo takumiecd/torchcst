@@ -183,7 +183,19 @@ def build_hierarchy(signal, axis, *, method="merge", team_size=4, chunk_sites=0)
     )
 
 
-def compute_h(plan, atoms, layout, zx, *, storage_dtype=torch.float64, threads=128):
+def build_window_moments(z, axis):
+    """Sum each owner's retained tiles in its periodic image, once per node.
+
+    Run this only after the raw hierarchy is complete. The returned FP64 tensor
+    has the same shape as Z, so pass windowed=True to every projection consumer.
+    Neither hierarchy merge nor C expansion consumes this layout.
+    """
+    return _extension().build_window_moments(z, axis.native_config())
+
+
+def compute_h(
+    plan, atoms, layout, zx, *, storage_dtype=torch.float64, threads=128, windowed=False
+):
     """Complete H[batch,sorted_slot], before amplitude, from all retained tiles.
 
     One thread owns one atom; coefficients and mass normalization are generated
@@ -193,6 +205,8 @@ def compute_h(plan, atoms, layout, zx, *, storage_dtype=torch.float64, threads=1
         raise ValueError("H/G storage must be float32 or float64")
     if type(threads) is not int or threads not in (32, 64, 128, 256):
         raise ValueError("atom threads must be 32,64,128 or 256")
+    if type(windowed) is not bool:
+        raise ValueError("windowed must be bool")
     layout.validate_for(atoms, plan)
     return _extension().compute_h(
         atoms,
@@ -204,6 +218,7 @@ def compute_h(plan, atoms, layout, zx, *, storage_dtype=torch.float64, threads=1
         False,
         storage_dtype == torch.float32,
         threads,
+        windowed,
     )
 
 
@@ -272,7 +287,9 @@ def forward_only(
     return expand_c(c, plan.output, x, sites_per_block=sites_per_block)
 
 
-def compute_g(plan, atoms, layout, zy, *, storage_dtype=torch.float64, threads=128):
+def compute_g(
+    plan, atoms, layout, zy, *, storage_dtype=torch.float64, threads=128, windowed=False
+):
     """Project dY onto each output profile: G[batch,sorted_slot], without amp.
 
     This uses the same contraction as H, with output levels/owners/centers.
@@ -282,6 +299,8 @@ def compute_g(plan, atoms, layout, zy, *, storage_dtype=torch.float64, threads=1
         raise ValueError("H/G storage must be float32 or float64")
     if type(threads) is not int or threads not in (32, 64, 128, 256):
         raise ValueError("atom threads must be 32,64,128 or 256")
+    if type(windowed) is not bool:
+        raise ValueError("windowed must be bool")
     layout.validate_for(atoms, plan)
     return _extension().compute_h(
         atoms,
@@ -293,6 +312,7 @@ def compute_g(plan, atoms, layout, zy, *, storage_dtype=torch.float64, threads=1
         True,
         storage_dtype == torch.float32,
         threads,
+        windowed,
     )
 
 
@@ -322,7 +342,7 @@ def compute_input_c(plan, atoms, layout, g, *, splits=1):
     return native.compute_c_split(*arguments, splits)
 
 
-def parameter_grad(plan, atoms, layout, zx, zy, h, g, *, threads=128):
+def parameter_grad(plan, atoms, layout, zx, zy, h, g, *, threads=128, windowed=False):
     """One thread per atom reduces all batches into its original [a,s,muo,mui].
 
     Analytic derivatives include the effective-radius floor and area-normalized
@@ -331,6 +351,8 @@ def parameter_grad(plan, atoms, layout, zx, zy, h, g, *, threads=128):
     """
     if type(threads) is not int or threads not in (32, 64, 128, 256):
         raise ValueError("atom threads must be 32,64,128 or 256")
+    if type(windowed) is not bool:
+        raise ValueError("windowed must be bool")
     layout.validate_for(atoms, plan)
     return _extension().parameter_grad(
         atoms,
@@ -344,10 +366,13 @@ def parameter_grad(plan, atoms, layout, zx, zy, h, g, *, threads=128):
         plan.input.native_config(),
         plan.output.native_config(),
         threads,
+        windowed,
     )
 
 
-def compute_g_and_parameter_grad(plan, atoms, layout, zx, zy, h, *, threads=128):
+def compute_g_and_parameter_grad(
+    plan, atoms, layout, zx, zy, h, *, threads=128, windowed=False
+):
     """One thread builds rounded G and all atom gradients, sharing output work.
 
     G is stored in H's dtype before it participates in gradients, matching the
@@ -355,6 +380,8 @@ def compute_g_and_parameter_grad(plan, atoms, layout, zx, zy, h, *, threads=128)
     """
     if type(threads) is not int or threads not in (32, 64, 128, 256):
         raise ValueError("atom threads must be 32,64,128 or 256")
+    if type(windowed) is not bool:
+        raise ValueError("windowed must be bool")
     layout.validate_for(atoms, plan)
     return _extension().compute_g_and_parameter_grad(
         atoms,
@@ -367,6 +394,7 @@ def compute_g_and_parameter_grad(plan, atoms, layout, zx, zy, h, *, threads=128)
         plan.input.native_config(),
         plan.output.native_config(),
         threads,
+        windowed,
     )
 
 
@@ -385,6 +413,7 @@ class _HierarchicalLinear(torch.autograd.Function):
         fuse_g_grad,
         z_chunk_sites,
         atom_threads,
+        window_moments,
     ):
         zx = build_hierarchy(
             x,
@@ -393,8 +422,18 @@ class _HierarchicalLinear(torch.autograd.Function):
             team_size=team_size,
             chunk_sites=z_chunk_sites,
         )
+        if window_moments:
+            # The assignment releases raw Z after the transformation. Save only
+            # the immutable owner windows needed by H and parameter gradients.
+            zx = build_window_moments(zx, plan.input)
         h = compute_h(
-            plan, atoms, layout, zx, storage_dtype=atoms.dtype, threads=atom_threads
+            plan,
+            atoms,
+            layout,
+            zx,
+            storage_dtype=atoms.dtype,
+            threads=atom_threads,
+            windowed=window_moments,
         )
         c = compute_c(plan, atoms, layout, h, splits=c_splits)
         y = expand_c(c, plan.output, x, sites_per_block=sites_per_block)
@@ -406,6 +445,7 @@ class _HierarchicalLinear(torch.autograd.Function):
         ctx.fuse_g_grad = fuse_g_grad
         ctx.z_chunk_sites = z_chunk_sites
         ctx.atom_threads = atom_threads
+        ctx.window_moments = window_moments
         ctx.source_version = atoms._version
         # save_for_backward checks atom AND layout-buffer mutations. Avoid
         # keeping the source x: Zx already contains the needed contractions.
@@ -431,11 +471,20 @@ class _HierarchicalLinear(torch.autograd.Function):
             team_size=ctx.team_size,
             chunk_sites=ctx.z_chunk_sites,
         )
+        if ctx.window_moments:
+            zy = build_window_moments(zy, plan.output)
         dx = datoms = None
         if ctx.needs_input_grad[1] and ctx.fuse_g_grad:
             zx, h = forward_state
             g, datoms = compute_g_and_parameter_grad(
-                plan, atoms, layout, zx, zy, h, threads=ctx.atom_threads
+                plan,
+                atoms,
+                layout,
+                zx,
+                zy,
+                h,
+                threads=ctx.atom_threads,
+                windowed=ctx.window_moments,
             )
         else:
             g = compute_g(
@@ -445,6 +494,7 @@ class _HierarchicalLinear(torch.autograd.Function):
                 zy,
                 storage_dtype=atoms.dtype,
                 threads=ctx.atom_threads,
+                windowed=ctx.window_moments,
             )
         if ctx.needs_input_grad[0]:
             cin = compute_input_c(plan, atoms, layout, g, splits=ctx.c_splits)
@@ -453,9 +503,17 @@ class _HierarchicalLinear(torch.autograd.Function):
         if ctx.needs_input_grad[1] and not ctx.fuse_g_grad:
             zx, h = forward_state
             datoms = parameter_grad(
-                plan, atoms, layout, zx, zy, h, g, threads=ctx.atom_threads
+                plan,
+                atoms,
+                layout,
+                zx,
+                zy,
+                h,
+                g,
+                threads=ctx.atom_threads,
+                windowed=ctx.window_moments,
             )
-        return dx, datoms, None, None, None, None, None, None, None, None, None
+        return dx, datoms, None, None, None, None, None, None, None, None, None, None
 
 
 def hierarchical_linear(
@@ -472,6 +530,7 @@ def hierarchical_linear(
     layout_method="sort",
     z_chunk_sites=0,
     atom_threads=128,
+    window_moments=False,
 ):
     """Private research autograd route, using this forward's bank/owner choices.
 
@@ -482,6 +541,8 @@ def hierarchical_linear(
     Double backward and full-route CUDA Graph capture are not supported yet
     (preparation has dynamic output shapes and host checks).
     """
+    if type(window_moments) is not bool:
+        raise ValueError("window_moments must be bool")
     if type(atom_threads) is not int or atom_threads not in (32, 64, 128, 256):
         raise ValueError("atom threads must be 32,64,128 or 256")
     if layout_method not in ("sort", "counting"):
@@ -514,4 +575,5 @@ def hierarchical_linear(
         fuse_g_grad,
         z_chunk_sites,
         atom_threads,
+        window_moments,
     )
