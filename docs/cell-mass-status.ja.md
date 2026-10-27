@@ -7,43 +7,47 @@ CSTの1step速度をdenseの約2倍、つまり時間を約半分にすること
 固定bank版128では中間目安の「時間2倍以内」とメモリ条件を満たした。
 固定bank版1024はメモリ条件を満たすが、時間は未達。階層版は下記で区別する。
 
-階層版`cell_mass_hierarchical/`は既存profile・sigmaを維持し、Z→H→C→Yと
-backwardのZy→G→C_in→dX、全atomの4列勾配を実装した。分類はsigma<=T_hであり、
-以前提案したI=sigma/2は撤回した。新旧2034件の検査を通過し、
-128/819atomの全勾配・AdamW更新/moments/stepも独立参照へ照合した。
+階層版`cell_mass_hierarchical/`は既存ChebyshevSquare・sigmaの意味を維持する。
+Zは2子ずつの階層、Rは同じ階層の3タイルを合算したH/G用の値である。
+分類はsigma<=T_h、周期P_h=3T_h。以前のI=sigma/2は撤回した。
+入力dtypeのH/Gを保存し、Z/R/C・縮約・解析微分はFP64、任意でM8の多項式値評価だけを補償する。
+atom値のコピー、全atom係数表、密W/dWは作らない。
 
-現在の階層版は入力dtypeでH/Gを保存し、計算・Z/CはFP64を維持する。
-runtime `dcf48273`（snapshot `46b069e2`）ではC分割、係数/位相の再利用、counting配置、
-Zのmicrochunk、G/勾配融合・直接group参照・M8専用化・owner window RとAxisコピー回避を実装。
-GPU・数学は通常/tuned各2278件、全atom勾配と128 AdamWも通過した。
-階層Zは2子ずつのマージを維持し、Rは同じ階層の3タイルを合算したH/G用の別の保存値。
-別L4の2 fresh processで、1024完全step1.657808 / 1.655620ms、dense0.668562 / 0.683754ms。
-allocated7.396MiB対16.063MiB、reserved10MiB対22MiBでdense以下を再確認した。
-1024初版23.211msから約14倍短縮したが、最終速度目標は未達。
-128は設定によって1.12〜1.21ms、dense0.69〜0.70ms。allocated242.5KiB対264.5KiB、reserved両方2MiB。
-1024ではG/勾配とC_inの融合が2.24〜2.30msへ悪化したため、Cin分離を選ぶ。
-128の融合は同jobで小差の改善だったが、job間の変動を超えた普遍的勝者とはしない。
-明示的kwargs・同source比較・全hash・負の結果は正本の独立再確認節に記録。
-初期sigma0.2..40、物理入力T_min4・出力8、B4/FP32/M8の診断範囲に限る。
-FP64保存初版1024のreserved26MiBは条件未達であり、負の記録を正本に残す。
-公開CSTLinear/dispatcher、二階微分、全体Graph学習へは未接続。
-階層版の配列寿命・数式・検証・source/result hashは[設計の正本](cell-mass-kernel-flow.ja.md)を参照する。
-その後のsource `69a7806b`では、入力ownerへ連続アクセスする逆slot indexと
-ownerのatom数に応じたCの有効split数を追加した。atom値はコピーしない。
-通常/tuned各2385 passed / failed0 / skip12、全52,428atomの独立Y/dX/4列勾配も通過。
-1024の完全stepは同jobで1.686256→1.494954ms、matched dense0.697796ms。
-allocated7.596MiB / reserved10MiBで、dense16.063MiB / 22MiB以下を維持した。
-出力Cへの適応分割だけの寄与は小さく、別jobとの差を含め普遍的な改善とはしない。
-128は1.211821ms対dense0.703213ms、メモリは従来と同じ。
-M8の補償値評価（source `290e38b1`）は2424 passed / failed0 / skip12、
-全52,428atomの独立勾配、正規化、128の3step AdamWを通過した。
-1024同jobで1.477870→1.428999ms（dense0.676794ms）、メモリ増加なし。
-約3.3%の短縮は独立再確認前の条件付き候補で、128は改善せず既定を変えない。
-HとCの係数を共有する融合試作（source `e1d84c33`）を次に検証中。
-速度の最終目標は引き続き未達。
-以下の1024/過去128の完全step結果は、別の幅分布・周期を使う固定bank版の記録である。
+runtime `7fd9132b`。counting配置・逆slot index・owner別split・Z chunk・
+G/勾配融合・補償値評価を使う1024設定を、別L4の2 fresh processで再確認した。
 
-## 最新：係数・微分のHorner評価とsigma分布
+| 条件 | 完全step（2 process） | allocated CST / dense | reserved CST / dense |
+| --- | ---: | ---: | ---: |
+| 128、保守的な従来設定 | 1.182075 / 1.149119ms | 242.5 / 264.5KiB | 2 / 2MiB |
+| matched dense128 | 0.690988 / 0.686519ms | — | — |
+| 1024、逆index・grain128・補償値評価 | 1.434035 / 1.431054ms | 7.596 / 16.063MiB | 10 / 22MiB |
+| matched dense1024 | 0.669389 / 0.688117ms | — | — |
+
+検査/prepare/forward/backward/fused AdamWを含む完全layer step。
+B4/FP32/M8/tail1e-3/Q128、A=floor(.05*N²)、sigma初期linspace(.2,40)、seed120、
+物理入力T_min4・出力8。TF32/Graph/workspaceなし、warm5/同期wall21、2巡目は測定順を逆転。
+atom/X/dY/初期dense Wのbit一致も検証した。別分布・多軸・他GPUには一般化しない。
+1024初版23.211msから約16倍短縮したが、denseより約2.1倍の時間で、最終速度目標は未達。
+
+128 H/C融合は再確認でも小差に揺れがあり保守的設定を維持する。
+1024 H/C融合は1.427589→1.509354ms、G/勾配の汎用化も1.432525→1.481324msで悪化した。
+両方を既定へ採用しない。G/勾配/Cin融合も1024では不採用。
+メモリを減らすG/勾配の分離は6.796MiBへ減る一方、1.676313msへ遅くなった。
+
+広いGPU suiteはsource `e1d84c33`で2438 passed / failed0 / skip12、
+selector追加後の階層版suiteは631 passed / failed0 / skip12、racecheckも通過。
+128/1024の全atom Y/dX/4列勾配に加え、両サイズの3step AdamW Parameter/moments/stepも
+独立FFT/autograd参照へ照合した。CPU2037 passed / 5176 skipped / 既存警告18件、
+Ruff/format/buildとwheel/sdistの338runtime byte照合も通過した。
+CPU Actionsはsnapshot `9c972124`でsuccess。公開CSTLinear/dispatcher、二階微分、
+全体Graph学習は未接続。上表はTorch allocatorのpeakで、GPU process全体ではない。
+
+数式・配列寿命・選択kwargs・負の結果・全hashは[設計の正本](cell-mass-kernel-flow.ja.md)。
+再確認job `l4job-3d9f12cdfca6486fa532f515d7b04cda`、source/results/spec/receiptは
+ignored `output/cell-mass-opt-20261027/final-confirmation/`へ保全した。
+以下は別の幅分布・周期を使う固定bank版の記録である。
+
+## 固定bank版：係数・微分のHorner評価とsigma分布
 
 runtime source `7c1404c1`。数学・精度・sigma分布を変えず、係数とその微分を
 Horner法で一緒に評価し、harmonic間でscalarの累乗を再利用する。
