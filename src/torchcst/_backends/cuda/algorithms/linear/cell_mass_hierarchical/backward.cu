@@ -129,7 +129,8 @@ __global__ void compute_g_parameter_grad_kernel(const scalar_t *atoms, const int
 torch::Tensor parameter_grad(torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups,
                              torch::Tensor offsets, torch::Tensor zx, torch::Tensor zy,
                              torch::Tensor h, torch::Tensor g, std::vector<double> input_config,
-                             std::vector<double> output_config) {
+                             std::vector<double> output_config, int threads) {
+    TORCH_CHECK(power_of_two(threads) && threads >= 32 && threads <= 256, "invalid atom threads");
     check_layout(atoms, rows, groups, offsets);
     Axis input = parse_axis(input_config), output = parse_axis(output_config);
     check_moments(zx, atoms, input);
@@ -154,7 +155,7 @@ torch::Tensor parameter_grad(torch::Tensor atoms, torch::Tensor rows, torch::Ten
         using atom_t = scalar_t;
         AT_DISPATCH_FLOATING_TYPES(h.scalar_type(), "hierarchical_parameter_grad_storage", [&] {
             parameter_grad_kernel<atom_t, scalar_t>
-                <<<(atoms.size(0) + THREADS - 1) / THREADS, THREADS, 0, stream>>>(
+                <<<(atoms.size(0) + threads - 1) / threads, threads, 0, stream>>>(
                     atoms.data_ptr<atom_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
                     offsets.data_ptr<int64_t>(), zx.data_ptr<double>(), zy.data_ptr<double>(),
                     h.data_ptr<scalar_t>(), g.data_ptr<scalar_t>(), gradient.data_ptr<atom_t>(),
@@ -165,12 +166,12 @@ torch::Tensor parameter_grad(torch::Tensor atoms, torch::Tensor rows, torch::Ten
     return gradient;
 }
 
-std::vector<torch::Tensor> compute_g_and_parameter_grad(torch::Tensor atoms, torch::Tensor rows,
-                                                        torch::Tensor groups, torch::Tensor offsets,
-                                                        torch::Tensor zx, torch::Tensor zy,
-                                                        torch::Tensor h,
-                                                        std::vector<double> input_config,
-                                                        std::vector<double> output_config) {
+std::vector<torch::Tensor>
+compute_g_and_parameter_grad(torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups,
+                             torch::Tensor offsets, torch::Tensor zx, torch::Tensor zy,
+                             torch::Tensor h, std::vector<double> input_config,
+                             std::vector<double> output_config, int threads) {
+    TORCH_CHECK(power_of_two(threads) && threads >= 32 && threads <= 256, "invalid atom threads");
     check_layout(atoms, rows, groups, offsets);
     Axis input = parse_axis(input_config), output = parse_axis(output_config);
     check_moments(zx, atoms, input);
@@ -192,7 +193,7 @@ std::vector<torch::Tensor> compute_g_and_parameter_grad(torch::Tensor atoms, tor
         using atom_t = scalar_t;
         AT_DISPATCH_FLOATING_TYPES(h.scalar_type(), "hierarchical_fused_grad_storage", [&] {
             compute_g_parameter_grad_kernel<atom_t, scalar_t>
-                <<<(atoms.size(0) + THREADS - 1) / THREADS, THREADS, 0, stream>>>(
+                <<<(atoms.size(0) + threads - 1) / threads, threads, 0, stream>>>(
                     atoms.data_ptr<atom_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
                     offsets.data_ptr<int64_t>(), zx.data_ptr<double>(), zy.data_ptr<double>(),
                     h.data_ptr<scalar_t>(), g.data_ptr<scalar_t>(), gradient.data_ptr<atom_t>(),

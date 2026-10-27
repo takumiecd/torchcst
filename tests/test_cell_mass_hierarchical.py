@@ -924,7 +924,7 @@ def test_autograd_saves_h_in_input_dtype_and_keeps_z_double(dtype):
 
 @cuda_only
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
-@pytest.mark.parametrize("splits", [2, 7, 16])
+@pytest.mark.parametrize("splits", [2, 7, 16, 32, 64])
 @pytest.mark.parametrize("fused", [False, True])
 @pytest.mark.parametrize(
     "batches,count,n", [(0, 37, 32), (5, 257, 32), (1, 3, 8), (3, 0, 32)]
@@ -1154,3 +1154,49 @@ def test_chunked_z_matches_large_m16_quadrature(team, method):
     expected = quadrature_oracle(x, axis)
     z = build_hierarchy(x.cuda(), axis, team_size=team, method=method, chunk_sites=32)
     torch.testing.assert_close(z.cpu(), expected, rtol=2e-11, atol=1e-10)
+
+
+@cuda_only
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("threads", [32, 64, 256])
+@pytest.mark.parametrize("fused", [False, True])
+def test_atom_launch_threads_preserve_exact_per_atom_results(dtype, threads, fused):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        hierarchical_linear,
+        prepare_layout,
+    )
+
+    axis = AxisPlan(site_count=128, min_tile_sites=4, origin=-2)
+    plan = HierarchyPlan(input=axis, output=axis)
+    rng = torch.Generator().manual_seed(120)
+    source = torch.randn(257, 4, dtype=dtype, generator=rng)
+    source[:, 1] = torch.linspace(0.2, 40, 257, dtype=dtype)
+    source[:, 2:] *= 150
+    atoms = source.cuda().requires_grad_()
+    x = torch.randn(5, 128, dtype=dtype, generator=rng).cuda().requires_grad_()
+    dy = torch.randn_like(x)
+    layout = prepare_layout(plan, atoms, method="counting")
+    baseline = hierarchical_linear(
+        plan,
+        x,
+        atoms,
+        layout=layout,
+        c_splits=32,
+        fuse_g_grad=fused,
+        atom_threads=128,
+        z_chunk_sites=8,
+    )
+    dx0, dp0 = torch.autograd.grad(baseline, (x, atoms), dy)
+    result = hierarchical_linear(
+        plan,
+        x,
+        atoms,
+        layout=layout,
+        c_splits=32,
+        fuse_g_grad=fused,
+        atom_threads=threads,
+        z_chunk_sites=8,
+    )
+    dx, dp = torch.autograd.grad(result, (x, atoms), dy)
+    for a, b in ((baseline, result), (dx0, dx), (dp0, dp)):
+        torch.testing.assert_close(a, b, rtol=0, atol=0)

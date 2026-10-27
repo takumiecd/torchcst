@@ -139,8 +139,9 @@ __device__ inline double wrapped_center(double center, const Axis &axis) {
 
 // Integer coefficients of the positive polynomial, indexed by even M=2..16,
 // harmonic and degree. These depend only on the basis, never on atom values.
-// The 444 doubles occupy 3552 bytes of constant memory per CUDA translation
-// unit; the integer recurrence and its stored values are exact in double.
+// The 444 polynomial doubles and 72 prefactors occupy 4128 bytes of
+// constant memory per CUDA translation unit. Polynomial integers are exact
+// in double; prefactors are rounded once to double at compile time.
 __host__ __device__ constexpr int horner_bank_offset(int modes) {
     int bank = modes / 2;
     return (bank - 1) * bank * (4 * bank + 1) / 6;
@@ -148,9 +149,12 @@ __host__ __device__ constexpr int horner_bank_offset(int modes) {
 constexpr int HORNER_VALUES = horner_bank_offset(16) + 16 * 17 / 2;
 struct HornerBanks {
     double coefficients[HORNER_VALUES] = {};
+    double factors[72] = {};
     __host__ __device__ constexpr HornerBanks() {
         for (int modes = 2; modes <= 16; modes += 2) {
             for (int k = 0; k < modes; ++k) {
+                int bank = modes / 2;
+                factors[bank * (bank - 1) + k] = 0.5 * modes / (modes + k);
                 int offset = horner_bank_offset(modes) + k * (2 * modes - k + 1) / 2;
                 int64_t term = modes + k;
                 for (int j = 1; j <= modes - k; ++j) {
@@ -162,17 +166,16 @@ struct HornerBanks {
         }
     }
 };
-static_assert(sizeof(HornerBanks) == 3552, "unexpected Horner constant-bank size");
+static_assert(sizeof(HornerBanks) == 4128, "unexpected Horner constant-bank size");
 static __device__ __constant__ HornerBanks horner_banks{};
 
 // The common T_M(beta)^-2 cancels from c_k/(P*c_0). Evaluate the same
 // positive polynomial and optionally its beta derivative together. Horner
 // avoids runtime coefficient divisions; no per-atom coefficient array exists.
 template <bool Derivative>
-__device__ inline void raw_horner_power(double beta, int modes, int harmonic, double power,
-                                        double &value, double &derivative) {
+__device__ inline void raw_horner_power_impl(double beta, int modes, int harmonic, double power,
+                                             double dpower, double &value, double &derivative) {
     double x = beta * beta, t = x - 1;
-    double dpower = Derivative ? harmonic * power * (2 * beta / x) : 0;
     if (harmonic == modes) {
         value = 0.25 * power;
         if (Derivative)
@@ -191,10 +194,18 @@ __device__ inline void raw_horner_power(double beta, int modes, int harmonic, do
     if (Derivative)
         slope = slope * t + polynomial;
     polynomial *= t; // The polynomial has zero constant term.
-    double factor = 0.5 * modes / (modes + harmonic);
+    int bank = modes / 2;
+    double factor = horner_banks.factors[bank * (bank - 1) + harmonic];
     value = factor * power * polynomial + (harmonic == 0 ? 0.5 : 0);
     if (Derivative)
         derivative = factor * (dpower * polynomial + power * slope * (2 * beta));
+}
+
+template <bool Derivative>
+__device__ inline void raw_horner_power(double beta, int modes, int harmonic, double power,
+                                        double &value, double &derivative) {
+    double dpower = Derivative ? harmonic * power * (2 * beta / (beta * beta)) : 0;
+    raw_horner_power_impl<Derivative>(beta, modes, harmonic, power, dpower, value, derivative);
 }
 
 template <bool Derivative>
@@ -258,12 +269,12 @@ __device__ inline void raw_coefficient_derivative(double beta, int modes, int ha
 // running beta^(2k). Derivatives are with respect to beta at fixed bank,
 // owner and center. The caller must request each harmonic in order, once.
 template <bool Derivative> struct HarmonicStream {
-    double beta, beta_squared, power, inverse_period, normalized_scale, zero_log_beta;
+    double beta, beta_squared, power, power_beta, inverse_period, normalized_scale, zero_log_beta;
     double phase_sine, phase_cosine, step_sine, step_cosine;
     int modes, harmonic;
 
     __device__ HarmonicStream(const Profile &profile, int mode_count)
-        : beta(profile.beta), beta_squared(beta * beta), power(1),
+        : beta(profile.beta), beta_squared(beta * beta), power(1), power_beta(0),
           inverse_period(1 / profile.period),
           normalized_scale(2 / (profile.period * profile.raw_zero)), zero_log_beta(0),
           phase_sine(0), phase_cosine(1), modes(mode_count), harmonic(0) {
@@ -280,12 +291,15 @@ template <bool Derivative> struct HarmonicStream {
             cc = inverse_period;
             cs = cc_beta = cs_beta = 0;
         } else {
+            if (Derivative)
+                power_beta = power_beta * beta_squared + power * (2 * beta);
             power *= beta_squared;
             double next_cosine = phase_cosine * step_cosine - phase_sine * step_sine;
             phase_sine = phase_sine * step_cosine + phase_cosine * step_sine;
             phase_cosine = next_cosine;
             double raw, raw_beta = 0;
-            raw_horner_power<Derivative>(beta, modes, harmonic, power, raw, raw_beta);
+            raw_horner_power_impl<Derivative>(beta, modes, harmonic, power, power_beta, raw,
+                                              raw_beta);
             double scale = normalized_scale * raw;
             cc = scale * phase_cosine;
             cs = scale * phase_sine;

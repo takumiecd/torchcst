@@ -214,10 +214,17 @@ __device__ void split_consume_range(const scalar_t *atoms, const int64_t *rows,
 // count the owner's atoms then partition their concatenation evenly: even a
 // collection of short groups is distributed across splits. Reverse lookup uses
 // one lane per descriptor and a warp ballot, avoiding barriers for nonmatches.
+// Passed by value as CUDA kernel arguments, so no device pointer-table allocation.
+// The tensors that own these addresses stay alive until both kernels are queued.
+struct SplitPages {
+    double *pointers[64];
+    int page_splits;
+};
+
 template <typename scalar_t, typename projection_t>
 __global__ void compute_c_split_kernel(const scalar_t *atoms, const int64_t *rows,
                                        const int *groups, const int64_t *offsets,
-                                       const projection_t *h, double *partial, int atom_count,
+                                       const projection_t *h, SplitPages pages, int atom_count,
                                        int group_count, int batches, Axis input, Axis output,
                                        bool reverse, int splits) {
     extern __shared__ double shared[];
@@ -275,24 +282,26 @@ __global__ void compute_c_split_kernel(const scalar_t *atoms, const int64_t *row
     for (int work = lane, a = 0; work < elements; work += CHUNK, ++a) {
         int local = work / output.basis_count(), mode = work % output.basis_count();
         if (batch_begin + local < batches) {
-            int64_t index = ((static_cast<int64_t>(blockIdx.z) * batches + batch_begin + local) *
+            int local_split = blockIdx.z % pages.page_splits;
+            int page = blockIdx.z / pages.page_splits;
+            int64_t index = ((static_cast<int64_t>(local_split) * batches + batch_begin + local) *
                                  output.node_count +
                              node) *
                                 output.basis_count() +
                             mode;
-            partial[index] = accum[a];
+            pages.pointers[page][index] = accum[a];
         }
     }
 }
 
-__global__ void reduce_c_splits_kernel(const double *partial, double *c, int64_t elements,
-                                       int splits) {
+__global__ void reduce_c_splits_kernel(SplitPages pages, double *c, int64_t elements, int splits) {
     int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
     if (i >= elements)
         return;
     double value = 0;
     for (int split = 0; split < splits; ++split)
-        value += partial[static_cast<int64_t>(split) * elements + i];
+        value += pages.pointers[split / pages.page_splits]
+                               [static_cast<int64_t>(split % pages.page_splits) * elements + i];
     c[i] = value;
 }
 
@@ -367,23 +376,24 @@ __global__ void expand_c_kernel(const double *c, scalar_t *y, int batches, Axis 
 
 torch::Tensor compute_h(torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups,
                         torch::Tensor offsets, torch::Tensor z, std::vector<double> config,
-                        bool output_side, bool float_storage) {
+                        bool output_side, bool float_storage, int threads) {
     check_layout(atoms, rows, groups, offsets);
     Axis axis = parse_axis(config);
     check_moments(z, atoms, axis);
     TORCH_CHECK(z.size(0) * atoms.size(0) <= INT_MAX, "H exceeds index capacity");
+    TORCH_CHECK(power_of_two(threads) && threads >= 32 && threads <= 256, "invalid atom threads");
     c10::cuda::CUDAGuard guard(atoms.device());
     auto h = torch::empty({z.size(0), atoms.size(0)},
                           z.options().dtype(float_storage ? torch::kFloat32 : torch::kFloat64));
     if (h.numel() == 0)
         return h;
     TORCH_CHECK(groups.size(0) > 0, "nonempty atoms need groups");
-    dim3 grid((atoms.size(0) + THREADS - 1) / THREADS, (z.size(0) + BATCH_TILE - 1) / BATCH_TILE);
+    dim3 grid((atoms.size(0) + threads - 1) / threads, (z.size(0) + BATCH_TILE - 1) / BATCH_TILE);
     auto stream = c10::cuda::getCurrentCUDAStream();
     AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "hierarchical_compute_h_atoms", [&] {
         using atom_t = scalar_t;
         AT_DISPATCH_FLOATING_TYPES(h.scalar_type(), "hierarchical_compute_h_storage", [&] {
-            compute_h_kernel<atom_t, scalar_t><<<grid, THREADS, 0, stream>>>(
+            compute_h_kernel<atom_t, scalar_t><<<grid, threads, 0, stream>>>(
                 atoms.data_ptr<atom_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
                 offsets.data_ptr<int64_t>(), z.data_ptr<double>(), h.data_ptr<scalar_t>(),
                 atoms.size(0), groups.size(0), z.size(0), axis, output_side);
@@ -445,8 +455,22 @@ torch::Tensor compute_c_split(torch::Tensor atoms, torch::Tensor rows, torch::Te
                           h.options().dtype(torch::kFloat64));
     if (c.numel() == 0)
         return c;
-    auto partial =
-        torch::empty({splits, h.size(0), output.node_count, output.basis_count()}, c.options());
+    // Small-allocation pages avoid crossing the allocator's 1 MiB boundary when
+    // one C fits. If a single C exceeds it, one split occupies an oversized page.
+    constexpr int64_t PAGE_BYTES = 1024 * 1024;
+    int64_t c_bytes = c.numel() * static_cast<int64_t>(sizeof(double));
+    int page_splits =
+        static_cast<int>(std::min<int64_t>(splits, std::max<int64_t>(1, PAGE_BYTES / c_bytes)));
+    SplitPages pages{};
+    pages.page_splits = page_splits;
+    std::vector<torch::Tensor> partial_pages;
+    partial_pages.reserve((splits + page_splits - 1) / page_splits);
+    for (int begin = 0; begin < splits; begin += page_splits) {
+        int count = std::min(page_splits, splits - begin);
+        partial_pages.push_back(
+            torch::empty({count, h.size(0), output.node_count, output.basis_count()}, c.options()));
+        pages.pointers[partial_pages.size() - 1] = partial_pages.back().data_ptr<double>();
+    }
     dim3 grid(output.node_count, (h.size(0) + BATCH_TILE - 1) / BATCH_TILE, splits);
     size_t shared = sizeof(double) * CHUNK * (output.basis_count() + BATCH_TILE);
     auto stream = c10::cuda::getCurrentCUDAStream();
@@ -455,14 +479,14 @@ torch::Tensor compute_c_split(torch::Tensor atoms, torch::Tensor rows, torch::Te
         AT_DISPATCH_FLOATING_TYPES(h.scalar_type(), "hierarchical_split_c_storage", [&] {
             compute_c_split_kernel<atom_t, scalar_t><<<grid, CHUNK, shared, stream>>>(
                 atoms.data_ptr<atom_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
-                offsets.data_ptr<int64_t>(), h.data_ptr<scalar_t>(), partial.data_ptr<double>(),
-                atoms.size(0), groups.size(0), h.size(0), input, output, reverse, splits);
+                offsets.data_ptr<int64_t>(), h.data_ptr<scalar_t>(), pages, atoms.size(0),
+                groups.size(0), h.size(0), input, output, reverse, splits);
         });
     });
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     int64_t elements = c.numel();
     reduce_c_splits_kernel<<<(elements + THREADS - 1) / THREADS, THREADS, 0, stream>>>(
-        partial.data_ptr<double>(), c.data_ptr<double>(), elements, splits);
+        pages, c.data_ptr<double>(), elements, splits);
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return c;
 }

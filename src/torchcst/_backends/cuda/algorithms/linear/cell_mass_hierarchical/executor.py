@@ -162,7 +162,7 @@ def build_hierarchy(signal, axis, *, method="merge", team_size=4, chunk_sites=0)
     )
 
 
-def compute_h(plan, atoms, layout, zx, *, storage_dtype=torch.float64):
+def compute_h(plan, atoms, layout, zx, *, storage_dtype=torch.float64, threads=128):
     """Complete H[batch,sorted_slot], before amplitude, from all retained tiles.
 
     One thread owns one atom; coefficients and mass normalization are generated
@@ -170,6 +170,8 @@ def compute_h(plan, atoms, layout, zx, *, storage_dtype=torch.float64):
     """
     if storage_dtype not in (torch.float32, torch.float64):
         raise ValueError("H/G storage must be float32 or float64")
+    if type(threads) is not int or threads not in (32, 64, 128, 256):
+        raise ValueError("atom threads must be 32,64,128 or 256")
     layout.validate_for(atoms, plan)
     return _extension().compute_h(
         atoms,
@@ -180,6 +182,7 @@ def compute_h(plan, atoms, layout, zx, *, storage_dtype=torch.float64):
         plan.input.native_config(),
         False,
         storage_dtype == torch.float32,
+        threads,
     )
 
 
@@ -248,7 +251,7 @@ def forward_only(
     return expand_c(c, plan.output, x, sites_per_block=sites_per_block)
 
 
-def compute_g(plan, atoms, layout, zy, *, storage_dtype=torch.float64):
+def compute_g(plan, atoms, layout, zy, *, storage_dtype=torch.float64, threads=128):
     """Project dY onto each output profile: G[batch,sorted_slot], without amp.
 
     This uses the same contraction as H, with output levels/owners/centers.
@@ -256,6 +259,8 @@ def compute_g(plan, atoms, layout, zy, *, storage_dtype=torch.float64):
     """
     if storage_dtype not in (torch.float32, torch.float64):
         raise ValueError("H/G storage must be float32 or float64")
+    if type(threads) is not int or threads not in (32, 64, 128, 256):
+        raise ValueError("atom threads must be 32,64,128 or 256")
     layout.validate_for(atoms, plan)
     return _extension().compute_h(
         atoms,
@@ -266,6 +271,7 @@ def compute_g(plan, atoms, layout, zy, *, storage_dtype=torch.float64):
         plan.output.native_config(),
         True,
         storage_dtype == torch.float32,
+        threads,
     )
 
 
@@ -295,13 +301,15 @@ def compute_input_c(plan, atoms, layout, g, *, splits=1):
     return native.compute_c_split(*arguments, splits)
 
 
-def parameter_grad(plan, atoms, layout, zx, zy, h, g):
+def parameter_grad(plan, atoms, layout, zx, zy, h, g, *, threads=128):
     """One thread per atom reduces all batches into its original [a,s,muo,mui].
 
     Analytic derivatives include the effective-radius floor and area-normalized
     coefficient quotient. Bank/owner selection is fixed to this forward's plan.
     H/G and Zx/Zy are reused, with derivative coefficients only in registers.
     """
+    if type(threads) is not int or threads not in (32, 64, 128, 256):
+        raise ValueError("atom threads must be 32,64,128 or 256")
     layout.validate_for(atoms, plan)
     return _extension().parameter_grad(
         atoms,
@@ -314,15 +322,18 @@ def parameter_grad(plan, atoms, layout, zx, zy, h, g):
         g,
         plan.input.native_config(),
         plan.output.native_config(),
+        threads,
     )
 
 
-def compute_g_and_parameter_grad(plan, atoms, layout, zx, zy, h):
+def compute_g_and_parameter_grad(plan, atoms, layout, zx, zy, h, *, threads=128):
     """One thread builds rounded G and all atom gradients, sharing output work.
 
     G is stored in H's dtype before it participates in gradients, matching the
     separate kernels' intermediate precision. It remains available for dX.
     """
+    if type(threads) is not int or threads not in (32, 64, 128, 256):
+        raise ValueError("atom threads must be 32,64,128 or 256")
     layout.validate_for(atoms, plan)
     return _extension().compute_g_and_parameter_grad(
         atoms,
@@ -334,6 +345,7 @@ def compute_g_and_parameter_grad(plan, atoms, layout, zx, zy, h):
         h,
         plan.input.native_config(),
         plan.output.native_config(),
+        threads,
     )
 
 
@@ -351,6 +363,7 @@ class _HierarchicalLinear(torch.autograd.Function):
         c_splits,
         fuse_g_grad,
         z_chunk_sites,
+        atom_threads,
     ):
         zx = build_hierarchy(
             x,
@@ -359,7 +372,9 @@ class _HierarchicalLinear(torch.autograd.Function):
             team_size=team_size,
             chunk_sites=z_chunk_sites,
         )
-        h = compute_h(plan, atoms, layout, zx, storage_dtype=atoms.dtype)
+        h = compute_h(
+            plan, atoms, layout, zx, storage_dtype=atoms.dtype, threads=atom_threads
+        )
         c = compute_c(plan, atoms, layout, h, splits=c_splits)
         y = expand_c(c, plan.output, x, sites_per_block=sites_per_block)
         ctx.plan = plan
@@ -369,6 +384,7 @@ class _HierarchicalLinear(torch.autograd.Function):
         ctx.c_splits = c_splits
         ctx.fuse_g_grad = fuse_g_grad
         ctx.z_chunk_sites = z_chunk_sites
+        ctx.atom_threads = atom_threads
         ctx.source_version = atoms._version
         # save_for_backward checks atom AND layout-buffer mutations. Avoid
         # keeping the source x: Zx already contains the needed contractions.
@@ -397,17 +413,28 @@ class _HierarchicalLinear(torch.autograd.Function):
         dx = datoms = None
         if ctx.needs_input_grad[1] and ctx.fuse_g_grad:
             zx, h = forward_state
-            g, datoms = compute_g_and_parameter_grad(plan, atoms, layout, zx, zy, h)
+            g, datoms = compute_g_and_parameter_grad(
+                plan, atoms, layout, zx, zy, h, threads=ctx.atom_threads
+            )
         else:
-            g = compute_g(plan, atoms, layout, zy, storage_dtype=atoms.dtype)
+            g = compute_g(
+                plan,
+                atoms,
+                layout,
+                zy,
+                storage_dtype=atoms.dtype,
+                threads=ctx.atom_threads,
+            )
         if ctx.needs_input_grad[0]:
             cin = compute_input_c(plan, atoms, layout, g, splits=ctx.c_splits)
             dx = expand_c(cin, plan.input, dy, sites_per_block=ctx.sites_per_block)
             del cin
         if ctx.needs_input_grad[1] and not ctx.fuse_g_grad:
             zx, h = forward_state
-            datoms = parameter_grad(plan, atoms, layout, zx, zy, h, g)
-        return dx, datoms, None, None, None, None, None, None, None, None
+            datoms = parameter_grad(
+                plan, atoms, layout, zx, zy, h, g, threads=ctx.atom_threads
+            )
+        return dx, datoms, None, None, None, None, None, None, None, None, None
 
 
 def hierarchical_linear(
@@ -423,6 +450,7 @@ def hierarchical_linear(
     fuse_g_grad=False,
     layout_method="sort",
     z_chunk_sites=0,
+    atom_threads=128,
 ):
     """Private research autograd route, using this forward's bank/owner choices.
 
@@ -433,6 +461,8 @@ def hierarchical_linear(
     Double backward and full-route CUDA Graph capture are not supported yet
     (preparation has dynamic output shapes and host checks).
     """
+    if type(atom_threads) is not int or atom_threads not in (32, 64, 128, 256):
+        raise ValueError("atom threads must be 32,64,128 or 256")
     if layout_method not in ("sort", "counting"):
         raise ValueError("layout method must be sort or counting")
     if type(c_splits) is not int or not 1 <= c_splits <= 64:
@@ -458,4 +488,5 @@ def hierarchical_linear(
         c_splits,
         fuse_g_grad,
         z_chunk_sites,
+        atom_threads,
     )
