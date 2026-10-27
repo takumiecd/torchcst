@@ -47,8 +47,13 @@ compile metadataでは補償G/勾配にshared再利用を加えるとREG255→21
 H/CとCinは分離する。旧H/C融合、G/勾配/Cin融合、Cdotの負の結果も正本に残す。
 公開dispatcherや研究APIの既定値は変えない。
 
-最新の未検証source `8bc27c2e`は、既存64 pointerのpage容量内でC splitを256まで許す。
-1024のS64/128/256×grain32/64/128をGPU検証中。任意のH/C融合の出力位相も簡略化した。
+後続source `8bc27c2e`は、既存64 pointerのpage容量内でC splitを256まで許す。
+1024のS128/grain64は分離1.234461ms、H/C融合1.215154ms、dense0.677338ms。
+allocated10,067,968B/reserved12MiBでdense16,843,264B/22MiB以下だった。
+S256はより多くのメモリを使ったが、S128より遅かった。128はS2を維持する。
+通常2580 passed/12 skipped、選択racecheck12件/hazard0、全fixture Y/dX/4列勾配を通過。
+小差と全atom更新をjob `l4job-cff5845718a6411fb10fb629b66ca143`で独立再確認中であり、
+上の検証済み設定表は再確認前に置き換えない。
 全CPU2037 passed/5309 skipped/既存警告18件、build/両配布物338runtime byte照合は通過した。
 これらをGPU検証の代用にはしない。
 

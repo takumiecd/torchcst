@@ -993,7 +993,7 @@ source `2987e1553d02299c066b0a7b19851bd1a25162ae5cdbc1eb5b728968949de210`、resu
 runtime338・検査141、manifest55件、driver/binaryとfixture bit一致を照合し、
 ignored `output/cell-mass-opt-20261027/compact-shape-confirmation/`へ保全した。
 
-### 最適化第18段：C分割数の拡張と融合forwardの位相（GPU検証中）
+### 最適化第18段：C分割数の拡張と融合forwardの位相（初回GPU検証）
 
 runtime `8bc27c2e`。C splitを1..256まで許し、必要page数が64以下のときだけ実行する。
 既存SplitPagesの64 pointer、CUDA引数とkernelの部分和レイアウトを拡大しない。
@@ -1008,7 +1008,34 @@ logical scratchをdense peakへ単純加算して採用せず、完全stepの両
 既定Falseとし、S/HC flagを独立に切り替える。
 CPU31 passed / 745 skipped、全CPU2037 passed / 5309 skipped / 既存警告18件、
 buildと両配布物338runtime照合は通過した。CUDA検証の代用にはしない。
-job `l4job-c0a3e6edf7b64ec7a500f4846c10c8a6`で検証する。
+job `l4job-c0a3e6edf7b64ec7a500f4846c10c8a6`は通常2580 passed / failed0 / skip12、
+選択racecheck12件・hazard0。全819/52,428atomのY/dX/4列勾配も独立FFT/autogradへ通過した。
+固定fixtureは前jobとbit一致。各1 fresh process、warm5/同期wall21の完全stepは次の通り。
+
+| 1024、H/C分離 | grain32 | grain64 | grain128 | allocated / reserved |
+| --- | ---: | ---: | ---: | ---: |
+| S64 | 1.284454ms | 1.277864ms | 1.324204ms | 7,943,168B / 10MiB |
+| S128 | 1.259195ms | 1.234461ms | 1.291558ms | 10,067,968B / 12MiB |
+| S256 | 1.301561ms | 1.258579ms | 1.302658ms | 14,317,056B / 16MiB |
+| matched dense | — | 0.677338ms | — | 16,843,264B / 22MiB |
+
+H/C融合はS64/grain128で1.372390msと分離版より遅い一方、S128/grain64では
+1.215154msとなった。peakは各Sの分離版と同じ。この小差は独立再確認前の候補とする。
+128は従来のcompact/S2で0.834389ms、dense0.693687ms、両peakも従来と同じ。
+全12 CST設定でdense以下のallocated/reservedを実測した。
+採用判断はS/grain/HCを含む各step.jsonから再計算した。初版memory-candidate-gates.jsonには
+S/HCの識別fieldがないため、単独では設定ごとの証拠として使わない。
+
+別Graph-event診断ではCoutがS64/grain128の0.227328→S128/grain64の0.166912ms、
+Cinが0.157696→0.126976msとなった。stageを足して完全stepとはしない。
+S256の減速原因は未確定で、空splitのzero書込み・全split縮約・task配置を次に切り分ける。
+frame/周期/σを変えた改善ではなく、同じ数式の仕事の分配だけを比較している。
+
+source `00699dc1e3996d1478b0aadf66048794cf486bf16f12cd244ca4b66e5f4b3519`、result `3166c037d7c2d8701a7cbce35c276763c77345db12a29a6e50c3a53aa806ce9a`、driver `7a99c786dd4e1447cb8a16d58056fad8af6fb2b9be6f69a34f8c38bf700886e1`、binary `19d38183a8c16294e4574dafbe975c7ae5d79b9e86f4104cfa3ceee9f7d6fa0c`。
+runtime338・検査141、manifest68件、driver/binaryとfixture bit一致を照合し、
+ignored `output/cell-mass-opt-20261027/expanded-split/`へ保全した。
+job `l4job-cff5845718a6411fb10fb629b66ca143`で、S128/grain64の融合/分離と
+S64/grain64/128を2 fresh process・逆順で再確認し、最初の候補を全atom3step optimizerへ照合中。
 
 ### 第12段までの再確認：完全stepと1024のAdamW状態
 
