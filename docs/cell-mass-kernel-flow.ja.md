@@ -9,7 +9,7 @@
 同repeatのallocated/reservedはdense以下であり、このfixtureで目標を達成した。
 全atomを含む3 step optimizer検査も通過した。異なる幅分布やGPUへの一般化はしない。
 追加の補償phase試作は `kernel/cell-mass-phase-prototype`、commit `a3fe9da9` に保存し、
-選択設定には採用していない。進行中の試行はこの達成判定の根拠に含めない。
+選択設定には採用していない。追加試験は回収・監査済みで、この達成判定の根拠に含めない。
 
 2026-10-27。この文書を、sigmaからの階層分類・layout・Z/H/C・backwardを
 つなぐ設計の正本とする。分類規約は下の
@@ -945,6 +945,26 @@ fixtureのsigmaは全て一定ではなく、FP32 linspace(.2,40)である。
 source `5889ccdf842d8edba7af2ece6776aecd7cc88449a4eec78fe6bec110a24d28cc`、result `39234b31c3c2dbdd5bea1086f92f9ebdf312deaea8cebe7b58ac8c5496f95047`、driver `d2c011c685959ce3b9f2bbeb26f42c5ed859e6c6a6cbfdfcd1225343ccb831ba`、binary `75cb602b183ad15cb0561eee3b5172d3469b3d79f8d28ff4b035db033b882b25`。
 runtime338・検査141、manifest81件、driver/binary、前jobとのfixture bit一致を照合し、
 ignored `output/cell-mass-opt-20261027/shape-reuse/`へ保全した。
+
+### 未採用の補償位相試作（回収済み）
+
+`kernel/cell-mass-phase-prototype` / `a3fe9da9`ではG/パラメータ勾配の最初の
+sin/cosだけを補償FP32で評価した。引数の縮約・位相漸化式・正規化・縮約はDoubleを維持し、
+範囲外/非finite/極小remainderは従来sincosへ戻す。採用版のruntimeには含めない。
+job `l4job-2f94b489b9d443e19fa28a529a319c6a`を回収し、通常2638 passed/12 skipped、
+racecheck8件/hazard0、全819/52,428atomのY/dX/全4列勾配、両peak条件を確認した。
+52,428角度のhelper診断で最大絶対差4.1078e-15、許容1e-12を通過した。
+このjobは3step optimizer検査を含まない。
+
+1024は同じ設定のDouble位相1.158649msに対し補償位相1.152899ms、差は約0.5%。
+各1 fresh processの未再確認値である。別device-eventのG/勾配は0.281600→0.283648msで
+短縮しなかった。allocatedは両方6,299,136B、reserved8MiB。
+明確な高速化と判断せず、検証済みDouble位相を最終設定として残して終了する。
+source338・検査141・manifest35・fixture bit・runtime/probe binaryを照合した。
+source `568e428d4298f6a9c966a367b00e69f27cab19ddf6b1d7e7690c6dd96eda0a0b`、result `23654707fbb7b4365c07d673b7d1c42049e0c661e4ff1e4fc7efe33bea4dfd5b`、driver `43a3a5f4fedebd6a2c2935269d089f52810932f0e9a9256a86bfb0cf8ab1624e`、binary `4cd434ad9a341474917ef28cf7450007a807618fe0a8648fd71e8434c06c73bc`。
+ignored `output/cell-mass-opt-20261027/phase-prototype/`へarchive/spec/receiptを保全した。
+試作commitの復元bundleは`phase-prototype-recovery.bundle`で、base `edc90404`が必要。
+共有poolの全slot停止とsupervisor終了を確認した。新しい実験は追加しない。
 
 ### 最適化第19段：有効なC部分和だけを保存する（初回GPU検証）
 

@@ -66,7 +66,8 @@ source/results/spec/receiptをignored `output/cell-mass-opt-20261027/ragged-acti
 公開CSTLinear/dispatcher、二階微分、全体Graph学習は未接続。
 追加の位相評価試作は`kernel/cell-mass-phase-prototype`（a3fe9da9）へ保存し、
 現在の採用ブランチからrevertした。検証済みDouble位相とragged部分和を最終設定として残す。
-追加試験は完了判断の根拠に含めない。
+追加試験も回収・監査済み。G/勾配単体は短縮せず完全step差も約0.5%の未再確認値だったため、
+採用せず結果を正本へ残した。全所有GPUは停止済みで、新しい実験は追加しない。
 以下は別の幅分布・周期を使う固定bank版の記録である。
 
 ## 固定bank版：係数・微分のHorner評価とsigma分布
