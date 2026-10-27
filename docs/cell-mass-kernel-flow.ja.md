@@ -39,8 +39,8 @@ Zの二分集約木があることと、sigmaから異なるtile/周期を選ぶ
 | 新しい実装 | 処理と保存するもの | 状態 |
 | --- | --- | --- |
 | `plan.py` | 2倍ずつのlocal bank・全周bank・Z node位置。Tensorを持たない実行計画 | 実装済み、CPU分類検査済み |
-| `executor.prepare_layout` | 分類とstable sort。元行番号、groupの(h_out,h_in,q_out,q_in)、offsetsだけをcacheへ残す | CUDA実装済み、実GPU検証前 |
-| `preparation.cu::build_hierarchy` | bank別の周期のZ。直接生成と偶数harmonicの子からの継承。完成Zはglobal FP64 | CUDA実装済み、実GPU検証前 |
+| `executor.prepare_layout` | 分類とstable sort。元行番号、groupの(h_out,h_in,q_out,q_in)、offsetsだけをcacheへ残す | CUDA実装済み、元行・group範囲を実GPU照合済み |
+| `preparation.cu::build_hierarchy` | bank別の周期のZ。直接生成と偶数harmonicの子からの継承。完成Zはglobal FP64 | CUDA実装済み、direct/mergeを独立積分参照へ照合済み |
 | H/C/Y・G/dX・Parameter勾配 | 新幅profileから係数をその場で計算する | 新ディレクトリでは未実装。旧版の結果は新経路の検証ではない |
 
 新しい前半は空の雛形でなく、`prepare_layout(plan, atoms)`と
@@ -63,6 +63,65 @@ local node数はN/n_min、N/(2*n_min)、...と減り、最後に全周nodeを一
 Hのatomを複数threadで分担するという意味ではない。
 最初は全宣言bankのnodeを準備し、使われないbankの省略は依存関係を含めた後続の改善とする。
 cacheの`tensor_bytes`やZの容量はpayloadであり、完全stepのallocatorピークと混同しない。
+
+### 新しい前半の検証・診断（2026-10-27）
+
+runtime source `44c93543`。既存`cell_mass/`からのimport・ソース変更はない。
+新規146件（CPU分類27件＋CUDA119件）と既存のCUDA・数学1816件を一緒に実行し、
+**1962 passed / failed 0 / skipped 0**。L4 / Torch2.11.0+cu130 / CUDA13.0。
+FP32/64、空/端数atom、幅の境界、周期端、全周のみのplan、空/端数batch、
+128/1024site、M2/4/8、Zのthread team 1/4/32を含む。
+Zはセルごとの24点Gauss積分から独立に作ったCPU参照へ照合した。
+親が同じharmonic番号の子を足してしまう誤りも専用caseで検出する。
+Z構築だけのCUDA Graph capture/replayは新しいXで照合したが、layoutや完全stepのGraph検証ではない。
+新経路のY/dX/Parameter勾配はまだ存在しないので、既存1816件をその検証として数えない。
+
+CPU全体は2033 passed / 4683 skipped / 既存警告18件（46.18秒）。Ruff・format・差分検査を通過。
+wheel/sdistをbuildし、両packageの334ファイルを現srcとbyte照合した。
+
+診断条件はB4、atom数floor(0.05N^2)、sigma=linspace(0.2,100,A)、中心seed120、
+Q128、入力T_min=4/出力T_min=8、M8。128ではspacing1とmin_tile_sites=4/8、
+1024ではspacing0.125とmin_tile_sites=32/64を使う。
+独立な各2fresh process、2巡目は逆順、warmup5/同期wall20標本、Graphなし。
+計測範囲は**分類・sort・group作成＋Zx/Zyのみ**。H/C/Y、dX、Parameter勾配、AdamWを含まない。
+
+| site数 | 前半のみ ms run0 / run1 | peak allocated | peak reserved | layout / Zx / Zy payload bytes |
+| --- | ---: | ---: | ---: | ---: |
+| 128 | 0.7623 / 0.7605 | 78,848bytes（77KiB） | 2MiB | 11,192 / 33,184 / 15,776 |
+| 1024 | 3.9127 / 3.9113 | 3,422,208bytes（約3.264MiB） | 4MiB | 439,808 / 33,184 / 15,776 |
+
+baseline allocatedは各17,408 / 871,936bytes。peakには入力atoms/X/dYと前半の一時領域を含む。
+新しい完全stepのメモリがdense以下だと検証した値ではない。
+これは前半の初版の診断で、速度最適化・完全step比較・Graphピーク・全GPU processメモリは未完了。
+新幅定義・幅分布・処理範囲も旧測定と異なるので、旧版に対する同条件の改善率にはしない。
+128のgroup数193、1024では849。各入出力階層のatom数もraw JSONへ保存した。
+
+検証job `l4job-dc3552d6f4744d2590e234a3d6e53133`:
+
+- source SHA256 `15dd1879f53498ff779d072abc2b4be5a2ed4d438be66956edf57978edc04181`
+- result SHA256 `c9e79dfbb559b2f2c858184cf1006c01b98393423cf9635303f5f8560e3c120c`
+- driver SHA256 `302bb2881d278550d4e7c50dfd9937a3f6ddd9aed3f900a1283519576816bb35`
+- binary SHA256 `4f667530443b20cf271248fc792074049760b41a39cbd15398dcd8dcaf1e000c`
+
+fresh process診断job `l4job-64d587a39ee3453c8b2c952a02eea6b8`:
+
+- source SHA256 `bfce127c57b7f7bd0c3d6607b8ea593894f2e320e895c4738608e7b01f18e619`
+- result SHA256 `b2778b0fd239741b6ebbdd80e834f63db329767e1b3707967e7b7ab0205033e3`
+- driver SHA256 `39f313349f286c3bff7e251a1e33613358d0433604b3f3d4dd372bc055a90faf`
+- binary SHA256 `ac74a4ab841b4ead035d72c164e69ce35ed1d4d777b05b6b6e3e454288ca1133`
+
+両jobの325 runtimeコード、manifestの8/31ファイル、driver/binaryをhash/byte照合。
+raw/source/result/spec/receiptはignored `output/cell-mass-hierarchy-20261027/verified/`と
+`fresh-process/`へ保全する。検証直後の同一process診断は約8MiBの残存割当があり、
+新しい前半の代表ピークには使わず、上記fresh processの値を使う。
+最初のjob `l4job-b9af7d6fa60d419ca101075438e51808`はNinja不足でコンパイル前に失敗。
+成功件数・時間へ含めず、archiveとverificationを同じ親directoryの`first-run/`へ保全した。
+依存はjob内へ追加し、共有poolが所有runtimeを停止する。停止状態は終了後にも確認する。
+
+再検証は`python -m pytest tests/test_cell_mass_hierarchical.py -q`。
+新旧一緒の検証には`tests/test_cell_mass_coefficients.py tests/test_cell_mass_reference.py tests/test_cell_mass_cuda.py`も加える。
+性能診断の再現は固定source archiveのdriverと空の`CST_JOB_OUTPUT`を使う。
+共有L4ではpool submit/serve経由とし、新しいdriverを別profileの完全step測定へ流用しない。
 
 現在のprofileは[1周期分のタイル窓](cell-mass-tile-window.ja.md)。
 選んだwhole tileを共通のセル積分基底で処理し、支持境界での個別積分は行わない。
