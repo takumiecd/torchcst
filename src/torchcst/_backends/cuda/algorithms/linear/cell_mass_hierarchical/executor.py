@@ -72,12 +72,14 @@ class PreparedLayout:
 
 
 def prepare_layout(plan, atoms, *, method="sort", signal=None):
-    """Classify, stable-sort indices, and retain sparse nonempty group ranges.
+    """Classify atom indices into lexicographic hierarchy/owner group ranges.
 
-    Values remain in the original Parameter. A library sort is the initial
-    implementation, not a permanent requirement to materialize all atom keys.
-    Width/finite rejection reads one error word. unique_consecutive also has a
-    dynamic output shape, so this version does not claim CUDA Graph support.
+    The sort method retains only nonempty groups in stable order. Counting
+    retains the complete Cartesian group table (at most 4096), including empty
+    ranges, and does not promise stable order within a group. Neither method
+    copies atom values from the original Parameter or retains all atom keys.
+    Width/finite rejection reads one error word. Sort/unique has dynamic output
+    shapes; host checks remain, so full-route CUDA Graph support is not claimed.
     """
     if method not in ("sort", "counting"):
         raise ValueError("layout method must be sort or counting")

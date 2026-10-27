@@ -703,20 +703,20 @@ begin/endも作る。[owner C](cell-mass-owner-coefficients.ja.md)で係数を�
 // forward
 prepare_layout(atoms, spec, layout);
 build_input_hierarchy(X, layout, Zx);
-compute_h(Zx, X, atoms, layout, H);
+compute_h(Zx, atoms, layout, H);
 compute_y(H, atoms, layout, Y);
 
 // backward
 build_output_hierarchy(dY, layout, Zy);
-compute_g(Zy, dY, atoms, layout, G);
+compute_g(Zy, atoms, layout, G);
 compute_dx(G, atoms, layout, dX);
-compute_parameter_grad(Zx, Zy, X, dY, H, G, atoms, layout, grad);
+compute_parameter_grad(Zx, Zy, H, G, atoms, layout, grad);
 ```
 
 同じstreamへ依存順に投入する。上の名前は論理段階であり、実際のlaunch数ではない。
 owner方式のcompute_y/dxはC部分和を作るkernelと展開kernelに分かれる。
-`fuse_g_parameter_grad=True`ではcompute_gと再計算型Parameter勾配を一つに融合し、
-forward HはYで使用後に解放する。[融合経路](cell-mass-fused-pullback.ja.md)を参照。
+階層版の`fuse_g_grad=True`はGとParameter勾配を融合するが、forward Hはbackwardのため保存する。
+旧固定bank版のH再計算型[融合経路](cell-mass-fused-pullback.ja.md)とは保存寿命が異なる。
 階層構築は「signalから直接作る要素」と「子Zから継承する要素」に分ける。
 前者はlevelをまたいで並列に作り、後者だけlevel順に起動して子の完成を待つ。
 CPU側で毎回同期するという意味ではない。
@@ -1401,8 +1401,8 @@ store_original_amp_grad(original_id, grad_amp, grad);
 for (parameter : profile_parameters(atom)) {
     grad_parameter = 0;
     for (b : all_batches) {
-        dh = input_parameter_derivative(atom, parameter, b, Zx, X);
-        dg = output_parameter_derivative(atom, parameter, b, Zy, dY);
+        dh = input_parameter_derivative(atom, parameter, b, Zx);
+        dg = output_parameter_derivative(atom, parameter, b, Zy);
         grad_parameter += atom.amplitude *
             (G[b, slot] * dh + H[b, slot] * dg);
     }
@@ -1414,14 +1414,16 @@ for (parameter : profile_parameters(atom)) {
 逆伝播の中間勾配`dH = alpha * G`とは別である。
 入力側だけに効くparameterならdg=0、出力側だけならdh=0、両側に効くなら両方を含める。
 
-微分関数は、内部の`sum partial_coefficient * Z`と残りのセルの正確な微分を合計する。
+微分関数は窓内の全セルについて`sum partial_coefficient * Z`を計算する。
+支持境界をさらう補正やraw X/dYの追加読込みはない。
 面積正規化の微分も含める。H/Gだけからこの情報を復元できるとはしない。
 Zx/Zyは読み取り専用のglobal、gradの累積値はregisterへ置く。
 元のParameter行への対応はlayoutで戻し、optimizerによる更新はここでは行わない。
 
 このコードはparameterごとにZを読む単純な説明形である。同じZを読んだときに複数parameterの
 微分を同時に累積すれば読み取りを共有できるが、register使用量との交換になる。
-幅のtask VJP・更新則、支持境界・階層遷移の微分は数学契約を確定してから実装する。
+physical sigmaの解析微分は実装済み。bank/ownerの離散的な選択は固定した枝として微分し、
+次のforwardで再分類する。階層遷移が滑らかだと保証するものではない。
 
 ## 確認すること
 
