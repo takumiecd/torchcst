@@ -17,6 +17,7 @@ project_weighted_derivatives(const double *z, int batches, int batch_begin, cons
     // A windowed node already contains the rotated sum of its retained tiles.
     int retained = windowed || bank.full_chart ? 1 : 3;
     int first_tile = windowed ? owner : (bank.full_chart ? 0 : owner - 1);
+    int window_node = bank.node_offset + owner;
     int mode_count = FixedModes ? FixedModes : axis.modes;
     // Only the optional polynomial value/derivative uses FP32 pairs. The
     // profile geometry, phase, normalization and contractions remain double.
@@ -37,12 +38,20 @@ project_weighted_derivatives(const double *z, int batches, int batch_begin, cons
         }
         double omega = profile.omega * harmonic;
         for (int offset = 0; offset < retained; ++offset) {
-            int raw_tile = first_tile + offset;
-            int tile = positive_mod(raw_tile, bank.tile_count);
-            int image = (raw_tile - tile) / bank.tile_count;
             double rs, rc;
-            image_rotation(bank, harmonic, image, rs, rc);
-            int node = bank.node_offset + tile;
+            int node;
+            if (windowed) {
+                // Window moments already include the retained tile rotations.
+                node = window_node;
+                rs = 0;
+                rc = 1;
+            } else {
+                int raw_tile = first_tile + offset;
+                int tile = positive_mod(raw_tile, bank.tile_count);
+                int image = (raw_tile - tile) / bank.tile_count;
+                image_rotation(bank, harmonic, image, rs, rc);
+                node = bank.node_offset + tile;
+            }
             double weighted_cos = 0, weighted_sin = 0;
             for (int b = 0; b < BATCH_TILE && batch_begin + b < batches; ++b) {
                 int base = ((batch_begin + b) * axis.node_count + node) * axis.basis_count();

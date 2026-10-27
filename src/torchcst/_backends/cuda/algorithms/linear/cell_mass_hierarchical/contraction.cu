@@ -155,16 +155,25 @@ template <bool Compensated>
 __device__ __forceinline__ void
 accumulate_h_harmonic(HarmonicStream<false, Compensated> &stream, int harmonic, const double *z,
                       int batches, int batch_begin, const Axis &axis, const Bank &bank,
-                      int first_tile, int retained, double (&accum)[BATCH_TILE]) {
+                      int first_tile, int retained, bool windowed, int window_node,
+                      double (&accum)[BATCH_TILE]) {
     double cc, cs, unused_cc_beta, unused_cs_beta;
     stream.next(cc, cs, unused_cc_beta, unused_cs_beta);
     for (int offset = 0; offset < retained; ++offset) {
-        int raw_tile = first_tile + offset;
-        int tile = positive_mod(raw_tile, bank.tile_count);
-        int image = (raw_tile - tile) / bank.tile_count;
         double rs, rc;
-        image_rotation(bank, harmonic, image, rs, rc);
-        int node = bank.node_offset + tile;
+        int node;
+        if (windowed) {
+            // Window moments already use the owner's unwrapped chart image.
+            node = window_node;
+            rs = 0;
+            rc = 1;
+        } else {
+            int raw_tile = first_tile + offset;
+            int tile = positive_mod(raw_tile, bank.tile_count);
+            int image = (raw_tile - tile) / bank.tile_count;
+            image_rotation(bank, harmonic, image, rs, rc);
+            node = bank.node_offset + tile;
+        }
         for (int local = 0; local < BATCH_TILE && batch_begin + local < batches; ++local) {
             int base = ((batch_begin + local) * axis.node_count + node) * axis.basis_count();
             if (harmonic == 0) {
@@ -231,16 +240,19 @@ __global__ void compute_h_kernel(const scalar_t *atoms, const int64_t *rows, con
     // harmonic helper does not rotate the window a second time.
     int retained = (windowed || bank.full_chart) ? 1 : 3;
     int first_tile = windowed ? owner : (bank.full_chart ? 0 : owner - 1);
+    int window_node = bank.node_offset + owner;
     if (FixedModes == 8) {
 #pragma unroll
         for (int harmonic = 0; harmonic <= 8; ++harmonic)
             accumulate_h_harmonic<Compensated>(stream, harmonic, z, batches, batch_begin, axis,
-                                               bank, first_tile, retained, accum);
+                                               bank, first_tile, retained, windowed, window_node,
+                                               accum);
     } else {
 #pragma unroll 1
         for (int harmonic = 0; harmonic <= axis.modes; ++harmonic)
             accumulate_h_harmonic<Compensated>(stream, harmonic, z, batches, batch_begin, axis,
-                                               bank, first_tile, retained, accum);
+                                               bank, first_tile, retained, windowed, window_node,
+                                               accum);
     }
     for (int local = 0; local < BATCH_TILE && batch_begin + local < batches; ++local)
         h[(batch_begin + local) * atom_count + slot] = accum[local];
@@ -632,6 +644,7 @@ __device__ void fused_forward_atom(const atom_t *atoms, const int64_t *rows, con
     double sums[BATCH_TILE] = {};
     int retained = windowed || input_bank.full_chart ? 1 : 3;
     int first_tile = windowed ? input_owner : (input_bank.full_chart ? 0 : input_owner - 1);
+    int window_node = input_bank.node_offset + input_owner;
 #pragma unroll
     for (int harmonic = 0; harmonic <= 8; ++harmonic) {
         double cc, cs, unused_cc_beta, unused_cs_beta;
@@ -648,12 +661,19 @@ __device__ void fused_forward_atom(const atom_t *atoms, const int64_t *rows, con
             }
         }
         for (int offset = 0; offset < retained; ++offset) {
-            int raw_tile = first_tile + offset;
-            int tile = positive_mod(raw_tile, input_bank.tile_count);
-            int image = (raw_tile - tile) / input_bank.tile_count;
             double rs, rc;
-            image_rotation(input_bank, harmonic, image, rs, rc);
-            int node = input_bank.node_offset + tile;
+            int node;
+            if (windowed) {
+                node = window_node;
+                rs = 0;
+                rc = 1;
+            } else {
+                int raw_tile = first_tile + offset;
+                int tile = positive_mod(raw_tile, input_bank.tile_count);
+                int image = (raw_tile - tile) / input_bank.tile_count;
+                image_rotation(input_bank, harmonic, image, rs, rc);
+                node = input_bank.node_offset + tile;
+            }
             for (int b = 0; b < BATCH_TILE && batch_begin + b < batches; ++b) {
                 int base = ((batch_begin + b) * input.node_count + node) * input.basis_count();
                 if (harmonic == 0) {

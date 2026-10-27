@@ -556,6 +556,7 @@ __device__ inline void project_derivatives(const double *z, int batches, int bat
     double beta_sigma = profile.beta_sigma;
     int retained = windowed || bank.full_chart ? 1 : 3;
     int first_tile = windowed ? owner : (bank.full_chart ? 0 : owner - 1);
+    int window_node = bank.node_offset + owner;
     // The constant coefficient is 1/P, independent of both center and sigma.
     for (int harmonic = 0; harmonic <= axis.modes; ++harmonic) {
         double cc, cs, cc_beta, cs_beta;
@@ -564,12 +565,20 @@ __device__ inline void project_derivatives(const double *z, int batches, int bat
             continue;
         double omega = profile.omega * harmonic;
         for (int offset = 0; offset < retained; ++offset) {
-            int raw_tile = first_tile + offset;
-            int tile = positive_mod(raw_tile, bank.tile_count);
-            int image = (raw_tile - tile) / bank.tile_count;
             double rs, rc;
-            image_rotation(bank, harmonic, image, rs, rc);
-            int node = bank.node_offset + tile;
+            int node;
+            if (windowed) {
+                // Window moments already include the retained tile rotations.
+                node = window_node;
+                rs = 0;
+                rc = 1;
+            } else {
+                int raw_tile = first_tile + offset;
+                int tile = positive_mod(raw_tile, bank.tile_count);
+                int image = (raw_tile - tile) / bank.tile_count;
+                image_rotation(bank, harmonic, image, rs, rc);
+                node = bank.node_offset + tile;
+            }
             for (int b = 0; b < BATCH_TILE && batch_begin + b < batches; ++b) {
                 int base = ((batch_begin + b) * axis.node_count + node) * axis.basis_count();
                 double zc = z[base + 2 * harmonic - 1], zs = z[base + 2 * harmonic];
