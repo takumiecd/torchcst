@@ -3,13 +3,24 @@
 2026-10-27。Issue #120 / Draft PR #121。
 目的は、面積正規化の契約・Y/dX/全atom勾配を保ち、dense以下のメモリで
 CSTの1step時間をdenseの約2倍程度へ収めること。
-128はこの時間・メモリ条件を満たす設定を確認した。1024はメモリ条件を満たすが、時間は未達。
+固定bank版では128でこの時間・メモリ条件を満たす設定を確認した。
+固定bank版1024はメモリ条件を満たすが、時間は未達。階層版は下記で区別する。
 
-階層版`cell_mass_hierarchical/`は、既存profileとsigmaを維持してZ→H→C→Yへ接続した。
-分類はsigma<=T_hであり、以前提案したI=sigma/2は撤回した。
-新旧2004件の検査を通過したが、階層版backward・完全stepはまだ未実装／未検証。
-下の完全step結果は固定bank版の記録である。階層版の数式・実装範囲とforwardだけの診断は
-[設計の正本](cell-mass-kernel-flow.ja.md)を参照する。
+階層版`cell_mass_hierarchical/`は既存profile・sigmaを維持し、Z→H→C→Yと
+backwardのZy→G→C_in→dX、全atomの4列勾配を実装した。分類はsigma<=T_hであり、
+以前提案したI=sigma/2は撤回した。新旧2034件の検査を通過し、
+128/819atomの全勾配・AdamW更新/moments/stepも独立参照へ照合した。
+
+現在の階層版は入力dtypeでH/Gを保存し、計算・Z/CはFP64を維持する（source `1ec0f66b`）。
+128の完全stepは2.249732ms対dense0.703702ms、allocated166.5KiB対264.5KiB、reserved両方2MiB。
+1024は全52,428atomの勾配を照合し、完全step23.211011ms対dense0.674475ms、
+allocated5.332MiB対16.063MiB、reserved8MiB対22MiB。
+両条件でメモリはdense以下だが、時間比は約3.20/34.41倍で速度目標は未達。
+FP64保存初版の1024はreserved26MiBで条件未達だったため、負の記録も正本に残す。
+sigma0.2..40、入力T_min4・出力T_min8、1 fresh processずつの診断値である。
+公開CSTLinear/dispatcher、二階微分、全体Graph学習へは未接続。
+階層版の配列寿命・数式・検証・source/result hashは[設計の正本](cell-mass-kernel-flow.ja.md)を参照する。
+以下の1024/過去128の完全step結果は、別の幅分布・周期を使う固定bank版の記録である。
 
 ## 最新：係数・微分のHorner評価とsigma分布
 

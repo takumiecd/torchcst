@@ -21,7 +21,7 @@ Zの二分集約木があることと、sigmaから異なるtile/周期を選ぶ
 | 小幅の直接計算／全周bankへの自動分類 | 全周bankは分類済み。小幅directは任意の高速化候補 | 未実装。宣言済みK=1の経路はあるが自動分類ではない |
 | H/G・Parameter勾配 | 各threadが別atomを担当 | 実装済み、固定bank条件で検証済み |
 | C→Y/dX | bankごとにCを作って展開後に加算 | owner Cの部分和と展開は実装済み。複数bankの合算は未実装 |
-| 面積正規化・backward | 既存密度・面積式と解析微分を再利用。階層版backwardは実GPU検証待ち | 固定bankの独立oracle照合完了 |
+| 面積正規化・backward | 既存密度・面積式と解析微分を再利用。階層版backwardは独立参照へ照合済み | 固定bankの独立oracle照合完了 |
 
 同じprofile式でも選ぶPが変わるので、固定bankの時間・勾配検証を階層版の結果へ読み替えない。
 実装箇所は[`CellMassAxisSpec`](../src/torchcst/kernels/cell_mass.py)、
@@ -41,9 +41,9 @@ Zの二分集約木があることと、sigmaから異なるtile/周期を選ぶ
 | `plan.py` | 2倍ずつのlocal bank・全周bank・Z node位置。Tensorを持たない実行計画 | 実装済み、CPU分類検査済み |
 | `executor.prepare_layout` | 分類とstable sort。元行番号、groupの(h_out,h_in,q_out,q_in)、offsetsだけをcacheへ残す | CUDA実装済み、元行・group範囲を実GPU照合済み |
 | `preparation.cu::build_hierarchy` | bank別の周期のZ。直接生成と偶数harmonicの子からの継承。完成Zはglobal FP64 | CUDA実装済み、direct/mergeを独立積分参照へ照合済み |
-| `contraction.cu::compute_h` | 各threadが別atomのHをFP64で完成。既存係数と面積をregisterで計算 | 実装済み、既存profileの独立参照へ照合済み |
+| `contraction.cu::compute_h` | 各threadが別atomのHをFP64計算し、指定dtypeで保存。係数と面積はregister | 実装済み、既存profileの独立参照へ照合済み |
 | `compute_c` / `expand_c` | 32atom shared chunkからowner Cを作り、bank別の基底で展開後にYへ加算 | 実装済み、CとYを別々に照合済み |
-| G/dX・Parameter勾配 | 同じprofile微分と選択中のlayoutを使う。各threadが別atomを担当 | 実装済み、実GPU検証待ち |
+| G/dX・Parameter勾配 | 同じprofile微分と選択中のlayoutを使う。各threadが別atomを担当 | 実装済み、全atom勾配とAdamWを実GPU照合済み |
 
 新しい前半は空の雛形でなく、`prepare_layout(plan, atoms)`と
 `build_hierarchy(signal, axis, method="merge")`を実行するCUDA入口。
@@ -66,7 +66,7 @@ Hのatomを複数threadで分担するという意味ではない。
 最初は全宣言bankのnodeを準備し、使われないbankの省略は依存関係を含めた後続の改善とする。
 cacheの`tensor_bytes`やZの容量はpayloadであり、完全stepのallocatorピークと混同しない。
 
-### 階層版backwardの実装（実GPU検証待ち）
+### 階層版backwardの実装（検証済みの初版）
 
 `hierarchical_linear(plan, x, atoms)`から次の順番で呼び出す。
 
@@ -77,7 +77,9 @@ backward: build_hierarchy(dY) → G
                                 └→ parameter_grad(Zx,Zy,H,G) → d_atoms
 ```
 
-H/Gは振幅を含まない`[batch,sorted_slot]`のFP64配列。学習対象にatomがある場合だけ、
+H/Gは振幅を含まない`[batch,sorted_slot]`配列。autograd経路では入力dtypeで保存し、
+H/G縮約・微分・Z/Cの計算はFP64を維持する。低水準診断の既定保存dtypeはFP64。
+学習対象にatomがある場合だけ、
 forwardのZx/Hをautogradの保存状態に残す。入力だけの勾配ならZx/Hを残さない。
 backwardのZy/Gは同じ呼び出しのdXとparameter_gradで共用する。
 C_out/C_inはbank別`[batch,node,mode]`で、展開後に解放する。
@@ -97,6 +99,18 @@ d_sigma= sum_batch(a * (G * dH/d_sigma + H * dG/d_sigma))
 `backward.cu::parameter_grad`はZx/Zyから微分の縮約をregisterで計算し、元atom行へ一度だけ書く。
 幅微分には既存effective_radiusの下限補正と、係数の面積正規化の商の微分を含める。
 選択済みbank・ownerは固定して滑らかな枝を微分し、次のforwardで更新後の値を再分類する。
+選択中のbankでは周期Pとsite基底が固定されるため、Z自身の幅微分は不要である。
+atom側の係数だけを微分する。raw Fourier係数をr_kと書くと、
+
+\[
+A_k=\frac{2r_k(\beta)}{P r_0(\beta)},\qquad
+\partial_\sigma A_k=
+\frac{2\partial_\sigma\beta}{P r_0}
+\left(\partial_\beta r_k-\frac{r_k}{r_0}\partial_\beta r_0\right).
+\]
+
+cos/sinの中心微分はそれぞれ-omega*sin、omega*cos。
+定数係数1/Pの幅・中心微分は0。共通密度係数T_M(beta)^-2は商から消えている。
 H/G作成は`contraction.cu::compute_h`の軸切替を共用し、dXは入力側Cを同じ展開kernelで評価する。
 
 出力順layoutでは入力ownerの範囲が非連続なので、初版のC_inは非空groupのdescriptorを走査し、
@@ -105,7 +119,134 @@ H/G作成は`contraction.cu::compute_h`の軸切替を共用し、dXは入力側
 保存atomとlayout配列は`save_for_backward`で更新検査し、retained backwardに対応する。
 二階微分とsortを含む全体Graph captureは未対応。
 
-### H/C/Y接続とsigma整合の検証（現在の実装）
+### 現在：入力dtypeでH/Gを保存するbackward
+
+runtime source `1ec0f66b`。FP32入力ではH/GをFP32で完成保存し、途中の縮約・正規化係数・
+微分・Z/Cは引き続きFP64で計算する。FP64入力は保存もFP64。
+FP64の全Hを作ってからcastするのではなく、最終値を指定dtypeへ直接書く。
+低水準`compute_h/compute_g`の診断既定はFP64のままで、`storage_dtype`で保存dtypeを指定できる。
+元Parameter、profileの式、sigmaの意味、tile分類、許容誤差は変更していない。
+
+階層版218件（CPU31/CUDA187）＋既存1816件の**2034 passed、failed/skipped 0**。
+前段の全勾配・retained backward・mutation検査・gradcheck・3stepのAdamW比較を再実行し、
+保存Hが入力dtype、保存ZがFP64であることも検査した。
+racecheckはretained backwardの3件で0 hazards/errors/warnings。
+CPU全体2037 passed / 4751 skipped / 既存警告18件（44.17秒）。
+Ruff・format・差分検査・wheel/sdist buildを通過し、packageの337ファイルをsourceへbyte照合した。
+
+1024/B4/A52,428でも全atom4列を512atomずつ独立FFTセル積分参照へ再照合し、PASS。
+最大絶対誤差はY=1.7711e-8、dX=1.9916e-8、全atom勾配=2.7011e-8。
+許容差は前段と同じFP32 rtol3e-6/atol2e-7である。1024のoptimizer状態の独立比較は未実施、
+128の全atom/AdamW状態比較は再通過した。
+
+完全stepの条件・処理範囲は前段と同じ。sigma0.2..40、Q128、M8、batch4、
+物理T_minは入力4/出力8（128では4/8sites、1024では32/64sites）。
+各方式1 fresh process、warmup5/同期wall20標本、入力/dY固定、TF32なし、cuBLAS workspace 0、Graphなし。
+元atom profileからdense Wを作る時間とoracle/JITは計測から除外する。
+
+| 完全layer step | CST中央値 | dense中央値 | CST allocated / dense | CST reserved / dense |
+| --- | ---: | ---: | ---: | ---: |
+| 128、819atom | 2.249732ms | 0.703702ms | 166.5 / 264.5KiB | 2 / 2MiB |
+| 1024、52,428atom | 23.211011ms | 0.674475ms | 5.332 / 16.063MiB | 8 / 22MiB |
+
+現在の両fixtureでallocated/reservedともdense以下。1024のCST allocatedは5,591,040bytes、
+H/Gは各838,848bytes。FP64保存初版のreserved26MiBを8MiBへ減らした。
+時間は128で約3.20倍、1024で約34.41倍で、**約2倍の速度目標は未達**。
+保存量削減で速度も改善したとは判断しない。プロセス全体のGPUメモリ、全体Graph学習、
+複数独立runでの性能再現は未検証。C_inのgroup走査とregister保持量は次の分解計測候補であり、
+現時点でどちらが最大のボトルネックかを断定しない。
+
+job `l4job-84892b903dae42c68640c7705652b8d2`、L4 / Torch2.11.0+cu130 / CUDA13.0。
+
+- source SHA256 `882983d42d4985f106526bc9741027c3e74fad8e8df57d5255909b9410a5e1ac`
+- result SHA256 `34a29566dfbdc89808b0408a2f70b2a8010eb6bad50be6e12de0c1caba71b614`
+- driver SHA256 `fe8f555d2bff1cc648456b943c87e53635dbb5e15b8adffa8b3c2002b0eb59e3`
+- binary SHA256 `4aaedbe3f72282d8cc514eb1198e917414c0fd9aeb1d7a8423250827ddbce3fb`
+
+327 runtimeソース・共通header・検査ソース・埋込1024 driverを照合し、manifest42ファイルのhashを確認。
+source/result/spec/receiptをignored `output/cell-mass-backward-20261027/storage-run/`へ保全した。
+再検証は`python -m pytest -q tests/test_cell_mass_hierarchical.py`と既存3つのcell-mass検査。
+同じGPU実行は保存済みdriverを共有poolのsubmit/serveへ渡す。
+旧FP64保存型の結果と負のreserved結果も下に残し、現版の値と混在させない。
+
+### 前段：FP64保存型backwardの検証と128の完全step
+
+runtime source `33d7f9dd`、L4 / Torch2.11.0+cu130 / CUDA13.0。
+階層版216件＋既存1816件の**2032 passed、failed/skipped 0**。
+独立参照には既存profileのFFT係数から作る微分可能なセル積分を使い、
+Y/dX/全atomの4列をFP32/64、direct/merge Z、local/full bank、chart端、
+非ゼロ原点、異なる入出力サイズ、M16、batch1/3/4/5で照合した。
+128/B4/A819は全atomを検査。1024siteの小さな35atom検査も含む。
+幅・ownerの整数選択を固定した枝の解析微分であり、階層遷移の連続性の証明ではない。
+
+FP32はrtol3e-6/atol2e-7、FP64はrtol3e-9/atol2e-10の許容差。
+これは実測最大誤差の値ではない。数値gradcheck、空batch/atom、必要な勾配だけの呼び出し、
+retained backward、非連続dY、保存atom/layoutのin-place更新検知も検査した。
+128/819atomの3stepでは幅の階層とtorus ownerを移し、毎forwardの再分類を行い、
+AdamWのParameter・exp_avg・exp_avg_sq・stepを独立勾配で更新した同じAdamWへ照合した。
+これは物理atomへのAdamWであり、公開CSTOptimizer/Parameterizationとの統合検証ではない。
+compute-sanitizer racecheckはretained backwardの3件で0 hazards/errors/warnings。
+二階微分とsortを含む全体Graph学習は未対応で、backwardのGraph replayも未検証。
+
+完全stepは128×128/A819/B4、FP32、M8/tail1e-3、Q128、入力T_min4・出力T_min8、
+sigma=linspace(0.2,40)、seed120。入力/dY固定、grad初期化・検査・sort・全forward/backward・
+fused AdamWを含む。JIT・oracle・初期dense Wの生成は含めない。
+同じ初期profileからdense Wを作り、両者ともX勾配と重み側勾配を計算する。
+TF32なし、cuBLAS workspace 0、Graphなし。各方式1 fresh process、warmup5/同期wall20標本。
+
+| 完全layer step | 中央値 | peak allocated | peak reserved |
+| --- | ---: | ---: | ---: |
+| 階層版CST | 2.239738ms | 197,120bytes（192.5KiB） | 2MiB |
+| dense、workspaceなし | 0.678630ms | 270,848bytes（264.5KiB） | 2MiB |
+
+時間比約3.30倍で約2倍目標は未達。allocatedはdenseの約72.8%、reservedは同じ。
+単一runの初版診断であり、採用性能として複数独立runの再確認はしていない。
+全GPU process使用量は未測定。固定bank版の過去結果とは周期・幅分布が異なるため改善率にしない。
+
+job `l4job-b59c3c9f88d64b239e13952d2bdc4cae`、driver実行411.20秒（JIT・検証込み、step時間ではない）。
+
+- source SHA256 `d24ba011d7160a99eebc702b039ea342d4f26ea89343ce211c70c1954be33288`
+- result SHA256 `75987af45be3f960e7e8febab64b659102ca7aed8394d1fddef082eaca7d4102`
+- driver SHA256 `c0e9967b444aef36d57cc72d2b8b972e78d6b6bfeaf2b61c2ab926ed10ca2b44`
+- binary SHA256 `5cad5b6ece85b5292f00680ac1e9559256dae15a6d9e4c2b141871617f2e69f5`
+
+327 runtimeコード・共通header・検査ソースをcommitへbyte照合し、結果manifest22ファイルのhashを確認。
+source/result/spec/receiptをignored `output/cell-mass-backward-20261027/first-run/`へ保全した。
+CPU全体2037 passed / 4749 skipped / 既存警告18件（43.50秒）。Ruff・format・差分検査・build通過、
+wheel/sdistの337ファイルを現sourceへbyte照合した。GPU/DBのskipは検証完了へ数えない。
+
+### 前段：1024全atom検証とFP64保存の負の結果
+
+同じruntime `33d7f9dd`を1024/B4/A52,428、Q128、spacing0.125、入力最小tile32sites・
+出力64sites（物理T_min4/8）で検査した。sigmaは0.2..40の等間隔値、seed120。
+512atomずつ既存FFTセル積分でCPU参照を作り、全atom4列の勾配を省略せずに照合した。
+最大絶対誤差はY=1.4745e-8、dX=1.4850e-8、全atom勾配=2.7011e-8、全てPASS。
+1024のoptimizer状態の独立照合はこのjobでは実施していない。
+
+| 完全layer step、FP64 H/G保存 | 中央値 | peak allocated | peak reserved |
+| --- | ---: | ---: | ---: |
+| 階層版CST | 23.130443ms | 7,268,352bytes（6.932MiB） | 26MiB |
+| dense、workspaceなし | 0.669730ms | 16,843,264bytes（16.063MiB） | 22MiB |
+
+同じ初期profileからdense Wを作った。比較方法は128と同じ、方式ごとに1 fresh process。
+約34.54倍で速度目標未達。allocatedはdense以下だが、**reservedはdenseを超える**。
+このFP64保存型をメモリ条件を満たす採用値にはしない。各H/Gは1,677,696bytesであり、
+FP32入力では入力dtype保存へ変更して再度全勾配・stepメモリを検査する。
+allocatorの予約はTensor容量と異なるため、保存量だけで達成を判断しない。
+
+job `l4job-558ff9aa21ec4ca7ac83e1d61db4eb46`（driver250.01秒、性能値とは区別）。
+
+- source SHA256 `9ea59b717276f3ae5f0c18c573e8d91de2c9d8df16b8e1fa7455a731bf575785`
+- result SHA256 `f281ec92603f5b88c02fcd5d5f3d3b1eab0b105076bc55d784eab46c46a72dd7`
+- driver SHA256 `7ba7882c19f0acf568c4543c1fcc381c3c32f7a9619e2042692af8a1a06329e3`
+- binary SHA256 `42634e664408a62a176ed0e28f548bf7fc3a4b702ee1a53457ccefd43cc20624`
+
+327 runtimeソースと結果manifest20ファイルを照合し、
+ignored `output/cell-mass-backward-20261027/run1024/`へsource/result/spec/receiptを保全した。
+GPU process全体のメモリは測定していない。旧固定bank版とprofile周期・幅分布が異なり、
+既存の1.354msからの退行率にはしない。
+
+### 前段：H/C/Y接続とsigma整合の検証
 
 runtime source `d09eba32`。既存`ChebyshevSquareSpec`の式・sigma・半径下限を維持し、
 分類をsigma<=T_hへ修正した。I=sigma/2の前半prototypeから意味を読み替えない。
@@ -164,7 +305,7 @@ job `l4job-95f9b6adde8c4ccb982cf1abad4fac12`:
 manifest16ファイル、driver/binaryを照合。raw/source/result/spec/receiptはignored
 `output/cell-mass-hc-20261027/first-run/`に保全。所有L4 runtimeの停止も確認した。
 再検証は`python -m pytest tests/test_cell_mass_hierarchical.py -q`。
-新規profileの数式待ちではなく、次は同じ式のG/dX/Parameter勾配を実装・検証する段階。
+新規profileの数式待ちではない。同じ式のG/dX/Parameter勾配を実装し、検証記録を冒頭に追記する。
 
 ### 前半prototypeの検証・診断（sigma整合修正前の履歴）
 
@@ -369,7 +510,7 @@ q_out[0], ..., q_out[Dout-1], q_in[0], ..., q_in[Din-1])`の辞書順。
 
 階層分類に使う幅・周期L・タイル寸法の関係は次節の規約を使う。
 ここは従来未確定だった`classify_hierarchy`の設計。
-新ディレクトリのprepareへ実装したが、H/C/Yを含むLinearへの接続は未実装。
+新ディレクトリのprepareとH/C/Yへ接続済み。backwardも同じforwardの分類結果を使う。
 中心の所属キーと、支持が重なる全タイルの集合は別である。
 
 ### sigmaから階層と周期を決める規約
@@ -527,8 +668,8 @@ Z_{h,t,b,2j}^{\cos/\sin}
 親の偶数harmonic（j=1,...,floor(M/2)）と定数modeを継承し、奇数harmonicは直接生成する。
 全周bankはP=Qの別基底なので初版は直接生成する。atomがいないbankの子要素も親が使うなら準備する。
 
-- 実装: 既存profileとsigmaの分類、group offsets、bank別Z、H、C、Y。検証範囲は冒頭の表と記録で追跡する。
-- 未実装: 階層版G/dX/Parameter勾配、公開CSTLinear/dispatcherへの統合。
+- 実装: 既存profileとsigmaの分類、group offsets、bank別Z、H/G、C、Y/dX、Parameter勾配。検証範囲は冒頭の表と記録で追跡する。
+- 未実装: 公開CSTLinear/dispatcherへの統合、階層版の保存／再計算切替。
 - 継続検証: branch境界の誤差、完全step時間とメモリ、直接計算/融合等の速度比較。
 
 整数の階層・owner選択は微分せず、選択中のbankのprofileを微分する既存方針を維持する。
