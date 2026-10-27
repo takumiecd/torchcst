@@ -410,7 +410,7 @@ def compute_input_c(plan, atoms, layout, g, *, splits=1, atoms_per_split=0):
     )
     if splits == 1:
         return native.compute_c(*arguments)
-    return native.compute_c_split(*arguments, splits)
+    return native.compute_c_split(*arguments, splits, atoms_per_split)
 
 
 def parameter_grad(plan, atoms, layout, zx, zy, h, g, *, threads=128, windowed=False):
