@@ -838,7 +838,8 @@ def test_hierarchical_backward_gradcheck_and_noncontiguous_dy():
 
 
 @cuda_only
-def test_hierarchical_adamw_rebuilds_layout_and_matches_all_moments():
+@pytest.mark.parametrize("layout_method", ["sort", "counting"])
+def test_hierarchical_adamw_rebuilds_layout_and_matches_all_moments(layout_method):
     """Complete 128-site step, all 819 atom gradients, then live width/owner moves."""
     from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
         hierarchical_linear,
@@ -862,7 +863,16 @@ def test_hierarchical_adamw_rebuilds_layout_and_matches_all_moments():
         opt.zero_grad(set_to_none=True)
         ref_opt.zero_grad(set_to_none=True)
         x.grad = None
-        y = hierarchical_linear(plan, x, candidate)
+        y = hierarchical_linear(
+            plan,
+            x,
+            candidate,
+            layout_method=layout_method,
+            c_splits=2,
+            fuse_g_grad=True,
+            z_chunk_sites=8,
+            atom_threads=64,
+        )
         y.backward(dy)
         p_ref = reference.detach().cpu().double().requires_grad_()
         xr = x.detach().cpu().double().requires_grad_()
