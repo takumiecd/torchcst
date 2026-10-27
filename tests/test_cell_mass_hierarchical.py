@@ -643,3 +643,251 @@ def test_full_bank_width_endpoint_matches_existing_dtype_rule(dtype):
     atoms[:, 1] = torch.nextafter(atoms[:, 1], torch.full_like(atoms[:, 1], math.inf))
     with pytest.raises(ValueError, match="sigma"):
         prepare_layout(plan, atoms)
+
+
+def differentiable_profile_matrix(atoms, axis, center_column):
+    """Existing FFT reference with live gradients; discrete bank routing detached."""
+    from torchcst._backends.torch.kernels.cell_mass import profile_cell_masses
+    from torchcst.kernels.cell_mass import CellMassAxisSpec
+
+    source = atoms.cpu().double()
+    result = source.new_zeros((source.shape[0], axis.site_count))
+    levels = [
+        membership_oracle(row, axis, center_column)[0]
+        for row in source.detach().tolist()
+    ]
+    for bank in axis.banks:
+        ids = torch.tensor(
+            [a for a, level in enumerate(levels) if level == bank.level],
+            dtype=torch.long,
+        )
+        if ids.numel() == 0:
+            continue
+        spec = CellMassAxisSpec(
+            profile=axis.profile,
+            site_count=axis.site_count,
+            spacing=axis.spacing,
+            origin=axis.origin,
+            tile_sites=bank.tile_sites,
+            period_tiles=1 if bank.full_chart else 3,
+        )
+        values = profile_cell_masses(spec, source[ids, center_column], source[ids, 1])
+        result = result.index_copy(0, ids, values)
+    return result
+
+
+@cuda_only
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("method", ["direct", "merge"])
+@pytest.mark.parametrize(
+    "ni,no,minimum,modes,batches,count",
+    [
+        (128, 128, 4, 8, 4, 819),
+        (32, 64, 4, 16, 5, 37),
+        (8, 8, 4, 4, 1, 3),
+        (1024, 128, 32, 8, 3, 35),
+    ],
+)
+def test_hierarchical_backward_all_gradients_against_existing_fft(
+    dtype, method, ni, no, minimum, modes, batches, count
+):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        hierarchical_linear,
+    )
+
+    plan = HierarchyPlan(
+        input=AxisPlan(
+            site_count=ni,
+            min_tile_sites=minimum,
+            spacing=128 / ni,
+            origin=-2,
+            modes=modes,
+        ),
+        output=AxisPlan(
+            site_count=no,
+            min_tile_sites=minimum,
+            spacing=128 / no,
+            origin=3,
+            modes=modes,
+        ),
+    )
+    rng = torch.Generator().manual_seed(120)
+    source = torch.randn(count, 4, generator=rng, dtype=dtype)
+    source[:, 1] = torch.linspace(0.2, 40, count, dtype=dtype)
+    source[:, 2:] *= 150
+    source[0, 0] = 0  # d_amplitude must survive a zero amplitude.
+    source[0, 2] = 3 + 128 - plan.output.spacing / 4
+    source[0, 3] = -2 + 128 - plan.input.spacing / 4
+    x = torch.randn(batches, ni, dtype=dtype, generator=rng)
+    dy = torch.randn(batches, no, dtype=dtype, generator=rng)
+    p_ref = source.double().requires_grad_()
+    x_ref = x.double().requires_grad_()
+    v = differentiable_profile_matrix(p_ref, plan.input, 3)
+    u = differentiable_profile_matrix(p_ref, plan.output, 2)
+    expected = ((x_ref @ v.T) * p_ref[:, 0]) @ u
+    expected_dx, expected_dp = torch.autograd.grad(
+        expected, (x_ref, p_ref), dy.double()
+    )
+
+    p_gpu = source.cuda().requires_grad_()
+    x_gpu = x.cuda().requires_grad_()
+    actual = hierarchical_linear(plan, x_gpu, p_gpu, z_method=method)
+    dx, dp = torch.autograd.grad(actual, (x_gpu, p_gpu), dy.cuda())
+    tolerance = (
+        {"rtol": 3e-6, "atol": 2e-7}
+        if dtype == torch.float32
+        else {"rtol": 3e-9, "atol": 2e-10}
+    )
+    torch.testing.assert_close(actual.cpu().double(), expected.detach(), **tolerance)
+    torch.testing.assert_close(dx.cpu().double(), expected_dx, **tolerance)
+    # Compare every atom and all four columns, including both sigma terms.
+    torch.testing.assert_close(dp.cpu().double(), expected_dp, **tolerance)
+
+
+@cuda_only
+@pytest.mark.parametrize("batches,count", [(0, 7), (3, 0), (0, 0)])
+def test_hierarchical_backward_empty(batches, count):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        hierarchical_linear,
+    )
+
+    axis = AxisPlan(site_count=8, min_tile_sites=4)
+    plan = HierarchyPlan(input=axis, output=axis)
+    x = torch.ones(batches, 8, device="cuda", requires_grad=True)
+    atoms = torch.ones(count, 4, device="cuda", requires_grad=True)
+    y = hierarchical_linear(plan, x, atoms)
+    dx, dp = torch.autograd.grad(y.sum(), (x, atoms))
+    torch.testing.assert_close(dx, torch.zeros_like(x))
+    torch.testing.assert_close(dp, torch.zeros_like(atoms))
+
+
+@cuda_only
+@pytest.mark.parametrize("target", ["x", "atoms", "both"])
+def test_hierarchical_backward_requested_gradients_and_retained_graph(target):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        hierarchical_linear,
+    )
+
+    axis = AxisPlan(site_count=32, min_tile_sites=4)
+    plan = HierarchyPlan(input=axis, output=axis)
+    x = torch.randn(
+        5, 32, device="cuda", dtype=torch.float64, requires_grad=target != "atoms"
+    )
+    atoms = torch.tensor(
+        [[1.0, 3.0, 31.9, 0.2], [-0.7, 9.0, 15.0, 30.0]],
+        device="cuda",
+        requires_grad=target != "x",
+        dtype=torch.float64,
+    )
+    arguments = [t for t in (x, atoms) if t.requires_grad]
+    y = hierarchical_linear(plan, x, atoms)
+    dy = torch.randn_like(y)
+    first = torch.autograd.grad(y, arguments, dy, retain_graph=True)
+    second = torch.autograd.grad(y, arguments, 2 * dy)
+    for a, b in zip(first, second):
+        torch.testing.assert_close(2 * a, b)
+
+
+@cuda_only
+@pytest.mark.parametrize("changed", ["atoms", "rows", "groups", "offsets"])
+def test_hierarchical_backward_rejects_mutated_saved_state(changed):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        hierarchical_linear,
+        prepare_layout,
+    )
+
+    axis = AxisPlan(site_count=32, min_tile_sites=4)
+    plan = HierarchyPlan(input=axis, output=axis)
+    atoms = torch.tensor([[1.0, 3.0, 2.0, 4.0]], device="cuda", requires_grad=True)
+    x = torch.randn(1, 32, device="cuda", requires_grad=True)
+    layout = prepare_layout(plan, atoms)
+    y = hierarchical_linear(plan, x, atoms, layout=layout)
+    tensor = atoms if changed == "atoms" else getattr(layout, changed)
+    with torch.no_grad():
+        tensor.add_(0)  # Even a value-preserving write invalidates saved state.
+    with pytest.raises(RuntimeError, match="modified by an inplace operation"):
+        y.sum().backward()
+
+
+@cuda_only
+def test_hierarchical_backward_gradcheck_and_noncontiguous_dy():
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        hierarchical_linear,
+    )
+
+    axis = AxisPlan(site_count=8, min_tile_sites=4)
+    plan = HierarchyPlan(input=axis, output=axis)
+    x = torch.randn(1, 8, dtype=torch.float64, device="cuda", requires_grad=True)
+    atoms = torch.tensor(
+        [[0.7, 1.3, 2.1, 4.2]], dtype=torch.float64, device="cuda", requires_grad=True
+    )
+    assert torch.autograd.gradcheck(
+        lambda xx, pp: hierarchical_linear(plan, xx, pp),
+        (x, atoms),
+        eps=1e-5,
+        atol=2e-7,
+        rtol=2e-5,
+    )
+    y = hierarchical_linear(plan, x, atoms)
+    dy = torch.randn(8, 2, device="cuda", dtype=torch.float64).T[:1]
+    assert not dy.is_contiguous()
+    a = torch.autograd.grad(y, (x, atoms), dy, retain_graph=True)
+    b = torch.autograd.grad(y, (x, atoms), dy.contiguous())
+    for aa, bb in zip(a, b):
+        torch.testing.assert_close(aa, bb)
+
+
+@cuda_only
+def test_hierarchical_adamw_rebuilds_layout_and_matches_all_moments():
+    """Complete 128-site step, all 819 atom gradients, then live width/owner moves."""
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        hierarchical_linear,
+    )
+
+    plan = HierarchyPlan(
+        input=AxisPlan(site_count=128, min_tile_sites=4, origin=-2),
+        output=AxisPlan(site_count=128, min_tile_sites=8, origin=3),
+    )
+    rng = torch.Generator().manual_seed(120)
+    source = torch.randn(819, 4, generator=rng)
+    source[:, 1] = torch.linspace(0.2, 40, 819)
+    source[:, 2:] *= 150
+    candidate = source.cuda().requires_grad_()
+    reference = source.cuda().requires_grad_()
+    x = torch.randn(4, 128, generator=rng).cuda().requires_grad_()
+    dy = torch.randn(4, 128, generator=rng).cuda()
+    opt = torch.optim.AdamW([candidate], lr=1e-3, fused=True)
+    ref_opt = torch.optim.AdamW([reference], lr=1e-3, fused=True)
+    for step in range(3):
+        opt.zero_grad(set_to_none=True)
+        ref_opt.zero_grad(set_to_none=True)
+        x.grad = None
+        y = hierarchical_linear(plan, x, candidate)
+        y.backward(dy)
+        p_ref = reference.detach().cpu().double().requires_grad_()
+        xr = x.detach().cpu().double().requires_grad_()
+        u = differentiable_profile_matrix(p_ref, plan.output, 2)
+        v = differentiable_profile_matrix(p_ref, plan.input, 3)
+        yr = ((xr @ v.T) * p_ref[:, 0]) @ u
+        dx, dp = torch.autograd.grad(yr, (xr, p_ref), dy.cpu().double())
+        torch.testing.assert_close(x.grad.cpu().double(), dx, rtol=3e-6, atol=2e-7)
+        torch.testing.assert_close(
+            candidate.grad.cpu().double(), dp, rtol=3e-6, atol=2e-7
+        )
+        reference.grad = dp.to(reference)
+        opt.step()
+        ref_opt.step()
+        torch.testing.assert_close(candidate, reference, rtol=2e-6, atol=2e-7)
+        for name in ("exp_avg", "exp_avg_sq", "step"):
+            torch.testing.assert_close(
+                opt.state[candidate][name],
+                ref_opt.state[reference][name],
+                rtol=4e-6,
+                atol=2e-8,
+            )
+        # Force both plans to reclassify across an input bank boundary and a
+        # torus owner boundary before the next forward, without copying caches.
+        with torch.no_grad():
+            for p in (candidate, reference):
+                p[0, 1] = 4.001 if step == 0 else 3.999
+                p[0, 3] = 125.9 if step == 0 else -2.1

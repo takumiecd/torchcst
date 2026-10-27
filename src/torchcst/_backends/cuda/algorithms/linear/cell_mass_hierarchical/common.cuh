@@ -194,4 +194,130 @@ __device__ inline void coefficient_pair(const Profile &profile, int modes, int h
     cosine = scale * phase_cosine;
     sine = scale * phase_sine;
 }
+// Differentiate the same positive polynomial as raw_coefficient with respect
+// to beta. Carry value/derivative together; this is analytic, not finite differences.
+__device__ inline void raw_coefficient_derivative(double beta, int modes, int harmonic,
+                                                  double &value, double &derivative) {
+    double x = beta * beta, dx = 2 * beta, t = x - 1;
+    double power = 1, dpower = 0;
+    for (int j = 0; j < harmonic; ++j) {
+        dpower = dpower * x + power * dx;
+        power *= x;
+    }
+    if (harmonic == modes) {
+        value = 0.25 * power;
+        derivative = 0.25 * dpower;
+        return;
+    }
+    double term = (modes + harmonic) * t, dterm = (modes + harmonic) * dx;
+    double sum = term, dsum = dterm;
+    for (int j = 1; j < modes - harmonic; ++j) {
+        double ratio =
+            static_cast<double>((modes - harmonic - j) * (modes + harmonic + j)) / (j * (j + 1));
+        dterm = ratio * (dterm * t + term * dx);
+        term *= ratio * t;
+        sum += term;
+        dsum += dterm;
+    }
+    double factor = 0.5 * modes / (modes + harmonic);
+    value = factor * power * sum + (harmonic == 0 ? 0.5 : 0);
+    derivative = factor * (dpower * sum + power * dsum);
+}
+
+// The selected bank, owner and torus image are held fixed in backward. The
+// optimizer's next forward will classify again using the updated atom values.
+__device__ inline double beta_sigma_derivative(const Axis &axis, const Bank &bank, double sigma,
+                                               double beta) {
+    double relative = sigma / (bank.period / 3);
+    double base =
+        axis.radius_ratio4 + (1 - axis.radius_ratio4) * relative * relative * relative * relative;
+    double root = sqrt(sqrt(base));
+    double radius_sigma =
+        (1 - axis.radius_ratio4) * relative * relative * relative / (root * root * root);
+    return beta * sqrt(fmax(0.0, beta * beta - 1)) * PI / bank.period * radius_sigma;
+}
+
+__device__ inline int positive_mod(int value, int count) {
+    int result = value % count;
+    return result < 0 ? result + count : result;
+}
+
+__device__ inline int group_for_slot(const int64_t *offsets, int count, int slot) {
+    int first = 0, last = count;
+    while (first + 1 < last) {
+        int middle = (first + last) / 2;
+        if (offsets[middle] <= slot)
+            first = middle;
+        else
+            last = middle;
+    }
+    return first;
+}
+
+// One atom's derivative contractions against Z. No per-atom coefficient or
+// Jacobian array is written to global memory. Each result covers four batches.
+__device__ inline void project_derivatives(const double *z, int batches, int batch_begin,
+                                           const Axis &axis, const Bank &bank, int owner,
+                                           double sigma, double center, double *dcenter,
+                                           double *dsigma) {
+    Profile profile = make_profile(axis, bank, sigma, center, owner);
+    double raw_zero, raw_zero_beta;
+    raw_coefficient_derivative(profile.beta, axis.modes, 0, raw_zero, raw_zero_beta);
+    double beta_sigma = beta_sigma_derivative(axis, bank, sigma, profile.beta);
+    int retained = bank.full_chart ? 1 : 3;
+    int first_tile = bank.full_chart ? 0 : owner - 1;
+    // The constant coefficient is 1/P, independent of both center and sigma.
+    for (int harmonic = 1; harmonic <= axis.modes; ++harmonic) {
+        double raw, raw_beta;
+        raw_coefficient_derivative(profile.beta, axis.modes, harmonic, raw, raw_beta);
+        double omega = 2 * PI * harmonic / bank.period;
+        double scale = 2 * raw / (bank.period * raw_zero);
+        double scale_sigma =
+            2 * beta_sigma / (bank.period * raw_zero) * (raw_beta - raw * raw_zero_beta / raw_zero);
+        double ps, pc;
+        sincos(omega * profile.center, &ps, &pc);
+        for (int offset = 0; offset < retained; ++offset) {
+            int raw_tile = first_tile + offset;
+            int tile = positive_mod(raw_tile, bank.tile_count);
+            int image = (raw_tile - tile) / bank.tile_count;
+            double rs = 0, rc = 1;
+            if (image != 0)
+                sincos(omega * image * axis.period, &rs, &rc);
+            int node = bank.node_offset + tile;
+            for (int b = 0; b < BATCH_TILE && batch_begin + b < batches; ++b) {
+                int base = ((batch_begin + b) * axis.node_count + node) * axis.basis_count();
+                double zc = z[base + 2 * harmonic - 1], zs = z[base + 2 * harmonic];
+                double rotated_cos = zc * rc - zs * rs;
+                double rotated_sin = zs * rc + zc * rs;
+                dcenter[b] += omega * scale * (-ps * rotated_cos + pc * rotated_sin);
+                dsigma[b] += scale_sigma * (pc * rotated_cos + ps * rotated_sin);
+            }
+        }
+    }
+}
+inline void check_layout(const torch::Tensor &atoms, const torch::Tensor &rows,
+                         const torch::Tensor &groups, const torch::Tensor &offsets) {
+    check_cuda_float_matrix(atoms);
+    TORCH_CHECK(atoms.size(1) == 4 && atoms.size(0) <= 65536, "invalid atoms");
+    TORCH_CHECK(rows.is_contiguous() && rows.device() == atoms.device() && rows.dim() == 1 &&
+                    rows.scalar_type() == torch::kInt64 && rows.numel() == atoms.size(0),
+                "invalid rows");
+    TORCH_CHECK(groups.is_contiguous() && groups.device() == atoms.device() && groups.dim() == 2 &&
+                    groups.size(1) == 4 && groups.scalar_type() == torch::kInt32 &&
+                    groups.size(0) <= atoms.size(0),
+                "invalid groups");
+    TORCH_CHECK(offsets.is_contiguous() && offsets.device() == atoms.device() &&
+                    offsets.dim() == 1 && offsets.scalar_type() == torch::kInt64 &&
+                    offsets.numel() == groups.size(0) + 1,
+                "invalid offsets");
+}
+
+inline void check_moments(const torch::Tensor &values, const torch::Tensor &like,
+                          const Axis &axis) {
+    TORCH_CHECK(values.is_contiguous() && values.device() == like.device() && values.dim() == 3 &&
+                    values.scalar_type() == torch::kFloat64 && values.size(1) == axis.node_count &&
+                    values.size(2) == axis.basis_count(),
+                "invalid moments/coefficients");
+    TORCH_CHECK(values.numel() <= INT_MAX, "moments exceed prototype index capacity");
+}
 } // namespace cell_mass_hierarchy

@@ -6,39 +6,23 @@ namespace {
 constexpr int CHUNK = 32;
 constexpr int MAX_ACCUMULATORS = (BATCH_TILE * 33 + CHUNK - 1) / CHUNK;
 
-__device__ int positive_mod(int value, int count) {
-    int result = value % count;
-    return result < 0 ? result + count : result;
-}
-
-__device__ int group_for_slot(const int64_t *offsets, int count, int slot) {
-    int first = 0, last = count;
-    while (first + 1 < last) {
-        int middle = (first + last) / 2;
-        if (offsets[middle] <= slot)
-            first = middle;
-        else
-            last = middle;
-    }
-    return first;
-}
-
 // One thread completes H for a different atom and up to four batches. The
 // amplitude is not included. Neighbour Z tiles are rotated to the same
 // unwrapped chart image as the atom's retained one-period window.
 template <typename scalar_t>
 __global__ void compute_h_kernel(const scalar_t *atoms, const int64_t *rows, const int *groups,
                                  const int64_t *offsets, const double *z, double *h, int atom_count,
-                                 int group_count, int batches, Axis axis) {
+                                 int group_count, int batches, Axis axis, bool output_side) {
     int slot = blockIdx.x * blockDim.x + threadIdx.x;
     if (slot >= atom_count)
         return;
     int group = group_for_slot(offsets, group_count, slot);
-    int owner = groups[4 * group + 3];
-    Bank bank = axis.banks[bank_for_level(axis, groups[4 * group + 1])];
+    int owner = groups[4 * group + (output_side ? 2 : 3)];
+    Bank bank = axis.banks[bank_for_level(axis, groups[4 * group + (output_side ? 0 : 1)])];
     int original = rows[slot];
-    Profile profile = make_profile(axis, bank, static_cast<double>(atoms[4 * original + 1]),
-                                   static_cast<double>(atoms[4 * original + 3]), owner);
+    Profile profile =
+        make_profile(axis, bank, static_cast<double>(atoms[4 * original + 1]),
+                     static_cast<double>(atoms[4 * original + (output_side ? 2 : 3)]), owner);
     double accum[BATCH_TILE] = {};
     int batch_begin = blockIdx.y * BATCH_TILE;
     int retained = bank.full_chart ? 1 : 3;
@@ -91,7 +75,8 @@ __device__ int lower_group(const int *groups, int count, int ho, int hi, int qo)
 template <typename scalar_t>
 __global__ void compute_c_kernel(const scalar_t *atoms, const int64_t *rows, const int *groups,
                                  const int64_t *offsets, const double *h, double *c, int atom_count,
-                                 int group_count, int batches, Axis input, Axis output) {
+                                 int group_count, int batches, Axis input, Axis output,
+                                 bool reverse) {
     extern __shared__ double shared[];
     double *coefficients = shared;
     double *scaled_h = shared + CHUNK * output.basis_count();
@@ -104,11 +89,22 @@ __global__ void compute_c_kernel(const scalar_t *atoms, const int64_t *rows, con
     int batch_begin = blockIdx.y * BATCH_TILE;
     int elements = BATCH_TILE * output.basis_count();
     double accum[MAX_ACCUMULATORS] = {};
-    for (int input_bank = 0; input_bank < input.bank_count; ++input_bank) {
+    // Forward uses contiguous output prefixes. Reverse initially scans sparse
+    // group descriptors, selecting (input_level,input_owner); atom values stay
+    // in the original Parameter and no transposed atom copy is allocated.
+    int ranges = reverse ? group_count : input.bank_count;
+    for (int range = 0; range < ranges; ++range) {
         if (lane == 0) {
-            int hi = input.banks[input_bank].level;
-            range_begin = offsets[lower_group(groups, group_count, bank.level, hi, owner)];
-            range_end = offsets[lower_group(groups, group_count, bank.level, hi, owner + 1)];
+            if (reverse) {
+                bool matches =
+                    groups[4 * range + 1] == bank.level && groups[4 * range + 3] == owner;
+                range_begin = matches ? offsets[range] : 0;
+                range_end = matches ? offsets[range + 1] : 0;
+            } else {
+                int hi = input.banks[range].level;
+                range_begin = offsets[lower_group(groups, group_count, bank.level, hi, owner)];
+                range_end = offsets[lower_group(groups, group_count, bank.level, hi, owner + 1)];
+            }
         }
         __syncthreads();
         for (int chunk = range_begin; chunk < range_end; chunk += CHUNK) {
@@ -116,9 +112,9 @@ __global__ void compute_c_kernel(const scalar_t *atoms, const int64_t *rows, con
             bool valid = slot < range_end;
             int original = valid ? rows[slot] : 0;
             if (valid) {
-                Profile profile =
-                    make_profile(output, bank, static_cast<double>(atoms[4 * original + 1]),
-                                 static_cast<double>(atoms[4 * original + 2]), owner);
+                Profile profile = make_profile(
+                    output, bank, static_cast<double>(atoms[4 * original + 1]),
+                    static_cast<double>(atoms[4 * original + (reverse ? 3 : 2)]), owner);
                 for (int harmonic = 0; harmonic <= output.modes; ++harmonic) {
                     double cc, cs;
                     coefficient_pair(profile, output.modes, harmonic, cc, cs);
@@ -195,34 +191,11 @@ __global__ void expand_c_kernel(const double *c, scalar_t *y, int batches, Axis 
     }
 }
 
-void check_layout(const torch::Tensor &atoms, const torch::Tensor &rows,
-                  const torch::Tensor &groups, const torch::Tensor &offsets) {
-    check_cuda_float_matrix(atoms);
-    TORCH_CHECK(atoms.size(1) == 4 && atoms.size(0) <= 65536, "invalid atoms");
-    TORCH_CHECK(rows.is_contiguous() && rows.device() == atoms.device() && rows.dim() == 1 &&
-                    rows.scalar_type() == torch::kInt64 && rows.numel() == atoms.size(0),
-                "invalid rows");
-    TORCH_CHECK(groups.is_contiguous() && groups.device() == atoms.device() && groups.dim() == 2 &&
-                    groups.size(1) == 4 && groups.scalar_type() == torch::kInt32 &&
-                    groups.size(0) <= atoms.size(0),
-                "invalid groups");
-    TORCH_CHECK(offsets.is_contiguous() && offsets.device() == atoms.device() &&
-                    offsets.dim() == 1 && offsets.scalar_type() == torch::kInt64 &&
-                    offsets.numel() == groups.size(0) + 1,
-                "invalid offsets");
-}
-
-void check_moments(const torch::Tensor &values, const torch::Tensor &like, const Axis &axis) {
-    TORCH_CHECK(values.is_contiguous() && values.device() == like.device() && values.dim() == 3 &&
-                    values.scalar_type() == torch::kFloat64 && values.size(1) == axis.node_count &&
-                    values.size(2) == axis.basis_count(),
-                "invalid moments/coefficients");
-    TORCH_CHECK(values.numel() <= INT_MAX, "moments exceed prototype index capacity");
-}
 } // namespace
 
 torch::Tensor compute_h(torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups,
-                        torch::Tensor offsets, torch::Tensor z, std::vector<double> config) {
+                        torch::Tensor offsets, torch::Tensor z, std::vector<double> config,
+                        bool output_side) {
     check_layout(atoms, rows, groups, offsets);
     Axis axis = parse_axis(config);
     check_moments(z, atoms, axis);
@@ -238,7 +211,7 @@ torch::Tensor compute_h(torch::Tensor atoms, torch::Tensor rows, torch::Tensor g
         compute_h_kernel<<<grid, THREADS, 0, stream>>>(
             atoms.data_ptr<scalar_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
             offsets.data_ptr<int64_t>(), z.data_ptr<double>(), h.data_ptr<double>(), atoms.size(0),
-            groups.size(0), z.size(0), axis);
+            groups.size(0), z.size(0), axis, output_side);
     });
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return h;
@@ -246,7 +219,7 @@ torch::Tensor compute_h(torch::Tensor atoms, torch::Tensor rows, torch::Tensor g
 
 torch::Tensor compute_c(torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups,
                         torch::Tensor offsets, torch::Tensor h, std::vector<double> input_config,
-                        std::vector<double> output_config) {
+                        std::vector<double> output_config, bool reverse) {
     check_layout(atoms, rows, groups, offsets);
     Axis input = parse_axis(input_config), output = parse_axis(output_config);
     TORCH_CHECK(h.is_contiguous() && h.device() == atoms.device() && h.dim() == 2 &&
@@ -266,7 +239,7 @@ torch::Tensor compute_c(torch::Tensor atoms, torch::Tensor rows, torch::Tensor g
         compute_c_kernel<<<grid, CHUNK, shared, stream>>>(
             atoms.data_ptr<scalar_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
             offsets.data_ptr<int64_t>(), h.data_ptr<double>(), c.data_ptr<double>(), atoms.size(0),
-            groups.size(0), h.size(0), input, output);
+            groups.size(0), h.size(0), input, output, reverse);
     });
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return c;

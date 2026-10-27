@@ -2,7 +2,7 @@
 
 Sigma keeps its existing width-control meaning and concentration floor. There
 is no new density, width conversion or profile fitting. These are numeric
-research stages, not the public CSTLinear dispatcher or a backward binding.
+research stages, not the public CSTLinear dispatcher.
 """
 
 import hashlib
@@ -24,6 +24,7 @@ def _extension():
         directory / "bindings.cpp",
         directory / "preparation.cu",
         directory / "contraction.cu",
+        directory / "backward.cu",
     ]
     digest = hashlib.sha256(
         b"".join(path.read_bytes() for path in [*sources, directory / "common.cuh"])
@@ -113,7 +114,7 @@ def build_hierarchy(signal, axis, *, method="merge", team_size=4):
     matching even harmonics are merged level by level. The direct route is a
     comparison that generates every element from signal independently.
 
-    This low-level stage has no autograd binding. It is for a future explicit
+    This low-level stage has no autograd binding. It is used by the explicit
     forward/backward implementation, not a differentiable public operator.
     """
     if type(axis) is not AxisPlan:
@@ -152,6 +153,7 @@ def compute_h(plan, atoms, layout, zx):
         layout.offsets,
         zx,
         plan.input.native_config(),
+        False,
     )
 
 
@@ -171,6 +173,7 @@ def compute_c(plan, atoms, layout, h):
         h,
         plan.input.native_config(),
         plan.output.native_config(),
+        False,
     )
 
 
@@ -192,12 +195,12 @@ def forward_only(
 ):
     """Research forward: prepare -> Z -> H -> C -> Y, with no hidden fallback.
 
-    Reject differentiable inputs explicitly until hierarchical backward exists.
-    Low-level stages above can later be used inside a manual autograd binding.
+    Use hierarchical_linear for the explicit autograd binding; this diagnostic
+    route requires detached inputs.
     """
     if x.requires_grad or atoms.requires_grad:
         raise RuntimeError(
-            "hierarchical backward is not implemented; forward_only needs detached inputs"
+            "forward_only needs detached inputs; use hierarchical_linear for backward"
         )
     if x.device != atoms.device or x.dtype != atoms.dtype:
         raise ValueError("X and atoms must share device and dtype")
@@ -211,3 +214,131 @@ def forward_only(
     h = compute_h(plan, atoms, layout, zx)
     c = compute_c(plan, atoms, layout, h)
     return expand_c(c, plan.output, x, sites_per_block=sites_per_block)
+
+
+def compute_g(plan, atoms, layout, zy):
+    """Project dY onto each output profile: G[batch,sorted_slot], without amp.
+
+    This uses the same contraction as H, with output levels/owners/centers.
+    G can be reused by dX and all four atom-parameter gradients.
+    """
+    layout.validate_for(atoms, plan)
+    return _extension().compute_h(
+        atoms,
+        layout.rows,
+        layout.groups,
+        layout.offsets,
+        zy,
+        plan.output.native_config(),
+        True,
+    )
+
+
+def compute_input_c(plan, atoms, layout, g):
+    """Accumulate amp*G into input owner C; no dX atomic or packed atom copy.
+
+    Input owners are not contiguous in the output-sorted layout. The first
+    implementation scans sparse group descriptors and loads matching ranges.
+    This is a correctness baseline; an input-group index can replace that scan.
+    """
+    layout.validate_for(atoms, plan)
+    return _extension().compute_c(
+        atoms,
+        layout.rows,
+        layout.groups,
+        layout.offsets,
+        g,
+        plan.output.native_config(),
+        plan.input.native_config(),
+        True,
+    )
+
+
+def parameter_grad(plan, atoms, layout, zx, zy, h, g):
+    """One thread per atom reduces all batches into its original [a,s,muo,mui].
+
+    Analytic derivatives include the effective-radius floor and area-normalized
+    coefficient quotient. Bank/owner selection is fixed to this forward's plan.
+    H/G and Zx/Zy are reused, with derivative coefficients only in registers.
+    """
+    layout.validate_for(atoms, plan)
+    return _extension().parameter_grad(
+        atoms,
+        layout.rows,
+        layout.groups,
+        layout.offsets,
+        zx,
+        zy,
+        h,
+        g,
+        plan.input.native_config(),
+        plan.output.native_config(),
+    )
+
+
+class _HierarchicalLinear(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x, atoms, plan, layout, z_method, team_size, sites_per_block):
+        zx = build_hierarchy(x, plan.input, method=z_method, team_size=team_size)
+        h = compute_h(plan, atoms, layout, zx)
+        c = compute_c(plan, atoms, layout, h)
+        y = expand_c(c, plan.output, x, sites_per_block=sites_per_block)
+        ctx.plan = plan
+        ctx.z_method = z_method
+        ctx.team_size = team_size
+        ctx.sites_per_block = sites_per_block
+        ctx.source_version = atoms._version
+        # save_for_backward checks atom AND layout-buffer mutations. Avoid
+        # keeping the source x: Zx already contains the needed contractions.
+        # Input-only backward does not need Zx/H, so release those immediately.
+        saved = (atoms, layout.rows, layout.groups, layout.offsets)
+        if ctx.needs_input_grad[1]:
+            saved += (zx, h)
+        ctx.save_for_backward(*saved)
+        return y
+
+    @staticmethod
+    @torch.autograd.function.once_differentiable
+    def backward(ctx, dy):
+        atoms, rows, groups, offsets, *forward_state = ctx.saved_tensors
+        plan = ctx.plan
+        layout = PreparedLayout(rows, groups, offsets, plan, atoms, ctx.source_version)
+        layout.validate_for(atoms, plan)
+        dy = dy.contiguous()
+        zy = build_hierarchy(
+            dy, plan.output, method=ctx.z_method, team_size=ctx.team_size
+        )
+        g = compute_g(plan, atoms, layout, zy)
+        dx = datoms = None
+        if ctx.needs_input_grad[0]:
+            cin = compute_input_c(plan, atoms, layout, g)
+            dx = expand_c(cin, plan.input, dy, sites_per_block=ctx.sites_per_block)
+            del cin
+        if ctx.needs_input_grad[1]:
+            zx, h = forward_state
+            datoms = parameter_grad(plan, atoms, layout, zx, zy, h, g)
+        return dx, datoms, None, None, None, None, None
+
+
+def hierarchical_linear(
+    plan, x, atoms, *, layout=None, z_method="merge", team_size=4, sites_per_block=32
+):
+    """Private research autograd route, using this forward's bank/owner choices.
+
+    Forward saves Zx/H only if atom gradients are requested. Backward builds Zy
+    and G once, then uses them for dX and parameter gradients. No dense W, dW,
+    packed atom values, global coefficient table, or separate dH is allocated.
+    Double backward and full-route CUDA Graph capture are not supported yet
+    (preparation has dynamic output shapes and host checks).
+    """
+    if x.device != atoms.device or x.dtype != atoms.dtype:
+        raise ValueError("X and atoms must share device and dtype")
+    if not bool(torch.isfinite(x).all()):
+        raise ValueError("X must be finite")
+    if layout is None:
+        layout = prepare_layout(plan, atoms)
+    else:
+        layout.validate_for(atoms, plan)
+    return _HierarchicalLinear.apply(
+        x, atoms, plan, layout, z_method, team_size, sites_per_block
+    )

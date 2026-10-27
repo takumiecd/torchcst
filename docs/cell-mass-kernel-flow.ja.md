@@ -21,7 +21,7 @@ Zの二分集約木があることと、sigmaから異なるtile/周期を選ぶ
 | 小幅の直接計算／全周bankへの自動分類 | 全周bankは分類済み。小幅directは任意の高速化候補 | 未実装。宣言済みK=1の経路はあるが自動分類ではない |
 | H/G・Parameter勾配 | 各threadが別atomを担当 | 実装済み、固定bank条件で検証済み |
 | C→Y/dX | bankごとにCを作って展開後に加算 | owner Cの部分和と展開は実装済み。複数bankの合算は未実装 |
-| 面積正規化・backward | 既存密度と面積式を再利用。階層版backwardは未実装 | 固定bankの独立oracle照合完了 |
+| 面積正規化・backward | 既存密度・面積式と解析微分を再利用。階層版backwardは実GPU検証待ち | 固定bankの独立oracle照合完了 |
 
 同じprofile式でも選ぶPが変わるので、固定bankの時間・勾配検証を階層版の結果へ読み替えない。
 実装箇所は[`CellMassAxisSpec`](../src/torchcst/kernels/cell_mass.py)、
@@ -43,13 +43,13 @@ Zの二分集約木があることと、sigmaから異なるtile/周期を選ぶ
 | `preparation.cu::build_hierarchy` | bank別の周期のZ。直接生成と偶数harmonicの子からの継承。完成Zはglobal FP64 | CUDA実装済み、direct/mergeを独立積分参照へ照合済み |
 | `contraction.cu::compute_h` | 各threadが別atomのHをFP64で完成。既存係数と面積をregisterで計算 | 実装済み、既存profileの独立参照へ照合済み |
 | `compute_c` / `expand_c` | 32atom shared chunkからowner Cを作り、bank別の基底で展開後にYへ加算 | 実装済み、CとYを別々に照合済み |
-| G/dX・Parameter勾配 | 同じprofile微分と選択中のlayoutを使う | 階層版では未実装 |
+| G/dX・Parameter勾配 | 同じprofile微分と選択中のlayoutを使う。各threadが別atomを担当 | 実装済み、実GPU検証待ち |
 
 新しい前半は空の雛形でなく、`prepare_layout(plan, atoms)`と
 `build_hierarchy(signal, axis, method="merge")`を実行するCUDA入口。
 直接生成だけの`method="direct"`も比較に使える。
-研究用の`forward_only`はprepare→Z→H→C→Yを呼ぶ。backward未実装のため、requires_gradの入力は明示的に拒否する。
-公開CSTLinear/dispatcherへの登録はない。各低水準段階は、将来の明示的なautograd bindingから使う内部処理である。
+研究用の`forward_only`はprepare→Z→H→C→Yを呼び、detached入力の診断用として残す。
+新しい`hierarchical_linear`は明示的なautograd bindingを持つ。公開CSTLinear/dispatcherへの登録はない。
 
 新しいlayout cacheにatom値や全atomキーは保持しない。所有するTensorは
 `rows[A]`（int64）、`groups[G,4]`（int32）、`offsets[G+1]`（int64）。
@@ -65,6 +65,45 @@ local node数はN/n_min、N/(2*n_min)、...と減り、最後に全周nodeを一
 Hのatomを複数threadで分担するという意味ではない。
 最初は全宣言bankのnodeを準備し、使われないbankの省略は依存関係を含めた後続の改善とする。
 cacheの`tensor_bytes`やZの容量はpayloadであり、完全stepのallocatorピークと混同しない。
+
+### 階層版backwardの実装（実GPU検証待ち）
+
+`hierarchical_linear(plan, x, atoms)`から次の順番で呼び出す。
+
+```text
+forward: prepare_layout → build_hierarchy(X) → H → C_out → Y
+backward: build_hierarchy(dY) → G
+                                ├→ C_in → dX
+                                └→ parameter_grad(Zx,Zy,H,G) → d_atoms
+```
+
+H/Gは振幅を含まない`[batch,sorted_slot]`のFP64配列。学習対象にatomがある場合だけ、
+forwardのZx/Hをautogradの保存状態に残す。入力だけの勾配ならZx/Hを残さない。
+backwardのZy/Gは同じ呼び出しのdXとparameter_gradで共用する。
+C_out/C_inはbank別`[batch,node,mode]`で、展開後に解放する。
+元X、密なW/dW、packed_atoms、全atom係数表、独立したdH配列は保存しない。
+低メモリ用のH再計算切替は今後の実行方式であり、この初版ではZx/H保存を使う。
+
+各threadは別atomを担当し、batch方向の和をregisterに持つ。
+入力profileをv、出力profileをu、振幅をaとすると、H=Σ_i X_i v_i、G=Σ_o dY_o u_o。
+
+```text
+d_a    = sum_batch(H * G)
+d_mu_i = sum_batch(a * G * dH/d_mu_i)
+d_mu_o = sum_batch(a * H * dG/d_mu_o)
+d_sigma= sum_batch(a * (G * dH/d_sigma + H * dG/d_sigma))
+```
+
+`backward.cu::parameter_grad`はZx/Zyから微分の縮約をregisterで計算し、元atom行へ一度だけ書く。
+幅微分には既存effective_radiusの下限補正と、係数の面積正規化の商の微分を含める。
+選択済みbank・ownerは固定して滑らかな枝を微分し、次のforwardで更新後の値を再分類する。
+H/G作成は`contraction.cu::compute_h`の軸切替を共用し、dXは入力側Cを同じ展開kernelで評価する。
+
+出力順layoutでは入力ownerの範囲が非連続なので、初版のC_inは非空groupのdescriptorを走査し、
+該当する連続atom範囲だけを32atom shared chunkへ読み込む。atom値の転置コピーやdX atomicは使わない。
+このgroup走査は高速化対象であり、完全stepの速度・メモリ達成は実測前に主張しない。
+保存atomとlayout配列は`save_for_backward`で更新検査し、retained backwardに対応する。
+二階微分とsortを含む全体Graph captureは未対応。
 
 ### H/C/Y接続とsigma整合の検証（現在の実装）
 
