@@ -272,11 +272,11 @@ __device__ inline bool compatible_sigma_banks(const Axis &a, int ai, const Axis 
 }
 
 template <typename scalar_t, typename projection_t, int FixedModes>
-__global__ void compute_c_split_kernel(const scalar_t *atoms, const int64_t *rows,
-                                       const int *groups, const int64_t *offsets,
-                                       const projection_t *h, SplitPages pages, int atom_count,
-                                       int group_count, int batches, Axis input, Axis output,
-                                       bool reverse, bool cartesian, int splits) {
+__global__ void
+compute_c_split_kernel(const scalar_t *atoms, const int64_t *rows, const int *groups,
+                       const int64_t *offsets, const projection_t *h, SplitPages pages,
+                       int atom_count, int group_count, int batches, Axis input, Axis output,
+                       bool reverse, bool cartesian, int splits, int atoms_per_split) {
     extern __shared__ double shared[];
     double *coefficients = shared;
     double *scaled_h = shared + SHARED_STRIDE * output.basis_count();
@@ -364,8 +364,31 @@ __global__ void compute_c_split_kernel(const scalar_t *atoms, const int64_t *row
         }
         if (pass == 0) {
             total = prefix;
-            split_begin = static_cast<int>(static_cast<int64_t>(total) * blockIdx.z / splits);
-            split_end = static_cast<int>(static_cast<int64_t>(total) * (blockIdx.z + 1) / splits);
+            int active = atoms_per_split
+                             ? min(splits, max(1, (total + atoms_per_split - 1) / atoms_per_split))
+                             : splits;
+            // Every lane computed the same owner count. Inactive blocks can
+            // return together after writing all their partials as zero.
+            if (blockIdx.z >= active) {
+                int elements = BATCH_TILE * output.basis_count();
+                int local_split = blockIdx.z % pages.page_splits;
+                int page = blockIdx.z / pages.page_splits;
+                for (int work = lane; work < elements; work += CHUNK) {
+                    int batch = batch_begin + work / output.basis_count();
+                    int mode = work % output.basis_count();
+                    if (batch < batches) {
+                        int64_t index = ((static_cast<int64_t>(local_split) * batches + batch) *
+                                             output.node_count +
+                                         node) *
+                                            output.basis_count() +
+                                        mode;
+                        pages.pointers[page][index] = 0;
+                    }
+                }
+                return;
+            }
+            split_begin = static_cast<int>(static_cast<int64_t>(total) * blockIdx.z / active);
+            split_end = static_cast<int>(static_cast<int64_t>(total) * (blockIdx.z + 1) / active);
         }
     }
     int elements = BATCH_TILE * output.basis_count();
@@ -825,10 +848,12 @@ torch::Tensor compute_c(torch::Tensor atoms, torch::Tensor rows, torch::Tensor g
 torch::Tensor compute_c_split(torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups,
                               torch::Tensor offsets, torch::Tensor h,
                               std::vector<double> input_config, std::vector<double> output_config,
-                              bool reverse, int splits) {
+                              bool reverse, int splits, int atoms_per_split) {
     check_layout(atoms, rows, groups, offsets);
     Axis input = parse_axis(input_config), output = parse_axis(output_config);
     TORCH_CHECK(splits >= 1 && splits <= 64, "splits must lie in [1,64]");
+    TORCH_CHECK(atoms_per_split >= 0 && atoms_per_split <= 65536,
+                "atoms_per_split must lie in [0,65536]");
     TORCH_CHECK(h.is_contiguous() && h.device() == atoms.device() && h.dim() == 2 &&
                     (h.scalar_type() == torch::kFloat64 || h.scalar_type() == torch::kFloat32) &&
                     h.size(1) == atoms.size(0) && h.numel() <= INT_MAX,
@@ -871,7 +896,8 @@ torch::Tensor compute_c_split(torch::Tensor atoms, torch::Tensor rows, torch::Te
                     <<<grid, CHUNK, shared, stream>>>(
                         atoms.data_ptr<atom_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
                         offsets.data_ptr<int64_t>(), h.data_ptr<scalar_t>(), pages, atoms.size(0),
-                        groups.size(0), h.size(0), input, output, reverse, cartesian, splits);
+                        groups.size(0), h.size(0), input, output, reverse, cartesian, splits,
+                        atoms_per_split);
             };
             if (output.modes == 8)
                 launch(std::integral_constant<int, 8>{});

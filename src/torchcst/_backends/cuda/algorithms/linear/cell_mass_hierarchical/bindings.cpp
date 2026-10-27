@@ -22,7 +22,7 @@ Tensor compute_h(Tensor atoms, Tensor rows, Tensor groups, Tensor offsets, Tenso
 Tensor compute_c(Tensor atoms, Tensor rows, Tensor groups, Tensor offsets, Tensor h, Config input,
                  Config output, bool reverse);
 Tensor compute_c_split(Tensor atoms, Tensor rows, Tensor groups, Tensor offsets, Tensor h,
-                       Config input, Config output, bool reverse, int splits);
+                       Config input, Config output, bool reverse, int splits, int atoms_per_split);
 std::vector<Tensor> compute_g_and_parameter_grad(Tensor atoms, Tensor rows, Tensor groups,
                                                  Tensor offsets, Tensor zx, Tensor zy, Tensor h,
                                                  Config input, Config output, int threads,

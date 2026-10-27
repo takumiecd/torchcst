@@ -514,6 +514,79 @@ def test_h_c_and_y_match_existing_profile(
 
 
 @cuda_only
+@pytest.mark.parametrize("threshold", [0, 32, 128, 256])
+@pytest.mark.parametrize(
+    "dtype,modes,batches,concentrated,layout_method",
+    [
+        (torch.float32, 8, 1, True, "sort"),
+        (torch.float64, 8, 4, True, "counting"),
+        (torch.float32, 16, 5, False, "counting"),
+        (torch.float64, 16, 1, False, "sort"),
+    ],
+)
+def test_output_split_threshold_c_and_y_match_single_split_and_fft(
+    threshold, dtype, modes, batches, concentrated, layout_method
+):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        build_hierarchy,
+        compute_c,
+        compute_h,
+        expand_c,
+        prepare_layout,
+    )
+
+    plan = HierarchyPlan(
+        input=AxisPlan(site_count=128, min_tile_sites=4, origin=-2, modes=modes),
+        output=AxisPlan(site_count=128, min_tile_sites=8, origin=3, modes=modes),
+    )
+    rng = torch.Generator().manual_seed(120)
+    source = torch.randn(300, 4, dtype=dtype, generator=rng)
+    source[:, 0] *= 0.1
+    source[0, 0] = 0
+    if concentrated:
+        # The output owner contains all 300 atoms, across multiple input groups.
+        source[:, 1] = 4
+        source[:, 2] = 130.9
+        source[:, 3] = (torch.arange(300, dtype=dtype) % 4) * 16 - 2
+    else:
+        source[:, 1] = torch.linspace(0.2, 40, 300, dtype=dtype)
+        source[:, 2:] *= 150
+        source[0, 2:] = torch.tensor([130.9, -2.1], dtype=dtype)
+    x = torch.randn(batches, 128, dtype=dtype, generator=rng)
+    atoms, signal = source.cuda(), x.cuda()
+    layout = prepare_layout(plan, atoms, method=layout_method)
+    rows = layout.rows.cpu().tolist()
+    if concentrated:
+        groups, offsets = layout.groups.cpu().tolist(), layout.offsets.cpu().tolist()
+        counts = {}
+        for group, begin, end in zip(groups, offsets, offsets[1:]):
+            key = (group[0], group[2])
+            counts[key] = counts.get(key, 0) + end - begin
+        assert max(counts.values()) == 300
+    zx = build_hierarchy(signal, plan.input)
+    h = compute_h(plan, atoms, layout, zx)
+    c1 = compute_c(plan, atoms, layout, h, splits=1)
+    c64 = compute_c(plan, atoms, layout, h, splits=64, atoms_per_split=threshold)
+    y = expand_c(c64, plan.output, signal)
+    y1 = expand_c(c1, plan.output, signal)
+
+    v = existing_profile_matrix(source, plan.input, 3)
+    u = existing_profile_matrix(source, plan.output, 2)
+    expected_h = (x.double() @ v.T)[:, rows]
+    expected_c = output_c_oracle(source, plan, rows, expected_h)
+    expected_y = ((x.double() @ v.T) * source[:, 0].double()[None, :]) @ u
+    torch.testing.assert_close(c64, c1, rtol=2e-10, atol=5e-11)
+    torch.testing.assert_close(c64.cpu(), expected_c, rtol=2e-10, atol=5e-11)
+    tol = (
+        {"rtol": 2e-6, "atol": 2e-7}
+        if dtype == torch.float32
+        else {"rtol": 2e-10, "atol": 5e-11}
+    )
+    torch.testing.assert_close(y, y1, **tol)
+    torch.testing.assert_close(y.cpu(), expected_y.to(dtype), **tol)
+
+
+@cuda_only
 @pytest.mark.parametrize("batches,atom_count", [(0, 3), (3, 0)])
 def test_empty_h_c_y(batches, atom_count):
     from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (

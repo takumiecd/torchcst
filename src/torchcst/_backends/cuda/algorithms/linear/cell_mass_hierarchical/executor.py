@@ -271,7 +271,7 @@ def compute_h(
     )
 
 
-def compute_c(plan, atoms, layout, h, *, splits=1):
+def compute_c(plan, atoms, layout, h, *, splits=1, atoms_per_split=0):
     """Complete output owner C[batch,node,mode] using 32-atom shared chunks.
 
     The small cross-block coefficient buffer is bank/node sized, not an
@@ -280,6 +280,8 @@ def compute_c(plan, atoms, layout, h, *, splits=1):
     """
     if type(splits) is not int or not 1 <= splits <= 64:
         raise ValueError("C splits must be an integer in [1,64]")
+    if type(atoms_per_split) is not int or not 0 <= atoms_per_split <= 65536:
+        raise ValueError("atoms_per_split must be an integer in [0,65536]")
     layout.validate_for(atoms, plan)
     native = _extension()
     arguments = (
@@ -294,7 +296,7 @@ def compute_c(plan, atoms, layout, h, *, splits=1):
     )
     if splits == 1:
         return native.compute_c(*arguments)
-    return native.compute_c_split(*arguments, splits)
+    return native.compute_c_split(*arguments, splits, atoms_per_split)
 
 
 def expand_c(c, axis, like, *, sites_per_block=32):
@@ -553,7 +555,9 @@ class _HierarchicalLinear(torch.autograd.Function):
             threads=atom_threads,
             windowed=window_moments,
         )
-        c = compute_c(plan, atoms, layout, h, splits=c_splits)
+        c = compute_c(
+            plan, atoms, layout, h, splits=c_splits, atoms_per_split=atoms_per_split
+        )
         y = expand_c(c, plan.output, x, sites_per_block=sites_per_block)
         ctx.plan = plan
         ctx.z_method = z_method
