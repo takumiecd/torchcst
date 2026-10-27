@@ -41,8 +41,8 @@ Zの二分集約木があることと、sigmaから異なるtile/周期を選ぶ
 | `plan.py` | 2倍ずつのlocal bank・全周bank・Z node位置。Tensorを持たない実行計画 | 実装済み、CPU分類検査済み |
 | `executor.prepare_layout` | 分類とstable sort。元行番号、groupの(h_out,h_in,q_out,q_in)、offsetsだけをcacheへ残す | CUDA実装済み、元行・group範囲を実GPU照合済み |
 | `preparation.cu::build_hierarchy` | bank別の周期のZ。直接生成と偶数harmonicの子からの継承。完成Zはglobal FP64 | CUDA実装済み、direct/mergeを独立積分参照へ照合済み |
-| `contraction.cu::compute_h` | 各threadが別atomのHをFP64で完成。既存係数と面積をregisterで計算 | 実装済み、実GPU検証前 |
-| `compute_c` / `expand_c` | 32atom shared chunkからowner Cを作り、bank別の基底で展開後にYへ加算 | 実装済み、実GPU検証前 |
+| `contraction.cu::compute_h` | 各threadが別atomのHをFP64で完成。既存係数と面積をregisterで計算 | 実装済み、既存profileの独立参照へ照合済み |
+| `compute_c` / `expand_c` | 32atom shared chunkからowner Cを作り、bank別の基底で展開後にYへ加算 | 実装済み、CとYを別々に照合済み |
 | G/dX・Parameter勾配 | 同じprofile微分と選択中のlayoutを使う | 階層版では未実装 |
 
 新しい前半は空の雛形でなく、`prepare_layout(plan, atoms)`と
@@ -65,6 +65,67 @@ local node数はN/n_min、N/(2*n_min)、...と減り、最後に全周nodeを一
 Hのatomを複数threadで分担するという意味ではない。
 最初は全宣言bankのnodeを準備し、使われないbankの省略は依存関係を含めた後続の改善とする。
 cacheの`tensor_bytes`やZの容量はpayloadであり、完全stepのallocatorピークと混同しない。
+
+### H/C/Y接続とsigma整合の検証（現在の実装）
+
+runtime source `d09eba32`。既存`ChebyshevSquareSpec`の式・sigma・半径下限を維持し、
+分類をsigma<=T_hへ修正した。I=sigma/2の前半prototypeから意味を読み替えない。
+既存固定bank版のソースとpublic APIは変更していない。
+
+新規188件（CPU31/CUDA157）＋既存1816件をL4で実行し、**2004 passed、failed/skipped 0**。
+新しいHは既存profileのFFT係数からセル積分したCPU参照へ照合し、
+Cは同じ既存係数を使う独立のowner集約へ、Yは直接profile行列を掛けた参照へ別々に照合した。
+さらに既存生密度を48点Gaussでセル積分した参照ともCPU上で照合した。
+新しいCUDAの正の多項式を参照側へコピーして正しさを判定していない。
+
+FP32/64、local/full bank、QがPを割り切らないchart端、最後の半セルのowner=0、
+非ゼロ原点、幅境界と上限のdtype cast、振幅0、空atom/batch、batch1/3/4/5、
+128/1024site、M16を含むH/C/Y、direct/merge Z、出力担当幅8/32を検査した。
+検査許容差はH/CとFP64 Yがrtol2e-10/atol5e-11、FP32 Yがrtol2e-6/atol2e-7。
+これは測定した最大誤差を意味しない。unit XのH=1、Yの総和も照合した。
+compute-sanitizer racecheckの小さなunit-mass/cache検査は1 passed、0 hazards/errors/warnings。
+Z→H→C→Yの低水準Graph replayは新しいXで照合したが、atoms/layoutは不変である。
+replayではPythonのcache version検査が再実行されないため、atom更新を伴うGraph学習の検証ではない。
+
+CPU全体2037 passed / 4721 skipped / 既存警告18件（45.09秒）、Ruff・format・差分検査・buildを通過。
+wheel/sdistの336ファイルを現srcへbyte照合した。GPU snapshotの326コードと共通headerもgit/sourceへ照合。
+共通headerのSHA256は`ccf5f0073d70fc16b4b44703e18cffcaac7dbcf669ebcbb50673d657d7dd7b13`。
+
+128×128/A819/B4、FP32、M8/tail1e-3、入力T_min4/出力T_min8、Q128、spacing1、
+sigma=linspace(0.2,40)、中心seed120の**forwardのみ**をfresh processで診断した。
+warmup5/同期wall20標本、Graph/TF32なし、X検査・分類/sort・Z/H/C/Yを含み、
+backward・Parameter勾配・AdamWを含まない。1fresh processの中央値は1.113883ms、
+peak allocated105,472bytes（103KiB）/ reserved2MiB、baseline allocated15,360bytes。
+独立runを複数回確認した採用値でも、完全stepのdense以下を検証した値でもない。
+固定bank版の完全stepとはsigma分布・周期・処理範囲が異なるので改善率へ使わない。
+
+| 配列 | このcaseのpayloadと場所 | 用途 |
+| --- | --- | --- |
+| atoms / X | global FP32、13,104 / 2,048bytes | 元Parameterと入力。atomの複製なし |
+| rows / groups / offsets | global、計11,936bytes、224 groups | 元atom行への対応とグループ範囲 |
+| Zx | global FP64[4,61,17]、33,184bytes | 入力側の階層moment |
+| H | global FP64[4,819]、26,208bytes | slot順の完成H、振幅前 |
+| C | global FP64[4,29,17]、15,776bytes | 出力bank/ownerの完成C |
+| Y | global FP32[4,128]、2,048bytes | siteへ展開し、bank寄与を合計した出力 |
+| atom係数 / amp*H chunk | block shared、dynamic5,376bytes＋static16bytes | 現在の32atomだけ。chunk間の同期後に再利用 |
+
+payload和とallocatorピークは丸め・寿命・scratchが違うため同一視しない。
+cuobjdumpでもC kernelのstatic shared16bytesを確認した。register/sharedとCUDA moduleは
+Torch allocatorの指標外であり、全GPU processの使用量は未測定。
+係数・中心位相はregisterで生成してshared chunkへ書き、atomごとの係数表をglobalへ作らない。
+H/Cのglobal保存はblock間で受け渡すための基準実装。完全stepの保存／再計算・融合は今後比較する。
+
+job `l4job-95f9b6adde8c4ccb982cf1abad4fac12`:
+
+- source SHA256 `92450b0fc1effcd20675d1df9bd110b5a90d224558b1779ef8927d1463161cc4`
+- result SHA256 `f18d87b69a993190b6ab469e470e98f1241c93150a0128f02b4196bb4b02680a`
+- driver SHA256 `2622ae687e9c672889126fb62608a219afe0f2adc346a73c1dabbd2f7f5ace2f`
+- binary SHA256 `2c1a30a9fbdce6f90d949013b73a35c8b13f78e1ce676706a8631381fc2a81ac`
+
+manifest16ファイル、driver/binaryを照合。raw/source/result/spec/receiptはignored
+`output/cell-mass-hc-20261027/first-run/`に保全。所有L4 runtimeの停止も確認した。
+再検証は`python -m pytest tests/test_cell_mass_hierarchical.py -q`。
+新規profileの数式待ちではなく、次は同じ式のG/dX/Parameter勾配を実装・検証する段階。
 
 ### 前半prototypeの検証・診断（sigma整合修正前の履歴）
 

@@ -5,6 +5,12 @@
 CSTの1step時間をdenseの約2倍程度へ収めること。
 128はこの時間・メモリ条件を満たす設定を確認した。1024はメモリ条件を満たすが、時間は未達。
 
+階層版`cell_mass_hierarchical/`は、既存profileとsigmaを維持してZ→H→C→Yへ接続した。
+分類はsigma<=T_hであり、以前提案したI=sigma/2は撤回した。
+新旧2004件の検査を通過したが、階層版backward・完全stepはまだ未実装／未検証。
+下の完全step結果は固定bank版の記録である。階層版の数式・実装範囲とforwardだけの診断は
+[設計の正本](cell-mass-kernel-flow.ja.md)を参照する。
+
 ## 最新：係数・微分のHorner評価とsigma分布
 
 runtime source `7c1404c1`。数学・精度・sigma分布を変えず、係数とその微分を
