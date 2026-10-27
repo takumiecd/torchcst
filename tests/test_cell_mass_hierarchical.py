@@ -1,4 +1,4 @@
-"""Preparation gates, not validation of a new Linear/profile implementation."""
+"""Hierarchical forward gates against existing-profile cell masses and quadrature."""
 
 import math
 
@@ -40,7 +40,7 @@ def test_axes_that_only_have_full_chart_bank(minimum):
 
 @pytest.mark.parametrize(
     "sigma,level",
-    [(0.1, 0), (8, 0), (8.001, 1), (16, 1), (16.001, 2), (32, 2), (64, 3), (65, 5)],
+    [(0.1, 0), (4, 0), (4.001, 1), (8, 1), (8.001, 2), (16, 2), (32, 3), (33, 5)],
 )
 def test_sigma_boundary_belongs_to_smaller_bank(sigma, level):
     axis = AxisPlan(site_count=128, min_tile_sites=4)
@@ -81,6 +81,103 @@ def test_scalar_classification_rejects_invalid_widths(sigma):
         classify_axis(sigma, 0, AxisPlan(site_count=128, min_tile_sites=4))
 
 
+def test_classification_uses_existing_radius_not_sigma_half_width():
+    from torchcst._backends.torch.profiles.fourier import effective_radius
+
+    axis = AxisPlan(site_count=128, min_tile_sites=4)
+    for sigma in [0.01, 4, math.nextafter(4, math.inf), 8, 16, 32, axis.period / 3]:
+        level, _ = classify_axis(sigma, 0, axis)
+        bank = next(b for b in axis.banks if b.level == level)
+        radius = effective_radius(
+            axis.profile, torch.tensor(sigma, dtype=torch.float64), bank.period
+        )
+        if not bank.full_chart:
+            assert radius <= bank.tile_sites * axis.spacing * (1 + 1e-14)
+            if level:
+                previous = axis.banks[level - 1]
+                assert sigma > previous.tile_sites * axis.spacing
+    # The existing profile has a genuine concentration floor. Preserve it.
+    radius = effective_radius(axis.profile, torch.tensor(0.01, dtype=torch.float64), 12)
+    assert radius > 1 and radius != 0.01 / 2
+
+
+def existing_profile_matrix(atoms, axis, center_column):
+    """Independent Fourier/FFT reference using existing profile_cell_masses."""
+    from torchcst._backends.torch.kernels.cell_mass import profile_cell_masses
+    from torchcst.kernels.cell_mass import CellMassAxisSpec
+
+    source = atoms.detach().cpu().double()
+    result = torch.empty(source.shape[0], axis.site_count, dtype=torch.float64)
+    levels = [membership_oracle(row, axis, center_column)[0] for row in source.tolist()]
+    for bank in axis.banks:
+        ids = [a for a, level in enumerate(levels) if level == bank.level]
+        if not ids:
+            continue
+        spec = CellMassAxisSpec(
+            profile=axis.profile,
+            site_count=axis.site_count,
+            spacing=axis.spacing,
+            origin=axis.origin,
+            tile_sites=bank.tile_sites,
+            period_tiles=1 if bank.full_chart else 3,
+        )
+        result[ids] = profile_cell_masses(
+            spec, source[ids, center_column], source[ids, 1]
+        )
+    return result
+
+
+def density_quadrature_matrix(atoms, axis, center_column):
+    """Existing Chebyshev density integrated without Fourier coefficients."""
+    points, weights = np.polynomial.legendre.leggauss(48)
+    source = atoms.detach().cpu().double().numpy()
+    result = np.zeros((len(source), axis.site_count))
+    for atom, row in enumerate(source):
+        level, _ = membership_oracle(row, axis, center_column)
+        bank = next(b for b in axis.banks if b.level == level)
+        period = bank.period
+        shape = math.acosh(axis.tail_bound**-0.5) / axis.modes
+        minimum = period / math.pi * math.acos(1 / math.cosh(shape))
+        scale = period / 3
+        radius = (minimum**4 + (1 - (minimum / scale) ** 4) * row[1] ** 4) ** 0.25
+        beta = 1 / math.cos(math.pi * radius / period)
+        center = (row[center_column] - axis.origin) % axis.period
+        owner = math.floor(
+            (center + axis.spacing / 2) / (bank.tile_sites * axis.spacing)
+        )
+        first = owner if bank.full_chart else owner - 1
+        unwrapped = first * bank.tile_sites + np.arange(
+            bank.tile_sites * (1 if bank.full_chart else 3)
+        )
+        displacement = (unwrapped[:, None] + points / 2) * axis.spacing - center
+        argument = beta * np.cos(np.pi * displacement / period)
+        previous, current = np.ones_like(argument), argument
+        for _ in range(2, axis.modes + 1):
+            previous, current = current, 2 * argument * current - previous
+        density = (current / math.cosh(axis.modes * math.acosh(beta))) ** 2
+        area = density @ weights * axis.spacing / 2
+        result[atom, unwrapped % axis.site_count] = area / area.sum()
+    return torch.from_numpy(result)
+
+
+@pytest.mark.parametrize("modes,tail", [(2, 0.1), (8, 1e-3), (16, 1e-3)])
+def test_existing_profile_reference_matches_density_integrals(modes, tail):
+    axis = AxisPlan(
+        site_count=128, min_tile_sites=4, modes=modes, tail_bound=tail, origin=-2
+    )
+    atoms = torch.tensor(
+        [
+            [1, s, c, c]
+            for s, c in [(0.01, -2.25), (4, 1.5), (8, 125.9), (16, 300), (40, -130)]
+        ],
+        dtype=torch.float64,
+    )
+    actual = existing_profile_matrix(atoms, axis, 3)
+    expected = density_quadrature_matrix(atoms, axis, 3)
+    torch.testing.assert_close(actual, expected, rtol=2e-10, atol=2e-12)
+    torch.testing.assert_close(actual.sum(dim=1), torch.ones(5, dtype=torch.float64))
+
+
 def membership_oracle(row, axis, center_column):
     """Independent enumeration, using site coordinates rather than packed keys."""
     sigma, center = row[1], row[center_column]
@@ -88,7 +185,7 @@ def membership_oracle(row, axis, center_column):
         size = axis.min_tile_sites * 2**level
         if 3 * size > axis.site_count:
             return axis.full_level, 0
-        if sigma <= 2 * size * axis.spacing:
+        if sigma <= size * axis.spacing:
             cell = ((center - axis.origin) / axis.spacing + 0.5) % axis.site_count
             return level, math.floor(cell / size)
     raise AssertionError("a finite valid width must have a bank")
@@ -148,10 +245,10 @@ def test_cuda_layout_has_correct_sparse_ranges_without_atom_copy(
     )
     rng = torch.Generator().manual_seed(120)
     source = torch.randn(atom_count, 4, generator=rng, dtype=dtype)
-    source[:, 1] = torch.linspace(0.1, 60, atom_count, dtype=dtype)
+    source[:, 1] = torch.linspace(0.1, 20, atom_count, dtype=dtype)
     source[:, 2:] *= 150
     if atom_count >= 8:
-        source[:8, 1] = torch.tensor([4, 8, 16, 32, 4, 8, 16, 32], dtype=dtype)
+        source[:8, 1] = torch.tensor([2, 4, 8, 20, 2, 4, 8, 20], dtype=dtype)
         source[:8, 2] = torch.tensor(
             [-3.5, 4.5, 12.5, 28.5, -131.5, 132.5, -115.5, 156.5]
         )
@@ -228,6 +325,7 @@ def test_cuda_varying_period_z_matches_quadrature(
         site_count=site_count,
         min_tile_sites=minimum,
         modes=modes,
+        tail_bound=0.1 if modes == 2 else 1e-3,
         spacing=0.125,
         origin=-2,
     )
@@ -295,3 +393,253 @@ def test_hierarchy_stage_replays_with_new_signal_under_cuda_graph():
     torch.testing.assert_close(
         result.cpu(), quadrature_oracle(signal, axis), rtol=2e-11, atol=1e-10
     )
+
+
+def output_c_oracle(atoms, plan, rows, h):
+    """Construct owner C with the existing FFT coefficient reference."""
+    from torchcst._backends.torch.profiles.fourier import kernel_coefficients
+
+    source = atoms.detach().cpu().double()
+    axis = plan.output
+    result = torch.zeros(
+        h.shape[0], axis.node_count, axis.basis_count, dtype=torch.float64
+    )
+    for slot, original in enumerate(rows):
+        row = source[original]
+        level, owner = membership_oracle(row.tolist(), axis, 2)
+        bank = next(b for b in axis.banks if b.level == level)
+        raw = kernel_coefficients(axis.profile, row[1:2], bank.period)[0]
+        center = float((row[2] - axis.origin) % axis.period)
+        raw_owner = math.floor(
+            (center + axis.spacing / 2) / (bank.tile_sites * axis.spacing)
+        )
+        center -= ((raw_owner - owner) // bank.tile_count) * axis.period
+        vector = torch.empty(axis.basis_count, dtype=torch.float64)
+        vector[0] = 1 / bank.period
+        for k in range(1, axis.modes + 1):
+            scale = 2 * raw[axis.modes + k] / (bank.period * raw[axis.modes])
+            phase = 2 * math.pi * k / bank.period * center
+            vector[2 * k - 1] = scale * math.cos(phase)
+            vector[2 * k] = scale * math.sin(phase)
+        result[:, bank.node_offset + owner] += (h[:, slot] * row[0])[:, None] * vector[
+            None, :
+        ]
+    return result
+
+
+@cuda_only
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("method", ["direct", "merge"])
+@pytest.mark.parametrize("width", [8, 32])
+@pytest.mark.parametrize(
+    "sites,minimum,atom_count,batches,modes",
+    [
+        (128, 4, 819, 4, 8),
+        (32, 4, 37, 5, 16),
+        (8, 4, 3, 1, 4),
+        (1024, 32, 35, 3, 8),
+    ],
+)
+def test_h_c_and_y_match_existing_profile(
+    sites, minimum, atom_count, batches, modes, dtype, method, width
+):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        build_hierarchy,
+        compute_c,
+        compute_h,
+        expand_c,
+        forward_only,
+        prepare_layout,
+    )
+
+    # Two axes can have different origins, minimum tile sizes and mode counts.
+    plan = HierarchyPlan(
+        input=AxisPlan(
+            site_count=sites,
+            min_tile_sites=minimum,
+            spacing=128 / sites,
+            origin=-2,
+            modes=modes,
+        ),
+        output=AxisPlan(
+            site_count=sites,
+            min_tile_sites=min(2 * minimum, sites),
+            spacing=128 / sites,
+            origin=3,
+            modes=modes,
+        ),
+    )
+    rng = torch.Generator().manual_seed(120)
+    p = torch.randn(atom_count, 4, dtype=dtype, generator=rng)
+    p[:, 1] = torch.linspace(0.01, 40, atom_count, dtype=dtype)
+    p[:, 2:] *= 300
+    p[0, 0] = 0  # H must still be computed when the amplitude is zero.
+    p[0, 2:] = torch.tensor([2.75, -2.25], dtype=dtype)  # final half-cell -> owner=0
+    x = torch.randn(batches, sites, dtype=dtype, generator=rng)
+    v = existing_profile_matrix(p, plan.input, 3)
+    u = existing_profile_matrix(p, plan.output, 2)
+    expected_h_original = x.double() @ v.T
+    expected_y = (expected_h_original * p[:, 0].double()[None, :]) @ u
+    atoms, signal = p.cuda(), x.cuda()
+    layout = prepare_layout(plan, atoms)
+    rows = layout.rows.cpu().tolist()
+    zx = build_hierarchy(signal, plan.input, method=method)
+    h = compute_h(plan, atoms, layout, zx)
+    c = compute_c(plan, atoms, layout, h)
+    y = expand_c(c, plan.output, signal, sites_per_block=width)
+    expected_h = expected_h_original[:, rows]
+    torch.testing.assert_close(h.cpu(), expected_h, rtol=2e-10, atol=5e-11)
+    torch.testing.assert_close(
+        c.cpu(), output_c_oracle(p, plan, rows, expected_h), rtol=2e-10, atol=5e-11
+    )
+    tolerance = (
+        {"rtol": 2e-6, "atol": 2e-7}
+        if dtype == torch.float32
+        else {"rtol": 2e-10, "atol": 5e-11}
+    )
+    torch.testing.assert_close(y.cpu(), expected_y.to(dtype), **tolerance)
+    joined = forward_only(
+        plan, signal, atoms, layout=layout, z_method=method, sites_per_block=width
+    )
+    torch.testing.assert_close(joined, y, rtol=0, atol=0)
+    torch.testing.assert_close(
+        v.sum(dim=1), torch.ones(atom_count, dtype=torch.float64)
+    )
+    torch.testing.assert_close(
+        u.sum(dim=1), torch.ones(atom_count, dtype=torch.float64)
+    )
+    with pytest.raises(RuntimeError, match="backward"):
+        forward_only(plan, signal.requires_grad_(), atoms)
+
+
+@cuda_only
+@pytest.mark.parametrize("batches,atom_count", [(0, 3), (3, 0)])
+def test_empty_h_c_y(batches, atom_count):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        build_hierarchy,
+        compute_c,
+        compute_h,
+        expand_c,
+        prepare_layout,
+    )
+
+    axis = AxisPlan(site_count=128, min_tile_sites=4)
+    plan = HierarchyPlan(input=axis, output=axis)
+    atoms = torch.ones(atom_count, 4, device="cuda")
+    signal = torch.ones(batches, 128, device="cuda")
+    layout = prepare_layout(plan, atoms)
+    h = compute_h(plan, atoms, layout, build_hierarchy(signal, axis))
+    c = compute_c(plan, atoms, layout, h)
+    y = expand_c(c, axis, signal)
+    assert h.shape == (batches, atom_count)
+    assert c.shape == (batches, axis.node_count, axis.basis_count)
+    torch.testing.assert_close(y, torch.zeros_like(signal), rtol=0, atol=0)
+
+
+@cuda_only
+def test_unit_mass_and_cache_mutation_are_preserved_through_h_c():
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        build_hierarchy,
+        compute_c,
+        compute_h,
+        expand_c,
+        prepare_layout,
+    )
+
+    axis = AxisPlan(site_count=128, min_tile_sites=4, origin=1.5)
+    plan = HierarchyPlan(input=axis, output=axis)
+    atoms = torch.tensor(
+        [
+            [a, s, m, m]
+            for a, s, m in [(1, 0.1, 129.4), (-2, 4, 5), (3, 8, -5), (0, 40, 64)]
+        ],
+        device="cuda",
+        dtype=torch.float64,
+    )
+    signal = torch.ones(4, 128, device="cuda", dtype=torch.float64)
+    layout = prepare_layout(plan, atoms)
+    z = build_hierarchy(signal, axis)
+    h = compute_h(plan, atoms, layout, z)
+    torch.testing.assert_close(h, torch.ones_like(h), rtol=2e-11, atol=2e-11)
+    c = compute_c(plan, atoms, layout, h)
+    y = expand_c(c, axis, signal)
+    torch.testing.assert_close(
+        y.sum(dim=1), atoms[:, 0].sum().expand(4), rtol=2e-11, atol=2e-11
+    )
+    atoms[:, 2].add_(1)
+    for operation in (
+        lambda: compute_h(plan, atoms, layout, z),
+        lambda: compute_c(plan, atoms, layout, h),
+    ):
+        with pytest.raises(RuntimeError, match="rebuild"):
+            operation()
+
+
+@cuda_only
+def test_captured_z_h_c_y_replays_with_new_x():
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        build_hierarchy,
+        compute_c,
+        compute_h,
+        expand_c,
+        prepare_layout,
+    )
+
+    axis = AxisPlan(site_count=128, min_tile_sites=4)
+    plan = HierarchyPlan(input=axis, output=axis)
+    atoms = torch.tensor(
+        [[1, s, m, m] for s, m in [(1, -0.25), (4, 3.5), (16, 127.75), (40, 60)]],
+        device="cuda",
+        dtype=torch.float64,
+    )
+    signal = torch.ones(4, 128, device="cuda", dtype=torch.float64)
+    layout = prepare_layout(plan, atoms)
+
+    def stages():
+        z = build_hierarchy(signal, axis)
+        h = compute_h(plan, atoms, layout, z)
+        return expand_c(compute_c(plan, atoms, layout, h), axis, signal)
+
+    stream = torch.cuda.Stream()
+    stream.wait_stream(torch.cuda.current_stream())
+    with torch.cuda.stream(stream):
+        stages()
+    torch.cuda.current_stream().wait_stream(stream)
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        result = stages()
+    signal.copy_(torch.randn_like(signal))
+    graph.replay()
+    v = existing_profile_matrix(atoms, axis, 3)
+    u = existing_profile_matrix(atoms, axis, 2)
+    expected = ((signal.cpu() @ v.T) * atoms[:, 0].cpu()[None, :]) @ u
+    torch.testing.assert_close(result.cpu(), expected, rtol=2e-10, atol=5e-11)
+
+
+@cuda_only
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_full_bank_width_endpoint_matches_existing_dtype_rule(dtype):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        forward_only,
+        prepare_layout,
+    )
+
+    axis = AxisPlan(site_count=128, min_tile_sites=4)
+    plan = HierarchyPlan(input=axis, output=axis)
+    atoms = torch.tensor(
+        [[1, axis.period / 3, 127.75, -0.25]], device="cuda", dtype=dtype
+    )
+    signal = torch.ones(1, 128, device="cuda", dtype=dtype)
+    layout = prepare_layout(plan, atoms)
+    assert layout.groups[0, :2].tolist() == [axis.full_level, axis.full_level]
+    actual = forward_only(plan, signal, atoms, layout=layout)
+    expected = existing_profile_matrix(atoms, axis, 2).to(dtype)
+    tolerance = (
+        {"rtol": 2e-6, "atol": 2e-7}
+        if dtype == torch.float32
+        else {"rtol": 2e-10, "atol": 5e-11}
+    )
+    torch.testing.assert_close(actual.cpu(), expected, **tolerance)
+    atoms[:, 1] = torch.nextafter(atoms[:, 1], torch.full_like(atoms[:, 1], math.inf))
+    with pytest.raises(ValueError, match="sigma"):
+        prepare_layout(plan, atoms)

@@ -1,116 +1,8 @@
-// Read cell-mass-kernel-flow.ja.md for the new sigma/I and bank definitions.
-// These kernels prepare indices and moments only. They never copy atom values
-// into a second global Parameter array or pretend to implement H/C/Y.
-#include <ATen/cuda/CUDAContext.h>
-#include <algorithm>
-#include <c10/cuda/CUDAException.h>
-#include <c10/cuda/CUDAGuard.h>
-#include <climits>
-#include <cmath>
-#include <torch/extension.h>
-#include <vector>
+// Layout indices and varying-period moments; no atom value copies.
+#include "common.cuh"
+using namespace cell_mass_hierarchy;
 
 namespace {
-constexpr double PI = 3.14159265358979323846;
-constexpr int THREADS = 128;
-constexpr int BATCH_TILE = 4;
-constexpr int MAX_BANKS = 11;
-
-struct Bank {
-    int level, tile_sites, tile_count, node_offset;
-    double period;
-    bool full_chart;
-};
-
-struct Axis {
-    int sites, min_tile_sites, modes, full_level, bank_count, node_count;
-    double spacing, origin, period;
-    Bank banks[MAX_BANKS];
-    __host__ __device__ int basis_count() const {
-        return 1 + 2 * modes;
-    }
-    __host__ __device__ int max_owners() const {
-        return sites / min_tile_sites;
-    }
-};
-
-bool power_of_two(int value) {
-    return value > 0 && (value & (value - 1)) == 0;
-}
-
-Axis parse_axis(const std::vector<double> &config) {
-    TORCH_CHECK(config.size() == 5, "hierarchy axis needs five scalars");
-    for (double value : config)
-        TORCH_CHECK(std::isfinite(value), "axis values must be finite");
-    TORCH_CHECK(config[0] == std::floor(config[0]) && config[0] >= 1 && config[0] <= 1024,
-                "invalid site count");
-    TORCH_CHECK(config[2] == std::floor(config[2]) && config[2] >= 1 && config[2] <= config[0],
-                "invalid minimum tile size");
-    TORCH_CHECK(config[4] == std::floor(config[4]) && config[4] >= 2 && config[4] <= 16,
-                "invalid modes");
-    Axis axis{};
-    axis.sites = static_cast<int>(config[0]);
-    axis.spacing = config[1];
-    axis.min_tile_sites = static_cast<int>(config[2]);
-    axis.origin = config[3];
-    axis.modes = static_cast<int>(config[4]);
-    TORCH_CHECK(power_of_two(axis.sites) && power_of_two(axis.min_tile_sites) &&
-                    axis.modes % 2 == 0 && axis.spacing > 0,
-                "invalid dyadic axis");
-    axis.period = axis.sites * axis.spacing;
-    TORCH_CHECK(std::isfinite(2 * axis.period) && axis.period > 0, "invalid chart period");
-    for (int count = axis.max_owners(); count > 1; count /= 2)
-        ++axis.full_level;
-
-    int tile_sites = axis.min_tile_sites;
-    int level = 0;
-    while (3 * tile_sites <= axis.sites) {
-        int count = axis.sites / tile_sites;
-        axis.banks[axis.bank_count++] = {
-            level, tile_sites, count, axis.node_count, 3 * tile_sites * axis.spacing, false};
-        axis.node_count += count;
-        tile_sites *= 2;
-        ++level;
-    }
-    axis.banks[axis.bank_count++] = {axis.full_level, axis.sites,  1,
-                                     axis.node_count, axis.period, true};
-    ++axis.node_count;
-    for (int bank = 0; bank < axis.bank_count; ++bank)
-        TORCH_CHECK(std::isfinite(2 * PI * axis.modes / axis.banks[bank].period),
-                    "bank frequency is not representable");
-    return axis;
-}
-
-void check_cuda_float_matrix(const torch::Tensor &tensor) {
-    TORCH_CHECK(tensor.is_cuda() && tensor.is_contiguous() && tensor.dim() == 2,
-                "expected a contiguous CUDA matrix");
-    TORCH_CHECK(tensor.scalar_type() == torch::kFloat32 || tensor.scalar_type() == torch::kFloat64,
-                "expected float32 or float64");
-}
-
-struct Membership {
-    int level, owner;
-};
-
-__device__ Membership classify_axis(double sigma, double center, const Axis &axis) {
-    int tile_sites = axis.min_tile_sites;
-    int level = 0;
-    while (sigma / 2 > tile_sites * axis.spacing) {
-        tile_sites *= 2;
-        ++level;
-    }
-    if (3 * tile_sites > axis.sites)
-        return {axis.full_level, 0};
-
-    double relative = fmod(center, axis.period) - fmod(axis.origin, axis.period);
-    relative = fmod(relative, axis.period);
-    if (relative < 0)
-        relative += axis.period;
-    int owner =
-        static_cast<int>(floor((relative + axis.spacing / 2) / (tile_sites * axis.spacing)));
-    return {level, owner % (axis.sites / tile_sites)};
-}
-
 // The packed integer preserves (h_out,h_in,q_out,q_in) lexicographic order.
 // It is temporary sort scratch. The surviving descriptors are per group.
 template <typename scalar_t>
@@ -124,7 +16,8 @@ __global__ void classify_atoms_kernel(const scalar_t *atoms, int atom_count, Axi
         if (!isfinite(static_cast<double>(atoms[4 * atom + field])))
             error |= 1;
     double sigma = static_cast<double>(atoms[4 * atom + 1]);
-    if (!(sigma > 0 && sigma < input.period && sigma < output.period))
+    scalar_t maximum_sigma = static_cast<scalar_t>(std::min(input.period, output.period) / 3);
+    if (!(sigma > 0) || atoms[4 * atom + 1] > maximum_sigma)
         error |= 2;
     if (error) {
         keys[atom] = 0;
@@ -151,17 +44,6 @@ __global__ void decode_groups_kernel(const int64_t *keys, int groups, Axis input
     key /= output.max_owners();
     descriptors[4 * group + 1] = key % (input.full_level + 1);
     descriptors[4 * group] = key / (input.full_level + 1);
-}
-
-__device__ double integrated_basis(const Axis &axis, const Bank &bank, int mode, int site) {
-    if (mode == 0)
-        return axis.spacing;
-    int harmonic = (mode + 1) / 2;
-    double omega = 2 * PI * harmonic / bank.period;
-    double factor = 2 * sin(omega * axis.spacing / 2) / omega;
-    // Coordinates are relative to the same chart origin at every level.
-    double phase = omega * site * axis.spacing;
-    return factor * (mode % 2 == 1 ? cos(phase) : sin(phase));
 }
 
 // A block owns one spatial node and four batches. A tunable small thread team

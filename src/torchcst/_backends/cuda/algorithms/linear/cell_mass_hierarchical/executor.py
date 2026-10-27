@@ -1,8 +1,8 @@
-"""CUDA preparation only: group atom indices and build varying-period Z.
+"""Hierarchical cell-mass forward using the existing ChebyshevSquare profile.
 
-There is deliberately no Linear/forward/backward facade here. H/C need the
-new profile contract; using the old radius-floor profile would change the
-meaning of the newly defined width. See cell-mass-kernel-flow.ja.md.
+Sigma keeps its existing width-control meaning and concentration floor. There
+is no new density, width conversion or profile fitting. These are numeric
+research stages, not the public CSTLinear dispatcher or a backward binding.
 """
 
 import hashlib
@@ -20,9 +20,13 @@ def _extension():
     from torch.utils.cpp_extension import load
 
     directory = Path(__file__).parent
-    sources = [directory / "bindings.cpp", directory / "preparation.cu"]
+    sources = [
+        directory / "bindings.cpp",
+        directory / "preparation.cu",
+        directory / "contraction.cu",
+    ]
     digest = hashlib.sha256(
-        b"".join(path.read_bytes() for path in sources)
+        b"".join(path.read_bytes() for path in [*sources, directory / "common.cuh"])
     ).hexdigest()[:12]
     return load(
         name=f"torchcst_cell_mass_hierarchy_{digest}",
@@ -90,7 +94,7 @@ def prepare_layout(plan, atoms):
     if error_bits & 1:
         raise ValueError("all atom fields must be finite")
     if error_bits & 2:
-        raise ValueError("sigma must lie in (0, min(input period,output period))")
+        raise ValueError("sigma must lie in (0, min(input period,output period)/3]")
 
     sorted_keys, rows = torch.sort(keys, stable=True)
     group_keys, counts = torch.unique_consecutive(sorted_keys, return_counts=True)
@@ -132,3 +136,78 @@ def build_hierarchy(signal, axis, *, method="merge", team_size=4):
     return _extension().build_hierarchy(
         signal, axis.native_config(), method == "merge", team_size
     )
+
+
+def compute_h(plan, atoms, layout, zx):
+    """Complete H[batch,sorted_slot], before amplitude, from all retained tiles.
+
+    One thread owns one atom; coefficients and mass normalization are generated
+    in registers from the original sigma. This internal stage has no autograd.
+    """
+    layout.validate_for(atoms, plan)
+    return _extension().compute_h(
+        atoms,
+        layout.rows,
+        layout.groups,
+        layout.offsets,
+        zx,
+        plan.input.native_config(),
+    )
+
+
+def compute_c(plan, atoms, layout, h):
+    """Complete output owner C[batch,node,mode] using 32-atom shared chunks.
+
+    The small cross-block coefficient buffer is bank/node sized, not an
+    atom-by-mode table. Each C element has one writer, with amplitude applied
+    once. The next stage adds bank contributions after site expansion.
+    """
+    layout.validate_for(atoms, plan)
+    return _extension().compute_c(
+        atoms,
+        layout.rows,
+        layout.groups,
+        layout.offsets,
+        h,
+        plan.input.native_config(),
+        plan.output.native_config(),
+    )
+
+
+def expand_c(c, axis, like, *, sites_per_block=32):
+    """Expand each bank's C with cell-integrated bases, then add into Y.
+
+    like supplies batch/device/dtype, not output coordinates. Chart seams use
+    the retained window's unwrapped image; every Y element has one writer.
+    """
+    if type(axis) is not AxisPlan:
+        raise TypeError("axis must be AxisPlan")
+    if type(sites_per_block) is not int:
+        raise ValueError("sites_per_block must be a power of two in [1,256]")
+    return _extension().expand_c(c, like, axis.native_config(), sites_per_block)
+
+
+def forward_only(
+    plan, x, atoms, *, layout=None, z_method="merge", team_size=4, sites_per_block=32
+):
+    """Research forward: prepare -> Z -> H -> C -> Y, with no hidden fallback.
+
+    Reject differentiable inputs explicitly until hierarchical backward exists.
+    Low-level stages above can later be used inside a manual autograd binding.
+    """
+    if x.requires_grad or atoms.requires_grad:
+        raise RuntimeError(
+            "hierarchical backward is not implemented; forward_only needs detached inputs"
+        )
+    if x.device != atoms.device or x.dtype != atoms.dtype:
+        raise ValueError("X and atoms must share device and dtype")
+    if not bool(torch.isfinite(x).all()):
+        raise ValueError("X must be finite")
+    if layout is None:
+        layout = prepare_layout(plan, atoms)
+    else:
+        layout.validate_for(atoms, plan)
+    zx = build_hierarchy(x, plan.input, method=z_method, team_size=team_size)
+    h = compute_h(plan, atoms, layout, zx)
+    c = compute_c(plan, atoms, layout, h)
+    return expand_c(c, plan.output, x, sites_per_block=sites_per_block)

@@ -1,12 +1,13 @@
 """Pure metadata for hierarchical cell-mass preparation.
 
-This is an execution plan for classification and Fourier moments, not a new
-profile or a public Linear KernelSpec. The density used by H/C is still a
-separate mathematical contract. Importing this file never imports CUDA/Torch.
+The profile is the existing ChebyshevSquare density, with its original sigma
+and effective-radius mapping. This is not a public Linear KernelSpec.
 """
 
 import math
 from dataclasses import dataclass
+
+from torchcst.kernels.profiles.fourier import ChebyshevSquareSpec
 
 
 @dataclass(frozen=True)
@@ -23,7 +24,7 @@ class BankPlan:
 
 @dataclass(frozen=True, kw_only=True)
 class AxisPlan:
-    """One periodic site axis; sigma means full concentration width.
+    """One periodic site axis using the existing profile width parameter.
 
     min_tile_sites selects mathematical bank boundaries. It is not a CUDA
     block size. All bank moments use the same coordinate origin so matching
@@ -35,6 +36,7 @@ class AxisPlan:
     spacing: float = 1.0
     origin: float = 0.0
     modes: int = 8
+    tail_bound: float = 1e-3
 
     def __post_init__(self):
         for name in ("site_count", "min_tile_sites"):
@@ -47,6 +49,7 @@ class AxisPlan:
             )
         if type(self.modes) is not int or self.modes not in range(2, 17, 2):
             raise ValueError("modes must be even and lie in [2,16]")
+        ChebyshevSquareSpec(modes=self.modes, tail_bound=self.tail_bound)
         for name in ("spacing", "origin"):
             value = getattr(self, name)
             if type(value) not in (int, float) or not math.isfinite(value):
@@ -74,6 +77,10 @@ class AxisPlan:
     @property
     def basis_count(self):
         return 1 + 2 * self.modes
+
+    @property
+    def profile(self):
+        return ChebyshevSquareSpec(modes=self.modes, tail_bound=self.tail_bound)
 
     @property
     def banks(self):
@@ -108,6 +115,7 @@ class AxisPlan:
             self.min_tile_sites,
             self.origin,
             self.modes,
+            self.tail_bound,
         ]
 
 
@@ -129,14 +137,13 @@ def classify_axis(sigma, center, axis):
     The GPU computes this independently for each atom. The scalar function is
     useful for inspecting a plan without allocating tensors or a CUDA runtime.
     """
-    if not math.isfinite(sigma) or not 0 < sigma < axis.period:
-        raise ValueError("sigma must lie in (0, chart period)")
+    if not math.isfinite(sigma) or not 0 < sigma <= axis.period / 3:
+        raise ValueError("sigma must lie in (0, chart period/3]")
     if not math.isfinite(center):
         raise ValueError("center must be finite")
-    half_width = sigma / 2
     tile_sites = axis.min_tile_sites
     level = 0
-    while half_width > tile_sites * axis.spacing:
+    while sigma > tile_sites * axis.spacing:
         tile_sites *= 2
         level += 1
     if 3 * tile_sites > axis.site_count:
