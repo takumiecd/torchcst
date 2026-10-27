@@ -391,7 +391,7 @@ driver `b9f5998a340f65ff80b0e6c1063031e16b6b3c2acb0989e6142181de99ae10b7`、
 binary `766c6ab807d14cf4dced308f244be47bc578f69b0ed6d835abaded5f7dbced2c`。
 ignored `output/cell-mass-opt-20261027/bank-candidate/`へ327 runtimeと結果34ファイルの照合を保存。
 
-### 検証中：shared配置、M8専用化、owner window
+### 最適化第6段：shared配置、M8専用化、owner window
 
 - source `7c610fcc`：Cの論理32atomは維持し、shared物理strideを33にする。
   M8/B4ではsharedは5,376から5,544bytes/block（+168bytes）。
@@ -402,13 +402,22 @@ ignored `output/cell-mass-opt-20261027/bank-candidate/`へ327 runtimeと結果34
   そのwindow ZだけをH/G/全勾配が一度読む。full-chartはraw値と同じ。
   `window_moments=True`の研究flagで切り替え、元のraw Z/低水準APIは維持する。
 
-windowをWと書くと、各bank/owner qで
+windowを元の階層Zと区別してRと書くと、各bank/owner qで
 
 \[
-W^{c,s}_{b,q,k}=\sum_{\delta=-1}^{1}
+R^{c,s}_{b,q,k}=\sum_{\delta=-1}^{1}
  R_{\mathrm{image}(q+\delta),k}\,Z^{c,s}_{b,\operatorname{wrap}(q+\delta),k}.
 \]
 
+**階層のマージは2つずつのまま。3枚の和は、同じ階層でH/Gが使う窓を先に作る別の処理である。**
+
+| 値 | 担当する幅 | 作り方 |
+| --- | --- | --- |
+| raw Zの親node | 2T_h | 周波数が一致する親の偶数harmonicを左右2子から継承。奇数は直接生成 |
+| R_h,q | 3T_h=P_h（local bank） | 同じ階層のZ_h,q-1・Z_h,q・Z_h,q+1を、chart image補正後に合計 |
+| 全周bankのR | Q | 全周bankのraw Zと同じ |
+
+Rを作ってもh、T_h、P_hやsigma分類は変えない。三分木へ変更する処理ではない。
 この和はatomではなくownerにだけ依存するので、同じwindowを使うatom間で共有できる。
 DCは単純和。中心の最後の半セルに対するmake_profileのimage補正は別の処理として残す。
 windowはmergeへ戻さず、mergeが全て完了してから別bufferで作る。
@@ -416,9 +425,60 @@ rawとwindowは同shapeなので低水準APIには`windowed=True`を必ず渡す
 C/展開は変えない。入力windowは33,184bytes、出力は15,776bytes（1024/B4/M8）。
 変換時のraw/window同時生存を含めた完全stepピークと、FP64再結合後の全勾配を検査する。
 
-これらはGPU結果を待つ候補であり、速度改善・採用・メモリ条件達成をまだ主張しない。
-CPU回帰は2037 passed / 4934 skipped / 既存警告18件。skipはGPU検証を代替しない。
+これらの単一jobのGPU検証結果は次の通り。全てsame physical T_min/P、同じ初期profileからのdense、
+TF32なし、Graphなし、workspaceなし、warm5/同期wall21、fresh processずつ。
 
+| runtime / 設定 | 128 CST / dense | 1024 CST / dense | GPU・数学 |
+| --- | ---: | ---: | ---: |
+| `7c610fcc` shared stride・加重回転 | 1.108148 / 0.673994ms | 2.169511 / 0.669591ms | 2171 passed |
+| `468c858d` M8専用化 | 1.090994 / 0.660951ms | 2.094633 / 0.683576ms | 2171 passed |
+| `760d4933` owner window R | 1.141979 / 0.663074ms | 1.840612 / 0.669264ms | 2217 passed |
+| `833e68dc` Axisコピー回避・shape共用 | 1.123588 / 0.677137ms | 1.661862 / 0.666132ms | 2217 passed |
+
+128はC2/sort/Z0/128threads、1024はC64/counting/Z32/64threads、G/勾配融合あり。
+Rは後半2行で有効。allocated/reservedは全行、128=242.5KiB/2MiB、
+1024=7.396MiB/10MiBで、各dense264.5KiB/2MiB、16.063MiB/22MiB以下。
+全52,428atomの4列勾配、Y/dXを各jobの独立FFT参照へ照合した。
+CPU回帰はwindow段階2037 passed / 4934 skipped / 既存警告18件。
+
+Rは1024で有効だった一方、128では追加起動の費用を補えない結果だった。
+全サイズ一律の有効化はせず、最終設定は別fresh processで再確認する。
+source833の1024はdenseの約2.49倍の時間で、最終目標の時間半分は未達。
+初版23.211msから約14倍短縮したが、固定bank版の別周期・別幅分布とは改善率を比較しない。
+
+source833はAxisのmode値を書き換える代わりに、係数生成へ固定mode数をtemplateで渡す。
+入力・出力でperiod/inverse_period/omega/modes/radius_ratio4が全て一致するときのみ、
+同一sigmaのbeta・正規化形状と微分を共用する。中心・owner/imageは軸ごとに計算する。
+このfixtureでは52,428中47,422atom（90.45%）が同じ形状を共有できる。
+mode固定前後のresource出力は、H STACK648→40、C split688→80、融合勾配1256→40bytes/thread。
+融合勾配のREGは248→244であり、register圧迫まで解消したとはしない。
+
+1024の段階診断（Cは32分割）は、source833でH/G=0.152/0.151ms、
+C_out/C_in=0.359/0.316ms、融合G/勾配0.360ms、Zx/R_x0.049ms、Zy/R_y0.047ms。
+展開Y/dXは0.045/0.056ms。これらを加算して完全stepとはしない。
+
+
+
+検証archive（各327 runtime＋共通header・検査ソースを照合、結果manifestも検証）:
+
+- `7c610fcc` / `l4job-e08e148f295644ca9b7104dee4673bac`：source `211763d0560f20d0963f561bf0f7dd3438cba503222eeba4981234e4585bfebf`、result `8dd26e3cb25ba020cbc746ebe42ed1e38e24bb959bb171930c4b31fe4ccddfad`、driver `b9f5998a340f65ff80b0e6c1063031e16b6b3c2acb0989e6142181de99ae10b7`、binary `1563457bb3882a602b00fda15b124928f55ba2cbec2111fa45df2f6b590da2b5`。
+- `468c858d` / `l4job-cfbc5d6ff6594bedb152c4ab9185be77`：source `1166fbc96ac950c30b0920e5009fcad8c1684ae0ff8caf3e91cceb3e7162baf1`、result `682e0dac7b3120187504a347b5cfc93e0215a2792f2d18e9a1a0ed01188eec76`、driver `b9f5998a340f65ff80b0e6c1063031e16b6b3c2acb0989e6142181de99ae10b7`、binary `bb640378186bbada9463cbb71e4080fc76b1d0c8e7f1d0037ca8cc3020b07fb8`。
+- `760d4933` / `l4job-5cf94d223d37477d9a4caba176f5b706`：source `9571fed484351a86e5981da72c773782772a47c20e80ca47057abe3b892b0f0a`、result `d97011ad766039359779125bec3d253ca038cd6bc93a024a34ea0bab7a12317a`、driver `b95b332a67d11e49c0bdc2281e806da7fceabdb7dde353438c46656aa3e85bda`、binary `6b06002db885a8bbe68cb7a7160fd02af35b4067d42cce0607b6cdbc9db7668d`。
+- `833e68dc` / `l4job-763872192be04cea9a0013015dcdc7bb`：source `2fa471732daa025db55a8417233393e5f822b0ab02967272faec894125e82973`、result `dc8ea5468866d76593b2f2076972b3c86e8c3e9683ea41f537b5bf20cd883c6d`、driver `b95b332a67d11e49c0bdc2281e806da7fceabdb7dde353438c46656aa3e85bda`、binary `f48edac099ee855bf583c75e2e192bbc16648b6fc55c2a221317611fc7029423`。
+
+ignored `output/cell-mass-opt-20261027/` の各candidateにsource/results/spec/receiptを保全。
+
+### 検証中：G・Parameter勾配・C_inの融合
+
+source `dcf48273`。研究flag `fuse_backward_cin=True`を追加した。
+両方の勾配が必要で1<=batch<=4のとき、input owner/splitの各laneが別atomについて
+G→保存dtypeへ丸め→全4勾配→input係数のshared保存を行い、C_inを縮約する。
+Hの保存値と丸めたGを使う規約は維持する。C累積はsharedへ置き、重い勾配計算中のregister保持を減らす。
+M8/B4のsharedは6,088bytes/block。Gはglobalへ保存し、全atom係数表は追加しない。
+B0/B>4/片側だけの勾配は既存経路へ戻る。新header `projection.cuh`はJIT digestにも含める。
+CPU全体2037 passed / 4995 skipped / 既存警告18件、Ruff/format/diffは通過。
+GPUでは通常経路とtuned経路を別々に検査し、全atom oracle、optimizer、racecheck、完全step/peakを確認中。
+速度とメモリの採用結果はまだ出ていない。
 
 ### 現在：入力dtypeでH/Gを保存するbackward
 

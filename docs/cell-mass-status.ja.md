@@ -13,12 +13,15 @@ backwardのZy→G→C_in→dX、全atomの4列勾配を実装した。分類はs
 128/819atomの全勾配・AdamW更新/moments/stepも独立参照へ照合した。
 
 現在の階層版は入力dtypeでH/Gを保存し、計算・Z/CはFP64を維持する。
-source `b0cb69a5`ではCの分割、係数/位相の再利用、counting配置、Zのmicrochunk、
-G/勾配融合と直接group参照を実装。GPU・数学2171件と全atom勾配を通過した。
-128は完全step1.099659ms対dense0.679848ms、allocated242.5KiB対264.5KiB、reserved両方2MiB。
-1024は2.277464ms対dense0.654805ms、allocated7.396MiB対16.063MiB、reserved10MiB対22MiB。
-1024初版23.211msから約10.2倍短縮し、メモリ条件を維持したが、両サイズで最終速度目標は未達。
-128はC2/融合/sort/Z0/128threads、1024はC64/融合/counting/Z32/64threads。
+source `833e68dc`ではCの分割、係数/位相の再利用、counting配置、Zのmicrochunk、
+G/勾配融合・直接group参照・M8専用化・owner window RとAxisコピー回避を実装。
+GPU・数学2217件と全atom勾配を通過した。階層Zは2子ずつのマージを維持し、
+Rは同じ階層の3タイルを合算したH/G用の別の保存値である。
+128は完全step1.123588ms対dense0.677137ms、allocated242.5KiB対264.5KiB、reserved両方2MiB。
+1024は1.661862ms対dense0.666132ms、allocated7.396MiB対16.063MiB、reserved10MiB対22MiB。
+1024初版23.211msから約14倍短縮し、メモリ条件を維持したが、両サイズで最終速度目標は未達。
+128はC2/融合/sort/Z0/128threads、1024はC64/融合/counting/Z32/64threads、両方R有効。
+128ではRなし1.090994msの別jobもあり、一律有効化はせず独立再確認する。
 初期sigma0.2..40、入力T_min4・出力T_min8、1 fresh processずつの診断値。
 FP64保存初版1024のreserved26MiBは条件未達であり、負の記録を正本に残す。
 公開CSTLinear/dispatcher、二階微分、全体Graph学習へは未接続。
