@@ -20,6 +20,7 @@ struct Bank {
     int level, tile_sites, tile_count, node_offset;
     double period;
     bool full_chart;
+    double inverse_period, omega;
 };
 
 struct Axis {
@@ -86,9 +87,12 @@ inline Axis parse_axis(const std::vector<double> &config) {
     axis.banks[axis.bank_count++] = {axis.full_level, axis.sites,  1,
                                      axis.node_count, axis.period, true};
     ++axis.node_count;
-    for (int bank = 0; bank < axis.bank_count; ++bank)
+    for (int bank = 0; bank < axis.bank_count; ++bank) {
         TORCH_CHECK(std::isfinite(2 * PI * axis.modes / axis.banks[bank].period),
                     "bank frequency is not representable");
+        axis.banks[bank].inverse_period = 1 / axis.banks[bank].period;
+        axis.banks[bank].omega = 2 * PI / axis.banks[bank].period;
+    }
     return axis;
 }
 
@@ -156,9 +160,9 @@ __device__ inline int bank_for_level(const Axis &axis, int level) {
 
 // Integer coefficients of the positive polynomial, indexed by even M=2..16,
 // harmonic and degree. These depend only on the basis, never on atom values.
-// The 444 polynomial doubles and 72 prefactors occupy 4128 bytes of
-// constant memory per CUDA translation unit. Polynomial integers are exact
-// in double; prefactors are rounded once to double at compile time.
+// The 444 polynomial doubles, 72 prefactors and 17 harmonic reciprocals occupy
+// 4264 bytes of constant memory per CUDA translation unit. Polynomial
+// integers are exact in double; divisions are rounded once at compile time.
 __host__ __device__ constexpr int horner_bank_offset(int modes) {
     int bank = modes / 2;
     return (bank - 1) * bank * (4 * bank + 1) / 6;
@@ -167,7 +171,10 @@ constexpr int HORNER_VALUES = horner_bank_offset(16) + 16 * 17 / 2;
 struct HornerBanks {
     double coefficients[HORNER_VALUES] = {};
     double factors[72] = {};
+    double inverse_integer[17] = {};
     __host__ __device__ constexpr HornerBanks() {
+        for (int k = 1; k <= 16; ++k)
+            inverse_integer[k] = 1.0 / k;
         for (int modes = 2; modes <= 16; modes += 2) {
             for (int k = 0; k < modes; ++k) {
                 int bank = modes / 2;
@@ -183,8 +190,22 @@ struct HornerBanks {
         }
     }
 };
-static_assert(sizeof(HornerBanks) == 4128, "unexpected Horner constant-bank size");
+static_assert(sizeof(HornerBanks) == 4264, "unexpected Horner constant-bank size");
 static __device__ __constant__ HornerBanks horner_banks{};
+
+// For k > 0, use a precomputed sine when a caller already advances the
+// cell-half-phase by recurrence. Multiplying P by 1/pi first avoids overflow.
+__device__ inline double integrated_sine_factor(const Bank &bank, int harmonic, double half_sine) {
+    constexpr double INV_PI = 0.31830988618379067154;
+    return (bank.period * INV_PI) * half_sine * horner_banks.inverse_integer[harmonic];
+}
+
+__device__ inline double cell_integral_factor(const Bank &bank, int harmonic, double spacing) {
+    if (harmonic == 0)
+        return spacing;
+    double half_sine = sin((bank.omega * harmonic) * spacing / 2);
+    return integrated_sine_factor(bank, harmonic, half_sine);
+}
 
 // The common T_M(beta)^-2 cancels from c_k/(P*c_0). Evaluate the same
 // positive polynomial and optionally its beta derivative together. Horner
@@ -241,24 +262,35 @@ __device__ inline double raw_coefficient(double beta, int modes, int harmonic) {
 }
 
 struct Profile {
-    double beta, raw_zero, center, period;
+    double beta, raw_zero, center, period, inverse_period, omega, beta_sigma;
 };
 
+template <bool Derivative = false>
 __device__ inline Profile make_profile(const Axis &axis, const Bank &bank, double sigma,
                                        double center, int owner) {
     // Preserve effective_radius(sigma,P), including its concentration floor.
     // P/3 remains the width scale even for the one-tile full-chart bank.
-    double scale = bank.period / 3, s = sigma / scale;
+    double s = sigma * (3 * bank.inverse_period);
     double base = axis.radius_ratio4 + (1 - axis.radius_ratio4) * s * s * s * s;
-    double radius = scale * sqrt(sqrt(base));
-    double beta = 1 / cos(PI * radius / bank.period);
+    double root = sqrt(sqrt(base));
+    double beta = 1 / cos((PI / 3) * root);
+    double beta_sigma = 0;
+    if (Derivative) {
+        double radius_sigma = (1 - axis.radius_ratio4) * s * s * s / (root * root * root);
+        beta_sigma = beta * sqrt(fmax(0.0, beta * beta - 1)) * (0.5 * bank.omega) * radius_sigma;
+    }
     double relative = wrapped_center(center, axis);
     int raw_owner =
         static_cast<int>(floor((relative + axis.spacing / 2) / (bank.tile_sites * axis.spacing)));
     // Shift a centre in the final half-cell together with its owner=0 window.
     int image = (raw_owner - owner) / bank.tile_count;
-    return {beta, raw_coefficient(beta, axis.modes, 0), relative - image * axis.period,
-            bank.period};
+    return {beta,
+            raw_coefficient(beta, axis.modes, 0),
+            relative - image * axis.period,
+            bank.period,
+            bank.inverse_period,
+            bank.omega,
+            beta_sigma};
 }
 
 __device__ inline void coefficient_pair(const Profile &profile, int modes, int harmonic,
@@ -292,10 +324,10 @@ template <bool Derivative> struct HarmonicStream {
 
     __device__ HarmonicStream(const Profile &profile, int mode_count)
         : beta(profile.beta), beta_squared(beta * beta), power(1), power_beta(0),
-          inverse_period(1 / profile.period),
-          normalized_scale(2 / (profile.period * profile.raw_zero)), zero_log_beta(0),
+          inverse_period(profile.inverse_period),
+          normalized_scale((2 * profile.inverse_period) / profile.raw_zero), zero_log_beta(0),
           phase_sine(0), phase_cosine(1), modes(mode_count), harmonic(0) {
-        sincos(2 * PI / profile.period * profile.center, &step_sine, &step_cosine);
+        sincos(profile.omega * profile.center, &step_sine, &step_cosine);
         if (Derivative) {
             double raw_zero, zero_beta;
             raw_coefficient_derivative(beta, modes, 0, raw_zero, zero_beta);
@@ -385,9 +417,9 @@ __device__ inline void project_derivatives(const double *z, int batches, int bat
                                            const Axis &axis, const Bank &bank, int owner,
                                            double sigma, double center, double *dcenter,
                                            double *dsigma) {
-    Profile profile = make_profile(axis, bank, sigma, center, owner);
+    Profile profile = make_profile<true>(axis, bank, sigma, center, owner);
     HarmonicStream<true> stream(profile, axis.modes);
-    double beta_sigma = beta_sigma_derivative(axis, bank, sigma, profile.beta);
+    double beta_sigma = profile.beta_sigma;
     int retained = bank.full_chart ? 1 : 3;
     int first_tile = bank.full_chart ? 0 : owner - 1;
     // The constant coefficient is 1/P, independent of both center and sigma.
@@ -396,7 +428,7 @@ __device__ inline void project_derivatives(const double *z, int batches, int bat
         stream.next(cc, cs, cc_beta, cs_beta);
         if (harmonic == 0)
             continue;
-        double omega = 2 * PI * harmonic / bank.period;
+        double omega = profile.omega * harmonic;
         for (int offset = 0; offset < retained; ++offset) {
             int raw_tile = first_tile + offset;
             int tile = positive_mod(raw_tile, bank.tile_count);

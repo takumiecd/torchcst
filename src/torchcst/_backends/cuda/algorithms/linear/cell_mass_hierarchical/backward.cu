@@ -58,7 +58,7 @@ project_weighted_derivatives(const double *z, int batches, int batch_begin, cons
     for (int harmonic = 0; harmonic <= axis.modes; ++harmonic) {
         double cc, cs, cc_beta, cs_beta;
         stream.next(cc, cs, cc_beta, cs_beta);
-        double omega = 2 * PI * harmonic / bank.period;
+        double omega = profile.omega * harmonic;
         for (int offset = 0; offset < retained; ++offset) {
             int raw_tile = first_tile + offset;
             int tile = positive_mod(raw_tile, bank.tile_count);
@@ -111,10 +111,11 @@ __global__ void compute_g_parameter_grad_kernel(const scalar_t *atoms, const int
     Bank output_bank = output.banks[bank_for_level(output, groups[4 * group])];
     double amplitude = atoms[4 * original], sigma = atoms[4 * original + 1];
     double input_center = atoms[4 * original + 3], output_center = atoms[4 * original + 2];
-    Profile output_profile = make_profile(output, output_bank, sigma, output_center, output_owner);
-    Profile input_profile = make_profile(input, input_bank, sigma, input_center, input_owner);
-    double beta_sigma_out = beta_sigma_derivative(output, output_bank, sigma, output_profile.beta);
-    double beta_sigma_in = beta_sigma_derivative(input, input_bank, sigma, input_profile.beta);
+    Profile output_profile =
+        make_profile<true>(output, output_bank, sigma, output_center, output_owner);
+    Profile input_profile = make_profile<true>(input, input_bank, sigma, input_center, input_owner);
+    double beta_sigma_out = output_profile.beta_sigma;
+    double beta_sigma_in = input_profile.beta_sigma;
     double da = 0, ds = 0, dmu_input = 0, dmu_output = 0;
     for (int begin = 0; begin < batches; begin += BATCH_TILE) {
         double gv[BATCH_TILE] = {};

@@ -188,8 +188,8 @@ __global__ void build_direct_kernel(const scalar_t *signal, double *z, int batch
                 // factor is site-independent; rotate its phase in FP64 after
                 // each site instead of evaluating trigonometry per site.
                 // The common chart origin and harmonic are unchanged.
-                double omega = 2 * PI * harmonic / bank.period;
-                double factor = 2 * sin(omega * axis.spacing / 2) / omega;
+                double omega = bank.omega * harmonic;
+                double factor = cell_integral_factor(bank, harmonic, axis.spacing);
                 double phase_sin, phase_cos, step_sin, step_cos;
                 sincos(omega * (first + lane) * axis.spacing, &phase_sin, &phase_cos);
                 sincos((omega * axis.spacing) * team_size, &step_sin, &step_cos);
@@ -247,8 +247,8 @@ __global__ void build_direct_chunk_kernel(const scalar_t *signal, double *scratc
                     total += static_cast<double>(signal[batch * axis.sites + first + local]) *
                              axis.spacing;
             } else {
-                double omega = 2 * PI * harmonic / bank.period;
-                double factor = 2 * sin(omega * axis.spacing / 2) / omega;
+                double omega = bank.omega * harmonic;
+                double factor = cell_integral_factor(bank, harmonic, axis.spacing);
                 double phase_sin, phase_cos, step_sin, step_cos;
                 sincos(omega * (first + lane) * axis.spacing, &phase_sin, &phase_cos);
                 sincos((omega * axis.spacing) * team_size, &step_sin, &step_cos);

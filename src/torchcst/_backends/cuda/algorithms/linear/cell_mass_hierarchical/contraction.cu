@@ -221,6 +221,18 @@ struct SplitPages {
     int page_splits;
 };
 
+// Classification assigns (previous tile width, current tile width] to each
+// local bank; the full-chart bank has the same lower bound and ends at the
+// dtype-rounded common sigma limit used by atom validation.
+__device__ inline bool compatible_sigma_banks(const Axis &a, int ai, const Axis &b, int bi,
+                                              double maximum_sigma) {
+    double al = ai == 0 ? 0 : a.banks[ai - 1].tile_sites * a.spacing;
+    double bl = bi == 0 ? 0 : b.banks[bi - 1].tile_sites * b.spacing;
+    double au = a.banks[ai].full_chart ? maximum_sigma : a.banks[ai].tile_sites * a.spacing;
+    double bu = b.banks[bi].full_chart ? maximum_sigma : b.banks[bi].tile_sites * b.spacing;
+    return fmin(au, bu) > fmax(al, bl);
+}
+
 template <typename scalar_t, typename projection_t>
 __global__ void compute_c_split_kernel(const scalar_t *atoms, const int64_t *rows,
                                        const int *groups, const int64_t *offsets,
@@ -237,6 +249,10 @@ __global__ void compute_c_split_kernel(const scalar_t *atoms, const int64_t *row
     int owner = node - bank.node_offset;
     int lane = threadIdx.x;
     int batch_begin = blockIdx.y * BATCH_TILE;
+    // Match classify_atoms: float32's representable upper endpoint may be
+    // slightly larger than the exact double period/3.
+    double maximum_sigma =
+        static_cast<double>(static_cast<scalar_t>(fmin(input.period, output.period) / 3));
     int total = 0, split_begin = 0, split_end = 0;
     double accum[MAX_ACCUMULATORS] = {};
     for (int pass = 0; pass < 2; ++pass) {
@@ -248,6 +264,8 @@ __global__ void compute_c_split_kernel(const scalar_t *atoms, const int64_t *row
             // order as the sparse scan, and address the target owner directly.
             for (int range = 0; range < input.bank_count; ++range) {
                 Bank other = input.banks[range];
+                if (!compatible_sigma_banks(output, bank_index, input, range, maximum_sigma))
+                    continue;
                 int first = other.node_offset * output.node_count +
                             other.tile_count * bank.node_offset + owner;
                 for (int other_owner = 0; other_owner < other.tile_count; ++other_owner) {
@@ -282,6 +300,9 @@ __global__ void compute_c_split_kernel(const scalar_t *atoms, const int64_t *row
         } else {
             for (int range = 0; range < input.bank_count; ++range) {
                 Bank other = input.banks[range];
+                if (cartesian &&
+                    !compatible_sigma_banks(output, bank_index, input, range, maximum_sigma))
+                    continue;
                 int first, last;
                 if (cartesian) {
                     first = bank.node_offset * input.node_count +
@@ -365,7 +386,7 @@ __global__ void expand_c_kernel(const double *c, scalar_t *y, int batches, Axis 
             // the three roots of unity; the full-chart image is always zero.
             // Rotate owner coefficients into the canonical site frame first,
             // then evaluate that site's basis once for all retained owners.
-            double omega = 2 * PI / bank.period;
+            double omega = bank.omega;
             double sin_step, cos_step, sin_half_step, cos_half_step;
             sincos(omega * (site * axis.spacing), &sin_step, &cos_step);
             sincos(omega * axis.spacing / 2, &sin_half_step, &cos_half_step);
@@ -384,7 +405,7 @@ __global__ void expand_c_kernel(const double *c, scalar_t *y, int batches, Axis 
                     canonical_cos += cc * rc + cs * rs;
                     canonical_sin += cs * rc - cc * rs;
                 }
-                double factor = 2 * half_sine / (omega * harmonic);
+                double factor = integrated_sine_factor(bank, harmonic, half_sine);
                 total += factor * (canonical_cos * cosine + canonical_sin * sine);
                 // Advance both the site phase and the cell half-step phase in
                 // FP64; J_k uses the latter, including the 1/k factor above.
