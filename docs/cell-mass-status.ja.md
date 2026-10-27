@@ -36,15 +36,17 @@ atom/X/dY/初期dense Wのbit一致も検証した。別分布・多軸・他GPU
 
 広いGPU suiteはsource `e1d84c33`で2438 passed / failed0 / skip12、
 selector追加後の階層版suiteは631 passed / failed0 / skip12、racecheckも通過。
-128/1024の全atom Y/dX/4列勾配に加え、両サイズの3step AdamW Parameter/moments/stepも
+128/1024の全atom Y/dX/4列勾配に加え、128サイトの境界fixtureと1024の全atomで3step AdamW Parameter/moments/stepも
 独立FFT/autograd参照へ照合した。CPU2037 passed / 5176 skipped / 既存警告18件、
 Ruff/format/buildとwheel/sdistの338runtime byte照合も通過した。
-CPU Actionsはsnapshot `9c972124`でsuccess。公開CSTLinear/dispatcher、二階微分、
+CPU Actionsはsnapshot `da09ed37`でsuccess。公開CSTLinear/dispatcher、二階微分、
 全体Graph学習は未接続。上表はTorch allocatorのpeakで、GPU process全体ではない。
 
 数式・配列寿命・選択kwargs・負の結果・全hashは[設計の正本](cell-mass-kernel-flow.ja.md)。
 再確認job `l4job-3d9f12cdfca6486fa532f515d7b04cda`、source/results/spec/receiptは
 ignored `output/cell-mass-opt-20261027/final-confirmation/`へ保全した。
+Nsight Computeでも4対象の計数を取得し、FP64 pipe稼働率77〜87%、Cのshared bank conflictを確認。
+指標だけで因果を断定せず、FP64演算とshared参照の寄与を次に切り分ける。
 以下は別の幅分布・周期を使う固定bank版の記録である。
 
 ## 固定bank版：係数・微分のHorner評価とsigma分布

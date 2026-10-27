@@ -716,6 +716,40 @@ source `320a041d3801405afd673a93921e491a24333cbd2c814643db3ea6fdf5c10875`、resu
 `output/cell-mass-opt-20261027/generic-grad/`へsource/results/spec/receiptを保全した。
 wheel/sdistの338runtimeファイルもsourceへbyte照合した。
 
+### 最適化第12段：Nsight Computeによる支配要因の確認
+
+runtime `7fd9132b`、NVIDIA L4 / CC8.9 / Nsight Compute2025.3.1。
+job `l4job-d5db8c1f79df484c90e5dc58d7b25ba8`で、同fixtureのCout、逆slot Cin、
+G/勾配、H/C融合を各1launchだけ計装した。補償値評価、C64/grain128、R有効。
+metricは実機のquery結果から11個を選び、各対象のCSVに一致するkernelと全11行を確認した。
+これは計装による診断であり、時間・完全step・通常動作のメモリを測った結果ではない。
+
+| kernel | FP64 pipe稼働率 | active warps | short scoreboard | shared load bank conflicts |
+| --- | ---: | ---: | ---: | ---: |
+| Cout | 80.36% | 19.29% | 74.76% | 169,932 |
+| reverse Cin | 77.09% | 14.28% | 70.20% | 170,776 |
+| G/勾配 | 86.75% | 15.73% | 67.45% | 0 |
+| H/C融合 | 81.55% | 16.40% | 74.97% | 169,824 |
+
+long scoreboardは順に2.62/3.28/5.52/4.36%、barrierは全対象0〜0.18%だった。
+DFMA命令数はCout 8,404,724、Cin 8,010,740、G/勾配34,323,764、H/C融合16,935,740。
+このケースでは、register数だけを減らすよりFP64演算量とshared参照を切り分ける方を
+次の重点候補とする。bank conflictが観測されたことと、それが全体の律速であることは区別する。
+G/勾配はshared conflictが0でもshort scoreboardが多い。
+[NVIDIAの指標定義](https://docs.nvidia.com/nsight-compute/ProfilingGuide/index.html)でも
+short scoreboardはMIO操作の依存待ちであり、shared memoryだけの待ち時間ではない。
+指標は分母が異なるので足し合わせたり、壁時間の割合として読んだりしない。
+
+source `62022658a62f8d05553fd9fc9f21849968d7ca1a63c03f7dec0acdb4e6baedf4`、result `c42040778ba7c7e79d6efedd10caa2af2136650239a41af057cabd619dc361eb`、driver `052ad21cba05b155971bddac7909e9fc50739ff91c5d6a9f729ae7cb01cb6193`。
+338runtimeと検査ソース、結果37ファイルを照合し、ignored
+`output/cell-mass-opt-20261027/ncu-owner/`へsource/results/spec/receipt・CSV・凍結driverを保存した。
+loaded binaryのSHAはmetadataに記録したが、この診断jobではso本体をコピーしていない。
+完全stepの採用根拠は、so本体も保全した別の確認jobである。
+
+128の準備も次の候補。CPU分類でnonempty groupは224、現countingの全1769 groupに対し、
+互換するbank対だけなら849 groupとなる。layout payloadは49,016→26,936bytesと算定した。
+これはCPU metadataの見積りで、GPUピークや速度の実測ではない。compact countingは未実装。
+
 ### 最新の再確認：完全stepと1024のAdamW状態
 
 runtime `7fd9132b`。job `l4job-3d9f12cdfca6486fa532f515d7b04cda`で別の所有L4へ切り替え、
