@@ -2,8 +2,9 @@
 
 2026-10-27。Issue #120 / Draft PR #121。
 目的は、面積正規化の契約・Y/dX/全atom勾配を保ち、dense以下のメモリで
-CSTの1step時間をdenseの約2倍程度へ収めること。
-固定bank版では128でこの時間・メモリ条件を満たす設定を確認した。
+CSTの1step速度をdenseの約2倍、つまり時間を約半分にすること。
+過去の「時間をdenseの2倍以内」は中間目安であり、最終目標ではない。
+固定bank版128では中間目安の「時間2倍以内」とメモリ条件を満たした。
 固定bank版1024はメモリ条件を満たすが、時間は未達。階層版は下記で区別する。
 
 階層版`cell_mass_hierarchical/`は既存profile・sigmaを維持し、Z→H→C→Yと
@@ -11,13 +12,15 @@ backwardのZy→G→C_in→dX、全atomの4列勾配を実装した。分類はs
 以前提案したI=sigma/2は撤回した。新旧2034件の検査を通過し、
 128/819atomの全勾配・AdamW更新/moments/stepも独立参照へ照合した。
 
-現在の階層版は入力dtypeでH/Gを保存し、計算・Z/CはFP64を維持する（source `1ec0f66b`）。
-128の完全stepは2.249732ms対dense0.703702ms、allocated166.5KiB対264.5KiB、reserved両方2MiB。
-1024は全52,428atomの勾配を照合し、完全step23.211011ms対dense0.674475ms、
-allocated5.332MiB対16.063MiB、reserved8MiB対22MiB。
-両条件でメモリはdense以下だが、時間比は約3.20/34.41倍で速度目標は未達。
-FP64保存初版の1024はreserved26MiBで条件未達だったため、負の記録も正本に残す。
-sigma0.2..40、入力T_min4・出力T_min8、1 fresh processずつの診断値である。
+現在の階層版は入力dtypeでH/Gを保存し、計算・Z/CはFP64を維持する。
+source `b0cb69a5`ではCの分割、係数/位相の再利用、counting配置、Zのmicrochunk、
+G/勾配融合と直接group参照を実装。GPU・数学2171件と全atom勾配を通過した。
+128は完全step1.099659ms対dense0.679848ms、allocated242.5KiB対264.5KiB、reserved両方2MiB。
+1024は2.277464ms対dense0.654805ms、allocated7.396MiB対16.063MiB、reserved10MiB対22MiB。
+1024初版23.211msから約10.2倍短縮し、メモリ条件を維持したが、両サイズで最終速度目標は未達。
+128はC2/融合/sort/Z0/128threads、1024はC64/融合/counting/Z32/64threads。
+初期sigma0.2..40、入力T_min4・出力T_min8、1 fresh processずつの診断値。
+FP64保存初版1024のreserved26MiBは条件未達であり、負の記録を正本に残す。
 公開CSTLinear/dispatcher、二階微分、全体Graph学習へは未接続。
 階層版の配列寿命・数式・検証・source/result hashは[設計の正本](cell-mass-kernel-flow.ja.md)を参照する。
 以下の1024/過去128の完全step結果は、別の幅分布・周期を使う固定bank版の記録である。

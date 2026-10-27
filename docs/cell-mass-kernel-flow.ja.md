@@ -119,6 +119,307 @@ H/G作成は`contraction.cu::compute_h`の軸切替を共用し、dXは入力側
 保存atomとlayout配列は`save_for_backward`で更新検査し、retained backwardに対応する。
 二階微分とsortを含む全体Graph captureは未対応。
 
+### 最適化の着手：元の版の処理別実測
+
+ユーザーの指定により階層・sigmaの意味・セル積分と面積正規化・H/Gの意味を維持し、
+完全stepの速度をdenseの約2倍（時間は約半分）へ近づける。T_min/Pを変えて別のWを測ったり、密Wを作って置換したりしない。
+allocatedとreservedの両方をdense以下に保ち、Y/dX/全atom勾配の検査許容差も変えない。
+GPT-6.1 Terraの3担当でC集約・atom数学・pipelineを調査し、GPUは単一の共有poolで測定する。
+
+最初にsource `48d2d4a0`（runtime `1ec0f66b`と同じ）を凍結して診断した。
+同一fixtureの各低水準stageをCUDA Graphへ一度captureし、21 replayのevent中央値を測った。
+prepareはGraph未対応なので同期wall中央値。完全stepの採用時間へ足したり差し引いたりしない。
+別のprofile traceでも1024のC kernel2回が約16.17msを占め、局所診断と対応した。
+
+| 処理 | 128診断ms | 1024診断ms |
+| --- | ---: | ---: |
+| Zx | 0.237568 | 1.795872 |
+| H | 0.088064 | 0.501536 |
+| C_out | 0.156672 | 7.999072 |
+| Y展開 | 0.197632 | 0.198432 |
+| Zy | 0.227328 | 1.746048 |
+| G | 0.080896 | 0.535552 |
+| C_in | 0.242688 | 8.179552 |
+| dX展開 | 0.256000 | 0.256640 |
+| parameter_grad | 0.191488 | 1.250592 |
+| prepare（同期wall） | 0.294586 | 0.513347 |
+
+1024は849 group、1 ownerの最大atom数は入力・出力とも10,539。
+約20%が全周bankの単一ownerへ集まり、従来は1warpが全chunkを順に集約していた。
+C_outとC_inが主対象であり、次にZ生成の三角関数評価を削る。
+
+job `l4job-67913d6841dc437ba6f17f3727c3676f`、L4/Torch2.11.0+cu130/CUDA13.0、driver239.16秒。
+source SHA256 `7c51f473225632601327ee4ce7887c870ba9bf65a4e2ed528afa816e6918596d`、
+result SHA256 `ea32824b0a88647ebe18f822512c9aee680dd6b36be1a5edd177e6a772c8b2c3`。
+327 runtimeコードと結果11ファイルを照合し、ignored `output/cell-mass-opt-20261027/baseline-profile/`へ保全。
+共通headerの別途byte照合も行う。profileは診断専用で、検証済み完全step/ピークの代替にしない。
+
+候補source `8f129556`は次の変更を実装し、下記のCUDA検証を通過した。
+
+- owner×固定split数のFP64部分Cを作って縮約。容量はatom数でなくowner数とsplit数で制限する。
+  逆側の非一致groupにはblock同期を置かず、warp ballotで対応rangeを選ぶ。
+- 既存の正の多項式をHorner評価し、値と解析微分をまとめる。全atom係数表は作らない。
+  basisだけの定数表は444 doubles、3,552bytes/CUDA translation unit。
+- Zのsite位相と出力のharmonic位相はFP64漸化式で再利用し、同じセル積分の基底を評価する。
+  chart端の3tile周期回転は整数mod3のroots of unityで表し、全周bankは回転0。
+- `fuse_g_grad=True`で、同じthreadがGとatom勾配を作る。Gを保存dtypeへ丸めてから勾配へ使う。
+  `c_splits`と融合の有無は独立に比較し、採用前の既定は1/Falseのままとする。
+
+CPU上の数式回帰や相互レビューはGPU検証・独立oracle・速度改善の証拠には数えない。
+候補の全gateと完全stepピークが通るまで、下の検証済み版の結果と混在させない。
+
+### 最適化第1段：C分割と位相再利用の実測
+
+runtime `8f129556`、L4/Torch2.11.0+cu130/CUDA13.0。
+階層版270件＋既存1816件で**2086 passed、failed/skipped 0**。
+独立oracle/AdamW検査では、追加引数なしのautograd呼び出しもテストdriver内で
+小さいatom数はC2分割、大きいatom数は16分割・G/勾配融合へ切り替え、候補を通した。
+低水準stageの独立照合、分割数2/7/16・片側M16・空/端数batch・retained backwardも検査した。
+M16の1024rootのZをteam1/32で独立Gauss積分へ照合した。
+racecheckはsplit/fusedの8件で0 hazards/errors/warnings。
+
+128/819atomと1024/52,428atomを、C分割1/2/8/16と融合の6設定で
+既存FFTセル積分の独立CPU参照へ照合し、全Y/dX/全atom4列がPASS。
+1024の最大絶対誤差は全設定でY1.7711e-8、dX1.99152e-8、atom勾配2.7011e-8。
+profile式、sigma、T_min/P、許容差とH/G保存精度を変更していない。
+
+同じ完全step条件で、各設定1 fresh process、warmup5/同期wall21標本。
+以下は分割・融合を選んだ候補であり、公開dispatcherへの採用ではない。
+
+| 設定 | 完全step中央値 | allocated | reserved |
+| --- | ---: | ---: | ---: |
+| 128、C1・非融合 | 1.376251ms | 166.5KiB | 2MiB |
+| 128、C2・融合 | 1.182218ms | 242.5KiB | 2MiB |
+| 同job dense128 | 0.666325ms | 264.5KiB | 2MiB |
+| 1024、C1・非融合 | 14.312060ms | 5.332MiB | 8MiB |
+| 1024、C8・非融合 | 4.925133ms | 5.332MiB | 8MiB |
+| 1024、C16・非融合 | 4.416706ms | 5.332MiB | 8MiB |
+| 1024、C16・融合 | 4.100332ms | 5.854MiB | 8MiB |
+| 同job dense1024 | 0.664340ms | 16.063MiB | 22MiB |
+
+128のC2融合はdenseの約1.77倍の時間で、中間目安とメモリ条件内。最終速度目標は未達。
+128のC8/C16は約1.2msでもallocatedがdenseを超えたため選ばない。
+1024は約6.17倍で未達だが、元の23.21msから大きく短縮した。
+別jobとの大きな差は初版改善の方向を示すが、採用性能は選択設定の独立再測定で確認する。
+
+候補の1024診断（Graph event、完全stepへの加減算は禁止）は、
+Zx/Zy=0.203/0.189ms、H/G=0.412/0.445ms、C_out/C_in=0.770/0.633ms、
+Y/dX展開=0.055/0.070ms、非融合勾配0.956ms、G/勾配融合1.136ms。
+次はatom側の基本位相・累乗・正規化逆数を再利用し、Zの大きなnodeを小区間のblockへ分割する。
+sortを置換するカウント配置は同じgroup順序でindexだけを扱い、別途検証する。
+
+job `l4job-41b59f34aa8c4c5aa02455316d9f5e79`（driver498.89秒）。
+
+- source SHA256 `88faf220099f145a358ae4fe810bcdf64838d7ddc443a9fe9a1cab596eec810a`
+- result SHA256 `6a63e8e37228bb6bcafbfa5850448010fbbfd05403471ad4d85750eb7d6e5cfa`
+- driver SHA256 `a9dee371e0980c87d27da1ee304ab9b9e47a4cfbab9a5b935a0b5908f2dafdcd`
+- binary SHA256 `bc0d8c91c0d942b6aec50aa447549708ad7c6e9f40e8937e2209c596d03702bf`
+
+327 runtimeコードとmanifest58ファイルを照合し、ignored
+`output/cell-mass-opt-20261027/first-candidate/`へsource/result/spec/receiptを保存。
+queued状態でdriverのreport hook修正のため取り消したjob `l4job-c503f15621bb405e8d903f3aaee10117`は
+GPU成功や実測へ数えない。検証前の候補・失敗・不採用設定も削除しない。
+
+### 最適化第2段：harmonic stream・counting配置・Zの分割
+
+runtime `0c4fc64d`、L4/Torch2.11.0+cu130/CUDA13.0。
+階層版304件＋既存1816件の**2120 passed、failed/skipped 0**。
+CPU全体2037 passed / 4837 skipped / 既存警告18件（38.76秒）、Ruff/format/build通過。
+wheel/sdistの337ファイルをsourceへbyte照合した。
+
+1 thread内で基本位相、betaの累乗、正規化逆数を再利用し、harmonic順に係数を生成する。
+C_outとC_inでは、同じownerのatom列を均等なS区間へ分ける。
+元の係数とprofile式は変えず、
+
+\[
+C_{h,q,b,k}=\sum_{s=0}^{S-1} C^{\mathrm{partial}}_{h,q,s,b,k}
+\]
+
+と最後に集約する。各atomはそのowner内で一つのsplit・一つのthreadへ割り当てる。
+係数表を全atom分globalへ保存する方式ではない。
+
+Zは大きなtileも32site以下の小区間へ分け、同じbank周期で基底を積分してから足す。
+
+\[
+Z_{h,t,b,k}=\sum_{j\,\subset\,t} Z^{\mathrm{partial}}_{h,j,b,k}.
+\]
+
+この小区間は実行上の分担であり、数学のT_hやP_hを変更しない。
+1024/B4/M8のpartial Zは入力87,040bytes・出力69,632bytes、呼び出し中だけ保持する。
+完成した実tileのZから、従来通り親の偶数harmonicを継承する。
+
+counting配置は固定された辞書順のCartesian groupを使う。1024の現planでは1769 groupで、
+空groupもoffsetsに残す。atom値のコピーは行わず、元row番号だけを並べる。
+カウントとrow番号の予約にwarp集約atomicAddを使うが、Y/dX/atom勾配へatomicで加算しない。
+一時keys/count/cursorはprepare内だけ、保存cacheはrows/groups/offsetsだけである。
+4096 groupを超えるplanはcounting経路を拒否し、従来sort経路は残す。
+
+独立FFT参照、空group/重複offset、空atom/batch、片側M16、32siteのZ分割、
+全team・retained backward・幅/有限値拒否を検査した。128/1024の全atom勾配も全候補でPASS。
+許容差は以前と同じ。racecheckとsource/result検証の詳細は保存artifactへ置く。
+
+| 完全step設定 | 中央値 | allocated | reserved |
+| --- | ---: | ---: | ---: |
+| 128、C2/融合/sort/Z非分割 | 1.132184ms | 242.5KiB | 2MiB |
+| 同job dense128 | 0.668032ms | 264.5KiB | 2MiB |
+| 1024、C16/融合/sort/Z非分割 | 3.273565ms | 5.854MiB | 8MiB |
+| 1024、C16/融合/sort/Z32分割 | 3.003025ms | 5.854MiB | 8MiB |
+| 1024、C16/融合/counting/Z非分割 | 3.090996ms | 5.875MiB | 8MiB |
+| 1024、C16/融合/counting/Z32分割 | 2.795126ms | 5.875MiB | 8MiB |
+| 同job dense1024 | 0.667932ms | 16.063MiB | 22MiB |
+
+1 fresh process/方式、warmup5・wall21標本、その他の条件は第1段と同じ。
+128は約1.69倍、1024は約4.18倍。メモリ条件は両方で満たすが、1024の時間目標は未達。
+1024の診断値はZx/Zy=0.050/0.048ms、H/G=0.313/0.313ms、C_out/C_in=0.467/0.403ms、
+Y/dX展開=0.055/0.070ms、G/勾配融合=0.929ms。今後は係数の定数比とgradのregister保持が対象。
+
+job `l4job-af3d11b157de415ca147825b7eb73a0d`（driver499.96秒）。
+
+- source SHA256 `ef46a7db0977d21f02054fa29444d0945fada72c584f9146262aa3973cb4e536`
+- result SHA256 `85b3b9c5092fa655a01182f788e1425b7068bff6503e0ea28ff30a9c74c4b09f`
+- driver SHA256 `452575e1fbeb4f7c0d30c5ebc7924a374845c0db0b8899d48e6825f7b38bdc32`
+- binary SHA256 `c093812a93223aa4dc7dd1a9764d87124f5ba056d2295110c8315109886fb701`
+
+327 runtimeコードと結果manifest40ファイルを照合し、ignored
+`output/cell-mass-opt-20261027/stream-candidate/`へsource/result/spec/receiptを保存した。
+
+### 最適化第3段：定数比・partialページ・atom blockサイズ
+
+runtime `8dc468cb`。basisだけの前係数72個を定数表へ加え、毎harmonicの定数比を
+除算し直す処理を省いた。多項式444個と合わせ4,128bytes/CUDA translation unit。
+β累乗の微分も逐次更新する。profileの近似次数やprecisionは変更しない。
+
+C32/64分割は、単一partialが1MiBをわずかに超えて大きなallocator予約へ移ることを避けるため、
+各partial Tensorが1MiB以下になるようsplit方向をページへ分ける。総partial容量は減らさず、
+同じFP64値を同じ順番で縮約する。pointerはkernel引数として渡し、GPU pointer表は作らない。
+元C一枚自体が1MiB超ならページを小さくできないため、そこで条件達成とは主張しない。
+
+atom担当のblockを32/64/128/256 threadsへ変えても、1 threadが別atomを処理する。
+同じlayoutを使った比較ではY/dX/各atom勾配がbit単位で一致することを検査した。
+counting配置での3stepのAdamWと階層遷移も追加し、**2165 passed、failed/skipped 0**。
+全52,428atomの独立Y/dX/4勾配は全候補でPASS。
+
+| 1024、counting/Z32/融合 | 完全step | allocated | reserved |
+| --- | ---: | ---: | ---: |
+| C16、128threads | 2.586894ms | 5.875MiB | 8MiB |
+| C16、64threads | 2.554607ms | 5.875MiB | 8MiB |
+| C32、128threads | 2.600685ms | 6.382MiB | 8MiB |
+| C32、64threads | 2.561422ms | 6.382MiB | 8MiB |
+| C64、64threads | 2.501205ms | 7.396MiB | 10MiB |
+| 同job dense | 0.678842ms | 16.063MiB | 22MiB |
+
+128のC2/128threadsは1.125077ms（dense0.686617ms）、allocated242.5KiB/dense264.5KiB、
+reserved両方2MiB。両サイズでメモリ条件内、1024は約3.68倍で時間目標は未達。
+単一fresh processずつ、wall21標本の診断であり、この小差を未再現の普遍的勝者にはしない。
+
+job `l4job-3752c02b51b046988a9396aa7f5464fa`（driver502.43秒）。
+
+- source SHA256 `94edf7e0793c90c284103d28b3f2135495adf9f177491706a4847808895b7b7e`
+- result SHA256 `07d210687f848fe6ee54d1846c3a4cee18ae49ddd82e061eeea078c752c4d4cb`
+- driver SHA256 `01db43bf9f3b475fd848fc64a3a8ab317062034f05abdd8e1b63a78eb3e44bff`
+- binary SHA256 `ea6609d53591b1afaa6660b609fc79e7b9ce4c9853c2af75408330bc446677c9`
+
+327 runtimeコードと結果43ファイルを照合し、ignored
+`output/cell-mass-opt-20261027/paged-candidate/`へsource/result/spec/receiptを保存した。
+
+次の第4段では、Cartesian groupの直接参照と加重微分を検証した。
+
+
+### 最適化第4段：加重微分とgroup参照の簡略化
+
+source `b0cb69a5`。Gとparameter勾配の融合で、batchごとの微分配列を作らず、
+`sum_b amplitude * H_b * Z_b` と `sum_b amplitude * G_b * Z_b` を先に縮約する。
+Gの保存dtypeへの丸めと振幅微分で使うGは従来通り。FP64加算順の変更は独立参照で検査した。
+counting layoutでは既知のCartesian group番号を直接参照し、C_inで全groupを走査しない。
+また、cacheを作らないcounting経路ではXとatomの有限値検査を同じerror wordへまとめる。
+cache再利用時の新しいXの検査は残す。
+
+同一の128/1024、B4、M8、初期sigma0.2..40、seed120、T_min/P不変。
+各設定はfresh process、warm5、同期wall21回の中央値。prepare、全forward/backward、
+fused AdamWと一時配列の作成・解放を含む。Graphなし、TF32無効、cuBLAS workspaceなし。
+
+| 条件 | 完全step | peak allocated | peak reserved |
+| --- | ---: | ---: | ---: |
+| 128、C2/融合/sort/Z0/128threads | 1.099659ms | 242.5KiB | 2MiB |
+| 128、matched dense | 0.679848ms | 264.5KiB | 2MiB |
+| 1024、C16/融合/counting/Z32/64threads | 2.386650ms | 5.875MiB | 8MiB |
+| 1024、C32/同上 | 2.391108ms | 6.382MiB | 8MiB |
+| 1024、C64/同上 | 2.277464ms | 7.396MiB | 10MiB |
+| 1024、matched dense | 0.654805ms | 16.063MiB | 22MiB |
+
+1024初版23.211msから約10.2倍短縮したが、dense比3.48倍の時間を要する。
+128もdense比1.62倍である。**ユーザー指定の最終目標はdenseの2倍の速度、時間は半分**であり、
+両方とも未達。過去の「時間をdenseの2倍以内」は中間目安としてのみ読む。
+この1jobの結果を全幅分布・全GPUへ一般化しない。
+
+低水準Graph-event診断は、1024 H/G各0.289792ms、融合G/勾配0.823296ms、
+C_out0.409600ms、C_in0.325632ms、Zx0.050176ms、Zy0.048128ms、
+Y展開0.055296ms、dX展開0.069632ms。診断値を加算して完全stepとしない。
+独立Y/dX/全52,428atomの4列勾配、およびGPU・数学2171件が通過。
+CPU全体2037 passed / 4888 skipped / 既存警告18件。
+128のAdamW Parameter/moments/step照合はsort/counting両方を含む。
+1024はこのjobで全勾配を照合し、optimizer状態の独立照合まで行ったとは主張しない。
+
+job `l4job-78ac2e52bb064b3ca575953af131dde7`。
+source archive SHA256 `425469c004887b648c1d17d537ae7b417092416a1386f0b61659218df28716d1`、
+result archive `3be67c2a2f0e8a36722230b2556425c5b5fdb02048d7569ccec097900bf78f8c`、
+frozen driver `b9f5998a340f65ff80b0e6c1063031e16b6b3c2acb0989e6142181de99ae10b7`、
+loaded binary `5075323aa51a7599dffc9f8450394e98f5c82c688f621181db0d619d28dadc87`。
+ignored `output/cell-mass-opt-20261027/weighted-candidate/`にsource/results/spec/receiptと照合記録を保存。
+
+
+
+### 最適化第5段：bankの定数と互換階層範囲
+
+source `2a507b1b`。bankのinverse_periodとomegaをhost計画で一度計算する。
+make_profileは同じsigma/scaleを使い、半径を経由する式を無次元のrootへ整理した。
+Fourierセル積分のk=1..16の逆数を定数表へ追加し、表全体は4,264bytes/CUDA translation unit。
+Cartesian Cの探索では、sigmaの分類区間に共通部分がないbank組を省く。
+全周bankの上限はatom dtypeへ丸めた共通sigma上限であり、FP32端点を落とさない。
+
+GPU・数学2171件、128/1024の独立Y/dX/全4列勾配が通過。
+128 C2/融合/sort/Z0/128threadsは1.106592ms（dense0.666637ms）、
+1024 C64/融合/counting/Z32/64threadsは2.201958ms（dense0.661160ms）。
+allocated/reservedは第4段と同じでメモリ条件内。単一fresh processずつの診断値であり、
+数%の差を普遍的な改善率としない。速度目標は引き続き未達。
+1024の段階診断はH/G各0.278528ms、融合G/勾配0.741376ms、C_out0.408576ms、C_in0.343040ms。
+
+job `l4job-0b0b8d63e3b044ed86a5b324e1ad0f90`、driver474.24秒。
+source SHA256 `c865dc5e36ccfaa594487dd1f5e1e9953be123d98229fb84e0e17117999319dd`、
+result `405bc3499a649efe7ecd94b920819d38880955dbf7fb3c51ba5ce48d7f731208`、
+driver `b9f5998a340f65ff80b0e6c1063031e16b6b3c2acb0989e6142181de99ae10b7`、
+binary `766c6ab807d14cf4dced308f244be47bc578f69b0ed6d835abaded5f7dbced2c`。
+ignored `output/cell-mass-opt-20261027/bank-candidate/`へ327 runtimeと結果34ファイルの照合を保存。
+
+### 検証中：shared配置、M8専用化、owner window
+
+- source `7c610fcc`：Cの論理32atomは維持し、shared物理strideを33にする。
+  M8/B4ではsharedは5,376から5,544bytes/block（+168bytes）。
+  G/勾配のbatch和を先に縮約し、正規化のk=0値・微分も一度に計算する。
+- source `468c858d`：M8のH/C/融合勾配を固定mode数で展開する。他のeven Mは汎用経路を残す。
+  registerやcode sizeの増加で逆に遅くなる可能性を含め、同条件で比較する。
+- source `760d4933`：全raw Z階層の完成後、ownerごとに3タイルの位相を補正して合算する。
+  そのwindow ZだけをH/G/全勾配が一度読む。full-chartはraw値と同じ。
+  `window_moments=True`の研究flagで切り替え、元のraw Z/低水準APIは維持する。
+
+windowをWと書くと、各bank/owner qで
+
+\[
+W^{c,s}_{b,q,k}=\sum_{\delta=-1}^{1}
+ R_{\mathrm{image}(q+\delta),k}\,Z^{c,s}_{b,\operatorname{wrap}(q+\delta),k}.
+\]
+
+この和はatomではなくownerにだけ依存するので、同じwindowを使うatom間で共有できる。
+DCは単純和。中心の最後の半セルに対するmake_profileのimage補正は別の処理として残す。
+windowはmergeへ戻さず、mergeが全て完了してから別bufferで作る。
+rawとwindowは同shapeなので低水準APIには`windowed=True`を必ず渡す。
+C/展開は変えない。入力windowは33,184bytes、出力は15,776bytes（1024/B4/M8）。
+変換時のraw/window同時生存を含めた完全stepピークと、FP64再結合後の全勾配を検査する。
+
+これらはGPU結果を待つ候補であり、速度改善・採用・メモリ条件達成をまだ主張しない。
+CPU回帰は2037 passed / 4934 skipped / 既存警告18件。skipはGPU検証を代替しない。
+
+
 ### 現在：入力dtypeでH/Gを保存するbackward
 
 runtime source `1ec0f66b`。FP32入力ではH/GをFP32で完成保存し、途中の縮約・正規化係数・
