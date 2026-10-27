@@ -9,8 +9,7 @@
 
 数式は[sigmaと周期の規約](#sigmaから階層と周期を決める規約)、処理順は
 [起動とkernel内関数の区別](#起動するものとkernel内で呼ぶものの区別)、
-実測は[最新の再確認](#最新の再確認完全stepと1024のadamw状態)、
-設定は[現在使う研究設定](#第7段までの独立再確認と現在使う研究設定)を参照する。
+実測と選択kwargsは[最新の再確認と検証済み研究設定](#最新の再確認と検証済み研究設定)を参照する。
 
 **階層版は既存ChebyshevSquareの式とsigmaの意味を維持し、Z→H→C→Yへ接続する。**
 Zの二分集約木があることと、sigmaから異なるtile/周期を選ぶことを区別する。
@@ -848,7 +847,7 @@ source `e3f90cb5cd03e6d33b964ae3e7a3bf1bb326a95ca364e1286d74eb554413521f`、resu
 runtime338・検査141ファイル、manifest50件とdriver/binaryを照合し、ignored
 `output/cell-mass-opt-20261027/compensated-grad/`へsource/results/spec/receiptを保全した。
 
-### 最適化第15段：owner windowの参照（GPU未検証）
+### 最適化第15段：owner windowの参照（後続sourceで検証）
 
 runtime `bfe22c94`。Rを使うprojectionでは、ownerは既にcanonicalなnode番号なので、
 `bank.node_offset+owner`を直接参照する。harmonicごとの剰余・image番号の整数除算と
@@ -861,8 +860,9 @@ CPUの対応owner全件の整数検算と31 passed / 683 skippedを通過した�
 両配布物のruntime338ファイルのbyte照合も通過した。CUDA compileの代用にはしない。
 後続driverでは、非計装step/両peakとは別区間でhost呼び出しのprofileも保存する。
 profileに含まれる`.item()`等の待ち時間をCPUの演算時間と断定しない。
+後続`180b2424`の通常suiteと全fixture gateで検証した。単独差分の速度採用とは区別する。
 
-### 最適化第16段：compact配置の逆方向index（GPU未検証）
+### 最適化第16段：compact配置の逆方向index（後続sourceで検証）
 
 runtime `fca04158`。`counting_compact`でも`reverse_layout=True`を許可する。
 互換bank pairの開始group番号を使い、input ownerごとに該当output bank/ownerをたどる。
@@ -885,8 +885,11 @@ CUDA検査にはFP32/64・空atom・異なる軸長・full-chart-only・sigma境
 CPU実行は31 passed / 714 skippedであり、追加CUDA検査は未実行である。
 全CPU suiteは2037 passed / 5278 skipped / 既存警告18件、wheel/sdist buildと
 runtime338ファイルのbyte照合も通過した。
+後続`180b2424`で独立gateと実測を確認した。128 reverseありは267,264Bとなり
+dense270,848B以下だったが、時間は0.836547〜0.862083msで、reverseなし0.830982msに
+勝たなかった。128はreverseなしを選ぶ。1024は下の再確認でcompact reverseを選ぶ。
 
-### 最適化第17段：幅係数とbeta微分のshared再利用（GPU検証中）
+### 最適化第17段：幅係数とbeta微分のshared再利用（GPU検証・再確認）
 
 runtime `180b2424`、任意の`reuse_shape_coefficients=True`。
 G/Parameter勾配kernelは入力・出力profileの周期等が一致するとき、幅係数を二度評価していた。
@@ -908,7 +911,104 @@ CPU31 passed / 732 skipped、shared添字の一意/範囲・autograd入出力20�
 全CPU2037 passed / 5296 skipped / 既存警告18件、wheel/sdist buildと338runtimeの
 byte照合も通過した。これをCUDA検証の代用にはしない。
 job `l4job-6ee2ad91ac524df0b8eb19742e01f19f`で、cache/補償勾配/compact reverseを
-独立に切り替え、正確性、racecheck、資源量、完全stepと両peakを確認する。
+独立に切り替えた。通常2567 passed / failed0 / skip12、選択racecheck46件・hazard0。
+128全819atomと1024全52,428atomのY/dX/4列勾配が独立FFT/autogradへ通過した。
+
+| 1024、補償値あり・M8 | 完全step | allocated | reserved |
+| --- | ---: | ---: | ---: |
+| counting逆index、Double勾配、shape再利用なし | 1.399503ms | 7,965,184B | 10MiB |
+| 同上、補償勾配 | 1.362043ms | 7,965,184B | 10MiB |
+| 同上、補償勾配＋shape再利用 | 1.334804ms | 7,965,184B | 10MiB |
+| compact逆index、補償勾配、shape再利用なし | 1.334848ms | 7,943,168B | 10MiB |
+| compact逆index、補償勾配＋shape再利用 | 1.311000ms | 7,943,168B | 10MiB |
+| matched dense | 0.651329ms | 16,843,264B | 22MiB |
+
+各設定1 fresh process、warm5/同期wall21。段階Graph-eventでは補償G/勾配が
+0.306176→shape再利用0.282624ms、REG255→218、STACK40/LOCAL0は同じ。
+dynamic sharedは64threadsで8192Bを別に使う。静的SHARED0を総shared量とは扱わない。
+資源値のみでoccupancyや速度原因を断定しない。
+
+fixtureのsigmaは全て一定ではなく、FP32 linspace(.2,40)である。
+1024の入力bank別atom数はT=4/8/16/32/全周で5006/5269/10538/21076/10539、
+出力側はT=8/16/32/全周で10275/10538/21076/10539。
+このfixtureでは47,422atom、約90.45%で両側の幅shapeが一致する。
+幅分布が変われば再利用率も変わる。集計はignored confirmationのsigma-distribution.jsonに置く。
+
+source `5889ccdf842d8edba7af2ece6776aecd7cc88449a4eec78fe6bec110a24d28cc`、result `39234b31c3c2dbdd5bea1086f92f9ebdf312deaea8cebe7b58ac8c5496f95047`、driver `d2c011c685959ce3b9f2bbeb26f42c5ed859e6c6a6cbfdfcd1225343ccb831ba`、binary `75cb602b183ad15cb0561eee3b5172d3469b3d79f8d28ff4b035db033b882b25`。
+runtime338・検査141、manifest81件、driver/binary、前jobとのfixture bit一致を照合し、
+ignored `output/cell-mass-opt-20261027/shape-reuse/`へ保全した。
+
+### 最新の再確認と検証済み研究設定
+
+runtime `180b2424` / 文書込みsnapshot `a0569f4f`。
+job `l4job-ac58be3290c24995ad286a78db379a0a`で各設定2 fresh process、2巡目は順番を逆転した。
+全検査/prepare/forward/backward/fused AdamWを含み、warm5/同期wall21、TF32/Graph/workspaceなし。
+固定B4/FP32/M8/tail1e-3/Q128、物理T_min入力4/出力8、A=floor(.05*N*N)、seed120。
+前jobとatoms/X/dY/初期dense Wのbit一致を確認した。
+
+| 設定 | 完全step（2 process） | allocated | reserved |
+| --- | ---: | ---: | ---: |
+| 128、compact、逆indexなし、Double値/勾配 | 0.836144 / 0.822198ms | 257KiB | 2MiB |
+| 128、従来sort | 1.137337 / 1.156262ms | 242.5KiB | 2MiB |
+| matched dense128 | 0.670791 / 0.677292ms | 264.5KiB | 2MiB |
+| 1024、compact逆index、補償勾配＋shape再利用 | 1.320542 / 1.321303ms | 7.575MiB | 10MiB |
+| 1024、同上shape再利用なし | 1.344193 / 1.332973ms | 7.575MiB | 10MiB |
+| 1024、counting逆index、shape再利用なし | 1.357824 / 1.361879ms | 7.596MiB | 10MiB |
+| matched dense1024 | 0.665759 / 0.678433ms | 16.063MiB | 22MiB |
+
+全10 memory gateで同repeatのdense以下のallocated/reservedをassertした。
+1024は時間比約1.98/1.95、128は約1.25/1.21となり、中間目安の時間2倍以内を両方で確認した。
+**最終目標のdenseの2倍の速度＝時間半分は未達**であり、ここで最適化完了とはしない。
+
+さらに全819/52,428atomを3step更新し、毎stepの更新済み参照ParameterからCPU FFT/autogradで
+Y/dX/4列勾配を独立に再計算した。FP32 rtol3e-6/atol2e-7、Parameter rtol2e-6/atol2e-7、
+AdamW exp_avg/exp_avg_sq/step rtol4e-6/atol2e-8で全step通過した。
+最大Parameter差は1024で1.5259e-5、相対・絶対許容差内でありbit一致ではない。
+正確性用Tensorは測定processへ持ち込まず、上表のallocator peakと分離した。
+確認jobでは広いsuiteを再実行せず、直前の2567件とracecheckを根拠にする。
+
+```python
+settings128 = dict(
+    c_splits=2, fuse_g_grad=True, layout_method="counting_compact",
+    z_chunk_sites=0, atom_threads=128, window_moments=False,
+    reverse_layout=False, fuse_h_c=False, fuse_backward_cin=False,
+    compensated_values=False, compensated_grad=False,
+    reuse_shape_coefficients=False, compensated_cdot=False,
+)
+settings1024 = dict(
+    c_splits=64, fuse_g_grad=True, layout_method="counting_compact",
+    z_chunk_sites=32, atom_threads=64, window_moments=True,
+    reverse_layout=True, atoms_per_split=128,
+    compensated_values=True, compensated_grad=True,
+    reuse_shape_coefficients=True, specialize_g_grad=True,
+    fuse_h_c=False, fuse_backward_cin=False, compensated_cdot=False,
+)
+```
+
+公開dispatcherや研究APIの既定値は変更しない。このfixtureでの研究選択であり、
+別のsigma分布・多軸・他GPUへの勝者とはしない。
+後続のsplit拡張は次節の未検証差分として区別する。
+
+source `2987e1553d02299c066b0a7b19851bd1a25162ae5cdbc1eb5b728968949de210`、result `59787210b9b012714722f60519aac4193268b552d82200579f0d7837cbeabbc0`、driver `67b7fd257ae49268cf545d2175b45f91f0af6c63e16b9bd2ffa1a0391eae2ea0`、binary `3414ab61f0db1513820e037d78e933075793d38a0a76feb155481ec6fe39c013`。
+runtime338・検査141、manifest55件、driver/binaryとfixture bit一致を照合し、
+ignored `output/cell-mass-opt-20261027/compact-shape-confirmation/`へ保全した。
+
+### 最適化第18段：C分割数の拡張と融合forwardの位相（GPU検証中）
+
+runtime `8bc27c2e`。C splitを1..256まで許し、必要page数が64以下のときだけ実行する。
+既存SplitPagesの64 pointer、CUDA引数とkernelの部分和レイアウトを拡大しない。
+4 native入口でpage数を検査し、超過時はpointer書込みとpartial確保前に拒否する。
+このfixtureのCin一枚は33,184Bで、S64/128/256の部分和は約2.025/4.051/8.102MiB。
+128には大きすぎるため、性能候補は1024だけでS64/128/256×grain32/64/128を比較する。
+logical scratchをdense peakへ単純加算して採用せず、完全stepの両peakを実測する。
+
+同じsourceで任意のH/C融合も、入力位相を相対回転して出力係数を作る方式から、
+正規化済み幅振幅に独立の出力位相を掛ける方式へ変えた。
+入力H、丸め、shape不一致fallback、sigma/Pを保ち、余分なFP64回転を省く。
+既定Falseとし、S/HC flagを独立に切り替える。
+CPU31 passed / 745 skipped、全CPU2037 passed / 5309 skipped / 既存警告18件、
+buildと両配布物338runtime照合は通過した。CUDA検証の代用にはしない。
+job `l4job-c0a3e6edf7b64ec7a500f4846c10c8a6`で検証する。
 
 ### 第12段までの再確認：完全stepと1024のAdamW状態
 
@@ -947,6 +1047,9 @@ source `0dc5210d24e864ce8dbde9abd32db44444899af3c62c2e5469382a6584c2c106`、resu
 CPU Actionsはsnapshot `9c972124`（runtimeは同じ）でsuccessを確認した。
 
 ### 第7段までの独立再確認と、現在使う研究設定
+
+この節のkwargsは第7〜9段時点の記録である。現在の検証済み選択は
+[最新の再確認と検証済み研究設定](#最新の再確認と検証済み研究設定)を参照する。
 
 runtime `dcf48273` / snapshot `46b069e2`（差は文書のみ）。別の所有L4で各設定2 fresh process、
 2巡目は測定順を逆転した。warm5/同期wall21、同じatom/X/dY/初期dense Wは前jobとbit一致。
