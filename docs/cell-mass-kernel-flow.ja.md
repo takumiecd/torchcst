@@ -7,11 +7,11 @@
 [sigmaから階層と周期を決める規約](#sigmaから階層と周期を決める規約)に置く。
 他の実測ノートは、その時点の実装と測定の記録であり、この設計が全て実装済みという意味ではない。
 
-**現在のCUDA runtimeは1軸1bankの固定tile/周期であり、sigma別階層分類は未実装。**
+**現在のLinear計算は1軸1bankの固定tile/周期。新しい階層版は前半の準備処理から実装する。**
 Zの二分集約木があることと、sigmaから異なるtile/周期を選ぶことを区別する。
-この追記は設計の確定と実装差分の明示であり、ParameterやCUDAの計算は変更していない。
+既存の固定bank版は比較・復元用に維持し、新幅を暗黙に適用しない。
 
-| 項目 | この文書の設計 | 現CUDA runtime（source `7c1404c1`） |
+| 項目 | この文書の設計 | 固定bank版 `cell_mass/`（source `7c1404c1`） |
 | --- | --- | --- |
 | sigmaの意味 | 新規約は集中領域の全幅、I=sigma/2 | 旧幅制御値。Pに依存する半径下限補正あり |
 | 階層分類 | T_minから2倍ずつ、Iを収める最小bankを選ぶ | 未実装。軸ごとに一つのAxis設定 |
@@ -28,6 +28,41 @@ Zの二分集約木があることと、sigmaから異なるtile/周期を選ぶ
 [`executor.py`](../src/torchcst/_backends/cuda/algorithms/linear/cell_mass/executor.py)、
 [`kernels.cu`](../src/torchcst/_backends/cuda/algorithms/linear/cell_mass/kernels.cu)。
 現状と測定条件の入口は[実測状態](cell-mass-status.ja.md)。
+
+### 実装の配置と、新しい階層版の段階
+
+固定bank版の`cell_mass/`は移動・削除せず、既存テスト・結果の比較先に残す。
+新しい実装は[`cell_mass_hierarchical/`](../src/torchcst/_backends/cuda/algorithms/linear/cell_mass_hierarchical/)
+へ分ける。旧executorの条件分岐や旧profileへの暗黙のfallbackとして追加しない。
+同じ研究branch/Draft PRで進め、復元可能な旧sourceは`8f343c16`以前に残る。
+
+| 新しい実装 | 処理と保存するもの | 状態 |
+| --- | --- | --- |
+| `plan.py` | 2倍ずつのlocal bank・全周bank・Z node位置。Tensorを持たない実行計画 | 実装済み、CPU分類検査済み |
+| `executor.prepare_layout` | 分類とstable sort。元行番号、groupの(h_out,h_in,q_out,q_in)、offsetsだけをcacheへ残す | CUDA実装済み、実GPU検証前 |
+| `preparation.cu::build_hierarchy` | bank別の周期のZ。直接生成と偶数harmonicの子からの継承。完成Zはglobal FP64 | CUDA実装済み、実GPU検証前 |
+| H/C/Y・G/dX・Parameter勾配 | 新幅profileから係数をその場で計算する | 新ディレクトリでは未実装。旧版の結果は新経路の検証ではない |
+
+新しい前半は空の雛形でなく、`prepare_layout(plan, atoms)`と
+`build_hierarchy(signal, axis, method="merge")`を実行するCUDA入口。
+直接生成だけの`method="direct"`も比較に使える。
+この段階では新しいLinear/autogradの入口を公開しない。
+Z準備関数自身にautograd bindingはなく、将来の明示的なbackwardから使う内部段階である。
+
+新しいlayout cacheにatom値や全atomキーは保持しない。所有するTensorは
+`rows[A]`（int64）、`groups[G,4]`（int32）、`offsets[G+1]`（int64）。
+groupがない場合もoffsetsは[0]。元Parameterへの参照とversionを持ち、更新後の古いcacheの使用を拒否する。
+同じatom値・planなら異なるXで再利用できる。sort/uniqueのキー・countsはprepare中だけのglobal scratch。
+一時領域の再利用は可能だが、block終了で消えるsharedだけで後続kernelへ順序を渡すことはしない。
+現在のsort/uniqueは動的shapeとhostへのerror確認を含むため、layoutのCUDA Graph対応は主張しない。
+
+各Z bankはその幅のtile nodeだけを持つ。全bankそれぞれに全幅の木を重複して作らない。
+local node数はN/n_min、N/(2*n_min)、...と減り、最後に全周nodeを一つ置く。
+1nodeは`[batch,1+2*M]`。direct kernelのsharedは128個のdouble部分和で1,024bytes/block。
+`team_size=1,2,4,8,16,32`のthread集団が一つのZ要素のsite和を分担する。
+Hのatomを複数threadで分担するという意味ではない。
+最初は全宣言bankのnodeを準備し、使われないbankの省略は依存関係を含めた後続の改善とする。
+cacheの`tensor_bytes`やZの容量はpayloadであり、完全stepのallocatorピークと混同しない。
 
 現在のprofileは[1周期分のタイル窓](cell-mass-tile-window.ja.md)。
 選んだwhole tileを共通のセル積分基底で処理し、支持境界での個別積分は行わない。
@@ -114,6 +149,8 @@ host側でshapeから出力・scratch容量を確保し、同じstreamを全起�
 
 目的はatomの意味を変えることではなく、実行用の順序と検索情報を作ること。
 atom数A=128の例では、次の作業配列を最大A要素分用意できる。
+これは一般化したsort/scanの説明用で、全配列を常設する要求ではない。
+新しい初版は上記のライブラリsort/uniqueを使い、後続へ渡す順序・範囲だけを残す。
 sort/scan用scratchはライブラリが要求する容量を別途数える。
 
 | 配列 | 内容 |
@@ -169,7 +206,8 @@ q_out[0], ..., q_out[Dout-1], q_in[0], ..., q_in[Din-1])`の辞書順。
 同じキーのatomの順序は演算を変えない。元の行番号は対応付け用で、必須の数学的な分類軸ではない。
 
 階層分類に使う幅・周期L・タイル寸法の関係は次節の規約を使う。
-ここは従来未確定だった`classify_hierarchy`の設計であり、runtimeへの接続は未実装。
+ここは従来未確定だった`classify_hierarchy`の設計。
+新ディレクトリのprepareへ実装したが、H/C/Yを含むLinearへの接続は未実装。
 中心の所属キーと、支持が重なる全タイルの集合は別である。
 
 ### sigmaから階層と周期を決める規約
@@ -326,7 +364,8 @@ backwardでも使い、optimizer更新後の次forwardで再分類する。
 #### 実装へ進む前の対応項目
 
 - 設計確定: sigma/Iの新幅規約、二分候補階層、3tile周期、全周の例外、入力出力bankのキー。
-- 未実装: 新分類とbegin/end、bank別Axis・係数写像、対応modeでのZ継承、複数bankのC展開合算。
+- 実装着手済み: 新ディレクトリの分類・group offsets・bank別Z準備。検証範囲は冒頭の表で追跡する。
+- 未実装: 新幅profileの係数写像、H/C/Yとbackwardへの接続、複数bankのC展開合算。
 - 未確定／未検証: bankに依存しない新目標profileの形状、小幅directとの接続、全周bank、
   新旧幅の明示的移行、階層遷移の誤差と微分。これらを新幅の実装完了として扱わない。
 - 採用条件: 新幅の独立oracleでY/dX/全atom勾配と更新を照合し、sort込みの完全step時間と
