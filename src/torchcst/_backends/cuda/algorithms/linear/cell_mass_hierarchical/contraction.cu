@@ -13,11 +13,11 @@ constexpr int MAX_ACCUMULATORS = (BATCH_TILE * 33 + CHUNK - 1) / CHUNK;
 
 // One harmonic of H. The caller keeps the stream and accumulators in
 // registers; every harmonic advances the stream exactly once.
-__device__ __forceinline__ void accumulate_h_harmonic(HarmonicStream<false> &stream, int harmonic,
-                                                      const double *z, int batches, int batch_begin,
-                                                      const Axis &axis, const Bank &bank,
-                                                      int first_tile, int retained,
-                                                      double (&accum)[BATCH_TILE]) {
+template <bool Compensated>
+__device__ __forceinline__ void
+accumulate_h_harmonic(HarmonicStream<false, Compensated> &stream, int harmonic, const double *z,
+                      int batches, int batch_begin, const Axis &axis, const Bank &bank,
+                      int first_tile, int retained, double (&accum)[BATCH_TILE]) {
     double cc, cs, unused_cc_beta, unused_cs_beta;
     stream.next(cc, cs, unused_cc_beta, unused_cs_beta);
     for (int offset = 0; offset < retained; ++offset) {
@@ -39,8 +39,9 @@ __device__ __forceinline__ void accumulate_h_harmonic(HarmonicStream<false> &str
     }
 }
 
-__device__ __forceinline__ void store_c_harmonic(HarmonicStream<false> &stream, int harmonic,
-                                                 int lane, double *coefficients) {
+template <bool Compensated>
+__device__ __forceinline__ void store_c_harmonic(HarmonicStream<false, Compensated> &stream,
+                                                 int harmonic, int lane, double *coefficients) {
     double cc, cs, unused_cc_beta, unused_cs_beta;
     stream.next(cc, cs, unused_cc_beta, unused_cs_beta);
     if (harmonic == 0)
@@ -51,25 +52,25 @@ __device__ __forceinline__ void store_c_harmonic(HarmonicStream<false> &stream, 
     }
 }
 
-template <int FixedModes>
+template <int FixedModes, bool Compensated = false>
 __device__ __forceinline__ void store_c_coefficients(const Profile &profile, int modes, int lane,
                                                      double *coefficients) {
-    HarmonicStream<false> stream(profile, FixedModes ? FixedModes : modes);
+    HarmonicStream<false, Compensated> stream(profile, FixedModes ? FixedModes : modes);
     if (FixedModes == 8) {
 #pragma unroll
         for (int harmonic = 0; harmonic <= 8; ++harmonic)
-            store_c_harmonic(stream, harmonic, lane, coefficients);
+            store_c_harmonic<Compensated>(stream, harmonic, lane, coefficients);
     } else {
 #pragma unroll 1
         for (int harmonic = 0; harmonic <= modes; ++harmonic)
-            store_c_harmonic(stream, harmonic, lane, coefficients);
+            store_c_harmonic<Compensated>(stream, harmonic, lane, coefficients);
     }
 }
 
 // One thread completes H for a different atom and up to four batches. The
 // amplitude is not included. Neighbour Z tiles are rotated to the same
 // unwrapped chart image as the atom's retained one-period window.
-template <typename scalar_t, typename projection_t, int FixedModes>
+template <typename scalar_t, typename projection_t, int FixedModes, bool Compensated = false>
 __global__ void compute_h_kernel(const scalar_t *atoms, const int64_t *rows, const int *groups,
                                  const int64_t *offsets, const double *z, projection_t *h,
                                  int atom_count, int group_count, int batches, Axis axis,
@@ -81,10 +82,10 @@ __global__ void compute_h_kernel(const scalar_t *atoms, const int64_t *rows, con
     int owner = groups[4 * group + (output_side ? 2 : 3)];
     Bank bank = axis.banks[bank_for_level(axis, groups[4 * group + (output_side ? 0 : 1)])];
     int original = rows[slot];
-    Profile profile = make_profile<false, FixedModes>(
+    Profile profile = make_profile<false, FixedModes, Compensated>(
         axis, bank, static_cast<double>(atoms[4 * original + 1]),
         static_cast<double>(atoms[4 * original + (output_side ? 2 : 3)]), owner);
-    HarmonicStream<false> stream(profile, FixedModes ? FixedModes : axis.modes);
+    HarmonicStream<false, Compensated> stream(profile, FixedModes ? FixedModes : axis.modes);
     double accum[BATCH_TILE] = {};
     int batch_begin = blockIdx.y * BATCH_TILE;
     // Window Z has already combined and rotated the retained tiles into the
@@ -95,13 +96,13 @@ __global__ void compute_h_kernel(const scalar_t *atoms, const int64_t *rows, con
     if (FixedModes == 8) {
 #pragma unroll
         for (int harmonic = 0; harmonic <= 8; ++harmonic)
-            accumulate_h_harmonic(stream, harmonic, z, batches, batch_begin, axis, bank, first_tile,
-                                  retained, accum);
+            accumulate_h_harmonic<Compensated>(stream, harmonic, z, batches, batch_begin, axis,
+                                               bank, first_tile, retained, accum);
     } else {
 #pragma unroll 1
         for (int harmonic = 0; harmonic <= axis.modes; ++harmonic)
-            accumulate_h_harmonic(stream, harmonic, z, batches, batch_begin, axis, bank, first_tile,
-                                  retained, accum);
+            accumulate_h_harmonic<Compensated>(stream, harmonic, z, batches, batch_begin, axis,
+                                               bank, first_tile, retained, accum);
     }
     for (int local = 0; local < BATCH_TILE && batch_begin + local < batches; ++local)
         h[(batch_begin + local) * atom_count + slot] = accum[local];
@@ -127,7 +128,7 @@ __device__ int lower_group(const int *groups, int count, int ho, int hi, int qo)
 // different atom in a 32-atom chunk. Shared holds only this chunk's
 // coefficients and amp*H. C has one writer per element, without atom-sized
 // partial C arrays.
-template <typename scalar_t, typename projection_t, int FixedModes>
+template <typename scalar_t, typename projection_t, int FixedModes, bool Compensated = false>
 __global__ void compute_c_kernel(const scalar_t *atoms, const int64_t *rows, const int *groups,
                                  const int64_t *offsets, const projection_t *h, double *c,
                                  int atom_count, int group_count, int batches, Axis input,
@@ -167,10 +168,11 @@ __global__ void compute_c_kernel(const scalar_t *atoms, const int64_t *rows, con
             bool valid = slot < range_end;
             int original = valid ? rows[slot] : 0;
             if (valid) {
-                Profile profile = make_profile<false, FixedModes>(
+                Profile profile = make_profile<false, FixedModes, Compensated>(
                     output, bank, static_cast<double>(atoms[4 * original + 1]),
                     static_cast<double>(atoms[4 * original + (reverse ? 3 : 2)]), owner);
-                store_c_coefficients<FixedModes>(profile, output.modes, lane, coefficients);
+                store_c_coefficients<FixedModes, Compensated>(profile, output.modes, lane,
+                                                              coefficients);
             } else {
                 for (int mode = 0; mode < output.basis_count(); ++mode)
                     coefficients[mode * SHARED_STRIDE + lane] = 0;
@@ -203,7 +205,7 @@ __global__ void compute_c_kernel(const scalar_t *atoms, const int64_t *rows, con
 // Consume the intersection of one group's sorted-slot range and this split's
 // interval in the concatenation of all groups belonging to the owner. All
 // lanes take the same branches and participate in every shared-memory barrier.
-template <typename scalar_t, typename projection_t, int FixedModes>
+template <typename scalar_t, typename projection_t, int FixedModes, bool Compensated = false>
 __device__ void split_consume_range(const scalar_t *atoms, const int64_t *rows,
                                     const projection_t *h, int atom_count, int batches, Axis output,
                                     Bank bank, int owner, bool reverse, int batch_begin, int begin,
@@ -221,10 +223,11 @@ __device__ void split_consume_range(const scalar_t *atoms, const int64_t *rows,
         bool valid = slot < begin + last;
         int original = valid ? rows[slot] : 0;
         if (valid) {
-            Profile profile = make_profile<false, FixedModes>(
+            Profile profile = make_profile<false, FixedModes, Compensated>(
                 output, bank, static_cast<double>(atoms[4 * original + 1]),
                 static_cast<double>(atoms[4 * original + (reverse ? 3 : 2)]), owner);
-            store_c_coefficients<FixedModes>(profile, output.modes, lane, coefficients);
+            store_c_coefficients<FixedModes, Compensated>(profile, output.modes, lane,
+                                                          coefficients);
         } else {
             for (int mode = 0; mode < output.basis_count(); ++mode)
                 coefficients[mode * SHARED_STRIDE + lane] = 0;
@@ -271,7 +274,7 @@ __device__ inline bool compatible_sigma_banks(const Axis &a, int ai, const Axis 
     return fmin(au, bu) > fmax(al, bl);
 }
 
-template <typename scalar_t, typename projection_t, int FixedModes>
+template <typename scalar_t, typename projection_t, int FixedModes, bool Compensated = false>
 __global__ void
 compute_c_split_kernel(const scalar_t *atoms, const int64_t *rows, const int *groups,
                        const int64_t *offsets, const projection_t *h, SplitPages pages,
@@ -312,7 +315,7 @@ compute_c_split_kernel(const scalar_t *atoms, const int64_t *rows, const int *gr
                     if (pass == 0)
                         prefix += end - begin;
                     else
-                        split_consume_range<scalar_t, projection_t, FixedModes>(
+                        split_consume_range<scalar_t, projection_t, FixedModes, Compensated>(
                             atoms, rows, h, atom_count, batches, output, bank, owner, reverse,
                             batch_begin, begin, end, split_begin, split_end, prefix, coefficients,
                             scaled_h, accum);
@@ -331,7 +334,7 @@ compute_c_split_kernel(const scalar_t *atoms, const int64_t *rows, const int *gr
                     if (pass == 0)
                         prefix += end - begin;
                     else
-                        split_consume_range<scalar_t, projection_t, FixedModes>(
+                        split_consume_range<scalar_t, projection_t, FixedModes, Compensated>(
                             atoms, rows, h, atom_count, batches, output, bank, owner, reverse,
                             batch_begin, begin, end, split_begin, split_end, prefix, coefficients,
                             scaled_h, accum);
@@ -356,7 +359,7 @@ compute_c_split_kernel(const scalar_t *atoms, const int64_t *rows, const int *gr
                 if (pass == 0)
                     prefix += end - begin;
                 else
-                    split_consume_range<scalar_t, projection_t, FixedModes>(
+                    split_consume_range<scalar_t, projection_t, FixedModes, Compensated>(
                         atoms, rows, h, atom_count, batches, output, bank, owner, reverse,
                         batch_begin, begin, end, split_begin, split_end, prefix, coefficients,
                         scaled_h, accum);
@@ -603,7 +606,8 @@ __global__ void fused_grad_cin_kernel(const atom_t *atoms, const int64_t *rows, 
 
 // Reverse slots gather original-layout slots without copying atom values.
 // A split owns a contiguous input-owner interval, even across group boundaries.
-template <bool Fused, typename atom_t, typename projection_t, int FixedModes>
+template <bool Fused, typename atom_t, typename projection_t, int FixedModes,
+          bool Compensated = false>
 __global__ void
 reverse_cin_kernel(const atom_t *atoms, const int64_t *rows, const int *groups,
                    const int64_t *offsets, const int *reverse_slots, const int64_t *reverse_offsets,
@@ -659,10 +663,11 @@ reverse_cin_kernel(const atom_t *atoms, const int64_t *rows, const int *groups,
                     bank, owner, group, slot, lane, windowed, coefficients, scaled_g);
             } else {
                 int original = rows[slot];
-                Profile profile = make_profile<false, FixedModes>(
+                Profile profile = make_profile<false, FixedModes, Compensated>(
                     input, bank, static_cast<double>(atoms[4 * original + 1]),
                     static_cast<double>(atoms[4 * original + 3]), owner);
-                store_c_coefficients<FixedModes>(profile, input.modes, lane, coefficients);
+                store_c_coefficients<FixedModes, Compensated>(profile, input.modes, lane,
+                                                              coefficients);
                 for (int b = 0; b < BATCH_TILE; ++b)
                     scaled_g[b * SHARED_STRIDE + lane] =
                         batch_begin + b < batches ? static_cast<double>(atoms[4 * original]) *
@@ -769,9 +774,13 @@ __global__ void expand_c_kernel(const double *c, scalar_t *y, int batches, Axis 
 
 torch::Tensor compute_h(torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups,
                         torch::Tensor offsets, torch::Tensor z, std::vector<double> config,
-                        bool output_side, bool float_storage, int threads, bool windowed) {
+                        bool output_side, bool float_storage, int threads, bool windowed,
+                        bool compensated) {
     check_layout(atoms, rows, groups, offsets);
     Axis axis = parse_axis(config);
+    TORCH_CHECK(!compensated || (axis.modes == 8 && axis.tail_bound == 1e-3 &&
+                                 atoms.scalar_type() == torch::kFloat32 && float_storage),
+                "compensated values require M8, tail 1e-3 and FP32 atoms/projections");
     check_moments(z, atoms, axis);
     TORCH_CHECK(z.size(0) * atoms.size(0) <= INT_MAX, "H exceeds index capacity");
     TORCH_CHECK(power_of_two(threads) && threads >= 32 && threads <= 256, "invalid atom threads");
@@ -786,17 +795,21 @@ torch::Tensor compute_h(torch::Tensor atoms, torch::Tensor rows, torch::Tensor g
     AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "hierarchical_compute_h_atoms", [&] {
         using atom_t = scalar_t;
         AT_DISPATCH_FLOATING_TYPES(h.scalar_type(), "hierarchical_compute_h_storage", [&] {
-            auto launch = [&](auto tag) {
+            auto launch = [&](auto tag, auto compensated_tag) {
                 constexpr int fixed_modes = decltype(tag)::value;
-                compute_h_kernel<atom_t, scalar_t, fixed_modes><<<grid, threads, 0, stream>>>(
-                    atoms.data_ptr<atom_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
-                    offsets.data_ptr<int64_t>(), z.data_ptr<double>(), h.data_ptr<scalar_t>(),
-                    atoms.size(0), groups.size(0), z.size(0), axis, output_side, windowed);
+                constexpr bool use_compensated = decltype(compensated_tag)::value;
+                compute_h_kernel<atom_t, scalar_t, fixed_modes, use_compensated>
+                    <<<grid, threads, 0, stream>>>(
+                        atoms.data_ptr<atom_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
+                        offsets.data_ptr<int64_t>(), z.data_ptr<double>(), h.data_ptr<scalar_t>(),
+                        atoms.size(0), groups.size(0), z.size(0), axis, output_side, windowed);
             };
-            if (axis.modes == 8)
-                launch(std::integral_constant<int, 8>{});
+            if (compensated)
+                launch(std::integral_constant<int, 8>{}, std::true_type{});
+            else if (axis.modes == 8)
+                launch(std::integral_constant<int, 8>{}, std::false_type{});
             else
-                launch(std::integral_constant<int, 0>{});
+                launch(std::integral_constant<int, 0>{}, std::false_type{});
         });
     });
     C10_CUDA_KERNEL_LAUNCH_CHECK();
@@ -805,9 +818,13 @@ torch::Tensor compute_h(torch::Tensor atoms, torch::Tensor rows, torch::Tensor g
 
 torch::Tensor compute_c(torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups,
                         torch::Tensor offsets, torch::Tensor h, std::vector<double> input_config,
-                        std::vector<double> output_config, bool reverse) {
+                        std::vector<double> output_config, bool reverse, bool compensated) {
     check_layout(atoms, rows, groups, offsets);
     Axis input = parse_axis(input_config), output = parse_axis(output_config);
+    TORCH_CHECK(!compensated ||
+                    (output.modes == 8 && output.tail_bound == 1e-3 &&
+                     atoms.scalar_type() == torch::kFloat32 && h.scalar_type() == torch::kFloat32),
+                "compensated values require target M8, tail 1e-3 and FP32 atoms/projections");
     TORCH_CHECK(h.is_contiguous() && h.device() == atoms.device() && h.dim() == 2 &&
                     (h.scalar_type() == torch::kFloat64 || h.scalar_type() == torch::kFloat32) &&
                     h.size(1) == atoms.size(0) && h.numel() <= INT_MAX,
@@ -825,17 +842,21 @@ torch::Tensor compute_c(torch::Tensor atoms, torch::Tensor rows, torch::Tensor g
     AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "hierarchical_compute_c_atoms", [&] {
         using atom_t = scalar_t;
         AT_DISPATCH_FLOATING_TYPES(h.scalar_type(), "hierarchical_compute_c_storage", [&] {
-            auto launch = [&](auto tag) {
+            auto launch = [&](auto tag, auto compensated_tag) {
                 constexpr int fixed_modes = decltype(tag)::value;
-                compute_c_kernel<atom_t, scalar_t, fixed_modes><<<grid, CHUNK, shared, stream>>>(
-                    atoms.data_ptr<atom_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
-                    offsets.data_ptr<int64_t>(), h.data_ptr<scalar_t>(), c.data_ptr<double>(),
-                    atoms.size(0), groups.size(0), h.size(0), input, output, reverse);
+                constexpr bool use_compensated = decltype(compensated_tag)::value;
+                compute_c_kernel<atom_t, scalar_t, fixed_modes, use_compensated>
+                    <<<grid, CHUNK, shared, stream>>>(
+                        atoms.data_ptr<atom_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
+                        offsets.data_ptr<int64_t>(), h.data_ptr<scalar_t>(), c.data_ptr<double>(),
+                        atoms.size(0), groups.size(0), h.size(0), input, output, reverse);
             };
-            if (output.modes == 8)
-                launch(std::integral_constant<int, 8>{});
+            if (compensated)
+                launch(std::integral_constant<int, 8>{}, std::true_type{});
+            else if (output.modes == 8)
+                launch(std::integral_constant<int, 8>{}, std::false_type{});
             else
-                launch(std::integral_constant<int, 0>{});
+                launch(std::integral_constant<int, 0>{}, std::false_type{});
         });
     });
     C10_CUDA_KERNEL_LAUNCH_CHECK();
@@ -848,9 +869,13 @@ torch::Tensor compute_c(torch::Tensor atoms, torch::Tensor rows, torch::Tensor g
 torch::Tensor compute_c_split(torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups,
                               torch::Tensor offsets, torch::Tensor h,
                               std::vector<double> input_config, std::vector<double> output_config,
-                              bool reverse, int splits, int atoms_per_split) {
+                              bool reverse, int splits, int atoms_per_split, bool compensated) {
     check_layout(atoms, rows, groups, offsets);
     Axis input = parse_axis(input_config), output = parse_axis(output_config);
+    TORCH_CHECK(!compensated ||
+                    (output.modes == 8 && output.tail_bound == 1e-3 &&
+                     atoms.scalar_type() == torch::kFloat32 && h.scalar_type() == torch::kFloat32),
+                "compensated values require target M8, tail 1e-3 and FP32 atoms/projections");
     TORCH_CHECK(splits >= 1 && splits <= 64, "splits must lie in [1,64]");
     TORCH_CHECK(atoms_per_split >= 0 && atoms_per_split <= 65536,
                 "atoms_per_split must lie in [0,65536]");
@@ -890,19 +915,22 @@ torch::Tensor compute_c_split(torch::Tensor atoms, torch::Tensor rows, torch::Te
     AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "hierarchical_split_c_atoms", [&] {
         using atom_t = scalar_t;
         AT_DISPATCH_FLOATING_TYPES(h.scalar_type(), "hierarchical_split_c_storage", [&] {
-            auto launch = [&](auto tag) {
+            auto launch = [&](auto tag, auto compensated_tag) {
                 constexpr int fixed_modes = decltype(tag)::value;
-                compute_c_split_kernel<atom_t, scalar_t, fixed_modes>
+                constexpr bool use_compensated = decltype(compensated_tag)::value;
+                compute_c_split_kernel<atom_t, scalar_t, fixed_modes, use_compensated>
                     <<<grid, CHUNK, shared, stream>>>(
                         atoms.data_ptr<atom_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
                         offsets.data_ptr<int64_t>(), h.data_ptr<scalar_t>(), pages, atoms.size(0),
                         groups.size(0), h.size(0), input, output, reverse, cartesian, splits,
                         atoms_per_split);
             };
-            if (output.modes == 8)
-                launch(std::integral_constant<int, 8>{});
+            if (compensated)
+                launch(std::integral_constant<int, 8>{}, std::true_type{});
+            else if (output.modes == 8)
+                launch(std::integral_constant<int, 8>{}, std::false_type{});
             else
-                launch(std::integral_constant<int, 0>{});
+                launch(std::integral_constant<int, 0>{}, std::false_type{});
         });
     });
     C10_CUDA_KERNEL_LAUNCH_CHECK();
@@ -988,11 +1016,15 @@ static std::vector<torch::Tensor> compute_reverse_cin_impl(
     torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups, torch::Tensor offsets,
     torch::Tensor reverse_slots, torch::Tensor reverse_offsets, torch::Tensor zx, torch::Tensor zy,
     torch::Tensor h, std::vector<double> input_config, std::vector<double> output_config,
-    int splits, bool windowed, int atoms_per_split) {
+    int splits, bool windowed, int atoms_per_split, bool compensated = false) {
     check_cuda_float_matrix(atoms);
     TORCH_CHECK(atoms.size(1) == 4 && atoms.size(0) <= 65536, "invalid atoms");
     Axis input = parse_axis(input_config);
     Axis output = Fused ? parse_axis(output_config) : input;
+    TORCH_CHECK(!compensated ||
+                    (!Fused && input.modes == 8 && input.tail_bound == 1e-3 &&
+                     atoms.scalar_type() == torch::kFloat32 && h.scalar_type() == torch::kFloat32),
+                "compensated values require target M8, tail 1e-3 and FP32 atoms/projections");
     TORCH_CHECK(rows.is_contiguous() && rows.device() == atoms.device() && rows.dim() == 1 &&
                     rows.scalar_type() == torch::kInt64 && rows.numel() == atoms.size(0),
                 "invalid rows");
@@ -1055,9 +1087,10 @@ static std::vector<torch::Tensor> compute_reverse_cin_impl(
     AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "hierarchical_reverse_cin_atoms", [&] {
         using atom_t = scalar_t;
         AT_DISPATCH_FLOATING_TYPES(h.scalar_type(), "hierarchical_reverse_cin_projection", [&] {
-            auto launch = [&](auto tag) {
+            auto launch = [&](auto tag, auto compensated_tag) {
                 constexpr int fixed_modes = decltype(tag)::value;
-                reverse_cin_kernel<Fused, atom_t, scalar_t, fixed_modes>
+                constexpr bool use_compensated = decltype(compensated_tag)::value;
+                reverse_cin_kernel<Fused, atom_t, scalar_t, fixed_modes, use_compensated>
                     <<<grid, CHUNK, shared, stream>>>(
                         atoms.data_ptr<atom_t>(), rows.data_ptr<int64_t>(),
                         Fused ? groups.data_ptr<int>() : nullptr,
@@ -1070,10 +1103,18 @@ static std::vector<torch::Tensor> compute_reverse_cin_impl(
                         Fused ? groups.size(0) : 0, h.size(0), input, output, splits,
                         atoms_per_split, windowed);
             };
-            if (input.modes == 8 && (!Fused || output.modes == 8))
-                launch(std::integral_constant<int, 8>{});
-            else
-                launch(std::integral_constant<int, 0>{});
+            if constexpr (!Fused) {
+                if (compensated)
+                    launch(std::integral_constant<int, 8>{}, std::true_type{});
+                else if (input.modes == 8)
+                    launch(std::integral_constant<int, 8>{}, std::false_type{});
+                else
+                    launch(std::integral_constant<int, 0>{}, std::false_type{});
+            } else if (input.modes == 8 && output.modes == 8) {
+                launch(std::integral_constant<int, 8>{}, std::false_type{});
+            } else {
+                launch(std::integral_constant<int, 0>{}, std::false_type{});
+            }
         });
     });
     C10_CUDA_KERNEL_LAUNCH_CHECK();
@@ -1087,10 +1128,10 @@ static std::vector<torch::Tensor> compute_reverse_cin_impl(
 torch::Tensor compute_input_c_reverse(torch::Tensor atoms, torch::Tensor rows,
                                       torch::Tensor reverse_slots, torch::Tensor reverse_offsets,
                                       torch::Tensor g, std::vector<double> input_config, int splits,
-                                      int atoms_per_split) {
+                                      int atoms_per_split, bool compensated) {
     return compute_reverse_cin_impl<false>(atoms, rows, {}, {}, reverse_slots, reverse_offsets, {},
-                                           {}, g, input_config, {}, splits, false,
-                                           atoms_per_split)[0];
+                                           {}, g, input_config, {}, splits, false, atoms_per_split,
+                                           compensated)[0];
 }
 
 std::vector<torch::Tensor> compute_g_parameter_grad_cin_reverse(

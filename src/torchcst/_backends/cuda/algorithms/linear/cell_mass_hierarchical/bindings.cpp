@@ -18,11 +18,13 @@ Tensor build_hierarchy_chunked(Tensor signal, Config axis, bool merge, int team_
                                int chunk_sites);
 Tensor build_window_moments(Tensor z, Config axis);
 Tensor compute_h(Tensor atoms, Tensor rows, Tensor groups, Tensor offsets, Tensor z, Config axis,
-                 bool output_side, bool float_storage, int threads, bool windowed);
+                 bool output_side, bool float_storage, int threads, bool windowed,
+                 bool compensated);
 Tensor compute_c(Tensor atoms, Tensor rows, Tensor groups, Tensor offsets, Tensor h, Config input,
-                 Config output, bool reverse);
+                 Config output, bool reverse, bool compensated);
 Tensor compute_c_split(Tensor atoms, Tensor rows, Tensor groups, Tensor offsets, Tensor h,
-                       Config input, Config output, bool reverse, int splits, int atoms_per_split);
+                       Config input, Config output, bool reverse, int splits, int atoms_per_split,
+                       bool compensated);
 std::vector<Tensor> compute_g_and_parameter_grad(Tensor atoms, Tensor rows, Tensor groups,
                                                  Tensor offsets, Tensor zx, Tensor zy, Tensor h,
                                                  Config input, Config output, int threads,
@@ -36,7 +38,7 @@ std::vector<Tensor> compute_g_parameter_grad_cin(Tensor atoms, Tensor rows, Tens
                                                  bool windowed);
 Tensor compute_input_c_reverse(Tensor atoms, Tensor rows, Tensor reverse_slots,
                                Tensor reverse_offsets, Tensor g, Config input, int splits,
-                               int atoms_per_split);
+                               int atoms_per_split, bool compensated);
 std::vector<Tensor> compute_g_parameter_grad_cin_reverse(Tensor atoms, Tensor rows, Tensor groups,
                                                          Tensor offsets, Tensor reverse_slots,
                                                          Tensor reverse_offsets, Tensor zx,

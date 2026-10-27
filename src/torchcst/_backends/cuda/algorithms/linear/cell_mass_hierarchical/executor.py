@@ -242,13 +242,36 @@ def build_window_moments(z, axis):
     return _extension().build_window_moments(z, axis.native_config())
 
 
+def _validate_compensated(compensated, atoms, projection_dtype, axis):
+    if type(compensated) is not bool:
+        raise ValueError("compensated must be bool")
+    if compensated and (
+        atoms.dtype != torch.float32
+        or projection_dtype != torch.float32
+        or axis.modes != 8
+        or axis.tail_bound != 1e-3
+    ):
+        raise ValueError(
+            "compensated values require M8, tail 1e-3 and FP32 atoms/projections"
+        )
+
+
 def compute_h(
-    plan, atoms, layout, zx, *, storage_dtype=torch.float64, threads=128, windowed=False
+    plan,
+    atoms,
+    layout,
+    zx,
+    *,
+    storage_dtype=torch.float64,
+    threads=128,
+    windowed=False,
+    compensated=False,
 ):
     """Complete H[batch,sorted_slot], before amplitude, from all retained tiles.
 
     One thread owns one atom; coefficients and mass normalization are generated
-    in registers from the original sigma. This internal stage has no autograd.
+    in registers from the original sigma. Compensated values are opt-in;
+    this internal stage has no autograd.
     """
     if storage_dtype not in (torch.float32, torch.float64):
         raise ValueError("H/G storage must be float32 or float64")
@@ -256,6 +279,7 @@ def compute_h(
         raise ValueError("atom threads must be 32,64,128 or 256")
     if type(windowed) is not bool:
         raise ValueError("windowed must be bool")
+    _validate_compensated(compensated, atoms, storage_dtype, plan.input)
     layout.validate_for(atoms, plan)
     return _extension().compute_h(
         atoms,
@@ -268,20 +292,25 @@ def compute_h(
         storage_dtype == torch.float32,
         threads,
         windowed,
+        compensated,
     )
 
 
-def compute_c(plan, atoms, layout, h, *, splits=1, atoms_per_split=0):
+def compute_c(
+    plan, atoms, layout, h, *, splits=1, atoms_per_split=0, compensated=False
+):
     """Complete output owner C[batch,node,mode] using 32-atom shared chunks.
 
     The small cross-block coefficient buffer is bank/node sized, not an
     atom-by-mode table. Each C element has one writer, with amplitude applied
     once. The next stage adds bank contributions after site expansion.
+    Compensated values are opt-in for the supported FP32 target axis.
     """
     if type(splits) is not int or not 1 <= splits <= 64:
         raise ValueError("C splits must be an integer in [1,64]")
     if type(atoms_per_split) is not int or not 0 <= atoms_per_split <= 65536:
         raise ValueError("atoms_per_split must be an integer in [0,65536]")
+    _validate_compensated(compensated, atoms, h.dtype, plan.output)
     layout.validate_for(atoms, plan)
     native = _extension()
     arguments = (
@@ -295,8 +324,8 @@ def compute_c(plan, atoms, layout, h, *, splits=1, atoms_per_split=0):
         False,
     )
     if splits == 1:
-        return native.compute_c(*arguments)
-    return native.compute_c_split(*arguments, splits, atoms_per_split)
+        return native.compute_c(*arguments, compensated)
+    return native.compute_c_split(*arguments, splits, atoms_per_split, compensated)
 
 
 def expand_c(c, axis, like, *, sites_per_block=32):
@@ -339,12 +368,21 @@ def forward_only(
 
 
 def compute_g(
-    plan, atoms, layout, zy, *, storage_dtype=torch.float64, threads=128, windowed=False
+    plan,
+    atoms,
+    layout,
+    zy,
+    *,
+    storage_dtype=torch.float64,
+    threads=128,
+    windowed=False,
+    compensated=False,
 ):
     """Project dY onto each output profile: G[batch,sorted_slot], without amp.
 
     This uses the same contraction as H, with output levels/owners/centers.
     G can be reused by dX and all four atom-parameter gradients.
+    Compensated values are opt-in for the supported FP32 output axis.
     """
     if storage_dtype not in (torch.float32, torch.float64):
         raise ValueError("H/G storage must be float32 or float64")
@@ -352,6 +390,7 @@ def compute_g(
         raise ValueError("atom threads must be 32,64,128 or 256")
     if type(windowed) is not bool:
         raise ValueError("windowed must be bool")
+    _validate_compensated(compensated, atoms, storage_dtype, plan.output)
     layout.validate_for(atoms, plan)
     return _extension().compute_h(
         atoms,
@@ -364,6 +403,7 @@ def compute_g(
         storage_dtype == torch.float32,
         threads,
         windowed,
+        compensated,
     )
 
 
@@ -374,16 +414,20 @@ def _validate_reverse_grain(layout, atoms_per_split):
         raise ValueError("atoms_per_split requires a reverse layout")
 
 
-def compute_input_c(plan, atoms, layout, g, *, splits=1, atoms_per_split=0):
+def compute_input_c(
+    plan, atoms, layout, g, *, splits=1, atoms_per_split=0, compensated=False
+):
     """Accumulate amp*G into input owner C; no dX atomic or packed atom copy.
 
     A reverse index gathers forward slots in contiguous input-owner intervals.
     Without one, the reference route visits matching output-sorted group ranges.
     A positive atoms_per_split bounds active split count by each owner's work;
     zero retains the requested fixed split count.
+    Compensated values are opt-in for the supported FP32 input axis.
     """
     if type(splits) is not int or not 1 <= splits <= 64:
         raise ValueError("C splits must be an integer in [1,64]")
+    _validate_compensated(compensated, atoms, g.dtype, plan.input)
     layout.validate_for(atoms, plan)
     _validate_reverse_grain(layout, atoms_per_split)
     native = _extension()
@@ -397,6 +441,7 @@ def compute_input_c(plan, atoms, layout, g, *, splits=1, atoms_per_split=0):
             plan.input.native_config(),
             splits,
             atoms_per_split,
+            compensated,
         )
     arguments = (
         atoms,
@@ -409,8 +454,8 @@ def compute_input_c(plan, atoms, layout, g, *, splits=1, atoms_per_split=0):
         True,
     )
     if splits == 1:
-        return native.compute_c(*arguments)
-    return native.compute_c_split(*arguments, splits, atoms_per_split)
+        return native.compute_c(*arguments, compensated)
+    return native.compute_c_split(*arguments, splits, atoms_per_split, compensated)
 
 
 def parameter_grad(plan, atoms, layout, zx, zy, h, g, *, threads=128, windowed=False):
@@ -534,6 +579,7 @@ class _HierarchicalLinear(torch.autograd.Function):
         window_moments,
         fuse_backward_cin,
         atoms_per_split,
+        compensated_values,
     ):
         zx = build_hierarchy(
             x,
@@ -554,9 +600,16 @@ class _HierarchicalLinear(torch.autograd.Function):
             storage_dtype=atoms.dtype,
             threads=atom_threads,
             windowed=window_moments,
+            compensated=compensated_values,
         )
         c = compute_c(
-            plan, atoms, layout, h, splits=c_splits, atoms_per_split=atoms_per_split
+            plan,
+            atoms,
+            layout,
+            h,
+            splits=c_splits,
+            atoms_per_split=atoms_per_split,
+            compensated=compensated_values,
         )
         y = expand_c(c, plan.output, x, sites_per_block=sites_per_block)
         ctx.plan = plan
@@ -570,6 +623,7 @@ class _HierarchicalLinear(torch.autograd.Function):
         ctx.window_moments = window_moments
         ctx.fuse_backward_cin = fuse_backward_cin
         ctx.atoms_per_split = atoms_per_split
+        ctx.compensated_values = compensated_values
         ctx.source_version = atoms._version
         # save_for_backward checks atom AND layout-buffer mutations. Avoid
         # keeping the source x: Zx already contains the needed contractions.
@@ -655,6 +709,7 @@ class _HierarchicalLinear(torch.autograd.Function):
                 storage_dtype=atoms.dtype,
                 threads=ctx.atom_threads,
                 windowed=ctx.window_moments,
+                compensated=ctx.compensated_values,
             )
         if ctx.needs_input_grad[0]:
             if cin is None:
@@ -665,6 +720,7 @@ class _HierarchicalLinear(torch.autograd.Function):
                     g,
                     splits=ctx.c_splits,
                     atoms_per_split=ctx.atoms_per_split,
+                    compensated=ctx.compensated_values,
                 )
             dx = expand_c(cin, plan.input, dy, sites_per_block=ctx.sites_per_block)
             del cin
@@ -684,6 +740,7 @@ class _HierarchicalLinear(torch.autograd.Function):
         return (
             dx,
             datoms,
+            None,
             None,
             None,
             None,
@@ -717,16 +774,20 @@ def hierarchical_linear(
     fuse_backward_cin=False,
     reverse_layout=False,
     atoms_per_split=0,
+    compensated_values=False,
 ):
     """Private research autograd route, using this forward's bank/owner choices.
 
     Forward saves Zx/H only if atom gradients are requested. Backward builds Zy
     and G once, then uses them for dX and parameter gradients. No dense W, dW,
     packed atom values, global coefficient table, or separate dH is allocated.
-    H/G storage uses the input dtype; all contractions, Z and C remain double.
+    H/G storage uses the input dtype. Opt-in compensated values apply to H,
+    output C, standalone G and separate input C; fused gradients stay double.
     Double backward and full-route CUDA Graph capture are not supported yet
     (preparation has dynamic output shapes and host checks).
     """
+    _validate_compensated(compensated_values, atoms, atoms.dtype, plan.input)
+    _validate_compensated(compensated_values, atoms, atoms.dtype, plan.output)
     if type(reverse_layout) is not bool:
         raise ValueError("reverse_layout must be bool")
     if type(atoms_per_split) is not int or not 0 <= atoms_per_split <= 65536:
@@ -783,4 +844,5 @@ def hierarchical_linear(
         window_moments,
         fuse_backward_cin,
         atoms_per_split,
+        compensated_values,
     )
