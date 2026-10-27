@@ -62,7 +62,45 @@ Zの二分集約木があることと、sigmaから異なるtile/周期を選ぶ
 `build_hierarchy(signal, axis, method="merge")`を実行するCUDA入口。
 直接生成だけの`method="direct"`も比較に使える。
 研究用の`forward_only`はprepare→Z→H→C→Yを呼び、detached入力の診断用として残す。
-新しい`hierarchical_linear`は明示的なautograd bindingを持つ。公開CSTLinear/dispatcherへの登録はない。
+新しい`hierarchical_linear`は明示的なautograd bindingを持つ。
+PR #121の時点では公開CSTLinearへ未接続だった。現在の接続作業は次節を参照する。
+
+### CSTLinearへの明示接続と学習確認（2026-10-27）
+
+`presets.cell_mass`と`CellIntegratedProfileBinding`で面積方式を宣言し、
+`PhysicalAmpWidthSpec`によりatomを`[amplitude,sigma,output_center,input_center]`のまま扱う。
+旧Polar・点サンプル・L2の宣言にこの演算を混ぜない。チャートは入力・出力それぞれ
+凍結1D周期RegularGridとし、T_minはprofileの数学的な境界としてcheckpointにも検査する。
+新しい設計文書は増やさず、公開例はREADMEに置く。
+
+Algorithm `cuda_cell_mass_hierarchical/v1`とRecipeの明示Planをcatalogへ登録する。
+`VALIDATED_128`と`VALIDATED_1024`は既存の検証済みCUDA kwargsを選ぶ。
+自動selectorとbenchmark DBへの採用は含めない。新しいprepareは不変のgeometryだけを
+保持し、毎forwardに現atomから分類・countingを作る。atomの複製・全係数表は作らず、
+layoutはstate_dictへ保存しない。Torch参照は同じ宣言からセル積分を独立に計算する。
+
+`CSTOptimizer`の`cell_mass_physical`方針は物理sigmaへの提案だけを
+`[sigma_floor,min(Q_in,Q_out)/3]`へ射影する。振幅と中心はEuclidean更新。
+評価時にsigmaを丸めたりlog-widthへ変換したりしない。普通のoptimizerを使う場合は
+呼び出し側が定義域を維持する。まだ二階微分・Graph学習を保証しない。
+
+接続後のGPU検査は128/1024のY・dX・全atom勾配と更新を確認する。
+その後の最初の学習確認はMNIST全60,000/10,000件、3 epoch、B32、seed120。
+`784→width→width→10`の中央正方層をCST/denseで比較し、widthは128/1024、
+atom数はfloor(.05*width²)。同じ初期実効W・外側層・各epochのshuffle順を使う。
+初期sigmaはUniform(2,40)、初期振幅だけを実効WのRMS=1/sqrt(width)へ調整する。
+これは初期化のgainでありprofileの面積正規化を変える処理ではない。
+
+実験harnessは`benchmarks/training/cell_mass_mnist.py`。
+CSTは公開CSTLinear＋CSTOptimizer、denseは通常のfused AdamWを使う。
+データgather・loss・全backward・実optimizer込みのepoch時間とallocated/reservedを測り、
+評価・sigma診断・保存はその計時とpeakから除く。常駐データは両者のpeakに含む。
+sigma分位点・初期値からの変化・bank人数・owner偏り・group人数をepochごとに残す。
+1 seed/3 epochは動作と学習傾向の確認であり、汎用精度の証明ではない。
+従来B4の合成完全step結果とB32の実学習結果は別の条件として記録する。
+2048/4096/8192対応は、この結果を見てから進める。
+
+現時点で接続CPU検査と全CPU suiteは通過。GPU接続・学習結果はまだ未確認。
 
 新しいlayout cacheにatom値や全atomキーは保持しない。基本のTensorは
 `rows[A]`（int64）、`groups[G,4]`（int32）、`offsets[G+1]`（int64）。

@@ -6,6 +6,9 @@ from .registry import Registry
 
 
 def make_registry():
+    from .cuda.algorithms.linear.cell_mass_hierarchical.algorithm import (
+        HierarchicalCellMassAlgorithm,
+    )
     from .cuda.algorithms.linear.normalized_euclidean_strip import (
         NormalizedFullAlgorithm,
         NormalizedWindowAlgorithm,
@@ -24,6 +27,7 @@ def make_registry():
 
     registry = Registry()
     for algorithm in (
+        HierarchicalCellMassAlgorithm(),
         MaterializedAlgorithm(),
         FactoredAlgorithm(),
         FourierTilesAlgorithm(),

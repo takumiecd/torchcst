@@ -2,7 +2,12 @@
 
 from .activity_width import DirectAmpWidthSpec, PolarAmpWidthSpec
 from .amp_width import AmpWidthSpec
-from .base import BandwidthBounds, FixedWidthSpec, ParameterizationSpec
+from .base import (
+    BandwidthBounds,
+    FixedWidthSpec,
+    ParameterizationSpec,
+    PhysicalAmpWidthSpec,
+)
 from .log_width import LogWidthSpec
 
 __all__ = [
@@ -12,5 +17,6 @@ __all__ = [
     "FixedWidthSpec",
     "LogWidthSpec",
     "ParameterizationSpec",
+    "PhysicalAmpWidthSpec",
     "PolarAmpWidthSpec",
 ]

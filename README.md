@@ -95,10 +95,47 @@ See the [API and mathematical contract](docs/profile-product.ja.md).
 the research rule of dividing a nonnegative density by its full-support integral,
 without a floor. Existing point-sampled profile bindings and profile-product presets
 reject this rule. A separate, explicit Chebyshev-square cell-integral reference and
-CUDA research entry now provide the first numeric implementation; they are not
-connected to public `CSTLinear` dispatch or old Polar checkpoints. See the
+CUDA implementation provide numeric implementations. The hierarchical version
+can be selected explicitly from public `CSTLinear`, as shown below; it does not
+load old Polar checkpoints. See the
 [cell-integrated profile design](docs/cell-integrated-profile.ja.md) and
 [tile-window approximation and execution](docs/cell-mass-tile-window.ja.md).
+
+### Hierarchical cell masses with an explicit CUDA Plan
+
+```python
+from torchcst import CSTLinear, CSTOptimizer, FixedSelector, make_algorithm_registry
+from torchcst import chart_presets, presets
+from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.plans import VALIDATED_128
+
+n = 128
+grid = chart_presets.regular_grid(((n,),), spacing=128 / n, geometry="flat_torus")
+layer = CSTLinear(
+    grid, grid, atoms=int(0.05 * n * n), device="cuda",
+    kernel=presets.cell_mass(input_min_tile_sites=n // 32,
+                             output_min_tile_sites=n // 16),
+    selector=FixedSelector(VALIDATED_128, registry=make_algorithm_registry()),
+)
+```
+
+Use `VALIDATED_1024` for the qualified 1024-square FP32 recipe. These Plans are
+explicit opt-ins; automatic dispatch and benchmark DB adoption are separate.
+The current native implementation supports up to 1024 sites per side and 65,536
+atoms, with frozen one-dimensional periodic RegularGrid charts. Execution is
+eager, without autocast or a deterministic-reduction guarantee. Torch provides
+a differentiable reference and explicit `dense_weight()` export on CPU.
+
+Rows of `layer.atoms.p` are physical `[amplitude, sigma, output_center,
+input_center]`. Sigma keeps its existing Chebyshev-square meaning; cells are
+integrated and divided by the continuous full-support mass. Minimum tile sizes
+are mathematical profile declarations and are checked in checkpoints. Runtime
+grouping is rebuilt from current atoms on every forward and is not serialized.
+Forward rejects invalid sigma rather than clipping it. `CSTOptimizer` applies
+the explicitly declared width projection to `[sigma_floor, min(periods)/3]`;
+with a plain optimizer, the caller must maintain this domain. See
+[the authoritative kernel flow](docs/cell-mass-kernel-flow.ja.md).
+
+### Other profile and chart contracts
 
 `QuadraticBSplineSpec()` declares the peak-one C1 quadratic B-spline with
 curvature width sigma and support radius `sqrt(6) * sigma`. Use it in

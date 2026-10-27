@@ -19,6 +19,68 @@ from .profiles import (
 from .spec import KernelSpec, ProfileBinding, StatePolicySpec
 
 
+def cell_mass(
+    *,
+    input_min_tile_sites,
+    output_min_tile_sites,
+    profile=None,
+    sigma_init=(0.2, 40.0),
+    amplitude_std=1.0,
+    sigma_floor=1e-3,
+):
+    """Cell-integrated periodic factors with live physical sigma.
+
+    Use CSTOptimizer to project proposed sigma into [sigma_floor, min(Q)/3].
+    Plain torch optimizers may be used when the caller maintains that domain.
+    No clipping or coordinate conversion occurs in the forward function.
+    """
+    import math
+
+    from .parameterizations import PhysicalAmpWidthSpec
+    from .profiles.fourier import ChebyshevSquareSpec
+    from .spec import CellIntegratedProfileBinding
+
+    if (
+        type(sigma_init) is not tuple
+        or len(sigma_init) != 2
+        or any(type(v) not in (int, float) or not math.isfinite(v) for v in sigma_init)
+        or not 0 < sigma_floor <= sigma_init[0] <= sigma_init[1]
+    ):
+        raise ValueError(
+            "sigma_init must contain ordered positive endpoints above sigma_floor"
+        )
+    if (
+        type(amplitude_std) not in (int, float)
+        or not math.isfinite(amplitude_std)
+        or amplitude_std < 0
+        or type(sigma_floor) not in (int, float)
+        or not math.isfinite(sigma_floor)
+    ):
+        raise ValueError("amplitude_std and sigma_floor must be finite scalars")
+    profile = (
+        ChebyshevSquareSpec(modes=8, tail_bound=1e-3) if profile is None else profile
+    )
+    return KernelSpec(
+        composition="separable",
+        profiles=tuple(
+            CellIntegratedProfileBinding(profile=profile, min_tile_sites=n)
+            for n in (input_min_tile_sites, output_min_tile_sites)
+        ),
+        parameterization=PhysicalAmpWidthSpec(),
+        initialization=StatePolicySpec(
+            id="cell_mass_centers",
+            settings=(
+                ("sigma_init_min", sigma_init[0]),
+                ("sigma_init_max", sigma_init[1]),
+                ("amplitude_std", amplitude_std),
+            ),
+        ),
+        update=StatePolicySpec(
+            id="cell_mass_physical", settings=(("sigma_floor", sigma_floor),)
+        ),
+    )
+
+
 def _profile_binding(shape: ProfileSpec, *, normalize: bool = True) -> ProfileBinding:
     """Bind shape and normalization; a kernel parameterization supplies width."""
     if type(normalize) is not bool:

@@ -13,6 +13,7 @@ def family(state):
         AmpWidthSpec,
         DirectAmpWidthSpec,
         LogWidthSpec,
+        PhysicalAmpWidthSpec,
         PolarAmpWidthSpec,
     )
 
@@ -59,6 +60,15 @@ def family(state):
                 ),
             ),
             LogWidthSpec: ("log_width", ("provided_atoms", "euclidean", (), ())),
+            PhysicalAmpWidthSpec: (
+                "hierarchical_cell_mass",
+                (
+                    "cell_mass_centers",
+                    "cell_mass_physical",
+                    ("sigma_init_min", "sigma_init_max", "amplitude_std"),
+                    ("sigma_floor",),
+                ),
+            ),
         }
         try:
             name, policies = contracts[type(spec.parameterization)]
@@ -116,6 +126,11 @@ def validate_layout(state, charts):
     if len(charts) != expected:
         raise ValueError("kernel composition differs from chart layout")
     name = family(state)
+    if name == "hierarchical_cell_mass":
+        from torchcst.kernels.cell_mass_layout import cell_mass_axes
+
+        cell_mass_axes(tuple(c.declaration() for c in charts), state.declaration())
+        return
     if state.spec.composition == "profile_product":
         from torchcst.operators.spec import validate_profile_product_layout
 
@@ -151,6 +166,7 @@ def parameter_dim(state, *charts):
         "polar_amp_width": 2,
         "profile_product": 2,
         "log_width": 2,
+        "hierarchical_cell_mass": 2,
     }.get(family(state), 0)
     return prefix + sum(c.center_parameter_dim for c in charts)
 
@@ -165,6 +181,7 @@ def parameter_dof(state, *charts):
         "polar_amp_width": 2,
         "profile_product": 2,
         "log_width": 2,
+        "hierarchical_cell_mass": 2,
     }.get(family(state), 0)
     return prefix + sum(c.intrinsic_dim for c in charts)
 
@@ -191,8 +208,8 @@ def factors(state, *charts_and_p):
     return _operation(state, "factors")(state, *charts_and_p)
 
 
-def weight(state, chart, p):
-    return _operation(state, "weight")(state, chart, p)
+def weight(state, *charts_and_p):
+    return _operation(state, "weight")(state, *charts_and_p)
 
 
 def weight_tile(state, chart, p, rows, columns):

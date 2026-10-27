@@ -10,6 +10,7 @@ from .parameterizations import (
     FixedWidthSpec,
     LogWidthSpec,
     ParameterizationSpec,
+    PhysicalAmpWidthSpec,
     PolarAmpWidthSpec,
 )
 from .profiles import (
@@ -25,6 +26,7 @@ from .profiles.fourier import ChebyshevSquareSpec, DPSSSquareSpec, KaiserSquareS
 from .profiles.matern import MaternMixtureSpec
 from .spec import (
     AtomInit,
+    CellIntegratedProfileBinding,
     FourierProductKernelSpec,
     KernelSpec,
     ProfileBinding,
@@ -37,6 +39,7 @@ __all__ = [
     "AtomInit",
     "BandwidthBounds",
     "BiweightSpec",
+    "CellIntegratedProfileBinding",
     "ChebyshevSquareSpec",
     "DPSSSquareSpec",
     "DirectAmpWidthSpec",
@@ -51,6 +54,7 @@ __all__ = [
     "MaternMixtureSpec",
     "NormalizationSpec",
     "ParameterizationSpec",
+    "PhysicalAmpWidthSpec",
     "PolarAmpWidthSpec",
     "ProfileBinding",
     "ProfileSpec",
