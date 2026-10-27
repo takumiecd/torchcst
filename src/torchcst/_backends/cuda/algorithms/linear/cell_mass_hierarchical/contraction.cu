@@ -77,16 +77,14 @@ __global__ void compute_h_kernel(const scalar_t *atoms, const int64_t *rows, con
     int slot = blockIdx.x * blockDim.x + threadIdx.x;
     if (slot >= atom_count)
         return;
-    if (FixedModes)
-        axis.modes = FixedModes;
     int group = group_for_slot(offsets, group_count, slot);
     int owner = groups[4 * group + (output_side ? 2 : 3)];
     Bank bank = axis.banks[bank_for_level(axis, groups[4 * group + (output_side ? 0 : 1)])];
     int original = rows[slot];
-    Profile profile =
-        make_profile(axis, bank, static_cast<double>(atoms[4 * original + 1]),
-                     static_cast<double>(atoms[4 * original + (output_side ? 2 : 3)]), owner);
-    HarmonicStream<false> stream(profile, axis.modes);
+    Profile profile = make_profile<false, FixedModes>(
+        axis, bank, static_cast<double>(atoms[4 * original + 1]),
+        static_cast<double>(atoms[4 * original + (output_side ? 2 : 3)]), owner);
+    HarmonicStream<false> stream(profile, FixedModes ? FixedModes : axis.modes);
     double accum[BATCH_TILE] = {};
     int batch_begin = blockIdx.y * BATCH_TILE;
     // Window Z has already combined and rotated the retained tiles into the
@@ -134,8 +132,6 @@ __global__ void compute_c_kernel(const scalar_t *atoms, const int64_t *rows, con
                                  const int64_t *offsets, const projection_t *h, double *c,
                                  int atom_count, int group_count, int batches, Axis input,
                                  Axis output, bool reverse) {
-    if (FixedModes)
-        output.modes = FixedModes;
     extern __shared__ double shared[];
     double *coefficients = shared;
     double *scaled_h = shared + SHARED_STRIDE * output.basis_count();
@@ -171,7 +167,7 @@ __global__ void compute_c_kernel(const scalar_t *atoms, const int64_t *rows, con
             bool valid = slot < range_end;
             int original = valid ? rows[slot] : 0;
             if (valid) {
-                Profile profile = make_profile(
+                Profile profile = make_profile<false, FixedModes>(
                     output, bank, static_cast<double>(atoms[4 * original + 1]),
                     static_cast<double>(atoms[4 * original + (reverse ? 3 : 2)]), owner);
                 store_c_coefficients<FixedModes>(profile, output.modes, lane, coefficients);
@@ -225,9 +221,9 @@ __device__ void split_consume_range(const scalar_t *atoms, const int64_t *rows,
         bool valid = slot < begin + last;
         int original = valid ? rows[slot] : 0;
         if (valid) {
-            Profile profile =
-                make_profile(output, bank, static_cast<double>(atoms[4 * original + 1]),
-                             static_cast<double>(atoms[4 * original + (reverse ? 3 : 2)]), owner);
+            Profile profile = make_profile<false, FixedModes>(
+                output, bank, static_cast<double>(atoms[4 * original + 1]),
+                static_cast<double>(atoms[4 * original + (reverse ? 3 : 2)]), owner);
             store_c_coefficients<FixedModes>(profile, output.modes, lane, coefficients);
         } else {
             for (int mode = 0; mode < output.basis_count(); ++mode)
@@ -281,8 +277,6 @@ __global__ void compute_c_split_kernel(const scalar_t *atoms, const int64_t *row
                                        const projection_t *h, SplitPages pages, int atom_count,
                                        int group_count, int batches, Axis input, Axis output,
                                        bool reverse, bool cartesian, int splits) {
-    if (FixedModes)
-        output.modes = FixedModes;
     extern __shared__ double shared[];
     double *coefficients = shared;
     double *scaled_h = shared + SHARED_STRIDE * output.basis_count();

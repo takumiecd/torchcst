@@ -116,11 +116,6 @@ __global__ void compute_g_parameter_grad_kernel(
     int slot = blockIdx.x * blockDim.x + threadIdx.x;
     if (slot >= atom_count)
         return;
-    // Axis is passed by value; specialize only this kernel's local metadata.
-    if (FixedModes) {
-        input.modes = FixedModes;
-        output.modes = FixedModes;
-    }
     int original = rows[slot];
     int group = group_for_slot(offsets, group_count, slot);
     int input_owner = groups[4 * group + 3], output_owner = groups[4 * group + 2];
@@ -129,8 +124,21 @@ __global__ void compute_g_parameter_grad_kernel(
     double amplitude = atoms[4 * original], sigma = atoms[4 * original + 1];
     double input_center = atoms[4 * original + 3], output_center = atoms[4 * original + 2];
     Profile output_profile =
-        make_profile<true>(output, output_bank, sigma, output_center, output_owner);
-    Profile input_profile = make_profile<true>(input, input_bank, sigma, input_center, input_owner);
+        make_profile<true, FixedModes>(output, output_bank, sigma, output_center, output_owner);
+    // Reuse the common width shape only when all of its dependencies match.
+    // Center/image handling still uses the input axis and owner independently.
+    bool same_shape = input.modes == output.modes && input.radius_ratio4 == output.radius_ratio4 &&
+                      input_bank.period == output_bank.period &&
+                      input_bank.inverse_period == output_bank.inverse_period &&
+                      input_bank.omega == output_bank.omega;
+    Profile input_profile;
+    if (same_shape) {
+        input_profile = output_profile;
+        input_profile.center = profile_center(input, input_bank, input_center, input_owner);
+    } else {
+        input_profile =
+            make_profile<true, FixedModes>(input, input_bank, sigma, input_center, input_owner);
+    }
     double beta_sigma_out = output_profile.beta_sigma;
     double beta_sigma_in = input_profile.beta_sigma;
     double da = 0, ds = 0, dmu_input = 0, dmu_output = 0;

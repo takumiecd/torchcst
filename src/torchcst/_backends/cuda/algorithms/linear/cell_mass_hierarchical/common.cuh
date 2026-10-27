@@ -265,7 +265,17 @@ struct Profile {
     double beta, raw_zero, center, period, inverse_period, omega, beta_sigma, zero_log_beta;
 };
 
-template <bool Derivative = false>
+// Keep each axis's chart and final-half-cell image convention independent.
+__device__ inline double profile_center(const Axis &axis, const Bank &bank, double center,
+                                        int owner) {
+    double relative = wrapped_center(center, axis);
+    int raw_owner =
+        static_cast<int>(floor((relative + axis.spacing / 2) / (bank.tile_sites * axis.spacing)));
+    int image = (raw_owner - owner) / bank.tile_count;
+    return relative - image * axis.period;
+}
+
+template <bool Derivative = false, int FixedModes = 0>
 __device__ inline Profile make_profile(const Axis &axis, const Bank &bank, double sigma,
                                        double center, int owner) {
     // Preserve effective_radius(sigma,P), including its concentration floor.
@@ -276,23 +286,19 @@ __device__ inline Profile make_profile(const Axis &axis, const Bank &bank, doubl
     double beta = 1 / cos((PI / 3) * root);
     double beta_sigma = 0;
     double raw_zero, zero_log_beta = 0;
+    int modes = FixedModes ? FixedModes : axis.modes;
     if (Derivative) {
         double radius_sigma = (1 - axis.radius_ratio4) * s * s * s / (root * root * root);
         beta_sigma = beta * sqrt(fmax(0.0, beta * beta - 1)) * (0.5 * bank.omega) * radius_sigma;
         double zero_beta;
-        raw_horner<true>(beta, axis.modes, 0, raw_zero, zero_beta);
+        raw_horner<true>(beta, modes, 0, raw_zero, zero_beta);
         zero_log_beta = zero_beta / raw_zero;
     } else {
-        raw_zero = raw_coefficient(beta, axis.modes, 0);
+        raw_zero = raw_coefficient(beta, modes, 0);
     }
-    double relative = wrapped_center(center, axis);
-    int raw_owner =
-        static_cast<int>(floor((relative + axis.spacing / 2) / (bank.tile_sites * axis.spacing)));
-    // Shift a centre in the final half-cell together with its owner=0 window.
-    int image = (raw_owner - owner) / bank.tile_count;
     return {beta,
             raw_zero,
-            relative - image * axis.period,
+            profile_center(axis, bank, center, owner),
             bank.period,
             bank.inverse_period,
             bank.omega,
