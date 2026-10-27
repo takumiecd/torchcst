@@ -10,7 +10,8 @@ CSTの1step速度をdenseの約2倍、つまり時間を約半分にすること
 階層版`cell_mass_hierarchical/`は既存ChebyshevSquare・sigmaの意味を維持する。
 Zは2子ずつの階層、Rは同じ階層の3タイルを合算したH/G用の値である。
 分類はsigma<=T_h、周期P_h=3T_h。以前のI=sigma/2は撤回した。
-入力dtypeのH/Gを保存し、Z/R/C・縮約・解析微分はFP64、任意でM8の多項式値評価だけを補償する。
+入力dtypeのH/Gを保存し、Z/R/C・縮約・位相・正規化はFP64を維持する。
+任意でM8の多項式の値とbeta微分だけをFP32の2数表現で評価する。
 atom値のコピー、全atom係数表、密W/dWは作らない。
 
 runtime `7fd9132b`。counting配置・逆slot index・owner別split・Z chunk・
@@ -58,11 +59,22 @@ full countingは285,184Bとなるため、この128条件ではメモリ条件�
 C積和自体の補償は1024で1.418197→1.585851msと悪化し、採用しない。
 初版chunk guardには大きなDouble累積との相殺を見落とす反例があり、初版を根拠にしない。
 後続`adf3908b`のC全体fallback検証は実行経路のtimeoutで結果未回収となり、判断から除外した。
-所有GPU停止を確認して共有poolをrecoverし、`7f337e80`のG/Parameter勾配の多項式補償を検証中。
-両方とも既定Falseで、sigma・周期・二分階層・面積正規化を変えない。
+所有GPU停止を確認して共有poolをrecoverした。
+`7f337e80`のG/Parameter勾配の多項式補償は初回GPU検証を通過し、1024の完全stepが
+同jobの1.425167→1.388362msへ約2.6%短縮した。dense0.674118msに対してまだ約2.06倍の時間。
+allocated7,965,184B/reserved10MiBは増えず、dense16,843,264B/22MiB以下だった。
+G/勾配の別Graph-event診断は0.360448→0.318464ms、M8のREG244→254、LOCAL0。
+通常2518 passed/12 skipped、選択racecheck11件・hazard0、全819/52,428atomの
+Y/dX/4列勾配を独立FFT/autogradへ照合した。全fixtureのoptimizer更新はこのjobでは未比較。
+128 compactも0.862185ms（同job sort1.147484/dense0.692992ms）へ短縮を再確認した。
+補償勾配の小差は2 fresh processと更新確認を待ち、既定Falseを維持する。
+sigma・周期・二分階層・面積正規化は変えない。
 `fca04158`ではcompact配置にも逆方向indexを追加した。追加索引は保持3,772B、準備中の一時分を
 含めて論理7,168Bであり、dense以下の実測peakを確認するまでは採用しない。
 追加job/source/result hashと検証範囲は[正本の第13〜16段](cell-mass-kernel-flow.ja.md#最適化第13段互換bank-pairのcountingとc積和の負の結果)に記録する。
+`180b2424`では一致する幅係数・beta微分をG→入力微分で再利用する任意のshared cacheも追加した。
+64threadsで8192Bのsharedを使い、global係数表は作らない。GPU検証中で、改善とはまだ扱わない。
+全CPU2037 passed/5296 skipped/既存警告18件、両配布物338runtime照合は通過した。
 
 以下は別の幅分布・周期を使う固定bank版の記録である。
 

@@ -802,7 +802,7 @@ wheel/sdistは`e1a2caab`、後続guardのwheel/sdistは`adf3908b`のruntime338�
 source `b5510fe31023266f0079f32bf20023283d1af1ccbdee4d769084605f820a99cb`、result `b3136a98ef4f8abf53eee5a79733840ce75abe8ede721acc0c94a1c79d34467d`、driver `2dccd38018b0312a0da0f8241adfdc76eae18ea926ce915894b4de14a1287973`、binary `c646d5742372a2f70560d39be038e6378af632b31449151e80028de01ac9663e`。
 source/results/spec/receiptはignored `output/cell-mass-opt-20261027/cdot-guard-initial/`へ保全した。
 
-### 最適化第14段：GとParameter勾配の多項式評価（GPU検証中）
+### 最適化第14段：GとParameter勾配の多項式評価（初回GPU検証）
 
 runtime `7f337e80`。`compensated_grad=True`は、GとParameter勾配を一緒に計算する
 kernelの多項式値とbeta微分だけをFP32の2数表現にする。
@@ -812,10 +812,41 @@ Gを保存dtypeへ丸めてから勾配とCinへ再利用する契約も変え�
 `fuse_backward_cin=False`を必要とする。融合Cinは従来Doubleのまま。
 全atom係数表・追加global scratchは作らず、既定Falseとする。
 
-CPUは31 passed / 683 skippedで、CUDA実行を含まない。
-job `l4job-61063af38bc24560b97bcffa547ccb5f`へ、通常suite、独立Y/dX/全atom勾配、
-選択racecheck、REG/STACK/LOCAL資源量、完全step/両peakの比較を提出した。
-レジスタ増加で逆に遅くなる可能性もあり、GPU結果前に採用・速度改善とは扱わない。
+job `l4job-61063af38bc24560b97bcffa547ccb5f`、NVIDIA L4 / FP32 / B4、
+固定fixtureと前jobのatoms/X/dY/初期dense Wはbit一致した。
+各設定1 fresh process、warm5/同期wall21。通常2518 passed / failed0 / skip12、
+選択racecheck11件・hazard0、128全819atom/1024全52,428atomのY/dX/4列勾配は
+独立FFT/autogradへrtol3e-6/atol2e-7で通過した。
+全fixtureのoptimizer更新照合をこのgateで行ったとは扱わない。
+
+| 設定 | 完全step | allocated | reserved |
+| --- | ---: | ---: | ---: |
+| 1024、補償値あり・補償勾配なし | 1.425167ms | 7,965,184B | 10MiB |
+| 1024、補償値あり・M8補償勾配あり | 1.388362ms | 7,965,184B | 10MiB |
+| 1024、補償値あり・汎用補償勾配あり | 1.418376ms | 7,965,184B | 10MiB |
+| 1024、Double値・M8補償勾配あり | 1.428369ms | 7,965,184B | 10MiB |
+| matched dense1024 | 0.674118ms | 16,843,264B | 22MiB |
+| 128、sort・Double値/勾配 | 1.147484ms | 248,320B | 2MiB |
+| 128、compact・Double値/勾配 | 0.862185ms | 263,168B | 2MiB |
+| 128、compact・Double値/M8補償勾配 | 0.845113ms | 263,168B | 2MiB |
+| 128、compact・Double値/汎用補償勾配 | 0.861083ms | 263,168B | 2MiB |
+| matched dense128 | 0.692992ms | 270,848B | 2MiB |
+
+1024は同job baseline比約2.6%短縮したが、dense比約2.06倍の時間である。
+別jobでの2 fresh process・測定順逆転・全atom optimizer確認までは採用確定にしない。
+128のcompactは前jobに続きsort比約25%短縮し、メモリ条件も維持した。
+128の補償勾配の小差は、引き続き独立再確認で判断する。
+
+別Graph-event診断ではG/勾配がDouble0.360448→補償0.318464ms、
+汎用補償0.353280ms。kernel資源はM8のREG244→254、STACK40は同じ、LOCAL0。
+資源値だけからoccupancyや速度の原因は断定しない。
+修正版Cdotも通常suiteで検査したが、今回の全fixture gate/完全stepはCdot=False。
+別診断のCdotはCout0.335872/Cin0.245760msと、補償値だけの
+0.225280/0.158720msより遅い。既定Falseを維持する。
+
+source `e3f90cb5cd03e6d33b964ae3e7a3bf1bb326a95ca364e1286d74eb554413521f`、result `669ee9a256db85a0450423028b34f98c5bb865d8a80e8a69fe32c45e54599b9a`、driver `a16bfdbaaff02b0e7510616461b0df3242b32e150c24af490f862a180977ec8c`、binary `1a5cb4486883548e8624c96faccbd45eb8dce7ca9ae4d4063b6e753cea460790`。
+runtime338・検査141ファイル、manifest50件とdriver/binaryを照合し、ignored
+`output/cell-mass-opt-20261027/compensated-grad/`へsource/results/spec/receiptを保全した。
 
 ### 最適化第15段：owner windowの参照（GPU未検証）
 
@@ -854,6 +885,30 @@ CUDA検査にはFP32/64・空atom・異なる軸長・full-chart-only・sigma境
 CPU実行は31 passed / 714 skippedであり、追加CUDA検査は未実行である。
 全CPU suiteは2037 passed / 5278 skipped / 既存警告18件、wheel/sdist buildと
 runtime338ファイルのbyte照合も通過した。
+
+### 最適化第17段：幅係数とbeta微分のshared再利用（GPU検証中）
+
+runtime `180b2424`、任意の`reuse_shape_coefficients=True`。
+G/Parameter勾配kernelは入力・出力profileの周期等が一致するとき、幅係数を二度評価していた。
+出力projectionで位相を掛ける前の、harmonic1..8の正規化済み振幅とbeta微分を保存し、
+入力projectionではその2種類を自身のcenter位相と組み合わせる。
+振幅をcos/sinで割って復元したり、中心を共通化したりしない。
+既存same_shape条件が不成立なら入力側は従来のHarmonicStreamへ戻す。
+
+cacheはDoubleの`[16,blockDim.x]`をsharedに置く。64threadsで8192B、
+32/128/256threadsでは4096/16384/32768B。各threadは自分の列だけを読み書きし、
+Gを丸めて確定した後に読むため、block全体のbarrierは加えない。
+batch tileごとに上書きし、global係数表やatom値コピーは作らない。
+sharedによるSM資源とregister使用量への影響は実測する。
+
+FP32 atoms/H・両軸M8・specialize_g_grad=True・fuse_g_grad=True・Cin分離に限定し、
+既定False。compensated_gradは独立に切り替える。Gの保存丸め、振幅の適用回数、
+位相・正規化・縮約のDouble、二分Z・同階層3枚のRは維持する。
+CPU31 passed / 732 skipped、shared添字の一意/範囲・autograd入出力20個の静的検査を通過した。
+全CPU2037 passed / 5296 skipped / 既存警告18件、wheel/sdist buildと338runtimeの
+byte照合も通過した。これをCUDA検証の代用にはしない。
+job `l4job-6ee2ad91ac524df0b8eb19742e01f19f`で、cache/補償勾配/compact reverseを
+独立に切り替え、正確性、racecheck、資源量、完全stepと両peakを確認する。
 
 ### 第12段までの再確認：完全stepと1024のAdamW状態
 
