@@ -160,15 +160,18 @@ def compute_h(plan, atoms, layout, zx, *, storage_dtype=torch.float64):
     )
 
 
-def compute_c(plan, atoms, layout, h):
+def compute_c(plan, atoms, layout, h, *, splits=1):
     """Complete output owner C[batch,node,mode] using 32-atom shared chunks.
 
     The small cross-block coefficient buffer is bank/node sized, not an
     atom-by-mode table. Each C element has one writer, with amplitude applied
     once. The next stage adds bank contributions after site expansion.
     """
+    if type(splits) is not int or not 1 <= splits <= 64:
+        raise ValueError("C splits must be an integer in [1,64]")
     layout.validate_for(atoms, plan)
-    return _extension().compute_c(
+    native = _extension()
+    arguments = (
         atoms,
         layout.rows,
         layout.groups,
@@ -178,6 +181,9 @@ def compute_c(plan, atoms, layout, h):
         plan.output.native_config(),
         False,
     )
+    if splits == 1:
+        return native.compute_c(*arguments)
+    return native.compute_c_split(*arguments, splits)
 
 
 def expand_c(c, axis, like, *, sites_per_block=32):
@@ -240,15 +246,18 @@ def compute_g(plan, atoms, layout, zy, *, storage_dtype=torch.float64):
     )
 
 
-def compute_input_c(plan, atoms, layout, g):
+def compute_input_c(plan, atoms, layout, g, *, splits=1):
     """Accumulate amp*G into input owner C; no dX atomic or packed atom copy.
 
     Input owners are not contiguous in the output-sorted layout. The first
     implementation scans sparse group descriptors and loads matching ranges.
     This is a correctness baseline; an input-group index can replace that scan.
     """
+    if type(splits) is not int or not 1 <= splits <= 64:
+        raise ValueError("C splits must be an integer in [1,64]")
     layout.validate_for(atoms, plan)
-    return _extension().compute_c(
+    native = _extension()
+    arguments = (
         atoms,
         layout.rows,
         layout.groups,
@@ -258,6 +267,9 @@ def compute_input_c(plan, atoms, layout, g):
         plan.input.native_config(),
         True,
     )
+    if splits == 1:
+        return native.compute_c(*arguments)
+    return native.compute_c_split(*arguments, splits)
 
 
 def parameter_grad(plan, atoms, layout, zx, zy, h, g):
@@ -282,17 +294,50 @@ def parameter_grad(plan, atoms, layout, zx, zy, h, g):
     )
 
 
+def compute_g_and_parameter_grad(plan, atoms, layout, zx, zy, h):
+    """One thread builds rounded G and all atom gradients, sharing output work.
+
+    G is stored in H's dtype before it participates in gradients, matching the
+    separate kernels' intermediate precision. It remains available for dX.
+    """
+    layout.validate_for(atoms, plan)
+    return _extension().compute_g_and_parameter_grad(
+        atoms,
+        layout.rows,
+        layout.groups,
+        layout.offsets,
+        zx,
+        zy,
+        h,
+        plan.input.native_config(),
+        plan.output.native_config(),
+    )
+
+
 class _HierarchicalLinear(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, x, atoms, plan, layout, z_method, team_size, sites_per_block):
+    def forward(
+        ctx,
+        x,
+        atoms,
+        plan,
+        layout,
+        z_method,
+        team_size,
+        sites_per_block,
+        c_splits,
+        fuse_g_grad,
+    ):
         zx = build_hierarchy(x, plan.input, method=z_method, team_size=team_size)
         h = compute_h(plan, atoms, layout, zx, storage_dtype=atoms.dtype)
-        c = compute_c(plan, atoms, layout, h)
+        c = compute_c(plan, atoms, layout, h, splits=c_splits)
         y = expand_c(c, plan.output, x, sites_per_block=sites_per_block)
         ctx.plan = plan
         ctx.z_method = z_method
         ctx.team_size = team_size
         ctx.sites_per_block = sites_per_block
+        ctx.c_splits = c_splits
+        ctx.fuse_g_grad = fuse_g_grad
         ctx.source_version = atoms._version
         # save_for_backward checks atom AND layout-buffer mutations. Avoid
         # keeping the source x: Zx already contains the needed contractions.
@@ -314,20 +359,33 @@ class _HierarchicalLinear(torch.autograd.Function):
         zy = build_hierarchy(
             dy, plan.output, method=ctx.z_method, team_size=ctx.team_size
         )
-        g = compute_g(plan, atoms, layout, zy, storage_dtype=atoms.dtype)
         dx = datoms = None
+        if ctx.needs_input_grad[1] and ctx.fuse_g_grad:
+            zx, h = forward_state
+            g, datoms = compute_g_and_parameter_grad(plan, atoms, layout, zx, zy, h)
+        else:
+            g = compute_g(plan, atoms, layout, zy, storage_dtype=atoms.dtype)
         if ctx.needs_input_grad[0]:
-            cin = compute_input_c(plan, atoms, layout, g)
+            cin = compute_input_c(plan, atoms, layout, g, splits=ctx.c_splits)
             dx = expand_c(cin, plan.input, dy, sites_per_block=ctx.sites_per_block)
             del cin
-        if ctx.needs_input_grad[1]:
+        if ctx.needs_input_grad[1] and not ctx.fuse_g_grad:
             zx, h = forward_state
             datoms = parameter_grad(plan, atoms, layout, zx, zy, h, g)
-        return dx, datoms, None, None, None, None, None
+        return dx, datoms, None, None, None, None, None, None, None
 
 
 def hierarchical_linear(
-    plan, x, atoms, *, layout=None, z_method="merge", team_size=4, sites_per_block=32
+    plan,
+    x,
+    atoms,
+    *,
+    layout=None,
+    z_method="merge",
+    team_size=4,
+    sites_per_block=32,
+    c_splits=1,
+    fuse_g_grad=False,
 ):
     """Private research autograd route, using this forward's bank/owner choices.
 
@@ -338,6 +396,10 @@ def hierarchical_linear(
     Double backward and full-route CUDA Graph capture are not supported yet
     (preparation has dynamic output shapes and host checks).
     """
+    if type(c_splits) is not int or not 1 <= c_splits <= 64:
+        raise ValueError("C splits must be an integer in [1,64]")
+    if type(fuse_g_grad) is not bool:
+        raise ValueError("fuse_g_grad must be bool")
     if x.device != atoms.device or x.dtype != atoms.dtype:
         raise ValueError("X and atoms must share device and dtype")
     if not bool(torch.isfinite(x).all()):
@@ -347,5 +409,13 @@ def hierarchical_linear(
     else:
         layout.validate_for(atoms, plan)
     return _HierarchicalLinear.apply(
-        x, atoms, plan, layout, z_method, team_size, sites_per_block
+        x,
+        atoms,
+        plan,
+        layout,
+        z_method,
+        team_size,
+        sites_per_block,
+        c_splits,
+        fuse_g_grad,
     )

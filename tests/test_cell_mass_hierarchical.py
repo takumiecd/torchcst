@@ -920,3 +920,113 @@ def test_autograd_saves_h_in_input_dtype_and_keeps_z_double(dtype):
         dp[:, 1:], torch.zeros_like(dp[:, 1:]), atol=2e-6, rtol=0
     )
     assert dx.dtype == dtype
+
+
+@cuda_only
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("splits", [2, 7, 16])
+@pytest.mark.parametrize("fused", [False, True])
+@pytest.mark.parametrize(
+    "batches,count,n", [(0, 37, 32), (5, 257, 32), (1, 3, 8), (3, 0, 32)]
+)
+def test_optimized_split_and_fused_backward_match_baseline(
+    dtype, splits, fused, batches, count, n
+):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        hierarchical_linear,
+    )
+
+    rng = torch.Generator().manual_seed(120)
+    plan = HierarchyPlan(
+        input=AxisPlan(
+            site_count=n, min_tile_sites=4, spacing=128 / n, origin=-2, modes=16
+        ),
+        output=AxisPlan(
+            site_count=n * 2, min_tile_sites=8, spacing=64 / n, origin=3, modes=8
+        ),
+    )
+    source = torch.randn(count, 4, dtype=dtype, generator=rng)
+    source[:, 1] = torch.linspace(0.2, 40, count, dtype=dtype)
+    source[:, 2:] *= 150
+    if count:
+        source[0, 0] = 0
+        source[0, 2:] = torch.tensor([130.9, 125.9], dtype=dtype)
+    x = torch.randn(batches, n, dtype=dtype, generator=rng).cuda().requires_grad_()
+    dy = torch.randn(batches, n * 2, dtype=dtype, generator=rng).cuda()
+    atoms = source.cuda().requires_grad_()
+    expected = hierarchical_linear(plan, x, atoms)
+    expected_dx, expected_dp = torch.autograd.grad(expected, (x, atoms), dy)
+    actual = hierarchical_linear(plan, x, atoms, c_splits=splits, fuse_g_grad=fused)
+    actual_dx, actual_dp = torch.autograd.grad(
+        actual, (x, atoms), dy, retain_graph=True
+    )
+    tolerance = (
+        {"rtol": 3e-6, "atol": 2e-7}
+        if dtype == torch.float32
+        else {"rtol": 3e-9, "atol": 2e-10}
+    )
+    for a, b in (
+        (actual, expected),
+        (actual_dx, expected_dx),
+        (actual_dp, expected_dp),
+    ):
+        torch.testing.assert_close(a, b, **tolerance)
+    again = torch.autograd.grad(actual, (x, atoms), 2 * dy)
+    for a, b in zip(again, (actual_dx, actual_dp)):
+        torch.testing.assert_close(a, 2 * b, **tolerance)
+
+
+@cuda_only
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_fused_g_and_grad_match_stages_and_mass(dtype):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        build_hierarchy,
+        compute_g,
+        compute_g_and_parameter_grad,
+        compute_h,
+        parameter_grad,
+        prepare_layout,
+    )
+
+    axis = AxisPlan(site_count=128, min_tile_sites=4, origin=-2)
+    plan = HierarchyPlan(input=axis, output=axis)
+    atoms = torch.tensor(
+        [[0.0, 0.01, 125.9, -2.1], [1.0, 4.0, -2.25, 300.0], [-0.7, 40.0, 0.0, 127.9]],
+        device="cuda",
+        dtype=dtype,
+    )
+    x = torch.randn(5, 128, device="cuda", dtype=dtype)
+    dy = torch.randn_like(x)
+    layout = prepare_layout(plan, atoms)
+    zx = build_hierarchy(x, axis)
+    zy = build_hierarchy(dy, axis)
+    h = compute_h(plan, atoms, layout, zx, storage_dtype=dtype)
+    g = compute_g(plan, atoms, layout, zy, storage_dtype=dtype)
+    dp = parameter_grad(plan, atoms, layout, zx, zy, h, g)
+    fused_g, fused_dp = compute_g_and_parameter_grad(plan, atoms, layout, zx, zy, h)
+    tol = (
+        {"rtol": 3e-6, "atol": 2e-7}
+        if dtype == torch.float32
+        else {"rtol": 3e-9, "atol": 2e-10}
+    )
+    torch.testing.assert_close(fused_g, g, **tol)
+    torch.testing.assert_close(fused_dp, dp, **tol)
+
+
+@cuda_only
+@pytest.mark.parametrize("team", [1, 32])
+def test_phase_recurrence_large_root_m16_matches_quadrature(team):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        build_hierarchy,
+    )
+
+    axis = AxisPlan(
+        site_count=1024, min_tile_sites=32, spacing=0.125, origin=3, modes=16
+    )
+    x = torch.randn(
+        1, 1024, dtype=torch.float64, generator=torch.Generator().manual_seed(120)
+    )
+    expected = quadrature_oracle(x, axis)
+    for method in ("direct", "merge"):
+        actual = build_hierarchy(x.cuda(), axis, method=method, team_size=team)
+        torch.testing.assert_close(actual.cpu(), expected, rtol=2e-11, atol=1e-10)

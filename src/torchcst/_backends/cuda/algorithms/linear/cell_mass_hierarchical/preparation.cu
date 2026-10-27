@@ -72,11 +72,30 @@ __global__ void build_direct_kernel(const scalar_t *signal, double *z, int batch
             !merge || bank_index == 0 || bank.full_chart || (mode != 0 && harmonic % 2 == 1);
         bool valid = work < count && batch < batches && direct;
         double total = 0;
-        if (valid) {
-            for (int local = lane; local < bank.tile_sites; local += team_size) {
-                int site = first + local;
-                total += static_cast<double>(signal[batch * axis.sites + site]) *
-                         integrated_basis(axis, bank, mode, site);
+        if (valid && lane < bank.tile_sites) {
+            if (mode == 0) {
+                for (int local = lane; local < bank.tile_sites; local += team_size) {
+                    int site = first + local;
+                    total += static_cast<double>(signal[batch * axis.sites + site]) * axis.spacing;
+                }
+            } else {
+                // A lane visits sites spaced team_size apart. The integral
+                // factor is site-independent; rotate its phase in FP64 after
+                // each site instead of evaluating trigonometry per site.
+                // The common chart origin and harmonic are unchanged.
+                double omega = 2 * PI * harmonic / bank.period;
+                double factor = 2 * sin(omega * axis.spacing / 2) / omega;
+                double phase_sin, phase_cos, step_sin, step_cos;
+                sincos(omega * (first + lane) * axis.spacing, &phase_sin, &phase_cos);
+                sincos((omega * axis.spacing) * team_size, &step_sin, &step_cos);
+                for (int local = lane; local < bank.tile_sites; local += team_size) {
+                    int site = first + local;
+                    double basis = factor * (mode % 2 == 1 ? phase_cos : phase_sin);
+                    total += static_cast<double>(signal[batch * axis.sites + site]) * basis;
+                    double next_cos = phase_cos * step_cos - phase_sin * step_sin;
+                    phase_sin = phase_sin * step_cos + phase_cos * step_sin;
+                    phase_cos = next_cos;
+                }
             }
         }
         partials[threadIdx.x] = total;

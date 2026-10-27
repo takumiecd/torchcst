@@ -12,6 +12,11 @@ Tensor compute_h(Tensor atoms, Tensor rows, Tensor groups, Tensor offsets, Tenso
                  bool output_side, bool float_storage);
 Tensor compute_c(Tensor atoms, Tensor rows, Tensor groups, Tensor offsets, Tensor h, Config input,
                  Config output, bool reverse);
+Tensor compute_c_split(Tensor atoms, Tensor rows, Tensor groups, Tensor offsets, Tensor h,
+                       Config input, Config output, bool reverse, int splits);
+std::vector<Tensor> compute_g_and_parameter_grad(Tensor atoms, Tensor rows, Tensor groups,
+                                                 Tensor offsets, Tensor zx, Tensor zy, Tensor h,
+                                                 Config input, Config output);
 Tensor parameter_grad(Tensor atoms, Tensor rows, Tensor groups, Tensor offsets, Tensor zx,
                       Tensor zy, Tensor h, Tensor g, Config input, Config output);
 Tensor expand_c(Tensor c, Tensor like, Config axis, int width);
@@ -23,5 +28,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("compute_h", &compute_h);
     m.def("compute_c", &compute_c);
     m.def("expand_c", &expand_c);
+    m.def("compute_c_split", &compute_c_split);
+    m.def("compute_g_and_parameter_grad", &compute_g_and_parameter_grad);
     m.def("parameter_grad", &parameter_grad);
 }

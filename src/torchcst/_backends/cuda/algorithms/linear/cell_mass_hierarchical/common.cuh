@@ -137,26 +137,72 @@ __device__ inline double wrapped_center(double center, const Axis &axis) {
     return value < 0 ? value + axis.period : value;
 }
 
-// Existing ChebyshevSquare complex coefficient, with the common T_M(beta)^-2
-// removed. That factor cancels from c_k/(P*c_0). Same positive polynomial as
-// cell_mass/polynomial_coefficient; no per-atom coefficient table is retained.
-__device__ inline double raw_coefficient(double beta, int modes, int harmonic) {
+// Integer coefficients of the positive polynomial, indexed by even M=2..16,
+// harmonic and degree. These depend only on the basis, never on atom values.
+// The 444 doubles occupy 3552 bytes of constant memory per CUDA translation
+// unit; the integer recurrence and its stored values are exact in double.
+__host__ __device__ constexpr int horner_bank_offset(int modes) {
+    int bank = modes / 2;
+    return (bank - 1) * bank * (4 * bank + 1) / 6;
+}
+constexpr int HORNER_VALUES = horner_bank_offset(16) + 16 * 17 / 2;
+struct HornerBanks {
+    double coefficients[HORNER_VALUES] = {};
+    __host__ __device__ constexpr HornerBanks() {
+        for (int modes = 2; modes <= 16; modes += 2) {
+            for (int k = 0; k < modes; ++k) {
+                int offset = horner_bank_offset(modes) + k * (2 * modes - k + 1) / 2;
+                int64_t term = modes + k;
+                for (int j = 1; j <= modes - k; ++j) {
+                    coefficients[offset + j - 1] = static_cast<double>(term);
+                    if (j < modes - k)
+                        term = term * (modes - k - j) * (modes + k + j) / (j * (j + 1));
+                }
+            }
+        }
+    }
+};
+static_assert(sizeof(HornerBanks) == 3552, "unexpected Horner constant-bank size");
+static __device__ __constant__ HornerBanks horner_banks{};
+
+// The common T_M(beta)^-2 cancels from c_k/(P*c_0). Evaluate the same
+// positive polynomial and optionally its beta derivative together. Horner
+// avoids runtime coefficient divisions; no per-atom coefficient array exists.
+template <bool Derivative>
+__device__ inline void raw_horner(double beta, int modes, int harmonic, double &value,
+                                  double &derivative) {
     double x = beta * beta, t = x - 1, power = 1;
     for (int j = 0; j < harmonic; ++j)
         power *= x;
-    if (harmonic == modes)
-        return 0.25 * power;
-    double term = (modes + harmonic) * t, sum = term;
-    for (int j = 1; j < modes - harmonic; ++j) {
-        double ratio =
-            static_cast<double>((modes - harmonic - j) * (modes + harmonic + j)) / (j * (j + 1));
-        term *= ratio * t;
-        sum += term;
+    double dpower = Derivative ? harmonic * power * (2 * beta / x) : 0;
+    if (harmonic == modes) {
+        value = 0.25 * power;
+        if (Derivative)
+            derivative = 0.25 * dpower;
+        return;
     }
-    double value = static_cast<double>(modes) / (modes + harmonic) * power * sum;
-    if (harmonic == 0)
-        value += 1;
-    return 0.5 * value;
+    int degree = modes - harmonic;
+    int offset = horner_bank_offset(modes) + harmonic * (2 * modes - harmonic + 1) / 2;
+    double polynomial = horner_banks.coefficients[offset + degree - 1];
+    double slope = 0;
+    for (int j = degree - 1; j >= 1; --j) {
+        if (Derivative)
+            slope = slope * t + polynomial;
+        polynomial = polynomial * t + horner_banks.coefficients[offset + j - 1];
+    }
+    if (Derivative)
+        slope = slope * t + polynomial;
+    polynomial *= t; // The polynomial has zero constant term.
+    double factor = 0.5 * modes / (modes + harmonic);
+    value = factor * power * polynomial + (harmonic == 0 ? 0.5 : 0);
+    if (Derivative)
+        derivative = factor * (dpower * polynomial + power * slope * (2 * beta));
+}
+
+__device__ inline double raw_coefficient(double beta, int modes, int harmonic) {
+    double value, unused;
+    raw_horner<false>(beta, modes, harmonic, value, unused);
+    return value;
 }
 
 struct Profile {
@@ -198,30 +244,7 @@ __device__ inline void coefficient_pair(const Profile &profile, int modes, int h
 // to beta. Carry value/derivative together; this is analytic, not finite differences.
 __device__ inline void raw_coefficient_derivative(double beta, int modes, int harmonic,
                                                   double &value, double &derivative) {
-    double x = beta * beta, dx = 2 * beta, t = x - 1;
-    double power = 1, dpower = 0;
-    for (int j = 0; j < harmonic; ++j) {
-        dpower = dpower * x + power * dx;
-        power *= x;
-    }
-    if (harmonic == modes) {
-        value = 0.25 * power;
-        derivative = 0.25 * dpower;
-        return;
-    }
-    double term = (modes + harmonic) * t, dterm = (modes + harmonic) * dx;
-    double sum = term, dsum = dterm;
-    for (int j = 1; j < modes - harmonic; ++j) {
-        double ratio =
-            static_cast<double>((modes - harmonic - j) * (modes + harmonic + j)) / (j * (j + 1));
-        dterm = ratio * (dterm * t + term * dx);
-        term *= ratio * t;
-        sum += term;
-        dsum += dterm;
-    }
-    double factor = 0.5 * modes / (modes + harmonic);
-    value = factor * power * sum + (harmonic == 0 ? 0.5 : 0);
-    derivative = factor * (dpower * sum + power * dsum);
+    raw_horner<true>(beta, modes, harmonic, value, derivative);
 }
 
 // The selected bank, owner and torus image are held fixed in backward. The

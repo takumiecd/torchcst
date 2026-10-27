@@ -154,6 +154,146 @@ __global__ void compute_c_kernel(const scalar_t *atoms, const int64_t *rows, con
     }
 }
 
+// Consume the intersection of one group's sorted-slot range and this split's
+// interval in the concatenation of all groups belonging to the owner. All
+// lanes take the same branches and participate in every shared-memory barrier.
+template <typename scalar_t, typename projection_t>
+__device__ void split_consume_range(const scalar_t *atoms, const int64_t *rows,
+                                    const projection_t *h, int atom_count, int batches, Axis output,
+                                    Bank bank, int owner, bool reverse, int batch_begin, int begin,
+                                    int end, int split_begin, int split_end, int &prefix,
+                                    double *coefficients, double *scaled_h,
+                                    double (&accum)[MAX_ACCUMULATORS]) {
+    int length = end - begin;
+    int first = max(0, split_begin - prefix);
+    int last = min(length, split_end - prefix);
+    prefix += length;
+    int lane = threadIdx.x;
+    int elements = BATCH_TILE * output.basis_count();
+    for (int chunk = begin + first; chunk < begin + last; chunk += CHUNK) {
+        int slot = chunk + lane;
+        bool valid = slot < begin + last;
+        int original = valid ? rows[slot] : 0;
+        if (valid) {
+            Profile profile =
+                make_profile(output, bank, static_cast<double>(atoms[4 * original + 1]),
+                             static_cast<double>(atoms[4 * original + (reverse ? 3 : 2)]), owner);
+            for (int harmonic = 0; harmonic <= output.modes; ++harmonic) {
+                double cc, cs;
+                coefficient_pair(profile, output.modes, harmonic, cc, cs);
+                if (harmonic == 0)
+                    coefficients[lane] = cc;
+                else {
+                    coefficients[(2 * harmonic - 1) * CHUNK + lane] = cc;
+                    coefficients[2 * harmonic * CHUNK + lane] = cs;
+                }
+            }
+        } else {
+            for (int mode = 0; mode < output.basis_count(); ++mode)
+                coefficients[mode * CHUNK + lane] = 0;
+        }
+        for (int local = 0; local < BATCH_TILE; ++local)
+            scaled_h[local * CHUNK + lane] = valid && batch_begin + local < batches
+                                                 ? static_cast<double>(atoms[4 * original]) *
+                                                       h[(batch_begin + local) * atom_count + slot]
+                                                 : 0;
+        __syncthreads();
+        for (int work = lane, a = 0; work < elements; work += CHUNK, ++a) {
+            int batch = work / output.basis_count(), mode = work % output.basis_count();
+            for (int atom = 0; atom < CHUNK; ++atom)
+                accum[a] += scaled_h[batch * CHUNK + atom] * coefficients[mode * CHUNK + atom];
+        }
+        __syncthreads();
+    }
+}
+
+// One warp per (owner, batch tile, split). The temporary is bounded by the
+// number of owners and splits, never by atoms or groups. Two descriptor passes
+// count the owner's atoms then partition their concatenation evenly: even a
+// collection of short groups is distributed across splits. Reverse lookup uses
+// one lane per descriptor and a warp ballot, avoiding barriers for nonmatches.
+template <typename scalar_t, typename projection_t>
+__global__ void compute_c_split_kernel(const scalar_t *atoms, const int64_t *rows,
+                                       const int *groups, const int64_t *offsets,
+                                       const projection_t *h, double *partial, int atom_count,
+                                       int group_count, int batches, Axis input, Axis output,
+                                       bool reverse, int splits) {
+    extern __shared__ double shared[];
+    double *coefficients = shared;
+    double *scaled_h = shared + CHUNK * output.basis_count();
+    int node = blockIdx.x, bank_index = 0;
+    while (bank_index + 1 < output.bank_count && node >= output.banks[bank_index + 1].node_offset)
+        ++bank_index;
+    Bank bank = output.banks[bank_index];
+    int owner = node - bank.node_offset;
+    int lane = threadIdx.x;
+    int batch_begin = blockIdx.y * BATCH_TILE;
+    int total = 0, split_begin = 0, split_end = 0;
+    double accum[MAX_ACCUMULATORS] = {};
+    for (int pass = 0; pass < 2; ++pass) {
+        int prefix = 0;
+        if (reverse) {
+            for (int base = 0; base < group_count; base += CHUNK) {
+                int group = base + lane;
+                bool matches = group < group_count && groups[4 * group + 1] == bank.level &&
+                               groups[4 * group + 3] == owner;
+                unsigned mask = __ballot_sync(0xffffffffu, matches);
+                while (mask) {
+                    int g = base + __ffs(mask) - 1;
+                    mask &= mask - 1;
+                    int begin = offsets[g], end = offsets[g + 1];
+                    if (pass == 0)
+                        prefix += end - begin;
+                    else
+                        split_consume_range(atoms, rows, h, atom_count, batches, output, bank,
+                                            owner, reverse, batch_begin, begin, end, split_begin,
+                                            split_end, prefix, coefficients, scaled_h, accum);
+                }
+            }
+        } else {
+            for (int range = 0; range < input.bank_count; ++range) {
+                int hi = input.banks[range].level;
+                int begin = offsets[lower_group(groups, group_count, bank.level, hi, owner)];
+                int end = offsets[lower_group(groups, group_count, bank.level, hi, owner + 1)];
+                if (pass == 0)
+                    prefix += end - begin;
+                else
+                    split_consume_range(atoms, rows, h, atom_count, batches, output, bank, owner,
+                                        reverse, batch_begin, begin, end, split_begin, split_end,
+                                        prefix, coefficients, scaled_h, accum);
+            }
+        }
+        if (pass == 0) {
+            total = prefix;
+            split_begin = static_cast<int>(static_cast<int64_t>(total) * blockIdx.z / splits);
+            split_end = static_cast<int>(static_cast<int64_t>(total) * (blockIdx.z + 1) / splits);
+        }
+    }
+    int elements = BATCH_TILE * output.basis_count();
+    for (int work = lane, a = 0; work < elements; work += CHUNK, ++a) {
+        int local = work / output.basis_count(), mode = work % output.basis_count();
+        if (batch_begin + local < batches) {
+            int64_t index = ((static_cast<int64_t>(blockIdx.z) * batches + batch_begin + local) *
+                                 output.node_count +
+                             node) *
+                                output.basis_count() +
+                            mode;
+            partial[index] = accum[a];
+        }
+    }
+}
+
+__global__ void reduce_c_splits_kernel(const double *partial, double *c, int64_t elements,
+                                       int splits) {
+    int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (i >= elements)
+        return;
+    double value = 0;
+    for (int split = 0; split < splits; ++split)
+        value += partial[static_cast<int64_t>(split) * elements + i];
+    c[i] = value;
+}
+
 // Unique output site/batch ownership: add contributions from each bank after
 // evaluating C in that bank's basis. No Y atomic or mixed-basis C summation.
 template <typename scalar_t>
@@ -168,24 +308,53 @@ __global__ void expand_c_kernel(const double *c, scalar_t *y, int batches, Axis 
             Bank bank = axis.banks[index];
             int tile = site / bank.tile_sites;
             int retained = bank.full_chart ? 1 : 3;
+            int bases[3], image_residues[3];
             for (int delta = 0; delta < retained; ++delta) {
                 int owner = bank.full_chart ? 0 : positive_mod(tile - 1 + delta, bank.tile_count);
                 int raw_tile = bank.full_chart
                                    ? 0
                                    : owner - 1 + positive_mod(tile - (owner - 1), bank.tile_count);
                 int image = bank.full_chart ? 0 : (raw_tile - tile) / bank.tile_count;
-                int base =
+                bases[delta] =
                     (batch * axis.node_count + bank.node_offset + owner) * axis.basis_count();
-                total += c[base] * axis.spacing;
-                double position = site * axis.spacing + image * axis.period;
-                for (int harmonic = 1; harmonic <= axis.modes; ++harmonic) {
-                    double omega = 2 * PI * harmonic / bank.period;
-                    double factor = 2 * sin(omega * axis.spacing / 2) / omega;
-                    double sine, cosine;
-                    sincos(omega * position, &sine, &cosine);
-                    total += factor *
-                             (c[base + 2 * harmonic - 1] * cosine + c[base + 2 * harmonic] * sine);
+                image_residues[delta] =
+                    bank.full_chart ? 0 : positive_mod(image * bank.tile_count, 3);
+                total += c[bases[delta]] * axis.spacing;
+            }
+            // For a three-tile bank, an image shift has phase
+            // 2*pi*k*image*tile_count/3. Its residue gives an exact choice of
+            // the three roots of unity; the full-chart image is always zero.
+            // Rotate owner coefficients into the canonical site frame first,
+            // then evaluate that site's basis once for all retained owners.
+            double omega = 2 * PI / bank.period;
+            double sin_step, cos_step, sin_half_step, cos_half_step;
+            sincos(omega * (site * axis.spacing), &sin_step, &cos_step);
+            sincos(omega * axis.spacing / 2, &sin_half_step, &cos_half_step);
+            double sine = sin_step, cosine = cos_step;
+            double half_sine = sin_half_step, half_cosine = cos_half_step;
+            constexpr double SQRT3_OVER_2 = 0.86602540378443864676;
+            for (int harmonic = 1; harmonic <= axis.modes; ++harmonic) {
+                double canonical_cos = 0, canonical_sin = 0;
+                for (int delta = 0; delta < retained; ++delta) {
+                    int residue = (harmonic * image_residues[delta]) % 3;
+                    double rc = residue == 0 ? 1 : -0.5;
+                    double rs = residue == 0 ? 0 : (residue == 1 ? SQRT3_OVER_2 : -SQRT3_OVER_2);
+                    int base = bases[delta];
+                    double cc = c[base + 2 * harmonic - 1];
+                    double cs = c[base + 2 * harmonic];
+                    canonical_cos += cc * rc + cs * rs;
+                    canonical_sin += cs * rc - cc * rs;
                 }
+                double factor = 2 * half_sine / (omega * harmonic);
+                total += factor * (canonical_cos * cosine + canonical_sin * sine);
+                // Advance both the site phase and the cell half-step phase in
+                // FP64; J_k uses the latter, including the 1/k factor above.
+                double next_sine = sine * cos_step + cosine * sin_step;
+                cosine = cosine * cos_step - sine * sin_step;
+                sine = next_sine;
+                double next_half_sine = half_sine * cos_half_step + half_cosine * sin_half_step;
+                half_cosine = half_cosine * cos_half_step - half_sine * sin_half_step;
+                half_sine = next_half_sine;
             }
         }
         y[batch * axis.sites + site] = static_cast<scalar_t>(total);
@@ -250,6 +419,48 @@ torch::Tensor compute_c(torch::Tensor atoms, torch::Tensor rows, torch::Tensor g
                 atoms.size(0), groups.size(0), h.size(0), input, output, reverse);
         });
     });
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+    return c;
+}
+
+// Research candidate: fixed owner/split partials, then one writer per C element.
+// S=1 remains available through compute_c for direct baseline comparison.
+torch::Tensor compute_c_split(torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups,
+                              torch::Tensor offsets, torch::Tensor h,
+                              std::vector<double> input_config, std::vector<double> output_config,
+                              bool reverse, int splits) {
+    check_layout(atoms, rows, groups, offsets);
+    Axis input = parse_axis(input_config), output = parse_axis(output_config);
+    TORCH_CHECK(splits >= 1 && splits <= 64, "splits must lie in [1,64]");
+    TORCH_CHECK(h.is_contiguous() && h.device() == atoms.device() && h.dim() == 2 &&
+                    (h.scalar_type() == torch::kFloat64 || h.scalar_type() == torch::kFloat32) &&
+                    h.size(1) == atoms.size(0) && h.numel() <= INT_MAX,
+                "invalid H");
+    TORCH_CHECK(h.size(0) <= INT_MAX / (output.node_count * output.basis_count()),
+                "C exceeds index capacity");
+    c10::cuda::CUDAGuard guard(atoms.device());
+    auto c = torch::empty({h.size(0), output.node_count, output.basis_count()},
+                          h.options().dtype(torch::kFloat64));
+    if (c.numel() == 0)
+        return c;
+    auto partial =
+        torch::empty({splits, h.size(0), output.node_count, output.basis_count()}, c.options());
+    dim3 grid(output.node_count, (h.size(0) + BATCH_TILE - 1) / BATCH_TILE, splits);
+    size_t shared = sizeof(double) * CHUNK * (output.basis_count() + BATCH_TILE);
+    auto stream = c10::cuda::getCurrentCUDAStream();
+    AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "hierarchical_split_c_atoms", [&] {
+        using atom_t = scalar_t;
+        AT_DISPATCH_FLOATING_TYPES(h.scalar_type(), "hierarchical_split_c_storage", [&] {
+            compute_c_split_kernel<atom_t, scalar_t><<<grid, CHUNK, shared, stream>>>(
+                atoms.data_ptr<atom_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
+                offsets.data_ptr<int64_t>(), h.data_ptr<scalar_t>(), partial.data_ptr<double>(),
+                atoms.size(0), groups.size(0), h.size(0), input, output, reverse, splits);
+        });
+    });
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+    int64_t elements = c.numel();
+    reduce_c_splits_kernel<<<(elements + THREADS - 1) / THREADS, THREADS, 0, stream>>>(
+        partial.data_ptr<double>(), c.data_ptr<double>(), elements, splits);
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return c;
 }
