@@ -60,6 +60,9 @@ std::vector<Tensor> compute_g_and_parameter_grad(
 Tensor parameter_grad(Tensor atoms, Tensor rows, Tensor groups, Tensor offsets,
                       Tensor zx, Tensor zy, Tensor h, Tensor g, Config input,
                       Config output, int threads, bool windowed);
+std::vector<Tensor> compute_polar_g_and_parameter_grad(
+    Tensor atoms, Tensor rows, Tensor groups, Tensor offsets, Tensor zx, Tensor zy,
+    Config input, Config output, int threads, bool windowed, bool compensated);
 std::vector<Tensor> compute_g_parameter_grad_cin(Tensor atoms, Tensor rows,
                                                  Tensor groups, Tensor offsets,
                                                  Tensor zx, Tensor zy, Tensor h,
@@ -105,6 +108,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("compute_h_c_ragged", &compute_h_c_ragged);
   m.def("compute_g_and_parameter_grad", &compute_g_and_parameter_grad);
   m.def("parameter_grad", &parameter_grad);
+  m.def("compute_polar_g_and_parameter_grad", &compute_polar_g_and_parameter_grad);
   m.def("compute_g_parameter_grad_cin", &compute_g_parameter_grad_cin);
   m.def("compute_input_c_reverse", &compute_input_c_reverse);
   m.def("compute_input_c_reverse_ragged", &compute_input_c_reverse_ragged);

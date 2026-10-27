@@ -203,3 +203,25 @@ def test_polar_integrated_cuda_singular_guard_and_angular_extrema():
     dxr, dpr = torch.autograd.grad(yr, (xr, pr), dy.cpu().double())
     for a, b in ((y, yr), (dx, dxr), (dp, dpr)):
         torch.testing.assert_close(a.cpu().double(), b, rtol=3e-6, atol=2e-7)
+
+
+@cuda_only
+def test_polar_pullback_does_not_retain_global_h():
+    model = layer(count=37, dtype=torch.float32, device="cuda", cuda_plan=True)
+    shapes = []
+
+    def pack(value):
+        shapes.append(tuple(value.shape))
+        return value
+
+    x = torch.randn(4, 128, device="cuda", requires_grad=True)
+    with torch.autograd.graph.saved_tensors_hooks(pack, lambda value: value):
+        y = model(x)
+    assert (4, 37) not in shapes
+    assert (
+        4,
+        hierarchy_from_operator(model.declaration()).input.node_count,
+        17,
+    ) in shapes
+    y.sum().backward()
+    assert torch.isfinite(model.atoms.p.grad).all()

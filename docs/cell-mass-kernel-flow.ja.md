@@ -82,6 +82,12 @@ Zの二分階層・H/G/Cの保存方式・cell-mass profile自体は維持する
 parameter_gradは振幅勾配を(s,t)へ戻し、幅のtask gradientは既存どおり通さない。
 center勾配は元のinput/output順に書く。旧物理sigma経路も比較用に保持する。
 
+Polarのtask pullbackはZx/ZyからH/Gとcenter微分を同時にFP64 registerで再計算する。
+Gだけを入力dtypeへ丸めてdX用に渡し、パラメータ勾配には丸め前の値を使う。
+forwardのHはC生成後に解放し、backwardまで保存しない。FP64の全H/G表も追加しない。
+幅stop-gradientなので、Polar専用pullbackは不要なbeta/sigma微分を計算しない。
+物理sigma版の保存Hとwidth微分経路はそのまま残す。
+
 各軸の幅上限はその軸のQ/3以下で宣言する。input/outputの別幅も使える。
 幅が違う場合は共有sigmaを仮定するcompact bank省略を使わず、完全Cartesian countingにする。
 shape係数の再利用は周期・profileに加え実際のsigmaが一致する場合だけ行う。
@@ -97,7 +103,17 @@ finite_chord/dormant_expansion_rate=0。AdamWはlr1e-3/weight_decay0。
 これは既存Polarが受け付ける明示atom初期化とscalar設定であり、新しい更新則ではない。
 denseにはこのPolarモデルの初期実効Wを渡し、外側の層・各epochのshuffleも一致させる。
 以前の物理sigma版とは初期分布・学習則が違うので、時間の直接的な改善率には読み替えない。
-現在はCPU全2,047 passed/5,361 skipped。以下の物理sigma版の結果と分け、GPU結果を追記する。
+現在はCPU全2,047 passed/5,362 skipped。以下の物理sigma版の結果と分け、GPU結果を追記する。
+
+初回job `l4job-32efe4ab7d7c4fea97da7aeacf943fbb`は別幅8ケースで失敗した。
+C生成のCartesian経路にも共有sigmaを仮定したbankペア省略が残っていたため、
+別幅ではその省略を行わないよう修正した。次のjob `l4job-6f0f31bcb6884cb78312cd350c7455d5`で
+全2,642 passed/12 skipped、racecheck 0 hazardsとなったが、全819atom/B32の勾配検査で
+3/3,276要素がrtol3e-6/atol2e-7を超過（最大絶対差5.9084e-7）した。
+許容誤差は維持し、保存FP32 H/Gを使うPolar pullbackを上記FP64 register再計算へ置き換えた。
+いずれの試行もMNIST開始前に止まり、学習結果や速度の根拠には使わない。
+両失敗runのsource/results/spec/receiptはignored `output/cell-mass-polar-integration-20261027/`
+の`failed-split-preflight/`と`failed-rounded-gradient/`へ保存した。
 
 #### 物理sigmaによる接続（先行実験・Polarではない）
 

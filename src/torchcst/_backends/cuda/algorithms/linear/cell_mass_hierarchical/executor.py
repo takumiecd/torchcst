@@ -655,6 +655,38 @@ def compute_input_c(
     )
 
 
+def compute_polar_g_and_parameter_grad(
+    plan, atoms, layout, zx, zy, *, threads=128, windowed=False, compensated=False
+):
+    """Recompute H/G in FP64 registers; return rounded G and Polar gradients.
+
+    No global H is required by this pullback. Width remains detached, so each
+    projection computes only its value and center derivative, not d/dsigma.
+    """
+    if plan.input.polar is None:
+        raise ValueError("requires a Polar hierarchy")
+    if type(threads) is not int or threads not in (32, 64, 128, 256):
+        raise ValueError("atom threads must be 32,64,128 or 256")
+    if type(windowed) is not bool:
+        raise ValueError("windowed must be bool")
+    _validate_compensated(compensated, atoms, atoms.dtype, plan.input)
+    _validate_compensated(compensated, atoms, atoms.dtype, plan.output)
+    layout.validate_for(atoms, plan)
+    return _extension().compute_polar_g_and_parameter_grad(
+        atoms,
+        layout.rows,
+        layout.groups,
+        layout.offsets,
+        zx,
+        zy,
+        plan.input.native_config(),
+        plan.output.native_config(),
+        threads,
+        windowed,
+        compensated,
+    )
+
+
 def parameter_grad(plan, atoms, layout, zx, zy, h, g, *, threads=128, windowed=False):
     """One thread per atom reduces all batches into its original [a,s,muo,mui].
 
@@ -887,7 +919,9 @@ class _HierarchicalLinear(torch.autograd.Function):
             layout.reverse_offsets,
         )
         if ctx.needs_input_grad[1]:
-            saved += (zx, h)
+            # Polar reprojects H in FP64 registers for its task pullback.
+            # Its rounded forward activation can be released after output C.
+            saved += (zx,) if plan.input.polar is not None else (zx, h)
         ctx.save_for_backward(*saved)
         return y
 
@@ -921,7 +955,19 @@ class _HierarchicalLinear(torch.autograd.Function):
         if ctx.window_moments:
             zy = build_window_moments(zy, plan.output)
         dx = datoms = cin = None
-        if (
+        if ctx.needs_input_grad[1] and plan.input.polar is not None:
+            (zx,) = forward_state
+            g, datoms = compute_polar_g_and_parameter_grad(
+                plan,
+                atoms,
+                layout,
+                zx,
+                zy,
+                threads=ctx.atom_threads,
+                windowed=ctx.window_moments,
+                compensated=ctx.compensated_grad,
+            )
+        elif (
             ctx.fuse_backward_cin
             and ctx.needs_input_grad[0]
             and ctx.needs_input_grad[1]

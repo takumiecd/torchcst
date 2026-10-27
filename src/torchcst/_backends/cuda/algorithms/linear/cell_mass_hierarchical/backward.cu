@@ -4,6 +4,83 @@
 using namespace cell_mass_hierarchy;
 
 namespace {
+// Polar has no task derivative through width. Calculate each projection and
+// center derivative together, avoiding the unused beta/sigma derivative work.
+// H/G used for parameter gradients stay in double registers rather than being
+// rounded to their globally saved activation dtype.
+template <int FixedModes, bool Compensated>
+__device__ inline void polar_projection(const double *z, int batches, int begin,
+    const Axis &axis, const Bank &bank, int owner, const Profile &profile,
+    bool windowed, double *value, double *dcenter) {
+    HarmonicStream<false, Compensated> stream(profile, FixedModes ? FixedModes : axis.modes);
+    int retained = windowed || bank.full_chart ? 1 : 3;
+    int first = windowed ? owner : (bank.full_chart ? 0 : owner - 1);
+    int modes = FixedModes ? FixedModes : axis.modes;
+#pragma unroll
+    for (int harmonic = 0; harmonic <= modes; ++harmonic) {
+        double cc, cs, unused_c, unused_s;
+        stream.next(cc, cs, unused_c, unused_s);
+        double omega = profile.omega * harmonic;
+        for (int offset = 0; offset < retained; ++offset) {
+            double rs = 0, rc = 1;
+            int node = bank.node_offset + owner;
+            if (!windowed) {
+                int raw = first + offset;
+                int tile = positive_mod(raw, bank.tile_count);
+                image_rotation(bank, harmonic, (raw - tile) / bank.tile_count, rs, rc);
+                node = bank.node_offset + tile;
+            }
+            for (int b = 0; b < BATCH_TILE && begin + b < batches; ++b) {
+                int base = ((begin + b) * axis.node_count + node) * axis.basis_count();
+                if (harmonic == 0) {
+                    value[b] += cc * z[base];
+                } else {
+                    double zc = z[base + 2 * harmonic - 1], zs = z[base + 2 * harmonic];
+                    double rotated_c = zc * rc - zs * rs;
+                    double rotated_s = zs * rc + zc * rs;
+                    value[b] += cc * rotated_c + cs * rotated_s;
+                    dcenter[b] += omega * (-cs * rotated_c + cc * rotated_s);
+                }
+            }
+        }
+    }
+}
+
+template <typename atom_t, int FixedModes, bool Compensated>
+__global__ void polar_g_parameter_grad_kernel(const atom_t *atoms, const int64_t *rows,
+    const int *groups, const int64_t *offsets, const double *zx, const double *zy,
+    atom_t *g, atom_t *gradient, int atom_count, int group_count, int batches,
+    Axis input, Axis output, bool windowed) {
+    int slot = blockIdx.x * blockDim.x + threadIdx.x;
+    if (slot >= atom_count) return;
+    int original = rows[slot];
+    int group = group_for_slot(offsets, group_count, slot);
+    int input_owner = groups[4 * group + 3], output_owner = groups[4 * group + 2];
+    Bank ib = input.banks[bank_for_level(input, groups[4 * group + 1])];
+    Bank ob = output.banks[bank_for_level(output, groups[4 * group])];
+    double amplitude = atom_amplitude(atoms, original, input);
+    Profile ip = make_profile<false, FixedModes, Compensated>(input, ib,
+        atom_sigma(atoms, original, input), atom_center(atoms, original, input, false), input_owner);
+    Profile op = make_profile<false, FixedModes, Compensated>(output, ob,
+        atom_sigma(atoms, original, output), atom_center(atoms, original, output, true), output_owner);
+    double da = 0, dmi = 0, dmo = 0;
+    for (int begin = 0; begin < batches; begin += BATCH_TILE) {
+        double hv[BATCH_TILE] = {}, gv[BATCH_TILE] = {};
+        double dhi[BATCH_TILE] = {}, dgo[BATCH_TILE] = {};
+        polar_projection<FixedModes, Compensated>(zx, batches, begin, input, ib, input_owner,
+                                                ip, windowed, hv, dhi);
+        polar_projection<FixedModes, Compensated>(zy, batches, begin, output, ob, output_owner,
+                                                op, windowed, gv, dgo);
+        for (int b = 0; b < BATCH_TILE && begin + b < batches; ++b) {
+            g[(begin + b) * atom_count + slot] = static_cast<atom_t>(gv[b]);
+            da += hv[b] * gv[b];
+            dmi += amplitude * gv[b] * dhi[b];
+            dmo += amplitude * hv[b] * dgo[b];
+        }
+    }
+    store_atom_gradient(atoms, gradient, original, input, da, 0, dmi, dmo);
+}
+
 template <typename scalar_t, typename projection_t>
 __global__ void parameter_grad_kernel(const scalar_t *atoms, const int64_t *rows, const int *groups,
                                       const int64_t *offsets, const double *zx, const double *zy,
@@ -263,6 +340,48 @@ std::vector<torch::Tensor> compute_g_and_parameter_grad(
                         atoms.size(0), groups.size(0), zx.size(0), input, output, windowed);
             }
         });
+    });
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+    return {g, gradient};
+}
+
+// Dedicated Polar pullback: no saved H, no global FP64 projection table, and
+// no width task gradient. Rounded G is returned solely for the dX contraction.
+std::vector<torch::Tensor> compute_polar_g_and_parameter_grad(
+    torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups, torch::Tensor offsets,
+    torch::Tensor zx, torch::Tensor zy, std::vector<double> input_config,
+    std::vector<double> output_config, int threads, bool windowed, bool compensated) {
+    TORCH_CHECK(power_of_two(threads) && threads >= 32 && threads <= 256, "invalid atom threads");
+    check_layout(atoms, rows, groups, offsets);
+    Axis input = parse_axis(input_config), output = parse_axis(output_config);
+    TORCH_CHECK(input.polar && output.polar, "precise Polar pullback requires Polar axes");
+    TORCH_CHECK(!compensated || (input.modes == 8 && output.modes == 8 &&
+        input.tail_bound == 1e-3 && output.tail_bound == 1e-3 &&
+        atoms.scalar_type() == torch::kFloat32), "invalid compensated Polar projection");
+    check_moments(zx, atoms, input); check_moments(zy, atoms, output);
+    TORCH_CHECK(zx.size(0) == zy.size(0) && zx.size(0) * atoms.size(0) <= INT_MAX,
+                "invalid Polar projection batch/index size");
+    c10::cuda::CUDAGuard guard(atoms.device());
+    auto g = torch::empty({zx.size(0), atoms.size(0)}, atoms.options());
+    auto gradient = torch::empty_like(atoms);
+    if (atoms.size(0) == 0) return {g, gradient};
+    TORCH_CHECK(groups.size(0) > 0, "nonempty atoms need groups");
+    auto stream = c10::cuda::getCurrentCUDAStream();
+    AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "precise_polar_pullback", [&] {
+        auto launch = [&](auto mode_tag, auto compensated_tag) {
+            constexpr int modes = decltype(mode_tag)::value;
+            constexpr bool use_compensated = decltype(compensated_tag)::value;
+            polar_g_parameter_grad_kernel<scalar_t, modes, use_compensated>
+                <<<(atoms.size(0) + threads - 1) / threads, threads, 0, stream>>>(
+                    atoms.data_ptr<scalar_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
+                    offsets.data_ptr<int64_t>(), zx.data_ptr<double>(), zy.data_ptr<double>(),
+                    g.data_ptr<scalar_t>(), gradient.data_ptr<scalar_t>(), atoms.size(0),
+                    groups.size(0), zx.size(0), input, output, windowed);
+        };
+        if (compensated) launch(std::integral_constant<int, 8>{}, std::true_type{});
+        else if (input.modes == 8 && output.modes == 8)
+            launch(std::integral_constant<int, 8>{}, std::false_type{});
+        else launch(std::integral_constant<int, 0>{}, std::false_type{});
     });
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return {g, gradient};
