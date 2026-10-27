@@ -382,8 +382,8 @@ def compute_c(
     compensated_cdot option uses FP32 pairs only for guarded atom chunks;
     other chunks and all cross-chunk/cross-block sums remain FP64.
     """
-    if type(splits) is not int or not 1 <= splits <= 64:
-        raise ValueError("C splits must be an integer in [1,64]")
+    if type(splits) is not int or not 1 <= splits <= 256:
+        raise ValueError("C splits must be an integer in [1,256]")
     if type(atoms_per_split) is not int or not 0 <= atoms_per_split <= 65536:
         raise ValueError("atoms_per_split must be an integer in [0,65536]")
     _validate_compensated(compensated, atoms, h.dtype, plan.output)
@@ -419,8 +419,8 @@ def compute_h_c(
     compensated=False,
 ):
     """Compute H and output C together for M8 axes; H uses the atom dtype."""
-    if type(splits) is not int or not 1 <= splits <= 64:
-        raise ValueError("C splits must be an integer in [1,64]")
+    if type(splits) is not int or not 1 <= splits <= 256:
+        raise ValueError("C splits must be an integer in [1,256]")
     if type(atoms_per_split) is not int or not 0 <= atoms_per_split <= 65536:
         raise ValueError("atoms_per_split must be an integer in [0,65536]")
     if type(windowed) is not bool:
@@ -551,8 +551,8 @@ def compute_input_c(
     Compensated values evaluate the profile polynomial. Guarded C dot is a
     separate opt-in, with FP64 fallback and FP64 cross-chunk/cross-block sums.
     """
-    if type(splits) is not int or not 1 <= splits <= 64:
-        raise ValueError("C splits must be an integer in [1,64]")
+    if type(splits) is not int or not 1 <= splits <= 256:
+        raise ValueError("C splits must be an integer in [1,256]")
     _validate_compensated(compensated, atoms, g.dtype, plan.input)
     _validate_compensated_cdot(compensated_cdot, atoms, g.dtype, plan.input)
     layout.validate_for(atoms, plan)
@@ -679,8 +679,8 @@ def compute_g_parameter_grad_cin(
     projection and gradients, then reuses the input derivative coefficients for
     the shared C chunk. This native stage supports one to four batches only.
     """
-    if type(splits) is not int or not 1 <= splits <= 64:
-        raise ValueError("C splits must be an integer in [1,64]")
+    if type(splits) is not int or not 1 <= splits <= 256:
+        raise ValueError("C splits must be an integer in [1,256]")
     if type(windowed) is not bool:
         raise ValueError("windowed must be bool")
     layout.validate_for(atoms, plan)
@@ -1029,8 +1029,8 @@ def hierarchical_linear(
         raise ValueError("atom threads must be 32,64,128 or 256")
     if layout_method not in ("sort", "counting", "counting_compact"):
         raise ValueError("layout method must be sort, counting or counting_compact")
-    if type(c_splits) is not int or not 1 <= c_splits <= 64:
-        raise ValueError("C splits must be an integer in [1,64]")
+    if type(c_splits) is not int or not 1 <= c_splits <= 256:
+        raise ValueError("C splits must be an integer in [1,256]")
     if type(fuse_g_grad) is not bool:
         raise ValueError("fuse_g_grad must be bool")
     if type(fuse_backward_cin) is not bool:

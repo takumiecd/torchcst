@@ -3528,3 +3528,293 @@ def test_shape_coefficient_cache_flag_requires_bool(bad):
         hierarchical_linear(
             plan, x, atoms, fuse_g_grad=True, reuse_shape_coefficients=bad
         )
+
+
+@cuda_only
+@pytest.mark.parametrize(
+    "splits,reverse,grain,batches,count,fuse_h_c,fuse_backward_cin",
+    [
+        (128, False, 0, 1, 3, False, False),
+        (256, True, 64, 4, 37, False, True),
+        (128, True, 128, 5, 37, True, False),
+        (256, False, 0, 0, 3, False, False),
+        (256, True, 64, 1, 0, False, True),
+    ],
+)
+def test_large_split_full_route_matches_independent_fft(
+    splits, reverse, grain, batches, count, fuse_h_c, fuse_backward_cin
+):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        hierarchical_linear,
+    )
+
+    plan = HierarchyPlan(
+        input=AxisPlan(site_count=128, min_tile_sites=4, spacing=0.5, origin=-2),
+        output=AxisPlan(site_count=128, min_tile_sites=8, origin=3),
+    )
+    rng = torch.Generator().manual_seed(120)
+    source = torch.randn(count, 4, generator=rng)
+    source[:, 1] = torch.linspace(0.2, 20, count)
+    source[:, 2:] *= 150
+    if count:
+        source[0] = torch.tensor([0.0, 2.0, 130.9, 61.9])
+    if count > 1:
+        source[1] = torch.tensor([0.7, 2.0, 130.5, 61.75])
+        source[1, 1:] = torch.nextafter(source[1, 1:], torch.tensor(float("inf")))
+    xcpu = torch.randn(batches, 128, generator=rng)
+    dy = torch.randn(batches, 128, generator=rng)
+    x, atoms = xcpu.cuda().requires_grad_(), source.cuda().requires_grad_()
+    y = hierarchical_linear(
+        plan,
+        x,
+        atoms,
+        layout_method="counting_compact" if reverse else "sort",
+        reverse_layout=reverse,
+        atoms_per_split=grain,
+        c_splits=splits,
+        fuse_h_c=fuse_h_c,
+        fuse_backward_cin=fuse_backward_cin,
+        window_moments=reverse,
+    )
+    dx, dp = torch.autograd.grad(y, (x, atoms), dy.cuda())
+    if not count:
+        torch.testing.assert_close(y, torch.zeros_like(y))
+        torch.testing.assert_close(dx, torch.zeros_like(dx))
+        assert dp.shape == atoms.shape
+        return
+    xr, pr = xcpu.double().requires_grad_(), source.double().requires_grad_()
+    u = differentiable_profile_matrix(pr, plan.output, 2)
+    v = differentiable_profile_matrix(pr, plan.input, 3)
+    yr = ((xr @ v.T) * pr[:, 0]) @ u
+    dxr, dpr = torch.autograd.grad(yr, (xr, pr), dy.double())
+    for actual, expected in ((y, yr), (dx, dxr), (dp, dpr)):
+        torch.testing.assert_close(
+            actual.cpu().double(), expected, rtol=3e-6, atol=2e-7
+        )
+
+
+@cuda_only
+@pytest.mark.parametrize("splits,reverse,grain", [(128, False, 0), (256, True, 64)])
+def test_large_split_fused_cin_matches_single_split_stages(splits, reverse, grain):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        build_hierarchy,
+        compute_g,
+        compute_g_parameter_grad_cin,
+        compute_h,
+        compute_input_c,
+        parameter_grad,
+        prepare_layout,
+    )
+
+    axis = AxisPlan(site_count=128, min_tile_sites=4, origin=-2)
+    plan = HierarchyPlan(input=axis, output=axis)
+    rng = torch.Generator().manual_seed(120)
+    source = torch.randn(37, 4, generator=rng)
+    source[:, 1] = torch.linspace(0.2, 40, 37)
+    source[:, 2:] *= 150
+    source[0] = torch.tensor([0.0, 4.0, 125.9, -2.1])
+    atoms = source.cuda()
+    x = torch.randn(4, 128, generator=rng).cuda()
+    dy = torch.randn(4, 128, generator=rng).cuda()
+    layout = prepare_layout(plan, atoms, method="counting_compact", reverse=reverse)
+    zx, zy = build_hierarchy(x, axis), build_hierarchy(dy, axis)
+    h = compute_h(plan, atoms, layout, zx, storage_dtype=atoms.dtype)
+    g = compute_g(plan, atoms, layout, zy, storage_dtype=atoms.dtype)
+    dp = parameter_grad(plan, atoms, layout, zx, zy, h, g)
+    cin = compute_input_c(plan, atoms, layout, g, splits=1)
+    actual_cin, actual_g, actual_dp = compute_g_parameter_grad_cin(
+        plan,
+        atoms,
+        layout,
+        zx,
+        zy,
+        h,
+        splits=splits,
+        atoms_per_split=grain,
+    )
+    for actual, expected in ((actual_cin, cin), (actual_g, g), (actual_dp, dp)):
+        torch.testing.assert_close(actual, expected, rtol=3e-6, atol=2e-7)
+
+
+@cuda_only
+@pytest.mark.parametrize(
+    "route", ["c", "h_c", "g_grad_cin", "reverse_cin", "reverse_g_grad_cin"]
+)
+def test_large_split_native_rejects_more_than_64_scratch_pages(route):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        _extension,
+    )
+
+    # G/grad/Cin is constrained to <=4 batches; a larger input node count
+    # makes a single split exceed one MiB without violating that contract.
+    if route in ("g_grad_cin", "reverse_g_grad_cin"):
+        input_axis = AxisPlan(site_count=1024, min_tile_sites=1)
+        output_axis = AxisPlan(site_count=8, min_tile_sites=4)
+        batches = 4
+    else:
+        input_axis = AxisPlan(site_count=128, min_tile_sites=4)
+        output_axis = AxisPlan(site_count=128, min_tile_sites=8)
+        batches = 32 if route == "reverse_cin" else 72
+    target = (
+        input_axis
+        if route in ("g_grad_cin", "reverse_cin", "reverse_g_grad_cin")
+        else output_axis
+    )
+    c_bytes = batches * target.node_count * target.basis_count * 8
+    page_splits = max(1, (1024 * 1024) // c_bytes)
+    assert (256 + page_splits - 1) // page_splits > 64
+    atoms = torch.empty((0, 4), dtype=torch.float32, device="cuda")
+    rows = torch.empty(0, dtype=torch.int64, device="cuda")
+    groups = torch.empty((0, 4), dtype=torch.int32, device="cuda")
+    offsets = torch.zeros(1, dtype=torch.int64, device="cuda")
+    reverse_slots = torch.empty(0, dtype=torch.int32, device="cuda")
+    reverse_offsets = torch.zeros(
+        input_axis.node_count + 1, dtype=torch.int64, device="cuda"
+    )
+    zx = torch.zeros(
+        batches,
+        input_axis.node_count,
+        input_axis.basis_count,
+        dtype=torch.float64,
+        device="cuda",
+    )
+    zy = torch.zeros(
+        batches,
+        output_axis.node_count,
+        output_axis.basis_count,
+        dtype=torch.float64,
+        device="cuda",
+    )
+    h = torch.empty((batches, 0), dtype=torch.float32, device="cuda")
+    native = _extension()
+    ci = input_axis.native_config()
+    co = output_axis.native_config()
+    calls = {
+        "c": lambda: native.compute_c_split(
+            atoms, rows, groups, offsets, h, ci, co, False, 256, 0, False, False
+        ),
+        "h_c": lambda: native.compute_h_c(
+            atoms, rows, groups, offsets, zx, ci, co, 256, 0, False, False
+        ),
+        "g_grad_cin": lambda: native.compute_g_parameter_grad_cin(
+            atoms, rows, groups, offsets, zx, zy, h, ci, co, 256, False
+        ),
+        "reverse_cin": lambda: native.compute_input_c_reverse(
+            atoms, rows, reverse_slots, reverse_offsets, h, ci, 256, 0, False, False
+        ),
+        "reverse_g_grad_cin": lambda: native.compute_g_parameter_grad_cin_reverse(
+            atoms,
+            rows,
+            groups,
+            offsets,
+            reverse_slots,
+            reverse_offsets,
+            zx,
+            zy,
+            h,
+            ci,
+            co,
+            256,
+            False,
+            0,
+        ),
+    }
+    with pytest.raises(RuntimeError, match="more than 64 pages"):
+        calls[route]()
+
+
+@cuda_only
+def test_split_257_rejected_by_python_and_native_routes():
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        _extension,
+        build_hierarchy,
+        compute_c,
+        compute_g_parameter_grad_cin,
+        compute_h_c,
+        compute_input_c,
+        hierarchical_linear,
+        prepare_layout,
+    )
+
+    axis = AxisPlan(site_count=32, min_tile_sites=4)
+    plan = HierarchyPlan(input=axis, output=axis)
+    atoms = torch.empty((0, 4), device="cuda")
+    x = torch.ones(1, 32, device="cuda")
+    layout = prepare_layout(plan, atoms, method="counting_compact", reverse=True)
+    z = build_hierarchy(x, axis)
+    h = torch.empty((1, 0), device="cuda")
+    calls = [
+        lambda: compute_c(plan, atoms, layout, h, splits=257),
+        lambda: compute_h_c(plan, atoms, layout, z, splits=257),
+        lambda: compute_input_c(plan, atoms, layout, h, splits=257),
+        lambda: compute_g_parameter_grad_cin(plan, atoms, layout, z, z, h, splits=257),
+        lambda: hierarchical_linear(plan, x, atoms, c_splits=257),
+    ]
+    for call in calls:
+        with pytest.raises(ValueError):
+            call()
+    n = _extension()
+    c = axis.native_config()
+    native_calls = [
+        lambda: n.compute_c_split(
+            atoms,
+            layout.rows,
+            layout.groups,
+            layout.offsets,
+            h,
+            c,
+            c,
+            False,
+            257,
+            0,
+            False,
+            False,
+        ),
+        lambda: n.compute_h_c(
+            atoms,
+            layout.rows,
+            layout.groups,
+            layout.offsets,
+            z,
+            c,
+            c,
+            257,
+            0,
+            False,
+            False,
+        ),
+        lambda: n.compute_g_parameter_grad_cin(
+            atoms, layout.rows, layout.groups, layout.offsets, z, z, h, c, c, 257, False
+        ),
+        lambda: n.compute_input_c_reverse(
+            atoms,
+            layout.rows,
+            layout.reverse_slots,
+            layout.reverse_offsets,
+            h,
+            c,
+            257,
+            0,
+            False,
+            False,
+        ),
+        lambda: n.compute_g_parameter_grad_cin_reverse(
+            atoms,
+            layout.rows,
+            layout.groups,
+            layout.offsets,
+            layout.reverse_slots,
+            layout.reverse_offsets,
+            z,
+            z,
+            h,
+            c,
+            c,
+            257,
+            False,
+            0,
+        ),
+    ]
+    for call in native_calls:
+        with pytest.raises(RuntimeError, match="splits"):
+            call()

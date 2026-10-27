@@ -638,7 +638,8 @@ __device__ void fused_forward_atom(const atom_t *atoms, const int64_t *rows, con
     if (same_shape) {
         double output_center = profile_center(
             output, output_bank, static_cast<double>(atoms[4 * original + 2]), output_owner);
-        sincos(input_bank.omega * (output_center - input_profile.center), &step_sine, &step_cosine);
+        // The magnitude is shared, but the output center has its own phase.
+        sincos(output_bank.omega * output_center, &step_sine, &step_cosine);
     }
     HarmonicStream<false, Compensated> stream(input_profile, 8);
     double sums[BATCH_TILE] = {};
@@ -647,17 +648,17 @@ __device__ void fused_forward_atom(const atom_t *atoms, const int64_t *rows, con
     int window_node = input_bank.node_offset + input_owner;
 #pragma unroll
     for (int harmonic = 0; harmonic <= 8; ++harmonic) {
-        double cc, cs, unused_cc_beta, unused_cs_beta;
-        stream.next(cc, cs, unused_cc_beta, unused_cs_beta);
+        double cc, cs, unused_cc_beta, unused_cs_beta, magnitude;
+        stream.next(cc, cs, unused_cc_beta, unused_cs_beta, &magnitude);
         if (same_shape) {
             if (harmonic == 0) {
                 coefficients[lane] = cc;
             } else {
-                double next_sine = sine * step_cosine + cosine * step_sine;
-                cosine = cosine * step_cosine - sine * step_sine;
-                sine = next_sine;
-                coefficients[(2 * harmonic - 1) * SHARED_STRIDE + lane] = cc * cosine - cs * sine;
-                coefficients[2 * harmonic * SHARED_STRIDE + lane] = cs * cosine + cc * sine;
+                double next_cosine = cosine * step_cosine - sine * step_sine;
+                sine = sine * step_cosine + cosine * step_sine;
+                cosine = next_cosine;
+                coefficients[(2 * harmonic - 1) * SHARED_STRIDE + lane] = magnitude * cosine;
+                coefficients[2 * harmonic * SHARED_STRIDE + lane] = magnitude * sine;
             }
         }
         for (int offset = 0; offset < retained; ++offset) {
@@ -1325,7 +1326,7 @@ torch::Tensor compute_c_split(torch::Tensor atoms, torch::Tensor rows, torch::Te
                     (output.modes == 8 && output.tail_bound == 1e-3 &&
                      atoms.scalar_type() == torch::kFloat32 && h.scalar_type() == torch::kFloat32),
                 "compensated values require target M8, tail 1e-3 and FP32 atoms/projections");
-    TORCH_CHECK(splits >= 1 && splits <= 64, "splits must lie in [1,64]");
+    TORCH_CHECK(splits >= 1 && splits <= 256, "splits must lie in [1,256]");
     TORCH_CHECK(atoms_per_split >= 0 && atoms_per_split <= 65536,
                 "atoms_per_split must lie in [0,65536]");
     TORCH_CHECK(!compensated_cdot || (output.modes == 8 && atoms.scalar_type() == torch::kFloat32 &&
@@ -1348,6 +1349,8 @@ torch::Tensor compute_c_split(torch::Tensor atoms, torch::Tensor rows, torch::Te
     int64_t c_bytes = c.numel() * static_cast<int64_t>(sizeof(double));
     int page_splits =
         static_cast<int>(std::min<int64_t>(splits, std::max<int64_t>(1, PAGE_BYTES / c_bytes)));
+    TORCH_CHECK((splits + page_splits - 1) / page_splits <= 64,
+                "split scratch needs more than 64 pages; reduce splits or batch size");
     SplitPages pages{};
     pages.page_splits = page_splits;
     std::vector<torch::Tensor> partial_pages;
@@ -1426,7 +1429,7 @@ std::vector<torch::Tensor> compute_h_c(torch::Tensor atoms, torch::Tensor rows,
     TORCH_CHECK(!compensated || (atoms.scalar_type() == torch::kFloat32 &&
                                  input.tail_bound == 1e-3 && output.tail_bound == 1e-3),
                 "compensated values require FP32 atoms and tail 1e-3 on both axes");
-    TORCH_CHECK(splits >= 1 && splits <= 64, "splits must lie in [1,64]");
+    TORCH_CHECK(splits >= 1 && splits <= 256, "splits must lie in [1,256]");
     TORCH_CHECK(atoms_per_split >= 0 && atoms_per_split <= 65536,
                 "atoms_per_split must lie in [0,65536]");
     TORCH_CHECK(zx.size(0) * atoms.size(0) <= INT_MAX, "H exceeds index capacity");
@@ -1444,6 +1447,8 @@ std::vector<torch::Tensor> compute_h_c(torch::Tensor atoms, torch::Tensor rows,
     int64_t c_bytes = c.numel() * static_cast<int64_t>(sizeof(double));
     int page_splits =
         static_cast<int>(std::min<int64_t>(splits, std::max<int64_t>(1, PAGE_BYTES / c_bytes)));
+    TORCH_CHECK((splits + page_splits - 1) / page_splits <= 64,
+                "split scratch needs more than 64 pages; reduce splits or batch size");
     SplitPages pages{};
     pages.page_splits = page_splits;
     std::vector<torch::Tensor> partial_pages;
@@ -1494,7 +1499,7 @@ compute_g_parameter_grad_cin(torch::Tensor atoms, torch::Tensor rows, torch::Ten
     check_moments(zy, atoms, output);
     TORCH_CHECK(zx.size(0) >= 1 && zx.size(0) <= BATCH_TILE && zy.size(0) == zx.size(0),
                 "fused G/gradient/Cin requires 1 to 4 batches and matching moments");
-    TORCH_CHECK(splits >= 1 && splits <= 64, "splits must lie in [1,64]");
+    TORCH_CHECK(splits >= 1 && splits <= 256, "splits must lie in [1,256]");
     TORCH_CHECK(h.is_contiguous() && h.device() == atoms.device() && h.dim() == 2 &&
                     (h.scalar_type() == torch::kFloat32 || h.scalar_type() == torch::kFloat64) &&
                     h.size(0) == zx.size(0) && h.size(1) == atoms.size(0) && h.numel() <= INT_MAX,
@@ -1509,6 +1514,8 @@ compute_g_parameter_grad_cin(torch::Tensor atoms, torch::Tensor rows, torch::Ten
     int64_t c_bytes = c.numel() * static_cast<int64_t>(sizeof(double));
     int page_splits =
         static_cast<int>(std::min<int64_t>(splits, std::max<int64_t>(1, PAGE_BYTES / c_bytes)));
+    TORCH_CHECK((splits + page_splits - 1) / page_splits <= 64,
+                "split scratch needs more than 64 pages; reduce splits or batch size");
     SplitPages pages{};
     pages.page_splits = page_splits;
     std::vector<torch::Tensor> partial_pages;
@@ -1589,7 +1596,7 @@ static std::vector<torch::Tensor> compute_reverse_cin_impl(
                 "C exceeds index capacity");
     TORCH_CHECK(h.size(0) <= static_cast<int64_t>(65535) * BATCH_TILE,
                 "batch grid exceeds CUDA capacity");
-    TORCH_CHECK(splits >= 1 && splits <= 64, "splits must lie in [1,64]");
+    TORCH_CHECK(splits >= 1 && splits <= 256, "splits must lie in [1,256]");
     TORCH_CHECK(atoms_per_split >= 0 && atoms_per_split <= 65536,
                 "atoms_per_split must lie in [0,65536]");
     if (Fused) {
@@ -1615,6 +1622,8 @@ static std::vector<torch::Tensor> compute_reverse_cin_impl(
     int64_t c_bytes = c.numel() * static_cast<int64_t>(sizeof(double));
     int page_splits =
         static_cast<int>(std::min<int64_t>(splits, std::max<int64_t>(1, PAGE_BYTES / c_bytes)));
+    TORCH_CHECK((splits + page_splits - 1) / page_splits <= 64,
+                "split scratch needs more than 64 pages; reduce splits or batch size");
     SplitPages pages{};
     pages.page_splits = page_splits;
     std::vector<torch::Tensor> partial_pages;
