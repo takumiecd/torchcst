@@ -40,7 +40,7 @@ def _extension():
         name=f"torchcst_cell_mass_hierarchy_{digest}",
         sources=[str(path) for path in sources],
         extra_cflags=["-O2"],
-        extra_cuda_cflags=["-O2"],
+        extra_cuda_cflags=["-O2", "--ftz=false"],
         verbose=False,
     )
 
@@ -50,7 +50,8 @@ class PreparedLayout:
     """Forward-scoped cache: indices/ranges only, never packed atom values.
 
     groups[g] = (output_level, input_level, output_owner, input_owner).
-    Counting preparation includes empty Cartesian groups; sort omits them.
+    Counting preparation includes empty Cartesian groups; compact counting
+    includes only compatible bank pairs, and sort omits all empty groups.
     rows[offsets[g]:offsets[g+1]] lists original atom rows in that group.
     Optional reverse_slots maps input-owner order back to these forward slots;
     reverse_offsets gives the owner intervals. It never copies atom values.
@@ -65,6 +66,7 @@ class PreparedLayout:
     _source_version: int = field(repr=False)
     reverse_slots: torch.Tensor | None = field(default=None, repr=False)
     reverse_offsets: torch.Tensor | None = field(default=None, repr=False)
+    method: str = "sort"
 
     @property
     def has_reverse(self):
@@ -100,7 +102,9 @@ def prepare_layout(plan, atoms, *, method="sort", signal=None, reverse=False):
 
     The sort method retains only nonempty groups in stable order. Counting
     retains the complete Cartesian group table (at most 4096), including empty
-    ranges, and does not promise stable order within a group. Neither method
+    ranges. Compact counting retains only compatible bank pairs, also with
+    fixed empty ranges; it currently has no reverse index. Counting methods
+    do not promise stable order within a group. No method
     copies atom values from the original Parameter or retains all atom keys.
     Width/finite rejection reads one error word. Sort/unique has dynamic output
     shapes; host checks remain, so full-route CUDA Graph support is not claimed.
@@ -109,8 +113,8 @@ def prepare_layout(plan, atoms, *, method="sort", signal=None, reverse=False):
         raise ValueError("reverse must be bool")
     if reverse and method != "counting":
         raise ValueError("reverse layout requires counting preparation")
-    if method not in ("sort", "counting"):
-        raise ValueError("layout method must be sort or counting")
+    if method not in ("sort", "counting", "counting_compact"):
+        raise ValueError("layout method must be sort, counting or counting_compact")
     if type(plan) is not HierarchyPlan:
         raise TypeError("plan must be HierarchyPlan")
     if atoms.device.type != "cuda" or atoms.dtype not in (torch.float32, torch.float64):
@@ -132,12 +136,21 @@ def prepare_layout(plan, atoms, *, method="sort", signal=None, reverse=False):
             raise ValueError(
                 "signal must be contiguous [batch,site_count] on atom device/dtype"
             )
-        if method != "counting" and not bool(torch.isfinite(signal).all()):
+        if method == "sort" and not bool(torch.isfinite(signal).all()):
             raise ValueError("X must be finite")
     native = _extension()
     input_config = plan.input.native_config()
     output_config = plan.output.native_config()
-    if method == "counting":
+    if method == "counting_compact":
+        if signal is None:
+            rows, groups, offsets, errors = native.prepare_compact_layout(
+                atoms, input_config, output_config
+            )
+        else:
+            rows, groups, offsets, errors = native.prepare_compact_layout_signal(
+                atoms, signal, input_config, output_config
+            )
+    elif method == "counting":
         if plan.input.node_count * plan.output.node_count > 4096:
             raise ValueError("counting layout supports at most 4096 Cartesian groups")
         if reverse:
@@ -168,7 +181,7 @@ def prepare_layout(plan, atoms, *, method="sort", signal=None, reverse=False):
     if error_bits & 2:
         raise ValueError("sigma must lie in (0, min(input period,output period)/3]")
 
-    if method == "counting":
+    if method in ("counting", "counting_compact"):
         return PreparedLayout(
             rows,
             groups,
@@ -178,6 +191,7 @@ def prepare_layout(plan, atoms, *, method="sort", signal=None, reverse=False):
             atoms._version,
             reverse_slots=reverse_slots if reverse else None,
             reverse_offsets=reverse_offsets if reverse else None,
+            method=method,
         )
 
     sorted_keys, rows = torch.sort(keys, stable=True)
@@ -256,6 +270,17 @@ def _validate_compensated(compensated, atoms, projection_dtype, axis):
         )
 
 
+def _validate_compensated_cdot(compensated_cdot, atoms, projection_dtype, axis):
+    if type(compensated_cdot) is not bool:
+        raise ValueError("compensated_cdot must be bool")
+    if compensated_cdot and (
+        atoms.dtype != torch.float32
+        or projection_dtype != torch.float32
+        or axis.modes != 8
+    ):
+        raise ValueError("compensated C dot requires M8 and FP32 atoms/projections")
+
+
 def compute_h(
     plan,
     atoms,
@@ -297,20 +322,31 @@ def compute_h(
 
 
 def compute_c(
-    plan, atoms, layout, h, *, splits=1, atoms_per_split=0, compensated=False
+    plan,
+    atoms,
+    layout,
+    h,
+    *,
+    splits=1,
+    atoms_per_split=0,
+    compensated=False,
+    compensated_cdot=False,
 ):
     """Complete output owner C[batch,node,mode] using 32-atom shared chunks.
 
     The small cross-block coefficient buffer is bank/node sized, not an
     atom-by-mode table. Each C element has one writer, with amplitude applied
     once. The next stage adds bank contributions after site expansion.
-    Compensated values are opt-in for the supported FP32 target axis.
+    Compensated values evaluate the profile polynomial. The independent
+    compensated_cdot option uses FP32 pairs only for guarded atom chunks;
+    other chunks and all cross-chunk/cross-block sums remain FP64.
     """
     if type(splits) is not int or not 1 <= splits <= 64:
         raise ValueError("C splits must be an integer in [1,64]")
     if type(atoms_per_split) is not int or not 0 <= atoms_per_split <= 65536:
         raise ValueError("atoms_per_split must be an integer in [0,65536]")
     _validate_compensated(compensated, atoms, h.dtype, plan.output)
+    _validate_compensated_cdot(compensated_cdot, atoms, h.dtype, plan.output)
     layout.validate_for(atoms, plan)
     native = _extension()
     arguments = (
@@ -324,8 +360,10 @@ def compute_c(
         False,
     )
     if splits == 1:
-        return native.compute_c(*arguments, compensated)
-    return native.compute_c_split(*arguments, splits, atoms_per_split, compensated)
+        return native.compute_c(*arguments, compensated, compensated_cdot)
+    return native.compute_c_split(
+        *arguments, splits, atoms_per_split, compensated, compensated_cdot
+    )
 
 
 def compute_h_c(
@@ -453,7 +491,15 @@ def _validate_reverse_grain(layout, atoms_per_split):
 
 
 def compute_input_c(
-    plan, atoms, layout, g, *, splits=1, atoms_per_split=0, compensated=False
+    plan,
+    atoms,
+    layout,
+    g,
+    *,
+    splits=1,
+    atoms_per_split=0,
+    compensated=False,
+    compensated_cdot=False,
 ):
     """Accumulate amp*G into input owner C; no dX atomic or packed atom copy.
 
@@ -461,11 +507,13 @@ def compute_input_c(
     Without one, the reference route visits matching output-sorted group ranges.
     A positive atoms_per_split bounds active split count by each owner's work;
     zero retains the requested fixed split count.
-    Compensated values are opt-in for the supported FP32 input axis.
+    Compensated values evaluate the profile polynomial. Guarded C dot is a
+    separate opt-in, with FP64 fallback and FP64 cross-chunk/cross-block sums.
     """
     if type(splits) is not int or not 1 <= splits <= 64:
         raise ValueError("C splits must be an integer in [1,64]")
     _validate_compensated(compensated, atoms, g.dtype, plan.input)
+    _validate_compensated_cdot(compensated_cdot, atoms, g.dtype, plan.input)
     layout.validate_for(atoms, plan)
     _validate_reverse_grain(layout, atoms_per_split)
     native = _extension()
@@ -480,6 +528,7 @@ def compute_input_c(
             splits,
             atoms_per_split,
             compensated,
+            compensated_cdot,
         )
     arguments = (
         atoms,
@@ -492,8 +541,10 @@ def compute_input_c(
         True,
     )
     if splits == 1:
-        return native.compute_c(*arguments, compensated)
-    return native.compute_c_split(*arguments, splits, atoms_per_split, compensated)
+        return native.compute_c(*arguments, compensated, compensated_cdot)
+    return native.compute_c_split(
+        *arguments, splits, atoms_per_split, compensated, compensated_cdot
+    )
 
 
 def parameter_grad(plan, atoms, layout, zx, zy, h, g, *, threads=128, windowed=False):
@@ -633,6 +684,7 @@ class _HierarchicalLinear(torch.autograd.Function):
         compensated_values,
         fuse_h_c,
         specialize_g_grad,
+        compensated_cdot,
     ):
         zx = build_hierarchy(
             x,
@@ -675,6 +727,7 @@ class _HierarchicalLinear(torch.autograd.Function):
                 splits=c_splits,
                 atoms_per_split=atoms_per_split,
                 compensated=compensated_values,
+                compensated_cdot=compensated_cdot,
             )
         y = expand_c(c, plan.output, x, sites_per_block=sites_per_block)
         ctx.plan = plan
@@ -690,7 +743,9 @@ class _HierarchicalLinear(torch.autograd.Function):
         ctx.atoms_per_split = atoms_per_split
         ctx.compensated_values = compensated_values
         ctx.specialize_g_grad = specialize_g_grad
+        ctx.compensated_cdot = compensated_cdot
         ctx.source_version = atoms._version
+        ctx.layout_method = layout.method
         # save_for_backward checks atom AND layout-buffer mutations. Avoid
         # keeping the source x: Zx already contains the needed contractions.
         # Input-only backward does not need Zx/H, so release those immediately.
@@ -723,6 +778,7 @@ class _HierarchicalLinear(torch.autograd.Function):
             ctx.source_version,
             reverse_slots=reverse_slots,
             reverse_offsets=reverse_offsets,
+            method=ctx.layout_method,
         )
         layout.validate_for(atoms, plan)
         dy = dy.contiguous()
@@ -788,6 +844,7 @@ class _HierarchicalLinear(torch.autograd.Function):
                     splits=ctx.c_splits,
                     atoms_per_split=ctx.atoms_per_split,
                     compensated=ctx.compensated_values,
+                    compensated_cdot=ctx.compensated_cdot,
                 )
             dx = expand_c(cin, plan.input, dy, sites_per_block=ctx.sites_per_block)
             del cin
@@ -807,6 +864,7 @@ class _HierarchicalLinear(torch.autograd.Function):
         return (
             dx,
             datoms,
+            None,
             None,
             None,
             None,
@@ -846,6 +904,7 @@ def hierarchical_linear(
     compensated_values=False,
     fuse_h_c=False,
     specialize_g_grad=True,
+    compensated_cdot=False,
 ):
     """Private research autograd route, using this forward's bank/owner choices.
 
@@ -857,6 +916,8 @@ def hierarchical_linear(
     The optional fused H/C forward is used for M8 axes, with separate fallback
     for other mode counts.
     specialize_g_grad controls standalone G/gradient fusion; fused Cin is unchanged.
+    compensated_cdot applies only to separate output/input C generation; it
+    keeps the FP64 fallback and is incompatible with the experimental fusions.
     Double backward and full-route CUDA Graph capture are not supported yet
     (preparation has dynamic output shapes and host checks).
     """
@@ -864,6 +925,10 @@ def hierarchical_linear(
         raise ValueError("fuse_h_c must be bool")
     if type(specialize_g_grad) is not bool:
         raise ValueError("specialize_g_grad must be bool")
+    _validate_compensated_cdot(compensated_cdot, atoms, atoms.dtype, plan.input)
+    _validate_compensated_cdot(compensated_cdot, atoms, atoms.dtype, plan.output)
+    if compensated_cdot and (fuse_h_c or fuse_backward_cin):
+        raise ValueError("compensated C dot requires separate H/C and separate Cin")
     _validate_compensated(compensated_values, atoms, atoms.dtype, plan.input)
     _validate_compensated(compensated_values, atoms, atoms.dtype, plan.output)
     if type(reverse_layout) is not bool:
@@ -882,8 +947,8 @@ def hierarchical_linear(
         raise ValueError("window_moments must be bool")
     if type(atom_threads) is not int or atom_threads not in (32, 64, 128, 256):
         raise ValueError("atom threads must be 32,64,128 or 256")
-    if layout_method not in ("sort", "counting"):
-        raise ValueError("layout method must be sort or counting")
+    if layout_method not in ("sort", "counting", "counting_compact"):
+        raise ValueError("layout method must be sort, counting or counting_compact")
     if type(c_splits) is not int or not 1 <= c_splits <= 64:
         raise ValueError("C splits must be an integer in [1,64]")
     if type(fuse_g_grad) is not bool:
@@ -895,7 +960,7 @@ def hierarchical_linear(
     fuse_g_grad = fuse_g_grad or fuse_backward_cin
     if x.device != atoms.device or x.dtype != atoms.dtype:
         raise ValueError("X and atoms must share device and dtype")
-    if layout is None and layout_method == "counting":
+    if layout is None and layout_method in ("counting", "counting_compact"):
         # One error word validates both X and atoms; no separate all/item sync.
         layout = prepare_layout(
             plan, atoms, method=layout_method, signal=x, reverse=reverse_layout
@@ -925,4 +990,5 @@ def hierarchical_linear(
         compensated_values,
         fuse_h_c,
         specialize_g_grad,
+        compensated_cdot,
     )

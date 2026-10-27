@@ -11,6 +11,112 @@ constexpr int CHUNK = 32;
 constexpr int SHARED_STRIDE = CHUNK + 1;
 constexpr int MAX_ACCUMULATORS = (BATCH_TILE * 33 + CHUNK - 1) / CHUNK;
 
+// Engineering error budget for the experimental dot route, not a universal
+// floating-point proof. Invalid or unrepresentable budgets disable conversion.
+struct CdotBudget {
+    double absolute;
+    double factor;
+};
+
+inline CdotBudget cdot_budget(int64_t atoms, int splits, int grain, const Axis &target, int ranges,
+                              bool legacy_reverse) {
+    if (atoms == 0)
+        return {0, 0};
+    int64_t split_nodes = static_cast<int64_t>(splits) * target.node_count;
+    int64_t active_bound =
+        grain ? std::min(split_nodes, (atoms + grain - 1) / grain + target.node_count)
+              : split_nodes;
+    int64_t chunks = legacy_reverse
+                         ? atoms
+                         : std::min(atoms, (atoms + CHUNK - 1) / CHUNK + active_bound * ranges);
+    int64_t evenly_split = (atoms + splits - 1) / splits;
+    int64_t max_split = grain ? std::max<int64_t>(grain, evenly_split) : evenly_split;
+    double budget = ((5e-8 / static_cast<double>(chunks)) / target.basis_count()) / target.spacing;
+    double factor = 1024.0 * std::ldexp(1.0, -48) +
+                    8.0 * std::ldexp(1.0, -53) *
+                        (max_split + splits + 3 * target.bank_count * target.basis_count());
+    if (!(std::isfinite(budget) && budget >= DBL_MIN && std::isfinite(factor)))
+        return {0, 0};
+    return {budget, factor};
+}
+
+// Pack the two FP32 components into one shared 8-byte cell. These bit patterns
+// are never used as FP64 values: some can encode a NaN when viewed as double.
+__device__ inline double pack_cdot_pair(DoubleSingle value) {
+    unsigned long long bits = static_cast<unsigned long long>(__float_as_uint(value.lo)) << 32;
+    bits |= __float_as_uint(value.hi);
+    return __longlong_as_double(static_cast<long long>(bits));
+}
+
+__device__ inline DoubleSingle unpack_cdot_pair(double payload) {
+    unsigned long long bits = static_cast<unsigned long long>(__double_as_longlong(payload));
+    return {__uint_as_float(static_cast<unsigned int>(bits)),
+            __uint_as_float(static_cast<unsigned int>(bits >> 32))};
+}
+
+// All 32 lanes call this after writing their own FP64 column, before the
+// existing chunk barrier. Unsafe values remain untouched for the FP64 route.
+__device__ inline bool prepare_cdot_chunk(double *coefficients, double *scaled, int basis,
+                                          CdotBudget budget) {
+    int lane = threadIdx.x;
+    double maximum_coefficient = 0, maximum_scaled = 0;
+    bool unsafe = !(budget.absolute > 0 && isfinite(budget.absolute));
+    constexpr double LOWER = 0x1p-40, UPPER = 0x1p40;
+    for (int mode = 0; mode < basis; ++mode) {
+        double value = coefficients[mode * SHARED_STRIDE + lane];
+        double magnitude = fabs(value);
+        unsafe |= !isfinite(value) || (magnitude != 0 && (magnitude < LOWER || magnitude > UPPER));
+        maximum_coefficient = fmax(maximum_coefficient, magnitude);
+    }
+    for (int batch = 0; batch < BATCH_TILE; ++batch) {
+        double value = scaled[batch * SHARED_STRIDE + lane];
+        double magnitude = fabs(value);
+        unsafe |= !isfinite(value) || (magnitude != 0 && (magnitude < LOWER || magnitude > UPPER));
+        maximum_scaled = fmax(maximum_scaled, magnitude);
+    }
+    unsigned bad = __ballot_sync(0xffffffffu, unsafe);
+    for (int offset = 16; offset > 0; offset /= 2) {
+        maximum_coefficient =
+            fmax(maximum_coefficient, __shfl_xor_sync(0xffffffffu, maximum_coefficient, offset));
+        maximum_scaled = fmax(maximum_scaled, __shfl_xor_sync(0xffffffffu, maximum_scaled, offset));
+    }
+    double sum_bound = CHUNK * maximum_coefficient * maximum_scaled;
+    double error_bound = budget.factor * sum_bound + 0x1p-120;
+    bool safe = bad == 0 && isfinite(error_bound) && error_bound <= budget.absolute;
+    if (safe) {
+        for (int mode = 0; mode < basis; ++mode) {
+            int i = mode * SHARED_STRIDE + lane;
+            coefficients[i] = pack_cdot_pair(ds_from_double(coefficients[i]));
+        }
+        for (int batch = 0; batch < BATCH_TILE; ++batch) {
+            int i = batch * SHARED_STRIDE + lane;
+            scaled[i] = pack_cdot_pair(ds_from_double(scaled[i]));
+        }
+    }
+    return safe;
+}
+
+// FP64 survives across chunks. A failed certification uses exactly the
+// existing FP64 dot over the original shared values; only safe chunks are DS.
+template <bool DotCompensated>
+__device__ inline void accumulate_cdot(double &accum, const double *coefficients,
+                                       const double *scaled, int batch, int mode, bool safe) {
+    if constexpr (DotCompensated) {
+        if (safe) {
+            DoubleSingle local = {0, 0};
+            for (int atom = 0; atom < CHUNK; ++atom) {
+                DoubleSingle a = unpack_cdot_pair(scaled[batch * SHARED_STRIDE + atom]);
+                DoubleSingle b = unpack_cdot_pair(coefficients[mode * SHARED_STRIDE + atom]);
+                local = ds_add(local, ds_multiply(a, b));
+            }
+            accum += ds_to_double(local);
+            return;
+        }
+    }
+    for (int atom = 0; atom < CHUNK; ++atom)
+        accum += scaled[batch * SHARED_STRIDE + atom] * coefficients[mode * SHARED_STRIDE + atom];
+}
+
 // One harmonic of H. The caller keeps the stream and accumulators in
 // registers; every harmonic advances the stream exactly once.
 template <bool Compensated>
@@ -128,11 +234,12 @@ __device__ int lower_group(const int *groups, int count, int ho, int hi, int qo)
 // different atom in a 32-atom chunk. Shared holds only this chunk's
 // coefficients and amp*H. C has one writer per element, without atom-sized
 // partial C arrays.
-template <typename scalar_t, typename projection_t, int FixedModes, bool Compensated = false>
+template <typename scalar_t, typename projection_t, int FixedModes, bool Compensated = false,
+          bool DotCompensated = false>
 __global__ void compute_c_kernel(const scalar_t *atoms, const int64_t *rows, const int *groups,
                                  const int64_t *offsets, const projection_t *h, double *c,
                                  int atom_count, int group_count, int batches, Axis input,
-                                 Axis output, bool reverse) {
+                                 Axis output, bool reverse, CdotBudget budget) {
     extern __shared__ double shared[];
     double *coefficients = shared;
     double *scaled_h = shared + SHARED_STRIDE * output.basis_count();
@@ -183,12 +290,19 @@ __global__ void compute_c_kernel(const scalar_t *atoms, const int64_t *rows, con
                         ? static_cast<double>(atoms[4 * original]) *
                               h[(batch_begin + local) * atom_count + slot]
                         : 0;
+            bool safe = false;
+            if constexpr (DotCompensated)
+                safe = prepare_cdot_chunk(coefficients, scaled_h, output.basis_count(), budget);
             __syncthreads();
             for (int work = lane, a = 0; work < elements; work += CHUNK, ++a) {
                 int batch = work / output.basis_count(), mode = work % output.basis_count();
-                for (int atom = 0; atom < CHUNK; ++atom)
-                    accum[a] += scaled_h[batch * SHARED_STRIDE + atom] *
-                                coefficients[mode * SHARED_STRIDE + atom];
+                if constexpr (DotCompensated) {
+                    accumulate_cdot<true>(accum[a], coefficients, scaled_h, batch, mode, safe);
+                } else {
+                    for (int atom = 0; atom < CHUNK; ++atom)
+                        accum[a] += scaled_h[batch * SHARED_STRIDE + atom] *
+                                    coefficients[mode * SHARED_STRIDE + atom];
+                }
             }
             __syncthreads(); // Readers finish before the shared chunk is replaced.
         }
@@ -205,13 +319,14 @@ __global__ void compute_c_kernel(const scalar_t *atoms, const int64_t *rows, con
 // Consume the intersection of one group's sorted-slot range and this split's
 // interval in the concatenation of all groups belonging to the owner. All
 // lanes take the same branches and participate in every shared-memory barrier.
-template <typename scalar_t, typename projection_t, int FixedModes, bool Compensated = false>
+template <typename scalar_t, typename projection_t, int FixedModes, bool Compensated = false,
+          bool DotCompensated = false>
 __device__ void split_consume_range(const scalar_t *atoms, const int64_t *rows,
                                     const projection_t *h, int atom_count, int batches, Axis output,
                                     Bank bank, int owner, bool reverse, int batch_begin, int begin,
                                     int end, int split_begin, int split_end, int &prefix,
                                     double *coefficients, double *scaled_h,
-                                    double (&accum)[MAX_ACCUMULATORS]) {
+                                    double (&accum)[MAX_ACCUMULATORS], CdotBudget budget) {
     int length = end - begin;
     int first = max(0, split_begin - prefix);
     int last = min(length, split_end - prefix);
@@ -238,12 +353,19 @@ __device__ void split_consume_range(const scalar_t *atoms, const int64_t *rows,
                     ? static_cast<double>(atoms[4 * original]) *
                           h[(batch_begin + local) * atom_count + slot]
                     : 0;
+        bool safe = false;
+        if constexpr (DotCompensated)
+            safe = prepare_cdot_chunk(coefficients, scaled_h, output.basis_count(), budget);
         __syncthreads();
         for (int work = lane, a = 0; work < elements; work += CHUNK, ++a) {
             int batch = work / output.basis_count(), mode = work % output.basis_count();
-            for (int atom = 0; atom < CHUNK; ++atom)
-                accum[a] += scaled_h[batch * SHARED_STRIDE + atom] *
-                            coefficients[mode * SHARED_STRIDE + atom];
+            if constexpr (DotCompensated) {
+                accumulate_cdot<true>(accum[a], coefficients, scaled_h, batch, mode, safe);
+            } else {
+                for (int atom = 0; atom < CHUNK; ++atom)
+                    accum[a] += scaled_h[batch * SHARED_STRIDE + atom] *
+                                coefficients[mode * SHARED_STRIDE + atom];
+            }
         }
         __syncthreads();
     }
@@ -274,12 +396,14 @@ __device__ inline bool compatible_sigma_banks(const Axis &a, int ai, const Axis 
     return fmin(au, bu) > fmax(al, bl);
 }
 
-template <typename scalar_t, typename projection_t, int FixedModes, bool Compensated = false>
-__global__ void
-compute_c_split_kernel(const scalar_t *atoms, const int64_t *rows, const int *groups,
-                       const int64_t *offsets, const projection_t *h, SplitPages pages,
-                       int atom_count, int group_count, int batches, Axis input, Axis output,
-                       bool reverse, bool cartesian, int splits, int atoms_per_split) {
+template <typename scalar_t, typename projection_t, int FixedModes, bool Compensated = false,
+          bool DotCompensated = false>
+__global__ void compute_c_split_kernel(const scalar_t *atoms, const int64_t *rows,
+                                       const int *groups, const int64_t *offsets,
+                                       const projection_t *h, SplitPages pages, int atom_count,
+                                       int group_count, int batches, Axis input, Axis output,
+                                       bool reverse, bool cartesian, int splits,
+                                       int atoms_per_split, CdotBudget budget) {
     extern __shared__ double shared[];
     double *coefficients = shared;
     double *scaled_h = shared + SHARED_STRIDE * output.basis_count();
@@ -315,10 +439,11 @@ compute_c_split_kernel(const scalar_t *atoms, const int64_t *rows, const int *gr
                     if (pass == 0)
                         prefix += end - begin;
                     else
-                        split_consume_range<scalar_t, projection_t, FixedModes, Compensated>(
+                        split_consume_range<scalar_t, projection_t, FixedModes, Compensated,
+                                            DotCompensated>(
                             atoms, rows, h, atom_count, batches, output, bank, owner, reverse,
                             batch_begin, begin, end, split_begin, split_end, prefix, coefficients,
-                            scaled_h, accum);
+                            scaled_h, accum, budget);
                 }
             }
         } else if (reverse) {
@@ -334,10 +459,11 @@ compute_c_split_kernel(const scalar_t *atoms, const int64_t *rows, const int *gr
                     if (pass == 0)
                         prefix += end - begin;
                     else
-                        split_consume_range<scalar_t, projection_t, FixedModes, Compensated>(
+                        split_consume_range<scalar_t, projection_t, FixedModes, Compensated,
+                                            DotCompensated>(
                             atoms, rows, h, atom_count, batches, output, bank, owner, reverse,
                             batch_begin, begin, end, split_begin, split_end, prefix, coefficients,
-                            scaled_h, accum);
+                            scaled_h, accum, budget);
                 }
             }
         } else {
@@ -359,10 +485,11 @@ compute_c_split_kernel(const scalar_t *atoms, const int64_t *rows, const int *gr
                 if (pass == 0)
                     prefix += end - begin;
                 else
-                    split_consume_range<scalar_t, projection_t, FixedModes, Compensated>(
-                        atoms, rows, h, atom_count, batches, output, bank, owner, reverse,
-                        batch_begin, begin, end, split_begin, split_end, prefix, coefficients,
-                        scaled_h, accum);
+                    split_consume_range<scalar_t, projection_t, FixedModes, Compensated,
+                                        DotCompensated>(atoms, rows, h, atom_count, batches, output,
+                                                        bank, owner, reverse, batch_begin, begin,
+                                                        end, split_begin, split_end, prefix,
+                                                        coefficients, scaled_h, accum, budget);
             }
         }
         if (pass == 0) {
@@ -812,13 +939,15 @@ __global__ void fused_grad_cin_kernel(const atom_t *atoms, const int64_t *rows, 
 // Reverse slots gather original-layout slots without copying atom values.
 // A split owns a contiguous input-owner interval, even across group boundaries.
 template <bool Fused, typename atom_t, typename projection_t, int FixedModes,
-          bool Compensated = false>
+          bool Compensated = false, bool DotCompensated = false>
 __global__ void
 reverse_cin_kernel(const atom_t *atoms, const int64_t *rows, const int *groups,
                    const int64_t *offsets, const int *reverse_slots, const int64_t *reverse_offsets,
                    const double *zx, const double *zy, const projection_t *h, projection_t *g,
                    atom_t *gradient, SplitPages pages, int atom_count, int group_count, int batches,
-                   Axis input, Axis output, int splits, int atoms_per_split, bool windowed) {
+                   Axis input, Axis output, int splits, int atoms_per_split, bool windowed,
+                   CdotBudget budget) {
+    static_assert(!Fused || !DotCompensated, "fused gradients keep FP64 C dots");
     int node = blockIdx.x, lane = threadIdx.x;
     int bank_index = 0;
     while (bank_index + 1 < input.bank_count && node >= input.banks[bank_index + 1].node_offset)
@@ -885,13 +1014,20 @@ reverse_cin_kernel(const atom_t *atoms, const int64_t *rows, const int *groups,
             for (int b = 0; b < BATCH_TILE; ++b)
                 scaled_g[b * SHARED_STRIDE + lane] = 0;
         }
+        bool safe = false;
+        if constexpr (DotCompensated)
+            safe = prepare_cdot_chunk(coefficients, scaled_g, input.basis_count(), budget);
         __syncthreads();
         for (int work = lane; work < elements; work += CHUNK) {
             int batch = work / input.basis_count(), mode = work % input.basis_count();
             double total = totals[work];
-            for (int atom = 0; atom < CHUNK; ++atom)
-                total += scaled_g[batch * SHARED_STRIDE + atom] *
-                         coefficients[mode * SHARED_STRIDE + atom];
+            if constexpr (DotCompensated) {
+                accumulate_cdot<true>(total, coefficients, scaled_g, batch, mode, safe);
+            } else {
+                for (int atom = 0; atom < CHUNK; ++atom)
+                    total += scaled_g[batch * SHARED_STRIDE + atom] *
+                             coefficients[mode * SHARED_STRIDE + atom];
+            }
             totals[work] = total;
         }
         __syncthreads();
@@ -1023,13 +1159,17 @@ torch::Tensor compute_h(torch::Tensor atoms, torch::Tensor rows, torch::Tensor g
 
 torch::Tensor compute_c(torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups,
                         torch::Tensor offsets, torch::Tensor h, std::vector<double> input_config,
-                        std::vector<double> output_config, bool reverse, bool compensated) {
+                        std::vector<double> output_config, bool reverse, bool compensated,
+                        bool compensated_cdot) {
     check_layout(atoms, rows, groups, offsets);
     Axis input = parse_axis(input_config), output = parse_axis(output_config);
     TORCH_CHECK(!compensated ||
                     (output.modes == 8 && output.tail_bound == 1e-3 &&
                      atoms.scalar_type() == torch::kFloat32 && h.scalar_type() == torch::kFloat32),
                 "compensated values require target M8, tail 1e-3 and FP32 atoms/projections");
+    TORCH_CHECK(!compensated_cdot || (output.modes == 8 && atoms.scalar_type() == torch::kFloat32 &&
+                                      h.scalar_type() == torch::kFloat32),
+                "compensated C dot requires target M8 and FP32 atoms/projections");
     TORCH_CHECK(h.is_contiguous() && h.device() == atoms.device() && h.dim() == 2 &&
                     (h.scalar_type() == torch::kFloat64 || h.scalar_type() == torch::kFloat32) &&
                     h.size(1) == atoms.size(0) && h.numel() <= INT_MAX,
@@ -1043,25 +1183,40 @@ torch::Tensor compute_c(torch::Tensor atoms, torch::Tensor rows, torch::Tensor g
         return c;
     dim3 grid(output.node_count, (h.size(0) + BATCH_TILE - 1) / BATCH_TILE);
     size_t shared = sizeof(double) * SHARED_STRIDE * (output.basis_count() + BATCH_TILE);
+    CdotBudget budget = compensated_cdot
+                            ? cdot_budget(atoms.size(0), 1, 0, output, input.bank_count, reverse)
+                            : CdotBudget{};
     auto stream = c10::cuda::getCurrentCUDAStream();
     AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "hierarchical_compute_c_atoms", [&] {
         using atom_t = scalar_t;
         AT_DISPATCH_FLOATING_TYPES(h.scalar_type(), "hierarchical_compute_c_storage", [&] {
-            auto launch = [&](auto tag, auto compensated_tag) {
+            auto launch = [&](auto tag, auto compensated_tag, auto dot_tag) {
                 constexpr int fixed_modes = decltype(tag)::value;
                 constexpr bool use_compensated = decltype(compensated_tag)::value;
-                compute_c_kernel<atom_t, scalar_t, fixed_modes, use_compensated>
+                constexpr bool use_dot = decltype(dot_tag)::value;
+                compute_c_kernel<atom_t, scalar_t, fixed_modes, use_compensated, use_dot>
                     <<<grid, CHUNK, shared, stream>>>(
                         atoms.data_ptr<atom_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
                         offsets.data_ptr<int64_t>(), h.data_ptr<scalar_t>(), c.data_ptr<double>(),
-                        atoms.size(0), groups.size(0), h.size(0), input, output, reverse);
+                        atoms.size(0), groups.size(0), h.size(0), input, output, reverse, budget);
             };
+            if constexpr (std::is_same_v<atom_t, float> && std::is_same_v<scalar_t, float>) {
+                if (compensated_cdot) {
+                    if (compensated)
+                        launch(std::integral_constant<int, 8>{}, std::true_type{},
+                               std::true_type{});
+                    else
+                        launch(std::integral_constant<int, 8>{}, std::false_type{},
+                               std::true_type{});
+                    return;
+                }
+            }
             if (compensated)
-                launch(std::integral_constant<int, 8>{}, std::true_type{});
+                launch(std::integral_constant<int, 8>{}, std::true_type{}, std::false_type{});
             else if (output.modes == 8)
-                launch(std::integral_constant<int, 8>{}, std::false_type{});
+                launch(std::integral_constant<int, 8>{}, std::false_type{}, std::false_type{});
             else
-                launch(std::integral_constant<int, 0>{}, std::false_type{});
+                launch(std::integral_constant<int, 0>{}, std::false_type{}, std::false_type{});
         });
     });
     C10_CUDA_KERNEL_LAUNCH_CHECK();
@@ -1074,7 +1229,8 @@ torch::Tensor compute_c(torch::Tensor atoms, torch::Tensor rows, torch::Tensor g
 torch::Tensor compute_c_split(torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups,
                               torch::Tensor offsets, torch::Tensor h,
                               std::vector<double> input_config, std::vector<double> output_config,
-                              bool reverse, int splits, int atoms_per_split, bool compensated) {
+                              bool reverse, int splits, int atoms_per_split, bool compensated,
+                              bool compensated_cdot) {
     check_layout(atoms, rows, groups, offsets);
     Axis input = parse_axis(input_config), output = parse_axis(output_config);
     TORCH_CHECK(!compensated ||
@@ -1084,6 +1240,9 @@ torch::Tensor compute_c_split(torch::Tensor atoms, torch::Tensor rows, torch::Te
     TORCH_CHECK(splits >= 1 && splits <= 64, "splits must lie in [1,64]");
     TORCH_CHECK(atoms_per_split >= 0 && atoms_per_split <= 65536,
                 "atoms_per_split must lie in [0,65536]");
+    TORCH_CHECK(!compensated_cdot || (output.modes == 8 && atoms.scalar_type() == torch::kFloat32 &&
+                                      h.scalar_type() == torch::kFloat32),
+                "compensated C dot requires target M8 and FP32 atoms/projections");
     TORCH_CHECK(h.is_contiguous() && h.device() == atoms.device() && h.dim() == 2 &&
                     (h.scalar_type() == torch::kFloat64 || h.scalar_type() == torch::kFloat32) &&
                     h.size(1) == atoms.size(0) && h.numel() <= INT_MAX,
@@ -1116,26 +1275,41 @@ torch::Tensor compute_c_split(torch::Tensor atoms, torch::Tensor rows, torch::Te
     // Counting layouts contain every Cartesian group, including empty ones;
     // a fully populated unique sorted layout has the same complete order.
     bool cartesian = groups.size(0) == input.node_count * output.node_count;
+    CdotBudget budget = compensated_cdot ? cdot_budget(atoms.size(0), splits, atoms_per_split,
+                                                       output, input.bank_count, reverse)
+                                         : CdotBudget{};
     auto stream = c10::cuda::getCurrentCUDAStream();
     AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "hierarchical_split_c_atoms", [&] {
         using atom_t = scalar_t;
         AT_DISPATCH_FLOATING_TYPES(h.scalar_type(), "hierarchical_split_c_storage", [&] {
-            auto launch = [&](auto tag, auto compensated_tag) {
+            auto launch = [&](auto tag, auto compensated_tag, auto dot_tag) {
                 constexpr int fixed_modes = decltype(tag)::value;
                 constexpr bool use_compensated = decltype(compensated_tag)::value;
-                compute_c_split_kernel<atom_t, scalar_t, fixed_modes, use_compensated>
+                constexpr bool use_dot = decltype(dot_tag)::value;
+                compute_c_split_kernel<atom_t, scalar_t, fixed_modes, use_compensated, use_dot>
                     <<<grid, CHUNK, shared, stream>>>(
                         atoms.data_ptr<atom_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
                         offsets.data_ptr<int64_t>(), h.data_ptr<scalar_t>(), pages, atoms.size(0),
                         groups.size(0), h.size(0), input, output, reverse, cartesian, splits,
-                        atoms_per_split);
+                        atoms_per_split, budget);
             };
+            if constexpr (std::is_same_v<atom_t, float> && std::is_same_v<scalar_t, float>) {
+                if (compensated_cdot) {
+                    if (compensated)
+                        launch(std::integral_constant<int, 8>{}, std::true_type{},
+                               std::true_type{});
+                    else
+                        launch(std::integral_constant<int, 8>{}, std::false_type{},
+                               std::true_type{});
+                    return;
+                }
+            }
             if (compensated)
-                launch(std::integral_constant<int, 8>{}, std::true_type{});
+                launch(std::integral_constant<int, 8>{}, std::true_type{}, std::false_type{});
             else if (output.modes == 8)
-                launch(std::integral_constant<int, 8>{}, std::false_type{});
+                launch(std::integral_constant<int, 8>{}, std::false_type{}, std::false_type{});
             else
-                launch(std::integral_constant<int, 0>{}, std::false_type{});
+                launch(std::integral_constant<int, 0>{}, std::false_type{}, std::false_type{});
         });
     });
     C10_CUDA_KERNEL_LAUNCH_CHECK();
@@ -1290,7 +1464,8 @@ static std::vector<torch::Tensor> compute_reverse_cin_impl(
     torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups, torch::Tensor offsets,
     torch::Tensor reverse_slots, torch::Tensor reverse_offsets, torch::Tensor zx, torch::Tensor zy,
     torch::Tensor h, std::vector<double> input_config, std::vector<double> output_config,
-    int splits, bool windowed, int atoms_per_split, bool compensated = false) {
+    int splits, bool windowed, int atoms_per_split, bool compensated = false,
+    bool compensated_cdot = false) {
     check_cuda_float_matrix(atoms);
     TORCH_CHECK(atoms.size(1) == 4 && atoms.size(0) <= 65536, "invalid atoms");
     Axis input = parse_axis(input_config);
@@ -1299,6 +1474,10 @@ static std::vector<torch::Tensor> compute_reverse_cin_impl(
                     (!Fused && input.modes == 8 && input.tail_bound == 1e-3 &&
                      atoms.scalar_type() == torch::kFloat32 && h.scalar_type() == torch::kFloat32),
                 "compensated values require target M8, tail 1e-3 and FP32 atoms/projections");
+    TORCH_CHECK(!compensated_cdot ||
+                    (!Fused && input.modes == 8 && atoms.scalar_type() == torch::kFloat32 &&
+                     h.scalar_type() == torch::kFloat32),
+                "compensated C dot requires target M8 and FP32 atoms/projections");
     TORCH_CHECK(rows.is_contiguous() && rows.device() == atoms.device() && rows.dim() == 1 &&
                     rows.scalar_type() == torch::kInt64 && rows.numel() == atoms.size(0),
                 "invalid rows");
@@ -1357,14 +1536,18 @@ static std::vector<torch::Tensor> compute_reverse_cin_impl(
     dim3 grid(input.node_count, (h.size(0) + BATCH_TILE - 1) / BATCH_TILE, splits);
     size_t shared = sizeof(double) * (SHARED_STRIDE * (input.basis_count() + BATCH_TILE) +
                                       BATCH_TILE * input.basis_count());
+    CdotBudget budget = compensated_cdot
+                            ? cdot_budget(atoms.size(0), splits, atoms_per_split, input, 1, false)
+                            : CdotBudget{};
     auto stream = c10::cuda::getCurrentCUDAStream();
     AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "hierarchical_reverse_cin_atoms", [&] {
         using atom_t = scalar_t;
         AT_DISPATCH_FLOATING_TYPES(h.scalar_type(), "hierarchical_reverse_cin_projection", [&] {
-            auto launch = [&](auto tag, auto compensated_tag) {
+            auto launch = [&](auto tag, auto compensated_tag, auto dot_tag) {
                 constexpr int fixed_modes = decltype(tag)::value;
                 constexpr bool use_compensated = decltype(compensated_tag)::value;
-                reverse_cin_kernel<Fused, atom_t, scalar_t, fixed_modes, use_compensated>
+                constexpr bool use_dot = decltype(dot_tag)::value;
+                reverse_cin_kernel<Fused, atom_t, scalar_t, fixed_modes, use_compensated, use_dot>
                     <<<grid, CHUNK, shared, stream>>>(
                         atoms.data_ptr<atom_t>(), rows.data_ptr<int64_t>(),
                         Fused ? groups.data_ptr<int>() : nullptr,
@@ -1375,19 +1558,31 @@ static std::vector<torch::Tensor> compute_reverse_cin_impl(
                         Fused ? g.data_ptr<scalar_t>() : nullptr,
                         Fused ? gradient.data_ptr<atom_t>() : nullptr, pages, atoms.size(0),
                         Fused ? groups.size(0) : 0, h.size(0), input, output, splits,
-                        atoms_per_split, windowed);
+                        atoms_per_split, windowed, budget);
             };
+            if constexpr (!Fused && std::is_same_v<atom_t, float> &&
+                          std::is_same_v<scalar_t, float>) {
+                if (compensated_cdot) {
+                    if (compensated)
+                        launch(std::integral_constant<int, 8>{}, std::true_type{},
+                               std::true_type{});
+                    else
+                        launch(std::integral_constant<int, 8>{}, std::false_type{},
+                               std::true_type{});
+                    return;
+                }
+            }
             if constexpr (!Fused) {
                 if (compensated)
-                    launch(std::integral_constant<int, 8>{}, std::true_type{});
+                    launch(std::integral_constant<int, 8>{}, std::true_type{}, std::false_type{});
                 else if (input.modes == 8)
-                    launch(std::integral_constant<int, 8>{}, std::false_type{});
+                    launch(std::integral_constant<int, 8>{}, std::false_type{}, std::false_type{});
                 else
-                    launch(std::integral_constant<int, 0>{}, std::false_type{});
+                    launch(std::integral_constant<int, 0>{}, std::false_type{}, std::false_type{});
             } else if (input.modes == 8 && output.modes == 8) {
-                launch(std::integral_constant<int, 8>{}, std::false_type{});
+                launch(std::integral_constant<int, 8>{}, std::false_type{}, std::false_type{});
             } else {
-                launch(std::integral_constant<int, 0>{}, std::false_type{});
+                launch(std::integral_constant<int, 0>{}, std::false_type{}, std::false_type{});
             }
         });
     });
@@ -1402,10 +1597,11 @@ static std::vector<torch::Tensor> compute_reverse_cin_impl(
 torch::Tensor compute_input_c_reverse(torch::Tensor atoms, torch::Tensor rows,
                                       torch::Tensor reverse_slots, torch::Tensor reverse_offsets,
                                       torch::Tensor g, std::vector<double> input_config, int splits,
-                                      int atoms_per_split, bool compensated) {
+                                      int atoms_per_split, bool compensated,
+                                      bool compensated_cdot) {
     return compute_reverse_cin_impl<false>(atoms, rows, {}, {}, reverse_slots, reverse_offsets, {},
                                            {}, g, input_config, {}, splits, false, atoms_per_split,
-                                           compensated)[0];
+                                           compensated, compensated_cdot)[0];
 }
 
 std::vector<torch::Tensor> compute_g_parameter_grad_cin_reverse(

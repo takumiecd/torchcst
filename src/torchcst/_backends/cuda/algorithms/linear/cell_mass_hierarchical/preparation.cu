@@ -3,6 +3,45 @@
 using namespace cell_mass_hierarchy;
 
 namespace {
+// Metadata depends only on axis geometry and atom dtype, not atom values.
+// A negative base marks a bank pair with no possible shared sigma.
+struct CompactPairs {
+    int base[MAX_BANKS * MAX_BANKS];
+    int group_count;
+};
+
+static CompactPairs make_compact_pairs(const Axis &input, const Axis &output,
+                                       torch::ScalarType dtype) {
+    CompactPairs result{};
+    std::fill(result.base, result.base + MAX_BANKS * MAX_BANKS, -1);
+    double max_sigma = std::min(input.period, output.period) / 3;
+    if (dtype == torch::kFloat32)
+        max_sigma = static_cast<double>(static_cast<float>(max_sigma));
+    int64_t count = 0;
+    for (int oi = 0; oi < output.bank_count; ++oi) {
+        Bank ob = output.banks[oi];
+        double out_low = oi ? output.banks[oi - 1].tile_sites * output.spacing : 0;
+        double out_high = ob.full_chart ? max_sigma : ob.tile_sites * output.spacing;
+        for (int ii = 0; ii < input.bank_count; ++ii) {
+            Bank ib = input.banks[ii];
+            double in_low = ii ? input.banks[ii - 1].tile_sites * input.spacing : 0;
+            double in_high = ib.full_chart ? max_sigma : ib.tile_sites * input.spacing;
+            // Classification uses (lower, upper], including the dtype-rounded
+            // sigma maximum. Equality at the lower endpoint is not in this bank.
+            double lower = std::max(in_low, out_low);
+            double upper = std::min(max_sigma, std::min(in_high, out_high));
+            if (!(lower < upper))
+                continue;
+            TORCH_CHECK(count <= 4096, "compact layout exceeds 4096 groups");
+            result.base[oi * MAX_BANKS + ii] = static_cast<int>(count);
+            count += static_cast<int64_t>(ob.tile_count) * ib.tile_count;
+            TORCH_CHECK(count <= 4096, "compact layout exceeds 4096 groups");
+        }
+    }
+    result.group_count = static_cast<int>(count);
+    return result;
+}
+
 // The packed integer preserves (h_out,h_in,q_out,q_in) lexicographic order.
 // It is temporary sort scratch. The surviving descriptors are per group.
 template <typename scalar_t>
@@ -88,6 +127,50 @@ __global__ void count_memberships_kernel(const scalar_t *atoms, int atom_count, 
         atomicAdd(counts + key, __popc(peers));
 }
 
+// Compact counting uses the same validation and membership as full counting.
+// The table converts a compatible pair and two owners into its dense key.
+template <typename scalar_t>
+__global__ void count_compact_memberships_kernel(const scalar_t *atoms, int atom_count, Axis input,
+                                                 Axis output, const scalar_t *signal,
+                                                 int64_t signal_count, CompactPairs pairs,
+                                                 int *keys, int *counts, int *errors) {
+    int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (index < signal_count && !isfinite(static_cast<double>(signal[index])))
+        atomicOr(errors, 4);
+    if (index >= atom_count)
+        return;
+    int atom = static_cast<int>(index);
+    int error = 0;
+    for (int field = 0; field < 4; ++field)
+        if (!isfinite(static_cast<double>(atoms[4 * atom + field])))
+            error |= 1;
+    double sigma = static_cast<double>(atoms[4 * atom + 1]);
+    scalar_t maximum_sigma = static_cast<scalar_t>(std::min(input.period, output.period) / 3);
+    if (!(sigma > 0) || atoms[4 * atom + 1] > maximum_sigma)
+        error |= 2;
+    if (error) {
+        keys[atom] = -1;
+        atomicOr(errors, error);
+        return;
+    }
+    Membership in = classify_axis(sigma, static_cast<double>(atoms[4 * atom + 3]), input);
+    Membership out = classify_axis(sigma, static_cast<double>(atoms[4 * atom + 2]), output);
+    int ii = bank_for_level(input, in.level), oi = bank_for_level(output, out.level);
+    int base = pairs.base[oi * MAX_BANKS + ii];
+    int key = base + out.owner * input.banks[ii].tile_count + in.owner;
+    // A missing pair is an internal coverage failure; refuse to use this
+    // layout rather than writing outside counts or returning partial rows.
+    if (base < 0 || key < 0 || key >= pairs.group_count) {
+        keys[atom] = -1;
+        atomicOr(errors, 2);
+        return;
+    }
+    keys[atom] = key;
+    unsigned peers = __match_any_sync(__activemask(), key);
+    if (threadIdx.x % 32 == __ffs(peers) - 1)
+        atomicAdd(counts + key, __popc(peers));
+}
+
 // Each thread scans a contiguous chunk, then a block-wide scan computes the
 // chunk prefixes. At most 16 entries per thread for the bounded 4096 groups.
 __global__ void prefix_counting_groups_kernel(const int *counts, int64_t *offsets, int *groups,
@@ -132,6 +215,51 @@ __global__ void prefix_counting_groups_kernel(const int *counts, int64_t *offset
     }
     if (tid == 0)
         offsets[group_count] = sums[SCAN_THREADS - 1];
+}
+
+// Same bounded prefix algorithm as full counting. Decode each compact key by
+// locating its nonempty bank pair and then its two owners. Descriptor levels
+// are actual bank levels (the full-chart level can skip an index).
+__global__ void prefix_compact_groups_kernel(const int *counts, int64_t *offsets, int *groups,
+                                             CompactPairs pairs, Axis input, Axis output) {
+    constexpr int SCAN_THREADS = 256;
+    __shared__ int sums[SCAN_THREADS];
+    int tid = threadIdx.x;
+    int chunk_size = (pairs.group_count + SCAN_THREADS - 1) / SCAN_THREADS;
+    int begin = tid * chunk_size;
+    int end = min(begin + chunk_size, pairs.group_count);
+    int sum = 0;
+    for (int group = begin; group < end; ++group)
+        sum += counts[group];
+    sums[tid] = sum;
+    __syncthreads();
+    for (int stride = 1; stride < SCAN_THREADS; stride *= 2) {
+        int add = tid >= stride ? sums[tid - stride] : 0;
+        __syncthreads();
+        sums[tid] += add;
+        __syncthreads();
+    }
+    int prefix = tid ? sums[tid - 1] : 0;
+    for (int group = begin; group < end; ++group) {
+        offsets[group] = prefix;
+        prefix += counts[group];
+        for (int oi = 0; oi < output.bank_count; ++oi) {
+            Bank ob = output.banks[oi];
+            for (int ii = 0; ii < input.bank_count; ++ii) {
+                Bank ib = input.banks[ii];
+                int base = pairs.base[oi * MAX_BANKS + ii];
+                int local = group - base;
+                if (base >= 0 && local >= 0 && local < ob.tile_count * ib.tile_count) {
+                    groups[4 * group] = ob.level;
+                    groups[4 * group + 1] = ib.level;
+                    groups[4 * group + 2] = local / ib.tile_count;
+                    groups[4 * group + 3] = local % ib.tile_count;
+                }
+            }
+        }
+    }
+    if (tid == 0)
+        offsets[pairs.group_count] = sums[SCAN_THREADS - 1];
 }
 
 // Every Cartesian group has exactly one input owner. Build its reverse base
@@ -570,6 +698,73 @@ prepare_counting_layout_reverse_signal(torch::Tensor atoms, torch::Tensor signal
                                        std::vector<double> input_config,
                                        std::vector<double> output_config) {
     return prepare_counting_layout_impl(atoms, signal, input_config, output_config, true);
+}
+
+// Compact counting keeps only geometrically compatible bank pairs; it does
+// not retain atom keys or reorder the Parameter values. Reverse indexing is a
+// separate feature and is not constructed by this entry point.
+static std::vector<torch::Tensor> prepare_compact_layout_impl(torch::Tensor atoms,
+                                                              const torch::Tensor &signal,
+                                                              std::vector<double> input_config,
+                                                              std::vector<double> output_config) {
+    check_cuda_float_matrix(atoms);
+    TORCH_CHECK(atoms.size(1) == 4 && atoms.size(0) <= 65536, "expected [A<=65536,4] atoms");
+    Axis input = parse_axis(input_config), output = parse_axis(output_config);
+    if (signal.defined()) {
+        check_cuda_float_matrix(signal);
+        TORCH_CHECK(signal.device() == atoms.device() &&
+                        signal.scalar_type() == atoms.scalar_type(),
+                    "signal and atoms must share device and dtype");
+        TORCH_CHECK(signal.size(1) == input.sites, "signal does not match input axis");
+        TORCH_CHECK(signal.numel() <= INT_MAX, "signal exceeds index capacity");
+    }
+    CompactPairs pairs = make_compact_pairs(input, output, atoms.scalar_type());
+    c10::cuda::CUDAGuard guard(atoms.device());
+    auto integer_options = atoms.options().dtype(torch::kInt32);
+    auto keys = torch::empty({atoms.size(0)}, integer_options);
+    auto counts = torch::zeros({pairs.group_count}, integer_options);
+    auto cursors = torch::zeros({pairs.group_count}, integer_options);
+    auto errors = torch::zeros({}, integer_options);
+    auto groups = torch::empty({pairs.group_count, 4}, integer_options);
+    auto offsets = torch::empty({pairs.group_count + 1}, atoms.options().dtype(torch::kInt64));
+    auto rows = torch::empty({atoms.size(0)}, atoms.options().dtype(torch::kInt64));
+    auto stream = c10::cuda::getCurrentCUDAStream();
+    int64_t signal_count = signal.defined() ? signal.numel() : 0;
+    int64_t work = std::max(atoms.size(0), signal_count);
+    if (work > 0) {
+        int blocks = (work + THREADS - 1) / THREADS;
+        AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "hierarchical_compact_count", [&] {
+            count_compact_memberships_kernel<<<blocks, THREADS, 0, stream>>>(
+                atoms.data_ptr<scalar_t>(), atoms.size(0), input, output,
+                signal.defined() ? signal.data_ptr<scalar_t>() : nullptr, signal_count, pairs,
+                keys.data_ptr<int>(), counts.data_ptr<int>(), errors.data_ptr<int>());
+        });
+        C10_CUDA_KERNEL_LAUNCH_CHECK();
+    }
+    prefix_compact_groups_kernel<<<1, 256, 0, stream>>>(
+        counts.data_ptr<int>(), offsets.data_ptr<int64_t>(), groups.data_ptr<int>(), pairs, input,
+        output);
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+    if (atoms.size(0) > 0) {
+        int blocks = (atoms.size(0) + THREADS - 1) / THREADS;
+        scatter_counting_rows_kernel<false><<<blocks, THREADS, 0, stream>>>(
+            keys.data_ptr<int>(), atoms.size(0), offsets.data_ptr<int64_t>(),
+            cursors.data_ptr<int>(), rows.data_ptr<int64_t>(), nullptr, nullptr);
+        C10_CUDA_KERNEL_LAUNCH_CHECK();
+    }
+    return {rows, groups, offsets, errors};
+}
+
+std::vector<torch::Tensor> prepare_compact_layout(torch::Tensor atoms,
+                                                  std::vector<double> input_config,
+                                                  std::vector<double> output_config) {
+    return prepare_compact_layout_impl(atoms, torch::Tensor(), input_config, output_config);
+}
+
+std::vector<torch::Tensor> prepare_compact_layout_signal(torch::Tensor atoms, torch::Tensor signal,
+                                                         std::vector<double> input_config,
+                                                         std::vector<double> output_config) {
+    return prepare_compact_layout_impl(atoms, signal, input_config, output_config);
 }
 
 torch::Tensor decode_groups(torch::Tensor keys, std::vector<double> input_config,
