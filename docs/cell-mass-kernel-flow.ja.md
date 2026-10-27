@@ -535,11 +535,11 @@ grain0は固定split数を維持する。Zの二分マージ・Rの3枚窓・sig
 | 逆index / grain / Cin融合 | 完全step | allocated | reserved |
 | --- | ---: | ---: | ---: |
 | なし / 0 / 分離 | 1.665969ms | 7.396MiB | 10MiB |
-| あり / 128 / 分離 | 1.454741ms | 7.597MiB | 10MiB |
-| あり / 0 / 融合 | 2.125936ms | 7.597MiB | 10MiB |
-| あり / 64 / 融合 | 1.605266ms | 7.597MiB | 10MiB |
-| あり / 128 / 融合 | 1.477567ms | 7.597MiB | 10MiB |
-| あり / 256 / 融合 | 1.737101ms | 7.597MiB | 10MiB |
+| あり / 128 / 分離 | 1.454741ms | 7.596MiB | 10MiB |
+| あり / 0 / 融合 | 2.125936ms | 7.596MiB | 10MiB |
+| あり / 64 / 融合 | 1.605266ms | 7.596MiB | 10MiB |
+| あり / 128 / 融合 | 1.477567ms | 7.596MiB | 10MiB |
+| あり / 256 / 融合 | 1.737101ms | 7.596MiB | 10MiB |
 | matched dense | 0.688162ms | 16.063MiB | 22MiB |
 
 各1 fresh process、warm5/wall21、全prepare/forward/backward/AdamWを含み、Graph/TF32なし。
@@ -562,8 +562,8 @@ job `l4job-4e4975d749a54a6488085e238b3649e8`、source `95ebc10b5e9d3cba0a0c9db58
 | 条件 | 完全step | allocated | reserved |
 | --- | ---: | ---: | ---: |
 | 1024、逆indexなし・固定C64・Cin分離 | 1.686256ms | 7.396MiB | 10MiB |
-| 1024、逆indexあり・grain128・Cin分離 | 1.494954ms | 7.597MiB | 10MiB |
-| 1024、逆indexあり・grain128・Cin融合 | 1.499301ms | 7.597MiB | 10MiB |
+| 1024、逆indexあり・grain128・Cin分離 | 1.494954ms | 7.596MiB | 10MiB |
+| 1024、逆indexあり・grain128・Cin融合 | 1.499301ms | 7.596MiB | 10MiB |
 | matched dense1024 | 0.697796ms | 16.063MiB | 22MiB |
 | 128、従来のC2/sort/128threads・Rなし | 1.211821ms | 242.5KiB | 2MiB |
 | matched dense128 | 0.703213ms | 264.5KiB | 2MiB |
@@ -603,9 +603,60 @@ H・Cout・単独G・分離Cinだけが補償演算を選べる。G/勾配融合
 値評価の近似とDouble解析導関数の組合せを、独立oracleと同じ精度基準で検査する。
 通常のCPU suiteは2037 passed / 5153 skipped / 既存警告18件。
 wheel/sdistの338runtime byte照合とRuff/formatは通過した。
-GPU job `l4job-2806b8176cb64be48be73b60f93f4ce2`で検証中であり、完全stepの採用結果は未確定。
+GPU job `l4job-2806b8176cb64be48be73b60f93f4ce2`で2424 passed / failed0 / skip12。
+独立FFTのY/dX/全4列、unit mass、retained backward、128の3step AdamWも通過した。
+1024は全52,428atomを各設定で照合し、最大誤差は従来の保存dtype丸めと同じ範囲だった。
 
-### 独立再確認と、現在使う研究設定
+| 条件 | 完全step | allocated | reserved |
+| --- | ---: | ---: | ---: |
+| 1024、逆index/grain128、G/勾配融合、Double値評価 | 1.477870ms | 7.596MiB | 10MiB |
+| 同上、補償値評価 | 1.428999ms | 7.596MiB | 10MiB |
+| 補償値評価、G/勾配を分離 | 1.676313ms | 6.796MiB | 8MiB |
+| matched dense1024 | 0.676794ms | 16.063MiB | 22MiB |
+| 128、従来設定、Double / 補償値評価 | 1.158747 / 1.163540ms | 242.5KiB | 2MiB |
+| matched dense128 | 0.693166ms | 264.5KiB | 2MiB |
+
+1024の補償値評価はこの単一job内で約3.3%短縮したが、独立再確認前の条件付き候補とする。
+128は改善せず、既定や128推奨を切り替えない。G/勾配を分けるとメモリは減る一方で遅くなる。
+診断はH 0.150528→0.137216ms、Cout 0.348160→0.321536ms、
+Cin 0.225280→0.202752ms。完全stepへの加減算はしない。
+速度の最終目標も、中間目安の時間dense2倍以内も1024では未達。
+source `1d7a2c016e1b0d7d348d56588ced1d789d9f8df69658d0e0a6263c9405c31367`、result `34b5fa0c418ccdbba12f4dbffbdaec0e3f6736128885df2fd0349fbed03184ed`、driver `ebbffe58c47d4801601cf478a01b02dbd2b75011b38cfa0987fe101fa2c87857`、binary `b8ce9ffe5e0ba685796b4190e821d64c5f7f04d0d59210a7753e74c8c2fff142`。
+327runtime、両header・検査ソース、結果39ファイルを照合し、ignored
+`output/cell-mass-opt-20261027/compensated-values/`へsource/results/spec/receiptを保全した。
+
+source `e1d84c33`はHとCoutを同じatom担当threadで作る`fuse_h_c=True`を追加した。
+両軸M8のみを対象とし、他modeは分離経路へ戻す。既定Falseである。
+このfixtureのCPU分類では47,422/52,428 atom（90.4517%）で両軸のprofile形状が一致し、
+その場合は一つの多項式streamから、中心差の位相回転で出力係数を生成する。
+形状が異なるatomでは別の係数streamを使う。中心/imageの補正は各軸で独立に保つ。
+
+```cpp
+// owner・batch tile・splitごとのblock。各threadは異なるatom。
+H_in_register, output_coefficients_in_shared = project_and_make_coefficients(atom, Zx);
+H_saved = cast_to_atom_dtype(H_in_register);
+amp_H_in_shared = amplitude * H_saved;  // 丸め前のHはCに使わない
+sync_block();
+C_partial = reduce_atom_chunk(amp_H_in_shared, output_coefficients_in_shared);
+// 全chunkの後、従来の別kernelでsplit部分和をCへ合計する。
+```
+
+Hはbackward用に引き続き保存し、globalからの再読込と係数の重複生成を減らす。
+Zの二分階層・Rの3枚窓・sigma分類は変えず、Y/dXやParameter勾配の担当も変えない。
+M8/B4のsharedは6,088bytes/block。追加の全atom係数表やatom値コピーは作らない。
+位相の再利用で丸め順序は変わるため、独立参照・AdamW・racecheckを同じ基準で検証する。
+GPU job `l4job-5a1444db6d614fd2bea9289dbdf75369`を提出済み。速度・メモリの判定は未確定。
+
+source `7fd9132b`は、既存のG/Parameter勾配融合kernelのdispatchだけを切り替える
+`specialize_g_grad=False`を追加した。axisのMは変えず、M8を既存の汎用kernelへ渡す。
+低水準の同名操作では`specialize_modes=False`を指定する。
+以前の同source資源診断でM8専用版は244register/thread、汎用版は128だった。
+演算の展開と占有率の関係を調べる候補であり、register数だけを速度改善の証拠にはしない。
+既定Trueを維持し、G/勾配/Cin融合やParameter勾配単独には作用しない。
+CPU2037 passed / 5176 skipped / 既存警告18件、Ruff/format/buildを通過。
+GPU job `l4job-cfe3e961427946f38f40609358a7e549`で全atom gateと完全stepを検証する。
+
+### 第7段までの独立再確認と、現在使う研究設定
 
 runtime `dcf48273` / snapshot `46b069e2`（差は文書のみ）。別の所有L4で各設定2 fresh process、
 2巡目は測定順を逆転した。warm5/同期wall21、同じatom/X/dY/初期dense Wは前jobとbit一致。
@@ -643,9 +694,14 @@ settings1024 = dict(
     c_splits=64, fuse_g_grad=True, layout_method="counting",
     z_chunk_sites=32, atom_threads=64,
     window_moments=True, fuse_backward_cin=False,
+    reverse_layout=True, atoms_per_split=128,
 )
 y = hierarchical_linear(plan, x, atoms, **settings1024)
 ```
+
+上の1024 kwargsは第8段の逆index/grain128も含む。第7段の再確認表とは区別し、
+第8段の複数jobで1.45〜1.49msを確認した。`compensated_values=True`の追加は
+単一jobの条件付き候補であり、H/C融合も検証前のため、上の保守的設定には含めない。
 
 この設定はB4/FP32/M8/tail1e-3/Q128、A=floor(.05*N*N)、sigma初期linspace(.2,40)、
 物理T_min入力4/出力8のfixtureで確認したもの。別の幅分布・多軸・他GPUの勝者へ一般化しない。
