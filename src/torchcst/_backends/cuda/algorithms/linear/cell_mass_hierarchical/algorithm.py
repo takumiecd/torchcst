@@ -86,7 +86,25 @@ class HierarchicalCellMassAlgorithm(Algorithm[HierarchicalCellMassRecipe]):
             reasons.append("requires eager execution without autocast")
         if context.deterministic:
             reasons.append("deterministic reductions have not been qualified")
-        if recipe.preset != "conservative":
+        if recipe.preset == "site_scaled":
+            if (
+                context.dtype != torch.float32
+                or plan.input.site_count not in (128, 1024)
+                or plan.output.site_count != plan.input.site_count
+                or plan.input.min_tile_sites != 4
+                or plan.output.min_tile_sites != 8
+                or any(
+                    a.modes != 8
+                    or a.tail_bound != 1e-3
+                    or a.period != 128
+                    or a.origin != 0
+                    for a in (plan.input, plan.output)
+                )
+            ):
+                reasons.append(
+                    "site-scaled preset requires square N128/1024 FP32 M8/tail1e-3 Q128 and minimum tiles 4/8 sites"
+                )
+        elif recipe.preset != "conservative":
             size = 128 if recipe.preset == "validated_128" else 1024
             if (
                 context.dtype != torch.float32

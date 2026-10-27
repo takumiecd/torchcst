@@ -33,6 +33,7 @@ from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.algorithm 
     hierarchy_from_operator,
 )
 from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.plans import (
+    SITE_SCALED,
     VALIDATED_128,
     VALIDATED_1024,
 )
@@ -107,21 +108,38 @@ def make_cst(width, atoms, *, dtype=torch.float32):
     )
 
 
-def make_polar_cst(width, atoms, *, amplitude_scale=1.0, dtype=torch.float32):
+def polar_bounds(width, *, site_scaled):
+    spacing = 128 / width
+    if site_scaled:
+        minimum = 0.25 * spacing
+        return BandwidthBounds(
+            minimum=minimum,
+            birth=8 * minimum,
+            maximum=100 * minimum,
+            upper_floor=2 * minimum,
+        )
+    return BandwidthBounds(minimum=2.0, birth=16.0, maximum=40.0, upper_floor=4.0)
+
+
+def make_polar_cst(
+    width, atoms, *, amplitude_scale=1.0, dtype=torch.float32, site_scaled=False
+):
     chart = chart_presets.regular_grid(
         ((width,),), spacing=128 / width, geometry="flat_torus"
     )
     kernel = presets.polar_cell_mass(
-        input_min_tile_sites=width // 32,
-        output_min_tile_sites=width // 16,
+        input_min_tile_sites=4 if site_scaled else width // 32,
+        output_min_tile_sites=8 if site_scaled else width // 16,
         amplitude_max=amplitude_scale,
         w_c=0.3 * amplitude_scale,
-        input_bounds=BandwidthBounds(
-            minimum=2.0, birth=16.0, maximum=40.0, upper_floor=4.0
-        ),
+        input_bounds=polar_bounds(width, site_scaled=site_scaled),
         alpha_init=0.5,
     )
-    plan = VALIDATED_128 if width == 128 else VALIDATED_1024
+    plan = (
+        SITE_SCALED
+        if site_scaled
+        else (VALIDATED_128 if width == 128 else VALIDATED_1024)
+    )
     return CSTLinear(
         chart,
         chart,
@@ -132,7 +150,7 @@ def make_polar_cst(width, atoms, *, amplitude_scale=1.0, dtype=torch.float32):
     )
 
 
-def make_polar_initialization(width, seed=120):
+def make_polar_initialization(width, seed=120, *, site_scaled=True):
     """Random angles, initial alpha=.5, calibrated amplitude units.
 
     Scaling amplitude_max AND w_c together preserves w/w_c, hence every
@@ -145,19 +163,24 @@ def make_polar_initialization(width, seed=120):
     atoms = torch.randn(count, 4)
     atoms[:, :2] *= math.sqrt(2.5) / atoms[:, :2].norm(dim=1, keepdim=True)
     atoms[:, 2:].uniform_(0.0, 128.0)
-    reference = make_polar_cst(width, atoms.double(), dtype=torch.float64)
+    reference = make_polar_cst(
+        width, atoms.double(), dtype=torch.float64, site_scaled=site_scaled
+    )
     with torch.no_grad():
         gain = float(
             (1 / math.sqrt(width)) / reference.dense_weight().square().mean().sqrt()
         )
         # Round scalar buffers as FP32 training does, before the FP64 export.
-        reference = make_polar_cst(width, atoms.clone(), amplitude_scale=gain).double()
+        reference = make_polar_cst(
+            width, atoms.clone(), amplitude_scale=gain, site_scaled=site_scaled
+        ).double()
         weight = reference.dense_weight().float()
     from torchcst._backends.torch.kernels.polar_cell_mass import decoded_values
 
     _, si, so = decoded_values(reference.kernel, atoms)
     torch.manual_seed(seed + 1)
     shared_in, shared_out = nn.Linear(784, width), nn.Linear(width, 10)
+    bounds = polar_bounds(width, site_scaled=site_scaled)
     return {
         "width": width,
         "seed": seed,
@@ -165,16 +188,20 @@ def make_polar_initialization(width, seed=120):
         "weight": weight,
         "amplitude_gain": gain,
         "parameterization": "polar",
+        "cohort": "site_scaled" if site_scaled else "fixed_coordinates",
         "sigma_initial": {"input": si.detach(), "output": so.detach()},
         "input": shared_in.state_dict(),
         "output": shared_out.state_dict(),
         "kernel_settings": {
             "amplitude_max": gain,
             "w_c": 0.3 * gain,
-            "minimum": 2.0,
-            "birth": 16.0,
-            "maximum": 40.0,
-            "upper_floor": 4.0,
+            "minimum": bounds.minimum,
+            "birth": bounds.birth,
+            "maximum": bounds.maximum,
+            "upper_floor": bounds.upper_floor,
+            "spacing": 128 / width,
+            "input_min_tile_sites": 4 if site_scaled else width // 32,
+            "output_min_tile_sites": 8 if site_scaled else width // 16,
             "alpha_init": 0.5,
             "kappa": 3.0,
             "lower_kappa": 3.0,
@@ -226,6 +253,7 @@ def make_model(initialization, kind):
                 n,
                 initialization["atoms"].clone(),
                 amplitude_scale=initialization["amplitude_gain"],
+                site_scaled=initialization.get("cohort") == "site_scaled",
             )
             if initialization.get("parameterization") == "polar"
             else make_cst(n, initialization["atoms"].clone())
@@ -289,6 +317,8 @@ def sigma_statistics(layer, initial_sigma):
         ).tolist()
     nodes, periods = {}, {}
     for side, column in (("input", 3), ("output", 2)):
+        from torchcst._backends.torch.profiles.fourier import effective_radius
+
         sigma = sigmas[side]
         if is_polar:
             column = 2 if side == "input" else 3
@@ -296,6 +326,7 @@ def sigma_statistics(layer, initial_sigma):
         remaining = torch.ones(len(p), dtype=torch.bool)
         ids = torch.empty(len(p), dtype=torch.int64)
         atom_period = torch.empty(len(p), dtype=torch.float64)
+        radii = torch.empty(len(p), dtype=torch.float64)
         banks = {}
         center = (p[:, column] - axis.origin).remainder(axis.period)
         for bank in axis.banks:
@@ -309,6 +340,9 @@ def sigma_statistics(layer, initial_sigma):
             ).floor().long() % bank.tile_count
             ids[selected] = bank.node_offset + owner[selected]
             atom_period[selected] = bank.period
+            radii[selected] = effective_radius(
+                axis.profile, sigma[selected], bank.period
+            )
             banks[str(bank.level)] = {
                 "atoms": int(selected.sum()),
                 "amplitude_abs_sum": float(amplitude[selected].abs().sum()),
@@ -319,6 +353,19 @@ def sigma_statistics(layer, initial_sigma):
         counts = torch.bincount(ids, minlength=axis.node_count)
         occupied = counts[counts > 0].double()
         result[side] = {
+            "spacing": axis.spacing,
+            "sigma_over_spacing_quantiles": torch.quantile(
+                sigma / axis.spacing,
+                torch.tensor(
+                    [0.0, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0], dtype=torch.float64
+                ),
+            ).tolist(),
+            "effective_radius_over_spacing_quantiles": torch.quantile(
+                radii / axis.spacing,
+                torch.tensor(
+                    [0.0, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0], dtype=torch.float64
+                ),
+            ).tolist(),
             "banks": banks,
             "owner_counts": counts.tolist(),
             "max_owner_fraction": float(counts.max() / len(p)),
@@ -458,6 +505,7 @@ def run_training(
         output / "final.pt",
     )
     report = {
+        "cohort": initialization.get("cohort", "fixed_coordinates"),
         "parameterization": initialization.get("parameterization", "physical"),
         "kernel_settings": initialization.get("kernel_settings"),
         "kind": kind,

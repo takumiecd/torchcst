@@ -67,7 +67,7 @@ PR #121の時点では公開CSTLinearへ未接続だった。現在の接続作�
 
 ### CSTLinearへの明示接続と学習確認（2026-10-27）
 
-#### Polar接続（現在の実装・GPU検証待ち）
+#### Polar接続（実装・先行GPU検証済み、幅範囲を訂正）
 
 `presets.polar_cell_mass`は既存`PolarAmpWidthSpec`・初期activity指定・
 `polar_activity_width`更新方針をそのまま使い、profileだけをセル積分/面積正規化へ置き換える。
@@ -89,7 +89,7 @@ forwardのHはC生成後に解放し、backwardまで保存しない。FP64の�
 物理sigma版の保存Hとwidth微分経路はそのまま残す。
 
 各軸の幅上限はその軸のQ/3以下で宣言する。input/outputの別幅も使える。
-幅が違う場合は共有sigmaを仮定するcompact bank省略を使わず、完全Cartesian countingにする。
+幅が違う場合は共有sigmaを仮定するcompact bank省略を使わず、完全Cartesian countingまたは疎sortを使う。
 shape係数の再利用は周期・profileに加え実際のsigmaが一致する場合だけ行う。
 
 MNIST再確認は前回と同じ全データ・seed120・B32・3 epoch・128/1024の中央層置換。
@@ -103,7 +103,7 @@ finite_chord/dormant_expansion_rate=0。AdamWはlr1e-3/weight_decay0。
 これは既存Polarが受け付ける明示atom初期化とscalar設定であり、新しい更新則ではない。
 denseにはこのPolarモデルの初期実効Wを渡し、外側の層・各epochのshuffleも一致させる。
 以前の物理sigma版とは初期分布・学習則が違うので、時間の直接的な改善率には読み替えない。
-現在はCPU全2,047 passed/5,362 skipped。以下の物理sigma版の結果と分け、GPU結果を追記する。
+この固定座標幅の先行条件ではCPU全2,047 passed/5,362 skipped。GPU結果と設定訂正を以下に分ける。
 
 初回job `l4job-32efe4ab7d7c4fea97da7aeacf943fbb`は別幅8ケースで失敗した。
 C生成のCartesian経路にも共有sigmaを仮定したbankペア省略が残っていたため、
@@ -114,6 +114,63 @@ C生成のCartesian経路にも共有sigmaを仮定したbankペア省略が残�
 いずれの試行もMNIST開始前に止まり、学習結果や速度の根拠には使わない。
 両失敗runのsource/results/spec/receiptはignored `output/cell-mass-polar-integration-20261027/`
 の`failed-split-preflight/`と`failed-rounded-gradient/`へ保存した。
+
+#### σ範囲とsite単位の最小tile（2026-10-27訂正、現在の学習条件）
+
+ユーザー指定は`σ_min/spacing <= 1`、`σ_max ≈ 100 σ_min`。
+過去の[小幅混合の記録](research-history/local-product/20261004-subspacing-mixtures.md)にも
+`σ_min < spacing`と0.25の例がある。上の固定幅2..40はこの条件を満たさなかった。
+既存Polarの更新則・sigmaの意味を維持し、今回のMNIST harnessで次を明示設定する。
+ライブラリの一般的なPolar既定値を変更するものではない。
+
+```text
+spacing = Q / N, Q = 128
+σ_min = 0.25 * spacing
+σ_max = 100 * σ_min
+σ_birth = 8 * σ_min, upper_floor = 2 * σ_min
+input T_min = 4 * spacing, output T_min = 8 * spacing
+```
+
+| N | spacing | σ_min | σ_max | 入力/出力T_min（物理幅） |
+| --- | ---: | ---: | ---: | ---: |
+| 128 | 1 | 0.25 | 25 | 4 / 8 |
+| 1024 | 0.125 | 0.03125 | 3.125 | 0.5 / 1 |
+
+T_h=2^h T_min、local bankのP_h=3T_h、σ<=T_hの最初のbankという分類は維持する。
+1024でも最小tileを4/8 **sites**にする。以前の32/64sitesを残したままσだけ縮めると、
+ほぼ全atomが最下位bankへ入り、profileの集中半径下限も相対的に大きくなるためである。
+T_minはprofileの数学的宣言なので、この変更は同じ演算の高速化だけとは扱わない。
+M8/tail1e-3の集中半径補正は変更しない。σ<spacingでも1siteへの完全な集中は保証しない。
+診断に`σ/spacing`と`effective_radius/spacing`を併記する。
+
+新しい明示Plan `SITE_SCALED`は疎sortと入力owner用の逆slot indexを使う。
+旧`VALIDATED_128/1024`は前の条件の再現用に維持する。入力509/output253 nodesとなる
+1024では完全Cartesian countingの4096group上限を超えるため、実在するgroupだけを保持する。
+元atomは複製せず、順slot→元行、group範囲、逆slot/offsetだけがforward/backward用global cache。
+分類keyと逆index構築中のnode配列は一時scratchでありcheckpointには入らない。
+`atoms_per_split=256`のragged Cを使い、実測でメモリ・速度の両方を確認する。
+修正後のGPU検証・MNIST再学習はまだ完了していない。
+
+先行Polar runはsource `1e9a7cd4`、job `l4job-3b154a81ff6845b485d9a80332bb182e`。
+L4/Torch2.11.0+cu130/CUDA13.0で22+2,621 passed/12 skipped、racecheck 0 hazards、
+B32の全819/52,428atomについて独立FFT/autogradと3step optimizerの検査を通過した。
+許容差はY/dX/全勾配3e-6/2e-7、Parameter2e-6/2e-7、moments4e-6/2e-8。
+前述の2..40幅、同じMNIST全データ/B32/3epoch/seed120での結果は次のとおり。
+
+| N | epoch3精度 CST/dense | 平均step CST/dense | allocated MiB | reserved MiB |
+| --- | ---: | ---: | ---: | ---: |
+| 128 | 96.99 / 96.90% | 12.621 / 1.965ms | 213.540 / 213.264 | 366 / 364 |
+| 1024 | 97.06 / 97.50% | 17.405 / 1.962ms | 235.929 / 239.883 | 396 / 382 |
+
+この条件では完全step速度・両peakの目標は未達。幅範囲訂正後の結果には読み替えない。
+σ中央値は128で6.708→2.951、1024で6.558→2.908へ縮小した。
+無task角度更新の解析的radial減衰だけからの予測中央値2.951/2.906と近いため、
+データ学習だけで獲得した偏りとは呼ばない。独立のablation学習ではない。
+raw/source/checkpointsと491source照合は
+`output/cell-mass-polar-integration-20261027/verified-run/`、解析と図は同親directoryに保存。
+source archive SHA256 `3bf3adef38fb104c80189c39d667c5727211c1c8e77646ab706fa6c56c6ea75c`、
+result archive `e7335004858acda21befa265d89c585454ca461c3b27071c4f2f5f4fbc26ebd9`。
+所有runtimeは停止確認済み。
 
 #### 物理sigmaによる接続（先行実験・Polarではない）
 

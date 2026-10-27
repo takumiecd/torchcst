@@ -4,14 +4,26 @@
 目的は、面積正規化の契約・Y/dX/全atom勾配を保ち、dense以下のメモリで
 forward/backward/AdamWを含む完全stepの所要時間をdenseの2倍以内にすること。
 2026-10-27にユーザーへ確認し、「時間半分が必須」という以前の解釈を訂正した。
-現在の階層版は128・1024とも時間とメモリの条件を達成した。
+PR #121のB4合成条件では、階層版が128・1024とも時間とメモリの条件を達成した。
 denseと同等の時間は今後の任意の改善目標であり、今回の完了条件に追加しない。
 以下の固定bank版の過去結果と、現在の階層版を区別する。
+
+既存Polar＋今回のセル積分/面積正規化は`presets.polar_cell_mass`で接続した。
+既存Polarの更新・幅stop-gradientを保ち、CUDA内で振幅と各軸のsigmaをdecodeする。
+物理atom表を複製せず、入出力の別幅にも対応する。CPU全2,047 passed/5,362 skipped。
+GPU全勾配/更新とMNIST3epochはjob `l4job-3b154a81ff6845b485d9a80332bb182e`で完了した。
+ただし先行設定minimum=2/maximum=40はユーザー指定のσ_min/spacing<=1を満たさなかった。
+今回の設定はσ_min=.25spacing、σ_max=100σ_min、birth=8σ_min、upper_floor=2σ_minへ訂正する。
+最小tileも128/1024とも4/8sitesとし、明示SITE_SCALED Planで疎sortと逆indexを使う。
+この訂正後のGPU/学習検証は未完了。正本のσ範囲訂正節に旧結果と区別して残した。
+別幅のbank省略と保存FP32 H/Gによる勾配誤差を先行検査で検出し、
+Polar専用のFP64 register pullbackへ修正した。Hをbackwardまで保存せず、幅微分も計算しない。
+以下は先行した物理sigma直接学習であり、Polarの学習結果とは区別する。
 
 公開CSTLinear接続では`presets.cell_mass`と明示Planを追加した。自動dispatchは変更しない。
 これは物理`[amplitude,sigma,output_center,input_center]`の経路であり、Polar接続ではない。
 以下のMNIST結果はsigma直接学習の確認で、Polarの幅制御やsigma分布の評価には読み替えない。
-既存Polarと今回の面積profileを組み合わせる接続は未実装で、正本の接続節に違いを記した。
+この先行実験の時点ではPolar接続は未実装だった。現在のPolar版の検証は上で追跡する。
 CPU suiteは2,043 passed/5,344 skipped、Ruff/format/buildは通過し、配布物内のPython/native
 全runtime 344ファイルを作業sourceへ照合した。
 job `l4job-186f9896e1094c1a8989758e90710752`でGPU suite 2,621 passed/12 skipped、

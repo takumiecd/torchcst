@@ -13,6 +13,7 @@ from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.algorithm 
     hierarchy_from_operator,
 )
 from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.plans import (
+    SITE_SCALED,
     VALIDATED_128,
     VALIDATED_1024,
 )
@@ -37,11 +38,36 @@ def settings(split=False):
 
 
 def layer(
-    n=128, count=37, *, split=False, dtype=torch.float64, device="cpu", cuda_plan=False
+    n=128,
+    count=37,
+    *,
+    split=False,
+    dtype=torch.float64,
+    device="cpu",
+    cuda_plan=False,
+    site_scaled=False,
 ):
     chart = chart_presets.regular_grid(((n,),), spacing=128 / n, geometry="flat_torus")
+    options = settings(split)
+    if site_scaled:
+        from benchmarks.training.cell_mass_mnist import polar_bounds
+
+        bounds = polar_bounds(n, site_scaled=True)
+        options["input_bounds"] = bounds
+        options["output_bounds"] = (
+            BandwidthBounds(
+                minimum=bounds.minimum / 2,
+                birth=bounds.birth / 2,
+                maximum=bounds.maximum / 2,
+                upper_floor=bounds.upper_floor / 2,
+            )
+            if split
+            else None
+        )
     kernel = presets.polar_cell_mass(
-        input_min_tile_sites=n // 32, output_min_tile_sites=n // 16, **settings(split)
+        input_min_tile_sites=4 if site_scaled else n // 32,
+        output_min_tile_sites=8 if site_scaled else n // 16,
+        **options,
     )
     rng = torch.Generator().manual_seed(120)
     p = torch.randn(count, 4, generator=rng).to(dtype)
@@ -49,7 +75,9 @@ def layer(
         dim=1, keepdim=True
     )
     p[:, 2:] *= 150
-    plan = VALIDATED_128 if n == 128 else VALIDATED_1024
+    plan = (
+        SITE_SCALED if site_scaled else (VALIDATED_128 if n == 128 else VALIDATED_1024)
+    )
     selector = FixedSelector(plan, registry=get_registry()) if cuda_plan else None
     return CSTLinear(
         chart,
@@ -164,6 +192,47 @@ def test_polar_mnist_pair_and_invalid_width_bounds():
 
 
 cuda_only = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+
+
+@pytest.mark.parametrize("n", [128, 1024])
+def test_site_scaled_bounds_and_plan_contract(n):
+    from benchmarks.training.cell_mass_mnist import polar_bounds
+
+    bounds = polar_bounds(n, site_scaled=True)
+    assert bounds.minimum / (128 / n) == 0.25
+    assert bounds.maximum / bounds.minimum == 100
+    model = layer(n, count=3, site_scaled=True, dtype=torch.float32)
+    axis = hierarchy_from_operator(model.declaration())
+    assert (axis.input.min_tile_sites, axis.output.min_tile_sites) == (4, 8)
+    registry = get_registry()
+    assert registry.loads_plan(registry.dumps_plan(SITE_SCALED)) == SITE_SCALED
+
+
+@cuda_only
+@pytest.mark.parametrize("n", [128, 1024])
+@pytest.mark.parametrize("batch", [4, 32])
+@pytest.mark.parametrize("split", [False, True])
+def test_site_scaled_cuda_all_gradients(n, batch, split):
+    model = layer(
+        n,
+        split=split,
+        site_scaled=True,
+        dtype=torch.float32,
+        device="cuda",
+        cuda_plan=True,
+    )
+    x = torch.randn(batch, n, device="cuda", requires_grad=True)
+    dy = torch.randn_like(x)
+    y = model(x)
+    dx, dp = torch.autograd.grad(y, (x, model.atoms.p), dy)
+    xr = x.detach().cpu().double().requires_grad_()
+    pr = model.atoms.p.detach().cpu().double().requires_grad_()
+    yr = oracle(model, xr, pr)
+    dxr, dpr = torch.autograd.grad(yr, (xr, pr), dy.cpu().double())
+    for actual, expected in ((y, yr), (dx, dxr), (dp, dpr)):
+        torch.testing.assert_close(
+            actual.cpu().double(), expected, rtol=3e-6, atol=2e-7
+        )
 
 
 @cuda_only

@@ -965,8 +965,6 @@ def test_hierarchical_adamw_rebuilds_layout_and_matches_all_moments(
         hierarchical_linear,
     )
 
-    if reverse_layout and layout_method != "counting":
-        pytest.skip("reverse layout is defined only for counting preparation")
     plan = HierarchyPlan(
         input=AxisPlan(site_count=128, min_tile_sites=4, origin=-2),
         output=AxisPlan(site_count=128, min_tile_sites=8, origin=3),
@@ -1167,8 +1165,6 @@ def test_fused_g_grad_cin_matches_separate_stages(
         prepare_layout,
     )
 
-    if reverse and layout_method != "counting":
-        pytest.skip("reverse layout is defined only for counting preparation")
     plan = HierarchyPlan(
         input=AxisPlan(site_count=128, min_tile_sites=4, origin=-2),
         output=AxisPlan(site_count=128, min_tile_sites=8, origin=3),
@@ -1329,8 +1325,8 @@ def test_counting_layout_ranges_and_original_rows(dtype, count):
 @cuda_only
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 @pytest.mark.parametrize("count", [0, 1, 37, 819])
-@pytest.mark.parametrize("method", ["counting", "counting_compact"])
-def test_reverse_counting_layout_is_forward_slot_permutation_and_group_concatenation(
+@pytest.mark.parametrize("method", ["sort", "counting", "counting_compact"])
+def test_reverse_layout_is_forward_slot_permutation_and_group_concatenation(
     dtype, count, method
 ):
     from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
@@ -1387,7 +1383,7 @@ def test_reverse_counting_layout_is_forward_slot_permutation_and_group_concatena
 
 @cuda_only
 @pytest.mark.parametrize("invalid", ["nan_atom", "bad_sigma", "nan_signal"])
-@pytest.mark.parametrize("method", ["counting", "counting_compact"])
+@pytest.mark.parametrize("method", ["sort", "counting", "counting_compact"])
 def test_reverse_preparation_rejects_invalid_atoms_and_signal(invalid, method):
     from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
         prepare_layout,
@@ -1408,7 +1404,7 @@ def test_reverse_preparation_rejects_invalid_atoms_and_signal(invalid, method):
 
 
 @cuda_only
-def test_reverse_layout_requires_counting_and_positive_threshold_requires_reverse():
+def test_sorted_reverse_layout_and_positive_threshold_requires_reverse():
     from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
         hierarchical_linear,
         prepare_layout,
@@ -1418,10 +1414,12 @@ def test_reverse_layout_requires_counting_and_positive_threshold_requires_revers
     plan = HierarchyPlan(input=axis, output=axis)
     atoms = torch.ones(3, 4, device="cuda")
     x = torch.ones(1, 32, device="cuda")
-    with pytest.raises(ValueError):
-        prepare_layout(plan, atoms, method="sort", reverse=True)
-    with pytest.raises(ValueError):
-        hierarchical_linear(plan, x, atoms, layout_method="sort", reverse_layout=True)
+    layout = prepare_layout(plan, atoms, method="sort", reverse=True)
+    assert layout.has_reverse
+    assert sorted(layout.reverse_slots.cpu().tolist()) == list(range(3))
+    y = hierarchical_linear(plan, x, atoms, layout_method="sort", reverse_layout=True)
+    expected = hierarchical_linear(plan, x, atoms)
+    torch.testing.assert_close(y, expected)
     with pytest.raises(ValueError):
         hierarchical_linear(
             plan, x, atoms, layout_method="counting", atoms_per_split=32
@@ -1430,7 +1428,7 @@ def test_reverse_layout_requires_counting_and_positive_threshold_requires_revers
 
 @cuda_only
 @pytest.mark.parametrize("mutated", ["reverse_slots", "reverse_offsets"])
-@pytest.mark.parametrize("method", ["counting", "counting_compact"])
+@pytest.mark.parametrize("method", ["sort", "counting", "counting_compact"])
 def test_reverse_cache_saved_tensor_mutation_is_rejected(mutated, method):
     from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
         hierarchical_linear,
@@ -1452,7 +1450,7 @@ def test_reverse_cache_saved_tensor_mutation_is_rejected(mutated, method):
 
 
 @cuda_only
-@pytest.mark.parametrize("method", ["counting", "counting_compact"])
+@pytest.mark.parametrize("method", ["sort", "counting", "counting_compact"])
 def test_reverse_cache_rejects_changed_atom_version_and_supports_retained_graph(method):
     from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
         hierarchical_linear,

@@ -103,16 +103,14 @@ def prepare_layout(plan, atoms, *, method="sort", signal=None, reverse=False):
     The sort method retains only nonempty groups in stable order. Counting
     retains the complete Cartesian group table (at most 4096), including empty
     ranges. Compact counting retains only compatible bank pairs, also with
-    fixed empty ranges. Both counting methods support reverse indices and
-    do not promise stable order within a group. No method
+    fixed empty ranges. Sort also builds a stable reverse index when requested.
+    Counting methods do not promise stable order within a group. No method
     copies atom values from the original Parameter or retains all atom keys.
     Width/finite rejection reads one error word. Sort/unique has dynamic output
     shapes; host checks remain, so full-route CUDA Graph support is not claimed.
     """
     if type(reverse) is not bool:
         raise ValueError("reverse must be bool")
-    if reverse and method not in ("counting", "counting_compact"):
-        raise ValueError("reverse layout requires counting preparation")
     if method not in ("sort", "counting", "counting_compact"):
         raise ValueError("layout method must be sort, counting or counting_compact")
     if type(plan) is not HierarchyPlan:
@@ -214,7 +212,35 @@ def prepare_layout(plan, atoms, *, method="sort", signal=None, reverse=False):
     offsets[0] = 0
     torch.cumsum(counts, dim=0, out=offsets[1:])
     groups = native.decode_groups(group_keys, input_config, output_config)
-    return PreparedLayout(rows, groups, offsets, plan, atoms, atoms._version)
+    reverse_slots = reverse_offsets = None
+    if reverse:
+        # Sparse groups avoid the 4096-entry Cartesian table limit for fine
+        # grids. Build only index views; all temporary keys are discarded.
+        level_offsets = [-1] * (plan.input.full_level + 1)
+        for bank in plan.input.banks:
+            level_offsets[bank.level] = bank.node_offset
+        table = torch.tensor(level_offsets, dtype=torch.int64, device=atoms.device)
+        group_nodes = table[groups[:, 1].long()] + groups[:, 3].long()
+        slots = torch.arange(atoms.shape[0], dtype=torch.int64, device=atoms.device)
+        slot_groups = torch.bucketize(slots, offsets[1:], right=True)
+        input_nodes = group_nodes[slot_groups]
+        reverse_slots = torch.argsort(input_nodes, stable=True).to(torch.int32)
+        counts = torch.bincount(input_nodes, minlength=plan.input.node_count)
+        reverse_offsets = torch.empty(
+            plan.input.node_count + 1, dtype=torch.int64, device=atoms.device
+        )
+        reverse_offsets[0] = 0
+        torch.cumsum(counts, dim=0, out=reverse_offsets[1:])
+    return PreparedLayout(
+        rows,
+        groups,
+        offsets,
+        plan,
+        atoms,
+        atoms._version,
+        reverse_slots=reverse_slots,
+        reverse_offsets=reverse_offsets,
+    )
 
 
 def build_hierarchy(signal, axis, *, method="merge", team_size=4, chunk_sites=0):
@@ -1150,12 +1176,6 @@ def hierarchical_linear(
         reverse_layout or (layout is not None and layout.has_reverse)
     ):
         raise ValueError("atoms_per_split requires a reverse layout")
-    if (
-        reverse_layout
-        and layout is None
-        and layout_method not in ("counting", "counting_compact")
-    ):
-        raise ValueError("reverse layout requires counting preparation")
     if reverse_layout and layout is not None and not layout.has_reverse:
         raise ValueError("cached layout lacks reverse indices; rebuild it")
     if type(window_moments) is not bool:

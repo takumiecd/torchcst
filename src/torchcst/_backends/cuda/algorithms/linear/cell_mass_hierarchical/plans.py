@@ -13,3 +13,6 @@ VALIDATED_128 = ExecutionPlan(
 VALIDATED_1024 = ExecutionPlan(
     "cuda_cell_mass_hierarchical", "v1", HierarchicalCellMassRecipe("validated_1024")
 )
+SITE_SCALED = ExecutionPlan(
+    "cuda_cell_mass_hierarchical", "v1", HierarchicalCellMassRecipe("site_scaled")
+)

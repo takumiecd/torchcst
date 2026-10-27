@@ -104,35 +104,55 @@ load old Polar checkpoints. See the
 ### Hierarchical cell masses with an explicit CUDA Plan
 
 ```python
-from torchcst import CSTLinear, CSTOptimizer, FixedSelector, make_algorithm_registry
+from torchcst import BandwidthBounds, CSTLinear, CSTOptimizer, FixedSelector, make_algorithm_registry
 from torchcst import chart_presets, presets
-from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.plans import VALIDATED_128
+from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.plans import SITE_SCALED
 
-n = 128
-grid = chart_presets.regular_grid(((n,),), spacing=128 / n, geometry="flat_torus")
+n = 128  # also 1024
+spacing = 128 / n
+sigma_min = 0.25 * spacing
+grid = chart_presets.regular_grid(((n,),), spacing=spacing, geometry="flat_torus")
 layer = CSTLinear(
     grid, grid, atoms=int(0.05 * n * n), device="cuda",
-    kernel=presets.cell_mass(input_min_tile_sites=n // 32,
-                             output_min_tile_sites=n // 16),
-    selector=FixedSelector(VALIDATED_128, registry=make_algorithm_registry()),
+    kernel=presets.polar_cell_mass(
+        input_min_tile_sites=4, output_min_tile_sites=8,
+        amplitude_max=1.0, w_c=0.3,
+        input_bounds=BandwidthBounds(
+            minimum=sigma_min, birth=8 * sigma_min,
+            maximum=100 * sigma_min, upper_floor=2 * sigma_min,
+        ),
+        alpha_init=0.5,
+    ),
+    selector=FixedSelector(SITE_SCALED, registry=make_algorithm_registry()),
 )
 ```
 
-Use `VALIDATED_1024` for the qualified 1024-square FP32 recipe. These Plans are
+`SITE_SCALED` keeps minimum tiles at 4/8 sites for N128/1024 and uses sparse
+sorted routing. Its GPU learning validation is pending. The earlier
+`VALIDATED_128` / `VALIDATED_1024` recipes retain minimum tiles N/32,N/16
+for reproducing prior fixtures. These Plans are
 explicit opt-ins; automatic dispatch and benchmark DB adoption are separate.
 The current native implementation supports up to 1024 sites per side and 65,536
 atoms, with frozen one-dimensional periodic RegularGrid charts. Execution is
 eager, without autocast or a deterministic-reduction guarantee. Torch provides
 a differentiable reference and explicit `dense_weight()` export on CPU.
 
-Rows of `layer.atoms.p` are physical `[amplitude, sigma, output_center,
-input_center]`. Sigma keeps its existing Chebyshev-square meaning; cells are
-integrated and divided by the continuous full-support mass. Minimum tile sizes
-are mathematical profile declarations and are checked in checkpoints. Runtime
-grouping is rebuilt from current atoms on every forward and is not serialized.
-Forward rejects invalid sigma rather than clipping it. `CSTOptimizer` applies
-the explicitly declared width projection to `[sigma_floor, min(periods)/3]`;
-with a plain optimizer, the caller must maintain this domain. See
+With `polar_cell_mass`, rows are the existing Polar chart-pair coordinates
+`[s, t, input_center, output_center]`. Polar amplitude/activity determine each
+side's sigma; width remains detached from task loss. `CSTOptimizer` reuses the
+existing Polar projection, radial activity update and moment transport. Only
+the profile factors use cell integration and continuous full-support mass.
+Input/output bounds can differ; each maximum must fit its chart period/3.
+CUDA decodes each atom where consumed, without a copied physical atom table.
+
+Minimum tiles are mathematical profile declarations, checked in checkpoints.
+Runtime grouping is rebuilt from current atoms each forward and is not saved.
+The separate `presets.cell_mass(...)` reference path stores physical
+`[amplitude, sigma, output_center, input_center]` and learns sigma directly;
+its explicit CSTOptimizer policy projects width proposals into
+`[sigma_floor, min(periods)/3]`. These two learning contracts are distinct.
+Checkpoints from old point-sampled/L2 profiles are not silently reinterpreted.
+See
 [the authoritative kernel flow](docs/cell-mass-kernel-flow.ja.md).
 
 ### Other profile and chart contracts

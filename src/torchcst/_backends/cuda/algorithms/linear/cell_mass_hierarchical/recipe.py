@@ -17,6 +17,21 @@ class HierarchicalCellMassRecipe:
         }
         if self.preset == "validated_128":
             return common
+        if self.preset == "site_scaled":
+            return dict(
+                common,
+                c_splits=128,
+                layout_method="sort",
+                reverse_layout=True,
+                atoms_per_split=256,
+                z_chunk_sites=32,
+                atom_threads=64,
+                window_moments=True,
+                compensated_values=True,
+                compensated_grad=True,
+                fuse_h_c=True,
+                ragged_c_splits=True,
+            )
         if self.preset == "validated_1024":
             return dict(
                 common,
