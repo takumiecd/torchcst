@@ -5,6 +5,7 @@
 #include <c10/cuda/CUDAGuard.h>
 #include <c10/cuda/CUDAStream.h>
 #include <cmath>
+#include <cstdint>
 #include <torch/extension.h>
 #include <vector>
 
@@ -42,10 +43,38 @@ struct PolynomialBanks {
 };
 __device__ __constant__ PolynomialBanks polynomial_banks{};
 
+// Packed positive polynomial coefficients for all even M=2..16. These
+// integers depend only on (M,k,j), not on atom sigma/position. Exact int64
+// recurrence stays below 2^63; all stored integers are also below 2^53.
+__host__ __device__ constexpr int horner_bank_offset(int modes) {
+    int bank = modes / 2;
+    return (bank - 1) * bank * (4 * bank + 1) / 6;
+}
+constexpr int HORNER_VALUES = horner_bank_offset(MAX_MODES) + MAX_MODES * (MAX_MODES + 1) / 2;
+struct HornerBanks {
+    double coefficients[HORNER_VALUES] = {};
+    __host__ __device__ constexpr HornerBanks() {
+        for (int modes = 2; modes <= MAX_MODES; modes += 2) {
+            for (int k = 0; k < modes; ++k) {
+                int offset = horner_bank_offset(modes) + k * (2 * modes - k + 1) / 2;
+                int64_t term = modes + k;
+                for (int j = 1; j <= modes - k; ++j) {
+                    coefficients[offset + j - 1] = static_cast<double>(term);
+                    if (j < modes - k)
+                        term = term * (modes - k - j) * (modes + k + j) / (j * (j + 1));
+                }
+            }
+        }
+    }
+};
+static_assert(sizeof(HornerBanks) == 3552, "unexpected Horner constant-bank size");
+__device__ __constant__ HornerBanks horner_banks{};
+
 struct Axis {
     int sites, modes, leaf, leaves, nodes, tile_sites, period_tiles;
     double spacing, origin, tail_bound, radius_ratio4, fundamental_omega;
-    bool polynomial_coefficients, polynomial_table, owner_windows, phase_recurrence;
+    bool polynomial_coefficients, polynomial_table, owner_windows, phase_recurrence,
+        polynomial_horner;
     __host__ __device__ int basis_count() const {
         return 1 + 2 * modes;
     }
@@ -83,10 +112,12 @@ Axis parse_axis(const std::vector<double> &c) {
     a.origin = c[3];
     a.modes = static_cast<int>(c[4]);
     a.tail_bound = c[5];
-    TORCH_CHECK(c[6] == 0 || c[6] == 1 || c[6] == 2 || c[6] == 3, "invalid coefficient method");
+    TORCH_CHECK(c[6] == 0 || c[6] == 1 || c[6] == 2 || c[6] == 3 || c[6] == 4,
+                "invalid coefficient method");
     a.polynomial_coefficients = c[6] != 0;
     a.polynomial_table = c[6] >= 2;
-    a.phase_recurrence = c[6] == 3;
+    a.phase_recurrence = c[6] >= 3;
+    a.polynomial_horner = c[6] == 4;
     TORCH_CHECK((a.sites & (a.sites - 1)) == 0, "site count must be a power of two");
     TORCH_CHECK(a.modes % 2 == 0 && a.spacing > 0, "invalid cell-mass axis");
     TORCH_CHECK(a.tail_bound > 0 && a.tail_bound < 1 &&
@@ -330,7 +361,46 @@ __device__ ValueDerivative polynomial_coefficient(const Profile &p, int harmonic
             (derivative - 2 * value * p.denominator_sigma / p.denominator) / denominator};
 }
 
-__device__ ValueDerivative raw_coefficient(const Profile &p, int harmonic) {
+// Same positive polynomial as polynomial_coefficient, evaluated jointly
+// with its t derivative by Horner. A running x^k can be supplied by the caller;
+// the fallback keeps individual coefficient queries valid without an array.
+__device__ ValueDerivative horner_coefficient(const Profile &p, int k, double beta_power = 0) {
+    int m = p.axis.modes;
+    double x = p.beta * p.beta;
+    double dx = 2 * p.beta * p.beta_sigma;
+    if (beta_power == 0) {
+        beta_power = 1;
+        for (int j = 0; j < k; ++j)
+            beta_power *= x;
+    }
+    if (k == m) {
+        double value = 0.25 * beta_power;
+        return {value, value * m * p.log_beta2_sigma};
+    }
+    int degree = m - k;
+    int offset = horner_bank_offset(m) + k * (2 * m - k + 1) / 2;
+    double t = x - 1;
+    double value = horner_banks.coefficients[offset + degree - 1];
+    double slope = 0;
+    for (int j = degree - 1; j >= 1; --j) {
+        slope = slope * t + value;
+        value = value * t + horner_banks.coefficients[offset + j - 1];
+    }
+    // The polynomial's constant term is zero.
+    slope = slope * t + value;
+    value *= t;
+    double prefix = polynomial_banks.prefixes[m / 2][k] * beta_power;
+    double derivative = prefix * k * p.log_beta2_sigma * value + prefix * slope * dx;
+    value *= prefix;
+    if (k == 0)
+        value += 1;
+    // T_M(beta)^-2 cancels from normalized polynomial profiles; denominator=1.
+    return {0.5 * value, 0.5 * derivative};
+}
+
+__device__ ValueDerivative raw_coefficient(const Profile &p, int harmonic, double beta_power = 0) {
+    if (p.axis.polynomial_horner)
+        return horner_coefficient(p, harmonic, beta_power);
     if (p.axis.polynomial_coefficients)
         return polynomial_coefficient(p, harmonic);
     return dft_coefficient(p, harmonic);
@@ -387,11 +457,12 @@ struct CoefficientPair {
 // Paired modes share one raw harmonic, normalization and phase.
 template <bool Derivatives>
 __device__ CoefficientPair coefficient_pair_from_phase(const Profile &p, int harmonic,
-                                                       double cosine, double sine) {
+                                                       double cosine, double sine,
+                                                       double beta_power = 0) {
     if (harmonic == 0)
         return {{1 / p.axis.profile_period(), 0, 0}, {0, 0, 0}};
     double omega = mode_frequency(p.axis, harmonic);
-    auto raw = raw_coefficient(p, harmonic);
+    auto raw = raw_coefficient(p, harmonic, beta_power);
     double scale;
     if (p.axis.polynomial_table)
         scale = p.normalized_scale;
@@ -581,13 +652,16 @@ __device__ Projection project_atom(const scalar_t *signal, const moment_t *z, in
         int owner = raw_owner % owners;
         double center = p.center - ((raw_owner - owner) / owners) * a.chart_period();
         HarmonicPhase phase(p, center);
+        double beta_power = 1;
         for (int harmonic = 0; harmonic <= a.modes; ++harmonic) {
+            if (harmonic != 0 && a.polynomial_horner)
+                beta_power *= p.beta * p.beta;
             int mode = harmonic == 0 ? 0 : 2 * harmonic - 1;
             CoefficientPair pair;
             if (a.phase_recurrence) {
                 phase.advance(harmonic);
-                pair =
-                    coefficient_pair_from_phase<Derivatives>(p, harmonic, phase.cosine, phase.sine);
+                pair = coefficient_pair_from_phase<Derivatives>(p, harmonic, phase.cosine,
+                                                                phase.sine, beta_power);
             } else {
                 pair = coefficient_pair<Derivatives>(p, harmonic, center);
             }
@@ -627,13 +701,16 @@ __device__ Projection project_atom(const scalar_t *signal, const moment_t *z, in
             continue;
         double center = p.center - image * a.chart_period();
         HarmonicPhase phase(p, center);
+        double beta_power = 1;
         for (int harmonic = 0; harmonic <= a.modes; ++harmonic) {
+            if (harmonic != 0 && a.polynomial_horner)
+                beta_power *= p.beta * p.beta;
             int mode = harmonic == 0 ? 0 : 2 * harmonic - 1;
             CoefficientPair pair;
             if (a.phase_recurrence) {
                 phase.advance(harmonic);
-                pair =
-                    coefficient_pair_from_phase<Derivatives>(p, harmonic, phase.cosine, phase.sine);
+                pair = coefficient_pair_from_phase<Derivatives>(p, harmonic, phase.cosine,
+                                                                phase.sine, beta_power);
             } else {
                 pair = coefficient_pair<Derivatives>(p, harmonic, center);
             }
@@ -725,8 +802,11 @@ __device__ void cache_expansion_coefficients(const Profile &p, int first_profile
     int image = (p.first_tile + offset - first_profile_tile) / (a.sites / a.tile_sites);
     double center = p.center - image * a.chart_period();
     HarmonicPhase phase(p, center);
+    double beta_power = 1;
     for (int harmonic = 1; harmonic <= a.modes; ++harmonic) {
-        double raw = raw_coefficient(p, harmonic).value;
+        if (a.polynomial_horner)
+            beta_power *= p.beta * p.beta;
+        double raw = raw_coefficient(p, harmonic, beta_power).value;
         double normalized;
         if (a.polynomial_table)
             normalized = raw * p.normalized_scale;

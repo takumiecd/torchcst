@@ -17,8 +17,8 @@ from torchcst.kernels.cell_mass import CellMassLinearSpec
 
 
 def _axis_config(axis, coefficient_method="polynomial"):
-    if coefficient_method not in ("polynomial", "polynomial_table", "polynomial_recurrence", "dft"):
-        raise ValueError("coefficient_method must be polynomial, polynomial_table, polynomial_recurrence or dft")
+    if coefficient_method not in ("polynomial", "polynomial_table", "polynomial_recurrence", "polynomial_horner", "dft"):
+        raise ValueError("coefficient_method must be polynomial, polynomial_table, polynomial_recurrence, polynomial_horner or dft")
     return [
         axis.site_count,
         axis.spacing,
@@ -26,7 +26,7 @@ def _axis_config(axis, coefficient_method="polynomial"):
         axis.origin,
         axis.profile.modes,
         axis.profile.tail_bound,
-        {"dft": 0, "polynomial": 1, "polynomial_table": 2, "polynomial_recurrence": 3}[coefficient_method],
+        {"dft": 0, "polynomial": 1, "polynomial_table": 2, "polynomial_recurrence": 3, "polynomial_horner": 4}[coefficient_method],
         axis.period_tiles,
     ]
 
@@ -326,6 +326,9 @@ def physical_linear(
     batch_size<=4, owner C/windows and derivative recomputation. Input coefficients
     are reused in a shared chunk, and no global G is produced. C threads also
     determine this fused block's size. Other batches keep the separate path.
+    polynomial_horner evaluates the same positive coefficient polynomials and
+    their sigma derivatives with a joint Horner recurrence. Only mode-dependent
+    constants are stored; successive harmonics reuse one running beta power.
     Each block covers at most four profile tiles, independent of site width.
     Build/JIT time is separate from execution timing. Support is explicit.
     """
@@ -362,8 +365,8 @@ def physical_linear(
         or z_threads_per_element & (z_threads_per_element - 1)
     ):
         raise ValueError("Z thread count must be a power of two in [1,128]")
-    if coefficient_method not in ("polynomial", "polynomial_table", "polynomial_recurrence", "dft"):
-        raise ValueError("coefficient_method must be polynomial, polynomial_table, polynomial_recurrence or dft")
+    if coefficient_method not in ("polynomial", "polynomial_table", "polynomial_recurrence", "polynomial_horner", "dft"):
+        raise ValueError("coefficient_method must be polynomial, polynomial_table, polynomial_recurrence, polynomial_horner or dft")
     if type(sites_per_block) is not int or sites_per_block not in (8, 16, 32, 64, 128, 256):
         raise ValueError("sites_per_block must be a power of two in [8,256]")
     allowed_splits = (1, 2, 4, 8, 16, 32, 64, 128) if owner_coefficient_reduction else (1, 2, 4, 8, 16, 32, 64)
