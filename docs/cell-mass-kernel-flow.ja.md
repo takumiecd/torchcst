@@ -1,14 +1,39 @@
 # 区間確率方式：prepareからbackwardまでのkernelの流れ
 
-1024/B4の最新経路は[G/Parameter勾配とC_in生成の融合](cell-mass-cin-fusion.ja.md)。
-入力係数を現在のshared chunkで再利用し、global Gを作らない選択肢を追加した。
-以下の従来経路も対照として維持する。
+## 設計の正本と、現在の実装範囲
 
+2026-10-27。この文書を、sigmaからの階層分類・layout・Z/H/C・backwardを
+つなぐ設計の正本とする。分類規約は下の
+[sigmaから階層と周期を決める規約](#sigmaから階層と周期を決める規約)に置く。
+他の実測ノートは、その時点の実装と測定の記録であり、この設計が全て実装済みという意味ではない。
+
+**現在のCUDA runtimeは1軸1bankの固定tile/周期であり、sigma別階層分類は未実装。**
+Zの二分集約木があることと、sigmaから異なるtile/周期を選ぶことを区別する。
+この追記は設計の確定と実装差分の明示であり、ParameterやCUDAの計算は変更していない。
+
+| 項目 | この文書の設計 | 現CUDA runtime（source `7c1404c1`） |
+| --- | --- | --- |
+| sigmaの意味 | 新規約は集中領域の全幅、I=sigma/2 | 旧幅制御値。Pに依存する半径下限補正あり |
+| 階層分類 | T_minから2倍ずつ、Iを収める最小bankを選ぶ | 未実装。軸ごとに一つのAxis設定 |
+| 周期 | local bankごとにP_h=2L_h=3T_h | 軸ごとに固定P=K*T |
+| sort | 入出力のbankと中心tileの辞書順 | 中心の(output owner,input owner)だけ |
+| Z | bankの基底ごとに直接生成／一致modeの継承 | 固定Pの全modeを同じ基底で二分マージ |
+| 小幅の直接計算／全周bankへの自動分類 | 下記の実行計画に含む | 未実装。宣言済みK=1の経路はあるが自動分類ではない |
+| H/G・Parameter勾配 | 各threadが別atomを担当 | 実装済み、固定bank条件で検証済み |
+| C→Y/dX | bankごとにCを作って展開後に加算 | owner Cの部分和と展開は実装済み。複数bankの合算は未実装 |
+| 面積正規化・backward | 分類後のprofile契約で再検証する | 旧幅定義／固定bankの独立oracle照合のみ完了 |
+
+新しい幅規約と階層経路へ、既存の時間・勾配検証結果を読み替えない。
+実装箇所は[`CellMassAxisSpec`](../src/torchcst/kernels/cell_mass.py)、
+[`executor.py`](../src/torchcst/_backends/cuda/algorithms/linear/cell_mass/executor.py)、
+[`kernels.cu`](../src/torchcst/_backends/cuda/algorithms/linear/cell_mass/kernels.cu)。
+現状と測定条件の入口は[実測状態](cell-mass-status.ja.md)。
 
 現在のprofileは[1周期分のタイル窓](cell-mass-tile-window.ja.md)。
 選んだwhole tileを共通のセル積分基底で処理し、支持境界での個別積分は行わない。
 blockの担当site範囲は別の実行設定`sites_per_block`で分けられる。
-profileのtile幅・周期は固定し、[担当site数の比較](cell-mass-block-sites.ja.md)に結果を記録する。
+固定bankの測定ではprofileのtile幅・周期を固定していた。
+[担当site数の比較](cell-mass-block-sites.ja.md)は、その条件でのlaunch調整の記録。
 現在の実コードには、Y/dXのatom集合を分担する`atom_splits`と、
 H/G・Parameter勾配のblock幅を指定する`atom_threads_per_block`もある。
 部分出力の寿命・合計kernel・係数sharedの具体的な実装は
@@ -20,8 +45,9 @@ H/G・Parameter勾配のblock幅を指定する`atom_threads_per_block`もある
 `owner_coefficient_reduction=True`は、その順序から(output owner,input owner)の
 begin/endも作る。[owner C](cell-mass-owner-coefficients.ja.md)で係数を一度生成し、
 [共有Z窓](cell-mass-owner-windows.ja.md)からH/Gを投影する。
-複数bank・多軸の分類は、以下の一般化した擬似コードの段階。
-現状と測定条件の入口は[実測状態](cell-mass-status.ja.md)。
+最新の固定bank経路には[G/Parameter勾配とC_in生成の融合](cell-mass-cin-fusion.ja.md)、
+[係数と微分のHorner評価](cell-mass-horner-and-sigma.ja.md)もある。
+これらの算術・配列再利用は階層経路への移植候補であり、階層分類の代わりにはならない。
 
 2026-10-26。[設計と数学契約](cell-integrated-profile.ja.md)に対応する、検討用の擬似コード。
 以下の関数名・引数は一般化した擬似コード。明示的なChebyshevSquare密度から始めた
@@ -126,7 +152,7 @@ keysなどのscratchは最後の利用が済んだ後に再利用できるが、
 a = blockIdx.x * blockDim.x + threadIdx.x;
 if (a >= atom_count) return;
 
-level = classify_hierarchy(atoms[a], hierarchy_spec);
+level = classify_hierarchy(atoms[a], hierarchy_spec); // 入出力のbank番号の組
 tile_shape = hierarchy_tile_shape(level);
 q_out = center_tile_coordinates(atoms[a].output_center, tile_shape.output);
 q_in  = center_tile_coordinates(atoms[a].input_center,  tile_shape.input);
@@ -135,15 +161,180 @@ keys[a] = make_lexicographic_key(level, q_out, q_in);
 source_rows[a] = a;
 ```
 
-キーは`(level, q_out[0], ..., q_out[Dout-1], q_in[0], ..., q_in[Din-1])`の辞書順。
-各軸のタイル座標は原点・spacingを合わせて`floor((center-origin)/physical_tile_width)`で求める。
-周期軸の中心はchartが定める基本領域へ正規化してから求める。
+キーは`(h_out[0], ..., h_out[Dout-1], h_in[0], ..., h_in[Din-1],
+q_out[0], ..., q_out[Dout-1], q_in[0], ..., q_in[Din-1])`の辞書順。
+全周bankには下記の専用番号を使う。tile座標はsite中心ではなくセル端を境界にする。
+周期軸の中心のwrapとspacing/2の補正は、下記のqの式に従う。
 多次元のキーの符号化はこの辞書順を保ち、packed整数のbit数超過を黙って切り捨てない。
 同じキーのatomの順序は演算を変えない。元の行番号は対応付け用で、必須の数学的な分類軸ではない。
 
-階層分類に使う幅・周期L・タイル寸法の関係はspec/実行設定で決める。
-分類式そのものは未確定であり、sigmaだけで非対応のprofileを勝手に既存階層へ入れない。
+階層分類に使う幅・周期L・タイル寸法の関係は次節の規約を使う。
+ここは従来未確定だった`classify_hierarchy`の設計であり、runtimeへの接続は未実装。
 中心の所属キーと、支持が重なる全タイルの集合は別である。
+
+### sigmaから階層と周期を決める規約
+
+#### 幅の意味と、旧実装との境界
+
+新しい階層設計では、sigma>0を意図する集中領域の**全幅**として扱い、半幅を
+
+\[
+I_a=\sigma_a/2,\qquad \rho_a=I_a/d=\sigma_a/(2d)
+\]
+
+と定義する。sigmaは標準偏差ではない。Iは集中領域の半幅、LはFourier半周期、
+実際に評価する窓の幅は2Lであり、これらを同一視しない。
+この幅規約だけで密度族の形状まで確定したとは扱わない。近似の比較先となる目標profileは
+bankに依存しない数学定義にし、同じ目標に対して各bankの近似誤差を検証する。
+Fourierの裾を近似として残す／ゼロ扱いすることと、厳密なcompact支持も区別する。
+rho<1だけで「1siteにしか寄与しない」とは判断しない。セルとの位置関係も必要になる。
+
+これは本節で定める新しい幅規約である。既存runtimeのsigmaは
+`effective_radius(sigma,P)`により集中半径が変わる旧幅制御値であり、同じ数値を
+新規約のsigmaとして渡しても同じprofileにはならない。旧測定のsigma=0.2..12を
+新幅の測定として扱わず、旧checkpoint/Planの暗黙の読み替えもしない。
+以下では1入力軸・1出力軸で同じ物理sigmaを共有する。軸別幅を持つ将来拡張でも
+同じ式を各軸のsigmaに適用する。
+
+#### T_min、二分階層、3タイル周期
+
+各軸についてsite数N、間隔d、chart周期Q=N*dを持つ。
+最小tileのsite数n_minはNを割り切る2のべき乗とし、
+
+\[
+T_{\min}=n_{\min}d,\qquad T_h=2^hT_{\min}.
+\]
+
+n_minは実行計画で宣言する。特定GPU向けに選んだ`sites_per_block`とは別の値である。
+T_minとPは近似式・誤差とbank切り替えに影響するので、単なるlaunch調整とは扱わない。
+実行計画を変えたときも、同じ目標profileの許容誤差を守ることを検査する。
+
+atomのIを収める最小の候補階層を選ぶ。
+
+\[
+h_a^{\rm raw}=\min\{h\ge0:I_a\le T_h\}
+=\max\left(0,\left\lceil\log_2\frac{\sigma_a}{2T_{\min}}\right\rceil\right).
+\]
+
+local bankではK=3を固定し、
+
+\[
+P_h=2L_h=3T_h,\qquad L_h=\frac32T_h.
+\]
+
+h=0は0<sigma<=2T_min、h>=1は2^h*T_min<sigma<=2^(h+1)*T_minを受け持つ。
+境界の等号は小さい階層側へ入れる。実装ではlog2の丸めで分類を変えず、
+2倍更新とI>Tの比較、または同じ境界を保証する整数化した方法を使う。
+**bankを選んでもsigma自体は丸めない。** 係数と微分は元のsigmaから生成する。
+
+以前の関係式は、bankの半幅上限I_h_max=T_hへ適用すると
+
+\[
+2L_h=\left(\left\lceil\frac{2I_h^{\max}}{T_h}\right\rceil+1\right)T_h=3T_h.
+\]
+
+各atomの小さなIに対して毎回最短の周期を作るのでなく、同じbankで周期と基底を共有する。
+例としてT_min=4なら、sigma範囲(0,8]/(8,16]/(16,32]は
+それぞれh=0/1/2、T=4/8/16、L=6/12/24となる（local窓がchartに収まる場合）。
+
+#### 中心のtileと、chart全周への切り替え
+
+3T_h<=Qなら中心tileと左右1tileを評価する。中心の原点相対座標を
+u=(mu-origin) mod Q、N_h=Q/T_hとすると、
+
+\[
+q_{\rm raw}=\left\lfloor\frac{u+d/2}{T_h}\right\rfloor,\qquad
+q=q_{\rm raw}\bmod N_h.
+\]
+
+unwrappedな窓は、セル端を基準に
+
+\[
+[(q_{\rm raw}-1)T_h-d/2,\ (q_{\rm raw}+2)T_h-d/2)
+\]
+
+とする。中心から窓の端まで最低T_hあるため、I<=T_hの集中領域を覆う。
+qはソート用にcanonical化するが、演算の座標像・位相も同じwrapに揃える。
+QがP_hの整数倍でなくてもよい。chartの継ぎ目で同じsiteを二重に足さない。
+
+3T_h>Qならlocal窓を切り詰めず、全周bankへ移す。
+その専用番号はH=log2(N/n_min)、T_full=Q、K_full=1、P_full=2L_full=Q、q=0とする。
+これは二分木の全周rootを使う例外で、途中の収まらない3tile bankは作らない。
+全siteを一度だけ扱う。新幅の初期対応範囲は0<sigma<min(Q_in,Q_out)とし、
+それ以上の幅や端点sigma=Qのprofile/安定評価は未対応として明示的に拒否する設計にする。
+全周bankの自動分類・新幅profile・勾配はまだ実装／検証していない。
+
+```cpp
+classify_axis(sigma, center, axis) {
+    I = sigma / 2;
+    h = 0;
+    T = axis.T_min;
+    while (I > T) { T *= 2; h += 1; }
+
+    if (3 * T > axis.Q)
+        return full_bank(axis.H, T=axis.Q, L=axis.Q/2, q=0);
+
+    u = positive_mod(center - axis.origin, axis.Q);
+    q_raw = floor((u + axis.spacing/2) / T);
+    q = positive_mod(q_raw, axis.Q / T);
+    return local_bank(h, T, L=1.5*T, q);
+}
+
+// 事前にfinite・sigma範囲・gridの整数条件を検査する。
+out = classify_axis(atom.sigma, atom.output_center, output_axis);
+in  = classify_axis(atom.sigma, atom.input_center,  input_axis);
+key = (out.h, in.h, out.q, in.q);
+```
+
+多次元では各軸へ適用し、上記の辞書順キーへ座標を追加する。
+T_minやspacingが異なれば、同じsigmaでも入力と出力のhは異なってよい。
+小幅の直接計算は各軸で独立に選べるため、入力direct・出力Fourierなどの組も許す。
+最小local bankをdirectとする方式は初期候補であり、速度による切り替え閾値の確定ではない。
+直接用profileのセル積分・正規化とFourier側の近似誤差の接続は、実装前に検証する残件とする。
+
+#### 周期が変わるZと、profile係数に必要な変更
+
+local bankの基底はomega_h,k=2*pi*k/P_h。hが一つ上がるとPも2倍になるので、
+**同じ番号kのZを子からそのまま足しても、親の同じkのZにはならない。**
+同じmode数・共通原点・spacingの場合、親の偶数harmonicは
+
+\[
+\omega_{h,2j}=\omega_{h-1,j},\qquad
+Z_{h,t,b,2j}^{\cos/\sin}
+=Z_{h-1,2t,b,j}^{\cos/\sin}+Z_{h-1,2t+1,b,j}^{\cos/\sin}
+\]
+
+で継承できる（j=1,...,floor(M/2)）。定数modeも継承でき、親の奇数harmonicは直接生成する。
+式の2j/jはharmonic番号であり、配列内のcos/sin interleave位置とは区別する。
+全周bankはP=Qの別基底なので、この偶数対応を自動適用しない。初期実装は直接生成する。
+後の`can_inherit_same_basis`は、この周波数対応を担当表へ落とす条件になる。
+atomがいないbankでも、親Zの生成に必要な子要素は準備する。
+
+既存の半径下限補正をそのまま使ってI=sigma/2と呼び替えてはいけない。
+新幅のChebyshev候補ならbeta=sec(pi*I/P)とする写像と微分を別に検証する必要がある。
+M8・tail_bound=1e-3の集中半径下限は約0.158067P=0.474201T。
+最小以外のlocal bankではI/P>1/6なのでこの下限を満たすが、最小bankの小幅は保証されない。
+このため小幅を直接処理する経路が必要になる。単に幅を下限へ膨らませて条件を満たさない。
+beta式は係数側の移植候補であり、新profileの誤差・極小幅・遷移の検証完了を意味しない。
+
+階層・tile所属の整数選択は微分せず、選択中のbankのsigma/中心の微分を計算する。
+階層遷移で関数が連続になる保証はまだない。遷移両側のY・全勾配・optimizer更新を検証し、
+許容誤差に収まらなければbank間の整合や遷移方式を修正する。forwardで選んだlayoutを
+backwardでも使い、optimizer更新後の次forwardで再分類する。
+
+#### 実装へ進む前の対応項目
+
+- 設計確定: sigma/Iの新幅規約、二分候補階層、3tile周期、全周の例外、入力出力bankのキー。
+- 未実装: 新分類とbegin/end、bank別Axis・係数写像、対応modeでのZ継承、複数bankのC展開合算。
+- 未確定／未検証: bankに依存しない新目標profileの形状、小幅directとの接続、全周bank、
+  新旧幅の明示的移行、階層遷移の誤差と微分。これらを新幅の実装完了として扱わない。
+- 採用条件: 新幅の独立oracleでY/dX/全atom勾配と更新を照合し、sort込みの完全step時間と
+  allocated/reservedを同条件のdenseと比較する。メモリはdense以下を守り、
+  速度はdense約2倍以内のstep時間という目標との距離を別に記録する。
+
+atomのコピーや全atom係数表は引き続き作らない。必要なbank/nodeと継承依存だけを用意し、
+bank数分のdense行列・全site×atom表へ展開しない。T_minや直接処理の閾値は、
+この数学契約を明示した別caseで時間・メモリを測って選ぶ。
 
 ### device_sort_pairs：キーと元の行番号を一緒に並べ替える
 
