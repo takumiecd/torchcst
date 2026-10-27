@@ -117,6 +117,10 @@ def prepare_layout(plan, atoms, *, method="sort", signal=None, reverse=False):
         raise ValueError("layout method must be sort, counting or counting_compact")
     if type(plan) is not HierarchyPlan:
         raise TypeError("plan must be HierarchyPlan")
+    if method == "counting_compact" and plan.input.polar != plan.output.polar:
+        raise ValueError(
+            "compact counting requires shared Polar input/output width bounds"
+        )
     if atoms.device.type != "cuda" or atoms.dtype not in (torch.float32, torch.float64):
         raise ValueError("atoms must be CUDA float32/float64")
     if atoms.ndim != 2 or atoms.shape[1] != 4 or not atoms.is_contiguous():

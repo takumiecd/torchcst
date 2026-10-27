@@ -22,24 +22,24 @@ struct CdotBudget {
 // eligible DS chunk. The result stays on device and is consumed on this stream.
 __global__ void cdot_preflight_kernel(const float *atoms, const int64_t *rows,
                                       const float *projection, int atom_count, int64_t elements,
-                                      int *unsafe) {
+                                      int *unsafe, Axis axis) {
     int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
     if (i >= elements)
         return;
     int slot = i % atom_count;
     int original = rows[slot];
-    double value = static_cast<double>(atoms[4 * original]) * projection[i];
+    double value = atom_amplitude(atoms, original, axis) * projection[i];
     if (!isfinite(value) || fabs(value) > 16)
         atomicOr(unsafe, 1);
 }
 
 inline torch::Tensor make_cdot_preflight(const torch::Tensor &atoms, const torch::Tensor &rows,
-                                         const torch::Tensor &projection, cudaStream_t stream) {
+                                         const torch::Tensor &projection, cudaStream_t stream, Axis axis) {
     auto flag = torch::zeros({1}, atoms.options().dtype(torch::kInt32));
     if (projection.numel() > 0) {
         cdot_preflight_kernel<<<(projection.numel() + 255) / 256, 256, 0, stream>>>(
             atoms.data_ptr<float>(), rows.data_ptr<int64_t>(), projection.data_ptr<float>(),
-            atoms.size(0), projection.numel(), flag.data_ptr<int>());
+            atoms.size(0), projection.numel(), flag.data_ptr<int>(), axis);
         C10_CUDA_KERNEL_LAUNCH_CHECK();
     }
     return flag;
@@ -230,8 +230,8 @@ __global__ void compute_h_kernel(const scalar_t *atoms, const int64_t *rows, con
     Bank bank = axis.banks[bank_for_level(axis, groups[4 * group + (output_side ? 0 : 1)])];
     int original = rows[slot];
     Profile profile = make_profile<false, FixedModes, Compensated>(
-        axis, bank, static_cast<double>(atoms[4 * original + 1]),
-        static_cast<double>(atoms[4 * original + (output_side ? 2 : 3)]), owner);
+        axis, bank, atom_sigma(atoms, original, axis),
+        atom_center(atoms, original, axis, output_side), owner);
     HarmonicStream<false, Compensated> stream(profile, FixedModes ? FixedModes : axis.modes);
     double accum[BATCH_TILE] = {};
     int batch_begin = blockIdx.y * BATCH_TILE;
@@ -321,8 +321,8 @@ __global__ void compute_c_kernel(const scalar_t *atoms, const int64_t *rows, con
             int original = valid ? rows[slot] : 0;
             if (valid) {
                 Profile profile = make_profile<false, FixedModes, Compensated>(
-                    output, bank, static_cast<double>(atoms[4 * original + 1]),
-                    static_cast<double>(atoms[4 * original + (reverse ? 3 : 2)]), owner);
+                    output, bank, atom_sigma(atoms, original, output),
+                    atom_center(atoms, original, output, !reverse), owner);
                 store_c_coefficients<FixedModes, Compensated>(profile, output.modes, lane,
                                                               coefficients);
             } else {
@@ -332,7 +332,7 @@ __global__ void compute_c_kernel(const scalar_t *atoms, const int64_t *rows, con
             for (int local = 0; local < BATCH_TILE; ++local)
                 scaled_h[local * SHARED_STRIDE + lane] =
                     valid && batch_begin + local < batches
-                        ? static_cast<double>(atoms[4 * original]) *
+                        ? atom_amplitude(atoms, original, output) *
                               h[(batch_begin + local) * atom_count + slot]
                         : 0;
             bool safe = false;
@@ -394,8 +394,8 @@ split_consume_range(const scalar_t *atoms, const int64_t *rows, const projection
         int original = valid ? rows[slot] : 0;
         if (valid) {
             Profile profile = make_profile<false, FixedModes, Compensated>(
-                output, bank, static_cast<double>(atoms[4 * original + 1]),
-                static_cast<double>(atoms[4 * original + (reverse ? 3 : 2)]), owner);
+                output, bank, atom_sigma(atoms, original, output),
+                atom_center(atoms, original, output, !reverse), owner);
             store_c_coefficients<FixedModes, Compensated>(profile, output.modes, lane,
                                                           coefficients);
         } else {
@@ -405,7 +405,7 @@ split_consume_range(const scalar_t *atoms, const int64_t *rows, const projection
         for (int local = 0; local < BATCH_TILE; ++local)
             scaled_h[local * SHARED_STRIDE + lane] =
                 valid && batch_begin + local < batches
-                    ? static_cast<double>(atoms[4 * original]) *
+                    ? atom_amplitude(atoms, original, output) *
                           h[(batch_begin + local) * atom_count + slot]
                     : 0;
         bool safe = false;
@@ -627,17 +627,18 @@ __device__ void fused_forward_atom(const atom_t *atoms, const int64_t *rows, con
     int group = group_for_slot(offsets, group_count, slot);
     int input_owner = groups[4 * group + 3];
     Bank input_bank = input.banks[bank_for_level(input, groups[4 * group + 1])];
-    double sigma = atoms[4 * original + 1];
+    double sigma = atom_sigma(atoms, original, input);
+    double output_sigma = atom_sigma(atoms, original, output);
     Profile input_profile = make_profile<false, 8, Compensated>(
-        input, input_bank, sigma, static_cast<double>(atoms[4 * original + 3]), input_owner);
-    bool same_shape = input.modes == output.modes && input.radius_ratio4 == output.radius_ratio4 &&
+        input, input_bank, sigma, atom_center(atoms, original, input, false), input_owner);
+    bool same_shape = sigma == output_sigma && input.modes == output.modes && input.radius_ratio4 == output.radius_ratio4 &&
                       input_bank.period == output_bank.period &&
                       input_bank.inverse_period == output_bank.inverse_period &&
                       input_bank.omega == output_bank.omega;
     double step_sine = 0, step_cosine = 1, sine = 0, cosine = 1;
     if (same_shape) {
         double output_center = profile_center(
-            output, output_bank, static_cast<double>(atoms[4 * original + 2]), output_owner);
+            output, output_bank, atom_center(atoms, original, output, true), output_owner);
         // The magnitude is shared, but the output center has its own phase.
         sincos(output_bank.omega * output_center, &step_sine, &step_cosine);
     }
@@ -688,10 +689,10 @@ __device__ void fused_forward_atom(const atom_t *atoms, const int64_t *rows, con
     }
     if (!same_shape) {
         Profile profile = make_profile<false, 8, Compensated>(
-            output, output_bank, sigma, static_cast<double>(atoms[4 * original + 2]), output_owner);
+            output, output_bank, output_sigma, atom_center(atoms, original, output, true), output_owner);
         store_c_coefficients<8, Compensated>(profile, 8, lane, coefficients);
     }
-    double amplitude = atoms[4 * original];
+    double amplitude = atom_amplitude(atoms, original, input);
     for (int b = 0; b < BATCH_TILE; ++b) {
         if (batch_begin + b < batches) {
             atom_t rounded = static_cast<atom_t>(sums[b]);
@@ -838,12 +839,14 @@ fused_grad_cin_atom(const atom_t *atoms, const int64_t *rows, const int *groups,
     int original = rows[slot];
     int output_owner = groups[4 * group + 2];
     Bank output_bank = output.banks[bank_for_level(output, groups[4 * group])];
-    double amplitude = atoms[4 * original], sigma = atoms[4 * original + 1];
-    double output_center = atoms[4 * original + 2];
-    double input_center = atoms[4 * original + 3];
+    double amplitude = atom_amplitude(atoms, original, input);
+    double sigma = atom_sigma(atoms, original, input);
+    double output_sigma = atom_sigma(atoms, original, output);
+    double output_center = atom_center(atoms, original, output, true);
+    double input_center = atom_center(atoms, original, input, false);
     Profile out_profile =
-        make_profile<true, FixedModes>(output, output_bank, sigma, output_center, output_owner);
-    bool same_shape = input.modes == output.modes && input.radius_ratio4 == output.radius_ratio4 &&
+        make_profile<true, FixedModes>(output, output_bank, output_sigma, output_center, output_owner);
+    bool same_shape = sigma == output_sigma && input.modes == output.modes && input.radius_ratio4 == output.radius_ratio4 &&
                       input_bank.period == output_bank.period &&
                       input_bank.inverse_period == output_bank.inverse_period &&
                       input_bank.omega == output_bank.omega;
@@ -877,10 +880,7 @@ fused_grad_cin_atom(const atom_t *atoms, const int64_t *rows, const int *groups,
         zx, batches, 0, input, input_bank, input_owner, in_profile, in_profile.beta_sigma, h,
         atom_count, slot, amplitude, gv, dmu_input, ds, windowed, coefficients, SHARED_STRIDE,
         lane);
-    gradient[4 * original] = static_cast<atom_t>(da);
-    gradient[4 * original + 1] = static_cast<atom_t>(ds);
-    gradient[4 * original + 2] = static_cast<atom_t>(dmu_output);
-    gradient[4 * original + 3] = static_cast<atom_t>(dmu_input);
+    store_atom_gradient(atoms, gradient, original, input, da, ds, dmu_input, dmu_output);
 }
 
 // One reverse-layout group belongs to this input owner. Each valid lane owns
@@ -1072,13 +1072,13 @@ reverse_cin_kernel(const atom_t *atoms, const int64_t *rows, const int *groups,
             } else {
                 int original = rows[slot];
                 Profile profile = make_profile<false, FixedModes, Compensated>(
-                    input, bank, static_cast<double>(atoms[4 * original + 1]),
-                    static_cast<double>(atoms[4 * original + 3]), owner);
+                    input, bank, atom_sigma(atoms, original, input),
+                    atom_center(atoms, original, input, false), owner);
                 store_c_coefficients<FixedModes, Compensated>(profile, input.modes, lane,
                                                               coefficients);
                 for (int b = 0; b < BATCH_TILE; ++b)
                     scaled_g[b * SHARED_STRIDE + lane] =
-                        batch_begin + b < batches ? static_cast<double>(atoms[4 * original]) *
+                        batch_begin + b < batches ? atom_amplitude(atoms, original, output) *
                                                         h[(batch_begin + b) * atom_count + slot]
                                                   : 0;
             }
@@ -1316,12 +1316,12 @@ __global__ void ragged_input_kernel(const float *atoms, const int64_t *rows,
         if (position < last) {
             int slot = reverse_slots[position], original = rows[slot];
             Profile profile = make_profile<false, 8, true>(
-                input, bank, static_cast<double>(atoms[4 * original + 1]),
-                static_cast<double>(atoms[4 * original + 3]), owner);
+                input, bank, atom_sigma(atoms, original, input),
+                atom_center(atoms, original, input, false), owner);
             store_c_coefficients<8, true>(profile, 8, lane, coefficients);
             for (int b = 0; b < BATCH_TILE; ++b)
                 scaled_g[b * SHARED_STRIDE + lane] =
-                    batch_begin + b < batches ? static_cast<double>(atoms[4 * original]) *
+                    batch_begin + b < batches ? atom_amplitude(atoms, original, input) *
                                                     g[(batch_begin + b) * atom_count + slot]
                                               : 0;
         } else {
@@ -1507,7 +1507,7 @@ torch::Tensor compute_c(torch::Tensor atoms, torch::Tensor rows, torch::Tensor g
     auto stream = c10::cuda::getCurrentCUDAStream();
     torch::Tensor preflight_flag;
     if (compensated_cdot)
-        preflight_flag = make_cdot_preflight(atoms, rows, h, stream);
+        preflight_flag = make_cdot_preflight(atoms, rows, h, stream, output);
     const int *preflight = compensated_cdot ? preflight_flag.data_ptr<int>() : nullptr;
     AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "hierarchical_compute_c_atoms", [&] {
         using atom_t = scalar_t;
@@ -1606,7 +1606,7 @@ torch::Tensor compute_c_split(torch::Tensor atoms, torch::Tensor rows, torch::Te
     auto stream = c10::cuda::getCurrentCUDAStream();
     torch::Tensor preflight_flag;
     if (compensated_cdot)
-        preflight_flag = make_cdot_preflight(atoms, rows, h, stream);
+        preflight_flag = make_cdot_preflight(atoms, rows, h, stream, output);
     const int *preflight = compensated_cdot ? preflight_flag.data_ptr<int>() : nullptr;
     AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "hierarchical_split_c_atoms", [&] {
         using atom_t = scalar_t;
@@ -1877,7 +1877,7 @@ static std::vector<torch::Tensor> compute_reverse_cin_impl(
     auto stream = c10::cuda::getCurrentCUDAStream();
     torch::Tensor preflight_flag;
     if (compensated_cdot)
-        preflight_flag = make_cdot_preflight(atoms, rows, h, stream);
+        preflight_flag = make_cdot_preflight(atoms, rows, h, stream, input);
     const int *preflight = compensated_cdot ? preflight_flag.data_ptr<int>() : nullptr;
     AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "hierarchical_reverse_cin_atoms", [&] {
         using atom_t = scalar_t;

@@ -97,6 +97,29 @@ def _profile_binding(shape: ProfileSpec, *, normalize: bool = True) -> ProfileBi
     )
 
 
+def polar_cell_mass(
+    *, input_min_tile_sites, output_min_tile_sites, profile=None, **polar_settings
+):
+    """Existing Polar state/update law with cell-integrated, area-normalized factors.
+
+    All Polar settings have exactly the meaning used by polar_activity. Widths
+    remain detached from task loss. Minimum tiles describe the profile banks.
+    """
+    from .profiles.fourier import ChebyshevSquareSpec
+    from .spec import CellIntegratedProfileBinding
+
+    profile = (
+        ChebyshevSquareSpec(modes=8, tail_bound=1e-3) if profile is None else profile
+    )
+    bindings = tuple(
+        CellIntegratedProfileBinding(profile=profile, min_tile_sites=n)
+        for n in (input_min_tile_sites, output_min_tile_sites)
+    )
+    return replace(
+        polar_activity(profile=bindings[0], **polar_settings), profiles=bindings
+    )
+
+
 def profile(shape: ProfileSpec, *, normalize: bool = True) -> ProfileBinding:
     return _profile_binding(shape, normalize=normalize)
 

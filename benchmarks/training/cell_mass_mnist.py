@@ -22,6 +22,7 @@ import torch
 from torch import nn
 
 from torchcst import (
+    BandwidthBounds,
     CSTLinear,
     CSTOptimizer,
     FixedSelector,
@@ -106,6 +107,86 @@ def make_cst(width, atoms, *, dtype=torch.float32):
     )
 
 
+def make_polar_cst(width, atoms, *, amplitude_scale=1.0, dtype=torch.float32):
+    chart = chart_presets.regular_grid(
+        ((width,),), spacing=128 / width, geometry="flat_torus"
+    )
+    kernel = presets.polar_cell_mass(
+        input_min_tile_sites=width // 32,
+        output_min_tile_sites=width // 16,
+        amplitude_max=amplitude_scale,
+        w_c=0.3 * amplitude_scale,
+        input_bounds=BandwidthBounds(
+            minimum=2.0, birth=16.0, maximum=40.0, upper_floor=4.0
+        ),
+        alpha_init=0.5,
+    )
+    plan = VALIDATED_128 if width == 128 else VALIDATED_1024
+    return CSTLinear(
+        chart,
+        chart,
+        atoms=atoms,
+        kernel=kernel,
+        dtype=dtype,
+        selector=FixedSelector(plan, registry=make_algorithm_registry()),
+    )
+
+
+def make_polar_initialization(width, seed=120):
+    """Random angles, initial alpha=.5, calibrated amplitude units.
+
+    Scaling amplitude_max AND w_c together preserves w/w_c, hence every
+    initial width. This is explicit initialization, not a new update rule.
+    """
+    if width not in (128, 1024):
+        raise ValueError("this learning study qualifies widths 128 and 1024")
+    torch.manual_seed(seed)
+    count = math.floor(0.05 * width * width)
+    atoms = torch.randn(count, 4)
+    atoms[:, :2] *= math.sqrt(2.5) / atoms[:, :2].norm(dim=1, keepdim=True)
+    atoms[:, 2:].uniform_(0.0, 128.0)
+    reference = make_polar_cst(width, atoms.double(), dtype=torch.float64)
+    with torch.no_grad():
+        gain = float(
+            (1 / math.sqrt(width)) / reference.dense_weight().square().mean().sqrt()
+        )
+        # Round scalar buffers as FP32 training does, before the FP64 export.
+        reference = make_polar_cst(width, atoms.clone(), amplitude_scale=gain).double()
+        weight = reference.dense_weight().float()
+    from torchcst._backends.torch.kernels.polar_cell_mass import decoded_values
+
+    _, si, so = decoded_values(reference.kernel, atoms)
+    torch.manual_seed(seed + 1)
+    shared_in, shared_out = nn.Linear(784, width), nn.Linear(width, 10)
+    return {
+        "width": width,
+        "seed": seed,
+        "atoms": atoms,
+        "weight": weight,
+        "amplitude_gain": gain,
+        "parameterization": "polar",
+        "sigma_initial": {"input": si.detach(), "output": so.detach()},
+        "input": shared_in.state_dict(),
+        "output": shared_out.state_dict(),
+        "kernel_settings": {
+            "amplitude_max": gain,
+            "w_c": 0.3 * gain,
+            "minimum": 2.0,
+            "birth": 16.0,
+            "maximum": 40.0,
+            "upper_floor": 4.0,
+            "alpha_init": 0.5,
+            "kappa": 3.0,
+            "lower_kappa": 3.0,
+            "upper_decay_power": 1.0,
+            "radial_regularization": 0.1,
+            "activity_gain": 1.0,
+            "activity_mode": "finite_chord",
+            "dormant_expansion_rate": 0.0,
+        },
+    }
+
+
 def make_initialization(width, seed=120):
     """Share initial effective W; calibrate only the initial amplitude gain."""
     if width not in (128, 1024):
@@ -140,7 +221,15 @@ def make_model(initialization, kind):
     if kind not in ("cst", "dense"):
         raise ValueError("kind must be cst or dense")
     hidden = (
-        make_cst(n, initialization["atoms"].clone())
+        (
+            make_polar_cst(
+                n,
+                initialization["atoms"].clone(),
+                amplitude_scale=initialization["amplitude_gain"],
+            )
+            if initialization.get("parameterization") == "polar"
+            else make_cst(n, initialization["atoms"].clone())
+        )
         if kind == "cst"
         else nn.Linear(n, n, bias=False)
     )
@@ -158,22 +247,51 @@ def make_model(initialization, kind):
 def sigma_statistics(layer, initial_sigma):
     p = layer.atoms.p.detach().cpu().double()
     plan = hierarchy_from_operator(layer.declaration())
-    sigma = p[:, 1]
+    is_polar = plan.input.polar is not None
+    if is_polar:
+        from torchcst._backends.torch.kernels.polar_cell_mass import decoded_values
+
+        state = copy.deepcopy(layer.kernel).cpu().double()
+        amplitude, si, so = decoded_values(state, layer.atoms.p.detach().cpu())
+        sigmas = {"input": si, "output": so}
+    else:
+        amplitude = p[:, 0]
+        sigmas = {"input": p[:, 1], "output": p[:, 1]}
+    sigma = sigmas["input"]
+    initial_input = (
+        initial_sigma["input"] if isinstance(initial_sigma, dict) else initial_sigma
+    )
     result = {
         "quantiles": torch.quantile(
             sigma,
             torch.tensor([0.0, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0], dtype=torch.float64),
         ).tolist(),
         "absolute_change_quantiles": torch.quantile(
-            (sigma - initial_sigma.double()).abs(),
+            (sigma - initial_input.double()).abs(),
             torch.tensor([0.0, 0.5, 0.9, 1.0], dtype=torch.float64),
         ).tolist(),
         "valid": bool(
-            torch.isfinite(p).all() and (sigma > 0).all() and (sigma <= 128 / 3).all()
+            torch.isfinite(p).all()
+            and all(
+                bool((v > 0).all() and (v <= 128 / 3).all()) for v in sigmas.values()
+            )
         ),
     }
+    result["parameterization"] = "polar" if is_polar else "physical"
+    if is_polar:
+        result["alpha_quantiles"] = torch.quantile(
+            ((p[:, :2].square().sum(1) - 1) / 3).clamp(0, 1),
+            torch.tensor([0.0, 0.5, 0.9, 1.0], dtype=torch.float64),
+        ).tolist()
+        result["output_sigma_quantiles"] = torch.quantile(
+            sigmas["output"],
+            torch.tensor([0.0, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0], dtype=torch.float64),
+        ).tolist()
     nodes, periods = {}, {}
     for side, column in (("input", 3), ("output", 2)):
+        sigma = sigmas[side]
+        if is_polar:
+            column = 2 if side == "input" else 3
         axis = getattr(plan, side)
         remaining = torch.ones(len(p), dtype=torch.bool)
         ids = torch.empty(len(p), dtype=torch.int64)
@@ -193,7 +311,7 @@ def sigma_statistics(layer, initial_sigma):
             atom_period[selected] = bank.period
             banks[str(bank.level)] = {
                 "atoms": int(selected.sum()),
-                "amplitude_abs_sum": float(p[selected, 0].abs().sum()),
+                "amplitude_abs_sum": float(amplitude[selected].abs().sum()),
                 "tile_width": bank.tile_sites * axis.spacing,
             }
             remaining = remaining & ~selected
@@ -215,7 +333,12 @@ def sigma_statistics(layer, initial_sigma):
         "max_to_mean": float(counts.max() / counts.double().mean()),
     }
     result["same_shape_fraction"] = float(
-        (periods["input"] == periods["output"]).double().mean()
+        (
+            (periods["input"] == periods["output"])
+            & (sigmas["input"] == sigmas["output"])
+        )
+        .double()
+        .mean()
     )
     return result
 
@@ -263,7 +386,11 @@ def run_training(
     if kind == "cst":
         (output / "sigma-initial.json").write_text(
             json.dumps(
-                sigma_statistics(model[2], initialization["atoms"][:, 1]), indent=2
+                sigma_statistics(
+                    model[2],
+                    initialization.get("sigma_initial", initialization["atoms"][:, 1]),
+                ),
+                indent=2,
             )
         )
     for epoch in range(epochs):
@@ -310,7 +437,10 @@ def run_training(
         }
         row["test"] = evaluate(model, vx, vy, batch_size)
         if kind == "cst":
-            row["sigma"] = sigma_statistics(model[2], initialization["atoms"][:, 1])
+            row["sigma"] = sigma_statistics(
+                model[2],
+                initialization.get("sigma_initial", initialization["atoms"][:, 1]),
+            )
         rows.append(row)
         (output / "epochs.json").write_text(json.dumps(rows, indent=2))
         print(
@@ -328,6 +458,8 @@ def run_training(
         output / "final.pt",
     )
     report = {
+        "parameterization": initialization.get("parameterization", "physical"),
+        "kernel_settings": initialization.get("kernel_settings"),
         "kind": kind,
         "initial_test": initial_test,
         "width": initialization["width"],

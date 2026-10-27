@@ -12,6 +12,10 @@ struct CompactPairs {
 
 static CompactPairs make_compact_pairs(const Axis &input, const Axis &output,
                                        torch::ScalarType dtype) {
+    TORCH_CHECK(input.polar == output.polar && (!input.polar ||
+        (input.sigma_min == output.sigma_min && input.sigma_birth == output.sigma_birth &&
+         input.sigma_max == output.sigma_max && input.upper_floor == output.upper_floor)),
+        "compact counting requires shared Polar input/output width bounds");
     CompactPairs result{};
     std::fill(result.base, result.base + MAX_BANKS * MAX_BANKS, -1);
     double max_sigma = std::min(input.period, output.period) / 3;
@@ -54,17 +58,21 @@ __global__ void classify_atoms_kernel(const scalar_t *atoms, int atom_count, Axi
     for (int field = 0; field < 4; ++field)
         if (!isfinite(static_cast<double>(atoms[4 * atom + field])))
             error |= 1;
-    double sigma = static_cast<double>(atoms[4 * atom + 1]);
-    scalar_t maximum_sigma = static_cast<scalar_t>(std::min(input.period, output.period) / 3);
-    if (!(sigma > 0) || atoms[4 * atom + 1] > maximum_sigma)
+    double sigma_input = atom_sigma(atoms, atom, input);
+    double sigma_output = atom_sigma(atoms, atom, output);
+    double maximum_input = input.polar ? input.period / 3 :
+        static_cast<double>(static_cast<scalar_t>(std::min(input.period, output.period) / 3));
+    double maximum_output = output.polar ? output.period / 3 : maximum_input;
+    if (!(sigma_input > 0) || !(sigma_output > 0) ||
+        sigma_input > maximum_input || sigma_output > maximum_output)
         error |= 2;
     if (error) {
         keys[atom] = 0;
         atomicOr(errors, error); // One error word, not an output reduction.
         return;
     }
-    Membership in = classify_axis(sigma, static_cast<double>(atoms[4 * atom + 3]), input);
-    Membership out = classify_axis(sigma, static_cast<double>(atoms[4 * atom + 2]), output);
+    Membership in = classify_axis(sigma_input, atom_center(atoms, atom, input, false), input);
+    Membership out = classify_axis(sigma_output, atom_center(atoms, atom, output, true), output);
     int64_t key = out.level;
     key = key * (input.full_level + 1) + in.level;
     key = key * output.max_owners() + out.owner;
@@ -104,17 +112,21 @@ __global__ void count_memberships_kernel(const scalar_t *atoms, int atom_count, 
     for (int field = 0; field < 4; ++field)
         if (!isfinite(static_cast<double>(atoms[4 * atom + field])))
             error |= 1;
-    double sigma = static_cast<double>(atoms[4 * atom + 1]);
-    scalar_t maximum_sigma = static_cast<scalar_t>(std::min(input.period, output.period) / 3);
-    if (!(sigma > 0) || atoms[4 * atom + 1] > maximum_sigma)
+    double sigma_input = atom_sigma(atoms, atom, input);
+    double sigma_output = atom_sigma(atoms, atom, output);
+    double maximum_input = input.polar ? input.period / 3 :
+        static_cast<double>(static_cast<scalar_t>(std::min(input.period, output.period) / 3));
+    double maximum_output = output.polar ? output.period / 3 : maximum_input;
+    if (!(sigma_input > 0) || !(sigma_output > 0) ||
+        sigma_input > maximum_input || sigma_output > maximum_output)
         error |= 2;
     if (error) {
         keys[atom] = -1;
         atomicOr(errors, error);
         return;
     }
-    Membership in = classify_axis(sigma, static_cast<double>(atoms[4 * atom + 3]), input);
-    Membership out = classify_axis(sigma, static_cast<double>(atoms[4 * atom + 2]), output);
+    Membership in = classify_axis(sigma_input, atom_center(atoms, atom, input, false), input);
+    Membership out = classify_axis(sigma_output, atom_center(atoms, atom, output, true), output);
     Bank ib = input.banks[bank_for_level(input, in.level)];
     Bank ob = output.banks[bank_for_level(output, out.level)];
     int key = ob.node_offset * input.node_count + ob.tile_count * ib.node_offset +
@@ -144,17 +156,21 @@ __global__ void count_compact_memberships_kernel(const scalar_t *atoms, int atom
     for (int field = 0; field < 4; ++field)
         if (!isfinite(static_cast<double>(atoms[4 * atom + field])))
             error |= 1;
-    double sigma = static_cast<double>(atoms[4 * atom + 1]);
-    scalar_t maximum_sigma = static_cast<scalar_t>(std::min(input.period, output.period) / 3);
-    if (!(sigma > 0) || atoms[4 * atom + 1] > maximum_sigma)
+    double sigma_input = atom_sigma(atoms, atom, input);
+    double sigma_output = atom_sigma(atoms, atom, output);
+    double maximum_input = input.polar ? input.period / 3 :
+        static_cast<double>(static_cast<scalar_t>(std::min(input.period, output.period) / 3));
+    double maximum_output = output.polar ? output.period / 3 : maximum_input;
+    if (!(sigma_input > 0) || !(sigma_output > 0) ||
+        sigma_input > maximum_input || sigma_output > maximum_output)
         error |= 2;
     if (error) {
         keys[atom] = -1;
         atomicOr(errors, error);
         return;
     }
-    Membership in = classify_axis(sigma, static_cast<double>(atoms[4 * atom + 3]), input);
-    Membership out = classify_axis(sigma, static_cast<double>(atoms[4 * atom + 2]), output);
+    Membership in = classify_axis(sigma_input, atom_center(atoms, atom, input, false), input);
+    Membership out = classify_axis(sigma_output, atom_center(atoms, atom, output, true), output);
     int ii = bank_for_level(input, in.level), oi = bank_for_level(output, out.level);
     int base = pairs.base[oi * MAX_BANKS + ii];
     int key = base + out.owner * input.banks[ii].tile_count + in.owner;

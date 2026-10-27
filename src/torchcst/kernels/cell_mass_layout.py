@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from torchcst.charts.regular_grid import RegularGridChartSpec
 from torchcst.geometry.spec import FlatTorusGeometrySpec
 
-from .parameterizations import PhysicalAmpWidthSpec
+from .parameterizations import PhysicalAmpWidthSpec, PolarAmpWidthSpec
 from .spec import CellIntegratedProfileBinding
 
 
@@ -26,9 +26,10 @@ def cell_mass_axes(charts, kernel):
     if (
         len(charts) != 2
         or kernel.composition != "separable"
-        or type(kernel.parameterization) is not PhysicalAmpWidthSpec
+        or type(kernel.parameterization)
+        not in (PhysicalAmpWidthSpec, PolarAmpWidthSpec)
     ):
-        raise ValueError("cell masses require a physical-sigma chart pair")
+        raise ValueError("cell masses require a physical-sigma or Polar chart pair")
     axes = []
     for chart, binding in zip(charts, kernel.profiles):
         if (
@@ -50,6 +51,19 @@ def cell_mass_axes(charts, kernel):
         if chart.geometry.periods != (axis.period,):
             raise ValueError("cell-mass chart period must equal site_count * spacing")
         axes.append(axis)
+    if type(kernel.parameterization) is PolarAmpWidthSpec:
+        for axis, bounds in zip(
+            axes,
+            (
+                kernel.parameterization.input_bounds,
+                kernel.parameterization.output_bounds,
+            ),
+        ):
+            if bounds.maximum > axis.period / 3:
+                raise ValueError(
+                    "Polar bandwidth bounds must fit each cell-mass period/3"
+                )
+        return tuple(axes)
     floor = dict(kernel.update.settings).get("sigma_floor")
     if (
         type(floor) not in (int, float)

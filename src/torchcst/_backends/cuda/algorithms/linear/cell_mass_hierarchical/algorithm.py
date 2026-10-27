@@ -7,6 +7,7 @@ import torch
 from torchcst._backends.algorithm import Algorithm
 from torchcst._backends.schema import SupportResult
 from torchcst.kernels.cell_mass_layout import cell_mass_axes
+from torchcst.kernels.parameterizations import PolarAmpWidthSpec
 from torchcst.operators.context import LinearContext
 from torchcst.operators.execution import LinearInputs, linear_execution
 
@@ -17,6 +18,24 @@ def hierarchy_from_operator(operator):
     from .plan import AxisPlan, HierarchyPlan
 
     axes = cell_mass_axes(operator.charts, operator.kernel)
+    parameterization = operator.kernel.parameterization
+
+    def polar_axis(side):
+        if type(parameterization) is not PolarAmpWidthSpec:
+            return None
+        bounds = (parameterization.input_bounds, parameterization.output_bounds)[side]
+        return (
+            parameterization.amplitude_max,
+            parameterization.w_c,
+            parameterization.kappa,
+            parameterization.lower_kappa,
+            parameterization.upper_decay_power,
+            bounds.minimum,
+            bounds.birth,
+            bounds.maximum,
+            bounds.upper_floor,
+        )
+
     values = [
         AxisPlan(
             site_count=a.site_count,
@@ -25,8 +44,9 @@ def hierarchy_from_operator(operator):
             origin=a.origin,
             modes=a.binding.profile.modes,
             tail_bound=a.binding.profile.tail_bound,
+            polar=polar_axis(side),
         )
-        for a in axes
+        for side, a in enumerate(axes)
     ]
     return HierarchyPlan(input=values[0], output=values[1])
 
@@ -102,6 +122,12 @@ class HierarchicalCellMassAlgorithm(Algorithm[HierarchicalCellMassRecipe]):
 
         # Only immutable geometry is cached. Every forward rebuilds atom routing
         # from the current sigma/centers; no stale groups survive an optimizer step.
-        return hierarchical_linear(
-            state.layout, x, parameters, **state.recipe.arguments()
-        )
+        options = state.recipe.arguments()
+        if (
+            state.layout.input.polar != state.layout.output.polar
+            and options.get("layout_method") == "counting_compact"
+        ):
+            # Compact bank-pair omission assumes a shared width. Independent
+            # Polar bounds use the complete Cartesian counting table instead.
+            options["layout_method"] = "counting"
+        return hierarchical_linear(state.layout, x, parameters, **options)

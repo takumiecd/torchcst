@@ -76,6 +76,11 @@ def family(state):
             raise ValueError("unsupported kernel parameterization") from None
         if name == "polar_amp_width" and spec.composition == "profile_product":
             name = "profile_product"
+        elif name == "polar_amp_width":
+            from torchcst.kernels.spec import CellIntegratedProfileBinding
+
+            if any(type(p) is CellIntegratedProfileBinding for p in spec.profiles):
+                name = "polar_cell_mass"
         if name in ("amp_width", "polar_amp_width") and spec.composition != "separable":
             raise ValueError("parameterization requires separable composition")
         if name == "log_width" and spec.composition != "radial":
@@ -99,7 +104,7 @@ def family(state):
             type(settings[key]) not in (int, float) or settings[key] < 0
         ):
             raise ValueError(f"{key} must be nonnegative")
-    if name in ("polar_amp_width", "profile_product") and (
+    if name in ("polar_amp_width", "profile_product", "polar_cell_mass") and (
         type(settings["activity_gain"]) not in (int, float)
         or settings["activity_gain"] <= 0
         or settings["activity_mode"] not in ("finite_chord", "time_energy")
@@ -110,9 +115,11 @@ def family(state):
 
 def _operation(state, operation, area="kernels"):
     name = family(state)
+    if name == "polar_cell_mass" and area == "parameterizations":
+        name = "polar_amp_width"
     path = (
         "algorithms.polar_update.executor"
-        if area == "updates" and name == "polar_amp_width"
+        if area == "updates" and name in ("polar_amp_width", "polar_cell_mass")
         else area + "." + name
     )
     module = import_module("torchcst._backends.torch." + path)
@@ -126,7 +133,7 @@ def validate_layout(state, charts):
     if len(charts) != expected:
         raise ValueError("kernel composition differs from chart layout")
     name = family(state)
-    if name == "hierarchical_cell_mass":
+    if name in ("hierarchical_cell_mass", "polar_cell_mass"):
         from torchcst.kernels.cell_mass_layout import cell_mass_axes
 
         cell_mass_axes(tuple(c.declaration() for c in charts), state.declaration())
@@ -167,6 +174,7 @@ def parameter_dim(state, *charts):
         "profile_product": 2,
         "log_width": 2,
         "hierarchical_cell_mass": 2,
+        "polar_cell_mass": 2,
     }.get(family(state), 0)
     return prefix + sum(c.center_parameter_dim for c in charts)
 
@@ -182,6 +190,7 @@ def parameter_dof(state, *charts):
         "profile_product": 2,
         "log_width": 2,
         "hierarchical_cell_mass": 2,
+        "polar_cell_mass": 2,
     }.get(family(state), 0)
     return prefix + sum(c.intrinsic_dim for c in charts)
 

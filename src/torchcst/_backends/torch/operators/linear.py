@@ -16,7 +16,7 @@ def materialize_atoms(operator, p):
 
 
 def weight(operator, p):
-    if _kernel.family(operator.kernel) == "hierarchical_cell_mass":
+    if _kernel.family(operator.kernel) in ("hierarchical_cell_mass", "polar_cell_mass"):
         return _kernel.weight(operator.kernel, *operator.charts, p)
     if len(operator.charts) == 1:
         result = _kernel.weight(operator.kernel, operator.charts[0], p)

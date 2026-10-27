@@ -18,15 +18,18 @@ __global__ void parameter_grad_kernel(const scalar_t *atoms, const int64_t *rows
     int input_owner = groups[4 * group + 3], output_owner = groups[4 * group + 2];
     Bank input_bank = input.banks[bank_for_level(input, groups[4 * group + 1])];
     Bank output_bank = output.banks[bank_for_level(output, groups[4 * group])];
-    double amplitude = atoms[4 * original], sigma = atoms[4 * original + 1];
-    double input_center = atoms[4 * original + 3], output_center = atoms[4 * original + 2];
+    double amplitude = atom_amplitude(atoms, original, input);
+    double sigma = atom_sigma(atoms, original, input);
+    double output_sigma = atom_sigma(atoms, original, output);
+    double input_center = atom_center(atoms, original, input, false);
+    double output_center = atom_center(atoms, original, output, true);
     double da = 0, ds = 0, dmu_input = 0, dmu_output = 0;
     for (int begin = 0; begin < batches; begin += BATCH_TILE) {
         double dh_mu[BATCH_TILE] = {}, dh_sigma[BATCH_TILE] = {};
         double dg_mu[BATCH_TILE] = {}, dg_sigma[BATCH_TILE] = {};
         project_derivatives(zx, batches, begin, input, input_bank, input_owner, sigma, input_center,
                             dh_mu, dh_sigma, windowed);
-        project_derivatives(zy, batches, begin, output, output_bank, output_owner, sigma,
+        project_derivatives(zy, batches, begin, output, output_bank, output_owner, output_sigma,
                             output_center, dg_mu, dg_sigma, windowed);
         for (int b = 0; b < BATCH_TILE && begin + b < batches; ++b) {
             double hv = h[(begin + b) * atom_count + slot];
@@ -37,10 +40,7 @@ __global__ void parameter_grad_kernel(const scalar_t *atoms, const int64_t *rows
             dmu_output += amplitude * hv * dg_mu[b];
         }
     }
-    gradient[4 * original] = static_cast<scalar_t>(da);
-    gradient[4 * original + 1] = static_cast<scalar_t>(ds);
-    gradient[4 * original + 2] = static_cast<scalar_t>(dmu_output);
-    gradient[4 * original + 3] = static_cast<scalar_t>(dmu_input);
+    store_atom_gradient(atoms, gradient, original, input, da, ds, dmu_input, dmu_output);
 }
 
 template <typename scalar_t, typename projection_t, int FixedModes, bool Compensated = false,
@@ -60,13 +60,16 @@ __global__ void compute_g_parameter_grad_kernel(
     int input_owner = groups[4 * group + 3], output_owner = groups[4 * group + 2];
     Bank input_bank = input.banks[bank_for_level(input, groups[4 * group + 1])];
     Bank output_bank = output.banks[bank_for_level(output, groups[4 * group])];
-    double amplitude = atoms[4 * original], sigma = atoms[4 * original + 1];
-    double input_center = atoms[4 * original + 3], output_center = atoms[4 * original + 2];
+    double amplitude = atom_amplitude(atoms, original, input);
+    double sigma = atom_sigma(atoms, original, input);
+    double output_sigma = atom_sigma(atoms, original, output);
+    double input_center = atom_center(atoms, original, input, false);
+    double output_center = atom_center(atoms, original, output, true);
     Profile output_profile = make_profile<true, FixedModes, Compensated>(
-        output, output_bank, sigma, output_center, output_owner);
+        output, output_bank, output_sigma, output_center, output_owner);
     // Reuse the common width shape only when all of its dependencies match.
     // Center/image handling still uses the input axis and owner independently.
-    bool same_shape = input.modes == output.modes && input.radius_ratio4 == output.radius_ratio4 &&
+    bool same_shape = sigma == output_sigma && input.modes == output.modes && input.radius_ratio4 == output.radius_ratio4 &&
                       input_bank.period == output_bank.period &&
                       input_bank.inverse_period == output_bank.inverse_period &&
                       input_bank.omega == output_bank.omega;
@@ -118,10 +121,7 @@ __global__ void compute_g_parameter_grad_kernel(
                 atom_count, slot, amplitude, gv, dmu_input, ds, windowed);
         }
     }
-    gradient[4 * original] = static_cast<scalar_t>(da);
-    gradient[4 * original + 1] = static_cast<scalar_t>(ds);
-    gradient[4 * original + 2] = static_cast<scalar_t>(dmu_output);
-    gradient[4 * original + 3] = static_cast<scalar_t>(dmu_input);
+    store_atom_gradient(atoms, gradient, original, input, da, ds, dmu_input, dmu_output);
 }
 } // namespace
 

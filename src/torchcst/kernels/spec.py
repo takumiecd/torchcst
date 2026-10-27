@@ -146,14 +146,14 @@ class KernelSpec:
         )
         physical = type(self.parameterization) is PhysicalAmpWidthSpec
         if (physical or any(integrated)) and (
-            not physical
+            type(self.parameterization) not in (PhysicalAmpWidthSpec, PolarAmpWidthSpec)
             or self.composition != "separable"
             or self.revision != 1
             or len(integrated) != 2
             or not all(integrated)
         ):
             raise ValueError(
-                "cell masses require two integrated factors and physical amplitude/sigma"
+                "cell masses require two integrated factors and physical or Polar coordinates"
             )
         mixture = any(isinstance(p.profile, MaternMixtureSpec) for p in self.profiles)
         if (mixture or self.revision == 6) and (

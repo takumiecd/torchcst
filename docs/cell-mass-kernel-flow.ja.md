@@ -67,6 +67,40 @@ PR #121の時点では公開CSTLinearへ未接続だった。現在の接続作�
 
 ### CSTLinearへの明示接続と学習確認（2026-10-27）
 
+#### Polar接続（現在の実装・GPU検証待ち）
+
+`presets.polar_cell_mass`は既存`PolarAmpWidthSpec`・初期activity指定・
+`polar_activity_width`更新方針をそのまま使い、profileだけをセル積分/面積正規化へ置き換える。
+atomの行は既存chart-pair規約の`[s,t,input_center,output_center]`。
+Polar更新の実コード・gradient projection・AdamW moment輸送は変更せず再利用する。
+CPUでは旧Polarに同じ勾配を渡した3 stepのParameter/moments/stepがbit一致した。
+
+CUDAのAxis metadataに振幅上限・幅曲線のscalarを渡し、各threadのregisterで
+振幅とinput/output sigmaを取り出す。元atomを直接読み、物理atom表や全係数表をglobalへ
+複製しない。Polar decodeはFourier評価に合わせてFP64、特異原点のtinyは元dtypeを使う。
+Zの二分階層・H/G/Cの保存方式・cell-mass profile自体は維持する。
+parameter_gradは振幅勾配を(s,t)へ戻し、幅のtask gradientは既存どおり通さない。
+center勾配は元のinput/output順に書く。旧物理sigma経路も比較用に保持する。
+
+各軸の幅上限はその軸のQ/3以下で宣言する。input/outputの別幅も使える。
+幅が違う場合は共有sigmaを仮定するcompact bank省略を使わず、完全Cartesian countingにする。
+shape係数の再利用は周期・profileに加え実際のsigmaが一致する場合だけ行う。
+
+MNIST再確認は前回と同じ全データ・seed120・B32・3 epoch・128/1024の中央層置換。
+Polarではsigmaを独立にUniform(2,40)へ置けないため、初期角度を乱数方向、
+alpha=.5（q=2.5）、中心をUniform(0,128)と明示する。
+幅の設定はminimum=2/birth=16/maximum=40/upper_floor=4、kappa=lower_kappa=3、
+upper_decay_power=1。更新は既存の既定radial_regularization=.1/activity_gain=1/
+finite_chord/dormant_expansion_rate=0。AdamWはlr1e-3/weight_decay0。
+初期振幅の単位を調整するためamplitude_maxとw_c=.3*amplitude_maxを同率で拡大し、
+実効WのRMSを1/sqrt(width)にする。w/w_c比と初期sigmaは丸めを除いて維持する。
+これは既存Polarが受け付ける明示atom初期化とscalar設定であり、新しい更新則ではない。
+denseにはこのPolarモデルの初期実効Wを渡し、外側の層・各epochのshuffleも一致させる。
+以前の物理sigma版とは初期分布・学習則が違うので、時間の直接的な改善率には読み替えない。
+現在はCPU全2,047 passed/5,361 skipped。以下の物理sigma版の結果と分け、GPU結果を追記する。
+
+#### 物理sigmaによる接続（先行実験・Polarではない）
+
 `presets.cell_mass`と`CellIntegratedProfileBinding`で面積方式を宣言し、
 `PhysicalAmpWidthSpec`によりatomを`[amplitude,sigma,output_center,input_center]`のまま扱う。
 旧Polar・点サンプル・L2の宣言にこの演算を混ぜない。チャートは入力・出力それぞれ
@@ -92,8 +126,8 @@ layoutはstate_dictへ保存しない。Torch参照は同じ宣言からセル�
 Polarの状態・更新則と今回のセル積分/面積正規化profileは分離して組み合わせられる。
 後続で接続するならCUDA内でPolarから振幅・幅を取り出して分類・H/C評価へ渡し、
 既存の幅stop-gradientとPolar更新・moment輸送を維持する必要がある。
-物理atom表へのglobalコピーを前提にしない。現在のnativeは共通sigma一つなので、
-入出力の別幅を許す既存Polar全体への対応は別途決める。これはまだ実装していない。
+物理atom表へのglobalコピーを前提にしない。この先行実験の時点ではPolar接続は未実装だった。
+その後の実装・検証は直前のPolar接続節で追跡する。
 
 接続後のGPU検査は128/1024のY・dX・全atom勾配と更新を確認する。
 その後の最初の学習確認はMNIST全60,000/10,000件、3 epoch、B32、seed120。
