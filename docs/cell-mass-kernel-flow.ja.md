@@ -957,6 +957,14 @@ atom値のコピーや全atom係数表は追加しない。Zの二分階層・�
 独立Y/dX/全atom勾配、retained backward、空batch/atom、周期端、racecheckを確認してから、
 同一fixtureの完全stepとallocated/reserved peakで採否を決める。現時点では未採用・GPU未検証。
 
+試作source `e4370477`。CPUで空ownerと重複prefixを含む2万条件のtask上限・逆引き・
+非空split範囲を確認した。全CPU2037 passed/5342 skipped/既存警告18件、
+Ruff/format/diff check、wheel/sdist buildと両配布物の338runtime byte照合を通過した。
+これらはGPUの数値精度・同期・性能の証明ではない。
+1024/B4/M8/A52428/S128/grain64では、Cinのlogical partialは4,247,552→479,264B、
+Coutは2,019,328→461,856B。新しいcounts/prefixは各492B/236Bである。
+この配列予算を完全stepのallocator peakへ読み替えない。
+
 ### 最新の再確認と検証済み研究設定
 
 runtime `8bc27c2e` / 文書込みsnapshot `9e2c7204`。
