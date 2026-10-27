@@ -1128,6 +1128,240 @@ reverse_cin_kernel(const atom_t *atoms, const int64_t *rows, const int *groups,
     }
 }
 
+// Build owner counts and an exclusive prefix of active splits in one CTA.
+// Empty owners receive zero tasks; all metadata stays on the device.
+template <bool Reverse>
+__global__ void ragged_metadata_kernel(const int *groups, const int64_t *offsets,
+                                       const int64_t *reverse_offsets, int *counts,
+                                       int *task_offsets, Axis input, Axis output, bool cartesian,
+                                       int group_count, int splits, int grain) {
+    constexpr int THREADS_SCAN = 256, MAX_NODES = 2048, ITEMS = MAX_NODES / THREADS_SCAN;
+    __shared__ int scan[MAX_NODES];
+    int tid = threadIdx.x;
+    const Axis &target = Reverse ? input : output;
+    double maximum_sigma =
+        static_cast<double>(static_cast<float>(fmin(input.period, output.period) / 3));
+    for (int item = 0; item < ITEMS; ++item) {
+        int node = tid + item * THREADS_SCAN;
+        int count = 0;
+        if (node < target.node_count) {
+            if (Reverse) {
+                count = static_cast<int>(reverse_offsets[node + 1] - reverse_offsets[node]);
+            } else {
+                int bank_index = 0;
+                while (bank_index + 1 < output.bank_count &&
+                       node >= output.banks[bank_index + 1].node_offset)
+                    ++bank_index;
+                Bank bank = output.banks[bank_index];
+                int owner = node - bank.node_offset;
+                for (int range = 0; range < input.bank_count; ++range) {
+                    Bank other = input.banks[range];
+                    if (cartesian &&
+                        !compatible_sigma_banks(output, bank_index, input, range, maximum_sigma))
+                        continue;
+                    int first, last;
+                    if (cartesian) {
+                        first = bank.node_offset * input.node_count +
+                                bank.tile_count * other.node_offset + owner * other.tile_count;
+                        last = first + other.tile_count;
+                    } else {
+                        first = lower_group(groups, group_count, bank.level, other.level, owner);
+                        last = lower_group(groups, group_count, bank.level, other.level, owner + 1);
+                    }
+                    count += static_cast<int>(offsets[last] - offsets[first]);
+                }
+            }
+            counts[node] = count;
+        }
+        scan[node] = count ? min(splits, (count + grain - 1) / grain) : 0;
+    }
+    __syncthreads();
+    for (int stride = 1; stride < MAX_NODES; stride *= 2) {
+        int add[ITEMS];
+        for (int item = 0; item < ITEMS; ++item) {
+            int node = tid + item * THREADS_SCAN;
+            add[item] = node >= stride ? scan[node - stride] : 0;
+        }
+        __syncthreads();
+        for (int item = 0; item < ITEMS; ++item)
+            scan[tid + item * THREADS_SCAN] += add[item];
+        __syncthreads();
+    }
+    for (int item = 0; item < ITEMS; ++item) {
+        int node = tid + item * THREADS_SCAN;
+        if (node < target.node_count)
+            task_offsets[node] = node ? scan[node - 1] : 0;
+    }
+    if (tid == 0)
+        task_offsets[target.node_count] = scan[target.node_count - 1];
+}
+
+// upper_bound skips duplicate offsets from empty owners. The caller has
+// already excluded task >= total, so the result is always a nonempty owner.
+__device__ inline int ragged_task_owner(const int *task_offsets, int nodes, int task) {
+    int first = 0, last = nodes + 1;
+    while (first < last) {
+        int middle = (first + last) / 2;
+        if (task_offsets[middle] <= task)
+            first = middle + 1;
+        else
+            last = middle;
+    }
+    return first - 1;
+}
+
+// One 32-lane CTA owns one active output-owner split and one batch tile.
+// Fused H/C uses the existing atom helper; separate C uses the existing dot.
+template <bool Fused>
+__global__ void ragged_output_kernel(const float *atoms, const int64_t *rows, const int *groups,
+                                     const int64_t *offsets, const double *zx, float *h_output,
+                                     const float *h_input, const int *counts,
+                                     const int *task_offsets, double *partial, int atom_count,
+                                     int group_count, int batches, Axis input, Axis output,
+                                     bool cartesian, bool windowed) {
+    int task = blockIdx.x;
+    if (task >= task_offsets[output.node_count])
+        return;
+    int node = ragged_task_owner(task_offsets, output.node_count, task);
+    int active = task_offsets[node + 1] - task_offsets[node];
+    int local_split = task - task_offsets[node];
+    int count = counts[node];
+    int split_begin = static_cast<int>(static_cast<int64_t>(count) * local_split / active);
+    int split_end = static_cast<int>(static_cast<int64_t>(count) * (local_split + 1) / active);
+    int bank_index = 0;
+    while (bank_index + 1 < output.bank_count && node >= output.banks[bank_index + 1].node_offset)
+        ++bank_index;
+    Bank bank = output.banks[bank_index];
+    int owner = node - bank.node_offset, lane = threadIdx.x;
+    int batch_begin = blockIdx.y * BATCH_TILE;
+    int elements = BATCH_TILE * output.basis_count();
+    extern __shared__ double shared[];
+    double *coefficients = shared;
+    double *scaled_h = shared + SHARED_STRIDE * output.basis_count();
+    double *totals = scaled_h + SHARED_STRIDE * BATCH_TILE;
+    double accum[MAX_ACCUMULATORS] = {};
+    if constexpr (Fused) {
+        for (int work = lane; work < elements; work += CHUNK)
+            totals[work] = 0;
+        __syncthreads();
+    }
+    int prefix = 0;
+    double maximum_sigma =
+        static_cast<double>(static_cast<float>(fmin(input.period, output.period) / 3));
+    for (int range = 0; range < input.bank_count; ++range) {
+        Bank other = input.banks[range];
+        if (cartesian && !compatible_sigma_banks(output, bank_index, input, range, maximum_sigma))
+            continue;
+        int first, last;
+        if (cartesian) {
+            first = bank.node_offset * input.node_count + bank.tile_count * other.node_offset +
+                    owner * other.tile_count;
+            last = first + other.tile_count;
+        } else {
+            first = lower_group(groups, group_count, bank.level, other.level, owner);
+            last = lower_group(groups, group_count, bank.level, other.level, owner + 1);
+        }
+        int begin = offsets[first], end = offsets[last];
+        if constexpr (Fused) {
+            fused_forward_range<float, true>(atoms, rows, groups, offsets, zx, h_output, atom_count,
+                                             group_count, batches, batch_begin, input, output, bank,
+                                             owner, begin, end, split_begin, split_end, prefix,
+                                             windowed, coefficients, scaled_h, totals);
+        } else {
+            split_consume_range<float, float, 8, true, false>(
+                atoms, rows, h_input, atom_count, batches, output, bank, owner, false, batch_begin,
+                begin, end, split_begin, split_end, prefix, coefficients, scaled_h, accum,
+                CdotBudget{}, nullptr);
+        }
+    }
+    for (int work = lane, a = 0; work < elements; work += CHUNK, ++a) {
+        int batch = batch_begin + work / output.basis_count(), mode = work % output.basis_count();
+        if (batch < batches) {
+            int64_t i =
+                (static_cast<int64_t>(task) * batches + batch) * output.basis_count() + mode;
+            partial[i] = Fused ? totals[work] : accum[a];
+        }
+    }
+}
+
+// Reverse slots already concatenate all groups for one input owner. One lane
+// evaluates one original atom; no atom values or coefficients are copied globally.
+__global__ void ragged_input_kernel(const float *atoms, const int64_t *rows,
+                                    const int *reverse_slots, const int64_t *reverse_offsets,
+                                    const float *g, const int *counts, const int *task_offsets,
+                                    double *partial, int atom_count, int batches, Axis input) {
+    int task = blockIdx.x;
+    if (task >= task_offsets[input.node_count])
+        return;
+    int node = ragged_task_owner(task_offsets, input.node_count, task);
+    int active = task_offsets[node + 1] - task_offsets[node];
+    int local_split = task - task_offsets[node], count = counts[node];
+    int first = static_cast<int>(reverse_offsets[node]) +
+                static_cast<int>(static_cast<int64_t>(count) * local_split / active);
+    int last = static_cast<int>(reverse_offsets[node]) +
+               static_cast<int>(static_cast<int64_t>(count) * (local_split + 1) / active);
+    int bank_index = 0;
+    while (bank_index + 1 < input.bank_count && node >= input.banks[bank_index + 1].node_offset)
+        ++bank_index;
+    Bank bank = input.banks[bank_index];
+    int owner = node - bank.node_offset, lane = threadIdx.x;
+    int batch_begin = blockIdx.y * BATCH_TILE;
+    int elements = BATCH_TILE * input.basis_count();
+    extern __shared__ double shared[];
+    double *coefficients = shared;
+    double *scaled_g = shared + SHARED_STRIDE * input.basis_count();
+    double accum[MAX_ACCUMULATORS] = {};
+    for (int chunk = first; chunk < last; chunk += CHUNK) {
+        int position = chunk + lane;
+        if (position < last) {
+            int slot = reverse_slots[position], original = rows[slot];
+            Profile profile = make_profile<false, 8, true>(
+                input, bank, static_cast<double>(atoms[4 * original + 1]),
+                static_cast<double>(atoms[4 * original + 3]), owner);
+            store_c_coefficients<8, true>(profile, 8, lane, coefficients);
+            for (int b = 0; b < BATCH_TILE; ++b)
+                scaled_g[b * SHARED_STRIDE + lane] =
+                    batch_begin + b < batches ? static_cast<double>(atoms[4 * original]) *
+                                                    g[(batch_begin + b) * atom_count + slot]
+                                              : 0;
+        } else {
+            for (int mode = 0; mode < input.basis_count(); ++mode)
+                coefficients[mode * SHARED_STRIDE + lane] = 0;
+            for (int b = 0; b < BATCH_TILE; ++b)
+                scaled_g[b * SHARED_STRIDE + lane] = 0;
+        }
+        __syncthreads();
+        for (int work = lane, a = 0; work < elements; work += CHUNK, ++a) {
+            int batch = work / input.basis_count(), mode = work % input.basis_count();
+            for (int atom = 0; atom < CHUNK; ++atom)
+                accum[a] += scaled_g[batch * SHARED_STRIDE + atom] *
+                            coefficients[mode * SHARED_STRIDE + atom];
+        }
+        __syncthreads();
+    }
+    for (int work = lane, a = 0; work < elements; work += CHUNK, ++a) {
+        int batch = batch_begin + work / input.basis_count(), mode = work % input.basis_count();
+        if (batch < batches) {
+            int64_t i = (static_cast<int64_t>(task) * batches + batch) * input.basis_count() + mode;
+            partial[i] = accum[a];
+        }
+    }
+}
+
+// Each dense C element has one writer. Active tasks are summed in split order;
+// no atom-by-mode table or dense weight/weight-gradient is created.
+__global__ void ragged_reduce_kernel(const int *task_offsets, const double *partial, double *c,
+                                     int64_t elements, int batches, int nodes, int basis) {
+    int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (i >= elements)
+        return;
+    int mode = i % basis, node = (i / basis) % nodes, batch = i / (basis * nodes);
+    double value = 0;
+    for (int task = task_offsets[node]; task < task_offsets[node + 1]; ++task)
+        value += partial[(static_cast<int64_t>(task) * batches + batch) * basis + mode];
+    c[i] = value;
+}
+
 // Unique output site/batch ownership: add contributions from each bank after
 // evaluating C in that bank's basis. No Y atomic or mixed-basis C summation.
 template <typename scalar_t>
@@ -1717,6 +1951,148 @@ std::vector<torch::Tensor> compute_g_parameter_grad_cin_reverse(
     return compute_reverse_cin_impl<true>(atoms, rows, groups, offsets, reverse_slots,
                                           reverse_offsets, zx, zy, h, input_config, output_config,
                                           splits, windowed, atoms_per_split);
+}
+
+// Route 0: Cout; route 1: fused H/Cout; route 2: reverse-slot Cin.
+// Metadata, partials and outputs remain alive until all same-stream kernels
+// have been enqueued. The device task count is never copied back to the host.
+template <int Route>
+static std::vector<torch::Tensor>
+run_ragged_c(torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups, torch::Tensor offsets,
+             torch::Tensor reverse_slots, torch::Tensor reverse_offsets, torch::Tensor values,
+             std::vector<double> input_config, std::vector<double> output_config, int splits,
+             int grain, bool windowed) {
+    static_assert(Route >= 0 && Route <= 2, "unknown ragged route");
+    check_cuda_float_matrix(atoms);
+    TORCH_CHECK(atoms.scalar_type() == torch::kFloat32 && atoms.size(1) == 4 &&
+                    atoms.size(0) <= 65536,
+                "ragged C requires FP32 [A<=65536,4] atoms");
+    Axis input = parse_axis(input_config);
+    Axis output = Route == 2 ? input : parse_axis(output_config);
+    TORCH_CHECK(input.modes == 8 && input.tail_bound == 1e-3 &&
+                    (Route == 2 || (output.modes == 8 && output.tail_bound == 1e-3)),
+                "ragged C requires M8, tail 1e-3 axes and compensated values");
+    TORCH_CHECK(splits >= 1 && splits <= 256, "splits must lie in [1,256]");
+    TORCH_CHECK(grain >= 1 && grain <= 65536, "grain must lie in [1,65536]");
+    if constexpr (Route == 2) {
+        TORCH_CHECK(rows.is_contiguous() && rows.device() == atoms.device() && rows.dim() == 1 &&
+                        rows.scalar_type() == torch::kInt64 && rows.numel() == atoms.size(0),
+                    "invalid rows");
+        TORCH_CHECK(reverse_slots.is_contiguous() && reverse_slots.device() == atoms.device() &&
+                        reverse_slots.dim() == 1 && reverse_slots.scalar_type() == torch::kInt32 &&
+                        reverse_slots.numel() == atoms.size(0),
+                    "invalid reverse slots");
+        TORCH_CHECK(reverse_offsets.is_contiguous() && reverse_offsets.device() == atoms.device() &&
+                        reverse_offsets.dim() == 1 &&
+                        reverse_offsets.scalar_type() == torch::kInt64 &&
+                        reverse_offsets.numel() == input.node_count + 1,
+                    "invalid reverse offsets");
+    } else {
+        check_layout(atoms, rows, groups, offsets);
+        TORCH_CHECK(atoms.size(0) == 0 || groups.size(0) > 0, "nonempty atoms need groups");
+    }
+    if constexpr (Route == 1) {
+        check_moments(values, atoms, input);
+        TORCH_CHECK(values.size(0) * atoms.size(0) <= INT_MAX, "H exceeds index capacity");
+    } else {
+        TORCH_CHECK(values.is_contiguous() && values.device() == atoms.device() &&
+                        values.dim() == 2 && values.scalar_type() == torch::kFloat32 &&
+                        values.size(1) == atoms.size(0) && values.numel() <= INT_MAX,
+                    "ragged C requires FP32 [batch,atom] projection");
+    }
+    int64_t batches = values.size(0);
+    const Axis &target = Route == 2 ? input : output;
+    int64_t nodes = target.node_count, basis = target.basis_count();
+    TORCH_CHECK(nodes <= 2048, "ragged metadata supports at most 2048 owners");
+    TORCH_CHECK(batches <= INT_MAX / (nodes * basis), "C exceeds index capacity");
+    TORCH_CHECK(batches <= static_cast<int64_t>(65535) * BATCH_TILE,
+                "batch grid exceeds CUDA capacity");
+    c10::cuda::CUDAGuard guard(atoms.device());
+    auto c = torch::empty({batches, nodes, basis}, atoms.options().dtype(torch::kFloat64));
+    torch::Tensor h;
+    if constexpr (Route == 1)
+        h = torch::empty({batches, atoms.size(0)}, atoms.options());
+    if (c.numel() == 0)
+        return {h, c};
+    if (atoms.size(0) == 0) {
+        c.zero_();
+        return {h, c};
+    }
+    // Sum of ceil(owner_count/grain) is bounded by ceil(A/grain)+N.
+    int64_t task_cap = std::min(nodes * splits, (atoms.size(0) + grain - 1) / grain + nodes);
+    TORCH_CHECK(task_cap > 0 && task_cap <= INT_MAX, "ragged task grid exceeds capacity");
+    TORCH_CHECK(task_cap <= INT_MAX / (batches * basis), "ragged partial exceeds index capacity");
+    auto integer_options = atoms.options().dtype(torch::kInt32);
+    auto counts = torch::empty({nodes}, integer_options);
+    auto task_offsets = torch::empty({nodes + 1}, integer_options);
+    auto partial = torch::empty({task_cap, batches, basis}, c.options());
+    auto stream = c10::cuda::getCurrentCUDAStream();
+    bool cartesian = Route != 2 && groups.size(0) == input.node_count * output.node_count;
+    if constexpr (Route == 2) {
+        ragged_metadata_kernel<true><<<1, 256, 0, stream>>>(
+            nullptr, nullptr, reverse_offsets.data_ptr<int64_t>(), counts.data_ptr<int>(),
+            task_offsets.data_ptr<int>(), input, output, false, 0, splits, grain);
+    } else {
+        ragged_metadata_kernel<false><<<1, 256, 0, stream>>>(
+            groups.data_ptr<int>(), offsets.data_ptr<int64_t>(), nullptr, counts.data_ptr<int>(),
+            task_offsets.data_ptr<int>(), input, output, cartesian, groups.size(0), splits, grain);
+    }
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+    dim3 grid(task_cap, (batches + BATCH_TILE - 1) / BATCH_TILE);
+    size_t shared = sizeof(double) * SHARED_STRIDE * (basis + BATCH_TILE);
+    if constexpr (Route == 1)
+        shared += sizeof(double) * BATCH_TILE * basis;
+    if constexpr (Route == 0) {
+        ragged_output_kernel<false><<<grid, CHUNK, shared, stream>>>(
+            atoms.data_ptr<float>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
+            offsets.data_ptr<int64_t>(), nullptr, nullptr, values.data_ptr<float>(),
+            counts.data_ptr<int>(), task_offsets.data_ptr<int>(), partial.data_ptr<double>(),
+            atoms.size(0), groups.size(0), batches, input, output, cartesian, false);
+    } else if constexpr (Route == 1) {
+        ragged_output_kernel<true><<<grid, CHUNK, shared, stream>>>(
+            atoms.data_ptr<float>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
+            offsets.data_ptr<int64_t>(), values.data_ptr<double>(), h.data_ptr<float>(), nullptr,
+            counts.data_ptr<int>(), task_offsets.data_ptr<int>(), partial.data_ptr<double>(),
+            atoms.size(0), groups.size(0), batches, input, output, cartesian, windowed);
+    } else {
+        ragged_input_kernel<<<grid, CHUNK, shared, stream>>>(
+            atoms.data_ptr<float>(), rows.data_ptr<int64_t>(), reverse_slots.data_ptr<int>(),
+            reverse_offsets.data_ptr<int64_t>(), values.data_ptr<float>(), counts.data_ptr<int>(),
+            task_offsets.data_ptr<int>(), partial.data_ptr<double>(), atoms.size(0), batches,
+            input);
+    }
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+    ragged_reduce_kernel<<<(c.numel() + THREADS - 1) / THREADS, THREADS, 0, stream>>>(
+        task_offsets.data_ptr<int>(), partial.data_ptr<double>(), c.data_ptr<double>(), c.numel(),
+        batches, nodes, basis);
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+    return {h, c};
+}
+
+torch::Tensor compute_c_ragged(torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups,
+                               torch::Tensor offsets, torch::Tensor h,
+                               std::vector<double> input_config, std::vector<double> output_config,
+                               int splits, int grain) {
+    return run_ragged_c<0>(atoms, rows, groups, offsets, {}, {}, h, input_config, output_config,
+                           splits, grain, false)[1];
+}
+
+std::vector<torch::Tensor> compute_h_c_ragged(torch::Tensor atoms, torch::Tensor rows,
+                                              torch::Tensor groups, torch::Tensor offsets,
+                                              torch::Tensor zx, std::vector<double> input_config,
+                                              std::vector<double> output_config, int splits,
+                                              int grain, bool windowed) {
+    return run_ragged_c<1>(atoms, rows, groups, offsets, {}, {}, zx, input_config, output_config,
+                           splits, grain, windowed);
+}
+
+torch::Tensor compute_input_c_reverse_ragged(torch::Tensor atoms, torch::Tensor rows,
+                                             torch::Tensor reverse_slots,
+                                             torch::Tensor reverse_offsets, torch::Tensor g,
+                                             std::vector<double> input_config, int splits,
+                                             int grain) {
+    return run_ragged_c<2>(atoms, rows, {}, {}, reverse_slots, reverse_offsets, g, input_config, {},
+                           splits, grain, false)[1];
 }
 
 torch::Tensor expand_c(torch::Tensor c, torch::Tensor like, std::vector<double> config, int width) {

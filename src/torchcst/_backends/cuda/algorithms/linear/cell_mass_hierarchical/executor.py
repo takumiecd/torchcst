@@ -372,6 +372,7 @@ def compute_c(
     atoms_per_split=0,
     compensated=False,
     compensated_cdot=False,
+    ragged=False,
 ):
     """Complete output owner C[batch,node,mode] using 32-atom shared chunks.
 
@@ -388,8 +389,23 @@ def compute_c(
         raise ValueError("atoms_per_split must be an integer in [0,65536]")
     _validate_compensated(compensated, atoms, h.dtype, plan.output)
     _validate_compensated_cdot(compensated_cdot, atoms, h.dtype, plan.output)
+    _validate_ragged(
+        ragged, plan, atoms, h.dtype, atoms_per_split, compensated, compensated_cdot
+    )
     layout.validate_for(atoms, plan)
     native = _extension()
+    if ragged:
+        return native.compute_c_ragged(
+            atoms,
+            layout.rows,
+            layout.groups,
+            layout.offsets,
+            h,
+            plan.input.native_config(),
+            plan.output.native_config(),
+            splits,
+            atoms_per_split,
+        )
     arguments = (
         atoms,
         layout.rows,
@@ -417,6 +433,7 @@ def compute_h_c(
     atoms_per_split=0,
     windowed=False,
     compensated=False,
+    ragged=False,
 ):
     """Compute H and output C together for M8 axes; H uses the atom dtype."""
     if type(splits) is not int or not 1 <= splits <= 256:
@@ -429,8 +446,25 @@ def compute_h_c(
         raise ValueError("fused H/C requires M8 axes")
     _validate_compensated(compensated, atoms, atoms.dtype, plan.input)
     _validate_compensated(compensated, atoms, atoms.dtype, plan.output)
+    _validate_ragged(
+        ragged, plan, atoms, atoms.dtype, atoms_per_split, compensated, False
+    )
     layout.validate_for(atoms, plan)
-    return _extension().compute_h_c(
+    native = _extension()
+    if ragged:
+        return native.compute_h_c_ragged(
+            atoms,
+            layout.rows,
+            layout.groups,
+            layout.offsets,
+            zx,
+            plan.input.native_config(),
+            plan.output.native_config(),
+            splits,
+            atoms_per_split,
+            windowed,
+        )
+    return native.compute_h_c(
         atoms,
         layout.rows,
         layout.groups,
@@ -524,6 +558,18 @@ def compute_g(
     )
 
 
+def _validate_ragged(ragged, plan, atoms, storage_dtype, grain, compensated, cdot):
+    if type(ragged) is not bool:
+        raise ValueError("ragged must be bool")
+    if ragged:
+        if not compensated or cdot or type(grain) is not int or not 1 <= grain <= 65536:
+            raise ValueError(
+                "ragged C requires compensated values, no C dot, and positive grain"
+            )
+        _validate_compensated(True, atoms, storage_dtype, plan.input)
+        _validate_compensated(True, atoms, storage_dtype, plan.output)
+
+
 def _validate_reverse_grain(layout, atoms_per_split):
     if type(atoms_per_split) is not int or not 0 <= atoms_per_split <= 65536:
         raise ValueError("atoms_per_split must be an integer in [0,65536]")
@@ -541,6 +587,7 @@ def compute_input_c(
     atoms_per_split=0,
     compensated=False,
     compensated_cdot=False,
+    ragged=False,
 ):
     """Accumulate amp*G into input owner C; no dX atomic or packed atom copy.
 
@@ -555,9 +602,25 @@ def compute_input_c(
         raise ValueError("C splits must be an integer in [1,256]")
     _validate_compensated(compensated, atoms, g.dtype, plan.input)
     _validate_compensated_cdot(compensated_cdot, atoms, g.dtype, plan.input)
+    _validate_ragged(
+        ragged, plan, atoms, g.dtype, atoms_per_split, compensated, compensated_cdot
+    )
     layout.validate_for(atoms, plan)
     _validate_reverse_grain(layout, atoms_per_split)
+    if ragged and not layout.has_reverse:
+        raise ValueError("ragged input C requires a reverse layout")
     native = _extension()
+    if ragged:
+        return native.compute_input_c_reverse_ragged(
+            atoms,
+            layout.rows,
+            layout.reverse_slots,
+            layout.reverse_offsets,
+            g,
+            plan.input.native_config(),
+            splits,
+            atoms_per_split,
+        )
     if layout.has_reverse:
         return native.compute_input_c_reverse(
             atoms,
@@ -741,6 +804,7 @@ class _HierarchicalLinear(torch.autograd.Function):
         compensated_cdot,
         compensated_grad,
         reuse_shape_coefficients,
+        ragged_c_splits,
     ):
         zx = build_hierarchy(
             x,
@@ -763,6 +827,7 @@ class _HierarchicalLinear(torch.autograd.Function):
                 atoms_per_split=atoms_per_split,
                 windowed=window_moments,
                 compensated=compensated_values,
+                ragged=ragged_c_splits,
             )
         else:
             h = compute_h(
@@ -784,6 +849,7 @@ class _HierarchicalLinear(torch.autograd.Function):
                 atoms_per_split=atoms_per_split,
                 compensated=compensated_values,
                 compensated_cdot=compensated_cdot,
+                ragged=ragged_c_splits,
             )
         y = expand_c(c, plan.output, x, sites_per_block=sites_per_block)
         ctx.plan = plan
@@ -802,6 +868,7 @@ class _HierarchicalLinear(torch.autograd.Function):
         ctx.compensated_cdot = compensated_cdot
         ctx.compensated_grad = compensated_grad
         ctx.reuse_shape_coefficients = reuse_shape_coefficients
+        ctx.ragged_c_splits = ragged_c_splits
         ctx.source_version = atoms._version
         ctx.layout_method = layout.method
         # save_for_backward checks atom AND layout-buffer mutations. Avoid
@@ -905,6 +972,7 @@ class _HierarchicalLinear(torch.autograd.Function):
                     atoms_per_split=ctx.atoms_per_split,
                     compensated=ctx.compensated_values,
                     compensated_cdot=ctx.compensated_cdot,
+                    ragged=ctx.ragged_c_splits,
                 )
             dx = expand_c(cin, plan.input, dy, sites_per_block=ctx.sites_per_block)
             del cin
@@ -924,6 +992,7 @@ class _HierarchicalLinear(torch.autograd.Function):
         return (
             dx,
             datoms,
+            None,
             None,
             None,
             None,
@@ -969,6 +1038,7 @@ def hierarchical_linear(
     compensated_cdot=False,
     compensated_grad=False,
     reuse_shape_coefficients=False,
+    ragged_c_splits=False,
 ):
     """Private research autograd route, using this forward's bank/owner choices.
 
@@ -1007,6 +1077,21 @@ def hierarchical_linear(
         raise ValueError("compensated gradients require fuse_g_grad and separate Cin")
     _validate_compensated(compensated_values, atoms, atoms.dtype, plan.input)
     _validate_compensated(compensated_values, atoms, atoms.dtype, plan.output)
+    _validate_ragged(
+        ragged_c_splits,
+        plan,
+        atoms,
+        atoms.dtype,
+        atoms_per_split,
+        compensated_values,
+        compensated_cdot,
+    )
+    if ragged_c_splits and (
+        fuse_backward_cin
+        or not fuse_g_grad
+        or not (reverse_layout or (layout is not None and layout.has_reverse))
+    ):
+        raise ValueError("ragged C requires fuse_g_grad and a separate reverse Cin")
     if type(reverse_layout) is not bool:
         raise ValueError("reverse_layout must be bool")
     if type(atoms_per_split) is not int or not 0 <= atoms_per_split <= 65536:
@@ -1073,4 +1158,5 @@ def hierarchical_linear(
         compensated_cdot,
         compensated_grad,
         reuse_shape_coefficients,
+        ragged_c_splits,
     )

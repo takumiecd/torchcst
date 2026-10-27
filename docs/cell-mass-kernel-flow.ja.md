@@ -938,6 +938,25 @@ source `5889ccdf842d8edba7af2ece6776aecd7cc88449a4eec78fe6bec110a24d28cc`、resu
 runtime338・検査141、manifest81件、driver/binary、前jobとのfixture bit一致を照合し、
 ignored `output/cell-mass-opt-20261027/shape-reuse/`へ保全した。
 
+### 最適化第19段：有効なC部分和だけを保存する試作（GPU未検証）
+
+従来の`[split,batch,node,mode]`は、ownerのatom数が少ない場合にも
+指定split数ぶんの領域と空blockを持つ。新しい任意経路`ragged_c_splits=True`では、
+ownerごとのatom数`a_n`から` s_n=min(S,ceil(a_n/grain))`を求め、空ownerは0とする。
+device上のprefixで有効taskを詰め、`[task,batch,mode]`だけを保存する。
+taskの確保上限は`min(N_owner*S,ceil(A/grain)+N_owner)`で、hostへの件数転送はしない。
+counts/prefixの生成kernelが一つ増えるため、メモリ減少だけで高速化とは判断しない。
+
+各task内のatom区間は既存経路と同じ`[floor(a_n*s/s_n),floor(a_n*(s+1)/s_n))`。
+最終Cの担当threadがtask番号順に加算し、出力atomicを使わない。
+H/C融合でもHはinput dtypeへ丸めてからCへ使う。Cinは既存の逆indexを参照する。
+atom値のコピーや全atom係数表は追加しない。Zの二分階層・同階層3枚のR・sigma分類は維持する。
+
+最初の試作はFP32/M8/tail1e-3・補償値評価・正のgrain・逆indexを持つ1024経路だけで比較する。
+既定値はFalse。CdotおよびG/勾配/Cin融合と併用しない。
+独立Y/dX/全atom勾配、retained backward、空batch/atom、周期端、racecheckを確認してから、
+同一fixtureの完全stepとallocated/reserved peakで採否を決める。現時点では未採用・GPU未検証。
+
 ### 最新の再確認と検証済み研究設定
 
 runtime `8bc27c2e` / 文書込みsnapshot `9e2c7204`。

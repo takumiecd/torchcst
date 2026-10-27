@@ -3818,3 +3818,553 @@ def test_split_257_rejected_by_python_and_native_routes():
     for call in native_calls:
         with pytest.raises(RuntimeError, match="splits"):
             call()
+
+
+@cuda_only
+@pytest.mark.parametrize(
+    "splits,grain,batches,count,windowed",
+    [
+        (1, 32, 1, 3, False),
+        (64, 64, 4, 37, True),
+        (128, 128, 5, 37, False),
+        (256, 32, 0, 3, True),
+        (256, 64, 4, 0, False),
+    ],
+)
+def test_ragged_c_hc_cin_match_dense_active_partitions_and_fft(
+    splits, grain, batches, count, windowed
+):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        build_hierarchy,
+        build_window_moments,
+        compute_c,
+        compute_g,
+        compute_h,
+        compute_h_c,
+        compute_input_c,
+        expand_c,
+        prepare_layout,
+    )
+
+    plan = HierarchyPlan(
+        input=AxisPlan(site_count=128, min_tile_sites=4, spacing=0.5, origin=-2),
+        output=AxisPlan(site_count=128, min_tile_sites=8, origin=3),
+    )
+    rng = torch.Generator().manual_seed(120)
+    source = torch.randn(count, 4, generator=rng)
+    source[:, 1] = torch.linspace(0.2, 20, count)
+    source[:, 2:] *= 150
+    if count:
+        source[0] = torch.tensor([-0.0, 1e-5, 130.9, 61.9])
+    if count > 1:
+        source[1] = torch.tensor([0.7, 2.0, 130.5, 61.75])
+        source[1, 1:] = torch.nextafter(source[1, 1:], torch.tensor(float("inf")))
+    x = torch.randn(batches, 128, generator=rng)
+    dy = torch.randn(batches, 128, generator=rng)
+    atoms, signal = source.cuda(), x.cuda()
+    layout = prepare_layout(plan, atoms, method="counting_compact", reverse=True)
+    tensors = (
+        layout.rows,
+        layout.groups,
+        layout.offsets,
+        layout.reverse_slots,
+        layout.reverse_offsets,
+    )
+    before = [(v.clone(), v._version) for v in tensors]
+    zx, zy = (
+        build_hierarchy(signal, plan.input),
+        build_hierarchy(dy.cuda(), plan.output),
+    )
+    if windowed:
+        zx = build_window_moments(zx, plan.input)
+        zy = build_window_moments(zy, plan.output)
+    h = compute_h(
+        plan,
+        atoms,
+        layout,
+        zx,
+        storage_dtype=torch.float32,
+        windowed=windowed,
+        compensated=True,
+    )
+    g = compute_g(
+        plan,
+        atoms,
+        layout,
+        zy,
+        storage_dtype=torch.float32,
+        windowed=windowed,
+        compensated=True,
+    )
+    dense_c = compute_c(
+        plan, atoms, layout, h, splits=splits, atoms_per_split=grain, compensated=True
+    )
+    dense_cin = compute_input_c(
+        plan, atoms, layout, g, splits=splits, atoms_per_split=grain, compensated=True
+    )
+    ragged_c = compute_c(
+        plan,
+        atoms,
+        layout,
+        h,
+        splits=splits,
+        atoms_per_split=grain,
+        compensated=True,
+        ragged=True,
+    )
+    ragged_cin = compute_input_c(
+        plan,
+        atoms,
+        layout,
+        g,
+        splits=splits,
+        atoms_per_split=grain,
+        compensated=True,
+        ragged=True,
+    )
+    hc_h, hc_c = compute_h_c(
+        plan,
+        atoms,
+        layout,
+        zx,
+        splits=splits,
+        atoms_per_split=grain,
+        windowed=windowed,
+        compensated=True,
+        ragged=True,
+    )
+    for a, b in ((ragged_c, dense_c), (ragged_cin, dense_cin)):
+        torch.testing.assert_close(a, b, rtol=2e-10, atol=5e-11)
+    torch.testing.assert_close(hc_c, dense_c, rtol=3e-6, atol=2e-7)
+    torch.testing.assert_close(hc_h, h, rtol=3e-6, atol=2e-7)
+    for tensor, (original, version) in zip(tensors, before):
+        assert tensor._version == version
+        torch.testing.assert_close(tensor, original, rtol=0, atol=0)
+    if not count:
+        assert (
+            torch.count_nonzero(ragged_c) == 0 and torch.count_nonzero(ragged_cin) == 0
+        )
+        return
+    rows = layout.rows.cpu().tolist()
+    v = existing_profile_matrix(source, plan.input, 3)
+    u = existing_profile_matrix(source, plan.output, 2)
+    expected_h = (x.double() @ v.T)[:, rows]
+    expected_c = output_c_oracle(source, plan, rows, h.cpu().double())
+    expected_y = ((x.double() @ v.T) * source[:, 0].double()[None, :]) @ u
+    torch.testing.assert_close(h.cpu().double(), expected_h, rtol=3e-6, atol=2e-7)
+    torch.testing.assert_close(ragged_c.cpu(), expected_c, rtol=3e-6, atol=2e-7)
+    y = expand_c(ragged_c, plan.output, signal)
+    torch.testing.assert_close(y.cpu().double(), expected_y, rtol=3e-6, atol=2e-7)
+
+
+@cuda_only
+@pytest.mark.parametrize(
+    "batches,count,splits,grain,fuse_h_c,windowed,comp_grad,shape_cache",
+    [
+        (0, 3, 1, 32, False, False, False, False),
+        (1, 3, 64, 64, True, True, False, False),
+        (4, 37, 128, 128, False, True, True, True),
+        (5, 37, 256, 32, True, False, True, False),
+        (5, 0, 256, 64, False, True, False, False),
+    ],
+)
+def test_ragged_full_route_matches_fft_and_retained_backward(
+    batches, count, splits, grain, fuse_h_c, windowed, comp_grad, shape_cache
+):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        hierarchical_linear,
+        prepare_layout,
+    )
+
+    plan = HierarchyPlan(
+        input=AxisPlan(site_count=128, min_tile_sites=4, spacing=0.5, origin=-2),
+        output=AxisPlan(site_count=128, min_tile_sites=8, origin=3),
+    )
+    rng = torch.Generator().manual_seed(120)
+    source = torch.randn(count, 4, generator=rng)
+    source[:, 1] = torch.linspace(0.2, 20, count)
+    source[:, 2:] *= 150
+    if count:
+        source[0] = torch.tensor([-0.0, 1e-5, 130.9, 61.9])
+    xcpu = torch.randn(batches, 128, generator=rng)
+    dy = torch.randn(batches, 128, generator=rng)
+    atoms, x = source.cuda().requires_grad_(), xcpu.cuda().requires_grad_()
+    layout = prepare_layout(plan, atoms, method="counting_compact", reverse=True)
+    saved = [
+        (t.clone(), t._version)
+        for t in (
+            layout.rows,
+            layout.groups,
+            layout.offsets,
+            layout.reverse_slots,
+            layout.reverse_offsets,
+        )
+    ]
+    y = hierarchical_linear(
+        plan,
+        x,
+        atoms,
+        layout=layout,
+        layout_method="counting_compact",
+        reverse_layout=True,
+        c_splits=splits,
+        atoms_per_split=grain,
+        ragged_c_splits=True,
+        compensated_values=True,
+        fuse_h_c=fuse_h_c,
+        fuse_g_grad=True,
+        fuse_backward_cin=False,
+        compensated_grad=comp_grad,
+        reuse_shape_coefficients=shape_cache,
+        window_moments=windowed,
+    )
+    dx, dp = torch.autograd.grad(y, (x, atoms), dy.cuda(), retain_graph=True)
+    dx2, dp2 = torch.autograd.grad(y, (x, atoms), (2 * dy).cuda())
+    torch.testing.assert_close(dx2, 2 * dx, rtol=3e-6, atol=2e-7)
+    torch.testing.assert_close(dp2, 2 * dp, rtol=3e-6, atol=2e-7)
+    for tensor, (original, version) in zip(
+        (
+            layout.rows,
+            layout.groups,
+            layout.offsets,
+            layout.reverse_slots,
+            layout.reverse_offsets,
+        ),
+        saved,
+    ):
+        assert tensor._version == version
+        torch.testing.assert_close(tensor, original, rtol=0, atol=0)
+    if count:
+        xr, pr = xcpu.double().requires_grad_(), source.double().requires_grad_()
+        u = differentiable_profile_matrix(pr, plan.output, 2)
+        v = differentiable_profile_matrix(pr, plan.input, 3)
+        yr = ((xr @ v.T) * pr[:, 0]) @ u
+        dxr, dpr = torch.autograd.grad(yr, (xr, pr), dy.double())
+        for actual, expected in ((y, yr), (dx, dxr), (dp, dpr)):
+            torch.testing.assert_close(
+                actual.cpu().double(), expected, rtol=3e-6, atol=2e-7
+            )
+    else:
+        torch.testing.assert_close(y, torch.zeros_like(y))
+        torch.testing.assert_close(dx, torch.zeros_like(dx))
+        assert dp.shape == atoms.shape
+    with torch.no_grad():
+        atoms.add_(0)
+    with pytest.raises(RuntimeError, match="rebuild"):
+        hierarchical_linear(
+            plan,
+            x,
+            atoms,
+            layout=layout,
+            layout_method="counting_compact",
+            reverse_layout=True,
+            c_splits=splits,
+            atoms_per_split=grain,
+            ragged_c_splits=True,
+            compensated_values=True,
+            fuse_g_grad=True,
+        )
+
+
+@cuda_only
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "grain",
+        "dtype",
+        "input_mode",
+        "output_mode",
+        "input_tail",
+        "output_tail",
+        "compensated",
+        "cdot",
+        "fused_cin",
+        "reverse",
+        "fuse_g",
+    ],
+)
+def test_ragged_highlevel_rejects_unsupported_combinations(bad):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        hierarchical_linear,
+    )
+
+    def axis(side):
+        return AxisPlan(
+            site_count=32,
+            min_tile_sites=4,
+            modes=16 if bad == side + "_mode" else 8,
+            tail_bound=1e-2 if bad == side + "_tail" else 1e-3,
+        )
+
+    plan = HierarchyPlan(input=axis("input"), output=axis("output"))
+    dtype = torch.float64 if bad == "dtype" else torch.float32
+    x = torch.ones(1, 32, device="cuda", dtype=dtype)
+    atoms = torch.ones(3, 4, device="cuda", dtype=dtype)
+    kwargs = {
+        "layout_method": "counting_compact",
+        "reverse_layout": bad != "reverse",
+        "atoms_per_split": 0 if bad == "grain" else 32,
+        "c_splits": 7,
+        "compensated_values": bad != "compensated",
+        "compensated_cdot": bad == "cdot",
+        "fuse_g_grad": bad != "fuse_g",
+        "fuse_backward_cin": bad == "fused_cin",
+        "ragged_c_splits": True,
+    }
+    with pytest.raises((ValueError, RuntimeError)):
+        hierarchical_linear(plan, x, atoms, **kwargs)
+
+
+@cuda_only
+@pytest.mark.parametrize("bad", [1, None, "true"])
+def test_ragged_flags_require_bool(bad):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        build_hierarchy,
+        compute_c,
+        compute_h_c,
+        compute_input_c,
+        hierarchical_linear,
+        prepare_layout,
+    )
+
+    axis = AxisPlan(site_count=32, min_tile_sites=4)
+    plan = HierarchyPlan(input=axis, output=axis)
+    atoms = torch.ones(3, 4, device="cuda")
+    x = torch.ones(1, 32, device="cuda")
+    layout = prepare_layout(plan, atoms, method="counting_compact", reverse=True)
+    z = build_hierarchy(x, axis)
+    h = torch.ones(1, 3, device="cuda")
+    calls = [
+        lambda: compute_c(
+            plan, atoms, layout, h, atoms_per_split=32, compensated=True, ragged=bad
+        ),
+        lambda: compute_h_c(
+            plan, atoms, layout, z, atoms_per_split=32, compensated=True, ragged=bad
+        ),
+        lambda: compute_input_c(
+            plan, atoms, layout, h, atoms_per_split=32, compensated=True, ragged=bad
+        ),
+        lambda: hierarchical_linear(
+            plan,
+            x,
+            atoms,
+            layout=layout,
+            reverse_layout=True,
+            atoms_per_split=32,
+            compensated_values=True,
+            fuse_g_grad=True,
+            ragged_c_splits=bad,
+        ),
+    ]
+    for call in calls:
+        with pytest.raises((TypeError, ValueError)):
+            call()
+
+
+@cuda_only
+def test_ragged_lowlevel_requires_positive_grain_compensation_and_reverse_cin():
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        build_hierarchy,
+        compute_c,
+        compute_h_c,
+        compute_input_c,
+        prepare_layout,
+    )
+
+    axis = AxisPlan(site_count=32, min_tile_sites=4)
+    plan = HierarchyPlan(input=axis, output=axis)
+    atoms = torch.ones(3, 4, device="cuda")
+    x = torch.ones(1, 32, device="cuda")
+    layout = prepare_layout(plan, atoms, method="counting_compact")
+    z = build_hierarchy(x, axis)
+    h = torch.ones(1, 3, device="cuda")
+    calls = [
+        lambda: compute_c(
+            plan, atoms, layout, h, atoms_per_split=0, compensated=True, ragged=True
+        ),
+        lambda: compute_h_c(
+            plan, atoms, layout, z, atoms_per_split=0, compensated=True, ragged=True
+        ),
+        lambda: compute_c(
+            plan, atoms, layout, h, atoms_per_split=32, compensated=False, ragged=True
+        ),
+        lambda: compute_h_c(
+            plan, atoms, layout, z, atoms_per_split=32, compensated=False, ragged=True
+        ),
+        lambda: compute_c(
+            plan,
+            atoms,
+            layout,
+            h,
+            atoms_per_split=32,
+            compensated=True,
+            compensated_cdot=True,
+            ragged=True,
+        ),
+        lambda: compute_input_c(
+            plan, atoms, layout, h, atoms_per_split=32, compensated=True, ragged=True
+        ),
+    ]
+    for call in calls:
+        with pytest.raises((TypeError, ValueError, RuntimeError)):
+            call()
+
+
+@cuda_only
+@pytest.mark.parametrize("bad", ["grain", "split", "dtype", "mode", "tail"])
+def test_ragged_native_rejects_unsupported_configuration(bad):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        _extension,
+        build_hierarchy,
+        prepare_layout,
+    )
+
+    axis = AxisPlan(
+        site_count=32,
+        min_tile_sites=4,
+        modes=16 if bad == "mode" else 8,
+        tail_bound=1e-2 if bad == "tail" else 1e-3,
+    )
+    plan = HierarchyPlan(input=axis, output=axis)
+    dtype = torch.float64 if bad == "dtype" else torch.float32
+    atoms = torch.ones(3, 4, device="cuda", dtype=dtype)
+    x = torch.ones(1, 32, device="cuda", dtype=dtype)
+    layout = prepare_layout(plan, atoms, method="counting_compact", reverse=True)
+    z = build_hierarchy(x, axis)
+    h = torch.ones(1, 3, device="cuda", dtype=dtype)
+    cfg = axis.native_config()
+    n = _extension()
+    splits = 257 if bad == "split" else 7
+    grain = 0 if bad == "grain" else 32
+    calls = [
+        lambda: n.compute_c_ragged(
+            atoms,
+            layout.rows,
+            layout.groups,
+            layout.offsets,
+            h,
+            cfg,
+            cfg,
+            splits,
+            grain,
+        ),
+        lambda: n.compute_h_c_ragged(
+            atoms,
+            layout.rows,
+            layout.groups,
+            layout.offsets,
+            z,
+            cfg,
+            cfg,
+            splits,
+            grain,
+            False,
+        ),
+        lambda: n.compute_input_c_reverse_ragged(
+            atoms,
+            layout.rows,
+            layout.reverse_slots,
+            layout.reverse_offsets,
+            h,
+            cfg,
+            splits,
+            grain,
+        ),
+    ]
+    for call in calls:
+        with pytest.raises(RuntimeError):
+            call()
+
+
+@cuda_only
+@pytest.mark.parametrize("method", ["sort", "counting", "counting_compact"])
+def test_ragged_nonuniform_owner_has_multiple_active_splits_and_bank_ranges(method):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        build_hierarchy,
+        compute_c,
+        compute_g,
+        compute_h,
+        compute_h_c,
+        compute_input_c,
+        prepare_layout,
+    )
+
+    plan = HierarchyPlan(
+        input=AxisPlan(site_count=128, min_tile_sites=4, spacing=0.5, origin=-2),
+        output=AxisPlan(site_count=128, min_tile_sites=8, origin=3),
+    )
+    rng = torch.Generator().manual_seed(120)
+    source = torch.randn(301, 4, generator=rng)
+    source[:, 0] *= 0.1
+    source[:, 1] = torch.tensor([1.99, 2.0, 2.01, 4.0, 4.01, 7.9]).repeat(51)[:301]
+    source[:, 2] = 130.9
+    source[:, 3] = torch.tensor([-2.1, 4.0, 11.9]).repeat(101)[:301]
+    atoms = source.cuda()
+    x = torch.randn(4, 128, generator=rng).cuda()
+    dy = torch.randn(4, 128, generator=rng).cuda()
+    layout = prepare_layout(plan, atoms, method=method, reverse=method != "sort")
+    groups = layout.groups.cpu().tolist()
+    offsets = layout.offsets.cpu().tolist()
+    by_output = {}
+    for group, begin, end in zip(groups, offsets, offsets[1:]):
+        key = (group[0], group[2])
+        by_output[key] = by_output.get(key, 0) + end - begin
+    assert max(by_output.values()) == 301
+    assert (
+        len(
+            {
+                group[1]
+                for group, begin, end in zip(groups, offsets, offsets[1:])
+                if end > begin
+            }
+        )
+        >= 3
+    )
+    zx, zy = build_hierarchy(x, plan.input), build_hierarchy(dy, plan.output)
+    h = compute_h(
+        plan, atoms, layout, zx, storage_dtype=torch.float32, compensated=True
+    )
+    g = compute_g(
+        plan, atoms, layout, zy, storage_dtype=torch.float32, compensated=True
+    )
+    dense = compute_c(
+        plan, atoms, layout, h, splits=128, atoms_per_split=32, compensated=True
+    )
+    ragged = compute_c(
+        plan,
+        atoms,
+        layout,
+        h,
+        splits=128,
+        atoms_per_split=32,
+        compensated=True,
+        ragged=True,
+    )
+    fh, fc = compute_h_c(
+        plan,
+        atoms,
+        layout,
+        zx,
+        splits=128,
+        atoms_per_split=32,
+        compensated=True,
+        ragged=True,
+    )
+    torch.testing.assert_close(ragged, dense, rtol=2e-10, atol=5e-11)
+    torch.testing.assert_close(fh, h, rtol=3e-6, atol=2e-7)
+    torch.testing.assert_close(fc, dense, rtol=3e-6, atol=2e-7)
+    if method != "sort":
+        dense_in = compute_input_c(
+            plan, atoms, layout, g, splits=128, atoms_per_split=32, compensated=True
+        )
+        ragged_in = compute_input_c(
+            plan,
+            atoms,
+            layout,
+            g,
+            splits=128,
+            atoms_per_split=32,
+            compensated=True,
+            ragged=True,
+        )
+        torch.testing.assert_close(ragged_in, dense_in, rtol=2e-10, atol=5e-11)
