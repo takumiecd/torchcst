@@ -938,7 +938,7 @@ source `5889ccdf842d8edba7af2ece6776aecd7cc88449a4eec78fe6bec110a24d28cc`、resu
 runtime338・検査141、manifest81件、driver/binary、前jobとのfixture bit一致を照合し、
 ignored `output/cell-mass-opt-20261027/shape-reuse/`へ保全した。
 
-### 最適化第19段：有効なC部分和だけを保存する試作（GPU未検証）
+### 最適化第19段：有効なC部分和だけを保存する（初回GPU検証）
 
 従来の`[split,batch,node,mode]`は、ownerのatom数が少ない場合にも
 指定split数ぶんの領域と空blockを持つ。新しい任意経路`ragged_c_splits=True`では、
@@ -955,7 +955,7 @@ atom値のコピーや全atom係数表は追加しない。Zの二分階層・�
 最初の試作はFP32/M8/tail1e-3・補償値評価・正のgrain・逆indexを持つ1024経路だけで比較する。
 既定値はFalse。CdotおよびG/勾配/Cin融合と併用しない。
 独立Y/dX/全atom勾配、retained backward、空batch/atom、周期端、racecheckを確認してから、
-同一fixtureの完全stepとallocated/reserved peakで採否を決める。現時点では未採用・GPU未検証。
+同一fixtureの完全stepとallocated/reserved peakで採否を決める。
 
 試作source `e4370477`。CPUで空ownerと重複prefixを含む2万条件のtask上限・逆引き・
 非空split範囲を確認した。全CPU2037 passed/5342 skipped/既存警告18件、
@@ -964,6 +964,35 @@ Ruff/format/diff check、wheel/sdist buildと両配布物の338runtime byte照�
 1024/B4/M8/A52428/S128/grain64では、Cinのlogical partialは4,247,552→479,264B、
 Coutは2,019,328→461,856B。新しいcounts/prefixは各492B/236Bである。
 この配列予算を完全stepのallocator peakへ読み替えない。
+
+job `l4job-6004f86d063f4a009803a5509c49be59`で、通常2613 passed/12 skipped、
+複数active split・sort/counting/compactとretained backwardのracecheck4件/hazard0を確認した。
+全819/52,428atomのY/dX/全4列勾配をCPU FFT/autogradへ照合し、全9設定で通過した。
+1024の最大絶対差はY1.7711e-8、dX1.9916e-8、atom勾配2.7011e-8。
+rtol3e-6/atol2e-7は緩めていない。初回jobはoptimizer更新後の独立照合を含まない。
+
+| 1024の同条件比較 | 従来完全step | ragged完全step | 従来 / ragged allocated | 従来 / ragged reserved |
+| --- | ---: | ---: | ---: | ---: |
+| S128/grain64、H/C融合 | 1.216969ms | 1.157024ms | 10,067,968 / 6,299,136B | 12 / 8MiB |
+| S128/grain64、H/C分離 | 1.225079ms | 1.186063ms | 10,067,968 / 6,299,136B | 12 / 8MiB |
+| S64/grain64、H/C分離 | 1.289284ms | 1.213230ms | 7,943,168 / 6,299,136B | 10 / 8MiB |
+| S256/grain32、H/C分離 | 1.307852ms | 1.216390ms | 14,317,056 / 6,744,576B | 16 / 8MiB |
+
+各設定1 fresh process、warm5/同期wall21。matched dense1024は0.669952ms、
+16,843,264B/22MiB。128は既存設定だけを維持し0.852024ms、263,168B/2MiB、
+matched dense128は0.669300ms、270,848B/2MiBだった。
+全9設定で同process条件のdense以下のallocated/reservedをassertし、step.jsonから再計算した。
+S128/H/C融合では約4.9%短縮・allocated約37.4%減となったが、独立再確認前の初回結果である。
+最終目標のdenseの時間半分は未達。
+
+別device-event診断ではS128/grain64のCout 0.166912→0.137216ms、
+Cin 0.126976→0.113664ms、H/C 0.282624→0.228352ms。
+これらはlaunch/待ちを含む段階診断で、足し合わせて完全stepや因果の証明にしない。
+runtime338・検査141、manifest50、driver/binary、前確認fixtureのbit一致を照合した。
+source `93b6790f946262a7787e72b87a27927ccc92d354aa274b739cdc0d1bb7c52e6b`、result `95abdb3814f3c97bc73136c250da646dbf78cbc4220a839da4bd7a1c47d5ca7d`、driver `44fd5716fd106835b255ddcada4ac6db63cb2efa66f03d6aaea4b7c653e397e3`、binary `9804e081f178e615db766aa14faacaf3cbe20b0be1c17e8019e693f430ea785e`。
+raw/archive/spec/receiptはignored `output/cell-mass-opt-20261027/ragged-active-c/`へ保全した。
+追加確認job `l4job-03dfde6ed0db4ecd81de335d14811210`はColab kernel接続503で中断し、
+所有runtime停止・pool recover後に再投入した。未回収の試行を精度・性能根拠に含めない。
 
 ### 最新の再確認と検証済み研究設定
 
