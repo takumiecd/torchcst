@@ -262,7 +262,7 @@ __device__ inline double raw_coefficient(double beta, int modes, int harmonic) {
 }
 
 struct Profile {
-    double beta, raw_zero, center, period, inverse_period, omega, beta_sigma;
+    double beta, raw_zero, center, period, inverse_period, omega, beta_sigma, zero_log_beta;
 };
 
 template <bool Derivative = false>
@@ -275,9 +275,15 @@ __device__ inline Profile make_profile(const Axis &axis, const Bank &bank, doubl
     double root = sqrt(sqrt(base));
     double beta = 1 / cos((PI / 3) * root);
     double beta_sigma = 0;
+    double raw_zero, zero_log_beta = 0;
     if (Derivative) {
         double radius_sigma = (1 - axis.radius_ratio4) * s * s * s / (root * root * root);
         beta_sigma = beta * sqrt(fmax(0.0, beta * beta - 1)) * (0.5 * bank.omega) * radius_sigma;
+        double zero_beta;
+        raw_horner<true>(beta, axis.modes, 0, raw_zero, zero_beta);
+        zero_log_beta = zero_beta / raw_zero;
+    } else {
+        raw_zero = raw_coefficient(beta, axis.modes, 0);
     }
     double relative = wrapped_center(center, axis);
     int raw_owner =
@@ -285,12 +291,13 @@ __device__ inline Profile make_profile(const Axis &axis, const Bank &bank, doubl
     // Shift a centre in the final half-cell together with its owner=0 window.
     int image = (raw_owner - owner) / bank.tile_count;
     return {beta,
-            raw_coefficient(beta, axis.modes, 0),
+            raw_zero,
             relative - image * axis.period,
             bank.period,
             bank.inverse_period,
             bank.omega,
-            beta_sigma};
+            beta_sigma,
+            zero_log_beta};
 }
 
 __device__ inline void coefficient_pair(const Profile &profile, int modes, int harmonic,
@@ -325,14 +332,10 @@ template <bool Derivative> struct HarmonicStream {
     __device__ HarmonicStream(const Profile &profile, int mode_count)
         : beta(profile.beta), beta_squared(beta * beta), power(1), power_beta(0),
           inverse_period(profile.inverse_period),
-          normalized_scale((2 * profile.inverse_period) / profile.raw_zero), zero_log_beta(0),
-          phase_sine(0), phase_cosine(1), modes(mode_count), harmonic(0) {
+          normalized_scale((2 * profile.inverse_period) / profile.raw_zero),
+          zero_log_beta(Derivative ? profile.zero_log_beta : 0), phase_sine(0), phase_cosine(1),
+          modes(mode_count), harmonic(0) {
         sincos(profile.omega * profile.center, &step_sine, &step_cosine);
-        if (Derivative) {
-            double raw_zero, zero_beta;
-            raw_coefficient_derivative(beta, modes, 0, raw_zero, zero_beta);
-            zero_log_beta = zero_beta / raw_zero;
-        }
     }
 
     __device__ inline void next(double &cc, double &cs, double &cc_beta, double &cs_beta) {

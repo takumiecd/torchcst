@@ -75,18 +75,27 @@ project_weighted_derivatives(const double *z, int batches, int batch_begin, cons
                     continue;
                 }
                 double zc = z[base + 2 * harmonic - 1], zs = z[base + 2 * harmonic];
-                double rotated_cos = zc * rc - zs * rs;
-                double rotated_sin = zs * rc + zc * rs;
-                if (Value)
+                if (Value) {
+                    double rotated_cos = zc * rc - zs * rs;
+                    double rotated_sin = zs * rc + zc * rs;
                     g_value[b] += cc * rotated_cos + cs * rotated_sin;
-                double weight =
-                    Value
-                        ? amplitude * static_cast<double>(h[(batch_begin + b) * atom_count + slot])
-                        : g_value[b];
-                weighted_cos += weight * rotated_cos;
-                weighted_sin += weight * rotated_sin;
+                    double weight =
+                        amplitude * static_cast<double>(h[(batch_begin + b) * atom_count + slot]);
+                    weighted_cos += weight * rotated_cos;
+                    weighted_sin += weight * rotated_sin;
+                } else {
+                    weighted_cos += g_value[b] * zc;
+                    weighted_sin += g_value[b] * zs;
+                }
             }
             if (harmonic != 0) {
+                if (!Value) {
+                    // Rotation is shared across batches, so apply it once to
+                    // their weighted Z sum. This reassociates FP64 addition.
+                    double rotated_cos = weighted_cos * rc - weighted_sin * rs;
+                    weighted_sin = weighted_sin * rc + weighted_cos * rs;
+                    weighted_cos = rotated_cos;
+                }
                 dcenter += omega * (-cs * weighted_cos + cc * weighted_sin);
                 dsigma += beta_sigma * (cc_beta * weighted_cos + cs_beta * weighted_sin);
             }

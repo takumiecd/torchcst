@@ -4,6 +4,10 @@ using namespace cell_mass_hierarchy;
 
 namespace {
 constexpr int CHUNK = 32;
+// Each logical row still contains 32 atoms. The extra shared-memory column
+// changes only the physical row stride, reducing conflicts when lanes read
+// different coefficient modes for the same atom.
+constexpr int SHARED_STRIDE = CHUNK + 1;
 constexpr int MAX_ACCUMULATORS = (BATCH_TILE * 33 + CHUNK - 1) / CHUNK;
 
 // One thread completes H for a different atom and up to four batches. The
@@ -80,7 +84,7 @@ __global__ void compute_c_kernel(const scalar_t *atoms, const int64_t *rows, con
                                  Axis output, bool reverse) {
     extern __shared__ double shared[];
     double *coefficients = shared;
-    double *scaled_h = shared + CHUNK * output.basis_count();
+    double *scaled_h = shared + SHARED_STRIDE * output.basis_count();
     __shared__ int range_begin, range_end;
     int node = blockIdx.x, index = 0;
     while (index + 1 < output.bank_count && node >= output.banks[index + 1].node_offset)
@@ -123,16 +127,16 @@ __global__ void compute_c_kernel(const scalar_t *atoms, const int64_t *rows, con
                     if (harmonic == 0)
                         coefficients[lane] = cc;
                     else {
-                        coefficients[(2 * harmonic - 1) * CHUNK + lane] = cc;
-                        coefficients[2 * harmonic * CHUNK + lane] = cs;
+                        coefficients[(2 * harmonic - 1) * SHARED_STRIDE + lane] = cc;
+                        coefficients[2 * harmonic * SHARED_STRIDE + lane] = cs;
                     }
                 }
             } else {
                 for (int mode = 0; mode < output.basis_count(); ++mode)
-                    coefficients[mode * CHUNK + lane] = 0;
+                    coefficients[mode * SHARED_STRIDE + lane] = 0;
             }
             for (int local = 0; local < BATCH_TILE; ++local)
-                scaled_h[local * CHUNK + lane] =
+                scaled_h[local * SHARED_STRIDE + lane] =
                     valid && batch_begin + local < batches
                         ? static_cast<double>(atoms[4 * original]) *
                               h[(batch_begin + local) * atom_count + slot]
@@ -141,7 +145,8 @@ __global__ void compute_c_kernel(const scalar_t *atoms, const int64_t *rows, con
             for (int work = lane, a = 0; work < elements; work += CHUNK, ++a) {
                 int batch = work / output.basis_count(), mode = work % output.basis_count();
                 for (int atom = 0; atom < CHUNK; ++atom)
-                    accum[a] += scaled_h[batch * CHUNK + atom] * coefficients[mode * CHUNK + atom];
+                    accum[a] += scaled_h[batch * SHARED_STRIDE + atom] *
+                                coefficients[mode * SHARED_STRIDE + atom];
             }
             __syncthreads(); // Readers finish before the shared chunk is replaced.
         }
@@ -186,24 +191,26 @@ __device__ void split_consume_range(const scalar_t *atoms, const int64_t *rows,
                 if (harmonic == 0)
                     coefficients[lane] = cc;
                 else {
-                    coefficients[(2 * harmonic - 1) * CHUNK + lane] = cc;
-                    coefficients[2 * harmonic * CHUNK + lane] = cs;
+                    coefficients[(2 * harmonic - 1) * SHARED_STRIDE + lane] = cc;
+                    coefficients[2 * harmonic * SHARED_STRIDE + lane] = cs;
                 }
             }
         } else {
             for (int mode = 0; mode < output.basis_count(); ++mode)
-                coefficients[mode * CHUNK + lane] = 0;
+                coefficients[mode * SHARED_STRIDE + lane] = 0;
         }
         for (int local = 0; local < BATCH_TILE; ++local)
-            scaled_h[local * CHUNK + lane] = valid && batch_begin + local < batches
-                                                 ? static_cast<double>(atoms[4 * original]) *
-                                                       h[(batch_begin + local) * atom_count + slot]
-                                                 : 0;
+            scaled_h[local * SHARED_STRIDE + lane] =
+                valid && batch_begin + local < batches
+                    ? static_cast<double>(atoms[4 * original]) *
+                          h[(batch_begin + local) * atom_count + slot]
+                    : 0;
         __syncthreads();
         for (int work = lane, a = 0; work < elements; work += CHUNK, ++a) {
             int batch = work / output.basis_count(), mode = work % output.basis_count();
             for (int atom = 0; atom < CHUNK; ++atom)
-                accum[a] += scaled_h[batch * CHUNK + atom] * coefficients[mode * CHUNK + atom];
+                accum[a] += scaled_h[batch * SHARED_STRIDE + atom] *
+                            coefficients[mode * SHARED_STRIDE + atom];
         }
         __syncthreads();
     }
@@ -241,7 +248,7 @@ __global__ void compute_c_split_kernel(const scalar_t *atoms, const int64_t *row
                                        bool reverse, bool cartesian, int splits) {
     extern __shared__ double shared[];
     double *coefficients = shared;
-    double *scaled_h = shared + CHUNK * output.basis_count();
+    double *scaled_h = shared + SHARED_STRIDE * output.basis_count();
     int node = blockIdx.x, bank_index = 0;
     while (bank_index + 1 < output.bank_count && node >= output.banks[bank_index + 1].node_offset)
         ++bank_index;
@@ -469,7 +476,7 @@ torch::Tensor compute_c(torch::Tensor atoms, torch::Tensor rows, torch::Tensor g
     if (c.numel() == 0)
         return c;
     dim3 grid(output.node_count, (h.size(0) + BATCH_TILE - 1) / BATCH_TILE);
-    size_t shared = sizeof(double) * CHUNK * (output.basis_count() + BATCH_TILE);
+    size_t shared = sizeof(double) * SHARED_STRIDE * (output.basis_count() + BATCH_TILE);
     auto stream = c10::cuda::getCurrentCUDAStream();
     AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "hierarchical_compute_c_atoms", [&] {
         using atom_t = scalar_t;
@@ -521,7 +528,7 @@ torch::Tensor compute_c_split(torch::Tensor atoms, torch::Tensor rows, torch::Te
         pages.pointers[partial_pages.size() - 1] = partial_pages.back().data_ptr<double>();
     }
     dim3 grid(output.node_count, (h.size(0) + BATCH_TILE - 1) / BATCH_TILE, splits);
-    size_t shared = sizeof(double) * CHUNK * (output.basis_count() + BATCH_TILE);
+    size_t shared = sizeof(double) * SHARED_STRIDE * (output.basis_count() + BATCH_TILE);
     // Counting layouts contain every Cartesian group, including empty ones;
     // a fully populated unique sorted layout has the same complete order.
     bool cartesian = groups.size(0) == input.node_count * output.node_count;
