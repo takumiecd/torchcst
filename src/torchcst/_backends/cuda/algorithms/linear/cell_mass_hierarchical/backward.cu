@@ -46,7 +46,7 @@ __global__ void parameter_grad_kernel(const scalar_t *atoms, const int64_t *rows
 // Accumulate a weighted projection derivative in scalar registers. On the
 // output side, calculate G at the same time; input-side weights are the stored
 // rounded G multiplied by amplitude. Gradients reassociate FP64 batch sums.
-template <bool Value, typename projection_t>
+template <bool Value, int FixedModes, typename projection_t>
 __device__ inline void
 project_weighted_derivatives(const double *z, int batches, int batch_begin, const Axis &axis,
                              const Bank &bank, int owner, const Profile &profile, double beta_sigma,
@@ -54,8 +54,12 @@ project_weighted_derivatives(const double *z, int batches, int batch_begin, cons
                              double *g_value, double &dcenter, double &dsigma) {
     int retained = bank.full_chart ? 1 : 3;
     int first_tile = bank.full_chart ? 0 : owner - 1;
-    HarmonicStream<true> stream(profile, axis.modes);
-    for (int harmonic = 0; harmonic <= axis.modes; ++harmonic) {
+    int mode_count = FixedModes ? FixedModes : axis.modes;
+    HarmonicStream<true> stream(profile, mode_count);
+    // The M=8 instantiation has a compile-time trip count. The generic
+    // instantiation retains the runtime-selected profile mode count.
+#pragma unroll
+    for (int harmonic = 0; harmonic <= mode_count; ++harmonic) {
         double cc, cs, cc_beta, cs_beta;
         stream.next(cc, cs, cc_beta, cs_beta);
         double omega = profile.omega * harmonic;
@@ -103,7 +107,7 @@ project_weighted_derivatives(const double *z, int batches, int batch_begin, cons
     }
 }
 
-template <typename scalar_t, typename projection_t>
+template <typename scalar_t, typename projection_t, int FixedModes>
 __global__ void compute_g_parameter_grad_kernel(const scalar_t *atoms, const int64_t *rows,
                                                 const int *groups, const int64_t *offsets,
                                                 const double *zx, const double *zy,
@@ -113,6 +117,11 @@ __global__ void compute_g_parameter_grad_kernel(const scalar_t *atoms, const int
     int slot = blockIdx.x * blockDim.x + threadIdx.x;
     if (slot >= atom_count)
         return;
+    // Axis is passed by value; specialize only this kernel's local metadata.
+    if (FixedModes) {
+        input.modes = FixedModes;
+        output.modes = FixedModes;
+    }
     int original = rows[slot];
     int group = group_for_slot(offsets, group_count, slot);
     int input_owner = groups[4 * group + 3], output_owner = groups[4 * group + 2];
@@ -128,9 +137,9 @@ __global__ void compute_g_parameter_grad_kernel(const scalar_t *atoms, const int
     double da = 0, ds = 0, dmu_input = 0, dmu_output = 0;
     for (int begin = 0; begin < batches; begin += BATCH_TILE) {
         double gv[BATCH_TILE] = {};
-        project_weighted_derivatives<true>(zy, batches, begin, output, output_bank, output_owner,
-                                           output_profile, beta_sigma_out, h, atom_count, slot,
-                                           amplitude, gv, dmu_output, ds);
+        project_weighted_derivatives<true, FixedModes>(
+            zy, batches, begin, output, output_bank, output_owner, output_profile, beta_sigma_out,
+            h, atom_count, slot, amplitude, gv, dmu_output, ds);
         for (int b = 0; b < BATCH_TILE && begin + b < batches; ++b) {
             projection_t rounded_g = static_cast<projection_t>(gv[b]);
             g[(begin + b) * atom_count + slot] = rounded_g;
@@ -139,9 +148,9 @@ __global__ void compute_g_parameter_grad_kernel(const scalar_t *atoms, const int
             da += h_value * g_value;
             gv[b] = amplitude * g_value;
         }
-        project_weighted_derivatives<false>(zx, batches, begin, input, input_bank, input_owner,
-                                            input_profile, beta_sigma_in, h, atom_count, slot,
-                                            amplitude, gv, dmu_input, ds);
+        project_weighted_derivatives<false, FixedModes>(
+            zx, batches, begin, input, input_bank, input_owner, input_profile, beta_sigma_in, h,
+            atom_count, slot, amplitude, gv, dmu_input, ds);
     }
     gradient[4 * original] = static_cast<scalar_t>(da);
     gradient[4 * original + 1] = static_cast<scalar_t>(ds);
@@ -216,12 +225,21 @@ compute_g_and_parameter_grad(torch::Tensor atoms, torch::Tensor rows, torch::Ten
     AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "hierarchical_fused_grad_atoms", [&] {
         using atom_t = scalar_t;
         AT_DISPATCH_FLOATING_TYPES(h.scalar_type(), "hierarchical_fused_grad_storage", [&] {
-            compute_g_parameter_grad_kernel<atom_t, scalar_t>
-                <<<(atoms.size(0) + threads - 1) / threads, threads, 0, stream>>>(
-                    atoms.data_ptr<atom_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
-                    offsets.data_ptr<int64_t>(), zx.data_ptr<double>(), zy.data_ptr<double>(),
-                    h.data_ptr<scalar_t>(), g.data_ptr<scalar_t>(), gradient.data_ptr<atom_t>(),
-                    atoms.size(0), groups.size(0), zx.size(0), input, output);
+            if (input.modes == 8 && output.modes == 8) {
+                compute_g_parameter_grad_kernel<atom_t, scalar_t, 8>
+                    <<<(atoms.size(0) + threads - 1) / threads, threads, 0, stream>>>(
+                        atoms.data_ptr<atom_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
+                        offsets.data_ptr<int64_t>(), zx.data_ptr<double>(), zy.data_ptr<double>(),
+                        h.data_ptr<scalar_t>(), g.data_ptr<scalar_t>(), gradient.data_ptr<atom_t>(),
+                        atoms.size(0), groups.size(0), zx.size(0), input, output);
+            } else {
+                compute_g_parameter_grad_kernel<atom_t, scalar_t, 0>
+                    <<<(atoms.size(0) + threads - 1) / threads, threads, 0, stream>>>(
+                        atoms.data_ptr<atom_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
+                        offsets.data_ptr<int64_t>(), zx.data_ptr<double>(), zy.data_ptr<double>(),
+                        h.data_ptr<scalar_t>(), g.data_ptr<scalar_t>(), gradient.data_ptr<atom_t>(),
+                        atoms.size(0), groups.size(0), zx.size(0), input, output);
+            }
         });
     });
     C10_CUDA_KERNEL_LAUNCH_CHECK();

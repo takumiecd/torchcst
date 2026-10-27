@@ -1,5 +1,6 @@
 // Existing profile mathematics, connected to varying-period Z and owner C.
 #include "common.cuh"
+#include <type_traits>
 using namespace cell_mass_hierarchy;
 
 namespace {
@@ -10,10 +11,65 @@ constexpr int CHUNK = 32;
 constexpr int SHARED_STRIDE = CHUNK + 1;
 constexpr int MAX_ACCUMULATORS = (BATCH_TILE * 33 + CHUNK - 1) / CHUNK;
 
+// One harmonic of H. The caller keeps the stream and accumulators in
+// registers; every harmonic advances the stream exactly once.
+__device__ __forceinline__ void accumulate_h_harmonic(HarmonicStream<false> &stream, int harmonic,
+                                                      const double *z, int batches, int batch_begin,
+                                                      const Axis &axis, const Bank &bank,
+                                                      int first_tile, int retained,
+                                                      double (&accum)[BATCH_TILE]) {
+    double cc, cs, unused_cc_beta, unused_cs_beta;
+    stream.next(cc, cs, unused_cc_beta, unused_cs_beta);
+    for (int offset = 0; offset < retained; ++offset) {
+        int raw_tile = first_tile + offset;
+        int tile = positive_mod(raw_tile, bank.tile_count);
+        int image = (raw_tile - tile) / bank.tile_count;
+        double rs, rc;
+        image_rotation(bank, harmonic, image, rs, rc);
+        int node = bank.node_offset + tile;
+        for (int local = 0; local < BATCH_TILE && batch_begin + local < batches; ++local) {
+            int base = ((batch_begin + local) * axis.node_count + node) * axis.basis_count();
+            if (harmonic == 0) {
+                accum[local] += cc * z[base];
+            } else {
+                double zc = z[base + 2 * harmonic - 1], zs = z[base + 2 * harmonic];
+                accum[local] += cc * (zc * rc - zs * rs) + cs * (zs * rc + zc * rs);
+            }
+        }
+    }
+}
+
+__device__ __forceinline__ void store_c_harmonic(HarmonicStream<false> &stream, int harmonic,
+                                                 int lane, double *coefficients) {
+    double cc, cs, unused_cc_beta, unused_cs_beta;
+    stream.next(cc, cs, unused_cc_beta, unused_cs_beta);
+    if (harmonic == 0)
+        coefficients[lane] = cc;
+    else {
+        coefficients[(2 * harmonic - 1) * SHARED_STRIDE + lane] = cc;
+        coefficients[2 * harmonic * SHARED_STRIDE + lane] = cs;
+    }
+}
+
+template <int FixedModes>
+__device__ __forceinline__ void store_c_coefficients(const Profile &profile, int modes, int lane,
+                                                     double *coefficients) {
+    HarmonicStream<false> stream(profile, FixedModes ? FixedModes : modes);
+    if (FixedModes == 8) {
+#pragma unroll
+        for (int harmonic = 0; harmonic <= 8; ++harmonic)
+            store_c_harmonic(stream, harmonic, lane, coefficients);
+    } else {
+#pragma unroll 1
+        for (int harmonic = 0; harmonic <= modes; ++harmonic)
+            store_c_harmonic(stream, harmonic, lane, coefficients);
+    }
+}
+
 // One thread completes H for a different atom and up to four batches. The
 // amplitude is not included. Neighbour Z tiles are rotated to the same
 // unwrapped chart image as the atom's retained one-period window.
-template <typename scalar_t, typename projection_t>
+template <typename scalar_t, typename projection_t, int FixedModes>
 __global__ void compute_h_kernel(const scalar_t *atoms, const int64_t *rows, const int *groups,
                                  const int64_t *offsets, const double *z, projection_t *h,
                                  int atom_count, int group_count, int batches, Axis axis,
@@ -21,6 +77,8 @@ __global__ void compute_h_kernel(const scalar_t *atoms, const int64_t *rows, con
     int slot = blockIdx.x * blockDim.x + threadIdx.x;
     if (slot >= atom_count)
         return;
+    if (FixedModes)
+        axis.modes = FixedModes;
     int group = group_for_slot(offsets, group_count, slot);
     int owner = groups[4 * group + (output_side ? 2 : 3)];
     Bank bank = axis.banks[bank_for_level(axis, groups[4 * group + (output_side ? 0 : 1)])];
@@ -33,26 +91,16 @@ __global__ void compute_h_kernel(const scalar_t *atoms, const int64_t *rows, con
     int batch_begin = blockIdx.y * BATCH_TILE;
     int retained = bank.full_chart ? 1 : 3;
     int first_tile = bank.full_chart ? 0 : owner - 1;
-    for (int harmonic = 0; harmonic <= axis.modes; ++harmonic) {
-        double cc, cs, unused_cc_beta, unused_cs_beta;
-        stream.next(cc, cs, unused_cc_beta, unused_cs_beta);
-        for (int offset = 0; offset < retained; ++offset) {
-            int raw_tile = first_tile + offset;
-            int tile = positive_mod(raw_tile, bank.tile_count);
-            int image = (raw_tile - tile) / bank.tile_count;
-            double rs, rc;
-            image_rotation(bank, harmonic, image, rs, rc);
-            int node = bank.node_offset + tile;
-            for (int local = 0; local < BATCH_TILE && batch_begin + local < batches; ++local) {
-                int base = ((batch_begin + local) * axis.node_count + node) * axis.basis_count();
-                if (harmonic == 0) {
-                    accum[local] += cc * z[base];
-                } else {
-                    double zc = z[base + 2 * harmonic - 1], zs = z[base + 2 * harmonic];
-                    accum[local] += cc * (zc * rc - zs * rs) + cs * (zs * rc + zc * rs);
-                }
-            }
-        }
+    if (FixedModes == 8) {
+#pragma unroll
+        for (int harmonic = 0; harmonic <= 8; ++harmonic)
+            accumulate_h_harmonic(stream, harmonic, z, batches, batch_begin, axis, bank, first_tile,
+                                  retained, accum);
+    } else {
+#pragma unroll 1
+        for (int harmonic = 0; harmonic <= axis.modes; ++harmonic)
+            accumulate_h_harmonic(stream, harmonic, z, batches, batch_begin, axis, bank, first_tile,
+                                  retained, accum);
     }
     for (int local = 0; local < BATCH_TILE && batch_begin + local < batches; ++local)
         h[(batch_begin + local) * atom_count + slot] = accum[local];
@@ -75,13 +123,16 @@ __device__ int lower_group(const int *groups, int count, int ho, int hi, int qo)
 }
 
 // One block owns one output bank/owner. A lane builds the coefficients of a
-// different atom in a 32-atom chunk. Shared holds only this chunk's coefficients
-// and amp*H. C has one writer per element, without atom-sized partial C arrays.
-template <typename scalar_t, typename projection_t>
+// different atom in a 32-atom chunk. Shared holds only this chunk's
+// coefficients and amp*H. C has one writer per element, without atom-sized
+// partial C arrays.
+template <typename scalar_t, typename projection_t, int FixedModes>
 __global__ void compute_c_kernel(const scalar_t *atoms, const int64_t *rows, const int *groups,
                                  const int64_t *offsets, const projection_t *h, double *c,
                                  int atom_count, int group_count, int batches, Axis input,
                                  Axis output, bool reverse) {
+    if (FixedModes)
+        output.modes = FixedModes;
     extern __shared__ double shared[];
     double *coefficients = shared;
     double *scaled_h = shared + SHARED_STRIDE * output.basis_count();
@@ -120,17 +171,7 @@ __global__ void compute_c_kernel(const scalar_t *atoms, const int64_t *rows, con
                 Profile profile = make_profile(
                     output, bank, static_cast<double>(atoms[4 * original + 1]),
                     static_cast<double>(atoms[4 * original + (reverse ? 3 : 2)]), owner);
-                HarmonicStream<false> stream(profile, output.modes);
-                for (int harmonic = 0; harmonic <= output.modes; ++harmonic) {
-                    double cc, cs, unused_cc_beta, unused_cs_beta;
-                    stream.next(cc, cs, unused_cc_beta, unused_cs_beta);
-                    if (harmonic == 0)
-                        coefficients[lane] = cc;
-                    else {
-                        coefficients[(2 * harmonic - 1) * SHARED_STRIDE + lane] = cc;
-                        coefficients[2 * harmonic * SHARED_STRIDE + lane] = cs;
-                    }
-                }
+                store_c_coefficients<FixedModes>(profile, output.modes, lane, coefficients);
             } else {
                 for (int mode = 0; mode < output.basis_count(); ++mode)
                     coefficients[mode * SHARED_STRIDE + lane] = 0;
@@ -163,7 +204,7 @@ __global__ void compute_c_kernel(const scalar_t *atoms, const int64_t *rows, con
 // Consume the intersection of one group's sorted-slot range and this split's
 // interval in the concatenation of all groups belonging to the owner. All
 // lanes take the same branches and participate in every shared-memory barrier.
-template <typename scalar_t, typename projection_t>
+template <typename scalar_t, typename projection_t, int FixedModes>
 __device__ void split_consume_range(const scalar_t *atoms, const int64_t *rows,
                                     const projection_t *h, int atom_count, int batches, Axis output,
                                     Bank bank, int owner, bool reverse, int batch_begin, int begin,
@@ -184,17 +225,7 @@ __device__ void split_consume_range(const scalar_t *atoms, const int64_t *rows,
             Profile profile =
                 make_profile(output, bank, static_cast<double>(atoms[4 * original + 1]),
                              static_cast<double>(atoms[4 * original + (reverse ? 3 : 2)]), owner);
-            HarmonicStream<false> stream(profile, output.modes);
-            for (int harmonic = 0; harmonic <= output.modes; ++harmonic) {
-                double cc, cs, unused_cc_beta, unused_cs_beta;
-                stream.next(cc, cs, unused_cc_beta, unused_cs_beta);
-                if (harmonic == 0)
-                    coefficients[lane] = cc;
-                else {
-                    coefficients[(2 * harmonic - 1) * SHARED_STRIDE + lane] = cc;
-                    coefficients[2 * harmonic * SHARED_STRIDE + lane] = cs;
-                }
-            }
+            store_c_coefficients<FixedModes>(profile, output.modes, lane, coefficients);
         } else {
             for (int mode = 0; mode < output.basis_count(); ++mode)
                 coefficients[mode * SHARED_STRIDE + lane] = 0;
@@ -221,8 +252,9 @@ __device__ void split_consume_range(const scalar_t *atoms, const int64_t *rows,
 // count the owner's atoms then partition their concatenation evenly: even a
 // collection of short groups is distributed across splits. Reverse lookup uses
 // one lane per descriptor and a warp ballot, avoiding barriers for nonmatches.
-// Passed by value as CUDA kernel arguments, so no device pointer-table allocation.
-// The tensors that own these addresses stay alive until both kernels are queued.
+// Passed by value as CUDA kernel arguments, so no device pointer-table
+// allocation. The tensors that own these addresses stay alive until both
+// kernels are queued.
 struct SplitPages {
     double *pointers[64];
     int page_splits;
@@ -240,12 +272,14 @@ __device__ inline bool compatible_sigma_banks(const Axis &a, int ai, const Axis 
     return fmin(au, bu) > fmax(al, bl);
 }
 
-template <typename scalar_t, typename projection_t>
+template <typename scalar_t, typename projection_t, int FixedModes>
 __global__ void compute_c_split_kernel(const scalar_t *atoms, const int64_t *rows,
                                        const int *groups, const int64_t *offsets,
                                        const projection_t *h, SplitPages pages, int atom_count,
                                        int group_count, int batches, Axis input, Axis output,
                                        bool reverse, bool cartesian, int splits) {
+    if (FixedModes)
+        output.modes = FixedModes;
     extern __shared__ double shared[];
     double *coefficients = shared;
     double *scaled_h = shared + SHARED_STRIDE * output.basis_count();
@@ -281,9 +315,10 @@ __global__ void compute_c_split_kernel(const scalar_t *atoms, const int64_t *row
                     if (pass == 0)
                         prefix += end - begin;
                     else
-                        split_consume_range(atoms, rows, h, atom_count, batches, output, bank,
-                                            owner, reverse, batch_begin, begin, end, split_begin,
-                                            split_end, prefix, coefficients, scaled_h, accum);
+                        split_consume_range<scalar_t, projection_t, FixedModes>(
+                            atoms, rows, h, atom_count, batches, output, bank, owner, reverse,
+                            batch_begin, begin, end, split_begin, split_end, prefix, coefficients,
+                            scaled_h, accum);
                 }
             }
         } else if (reverse) {
@@ -299,9 +334,10 @@ __global__ void compute_c_split_kernel(const scalar_t *atoms, const int64_t *row
                     if (pass == 0)
                         prefix += end - begin;
                     else
-                        split_consume_range(atoms, rows, h, atom_count, batches, output, bank,
-                                            owner, reverse, batch_begin, begin, end, split_begin,
-                                            split_end, prefix, coefficients, scaled_h, accum);
+                        split_consume_range<scalar_t, projection_t, FixedModes>(
+                            atoms, rows, h, atom_count, batches, output, bank, owner, reverse,
+                            batch_begin, begin, end, split_begin, split_end, prefix, coefficients,
+                            scaled_h, accum);
                 }
             }
         } else {
@@ -323,9 +359,10 @@ __global__ void compute_c_split_kernel(const scalar_t *atoms, const int64_t *row
                 if (pass == 0)
                     prefix += end - begin;
                 else
-                    split_consume_range(atoms, rows, h, atom_count, batches, output, bank, owner,
-                                        reverse, batch_begin, begin, end, split_begin, split_end,
-                                        prefix, coefficients, scaled_h, accum);
+                    split_consume_range<scalar_t, projection_t, FixedModes>(
+                        atoms, rows, h, atom_count, batches, output, bank, owner, reverse,
+                        batch_begin, begin, end, split_begin, split_end, prefix, coefficients,
+                        scaled_h, accum);
             }
         }
         if (pass == 0) {
@@ -449,10 +486,17 @@ torch::Tensor compute_h(torch::Tensor atoms, torch::Tensor rows, torch::Tensor g
     AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "hierarchical_compute_h_atoms", [&] {
         using atom_t = scalar_t;
         AT_DISPATCH_FLOATING_TYPES(h.scalar_type(), "hierarchical_compute_h_storage", [&] {
-            compute_h_kernel<atom_t, scalar_t><<<grid, threads, 0, stream>>>(
-                atoms.data_ptr<atom_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
-                offsets.data_ptr<int64_t>(), z.data_ptr<double>(), h.data_ptr<scalar_t>(),
-                atoms.size(0), groups.size(0), z.size(0), axis, output_side);
+            auto launch = [&](auto tag) {
+                constexpr int fixed_modes = decltype(tag)::value;
+                compute_h_kernel<atom_t, scalar_t, fixed_modes><<<grid, threads, 0, stream>>>(
+                    atoms.data_ptr<atom_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
+                    offsets.data_ptr<int64_t>(), z.data_ptr<double>(), h.data_ptr<scalar_t>(),
+                    atoms.size(0), groups.size(0), z.size(0), axis, output_side);
+            };
+            if (axis.modes == 8)
+                launch(std::integral_constant<int, 8>{});
+            else
+                launch(std::integral_constant<int, 0>{});
         });
     });
     C10_CUDA_KERNEL_LAUNCH_CHECK();
@@ -481,18 +525,26 @@ torch::Tensor compute_c(torch::Tensor atoms, torch::Tensor rows, torch::Tensor g
     AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "hierarchical_compute_c_atoms", [&] {
         using atom_t = scalar_t;
         AT_DISPATCH_FLOATING_TYPES(h.scalar_type(), "hierarchical_compute_c_storage", [&] {
-            compute_c_kernel<atom_t, scalar_t><<<grid, CHUNK, shared, stream>>>(
-                atoms.data_ptr<atom_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
-                offsets.data_ptr<int64_t>(), h.data_ptr<scalar_t>(), c.data_ptr<double>(),
-                atoms.size(0), groups.size(0), h.size(0), input, output, reverse);
+            auto launch = [&](auto tag) {
+                constexpr int fixed_modes = decltype(tag)::value;
+                compute_c_kernel<atom_t, scalar_t, fixed_modes><<<grid, CHUNK, shared, stream>>>(
+                    atoms.data_ptr<atom_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
+                    offsets.data_ptr<int64_t>(), h.data_ptr<scalar_t>(), c.data_ptr<double>(),
+                    atoms.size(0), groups.size(0), h.size(0), input, output, reverse);
+            };
+            if (output.modes == 8)
+                launch(std::integral_constant<int, 8>{});
+            else
+                launch(std::integral_constant<int, 0>{});
         });
     });
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return c;
 }
 
-// Research candidate: fixed owner/split partials, then one writer per C element.
-// S=1 remains available through compute_c for direct baseline comparison.
+// Research candidate: fixed owner/split partials, then one writer per C
+// element. S=1 remains available through compute_c for direct baseline
+// comparison.
 torch::Tensor compute_c_split(torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups,
                               torch::Tensor offsets, torch::Tensor h,
                               std::vector<double> input_config, std::vector<double> output_config,
@@ -536,10 +588,18 @@ torch::Tensor compute_c_split(torch::Tensor atoms, torch::Tensor rows, torch::Te
     AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "hierarchical_split_c_atoms", [&] {
         using atom_t = scalar_t;
         AT_DISPATCH_FLOATING_TYPES(h.scalar_type(), "hierarchical_split_c_storage", [&] {
-            compute_c_split_kernel<atom_t, scalar_t><<<grid, CHUNK, shared, stream>>>(
-                atoms.data_ptr<atom_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
-                offsets.data_ptr<int64_t>(), h.data_ptr<scalar_t>(), pages, atoms.size(0),
-                groups.size(0), h.size(0), input, output, reverse, cartesian, splits);
+            auto launch = [&](auto tag) {
+                constexpr int fixed_modes = decltype(tag)::value;
+                compute_c_split_kernel<atom_t, scalar_t, fixed_modes>
+                    <<<grid, CHUNK, shared, stream>>>(
+                        atoms.data_ptr<atom_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
+                        offsets.data_ptr<int64_t>(), h.data_ptr<scalar_t>(), pages, atoms.size(0),
+                        groups.size(0), h.size(0), input, output, reverse, cartesian, splits);
+            };
+            if (output.modes == 8)
+                launch(std::integral_constant<int, 8>{});
+            else
+                launch(std::integral_constant<int, 0>{});
         });
     });
     C10_CUDA_KERNEL_LAUNCH_CHECK();
