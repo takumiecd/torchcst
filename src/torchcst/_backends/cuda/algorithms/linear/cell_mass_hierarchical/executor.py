@@ -328,6 +328,44 @@ def compute_c(
     return native.compute_c_split(*arguments, splits, atoms_per_split, compensated)
 
 
+def compute_h_c(
+    plan,
+    atoms,
+    layout,
+    zx,
+    *,
+    splits=1,
+    atoms_per_split=0,
+    windowed=False,
+    compensated=False,
+):
+    """Compute H and output C together for M8 axes; H uses the atom dtype."""
+    if type(splits) is not int or not 1 <= splits <= 64:
+        raise ValueError("C splits must be an integer in [1,64]")
+    if type(atoms_per_split) is not int or not 0 <= atoms_per_split <= 65536:
+        raise ValueError("atoms_per_split must be an integer in [0,65536]")
+    if type(windowed) is not bool:
+        raise ValueError("windowed must be bool")
+    if plan.input.modes != 8 or plan.output.modes != 8:
+        raise ValueError("fused H/C requires M8 axes")
+    _validate_compensated(compensated, atoms, atoms.dtype, plan.input)
+    _validate_compensated(compensated, atoms, atoms.dtype, plan.output)
+    layout.validate_for(atoms, plan)
+    return _extension().compute_h_c(
+        atoms,
+        layout.rows,
+        layout.groups,
+        layout.offsets,
+        zx,
+        plan.input.native_config(),
+        plan.output.native_config(),
+        splits,
+        atoms_per_split,
+        windowed,
+        compensated,
+    )
+
+
 def expand_c(c, axis, like, *, sites_per_block=32):
     """Expand each bank's C with cell-integrated bases, then add into Y.
 
@@ -580,6 +618,7 @@ class _HierarchicalLinear(torch.autograd.Function):
         fuse_backward_cin,
         atoms_per_split,
         compensated_values,
+        fuse_h_c,
     ):
         zx = build_hierarchy(
             x,
@@ -592,25 +631,37 @@ class _HierarchicalLinear(torch.autograd.Function):
             # The assignment releases raw Z after the transformation. Save only
             # the immutable owner windows needed by H and parameter gradients.
             zx = build_window_moments(zx, plan.input)
-        h = compute_h(
-            plan,
-            atoms,
-            layout,
-            zx,
-            storage_dtype=atoms.dtype,
-            threads=atom_threads,
-            windowed=window_moments,
-            compensated=compensated_values,
-        )
-        c = compute_c(
-            plan,
-            atoms,
-            layout,
-            h,
-            splits=c_splits,
-            atoms_per_split=atoms_per_split,
-            compensated=compensated_values,
-        )
+        if fuse_h_c and plan.input.modes == 8 and plan.output.modes == 8:
+            h, c = compute_h_c(
+                plan,
+                atoms,
+                layout,
+                zx,
+                splits=c_splits,
+                atoms_per_split=atoms_per_split,
+                windowed=window_moments,
+                compensated=compensated_values,
+            )
+        else:
+            h = compute_h(
+                plan,
+                atoms,
+                layout,
+                zx,
+                storage_dtype=atoms.dtype,
+                threads=atom_threads,
+                windowed=window_moments,
+                compensated=compensated_values,
+            )
+            c = compute_c(
+                plan,
+                atoms,
+                layout,
+                h,
+                splits=c_splits,
+                atoms_per_split=atoms_per_split,
+                compensated=compensated_values,
+            )
         y = expand_c(c, plan.output, x, sites_per_block=sites_per_block)
         ctx.plan = plan
         ctx.z_method = z_method
@@ -753,6 +804,7 @@ class _HierarchicalLinear(torch.autograd.Function):
             None,
             None,
             None,
+            None,
         )
 
 
@@ -775,6 +827,7 @@ def hierarchical_linear(
     reverse_layout=False,
     atoms_per_split=0,
     compensated_values=False,
+    fuse_h_c=False,
 ):
     """Private research autograd route, using this forward's bank/owner choices.
 
@@ -783,9 +836,13 @@ def hierarchical_linear(
     packed atom values, global coefficient table, or separate dH is allocated.
     H/G storage uses the input dtype. Opt-in compensated values apply to H,
     output C, standalone G and separate input C; fused gradients stay double.
+    The optional fused H/C forward is used for M8 axes, with separate fallback
+    for other mode counts.
     Double backward and full-route CUDA Graph capture are not supported yet
     (preparation has dynamic output shapes and host checks).
     """
+    if type(fuse_h_c) is not bool:
+        raise ValueError("fuse_h_c must be bool")
     _validate_compensated(compensated_values, atoms, atoms.dtype, plan.input)
     _validate_compensated(compensated_values, atoms, atoms.dtype, plan.output)
     if type(reverse_layout) is not bool:
@@ -845,4 +902,5 @@ def hierarchical_linear(
         fuse_backward_cin,
         atoms_per_split,
         compensated_values,
+        fuse_h_c,
     )

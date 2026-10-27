@@ -1879,7 +1879,8 @@ def test_compensated_value_stages_preserve_unit_mass(reverse, splits):
 
 @cuda_only
 @pytest.mark.parametrize("reverse", [False, True])
-def test_compensated_values_adamw_three_steps_match_fft(reverse):
+@pytest.mark.parametrize("compensated", [False, True])
+def test_compensated_values_adamw_three_steps_match_fft(reverse, compensated):
     from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
         hierarchical_linear,
     )
@@ -1908,7 +1909,8 @@ def test_compensated_values_adamw_three_steps_match_fft(reverse):
             candidate,
             layout_method="counting",
             reverse_layout=reverse,
-            compensated_values=True,
+            compensated_values=compensated,
+            fuse_h_c=True,
             c_splits=7,
             atoms_per_split=32 if reverse else 0,
             fuse_g_grad=True,
@@ -2053,3 +2055,207 @@ def test_compensated_flags_reject_non_bool(stage, invalid):
     }
     with pytest.raises((TypeError, ValueError)):
         calls[stage]()
+
+
+@cuda_only
+@pytest.mark.parametrize(
+    "batches,count,dtype,compensated,windowed,method,splits,grain",
+    [
+        (0, 3, torch.float32, False, False, "sort", 1, 0),
+        (1, 1, torch.float64, False, True, "sort", 7, 32),
+        (4, 9, torch.float32, True, False, "counting", 7, 32),
+        (5, 37, torch.float32, True, True, "counting", 1, 0),
+        (4, 37, torch.float64, False, True, "counting", 7, 0),
+        (4, 0, torch.float32, False, False, "counting", 7, 32),
+    ],
+)
+def test_fused_h_c_stages_match_separate_and_independent_fft(
+    batches, count, dtype, compensated, windowed, method, splits, grain
+):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        build_hierarchy,
+        build_window_moments,
+        compute_c,
+        compute_h,
+        compute_h_c,
+        expand_c,
+        prepare_layout,
+    )
+
+    plan = HierarchyPlan(
+        input=AxisPlan(site_count=128, min_tile_sites=4, spacing=0.5, origin=-2),
+        output=AxisPlan(site_count=128, min_tile_sites=8, spacing=1, origin=3),
+    )
+    rng = torch.Generator().manual_seed(120)
+    source = torch.randn(count, 4, dtype=dtype, generator=rng)
+    source[:, 1] = torch.linspace(0.2, 20, count, dtype=dtype)
+    source[:, 2:] *= 150
+    if count:
+        source[0] = torch.tensor(
+            [0.7 if count == 1 else 0.0, 2.0, 130.9, 61.9], dtype=dtype
+        )
+    if count > 1:
+        infinity = torch.tensor(float("inf"), dtype=dtype)
+        source[1] = torch.tensor([0.7, 2.0, 130.5, 61.75], dtype=dtype)
+        source[1, 1:] = torch.nextafter(source[1, 1:], infinity)
+    x = torch.randn(batches, 128, dtype=dtype, generator=rng)
+    atoms, signal = source.cuda(), x.cuda()
+    layout = prepare_layout(plan, atoms, method=method)
+    zx = build_hierarchy(signal, plan.input)
+    if windowed:
+        zx = build_window_moments(zx, plan.input)
+    h, c = compute_h_c(
+        plan,
+        atoms,
+        layout,
+        zx,
+        splits=splits,
+        atoms_per_split=grain,
+        windowed=windowed,
+        compensated=compensated,
+    )
+    assert h.dtype == dtype
+    separate_h = compute_h(
+        plan,
+        atoms,
+        layout,
+        zx,
+        storage_dtype=dtype,
+        windowed=windowed,
+        compensated=compensated,
+    )
+    separate_c = compute_c(
+        plan,
+        atoms,
+        layout,
+        separate_h,
+        splits=splits,
+        atoms_per_split=grain,
+        compensated=compensated,
+    )
+    tol = (
+        {"rtol": 3e-6, "atol": 2e-7}
+        if dtype == torch.float32
+        else {"rtol": 3e-9, "atol": 2e-10}
+    )
+    torch.testing.assert_close(h, separate_h, **tol)
+    torch.testing.assert_close(c, separate_c, **tol)
+    if count:
+        rows = layout.rows.cpu().tolist()
+        v = existing_profile_matrix(source, plan.input, 3)
+        u = existing_profile_matrix(source, plan.output, 2)
+        expected_h = (x.double() @ v.T)[:, rows]
+        expected_c = output_c_oracle(source, plan, rows, h.cpu().double())
+        expected_y = ((x.double() @ v.T) * source[:, 0].double()[None, :]) @ u
+        torch.testing.assert_close(h.cpu().double(), expected_h, **tol)
+        torch.testing.assert_close(c.cpu(), expected_c, **tol)
+    else:
+        expected_y = torch.zeros(batches, plan.output.site_count, dtype=torch.float64)
+    y = expand_c(c, plan.output, signal)
+    torch.testing.assert_close(y.cpu().double(), expected_y, **tol)
+
+
+@cuda_only
+@pytest.mark.parametrize("compensated", [False, True])
+@pytest.mark.parametrize("windowed", [False, True])
+def test_fused_h_c_autograd_matches_fft_and_all_gradients(compensated, windowed):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        hierarchical_linear,
+    )
+
+    plan = HierarchyPlan(
+        input=AxisPlan(site_count=128, min_tile_sites=4, spacing=0.5, origin=-2),
+        output=AxisPlan(site_count=128, min_tile_sites=8, spacing=1, origin=3),
+    )
+    rng = torch.Generator().manual_seed(120)
+    source = torch.randn(37, 4, generator=rng)
+    source[:, 1] = torch.linspace(0.2, 20, 37)
+    source[:, 2:] *= 150
+    source[0] = torch.tensor([0.0, 2.0, 130.9, 61.9])
+    source[1] = torch.tensor([0.7, 2.0, 130.5, 61.75])
+    source[1, 1:] = torch.nextafter(source[1, 1:], torch.tensor(float("inf")))
+    xcpu = torch.randn(4, 128, generator=rng)
+    dy = torch.randn(4, 128, generator=rng)
+    xr, pr = xcpu.double().requires_grad_(), source.double().requires_grad_()
+    u = differentiable_profile_matrix(pr, plan.output, 2)
+    v = differentiable_profile_matrix(pr, plan.input, 3)
+    reference = ((xr @ v.T) * pr[:, 0]) @ u
+    dxr, dpr = torch.autograd.grad(reference, (xr, pr), dy.double())
+    x, atoms = xcpu.cuda().requires_grad_(), source.cuda().requires_grad_()
+    y = hierarchical_linear(
+        plan,
+        x,
+        atoms,
+        fuse_h_c=True,
+        compensated_values=compensated,
+        layout_method="counting",
+        reverse_layout=True,
+        atoms_per_split=32,
+        c_splits=7,
+        window_moments=windowed,
+        fuse_g_grad=True,
+    )
+    dx, dp = torch.autograd.grad(y, (x, atoms), dy.cuda())
+    for actual, expected in ((y, reference), (dx, dxr), (dp, dpr)):
+        torch.testing.assert_close(
+            actual.cpu().double(), expected, rtol=3e-6, atol=2e-7
+        )
+
+
+@cuda_only
+@pytest.mark.parametrize("bad_side", ["input", "output"])
+def test_fused_h_c_rejects_non_m8_direct_and_highlevel_falls_back(
+    monkeypatch, bad_side
+):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical import (
+        executor,
+    )
+
+    good = AxisPlan(site_count=32, min_tile_sites=4, modes=8)
+    bad = AxisPlan(site_count=32, min_tile_sites=4, modes=16)
+    plan = HierarchyPlan(
+        input=bad if bad_side == "input" else good,
+        output=bad if bad_side == "output" else good,
+    )
+    atoms = torch.tensor(
+        [[0.0, 1.0, 31.9, 0.1], [0.7, 4.0, 12.0, 2.0]],
+        device="cuda",
+        requires_grad=True,
+    )
+    x = torch.randn(4, 32, device="cuda", requires_grad=True)
+    layout = executor.prepare_layout(plan, atoms, method="counting")
+    zx = executor.build_hierarchy(x.detach(), plan.input)
+    with pytest.raises((ValueError, RuntimeError)):
+        executor.compute_h_c(plan, atoms, layout, zx)
+    with pytest.raises(RuntimeError):
+        executor._extension().compute_h_c(
+            atoms,
+            layout.rows,
+            layout.groups,
+            layout.offsets,
+            zx,
+            plan.input.native_config(),
+            plan.output.native_config(),
+            1,
+            0,
+            False,
+            False,
+        )
+    calls = []
+    original = executor.compute_h_c
+
+    def spy(*args, **kwargs):
+        calls.append(1)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(executor, "compute_h_c", spy)
+    actual = executor.hierarchical_linear(plan, x, atoms, layout=layout, fuse_h_c=True)
+    reference = executor.hierarchical_linear(
+        plan, x, atoms, layout=layout, fuse_h_c=False
+    )
+    dy = torch.randn_like(actual)
+    dx, dp = torch.autograd.grad(actual, (x, atoms), dy)
+    dxr, dpr = torch.autograd.grad(reference, (x, atoms), dy)
+    assert not calls
+    for a, b in ((actual, reference), (dx, dxr), (dp, dpr)):
+        torch.testing.assert_close(a, b, rtol=3e-6, atol=2e-7)

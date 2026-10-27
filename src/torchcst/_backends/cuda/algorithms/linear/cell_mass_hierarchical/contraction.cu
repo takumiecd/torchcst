@@ -421,6 +421,211 @@ __global__ void reduce_c_splits_kernel(SplitPages pages, double *c, int64_t elem
     c[i] = value;
 }
 
+// Forward-only experiment: a thread owns one atom, computes H in registers,
+// saves its rounded value, and supplies that same value to the C chunk.
+// Shared-shape atoms use one magnitude stream and independent center phases.
+template <typename atom_t, bool Compensated>
+__device__ void fused_forward_atom(const atom_t *atoms, const int64_t *rows, const int *groups,
+                                   const int64_t *offsets, const double *zx, atom_t *h,
+                                   int atom_count, int group_count, int batches, int batch_begin,
+                                   const Axis &input, const Axis &output, const Bank &output_bank,
+                                   int output_owner, int slot, int lane, bool windowed,
+                                   double *coefficients, double *scaled_h) {
+    int original = rows[slot];
+    int group = group_for_slot(offsets, group_count, slot);
+    int input_owner = groups[4 * group + 3];
+    Bank input_bank = input.banks[bank_for_level(input, groups[4 * group + 1])];
+    double sigma = atoms[4 * original + 1];
+    Profile input_profile = make_profile<false, 8, Compensated>(
+        input, input_bank, sigma, static_cast<double>(atoms[4 * original + 3]), input_owner);
+    bool same_shape = input.modes == output.modes && input.radius_ratio4 == output.radius_ratio4 &&
+                      input_bank.period == output_bank.period &&
+                      input_bank.inverse_period == output_bank.inverse_period &&
+                      input_bank.omega == output_bank.omega;
+    double step_sine = 0, step_cosine = 1, sine = 0, cosine = 1;
+    if (same_shape) {
+        double output_center = profile_center(
+            output, output_bank, static_cast<double>(atoms[4 * original + 2]), output_owner);
+        sincos(input_bank.omega * (output_center - input_profile.center), &step_sine, &step_cosine);
+    }
+    HarmonicStream<false, Compensated> stream(input_profile, 8);
+    double sums[BATCH_TILE] = {};
+    int retained = windowed || input_bank.full_chart ? 1 : 3;
+    int first_tile = windowed ? input_owner : (input_bank.full_chart ? 0 : input_owner - 1);
+#pragma unroll
+    for (int harmonic = 0; harmonic <= 8; ++harmonic) {
+        double cc, cs, unused_cc_beta, unused_cs_beta;
+        stream.next(cc, cs, unused_cc_beta, unused_cs_beta);
+        if (same_shape) {
+            if (harmonic == 0) {
+                coefficients[lane] = cc;
+            } else {
+                double next_sine = sine * step_cosine + cosine * step_sine;
+                cosine = cosine * step_cosine - sine * step_sine;
+                sine = next_sine;
+                coefficients[(2 * harmonic - 1) * SHARED_STRIDE + lane] = cc * cosine - cs * sine;
+                coefficients[2 * harmonic * SHARED_STRIDE + lane] = cs * cosine + cc * sine;
+            }
+        }
+        for (int offset = 0; offset < retained; ++offset) {
+            int raw_tile = first_tile + offset;
+            int tile = positive_mod(raw_tile, input_bank.tile_count);
+            int image = (raw_tile - tile) / input_bank.tile_count;
+            double rs, rc;
+            image_rotation(input_bank, harmonic, image, rs, rc);
+            int node = input_bank.node_offset + tile;
+            for (int b = 0; b < BATCH_TILE && batch_begin + b < batches; ++b) {
+                int base = ((batch_begin + b) * input.node_count + node) * input.basis_count();
+                if (harmonic == 0) {
+                    sums[b] += cc * zx[base];
+                } else {
+                    double zc = zx[base + 2 * harmonic - 1], zs = zx[base + 2 * harmonic];
+                    sums[b] += cc * (zc * rc - zs * rs) + cs * (zs * rc + zc * rs);
+                }
+            }
+        }
+    }
+    if (!same_shape) {
+        Profile profile = make_profile<false, 8, Compensated>(
+            output, output_bank, sigma, static_cast<double>(atoms[4 * original + 2]), output_owner);
+        store_c_coefficients<8, Compensated>(profile, 8, lane, coefficients);
+    }
+    double amplitude = atoms[4 * original];
+    for (int b = 0; b < BATCH_TILE; ++b) {
+        if (batch_begin + b < batches) {
+            atom_t rounded = static_cast<atom_t>(sums[b]);
+            h[(batch_begin + b) * atom_count + slot] = rounded;
+            scaled_h[b * SHARED_STRIDE + lane] = amplitude * static_cast<double>(rounded);
+        } else {
+            scaled_h[b * SHARED_STRIDE + lane] = 0;
+        }
+    }
+}
+
+// Every atom in the owner's concatenated bank ranges belongs to exactly one
+// split. Padding lanes also reach all barriers, with zero shared contributions.
+template <typename atom_t, bool Compensated>
+__device__ void fused_forward_range(const atom_t *atoms, const int64_t *rows, const int *groups,
+                                    const int64_t *offsets, const double *zx, atom_t *h,
+                                    int atom_count, int group_count, int batches, int batch_begin,
+                                    const Axis &input, const Axis &output, const Bank &bank,
+                                    int owner, int begin, int end, int split_begin, int split_end,
+                                    int &prefix, bool windowed, double *coefficients,
+                                    double *scaled_h, double *totals) {
+    int length = end - begin;
+    int first = max(0, split_begin - prefix), last = min(length, split_end - prefix);
+    prefix += length;
+    int lane = threadIdx.x, elements = BATCH_TILE * output.basis_count();
+    for (int chunk = begin + first; chunk < begin + last; chunk += CHUNK) {
+        int slot = chunk + lane;
+        if (slot < begin + last) {
+            fused_forward_atom<atom_t, Compensated>(
+                atoms, rows, groups, offsets, zx, h, atom_count, group_count, batches, batch_begin,
+                input, output, bank, owner, slot, lane, windowed, coefficients, scaled_h);
+        } else {
+            for (int mode = 0; mode < output.basis_count(); ++mode)
+                coefficients[mode * SHARED_STRIDE + lane] = 0;
+            for (int b = 0; b < BATCH_TILE; ++b)
+                scaled_h[b * SHARED_STRIDE + lane] = 0;
+        }
+        __syncthreads();
+        for (int work = lane; work < elements; work += CHUNK) {
+            int batch = work / output.basis_count(), mode = work % output.basis_count();
+            double value = totals[work];
+            for (int atom = 0; atom < CHUNK; ++atom)
+                value += scaled_h[batch * SHARED_STRIDE + atom] *
+                         coefficients[mode * SHARED_STRIDE + atom];
+            totals[work] = value;
+        }
+        __syncthreads();
+    }
+}
+
+template <typename atom_t, bool Compensated>
+__global__ void fused_forward_kernel(const atom_t *atoms, const int64_t *rows, const int *groups,
+                                     const int64_t *offsets, const double *zx, atom_t *h,
+                                     SplitPages pages, int atom_count, int group_count, int batches,
+                                     Axis input, Axis output, bool cartesian, int splits,
+                                     int atoms_per_split, bool windowed) {
+    extern __shared__ double shared[];
+    double *coefficients = shared;
+    double *scaled_h = shared + SHARED_STRIDE * output.basis_count();
+    double *totals = scaled_h + SHARED_STRIDE * BATCH_TILE;
+    int node = blockIdx.x, bank_index = 0;
+    while (bank_index + 1 < output.bank_count && node >= output.banks[bank_index + 1].node_offset)
+        ++bank_index;
+    Bank bank = output.banks[bank_index];
+    int owner = node - bank.node_offset, lane = threadIdx.x;
+    int batch_begin = blockIdx.y * BATCH_TILE, elements = BATCH_TILE * output.basis_count();
+    double maximum_sigma =
+        static_cast<double>(static_cast<atom_t>(fmin(input.period, output.period) / 3));
+    int split_begin = 0, split_end = 0;
+    for (int pass = 0; pass < 2; ++pass) {
+        int prefix = 0;
+        for (int range = 0; range < input.bank_count; ++range) {
+            Bank other = input.banks[range];
+            if (cartesian &&
+                !compatible_sigma_banks(output, bank_index, input, range, maximum_sigma))
+                continue;
+            int first, last;
+            if (cartesian) {
+                first = bank.node_offset * input.node_count + bank.tile_count * other.node_offset +
+                        owner * other.tile_count;
+                last = first + other.tile_count;
+            } else {
+                first = lower_group(groups, group_count, bank.level, other.level, owner);
+                last = lower_group(groups, group_count, bank.level, other.level, owner + 1);
+            }
+            int begin = offsets[first], end = offsets[last];
+            if (pass == 0)
+                prefix += end - begin;
+            else
+                fused_forward_range<atom_t, Compensated>(
+                    atoms, rows, groups, offsets, zx, h, atom_count, group_count, batches,
+                    batch_begin, input, output, bank, owner, begin, end, split_begin, split_end,
+                    prefix, windowed, coefficients, scaled_h, totals);
+        }
+        if (pass == 0) {
+            int active = atoms_per_split
+                             ? min(splits, max(1, (prefix + atoms_per_split - 1) / atoms_per_split))
+                             : splits;
+            int local_split = blockIdx.z % pages.page_splits, page = blockIdx.z / pages.page_splits;
+            if (blockIdx.z >= active) {
+                // This branch is uniform, before any block barrier.
+                for (int work = lane; work < elements; work += CHUNK) {
+                    int batch = batch_begin + work / output.basis_count();
+                    int mode = work % output.basis_count();
+                    if (batch < batches) {
+                        int64_t i = ((static_cast<int64_t>(local_split) * batches + batch) *
+                                         output.node_count +
+                                     node) *
+                                        output.basis_count() +
+                                    mode;
+                        pages.pointers[page][i] = 0;
+                    }
+                }
+                return;
+            }
+            split_begin = static_cast<int>(static_cast<int64_t>(prefix) * blockIdx.z / active);
+            split_end = static_cast<int>(static_cast<int64_t>(prefix) * (blockIdx.z + 1) / active);
+            for (int work = lane; work < elements; work += CHUNK)
+                totals[work] = 0;
+            __syncthreads();
+        }
+    }
+    int local_split = blockIdx.z % pages.page_splits, page = blockIdx.z / pages.page_splits;
+    for (int work = lane; work < elements; work += CHUNK) {
+        int batch = batch_begin + work / output.basis_count(), mode = work % output.basis_count();
+        if (batch < batches) {
+            int64_t i =
+                ((static_cast<int64_t>(local_split) * batches + batch) * output.node_count + node) *
+                    output.basis_count() +
+                mode;
+            pages.pointers[page][i] = totals[work];
+        }
+    }
+}
+
 // Shared per-atom calculation for legacy grouped and reverse-slot producers.
 template <typename atom_t, typename projection_t, int FixedModes>
 __device__ inline void
@@ -939,6 +1144,75 @@ torch::Tensor compute_c_split(torch::Tensor atoms, torch::Tensor rows, torch::Te
         pages, c.data_ptr<double>(), elements, splits);
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return c;
+}
+
+// Opt-in research path: H and output-owner C share the same atom work.
+// The first prototype is deliberately restricted to M8 on both axes.
+std::vector<torch::Tensor> compute_h_c(torch::Tensor atoms, torch::Tensor rows,
+                                       torch::Tensor groups, torch::Tensor offsets,
+                                       torch::Tensor zx, std::vector<double> input_config,
+                                       std::vector<double> output_config, int splits,
+                                       int atoms_per_split, bool windowed, bool compensated) {
+    check_layout(atoms, rows, groups, offsets);
+    Axis input = parse_axis(input_config), output = parse_axis(output_config);
+    check_moments(zx, atoms, input);
+    TORCH_CHECK(input.modes == 8 && output.modes == 8, "fused H/C currently requires M8 axes");
+    TORCH_CHECK(!compensated || (atoms.scalar_type() == torch::kFloat32 &&
+                                 input.tail_bound == 1e-3 && output.tail_bound == 1e-3),
+                "compensated values require FP32 atoms and tail 1e-3 on both axes");
+    TORCH_CHECK(splits >= 1 && splits <= 64, "splits must lie in [1,64]");
+    TORCH_CHECK(atoms_per_split >= 0 && atoms_per_split <= 65536,
+                "atoms_per_split must lie in [0,65536]");
+    TORCH_CHECK(zx.size(0) * atoms.size(0) <= INT_MAX, "H exceeds index capacity");
+    TORCH_CHECK(zx.size(0) <= INT_MAX / (output.node_count * output.basis_count()),
+                "C exceeds index capacity");
+    TORCH_CHECK(zx.size(0) <= static_cast<int64_t>(65535) * BATCH_TILE,
+                "batch grid exceeds CUDA capacity");
+    TORCH_CHECK(atoms.size(0) == 0 || groups.size(0) > 0, "nonempty atoms need groups");
+    c10::cuda::CUDAGuard guard(atoms.device());
+    auto h = torch::empty({zx.size(0), atoms.size(0)}, atoms.options());
+    auto c = torch::empty({zx.size(0), output.node_count, output.basis_count()}, zx.options());
+    if (c.numel() == 0)
+        return {h, c};
+    constexpr int64_t PAGE_BYTES = 1024 * 1024;
+    int64_t c_bytes = c.numel() * static_cast<int64_t>(sizeof(double));
+    int page_splits =
+        static_cast<int>(std::min<int64_t>(splits, std::max<int64_t>(1, PAGE_BYTES / c_bytes)));
+    SplitPages pages{};
+    pages.page_splits = page_splits;
+    std::vector<torch::Tensor> partial_pages;
+    partial_pages.reserve((splits + page_splits - 1) / page_splits);
+    for (int begin = 0; begin < splits; begin += page_splits) {
+        int count = std::min(page_splits, splits - begin);
+        partial_pages.push_back(torch::empty(
+            {count, zx.size(0), output.node_count, output.basis_count()}, c.options()));
+        pages.pointers[partial_pages.size() - 1] = partial_pages.back().data_ptr<double>();
+    }
+    dim3 grid(output.node_count, (zx.size(0) + BATCH_TILE - 1) / BATCH_TILE, splits);
+    size_t shared = sizeof(double) * (SHARED_STRIDE * (output.basis_count() + BATCH_TILE) +
+                                      BATCH_TILE * output.basis_count());
+    bool cartesian = groups.size(0) == input.node_count * output.node_count;
+    auto stream = c10::cuda::getCurrentCUDAStream();
+    AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "hierarchical_fused_forward", [&] {
+        auto launch = [&](auto compensated_tag) {
+            constexpr bool use_compensated = decltype(compensated_tag)::value;
+            fused_forward_kernel<scalar_t, use_compensated><<<grid, CHUNK, shared, stream>>>(
+                atoms.data_ptr<scalar_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
+                offsets.data_ptr<int64_t>(), zx.data_ptr<double>(), h.data_ptr<scalar_t>(), pages,
+                atoms.size(0), groups.size(0), zx.size(0), input, output, cartesian, splits,
+                atoms_per_split, windowed);
+        };
+        if (compensated)
+            launch(std::true_type{});
+        else
+            launch(std::false_type{});
+    });
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+    int64_t elements = c.numel();
+    reduce_c_splits_kernel<<<(elements + THREADS - 1) / THREADS, THREADS, 0, stream>>>(
+        pages, c.data_ptr<double>(), elements, splits);
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+    return {h, c};
 }
 
 // Joint backward experiment for a single batch tile. It preserves the saved
