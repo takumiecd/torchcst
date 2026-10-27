@@ -43,13 +43,15 @@ __global__ void parameter_grad_kernel(const scalar_t *atoms, const int64_t *rows
     gradient[4 * original + 3] = static_cast<scalar_t>(dmu_input);
 }
 
-// Compute the output projection and derivatives together while the same
-// coefficient stream, image and moments are live. G is rounded to its storage
-// dtype by the caller before it participates in the atom gradients.
-__device__ inline void project_value_derivatives(const double *z, int batches, int batch_begin,
-                                                 const Axis &axis, const Bank &bank, int owner,
-                                                 const Profile &profile, double beta_sigma,
-                                                 double *value, double *dcenter, double *dsigma) {
+// Accumulate a weighted projection derivative in scalar registers. On the
+// output side, calculate G at the same time; input-side weights are the stored
+// rounded G multiplied by amplitude. Gradients reassociate FP64 batch sums.
+template <bool Value, typename projection_t>
+__device__ inline void
+project_weighted_derivatives(const double *z, int batches, int batch_begin, const Axis &axis,
+                             const Bank &bank, int owner, const Profile &profile, double beta_sigma,
+                             const projection_t *h, int atom_count, int slot, double amplitude,
+                             double *g_value, double &dcenter, double &dsigma) {
     int retained = bank.full_chart ? 1 : 3;
     int first_tile = bank.full_chart ? 0 : owner - 1;
     HarmonicStream<true> stream(profile, axis.modes);
@@ -64,18 +66,29 @@ __device__ inline void project_value_derivatives(const double *z, int batches, i
             double rs, rc;
             image_rotation(bank, harmonic, image, rs, rc);
             int node = bank.node_offset + tile;
+            double weighted_cos = 0, weighted_sin = 0;
             for (int b = 0; b < BATCH_TILE && batch_begin + b < batches; ++b) {
                 int base = ((batch_begin + b) * axis.node_count + node) * axis.basis_count();
                 if (harmonic == 0) {
-                    value[b] += cc * z[base];
+                    if (Value)
+                        g_value[b] += cc * z[base];
                     continue;
                 }
                 double zc = z[base + 2 * harmonic - 1], zs = z[base + 2 * harmonic];
                 double rotated_cos = zc * rc - zs * rs;
                 double rotated_sin = zs * rc + zc * rs;
-                value[b] += cc * rotated_cos + cs * rotated_sin;
-                dcenter[b] += omega * (-cs * rotated_cos + cc * rotated_sin);
-                dsigma[b] += beta_sigma * (cc_beta * rotated_cos + cs_beta * rotated_sin);
+                if (Value)
+                    g_value[b] += cc * rotated_cos + cs * rotated_sin;
+                double weight =
+                    Value
+                        ? amplitude * static_cast<double>(h[(batch_begin + b) * atom_count + slot])
+                        : g_value[b];
+                weighted_cos += weight * rotated_cos;
+                weighted_sin += weight * rotated_sin;
+            }
+            if (harmonic != 0) {
+                dcenter += omega * (-cs * weighted_cos + cc * weighted_sin);
+                dsigma += beta_sigma * (cc_beta * weighted_cos + cs_beta * weighted_sin);
             }
         }
     }
@@ -99,25 +112,26 @@ __global__ void compute_g_parameter_grad_kernel(const scalar_t *atoms, const int
     double amplitude = atoms[4 * original], sigma = atoms[4 * original + 1];
     double input_center = atoms[4 * original + 3], output_center = atoms[4 * original + 2];
     Profile output_profile = make_profile(output, output_bank, sigma, output_center, output_owner);
-    double beta_sigma = beta_sigma_derivative(output, output_bank, sigma, output_profile.beta);
+    Profile input_profile = make_profile(input, input_bank, sigma, input_center, input_owner);
+    double beta_sigma_out = beta_sigma_derivative(output, output_bank, sigma, output_profile.beta);
+    double beta_sigma_in = beta_sigma_derivative(input, input_bank, sigma, input_profile.beta);
     double da = 0, ds = 0, dmu_input = 0, dmu_output = 0;
     for (int begin = 0; begin < batches; begin += BATCH_TILE) {
-        double dh_mu[BATCH_TILE] = {}, dh_sigma[BATCH_TILE] = {};
-        double gv[BATCH_TILE] = {}, dg_mu[BATCH_TILE] = {}, dg_sigma[BATCH_TILE] = {};
-        project_derivatives(zx, batches, begin, input, input_bank, input_owner, sigma, input_center,
-                            dh_mu, dh_sigma);
-        project_value_derivatives(zy, batches, begin, output, output_bank, output_owner,
-                                  output_profile, beta_sigma, gv, dg_mu, dg_sigma);
+        double gv[BATCH_TILE] = {};
+        project_weighted_derivatives<true>(zy, batches, begin, output, output_bank, output_owner,
+                                           output_profile, beta_sigma_out, h, atom_count, slot,
+                                           amplitude, gv, dmu_output, ds);
         for (int b = 0; b < BATCH_TILE && begin + b < batches; ++b) {
             projection_t rounded_g = static_cast<projection_t>(gv[b]);
             g[(begin + b) * atom_count + slot] = rounded_g;
             double h_value = h[(begin + b) * atom_count + slot];
             double g_value = static_cast<double>(rounded_g);
             da += h_value * g_value;
-            ds += amplitude * (g_value * dh_sigma[b] + h_value * dg_sigma[b]);
-            dmu_input += amplitude * g_value * dh_mu[b];
-            dmu_output += amplitude * h_value * dg_mu[b];
+            gv[b] = amplitude * g_value;
         }
+        project_weighted_derivatives<false>(zx, batches, begin, input, input_bank, input_owner,
+                                            input_profile, beta_sigma_in, h, atom_count, slot,
+                                            amplitude, gv, dmu_input, ds);
     }
     gradient[4 * original] = static_cast<scalar_t>(da);
     gradient[4 * original + 1] = static_cast<scalar_t>(ds);

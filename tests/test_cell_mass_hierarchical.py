@@ -1210,3 +1210,83 @@ def test_atom_launch_threads_preserve_exact_per_atom_results(dtype, threads, fus
     dx, dp = torch.autograd.grad(result, (x, atoms), dy)
     for a, b in ((baseline, result), (dx0, dx), (dp0, dp)):
         torch.testing.assert_close(a, b, rtol=0, atol=0)
+
+
+@cuda_only
+@pytest.mark.parametrize("count", [0, 3])
+@pytest.mark.parametrize("cached", [False, True])
+def test_counting_fused_signal_validation_preserves_errors(count, cached):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        hierarchical_linear,
+        prepare_layout,
+    )
+
+    axis = AxisPlan(site_count=128, min_tile_sites=4)
+    plan = HierarchyPlan(input=axis, output=axis)
+    atoms = torch.ones(count, 4, device="cuda")
+    layout = prepare_layout(plan, atoms, method="counting") if cached else None
+    x = torch.ones(4, 128, device="cuda")
+    x[0, 0] = float("nan")
+    with pytest.raises(ValueError, match="X must be finite"):
+        hierarchical_linear(plan, x, atoms, layout=layout, layout_method="counting")
+    if not cached and count:
+        atoms[0, 1] = float("nan")
+        with pytest.raises(ValueError, match="X must be finite"):
+            hierarchical_linear(plan, x, atoms, layout_method="counting")
+
+
+@cuda_only
+@pytest.mark.parametrize("spacing", [1.0, 0.9])
+def test_chart_remainder_extreme_centers_matches_canonical_fft(spacing):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        hierarchical_linear,
+    )
+
+    axis = AxisPlan(site_count=128, min_tile_sites=4, spacing=spacing, origin=-2.0)
+    plan = HierarchyPlan(input=axis, output=axis)
+    centers = [
+        0.0,
+        -0.0,
+        math.nextafter(1.5, -math.inf),
+        1.5,
+        math.nextafter(1.5, math.inf),
+        -2.0,
+        125.9,
+        1e200,
+        -1e200,
+        1.7976931348623157e308,
+    ]
+    source = torch.tensor([[0.7, 2.0, c, c] for c in centers], dtype=torch.float64)
+    canonical = source.clone()
+    for i, c in enumerate(centers):
+        relative = math.fmod(
+            math.fmod(c, axis.period) - math.fmod(axis.origin, axis.period), axis.period
+        )
+        if relative < 0:
+            relative += axis.period
+        canonical[i, 2:] = axis.origin + relative
+    xcpu = torch.randn(
+        3, 128, dtype=torch.float64, generator=torch.Generator().manual_seed(120)
+    )
+    dy = torch.randn_like(xcpu)
+    p = source.cuda().requires_grad_()
+    x = xcpu.cuda().requires_grad_()
+    y = hierarchical_linear(
+        plan,
+        x,
+        p,
+        c_splits=7,
+        fuse_g_grad=True,
+        layout_method="counting",
+        z_chunk_sites=8,
+        atom_threads=64,
+    )
+    dx, dp = torch.autograd.grad(y, (x, p), dy.cuda())
+    pr = canonical.requires_grad_()
+    xr = xcpu.requires_grad_()
+    u = differentiable_profile_matrix(pr, axis, 2)
+    v = differentiable_profile_matrix(pr, axis, 3)
+    yr = ((xr @ v.T) * pr[:, 0]) @ u
+    dxr, dpr = torch.autograd.grad(yr, (xr, pr), dy)
+    for actual, expected in ((y, yr), (dx, dxr), (dp, dpr)):
+        torch.testing.assert_close(actual.cpu(), expected, rtol=3e-9, atol=2e-10)

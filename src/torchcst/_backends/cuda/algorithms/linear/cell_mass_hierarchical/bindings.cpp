@@ -7,6 +7,8 @@ using Config = std::vector<double>;
 
 std::vector<Tensor> classify_atoms(Tensor atoms, Config input, Config output);
 std::vector<Tensor> prepare_counting_layout(Tensor atoms, Config input, Config output);
+std::vector<Tensor> prepare_counting_layout_signal(Tensor atoms, Tensor signal, Config input,
+                                                   Config output);
 Tensor decode_groups(Tensor keys, Config input, Config output);
 Tensor build_hierarchy(Tensor signal, Config axis, bool merge, int team_size);
 Tensor build_hierarchy_chunked(Tensor signal, Config axis, bool merge, int team_size,
@@ -28,6 +30,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("classify_atoms", &classify_atoms);
     m.def("decode_groups", &decode_groups);
     m.def("prepare_counting_layout", &prepare_counting_layout);
+    m.def("prepare_counting_layout_signal", &prepare_counting_layout_signal);
     m.def("build_hierarchy", &build_hierarchy);
     m.def("build_hierarchy_chunked", &build_hierarchy_chunked);
     m.def("compute_h", &compute_h);

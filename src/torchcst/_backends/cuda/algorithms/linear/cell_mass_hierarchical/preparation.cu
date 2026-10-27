@@ -51,10 +51,16 @@ __global__ void decode_groups_kernel(const int64_t *keys, int groups, Axis input
 // atom values remain in their original Parameter array.
 template <typename scalar_t>
 __global__ void count_memberships_kernel(const scalar_t *atoms, int atom_count, Axis input,
-                                         Axis output, int *keys, int *counts, int *errors) {
-    int atom = blockIdx.x * blockDim.x + threadIdx.x;
-    if (atom >= atom_count)
+                                         Axis output, const scalar_t *signal, int64_t signal_count,
+                                         int *keys, int *counts, int *errors) {
+    int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    // Check signal before the atom boundary: empty/small atom sets can still
+    // have input entries to validate. Bit 4 is separate from atom error bits.
+    if (index < signal_count && !isfinite(static_cast<double>(signal[index])))
+        atomicOr(errors, 4);
+    if (index >= atom_count)
         return;
+    int atom = static_cast<int>(index);
     int error = 0;
     for (int field = 0; field < 4; ++field)
         if (!isfinite(static_cast<double>(atoms[4 * atom + field])))
@@ -350,12 +356,21 @@ std::vector<torch::Tensor> classify_atoms(torch::Tensor atoms, std::vector<doubl
     return {keys, errors};
 }
 
-std::vector<torch::Tensor> prepare_counting_layout(torch::Tensor atoms,
-                                                   std::vector<double> input_config,
-                                                   std::vector<double> output_config) {
+static std::vector<torch::Tensor> prepare_counting_layout_impl(torch::Tensor atoms,
+                                                               const torch::Tensor &signal,
+                                                               std::vector<double> input_config,
+                                                               std::vector<double> output_config) {
     check_cuda_float_matrix(atoms);
     TORCH_CHECK(atoms.size(1) == 4 && atoms.size(0) <= 65536, "expected [A<=65536,4] atoms");
     Axis input = parse_axis(input_config), output = parse_axis(output_config);
+    if (signal.defined()) {
+        check_cuda_float_matrix(signal);
+        TORCH_CHECK(signal.device() == atoms.device() &&
+                        signal.scalar_type() == atoms.scalar_type(),
+                    "signal and atoms must share device and dtype");
+        TORCH_CHECK(signal.size(1) == input.sites, "signal does not match input axis");
+        TORCH_CHECK(signal.numel() <= INT_MAX, "signal exceeds index capacity");
+    }
     int group_count = input.node_count * output.node_count;
     TORCH_CHECK(group_count <= 4096, "counting layout supports at most 4096 Cartesian groups");
     c10::cuda::CUDAGuard guard(atoms.device());
@@ -368,12 +383,15 @@ std::vector<torch::Tensor> prepare_counting_layout(torch::Tensor atoms,
     auto offsets = torch::empty({group_count + 1}, atoms.options().dtype(torch::kInt64));
     auto rows = torch::empty({atoms.size(0)}, atoms.options().dtype(torch::kInt64));
     auto stream = c10::cuda::getCurrentCUDAStream();
-    if (atoms.size(0) > 0) {
-        int blocks = (atoms.size(0) + THREADS - 1) / THREADS;
+    int64_t signal_count = signal.defined() ? signal.numel() : 0;
+    int64_t work = std::max(atoms.size(0), signal_count);
+    if (work > 0) {
+        int blocks = (work + THREADS - 1) / THREADS;
         AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "hierarchical_count_memberships", [&] {
             count_memberships_kernel<<<blocks, THREADS, 0, stream>>>(
-                atoms.data_ptr<scalar_t>(), atoms.size(0), input, output, keys.data_ptr<int>(),
-                counts.data_ptr<int>(), errors.data_ptr<int>());
+                atoms.data_ptr<scalar_t>(), atoms.size(0), input, output,
+                signal.defined() ? signal.data_ptr<scalar_t>() : nullptr, signal_count,
+                keys.data_ptr<int>(), counts.data_ptr<int>(), errors.data_ptr<int>());
         });
         C10_CUDA_KERNEL_LAUNCH_CHECK();
     }
@@ -389,6 +407,18 @@ std::vector<torch::Tensor> prepare_counting_layout(torch::Tensor atoms,
         C10_CUDA_KERNEL_LAUNCH_CHECK();
     }
     return {rows, groups, offsets, errors};
+}
+
+std::vector<torch::Tensor> prepare_counting_layout(torch::Tensor atoms,
+                                                   std::vector<double> input_config,
+                                                   std::vector<double> output_config) {
+    return prepare_counting_layout_impl(atoms, torch::Tensor(), input_config, output_config);
+}
+
+std::vector<torch::Tensor> prepare_counting_layout_signal(torch::Tensor atoms, torch::Tensor signal,
+                                                          std::vector<double> input_config,
+                                                          std::vector<double> output_config) {
+    return prepare_counting_layout_impl(atoms, signal, input_config, output_config);
 }
 
 torch::Tensor decode_groups(torch::Tensor keys, std::vector<double> input_config,

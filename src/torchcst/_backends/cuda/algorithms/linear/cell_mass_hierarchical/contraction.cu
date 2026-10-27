@@ -226,7 +226,7 @@ __global__ void compute_c_split_kernel(const scalar_t *atoms, const int64_t *row
                                        const int *groups, const int64_t *offsets,
                                        const projection_t *h, SplitPages pages, int atom_count,
                                        int group_count, int batches, Axis input, Axis output,
-                                       bool reverse, int splits) {
+                                       bool reverse, bool cartesian, int splits) {
     extern __shared__ double shared[];
     double *coefficients = shared;
     double *scaled_h = shared + CHUNK * output.basis_count();
@@ -241,7 +241,27 @@ __global__ void compute_c_split_kernel(const scalar_t *atoms, const int64_t *row
     double accum[MAX_ACCUMULATORS] = {};
     for (int pass = 0; pass < 2; ++pass) {
         int prefix = 0;
-        if (reverse) {
+        if (reverse && cartesian) {
+            // Groups are ordered (output bank,input bank,output owner,input
+            // owner). Here output is the target input axis, while input is the
+            // other (original output) axis. Visit its banks/owners in the same
+            // order as the sparse scan, and address the target owner directly.
+            for (int range = 0; range < input.bank_count; ++range) {
+                Bank other = input.banks[range];
+                int first = other.node_offset * output.node_count +
+                            other.tile_count * bank.node_offset + owner;
+                for (int other_owner = 0; other_owner < other.tile_count; ++other_owner) {
+                    int group = first + other_owner * bank.tile_count;
+                    int begin = offsets[group], end = offsets[group + 1];
+                    if (pass == 0)
+                        prefix += end - begin;
+                    else
+                        split_consume_range(atoms, rows, h, atom_count, batches, output, bank,
+                                            owner, reverse, batch_begin, begin, end, split_begin,
+                                            split_end, prefix, coefficients, scaled_h, accum);
+                }
+            }
+        } else if (reverse) {
             for (int base = 0; base < group_count; base += CHUNK) {
                 int group = base + lane;
                 bool matches = group < group_count && groups[4 * group + 1] == bank.level &&
@@ -261,9 +281,17 @@ __global__ void compute_c_split_kernel(const scalar_t *atoms, const int64_t *row
             }
         } else {
             for (int range = 0; range < input.bank_count; ++range) {
-                int hi = input.banks[range].level;
-                int begin = offsets[lower_group(groups, group_count, bank.level, hi, owner)];
-                int end = offsets[lower_group(groups, group_count, bank.level, hi, owner + 1)];
+                Bank other = input.banks[range];
+                int first, last;
+                if (cartesian) {
+                    first = bank.node_offset * input.node_count +
+                            bank.tile_count * other.node_offset + owner * other.tile_count;
+                    last = first + other.tile_count;
+                } else {
+                    first = lower_group(groups, group_count, bank.level, other.level, owner);
+                    last = lower_group(groups, group_count, bank.level, other.level, owner + 1);
+                }
+                int begin = offsets[first], end = offsets[last];
                 if (pass == 0)
                     prefix += end - begin;
                 else
@@ -473,6 +501,9 @@ torch::Tensor compute_c_split(torch::Tensor atoms, torch::Tensor rows, torch::Te
     }
     dim3 grid(output.node_count, (h.size(0) + BATCH_TILE - 1) / BATCH_TILE, splits);
     size_t shared = sizeof(double) * CHUNK * (output.basis_count() + BATCH_TILE);
+    // Counting layouts contain every Cartesian group, including empty ones;
+    // a fully populated unique sorted layout has the same complete order.
+    bool cartesian = groups.size(0) == input.node_count * output.node_count;
     auto stream = c10::cuda::getCurrentCUDAStream();
     AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "hierarchical_split_c_atoms", [&] {
         using atom_t = scalar_t;
@@ -480,7 +511,7 @@ torch::Tensor compute_c_split(torch::Tensor atoms, torch::Tensor rows, torch::Te
             compute_c_split_kernel<atom_t, scalar_t><<<grid, CHUNK, shared, stream>>>(
                 atoms.data_ptr<atom_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
                 offsets.data_ptr<int64_t>(), h.data_ptr<scalar_t>(), pages, atoms.size(0),
-                groups.size(0), h.size(0), input, output, reverse, splits);
+                groups.size(0), h.size(0), input, output, reverse, cartesian, splits);
         });
     });
     C10_CUDA_KERNEL_LAUNCH_CHECK();

@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <c10/cuda/CUDAException.h>
 #include <c10/cuda/CUDAGuard.h>
+#include <cfloat>
 #include <climits>
 #include <cmath>
 #include <torch/extension.h>
@@ -23,7 +24,8 @@ struct Bank {
 
 struct Axis {
     int sites, min_tile_sites, modes, full_level, bank_count, node_count;
-    double spacing, origin, period, tail_bound, radius_ratio4;
+    double spacing, origin, period, inverse_period, tail_bound, radius_ratio4;
+    bool dyadic_period;
     Bank banks[MAX_BANKS];
     __host__ __device__ int basis_count() const {
         return 1 + 2 * modes;
@@ -64,6 +66,10 @@ inline Axis parse_axis(const std::vector<double> &config) {
                 "invalid dyadic axis");
     axis.period = axis.sites * axis.spacing;
     TORCH_CHECK(std::isfinite(2 * axis.period) && axis.period > 0, "invalid chart period");
+    int period_exponent;
+    axis.inverse_period = 1 / axis.period;
+    axis.dyadic_period =
+        std::frexp(axis.period, &period_exponent) == 0.5 && std::isfinite(axis.inverse_period);
     for (int count = axis.max_owners(); count > 1; count /= 2)
         ++axis.full_level;
 
@@ -97,6 +103,26 @@ struct Membership {
     int level, owner;
 };
 
+// For a power-of-two period, normal finite scaling, truncation, and scaling
+// back are exact. Preserve fmod's signed zero. Outside that safe range, or
+// for other periods, retain the general fmod implementation.
+__device__ inline double chart_remainder(double value, const Axis &axis) {
+    if (axis.dyadic_period) {
+        double scaled = value * axis.inverse_period;
+        if (isfinite(scaled) && (value == 0 || fabs(scaled) >= DBL_MIN)) {
+            double remainder = value - trunc(scaled) * axis.period;
+            return remainder == 0 ? copysign(0.0, value) : remainder;
+        }
+    }
+    return fmod(value, axis.period);
+}
+
+__device__ inline double wrapped_center(double center, const Axis &axis) {
+    double value = chart_remainder(center, axis) - chart_remainder(axis.origin, axis);
+    value = chart_remainder(value, axis);
+    return value < 0 ? value + axis.period : value;
+}
+
 __device__ inline Membership classify_axis(double sigma, double center, const Axis &axis) {
     int tile_sites = axis.min_tile_sites;
     int level = 0;
@@ -107,10 +133,7 @@ __device__ inline Membership classify_axis(double sigma, double center, const Ax
     if (3 * tile_sites > axis.sites)
         return {axis.full_level, 0};
 
-    double relative = fmod(center, axis.period) - fmod(axis.origin, axis.period);
-    relative = fmod(relative, axis.period);
-    if (relative < 0)
-        relative += axis.period;
+    double relative = wrapped_center(center, axis);
     int owner =
         static_cast<int>(floor((relative + axis.spacing / 2) / (tile_sites * axis.spacing)));
     return {level, owner % (axis.sites / tile_sites)};
@@ -129,12 +152,6 @@ __device__ inline double integrated_basis(const Axis &axis, const Bank &bank, in
 
 __device__ inline int bank_for_level(const Axis &axis, int level) {
     return level == axis.full_level ? axis.bank_count - 1 : level;
-}
-
-__device__ inline double wrapped_center(double center, const Axis &axis) {
-    double value = fmod(center, axis.period) - fmod(axis.origin, axis.period);
-    value = fmod(value, axis.period);
-    return value < 0 ? value + axis.period : value;
 }
 
 // Integer coefficients of the positive polynomial, indexed by even M=2..16,

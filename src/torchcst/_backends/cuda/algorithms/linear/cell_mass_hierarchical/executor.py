@@ -71,7 +71,7 @@ class PreparedLayout:
         )
 
 
-def prepare_layout(plan, atoms, *, method="sort"):
+def prepare_layout(plan, atoms, *, method="sort", signal=None):
     """Classify, stable-sort indices, and retain sparse nonempty group ranges.
 
     Values remain in the original Parameter. A library sort is the initial
@@ -90,18 +90,39 @@ def prepare_layout(plan, atoms, *, method="sort"):
     if atoms.shape[0] > 65536:
         raise ValueError("preparation supports at most 65536 atoms")
 
+    if signal is not None:
+        if (
+            not isinstance(signal, torch.Tensor)
+            or signal.device != atoms.device
+            or signal.dtype != atoms.dtype
+            or signal.ndim != 2
+            or signal.shape[1] != plan.input.site_count
+            or not signal.is_contiguous()
+        ):
+            raise ValueError(
+                "signal must be contiguous [batch,site_count] on atom device/dtype"
+            )
+        if method != "counting" and not bool(torch.isfinite(signal).all()):
+            raise ValueError("X must be finite")
     native = _extension()
     input_config = plan.input.native_config()
     output_config = plan.output.native_config()
     if method == "counting":
         if plan.input.node_count * plan.output.node_count > 4096:
             raise ValueError("counting layout supports at most 4096 Cartesian groups")
-        rows, groups, offsets, errors = native.prepare_counting_layout(
-            atoms, input_config, output_config
-        )
+        if signal is None:
+            rows, groups, offsets, errors = native.prepare_counting_layout(
+                atoms, input_config, output_config
+            )
+        else:
+            rows, groups, offsets, errors = native.prepare_counting_layout_signal(
+                atoms, signal, input_config, output_config
+            )
     else:
         keys, errors = native.classify_atoms(atoms, input_config, output_config)
     error_bits = errors.item()
+    if error_bits & 4:
+        raise ValueError("X must be finite")
     if error_bits & 1:
         raise ValueError("all atom fields must be finite")
     if error_bits & 2:
@@ -471,12 +492,16 @@ def hierarchical_linear(
         raise ValueError("fuse_g_grad must be bool")
     if x.device != atoms.device or x.dtype != atoms.dtype:
         raise ValueError("X and atoms must share device and dtype")
-    if not bool(torch.isfinite(x).all()):
-        raise ValueError("X must be finite")
-    if layout is None:
-        layout = prepare_layout(plan, atoms, method=layout_method)
+    if layout is None and layout_method == "counting":
+        # One error word validates both X and atoms; no separate all/item sync.
+        layout = prepare_layout(plan, atoms, method=layout_method, signal=x)
     else:
-        layout.validate_for(atoms, plan)
+        if not bool(torch.isfinite(x).all()):
+            raise ValueError("X must be finite")
+        if layout is None:
+            layout = prepare_layout(plan, atoms, method=layout_method)
+        else:
+            layout.validate_for(atoms, plan)
     return _HierarchicalLinear.apply(
         x,
         atoms,
