@@ -28,6 +28,14 @@ allocated7.396MiB対16.063MiB、reserved10MiB対22MiBでdense以下を再確認�
 FP64保存初版1024のreserved26MiBは条件未達であり、負の記録を正本に残す。
 公開CSTLinear/dispatcher、二階微分、全体Graph学習へは未接続。
 階層版の配列寿命・数式・検証・source/result hashは[設計の正本](cell-mass-kernel-flow.ja.md)を参照する。
+その後のsource `69a7806b`では、入力ownerへ連続アクセスする逆slot indexと
+ownerのatom数に応じたCの有効split数を追加した。atom値はコピーしない。
+通常/tuned各2385 passed / failed0 / skip12、全52,428atomの独立Y/dX/4列勾配も通過。
+1024の完全stepは同jobで1.686256→1.494954ms、matched dense0.697796ms。
+allocated7.597MiB / reserved10MiBで、dense16.063MiB / 22MiB以下を維持した。
+出力Cへの適応分割だけの寄与は小さく、別jobとの差を含め普遍的な改善とはしない。
+128は1.211821ms対dense0.703213ms、メモリは従来と同じ。
+速度目標は引き続き未達。M8の多項式値評価を補償演算で軽くする候補を次に検証する。
 以下の1024/過去128の完全step結果は、別の幅分布・周期を使う固定bank版の記録である。
 
 ## 最新：係数・微分のHorner評価とsigma分布

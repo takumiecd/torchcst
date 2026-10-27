@@ -506,6 +506,105 @@ wheel/sdistの338 runtimeファイルもsourceへ照合した。
 
 
 
+### 最適化第8段：逆方向indexとowner別の有効split数
+
+source `a9995b07`。counting prepareに任意のreverse indexを追加した。
+正規rows/groups/offsetsは出力→入力順のまま、atom値や係数はコピーしない。
+
+```text
+reverse position r → reverse_slots[r] = forward sorted slot s
+                   → rows[s] = original atom a
+H/G[:,s]、atoms[a,:]、gradient[a,:]を使用
+```
+
+`reverse_offsets[input_node:input_node+2]`がその入力ownerの連続範囲。
+prepareの既存group内scatter順位を再利用して、追加atomicなしに逆slotを書く。
+増分はint32 reverse_slots[A]とint64 reverse_offsets[input_nodes+1]のみで、
+1024 fixtureは209,712+496bytes。group開始位置は一時int32 scratchで保存しない。
+`save_for_backward`へ両配列を加え、in-place変更検出とretained backwardを維持する。
+
+逆方向のowner範囲について、grain=atoms_per_splitが正なら
+`active=min(max_splits,max(1,ceil(owner_atom_count/grain)))`とする。
+active外blockは部分和をゼロにして全thread一斉に戻る。active内は区間を重複なく分担。
+grain0は固定split数を維持する。Zの二分マージ・Rの3枚窓・sigmaの分類は変更しない。
+
+同source、B4/FP32/M8/Q128/A52428/sigma初期.2..40、counting/Z32/64threads、C64、R有効。
+通常/tuned各2369 passed / failed0 / skip12（unsupported sort+reverse combinations）。
+全52,428atomのY/dX/4列勾配は全設定で独立FFT参照を通過した。
+
+| 逆index / grain / Cin融合 | 完全step | allocated | reserved |
+| --- | ---: | ---: | ---: |
+| なし / 0 / 分離 | 1.665969ms | 7.396MiB | 10MiB |
+| あり / 128 / 分離 | 1.454741ms | 7.597MiB | 10MiB |
+| あり / 0 / 融合 | 2.125936ms | 7.597MiB | 10MiB |
+| あり / 64 / 融合 | 1.605266ms | 7.597MiB | 10MiB |
+| あり / 128 / 融合 | 1.477567ms | 7.597MiB | 10MiB |
+| あり / 256 / 融合 | 1.737101ms | 7.597MiB | 10MiB |
+| matched dense | 0.688162ms | 16.063MiB | 22MiB |
+
+各1 fresh process、warm5/wall21、全prepare/forward/backward/AdamWを含み、Graph/TF32なし。
+逆index＋owner適応で分離版を約13%短縮したが、dense2倍の速度目標は未達。
+128はreverse無し/C2/sort/Z0/128threadsで1.224288ms、dense0.674702ms、
+allocated242.5KiB/264.5KiB、reserved両方2MiB。
+段階診断はC32/grain128でCin0.218112ms、融合G/勾配/Cin0.743424ms、
+Cout0.359424ms、G/勾配0.360448ms。stageを足して完全stepとはしない。
+出力側Cが次の改善対象であり、grainをforwardへも適用する候補を検証する。
+
+job `l4job-4e4975d749a54a6488085e238b3649e8`、source `95ebc10b5e9d3cba0a0c9db5882a626f9147cccfbcb25af0a9a23e511284c829`、result `b7048b1361741252c5f6eaeef39b72407c728dcec284c78395b584ec0d06d269`、driver `85a0cf3229f8f2e7d95106376a3a2fe719fa0817b6542b90d928e3a2c5639546`、binary `dfa70f7493160bebbf95f56fffddd24ae5ca4ff1cc846c3e47074e5c89534923`。
+327 runtimeと両header・検査ソース、結果46ファイルを照合し、ignored
+`output/cell-mass-opt-20261027/reverse-candidate/`へsource/results/spec/receiptを保存した。
+
+出力Cにも適応splitを加えたsource `69a7806b`を別jobで検証した。
+通常/tuned各2385 passed / failed0 / skip12、racecheckの対象caseも通過。
+全52,428atomのY/dX/4列勾配は6設定全てで独立FFT参照を通過した。
+最大絶対誤差はY 1.78e-8、dX 2.00e-8、全atom勾配2.71e-8未満。
+
+| 条件 | 完全step | allocated | reserved |
+| --- | ---: | ---: | ---: |
+| 1024、逆indexなし・固定C64・Cin分離 | 1.686256ms | 7.396MiB | 10MiB |
+| 1024、逆indexあり・grain128・Cin分離 | 1.494954ms | 7.597MiB | 10MiB |
+| 1024、逆indexあり・grain128・Cin融合 | 1.499301ms | 7.597MiB | 10MiB |
+| matched dense1024 | 0.697796ms | 16.063MiB | 22MiB |
+| 128、従来のC2/sort/128threads・Rなし | 1.211821ms | 242.5KiB | 2MiB |
+| matched dense128 | 0.703213ms | 264.5KiB | 2MiB |
+
+診断C32/grain128のCoutは0.348160ms、Cinは0.214016ms、G/勾配融合は0.360448ms。
+前jobのCout0.359424msとの差は小さく、出力側への適応split追加だけが有意に速いとは
+主張しない。逆indexを含む分離版の改善は再度観測したが、dense比は時間約2.14倍であり、
+中間目安の時間2倍以内も最終目標の速度2倍も未達。
+準備段階の`c5796712`は旧input wrapperの引数渡し漏れでsuiteが154件失敗した。
+これは性能採用対象外として保存し、修正後に上記の全suite/gateを再実行した。
+数学/精度条件を緩める修正ではない。
+
+job `l4job-70e3ce933e2949e1b6566b9506bf5901`、source `411b2095515fa2a67018dc27af719bb954570105aa28793cd9bec88261bfe9d0`、result `d0515dc338715206b8c7bb7f916c0fd9ccc5ab691ad652c38339869eb42af156`、driver `08170a732474b821da80bc17282ad52afbf12bafe8c8906dedeec0ecfa1adc39`、binary `a6e6baf0ab66ff7409386a21d3972e8fcbffc95484241dbb1fcdf90acecbffbc`。
+327 runtimeと両header・検査ソース、結果46ファイルを照合し、ignored
+`output/cell-mass-opt-20261027/adaptive-both/`へsource/results/spec/receiptを保存した。
+
+source `0f08e84e`はM8多項式だけのdouble-single補償演算を実験用templateとして追加した。
+既定Falseを維持し、現在の完全stepは全てDouble評価。定数表増分は352bytes、合計4616bytes/TU。
+β・位相・正規化・Z/R/Cの縮約をDoubleのままにし、単独micro診断で価値を測った。
+M8/A52428のGraph-event中央値はvalue 0.088064→0.078848ms、derivative
+0.145408→0.116736ms。Doubleに対するchecksum差は最大1.46e-14だった。
+registerはvalue 36→40、derivative 46→56へ増えた。
+これは低registerの診断kernelであり、完全stepや独立全勾配の改善証拠ではない。
+次に値計算H/Cだけの明示的opt-inで、完全step・正規化・全勾配を検証する。
+勾配kernelの演算はDoubleのままにする。
+
+micro job `l4job-6e5a58f5d60c4d42aa6107dc74c5eb8b`、source `9e2dded124f5b249547012920a4a5e4033e69dcd54ad05db2125c061b7acceab`、result `9ed48ae43fd9473dee83a449a187d51e34c74ca5af9ed403d5b1bdd2340a97cc`、driver `a22b607976e584a7dbdf0d54a0482ad9e9fc2a8ef2d3d3a50f58916c8fb351c4`、binary `63192d9779c5cd5f0906f9cfe68e5b07f3c524d7c69e20b3184171b5161e8cbf`。
+このdriverはmain extensionを呼ばず、common.cuhを使う独立した診断kernelのみを実行した。
+前述のc579 wrapper不具合を通るmain計算の合格とは扱わない。
+327 runtime、両header、検査ソース、結果7ファイルを照合し、ignored
+`output/cell-mass-opt-20261027/ds-micro/`へ保存した。
+
+source `290e38b1`は`compensated_values=True`を研究入口へ接続した。
+対象はFP32保存、M8/tail1e-3の両軸のみで、既定Falseを維持する。
+H・Cout・単独G・分離Cinだけが補償演算を選べる。G/勾配融合とG/勾配/Cin融合は
+従来のDoubleのまま。位相・正規化・縮約・Z/R/Cの保存もDoubleを維持する。
+値評価の近似とDouble解析導関数の組合せを、独立oracleと同じ精度基準で検査する。
+通常のCPU suiteは2037 passed / 5153 skipped / 既存警告18件。
+wheel/sdistの338runtime byte照合とRuff/formatは通過した。
+GPU job `l4job-2806b8176cb64be48be73b60f93f4ce2`で検証中であり、完全stepの採用結果は未確定。
+
 ### 独立再確認と、現在使う研究設定
 
 runtime `dcf48273` / snapshot `46b069e2`（差は文書のみ）。別の所有L4で各設定2 fresh process、
