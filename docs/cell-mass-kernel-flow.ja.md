@@ -750,7 +750,83 @@ loaded binaryのSHAはmetadataに記録したが、この診断jobではso本体
 互換するbank対だけなら849 groupとなる。layout payloadは49,016→26,936bytesと算定した。
 これはCPU metadataの見積りで、GPUピークや速度の実測ではない。compact countingは未実装。
 
-### 最新の再確認：完全stepと1024のAdamW状態
+### 最適化第13段：互換bank pairのcountingと、C積和の負の結果
+
+runtime `e1a2caab`、job `l4job-3d4ee26009d34c4495de66fe7eceafc0`。
+`counting_compact`はsigma区間が重なる入力・出力bankの組だけを列挙し、
+その中を従来と同じ`(h_out,h_in,q_out,q_in)`順に配置する。
+値のコピーやatomごとの係数表は作らず、元のatom行番号とgroup範囲だけを保持する。
+128 fixtureではfull countingの1769 groupに対して849 groupとなる。
+空groupも含むため、非空groupだけのsort配置224 groupとは異なる。
+この版は逆方向indexに未対応で、`reverse_layout=True`との組み合わせを拒否する。
+
+| 128の配置、C積和は従来Double | 完全step | allocated | reserved |
+| --- | ---: | ---: | ---: |
+| sort | 1.123340ms | 248,320B | 2MiB |
+| compact counting | 0.819594ms | 263,168B | 2MiB |
+| full counting | 0.849601ms | 285,184B | 2MiB |
+| matched dense | 0.705986ms | 270,848B | 2MiB |
+
+同じ固定fixture・未計装の全検査/prepare/forward/backward/fused AdamWを含む。
+各設定fresh process、warm5/同期wall21の中央値であり、21独立runではない。
+compactはsort比約27%短縮したが、denseより約16%遅い。allocatedの余裕は7,680Bのみで、
+再確認と全819atomの複数step optimizer照合までは研究候補として扱う。
+full countingはdenseよりallocatedが多いため、この128条件では採用しない。
+
+同時に試した`compensated_cdot=True`は、32atomのC積和をFP32の2数表現で計算し、
+chunk後にDoubleへ戻す候補である。1024の逆index/grain128/C64では、
+Double多項式値評価の完全stepが1.469052→1.632826ms、補償値評価では
+1.418197→1.585851msとなり悪化した。allocated7,965,184B/reserved10MiBは同じ。
+これは多項式値評価だけを補償する`compensated_values`とは別の選択肢で、既定はFalseを維持する。
+
+初版Cdotのchunk局所誤差guardには、大きな既存Double累積との相殺を見落とす
+CPU反例も見つかった。DC成分単独の反例と、全Yが旧経路だけ通過する反例を混同しない。
+初版guardを採用根拠にはしない。後続`adf3908b`では、非有限または
+`abs(amplitude*H/G)>16`が1つでもあればC全体を従来Doubleへ戻し、chunk判定にも
+既存累積の大きさを含めた。非同期GPU上の1word flagを使い、host同期を増やさない。
+この閾値は数値計算方式の選択でありsigmaを制限するものではない。
+guardは工学的な判定であり、任意入力に対する誤差保証を証明したとは主張しない。
+後続版の独立gate・完全step結果は回収後に記録する。
+
+初版jobは通常2487 passed / failed0 / skip12、選択したracecheck12件・hazard0。
+128全819atomと1024全52,428atomのY/dX/全4列勾配は独立FFT/autograd oracleへ通過した。
+この全atom gateはoptimizerの更新照合までは含まない。
+sourceのruntime338ファイル、両header・検査ソース、結果56ファイル、driver/binaryを照合した。
+wheel/sdistは`e1a2caab`、後続guardのwheel/sdistは`adf3908b`のruntime338ファイルと一致した。
+
+source `b5510fe31023266f0079f32bf20023283d1af1ccbdee4d769084605f820a99cb`、result `b3136a98ef4f8abf53eee5a79733840ce75abe8ede721acc0c94a1c79d34467d`、driver `2dccd38018b0312a0da0f8241adfdc76eae18ea926ce915894b4de14a1287973`、binary `c646d5742372a2f70560d39be038e6378af632b31449151e80028de01ac9663e`。
+source/results/spec/receiptはignored `output/cell-mass-opt-20261027/cdot-guard-initial/`へ保全した。
+
+### 最適化第14段：GとParameter勾配の多項式評価（GPU検証中）
+
+runtime `7f337e80`。`compensated_grad=True`は、GとParameter勾配を一緒に計算する
+kernelの多項式値とbeta微分だけをFP32の2数表現にする。
+beta/beta_sigma、位相、正規化、Zとの縮約、batch和、勾配出力の累積はDoubleを維持する。
+Gを保存dtypeへ丸めてから勾配とCinへ再利用する契約も変えない。
+両軸M8/tail1e-3・FP32 atoms/H限定で、`fuse_g_grad=True`と
+`fuse_backward_cin=False`を必要とする。融合Cinは従来Doubleのまま。
+全atom係数表・追加global scratchは作らず、既定Falseとする。
+
+CPUは31 passed / 683 skippedで、CUDA実行を含まない。
+job `l4job-61063af38bc24560b97bcffa547ccb5f`へ、通常suite、独立Y/dX/全atom勾配、
+選択racecheck、REG/STACK/LOCAL資源量、完全step/両peakの比較を提出した。
+レジスタ増加で逆に遅くなる可能性もあり、GPU結果前に採用・速度改善とは扱わない。
+
+### 最適化第15段：owner windowの参照（GPU未検証）
+
+runtime `bfe22c94`。Rを使うprojectionでは、ownerは既にcanonicalなnode番号なので、
+`bank.node_offset+owner`を直接参照する。harmonicごとの剰余・image番号の整数除算と
+`image_rotation`呼び出しを省き、既存のDouble回転式には同じ`rc=1,rs=0`を渡す。
+raw Zの3枚参照、端のimage補正、profile center、二分Zのmerge、Rの構築は変えない。
+H/G、融合G/Parameter勾配、独立Parameter勾配、任意の融合H/Cに適用する。
+CUDA compilerが既に同等に最適化している可能性もあるため、GPU結果前に速度改善とはしない。
+CPUの対応owner全件の整数検算と31 passed / 683 skippedを通過した。
+全CPU suiteは2037 passed / 5247 skipped / 既存警告18件、wheel/sdist buildと
+両配布物のruntime338ファイルのbyte照合も通過した。CUDA compileの代用にはしない。
+後続driverでは、非計装step/両peakとは別区間でhost呼び出しのprofileも保存する。
+profileに含まれる`.item()`等の待ち時間をCPUの演算時間と断定しない。
+
+### 第12段までの再確認：完全stepと1024のAdamW状態
 
 runtime `7fd9132b`。job `l4job-3d9f12cdfca6486fa532f515d7b04cda`で別の所有L4へ切り替え、
 各設定2 fresh process、2巡目は順番を逆転した。warm5/同期wall21、全検査/prepare/

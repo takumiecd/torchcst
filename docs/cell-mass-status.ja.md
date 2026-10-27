@@ -47,6 +47,20 @@ CPU Actionsはsnapshot `da09ed37`でsuccess。公開CSTLinear/dispatcher、二�
 ignored `output/cell-mass-opt-20261027/final-confirmation/`へ保全した。
 Nsight Computeでも4対象の計数を取得し、FP64 pipe稼働率77〜87%、Cのshared bank conflictを確認。
 指標だけで因果を断定せず、FP64演算とshared参照の寄与を次に切り分ける。
+
+追加のsource `e1a2caab`では、sigma区間が重なるbank pairのみを数える
+`counting_compact`を試した。128の完全stepはsort1.123340→compact0.819594ms、
+matched dense0.705986ms。allocated263,168B/reserved2MiBでdense270,848B/2MiB以下だが、
+allocatedの余裕は7,680Bである。独立再確認と全819atomの3step更新照合までは候補として扱う。
+full countingは285,184Bとなるため、この128条件ではメモリ条件を満たさない。
+通常GPU suite2487 passed/12 skipped、128/1024全atomのY/dX/4列勾配、選択racecheck12件は通過した。
+
+C積和自体の補償は1024で1.418197→1.585851msと悪化し、採用しない。
+初版chunk guardには大きなDouble累積との相殺を見落とす反例があり、初版を根拠にしない。
+後続`adf3908b`のC全体fallbackと、`7f337e80`のG/Parameter勾配の多項式補償はGPU検証中。
+両方とも既定Falseで、sigma・周期・二分階層・面積正規化を変えない。
+追加job/source/result hashと検証範囲は[正本の第13・14段](cell-mass-kernel-flow.ja.md#最適化第13段互換bank-pairのcountingとc積和の負の結果)に記録する。
+
 以下は別の幅分布・周期を使う固定bank版の記録である。
 
 ## 固定bank版：係数・微分のHorner評価とsigma分布
