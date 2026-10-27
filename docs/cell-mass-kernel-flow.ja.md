@@ -845,7 +845,10 @@ reverse=Falseの配置・allocations・kernel列は維持する。atom値をコ�
 第13段のcompactとdenseの差に等しいため、既存表のpeakへ単純加算して採用判断しない。
 準備とbackwardのallocation共存、C splitページ、reservedの再利用を含む完全stepで確認する。
 
-CPUモデルは1200のdyadic軸設定で、逆slotの一対一対応とowner/group順を照合した。
+CPU indexモデルはseed741で1200のdyadic軸設定を生成し、4096 group上限で除外する33件を
+除く1167件で、逆slotの一対一対応とowner/group順を照合した。うち33件はG0の強制検査である。
+Python float64のindexモデルであり、CUDAやFP32丸めの検証とは扱わない。
+再実行script/resultsはignored `output/cell-mass-opt-20261027/compact_reverse_cpu_model.*`に置く。
 CUDA検査にはFP32/64・空atom・異なる軸長・full-chart-only・sigma境界、
 保存buffer mutationとretained backward、S1/S7・grain0/32/128の独立FFT full routeを追加した。
 CPU実行は31 passed / 714 skippedであり、追加CUDA検査は未実行である。
