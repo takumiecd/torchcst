@@ -2,6 +2,15 @@
 
 ## 設計の正本と、現在の実装範囲
 
+**2026-10-27 目標の訂正：** ユーザーが指定した達成条件は、検査とメモリ条件を保ち、
+完全step時間を同条件のdenseの2倍以下にすることである。以前の「denseの2倍の速度、
+時間半分が最終目標」という記述は取り違えであり、以下の履歴もこの条件で判定する。
+最新の独立再確認では128がdense比約1.26/1.23、1024が約1.67/1.67で、いずれも
+同repeatのallocated/reservedはdense以下であり、このfixtureで目標を達成した。
+全atomを含む3 step optimizer検査も通過した。異なる幅分布やGPUへの一般化はしない。
+追加の補償phase試作は `kernel/cell-mass-phase-prototype`、commit `a3fe9da9` に保存し、
+選択設定には採用していない。進行中の試行はこの達成判定の根拠に含めない。
+
 2026-10-27。この文書を、sigmaからの階層分類・layout・Z/H/C・backwardを
 つなぐ設計の正本とする。分類規約は下の
 [sigmaから階層と周期を決める規約](#sigmaから階層と周期を決める規約)に置く。
@@ -127,7 +136,7 @@ H/G作成は`contraction.cu::compute_h`の軸切替を共用し、dXは入力側
 ### 最適化の着手：元の版の処理別実測
 
 ユーザーの指定により階層・sigmaの意味・セル積分と面積正規化・H/Gの意味を維持し、
-完全stepの速度をdenseの約2倍（時間は約半分）へ近づける。T_min/Pを変えて別のWを測ったり、密Wを作って置換したりしない。
+完全step時間をdenseの2倍以下にする。T_min/Pを変えて別のWを測ったり、密Wを作って置換したりしない。
 allocatedとreservedの両方をdense以下に保ち、Y/dX/全atom勾配の検査許容差も変えない。
 GPT-6.1 Terraの3担当でC集約・atom数学・pipelineを調査し、GPUは単一の共有poolで測定する。
 
@@ -202,7 +211,7 @@ profile式、sigma、T_min/P、許容差とH/G保存精度を変更していな�
 | 1024、C16・融合 | 4.100332ms | 5.854MiB | 8MiB |
 | 同job dense1024 | 0.664340ms | 16.063MiB | 22MiB |
 
-128のC2融合はdenseの約1.77倍の時間で、中間目安とメモリ条件内。最終速度目標は未達。
+128のC2融合はdenseの約1.77倍の時間で、時間とメモリ条件を満たす。
 128のC8/C16は約1.2msでもallocatedがdenseを超えたため選ばない。
 1024は約6.17倍で未達だが、元の23.21msから大きく短縮した。
 別jobとの大きな差は初版改善の方向を示すが、採用性能は選択設定の独立再測定で確認する。
@@ -353,8 +362,7 @@ fused AdamWと一時配列の作成・解放を含む。Graphなし、TF32無効
 | 1024、matched dense | 0.654805ms | 16.063MiB | 22MiB |
 
 1024初版23.211msから約10.2倍短縮したが、dense比3.48倍の時間を要する。
-128もdense比1.62倍である。**ユーザー指定の最終目標はdenseの2倍の速度、時間は半分**であり、
-両方とも未達。過去の「時間をdenseの2倍以内」は中間目安としてのみ読む。
+128はdense比1.62倍で時間条件を満たし、1024はこの時点では未達。
 この1jobの結果を全幅分布・全GPUへ一般化しない。
 
 低水準Graph-event診断は、1024 H/G各0.289792ms、融合G/勾配0.823296ms、
@@ -386,7 +394,7 @@ GPU・数学2171件、128/1024の独立Y/dX/全4列勾配が通過。
 128 C2/融合/sort/Z0/128threadsは1.106592ms（dense0.666637ms）、
 1024 C64/融合/counting/Z32/64threadsは2.201958ms（dense0.661160ms）。
 allocated/reservedは第4段と同じでメモリ条件内。単一fresh processずつの診断値であり、
-数%の差を普遍的な改善率としない。速度目標は引き続き未達。
+数%の差を普遍的な改善率としない。1024の時間条件はこの時点では未達。
 1024の段階診断はH/G各0.278528ms、融合G/勾配0.741376ms、C_out0.408576ms、C_in0.343040ms。
 
 job `l4job-0b0b8d63e3b044ed86a5b324e1ad0f90`、driver474.24秒。
@@ -448,7 +456,7 @@ CPU回帰はwindow段階2037 passed / 4934 skipped / 既存警告18件。
 
 Rは1024で有効だった一方、128では追加起動の費用を補えない結果だった。
 全サイズ一律の有効化はせず、最終設定は別fresh processで再確認する。
-source833の1024はdenseの約2.49倍の時間で、最終目標の時間半分は未達。
+source833の1024はdenseの約2.49倍の時間で、時間条件はこの時点では未達。
 初版23.211msから約14倍短縮したが、固定bank版の別周期・別幅分布とは改善率を比較しない。
 
 source833はAxisのmode値を書き換える代わりに、係数生成へ固定mode数をtemplateで渡す。
@@ -548,7 +556,7 @@ grain0は固定split数を維持する。Zの二分マージ・Rの3枚窓・sig
 | matched dense | 0.688162ms | 16.063MiB | 22MiB |
 
 各1 fresh process、warm5/wall21、全prepare/forward/backward/AdamWを含み、Graph/TF32なし。
-逆index＋owner適応で分離版を約13%短縮したが、dense2倍の速度目標は未達。
+逆index＋owner適応で分離版を約13%短縮したが、1024の時間条件はこの時点では未達。
 128はreverse無し/C2/sort/Z0/128threadsで1.224288ms、dense0.674702ms、
 allocated242.5KiB/264.5KiB、reserved両方2MiB。
 段階診断はC32/grain128でCin0.218112ms、融合G/勾配/Cin0.743424ms、
@@ -576,7 +584,7 @@ job `l4job-4e4975d749a54a6488085e238b3649e8`、source `95ebc10b5e9d3cba0a0c9db58
 診断C32/grain128のCoutは0.348160ms、Cinは0.214016ms、G/勾配融合は0.360448ms。
 前jobのCout0.359424msとの差は小さく、出力側への適応split追加だけが有意に速いとは
 主張しない。逆indexを含む分離版の改善は再度観測したが、dense比は時間約2.14倍であり、
-中間目安の時間2倍以内も最終目標の速度2倍も未達。
+denseの2倍以内という時間条件はこの時点では未達。
 準備段階の`c5796712`は旧input wrapperの引数渡し漏れでsuiteが154件失敗した。
 これは性能採用対象外として保存し、修正後に上記の全suite/gateを再実行した。
 数学/精度条件を緩める修正ではない。
@@ -627,7 +635,7 @@ GPU job `l4job-2806b8176cb64be48be73b60f93f4ce2`で2424 passed / failed0 / skip1
 128は改善せず、既定や128推奨を切り替えない。G/勾配を分けるとメモリは減る一方で遅くなる。
 診断はH 0.150528→0.137216ms、Cout 0.348160→0.321536ms、
 Cin 0.225280→0.202752ms。完全stepへの加減算はしない。
-速度の最終目標も、中間目安の時間dense2倍以内も1024では未達。
+1024ではdenseの2倍以内という時間条件はこの時点では未達。
 source `1d7a2c016e1b0d7d348d56588ced1d789d9f8df69658d0e0a6263c9405c31367`、result `34b5fa0c418ccdbba12f4dbffbdaec0e3f6736128885df2fd0349fbed03184ed`、driver `ebbffe58c47d4801601cf478a01b02dbd2b75011b38cfa0987fe101fa2c87857`、binary `b8ce9ffe5e0ba685796b4190e821d64c5f7f04d0d59210a7753e74c8c2fff142`。
 327runtime、両header・検査ソース、結果39ファイルを照合し、ignored
 `output/cell-mass-opt-20261027/compensated-values/`へsource/results/spec/receiptを保全した。
@@ -675,7 +683,7 @@ H/C融合単体の診断はDouble0.709632ms、補償0.679936ms。完全stepへ�
 融合はgroup参照・HとCの縮約を同じ32thread blockのchunk内にまとめるため、
 係数共有だけで速くなるとは限らない。占有率低下などの因果を個別に実証したとはしない。
 1024では不採用、既定Falseを維持する。128の小差は独立再確認前の候補に留める。
-補償値評価の分離版は前jobと同じ約1.43msを再観測したが、最終速度目標は未達。
+補償値評価の分離版は前jobと同じ約1.43msを再観測したが、1024の時間条件はこの時点では未達。
 
 source `147ea8fac350307dbdb033d5c4a9351afbe04968d49296328c1d02a179673550`、result `f651f5f3e51da60c87447bc13376e3cf33c398d5eb21659d30c17091e095854d`、driver `080f4da97d4d76fac68c705d1c29447e3525f090b8d7b6b9dc2fbeb38e70e8e5`、binary `27d669e31aa81bf649c8428c213df52c3a85604c42a1b80f1adf1cb5c0ce65a9`。
 327runtime、両header・検査ソース、結果45ファイルを照合し、ignored
@@ -983,7 +991,7 @@ rtol3e-6/atol2e-7は緩めていない。初回jobはoptimizer更新後の独立
 matched dense128は0.669300ms、270,848B/2MiBだった。
 全9設定で同jobのdense以下のallocated/reservedをassertし、step.jsonから再計算した。
 S128/H/C融合では約4.9%短縮・allocated約37.4%減となったが、独立再確認前の初回結果である。
-最終目標のdenseの時間半分は未達。
+1024の選択候補はdense比約1.73で時間条件を満たすが、独立再確認はこの時点では未了。
 
 別device-event診断ではS128/grain64のCout 0.166912→0.137216ms、
 Cin 0.126976→0.113664ms、H/C 0.282624→0.228352ms。
@@ -1014,7 +1022,7 @@ sigma linspace(.2,40)を維持した。atoms/X/dY/初期dense Wは初回jobとbi
 raggedは完全stepを約5.6/6.3%短縮し、allocatedを10,067,968→6,299,136B、約37.4%減らした。
 128の実行設定は変更しない。全6 memory gateで同repeatのdense以下のallocated/reservedを
 step.jsonから独立に再計算した。1024はdense比約1.67の時間で、
-**最終目標のdenseの2倍の速度＝時間半分は未達**である。
+**denseの2倍以内という時間条件を満たす**。
 Torch allocator peakをGPU process全体の使用量とは扱わない。
 
 全819/52,428atomを3step更新し、各stepの更新済み参照Parameterから独立CPU FFT/autogradで
@@ -1071,7 +1079,7 @@ job `l4job-cff5845718a6411fb10fb629b66ca143`で各設定2 fresh process、2巡�
 全10 memory gateで同repeatのdense以下のallocated/reservedをassertした。
 S128/grain64の改善が再確認された。H/C融合の小差は順序で逆転し、明確な勝者とはしない。
 以下のkwargsは全atom更新まで確認した融合ありの設定で、融合が普遍的に速いという主張ではない。
-1024の時間比は約1.77/1.80。**最終目標のdenseの2倍の速度＝時間半分は未達**である。
+1024の時間比は約1.77/1.80。**denseの2倍以内という時間条件を満たす**。
 
 全819/52,428atomを3step更新し、毎stepの更新済み参照ParameterからCPU FFT/autogradで
 Y/dX/4列勾配を独立に再計算した。FP32 rtol3e-6/atol2e-7、Parameter rtol2e-6/atol2e-7、
@@ -1174,7 +1182,7 @@ forward/backward/fused AdamWを含む。TF32/Graph/追加workspaceなし。
 全CST設定で、同repeatのdense以下のpeak allocated/reservedをassertした。
 128の融合・補償の差は順序やjobで揺れがあるため、保守的な分離設定を維持する。
 1024の補償値評価は独立再確認でも約3%短縮し、メモリ増加はなかった。
-最終目標の速度dense2倍には未達。1024は中間目安の時間dense2倍以内にもまだ届かない。
+1024はdenseの2倍以内という時間条件にこの時点ではまだ届かない。
 
 このjobでは1024の全52,428atomを3step更新し、各更新後の参照Parameterから
 独立CPU FFT/autogradでY/dX/全4列勾配を再計算した。
@@ -1244,7 +1252,7 @@ H/C融合は1024で悪化したため、上の設定には含めない。
 この設定はB4/FP32/M8/tail1e-3/Q128、A=floor(.05*N*N)、sigma初期linspace(.2,40)、
 物理T_min入力4/出力8のfixtureで確認したもの。別の幅分布・多軸・他GPUの勝者へ一般化しない。
 1024は初版23.211msから約14倍短縮したが、dense比約2.42〜2.48倍の時間であり、
-ユーザーの最終目標である**denseの2倍の速度＝時間半分**は未達。
+denseの2倍以内という時間条件はこの時点では未達。
 
 job `l4job-b3fdda00495f458d8706f9e0b74a4e13`、source `e87dda784b5b41dcf87505be5319242b002df6e8273659abdca9451d1a4eb872`、result `13aa1b7f83e6420a6948d79a564a596f0e56b5eab3561f0f2243645efdb38853`、driver `665b8c3f78fa1d0abcb383227891b188622f921f2cd70d122013182e0e8a7adf`、binary `b960d6fded186f6b49ddb96842bc02c25d88bd362616b1b75fb2318e04eb2219`。
 327 runtime＋両header・検査ソース、結果69ファイルとfixture bit一致を照合し、
@@ -1284,7 +1292,7 @@ Ruff・format・差分検査・wheel/sdist buildを通過し、packageの337フ�
 
 現在の両fixtureでallocated/reservedともdense以下。1024のCST allocatedは5,591,040bytes、
 H/Gは各838,848bytes。FP64保存初版のreserved26MiBを8MiBへ減らした。
-時間は128で約3.20倍、1024で約34.41倍で、**約2倍の速度目標は未達**。
+時間は128で約3.20倍、1024で約34.41倍で、**denseの2倍以内という時間条件は未達**。
 保存量削減で速度も改善したとは判断しない。プロセス全体のGPUメモリ、全体Graph学習、
 複数独立runでの性能再現は未検証。C_inのgroup走査とregister保持量は次の分解計測候補であり、
 現時点でどちらが最大のボトルネックかを断定しない。

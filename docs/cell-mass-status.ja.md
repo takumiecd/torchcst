@@ -2,10 +2,11 @@
 
 2026-10-27。Issue #120 / Draft PR #121。
 目的は、面積正規化の契約・Y/dX/全atom勾配を保ち、dense以下のメモリで
-CSTの1step速度をdenseの約2倍、つまり時間を約半分にすること。
-過去の「時間をdenseの2倍以内」は中間目安であり、最終目標ではない。
-固定bank版128では中間目安の「時間2倍以内」とメモリ条件を満たした。
-固定bank版1024はメモリ条件を満たすが、時間は未達。階層版は下記で区別する。
+forward/backward/AdamWを含む完全stepの所要時間をdenseの2倍以内にすること。
+2026-10-27にユーザーへ確認し、「時間半分が必須」という以前の解釈を訂正した。
+現在の階層版は128・1024とも時間とメモリの条件を達成した。
+denseと同等の時間は今後の任意の改善目標であり、今回の完了条件に追加しない。
+以下の固定bank版の過去結果と、現在の階層版を区別する。
 
 階層版`cell_mass_hierarchical/`は既存ChebyshevSquare・sigmaの意味を維持する。
 Zは2子ずつの階層、Rは同じ階層の3タイルを合算したH/G用の値である。
@@ -33,7 +34,8 @@ B4/FP32/M8/tail1e-3/Q128、A=floor(.05*N²)、初期sigma linspace(.2,40)、seed
 物理入力T_min4・出力8。TF32/Graph/workspaceなし、warm5/同期wall21。
 全6 memory gateを同repeatのdenseと比較し、step.jsonから独立に再計算した。
 1024は同設定の従来経路より約5.6/6.3%短縮、allocatedは10,067,968→6,299,136B、約37.4%減。
-dense比約1.67の時間で、**最終目標のdenseの2倍の速度＝時間半分は未達**である。
+dense比約1.67の時間で、**完全stepがdenseの2倍以内という目標を達成した**。
+128もdense比約1.26/1.23であり、両サイズで時間・allocated・reservedの条件を満たす。
 上表はTorch allocator peakで、GPU process全体の使用量ではない。
 
 全819/52,428atomを3step更新し、各stepの更新済み参照Parameterから独立CPU FFT/autogradで
@@ -62,6 +64,9 @@ source/results/spec/receiptをignored `output/cell-mass-opt-20261027/ragged-acti
 `ragged-confirmation/`へ保全した。所有GPUの停止とsupervisor終了を確認した。
 接続503で中断した追加試行03dfde6eは結果から除外し、pool recover後の確認jobだけを採用した。
 公開CSTLinear/dispatcher、二階微分、全体Graph学習は未接続。
+追加の位相評価試作は`kernel/cell-mass-phase-prototype`（a3fe9da9）へ保存し、
+現在の採用ブランチからrevertした。検証済みDouble位相とragged部分和を最終設定として残す。
+追加試験は完了判断の根拠に含めない。
 以下は別の幅分布・周期を使う固定bank版の記録である。
 
 ## 固定bank版：係数・微分のHorner評価とsigma分布
@@ -70,7 +75,7 @@ runtime source `7c1404c1`。数学・精度・sigma分布を変えず、係数�
 Horner法で一緒に評価し、harmonic間でscalarの累乗を再利用する。
 1024の完全stepは同じjobで **1.740 / 1.732ms → 1.354 / 1.354ms**、約22%短縮。
 peak allocated **4.261MiB** / reserved **6MiB**で増加なし。
-通常dense0.446 / 0.449msとの時間比は3.04 / 3.02で、約2倍目標は未達。
+通常dense0.446 / 0.449msとの時間比は3.04 / 3.02で、時間2倍以内の目標は未達。
 workspaceなしdense16.063MiB / reserved22MiB以下を維持する。
 
 下の1024差分に `coefficient_method="polynomial_horner"` を加える。
@@ -97,7 +102,7 @@ Gのglobal表をなくし、入力係数をH/dHとC_inで再利用する。
 
 別jobでの2fresh process確認は、CST **1.706 / 1.710ms**、
 peak allocated **4.261MiB** / reserved **6MiB**。
-同じjobの通常denseは0.450 / 0.441msで、時間比3.79 / 3.88倍。約2倍目標は未達。
+同じjobの通常denseは0.450 / 0.441msで、時間比3.79 / 3.88倍。時間2倍以内の目標は未達。
 workspaceなしdense16.063MiB / reserved22MiB以下のメモリを維持する。
 従来推奨からの短縮は8〜9%、thread/site幅を揃えた融合単独の効果は約4%。
 
@@ -153,7 +158,7 @@ runtime source `c9b67dd4`、NVIDIA L4 / Torch2.11.0+cu130 / CUDA13.0。
 | 1024・dense workspaceなし | 0.630 / 0.622 | 16.063MiB | 22MiB |
 
 128の時間比は1.69/1.31倍。denseのrun間変動も保存し、有利なrunだけ選ばない。
-1024は4.11/4.20倍で約2倍の目標には未達。allocator割当はdenseの約31%、reservedは約36%。
+1024は4.11/4.20倍で時間2倍以内の目標には未達。allocator割当はdenseの約31%、reservedは約36%。
 このメモリ条件を満たすことと、速度目標に到達することは別に判断する。
 1024の最初の再計算方式9.64..9.65msからは大幅に短くなったが、denseより速いという結果ではない。
 
