@@ -940,32 +940,34 @@ ignored `output/cell-mass-opt-20261027/shape-reuse/`へ保全した。
 
 ### 最新の再確認と検証済み研究設定
 
-runtime `180b2424` / 文書込みsnapshot `a0569f4f`。
-job `l4job-ac58be3290c24995ad286a78db379a0a`で各設定2 fresh process、2巡目は順番を逆転した。
+runtime `8bc27c2e` / 文書込みsnapshot `9e2c7204`。
+job `l4job-cff5845718a6411fb10fb629b66ca143`で各設定2 fresh process、2巡目は順番を逆転した。
 全検査/prepare/forward/backward/fused AdamWを含み、warm5/同期wall21、TF32/Graph/workspaceなし。
 固定B4/FP32/M8/tail1e-3/Q128、物理T_min入力4/出力8、A=floor(.05*N*N)、seed120。
 前jobとatoms/X/dY/初期dense Wのbit一致を確認した。
 
 | 設定 | 完全step（2 process） | allocated | reserved |
 | --- | ---: | ---: | ---: |
-| 128、compact、逆indexなし、Double値/勾配 | 0.836144 / 0.822198ms | 257KiB | 2MiB |
-| 128、従来sort | 1.137337 / 1.156262ms | 242.5KiB | 2MiB |
-| matched dense128 | 0.670791 / 0.677292ms | 264.5KiB | 2MiB |
-| 1024、compact逆index、補償勾配＋shape再利用 | 1.320542 / 1.321303ms | 7.575MiB | 10MiB |
-| 1024、同上shape再利用なし | 1.344193 / 1.332973ms | 7.575MiB | 10MiB |
-| 1024、counting逆index、shape再利用なし | 1.357824 / 1.361879ms | 7.596MiB | 10MiB |
-| matched dense1024 | 0.665759 / 0.678433ms | 16.063MiB | 22MiB |
+| 128、compact、逆indexなし、Double値/勾配 | 0.853524 / 0.842994ms | 257KiB | 2MiB |
+| matched dense128 | 0.730834 / 0.694958ms | 264.5KiB | 2MiB |
+| 1024、S128/grain64、H/C融合 | 1.233614 / 1.232073ms | 9.602MiB | 12MiB |
+| 1024、S128/grain64、H/C分離 | 1.228041 / 1.235813ms | 9.602MiB | 12MiB |
+| 1024、S64/grain64、H/C分離 | 1.277881 / 1.279383ms | 7.575MiB | 10MiB |
+| 1024、S64/grain128、H/C分離 | 1.331440 / 1.324161ms | 7.575MiB | 10MiB |
+| matched dense1024 | 0.695166 / 0.684253ms | 16.063MiB | 22MiB |
 
 全10 memory gateで同repeatのdense以下のallocated/reservedをassertした。
-1024は時間比約1.98/1.95、128は約1.25/1.21となり、中間目安の時間2倍以内を両方で確認した。
-**最終目標のdenseの2倍の速度＝時間半分は未達**であり、ここで最適化完了とはしない。
+S128/grain64の改善が再確認された。H/C融合の小差は順序で逆転し、明確な勝者とはしない。
+以下のkwargsは全atom更新まで確認した融合ありの設定で、融合が普遍的に速いという主張ではない。
+1024の時間比は約1.77/1.80。**最終目標のdenseの2倍の速度＝時間半分は未達**である。
 
-さらに全819/52,428atomを3step更新し、毎stepの更新済み参照ParameterからCPU FFT/autogradで
+全819/52,428atomを3step更新し、毎stepの更新済み参照ParameterからCPU FFT/autogradで
 Y/dX/4列勾配を独立に再計算した。FP32 rtol3e-6/atol2e-7、Parameter rtol2e-6/atol2e-7、
 AdamW exp_avg/exp_avg_sq/step rtol4e-6/atol2e-8で全step通過した。
 最大Parameter差は1024で1.5259e-5、相対・絶対許容差内でありbit一致ではない。
+1024の全3step gateはS128/grain64/HC=Trueだけで、分離版へこの検証範囲を読み替えない。
 正確性用Tensorは測定processへ持ち込まず、上表のallocator peakと分離した。
-確認jobでは広いsuiteを再実行せず、直前の2567件とracecheckを根拠にする。
+確認jobでは広いsuiteを再実行せず、直前の2580件とracecheck12件を根拠にする。
 
 ```python
 settings128 = dict(
@@ -976,22 +978,25 @@ settings128 = dict(
     reuse_shape_coefficients=False, compensated_cdot=False,
 )
 settings1024 = dict(
-    c_splits=64, fuse_g_grad=True, layout_method="counting_compact",
+    c_splits=128, fuse_g_grad=True, layout_method="counting_compact",
     z_chunk_sites=32, atom_threads=64, window_moments=True,
-    reverse_layout=True, atoms_per_split=128,
+    reverse_layout=True, atoms_per_split=64,
     compensated_values=True, compensated_grad=True,
     reuse_shape_coefficients=True, specialize_g_grad=True,
-    fuse_h_c=False, fuse_backward_cin=False, compensated_cdot=False,
+    fuse_h_c=True, fuse_backward_cin=False, compensated_cdot=False,
 )
 ```
 
 公開dispatcherや研究APIの既定値は変更しない。このfixtureでの研究選択であり、
 別のsigma分布・多軸・他GPUへの勝者とはしない。
-後続のsplit拡張は次節の未検証差分として区別する。
+従来のS64/grain128/HC=Falseは1.320542/1.321303ms、7.575MiB/10MiBで、
+job `l4job-ac58be3290c24995ad286a78db379a0a`で両サイズの全atom3stepを確認している。
+そのsource/results/spec/receiptはignored `output/cell-mass-opt-20261027/compact-shape-confirmation/`に保存し、
+今回のS128とメモリ・速度の交換を比較する基準として残す。
 
-source `2987e1553d02299c066b0a7b19851bd1a25162ae5cdbc1eb5b728968949de210`、result `59787210b9b012714722f60519aac4193268b552d82200579f0d7837cbeabbc0`、driver `67b7fd257ae49268cf545d2175b45f91f0af6c63e16b9bd2ffa1a0391eae2ea0`、binary `3414ab61f0db1513820e037d78e933075793d38a0a76feb155481ec6fe39c013`。
+今回のsource `43ac2e19fb837c96f925ded93c7f88e4f9d78aa4995572d7d7087ad0572e99c3`、result `e8c92baa8fad541dd0fb707b7aea3e7a2744bd94d9dc2efb31c0066f5145809b`、driver `67b7fd257ae49268cf545d2175b45f91f0af6c63e16b9bd2ffa1a0391eae2ea0`、binary `0d935678a92506c89f46b3b59f48d6a9add555a199a4b0747873ca976dffc9fd`。
 runtime338・検査141、manifest55件、driver/binaryとfixture bit一致を照合し、
-ignored `output/cell-mass-opt-20261027/compact-shape-confirmation/`へ保全した。
+ignored `output/cell-mass-opt-20261027/expanded-split-confirmation/`へ保全した。
 
 ### 最適化第18段：C分割数の拡張と融合forwardの位相（初回GPU検証）
 
@@ -1034,8 +1039,8 @@ frame/周期/σを変えた改善ではなく、同じ数式の仕事の分配�
 source `00699dc1e3996d1478b0aadf66048794cf486bf16f12cd244ca4b66e5f4b3519`、result `3166c037d7c2d8701a7cbce35c276763c77345db12a29a6e50c3a53aa806ce9a`、driver `7a99c786dd4e1447cb8a16d58056fad8af6fb2b9be6f69a34f8c38bf700886e1`、binary `19d38183a8c16294e4574dafbe975c7ae5d79b9e86f4104cfa3ceee9f7d6fa0c`。
 runtime338・検査141、manifest68件、driver/binaryとfixture bit一致を照合し、
 ignored `output/cell-mass-opt-20261027/expanded-split/`へ保全した。
-job `l4job-cff5845718a6411fb10fb629b66ca143`で、S128/grain64の融合/分離と
-S64/grain64/128を2 fresh process・逆順で再確認し、最初の候補を全atom3step optimizerへ照合中。
+job `l4job-cff5845718a6411fb10fb629b66ca143`の再確認結果は上節に置く。
+S128/grain64の改善は確認したが、H/C融合の上乗せは測定順で逆転した。
 
 ### 第12段までの再確認：完全stepと1024のAdamW状態
 
