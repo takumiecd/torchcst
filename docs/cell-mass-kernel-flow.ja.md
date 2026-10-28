@@ -507,6 +507,105 @@ native module=`torchcst_radius_cell_mass_cf34d733bd80`、binary SHA256=
 `1dca007d8fcd382f408debe396b08189da668d157462f7794a86d7347f467896`。
 raw結果、source/binary照合、trace、profile、sanitizer、host oracleとreceiptを同じignored保全先に保持する。
 
+#### 深掘りprofile：host区間・融合kernel内部・hardware counterを分ける
+
+条件は引き続きN128/B4/A819/M8・公開初期化・明示BLOCK_LOCAL・eagerの完全step。
+最適化の追加前に、以下の3種類を別に測った。本番sourceは変更していない。
+速度の正本は前節の未計装3.606726/3.583001msである。
+
+**1. 軽いhost区間計測。** 各phaseの前後のhost時計だけを読み、途中にCUDA同期を入れず、
+stepの最後だけ同期する。warmup5＋21step。これはCPU計算・enqueue・CUDA API内の待ちを含み、
+GPU kernel時間ではない。各step内の区間は時系列を分割するが、中央値同士を足し合わせない。
+
+| host区間 | CST中央値 ms | dense中央値 ms |
+| --- | ---: | ---: |
+| zero_grad | 0.053194 | 0.043297 |
+| forward/loss呼出し | 1.124650 | 0.144128 |
+| backward呼出し | 0.609777 | 0.327906 |
+| optimizer呼出し | 1.775268 | 0.166492 |
+| 最後のGPU完了待ち | 0.030354 | 0.023493 |
+| 診断step全体 | 3.614349 | 0.717620 |
+
+hostの最大区間は`CSTOptimizer._step_impl`の呼出しである。
+group/Parameter確認、gradient projection、old pointの準備、更新context/Planの構築とdispatch、
+AdamW呼出し、state transportを含む。Polarの更新式そのもののdevice時間とは分ける。
+前節のcProfileでは全体で1stepあたり13回の`fixed_state_signature`巡回があり、
+`operators/metadata.py`のmodule/spec/buffer/version確認が繰り返されている。
+これはCPU整理の候補を特定するcall-count evidenceであり、cProfileの重複する累積時間を足して損失時間としない。
+
+**2. 実際のGPU kernelだけのtrace集計。** user annotationのdevice帰属を重複計上せず、
+`cat=kernel`の29 launchをCPU launch correlationで対応付けた。
+
+| 実GPU処理 | kernel数 | device時間 µs |
+| --- | ---: | ---: |
+| forward/loss範囲 | 10 | 830.595 |
+| backward範囲 | 14 | 1109.476 |
+| optimizer範囲 | 5 | 13.825 |
+| kernel合計 | 29 | 1953.896 |
+
+個別には融合forward768.897µs、融合reverse820.514µs、atom勾配244.481µs、
+分類23.936µs、Polar更新`apply_polar`2.784µsだった。GPU copyはこの表へ含めない。
+GPU処理はhost区間と重なるので、この表とhost表を足して完全step時間を作らない。
+以前のprofilerでは2.087msの大きな空白が2.083msのActivity Buffer Requestと重なっていた。
+profiler自身のbuffer確保を、実プログラムのCPU待ちや遅い除算と解釈しない。
+
+**3. 融合kernel内部のCTA別clock64。** checkoutと別のsource copyだけに6つの境界を挿入し、
+moments、globalへのmoments保存、H/G、C、site展開を区切った。公開return値は維持する。
+5step×16CTA＝各方向80サンプル。clockは同じCTA内の差分だけを使い、異なるSMの絶対clockを比較しない。
+各境界に追加barrierとstoreがある診断版であり、cyclesをmsへ換算したり本番速度へ使ったりしない。
+表は各方向の全CTA・反復で合計したstage cycleを、全stageの合計cycleで割った比率である。
+
+| CTA内cycle比率 | forward | reverse |
+| --- | ---: | ---: |
+| moments構築 | 30.00% | 28.62% |
+| momentsをglobalへ保存する区間 | 0.02% | 0.02% |
+| 完成H/Gの生成 | 32.80% | 31.31% |
+| Cの生成 | 27.73% | 31.02% |
+| site展開・保存 | 9.46% | 9.03% |
+
+GPU内部はmoments/H/G/Cの3つがそれぞれ重い。moments保存の区間は小さい。
+H/Gのglobal書込みはresponse区間内に含まれるため、保存全般のコストを分離したとは言わない。
+診断版も全819atomのY/dX/dPを公開FP64参照へ照合してPASSした。
+
+profile job=`l4job-e03194dcc9274260b3f89e95adf933c8`、production source=`cb25bc3c`、
+snapshot SHA256=`2fb53666c10dc048a38dbf80e5eca5c729c4bc9a4ca11dcb00ef639ce4cde3e5`、
+result archive SHA256=`7b9c99378966c4e903bcb716b9df33f6f622964c2c4379a1e6815a9b7068bed2`。
+通常版binaryは前節の`1dca007d…`をsource/runtime照合して使用した。
+診断sourceの生成器SHA256=`32c3f0fbe4af0cb3ebf9a377d4b9c49d0f337a5428f0117e9bdcd3118504a775`。
+生成後native source digestは`c65421bda029e20e77026847d006b1e39c537b0f6bb38a461b9864a61108497c`。
+生成器・変更前後source hash・raw clock・trace・host sample・導出解析を同じignored保全先に保持する。
+
+**Nsight Computeによる確認。** 本番binaryの融合kernelを1 launchに限定し、16 replay passで調べた。
+cache/clock制御はnoneで、以下は1kernelの診断値であり、別の完全step性能値とはしない。
+
+| hardware診断 | 値 |
+| --- | ---: |
+| SM数 / launch block数 | 58 / 16 |
+| threads/block / registers/thread | 128 / 152 |
+| dynamic shared/block | 41640 bytes |
+| shared使用量によるresident block上限 | 2 blocks/SM |
+| waves/SM | 0.14 |
+| achieved occupancy（active-cycle基準） | 7.744% |
+| FP64 pipe activity（active / elapsed） | 74.498% / 20.476% |
+| DRAM throughput（peak比） | 0.000885% |
+| eligible warps/scheduler/cycle | 0.034646 |
+
+この小さいB4条件ではblock数が少なく、動いているSM内でFP64計算と依存待ちが目立つ。
+DRAM帯域が飽和しているという観測ではない。Short Scoreboardも大きいが、
+具体的なshared命令やmath命令を原因と断定するsource/SASSの対応付けは未実施。
+cache/clockが未制御であること、補助Pythonにsitecustomizeのtorch欠落警告があったことをraw logに残す。
+対象processの16pass、ncu-rep、CSV、正常終了を確認した。補助Pythonの警告は未解消である。
+
+NCU job=`l4job-95b9d249ebe04db9aba72b1ba15d3f30`、snapshot SHA256=
+`fa41efab5ed4bf5cd166fedb9fcd87f3f8cc3c23bb8b0648e18134b915af1c57`、
+result archive SHA256=`64b4ef61c2038349303d1a79d63adab0f49d10002f65e7b8616071fe2d7a6abf`。
+production binaryは同じ`1dca007d…`。report/CSV・command・警告・導出解析を保持する。
+
+次の優先候補はCPU側の重複宣言検証・dispatch整理、GPU側の未使用bank省略と仕事の分割である。
+またH/Cで値だけが必要な呼出しにも`profile_coefficients_m8`が微分係数を返しているため、
+値だけの評価経路が候補になる。ただし現binaryでのdead-code eliminationやその独立コストは未測定である。
+今回のprofile段階では、これらの最適化やPolar更新則の変更は行っていない。
+
 **先行候補（対称融合前）の検証結果：** CPU全体2,355 passed／5,671 skipped／既存警告18件。
 L4で旧参照と新候補を含む106件成功（宣言等31件、CUDA実行75件）。
 入力directのみ／出力directのみ／両方direct／両方階層、全階層direct、非対称軸、
