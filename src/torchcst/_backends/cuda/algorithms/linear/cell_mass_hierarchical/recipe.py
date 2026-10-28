@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 
 _SITE_SCALED_TUNING = re.compile(
-    r"site_scaled_hc(4|8)_g(64|128|256|512|1024)_cin(256|512|1024)(?:_slab(8|16))?(?:_(reuse_sigma|known_bank|exact_reuse))?(_active_z|_node_z)?(?:_cached(32|64))?(_expand)?"
+    r"site_scaled_hc(4|8)_g(64|128|256|512|1024)_cin(64|128|256|512|1024)(?:_slab(8|16))?(?:_(reuse_sigma|known_bank|exact_reuse))?(_active_z|_node_z)?(?:_cached(32|64))?(_expand)?(_fused)?(_nostore_h)?"
 )
 
 
@@ -74,6 +74,10 @@ class HierarchicalCellMassRecipe:
                     options["atom_threads"] = int(tuning.group(7))
                 if tuning.group(8):
                     options["active_bank_expand"] = True
+                if tuning.group(9):
+                    options["fuse_polar_cin"] = True
+                if tuning.group(10):
+                    options["omit_unused_h"] = True
             return options
         if self.preset == "validated_1024":
             return dict(

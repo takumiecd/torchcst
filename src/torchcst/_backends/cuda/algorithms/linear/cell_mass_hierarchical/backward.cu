@@ -101,6 +101,121 @@ __device__ inline void polar_projection_cached(const double *z, int batches, int
     }
 }
 
+// One warp owns one input-owner split and visits its reverse slots in exactly
+// the same chunk/atom order as ragged_input_kernel. Each lane owns a distinct
+// atom through every batch slab, so its FP64 parameter reduction is unchanged.
+template <bool DebugG>
+__global__ void fused_polar_grad_cin_kernel(
+    const float *atoms, const int64_t *rows, const int *groups, const int64_t *offsets,
+    const int *reverse_slots, const int64_t *reverse_offsets, const double *zx,
+    const double *zy, const int *counts, const int *task_offsets, double *partial,
+    float *gradient, float *debug_g, int atom_count, int group_count, int batches,
+    Axis input, Axis output, bool windowed) {
+    constexpr int CHUNK = 32, STRIDE = 33, BASIS = 17;
+    int task = blockIdx.x;
+    if (task >= task_offsets[input.node_count]) return; // Uniform CTA return.
+    int first_node = 0, last_node = input.node_count + 1;
+    while (first_node < last_node) {
+        int middle = (first_node + last_node) / 2;
+        if (task_offsets[middle] <= task) first_node = middle + 1;
+        else last_node = middle;
+    }
+    int node = first_node - 1;
+    int active = task_offsets[node + 1] - task_offsets[node];
+    int local_split = task - task_offsets[node], count = counts[node];
+    int first = static_cast<int>(reverse_offsets[node]) +
+        static_cast<int>(static_cast<int64_t>(count) * local_split / active);
+    int last = static_cast<int>(reverse_offsets[node]) +
+        static_cast<int>(static_cast<int64_t>(count) * (local_split + 1) / active);
+    int bank_index = 0;
+    while (bank_index + 1 < input.bank_count && node >= input.banks[bank_index + 1].node_offset)
+        ++bank_index;
+    Bank ib = input.banks[bank_index];
+    int input_owner = node - ib.node_offset, lane = threadIdx.x;
+    extern __shared__ double shared[];
+    double *input_coefficients = shared;
+    double *output_coefficients = input_coefficients + BASIS * STRIDE;
+    double *scaled_g = output_coefficients + BASIS * STRIDE;
+    double *amplitudes = scaled_g + BATCH_TILE * STRIDE;
+    double *totals = amplitudes + STRIDE;
+    for (int work = lane; work < batches * BASIS; work += CHUNK) totals[work] = 0;
+    __syncthreads();
+    for (int chunk = first; chunk < last; chunk += CHUNK) {
+        int position = chunk + lane;
+        bool valid = position < last;
+        int slot = 0, original = 0, output_owner = 0;
+        Bank ob{};
+        Profile ip{}, op{};
+        if (valid) {
+            slot = reverse_slots[position];
+            original = rows[slot];
+            int group = group_for_slot(offsets, group_count, slot);
+            output_owner = groups[4 * group + 2];
+            ob = output.banks[bank_for_level(output, groups[4 * group])];
+            amplitudes[lane] = atom_amplitude(atoms, original, input);
+            ip = make_profile<false, 8, true>(input, ib, atom_sigma(atoms, original, input),
+                atom_center(atoms, original, input, false), input_owner);
+            op = make_profile<false, 8, true>(output, ob, atom_sigma(atoms, original, output),
+                atom_center(atoms, original, output, true), output_owner);
+            cache_polar_coefficients<8, true>(ip, input_coefficients + lane, STRIDE);
+            cache_polar_coefficients<8, true>(op, output_coefficients + lane, STRIDE);
+        } else {
+            // C reads every atom column; zero coefficients as well as G so no
+            // padding lane can introduce a 0*uninitialized/NaN contribution.
+            for (int mode = 0; mode < BASIS; ++mode) {
+                input_coefficients[mode * STRIDE + lane] = 0;
+                output_coefficients[mode * STRIDE + lane] = 0;
+            }
+            amplitudes[lane] = 0;
+        }
+        double da = 0, dmi = 0, dmo = 0;
+        for (int begin = 0; begin < batches; begin += BATCH_TILE) {
+            double hv[BATCH_TILE] = {}, gv[BATCH_TILE] = {};
+            double dhi[BATCH_TILE] = {}, dgo[BATCH_TILE] = {};
+            if (valid) {
+                polar_projection_cached<8>(zx, batches, begin, input, ib, input_owner,
+                    ip, windowed, input_coefficients + lane, STRIDE, hv, dhi);
+                polar_projection_cached<8>(zy, batches, begin, output, ob, output_owner,
+                    op, windowed, output_coefficients + lane, STRIDE, gv, dgo);
+            }
+            double amplitude = amplitudes[lane];
+            for (int b = 0; b < BATCH_TILE; ++b) {
+                double scaled = 0;
+                if (valid && begin + b < batches) {
+                    float rounded_g = static_cast<float>(gv[b]);
+                    scaled = amplitude * static_cast<double>(rounded_g);
+                    if constexpr (DebugG)
+                        debug_g[(begin + b) * atom_count + slot] = rounded_g;
+                    // The task pullback uses unrounded H/G, never scaled_g.
+                    da += hv[b] * gv[b];
+                    dmi += amplitude * gv[b] * dhi[b];
+                    dmo += amplitude * hv[b] * dgo[b];
+                }
+                scaled_g[b * STRIDE + lane] = scaled;
+            }
+            __syncthreads();
+            // Transpose atom-lane producers to (batch,mode) consumers. The
+            // 32-term order and carried FP64 total match separate ragged Cin.
+            for (int work = lane; work < BATCH_TILE * BASIS; work += CHUNK) {
+                int b = work / BASIS, mode = work % BASIS;
+                if (begin + b < batches) {
+                    int index = (begin + b) * BASIS + mode;
+                    double value = totals[index];
+                    for (int atom = 0; atom < CHUNK; ++atom)
+                        value += scaled_g[b * STRIDE + atom] * input_coefficients[mode * STRIDE + atom];
+                    totals[index] = value;
+                }
+            }
+            // Covers both the next G slab and the next chunk's coefficients.
+            __syncthreads();
+        }
+        if (valid) store_atom_gradient(atoms, gradient, original, input, da, 0, dmi, dmo);
+    }
+    for (int work = lane; work < batches * BASIS; work += CHUNK)
+        partial[static_cast<int64_t>(task) * batches * BASIS + work] = totals[work];
+}
+
+
 template <typename atom_t, int FixedModes, bool Compensated, bool CacheCoefficients = false>
 __global__ void polar_g_parameter_grad_kernel(const atom_t *atoms, const int64_t *rows,
     const int *groups, const int64_t *offsets, const double *zx, const double *zy,
@@ -503,4 +618,96 @@ std::vector<int64_t> polar_g_grad_kernel_resources(int threads, bool cache_coeff
     }
     if (compensated) return polar_g_grad_resources_impl<false, true>(threads);
     return polar_g_grad_resources_impl<false, false>(threads);
+}
+
+// The contraction translation unit owns the established ragged metadata and
+// reduction kernels. These internal launch wrappers share their exact schedule.
+void launch_cell_mass_reverse_ragged_metadata(torch::Tensor reverse_offsets,
+    torch::Tensor counts, torch::Tensor task_offsets, const Axis &axis, int splits, int grain);
+void launch_cell_mass_ragged_reduce(torch::Tensor task_offsets, torch::Tensor partial,
+    torch::Tensor c);
+
+static size_t fused_polar_cin_shared_bytes(int batches) {
+    return sizeof(double) * (2 * 17 * 33 + BATCH_TILE * 33 + 33 + batches * 17);
+}
+
+std::vector<torch::Tensor> compute_polar_grad_cin(
+    torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups, torch::Tensor offsets,
+    torch::Tensor reverse_slots, torch::Tensor reverse_offsets, torch::Tensor zx,
+    torch::Tensor zy, std::vector<double> input_config, std::vector<double> output_config,
+    int splits, int grain, bool windowed, bool debug_g) {
+    check_layout(atoms, rows, groups, offsets);
+    Axis input = parse_axis(input_config), output = parse_axis(output_config);
+    TORCH_CHECK(atoms.scalar_type() == torch::kFloat32 && input.polar && output.polar &&
+        input.modes == 8 && output.modes == 8 && input.tail_bound == 1e-3 &&
+        output.tail_bound == 1e-3, "fused Polar Cin requires FP32 Polar M8/tail1e-3 axes");
+    TORCH_CHECK(splits >= 1 && splits <= 256, "splits must lie in [1,256]");
+    TORCH_CHECK(grain >= 1 && grain <= 65536, "grain must lie in [1,65536]");
+    check_moments(zx, atoms, input); check_moments(zy, atoms, output);
+    TORCH_CHECK(zx.size(0) == zy.size(0) && zx.size(0) <= 32,
+                "fused Polar Cin supports matching batches in [0,32]");
+    TORCH_CHECK(reverse_slots.is_contiguous() && reverse_slots.device() == atoms.device() &&
+        reverse_slots.dim() == 1 && reverse_slots.scalar_type() == torch::kInt32 &&
+        reverse_slots.numel() == atoms.size(0), "invalid reverse slots");
+    TORCH_CHECK(reverse_offsets.is_contiguous() && reverse_offsets.device() == atoms.device() &&
+        reverse_offsets.dim() == 1 && reverse_offsets.scalar_type() == torch::kInt64 &&
+        reverse_offsets.numel() == input.node_count + 1, "invalid reverse offsets");
+    int64_t batches = zx.size(0), nodes = input.node_count, basis = input.basis_count();
+    TORCH_CHECK(nodes <= 2048 && batches <= INT_MAX / (nodes * basis), "Cin exceeds index capacity");
+    c10::cuda::CUDAGuard guard(atoms.device());
+    auto c = torch::empty({batches, nodes, basis}, atoms.options().dtype(torch::kFloat64));
+    auto gradient = torch::empty_like(atoms);
+    auto g = debug_g ? torch::empty({batches, atoms.size(0)}, atoms.options())
+                     : torch::empty({0}, atoms.options());
+    if (batches == 0 || atoms.size(0) == 0) {
+        // In particular, B=0 with A>0 has a zero task gradient.
+        c.zero_(); gradient.zero_();
+        return {gradient, c, g};
+    }
+    TORCH_CHECK(groups.size(0) > 0, "nonempty atoms need groups");
+    int64_t task_cap = std::min(nodes * splits, (atoms.size(0) + grain - 1) / grain + nodes);
+    TORCH_CHECK(task_cap > 0 && task_cap <= INT_MAX / (batches * basis),
+                "fused Polar Cin partial exceeds index capacity");
+    auto ints = atoms.options().dtype(torch::kInt32);
+    auto counts = torch::empty({nodes}, ints);
+    auto task_offsets = torch::empty({nodes + 1}, ints);
+    auto partial = torch::empty({task_cap, batches, basis}, c.options());
+    launch_cell_mass_reverse_ragged_metadata(reverse_offsets, counts, task_offsets, input, splits, grain);
+    auto stream = c10::cuda::getCurrentCUDAStream();
+    auto launch = [&](auto debug_tag) {
+        constexpr bool save_g = decltype(debug_tag)::value;
+        fused_polar_grad_cin_kernel<save_g><<<task_cap, 32, fused_polar_cin_shared_bytes(batches), stream>>>(
+            atoms.data_ptr<float>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
+            offsets.data_ptr<int64_t>(), reverse_slots.data_ptr<int>(), reverse_offsets.data_ptr<int64_t>(),
+            zx.data_ptr<double>(), zy.data_ptr<double>(), counts.data_ptr<int>(), task_offsets.data_ptr<int>(),
+            partial.data_ptr<double>(), gradient.data_ptr<float>(), save_g ? g.data_ptr<float>() : nullptr,
+            atoms.size(0), groups.size(0), batches, input, output, windowed);
+    };
+    if (debug_g) launch(std::true_type{}); else launch(std::false_type{});
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+    launch_cell_mass_ragged_reduce(task_offsets, partial, c);
+    return {gradient, c, g};
+}
+
+template <bool DebugG>
+static std::vector<int64_t> fused_polar_cin_resources_impl(int batches) {
+    size_t shared = fused_polar_cin_shared_bytes(batches);
+    cudaFuncAttributes attributes{};
+    C10_CUDA_CHECK(cudaFuncGetAttributes(&attributes, fused_polar_grad_cin_kernel<DebugG>));
+    int active_blocks = 0;
+    C10_CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+        &active_blocks, fused_polar_grad_cin_kernel<DebugG>, 32, shared));
+    int device = 0;
+    C10_CUDA_CHECK(cudaGetDevice(&device));
+    cudaDeviceProp properties{};
+    C10_CUDA_CHECK(cudaGetDeviceProperties(&properties, device));
+    return {attributes.numRegs, static_cast<int64_t>(attributes.localSizeBytes),
+        static_cast<int64_t>(attributes.sharedSizeBytes), attributes.maxThreadsPerBlock,
+        active_blocks, static_cast<int64_t>(shared), properties.multiProcessorCount};
+}
+
+std::vector<int64_t> fused_polar_cin_kernel_resources(int batches, bool debug_g) {
+    TORCH_CHECK(batches >= 0 && batches <= 32, "resource query requires batches in [0,32]");
+    if (debug_g) return fused_polar_cin_resources_impl<true>(batches);
+    return fused_polar_cin_resources_impl<false>(batches);
 }

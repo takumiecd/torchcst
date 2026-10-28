@@ -64,6 +64,9 @@ std::vector<Tensor> compute_h_c_ragged_batched(Tensor atoms, Tensor rows, Tensor
 std::vector<Tensor> compute_h_c_ragged_exact(Tensor atoms, Tensor rows, Tensor groups,
     Tensor offsets, Tensor zx, Config input, Config output, int splits, int grain,
     bool windowed, int batch_tile, bool reuse_sigma, bool known_bank);
+std::vector<Tensor> compute_h_c_ragged_no_h(Tensor atoms, Tensor rows, Tensor groups,
+    Tensor offsets, Tensor zx, Config input, Config output, int splits, int grain,
+    bool windowed, int batch_tile, bool reuse_sigma, bool known_bank);
 std::vector<int64_t> hc_kernel_resources(int batch_tile);
 std::vector<int64_t> hc_reuse_kernel_resources(int batch_tile, bool reuse_sigma, bool known_bank);
 std::vector<Tensor> compute_g_and_parameter_grad(
@@ -80,6 +83,10 @@ std::vector<Tensor> compute_polar_g_and_parameter_grad(
     bool cache_coefficients);
 std::vector<int64_t> polar_g_grad_kernel_resources(int threads, bool cache_coefficients,
                                                  bool compensated);
+std::vector<Tensor> compute_polar_grad_cin(Tensor atoms, Tensor rows, Tensor groups,
+    Tensor offsets, Tensor reverse_slots, Tensor reverse_offsets, Tensor zx, Tensor zy,
+    Config input, Config output, int splits, int grain, bool windowed, bool debug_g);
+std::vector<int64_t> fused_polar_cin_kernel_resources(int batches, bool debug_g);
 std::vector<Tensor> compute_g_parameter_grad_cin(Tensor atoms, Tensor rows,
                                                  Tensor groups, Tensor offsets,
                                                  Tensor zx, Tensor zy, Tensor h,
@@ -134,12 +141,15 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("compute_h_c_ragged", &compute_h_c_ragged);
   m.def("compute_h_c_ragged_batched", &compute_h_c_ragged_batched);
   m.def("compute_h_c_ragged_exact", &compute_h_c_ragged_exact);
+  m.def("compute_h_c_ragged_no_h", &compute_h_c_ragged_no_h);
   m.def("hc_kernel_resources", &hc_kernel_resources);
   m.def("hc_reuse_kernel_resources", &hc_reuse_kernel_resources);
   m.def("compute_g_and_parameter_grad", &compute_g_and_parameter_grad);
   m.def("parameter_grad", &parameter_grad);
   m.def("compute_polar_g_and_parameter_grad", &compute_polar_g_and_parameter_grad);
   m.def("polar_g_grad_kernel_resources", &polar_g_grad_kernel_resources);
+  m.def("compute_polar_grad_cin", &compute_polar_grad_cin);
+  m.def("fused_polar_cin_kernel_resources", &fused_polar_cin_kernel_resources);
   m.def("compute_g_parameter_grad_cin", &compute_g_parameter_grad_cin);
   m.def("compute_input_c_reverse", &compute_input_c_reverse);
   m.def("compute_input_c_reverse_ragged", &compute_input_c_reverse_ragged);

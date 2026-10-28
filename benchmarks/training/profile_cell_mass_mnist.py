@@ -24,7 +24,7 @@ from unittest.mock import patch
 
 import torch
 
-from benchmarks.training.cell_mass_hc_diagnostics import diagnose
+from benchmarks.training.cell_mass_hc_diagnostics import _schedule, diagnose
 from benchmarks.training.cell_mass_mnist import load_mnist, make_model, sigma_statistics
 from torchcst import CSTOptimizer, FixedSelector, make_algorithm_registry
 from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical import executor
@@ -183,6 +183,7 @@ class Stages:
         "compute_h_c": "H_C",
         "expand_c": "expand",
         "compute_polar_g_and_parameter_grad": "G_parameter_grad",
+        "compute_polar_grad_cin": "G_parameter_grad_C_in",
         "compute_input_c": "C_in",
     }
 
@@ -215,7 +216,11 @@ class Stages:
             ):
                 self.describe(getattr(value, field), "layout." + field, trace_index)
         elif isinstance(value, (tuple, list)):
-            names = {"H_C": ("H", "C_out"), "G_parameter_grad": ("G", "atom_gradient")}
+            names = {
+                "H_C": ("H", "C_out"),
+                "G_parameter_grad": ("G", "atom_gradient"),
+                "G_parameter_grad_C_in": ("atom_gradient", "C_in", "G_debug_empty"),
+            }
             for index, item in enumerate(value):
                 label = names.get(name, ())
                 self.describe(
@@ -372,6 +377,50 @@ def step(model, optimizer, datasets, order, start, stages, counters, capture=Fal
         }
 
 
+def fused_training_expectation(layer, plan, options):
+    """Expected selection for this fixed B32 full-gradient training driver.
+
+    This is a metadata expectation, not evidence that backward invoked fusion.
+    The serial stage call counts below report the actual executed route.
+    """
+    checks = {
+        "polar_axes": plan.input.polar is not None and plan.output.polar is not None,
+        "fp32_atoms": layer.atoms.p.dtype == torch.float32,
+        "m8_axes": plan.input.modes == plan.output.modes == 8,
+        "tail_1e3": plan.input.tail_bound == plan.output.tail_bound == 1e-3,
+        "compensated_values": options.get("compensated_values", False),
+        "compensated_grad": options.get("compensated_grad", False),
+        "reverse_layout": options.get("reverse_layout", False),
+        "ragged_c": options.get("ragged_c_splits", False),
+        "atom_grad": layer.atoms.p.requires_grad,
+    }
+    requested = options.get("fuse_polar_cin", False)
+    expected = requested and all(checks.values())
+    return {
+        "requested": requested,
+        "expected_for_fixed_b32_training": expected,
+        "scope": "B32 central layer receives differentiable preceding Linear output; actual route requires observed stage calls",
+        "expected_fallback_reasons": [
+            name for name, passed in checks.items() if not passed
+        ]
+        if requested
+        else [],
+        "configured_cache_polar_coefficients": options.get(
+            "cache_polar_coefficients", False
+        ),
+        "configured_cin_batch_slab": options.get("cin_batch_slab", 0),
+        "expected_effective_coefficient_cache": True
+        if expected
+        else options.get("cache_polar_coefficients", False),
+        "expected_effective_cin_batch_slab": 0
+        if expected
+        else options.get("cin_batch_slab", 0),
+        "expected_global_g_bytes": 0
+        if expected
+        else 32 * len(layer.atoms.p) * layer.atoms.p.element_size(),
+    }
+
+
 def routing(layer, initial_sigma, recipe):
     options = recipe.arguments()
     cap = options.get("c_splits", 1)
@@ -380,7 +429,10 @@ def routing(layer, initial_sigma, recipe):
     batch_tile = options.get("hc_batch_tile", 4)
     stats = sigma_statistics(layer, initial_sigma)
     plan = hierarchy_from_operator(layer.declaration())
+    fusion = fused_training_expectation(layer, plan, options)
+    fused_expected = fusion["expected_for_fixed_b32_training"]
     result = {
+        "fused_backward_expectation": fusion,
         "sigma": stats,
         "atom_threads": options.get("atom_threads", 64),
         "atom_blocks": math.ceil(len(layer.atoms.p) / options.get("atom_threads", 64)),
@@ -389,7 +441,7 @@ def routing(layer, initial_sigma, recipe):
         "split_cap": cap,
         "C_block_threads": 32,
         "batch_tile": batch_tile,
-        "note": "H/G use one thread per atom; C already uses owner-count-dependent active splits",
+        "note": "atom_threads/atom_blocks describe legacy G/gradient fallback; fused backward uses one 32-thread CTA per input-owner task",
     }
     for side in ("input", "output"):
         axis = getattr(plan, side)
@@ -405,9 +457,18 @@ def routing(layer, initial_sigma, recipe):
             else axis.node_count * cap,
         )
         scratch_batch = (
-            min(32, options.get("cin_batch_slab", 0) or 32) if side == "input" else 32
+            min(32, fusion["expected_effective_cin_batch_slab"] or 32)
+            if side == "input"
+            else 32
+        )
+        batch_tiles = (
+            1
+            if side == "input" and fused_expected
+            else math.ceil(32 / (4 if side == "input" else batch_tile))
         )
         result[side] = {
+            "expected_launched_ctas": capacity * batch_tiles,
+            "expected_active_ctas": active * batch_tiles,
             "nodes": axis.node_count,
             "occupied_owners": sum(c > 0 for c in counts),
             "active_tasks": active,
@@ -420,6 +481,15 @@ def routing(layer, initial_sigma, recipe):
             "Z_or_R_shape": [32, axis.node_count, axis.basis_count],
             "Z_or_R_bytes": 32 * axis.node_count * axis.basis_count * 8,
         }
+        if side == "input" and grain:
+            # Reverse slots form one contiguous range per input owner; forward
+            # Cout's input-bank range fragmentation is a different schedule.
+            result[side]["reverse_schedule"] = _schedule(
+                [[c] for c in counts], grain, cap
+            )
+            result[side]["reverse_schedule"][
+                "cin_input_coefficient_evaluations_per_atom"
+            ] = 1 if fused_expected else 8
     return result
 
 
@@ -824,6 +894,29 @@ def main():
             )
             for threads in (32, 64)
             for cache in (False, True)
+        }
+        if recipe_options.get("fuse_polar_cin", False):
+            report["fused_polar_cin_compiler_resources"] = {
+                "scope": "compiled production specialization at B32; occupancy API prediction, not achieved occupancy or route evidence",
+                **dict(
+                    zip(
+                        fields,
+                        native.fused_polar_cin_kernel_resources(32, False),
+                        strict=True,
+                    )
+                ),
+            }
+        serial = report["serial"]
+        report["observed_backward_routes"] = {
+            "scope": "actual Python stage invocations in separate synchronized serial diagnostic pass",
+            "steps": 5,
+            "fused_polar_grad_cin_calls": serial.get("G_parameter_grad_C_in", {}).get(
+                "calls", 0
+            ),
+            "legacy_polar_g_parameter_grad_calls": serial.get(
+                "G_parameter_grad", {}
+            ).get("calls", 0),
+            "separate_cin_calls": serial.get("C_in", {}).get("calls", 0),
         }
         torch.cuda.synchronize()
     (output / "profile.json").write_text(json.dumps(report, indent=2))

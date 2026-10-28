@@ -499,8 +499,17 @@ def compute_h_c(
     batch_tile=4,
     reuse_sigma_decode=False,
     known_input_bank=False,
+    store_h=True,
 ):
-    """Compute H and output C together for M8 axes; H uses the atom dtype."""
+    """Compute H and output C together for M8 axes; H uses the atom dtype.
+
+    Ragged callers may explicitly omit global H and receive an empty tensor.
+    C still consumes the locally rounded H; all existing calls store H.
+    """
+    if type(store_h) is not bool:
+        raise ValueError("store_h must be bool")
+    if not store_h and not ragged:
+        raise ValueError("H omission requires ragged fused H/C")
     if type(splits) is not int or not 1 <= splits <= 256:
         raise ValueError("C splits must be an integer in [1,256]")
     if type(atoms_per_split) is not int or not 0 <= atoms_per_split <= 65536:
@@ -524,6 +533,22 @@ def compute_h_c(
     )
     layout.validate_for(atoms, plan)
     native = _extension()
+    if not store_h:
+        return native.compute_h_c_ragged_no_h(
+            atoms,
+            layout.rows,
+            layout.groups,
+            layout.offsets,
+            zx,
+            plan.input.native_config(),
+            plan.output.native_config(),
+            splits,
+            atoms_per_split,
+            windowed,
+            batch_tile,
+            reuse_sigma_decode,
+            known_input_bank,
+        )
     if reuse_sigma_decode or known_input_bank:
         return native.compute_h_c_ragged_exact(
             atoms,
@@ -834,6 +859,81 @@ def compute_polar_g_and_parameter_grad(
     )
 
 
+def _polar_cin_eligible(
+    plan, atoms, layout, batches, *, compensated_values, compensated_grad, ragged
+):
+    # This predicate reads metadata only. Full-gradient intent is checked by
+    # the caller; all unsupported configurations retain the separate route.
+    return (
+        plan.input.polar is not None
+        and plan.output.polar is not None
+        and atoms.dtype == torch.float32
+        and plan.input.modes == plan.output.modes == 8
+        and plan.input.tail_bound == plan.output.tail_bound == 1e-3
+        and compensated_values
+        and compensated_grad
+        and ragged
+        and layout.has_reverse
+        and 0 <= batches <= 32
+    )
+
+
+def compute_polar_grad_cin(
+    plan,
+    atoms,
+    layout,
+    zx,
+    zy,
+    *,
+    splits=128,
+    atoms_per_split=512,
+    windowed=False,
+    debug_g=False,
+):
+    """Return (atom gradients, Cin, optional diagnostic G) with one warp per task.
+
+    Both projection/gradient and Cin coefficients use the compensated M8
+    stream. H/G stay FP64 for parameter gradients; Cin consumes locally rounded
+    FP32 G. No G allocation is made unless debug_g explicitly requests it.
+    The main return then contains an empty diagnostic G tensor.
+    """
+    if type(windowed) is not bool or type(debug_g) is not bool:
+        raise ValueError("windowed and debug_g must be bool")
+    if type(splits) is not int or not 1 <= splits <= 256:
+        raise ValueError("C splits must be an integer in [1,256]")
+    if type(atoms_per_split) is not int or not 1 <= atoms_per_split <= 65536:
+        raise ValueError("fused Polar Cin grain must be an integer in [1,65536]")
+    if not _polar_cin_eligible(
+        plan,
+        atoms,
+        layout,
+        zx.shape[0],
+        compensated_values=True,
+        compensated_grad=True,
+        ragged=True,
+    ):
+        raise ValueError(
+            "fused Polar Cin requires reverse FP32 Polar M8/tail1e-3 and B<=32"
+        )
+    layout.validate_for(atoms, plan)
+    return _extension().compute_polar_grad_cin(
+        atoms,
+        layout.rows,
+        layout.groups,
+        layout.offsets,
+        layout.reverse_slots,
+        layout.reverse_offsets,
+        zx,
+        zy,
+        plan.input.native_config(),
+        plan.output.native_config(),
+        splits,
+        atoms_per_split,
+        windowed,
+        debug_g,
+    )
+
+
 def parameter_grad(plan, atoms, layout, zx, zy, h, g, *, threads=128, windowed=False):
     """One thread per atom reduces all batches into its original [a,s,muo,mui].
 
@@ -997,6 +1097,8 @@ class _HierarchicalLinear(torch.autograd.Function):
         active_bank_z,
         cache_polar_coefficients,
         active_bank_expand,
+        fuse_polar_cin,
+        omit_unused_h,
     ):
         bank_masks = (
             _extension().prepare_bank_masks(
@@ -1040,6 +1142,13 @@ class _HierarchicalLinear(torch.autograd.Function):
                 batch_tile=hc_batch_tile,
                 reuse_sigma_decode=hc_reuse_sigma_decode,
                 known_input_bank=hc_known_input_bank,
+                # Generic physical atom gradients still consume saved H.
+                # Polar reprojects H; input-only backward does not need it.
+                store_h=not (
+                    omit_unused_h
+                    and ragged_c_splits
+                    and (plan.input.polar is not None or not ctx.needs_input_grad[1])
+                ),
             )
         else:
             h = compute_h(
@@ -1097,6 +1206,7 @@ class _HierarchicalLinear(torch.autograd.Function):
         ctx.release_workspaces = release_workspaces
         ctx.cin_batch_slab = cin_batch_slab
         ctx.cache_polar_coefficients = cache_polar_coefficients
+        ctx.fuse_polar_cin = fuse_polar_cin
         ctx.active_bank_z = active_bank_z
         ctx.active_bank_expand = active_bank_expand
         ctx.source_version = atoms._version
@@ -1163,8 +1273,33 @@ class _HierarchicalLinear(torch.autograd.Function):
                 bank_masks=bank_masks if ctx.active_bank_z else None,
                 mask_side=1,
             )
-        dx = datoms = cin = None
-        if ctx.needs_input_grad[1] and plan.input.polar is not None:
+        dx = datoms = cin = g = None
+        if (
+            ctx.fuse_polar_cin
+            and ctx.needs_input_grad[0]
+            and ctx.needs_input_grad[1]
+            and _polar_cin_eligible(
+                plan,
+                atoms,
+                layout,
+                dy.shape[0],
+                compensated_values=ctx.compensated_values,
+                compensated_grad=ctx.compensated_grad,
+                ragged=ctx.ragged_c_splits,
+            )
+        ):
+            (zx,) = forward_state
+            datoms, cin, g = compute_polar_grad_cin(
+                plan,
+                atoms,
+                layout,
+                zx,
+                zy,
+                splits=ctx.c_splits,
+                atoms_per_split=ctx.atoms_per_split,
+                windowed=ctx.window_moments,
+            )
+        elif ctx.needs_input_grad[1] and plan.input.polar is not None:
             (zx,) = forward_state
             g, datoms = compute_polar_g_and_parameter_grad(
                 plan,
@@ -1299,6 +1434,8 @@ class _HierarchicalLinear(torch.autograd.Function):
             None,
             None,
             None,
+            None,
+            None,
         )
 
 
@@ -1336,13 +1473,17 @@ def hierarchical_linear(
     active_bank_z=False,
     cache_polar_coefficients=False,
     active_bank_expand=False,
+    fuse_polar_cin=False,
+    omit_unused_h=False,
 ):
     """Private research autograd route, using this forward's bank/owner choices.
 
-    Forward saves Zx/H only if atom gradients are requested. Backward builds Zy
-    and G once, then uses them for dX and parameter gradients. No dense W, dW,
-    packed atom values, global coefficient table, or separate dH is allocated.
-    H/G storage uses the input dtype. Opt-in compensated values apply to H,
+    Physical-sigma atom gradients save Zx and H. Polar atom gradients save
+    only Zx and reproject logical H in FP64 registers during backward. The
+    optimizer receives parameter gradients, never H. Standalone global H/G
+    buffers use the input dtype; the fused Polar backward produces no global G.
+    No dense W, dW, packed atom values, global coefficient table, or separate dH
+    is allocated. Opt-in compensated values apply to H,
     output C, standalone G and separate input C. The independent compensated_grad
     option evaluates the raw polynomial and beta derivative in standalone
     G/gradient fusion with FP32 pairs; phase and contractions stay double.
@@ -1352,12 +1493,25 @@ def hierarchical_linear(
     for other mode counts.
     cache_polar_coefficients reuses FP64 coefficients across batch tiles in the
     Polar pullback, with a private shared-memory column per atom thread.
+    fuse_polar_cin selects a one-warp full-gradient Polar backward when both
+    coefficient precision flags are enabled, reverse ragged layout exists,
+    and B<=32. It intrinsically caches coefficients and supersedes the separate
+    cache_polar_coefficients/cin_batch_slab settings only on this eligible route.
+    Physical, one-sided-gradient, and other configurations retain their prior
+    route. Global G is not produced by the fused route.
+    omit_unused_h suppresses the global H allocation/store only on ragged
+    fused H/C when Polar or absent atom gradients make that buffer unnecessary.
+    The local FP32 H rounding used by C and physical atom-gradient state remain.
     specialize_g_grad controls standalone G/gradient fusion; fused Cin is unchanged.
     compensated_cdot applies only to separate output/input C generation; it
     keeps the FP64 fallback and is incompatible with the experimental fusions.
     Double backward and full-route CUDA Graph capture are not supported yet
     (preparation has dynamic output shapes and host checks).
     """
+    if type(omit_unused_h) is not bool:
+        raise ValueError("omit_unused_h must be bool")
+    if type(fuse_polar_cin) is not bool:
+        raise ValueError("fuse_polar_cin must be bool")
     if type(active_bank_expand) is not bool:
         raise ValueError("active_bank_expand must be bool")
     if type(active_bank_z) is not bool:
@@ -1492,4 +1646,6 @@ def hierarchical_linear(
         active_bank_z,
         cache_polar_coefficients,
         active_bank_expand,
+        fuse_polar_cin,
+        omit_unused_h,
     )

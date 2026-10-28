@@ -714,8 +714,11 @@ __device__ void fused_forward_atom(const atom_t *atoms, const int64_t *rows, con
     double amplitude = atom_amplitude(atoms, original, input);
     for (int b = 0; b < ForwardBatchTile; ++b) {
         if (batch_begin + b < batches) {
+            // The FP32 rounding is part of C's numerical contract, even
+            // when no global H consumer exists and the optional store is off.
             atom_t rounded = static_cast<atom_t>(sums[b]);
-            h[(batch_begin + b) * atom_count + slot] = rounded;
+            if (h != nullptr)
+                h[(batch_begin + b) * atom_count + slot] = rounded;
             scaled_h[b * SHARED_STRIDE + lane] = amplitude * static_cast<double>(rounded);
         } else {
             scaled_h[b * SHARED_STRIDE + lane] = 0;
@@ -1995,7 +1998,7 @@ static std::vector<torch::Tensor>
 run_ragged_c(torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups, torch::Tensor offsets,
              torch::Tensor reverse_slots, torch::Tensor reverse_offsets, torch::Tensor values,
              std::vector<double> input_config, std::vector<double> output_config, int splits,
-             int grain, bool windowed, int cin_batch_slab = 0) {
+             int grain, bool windowed, int cin_batch_slab = 0, bool store_h = true) {
     TORCH_CHECK(cin_batch_slab >= 0 && cin_batch_slab <= 65536, "Cin batch slab must lie in [0,65536]");
     TORCH_CHECK(cin_batch_slab == 0 || Route == 2, "batch slab is only supported for reverse Cin");
     static_assert(Route >= 0 && Route <= 2, "unknown ragged route");
@@ -2050,7 +2053,8 @@ run_ragged_c(torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups, torc
     auto c = torch::empty({batches, nodes, basis}, atoms.options().dtype(torch::kFloat64));
     torch::Tensor h;
     if constexpr (Route == 1)
-        h = torch::empty({batches, atoms.size(0)}, atoms.options());
+        h = store_h ? torch::empty({batches, atoms.size(0)}, atoms.options())
+                    : torch::empty({0}, atoms.options());
     if (c.numel() == 0)
         return {h, c};
     if (atoms.size(0) == 0) {
@@ -2114,7 +2118,8 @@ run_ragged_c(torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups, torc
     } else if constexpr (Route == 1) {
         ragged_output_kernel<true, ForwardBatchTile, ReuseSigma, KnownInputBank><<<grid, CHUNK, shared, stream>>>(
             atoms.data_ptr<float>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
-            offsets.data_ptr<int64_t>(), values.data_ptr<double>(), h.data_ptr<float>(), nullptr,
+            offsets.data_ptr<int64_t>(), values.data_ptr<double>(),
+            store_h ? h.data_ptr<float>() : nullptr, nullptr,
             counts.data_ptr<int>(), task_offsets.data_ptr<int>(), partial.data_ptr<double>(),
             atoms.size(0), groups.size(0), batches, input, output, cartesian, windowed);
     } else {
@@ -2172,19 +2177,19 @@ template <int BatchTile>
 static std::vector<torch::Tensor> run_exact_hc(
     torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups, torch::Tensor offsets,
     torch::Tensor zx, std::vector<double> input_config, std::vector<double> output_config,
-    int splits, int grain, bool windowed, bool reuse_sigma, bool known_bank) {
+    int splits, int grain, bool windowed, bool reuse_sigma, bool known_bank, bool store_h = true) {
     if (reuse_sigma) {
         if (known_bank)
             return run_ragged_c<1, BatchTile, true, true>(atoms, rows, groups, offsets, {}, {},
-                zx, input_config, output_config, splits, grain, windowed);
+                zx, input_config, output_config, splits, grain, windowed, 0, store_h);
         return run_ragged_c<1, BatchTile, true, false>(atoms, rows, groups, offsets, {}, {},
-            zx, input_config, output_config, splits, grain, windowed);
+            zx, input_config, output_config, splits, grain, windowed, 0, store_h);
     }
     if (known_bank)
         return run_ragged_c<1, BatchTile, false, true>(atoms, rows, groups, offsets, {}, {},
-            zx, input_config, output_config, splits, grain, windowed);
+            zx, input_config, output_config, splits, grain, windowed, 0, store_h);
     return run_ragged_c<1, BatchTile>(atoms, rows, groups, offsets, {}, {},
-        zx, input_config, output_config, splits, grain, windowed);
+        zx, input_config, output_config, splits, grain, windowed, 0, store_h);
 }
 
 std::vector<torch::Tensor> compute_h_c_ragged_exact(
@@ -2197,6 +2202,20 @@ std::vector<torch::Tensor> compute_h_c_ragged_exact(
                               splits, grain, windowed, reuse_sigma, known_bank);
     return run_exact_hc<4>(atoms, rows, groups, offsets, zx, input_config, output_config,
                           splits, grain, windowed, reuse_sigma, known_bank);
+}
+
+// Optional omission uses the same kernel instantiations and a null H pointer.
+// Existing diagnostic entry points keep their original H-saving behavior.
+std::vector<torch::Tensor> compute_h_c_ragged_no_h(
+    torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups, torch::Tensor offsets,
+    torch::Tensor zx, std::vector<double> input_config, std::vector<double> output_config,
+    int splits, int grain, bool windowed, int batch_tile, bool reuse_sigma, bool known_bank) {
+    TORCH_CHECK(batch_tile == 4 || batch_tile == 8, "forward batch tile must be 4 or 8");
+    if (batch_tile == 8)
+        return run_exact_hc<8>(atoms, rows, groups, offsets, zx, input_config, output_config,
+                              splits, grain, windowed, reuse_sigma, known_bank, false);
+    return run_exact_hc<4>(atoms, rows, groups, offsets, zx, input_config, output_config,
+                          splits, grain, windowed, reuse_sigma, known_bank, false);
 }
 
 // Untimed compiler/runtime diagnostics. Active blocks are an occupancy API
@@ -2307,4 +2326,25 @@ torch::Tensor expand_c_masked(torch::Tensor c, torch::Tensor like, std::vector<d
                              int width, torch::Tensor bank_masks, int mask_side) {
     TORCH_CHECK(bank_masks.defined(), "masked expansion requires bank masks");
     return expand_c_impl(c, like, config, width, bank_masks, mask_side);
+}
+
+// Internal same-stream launch helpers for the fused Polar backward. Validation
+// and bounded allocation belong to its host entry; these reuse the exact
+// metadata scan and ordered split reduction used by separate ragged Cin.
+void launch_cell_mass_reverse_ragged_metadata(torch::Tensor reverse_offsets,
+    torch::Tensor counts, torch::Tensor task_offsets, const Axis &axis, int splits, int grain) {
+    auto stream = c10::cuda::getCurrentCUDAStream();
+    ragged_metadata_kernel<true><<<1, 256, 0, stream>>>(
+        nullptr, nullptr, reverse_offsets.data_ptr<int64_t>(), counts.data_ptr<int>(),
+        task_offsets.data_ptr<int>(), axis, axis, false, 0, splits, grain);
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+}
+
+void launch_cell_mass_ragged_reduce(torch::Tensor task_offsets, torch::Tensor partial,
+    torch::Tensor c) {
+    auto stream = c10::cuda::getCurrentCUDAStream();
+    ragged_reduce_kernel<<<(c.numel() + THREADS - 1) / THREADS, THREADS, 0, stream>>>(
+        task_offsets.data_ptr<int>(), partial.data_ptr<double>(), c.data_ptr<double>(),
+        c.numel(), c.size(0), c.size(1), c.size(2));
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
 }

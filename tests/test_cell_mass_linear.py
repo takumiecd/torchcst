@@ -139,7 +139,7 @@ def test_site_scaled_release_preset_preserves_existing_options():
     [
         "site_scaled_hc16_g256_cin256",
         "site_scaled_hc4_g32_cin256",
-        "site_scaled_hc8_g256_cin128",
+        "site_scaled_hc8_g256_cin32",
         "site_scaled_hc4_g0256_cin256",
         "site_scaled_hc4_g256_cin256_extra",
         "site_scaled_hc4_g256_cin256\n",
