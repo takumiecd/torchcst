@@ -695,7 +695,7 @@ C_in1.653msが残る。旧site_scaledから完全stepは約38.4%短縮したが�
 証拠はignored `output/cell-mass-hc-20261028/node-profile/`。
 
 
-**Polar経路のH保存省略と逆C融合（source 0b43283e、CPU・独立GPU検証済み・完全step測定待ち）：**
+**Polar経路のH保存省略と逆C融合（source 0b43283e、CPU・独立GPU・完全step確認済み）：**
 Polar optimizer自体はHを受け取らず、Parameterの勾配と既存optimizer状態を使う。
 論理的なHはforwardのC_out、およびLinear backwardの振幅勾配
 `da[a] = sum_b H[b,a]*G[b,a]`・出力中心勾配に必要である。
@@ -723,14 +723,84 @@ memcheck/racecheckはB5/A32のtail case各1件で0 errors/0 hazardsを確認し�
 local storage40bytes/thread、dynamic shared14,648bytes、予測6CTA/SM（実効occupancy未測定）。
 source/tests/training504ファイルとcompiled binaryを照合・保全した。
 source/result SHA256は`b8bf916b086062fcc63fe9f3474ec52194a2761a97711138f74c1550532fe088` / `38ebd1542399248d713432e6acf8416d83ff7367582099421264618a64118df9`、
-ignored evidenceは`output/cell-mass-hc-20261028/fused-gates/`。完全step/peakは別途測る。
+ignored evidenceは`output/cell-mass-hc-20261028/fused-gates/`。完全step/peakは次の別jobで測定した。
 完全step job `l4job-245ad903780b4c969753bdbf9af2e4d5`はCLI接続断・840秒の外側timeoutとなり、
-result/receiptを回収できなかったため、全ての速度・memory判定から除外した。実験コードの
-進行状況は不明であり、CUDA kernelの遅さや数値失敗の証拠とは扱わない。source504ファイルを
+result/receiptを回収できなかったため、全ての速度・memory判定から除外した。後のtrace確認では
+CLIの初期cwd設定RPC（execution.py:224）で接続断となり、本体remote.pyの実行前だった。
+CUDA kernelの遅さや数値失敗の証拠とは扱わない。source504ファイルを
 Git0b43283eへ照合し、source/spec/transport/lifecycleを`failed-fused-profile-transport/`へ保全した。
-所有sessionは停止・server一覧からの消滅を確認しpool recover済み。融合版の完全step・peak改善は
-未確定で、node版7.39msの実測と混同せず、自動selectorにも採用しない。
+所有sessionは停止・server一覧からの消滅を確認しpool recover済み。
+この未回収jobは以後も除外し、次の再測定と混同しない。自動selectorへの採用は別判断とする。
 
+
+**通信修復後の融合版完全step再測定（2026-10-28、numeric source 0b43283e）：**
+初期cwd設定を別のexecute requestで送る経路をなくし、実験用CLI内で最初の本体cellへ統合した。
+その前にshell/IOPubのready handshakeを行い、接続開始も含む全経路を`runtime.stop()`のfinallyで閉じる。
+旧経路ではsetup例外がfinallyの外へ出て、non-daemon WebSocket threadが残る場合を再現できた。
+さらにjupyter-kernel-client 0.9.0の期限切れ後の空待機loopへ明示的TimeoutErrorを追加した。
+close自体が止まる場合は実験用CLIをfailさせ、poolが所有VMを停止する。remote codeを自動再実行しない。
+変更先はisolated `/tmp/torchcst-colab-075`のみで、共有CLI・poolの所有規則・数値runtimeは変えない。
+実験用CLIはgoogle-colab-cli0.7.5/jupyter-kernel-client0.9.0/websocket-client1.9.2/requests2.34.2。
+実ネットワーク切断の全原因を特定したという主張ではなく、setup・待機・後始末の修復と実機成功を記録する。
+
+7件のlocal回帰検査で、旧deadlineの空待機・旧setup失敗後のprocess残留を再現し、修正後の
+単一code request・接続/実行失敗時のprocess終了・stuck-closeのfail-closed終了を確認した。
+共有L4のjob `l4job-6ee6ade9d3f7422eb06bbb018a66831a`と
+`l4job-e91e43f69d3d42369bf09a08f4bd4a85`で、通常実行と65秒間無出力の実行を同じVMで連続検査し、
+結果回収/hash照合/cleanup acknowledgementまで通過。その後の完全step jobも同じ修復CLIで完了した。
+patch script・変更前後のsource・diff・依存版・local tests・probe source/result/receiptは
+ignored `output/cell-mass-hc-20261028/transport-repair/`へ保全する。OSのVPN設定は変更していない。
+
+完全step job `l4job-98bbb3b5e42a48c0a90f9b30b01f1eeb`は前回失敗時とbyte同一のdriver
+（SHA256 `1184fe711051d5eb582b60784608b6e87dd9a015d94a36fb8e0fdb7803c825be`）を使った。
+同じ検証済みnative binary（SHA256 `c7b9bcf848a1ad9880895cdf068c5aee6f7211592c7981eae94281ee4dfbbc1b`）を
+各childでPython/Torch/CUDA/device/source digestと照合してloadする。新しいoracle試験を追加したのではなく、
+前述の1,225 GPU tests/14全atom gateを通った同一binaryを測る。source/tests/training504ファイルはGit0b43283eとbyte一致。
+初期値とCST/dense epoch3 checkpointのhash、MNIST70,000例resident、optimizer/model構成、TF32off、FP32、
+N1024/A52,428/B32、4warm updates、各process内3×21step窓、各条件2 fresh processと逆順実行を維持した。
+新しい学習epochは回していない。所要時間はwarm-up後の未計装なforward/backward/optimizer完全stepである。
+
+| 保存状態 | 直前node版 ms（2process） | 融合grain64 ms | 融合grain128 ms | dense ms |
+| --- | ---: | ---: | ---: | ---: |
+| initial | 7.292 / 7.303 | 5.994 / 6.061 | 6.470 / 6.426 | 1.889 / 1.898 |
+| epoch3 | 7.360 / 7.367 | 6.291 / 6.274 | 6.336 / 6.401 | 1.920 / 1.886 |
+
+現在の速度候補は`site_scaled_hc8_g64_cin64_slab16_exact_reuse_node_z_cached32_expand_fused_nostore_h`。
+initial平均6.028ms、epoch3平均6.282msで、直前node版より約17.4%/14.7%短縮。
+旧site_scaled（同じjobで11.637/11.616、12.018/11.975ms）からは約48.2%/47.6%短縮した。
+同時にCin grainも512から64へ変わるため、改善を融合単体の効果とは断定しない。
+denseに対しては約3.18/3.30倍の時間がかかり、速度目標は未達。grain128はメモリを優先する別の候補である。
+
+| 設定・状態 | peak allocated CST/dense MiB | peak reserved CST/dense MiB |
+| --- | ---: | ---: |
+| grain64 initial | 237.419 / 239.551 | 392 / 382 |
+| grain64 epoch3 | 236.740 / 239.551 | 394 / 402 |
+| grain128 initial | 235.717 / 239.551 | 392 / 382 |
+| grain128 epoch3 | 235.698 / 239.551 | 394 / 402 |
+
+表はfirst stepとsteady窓を合わせた上界でも同じ値。両融合設定のallocatedは両保存状態でdense以下だが、
+initial reservedは10MiB上回る。よって全memory指標がdense以下とは主張しない。process総GPU使用量とGraph captureは未測定。
+初回更新のwall時間は別記し、grain64でinitial1,269.6/1,274.0ms、epoch3は1,279.9/1,275.0ms、
+denseは約40–42.5ms。これには初回準備費用が含まれ、表のsteady throughputと混同しない。初回費用の内訳は今回計測していない。
+
+H保存だけを省いた非融合対照は速度が約7.3ms/7.37msのままで、epoch3 allocatedは239.170→238.018MiB。
+6.4MiBのH配列をなくしても別段階がpeakになるため、実peakが6.4MiB減るわけではない。
+融合64ではpeakが`G_parameter_grad_C_in`内へ移る。全24processで計装有無のlogits/loss/全model勾配/
+更新Parameter・momentsがbit一致し、allocator全境界/peakの再構成も一致した。
+融合8processすべてで5回の実測診断呼出が融合=5/旧Ggrad=0/別Cin=0となり、global H/G出力bufferも0bytesだった。
+別passのepoch3 GPU作業はH/C約1.706ms、G/Parameter勾配/C_in融合約1.993ms、Zx約.500ms、Zy約.245ms。
+これらを足して完全stepとは呼ばない。optimizerの同期APIは全processで0を維持した。
+
+source archive SHA256 `c7bb3e5cee2f92dd1d3dca931f4911340c692f6c4f9f46aca09db691c4c3900f`、
+result archive `4475f82c14f3f4cca7c08af5d4c5383e8801a29ae83036f464d52188e6c18ba6`。ignored evidenceは`output/cell-mass-hc-20261028/fused-profile-repaired/`。
+source/result archives・binary・driver・生trace・allocator snapshot・recipe・per-process結果・照合JSONを保存した。
+全3jobの後始末を完了し、所有sessionの停止とserver一覧からの消滅を確認済み。今回の通信修復・再測定ではAstraを使っていない。
+
+再実行は同じdefault共有queueへ上記driverを`submit --timeout 600`し、
+`pool.py --colab /tmp/torchcst-colab-075/bin/colab serve --workers 1`を使う。
+実験用CLIを作り直す際の適用scriptは`transport-repair/apply_client_patch.py`、local回帰検査は
+`/tmp/torchcst-colab-075/bin/python output/cell-mass-hc-20261028/transport-repair/test_client.py`。
+元のCLIへ黙って戻したり、別queueや直接notebook実行で所有規則を回避しない。
 
 **標本化による入力12基底へのfold（数式とCPU検査のみ・未実装）：**
 最小input bankはT=4spacing、P=12spacing。Z基底のphaseは`omega*site*spacing`であり、
