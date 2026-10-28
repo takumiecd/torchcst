@@ -36,6 +36,7 @@ def allocator_blocks(snapshot):
         block["address"]: {
             "address": block["address"],
             "size": block["size"],
+            "logical_bytes": block.get("requested_size", block["size"]),
             "born": -1,
             "frames": block.get("frames", []),
         }
@@ -52,18 +53,69 @@ def replay_peak(before, after, start_index):
     another stream. Segment reservation and free_completed are different metrics.
     The caller compares this reconstruction with the actual allocator counter.
     """
+    # TraceEntry.size is the request, not necessarily the allocated block size.
+    # Reproduce the default native allocator's 512-byte rounding and its rule
+    # that large-pool leftovers <=1 MiB stay attached to an allocation. Verify
+    # the model against the measured boundary counters, not just a byte sum.
+    # Source: PyTorch v2.11.0 c10/cuda/CUDACachingAllocator.cpp::should_split.
+    settings = after.get("allocator_settings", {})
+    if settings.get("expandable_segments", False) or any(
+        settings.get("roundup_power2_divisions", {}).values()
+    ):
+        raise ValueError("replay supports default nonexpandable native allocation")
+    max_split = settings.get("max_split_size", -1)
+    max_split = math.inf if max_split < 0 else max_split
+    blocks = {}
+    for segment in before["segments"]:
+        for block in segment["blocks"]:
+            blocks[block["address"]] = dict(
+                block,
+                segment=segment["address"],
+                small=segment["segment_type"] == "small",
+            )
     live = allocator_blocks(before)
     current = sum(record["size"] for record in live.values())
     peak, peak_index, peak_live = current, start_index - 1, list(live.values())
     intervals = []
+    counters = {start_index - 1: current}
     trace = after["device_traces"][0]
     for index in range(start_index, len(trace)):
         event = trace[index]
         address = event.get("addr")
-        if event["action"] == "alloc":
-            record = {
+        action = event["action"]
+        if action == "segment_alloc":
+            blocks[address] = {
                 "address": address,
                 "size": event["size"],
+                "state": "inactive",
+                "segment": address,
+                "small": event["size"] == 2 * 1024 * 1024,
+            }
+        elif action == "segment_free":
+            for pointer in [a for a, b in blocks.items() if b["segment"] == address]:
+                assert blocks[pointer]["state"] == "inactive"
+                del blocks[pointer]
+        elif action == "alloc":
+            block = blocks[address]
+            assert block["state"] == "inactive"
+            rounded = (event["size"] + 511) // 512 * 512
+            remaining = block["size"] - rounded
+            assert remaining >= 0
+            split = (
+                remaining >= 512
+                if block["small"]
+                else rounded < max_split and remaining > 1024 * 1024
+            )
+            if split:
+                blocks[address + rounded] = dict(
+                    block, address=address + rounded, size=remaining
+                )
+                block["size"] = rounded
+            block["state"] = "active_allocated"
+            record = {
+                "address": address,
+                "size": block["size"],
+                "logical_bytes": event["size"],
                 "born": index,
                 "frames": event.get("frames", []),
             }
@@ -73,10 +125,36 @@ def replay_peak(before, after, start_index):
             current += record["size"]
             if current > peak:
                 peak, peak_index, peak_live = current, index, list(live.values())
-        elif event["action"] == "free_requested":
+        elif action == "free_requested":
             record = live.pop(address)
             current -= record["size"]
             intervals.append(dict(record, end=index))
+            blocks[address]["state"] = "active_awaiting_free"
+        elif action == "free_completed":
+            block = blocks[address]
+            block["state"] = "inactive"
+            previous = next(
+                (
+                    p
+                    for p, b in blocks.items()
+                    if b["segment"] == block["segment"]
+                    and b["state"] == "inactive"
+                    and p + b["size"] == address
+                ),
+                None,
+            )
+            if previous is not None:
+                blocks[previous]["size"] += block["size"]
+                del blocks[address]
+                address, block = previous, blocks[previous]
+            following = address + block["size"]
+            if (
+                following in blocks
+                and blocks[following]["segment"] == block["segment"]
+                and blocks[following]["state"] == "inactive"
+            ):
+                block["size"] += blocks.pop(following)["size"]
+        counters[index] = current
     intervals.extend(dict(record, end=len(trace)) for record in live.values())
     return {
         "bytes": peak,
@@ -84,6 +162,7 @@ def replay_peak(before, after, start_index):
         "blocks": peak_live,
         "end_bytes": current,
         "intervals": intervals,
+        "counter_by_index": counters,
     }
 
 
@@ -346,7 +425,7 @@ def memory_report(before, after, start, collector, actual_peak, output):
         ]
         inventory.append(
             {
-                **{k: block[k] for k in ("address", "size", "born")},
+                **{k: block[k] for k in ("address", "size", "logical_bytes", "born")},
                 "free_requested_index": interval["end"],
                 "aliases": aliases,
                 "frames": block["frames"][-6:],
@@ -356,6 +435,10 @@ def memory_report(before, after, start, collector, actual_peak, output):
         "reconstructed_peak_bytes": peak["bytes"],
         "allocator_peak_bytes": actual_peak,
         "matches_allocator_counter": peak["bytes"] == actual_peak,
+        "all_boundaries_match": all(
+            peak["counter_by_index"][m["index"] - 1] == m["allocated"]
+            for m in collector.markers
+        ),
         "peak_trace_index": peak["index"],
         "peak_stage_stack": stage_stack,
         "inventory": sorted(inventory, key=lambda r: -r["size"]),
@@ -370,6 +453,56 @@ def memory_report(before, after, start, collector, actual_peak, output):
         for k in report
         if k not in ("inventory", "boundaries", "descriptors")
     }
+
+
+def trace_stage_costs(events, steps):
+    """Attribute actual GPU work through its launch's CPU stage.
+
+    GPU user-annotation ranges include idle gaps and overlap parent ranges.
+    Summing key_averages ranges would double count them. Kernel/copy durations
+    are counted once here, using CUPTI correlation IDs and the innermost stage
+    on the launching CPU thread. CPU synchronization can wait on earlier work.
+    """
+    stages = [
+        e
+        for e in events
+        if e.get("cat") == "user_annotation" and e.get("name", "").startswith("stage::")
+    ]
+    runtime = [e for e in events if e.get("cat") == "cuda_runtime"]
+    launches = {
+        e.get("args", {}).get("correlation"): e
+        for e in runtime
+        if "correlation" in e.get("args", {})
+    }
+
+    def owner(event):
+        matching = [
+            s
+            for s in stages
+            if s["pid"] == event["pid"]
+            and s["tid"] == event["tid"]
+            and s["ts"] <= event["ts"] < s["ts"] + s["dur"]
+        ]
+        return (
+            min(matching, key=lambda s: s["dur"])["name"][7:]
+            if matching
+            else "unassigned"
+        )
+
+    costs = defaultdict(lambda: defaultdict(float))
+    for event in events:
+        category = event.get("cat")
+        if category in ("kernel", "gpu_memcpy", "gpu_memset"):
+            launch = launches.get(event.get("args", {}).get("correlation"))
+            name = owner(launch) if launch else "unassigned"
+            costs[name][category + "_ms_per_step"] += event["dur"] / (1000 * steps)
+            costs[name][category + "_calls_per_step"] += 1 / steps
+    for event in runtime:
+        name = owner(event)
+        if "Synchronize" in event["name"]:
+            costs[name]["sync_calls_per_step"] += 1 / steps
+            costs[name]["sync_host_ms_per_step"] += event["dur"] / (1000 * steps)
+    return dict(costs)
 
 
 def main():
@@ -541,6 +674,9 @@ def main():
         for index in range(3):
             step(model, optimizer, datasets, order, index * 32, collector, counters)
     prof.export_chrome_trace(str(output / "trace.json"))
+    report["profiler_active_work"] = trace_stage_costs(
+        json.loads((output / "trace.json").read_text())["traceEvents"], 3
+    )
     report["profiler_stages"] = {
         item.key: {
             "calls": item.count,

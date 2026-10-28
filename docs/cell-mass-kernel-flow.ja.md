@@ -201,7 +201,133 @@ source/tests/training491ファイルを照合し、source/results/receipt/checkp
 `output/cell-mass-polar-unit-spacing-20261028/verified-run/`へ保存した。
 同親の`analysis.json`と`sigma-distributions.png`にbank移動・分布と解析controlを残した。
 所有L4とsupervisorは停止確認済み。追加学習・大型化は開始していない。
-このrunでは段階別時間を計装しておらず、sort・Z構築・H/G再投影のどれが支配的かは未確定。
+この学習run自体は未計装だった。続く段階別・配列寿命の監査を次節に記録する。
+
+#### 1024の学習状態を使った段階別時間・メモリ監査（2026-10-28）
+
+計測器は`benchmarks/training/profile_cell_mass_mnist.py`。runtimeのCUDAコードやPolar法則は
+変更せず、直前の学習jobからinitializationとCST/denseのepoch3 checkpointをbyte固定して使用した。
+checkpointのoptimizer状態も復元する。N1024/A52,428/B32、Q128、spacing=.125、
+σ_min=.125/σ_max=12.5、最小tile4/8sites、同じSITE_SCALED Plan、全MNISTをGPU常駐。
+実測はL4/Torch2.11.0+cu130/CUDA13.0。TF32/Graphなし、1caseにつきfresh process一つ。
+
+まず初期・学習後それぞれ全52,428atomのY/dX/4列勾配を独立CPU FP64 FFT/autogradへ照合し、
+rtol3e-6/atol2e-7を維持して通過した。runtime全346ファイルは先行検証sourceと一致する。
+元の学習と同じ「backwardだけ」のwarmup後に1stepを記録し、さらに3stepでoptimizerをwarm化する。
+その4更新後のParameter/momentsをCPUへ退避し、各計測passの直前に同じ状態へ戻した。
+したがって以下の短窓は新たな学習epochの成績ではない。計時中の21stepでは通常どおり更新する。
+計測器あり／なしは同一入力のlogits/loss・全model勾配・更新後Parameter/momentsがbit一致した。
+
+計測なしの同期wallは21stepをまとめて測る3窓。同じprocess内の反復であり独立3seedではない。
+初期CST中央値20.686ms / dense1.952ms、epoch3 CST21.084ms / dense1.888ms。
+以前の全3epoch平均20.935/1.926msとは測定窓が違うので置き換えない。
+
+次表は各段階の前後に同期した5step診断の平均wall ms。
+**同期の追加で重なり方が変わるため、これらの和を計測なしの完全step時間とは呼ばない。**
+別passの21step CUDA event区間でも近い値を確認した。
+
+| 段階とコード | 初期 | epoch3 | epoch3の実GPU作業 ms（kernel/copy/memsetのみ） |
+| --- | ---: | ---: | ---: |
+| `prepare_layout` | 1.143 | 1.134 | 0.386 |
+| `build_hierarchy`入力 + `build_window_moments` | 2.150 | 2.151 | 2.077 |
+| `compute_h_c`（Hと出力C融合） | 2.872 | 3.191 | 3.183 |
+| `expand_c`でY展開 | 0.388 | 0.393 | 0.364 |
+| 出力側Zy + 窓集約Ry | 1.147 | 1.143 | 1.067 |
+| `compute_polar_g_and_parameter_grad` | 1.911 | 1.888 | 1.842 |
+| `compute_input_c` | 1.543 | 1.581 | 1.523 |
+| `expand_c`でdX展開 | 0.444 | 0.442 | 0.419 |
+| `CSTOptimizer.step` | 8.260 | 8.277 | 0.654 |
+
+GPU作業列は別の3step profilerの実kernel/copy/memsetを、CUPTI correlation IDで
+起動元CPU threadの最内側stageへ割り当てたもの。GPU annotationの区間や
+`key_averages`の親子rangeを足すとidleや重複を含むため、その合計を使わない。
+MLP外側の層・loss/gather/metrics・binding/dispatch等は別の残余であり、この表の対象外。
+また非同期passのoptimizer host時間約16.6msには先行forward/backwardの完了待ちも入る。
+それをoptimizer固有時間と解釈せず、前段を完了させた約8.3msと区別する。
+
+optimizerでは1stepあたり160 kernel、208 copy、204 synchronizationを記録した。
+GPU作業約0.65msに対し段階wall約8.3msで、更新則の変更より先にhost往復を調べる余地が大きい。
+GPU profilerのoptimizer scopeには155回の`aten::item`と50回の`aten::_to_copy`がある。
+CPU Torch2.13の補助的な呼出元監査ではscalar化154回中136回が
+`KernelState.declaration()`（17 scalar × 8 snapshot）から発生した。
+CPUの監査をGPU時間や同一call数の証拠とは扱わないが、runtime sourceの経路は一致する。
+`polar_amp_width._split → parameter_dim → validate_layout`が
+`cell_mass_axes(chart.declaration(), state.declaration())`を繰り返す。
+`kernels/state.py`の`float(self.scalar(...))`がCUDAではhost読み出しになる。
+固定設定の検証を変更時に維持しつつ、hot pathのsnapshot再構築をcacheすることが最初の候補。
+実際の修正・速度再確認はまだ行っていない。
+
+メモリも計測なしの21step窓と、別のallocator履歴passを分ける。
+
+| 状態 | 計時前allocated CST/dense MiB | step peak CST/dense MiB | reserved CST/dense MiB |
+| --- | ---: | ---: | ---: |
+| 初期のwarm化後 | 223.434 / 232.221 | 241.827 / 239.551 | 396 / 382 |
+| epoch3のwarm化後 | 223.434 / 232.221 | 240.773 / 239.551 | 396 / 402 |
+
+CSTは平常時に約8.787MiB少ないが、epoch3のstep中増分は17.339MiBで、
+denseの7.330MiBより約10.010MiB大きい。そのためpeakでは約1.223MiB超える。
+reservedはcheckpoint復元／割当順にも依存し、この短窓のdense epoch3は402MiBになった。
+元の全epoch測定のdense382MiBを置き換えない。全てTorch allocator値でありprocess総量ではない。
+
+allocator履歴passの最大は`backward_total → compute_input_c`内。
+同時に存在した主なglobal配列は次のとおり（値はTensorの論理容量）。
+
+| 配列 | shape / dtype | 容量 MiB | いつまで必要か |
+| --- | --- | ---: | --- |
+| Rx（Zxの3tile窓を集約） | [32,509,17] FP64 | 2.113 | forwardから保存し、G/Parameter勾配生成後も現backward frame終了まで保持 |
+| Ry（Zyの窓） | [32,253,17] FP64 | 1.050 | G/Parameter勾配生成後も現backward frame終了まで保持 |
+| G | [32,52428] FP32 | 6.400 | dX用Cの全owner集約まで保持 |
+| atom勾配 | [52428,4] FP32 | 0.800 | optimizerが使用、次のzero_gradまで |
+| C_in | [32,509,17] FP64 | 2.113 | dX展開完了まで |
+| C_in部分和 | [714,32,17] FP64 | 2.963 | C_in生成kernel内の縮約完了まで |
+| layout indices/group/offsets | 元行・入力逆slot等 | 約1.31 | forward/backwardを結ぶ、backward完了まで |
+
+Rx/Ryは同じ階層の3タイル窓の集約であり、Zの親を2子ずつ作る方式は変更していない。
+Hはforwardで一時global [32,52428] FP32の6.400MiBを作り、C生成後に使い終わる。
+現在の融合APIがHも返すための保存で、Polarのbackwardへは保存しない。
+Hの書込み自体を省く候補はあるが、今回の最大peakでは既に解放済みなので、Hだけ消しても
+このbackward peakの原因は残る。Z→R変換中は一時的に両方が存在することも履歴で確認した。
+register/sharedはこのglobal表の全容量を置く場所ではなく、各CTA内のatom chunk計算だけに使う。
+
+履歴のalloc/free entryのsizeは要求量であり、allocated counterのblock量とは異なる。
+最初の要求量だけの再生では全ケースで不足したため、default native allocatorの512byte丸め・
+大blockの非分割remainderを含めて再構成した。
+[PyTorch v2.11.0の分割規則](https://github.com/pytorch/pytorch/blob/v2.11.0/c10/cuda/CUDACachingAllocator.cpp#L2894-L2910)
+に合わせ、4caseの全stage境界とpeak counterがbyte一致した。例としてepoch3のGは論理6.400MiBに対し
+確保block約6.587MiB、Ryは1.050MiBに対し1.063MiBだった。
+履歴passと計測なしpassのpeak差は1〜2KiBなので、その小差まで同一値とは呼ばない。
+rawの要求量だけの再集計結果も改変せず残し、修正後を`derived/`に分けた。
+
+分布とthread割り当ても一律ではない。H/Gは1thread=1atom、64threads/CTA・820CTAで、
+M8/同じ32batchなのでσだけから大幅なper-atom軽量化は期待しない。
+CのCTAは32threads、batch tile4で8個。owner人数からactive splitを生成しているが、
+scratch/起動枠は安全上界のままである。
+
+| 計時開始点 | 入力C active/cap | 出力HC active/cap | C_inのatom chunk lane利用率 |
+| --- | ---: | ---: | ---: |
+| 初期4更新後 | 263 / 714 | 265 / 458 | 94.2% |
+| epoch3 + 4更新後 | 448 / 714 | 320 / 458 | 88.3% |
+
+元の初期checkpointでは262/714と264/458であり、warmupの4更新で少数の境界移動がある。
+最小階層への偏りと単一ownerへの集中は違う。元のepoch3では最小入力bank85.82%だが、
+単一入力owner最大は0.414%、出力owner最大は0.866%。初期/epoch3でG+勾配はほぼ一定で、
+H/Cは約0.32〜0.39ms増えた。分布だけを入れ替えた因果実験ではないのでσのみを原因とは断定しない。
+
+次の実装候補は、(1)optimizerの固定宣言snapshotと同期を減らす、(2)G/勾配の後に不要なRyを
+早期解放し、G/勾配/C_inを近づけて6.4MiBのG受け渡しを減らす、(3)prepareで得たowner人数を使い、実コストと
+空きtask率からgrain/batch tileを決める順とする。階層Zとcell-mass/Polarの核は変えない。
+Rxはautogradの保存とretained backwardの契約があるので、単なるdelで解放できるとは仮定しない。
+Ryの早期解放だけなら論理1.050MiBの候補だが、どちらもまだ実装・再測定していない。
+C_inの部分和をepoch3の実448taskだけにできれば論理容量で約1.10MiB減るが、
+host同期・割当丸めも変わるので速度やpeak改善は再測定が必要。現段階では未実装。
+
+source `bff1ee1a`、job `l4job-5432773eb82647e18a402c9868116fa8`、
+source archive SHA256 `2ccb8eb3037d26b03a6fe0b341249832d9f6585b8cbd508e48af605d0d98fc20`。
+raw/source/receipt/35 filesをignored `output/cell-mass-mnist-profile-20261028/verified-run/`へ保存。
+修正後再集計は`derived/`、段階表と寿命図は同親`stage-and-lifetimes.png`、解析は`analysis.json`。
+postprocess修正後もGPUで測った`Stages/step/cpu_template/restore/routing`のASTは一致する。
+CUDAの追加変更・新たな学習epoch・allocator環境設定の変更はしていない。
+CPU2,053 passed/5,384 skipped/既存警告18件、所有GPU/共有pool supervisor停止確認済み。
 
 先行Polar runはsource `1e9a7cd4`、job `l4job-3b154a81ff6845b485d9a80332bb182e`。
 L4/Torch2.11.0+cu130/CUDA13.0で22+2,621 passed/12 skipped、racecheck 0 hazards、

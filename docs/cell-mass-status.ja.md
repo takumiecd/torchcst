@@ -29,6 +29,18 @@ CPU2,050 passed/5,384 skipped、Ruff/format/build、346runtimeの両配布物byt
 所有runtimeとsupervisorは停止済み。詳細・過去条件との区別は正本のσ範囲訂正節に残した。
 別幅のbank省略と保存FP32 H/Gによる勾配誤差を先行検査で検出し、
 Polar専用のFP64 register pullbackへ修正した。Hをbackwardまで保存せず、幅微分も計算しない。
+
+1024の初期/epoch3 checkpointを使う段階別診断も完了（job `l4job-5432773eb82647e18a402c9868116fa8`）。
+計測なし完全stepは20.686/21.084ms。同期診断のepoch3はprepare1.134、Zx/R2.151、HC3.191、
+Y展開.393、Zy/R1.143、G+勾配1.888、C_in1.581、dX展開.442、optimizer8.277ms。
+同期診断の和は完全step時間ではない。optimizerは204同期/step、実GPU作業約.654msで、
+固定宣言snapshotが繰り返すscalar読み出しが優先調査対象となった。
+メモリpeakはC_in生成中。Rx/Ry/G/勾配/C_in/部分和が同時に存在し、Hは既に解放されている。
+平常時はCSTがdenseより8.787MiB少ないが、一時増分が約10.010MiB大きく、peakが逆転する。
+実測配列・確保blockを4case全境界/peakでbyte照合した。rawと修正後解析は
+`output/cell-mass-mnist-profile-20261028/`。詳細・図・再現条件は正本の段階別監査節に置く。
+次は固定metadataのhost往復、G→C_inの寿命、owner分布からのgrain選択を検討する。未実装。
+
 以下は先行した物理sigma直接学習であり、Polarの学習結果とは区別する。
 
 公開CSTLinear接続では`presets.cell_mass`と明示Planを追加した。自動dispatchは変更しない。
