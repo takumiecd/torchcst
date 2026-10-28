@@ -131,7 +131,8 @@ layer = CSTLinear(
 ```
 
 `SITE_SCALED` keeps minimum tiles at 4/8 sites for N128/1024 and uses sparse
-sorted routing. Its GPU learning validation is pending. The earlier
+sorted routing. Its N128/1024 oracle and 3-epoch MNIST checks passed on L4; this learning
+workload did not meet the dense-relative time or memory targets. The earlier
 `VALIDATED_128` / `VALIDATED_1024` recipes retain minimum tiles N/32,N/16
 for reproducing prior fixtures. These Plans are
 explicit opt-ins; automatic dispatch and benchmark DB adoption are separate.

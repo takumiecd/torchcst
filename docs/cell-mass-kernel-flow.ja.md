@@ -67,7 +67,7 @@ PR #121の時点では公開CSTLinearへ未接続だった。現在の接続作�
 
 ### CSTLinearへの明示接続と学習確認（2026-10-27）
 
-#### Polar接続（実装・先行GPU検証済み、幅範囲を訂正）
+#### Polar接続（実装・GPU検証済み、幅範囲を訂正）
 
 `presets.polar_cell_mass`は既存`PolarAmpWidthSpec`・初期activity指定・
 `polar_activity_width`更新方針をそのまま使い、profileだけをセル積分/面積正規化へ置き換える。
@@ -160,7 +160,48 @@ M8/tail1e-3の集中半径補正は変更しない。σ<spacingでも1siteへの
 元atomは複製せず、順slot→元行、group範囲、逆slot/offsetだけがforward/backward用global cache。
 分類keyと逆index構築中のnode配列は一時scratchでありcheckpointには入らない。
 `atoms_per_split=256`のragged Cを使い、実測でメモリ・速度の両方を確認する。
-修正後のGPU検証・MNIST再学習はまだ完了していない。
+修正後のsource `636c890c`、job `l4job-31211e59eb5c41b08ce8813e60ab7141`で
+GPU検証とMNIST再学習が完了した。L4/Torch2.11.0+cu130/CUDA13.0、33+2,647 passed、
+racecheck 0 hazards。B32の全819/52,428atomで独立FFT/autogradのY/dX/全4列勾配、
+3stepのParameter/AdamW moments/stepを従来と同じ許容差で通過した。
+CPUは2,050 passed/5,384 skipped/既存警告18件、PRのCPU CIも通過した。
+wheel/sdistそれぞれの全346runtimeファイルはGPU snapshotとbyte一致した。
+
+全MNIST60,000/10,000件、3epoch/B32/seed120、784→N→N→10の中央層のみ置換。
+同じ初期実効W・外側層・data順、TF32/Graphなし、fused AdamW lr1e-3/wd0。
+1条件につきfresh process一つであり、複数seedの独立反復ではない。
+時間はgather/loss/forward/backward/実optimizerを含み、評価・診断・checkpointを除く。
+
+| N | epoch3精度 CST/dense | 平均step CST/dense | 時間比 | allocated MiB CST/dense | reserved MiB CST/dense |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 128 | 97.02 / 97.11% | 12.022 / 1.912ms | 6.286 | 213.301 / 213.264 | 366 / 364 |
+| 1024 | 97.36 / 97.84% | 20.935 / 1.926ms | 10.867 | 242.150 / 239.883 | 396 / 382 |
+
+常駐MNISTデータ込みのTorch allocator peakで、GPU process全体の使用量ではない。
+**この実学習条件では完全step時間・allocated/reservedの全目標が未達。**
+1024のallocatedはdenseより2.267MiB、reservedは14MiB大きい。
+B4合成fixtureでの達成や、以前の2..40幅の学習結果へ読み替えない。
+
+σ/spacing中央値は128で4.793→1.494、1024で7.080→1.508。
+1024の最小入力bankは0→44,993/52,428atom（85.82%）、
+最小出力bankは30,319→50,710（96.72%）。全52,428atomが入力bankを移動した。
+一方、単一ownerへの最大集中率は最終input0.414%/output0.866%であり、
+最小階層に偏ることと単一tileに仕事が集中することは区別する。
+最終の非空groupは30,702、group内最大9atom、同一shape再利用率は14.18%。
+
+無task角度更新のradial減衰だけによる解析的予測のσ中央値は128で1.4993、1024で0.18804
+（後者はspacing単位で1.50436）。実測1.4939/0.18844に近く、
+狭幅化をデータ学習だけで獲得した偏りとは呼ばない。独立のablation学習ではなく、
+初期角度・振幅を固定した正則化だけの解析controlで、FP32 step丸めは模擬していない。
+profileの集中半径補正も維持したため、最終の実効半径中央値はinput約2.05sites、
+output約3.82sites。σの中央値と混同しない。
+
+source archive SHA256 `fb55f026381efb9944d63b6ed3e6f0fb92865e8700c679d0ecf3b0dec2faadda`。
+source/tests/training491ファイルを照合し、source/results/receipt/checkpoints35ファイルを
+`output/cell-mass-polar-unit-spacing-20261028/verified-run/`へ保存した。
+同親の`analysis.json`と`sigma-distributions.png`にbank移動・分布と解析controlを残した。
+所有L4とsupervisorは停止確認済み。追加学習・大型化は開始していない。
+このrunでは段階別時間を計装しておらず、sort・Z構築・H/G再投影のどれが支配的かは未確定。
 
 先行Polar runはsource `1e9a7cd4`、job `l4job-3b154a81ff6845b485d9a80332bb182e`。
 L4/Torch2.11.0+cu130/CUDA13.0で22+2,621 passed/12 skipped、racecheck 0 hazards、

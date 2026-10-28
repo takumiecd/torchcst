@@ -16,7 +16,17 @@ GPU全勾配/更新とMNIST3epochはjob `l4job-3b154a81ff6845b485d9a80332bb182e`
 2026-10-28の最新指定でσ_min=spacing、σ_max=min(100σ_min,Q/3)、birth=8σ_min、upper_floor=2σ_minとする。
 128はσ_min=1/σ_max≈42.666664、1024は0.125/12.5。非表現可能な上限はFP32で下向きに丸める。
 最小tileも128/1024とも4/8sitesとし、明示SITE_SCALED Planで疎sortと逆indexを使う。
-この訂正後のGPU/学習検証は未完了。正本のσ範囲訂正節に旧結果と区別して残した。
+訂正後source `636c890c`、job `l4job-31211e59eb5c41b08ce8813e60ab7141`で完了した。
+GPU33+2,647 passed、racecheck0 hazards、全819/52,428atomのY/dX/4列勾配と3step更新を通過。
+MNIST3epoch/B32/seed120で精度は128がCST97.02/dense97.11%、1024が97.36/97.84%。
+平均完全stepは12.022/1.912ms（6.286倍）、20.935/1.926ms（10.867倍）。
+allocated MiBは213.301/213.264、242.150/239.883、reservedは366/364、396/382。
+**この実学習条件では速度・メモリ目標は未達。** 両peakは常駐データ込みのTorch allocator値。
+σ/spacing中央値は4.793→1.494、7.080→1.508。1024の最小入力bankは85.82%に増えた。
+radial正則化だけの解析予測にも近く、データ学習だけで獲得した偏りとは呼ばない。
+raw/source/checkpointsと491source照合は`output/cell-mass-polar-unit-spacing-20261028/verified-run/`。
+CPU2,050 passed/5,384 skipped、Ruff/format/build、346runtimeの両配布物byte照合とPR CPU CIも通過。
+所有runtimeとsupervisorは停止済み。詳細・過去条件との区別は正本のσ範囲訂正節に残した。
 別幅のbank省略と保存FP32 H/Gによる勾配誤差を先行検査で検出し、
 Polar専用のFP64 register pullbackへ修正した。Hをbackwardまで保存せず、幅微分も計算しない。
 以下は先行した物理sigma直接学習であり、Polarの学習結果とは区別する。
