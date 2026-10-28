@@ -724,8 +724,12 @@ local storage40bytes/thread、dynamic shared14,648bytes、予測6CTA/SM（実効
 source/tests/training504ファイルとcompiled binaryを照合・保全した。
 source/result SHA256は`b8bf916b086062fcc63fe9f3474ec52194a2761a97711138f74c1550532fe088` / `38ebd1542399248d713432e6acf8416d83ff7367582099421264618a64118df9`、
 ignored evidenceは`output/cell-mass-hc-20261028/fused-gates/`。完全step/peakは別途測る。
-完全step job `l4job-245ad903780b4c969753bdbf9af2e4d5`の回収結果はまだなく、
-融合版の速度・peak改善は未確定。node版7.39msの実測と混同せず、自動selectorにも採用しない。
+完全step job `l4job-245ad903780b4c969753bdbf9af2e4d5`はCLI接続断・840秒の外側timeoutとなり、
+result/receiptを回収できなかったため、全ての速度・memory判定から除外した。実験コードの
+進行状況は不明であり、CUDA kernelの遅さや数値失敗の証拠とは扱わない。source504ファイルを
+Git0b43283eへ照合し、source/spec/transport/lifecycleを`failed-fused-profile-transport/`へ保全した。
+所有sessionは停止・server一覧からの消滅を確認しpool recover済み。融合版の完全step・peak改善は
+未確定で、node版7.39msの実測と混同せず、自動selectorにも採用しない。
 
 
 **標本化による入力12基底へのfold（数式とCPU検査のみ・未実装）：**
