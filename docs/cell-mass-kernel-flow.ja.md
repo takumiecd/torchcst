@@ -4,7 +4,10 @@
 
 **実装の区切り（2026-10-28）：** 既存σ版と検証済み最適化はPR #122から
 `main`へmerge済み（`0047e29c`）。次期半径APIと以下の設計は、そこから切った
-`kernel/support-radius-pipeline`で進める。以下の追加方針を現CUDAへ実装済みとは扱わない。
+`kernel/support-radius-pipeline`で進める。
+現在は半径APIのCPU参照とN<=128の明示CUDA Plan、対称な融合forward/backward、
+FP32半径PolarのGPU更新まで実装している。以下では初版・後続候補・測定結果を区別する。
+この半径版でN1024以上、Graph、自動dispatch、dense相当の速度を達成したとは扱わない。
 
 **半径APIの初版：** revision7の半径宣言とCPU/Torch参照を追加した。
 `RadiusBounds`・`ChebyshevRadiusSpec`・物理／Polar用preset・`CSTModule.support_radii()`を公開する。
@@ -261,7 +264,7 @@ Chebyshev漸化式、scale、k優先の加算順、面積正規化と半径微�
 HYBRID_SERIAL17.190587ms、HYBRID_OVERLAP17.378848ms、BLOCK_LOCAL16.515928ms、
 dense0.719887msだった。全候補のallocated/reservedは前表と同じ。
 BLOCK_LOCALは初回同士では約2.11倍高速化したが、まだdenseの約22.9倍の時間を要する。
-これは速度目標の達成ではなく、同じGPUでの旧版・候補の再比較を続ける。
+これは速度目標の達成ではない。後述の同一GPU再比較でも改善を確認した。
 host側の1632条件でも汎用版へ、独立高精度多項式oracleへは別の条件集合で係数と微分を照合した。
 GPU正しさのgateは前節のY/dX/全atom勾配と、保存値・省略段階・公開optimizerの検査を含む。
 
@@ -274,6 +277,70 @@ CPU全体は2,361 passed／5,708 skipped／既存警告18件、wheel/sdistもbui
 再現gateは前節の3ファイルに`test_radius_polar_cuda_update.py`と`test_radius_benchmark.py`を加える。
 研究fixtureはrevision7の宣言を復元できるが、既存DB／submission adapterは専用対応が済むまで
 明示的に拒否する。通常のGraph付きschemaへ読み替えて取り込まない。
+
+**同じL4での再確認：** committed source `bde973ff`で既存runnerをfresh processから実行し、
+旧native→新native→新native→旧nativeの順で各2回比較した。
+旧nativeには元の`common.cuh`を持つ隔離sourceを使い、両binaryのhashとnative source digestを
+照合してロードした。Python・optimizer・fixtureは共通で、測定入口は既存runnerのまま。
+初期Parameter・X・target・両軸の半径分布はbit一致し、全819atomの更新後levelも両版とも2だった。
+
+| native / 担当site数 | fresh process 1 ms | fresh process 2 ms | peak allocated / reserved bytes |
+| --- | ---: | ---: | ---: |
+| 旧 / 32 | 34.216068 | 34.172785 | 291328 / 2097152 |
+| M8固定 / 32 | 16.470235 | 16.475394 | 291328 / 2097152 |
+| 旧 / 64 | 34.326092 | 34.301078 | 291328 / 2097152 |
+| M8固定 / 64 | 16.538569 | 16.488370 | 291328 / 2097152 |
+
+denseは同じ4実行で0.701691〜0.737726ms、peak allocated/reservedは
+17313280/23068672 bytesだった。採用候補はM8固定・担当32siteとし、担当64への変更は採用しない。
+改善は完全stepで約2.08倍だが、denseに対しては依然約23倍の時間である。
+4実行とも独立Y/dX/全atom勾配と同一状態optimizerのgateを通過した。
+
+別計装の新32site版はforward/loss約7.8ms、backward約9.0ms、optimizer約1.8〜1.9ms。
+次の候補は`compact_coefficient_tile`内のatom直列走査と、出力CTAごとのmoments/Hの重複生成である。
+この段階では各要因の完全stepへの寄与を分離したとは主張しない。
+`cuobjdump`ではblock_localのregister数が110→255、stackが1104→1376 bytesへ増えた。
+atom勾配kernelもregister92→218。private配列の扱いと並列実行数は引き続き交換条件になる。
+Torch allocator peakが同じことを、register・stack・全GPU processメモリが不変という意味にしない。
+
+再確認job=`l4job-073147cd17c64b6bb044d5c9a1022d1b`、snapshot SHA256=
+`9a980e08a97c3b1dce14c458de600062a725bf20011103a2dd6026c0d3959c3f`、
+result archive SHA256=`f2f2354ddf81ea972735f3802979b40fe6fc3bc390a4362f23ea9c63dcba7a03`。
+raw JSON・binary metadata・resource出力・receipt・source snapshot情報は同じignored保全先に置く。
+最終wheel/sdistの361 packageファイルはsourceへbyte照合した。
+
+#### 旧cell massから戻す最適化：係数の正の多項式評価
+
+旧`cell_mass_hierarchical/common.cuh`には、標本からDFTを取らず正の多項式から係数を直接求める
+実装がある。新半径版の次の候補は、この式をM8に移す。
+旧σからbetaを求める式は移さず、現在の半径と周期から
+`z=cos²(pi R/P)`、`u=1-z`を求める。旧raw係数へ共通の`z^8`を掛けると、
+
+\[
+Q_k(z)=\frac{\mathbf{1}_{k=0}}2 z^8+
+\frac4{8+k}\sum_{j=1}^{8-k}A_{kj}z^{8-k-j}(1-z)^j\quad(0\leq k<8),
+\qquad Q_8(z)=\frac14
+\]
+
+となる。`A_kj`は旧多項式と同じ正の整数定数で、atomに依存しない。
+共通のscaleは面積正規化で消えるので、
+
+\[
+c_0=1/P,\quad c_k=Q_k/(P Q_0),\qquad
+\frac{\partial c_k}{\partial R}=
+\frac{Q'_k-Q_k Q'_0/Q_0}{P Q_0}\,
+\left[-\frac{2\pi}{P}\cos(\pi R/P)\sin(\pi R/P)\right].
+\]
+
+Pは選択bank内で固定して微分する。負のべきやsecを作らず、係数と微分を同じ式から求める。
+保存する数学定数は8×8のdouble（512 bytes）のconstant領域だけで、atom係数のglobal表ではない。
+privateな`z^j/u^j`は各9要素。M8以外は従来の汎用計算へ進み、odd Mを切り捨てない。
+元のDFT版を保存し、旧cell massのtail／σ／bankの制約は新経路へ持ち込まない。
+
+hostの1,632条件で前段との係数・微分を照合し、別の102条件を独立70桁多項式oracleへ照合した。
+後者の誤差は`|Δc|P<=2.64e-16`、`|Δdr|P²<=5.82e-15`。
+R/Pが0または0.5へ近づく場合も含み、M8以外の差は0だった。
+これはCPUでの数式検証であり、GPUの正しさ・完全stepの採否は後続実測で決める。
 
 **先行候補（対称融合前）の検証結果：** CPU全体2,355 passed／5,671 skipped／既存警告18件。
 L4で旧参照と新候補を含む106件成功（宣言等31件、CUDA実行75件）。
