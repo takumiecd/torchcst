@@ -346,6 +346,73 @@ source/tests/training495ファイルが現在値と一致した。所有pool/GPU
 source/result/ログは同親`failed-live-period-check-v1/`と`v2/`に保全した。
 
 
+#### optimizerの異常値検査を集約する（2026-10-28）
+
+`_backends/torch/finite.py::first_nonfinite`で、CUDAのreal FP16/BF16/FP32/FP64を
+同じdevice/dtypeごとにまとめて検査する。各tensorの最大絶対値を`_foreach_norm(..., inf)`で
+計算し、その有限性の小さなvectorを一度にhostへ返す。大きなgradient/momentの結合や
+activation-sized mask、二乗和、Parameterの書換え、数値結果のcacheは作らない。
+空tensorは有限と扱い、complexは有限な実部・虚部でも絶対値がoverflowし得るため、
+従来の`isfinite`判定へ戻す。CPU/その他layoutも参照検査を保つ。
+
+`CSTOptimizer.step`は全Parameterのraw勾配をこの関数へ一括で渡し、不正ならAdamの
+Parameter/moments/step更新前に拒否する。疎COOは従来どおりcoalesceしたvaluesを検査し、
+一時参照はAdam前に解放する。Euclidean/FlatTorusのidentity transportも、旧点・新点・vectorを
+一緒に検査する。transportの値、Polarの法則、Adam、projected/new/transport済みvectorの
+追加検査、設定変更時の再検証、CUDA数値カーネル、σ/階層分類は変えない。
+
+runtime source `479aec47`。主job `l4job-fb50907d69cf4bfb9b69c03a7b837ef0`では、
+同じ最終コード内の検査関数だけをbenchmark用の逐次参照に差し替えた比較元と、通常の
+集約版を比べた。両群とも前節の`FLAT_TORUS_FUSED`を使う。
+N1024/A52,428/B32、Q128/spacing=.125、σ_min=.125/σ_max=12.5、同じSITE_SCALED Plan、
+GPU常駐MNIST、同一の初期/epoch3 checkpointとoptimizer状態、同じAdamWを維持する。
+L4 / Torch2.11.0+cu130 / CUDA13.0 / Triton3.6.0、TF32/Graphなし。
+4更新warmup後、21step窓3回の中央値を採る。各群2 fresh processで2回目は順序を反転した。
+小さい改善の確認として、独立job `l4job-a51fe92cd8af4e2c873e288fc62794a2`でもepoch3を
+各群1 fresh processで再測定した。新たなepoch学習・精度比較ではない。
+
+| 状態/独立process | 逐次検査の完全step ms | 集約後 ms | 短縮率 |
+| --- | ---: | ---: | ---: |
+| 主job initial/1 | 15.855 | 15.551 | 1.92% |
+| 主job initial/2 | 16.138 | 15.806 | 2.06% |
+| 主job epoch3/1 | 16.413 | 16.106 | 1.87% |
+| 主job epoch3/2 | 16.357 | 16.114 | 1.49% |
+| 独立確認job epoch3/1 | 17.231 | 16.979 | 1.47% |
+
+完全stepは約1.5〜2.1%の小さい短縮で、同期回数の減少率と同一視しない。
+optimizer内の`cudaStreamSynchronize`は15→7、kernel75→44、copy18→10、memset5→3回/step。
+主jobのepoch3単独同期診断は3.871/3.270→2.983/2.980ms、確認jobは3.825→3.605msだった。
+GPU本体は約.218→.207msで、大幅な演算量削減ではない。
+残る7回はraw勾配、射影勾配、中心/変位、更新結果、2軸のtransport、transport結果の検査。
+
+`runtime-api-audit.json`にはCUDA runtime APIをstageへ直接対応付けた監査も保存した。
+主job epoch3/1のprofilerで、逐次版のStreamSynchronize host時間は約6.46msだったが、
+集約版ではMemcpyAsync host時間に約6.53msが現れる。転送APIも先行GPU処理を待つ場合がある。
+StreamSynchronize時間だけを見て「CPU待ちが消えた」と呼ばず、同期診断や実GPU時間を
+完全stepへ加算しない。前段のforward/backwardの計算時間もこの変更では残る。
+
+peak allocatedは旧/新同一で、初期241.827MiB、epoch3 240.773MiB。
+reservedも初期392MiB、epoch3 394MiBで旧/新同一、確認jobも394MiB。
+主jobのdense epoch3 controlは1.957/1.971ms、allocated239.551MiB。
+速度・allocatedともdense目標は引き続き未達。
+
+CPU全体2,069 passed/5,409 skipped/既存警告18件、主GPU scoped suite161 passed
+（既存のdirty Graph拒否警告1件）、独立確認のfinite suite13 passed。
+初期/epoch3の全52,428atomのY/dX/全4列勾配を独立FP64参照へ、既存3e-6/2e-7で照合した。
+同一勾配の4更新では全modelのParameter/moments/stepがbit一致し、4更新目の設定変更も通過。
+NaN/±Inf、最大有限値、noncontiguous、空tensor、複素数、mixed dtypeを検査した。
+全13 fresh processの計測器あり/なしの更新と、allocatorの全境界/peakが一致した。
+wheel/sdistの全347runtimeファイルを計測sourceへbyte照合し、runtime commitのGitHub CPU CIも通過。
+
+主source archive SHA256 `621fbb4b638cd8f58756093964125c2d166d39587df909b590ad112753b25881`、
+result archive `7b254494921d57abaab3b734413afc00757946425689fdbefccc8f891a34cf07`。
+確認source `dde1869b1d08d7810d1f61d7009e087e9fae7083afebebafe19ed489789d5ece`、
+result `478a0166309cba238e16f69a256cea93bbde803e51b0043a7bcbb7d69dad125f`。
+両jobともsource/tests/training497ファイルが現在値と一致。
+`output/cell-mass-batched-checks-20261028/verified-run/`へ73ファイル、
+同親`confirmation-run/`へ29ファイルを保全し、`analysis.json`、`confirmation-analysis.json`、
+`complete-step.png`へ集計した。所有GPU/pool supervisorは停止確認済み。
+
 #### 1024の学習状態を使った段階別時間・メモリ監査（2026-10-28）
 
 計測器は`benchmarks/training/profile_cell_mass_mnist.py`。runtimeのCUDAコードやPolar法則は

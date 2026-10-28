@@ -53,6 +53,16 @@ CPU2,063 passed/5,402 skipped、GPU94 passed、初期/epoch3全atomの独立参�
 計測器とallocator照合を通過。495sourceと73証拠ファイルは
 `output/cell-mass-flat-polar-20261028/verified-run/`へ保全。所有GPUは停止済み。
 
+さらにsource `479aec47`でraw勾配とEuclidean/FlatTorusのtransport検査を集約した。
+両群ともPolar融合版を使い、同期15→7、kernel75→44/step、Parameter/moments/stepはbit一致。
+主job `l4job-fb50907d69cf4bfb9b69c03a7b837ef0`のepoch3は16.413/16.357→16.106/16.114ms、
+独立確認job `l4job-a51fe92cd8af4e2c873e288fc62794a2`でも17.231→16.979ms。
+完全stepの短縮は約1.5〜2.1%と小さい。GPU本体の演算時間は約.218→.207msで、
+転送APIにも先行GPU処理の待ちが移るため、同期APIの時間減少をそのまま利得と扱わない。
+peak allocated240.773MiBは不変で目標未達。CPU2,069 passed/5,409 skipped、GPU161+13 passed。
+主/確認の497source照合と73/29証拠ファイルを
+`output/cell-mass-batched-checks-20261028/`へ保全した。所有GPUは停止済み。
+
 1024の初期/epoch3 checkpointを使う段階別診断も完了（job `l4job-5432773eb82647e18a402c9868116fa8`）。
 計測なし完全stepは20.686/21.084ms。同期診断のepoch3はprepare1.134、Zx/R2.151、HC3.191、
 Y展開.393、Zy/R1.143、G+勾配1.888、C_in1.581、dX展開.442、optimizer8.277ms。

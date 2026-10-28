@@ -106,6 +106,11 @@ Linear / Conv2d の forward backend に依存しない。Euclidean trainable Cha
 処理できる。trainable 非 Euclidean Chart は atom center と異なる更新契約が
 必要なので、専用 policy を追加するまで拒否する。
 
+CUDA実数の有限性検査はdevice/dtypeごとにまとめ、小さな判定vectorだけをhostへ返す。
+raw勾配は全Parameter分をAdam前に確認する。Euclidean/FlatTorusのtransportも旧点・新点・
+vectorをまとめる。更新則やmomentsの演算は変えず、不正値をその場で拒否する同期は保つ。
+complex/CPU/非対応layoutは従来の検査を使い、CUDA Graphの対応範囲は広げない。
+
 snapshot と更新作業領域は atom parameter 数に比例する。dense weight、
 weight-gradient、Hessian は構築しない。有限性検査は device を同期する。
 CST policy を含む CUDA Graph capture、Tensor learning rate、differentiable
