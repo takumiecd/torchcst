@@ -208,30 +208,8 @@ class _HybridRadiusLinear(torch.autograd.Function):
         output_moments, grad_response = _complete_hybrid_response(
             dy, atoms, plan.output, recipe.output_direct_levels, recipe, True
         )
-        grad_atoms = None
-        if ctx.needs_input_grad[1]:
-            if recipe.schedule == "block_local":
-                # The single-forward-kernel route checkpointed only X and H.
-                # Rebuild the compact input hierarchy once for all gradients.
-                input_moments = build_moments(
-                    x,
-                    plan.input,
-                    method=recipe.moment_method,
-                    start_level=recipe.input_direct_levels,
-                )
-            grad_atoms = native.hybrid_parameter_grad(
-                atoms,
-                x,
-                dy,
-                input_moments,
-                output_moments,
-                response,
-                grad_response,
-                plan.input.native_config(),
-                plan.output.native_config(),
-                recipe.input_direct_levels,
-                recipe.output_direct_levels,
-            )
+        # Finish dX first. Its output moments and complete G remain live for
+        # atom gradients; neither is rebuilt by the parameter-gradient stage.
         grad_input = None
         if ctx.needs_input_grad[0]:
             coefficients = native.compact_coefficients(
@@ -253,6 +231,34 @@ class _HybridRadiusLinear(torch.autograd.Function):
                 plan.input.native_config(),
                 False,
                 recipe.input_direct_levels,
+            )
+            # Cin is not an input to atom gradients. Release its scratch before
+            # the block-local route reconstructs input moments from saved X.
+            del coefficients
+
+        grad_atoms = None
+        if ctx.needs_input_grad[1]:
+            if recipe.schedule == "block_local":
+                # Only X and H were checkpointed. This reconstruction is for
+                # input-profile derivatives, not another output moments/G pass.
+                input_moments = build_moments(
+                    x,
+                    plan.input,
+                    method=recipe.moment_method,
+                    start_level=recipe.input_direct_levels,
+                )
+            grad_atoms = native.hybrid_parameter_grad(
+                atoms,
+                x,
+                dy,
+                input_moments,
+                output_moments,
+                response,
+                grad_response,
+                plan.input.native_config(),
+                plan.output.native_config(),
+                recipe.input_direct_levels,
+                recipe.output_direct_levels,
             )
         return grad_input, grad_atoms, None, None
 
@@ -295,6 +301,19 @@ class _RadiusLinear(torch.autograd.Function):
         grad_response = native.compute_response(
             atoms, grad_output_moments, plan.output.native_config(), True
         )
+        # The dX path produces the shared output moments/G once. Consume those
+        # same tensors for atom gradients after dX, without another projection.
+        grad_input = None
+        if ctx.needs_input_grad[0]:
+            rows, offsets = prepare_layout(plan, atoms, reverse=True)
+            grad_input_coeffs = native.compute_coefficients(
+                atoms, rows, offsets, grad_response, plan.input.native_config(), False
+            )
+            grad_input = native.expand_coefficients(
+                grad_input_coeffs, grad_output, plan.input.native_config()
+            )
+            del grad_input_coeffs
+
         grad_atoms = None
         if ctx.needs_input_grad[1]:
             grad_atoms = native.parameter_grad(
@@ -305,16 +324,6 @@ class _RadiusLinear(torch.autograd.Function):
                 grad_response,
                 plan.input.native_config(),
                 plan.output.native_config(),
-            )
-
-        grad_input = None
-        if ctx.needs_input_grad[0]:
-            rows, offsets = prepare_layout(plan, atoms, reverse=True)
-            grad_input_coeffs = native.compute_coefficients(
-                atoms, rows, offsets, grad_response, plan.input.native_config(), False
-            )
-            grad_input = native.expand_coefficients(
-                grad_input_coeffs, grad_output, plan.input.native_config()
             )
         return grad_input, grad_atoms, None, None
 

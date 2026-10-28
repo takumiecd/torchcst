@@ -38,8 +38,8 @@ Graph、autocast、高階微分、dense以下の完全stepメモリ／速度を�
 | `compute_coefficients` | batch×出力tileの全基底 | sorted range内の完成responseを集約して`output_coeffs`をglobal scratchへ保存 |
 | `expand_coefficients` | 最終出力の1 site | 各階層の寄与をregisterへ加算し、Yへ1回だけ書く。coeffsはforward後に解放 |
 | backwardの`build_moments`／`compute_response` | dYを同じ仕組みで処理 | `grad_output_moments`、完成`grad_response`をbackward中だけ保持 |
-| `parameter_grad` | 1 atomの全batch | 保存H・完成Gとmomentsから振幅・半径・中心の勾配を集約。Polarは半径のtask勾配を切る |
 | backwardの`compute_coefficients`／`expand_coefficients` | 入力tile／最終入力site | 逆向きsort rangeから`grad_input_coeffs`を作り、dXへ1回だけ書く |
+| `parameter_grad` | 1 atomの全batch | dX側で作ったmoments・完成Gを再利用し、保存H・X側の情報と合わせてatom勾配を集約。Polarは半径のtask勾配を切る |
 
 momentsはセル積分済みの基底を使う。`merge`ではDCとmerge_factorで割り切れる周波数を
 子tileから正確に継承し、それ以外の周波数は入力から直接計算する。
@@ -124,6 +124,18 @@ backwardはXと保存responseから必要なinput momentsを一度再構築し�
 したがって「forward computeが1 kernel」であって、prepareやbackward全体も1 kernelという意味ではない。
 sharedの上限は1 CTAあたり48KiBで、超える設定は拒否する。
 `output_tile_sites`は出力CTAの担当範囲であり、profileの階層tile幅を変更する設定ではない。
+
+**backwardの実行順：** 全候補で、出力側moments／直接投影→完成G→dX→grad_atomとする。
+grad_atomはdXの値そのものではなく、dX側で生成した同じ出力moments・完成Gを使う。
+X側momentsとHは保存値を使い、block_localだけはX側momentsをdX後に一度再構築する。
+dX用coeffsのscratchは展開後に解放し、grad_atom段階へ残さない。
+片方の勾配だけが必要なら、不要なdX／grad_atomの段階は実行しない。
+これは同じstreamへのenqueue順であり、CPU同期を追加したり、前の層のbackwardまで同時に開始できると保証したりしない。
+順序変更後もL4で106件成功（宣言等31件、CUDA実行75件）。
+job=`l4job-895949990509471f8bf01b3daff41078`、snapshot SHA256=
+`c9ac2bab18b5fb8f094a9a2e6d16b0b45e3369ed0f2b37c38347d6aee27af6cd`。
+native sourceは不変で、検証済みbinaryをsource／runtime照合して再利用した。
+新しいPython実行順のsource hash、結果、receiptはignored `output/radius-backward-order-20261028/`へ保持する。
 
 初期候補のdirect_levels=2は比較用の明示設定で、最適閾値や全GPU共通の既定としては採用しない。
 なお従来の`DIRECT` Planはmomentsの直接生成（`moment_method="direct"`）であり、atomのdirect経路とは区別する。
