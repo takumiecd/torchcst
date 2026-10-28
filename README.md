@@ -242,8 +242,12 @@ complete responses in global memory; hybrid buffers omit low direct levels.
 These candidates do not establish dense-memory or complete-step speed success. They are
 eager-only, without autocast, deterministic-mode qualification, CUDA Graphs
 or higher-order derivatives. The existing sigma CUDA Plans reject radius
-profiles. Radius Polar optimizer integration on GPU is a separate next stage;
-the example above verifies Linear differentiation, not a full optimizer step.
+profiles. For FP32 radius Polar training, explicitly select
+`RADIUS_FLAT_TORUS_FUSED` from
+`torchcst._backends.cuda.algorithms.polar_update.plans` as the
+`CSTOptimizer` update selector. It reuses the existing Polar update law and
+supports eager SGD/AdamW; it is separate from the Linear Plan. FP64 Linear
+differentiation above does not qualify FP64 GPU optimizer updates.
 Gaussian retains sigma and does not enter this finite-support optimization.
 See [the design and implementation status](docs/cell-mass-kernel-flow.ja.md).
 

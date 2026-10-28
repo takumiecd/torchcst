@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "plans": [
+    {
+      "id": "radius-reference",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_radius_cell_mass",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "moment_method": "merge",
+          "save_response": true,
+          "input_direct_levels": 0,
+          "output_direct_levels": 0,
+          "schedule": "sequential",
+          "output_tile_sites": 32
+        }
+      }
+    },
+    {
+      "id": "radius-hybrid-serial",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_radius_cell_mass",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "moment_method": "merge",
+          "save_response": true,
+          "input_direct_levels": 2,
+          "output_direct_levels": 2,
+          "schedule": "sequential",
+          "output_tile_sites": 32
+        }
+      }
+    },
+    {
+      "id": "radius-hybrid-overlap",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_radius_cell_mass",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "moment_method": "merge",
+          "save_response": true,
+          "input_direct_levels": 2,
+          "output_direct_levels": 2,
+          "schedule": "overlap",
+          "output_tile_sites": 32
+        }
+      }
+    },
+    {
+      "id": "radius-block-local",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_radius_cell_mass",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "moment_method": "merge",
+          "save_response": true,
+          "input_direct_levels": 2,
+          "output_direct_levels": 2,
+          "schedule": "block_local",
+          "output_tile_sites": 32
+        }
+      }
+    },
+    {
+      "id": "radius-block-local-tile64",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_radius_cell_mass",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "moment_method": "merge",
+          "save_response": true,
+          "input_direct_levels": 2,
+          "output_direct_levels": 2,
+          "schedule": "block_local",
+          "output_tile_sites": 64
+        }
+      }
+    }
+  ]
+}

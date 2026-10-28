@@ -20,7 +20,10 @@ def make_registry():
         FusedStripTorusAlgorithm,
     )
     from .cuda.algorithms.polar_update import FusedPolarUpdateAlgorithm
-    from .cuda.algorithms.polar_update.algorithm import FlatTorusPolarUpdateAlgorithm
+    from .cuda.algorithms.polar_update.algorithm import (
+        FlatTorusPolarUpdateAlgorithm,
+        RadiusFlatTorusPolarUpdateAlgorithm,
+    )
     from .torch.algorithms.atom_update import AtomUpdateAlgorithm
     from .torch.algorithms.linear.factored import FactoredAlgorithm
     from .torch.algorithms.linear.fourier_tiles import FourierTilesAlgorithm
@@ -45,6 +48,7 @@ def make_registry():
         PolarUpdateAlgorithm(),
         FusedPolarUpdateAlgorithm(),
         FlatTorusPolarUpdateAlgorithm(),
+        RadiusFlatTorusPolarUpdateAlgorithm(),
     ):
         registry.register(algorithm)
     return registry

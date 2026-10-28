@@ -189,6 +189,92 @@ source照合・receipt・binary・Chrome trace・検査logはignored `output/rad
 初期候補のdirect_levels=2は比較用の明示設定で、最適閾値や全GPU共通の既定としては採用しない。
 なお従来の`DIRECT` Planはmomentsの直接生成（`moment_method="direct"`）であり、atomのdirect経路とは区別する。
 
+#### 半径版の最適化に使う完全stepの基準
+
+2026-10-28。既存Linear runnerに`polar_radius_cell_mass` fixtureを追加し、公開CPU初期化から
+FP32のCSTLinear、同じ初期密行列のdense、loss・dX・全atom勾配・実AdamW/Polar更新まで測る。
+更新用の明示Planは`RADIUS_FLAT_TORUS_FUSED`。旧σ Planを拡張して流用せず、
+revision7の半径Polarだけを受け付け、既存のPolar CUDA更新式をそのまま使う。
+固定宣言の検証結果はbuffer/specの署名でcacheし、設定変更時に再検証する。
+atom更新ではcacheを無効にせず、毎stepの固定値のCPU読戻しを省く。
+
+比較条件はN128・B4・A819（約5%）・M8・seed41、base1/merge2、FP32 IEEE、
+eager AdamW（lr=1e-4、weight_decay=.01、fused=True、capturable=False）。
+CSTOptimizerの`check_finite=False`はPyTorch流儀の比較設定であり、live設定の検証は維持する。
+異常値検査を有効にした場合の拒否・非更新も別テストで確認する。
+公開初期化のRは両軸とも約3.98552〜3.9999999994に集中し、819atom全てがlevel2/K3である。
+階層に均等配置したfixture、旧σのMNIST条件、N1024の結果として読み替えない。
+
+最適化前の独立job（warmup3・21サンプル、独立run数1）：
+
+| Plan | 完全step中央値 ms | peak allocated bytes | peak reserved bytes |
+| --- | ---: | ---: | ---: |
+| REFERENCE | 34.741301 | 973312 | 2097152 |
+| HYBRID_SERIAL | 34.335889 | 346624 | 2097152 |
+| HYBRID_OVERLAP | 34.274785 | 346624 | 4194304 |
+| BLOCK_LOCAL（担当32site） | 34.774483 | 291328 | 2097152 |
+| dense | 0.702979 | 17313280 | 23068672 |
+
+allocator peakはfresh workerのresident model・勾配・AdamW状態・eager一時領域を含む。
+Graph capture/replayとGPU process総量は未測定。denseの通常ライブラリworkspaceも含み、
+小行列での比率を大行列やMNISTへ外挿しない。21サンプルは21独立runではない。
+BLOCK_LOCALの別計装stepではforward/loss約15.46ms、backward約19.34ms、optimizer約2.13ms。
+これらは完全stepから差し引いたり足し合わせたりしない。forward/backwardの係数再生成が次の調査対象である。
+
+正しさは全819atomのY/dX/dPをFP64公開Fourier参照へ、別の8atomを独立多項式数値積分へ照合する。
+optimizerは3つの同一状態FP32更新でParameter・dX・AdamW moment/stepを照合する。
+各更新直前にGPUのParameterとAdamW状態をCPU参照へコピーし、GPU軌道だけを進める。
+これは自由に走らせたCPU/GPU学習軌道の一致を意味しない。
+初回の独立FP64参照軌道はR=4の離散階層境界をFP32と異なるstepで跨ぎ、3更新gateに失敗した。
+その負の結果と診断を保存し、profileや境界を変更せず、同一状態からの更新検査へ範囲を明示して変更した。
+許容差はParameter最大絶対差2e-5、他5e-4。固定外部勾配を与えた5更新の別検査では、
+SGD/AdamW・2 activity mode・有限値検査の有無を含むPolar更新式と状態を照合した。
+
+基準job=`l4job-f4d2b6c0052c4f39943471f95b423a92`、source snapshot SHA256=
+`52383a6c03d512a679e11019ef13b042928d578c8af82f4275cdc9937264ad0c`、
+result archive SHA256=`d38ef0b45d8225290cc8ade2a9bb357ac0986f9f8b4a43978dfad7463355fe3e`。
+native binaryは前節の`0f103d5b…`をsource/runtime照合して使用した。
+失敗job=`l4job-8d571176e4ed48438a009467be3b36d4`、
+診断job=`l4job-2a60d5dcc160414e83e0e67c48c8e8e6`も
+ignored `output/radius-optimize-20261028/`へreceipt・結果・診断ごと保持する。
+これらの測定sourceはparent commit `2f9a055`に未commit差分を含み、正確な内容はsnapshot/hashで固定する。
+
+再現コマンド（このfixtureは研究用eager経路で、DB提出／dispatch adapterの対応は別段階）：
+
+```bash
+PYTHONPATH=src:. python -m benchmarks.cuda.linear.run \
+  --plans benchmarks/cuda/linear/plans-radius-cell-mass.json \
+  --case benchmarks/cuda/linear/cases/radius-cell-mass-128-initial.json \
+  --polar-update radius --phase-diagnostics \
+  --output output/radius-initial.json
+```
+
+#### 最適化：M8の定数位相をコンパイル時に畳み込む
+
+`common.cuh::profile_coefficients_m8`はM=8だけを固定サイズにし、17標本とDFTのloopを
+展開可能にした。標本のcosとDFT位相は定数で、動的なcos評価とprivate配列のindex処理を削れる。
+関数本体はdeviceの`noinline`として、呼出し元ごとの巨大な展開を避ける。
+Chebyshev漸化式、scale、k優先の加算順、面積正規化と半径微分は元の処理を維持する。
+他のMは元の汎用関数へ進む。Mを増減する、精度を下げる、globalなatom係数表を作る変更ではない。
+
+初回L4 jobでは147テストが成功し、同条件の完全stepはREFERENCE17.666807ms、
+HYBRID_SERIAL17.190587ms、HYBRID_OVERLAP17.378848ms、BLOCK_LOCAL16.515928ms、
+dense0.719887msだった。全候補のallocated/reservedは前表と同じ。
+BLOCK_LOCALは初回同士では約2.11倍高速化したが、まだdenseの約22.9倍の時間を要する。
+これは速度目標の達成ではなく、同じGPUでの旧版・候補の再比較を続ける。
+host側の1632条件でも汎用版へ、独立高精度多項式oracleへは別の条件集合で係数と微分を照合した。
+GPU正しさのgateは前節のY/dX/全atom勾配と、保存値・省略段階・公開optimizerの検査を含む。
+
+job=`l4job-307b65f5ebce410fb92acc73684e4568`、source snapshot SHA256=
+`9199cd678a450cd8e8f2953fcb2dd6ab19cd144306b974ba88864ab1883b0360`、
+result archive SHA256=`caa47fed24b1f01936843fa6017ee91d35deba7457c1fc557c955e2de58c0a0d`。
+native binary SHA256=`31a624b6dd4a9940d6dcc2744ecaedb486305dad631fc5a79aafd1776e34992e`。
+このjobのsourceもparent `2f9a055`に未commit差分を含む。正確なsource・binary・結果はhashで区別する。
+CPU全体は2,361 passed／5,708 skipped／既存警告18件、wheel/sdistもbuildした。
+再現gateは前節の3ファイルに`test_radius_polar_cuda_update.py`と`test_radius_benchmark.py`を加える。
+研究fixtureはrevision7の宣言を復元できるが、既存DB／submission adapterは専用対応が済むまで
+明示的に拒否する。通常のGraph付きschemaへ読み替えて取り込まない。
+
 **先行候補（対称融合前）の検証結果：** CPU全体2,355 passed／5,671 skipped／既存警告18件。
 L4で旧参照と新候補を含む106件成功（宣言等31件、CUDA実行75件）。
 入力directのみ／出力directのみ／両方direct／両方階層、全階層direct、非対称軸、

@@ -28,6 +28,11 @@ LOCAL_OPTIMIZER_POLICY = (
 def measurement_operator(case):
     """Rebuild from a validated Case, never from arbitrary serialized types."""
     case = _case({"id": "stored-case", **case})
+    if case.fixture == "polar_radius_cell_mass":
+        from .radius_cell_mass import fixture
+
+        model, *_ = fixture(case)
+        return model.execution_declaration()
     if case.fixture == "polar_sphere_separable":
         from .sphere_baseline import fixture
 

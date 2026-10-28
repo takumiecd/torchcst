@@ -157,3 +157,59 @@ class FlatTorusPolarUpdateAlgorithm(FusedPolarUpdateAlgorithm):
             periods=tuple(chart.geometry.periods for chart in binding.cst_charts()),
         )
         return proposal.detach()
+
+
+@dataclass(frozen=True)
+class RadiusFlatTorusPolarUpdateAlgorithm(FlatTorusPolarUpdateAlgorithm):
+    """Explicit radius contract using the unchanged Polar coordinate law."""
+
+    id: str = "cuda_radius_flat_torus_polar_update_fused"
+
+    def supports(self, context, recipe):
+        from torchcst.kernels.parameterizations import PolarAmpRadiusSpec
+
+        if not isinstance(context, AtomUpdateContext):
+            return SupportResult(("requires AtomUpdateContext",))
+        reasons = []
+        if (
+            context.kernel.revision != 7
+            or type(context.kernel.parameterization) is not PolarAmpRadiusSpec
+            or context.kernel.update.id != "polar_activity_radius"
+            or context.kernel.composition != "separable"
+            or len(context.geometries) != 2
+            or not all(
+                type(g) is FlatTorusGeometrySpec and g.intrinsic_dim == 1
+                for g in context.geometries
+            )
+            or len(context.parameter_shape) != 2
+            or context.parameter_shape[1] != 4
+        ):
+            reasons.append("requires radius Polar and two scalar FlatTorus centers")
+        if context.execution_mode != "eager":
+            reasons.append("periodic update finite checks require eager execution")
+        if (
+            context.device.type != "cuda"
+            or context.dtype != torch.float32
+            or not context.contiguous
+        ):
+            reasons.append("radius Polar update requires contiguous CUDA float32 atoms")
+        scalars = {
+            name: (dtype, device, size)
+            for name, dtype, device, size in context.scalar_metadata
+        }
+        if any(
+            scalars.get(name) != (context.dtype, context.device, 1)
+            for name in (
+                "amplitude_max",
+                "w_c",
+                "activity_gain",
+                "dormant_expansion_rate",
+                "radial_regularization",
+                "geometry.0.periods",
+                "geometry.1.periods",
+            )
+        ):
+            reasons.append(
+                "radius Polar scalars and periods must be live matching FP32 tensors"
+            )
+        return SupportResult(tuple(reasons))

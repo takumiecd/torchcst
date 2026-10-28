@@ -108,7 +108,7 @@ __device__ inline Membership classify(double R, double mu, const Axis &axis) {
 
 // Temporary thread-local samples only. Differentiate with respect to z=cos^2(pi R/P),
 // then apply dz/dR after normalization; no secant or overflowing Chebyshev value.
-__device__ inline void profile_coefficients(double R, double P, int M, double *c, double *dr) {
+__device__ inline void profile_coefficients_generic(double R, double P, int M, double *c, double *dr) {
     double values[33], slopes[33];
     int samples = 2 * M + 1;
     double angle = PI * (R / P), cb = cos(angle), z = cb * cb;
@@ -142,6 +142,56 @@ __device__ inline void profile_coefficients(double R, double P, int M, double *c
         c[k] = (raw / zero) / P;
         dr[k] = ((draw - raw * (dzero / zero)) / zero) * (dz / P);
     }
+}
+
+// Fixed M=8 loops let the compiler fold DFT phases and scalarize local samples.
+// Keep one out-of-line device helper so callers do not each duplicate the body.
+__device__ __noinline__ void profile_coefficients_m8(double R, double P, double *c, double *dr) {
+    constexpr int M = 8;
+    double values[17], slopes[17];
+    constexpr int samples = 2 * M + 1;
+    double angle = PI * (R / P), cb = cos(angle), z = cb * cb;
+    double dz = -(2 * PI / P) * cb * sin(angle);
+    double scale = 0;
+    #pragma unroll
+    for (int j = 0; j < samples; ++j) {
+        double x = cos(PI * j / samples), previous = 2, current = x;
+        double dp = 0, dc = 0;
+        #pragma unroll
+        for (int n = 2; n <= M; ++n) {
+            double next = x * current - z * previous / 4;
+            double dn = x * dc - (previous + z * dp) / 4;
+            previous = current; current = next; dp = dc; dc = dn;
+        }
+        values[j] = current; slopes[j] = dc;
+        scale = fmax(scale, fabs(current));
+    }
+    #pragma unroll
+    for (int j = 0; j < samples; ++j) {
+        double v = values[j] / scale;
+        slopes[j] = 2 * v * (slopes[j] / scale);
+        values[j] = v * v;
+    }
+    double zero = 0, dzero = 0;
+    #pragma unroll
+    for (int j = 0; j < samples; ++j) { zero += values[j]; dzero += slopes[j]; }
+    c[0] = 1 / P; dr[0] = 0;
+    #pragma unroll
+    for (int k = 1; k <= M; ++k) {
+        double raw = 0, draw = 0;
+        #pragma unroll
+        for (int j = 0; j < samples; ++j) {
+            double phase = cos(2 * PI * k * j / samples);
+            raw += values[j] * phase; draw += slopes[j] * phase;
+        }
+        c[k] = (raw / zero) / P;
+        dr[k] = ((draw - raw * (dzero / zero)) / zero) * (dz / P);
+    }
+}
+
+__device__ inline void profile_coefficients(double R, double P, int M, double *c, double *dr) {
+    if (M == 8) profile_coefficients_m8(R, P, c, dr);
+    else profile_coefficients_generic(R, P, M, c, dr);
 }
 
 template<class T>

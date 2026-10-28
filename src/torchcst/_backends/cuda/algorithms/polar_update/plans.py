@@ -8,3 +8,8 @@ FUSED = ExecutionPlan("cuda_polar_update_fused", "v1", DefaultRecipe())
 FLAT_TORUS_FUSED = ExecutionPlan(
     "cuda_flat_torus_polar_update_fused", "v1", DefaultRecipe()
 )
+
+# Radius is a distinct mathematical contract; sigma Plans remain unchanged.
+RADIUS_FLAT_TORUS_FUSED = ExecutionPlan(
+    "cuda_radius_flat_torus_polar_update_fused", "v1", DefaultRecipe()
+)

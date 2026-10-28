@@ -179,16 +179,31 @@ def validate_layout(state, charts):
         import torch
 
         from torchcst.kernels.radius_cell_mass import radius_cell_mass_axes
+        from torchcst.operators.metadata import fixed_state_signature
 
-        if any(t.device.type != "cpu" for t in state.buffers()):
-            raise ValueError(
-                "radius cell-mass reference currently requires CPU tensors"
+        # Coordinate projection/transport is shared by the explicit CUDA Polar
+        # update. CPU-only factor evaluators and update Algorithms retain their
+        # own device guards; validating immutable layout is device-independent.
+        signature = fixed_state_signature((*charts, state))
+        if (
+            signature is not None
+            and state.__dict__.get("_radius_layout_signature") == signature
+        ):
+            return
+        if (
+            any(t.is_cuda for t in state.buffers())
+            and torch.cuda.is_current_stream_capturing()
+        ):
+            raise RuntimeError(
+                "radius layout must be validated outside CUDA Graph capture"
             )
         if any(t.dtype not in (torch.float32, torch.float64) for t in state.buffers()):
             raise ValueError("radius cell-mass reference requires float32 or float64")
         radius_cell_mass_axes(
             tuple(c.declaration() for c in charts), state.declaration()
         )
+        if signature is not None:
+            state.__dict__["_radius_layout_signature"] = signature
         return
     if name in ("hierarchical_cell_mass", "polar_cell_mass"):
         import torch
