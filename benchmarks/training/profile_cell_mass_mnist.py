@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import hashlib
+import importlib.util
 import json
 import math
 import pickle
@@ -512,7 +514,19 @@ def main():
     parser.add_argument("--kind", choices=("cst", "dense"), required=True)
     parser.add_argument("--data-directory", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--legacy-layout-validation", type=Path)
     args = parser.parse_args()
+    if args.legacy_layout_validation:
+        # A frozen old implementation lets the before/after arms share all
+        # other runtime code, GPU, checkpoints and timing machinery.
+        from torchcst._backends.torch.kernels import execution
+
+        spec = importlib.util.spec_from_file_location(
+            "_legacy_cell_mass_execution", args.legacy_layout_validation
+        )
+        legacy = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(legacy)
+        execution.validate_layout = legacy.validate_layout
     output = args.output
     output.mkdir(parents=True, exist_ok=False)
     torch.set_num_threads(1)
@@ -547,6 +561,12 @@ def main():
     plain = Stages(None)
     report = {
         "kind": args.kind,
+        "layout_validation": "legacy" if args.legacy_layout_validation else "cached",
+        "legacy_validation_sha256": hashlib.sha256(
+            args.legacy_layout_validation.read_bytes()
+        ).hexdigest()
+        if args.legacy_layout_validation
+        else None,
         "checkpoint": "epoch3" if args.checkpoint else "initial",
         "scope": "MNIST resident full model, B32, original plan/updates, no TF32/Graph; diagnostics separate from uninstrumented steps",
         "data": info,

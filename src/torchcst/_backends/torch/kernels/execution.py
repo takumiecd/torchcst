@@ -134,9 +134,31 @@ def validate_layout(state, charts):
         raise ValueError("kernel composition differs from chart layout")
     name = family(state)
     if name in ("hierarchical_cell_mass", "polar_cell_mass"):
-        from torchcst.kernels.cell_mass_layout import cell_mass_axes
+        import torch
 
+        from torchcst.kernels.cell_mass_layout import cell_mass_axes
+        from torchcst.operators.metadata import fixed_state_signature
+
+        # _split asks for parameter_dim repeatedly during one Polar update.
+        # Validate the live mathematical configuration once, then check only
+        # identities/versions. Atom updates do not change this configuration.
+        signature = fixed_state_signature((*charts, state))
+        if (
+            signature is not None
+            and state.__dict__.get("_cell_mass_layout_signature") == signature
+        ):
+            return
+        if (
+            any(t.is_cuda for t in state.buffers())
+            and torch.cuda.is_current_stream_capturing()
+        ):
+            raise RuntimeError(
+                "cell-mass configuration must be validated outside CUDA graph capture"
+            )
         cell_mass_axes(tuple(c.declaration() for c in charts), state.declaration())
+        # Never certify a failed validation, or reuse unversioned inference data.
+        if signature is not None:
+            state.__dict__["_cell_mass_layout_signature"] = signature
         return
     if state.spec.composition == "profile_product":
         from torchcst.operators.spec import validate_profile_product_layout
