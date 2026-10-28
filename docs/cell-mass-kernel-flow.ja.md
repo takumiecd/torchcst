@@ -203,6 +203,76 @@ source/tests/training491ファイルを照合し、source/results/receipt/checkp
 所有L4とsupervisorは停止確認済み。追加学習・大型化は開始していない。
 この学習run自体は未計装だった。続く段階別・配列寿命の監査を次節に記録する。
 
+#### optimizerの固定layout検証のキャッシュ（2026-10-28）
+
+前節の読み出し回数を減らすため、`operators/metadata.py::fixed_state_signature`を共用し、
+`_backends/torch/kernels/execution.py::validate_layout`のcell-mass条件をキャッシュした。
+chart/kernel/profileの所有module・spec/binding、全固定bufferのidentity/version/dtype/deviceを追う。
+通常のatom Parameter更新はこのsignatureに入れず、現在のσ・中心による分類は毎forwardに行う。
+キャッシュは固定layoutが検証済みという証明だけで、atom値や配置範囲の保存ではない。
+
+scalarのin-place変更、buffer差し替え、profile変更、chart spacing/period変更、`.to()`/dtype変更、
+checkpoint読込、新chart/deepcopyでは再検証する。失敗した検証はcacheしない。
+versionを持たないinference bufferは再検証し続ける。CUDA Graph内で未検証設定をhostへ読む
+ことは許可せず、変更後はcapture外で検証する。全LinearのGraph対応を追加したわけではない。
+公開`KernelState.declaration()`自体は従来どおり現在値のsnapshotを返す。
+Polarの式、gradient projection・geometry retraction・moment transport、非有限勾配の検査は変更していない。
+
+計測source `f56af001`、job `l4job-1a9b42fc2b96442c8a5a5915e64bcc29`。
+runtimeの変更は上の2 Pythonファイルだけで、残り344ファイル（CUDA/Polar更新則を含む）は同一。
+旧比較群には`7d6caeb2`の未cache `validate_layout`をbyte固定して読み込み、他のruntime・
+GPU・checkpoint・計測器を揃えた。新比較群は通常のcache経路を使う。
+1024/A52,428/B32、同じ初期/epoch3状態、σ_min=.125/σ_max=12.5、同じSITE_SCALED Plan。
+元の全MNISTデータは常駐させ、forward/backward/本物のCSTOptimizer+fused AdamWを含める。
+前節と同じ4更新warmup、21step窓3回の中央値。条件ごとにfresh processを2回実行し、
+2回目は旧/新の計測順を逆にした。窓内の21 sampleを独立run数には数えない。
+
+| 状態 / fresh process | 旧完全step ms | cache後 ms | 短縮率 |
+| --- | ---: | ---: | ---: |
+| 初期 / 1 | 21.296 | 17.580 | 17.45% |
+| 初期 / 2 | 21.255 | 17.543 | 17.47% |
+| epoch3 / 1 | 22.431 | 17.885 | 20.26% |
+| epoch3 / 2 | 21.758 | 17.845 | 17.98% |
+
+同じGPUでのdense epoch3 controlは1.949/1.921ms。
+全3epochを再学習した測定ではなく、保存された学習状態での完全step比較である。
+旧の約21msという別jobの数字から引き算せず、各行の同一jobで旧/新を比較する。
+改善後もdense比約9.2〜9.3倍であり、目標は未達。
+
+同期を入れたoptimizer単独診断は、初期8.72/9.21→5.34/5.60ms、
+epoch3 8.91/8.49→4.87/5.30ms。
+実GPU作業のkernel数は160/stepのまま、copy208→24、synchronization204→20となった。
+GPUのscalar化は155→19、CPU Torch2.13の補助監査は154→18である。
+GPUのkernel本体は約.408msでほぼ変わらず、copyは約.246→.030msへ減った。
+profilerのsync待ち時間には先行GPU作業の完了待ちが入るので、optimizer単独wallや
+完全stepの短縮量と直接同一視しない。残るTorch更新の起動数・host処理も今後の対象となる。
+
+メモリは旧/新で変わらなかった。初期peak allocated241.827MiB、epoch3 240.773MiB、
+reserved396MiB。dense epoch3 controlはallocated239.551MiB、reserved402MiB。
+reservedの差は前節のcheckpoint復元時の割当順を含み、元のepoch学習のdense382MiBを置き換えない。
+G/Rx/Ry/C_in/部分和の寿命は今回変えていないため、allocatedの目標未達も残る。
+
+初期/epoch3の全52,428atomのY/dX/4列勾配を独立FP64参照へ照合し、既存3e-6/2e-7を維持した。
+両状態それぞれ4stepの旧/新optimizer比較では全model Parameter・moments・stepがbit一致。
+4step目に固定のradial_regularizationを変更しても同じで、設定変更の再検証も通した。
+全10processの計測器有無のbit一致、allocatorの全境界/peak一致も確認した。
+GPU scoped suite66 passed（dirty capture拒否テストによるempty Graph警告1件）、
+CPU2,062 passed/5,385 skipped/既存警告18件。Ruff/format/buildを通過し、
+wheel/sdist両方の全346runtimeファイルをGPU snapshotへbyte照合した。
+
+PolarのTriton融合更新は既存`cuda/algorithms/polar_update/kernels.py::apply_polar`と
+`cuda_polar_update_fused/v1` Planに存在する。ただし対応はEuclidean中心2座標のFP32で、
+FlatTorusの中心wrapは含まない。今回の中心更新は`flat_torus.retract`のremainderを保つ。
+CSTOptimizerの既定update Planは`torch_atom_update`で、Linear Planとは独立している。
+今回はそのTorch参照更新のままcacheの効果だけを分離した。
+周期座標への対応は既存fusionを拡張する候補だが、未実装・未計測であり、
+Euclidean用FUSEDをそのまま有効化しない。Triton数値計算やPolar則自体は今回変更していない。
+
+source archive SHA256 `112d7ac51a29f6f508ef9b7e66c3579ad93e407a4cca0ce8cdfdd57cc05a3fe9`。
+source/tests/training494ファイルを照合、source/results/receiptなど73ファイルを
+`output/cell-mass-optimizer-cache-20261028/verified-run/`へ保存した。
+同親`analysis.json`と`complete-step.png`に比較を残す。所有GPU/pool supervisorは停止確認済み。
+
 #### 1024の学習状態を使った段階別時間・メモリ監査（2026-10-28）
 
 計測器は`benchmarks/training/profile_cell_mass_mnist.py`。runtimeのCUDAコードやPolar法則は

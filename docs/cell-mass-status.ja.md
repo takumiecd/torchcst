@@ -30,6 +30,18 @@ CPU2,050 passed/5,384 skipped、Ruff/format/build、346runtimeの両配布物byt
 別幅のbank省略と保存FP32 H/Gによる勾配誤差を先行検査で検出し、
 Polar専用のFP64 register pullbackへ修正した。Hをbackwardまで保存せず、幅微分も計算しない。
 
+2026-10-28、固定layout検証をbuffer identity/version/dtype/deviceでcacheする改善を実装した。
+設定変更時は再検証し、失敗した検証は保存しない。atom値・σ分類はcacheしない。
+旧/新のPolar更新則・CUDA計算は同じで、同一GPU/同一checkpointの完全step比較では
+初期21.296/21.255→17.580/17.543ms、epoch3 22.431/21.758→17.885/17.845ms。
+計測順を逆にした2 fresh processで17.45〜20.26%短縮。optimizer同期は204→20/step。
+設定変更を含む全model Parameter/moments/stepはbit一致、初期/epoch3全atom参照も通過。
+メモリpeakは変わらず、速度・allocated目標はなお未達。新たなepoch学習は行っていない。
+既存のTriton Polar fusionはEuclidean用で、今回のFlatTorus中心wrapには未対応。
+source f56af001、job `l4job-1a9b42fc2b96442c8a5a5915e64bcc29`、
+rawと494source照合は`output/cell-mass-optimizer-cache-20261028/verified-run/`。
+CPU2,062 passed/5,385 skipped、GPU scoped66 passed。所有GPUは停止済み。
+
 1024の初期/epoch3 checkpointを使う段階別診断も完了（job `l4job-5432773eb82647e18a402c9868116fa8`）。
 計測なし完全stepは20.686/21.084ms。同期診断のepoch3はprepare1.134、Zx/R2.151、HC3.191、
 Y展開.393、Zy/R1.143、G+勾配1.888、C_in1.581、dX展開.442、optimizer8.277ms。

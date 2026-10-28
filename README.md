@@ -146,6 +146,9 @@ With `polar_cell_mass`, rows are the existing Polar chart-pair coordinates
 side's sigma; width remains detached from task loss. `CSTOptimizer` reuses the
 existing Polar projection, radial activity update and moment transport. Only
 the profile factors use cell integration and continuous full-support mass.
+Coordinate-update Plans are independent of the Linear Plan. The default
+CSTOptimizer uses the Torch reference update; the existing fused Polar update
+Plan covers Euclidean centres and does not yet implement flat-torus wrapping.
 Input/output bounds can differ; each maximum must fit its chart period/3.
 CUDA decodes each atom where consumed, without a copied physical atom table.
 
