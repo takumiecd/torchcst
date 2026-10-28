@@ -1973,7 +1973,9 @@ static std::vector<torch::Tensor>
 run_ragged_c(torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups, torch::Tensor offsets,
              torch::Tensor reverse_slots, torch::Tensor reverse_offsets, torch::Tensor values,
              std::vector<double> input_config, std::vector<double> output_config, int splits,
-             int grain, bool windowed) {
+             int grain, bool windowed, int cin_batch_slab = 0) {
+    TORCH_CHECK(cin_batch_slab >= 0 && cin_batch_slab <= 65536, "Cin batch slab must lie in [0,65536]");
+    TORCH_CHECK(cin_batch_slab == 0 || Route == 2, "batch slab is only supported for reverse Cin");
     static_assert(Route >= 0 && Route <= 2, "unknown ragged route");
     static_assert(ForwardBatchTile == 4 || ForwardBatchTile == 8, "invalid forward batch tile");
     static_assert(Route == 1 || ForwardBatchTile == BATCH_TILE,
@@ -2040,7 +2042,8 @@ run_ragged_c(torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups, torc
     auto integer_options = atoms.options().dtype(torch::kInt32);
     auto counts = torch::empty({nodes}, integer_options);
     auto task_offsets = torch::empty({nodes + 1}, integer_options);
-    auto partial = torch::empty({task_cap, batches, basis}, c.options());
+    int64_t scratch_batches = cin_batch_slab ? std::min<int64_t>(batches, cin_batch_slab) : batches;
+    auto partial = torch::empty({task_cap, scratch_batches, basis}, c.options());
     auto stream = c10::cuda::getCurrentCUDAStream();
     bool cartesian = Route != 2 && groups.size(0) == input.node_count * output.node_count;
     if constexpr (Route == 2) {
@@ -2053,6 +2056,29 @@ run_ragged_c(torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups, torc
             task_offsets.data_ptr<int>(), input, output, cartesian, groups.size(0), splits, grain);
     }
     C10_CUDA_KERNEL_LAUNCH_CHECK();
+    if constexpr (Route == 2) {
+        if (cin_batch_slab) {
+            // G and C retain their full batch layout. Each slab is a contiguous
+            // view; only partial scratch is reused after its same-stream reduce.
+            size_t shared = sizeof(double) * SHARED_STRIDE * (basis + BATCH_TILE);
+            for (int64_t begin = 0; begin < batches; begin += cin_batch_slab) {
+                int slab_batches = static_cast<int>(std::min<int64_t>(batches - begin, cin_batch_slab));
+                dim3 slab_grid(task_cap, (slab_batches + BATCH_TILE - 1) / BATCH_TILE);
+                ragged_input_kernel<<<slab_grid, CHUNK, shared, stream>>>(
+                    atoms.data_ptr<float>(), rows.data_ptr<int64_t>(), reverse_slots.data_ptr<int>(),
+                    reverse_offsets.data_ptr<int64_t>(), values.data_ptr<float>() + begin * atoms.size(0),
+                    counts.data_ptr<int>(), task_offsets.data_ptr<int>(), partial.data_ptr<double>(),
+                    atoms.size(0), slab_batches, input);
+                C10_CUDA_KERNEL_LAUNCH_CHECK();
+                int64_t elements = static_cast<int64_t>(slab_batches) * nodes * basis;
+                ragged_reduce_kernel<<<(elements + THREADS - 1) / THREADS, THREADS, 0, stream>>>(
+                    task_offsets.data_ptr<int>(), partial.data_ptr<double>(),
+                    c.data_ptr<double>() + begin * nodes * basis, elements, slab_batches, nodes, basis);
+                C10_CUDA_KERNEL_LAUNCH_CHECK();
+            }
+            return {h, c};
+        }
+    }
     dim3 grid(task_cap, (batches + ForwardBatchTile - 1) / ForwardBatchTile);
     size_t shared = sizeof(double) * SHARED_STRIDE * (basis + ForwardBatchTile);
     if constexpr (Route == 1)
@@ -2155,6 +2181,16 @@ torch::Tensor compute_input_c_reverse_ragged(torch::Tensor atoms, torch::Tensor 
                                              int grain) {
     return run_ragged_c<2>(atoms, rows, {}, {}, reverse_slots, reverse_offsets, g, input_config, {},
                            splits, grain, false)[1];
+}
+
+torch::Tensor compute_input_c_reverse_ragged_slab(torch::Tensor atoms, torch::Tensor rows,
+                                                  torch::Tensor reverse_slots,
+                                                  torch::Tensor reverse_offsets, torch::Tensor g,
+                                                  std::vector<double> input_config, int splits,
+                                                  int grain, int batch_slab) {
+    TORCH_CHECK(batch_slab >= 1 && batch_slab <= 65536, "Cin batch slab must lie in [1,65536]");
+    return run_ragged_c<2>(atoms, rows, {}, {}, reverse_slots, reverse_offsets, g, input_config, {},
+                           splits, grain, false, batch_slab)[1];
 }
 
 torch::Tensor expand_c(torch::Tensor c, torch::Tensor like, std::vector<double> config, int width) {

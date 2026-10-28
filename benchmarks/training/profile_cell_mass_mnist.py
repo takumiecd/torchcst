@@ -404,6 +404,9 @@ def routing(layer, initial_sigma, recipe):
             if grain
             else axis.node_count * cap,
         )
+        scratch_batch = (
+            min(32, options.get("cin_batch_slab", 0) or 32) if side == "input" else 32
+        )
         result[side] = {
             "nodes": axis.node_count,
             "occupied_owners": sum(c > 0 for c in counts),
@@ -412,8 +415,8 @@ def routing(layer, initial_sigma, recipe):
             "active_task_fraction": active / capacity,
             "atom_chunk_lane_fraction": len(layer.atoms.p)
             / (sum(math.ceil(c / 32) for c in counts) * 32),
-            "C_partial_shape": [capacity, 32, axis.basis_count],
-            "C_partial_bytes": capacity * 32 * axis.basis_count * 8,
+            "C_partial_shape": [capacity, scratch_batch, axis.basis_count],
+            "C_partial_bytes": capacity * scratch_batch * axis.basis_count * 8,
             "Z_or_R_shape": [32, axis.node_count, axis.basis_count],
             "Z_or_R_bytes": 32 * axis.node_count * axis.basis_count * 8,
         }

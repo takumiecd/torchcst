@@ -90,14 +90,18 @@ def test_cell_mass_plan_codec_and_metadata_support():
             algorithm.validate_recipe(HierarchicalCellMassRecipe(value))
 
 
+@pytest.mark.parametrize("slab", [None, 8, 16])
 @pytest.mark.parametrize("batch_tile", [4, 8])
 @pytest.mark.parametrize("grain", [64, 128, 256, 512, 1024])
 @pytest.mark.parametrize("cin_grain", [256, 512, 1024])
-def test_site_scaled_tuning_preset_codec_and_arguments(batch_tile, grain, cin_grain):
+def test_site_scaled_tuning_preset_codec_and_arguments(
+    batch_tile, grain, cin_grain, slab
+):
     from torchcst._backends.schema import ExecutionPlan
 
     recipe = HierarchicalCellMassRecipe(
         f"site_scaled_hc{batch_tile}_g{grain}_cin{cin_grain}"
+        + (f"_slab{slab}" if slab else "")
     )
     expected = HierarchicalCellMassRecipe("site_scaled").arguments()
     expected.update(
@@ -106,6 +110,8 @@ def test_site_scaled_tuning_preset_codec_and_arguments(batch_tile, grain, cin_gr
         hc_atoms_per_split=grain,
         atoms_per_split=cin_grain,
     )
+    if slab:
+        expected["cin_batch_slab"] = slab
     assert recipe.arguments() == expected
     assert recipe.is_site_scaled
     algorithm = HierarchicalCellMassAlgorithm()

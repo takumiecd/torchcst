@@ -637,6 +637,7 @@ def compute_input_c(
     compensated=False,
     compensated_cdot=False,
     ragged=False,
+    batch_slab=0,
 ):
     """Accumulate amp*G into input owner C; no dX atomic or packed atom copy.
 
@@ -649,6 +650,10 @@ def compute_input_c(
     """
     if type(splits) is not int or not 1 <= splits <= 256:
         raise ValueError("C splits must be an integer in [1,256]")
+    if type(batch_slab) is not int or not 0 <= batch_slab <= 65536:
+        raise ValueError("Cin batch slab must be an integer in [0,65536]")
+    if batch_slab and not ragged:
+        raise ValueError("Cin batch slabs require ragged reverse C")
     _validate_compensated(compensated, atoms, g.dtype, plan.input)
     _validate_compensated_cdot(compensated_cdot, atoms, g.dtype, plan.input)
     _validate_ragged(
@@ -660,6 +665,18 @@ def compute_input_c(
         raise ValueError("ragged input C requires a reverse layout")
     native = _extension()
     if ragged:
+        if batch_slab:
+            return native.compute_input_c_reverse_ragged_slab(
+                atoms,
+                layout.rows,
+                layout.reverse_slots,
+                layout.reverse_offsets,
+                g,
+                plan.input.native_config(),
+                splits,
+                atoms_per_split,
+                batch_slab,
+            )
         return native.compute_input_c_reverse_ragged(
             atoms,
             layout.rows,
@@ -889,6 +906,7 @@ class _HierarchicalLinear(torch.autograd.Function):
         hc_batch_tile,
         release_workspaces,
         hc_atoms_per_split,
+        cin_batch_slab,
     ):
         zx = build_hierarchy(
             x,
@@ -961,6 +979,7 @@ class _HierarchicalLinear(torch.autograd.Function):
         ctx.reuse_shape_coefficients = reuse_shape_coefficients
         ctx.ragged_c_splits = ragged_c_splits
         ctx.release_workspaces = release_workspaces
+        ctx.cin_batch_slab = cin_batch_slab
         ctx.source_version = atoms._version
         ctx.layout_method = layout.method
         # save_for_backward checks atom AND layout-buffer mutations. Avoid
@@ -1086,6 +1105,7 @@ class _HierarchicalLinear(torch.autograd.Function):
                     compensated=ctx.compensated_values,
                     compensated_cdot=ctx.compensated_cdot,
                     ragged=ctx.ragged_c_splits,
+                    batch_slab=ctx.cin_batch_slab,
                 )
             if ctx.release_workspaces and (
                 not ctx.needs_input_grad[1] or datoms is not None
@@ -1109,6 +1129,7 @@ class _HierarchicalLinear(torch.autograd.Function):
         return (
             dx,
             datoms,
+            None,
             None,
             None,
             None,
@@ -1162,6 +1183,7 @@ def hierarchical_linear(
     hc_batch_tile=4,
     release_workspaces=False,
     hc_atoms_per_split=0,
+    cin_batch_slab=0,
 ):
     """Private research autograd route, using this forward's bank/owner choices.
 
@@ -1188,8 +1210,12 @@ def hierarchical_linear(
         raise ValueError("H/C batch tile must be 4 or 8")
     if hc_batch_tile != 4 and not (fuse_h_c and ragged_c_splits):
         raise ValueError("larger H/C batch tiles require fused ragged H/C")
-    if type(hc_atoms_per_split) is not int or hc_atoms_per_split < 0:
-        raise ValueError("H/C atoms per split must be a nonnegative integer")
+    if type(hc_atoms_per_split) is not int or not 0 <= hc_atoms_per_split <= 65536:
+        raise ValueError("H/C atoms per split must be an integer in [0,65536]")
+    if type(cin_batch_slab) is not int or not 0 <= cin_batch_slab <= 65536:
+        raise ValueError("Cin batch slab must be an integer in [0,65536]")
+    if cin_batch_slab and (not ragged_c_splits or fuse_backward_cin):
+        raise ValueError("Cin batch slabs require separate ragged reverse C")
     if type(release_workspaces) is not bool:
         raise ValueError("release_workspaces must be bool")
     if type(specialize_g_grad) is not bool:
@@ -1289,4 +1315,5 @@ def hierarchical_linear(
         hc_batch_tile,
         release_workspaces,
         hc_atoms_per_split,
+        cin_batch_slab,
     )

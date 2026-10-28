@@ -80,6 +80,9 @@ Tensor compute_input_c_reverse_ragged(Tensor atoms, Tensor rows,
                                       Tensor reverse_slots,
                                       Tensor reverse_offsets, Tensor g,
                                       Config input, int splits, int grain);
+Tensor compute_input_c_reverse_ragged_slab(Tensor atoms, Tensor rows,
+                                           Tensor reverse_slots, Tensor reverse_offsets, Tensor g,
+                                           Config input, int splits, int grain, int batch_slab);
 std::vector<Tensor> compute_g_parameter_grad_cin_reverse(
     Tensor atoms, Tensor rows, Tensor groups, Tensor offsets,
     Tensor reverse_slots, Tensor reverse_offsets, Tensor zx, Tensor zy,
@@ -118,6 +121,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("compute_g_parameter_grad_cin", &compute_g_parameter_grad_cin);
   m.def("compute_input_c_reverse", &compute_input_c_reverse);
   m.def("compute_input_c_reverse_ragged", &compute_input_c_reverse_ragged);
+  m.def("compute_input_c_reverse_ragged_slab", &compute_input_c_reverse_ragged_slab);
   m.def("compute_g_parameter_grad_cin_reverse",
         &compute_g_parameter_grad_cin_reverse);
 }

@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 
 _SITE_SCALED_TUNING = re.compile(
-    r"site_scaled_hc(4|8)_g(64|128|256|512|1024)_cin(256|512|1024)"
+    r"site_scaled_hc(4|8)_g(64|128|256|512|1024)_cin(256|512|1024)(?:_slab(8|16))?"
 )
 
 
@@ -48,12 +48,14 @@ class HierarchicalCellMassRecipe:
                 options["release_workspaces"] = True
             tuning = _SITE_SCALED_TUNING.fullmatch(self.preset)
             if tuning:
-                batch_tile, forward_grain, reverse_grain = map(int, tuning.groups())
+                batch_tile, forward_grain, reverse_grain = map(int, tuning.groups()[:3])
                 options.update(
                     hc_batch_tile=batch_tile,
                     hc_atoms_per_split=forward_grain,
                     atoms_per_split=reverse_grain,
                 )
+                if tuning.group(4):
+                    options["cin_batch_slab"] = int(tuning.group(4))
             return options
         if self.preset == "validated_1024":
             return dict(

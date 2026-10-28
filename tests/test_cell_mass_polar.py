@@ -377,6 +377,63 @@ def test_polar_ragged_hc_batch_tile_tails_match_oracle_and_retained_backward(
 
 
 @cuda_only
+@pytest.mark.parametrize("batch", [1, 5, 9, 17])
+@pytest.mark.parametrize("slab", [8, 16])
+def test_polar_cin_slabs_match_unslabbed_oracle_and_retained_backward(batch, slab):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        compute_input_c,
+        hierarchical_linear,
+        prepare_layout,
+    )
+
+    model = layer(count=37, dtype=torch.float32, device="cuda", site_scaled=True)
+    plan = hierarchy_from_operator(model.declaration())
+    layout = prepare_layout(plan, model.atoms.p, method="sort", reverse=True)
+    # Arbitrary G isolates partial scratch indexing from the projection kernel.
+    g = torch.randn(batch, 37, device="cuda")
+    cin_options = {
+        "splits": 128,
+        "atoms_per_split": 512,
+        "compensated": True,
+        "ragged": True,
+    }
+    cin = compute_input_c(plan, model.atoms.p, layout, g, **cin_options)
+    cin_slab = compute_input_c(
+        plan, model.atoms.p, layout, g, **cin_options, batch_slab=slab
+    )
+    torch.testing.assert_close(cin_slab, cin, rtol=0, atol=0)
+
+    x = torch.randn(batch, 128, device="cuda", requires_grad=True)
+    dy = torch.randn_like(x)
+    arguments = dict(
+        SITE_SCALED.recipe.arguments(),
+        atoms_per_split=512,
+        hc_atoms_per_split=64,
+        hc_batch_tile=8,
+        release_workspaces=True,
+    )
+    outputs = []
+    for batch_slab in (0, slab):
+        y = hierarchical_linear(
+            plan, x, model.atoms.p, **arguments, cin_batch_slab=batch_slab
+        )
+        first = torch.autograd.grad(y, (x, model.atoms.p), dy, retain_graph=True)
+        second = torch.autograd.grad(y, (x, model.atoms.p), -2 * dy)
+        for actual, repeated in zip(first, second):
+            torch.testing.assert_close(repeated, -2 * actual, rtol=3e-6, atol=2e-7)
+        outputs.append((y, *first))
+    for base, candidate in zip(*outputs):
+        torch.testing.assert_close(candidate, base, rtol=0, atol=0)
+
+    xr = x.detach().cpu().double().requires_grad_()
+    pr = model.atoms.p.detach().cpu().double().requires_grad_()
+    yr = oracle(model, xr, pr)
+    reference = (yr, *torch.autograd.grad(yr, (xr, pr), dy.cpu().double()))
+    for actual, expected in zip(outputs[1], reference):
+        torch.testing.assert_close(actual.cpu().double(), expected, rtol=3e-6, atol=2e-7)
+
+
+@cuda_only
 def test_polar_integrated_cuda_singular_guard_and_angular_extrema():
     model = layer(count=5, dtype=torch.float32, device="cuda", cuda_plan=True)
     with torch.no_grad():
