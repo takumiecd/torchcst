@@ -63,9 +63,15 @@ def retract(self, points: Tensor, displacement: Tensor) -> Tensor:
 
 
 def transport(self, old: Tensor, new: Tensor, vectors: Tensor) -> Tensor:
-    validate_points(self, old, name="old")
-    validate_points(self, new, name="new")
-    validate_points(self, vectors, name="vectors")
+    from torchcst._backends.torch import finite
+
+    names = ("old", "new", "vectors")
+    values = (old, new, vectors)
+    for name, value in zip(names, values):
+        _validate_structure(self, value, name=name)
+    bad = finite.first_nonfinite(values)
+    if bad is not None:
+        raise ValueError(f"{names[bad]} must be finite")
     if old.shape != new.shape or old.shape != vectors.shape:
         raise ValueError("old, new, and vectors must have matching shapes")
     return vectors

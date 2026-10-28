@@ -174,13 +174,18 @@ class CSTOptimizer(Optimizer):
                 )
             active.append((site, point, rate))
         # Check before base optimizer mutates any parameter or state.
+        from torchcst._backends.torch import finite
+
+        gradients = []
         for group in self.param_groups:
             for point in group["params"]:
                 if point.grad is not None:
                     grad = point.grad
                     values = grad.coalesce().values() if grad.is_sparse else grad
-                    if not bool(torch.isfinite(values).all()):
-                        raise FloatingPointError("non-finite parameter gradient")
+                    gradients.append(values)
+        if finite.first_nonfinite(gradients) is not None:
+            raise FloatingPointError("non-finite parameter gradient")
+        del gradients  # Release any temporary coalesced sparse values before Adam.
         old_points = []
         for site, point, rate in active:
             projected = _kernel.project_parameter_gradient(

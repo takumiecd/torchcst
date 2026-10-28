@@ -518,7 +518,22 @@ def main():
     parser.add_argument(
         "--polar-update", choices=("torch", "flat-fused"), default="torch"
     )
+    parser.add_argument(
+        "--finite-checks", choices=("batched", "per-tensor"), default="batched"
+    )
     args = parser.parse_args()
+    if args.finite_checks == "per-tensor":
+        # Benchmark-only reference: preserve the old one-host-wait-per-tensor
+        # behavior while both arms use exactly the same update implementation.
+        from torchcst._backends.torch import finite
+
+        def per_tensor_check(tensors):
+            for index, value in enumerate(tensors):
+                if not bool(torch.isfinite(value).all()):
+                    return index
+            return None
+
+        finite.first_nonfinite = per_tensor_check
     if args.legacy_layout_validation:
         # A frozen old implementation lets the before/after arms share all
         # other runtime code, GPU, checkpoints and timing machinery.
@@ -579,6 +594,7 @@ def main():
     plain = Stages(None)
     report = {
         "kind": args.kind,
+        "finite_checks": args.finite_checks,
         "polar_update": args.polar_update,
         "layout_validation": "legacy" if args.legacy_layout_validation else "cached",
         "legacy_validation_sha256": hashlib.sha256(
