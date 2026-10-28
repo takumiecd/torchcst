@@ -86,7 +86,7 @@ class HierarchicalCellMassAlgorithm(Algorithm[HierarchicalCellMassRecipe]):
             reasons.append("requires eager execution without autocast")
         if context.deterministic:
             reasons.append("deterministic reductions have not been qualified")
-        if recipe.preset == "site_scaled":
+        if recipe.is_site_scaled:
             if (
                 context.dtype != torch.float32
                 or plan.input.site_count not in (128, 1024)

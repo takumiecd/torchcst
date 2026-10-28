@@ -52,6 +52,10 @@ std::vector<Tensor> compute_h_c_ragged(Tensor atoms, Tensor rows, Tensor groups,
                                        Tensor offsets, Tensor zx, Config input,
                                        Config output, int splits, int grain,
                                        bool windowed);
+std::vector<Tensor> compute_h_c_ragged_batched(Tensor atoms, Tensor rows, Tensor groups,
+    Tensor offsets, Tensor zx, Config input, Config output, int splits, int grain,
+    bool windowed, int batch_tile);
+std::vector<int64_t> hc_kernel_resources(int batch_tile);
 std::vector<Tensor> compute_g_and_parameter_grad(
     Tensor atoms, Tensor rows, Tensor groups, Tensor offsets, Tensor zx,
     Tensor zy, Tensor h, Config input, Config output, int threads,
@@ -106,6 +110,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("compute_c_ragged", &compute_c_ragged);
   m.def("compute_h_c", &compute_h_c);
   m.def("compute_h_c_ragged", &compute_h_c_ragged);
+  m.def("compute_h_c_ragged_batched", &compute_h_c_ragged_batched);
+  m.def("hc_kernel_resources", &hc_kernel_resources);
   m.def("compute_g_and_parameter_grad", &compute_g_and_parameter_grad);
   m.def("parameter_grad", &parameter_grad);
   m.def("compute_polar_g_and_parameter_grad", &compute_polar_g_and_parameter_grad);

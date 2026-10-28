@@ -24,12 +24,17 @@ from unittest.mock import patch
 
 import torch
 
+from benchmarks.training.cell_mass_hc_diagnostics import diagnose
 from benchmarks.training.cell_mass_mnist import load_mnist, make_model, sigma_statistics
-from torchcst import CSTOptimizer
+from torchcst import CSTOptimizer, FixedSelector, make_algorithm_registry
 from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical import executor
 from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.algorithm import (
     hierarchy_from_operator,
 )
+from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.recipe import (
+    HierarchicalCellMassRecipe,
+)
+from torchcst._backends.schema import ExecutionPlan
 
 
 def allocator_blocks(snapshot):
@@ -367,24 +372,37 @@ def step(model, optimizer, datasets, order, start, stages, counters, capture=Fal
         }
 
 
-def routing(layer, initial_sigma):
+def routing(layer, initial_sigma, recipe):
+    options = recipe.arguments()
+    cap = options.get("c_splits", 1)
+    reverse_grain = options.get("atoms_per_split", 0)
+    forward_grain = options.get("hc_atoms_per_split", reverse_grain)
+    batch_tile = options.get("hc_batch_tile", 4)
     stats = sigma_statistics(layer, initial_sigma)
     plan = hierarchy_from_operator(layer.declaration())
     result = {
         "sigma": stats,
         "atom_threads": 64,
         "atom_blocks": math.ceil(len(layer.atoms.p) / 64),
-        "grain": 256,
+        "forward_grain": forward_grain,
+        "reverse_grain": reverse_grain,
+        "split_cap": cap,
         "C_block_threads": 32,
-        "batch_tile": 4,
+        "batch_tile": batch_tile,
         "note": "H/G use one thread per atom; C already uses owner-count-dependent active splits",
     }
     for side in ("input", "output"):
         axis = getattr(plan, side)
         counts = stats[side]["owner_counts"]
-        active = sum(min(128, math.ceil(c / 256)) for c in counts)
+        grain = forward_grain if side == "output" else reverse_grain
+        active = sum(
+            min(cap, math.ceil(c / grain)) if grain else cap for c in counts if c
+        )
         capacity = min(
-            axis.node_count * 128, math.ceil(len(layer.atoms.p) / 256) + axis.node_count
+            axis.node_count * cap,
+            math.ceil(len(layer.atoms.p) / grain) + axis.node_count
+            if grain
+            else axis.node_count * cap,
         )
         result[side] = {
             "nodes": axis.node_count,
@@ -517,6 +535,7 @@ def main():
     parser.add_argument("--data-directory", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--legacy-layout-validation", type=Path)
+    parser.add_argument("--linear-preset", default="site_scaled")
     parser.add_argument(
         "--polar-update", choices=("torch", "flat-fused"), default="torch"
     )
@@ -555,7 +574,15 @@ def main():
     torch.backends.cuda.matmul.allow_tf32 = False
     initial = torch.load(args.initialization, map_location="cpu", weights_only=True)
     assert initial["width"] == 1024 and initial["kernel_settings"]["minimum"] == 0.125
-    model = make_model(initial, args.kind).cuda().train()
+    recipe = HierarchicalCellMassRecipe(args.linear_preset)
+    recipe_options = recipe.arguments()
+    model = make_model(initial, args.kind)
+    if args.kind == "cst":
+        model[2].selector = FixedSelector(
+            ExecutionPlan("cuda_cell_mass_hierarchical", "v1", recipe),
+            registry=make_algorithm_registry(),
+        )
+    model = model.cuda().train()
     base = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=0.0, fused=True)
     update_selector = None
     if args.polar_update == "flat-fused":
@@ -565,7 +592,6 @@ def main():
         from torchcst._backends.cuda.algorithms.polar_update.plans import (
             FLAT_TORUS_FUSED,
         )
-        from torchcst._backends.dispatch import FixedSelector
 
         update_selector = FixedSelector(FLAT_TORUS_FUSED, registry=get_registry())
     optimizer = (
@@ -605,6 +631,8 @@ def main():
         "kind": args.kind,
         "finite_checks": args.finite_checks,
         "polar_update": args.polar_update,
+        "linear_preset": args.linear_preset if args.kind == "cst" else None,
+        "linear_recipe": recipe_options if args.kind == "cst" else None,
         "layout_validation": "legacy" if args.legacy_layout_validation else "cached",
         "legacy_validation_sha256": hashlib.sha256(
             args.legacy_layout_validation.read_bytes()
@@ -612,13 +640,13 @@ def main():
         if args.legacy_layout_validation
         else None,
         "checkpoint": "epoch3" if args.checkpoint else "initial",
-        "scope": "MNIST resident full model, B32, original plan/updates, no TF32/Graph; diagnostics separate from uninstrumented steps",
+        "scope": "MNIST resident full model, B32, selected explicit Linear recipe, no TF32/Graph; diagnostics separate from uninstrumented steps",
         "data": info,
         "kernel_settings": initial["kernel_settings"],
     }
     if args.kind == "cst":
         report["routing_original_checkpoint"] = routing(
-            model[2], initial["sigma_initial"]
+            model[2], initial["sigma_initial"], recipe
         )
     # The original training warmup performs backward, without an optimizer step.
     warm_x, warm_y = datasets["train_x"][order[:32]], datasets["train_y"][order[:32]]
@@ -643,7 +671,7 @@ def main():
     template = cpu_template(model, optimizer)
     if args.kind == "cst":
         report["routing_after_four_warm_updates"] = routing(
-            model[2], initial["sigma_initial"]
+            model[2], initial["sigma_initial"], recipe
         )
     repeats = []
     for _ in range(3):
@@ -754,6 +782,20 @@ def main():
     (output / "profiler-table.txt").write_text(
         prof.key_averages().table(sort_by="self_device_time_total", row_limit=80)
     )
+    if args.kind == "cst":
+        # All timings and allocator peaks have finished. This helper copies live
+        # layout metadata to CPU and returns JSON-safe values, never tensors.
+        restore(model, optimizer, template)
+        grain = recipe_options.get(
+            "hc_atoms_per_split", recipe_options.get("atoms_per_split", 256)
+        )
+        cap = recipe_options.get("c_splits", 128)
+        batch_tile = recipe_options.get("hc_batch_tile", 4)
+        diagnostics = diagnose(
+            model, batch_size=32, grain=grain or 256, cap=cap, batch_tile=batch_tile
+        )
+        report["hc_diagnostics_after_four_warm_updates"] = diagnostics
+        torch.cuda.synchronize()
     (output / "profile.json").write_text(json.dumps(report, indent=2))
     print(
         json.dumps(

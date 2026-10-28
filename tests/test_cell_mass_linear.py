@@ -90,6 +90,63 @@ def test_cell_mass_plan_codec_and_metadata_support():
             algorithm.validate_recipe(HierarchicalCellMassRecipe(value))
 
 
+@pytest.mark.parametrize("batch_tile", [4, 8])
+@pytest.mark.parametrize("grain", [64, 128, 256, 512, 1024])
+@pytest.mark.parametrize("cin_grain", [256, 512, 1024])
+def test_site_scaled_tuning_preset_codec_and_arguments(batch_tile, grain, cin_grain):
+    from torchcst._backends.schema import ExecutionPlan
+
+    recipe = HierarchicalCellMassRecipe(
+        f"site_scaled_hc{batch_tile}_g{grain}_cin{cin_grain}"
+    )
+    expected = HierarchicalCellMassRecipe("site_scaled").arguments()
+    expected.update(
+        release_workspaces=True,
+        hc_batch_tile=batch_tile,
+        hc_atoms_per_split=grain,
+        atoms_per_split=cin_grain,
+    )
+    assert recipe.arguments() == expected
+    assert recipe.is_site_scaled
+    algorithm = HierarchicalCellMassAlgorithm()
+    algorithm.validate_recipe(recipe)
+    registry = get_registry()
+    plan = ExecutionPlan(algorithm.id, algorithm.revision, recipe)
+    assert registry.loads_plan(registry.dumps_plan(plan)) == plan
+    # N128's standard output tile is 8 sites, so it is also site-scaled.
+    model = layer(dtype=torch.float32)
+    ctx = model.build_context(model.input_type(torch.zeros(4, 128)))
+    ctx = replace(ctx, device=DeviceInfo("cuda", 0, "metadata test", (8, 9), 58))
+    assert algorithm.supports(ctx, recipe).supported
+    assert not algorithm.supports(replace(ctx, dtype=torch.float64), recipe).supported
+
+
+def test_site_scaled_release_preset_preserves_existing_options():
+    expected = HierarchicalCellMassRecipe("site_scaled").arguments()
+    assert "release_workspaces" not in expected
+    expected["release_workspaces"] = True
+    assert HierarchicalCellMassRecipe("site_scaled_release").arguments() == expected
+
+
+@pytest.mark.parametrize(
+    "preset",
+    [
+        "site_scaled_hc16_g256_cin256",
+        "site_scaled_hc4_g32_cin256",
+        "site_scaled_hc8_g256_cin128",
+        "site_scaled_hc4_g0256_cin256",
+        "site_scaled_hc4_g256_cin256_extra",
+        "site_scaled_hc4_g256_cin256\n",
+        "site_scaled_release_extra",
+    ],
+)
+def test_site_scaled_tuning_rejects_noncanonical_presets(preset):
+    with pytest.raises(ValueError, match="unknown hierarchical"):
+        HierarchicalCellMassAlgorithm().validate_recipe(
+            HierarchicalCellMassRecipe(preset)
+        )
+
+
 def test_cell_mass_is_a_distinct_profile_binding_and_checkpoint_contract():
     with pytest.raises(ValueError):
         ProfileBinding(

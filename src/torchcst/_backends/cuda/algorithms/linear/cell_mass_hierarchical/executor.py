@@ -464,6 +464,7 @@ def compute_h_c(
     windowed=False,
     compensated=False,
     ragged=False,
+    batch_tile=4,
 ):
     """Compute H and output C together for M8 axes; H uses the atom dtype."""
     if type(splits) is not int or not 1 <= splits <= 256:
@@ -472,6 +473,10 @@ def compute_h_c(
         raise ValueError("atoms_per_split must be an integer in [0,65536]")
     if type(windowed) is not bool:
         raise ValueError("windowed must be bool")
+    if type(batch_tile) is not int or batch_tile not in (4, 8):
+        raise ValueError("H/C batch tile must be 4 or 8")
+    if batch_tile != 4 and not ragged:
+        raise ValueError("larger H/C batch tiles require ragged C")
     if plan.input.modes != 8 or plan.output.modes != 8:
         raise ValueError("fused H/C requires M8 axes")
     _validate_compensated(compensated, atoms, atoms.dtype, plan.input)
@@ -482,6 +487,20 @@ def compute_h_c(
     layout.validate_for(atoms, plan)
     native = _extension()
     if ragged:
+        if batch_tile != 4:
+            return native.compute_h_c_ragged_batched(
+                atoms,
+                layout.rows,
+                layout.groups,
+                layout.offsets,
+                zx,
+                plan.input.native_config(),
+                plan.output.native_config(),
+                splits,
+                atoms_per_split,
+                windowed,
+                batch_tile,
+            )
         return native.compute_h_c_ragged(
             atoms,
             layout.rows,
@@ -867,6 +886,9 @@ class _HierarchicalLinear(torch.autograd.Function):
         compensated_grad,
         reuse_shape_coefficients,
         ragged_c_splits,
+        hc_batch_tile,
+        release_workspaces,
+        hc_atoms_per_split,
     ):
         zx = build_hierarchy(
             x,
@@ -886,10 +908,11 @@ class _HierarchicalLinear(torch.autograd.Function):
                 layout,
                 zx,
                 splits=c_splits,
-                atoms_per_split=atoms_per_split,
+                atoms_per_split=hc_atoms_per_split or atoms_per_split,
                 windowed=window_moments,
                 compensated=compensated_values,
                 ragged=ragged_c_splits,
+                batch_tile=hc_batch_tile,
             )
         else:
             h = compute_h(
@@ -913,6 +936,12 @@ class _HierarchicalLinear(torch.autograd.Function):
                 compensated_cdot=compensated_cdot,
                 ragged=ragged_c_splits,
             )
+        if release_workspaces and (
+            not ctx.needs_input_grad[1] or plan.input.polar is not None
+        ):
+            # Polar reprojects H in backward; only the generic atom pullback
+            # needs this forward activation after output C has been built.
+            del h
         y = expand_c(c, plan.output, x, sites_per_block=sites_per_block)
         ctx.plan = plan
         ctx.z_method = z_method
@@ -931,6 +960,7 @@ class _HierarchicalLinear(torch.autograd.Function):
         ctx.compensated_grad = compensated_grad
         ctx.reuse_shape_coefficients = reuse_shape_coefficients
         ctx.ragged_c_splits = ragged_c_splits
+        ctx.release_workspaces = release_workspaces
         ctx.source_version = atoms._version
         ctx.layout_method = layout.method
         # save_for_backward checks atom AND layout-buffer mutations. Avoid
@@ -1037,6 +1067,13 @@ class _HierarchicalLinear(torch.autograd.Function):
                 windowed=ctx.window_moments,
                 compensated=ctx.compensated_values,
             )
+        if ctx.release_workspaces and (
+            not ctx.needs_input_grad[1] or datoms is not None
+        ):
+            # These routes have finished all output-moment consumers. Unlike
+            # saved input moments, this backward-local tensor can be released
+            # without changing retained-backward state.
+            del zy
         if ctx.needs_input_grad[0]:
             if cin is None:
                 cin = compute_input_c(
@@ -1050,6 +1087,10 @@ class _HierarchicalLinear(torch.autograd.Function):
                     compensated_cdot=ctx.compensated_cdot,
                     ragged=ctx.ragged_c_splits,
                 )
+            if ctx.release_workspaces and (
+                not ctx.needs_input_grad[1] or datoms is not None
+            ):
+                del g
             dx = expand_c(cin, plan.input, dy, sites_per_block=ctx.sites_per_block)
             del cin
         if ctx.needs_input_grad[1] and datoms is None:
@@ -1068,6 +1109,9 @@ class _HierarchicalLinear(torch.autograd.Function):
         return (
             dx,
             datoms,
+            None,
+            None,
+            None,
             None,
             None,
             None,
@@ -1115,6 +1159,9 @@ def hierarchical_linear(
     compensated_grad=False,
     reuse_shape_coefficients=False,
     ragged_c_splits=False,
+    hc_batch_tile=4,
+    release_workspaces=False,
+    hc_atoms_per_split=0,
 ):
     """Private research autograd route, using this forward's bank/owner choices.
 
@@ -1137,6 +1184,14 @@ def hierarchical_linear(
     """
     if type(fuse_h_c) is not bool:
         raise ValueError("fuse_h_c must be bool")
+    if type(hc_batch_tile) is not int or hc_batch_tile not in (4, 8):
+        raise ValueError("H/C batch tile must be 4 or 8")
+    if hc_batch_tile != 4 and not (fuse_h_c and ragged_c_splits):
+        raise ValueError("larger H/C batch tiles require fused ragged H/C")
+    if type(hc_atoms_per_split) is not int or hc_atoms_per_split < 0:
+        raise ValueError("H/C atoms per split must be a nonnegative integer")
+    if type(release_workspaces) is not bool:
+        raise ValueError("release_workspaces must be bool")
     if type(specialize_g_grad) is not bool:
         raise ValueError("specialize_g_grad must be bool")
     _validate_compensated_cdot(compensated_cdot, atoms, atoms.dtype, plan.input)
@@ -1231,4 +1286,7 @@ def hierarchical_linear(
         compensated_grad,
         reuse_shape_coefficients,
         ragged_c_splits,
+        hc_batch_tile,
+        release_workspaces,
+        hc_atoms_per_split,
     )

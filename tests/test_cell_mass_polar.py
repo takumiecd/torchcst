@@ -279,6 +279,104 @@ def test_polar_integrated_cuda_all_gradients(n, batch, split):
 
 
 @cuda_only
+@pytest.mark.parametrize("input_grad,atom_grad", [(True, True), (True, False), (False, True)])
+def test_polar_backward_local_release_preserves_retained_gradients(input_grad, atom_grad):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        hierarchical_linear,
+    )
+
+    model = layer(count=37, dtype=torch.float32, device="cuda", cuda_plan=True)
+    model.atoms.p.requires_grad_(atom_grad)
+    x = torch.randn(5, 128, device="cuda", requires_grad=input_grad)
+    dy = torch.randn(5, 128, device="cuda")
+    y = hierarchical_linear(
+        hierarchy_from_operator(model.declaration()),
+        x,
+        model.atoms.p,
+        release_workspaces=True,
+    )
+    targets = tuple(t for t in (x, model.atoms.p) if t.requires_grad)
+    first = torch.autograd.grad(y, targets, dy, retain_graph=True)
+    second = torch.autograd.grad(y, targets, -2 * dy)
+
+    xr = x.detach().cpu().double().requires_grad_(input_grad)
+    pr = model.atoms.p.detach().cpu().double().requires_grad_(atom_grad)
+    yr = oracle(model, xr, pr)
+    reference_targets = tuple(t for t in (xr, pr) if t.requires_grad)
+    expected = torch.autograd.grad(yr, reference_targets, dy.cpu().double())
+    for actual, repeated, reference in zip(first, second, expected):
+        torch.testing.assert_close(actual.cpu().double(), reference, rtol=3e-6, atol=2e-7)
+        torch.testing.assert_close(repeated, -2 * actual, rtol=3e-6, atol=2e-7)
+
+
+@cuda_only
+@pytest.mark.parametrize("batch", [1, 5, 9])
+@pytest.mark.parametrize("release_workspaces", [False, True])
+def test_polar_ragged_hc_batch_tile_tails_match_oracle_and_retained_backward(
+    batch, release_workspaces
+):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        build_hierarchy,
+        build_window_moments,
+        compute_h_c,
+        hierarchical_linear,
+        prepare_layout,
+    )
+
+    model = layer(count=37, dtype=torch.float32, device="cuda", site_scaled=True)
+    plan = hierarchy_from_operator(model.declaration())
+    x = torch.randn(batch, 128, device="cuda", requires_grad=True)
+    dy = torch.randn_like(x)
+    arguments = SITE_SCALED.recipe.arguments()
+    layout = prepare_layout(plan, model.atoms.p, method="sort", reverse=True)
+    rx = build_window_moments(build_hierarchy(x, plan.input), plan.input)
+    hc = [
+        compute_h_c(
+            plan,
+            model.atoms.p,
+            layout,
+            rx,
+            splits=128,
+            atoms_per_split=256,
+            windowed=True,
+            compensated=True,
+            ragged=True,
+            batch_tile=tile,
+        )
+        for tile in (4, 8)
+    ]
+    for base, candidate in zip(*hc):
+        torch.testing.assert_close(candidate, base, rtol=3e-6, atol=2e-7)
+    outputs = []
+    for tile in (4, 8):
+        y = hierarchical_linear(
+            plan,
+            x,
+            model.atoms.p,
+            **arguments,
+            hc_batch_tile=tile,
+            release_workspaces=release_workspaces,
+        )
+        first = torch.autograd.grad(y, (x, model.atoms.p), dy, retain_graph=True)
+        second = torch.autograd.grad(y, (x, model.atoms.p), -2 * dy)
+        for actual, repeated in zip(first, second):
+            torch.testing.assert_close(repeated, -2 * actual, rtol=3e-6, atol=2e-7)
+        outputs.append((y, *first))
+
+    xr = x.detach().cpu().double().requires_grad_()
+    pr = model.atoms.p.detach().cpu().double().requires_grad_()
+    yr = oracle(model, xr, pr)
+    reference = (yr, *torch.autograd.grad(yr, (xr, pr), dy.cpu().double()))
+    for actuals in outputs:
+        for actual, expected in zip(actuals, reference):
+            torch.testing.assert_close(
+                actual.cpu().double(), expected, rtol=3e-6, atol=2e-7
+            )
+    for base, candidate in zip(*outputs):
+        torch.testing.assert_close(candidate, base, rtol=3e-6, atol=2e-7)
+
+
+@cuda_only
 def test_polar_integrated_cuda_singular_guard_and_angular_extrema():
     model = layer(count=5, dtype=torch.float32, device="cuda", cuda_plan=True)
     with torch.no_grad():
