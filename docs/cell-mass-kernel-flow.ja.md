@@ -479,6 +479,273 @@ source/tests/training498ファイルを提出sourceへ照合し、73証拠ファ
 `output/cell-mass-pytorch-step-20261028/verified-run/`へ保全した。
 wheel/sdistの全347runtimeファイルもbyte一致。所有GPU/pool supervisorは停止確認済み。
 
+#### H/Cのbatch再利用と、担当量・作業配列の分離（2026-10-28）
+
+Polarの最適化はここで区切り、同じN1024/A52,428/B32のinitial/epoch3保存状態で
+Linearを比較した。FlatTorus fused更新と`check_finite=False`、σ範囲・spacing・M8・
+profile・T_min・周期は直前の条件のまま。Zは二分階層を保つ。新たな学習epochは回していない。
+
+**実装済み：** `compute_h_c_ragged_batched`でforwardのbatch tileを4/8から選ぶ。
+各threadは別atomを担当し、入力profileとの積和Hをregisterで求め、そのFP32丸め後の同じ値を
+shared chunkへ渡して出力Cを作る。atom係数表・packed atomコピー・dense Wは追加しない。
+各sampleのharmonic順と各chunkのatom加算順は変えない。
+
+```cpp
+// 1 CTA = 出力ownerのatom部分区間 × 4または8batch、32threads
+for (atom_chunk : assigned_owner_range) {
+    // laneごとに別atom。1回の係数生成を担当batchへ再利用する。
+    H[batch] = project_input_profile(Rx, atom, batch);
+    shared_coeff[lane] = output_profile(atom);
+    shared_amp_H[batch][lane] = amplitude(atom) * float(H[batch]);
+    __syncthreads();
+    C_partial += contract_32_atoms(shared_coeff, shared_amp_H);
+    __syncthreads();
+}
+// 別kernelでsplit順に縮約、CからYを展開。Yへのatomicは使わない。
+```
+
+従来の`atom_threads=64`はこのCTAのthread数を指定する値ではない。H/C融合CTAは32threads。
+`hc_batch_tile`は1threadが同時に処理するbatch数、`hc_atoms_per_split`はforward H/Cの
+owner分割の目安。`atoms_per_split`は別のC_in側の目安として残す。各ownerの人数nに対し
+`active_splits=min(c_splits,ceil(n/grain))`であり、常に128splitを起動する方式ではない。
+実task数をhostへ読まず、安全上界`min(nodes*cap,ceil(A/grain)+nodes)`でscratchを確保する。
+
+明示recipe `site_scaled_hc8_g64_cin512`はbatch8・H/C grain64・C_in grain512を表す。
+`site_scaled_release`は従来の計算割当のまま早期解放だけを有効にする対照群。
+古い`site_scaled`の挙動とpresetだけのPlan JSON形式は維持し、自動selectorへは追加しない。
+
+主比較source `46df9d95`、L4 job `l4job-53b6443627bc4867abb7d4e1484f5827`。
+20条件のH/C単体event比較で、両保存状態を合計した時間からtile4/8それぞれのgrainを選び、
+各候補を別途完全stepで検査した。各armは2つのfresh processで順序を反転。
+各process内の3つの21step窓の中央値であり、独立seed数を意味しない。
+
+| 状態 | 従来完全step ms（2process） | batch8/grain64/C_in512 ms | 従来/候補 peak allocated MiB | dense allocated MiB |
+| --- | ---: | ---: | ---: | ---: |
+| initial | 11.644 / 11.644 | 10.566 / 10.524 | 241.827 / 239.780 | 239.551 |
+| epoch3 | 12.009 / 12.000 | 10.774 / 10.792 | 240.773 / 239.288 | 239.551 |
+
+別のprofiler passでH/Cの実GPU作業はinitial約2.75–2.78→1.72–1.73ms、
+epoch3約3.14–3.17→1.93–1.94ms。完全stepは約9–10%短縮した。
+分割粒度だけをgrain64へ変えたtile4はepoch3 H/C約3.02–3.03ms、完全step約11.865ms。
+主な効果はB32で8回だったprofile/phase等の再生成を4回へ減らしたことと整合する。
+有効atomのC寄与総数`A*B*17`は減らない。命令stallや実効帯域のhardware counterは未測定。
+
+σの偏りは、owner人数以外にも係数再利用条件を変える。初期では入出力bank周期が一致する
+atomが100%だが、epoch3元checkpointでは14.181%になる。44,993atom（85.819%）は
+入力最小bankのP=1.5、出力最小bankのP=3へ分類され、同じσでも`same_shape`がfalseとなる。
+このatom群では出力profileの係数を別に生成する。追加計算の発生は分類とnative guardから
+確認できるが、初期/epoch3の時間差の全てをこの原因へ帰する因果実験ではない。
+profile周期とσの定義を維持して、batch間の再生成と不要な復号を減らす。
+
+| コンパイル/runtime使用資源 | batch4 | batch8 |
+| --- | ---: | ---: |
+| register/thread | 126 | 130 |
+| dynamic shared/CTA bytes | 6,088 | 7,688 |
+| local storage/thread bytes | 40 | 40 |
+| occupancy API予測 resident CTA/SM | 14 | 11 |
+
+これは実測achieved occupancyではなく、L4の該当specialization・32threadsでの予測。
+local bytesもspill trafficの測定値ではない。常駐CTA数が下がっても速くなるため、
+単にthread/warpを増やす割合設定だけでは改善理由を説明できない。
+
+メモリはRyをG/Parameter勾配完成後、GをC_in完成後に解放する。PolarのHもC_out後に解放する。
+保存済みRxはretained backwardのため保持し、`ctx.saved_tensors`を勝手に消さない。
+forwardのHC部分和はgrain64で1.901→4.453MiBと増えるが短命であり、最大peakは引き続きC_in内。
+C_in grain512は部分和を2.963→2.540MiBへ減らす。早期解放だけではepoch3 239.711MiBで
+まだdenseを超え、grain変更との組合せで239.288MiBになる。initialは0.229MiB超過が残った。
+reservedはinitial候補392/dense382MiB、epoch3候補394/dense402MiBであり、
+この時点で全てのmemory指標がdense以下とは主張しない。
+
+921 GPU testsと、両保存状態の全52,428atom/B32のY・dX・全4列atom勾配を
+独立CPU FP64 FFT/autogradへ照合して通過（rtol3e-6/atol2e-7）。全20processの計装有無は
+logits/loss/全model勾配/更新後Parameter・momentsがbit一致し、allocator履歴の全境界・peakも一致。
+CPU全体2,114 passed/5,420 skipped/既存警告18件、wheel/sdistは347runtimeファイルbyte一致。
+source/tests/training499ファイルと135証拠ファイルを
+ignored `output/cell-mass-hc-20261028/verified-run/`へ照合・保全した。
+source archive SHA256 `f7d9e84cda0c0ca420963e7e2478e1c204c54436b8c450ef1aa6e62f2082b0ef`、
+result archive `26960b53ddecf8aee53ee92f671a8784a6b508ff1beafeb3abafa206bee5053a`。
+
+**46df9d95時点の既存関数内の候補（後述の4eabbd79で実装・GPU検証済み）：**
+入出力のPolar幅復号法則が厳密に同じなら、
+`atom_sigma`のsqrt/pow/log/expを2回評価せずσを再利用する案を検討した。
+周期が異なる場合のprofile生成は分離したままにする。46df9d95ではinput/outputそれぞれで復号していた。
+またouter loopで既知のinput bankを渡し、分類と同じwrap/floorでownerを再現できれば
+per-atomのgroup二分探索を省けると考えた。境界とnextafter、原点、周期wrapの独立照合を要件とした。
+どちらも上記46df9d95の速度結果には含めず、後述の4eabbd79で比較した。
+
+**次のkernel候補（未実装）：** 同一output ownerのinput-bank区間を論理連結し、
+担当境界を32atom chunkに合わせる。epoch3の実分布では現在1,920chunk/85.33%lane利用率から
+1,721chunk/95.20%へ減らせる。active925taskとpartial容量は維持でき、range metadataは約17.2KB。
+有効atomのprofile計算は減らないため、chunk10.36%減をH/C時間10.36%短縮とは呼ばない。
+初期状態ではbank境界の連結だけの効果はなく、chunk境界整列だけが候補になる。
+
+output最小bankへ50,710atomが入る一方、単一owner最大は454atomで128split上限には達していない。
+最小階層への偏りと少数ownerへの集中を区別する。grain64ではtask925/安全枠1073、
+従来grain256では320/458。小さいtaskの並列性と長いtaskの削減が、追加paddingを上回ったと
+考えられるが、原因を分離したhardware-counter検証ではない。
+複数warp/CTA化はsharedをwarp数分必要とし、独立warpの異なるloop長で現在の
+`__syncthreads()`を使えないため、warp同期の別実装と資源検証を要する。優先順位は低い。
+
+**46df9d95時点のZ側の候補（後述の4eabbd79で実装・GPU検証済み）：**
+46df9d95のchunked builderは全bankの直接moment・reduce・
+二分merge・3tile窓を作っていた。epoch3では入力consumer bank0/1/2、出力0/1しか使わない。
+必要な子bankを含む依存閉包をGPU bitmaskで作り、未使用の上位bankを省く案を検討した。
+直接評価するmode×siteの係数は入力82→33、出力74→25となる（いずれもB*N倍する仕事量で、
+時間短縮率ではない）。window node数は入力509→448、出力253→192。
+全周bankは独立に直接生成し、local bankのmerge祖先と混同しない。
+ゼロ振幅でも勾配に必要なatomを含め、maskはforwardのlayoutに結び、更新時に作り直す。
+全ownerを残すbank単位の省略から始めれば、隣接ownerと子ownerの複雑な個別閉包を避けられる。
+raw momentの依存maskとH/Gのconsumer maskを区別し、windowが未初期化Zを読まないことが必要。
+このmask gatingだけではscratchの確保量は減らない。4eabbd79での実装と実測は後述する。
+
+**C_in scratch batch-slab（実装・独立GPU検証済み）：**
+initialに残ったpeak超過へ対応するため、全Gと全C_inは保持し、部分和だけを16/8batchずつ
+作って同じstreamで縮約後に使い回す。`cin_batch_slab`で指定し、recipe末尾`_slab16/8`で選べる。
+atom和・split縮約順は変えず、追加のhost同期も入れない。以下の4eabbd79で16batch版を確認した。
+先行source c3820945のjob `l4job-64f76715f1e443b6a6927c5cb82f2d85`は接続断で結果を
+回収できず、全ての達成判定から除外する。source499ファイルはGit c3820945とbyte一致し、
+source/archive/transport/lifecycleと回復記録だけを`failed-transport/`へ保存した。
+所有sessionは停止してserver一覧から消えたことを確認し、pool recover後に別jobへ進んだ。
+
+**係数共有とactive bankの選択設定（source 4eabbd79、GPU・完全step確認済み）：**
+`site_scaled_hc8_g64_cin512_slab16_exact_reuse_active_z_cached32`は、前述のbatch8に加え、
+厳密な同一幅復号の再利用・既知input bankからのowner再現・未使用bankのZ/R省略・
+Polar pullback係数のshared再利用を有効にする。二分merge、profile、σ・周期・正規化は維持する。
+consumer maskとraw Zの子依存maskはGPU int32[4]（16bytes）で、zero amplitudeのatomも含める。
+forwardのmaskをrouting tensorsと一緒にsave_for_backwardし、retained backwardとversion検査を守る。
+
+PolarのG/Parameter勾配では、各threadが別atomの17個のFP64係数を軸ごとにsharedの専用columnへ
+一度保存する。B32で8回再生成していたstreamを1回にする。各threadは自分のcolumnしか読まない
+ためbarrierを追加しない。中心微分は元の`omega*(-cs*zc+cc*zs)`、H/Gはパラメータ勾配用に
+FP64のまま、dX向けGだけ従来どおりFP32へ丸める。sharedは32/64threadsで8,704/17,408bytes。
+register/threadは180→145、occupancy API予測は32threadsで8→10CTA/SM。
+これはachieved occupancyやspill trafficの測定ではない。
+
+correctness job `l4job-a94c3853a437461f9da7ee9e5c4a7028`で1,116 testsが通過。
+両保存状態・8recipeの全52,428atom/B32のY/dX/全4列勾配も独立FP64参照へ同じ3e-6/2e-7で通過した。
+source500ファイルを照合し、native binary（SHA256
+`c9f7dabc0c13cc993009caa02f01559d748872dfd1fad962f98006e05c8ab318`）を結果manifestへ保存した。
+完全step job `l4job-c7a5466a0f064bb0a9391265590e1e1e`は、この検証済みbinaryを再利用する。
+各fresh childでsource6ファイルの結合digest・binary hash・Python/Torch/CUDA・GPU名/能力を照合して
+importし、JIT compileの再実行を避けた。runnerとbinaryもraw evidenceへ保存する。
+数値runtimeの差し替えや古いsourceへの混在ではない。全source500ファイルはGit4eabbd79へ照合済み。
+
+| 保存状態/独立process | 従来完全step ms | 上記選択設定 ms | peak allocated CST/dense MiB | reserved CST/dense MiB |
+| --- | ---: | ---: | ---: | ---: |
+| initial/0 | 11.628 | 8.413 | 238.712 / 239.551 | 392 / 382 |
+| initial/1 | 11.607 | 8.411 | 238.712 / 239.551 | 392 / 382 |
+| epoch3/0 | 12.013 | 8.231 | 239.170 / 239.551 | 394 / 402 |
+| epoch3/1 | 11.966 | 8.225 | 239.170 / 239.551 | 394 / 402 |
+
+epoch3の完全stepは約31.3–31.5%短縮。denseは同じprocess対照で1.946/1.950msなので、
+時間目標は未達。allocatedは両状態でdense以下だが、initial reservedは未達。
+reservedの初期差は計測開始前からあり、180MiB segment内に小さな生存Tensorと
+大きな空き領域が同居している。allocated/reservedを混同せず、process総GPU使用量は未測定とする。
+slab16後の最大allocatedはC_inからforward H/Cへ移り、H6.400MiBとHC部分和4.453MiBが重なる。
+
+別passのepoch3実GPU作業はZx2.058→0.785ms、Zy1.056→0.319ms、H/C3.169→1.700ms、
+G/Parameter勾配1.825→1.433ms。C_inはslab16で約1.650ms、Y/dX展開は約.365/.419ms。
+これらを足して完全stepとは呼ばない。32/64thread cached版の完全step差は小さく、
+速度優位を断定しない。32版は1CTAのsharedが半分であり、次のone-warp試作と揃える。
+計装有無の全model出力/勾配/更新後Parameter・momentsは20processすべてbit一致し、
+allocatorのpeak・全境界再構成も一致。optimizerの同期APIは全processで0を維持した。
+
+CPU全体は2,211 passed/5,518 skipped/既存警告18件。
+correctness source/result SHA256は`5591e2de8d619db3133e278e8b840a3a6e35f03293c2e29178dcaedff0cb199a` /
+`df572685349dba7de8e90c25187279975f978354813142bbbebbba5de9a79cf6`。
+完全step source/result SHA256は`661468a7e97de458681c296adf0bb971839dd75e8216d444753a9b1dab309c01` /
+`6f2daad7ac2f00eef85fc13f9fb2d05a62c6d77e343e4eb1a02e2eba3dc6c7b3`。
+ignored evidenceは`astra-gates/`と`astra-profile/`。現在worktreeの追加試作との差は、
+測定前の500ファイル一致記録とGit4eabbd79への照合で区別する。
+
+**追加試作（source 64471aa4、CPU・独立GPU・完全step確認済み）：**
+`_node_z`はactive bankの二分mergeを保ち、既存のchunkなしnode builderを使う。
+要求chunk32が実際には入力4/出力8へclampされるため、chunk版はinput16,384/output7,168CTAと
+8.500/3.719MiBの一時配列を持っていた。両保存状態の必要な子依存閉包はtile32sites以下であり、
+node版は4,072/2,024CTAとし、chunk scratchとその縮約kernelを作らない。
+`_expand`は同じconsumer maskで、寄与のないbankのY/dX基底評価を省く。
+Zにはraw依存mask、出力にはconsumer maskを使い、両方の意味を混同しない。
+既存の完全hierarchy APIと旧recipeのdefaultは保持する。
+
+job `l4job-08c840599a274910b900d36d75415e97`で1,157 GPU tests、両保存状態の
+6recipe・全52,428atom/B32についてY/dX/全4列atom勾配を独立FP64参照へ照合して通過した。
+閾値は従来と同じrtol3e-6/atol2e-7。source/tests/training501ファイルを照合済み。
+Linear単体のforward/backward screeningは完全MNIST stepとは区別する。
+先行job `l4job-10f0b00a37564f58907a000eff630b01`は実験コード開始前のCLI接続で停止し、
+回収結果がないため全達成判定から除外した。source/transport/lifecycleを保存し所有sessionを回復した。
+GPU gateのsource/result SHA256は`8763829122df26ba357357b7dd3edfe68347a2531c8279bdb7a1c18de969a310` / `20ee0ccf62c7dd4b10c162c4cfae3fd3025fb5595f61c432802120c17f939e1b`。
+証拠はignored `output/cell-mass-hc-20261028/node-gates/`。
+
+完全step job `l4job-d15e5ebd350a46ee94632c8ed269730c`は、同じ検証済みnative binaryを
+全fresh childでsource digest/runtime/deviceと照合して使った。選択設定は
+`site_scaled_hc8_g64_cin512_slab16_exact_reuse_node_z_cached32_expand`。
+
+| 状態 | 従来完全step ms（2process） | node Z＋展開省略 ms | peak allocated CST/dense MiB | reserved CST/dense MiB |
+| --- | ---: | ---: | ---: | ---: |
+| initial | 11.613 / 11.649 | 7.294 / 7.320 | 238.712 / 239.551 | 392 / 382 |
+| epoch3 | 12.022 / 12.002 | 7.396 / 7.390 | 239.170 / 239.551 | 394 / 402 |
+
+別passのepoch3 GPU作業は、前選択設定に対してZx約.785→.501ms、Zy.319→.245ms、
+Y展開.365→.112ms、dX展開.419→.165ms。H/C約1.674ms、G/Parameter勾配1.434ms、
+C_in1.653msが残る。旧site_scaledから完全stepは約38.4%短縮したが、dense1.912/1.967msとの
+速度差は残る。allocatedの最大は依然forwardのH/C内であり、reservedのinitial超過も残る。
+全24processの計装bit一致・allocator境界/peak一致・optimizer同期API0を確認した。
+追加試作後のworktree差とは別に、source/tests/training501ファイルをGit64471aa4へ照合した。
+完全step source/result SHA256は`659f4032f30c36f24e8f3219a67c789b56c6c24f863e1015413a7c76731fd586` / `857973f29b3739ffbdb84a795ca92d3a6587a17bd495aedb0f68c791e2891e6b`、
+証拠はignored `output/cell-mass-hc-20261028/node-profile/`。
+
+
+**Polar経路のH保存省略と逆C融合（source 0b43283e、CPU・独立GPU検証済み・完全step測定待ち）：**
+Polar optimizer自体はHを受け取らず、Parameterの勾配と既存optimizer状態を使う。
+論理的なHはforwardのC_out、およびLinear backwardの振幅勾配
+`da[a] = sum_b H[b,a]*G[b,a]`・出力中心勾配に必要である。
+ただしH配列をoptimizerへ渡す必要はなく、Polar backwardは保存RxからFP64 register内へHを再投影する。
+forwardで一時的にglobal Hを書いていたのは、共通H/C APIがH配列も返すためであり、
+optimizerの要件ではない。`_nostore_h`/`omit_unused_h=True`はこのbufferの確保・書込を省く。
+C用の局所H計算とFP32丸めは残し、`release_workspaces`による確保後の解放とは区別する。
+primitive `compute_h_c(..., store_h=True)`の既定と診断出力は維持する。
+物理sigmaでatom勾配が必要な場合、非ragged、非融合H/Cでは従来のH保存へ戻る。
+
+`_fused`/`fuse_polar_cin=True`は逆indexのinput owner部分区間を1CTA/32threadsで担当する。
+各threadは別atomを全batchにわたって担当し、係数を2軸各17個のFP64 shared専用columnへ保持。
+H/Gと中心微分からParameter勾配を作ると同時に、`amp*double(float(G))`を共有してC_inへ集約する。
+Parameter勾配には丸め前H/G、C_inには従来どおり丸めたGを使い、global Gは作らない。
+C_in partialは全B32を保持するため、eligible経路では`cin_batch_slab`を使わない。
+FP32 Polar/M8/tail1e-3、値・勾配の両補償、reverse ragged、B<=32、両側勾配が条件。
+条件外は既存経路へ戻り、cache/slab設定もそのfallback用に保持する。
+B32のsharedは14,648bytes/CTA。これは資源予算で、実測ピークや速度改善の保証ではない。
+
+CPU全体2,255 passed/5,596 skipped、既存警告18件。forward/apply/backwardは32引数で一致。
+CUDA job `l4job-b31cf41d84f94791a99f78bbef6243bd`は1,225 tests、両保存状態・7recipeの
+全52,428atom/B32についてY/dX/全4列atom勾配を同じ独立FP64参照・同じ閾値で通過した。
+memcheck/racecheckはB5/A32のtail case各1件で0 errors/0 hazardsを確認した。
+これは全GPUcaseのsanitizer検証ではない。native B32資源は146register/thread、
+local storage40bytes/thread、dynamic shared14,648bytes、予測6CTA/SM（実効occupancy未測定）。
+source/tests/training504ファイルとcompiled binaryを照合・保全した。
+source/result SHA256は`b8bf916b086062fcc63fe9f3474ec52194a2761a97711138f74c1550532fe088` / `38ebd1542399248d713432e6acf8416d83ff7367582099421264618a64118df9`、
+ignored evidenceは`output/cell-mass-hc-20261028/fused-gates/`。完全step/peakは別途測る。
+完全step job `l4job-245ad903780b4c969753bdbf9af2e4d5`の回収結果はまだなく、
+融合版の速度・peak改善は未確定。node版7.39msの実測と混同せず、自動selectorにも採用しない。
+
+
+**標本化による入力12基底へのfold（数式とCPU検査のみ・未実装）：**
+最小input bankはT=4spacing、P=12spacing。Z基底のphaseは`omega*site*spacing`であり、
+owner分類のhalf-cell shiftとは別なので、セル積分済み基底に次の恒等式がある。
+
+\[
+Z_{8,c}=\tfrac12Z_{4,c},\quad Z_{8,s}=-\tfrac12Z_{4,s},\quad
+Z_{7,c}=\tfrac57Z_{5,c},\quad Z_{7,s}=-\tfrac57Z_{5,s},\quad Z_{6,s}=0.
+\]
+
+3tile窓の12サイトでは17実基底を12個へfoldできる。値用係数は
+`q4c=p4c+.5*p8c, q4s=p4s-.5*p8s, q5c=p5c+(5/7)*p7c, q5s=p5s-(5/7)*p7s`。
+中心微分には元の周波数が必要で、fold後に単純にomega4/5を掛ける方法は誤り。
+ただし12個の値係数に`p4c-p8c, p4s+p8s, p5c-p7c, p5s+p7s, p6s`を加えれば、
+元のomegaの微分を17個のcache値で保持できる。次の親が継承する子harmonic1–4は残る。
+N64/1024・spacing3種・非ゼロ原点・全owner・torus seam・raw/windowの18CPUcaseで、
+恒等式最大差2.17e-12、projection2.04e-13、中心微分1.03e-11を確認した。
+これはGPUの全atom勾配や速度・memoryの証拠ではなく、採用設定にも含めない。
+
 #### 1024の学習状態を使った段階別時間・メモリ監査（2026-10-28）
 
 計測器は`benchmarks/training/profile_cell_mass_mnist.py`。runtimeのCUDAコードやPolar法則は
@@ -1949,7 +2216,7 @@ ignored `output/cell-mass-opt-20261027/confirmation/`へsource/result/spec/recei
 所有L4は共有poolで停止を確認した。source `46b069e2`のCPU validationもsuccess。
 
 
-### 現在：入力dtypeでH/Gを保存するbackward
+### 当時の物理sigma経路：入力dtypeでH/Gを保存するbackward
 
 runtime source `1ec0f66b`。FP32入力ではH/GをFP32で完成保存し、途中の縮約・正規化係数・
 微分・Z/Cは引き続きFP64で計算する。FP64入力は保存もFP64。
