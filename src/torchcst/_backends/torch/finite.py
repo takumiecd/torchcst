@@ -1,6 +1,31 @@
 """Batch finite-value checks without changing tensors or optimizer arithmetic."""
 
+from contextlib import contextmanager
+from contextvars import ContextVar
+
 import torch
+
+_enabled = ContextVar("torchcst_finite_checks", default=True)
+
+
+def checks_enabled():
+    return _enabled.get()
+
+
+@contextmanager
+def checking(enabled):
+    """Scope optional value checks to one optimizer invocation/thread.
+
+    Public geometry calls outside that invocation retain their validation.
+    Structural checks and fixed configuration validation are unconditional.
+    """
+    if type(enabled) is not bool:
+        raise TypeError("check_finite must be a bool")
+    token = _enabled.set(enabled)
+    try:
+        yield
+    finally:
+        _enabled.reset(token)
 
 
 @torch.no_grad()
@@ -14,6 +39,8 @@ def first_nonfinite(tensors):
     Empty tensors are finite. CPU and other layouts keep the reference check.
     No activation-sized mask, concatenation or persistent cache is created.
     """
+    if not checks_enabled():
+        return None
     groups = {}
     invalid = []
     real_types = (torch.float16, torch.bfloat16, torch.float32, torch.float64)

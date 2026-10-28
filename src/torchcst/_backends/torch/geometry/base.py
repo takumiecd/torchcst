@@ -10,7 +10,9 @@ def validate_points(self, points: Tensor, *, name: str = "points") -> None:
     """Validate an arbitrary table whose final axis stores one point."""
 
     _validate_structure(self, points, name=name)
-    if not bool(torch.isfinite(points).all()):
+    from torchcst._backends.torch import finite
+
+    if finite.checks_enabled() and not bool(torch.isfinite(points).all()):
         raise ValueError(f"{name} must be finite")
 
 
@@ -18,7 +20,9 @@ def validate_centers(self, centers: Tensor, *, name: str = "centers") -> None:
     """Validate stored center parameters."""
 
     _validate_center_structure(self, centers, name=name)
-    if not bool(torch.isfinite(centers).all()):
+    from torchcst._backends.torch import finite
+
+    if finite.checks_enabled() and not bool(torch.isfinite(centers).all()):
         raise ValueError(f"{name} must be finite")
 
 

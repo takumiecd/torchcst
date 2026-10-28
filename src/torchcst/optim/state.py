@@ -28,6 +28,7 @@ class OptimizerStateAdapter:
             raise ValueError("vector_keys must be unique")
 
     def transport(self, site, old: Tensor, new: Tensor, state: dict) -> None:
+        from torchcst._backends.torch import finite
         from torchcst._backends.torch.kernels import execution as _kernel
 
         for key in self.vector_keys:
@@ -41,7 +42,7 @@ class OptimizerStateAdapter:
             )
             if transported.shape != vector.shape:
                 raise ValueError("transported optimizer state has the wrong shape")
-            if not bool(torch.isfinite(transported).all()):
+            if finite.checks_enabled() and not bool(torch.isfinite(transported).all()):
                 raise FloatingPointError("non-finite transported optimizer state")
             vector.copy_(transported)
 

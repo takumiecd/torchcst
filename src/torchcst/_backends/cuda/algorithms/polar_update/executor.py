@@ -56,7 +56,9 @@ def fused_update_(value, previous, proposal, *, step_size, periods=None):
         # Match the public geometry's finite-point/displacement rejection.
         # Reduce both checks to a four-byte status, without per-atom scratch.
         # The fixed positive periods are validated by the binding declaration.
-        if len(proposal):
+        from torchcst._backends.torch import finite
+
+        if finite.checks_enabled() and len(proposal):
             from .kernels import check_periodic_centers
 
             invalid = torch.zeros((), dtype=torch.int32, device=proposal.device)

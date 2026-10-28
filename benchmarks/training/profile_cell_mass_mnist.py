@@ -519,7 +519,9 @@ def main():
         "--polar-update", choices=("torch", "flat-fused"), default="torch"
     )
     parser.add_argument(
-        "--finite-checks", choices=("batched", "per-tensor"), default="batched"
+        "--finite-checks",
+        choices=("batched", "per-tensor", "pytorch"),
+        default="batched",
     )
     args = parser.parse_args()
     if args.finite_checks == "per-tensor":
@@ -565,7 +567,12 @@ def main():
 
         update_selector = FixedSelector(FLAT_TORUS_FUSED, registry=get_registry())
     optimizer = (
-        CSTOptimizer(base, model=model, update_selector=update_selector)
+        CSTOptimizer(
+            base,
+            model=model,
+            update_selector=update_selector,
+            check_finite=args.finite_checks != "pytorch",
+        )
         if args.kind == "cst"
         else base
     )
