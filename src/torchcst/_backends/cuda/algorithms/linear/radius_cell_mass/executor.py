@@ -37,18 +37,13 @@ def _extension():
     )
 
 
-def prepare_layout(plan, atoms, *, reverse=False):
-    """Return original-row indices and first-tile begin/end offsets.
+def _classify_layout_keys(plan, atoms):
+    """Classify current atoms once and validate before any indexed reads.
 
-    Sort order is (output bank/tile, input bank/tile), reversed for dX. The
-    numerical atom Parameter stays in place. Temporary keys/counts die here;
-    the returned rows and offsets are the only retained routing arrays.
-
-    One error-word read rejects invalid radii/parameters before native gathers.
-    This correctness baseline is eager-only and does not claim Graph capture.
+    Each integer key contains the two bank/tile owners, never atom values.
+    A fused forward may save these keys for its backward, whose saved atom
+    Tensor already enforces PyTorch's version check before they are reused.
     """
-    if type(reverse) is not bool or type(plan) is not HierarchyPlan:
-        raise ValueError("expected a radius hierarchy and bool reverse")
     keys, error = _extension().classify_atoms(
         atoms, plan.input.native_config(), plan.output.native_config()
     )
@@ -56,6 +51,15 @@ def prepare_layout(plan, atoms, *, reverse=False):
         raise ValueError(
             "atoms must be finite, with radii in (0, chart half-period] and representable radius/tile ratios"
         )
+    return keys
+
+
+def _ranges_from_layout_keys(plan, keys, *, reverse=False):
+    """Sort validated owner keys into forward or reverse original-row ranges.
+
+    This does not decode atom parameters or read an error word to the CPU.
+    It is safe only for keys from the same unchanged forward atom Tensor.
+    """
     input_node = keys.remainder(plan.input.node_count)
     output_node = torch.div(keys, plan.input.node_count, rounding_mode="floor")
     if reverse:
@@ -67,6 +71,21 @@ def prepare_layout(plan, atoms, *, reverse=False):
     counts = torch.bincount(owner, minlength=count)
     offsets = torch.cat((counts.new_zeros(1), counts.cumsum(0)))
     return rows, offsets
+
+
+def prepare_layout(plan, atoms, *, reverse=False):
+    """Return original-row indices and first-tile begin/end offsets.
+
+    Sort order is (output bank/tile, input bank/tile), reversed for dX.
+    Standalone preparation releases its keys. Fused autograd separately saves
+    one owner key per atom when dX is needed, avoiding a second classification
+    and its CPU error-word read in backward. No atom values are packed.
+    Preparation remains eager-only; sort/count operations are unchanged.
+    """
+    if type(reverse) is not bool or type(plan) is not HierarchyPlan:
+        raise ValueError("expected a radius hierarchy and bool reverse")
+    keys = _classify_layout_keys(plan, atoms)
+    return _ranges_from_layout_keys(plan, keys, reverse=reverse)
 
 
 def build_moments(signal, axis, *, method="merge", start_level=0):
@@ -152,7 +171,8 @@ class _BlockLocalRadiusLinear(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, atoms, plan, recipe):
         native = _extension()
-        rows, offsets = prepare_layout(plan, atoms)
+        layout_keys = _classify_layout_keys(plan, atoms)
+        rows, offsets = _ranges_from_layout_keys(plan, layout_keys)
         y, input_moments, atom_response = native.block_local_forward(
             x,
             atoms,
@@ -168,19 +188,27 @@ class _BlockLocalRadiusLinear(torch.autograd.Function):
         ctx.plan, ctx.recipe = plan, recipe
         # X/dY are still used for derivatives of direct atoms. The hierarchy
         # moments and H are actual completed caches, not empty placeholders.
-        ctx.save_for_backward(x, atoms, input_moments, atom_response)
+        # Only dX needs reverse routing. This is 8*A bytes of integer metadata,
+        # not a second atom table; atom-only backward retains no routing keys.
+        ctx.save_for_backward(
+            x,
+            atoms,
+            input_moments,
+            atom_response,
+            layout_keys if ctx.needs_input_grad[0] else None,
+        )
         return y
 
     @staticmethod
     @once_differentiable
     def backward(ctx, dy):
-        x, atoms, input_moments, atom_response = ctx.saved_tensors
+        x, atoms, input_moments, atom_response, layout_keys = ctx.saved_tensors
         plan, recipe = ctx.plan, ctx.recipe
         native = _extension()
         dy = dy.contiguous()
         grad_input = None
         if ctx.needs_input_grad[0]:
-            rows, offsets = prepare_layout(plan, atoms, reverse=True)
+            rows, offsets = _ranges_from_layout_keys(plan, layout_keys, reverse=True)
             # The SAME transform runs in reverse: dY -> moments -> G -> dX.
             # No intermediate moment/G/Cin launch or global Cin is needed.
             grad_input, grad_output_moments, grad_response = (

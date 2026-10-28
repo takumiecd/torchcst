@@ -4,6 +4,73 @@
 
 namespace radius_cell_mass {
 
+constexpr int BLOCK_LOCAL_C_CHUNK = 32;
+// As in the legacy cell-mass contraction, a padded coefficient-column stride
+// lets lanes read distinct modes of the same atom without a 32-way bank clash.
+constexpr int BLOCK_LOCAL_C_STRIDE = BLOCK_LOCAL_C_CHUNK + 1;
+
+// One warp owns one output node. Each lane evaluates a different atom once,
+// then lanes independently sum their coefficient mode in sorted-slot order.
+// This is warp-private scratch: no CTA barrier is needed between chunks, and
+// all 32 lanes participate even for partial chunks and the M=16 extra mode.
+template<class T>
+__device__ inline void block_local_coefficient_tile(
+    const T *p, const int64_t *rows, const int64_t *offsets,
+    const double *response, double *out, double *columns,
+    int node, Axis axis, bool output_side) {
+    constexpr unsigned MASK = 0xffffffffu;
+    int lane = threadIdx.x % BLOCK_LOCAL_C_CHUNK;
+    int features = axis.basis_count();
+    Bank bank = axis.banks[bank_for_node(node, axis)];
+    int tile = node - bank.node_offset;
+    double accumulator = 0, last_accumulator = 0;
+    for (int part = 0; part < bank.count; ++part) {
+        int first_node = bank.node_offset + positive_mod(tile - part, bank.tile_count);
+        int64_t begin = offsets[first_node], end = offsets[first_node + 1];
+        for (int64_t chunk = begin; chunk < end; chunk += BLOCK_LOCAL_C_CHUNK) {
+            int64_t slot = chunk + lane;
+            if (slot < end) {
+                int atom = rows[slot];
+                double R = radius(p, atom, axis);
+                double original = center(p, atom, axis, output_side);
+                Membership member = classify(R, original, axis);
+                // Keep each repeated wrapped range as its own unwrapped image.
+                // P may exceed the chart period, so tile alone cannot set phase.
+                int unwrapped_tile = member.first_tile + part;
+                double displacement = wrapped_center(original, axis) -
+                    unwrapped_tile * bank.tile_sites * axis.spacing;
+                double c[17], dr[17];
+                profile_coefficients(R, bank.period, axis.modes, c, dr);
+                double value = amplitude(p, atom, axis) * response[atom];
+                columns[lane] = value * c[0];
+                HarmonicPhase phase(2 * PI * displacement / bank.period);
+                for (int k = 1; k <= axis.modes; ++k) {
+                    double cp, sp;
+                    phase.next(cp, sp);
+                    columns[(2 * k - 1) * BLOCK_LOCAL_C_STRIDE + lane] =
+                        value * 2 * c[k] * cp;
+                    columns[2 * k * BLOCK_LOCAL_C_STRIDE + lane] =
+                        value * 2 * c[k] * sp;
+                }
+            }
+            __syncwarp(MASK);
+            int retained = end - chunk < BLOCK_LOCAL_C_CHUNK
+                ? int(end - chunk) : BLOCK_LOCAL_C_CHUNK;
+            if (lane < features)
+                for (int atom = 0; atom < retained; ++atom)
+                    accumulator += columns[lane * BLOCK_LOCAL_C_STRIDE + atom];
+            // A 33-feature M=16 bank has one more mode than warp lanes.
+            if (lane == 0 && features > BLOCK_LOCAL_C_CHUNK)
+                for (int atom = 0; atom < retained; ++atom)
+                    last_accumulator += columns[BLOCK_LOCAL_C_CHUNK * BLOCK_LOCAL_C_STRIDE + atom];
+            __syncwarp(MASK); // Finish reads before this warp reuses columns.
+        }
+    }
+    if (lane < features) out[lane] = accumulator;
+    if (lane == 0 && features > BLOCK_LOCAL_C_CHUNK)
+        out[BLOCK_LOCAL_C_CHUNK] = last_accumulator;
+}
+
 // One CTA completes the dependency chain for one batch row and output interval.
 // H and input moments are deliberately recomputed by every output CTA. There is
 // no global C table, no inter-block wait, and no atomic accumulation.
@@ -13,7 +80,8 @@ __global__ void block_local_kernel(
     const T *x, const T *p, const int64_t *rows, const int64_t *offsets,
     T *y, double *saved_z, double *saved_h, int atoms, Axis input, Axis output,
     int input_start, int output_start, bool merge, int output_tile_sites,
-    int scratch_elements, bool projection_output_side, bool emit_output) {
+    int scratch_elements, int coefficient_warps,
+    bool projection_output_side, bool emit_output) {
     extern __shared__ double shared[];
     double *scratch = shared;
     double *response = shared + scratch_elements;
@@ -80,18 +148,44 @@ __global__ void block_local_kernel(
     int output_prefix = prefix_nodes(output, output_start);
     int output_nodes = output.node_count - output_prefix;
     int output_features = output.basis_count();
-    for (int local_node = threadIdx.x; local_node < output_nodes; local_node += blockDim.x) {
-        int node = output_prefix + local_node;
-        Bank bank = output.banks[bank_for_node(node, output)];
-        int tile = node - bank.node_offset;
-        int tile_first = tile * bank.tile_sites;
-        // A site reads only its containing node in each bank. Other nodes are
-        // intentionally left unwritten and must never be read by this CTA.
-        if (tile_first >= end_site || tile_first + bank.tile_sites <= first_site) continue;
-        compact_coefficient_tile(
-            p, rows, offsets, response,
-            scratch + int64_t(local_node) * output_features,
-            atoms, 0, node, output, !projection_output_side);
+    if (coefficient_warps) {
+        int warp = threadIdx.x / BLOCK_LOCAL_C_CHUNK;
+        if (warp < coefficient_warps) {
+            double *columns = response + atoms +
+                warp * output_features * BLOCK_LOCAL_C_STRIDE;
+            int job = 0;
+            for (int bi = 2 * output_start; bi < output.bank_count; ++bi) {
+                Bank bank = output.banks[bi];
+                int first_tile = first_site / bank.tile_sites;
+                int tile_count = (end_site - 1) / bank.tile_sites - first_tile + 1;
+                // Distribute consecutive overlapping jobs, rather than all
+                // chart nodes: otherwise coarse nodes with aligned offsets
+                // concentrate on one warp when output intervals are small.
+                int first_job = warp - job % coefficient_warps;
+                if (first_job < 0) first_job += coefficient_warps;
+                for (int local = first_job; local < tile_count; local += coefficient_warps) {
+                    int node = bank.node_offset + first_tile + local;
+                    block_local_coefficient_tile(
+                        p, rows, offsets, response,
+                        scratch + int64_t(node - output_prefix) * output_features, columns,
+                        node, output, !projection_output_side);
+                }
+                job += tile_count;
+            }
+        }
+    } else {
+        // Preserve every previously valid configuration when no warp workspace
+        // fits alongside H and the compact coefficient/moment scratch.
+        for (int local_node = threadIdx.x; local_node < output_nodes; local_node += blockDim.x) {
+            int node = output_prefix + local_node;
+            Bank bank = output.banks[bank_for_node(node, output)];
+            int tile_first = (node - bank.node_offset) * bank.tile_sites;
+            if (tile_first >= end_site || tile_first + bank.tile_sites <= first_site) continue;
+            compact_coefficient_tile(
+                p, rows, offsets, response,
+                scratch + int64_t(local_node) * output_features,
+                atoms, 0, node, output, !projection_output_side);
+        }
     }
     __syncthreads();
 
@@ -136,6 +230,16 @@ inline std::vector<Tensor> block_local_apply(
     size_t shared_bytes = (size_t(scratch_elements) + p.size(0)) * sizeof(double);
     TORCH_CHECK(shared_bytes <= 48 * 1024,
                 "block-local radius route exceeds the 48-KiB shared-memory budget");
+    // Extra C workspace is optional and never narrows the original route's
+    // support. Projection-only calls allocate none. Use fewer active C warps
+    // when needed, or the original serial node contraction when none fit.
+    int coefficient_warps = 0;
+    if (emit_output && output_elements) {
+        size_t warp_bytes = size_t(output.basis_count()) * BLOCK_LOCAL_C_STRIDE * sizeof(double);
+        coefficient_warps = int(std::min(size_t(THREADS / BLOCK_LOCAL_C_CHUNK),
+            (48 * 1024 - shared_bytes) / warp_bytes));
+        shared_bytes += coefficient_warps * warp_bytes;
+    }
     c10::cuda::CUDAGuard guard(x.device());
     auto z = torch::empty({x.size(0), input_nodes, input.basis_count()}, x.options().dtype(torch::kDouble));
     auto h = torch::empty({x.size(0), p.size(0)}, x.options().dtype(torch::kDouble));
@@ -150,7 +254,7 @@ inline std::vector<Tensor> block_local_apply(
             emit_output ? offsets.data_ptr<int64_t>() : nullptr,
             emit_output ? y.data_ptr<scalar_t>() : nullptr, z.data_ptr<double>(), h.data_ptr<double>(),
             p.size(0), input, output, input_start, output_start, merge,
-            output_tile_sites, scratch_elements, projection_output_side, emit_output);
+            output_tile_sites, scratch_elements, coefficient_warps, projection_output_side, emit_output);
     });
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return emit_output ? std::vector<Tensor>{y, z, h} : std::vector<Tensor>{z, h};

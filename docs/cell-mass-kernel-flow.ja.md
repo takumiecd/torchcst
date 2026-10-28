@@ -381,6 +381,31 @@ native module=`torchcst_radius_cell_mass_1ca51a7c912d`、binary SHA256=
 raw結果・両版のnative source照合・resource情報・sanitizer・oracle・receiptは
 ignored `output/radius-optimize-20261028/`に保持する。元のDFT候補もcommit `bde973ff`から復元できる。
 
+#### 次の旧cell mass移植：shared C、位相再利用、分類キーの寿命
+
+2026-10-28。次の候補を実装し、上の10.27ms版をbaselineとして別々に測る。
+この段落は実装内容であり、採用性能の結果は後続測定で判断する。
+
+- `HarmonicPhase`は1回の`sincos`から昇順のharmonicを漸化式で作る。
+  H/G投影、C、directと階層のsite展開へ使い、セル積分のsincにも位相を再利用する。
+  unwrapped座標、P、R、窓、正規化、和を取る順番は維持する。
+- Cの各出力nodeを1 warpが担当し、各laneが別atomの係数を作る。
+  32atomのchunkを`[warp,basis,33]`のshared列へ置き、各laneは担当modeを元のsorted-slot順で足す。
+  M16の33番目のmodeはlane0が追加で担当する。完成Hを使い、Cのglobal表やatomicを追加しない。
+  対象出力区間と重なるnodeだけを連続した仕事としてwarpへ配り、粗い階層が1 warpに偏るのを避ける。
+- C用sharedは残り48KiB予算から0〜4 warp分を選ぶ。0なら元の1 thread/nodeの処理へ戻す。
+  全directやprojection-onlyではC領域を追加せず、以前受け付けた設定を新たに拒否しない。
+- BLOCK_LOCALのforwardは分類済みの整数keyをdXが必要な場合だけ保存する。
+  backwardはそこから逆向きsort/rangeを作り、atomの再分類とerror wordのCPU読戻しを繰り返さない。
+  保存はint64をA個、つまり8A bytes（A819なら6552 bytes）。atom値やFourier係数のコピーではない。
+  PyTorchのsaved-tensor version検査で、forward後にatomを変更したbackwardは使用前に拒否する。
+  別forwardでは現在のatomを必ず分類し直す。atom-onlyのbackwardはkeyを保持しない。
+
+hostでは位相の9,856条件、出力nodeの割当992,448条件、shared予算147,456条件を確認した。
+予算検査では以前有効だった119,414設定を維持し、うち出力あり1042設定はCの元処理へfallbackした。
+CPU全体は2361 passed／5768 skipped／既存警告18件。GPU向けには偏ったowner、32/64atom境界、
+M1/3/8/16、FP32/64、P>Q、M16のshared fallback、分類の再利用と更新検査を追加した。
+
 **先行候補（対称融合前）の検証結果：** CPU全体2,355 passed／5,671 skipped／既存警告18件。
 L4で旧参照と新候補を含む106件成功（宣言等31件、CUDA実行75件）。
 入力directのみ／出力directのみ／両方direct／両方階層、全階層direct、非対称軸、

@@ -2,6 +2,20 @@
 // Low hierarchy levels use direct integrated cells; retained levels have compact
 // FP64 storage. H is always complete before its output contribution is consumed.
 namespace radius_cell_mass {
+// One fundamental phase evaluation, followed by harmonics in increasing order.
+// The caller supplies the existing unwrapped displacement/image convention.
+struct HarmonicPhase {
+    double step_sine, step_cosine, sine = 0, cosine = 1;
+    __device__ explicit HarmonicPhase(double phase) {
+        sincos(phase, &step_sine, &step_cosine);
+    }
+    __device__ inline void next(double &c, double &s) {
+        double next_cosine = cosine * step_cosine - sine * step_sine;
+        sine = sine * step_cosine + cosine * step_sine;
+        cosine = next_cosine;
+        c = cosine; s = sine;
+    }
+};
 __host__ __device__ inline int prefix_nodes(const Axis &a, int start) {
     return start == a.bank_count / 2 ? a.node_count : a.banks[2 * start].node_offset;
 }
@@ -85,9 +99,11 @@ __device__ inline double compact_project(const double *z, int b, const Axis &axi
         const double *tile = z + (int64_t(b) * (axis.node_count - prefix_nodes(axis, start)) + node - prefix_nodes(axis, start)) * axis.basis_count();
         double displacement = mu - unwrapped_tile * bank.tile_sites * axis.spacing;
         value += c[0] * tile[0];
+        HarmonicPhase phase(2 * PI / bank.period * displacement);
         for (int k = 1; k <= axis.modes; ++k) {
             double omega = 2 * PI * k / bank.period;
-            double cp = cos(omega * displacement), sp = sin(omega * displacement);
+            double cp, sp;
+            phase.next(cp, sp);
             double moment = cp * tile[2 * k - 1] + sp * tile[2 * k];
             value += 2 * c[k] * moment;
             radius_gradient += 2 * dr[k] * moment;
@@ -107,14 +123,18 @@ __device__ inline double direct_project(const T *signal, int b, Axis axis,
         for (int local = 0; local < bank.tile_sites; ++local) {
             int site = (member.first_tile + part) * bank.tile_sites + local;
             double mass = axis.spacing * c[0], mr = 0, mm = 0;
+            HarmonicPhase phase(2 * PI / bank.period * (mu - site * axis.spacing));
+            double half_cell = PI * axis.spacing / bank.period;
+            HarmonicPhase cell_phase(half_cell);
             for (int k = 1; k <= axis.modes; ++k) {
                 double omega = 2 * PI * k / bank.period;
                 double argument = PI * k * axis.spacing / bank.period;
-                double filter = axis.spacing * sin(argument) / argument;
-                double phase = omega * (mu - site * axis.spacing);
-                mass += 2 * c[k] * filter * cos(phase);
-                mr += 2 * dr[k] * filter * cos(phase);
-                mm -= 2 * c[k] * filter * omega * sin(phase);
+                double cp, sp, cell_cosine, cell_sine;
+                phase.next(cp, sp); cell_phase.next(cell_cosine, cell_sine);
+                double filter = axis.spacing * cell_sine / argument;
+                mass += 2 * c[k] * filter * cp;
+                mr += 2 * dr[k] * filter * cp;
+                mm -= 2 * c[k] * filter * omega * sp;
             }
             double x = double(signal[int64_t(b) * axis.sites + positive_mod(site, axis.sites)]);
             value += x * mass; dR += x * mr; dmu += x * mm;
@@ -158,10 +178,12 @@ __device__ inline void compact_coefficient_tile(const T *p, const int64_t *rows,
             profile_coefficients(R, bank.period, axis.modes, c, dr);
             double value = amplitude(p, atom, axis) * response[b * atoms + atom];
             accumulator[0] += value * c[0];
+            HarmonicPhase phase(2 * PI * displacement / bank.period);
             for (int k = 1; k <= axis.modes; ++k) {
-                double phase = 2 * PI * k * displacement / bank.period;
-                accumulator[2 * k - 1] += value * 2 * c[k] * cos(phase);
-                accumulator[2 * k] += value * 2 * c[k] * sin(phase);
+                double cp, sp;
+                phase.next(cp, sp);
+                accumulator[2 * k - 1] += value * 2 * c[k] * cp;
+                accumulator[2 * k] += value * 2 * c[k] * sp;
             }
         }
     }
@@ -190,11 +212,14 @@ __device__ inline double hybrid_site(const T *p, const int64_t *rows,
             int node = bank.node_offset + tile;
             const double *c = coefficients + (int64_t(b) * nodes + node - prefix) * axis.basis_count();
             value += axis.spacing * c[0];
+            double half_cell = PI * axis.spacing / bank.period;
+            HarmonicPhase phase(2 * half_cell * local), cell_phase(half_cell);
             for (int k = 1; k <= axis.modes; ++k) {
                 double argument = PI * k * axis.spacing / bank.period;
-                double phase = 2 * argument * local;
-                value += axis.spacing * sin(argument) / argument *
-                    (c[2 * k - 1] * cos(phase) + c[2 * k] * sin(phase));
+                double cp, sp, cell_cosine, cell_sine;
+                phase.next(cp, sp); cell_phase.next(cell_cosine, cell_sine);
+                value += axis.spacing * cell_sine / argument *
+                    (c[2 * k - 1] * cp + c[2 * k] * sp);
             }
             continue;
         }
@@ -209,10 +234,15 @@ __device__ inline double hybrid_site(const T *p, const int64_t *rows,
                 double c[17], dr[17];
                 profile_coefficients(R, bank.period, axis.modes, c, dr);
                 double mass = axis.spacing * c[0];
+                HarmonicPhase phase(2 * PI * (wrapped_center(original, axis) -
+                                             unwrapped_site * axis.spacing) / bank.period);
+                double half_cell = PI * axis.spacing / bank.period;
+                HarmonicPhase cell_phase(half_cell);
                 for (int k = 1; k <= axis.modes; ++k) {
                     double argument = PI * k * axis.spacing / bank.period;
-                    double phase = 2 * PI * k * (wrapped_center(original, axis) - unwrapped_site * axis.spacing) / bank.period;
-                    mass += 2 * c[k] * axis.spacing * sin(argument) / argument * cos(phase);
+                    double cp, sp, cell_cosine, cell_sine;
+                    phase.next(cp, sp); cell_phase.next(cell_cosine, cell_sine);
+                    mass += 2 * c[k] * axis.spacing * cell_sine / argument * cp;
                 }
                 value += amplitude(p, atom, axis) * h[int64_t(b) * atoms + atom] * mass;
             }

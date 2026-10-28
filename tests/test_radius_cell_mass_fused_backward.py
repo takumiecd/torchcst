@@ -209,3 +209,107 @@ def test_forward_publishes_compact_input_moments(start):
     torch.testing.assert_close(
         y.cpu(), reference(plan, x.cpu(), p.cpu()), atol=2e-9, rtol=2e-8
     )
+
+
+def _skewed_physical_atoms(plan, count, dtype):
+    """One owner has count atoms; other banks include folded images and gaps."""
+    rng = torch.Generator().manual_seed(2191 + count)
+    clustered = torch.empty(count, 4, dtype=dtype)
+    clustered[:, 0] = torch.randn(count, dtype=dtype, generator=rng) * 0.05
+    clustered[:, 1] = 3.2  # Level 2 exercises C even with the default direct cutoff.
+    clustered[:, 2:] = torch.tensor([0.17, 0.31], dtype=dtype)
+    mixed = atoms(plan, dtype)
+    return torch.cat((clustered, mixed))
+
+
+@GPU
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("modes", [1, 3, 8, 16])
+@pytest.mark.parametrize("start", [0, 2, "all"])
+@pytest.mark.parametrize("output_tile", [32, 64])
+def test_fused_skewed_owner_chunks_public_reference(dtype, modes, start, output_tile):
+    """97 atoms in a range crosses 32/64 chunks with a one-atom final tail."""
+    from torchcst import ChebyshevRadiusSpec, CSTLinear, chart_presets, presets
+
+    a = axis_plan(32, modes=modes)
+    plan = HierarchyPlan(input=a, output=a)
+    start = len(a.banks) // 2 if start == "all" else start
+    p = _skewed_physical_atoms(plan, 97, dtype)
+    recipe = replace(
+        BLOCK_LOCAL.recipe,
+        input_direct_levels=start,
+        output_direct_levels=start,
+        output_tile_sites=output_tile,
+    )
+    assert 8 * (len(p) + a.active_nodes(start) * a.basis_count) <= 48 * 1024
+    assert a.banks[-1].period > a.period
+    # The public physical-radius CPU path is separate from native scheduling.
+    chart = chart_presets.regular_grid(((32,),), spacing=1.0, geometry="flat_torus")
+    cpu = CSTLinear(
+        chart,
+        chart,
+        atoms=p.double(),
+        dtype=torch.float64,
+        backend="factored",
+        kernel=presets.radius_cell_mass(profile=ChebyshevRadiusSpec(modes=modes)),
+    )
+    rng = torch.Generator().manual_seed(812)
+    x = torch.randn(3, 32, dtype=dtype, generator=rng)
+    dy = torch.randn(3, 32, dtype=dtype, generator=rng)
+    rx = x.double().requires_grad_()
+    expected = cpu(rx)
+    gradients = torch.autograd.grad(expected, (rx, cpu.atoms.p), dy.double())
+    cx, cp = x.cuda().requires_grad_(), p.cuda().requires_grad_()
+    rows, offsets = ex.prepare_layout(plan, cp)
+    ranges = offsets[1:] - offsets[:-1]
+    assert int(ranges.max()) >= 97
+    assert bool((ranges == 0).any())
+    assert rows.numel() == len(p)
+    actual = ex.radius_linear(plan, cx, cp, recipe=recipe)
+    tolerance = (
+        {"atol": 3e-5, "rtol": 3e-4}
+        if dtype == torch.float32
+        else {"atol": 2e-9, "rtol": 2e-8}
+    )
+    torch.testing.assert_close(actual.cpu().double(), expected, **tolerance)
+    for retain in (True, False):
+        native_grads = torch.autograd.grad(
+            actual, (cx, cp), dy.cuda(), retain_graph=retain
+        )
+        for value, target in zip(native_grads, gradients):
+            torch.testing.assert_close(value.cpu().double(), target, **tolerance)
+
+
+@GPU
+@pytest.mark.parametrize("count", [31, 32, 33, 63, 64, 65])
+def test_fused_owner_exact_chunk_boundaries(count):
+    a = axis_plan(32, modes=3)
+    plan = HierarchyPlan(input=a, output=a)
+    rng = torch.Generator().manual_seed(323)
+    check_vjp(
+        plan,
+        replace(BLOCK_LOCAL.recipe, output_tile_sites=64),
+        torch.randn(2, 32, dtype=torch.float64, generator=rng),
+        _skewed_physical_atoms(plan, count, torch.float64),
+        torch.randn(2, 32, dtype=torch.float64, generator=rng),
+    )
+
+
+@GPU
+def test_fused_preserves_large_atom_configuration_without_c_workspace():
+    # Moments + H fit 48 KiB, but even one 33-mode shared atom chunk does not.
+    # The extra optimization must fall back rather than reject a valid Plan.
+    a = axis_plan(32, modes=16)
+    plan = HierarchyPlan(input=a, output=a)
+    recipe = replace(BLOCK_LOCAL.recipe, input_direct_levels=1, output_direct_levels=1)
+    p = _skewed_physical_atoms(plan, 3990, torch.float64)
+    base_bytes = 8 * (len(p) + a.active_nodes(1) * a.basis_count)
+    assert base_bytes <= 48 * 1024 < base_bytes + 33 * a.basis_count * 8
+    rng = torch.Generator().manual_seed(932)
+    check_vjp(
+        plan,
+        recipe,
+        torch.randn(1, 32, dtype=torch.float64, generator=rng),
+        p,
+        torch.randn(1, 32, dtype=torch.float64, generator=rng),
+    )
