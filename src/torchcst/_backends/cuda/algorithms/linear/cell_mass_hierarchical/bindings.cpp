@@ -21,6 +21,12 @@ Tensor build_hierarchy(Tensor signal, Config axis, bool merge, int team_size);
 Tensor build_hierarchy_chunked(Tensor signal, Config axis, bool merge,
                                int team_size, int chunk_sites);
 Tensor build_window_moments(Tensor z, Config axis);
+Tensor build_hierarchy_masked(Tensor signal, Config axis, bool merge,
+                              int team_size, Tensor masks, int side);
+Tensor prepare_bank_masks(Tensor groups, Tensor offsets, Config input, Config output);
+Tensor build_hierarchy_chunked_masked(Tensor signal, Config axis, bool merge,
+                                      int team_size, int chunk_sites, Tensor masks, int side);
+Tensor build_window_moments_masked(Tensor z, Config axis, Tensor masks, int side);
 std::vector<Tensor> prepare_compact_layout(Tensor atoms, Config input,
                                            Config output);
 std::vector<Tensor> prepare_compact_layout_signal(Tensor atoms, Tensor signal,
@@ -52,6 +58,17 @@ std::vector<Tensor> compute_h_c_ragged(Tensor atoms, Tensor rows, Tensor groups,
                                        Tensor offsets, Tensor zx, Config input,
                                        Config output, int splits, int grain,
                                        bool windowed);
+std::vector<Tensor> compute_h_c_ragged_batched(Tensor atoms, Tensor rows, Tensor groups,
+    Tensor offsets, Tensor zx, Config input, Config output, int splits, int grain,
+    bool windowed, int batch_tile);
+std::vector<Tensor> compute_h_c_ragged_exact(Tensor atoms, Tensor rows, Tensor groups,
+    Tensor offsets, Tensor zx, Config input, Config output, int splits, int grain,
+    bool windowed, int batch_tile, bool reuse_sigma, bool known_bank);
+std::vector<Tensor> compute_h_c_ragged_no_h(Tensor atoms, Tensor rows, Tensor groups,
+    Tensor offsets, Tensor zx, Config input, Config output, int splits, int grain,
+    bool windowed, int batch_tile, bool reuse_sigma, bool known_bank);
+std::vector<int64_t> hc_kernel_resources(int batch_tile);
+std::vector<int64_t> hc_reuse_kernel_resources(int batch_tile, bool reuse_sigma, bool known_bank);
 std::vector<Tensor> compute_g_and_parameter_grad(
     Tensor atoms, Tensor rows, Tensor groups, Tensor offsets, Tensor zx,
     Tensor zy, Tensor h, Config input, Config output, int threads,
@@ -60,6 +77,16 @@ std::vector<Tensor> compute_g_and_parameter_grad(
 Tensor parameter_grad(Tensor atoms, Tensor rows, Tensor groups, Tensor offsets,
                       Tensor zx, Tensor zy, Tensor h, Tensor g, Config input,
                       Config output, int threads, bool windowed);
+std::vector<Tensor> compute_polar_g_and_parameter_grad(
+    Tensor atoms, Tensor rows, Tensor groups, Tensor offsets, Tensor zx, Tensor zy,
+    Config input, Config output, int threads, bool windowed, bool compensated,
+    bool cache_coefficients);
+std::vector<int64_t> polar_g_grad_kernel_resources(int threads, bool cache_coefficients,
+                                                 bool compensated);
+std::vector<Tensor> compute_polar_grad_cin(Tensor atoms, Tensor rows, Tensor groups,
+    Tensor offsets, Tensor reverse_slots, Tensor reverse_offsets, Tensor zx, Tensor zy,
+    Config input, Config output, int splits, int grain, bool windowed, bool debug_g);
+std::vector<int64_t> fused_polar_cin_kernel_resources(int batches, bool debug_g);
 std::vector<Tensor> compute_g_parameter_grad_cin(Tensor atoms, Tensor rows,
                                                  Tensor groups, Tensor offsets,
                                                  Tensor zx, Tensor zy, Tensor h,
@@ -73,12 +100,16 @@ Tensor compute_input_c_reverse_ragged(Tensor atoms, Tensor rows,
                                       Tensor reverse_slots,
                                       Tensor reverse_offsets, Tensor g,
                                       Config input, int splits, int grain);
+Tensor compute_input_c_reverse_ragged_slab(Tensor atoms, Tensor rows,
+                                           Tensor reverse_slots, Tensor reverse_offsets, Tensor g,
+                                           Config input, int splits, int grain, int batch_slab);
 std::vector<Tensor> compute_g_parameter_grad_cin_reverse(
     Tensor atoms, Tensor rows, Tensor groups, Tensor offsets,
     Tensor reverse_slots, Tensor reverse_offsets, Tensor zx, Tensor zy,
     Tensor h, Config input, Config output, int splits, bool windowed,
     int atoms_per_split);
 Tensor expand_c(Tensor c, Tensor like, Config axis, int width);
+Tensor expand_c_masked(Tensor c, Tensor like, Config axis, int width, Tensor bank_masks, int mask_side);
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("classify_atoms", &classify_atoms);
@@ -94,20 +125,35 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("prepare_compact_layout_reverse_signal",
         &prepare_compact_layout_reverse_signal);
   m.def("build_hierarchy", &build_hierarchy);
+  m.def("build_hierarchy_masked", &build_hierarchy_masked);
   m.def("build_hierarchy_chunked", &build_hierarchy_chunked);
   m.def("build_window_moments", &build_window_moments);
+  m.def("prepare_bank_masks", &prepare_bank_masks);
+  m.def("build_hierarchy_chunked_masked", &build_hierarchy_chunked_masked);
+  m.def("build_window_moments_masked", &build_window_moments_masked);
   m.def("compute_h", &compute_h);
   m.def("compute_c", &compute_c);
   m.def("expand_c", &expand_c);
+  m.def("expand_c_masked", &expand_c_masked);
   m.def("compute_c_split", &compute_c_split);
   m.def("compute_c_ragged", &compute_c_ragged);
   m.def("compute_h_c", &compute_h_c);
   m.def("compute_h_c_ragged", &compute_h_c_ragged);
+  m.def("compute_h_c_ragged_batched", &compute_h_c_ragged_batched);
+  m.def("compute_h_c_ragged_exact", &compute_h_c_ragged_exact);
+  m.def("compute_h_c_ragged_no_h", &compute_h_c_ragged_no_h);
+  m.def("hc_kernel_resources", &hc_kernel_resources);
+  m.def("hc_reuse_kernel_resources", &hc_reuse_kernel_resources);
   m.def("compute_g_and_parameter_grad", &compute_g_and_parameter_grad);
   m.def("parameter_grad", &parameter_grad);
+  m.def("compute_polar_g_and_parameter_grad", &compute_polar_g_and_parameter_grad);
+  m.def("polar_g_grad_kernel_resources", &polar_g_grad_kernel_resources);
+  m.def("compute_polar_grad_cin", &compute_polar_grad_cin);
+  m.def("fused_polar_cin_kernel_resources", &fused_polar_cin_kernel_resources);
   m.def("compute_g_parameter_grad_cin", &compute_g_parameter_grad_cin);
   m.def("compute_input_c_reverse", &compute_input_c_reverse);
   m.def("compute_input_c_reverse_ragged", &compute_input_c_reverse_ragged);
+  m.def("compute_input_c_reverse_ragged_slab", &compute_input_c_reverse_ragged_slab);
   m.def("compute_g_parameter_grad_cin_reverse",
         &compute_g_parameter_grad_cin_reverse);
 }

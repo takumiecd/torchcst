@@ -6,6 +6,9 @@ from .registry import Registry
 
 
 def make_registry():
+    from .cuda.algorithms.linear.cell_mass_hierarchical.algorithm import (
+        HierarchicalCellMassAlgorithm,
+    )
     from .cuda.algorithms.linear.normalized_euclidean_strip import (
         NormalizedFullAlgorithm,
         NormalizedWindowAlgorithm,
@@ -14,6 +17,7 @@ def make_registry():
         FusedStripTorusAlgorithm,
     )
     from .cuda.algorithms.polar_update import FusedPolarUpdateAlgorithm
+    from .cuda.algorithms.polar_update.algorithm import FlatTorusPolarUpdateAlgorithm
     from .torch.algorithms.atom_update import AtomUpdateAlgorithm
     from .torch.algorithms.linear.factored import FactoredAlgorithm
     from .torch.algorithms.linear.fourier_tiles import FourierTilesAlgorithm
@@ -24,6 +28,7 @@ def make_registry():
 
     registry = Registry()
     for algorithm in (
+        HierarchicalCellMassAlgorithm(),
         MaterializedAlgorithm(),
         FactoredAlgorithm(),
         FourierTilesAlgorithm(),
@@ -35,6 +40,7 @@ def make_registry():
         AtomUpdateAlgorithm(),
         PolarUpdateAlgorithm(),
         FusedPolarUpdateAlgorithm(),
+        FlatTorusPolarUpdateAlgorithm(),
     ):
         registry.register(algorithm)
     return registry

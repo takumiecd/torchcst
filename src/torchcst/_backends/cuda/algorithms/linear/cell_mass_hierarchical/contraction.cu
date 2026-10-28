@@ -22,24 +22,24 @@ struct CdotBudget {
 // eligible DS chunk. The result stays on device and is consumed on this stream.
 __global__ void cdot_preflight_kernel(const float *atoms, const int64_t *rows,
                                       const float *projection, int atom_count, int64_t elements,
-                                      int *unsafe) {
+                                      int *unsafe, Axis axis) {
     int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
     if (i >= elements)
         return;
     int slot = i % atom_count;
     int original = rows[slot];
-    double value = static_cast<double>(atoms[4 * original]) * projection[i];
+    double value = atom_amplitude(atoms, original, axis) * projection[i];
     if (!isfinite(value) || fabs(value) > 16)
         atomicOr(unsafe, 1);
 }
 
 inline torch::Tensor make_cdot_preflight(const torch::Tensor &atoms, const torch::Tensor &rows,
-                                         const torch::Tensor &projection, cudaStream_t stream) {
+                                         const torch::Tensor &projection, cudaStream_t stream, Axis axis) {
     auto flag = torch::zeros({1}, atoms.options().dtype(torch::kInt32));
     if (projection.numel() > 0) {
         cdot_preflight_kernel<<<(projection.numel() + 255) / 256, 256, 0, stream>>>(
             atoms.data_ptr<float>(), rows.data_ptr<int64_t>(), projection.data_ptr<float>(),
-            atoms.size(0), projection.numel(), flag.data_ptr<int>());
+            atoms.size(0), projection.numel(), flag.data_ptr<int>(), axis);
         C10_CUDA_KERNEL_LAUNCH_CHECK();
     }
     return flag;
@@ -230,8 +230,8 @@ __global__ void compute_h_kernel(const scalar_t *atoms, const int64_t *rows, con
     Bank bank = axis.banks[bank_for_level(axis, groups[4 * group + (output_side ? 0 : 1)])];
     int original = rows[slot];
     Profile profile = make_profile<false, FixedModes, Compensated>(
-        axis, bank, static_cast<double>(atoms[4 * original + 1]),
-        static_cast<double>(atoms[4 * original + (output_side ? 2 : 3)]), owner);
+        axis, bank, atom_sigma(atoms, original, axis),
+        atom_center(atoms, original, axis, output_side), owner);
     HarmonicStream<false, Compensated> stream(profile, FixedModes ? FixedModes : axis.modes);
     double accum[BATCH_TILE] = {};
     int batch_begin = blockIdx.y * BATCH_TILE;
@@ -321,8 +321,8 @@ __global__ void compute_c_kernel(const scalar_t *atoms, const int64_t *rows, con
             int original = valid ? rows[slot] : 0;
             if (valid) {
                 Profile profile = make_profile<false, FixedModes, Compensated>(
-                    output, bank, static_cast<double>(atoms[4 * original + 1]),
-                    static_cast<double>(atoms[4 * original + (reverse ? 3 : 2)]), owner);
+                    output, bank, atom_sigma(atoms, original, output),
+                    atom_center(atoms, original, output, !reverse), owner);
                 store_c_coefficients<FixedModes, Compensated>(profile, output.modes, lane,
                                                               coefficients);
             } else {
@@ -332,7 +332,7 @@ __global__ void compute_c_kernel(const scalar_t *atoms, const int64_t *rows, con
             for (int local = 0; local < BATCH_TILE; ++local)
                 scaled_h[local * SHARED_STRIDE + lane] =
                     valid && batch_begin + local < batches
-                        ? static_cast<double>(atoms[4 * original]) *
+                        ? atom_amplitude(atoms, original, output) *
                               h[(batch_begin + local) * atom_count + slot]
                         : 0;
             bool safe = false;
@@ -394,8 +394,8 @@ split_consume_range(const scalar_t *atoms, const int64_t *rows, const projection
         int original = valid ? rows[slot] : 0;
         if (valid) {
             Profile profile = make_profile<false, FixedModes, Compensated>(
-                output, bank, static_cast<double>(atoms[4 * original + 1]),
-                static_cast<double>(atoms[4 * original + (reverse ? 3 : 2)]), owner);
+                output, bank, atom_sigma(atoms, original, output),
+                atom_center(atoms, original, output, !reverse), owner);
             store_c_coefficients<FixedModes, Compensated>(profile, output.modes, lane,
                                                           coefficients);
         } else {
@@ -405,7 +405,7 @@ split_consume_range(const scalar_t *atoms, const int64_t *rows, const projection
         for (int local = 0; local < BATCH_TILE; ++local)
             scaled_h[local * SHARED_STRIDE + lane] =
                 valid && batch_begin + local < batches
-                    ? static_cast<double>(atoms[4 * original]) *
+                    ? atom_amplitude(atoms, original, output) *
                           h[(batch_begin + local) * atom_count + slot]
                     : 0;
         bool safe = false;
@@ -454,6 +454,11 @@ struct SplitPages {
 // dtype-rounded common sigma limit used by atom validation.
 __device__ inline bool compatible_sigma_banks(const Axis &a, int ai, const Axis &b, int bi,
                                               double maximum_sigma) {
+    // Disjoint sigma intervals imply an impossible pair only for a shared
+    // width law. Independent Polar sides may legitimately occupy that pair.
+    if (a.polar && (a.sigma_min != b.sigma_min || a.sigma_birth != b.sigma_birth ||
+                    a.sigma_max != b.sigma_max || a.upper_floor != b.upper_floor))
+        return true;
     double al = ai == 0 ? 0 : a.banks[ai - 1].tile_sites * a.spacing;
     double bl = bi == 0 ? 0 : b.banks[bi - 1].tile_sites * b.spacing;
     double au = a.banks[ai].full_chart ? maximum_sigma : a.banks[ai].tile_sites * a.spacing;
@@ -616,33 +621,48 @@ __global__ void reduce_c_splits_kernel(SplitPages pages, double *c, int64_t elem
 // Forward-only experiment: a thread owns one atom, computes H in registers,
 // saves its rounded value, and supplies that same value to the C chunk.
 // Shared-shape atoms use one magnitude stream and independent center phases.
-template <typename atom_t, bool Compensated>
+template <typename atom_t, bool Compensated, int ForwardBatchTile = BATCH_TILE,
+          bool ReuseSigma = false, bool KnownInputBank = false>
 __device__ void fused_forward_atom(const atom_t *atoms, const int64_t *rows, const int *groups,
                                    const int64_t *offsets, const double *zx, atom_t *h,
                                    int atom_count, int group_count, int batches, int batch_begin,
                                    const Axis &input, const Axis &output, const Bank &output_bank,
                                    int output_owner, int slot, int lane, bool windowed,
-                                   double *coefficients, double *scaled_h) {
+                                   double *coefficients, double *scaled_h, const Bank *known_input_bank = nullptr) {
     int original = rows[slot];
-    int group = group_for_slot(offsets, group_count, slot);
-    int input_owner = groups[4 * group + 3];
-    Bank input_bank = input.banks[bank_for_level(input, groups[4 * group + 1])];
-    double sigma = atoms[4 * original + 1];
+    Bank input_bank;
+    int input_owner;
+    if constexpr (KnownInputBank) {
+        // Every atom in this contiguous range has the caller's input bank.
+        input_bank = *known_input_bank;
+        input_owner = input_bank.full_chart ? 0 : owner_from_center(
+            atom_center(atoms, original, input, false), input, input_bank.tile_sites);
+    } else {
+        int group = group_for_slot(offsets, group_count, slot);
+        input_owner = groups[4 * group + 3];
+        input_bank = input.banks[bank_for_level(input, groups[4 * group + 1])];
+    }
+    double sigma = atom_sigma(atoms, original, input);
+    double output_sigma;
+    if constexpr (ReuseSigma)
+        output_sigma = same_sigma_decode(input, output) ? sigma : atom_sigma(atoms, original, output);
+    else
+        output_sigma = atom_sigma(atoms, original, output);
     Profile input_profile = make_profile<false, 8, Compensated>(
-        input, input_bank, sigma, static_cast<double>(atoms[4 * original + 3]), input_owner);
-    bool same_shape = input.modes == output.modes && input.radius_ratio4 == output.radius_ratio4 &&
+        input, input_bank, sigma, atom_center(atoms, original, input, false), input_owner);
+    bool same_shape = sigma == output_sigma && input.modes == output.modes && input.radius_ratio4 == output.radius_ratio4 &&
                       input_bank.period == output_bank.period &&
                       input_bank.inverse_period == output_bank.inverse_period &&
                       input_bank.omega == output_bank.omega;
     double step_sine = 0, step_cosine = 1, sine = 0, cosine = 1;
     if (same_shape) {
         double output_center = profile_center(
-            output, output_bank, static_cast<double>(atoms[4 * original + 2]), output_owner);
+            output, output_bank, atom_center(atoms, original, output, true), output_owner);
         // The magnitude is shared, but the output center has its own phase.
         sincos(output_bank.omega * output_center, &step_sine, &step_cosine);
     }
     HarmonicStream<false, Compensated> stream(input_profile, 8);
-    double sums[BATCH_TILE] = {};
+    double sums[ForwardBatchTile] = {};
     int retained = windowed || input_bank.full_chart ? 1 : 3;
     int first_tile = windowed ? input_owner : (input_bank.full_chart ? 0 : input_owner - 1);
     int window_node = input_bank.node_offset + input_owner;
@@ -675,7 +695,7 @@ __device__ void fused_forward_atom(const atom_t *atoms, const int64_t *rows, con
                 image_rotation(input_bank, harmonic, image, rs, rc);
                 node = input_bank.node_offset + tile;
             }
-            for (int b = 0; b < BATCH_TILE && batch_begin + b < batches; ++b) {
+            for (int b = 0; b < ForwardBatchTile && batch_begin + b < batches; ++b) {
                 int base = ((batch_begin + b) * input.node_count + node) * input.basis_count();
                 if (harmonic == 0) {
                     sums[b] += cc * zx[base];
@@ -688,14 +708,17 @@ __device__ void fused_forward_atom(const atom_t *atoms, const int64_t *rows, con
     }
     if (!same_shape) {
         Profile profile = make_profile<false, 8, Compensated>(
-            output, output_bank, sigma, static_cast<double>(atoms[4 * original + 2]), output_owner);
+            output, output_bank, output_sigma, atom_center(atoms, original, output, true), output_owner);
         store_c_coefficients<8, Compensated>(profile, 8, lane, coefficients);
     }
-    double amplitude = atoms[4 * original];
-    for (int b = 0; b < BATCH_TILE; ++b) {
+    double amplitude = atom_amplitude(atoms, original, input);
+    for (int b = 0; b < ForwardBatchTile; ++b) {
         if (batch_begin + b < batches) {
+            // The FP32 rounding is part of C's numerical contract, even
+            // when no global H consumer exists and the optional store is off.
             atom_t rounded = static_cast<atom_t>(sums[b]);
-            h[(batch_begin + b) * atom_count + slot] = rounded;
+            if (h != nullptr)
+                h[(batch_begin + b) * atom_count + slot] = rounded;
             scaled_h[b * SHARED_STRIDE + lane] = amplitude * static_cast<double>(rounded);
         } else {
             scaled_h[b * SHARED_STRIDE + lane] = 0;
@@ -705,28 +728,30 @@ __device__ void fused_forward_atom(const atom_t *atoms, const int64_t *rows, con
 
 // Every atom in the owner's concatenated bank ranges belongs to exactly one
 // split. Padding lanes also reach all barriers, with zero shared contributions.
-template <typename atom_t, bool Compensated>
+template <typename atom_t, bool Compensated, int ForwardBatchTile = BATCH_TILE,
+          bool ReuseSigma = false, bool KnownInputBank = false>
 __device__ void fused_forward_range(const atom_t *atoms, const int64_t *rows, const int *groups,
                                     const int64_t *offsets, const double *zx, atom_t *h,
                                     int atom_count, int group_count, int batches, int batch_begin,
                                     const Axis &input, const Axis &output, const Bank &bank,
                                     int owner, int begin, int end, int split_begin, int split_end,
                                     int &prefix, bool windowed, double *coefficients,
-                                    double *scaled_h, double *totals) {
+                                    double *scaled_h, double *totals, const Bank *known_input_bank = nullptr) {
     int length = end - begin;
     int first = max(0, split_begin - prefix), last = min(length, split_end - prefix);
     prefix += length;
-    int lane = threadIdx.x, elements = BATCH_TILE * output.basis_count();
+    int lane = threadIdx.x, elements = ForwardBatchTile * output.basis_count();
     for (int chunk = begin + first; chunk < begin + last; chunk += CHUNK) {
         int slot = chunk + lane;
         if (slot < begin + last) {
-            fused_forward_atom<atom_t, Compensated>(
+            fused_forward_atom<atom_t, Compensated, ForwardBatchTile, ReuseSigma, KnownInputBank>(
                 atoms, rows, groups, offsets, zx, h, atom_count, group_count, batches, batch_begin,
-                input, output, bank, owner, slot, lane, windowed, coefficients, scaled_h);
+                input, output, bank, owner, slot, lane, windowed, coefficients, scaled_h,
+                known_input_bank);
         } else {
             for (int mode = 0; mode < output.basis_count(); ++mode)
                 coefficients[mode * SHARED_STRIDE + lane] = 0;
-            for (int b = 0; b < BATCH_TILE; ++b)
+            for (int b = 0; b < ForwardBatchTile; ++b)
                 scaled_h[b * SHARED_STRIDE + lane] = 0;
         }
         __syncthreads();
@@ -838,12 +863,14 @@ fused_grad_cin_atom(const atom_t *atoms, const int64_t *rows, const int *groups,
     int original = rows[slot];
     int output_owner = groups[4 * group + 2];
     Bank output_bank = output.banks[bank_for_level(output, groups[4 * group])];
-    double amplitude = atoms[4 * original], sigma = atoms[4 * original + 1];
-    double output_center = atoms[4 * original + 2];
-    double input_center = atoms[4 * original + 3];
+    double amplitude = atom_amplitude(atoms, original, input);
+    double sigma = atom_sigma(atoms, original, input);
+    double output_sigma = atom_sigma(atoms, original, output);
+    double output_center = atom_center(atoms, original, output, true);
+    double input_center = atom_center(atoms, original, input, false);
     Profile out_profile =
-        make_profile<true, FixedModes>(output, output_bank, sigma, output_center, output_owner);
-    bool same_shape = input.modes == output.modes && input.radius_ratio4 == output.radius_ratio4 &&
+        make_profile<true, FixedModes>(output, output_bank, output_sigma, output_center, output_owner);
+    bool same_shape = sigma == output_sigma && input.modes == output.modes && input.radius_ratio4 == output.radius_ratio4 &&
                       input_bank.period == output_bank.period &&
                       input_bank.inverse_period == output_bank.inverse_period &&
                       input_bank.omega == output_bank.omega;
@@ -877,10 +904,7 @@ fused_grad_cin_atom(const atom_t *atoms, const int64_t *rows, const int *groups,
         zx, batches, 0, input, input_bank, input_owner, in_profile, in_profile.beta_sigma, h,
         atom_count, slot, amplitude, gv, dmu_input, ds, windowed, coefficients, SHARED_STRIDE,
         lane);
-    gradient[4 * original] = static_cast<atom_t>(da);
-    gradient[4 * original + 1] = static_cast<atom_t>(ds);
-    gradient[4 * original + 2] = static_cast<atom_t>(dmu_output);
-    gradient[4 * original + 3] = static_cast<atom_t>(dmu_input);
+    store_atom_gradient(atoms, gradient, original, input, da, ds, dmu_input, dmu_output);
 }
 
 // One reverse-layout group belongs to this input owner. Each valid lane owns
@@ -1072,13 +1096,13 @@ reverse_cin_kernel(const atom_t *atoms, const int64_t *rows, const int *groups,
             } else {
                 int original = rows[slot];
                 Profile profile = make_profile<false, FixedModes, Compensated>(
-                    input, bank, static_cast<double>(atoms[4 * original + 1]),
-                    static_cast<double>(atoms[4 * original + 3]), owner);
+                    input, bank, atom_sigma(atoms, original, input),
+                    atom_center(atoms, original, input, false), owner);
                 store_c_coefficients<FixedModes, Compensated>(profile, input.modes, lane,
                                                               coefficients);
                 for (int b = 0; b < BATCH_TILE; ++b)
                     scaled_g[b * SHARED_STRIDE + lane] =
-                        batch_begin + b < batches ? static_cast<double>(atoms[4 * original]) *
+                        batch_begin + b < batches ? atom_amplitude(atoms, original, output) *
                                                         h[(batch_begin + b) * atom_count + slot]
                                                   : 0;
             }
@@ -1212,13 +1236,16 @@ __device__ inline int ragged_task_owner(const int *task_offsets, int nodes, int 
 
 // One 32-lane CTA owns one active output-owner split and one batch tile.
 // Fused H/C uses the existing atom helper; separate C uses the existing dot.
-template <bool Fused>
+template <bool Fused, int ForwardBatchTile = BATCH_TILE,
+          bool ReuseSigma = false, bool KnownInputBank = false>
 __global__ void ragged_output_kernel(const float *atoms, const int64_t *rows, const int *groups,
                                      const int64_t *offsets, const double *zx, float *h_output,
                                      const float *h_input, const int *counts,
                                      const int *task_offsets, double *partial, int atom_count,
                                      int group_count, int batches, Axis input, Axis output,
                                      bool cartesian, bool windowed) {
+    static_assert(Fused || ForwardBatchTile == BATCH_TILE,
+                  "separate C retains the original batch tile");
     int task = blockIdx.x;
     if (task >= task_offsets[output.node_count])
         return;
@@ -1233,12 +1260,12 @@ __global__ void ragged_output_kernel(const float *atoms, const int64_t *rows, co
         ++bank_index;
     Bank bank = output.banks[bank_index];
     int owner = node - bank.node_offset, lane = threadIdx.x;
-    int batch_begin = blockIdx.y * BATCH_TILE;
-    int elements = BATCH_TILE * output.basis_count();
+    int batch_begin = blockIdx.y * ForwardBatchTile;
+    int elements = ForwardBatchTile * output.basis_count();
     extern __shared__ double shared[];
     double *coefficients = shared;
     double *scaled_h = shared + SHARED_STRIDE * output.basis_count();
-    double *totals = scaled_h + SHARED_STRIDE * BATCH_TILE;
+    double *totals = scaled_h + SHARED_STRIDE * ForwardBatchTile;
     double accum[MAX_ACCUMULATORS] = {};
     if constexpr (Fused) {
         for (int work = lane; work < elements; work += CHUNK)
@@ -1259,19 +1286,21 @@ __global__ void ragged_output_kernel(const float *atoms, const int64_t *rows, co
             last = first + other.tile_count;
         } else {
             first = lower_group(groups, group_count, bank.level, other.level, owner);
-            last = lower_group(groups, group_count, bank.level, other.level, owner + 1);
+            last = lower_group(groups, group_count, bank.level, other.level,
+                               owner + 1);
         }
         int begin = offsets[first], end = offsets[last];
         if constexpr (Fused) {
-            fused_forward_range<float, true>(atoms, rows, groups, offsets, zx, h_output, atom_count,
-                                             group_count, batches, batch_begin, input, output, bank,
-                                             owner, begin, end, split_begin, split_end, prefix,
-                                             windowed, coefficients, scaled_h, totals);
+          fused_forward_range<float, true, ForwardBatchTile, ReuseSigma, KnownInputBank>(
+              atoms, rows, groups, offsets, zx, h_output, atom_count,
+              group_count, batches, batch_begin, input, output, bank, owner,
+              begin, end, split_begin, split_end, prefix, windowed,
+              coefficients, scaled_h, totals, &other);
         } else {
-            split_consume_range<float, float, 8, true, false>(
-                atoms, rows, h_input, atom_count, batches, output, bank, owner, false, batch_begin,
-                begin, end, split_begin, split_end, prefix, coefficients, scaled_h, accum,
-                CdotBudget{}, nullptr);
+          split_consume_range<float, float, 8, true, false>(
+              atoms, rows, h_input, atom_count, batches, output, bank, owner,
+              false, batch_begin, begin, end, split_begin, split_end, prefix,
+              coefficients, scaled_h, accum, CdotBudget{}, nullptr);
         }
     }
     for (int work = lane, a = 0; work < elements; work += CHUNK, ++a) {
@@ -1279,7 +1308,10 @@ __global__ void ragged_output_kernel(const float *atoms, const int64_t *rows, co
         if (batch < batches) {
             int64_t i =
                 (static_cast<int64_t>(task) * batches + batch) * output.basis_count() + mode;
-            partial[i] = Fused ? totals[work] : accum[a];
+            if constexpr (Fused)
+                partial[i] = totals[work];
+            else
+                partial[i] = accum[a];
         }
     }
 }
@@ -1316,12 +1348,12 @@ __global__ void ragged_input_kernel(const float *atoms, const int64_t *rows,
         if (position < last) {
             int slot = reverse_slots[position], original = rows[slot];
             Profile profile = make_profile<false, 8, true>(
-                input, bank, static_cast<double>(atoms[4 * original + 1]),
-                static_cast<double>(atoms[4 * original + 3]), owner);
+                input, bank, atom_sigma(atoms, original, input),
+                atom_center(atoms, original, input, false), owner);
             store_c_coefficients<8, true>(profile, 8, lane, coefficients);
             for (int b = 0; b < BATCH_TILE; ++b)
                 scaled_g[b * SHARED_STRIDE + lane] =
-                    batch_begin + b < batches ? static_cast<double>(atoms[4 * original]) *
+                    batch_begin + b < batches ? atom_amplitude(atoms, original, input) *
                                                     g[(batch_begin + b) * atom_count + slot]
                                               : 0;
         } else {
@@ -1365,7 +1397,8 @@ __global__ void ragged_reduce_kernel(const int *task_offsets, const double *part
 // Unique output site/batch ownership: add contributions from each bank after
 // evaluating C in that bank's basis. No Y atomic or mixed-basis C summation.
 template <typename scalar_t>
-__global__ void expand_c_kernel(const double *c, scalar_t *y, int batches, Axis axis, int width) {
+__global__ void expand_c_kernel(const double *c, scalar_t *y, int batches, Axis axis, int width,
+                                const int *bank_masks = nullptr, int mask_side = 0) {
     for (int work = threadIdx.x; work < width * BATCH_TILE; work += blockDim.x) {
         int site = blockIdx.x * width + work % width;
         int batch = blockIdx.y * BATCH_TILE + work / width;
@@ -1373,6 +1406,9 @@ __global__ void expand_c_kernel(const double *c, scalar_t *y, int batches, Axis 
             continue;
         double total = 0;
         for (int index = 0; index < axis.bank_count; ++index) {
+            // Consumer bits only: raw ancestor banks need not contribute C.
+            if (bank_masks && !(bank_masks[2 * mask_side] & (1 << index)))
+                continue;
             Bank bank = axis.banks[index];
             int tile = site / bank.tile_sites;
             int retained = bank.full_chart ? 1 : 3;
@@ -1507,7 +1543,7 @@ torch::Tensor compute_c(torch::Tensor atoms, torch::Tensor rows, torch::Tensor g
     auto stream = c10::cuda::getCurrentCUDAStream();
     torch::Tensor preflight_flag;
     if (compensated_cdot)
-        preflight_flag = make_cdot_preflight(atoms, rows, h, stream);
+        preflight_flag = make_cdot_preflight(atoms, rows, h, stream, output);
     const int *preflight = compensated_cdot ? preflight_flag.data_ptr<int>() : nullptr;
     AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "hierarchical_compute_c_atoms", [&] {
         using atom_t = scalar_t;
@@ -1606,7 +1642,7 @@ torch::Tensor compute_c_split(torch::Tensor atoms, torch::Tensor rows, torch::Te
     auto stream = c10::cuda::getCurrentCUDAStream();
     torch::Tensor preflight_flag;
     if (compensated_cdot)
-        preflight_flag = make_cdot_preflight(atoms, rows, h, stream);
+        preflight_flag = make_cdot_preflight(atoms, rows, h, stream, output);
     const int *preflight = compensated_cdot ? preflight_flag.data_ptr<int>() : nullptr;
     AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "hierarchical_split_c_atoms", [&] {
         using atom_t = scalar_t;
@@ -1877,7 +1913,7 @@ static std::vector<torch::Tensor> compute_reverse_cin_impl(
     auto stream = c10::cuda::getCurrentCUDAStream();
     torch::Tensor preflight_flag;
     if (compensated_cdot)
-        preflight_flag = make_cdot_preflight(atoms, rows, h, stream);
+        preflight_flag = make_cdot_preflight(atoms, rows, h, stream, input);
     const int *preflight = compensated_cdot ? preflight_flag.data_ptr<int>() : nullptr;
     AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "hierarchical_reverse_cin_atoms", [&] {
         using atom_t = scalar_t;
@@ -1956,13 +1992,19 @@ std::vector<torch::Tensor> compute_g_parameter_grad_cin_reverse(
 // Route 0: Cout; route 1: fused H/Cout; route 2: reverse-slot Cin.
 // Metadata, partials and outputs remain alive until all same-stream kernels
 // have been enqueued. The device task count is never copied back to the host.
-template <int Route>
+template <int Route, int ForwardBatchTile = BATCH_TILE,
+          bool ReuseSigma = false, bool KnownInputBank = false>
 static std::vector<torch::Tensor>
 run_ragged_c(torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups, torch::Tensor offsets,
              torch::Tensor reverse_slots, torch::Tensor reverse_offsets, torch::Tensor values,
              std::vector<double> input_config, std::vector<double> output_config, int splits,
-             int grain, bool windowed) {
+             int grain, bool windowed, int cin_batch_slab = 0, bool store_h = true) {
+    TORCH_CHECK(cin_batch_slab >= 0 && cin_batch_slab <= 65536, "Cin batch slab must lie in [0,65536]");
+    TORCH_CHECK(cin_batch_slab == 0 || Route == 2, "batch slab is only supported for reverse Cin");
     static_assert(Route >= 0 && Route <= 2, "unknown ragged route");
+    static_assert(ForwardBatchTile == 4 || ForwardBatchTile == 8, "invalid forward batch tile");
+    static_assert(Route == 1 || ForwardBatchTile == BATCH_TILE,
+                  "Cout and Cin retain the original batch tile");
     check_cuda_float_matrix(atoms);
     TORCH_CHECK(atoms.scalar_type() == torch::kFloat32 && atoms.size(1) == 4 &&
                     atoms.size(0) <= 65536,
@@ -2005,13 +2047,14 @@ run_ragged_c(torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups, torc
     int64_t nodes = target.node_count, basis = target.basis_count();
     TORCH_CHECK(nodes <= 2048, "ragged metadata supports at most 2048 owners");
     TORCH_CHECK(batches <= INT_MAX / (nodes * basis), "C exceeds index capacity");
-    TORCH_CHECK(batches <= static_cast<int64_t>(65535) * BATCH_TILE,
+    TORCH_CHECK(batches <= static_cast<int64_t>(65535) * ForwardBatchTile,
                 "batch grid exceeds CUDA capacity");
     c10::cuda::CUDAGuard guard(atoms.device());
     auto c = torch::empty({batches, nodes, basis}, atoms.options().dtype(torch::kFloat64));
     torch::Tensor h;
     if constexpr (Route == 1)
-        h = torch::empty({batches, atoms.size(0)}, atoms.options());
+        h = store_h ? torch::empty({batches, atoms.size(0)}, atoms.options())
+                    : torch::empty({0}, atoms.options());
     if (c.numel() == 0)
         return {h, c};
     if (atoms.size(0) == 0) {
@@ -2025,7 +2068,8 @@ run_ragged_c(torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups, torc
     auto integer_options = atoms.options().dtype(torch::kInt32);
     auto counts = torch::empty({nodes}, integer_options);
     auto task_offsets = torch::empty({nodes + 1}, integer_options);
-    auto partial = torch::empty({task_cap, batches, basis}, c.options());
+    int64_t scratch_batches = cin_batch_slab ? std::min<int64_t>(batches, cin_batch_slab) : batches;
+    auto partial = torch::empty({task_cap, scratch_batches, basis}, c.options());
     auto stream = c10::cuda::getCurrentCUDAStream();
     bool cartesian = Route != 2 && groups.size(0) == input.node_count * output.node_count;
     if constexpr (Route == 2) {
@@ -2038,10 +2082,33 @@ run_ragged_c(torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups, torc
             task_offsets.data_ptr<int>(), input, output, cartesian, groups.size(0), splits, grain);
     }
     C10_CUDA_KERNEL_LAUNCH_CHECK();
-    dim3 grid(task_cap, (batches + BATCH_TILE - 1) / BATCH_TILE);
-    size_t shared = sizeof(double) * SHARED_STRIDE * (basis + BATCH_TILE);
+    if constexpr (Route == 2) {
+        if (cin_batch_slab) {
+            // G and C retain their full batch layout. Each slab is a contiguous
+            // view; only partial scratch is reused after its same-stream reduce.
+            size_t shared = sizeof(double) * SHARED_STRIDE * (basis + BATCH_TILE);
+            for (int64_t begin = 0; begin < batches; begin += cin_batch_slab) {
+                int slab_batches = static_cast<int>(std::min<int64_t>(batches - begin, cin_batch_slab));
+                dim3 slab_grid(task_cap, (slab_batches + BATCH_TILE - 1) / BATCH_TILE);
+                ragged_input_kernel<<<slab_grid, CHUNK, shared, stream>>>(
+                    atoms.data_ptr<float>(), rows.data_ptr<int64_t>(), reverse_slots.data_ptr<int>(),
+                    reverse_offsets.data_ptr<int64_t>(), values.data_ptr<float>() + begin * atoms.size(0),
+                    counts.data_ptr<int>(), task_offsets.data_ptr<int>(), partial.data_ptr<double>(),
+                    atoms.size(0), slab_batches, input);
+                C10_CUDA_KERNEL_LAUNCH_CHECK();
+                int64_t elements = static_cast<int64_t>(slab_batches) * nodes * basis;
+                ragged_reduce_kernel<<<(elements + THREADS - 1) / THREADS, THREADS, 0, stream>>>(
+                    task_offsets.data_ptr<int>(), partial.data_ptr<double>(),
+                    c.data_ptr<double>() + begin * nodes * basis, elements, slab_batches, nodes, basis);
+                C10_CUDA_KERNEL_LAUNCH_CHECK();
+            }
+            return {h, c};
+        }
+    }
+    dim3 grid(task_cap, (batches + ForwardBatchTile - 1) / ForwardBatchTile);
+    size_t shared = sizeof(double) * SHARED_STRIDE * (basis + ForwardBatchTile);
     if constexpr (Route == 1)
-        shared += sizeof(double) * BATCH_TILE * basis;
+        shared += sizeof(double) * ForwardBatchTile * basis;
     if constexpr (Route == 0) {
         ragged_output_kernel<false><<<grid, CHUNK, shared, stream>>>(
             atoms.data_ptr<float>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
@@ -2049,9 +2116,10 @@ run_ragged_c(torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups, torc
             counts.data_ptr<int>(), task_offsets.data_ptr<int>(), partial.data_ptr<double>(),
             atoms.size(0), groups.size(0), batches, input, output, cartesian, false);
     } else if constexpr (Route == 1) {
-        ragged_output_kernel<true><<<grid, CHUNK, shared, stream>>>(
+        ragged_output_kernel<true, ForwardBatchTile, ReuseSigma, KnownInputBank><<<grid, CHUNK, shared, stream>>>(
             atoms.data_ptr<float>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
-            offsets.data_ptr<int64_t>(), values.data_ptr<double>(), h.data_ptr<float>(), nullptr,
+            offsets.data_ptr<int64_t>(), values.data_ptr<double>(),
+            store_h ? h.data_ptr<float>() : nullptr, nullptr,
             counts.data_ptr<int>(), task_offsets.data_ptr<int>(), partial.data_ptr<double>(),
             atoms.size(0), groups.size(0), batches, input, output, cartesian, windowed);
     } else {
@@ -2082,8 +2150,121 @@ std::vector<torch::Tensor> compute_h_c_ragged(torch::Tensor atoms, torch::Tensor
                                               torch::Tensor zx, std::vector<double> input_config,
                                               std::vector<double> output_config, int splits,
                                               int grain, bool windowed) {
-    return run_ragged_c<1>(atoms, rows, groups, offsets, {}, {}, zx, input_config, output_config,
-                           splits, grain, windowed);
+  return run_ragged_c<1>(atoms, rows, groups, offsets, {}, {}, zx, input_config,
+                         output_config, splits, grain, windowed);
+}
+
+// Forward-only batch reuse; legacy H/C, Cout and Cin entry points retain tile
+// four.
+std::vector<torch::Tensor>
+compute_h_c_ragged_batched(torch::Tensor atoms, torch::Tensor rows,
+                           torch::Tensor groups, torch::Tensor offsets,
+                           torch::Tensor zx, std::vector<double> input_config,
+                           std::vector<double> output_config, int splits,
+                           int grain, bool windowed, int batch_tile) {
+  TORCH_CHECK(batch_tile == 4 || batch_tile == 8,
+              "forward batch tile must be 4 or 8");
+  if (batch_tile == 8)
+    return run_ragged_c<1, 8>(atoms, rows, groups, offsets, {}, {}, zx,
+                              input_config, output_config, splits, grain,
+                              windowed);
+  return run_ragged_c<1>(atoms, rows, groups, offsets, {}, {}, zx, input_config,
+                         output_config, splits, grain, windowed);
+}
+
+// Independent opt-in switches retain the old instantiations for baseline calls.
+template <int BatchTile>
+static std::vector<torch::Tensor> run_exact_hc(
+    torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups, torch::Tensor offsets,
+    torch::Tensor zx, std::vector<double> input_config, std::vector<double> output_config,
+    int splits, int grain, bool windowed, bool reuse_sigma, bool known_bank, bool store_h = true) {
+    if (reuse_sigma) {
+        if (known_bank)
+            return run_ragged_c<1, BatchTile, true, true>(atoms, rows, groups, offsets, {}, {},
+                zx, input_config, output_config, splits, grain, windowed, 0, store_h);
+        return run_ragged_c<1, BatchTile, true, false>(atoms, rows, groups, offsets, {}, {},
+            zx, input_config, output_config, splits, grain, windowed, 0, store_h);
+    }
+    if (known_bank)
+        return run_ragged_c<1, BatchTile, false, true>(atoms, rows, groups, offsets, {}, {},
+            zx, input_config, output_config, splits, grain, windowed, 0, store_h);
+    return run_ragged_c<1, BatchTile>(atoms, rows, groups, offsets, {}, {},
+        zx, input_config, output_config, splits, grain, windowed, 0, store_h);
+}
+
+std::vector<torch::Tensor> compute_h_c_ragged_exact(
+    torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups, torch::Tensor offsets,
+    torch::Tensor zx, std::vector<double> input_config, std::vector<double> output_config,
+    int splits, int grain, bool windowed, int batch_tile, bool reuse_sigma, bool known_bank) {
+    TORCH_CHECK(batch_tile == 4 || batch_tile == 8, "forward batch tile must be 4 or 8");
+    if (batch_tile == 8)
+        return run_exact_hc<8>(atoms, rows, groups, offsets, zx, input_config, output_config,
+                              splits, grain, windowed, reuse_sigma, known_bank);
+    return run_exact_hc<4>(atoms, rows, groups, offsets, zx, input_config, output_config,
+                          splits, grain, windowed, reuse_sigma, known_bank);
+}
+
+// Optional omission uses the same kernel instantiations and a null H pointer.
+// Existing diagnostic entry points keep their original H-saving behavior.
+std::vector<torch::Tensor> compute_h_c_ragged_no_h(
+    torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups, torch::Tensor offsets,
+    torch::Tensor zx, std::vector<double> input_config, std::vector<double> output_config,
+    int splits, int grain, bool windowed, int batch_tile, bool reuse_sigma, bool known_bank) {
+    TORCH_CHECK(batch_tile == 4 || batch_tile == 8, "forward batch tile must be 4 or 8");
+    if (batch_tile == 8)
+        return run_exact_hc<8>(atoms, rows, groups, offsets, zx, input_config, output_config,
+                              splits, grain, windowed, reuse_sigma, known_bank, false);
+    return run_exact_hc<4>(atoms, rows, groups, offsets, zx, input_config, output_config,
+                          splits, grain, windowed, reuse_sigma, known_bank, false);
+}
+
+// Untimed compiler/runtime diagnostics. Active blocks are an occupancy API
+// prediction for this launch configuration, not measured achieved occupancy.
+template <int ForwardBatchTile, bool ReuseSigma = false, bool KnownInputBank = false>
+static std::vector<int64_t> hc_kernel_resources_impl() {
+    constexpr int BASIS = 17;
+    constexpr size_t dynamic_shared = sizeof(double) *
+        (SHARED_STRIDE * (BASIS + ForwardBatchTile) + ForwardBatchTile * BASIS);
+    cudaFuncAttributes attributes{};
+    C10_CUDA_CHECK(cudaFuncGetAttributes(&attributes,
+                                         ragged_output_kernel<true, ForwardBatchTile, ReuseSigma, KnownInputBank>));
+    int active_blocks = 0;
+    C10_CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+        &active_blocks, ragged_output_kernel<true, ForwardBatchTile, ReuseSigma, KnownInputBank>, CHUNK, dynamic_shared));
+    int device = 0;
+    C10_CUDA_CHECK(cudaGetDevice(&device));
+    cudaDeviceProp properties{};
+    C10_CUDA_CHECK(cudaGetDeviceProperties(&properties, device));
+    return {attributes.numRegs, static_cast<int64_t>(attributes.localSizeBytes),
+            static_cast<int64_t>(attributes.sharedSizeBytes), attributes.maxThreadsPerBlock,
+            active_blocks, static_cast<int64_t>(dynamic_shared), properties.multiProcessorCount};
+}
+
+std::vector<int64_t> hc_kernel_resources(int batch_tile) {
+    TORCH_CHECK(batch_tile == 4 || batch_tile == 8, "forward batch tile must be 4 or 8");
+    if (batch_tile == 8)
+        return hc_kernel_resources_impl<8>();
+    return hc_kernel_resources_impl<4>();
+}
+
+// Report the actual exact-reuse specialization while preserving the legacy API.
+template <int BatchTile>
+static std::vector<int64_t> hc_reuse_resources_impl(bool reuse_sigma, bool known_bank) {
+    if (reuse_sigma) {
+        if (known_bank)
+            return hc_kernel_resources_impl<BatchTile, true, true>();
+        return hc_kernel_resources_impl<BatchTile, true, false>();
+    }
+    if (known_bank)
+        return hc_kernel_resources_impl<BatchTile, false, true>();
+    return hc_kernel_resources_impl<BatchTile>();
+}
+
+std::vector<int64_t> hc_reuse_kernel_resources(int batch_tile, bool reuse_sigma, bool known_bank) {
+    TORCH_CHECK(batch_tile == 4 || batch_tile == 8, "forward batch tile must be 4 or 8");
+    if (batch_tile == 8)
+        return hc_reuse_resources_impl<8>(reuse_sigma, known_bank);
+    return hc_reuse_resources_impl<4>(reuse_sigma, known_bank);
 }
 
 torch::Tensor compute_input_c_reverse_ragged(torch::Tensor atoms, torch::Tensor rows,
@@ -2095,12 +2276,30 @@ torch::Tensor compute_input_c_reverse_ragged(torch::Tensor atoms, torch::Tensor 
                            splits, grain, false)[1];
 }
 
-torch::Tensor expand_c(torch::Tensor c, torch::Tensor like, std::vector<double> config, int width) {
+torch::Tensor compute_input_c_reverse_ragged_slab(torch::Tensor atoms, torch::Tensor rows,
+                                                  torch::Tensor reverse_slots,
+                                                  torch::Tensor reverse_offsets, torch::Tensor g,
+                                                  std::vector<double> input_config, int splits,
+                                                  int grain, int batch_slab) {
+    TORCH_CHECK(batch_slab >= 1 && batch_slab <= 65536, "Cin batch slab must lie in [1,65536]");
+    return run_ragged_c<2>(atoms, rows, {}, {}, reverse_slots, reverse_offsets, g, input_config, {},
+                           splits, grain, false, batch_slab)[1];
+}
+
+static torch::Tensor expand_c_impl(torch::Tensor c, torch::Tensor like,
+                                   std::vector<double> config, int width,
+                                   torch::Tensor bank_masks, int mask_side) {
     check_cuda_float_matrix(like);
     Axis axis = parse_axis(config);
     check_moments(c, like, axis);
     TORCH_CHECK(c.size(0) == like.size(0), "batch mismatch");
     TORCH_CHECK(width >= 1 && width <= 256 && power_of_two(width), "invalid output block width");
+    if (bank_masks.defined()) {
+        TORCH_CHECK(bank_masks.device() == like.device() && bank_masks.is_contiguous() &&
+                    bank_masks.scalar_type() == torch::kInt32 && bank_masks.dim() == 1 &&
+                    bank_masks.numel() == 4, "bank masks must be device-local int32[4]");
+        TORCH_CHECK(mask_side == 0 || mask_side == 1, "mask side must be input=0 or output=1");
+    }
     c10::cuda::CUDAGuard guard(like.device());
     auto y = torch::empty({c.size(0), axis.sites}, like.options());
     if (y.numel() == 0)
@@ -2109,8 +2308,43 @@ torch::Tensor expand_c(torch::Tensor c, torch::Tensor like, std::vector<double> 
     auto stream = c10::cuda::getCurrentCUDAStream();
     AT_DISPATCH_FLOATING_TYPES(like.scalar_type(), "hierarchical_expand_c", [&] {
         expand_c_kernel<<<grid, THREADS, 0, stream>>>(c.data_ptr<double>(), y.data_ptr<scalar_t>(),
-                                                      c.size(0), axis, width);
+                                                      c.size(0), axis, width,
+                                                      bank_masks.defined() ? bank_masks.data_ptr<int>() : nullptr,
+                                                      mask_side);
     });
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return y;
+}
+
+// Existing entry keeps all banks; the optional route receives forward-scoped
+// masks derived from every nonempty atom group, irrespective of amplitude.
+torch::Tensor expand_c(torch::Tensor c, torch::Tensor like, std::vector<double> config, int width) {
+    return expand_c_impl(c, like, config, width, {}, 0);
+}
+
+torch::Tensor expand_c_masked(torch::Tensor c, torch::Tensor like, std::vector<double> config,
+                             int width, torch::Tensor bank_masks, int mask_side) {
+    TORCH_CHECK(bank_masks.defined(), "masked expansion requires bank masks");
+    return expand_c_impl(c, like, config, width, bank_masks, mask_side);
+}
+
+// Internal same-stream launch helpers for the fused Polar backward. Validation
+// and bounded allocation belong to its host entry; these reuse the exact
+// metadata scan and ordered split reduction used by separate ragged Cin.
+void launch_cell_mass_reverse_ragged_metadata(torch::Tensor reverse_offsets,
+    torch::Tensor counts, torch::Tensor task_offsets, const Axis &axis, int splits, int grain) {
+    auto stream = c10::cuda::getCurrentCUDAStream();
+    ragged_metadata_kernel<true><<<1, 256, 0, stream>>>(
+        nullptr, nullptr, reverse_offsets.data_ptr<int64_t>(), counts.data_ptr<int>(),
+        task_offsets.data_ptr<int>(), axis, axis, false, 0, splits, grain);
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+}
+
+void launch_cell_mass_ragged_reduce(torch::Tensor task_offsets, torch::Tensor partial,
+    torch::Tensor c) {
+    auto stream = c10::cuda::getCurrentCUDAStream();
+    ragged_reduce_kernel<<<(c.numel() + THREADS - 1) / THREADS, THREADS, 0, stream>>>(
+        task_offsets.data_ptr<int>(), partial.data_ptr<double>(), c.data_ptr<double>(),
+        c.numel(), c.size(0), c.size(1), c.size(2));
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
 }

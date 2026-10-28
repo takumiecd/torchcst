@@ -5,7 +5,12 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from .normalization import NormalizationSpec
-from .parameterizations import FixedWidthSpec, ParameterizationSpec, PolarAmpWidthSpec
+from .parameterizations import (
+    FixedWidthSpec,
+    ParameterizationSpec,
+    PhysicalAmpWidthSpec,
+    PolarAmpWidthSpec,
+)
 from .profiles import ProfileSpec
 from .profiles.fourier import PeriodicFourierSpec
 from .profiles.matern import MaternMixtureSpec
@@ -40,6 +45,41 @@ class ProfileBinding:
                 "continuous mass normalization requires a compatible cell-integrated "
                 "profile contract; existing ProfileBinding does not support it"
             )
+
+
+@dataclass(frozen=True, kw_only=True)
+class CellIntegratedProfileBinding(ProfileBinding):
+    """Whole-cell Fourier masses with a declared dyadic minimum tile.
+
+    The minimum tile changes the approximation and its sigma boundaries; it
+    belongs to the mathematical declaration, not a CUDA Recipe. Each selected
+    local period spans three tiles. A full-chart bank is the final fallback.
+    """
+
+    min_tile_sites: int
+    normalization: NormalizationSpec = field(
+        default_factory=lambda: NormalizationSpec(
+            kind="continuous_mass", domain="profile_support"
+        )
+    )
+
+    def __post_init__(self):
+        from .profiles.fourier import ChebyshevSquareSpec
+
+        if (
+            type(self.profile) is not ChebyshevSquareSpec
+            or self.parameterization is not None
+        ):
+            raise ValueError(
+                "cell integration requires ChebyshevSquare and shared physical sigma"
+            )
+        if self.normalization != NormalizationSpec(
+            kind="continuous_mass", domain="profile_support"
+        ):
+            raise ValueError("cell integration requires continuous profile mass")
+        n = self.min_tile_sites
+        if type(n) is not int or n < 1 or n & (n - 1):
+            raise ValueError("min_tile_sites must be a positive power of two")
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -101,6 +141,20 @@ class KernelSpec:
             isinstance(p, ProfileBinding) for p in self.profiles
         ):
             raise TypeError("profiles must be an immutable tuple of bindings")
+        integrated = tuple(
+            type(p) is CellIntegratedProfileBinding for p in self.profiles
+        )
+        physical = type(self.parameterization) is PhysicalAmpWidthSpec
+        if (physical or any(integrated)) and (
+            type(self.parameterization) not in (PhysicalAmpWidthSpec, PolarAmpWidthSpec)
+            or self.composition != "separable"
+            or self.revision != 1
+            or len(integrated) != 2
+            or not all(integrated)
+        ):
+            raise ValueError(
+                "cell masses require two integrated factors and physical or Polar coordinates"
+            )
         mixture = any(isinstance(p.profile, MaternMixtureSpec) for p in self.profiles)
         if (mixture or self.revision == 6) and (
             self.revision != 6
@@ -110,7 +164,9 @@ class KernelSpec:
         ):
             raise ValueError("mixture profiles require revision6 profile_product")
         periodic = any(
-            isinstance(p.profile, PeriodicFourierSpec) for p in self.profiles
+            isinstance(p.profile, PeriodicFourierSpec)
+            and type(p) is not CellIntegratedProfileBinding
+            for p in self.profiles
         )
         support = getattr(self, "tile_support", None)
         if (support is not None or periodic or self.revision == 4) and (

@@ -10,6 +10,9 @@ from pathlib import Path
 
 from benchmarks.cuda.linear.local_product import SEMANTICS as LOCAL_SEMANTICS
 from benchmarks.cuda.linear.local_product import LocalAlgorithm
+from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.algorithm import (
+    HierarchicalCellMassAlgorithm,
+)
 from torchcst._backends.cuda.algorithms.linear.fourier_tiles.algorithm import (
     FourierTilesAlgorithm,
 )
@@ -132,6 +135,7 @@ class BenchmarkRegistry(Registry):
 
 # This catalog is benchmark-local. Production registration/selection is unchanged.
 REGISTRY = BenchmarkRegistry()
+REGISTRY.register(HierarchicalCellMassAlgorithm())
 REGISTRY.register(SphereAlgorithm())
 REGISTRY.register(SphereSupportAlgorithm())
 REGISTRY.register(SphereWeightAlgorithm())

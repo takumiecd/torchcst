@@ -35,11 +35,15 @@ class CSTOptimizer(Optimizer):
         state_adapter: OptimizerStateAdapter | None = None,
         state_specs: dict[str, OptimizerFieldSpec] | None = None,
         update_selector=None,
+        check_finite: bool = True,
     ):
         if not isinstance(optimizer, Optimizer) or isinstance(optimizer, CSTOptimizer):
             raise TypeError("optimizer must be an unwrapped torch.optim.Optimizer")
         if not isinstance(model, nn.Module):
             raise TypeError("model must be a torch.nn.Module")
+        if type(check_finite) is not bool:
+            raise TypeError("check_finite must be a bool")
+        self.check_finite = check_finite
         if isinstance(optimizer, LBFGS):
             raise TypeError("LBFGS repeated proposals require a dedicated integration")
         if state_adapter is not None and not isinstance(
@@ -142,7 +146,7 @@ class CSTOptimizer(Optimizer):
 
     @torch.no_grad()
     def step(self, closure=None):
-        from torchcst._backends.torch.kernels import execution as _kernel
+        from torchcst._backends.torch import finite
 
         loss = None
         if closure is not None:
@@ -150,6 +154,14 @@ class CSTOptimizer(Optimizer):
             # Standard SGD/Adam-family steps only use the closure's result.
             with torch.enable_grad():
                 loss = closure()
+        # A closure executes outside this scope: only optimizer value checks
+        # are optional. Model/geometry calls made by the closure keep theirs.
+        with finite.checking(self.check_finite):
+            return self._step_impl(loss, has_closure=closure is not None)
+
+    def _step_impl(self, loss, *, has_closure):
+        from torchcst._backends.torch.kernels import execution as _kernel
+
         self._validate_groups(self.param_groups)
         groups = {id(p): group for group in self.param_groups for p in group["params"]}
         active = []
@@ -174,13 +186,18 @@ class CSTOptimizer(Optimizer):
                 )
             active.append((site, point, rate))
         # Check before base optimizer mutates any parameter or state.
+        from torchcst._backends.torch import finite
+
+        gradients = []
         for group in self.param_groups:
             for point in group["params"]:
                 if point.grad is not None:
                     grad = point.grad
                     values = grad.coalesce().values() if grad.is_sparse else grad
-                    if not bool(torch.isfinite(values).all()):
-                        raise FloatingPointError("non-finite parameter gradient")
+                    gradients.append(values)
+        if finite.first_nonfinite(gradients) is not None:
+            raise FloatingPointError("non-finite parameter gradient")
+        del gradients  # Release any temporary coalesced sparse values before Adam.
         old_points = []
         for site, point, rate in active:
             projected = _kernel.project_parameter_gradient(
@@ -188,7 +205,7 @@ class CSTOptimizer(Optimizer):
             )
             if projected.shape != point.shape:
                 raise ValueError("projected atom gradient has the wrong shape")
-            if not bool(torch.isfinite(projected).all()):
+            if self.check_finite and not bool(torch.isfinite(projected).all()):
                 raise FloatingPointError("non-finite projected atom gradient")
             old = point.detach().clone()
             plan = None
@@ -203,7 +220,7 @@ class CSTOptimizer(Optimizer):
                 ).plan
             point.grad.copy_(projected)
             old_points.append((site, point, rate, old, plan))
-        if closure is None:
+        if not has_closure:
             result = self.base_optimizer.step()
         else:
             result = self.base_optimizer.step(closure=lambda: loss)
@@ -218,10 +235,10 @@ class CSTOptimizer(Optimizer):
             )
             if new.shape != point.shape:
                 raise ValueError("updated atom parameters have the wrong shape")
-            if not bool(torch.isfinite(new).all()):
+            if self.check_finite and not bool(torch.isfinite(new).all()):
                 raise FloatingPointError("non-finite CST parameter update")
             self.state_adapter.transport(site, old, new, self.state.get(point, {}))
-        return loss if closure is not None else result
+        return loss if has_closure else result
 
     def _manifest(self):
         names = {id(p): name for name, p in self.model.named_parameters()}

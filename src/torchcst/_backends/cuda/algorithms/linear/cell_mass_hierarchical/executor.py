@@ -103,20 +103,22 @@ def prepare_layout(plan, atoms, *, method="sort", signal=None, reverse=False):
     The sort method retains only nonempty groups in stable order. Counting
     retains the complete Cartesian group table (at most 4096), including empty
     ranges. Compact counting retains only compatible bank pairs, also with
-    fixed empty ranges. Both counting methods support reverse indices and
-    do not promise stable order within a group. No method
+    fixed empty ranges. Sort also builds a stable reverse index when requested.
+    Counting methods do not promise stable order within a group. No method
     copies atom values from the original Parameter or retains all atom keys.
     Width/finite rejection reads one error word. Sort/unique has dynamic output
     shapes; host checks remain, so full-route CUDA Graph support is not claimed.
     """
     if type(reverse) is not bool:
         raise ValueError("reverse must be bool")
-    if reverse and method not in ("counting", "counting_compact"):
-        raise ValueError("reverse layout requires counting preparation")
     if method not in ("sort", "counting", "counting_compact"):
         raise ValueError("layout method must be sort, counting or counting_compact")
     if type(plan) is not HierarchyPlan:
         raise TypeError("plan must be HierarchyPlan")
+    if method == "counting_compact" and plan.input.polar != plan.output.polar:
+        raise ValueError(
+            "compact counting requires shared Polar input/output width bounds"
+        )
     if atoms.device.type != "cuda" or atoms.dtype not in (torch.float32, torch.float64):
         raise ValueError("atoms must be CUDA float32/float64")
     if atoms.ndim != 2 or atoms.shape[1] != 4 or not atoms.is_contiguous():
@@ -210,10 +212,47 @@ def prepare_layout(plan, atoms, *, method="sort", signal=None, reverse=False):
     offsets[0] = 0
     torch.cumsum(counts, dim=0, out=offsets[1:])
     groups = native.decode_groups(group_keys, input_config, output_config)
-    return PreparedLayout(rows, groups, offsets, plan, atoms, atoms._version)
+    reverse_slots = reverse_offsets = None
+    if reverse:
+        # Sparse groups avoid the 4096-entry Cartesian table limit for fine
+        # grids. Build only index views; all temporary keys are discarded.
+        level_offsets = [-1] * (plan.input.full_level + 1)
+        for bank in plan.input.banks:
+            level_offsets[bank.level] = bank.node_offset
+        table = torch.tensor(level_offsets, dtype=torch.int64, device=atoms.device)
+        group_nodes = table[groups[:, 1].long()] + groups[:, 3].long()
+        slots = torch.arange(atoms.shape[0], dtype=torch.int64, device=atoms.device)
+        slot_groups = torch.bucketize(slots, offsets[1:], right=True)
+        input_nodes = group_nodes[slot_groups]
+        reverse_slots = torch.argsort(input_nodes, stable=True).to(torch.int32)
+        counts = torch.bincount(input_nodes, minlength=plan.input.node_count)
+        reverse_offsets = torch.empty(
+            plan.input.node_count + 1, dtype=torch.int64, device=atoms.device
+        )
+        reverse_offsets[0] = 0
+        torch.cumsum(counts, dim=0, out=reverse_offsets[1:])
+    return PreparedLayout(
+        rows,
+        groups,
+        offsets,
+        plan,
+        atoms,
+        atoms._version,
+        reverse_slots=reverse_slots,
+        reverse_offsets=reverse_offsets,
+    )
 
 
-def build_hierarchy(signal, axis, *, method="merge", team_size=4, chunk_sites=0):
+def build_hierarchy(
+    signal,
+    axis,
+    *,
+    method="merge",
+    team_size=4,
+    chunk_sites=0,
+    bank_masks=None,
+    mask_side=0,
+):
     """Return double Z[batch,node,1+2*M] for the banks declared by axis.
 
     One team cooperates on a single (node,batch,mode) sum. The merge route
@@ -247,6 +286,25 @@ def build_hierarchy(signal, axis, *, method="merge", team_size=4, chunk_sites=0)
         or (chunk_sites and chunk_sites & (chunk_sites - 1))
     ):
         raise ValueError("chunk_sites must be zero or a positive power of two")
+    if bank_masks is not None:
+        if not chunk_sites:
+            return _extension().build_hierarchy_masked(
+                signal,
+                axis.native_config(),
+                method == "merge",
+                team_size,
+                bank_masks,
+                mask_side,
+            )
+        return _extension().build_hierarchy_chunked_masked(
+            signal,
+            axis.native_config(),
+            method == "merge",
+            team_size,
+            chunk_sites,
+            bank_masks,
+            mask_side,
+        )
     if chunk_sites:
         return _extension().build_hierarchy_chunked(
             signal, axis.native_config(), method == "merge", team_size, chunk_sites
@@ -256,13 +314,17 @@ def build_hierarchy(signal, axis, *, method="merge", team_size=4, chunk_sites=0)
     )
 
 
-def build_window_moments(z, axis):
+def build_window_moments(z, axis, *, bank_masks=None, mask_side=0):
     """Sum each owner's retained tiles in its periodic image, once per node.
 
     Run this only after the raw hierarchy is complete. The returned FP64 tensor
     has the same shape as Z, so pass windowed=True to every projection consumer.
     Neither hierarchy merge nor C expansion consumes this layout.
     """
+    if bank_masks is not None:
+        return _extension().build_window_moments_masked(
+            z, axis.native_config(), bank_masks, mask_side
+        )
     return _extension().build_window_moments(z, axis.native_config())
 
 
@@ -434,14 +496,34 @@ def compute_h_c(
     windowed=False,
     compensated=False,
     ragged=False,
+    batch_tile=4,
+    reuse_sigma_decode=False,
+    known_input_bank=False,
+    store_h=True,
 ):
-    """Compute H and output C together for M8 axes; H uses the atom dtype."""
+    """Compute H and output C together for M8 axes; H uses the atom dtype.
+
+    Ragged callers may explicitly omit global H and receive an empty tensor.
+    C still consumes the locally rounded H; all existing calls store H.
+    """
+    if type(store_h) is not bool:
+        raise ValueError("store_h must be bool")
+    if not store_h and not ragged:
+        raise ValueError("H omission requires ragged fused H/C")
     if type(splits) is not int or not 1 <= splits <= 256:
         raise ValueError("C splits must be an integer in [1,256]")
     if type(atoms_per_split) is not int or not 0 <= atoms_per_split <= 65536:
         raise ValueError("atoms_per_split must be an integer in [0,65536]")
     if type(windowed) is not bool:
         raise ValueError("windowed must be bool")
+    if type(batch_tile) is not int or batch_tile not in (4, 8):
+        raise ValueError("H/C batch tile must be 4 or 8")
+    if batch_tile != 4 and not ragged:
+        raise ValueError("larger H/C batch tiles require ragged C")
+    if type(reuse_sigma_decode) is not bool or type(known_input_bank) is not bool:
+        raise ValueError("exact H/C reuse switches must be bool")
+    if (reuse_sigma_decode or known_input_bank) and not ragged:
+        raise ValueError("exact H/C reuse requires ragged C")
     if plan.input.modes != 8 or plan.output.modes != 8:
         raise ValueError("fused H/C requires M8 axes")
     _validate_compensated(compensated, atoms, atoms.dtype, plan.input)
@@ -451,7 +533,53 @@ def compute_h_c(
     )
     layout.validate_for(atoms, plan)
     native = _extension()
+    if not store_h:
+        return native.compute_h_c_ragged_no_h(
+            atoms,
+            layout.rows,
+            layout.groups,
+            layout.offsets,
+            zx,
+            plan.input.native_config(),
+            plan.output.native_config(),
+            splits,
+            atoms_per_split,
+            windowed,
+            batch_tile,
+            reuse_sigma_decode,
+            known_input_bank,
+        )
+    if reuse_sigma_decode or known_input_bank:
+        return native.compute_h_c_ragged_exact(
+            atoms,
+            layout.rows,
+            layout.groups,
+            layout.offsets,
+            zx,
+            plan.input.native_config(),
+            plan.output.native_config(),
+            splits,
+            atoms_per_split,
+            windowed,
+            batch_tile,
+            reuse_sigma_decode,
+            known_input_bank,
+        )
     if ragged:
+        if batch_tile != 4:
+            return native.compute_h_c_ragged_batched(
+                atoms,
+                layout.rows,
+                layout.groups,
+                layout.offsets,
+                zx,
+                plan.input.native_config(),
+                plan.output.native_config(),
+                splits,
+                atoms_per_split,
+                windowed,
+                batch_tile,
+            )
         return native.compute_h_c_ragged(
             atoms,
             layout.rows,
@@ -479,7 +607,7 @@ def compute_h_c(
     )
 
 
-def expand_c(c, axis, like, *, sites_per_block=32):
+def expand_c(c, axis, like, *, sites_per_block=32, bank_masks=None, mask_side=0):
     """Expand each bank's C with cell-integrated bases, then add into Y.
 
     like supplies batch/device/dtype, not output coordinates. Chart seams use
@@ -489,6 +617,10 @@ def expand_c(c, axis, like, *, sites_per_block=32):
         raise TypeError("axis must be AxisPlan")
     if type(sites_per_block) is not int:
         raise ValueError("sites_per_block must be a power of two in [1,256]")
+    if bank_masks is not None:
+        return _extension().expand_c_masked(
+            c, like, axis.native_config(), sites_per_block, bank_masks, mask_side
+        )
     return _extension().expand_c(c, like, axis.native_config(), sites_per_block)
 
 
@@ -588,6 +720,7 @@ def compute_input_c(
     compensated=False,
     compensated_cdot=False,
     ragged=False,
+    batch_slab=0,
 ):
     """Accumulate amp*G into input owner C; no dX atomic or packed atom copy.
 
@@ -600,6 +733,10 @@ def compute_input_c(
     """
     if type(splits) is not int or not 1 <= splits <= 256:
         raise ValueError("C splits must be an integer in [1,256]")
+    if type(batch_slab) is not int or not 0 <= batch_slab <= 65536:
+        raise ValueError("Cin batch slab must be an integer in [0,65536]")
+    if batch_slab and not ragged:
+        raise ValueError("Cin batch slabs require ragged reverse C")
     _validate_compensated(compensated, atoms, g.dtype, plan.input)
     _validate_compensated_cdot(compensated_cdot, atoms, g.dtype, plan.input)
     _validate_ragged(
@@ -611,6 +748,18 @@ def compute_input_c(
         raise ValueError("ragged input C requires a reverse layout")
     native = _extension()
     if ragged:
+        if batch_slab:
+            return native.compute_input_c_reverse_ragged_slab(
+                atoms,
+                layout.rows,
+                layout.reverse_slots,
+                layout.reverse_offsets,
+                g,
+                plan.input.native_config(),
+                splits,
+                atoms_per_split,
+                batch_slab,
+            )
         return native.compute_input_c_reverse_ragged(
             atoms,
             layout.rows,
@@ -648,6 +797,140 @@ def compute_input_c(
         return native.compute_c(*arguments, compensated, compensated_cdot)
     return native.compute_c_split(
         *arguments, splits, atoms_per_split, compensated, compensated_cdot
+    )
+
+
+def _validate_polar_coefficient_cache(enabled, atoms, plan, threads):
+    if type(enabled) is not bool:
+        raise ValueError("cache_polar_coefficients must be bool")
+    if enabled and (
+        plan.input.polar is None
+        or plan.output.polar is None
+        or atoms.dtype != torch.float32
+        or plan.input.modes != 8
+        or plan.output.modes != 8
+        or threads not in (32, 64)
+    ):
+        raise ValueError("Polar coefficient cache requires FP32 M8 and 32/64 threads")
+
+
+def compute_polar_g_and_parameter_grad(
+    plan,
+    atoms,
+    layout,
+    zx,
+    zy,
+    *,
+    threads=128,
+    windowed=False,
+    compensated=False,
+    cache_coefficients=False,
+):
+    """Recompute H/G in FP64 registers; return rounded G and Polar gradients.
+
+    The optional M8 FP32 cache computes each axis coefficient stream once per
+    atom in private shared-memory columns, reused over all batch tiles.
+    No global H is required by this pullback. Width remains detached, so each
+    projection computes only its value and center derivative, not d/dsigma.
+    """
+    _validate_polar_coefficient_cache(cache_coefficients, atoms, plan, threads)
+    if plan.input.polar is None:
+        raise ValueError("requires a Polar hierarchy")
+    if type(threads) is not int or threads not in (32, 64, 128, 256):
+        raise ValueError("atom threads must be 32,64,128 or 256")
+    if type(windowed) is not bool:
+        raise ValueError("windowed must be bool")
+    _validate_compensated(compensated, atoms, atoms.dtype, plan.input)
+    _validate_compensated(compensated, atoms, atoms.dtype, plan.output)
+    layout.validate_for(atoms, plan)
+    return _extension().compute_polar_g_and_parameter_grad(
+        atoms,
+        layout.rows,
+        layout.groups,
+        layout.offsets,
+        zx,
+        zy,
+        plan.input.native_config(),
+        plan.output.native_config(),
+        threads,
+        windowed,
+        compensated,
+        cache_coefficients,
+    )
+
+
+def _polar_cin_eligible(
+    plan, atoms, layout, batches, *, compensated_values, compensated_grad, ragged
+):
+    # This predicate reads metadata only. Full-gradient intent is checked by
+    # the caller; all unsupported configurations retain the separate route.
+    return (
+        plan.input.polar is not None
+        and plan.output.polar is not None
+        and atoms.dtype == torch.float32
+        and plan.input.modes == plan.output.modes == 8
+        and plan.input.tail_bound == plan.output.tail_bound == 1e-3
+        and compensated_values
+        and compensated_grad
+        and ragged
+        and layout.has_reverse
+        and 0 <= batches <= 32
+    )
+
+
+def compute_polar_grad_cin(
+    plan,
+    atoms,
+    layout,
+    zx,
+    zy,
+    *,
+    splits=128,
+    atoms_per_split=512,
+    windowed=False,
+    debug_g=False,
+):
+    """Return (atom gradients, Cin, optional diagnostic G) with one warp per task.
+
+    Both projection/gradient and Cin coefficients use the compensated M8
+    stream. H/G stay FP64 for parameter gradients; Cin consumes locally rounded
+    FP32 G. No G allocation is made unless debug_g explicitly requests it.
+    The main return then contains an empty diagnostic G tensor.
+    """
+    if type(windowed) is not bool or type(debug_g) is not bool:
+        raise ValueError("windowed and debug_g must be bool")
+    if type(splits) is not int or not 1 <= splits <= 256:
+        raise ValueError("C splits must be an integer in [1,256]")
+    if type(atoms_per_split) is not int or not 1 <= atoms_per_split <= 65536:
+        raise ValueError("fused Polar Cin grain must be an integer in [1,65536]")
+    if not _polar_cin_eligible(
+        plan,
+        atoms,
+        layout,
+        zx.shape[0],
+        compensated_values=True,
+        compensated_grad=True,
+        ragged=True,
+    ):
+        raise ValueError(
+            "fused Polar Cin requires reverse FP32 Polar M8/tail1e-3 and B<=32"
+        )
+    layout.validate_for(atoms, plan)
+    return _extension().compute_polar_grad_cin(
+        atoms,
+        layout.rows,
+        layout.groups,
+        layout.offsets,
+        layout.reverse_slots,
+        layout.reverse_offsets,
+        zx,
+        zy,
+        plan.input.native_config(),
+        plan.output.native_config(),
+        splits,
+        atoms_per_split,
+        windowed,
+        debug_g,
     )
 
 
@@ -805,18 +1088,46 @@ class _HierarchicalLinear(torch.autograd.Function):
         compensated_grad,
         reuse_shape_coefficients,
         ragged_c_splits,
+        hc_batch_tile,
+        release_workspaces,
+        hc_atoms_per_split,
+        cin_batch_slab,
+        hc_reuse_sigma_decode,
+        hc_known_input_bank,
+        active_bank_z,
+        cache_polar_coefficients,
+        active_bank_expand,
+        fuse_polar_cin,
+        omit_unused_h,
     ):
+        bank_masks = (
+            _extension().prepare_bank_masks(
+                layout.groups,
+                layout.offsets,
+                plan.input.native_config(),
+                plan.output.native_config(),
+            )
+            if active_bank_z or active_bank_expand
+            else None
+        )
         zx = build_hierarchy(
             x,
             plan.input,
             method=z_method,
             team_size=team_size,
             chunk_sites=z_chunk_sites,
+            bank_masks=bank_masks if active_bank_z else None,
+            mask_side=0,
         )
         if window_moments:
             # The assignment releases raw Z after the transformation. Save only
             # the immutable owner windows needed by H and parameter gradients.
-            zx = build_window_moments(zx, plan.input)
+            zx = build_window_moments(
+                zx,
+                plan.input,
+                bank_masks=bank_masks if active_bank_z else None,
+                mask_side=0,
+            )
         if fuse_h_c and plan.input.modes == 8 and plan.output.modes == 8:
             h, c = compute_h_c(
                 plan,
@@ -824,10 +1135,20 @@ class _HierarchicalLinear(torch.autograd.Function):
                 layout,
                 zx,
                 splits=c_splits,
-                atoms_per_split=atoms_per_split,
+                atoms_per_split=hc_atoms_per_split or atoms_per_split,
                 windowed=window_moments,
                 compensated=compensated_values,
                 ragged=ragged_c_splits,
+                batch_tile=hc_batch_tile,
+                reuse_sigma_decode=hc_reuse_sigma_decode,
+                known_input_bank=hc_known_input_bank,
+                # Generic physical atom gradients still consume saved H.
+                # Polar reprojects H; input-only backward does not need it.
+                store_h=not (
+                    omit_unused_h
+                    and ragged_c_splits
+                    and (plan.input.polar is not None or not ctx.needs_input_grad[1])
+                ),
             )
         else:
             h = compute_h(
@@ -851,7 +1172,20 @@ class _HierarchicalLinear(torch.autograd.Function):
                 compensated_cdot=compensated_cdot,
                 ragged=ragged_c_splits,
             )
-        y = expand_c(c, plan.output, x, sites_per_block=sites_per_block)
+        if release_workspaces and (
+            not ctx.needs_input_grad[1] or plan.input.polar is not None
+        ):
+            # Polar reprojects H in backward; only the generic atom pullback
+            # needs this forward activation after output C has been built.
+            del h
+        y = expand_c(
+            c,
+            plan.output,
+            x,
+            sites_per_block=sites_per_block,
+            bank_masks=bank_masks if active_bank_expand else None,
+            mask_side=1,
+        )
         ctx.plan = plan
         ctx.z_method = z_method
         ctx.team_size = team_size
@@ -869,6 +1203,12 @@ class _HierarchicalLinear(torch.autograd.Function):
         ctx.compensated_grad = compensated_grad
         ctx.reuse_shape_coefficients = reuse_shape_coefficients
         ctx.ragged_c_splits = ragged_c_splits
+        ctx.release_workspaces = release_workspaces
+        ctx.cin_batch_slab = cin_batch_slab
+        ctx.cache_polar_coefficients = cache_polar_coefficients
+        ctx.fuse_polar_cin = fuse_polar_cin
+        ctx.active_bank_z = active_bank_z
+        ctx.active_bank_expand = active_bank_expand
         ctx.source_version = atoms._version
         ctx.layout_method = layout.method
         # save_for_backward checks atom AND layout-buffer mutations. Avoid
@@ -881,18 +1221,28 @@ class _HierarchicalLinear(torch.autograd.Function):
             layout.offsets,
             layout.reverse_slots,
             layout.reverse_offsets,
+            bank_masks,
         )
         if ctx.needs_input_grad[1]:
-            saved += (zx, h)
+            # Polar reprojects H in FP64 registers for its task pullback.
+            # Its rounded forward activation can be released after output C.
+            saved += (zx,) if plan.input.polar is not None else (zx, h)
         ctx.save_for_backward(*saved)
         return y
 
     @staticmethod
     @torch.autograd.function.once_differentiable
     def backward(ctx, dy):
-        atoms, rows, groups, offsets, reverse_slots, reverse_offsets, *forward_state = (
-            ctx.saved_tensors
-        )
+        (
+            atoms,
+            rows,
+            groups,
+            offsets,
+            reverse_slots,
+            reverse_offsets,
+            bank_masks,
+            *forward_state,
+        ) = ctx.saved_tensors
         plan = ctx.plan
         layout = PreparedLayout(
             rows,
@@ -913,11 +1263,56 @@ class _HierarchicalLinear(torch.autograd.Function):
             method=ctx.z_method,
             team_size=ctx.team_size,
             chunk_sites=ctx.z_chunk_sites,
+            bank_masks=bank_masks if ctx.active_bank_z else None,
+            mask_side=1,
         )
         if ctx.window_moments:
-            zy = build_window_moments(zy, plan.output)
-        dx = datoms = cin = None
+            zy = build_window_moments(
+                zy,
+                plan.output,
+                bank_masks=bank_masks if ctx.active_bank_z else None,
+                mask_side=1,
+            )
+        dx = datoms = cin = g = None
         if (
+            ctx.fuse_polar_cin
+            and ctx.needs_input_grad[0]
+            and ctx.needs_input_grad[1]
+            and _polar_cin_eligible(
+                plan,
+                atoms,
+                layout,
+                dy.shape[0],
+                compensated_values=ctx.compensated_values,
+                compensated_grad=ctx.compensated_grad,
+                ragged=ctx.ragged_c_splits,
+            )
+        ):
+            (zx,) = forward_state
+            datoms, cin, g = compute_polar_grad_cin(
+                plan,
+                atoms,
+                layout,
+                zx,
+                zy,
+                splits=ctx.c_splits,
+                atoms_per_split=ctx.atoms_per_split,
+                windowed=ctx.window_moments,
+            )
+        elif ctx.needs_input_grad[1] and plan.input.polar is not None:
+            (zx,) = forward_state
+            g, datoms = compute_polar_g_and_parameter_grad(
+                plan,
+                atoms,
+                layout,
+                zx,
+                zy,
+                threads=ctx.atom_threads,
+                windowed=ctx.window_moments,
+                compensated=ctx.compensated_grad,
+                cache_coefficients=ctx.cache_polar_coefficients,
+            )
+        elif (
             ctx.fuse_backward_cin
             and ctx.needs_input_grad[0]
             and ctx.needs_input_grad[1]
@@ -961,6 +1356,13 @@ class _HierarchicalLinear(torch.autograd.Function):
                 windowed=ctx.window_moments,
                 compensated=ctx.compensated_values,
             )
+        if ctx.release_workspaces and (
+            not ctx.needs_input_grad[1] or datoms is not None
+        ):
+            # These routes have finished all output-moment consumers. Unlike
+            # saved input moments, this backward-local tensor can be released
+            # without changing retained-backward state.
+            del zy
         if ctx.needs_input_grad[0]:
             if cin is None:
                 cin = compute_input_c(
@@ -973,8 +1375,20 @@ class _HierarchicalLinear(torch.autograd.Function):
                     compensated=ctx.compensated_values,
                     compensated_cdot=ctx.compensated_cdot,
                     ragged=ctx.ragged_c_splits,
+                    batch_slab=ctx.cin_batch_slab,
                 )
-            dx = expand_c(cin, plan.input, dy, sites_per_block=ctx.sites_per_block)
+            if ctx.release_workspaces and (
+                not ctx.needs_input_grad[1] or datoms is not None
+            ):
+                del g
+            dx = expand_c(
+                cin,
+                plan.input,
+                dy,
+                sites_per_block=ctx.sites_per_block,
+                bank_masks=bank_masks if ctx.active_bank_expand else None,
+                mask_side=0,
+            )
             del cin
         if ctx.needs_input_grad[1] and datoms is None:
             zx, h = forward_state
@@ -992,6 +1406,17 @@ class _HierarchicalLinear(torch.autograd.Function):
         return (
             dx,
             datoms,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
             None,
             None,
             None,
@@ -1039,13 +1464,26 @@ def hierarchical_linear(
     compensated_grad=False,
     reuse_shape_coefficients=False,
     ragged_c_splits=False,
+    hc_batch_tile=4,
+    release_workspaces=False,
+    hc_atoms_per_split=0,
+    cin_batch_slab=0,
+    hc_reuse_sigma_decode=False,
+    hc_known_input_bank=False,
+    active_bank_z=False,
+    cache_polar_coefficients=False,
+    active_bank_expand=False,
+    fuse_polar_cin=False,
+    omit_unused_h=False,
 ):
     """Private research autograd route, using this forward's bank/owner choices.
 
-    Forward saves Zx/H only if atom gradients are requested. Backward builds Zy
-    and G once, then uses them for dX and parameter gradients. No dense W, dW,
-    packed atom values, global coefficient table, or separate dH is allocated.
-    H/G storage uses the input dtype. Opt-in compensated values apply to H,
+    Physical-sigma atom gradients save Zx and H. Polar atom gradients save
+    only Zx and reproject logical H in FP64 registers during backward. The
+    optimizer receives parameter gradients, never H. Standalone global H/G
+    buffers use the input dtype; the fused Polar backward produces no global G.
+    No dense W, dW, packed atom values, global coefficient table, or separate dH
+    is allocated. Opt-in compensated values apply to H,
     output C, standalone G and separate input C. The independent compensated_grad
     option evaluates the raw polynomial and beta derivative in standalone
     G/gradient fusion with FP32 pairs; phase and contractions stay double.
@@ -1053,14 +1491,58 @@ def hierarchical_linear(
     memory, avoiding a second width evaluation when both profile shapes match.
     The optional fused H/C forward is used for M8 axes, with separate fallback
     for other mode counts.
+    cache_polar_coefficients reuses FP64 coefficients across batch tiles in the
+    Polar pullback, with a private shared-memory column per atom thread.
+    fuse_polar_cin selects a one-warp full-gradient Polar backward when both
+    coefficient precision flags are enabled, reverse ragged layout exists,
+    and B<=32. It intrinsically caches coefficients and supersedes the separate
+    cache_polar_coefficients/cin_batch_slab settings only on this eligible route.
+    Physical, one-sided-gradient, and other configurations retain their prior
+    route. Global G is not produced by the fused route.
+    omit_unused_h suppresses the global H allocation/store only on ragged
+    fused H/C when Polar or absent atom gradients make that buffer unnecessary.
+    The local FP32 H rounding used by C and physical atom-gradient state remain.
     specialize_g_grad controls standalone G/gradient fusion; fused Cin is unchanged.
     compensated_cdot applies only to separate output/input C generation; it
     keeps the FP64 fallback and is incompatible with the experimental fusions.
     Double backward and full-route CUDA Graph capture are not supported yet
     (preparation has dynamic output shapes and host checks).
     """
+    if type(omit_unused_h) is not bool:
+        raise ValueError("omit_unused_h must be bool")
+    if type(fuse_polar_cin) is not bool:
+        raise ValueError("fuse_polar_cin must be bool")
+    if type(active_bank_expand) is not bool:
+        raise ValueError("active_bank_expand must be bool")
+    if type(active_bank_z) is not bool:
+        raise ValueError("active_bank_z must be bool")
+    if active_bank_z and z_method != "merge":
+        raise ValueError("active_bank_z prototype requires merge moments")
+    if type(hc_reuse_sigma_decode) is not bool or type(hc_known_input_bank) is not bool:
+        raise ValueError("exact H/C reuse switches must be bool")
+    if (hc_reuse_sigma_decode or hc_known_input_bank) and not (
+        fuse_h_c and ragged_c_splits
+    ):
+        raise ValueError("exact H/C reuse requires fused ragged H/C")
+    _validate_polar_coefficient_cache(
+        cache_polar_coefficients, atoms, plan, atom_threads
+    )
+    if cache_polar_coefficients and reuse_shape_coefficients:
+        raise ValueError("Polar coefficient cache cannot combine with shape reuse")
     if type(fuse_h_c) is not bool:
         raise ValueError("fuse_h_c must be bool")
+    if type(hc_batch_tile) is not int or hc_batch_tile not in (4, 8):
+        raise ValueError("H/C batch tile must be 4 or 8")
+    if hc_batch_tile != 4 and not (fuse_h_c and ragged_c_splits):
+        raise ValueError("larger H/C batch tiles require fused ragged H/C")
+    if type(hc_atoms_per_split) is not int or not 0 <= hc_atoms_per_split <= 65536:
+        raise ValueError("H/C atoms per split must be an integer in [0,65536]")
+    if type(cin_batch_slab) is not int or not 0 <= cin_batch_slab <= 65536:
+        raise ValueError("Cin batch slab must be an integer in [0,65536]")
+    if cin_batch_slab and (not ragged_c_splits or fuse_backward_cin):
+        raise ValueError("Cin batch slabs require separate ragged reverse C")
+    if type(release_workspaces) is not bool:
+        raise ValueError("release_workspaces must be bool")
     if type(specialize_g_grad) is not bool:
         raise ValueError("specialize_g_grad must be bool")
     _validate_compensated_cdot(compensated_cdot, atoms, atoms.dtype, plan.input)
@@ -1100,12 +1582,6 @@ def hierarchical_linear(
         reverse_layout or (layout is not None and layout.has_reverse)
     ):
         raise ValueError("atoms_per_split requires a reverse layout")
-    if (
-        reverse_layout
-        and layout is None
-        and layout_method not in ("counting", "counting_compact")
-    ):
-        raise ValueError("reverse layout requires counting preparation")
     if reverse_layout and layout is not None and not layout.has_reverse:
         raise ValueError("cached layout lacks reverse indices; rebuild it")
     if type(window_moments) is not bool:
@@ -1134,7 +1610,9 @@ def hierarchical_linear(
         if not bool(torch.isfinite(x).all()):
             raise ValueError("X must be finite")
         if layout is None:
-            layout = prepare_layout(plan, atoms, method=layout_method)
+            layout = prepare_layout(
+                plan, atoms, method=layout_method, reverse=reverse_layout
+            )
         else:
             layout.validate_for(atoms, plan)
     return _HierarchicalLinear.apply(
@@ -1159,4 +1637,15 @@ def hierarchical_linear(
         compensated_grad,
         reuse_shape_coefficients,
         ragged_c_splits,
+        hc_batch_tile,
+        release_workspaces,
+        hc_atoms_per_split,
+        cin_batch_slab,
+        hc_reuse_sigma_decode,
+        hc_known_input_bank,
+        active_bank_z,
+        cache_polar_coefficients,
+        active_bank_expand,
+        fuse_polar_cin,
+        omit_unused_h,
     )

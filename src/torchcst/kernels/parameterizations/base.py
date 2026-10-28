@@ -33,6 +33,18 @@ class FixedWidthSpec(ParameterizationSpec):
 
 
 @dataclass(frozen=True, kw_only=True)
+class PhysicalAmpWidthSpec(ParameterizationSpec):
+    """Physical rows [amplitude, sigma, output_center, input_center].
+
+    Sigma is a live positive width, with no logarithm, Polar decoding or
+    stop-gradient. The cell-mass update policy projects optimizer proposals
+    into the declared positive domain; evaluation never clips parameters.
+    """
+
+    id: str = field(default="physical_amplitude_sigma", init=False)
+
+
+@dataclass(frozen=True, kw_only=True)
 class BandwidthBounds:
     minimum: float
     birth: float

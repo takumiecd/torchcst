@@ -95,10 +95,74 @@ See the [API and mathematical contract](docs/profile-product.ja.md).
 the research rule of dividing a nonnegative density by its full-support integral,
 without a floor. Existing point-sampled profile bindings and profile-product presets
 reject this rule. A separate, explicit Chebyshev-square cell-integral reference and
-CUDA research entry now provide the first numeric implementation; they are not
-connected to public `CSTLinear` dispatch or old Polar checkpoints. See the
+CUDA implementation provide numeric implementations. The hierarchical version
+can be selected explicitly from public `CSTLinear`, as shown below; it does not
+load old Polar checkpoints. See the
 [cell-integrated profile design](docs/cell-integrated-profile.ja.md) and
 [tile-window approximation and execution](docs/cell-mass-tile-window.ja.md).
+
+### Hierarchical cell masses with an explicit CUDA Plan
+
+```python
+import torch
+from torchcst import BandwidthBounds, CSTLinear, CSTOptimizer, FixedSelector, make_algorithm_registry
+from torchcst import chart_presets, presets
+from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.plans import SITE_SCALED
+
+n = 128  # also 1024
+spacing = 128 / n
+sigma_min = spacing
+# FP32 ceiling immediately below Q/3, with Q=128.
+sigma_cap = float(torch.nextafter(torch.tensor(128 / 3), torch.tensor(0.0)))
+grid = chart_presets.regular_grid(((n,),), spacing=spacing, geometry="flat_torus")
+layer = CSTLinear(
+    grid, grid, atoms=int(0.05 * n * n), device="cuda",
+    kernel=presets.polar_cell_mass(
+        input_min_tile_sites=4, output_min_tile_sites=8,
+        amplitude_max=1.0, w_c=0.3,
+        input_bounds=BandwidthBounds(
+            minimum=sigma_min, birth=8 * sigma_min,
+            maximum=min(100 * sigma_min, sigma_cap), upper_floor=2 * sigma_min,
+        ),
+        alpha_init=0.5,
+    ),
+    selector=FixedSelector(SITE_SCALED, registry=make_algorithm_registry()),
+)
+```
+
+`SITE_SCALED` keeps minimum tiles at 4/8 sites for N128/1024 and uses sparse
+sorted routing. Its N128/1024 oracle and 3-epoch MNIST checks passed on L4; this learning
+workload did not meet the dense-relative time or memory targets. The earlier
+`VALIDATED_128` / `VALIDATED_1024` recipes retain minimum tiles N/32,N/16
+for reproducing prior fixtures. These Plans are
+explicit opt-ins; automatic dispatch and benchmark DB adoption are separate.
+The current native implementation supports up to 1024 sites per side and 65,536
+atoms, with frozen one-dimensional periodic RegularGrid charts. Execution is
+eager, without autocast or a deterministic-reduction guarantee. Torch provides
+a differentiable reference and explicit `dense_weight()` export on CPU.
+
+With `polar_cell_mass`, rows are the existing Polar chart-pair coordinates
+`[s, t, input_center, output_center]`. Polar amplitude/activity determine each
+side's sigma; width remains detached from task loss. `CSTOptimizer` reuses the
+existing Polar projection, radial activity update and moment transport. Only
+the profile factors use cell integration and continuous full-support mass.
+Coordinate-update Plans are independent of the Linear Plan. The default
+CSTOptimizer uses the Torch reference update; the existing fused Polar update
+Plan covers Euclidean centres and does not yet implement flat-torus wrapping.
+Input/output bounds can differ; each maximum must fit its chart period/3.
+CUDA decodes each atom where consumed, without a copied physical atom table.
+
+Minimum tiles are mathematical profile declarations, checked in checkpoints.
+Runtime grouping is rebuilt from current atoms each forward and is not saved.
+The separate `presets.cell_mass(...)` reference path stores physical
+`[amplitude, sigma, output_center, input_center]` and learns sigma directly;
+its explicit CSTOptimizer policy projects width proposals into
+`[sigma_floor, min(periods)/3]`. These two learning contracts are distinct.
+Checkpoints from old point-sampled/L2 profiles are not silently reinterpreted.
+See
+[the authoritative kernel flow](docs/cell-mass-kernel-flow.ja.md).
+
+### Other profile and chart contracts
 
 `QuadraticBSplineSpec()` declares the peak-one C1 quadratic B-spline with
 curvature width sigma and support radius `sqrt(6) * sigma`. Use it in
@@ -127,8 +191,9 @@ a concrete Euclidean/FlatTorus geometry. Use `polar_profile_product` for Euclide
 and `polar_periodic_profile_product` for shortest wrapped coordinate distances.
 The chart supports arbitrary grid dimension/grouping; `CSTLinear` requires two
 weight axes. Torch factored/materialized execution is available. Existing
-research CUDA routes still require `PeriodicGridChartSpec`; the new chart has no
-CUDA performance claim. See [the API and geometry contract](docs/regular-grid.ja.md).
+profile-product CUDA routes still require `PeriodicGridChartSpec`; the explicit
+cell-mass chart-pair route above has its own contract. See
+[the API and geometry contract](docs/regular-grid.ja.md).
 
 `chart_presets.periodic_grid((16, 32, 64), periods=(1.0, 2.0, 4.0),
 output_dims=2)` declares one equally spaced flat periodic chart with shape
@@ -195,6 +260,21 @@ The optimizer has no Polar-specific dispatcher. Torch fallback preserves Kernel
 coordinate laws and Sphere/Torus retraction, gradient projection and vector-state
 transport. The base optimizer still owns proposal generation and step counting.
 `CSTOptimizer` as a whole still requires eager execution.
+`check_finite=True` preserves the default nonfinite-value rejection. Explicit
+`check_finite=False` follows ordinary AdamW's lack of added finite checks:
+nonfinite gradients are not automatically rejected or skipped. Structural and
+fixed-configuration validation remain enabled. With the FP32 fused AdamW and
+FlatTorus update Plan below, steady optimizer steps have zero synchronization
+and device-to-host copies. This does not qualify Graphs or the entire AMP loop.
+
+
+For CUDA FP32 Polar atoms with two one-dimensional FlatTorus charts, the
+explicit `cuda_flat_torus_polar_update_fused/v1` Plan fuses the post-proposal
+Polar update and periodic center retraction. Select it through
+`CSTOptimizer(update_selector=...)`; the Linear Plan does not enable it.
+Adam proposals, finite-gradient checks and vector-state transport stay in the
+public optimizer wrapper. The existing `cuda_polar_update_fused/v1` Plan
+continues to accept Euclidean centers only.
 
 `CSTLinear(chart=chart, atoms=p, kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT)`
 uses the globally L2-normalized Euclidean Triweight operator. Its amplitude / log

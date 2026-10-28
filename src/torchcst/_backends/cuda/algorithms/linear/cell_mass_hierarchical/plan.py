@@ -37,6 +37,9 @@ class AxisPlan:
     origin: float = 0.0
     modes: int = 8
     tail_bound: float = 1e-3
+    # Optional existing Polar width law: W,w_c,kappa,lower_kappa,power,
+    # sigma_min,sigma_birth,sigma_max,upper_floor. No per-atom storage.
+    polar: tuple[float, ...] | None = None
 
     def __post_init__(self):
         for name in ("site_count", "min_tile_sites"):
@@ -56,6 +59,24 @@ class AxisPlan:
                 raise ValueError(f"{name} must be finite")
         if self.spacing <= 0:
             raise ValueError("spacing must be positive")
+        if self.polar is not None:
+            if (
+                type(self.polar) is not tuple
+                or len(self.polar) != 9
+                or any(
+                    type(v) not in (int, float) or not math.isfinite(v) or v <= 0
+                    for v in self.polar
+                )
+            ):
+                raise ValueError("invalid Polar axis metadata")
+            _w, _wc, kappa, _lower, power, minimum, birth, maximum, floor = self.polar
+            if (
+                kappa <= 1
+                or power > 1
+                or not minimum <= birth <= maximum <= self.period / 3
+                or not minimum <= floor <= maximum
+            ):
+                raise ValueError("Polar axis width law does not fit this grid")
         if not math.isfinite(2 * self.period) or self.period <= 0:
             raise ValueError("chart period must be positive and representable")
         for bank in self.banks:
@@ -116,7 +137,7 @@ class AxisPlan:
             self.origin,
             self.modes,
             self.tail_bound,
-        ]
+        ] + ([] if self.polar is None else list(self.polar))
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -129,6 +150,13 @@ class HierarchyPlan:
     def __post_init__(self):
         if type(self.input) is not AxisPlan or type(self.output) is not AxisPlan:
             raise TypeError("input and output must be AxisPlan")
+        if (self.input.polar is None) != (self.output.polar is None) or (
+            self.input.polar is not None
+            and self.input.polar[:5] != self.output.polar[:5]
+        ):
+            raise ValueError(
+                "input/output must share their Polar amplitude and activity law"
+            )
 
 
 def classify_axis(sigma, center, axis):

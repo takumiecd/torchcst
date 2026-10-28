@@ -28,6 +28,9 @@ struct Axis {
     int sites, min_tile_sites, modes, full_level, bank_count, node_count;
     double spacing, origin, period, inverse_period, tail_bound, radius_ratio4;
     bool dyadic_period;
+    bool polar;
+    double amplitude_max, w_c, kappa, lower_kappa, upper_decay_power;
+    double sigma_min, sigma_birth, sigma_max, upper_floor;
     Bank banks[MAX_BANKS];
     __host__ __device__ int basis_count() const {
         return 1 + 2 * modes;
@@ -42,7 +45,8 @@ inline bool power_of_two(int value) {
 }
 
 inline Axis parse_axis(const std::vector<double> &config) {
-    TORCH_CHECK(config.size() == 6, "hierarchy axis needs six scalars");
+    TORCH_CHECK(config.size() == 6 || config.size() == 15,
+                "hierarchy axis needs six scalars or six plus nine Polar scalars");
     for (double value : config)
         TORCH_CHECK(std::isfinite(value), "axis values must be finite");
     TORCH_CHECK(config[0] == std::floor(config[0]) && config[0] >= 1 && config[0] <= 1024,
@@ -68,6 +72,19 @@ inline Axis parse_axis(const std::vector<double> &config) {
                 "invalid dyadic axis");
     axis.period = axis.sites * axis.spacing;
     TORCH_CHECK(std::isfinite(2 * axis.period) && axis.period > 0, "invalid chart period");
+    axis.polar = config.size() == 15;
+    if (axis.polar) {
+        axis.amplitude_max = config[6]; axis.w_c = config[7]; axis.kappa = config[8];
+        axis.lower_kappa = config[9]; axis.upper_decay_power = config[10];
+        axis.sigma_min = config[11]; axis.sigma_birth = config[12];
+        axis.sigma_max = config[13]; axis.upper_floor = config[14];
+        for (int i = 6; i < 15; ++i)
+            TORCH_CHECK(config[i] > 0, "Polar scalars must be positive");
+        TORCH_CHECK(axis.kappa > 1 && axis.upper_decay_power <= 1 &&
+                    axis.sigma_min <= axis.sigma_birth && axis.sigma_birth <= axis.sigma_max &&
+                    axis.sigma_max <= axis.period / 3 && axis.upper_floor >= axis.sigma_min &&
+                    axis.upper_floor <= axis.sigma_max, "invalid Polar width bounds");
+    }
     int period_exponent;
     axis.inverse_period = 1 / axis.period;
     axis.dyadic_period =
@@ -95,6 +112,65 @@ inline Axis parse_axis(const std::vector<double> &config) {
         axis.banks[bank].omega = 2 * PI / axis.banks[bank].period;
     }
     return axis;
+}
+
+// Decode the existing Polar map where it is consumed. Atoms stay in their
+// original Parameter; there is no packed [amplitude,sigma,centers] allocation.
+// Double evaluation matches the independent Fourier reference. Optimizer
+// projection, radial activity and moment transport remain in the existing code.
+template <typename atom_t>
+__device__ inline double atom_amplitude(const atom_t *atoms, int atom, const Axis &axis) {
+    double s = atoms[4 * atom];
+    if (!axis.polar) return s;
+    double t = atoms[4 * atom + 1];
+    double tiny = std::is_same<atom_t, float>::value ? FLT_MIN : DBL_MIN;
+    return axis.amplitude_max * s / sqrt(fmax(s * s + t * t, tiny));
+}
+
+template <typename atom_t>
+__device__ inline double atom_sigma(const atom_t *atoms, int atom, const Axis &axis) {
+    if (!axis.polar) return atoms[4 * atom + 1];
+    double s = atoms[4 * atom], t = atoms[4 * atom + 1];
+    double alpha = fmin(1.0, fmax(0.0, (s * s + t * t - 1.0) / 3.0));
+    double amp = atom_amplitude(atoms, atom, axis);
+    double ratio = amp / axis.w_c, x = ratio * ratio;
+    double lower = axis.sigma_min + (axis.sigma_birth - axis.sigma_min) /
+                    (1.0 + axis.lower_kappa * x);
+    double upper = axis.sigma_min + (axis.sigma_max - axis.sigma_min) * axis.kappa /
+                    (axis.kappa + pow(x, axis.upper_decay_power));
+    upper = fmax(lower, fmax(upper, axis.upper_floor));
+    return fmin(upper, fmax(lower, exp((1 - alpha) * log(lower) + alpha * log(upper))));
+}
+
+template <typename atom_t>
+__device__ inline double atom_center(const atom_t *atoms, int atom, const Axis &axis,
+                                      bool output_side) {
+    int column = axis.polar ? (output_side ? 3 : 2) : (output_side ? 2 : 3);
+    return atoms[4 * atom + column];
+}
+
+template <typename atom_t>
+__device__ inline void store_atom_gradient(const atom_t *atoms, atom_t *gradient, int atom,
+    const Axis &input, double da, double ds, double dmu_input, double dmu_output) {
+    if (input.polar) {
+        double s = atoms[4 * atom], t = atoms[4 * atom + 1];
+        double q = s * s + t * t;
+        double tiny = std::is_same<atom_t, float>::value ? FLT_MIN : DBL_MIN;
+        double safe = fmax(q, tiny), inverse = 1 / sqrt(safe);
+        // Width is detached in the existing Polar task loss. Discard ds;
+        // only the bounded amplitude's angular derivative reaches (s,t).
+        double d_s = input.amplitude_max * inverse * (q >= tiny ? 1 - s * s / safe : 1);
+        double d_t = q >= tiny ? -input.amplitude_max * inverse * s * t / safe : 0;
+        gradient[4 * atom] = static_cast<atom_t>(da * d_s);
+        gradient[4 * atom + 1] = static_cast<atom_t>(da * d_t);
+        gradient[4 * atom + 2] = static_cast<atom_t>(dmu_input);
+        gradient[4 * atom + 3] = static_cast<atom_t>(dmu_output);
+    } else {
+        gradient[4 * atom] = static_cast<atom_t>(da);
+        gradient[4 * atom + 1] = static_cast<atom_t>(ds);
+        gradient[4 * atom + 2] = static_cast<atom_t>(dmu_output);
+        gradient[4 * atom + 3] = static_cast<atom_t>(dmu_input);
+    }
 }
 
 inline void check_cuda_float_matrix(const torch::Tensor &tensor) {
@@ -128,6 +204,26 @@ __device__ inline double wrapped_center(double center, const Axis &axis) {
     return value < 0 ? value + axis.period : value;
 }
 
+// Exact owner quantization shared with preparation. Preserve division/floor,
+// chart wrapping and the final-half-cell modulo convention.
+__device__ inline int owner_from_center(double center, const Axis &axis, int tile_sites) {
+    double relative = wrapped_center(center, axis);
+    int owner =
+        static_cast<int>(floor((relative + axis.spacing / 2) / (tile_sites * axis.spacing)));
+    return owner % (axis.sites / tile_sites);
+}
+
+// Width decode depends on these fields only, not the selected bank or centers.
+// Unequal laws retain two evaluations, even when their outputs happen to match.
+__host__ __device__ inline bool same_sigma_decode(const Axis &a, const Axis &b) {
+    return a.polar == b.polar && (!a.polar ||
+        (a.amplitude_max == b.amplitude_max && a.w_c == b.w_c &&
+         a.kappa == b.kappa && a.lower_kappa == b.lower_kappa &&
+         a.upper_decay_power == b.upper_decay_power && a.sigma_min == b.sigma_min &&
+         a.sigma_birth == b.sigma_birth && a.sigma_max == b.sigma_max &&
+         a.upper_floor == b.upper_floor));
+}
+
 __device__ inline Membership classify_axis(double sigma, double center, const Axis &axis) {
     int tile_sites = axis.min_tile_sites;
     int level = 0;
@@ -138,10 +234,7 @@ __device__ inline Membership classify_axis(double sigma, double center, const Ax
     if (3 * tile_sites > axis.sites)
         return {axis.full_level, 0};
 
-    double relative = wrapped_center(center, axis);
-    int owner =
-        static_cast<int>(floor((relative + axis.spacing / 2) / (tile_sites * axis.spacing)));
-    return {level, owner % (axis.sites / tile_sites)};
+    return {level, owner_from_center(center, axis, tile_sites)};
 }
 
 __device__ inline double integrated_basis(const Axis &axis, const Bank &bank, int mode, int site) {

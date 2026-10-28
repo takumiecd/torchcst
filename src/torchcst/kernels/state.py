@@ -8,7 +8,7 @@ from torch import nn
 from .options import KernelOptions
 from .parameterizations import BandwidthBounds, FixedWidthSpec, LogWidthSpec
 from .parameterizations.activity_width import ActivityWidthSpec
-from .spec import KernelSpec, ProfileBinding
+from .spec import CellIntegratedProfileBinding, KernelSpec, ProfileBinding
 
 
 class ProfileState(nn.Module):
@@ -30,12 +30,15 @@ class ProfileState(nn.Module):
         )
 
     def get_extra_state(self):
-        return {
+        result = {
             "version": 1,
             "profile": asdict(self.binding.profile),
             "normalization": asdict(self.binding.normalization),
             "fixed_width": self.binding.parameterization is not None,
         }
+        if type(self.binding) is CellIntegratedProfileBinding:
+            result["cell_mass_min_tile_sites"] = self.binding.min_tile_sites
+        return result
 
     def set_extra_state(self, state):
         if state != self.get_extra_state():

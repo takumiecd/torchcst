@@ -117,6 +117,20 @@ class AtomUpdateBinding:
             for name, value in sorted(self.kernel._buffers.items())
             if value is not None
         )
+        # Geometry buffers can also be live kernel inputs. Include their
+        # placement metadata so an incompatible Plan is rejected before Adam
+        # mutates its proposal/state, without reading any scalar to the host.
+        metadata += tuple(
+            (
+                f"geometry.{axis}.{name}",
+                value.dtype,
+                DeviceInfo(value.device.type, value.device.index),
+                value.numel(),
+            )
+            for axis, chart in enumerate(self.cst_charts())
+            for name, value in sorted(chart.geometry._buffers.items())
+            if value is not None
+        )
         return AtomUpdateContext(
             kernel=declaration.kernel,
             geometries=tuple(chart.geometry.spec for chart in self.operator.charts),

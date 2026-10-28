@@ -1,7 +1,7 @@
 # CSTOptimizer
 
 `CSTOptimizer(base_optimizer, model=model, state_adapter=None)` は既存の
-PyTorch optimizer を包む。旧 optimizer、config、N/D solver、moment system、
+PyTorch optimizer を包む。`check_finite=True`が既定。旧 optimizer、config、N/D solver、moment system、
 AtomGrad は削除した。旧実験の再現には変更前の Git revision `33504c6` を使う。
 
 ## 所有と更新
@@ -15,7 +15,7 @@ AtomGrad は削除した。旧実験の再現には変更前の Git revision `33
 | 更新順序・CST site 発見 | CSTOptimizer |
 | scheduler | PyTorch scheduler を wrapper に接続 |
 
-closure があれば現在点で一度評価し、全 group の勾配の有限性を確認する。
+closure があれば現在点で一度評価する。検査有効時は全 group の勾配の有限性を確認する。
 atom 勾配を射影し、更新する atom table の旧座標を保存してから base が更新する。
 実際の差分 `proposal - old` とその group の現在の `lr` を Kernel に渡し、
 更新結果へ vector state を transport して Parameter に書き戻す。
@@ -79,11 +79,50 @@ base と wrapper の state / groups は共有する。旧 optimizer や raw base
 checkpoint は受け入れない。model を目的の device へ移してから wrapper を作り、
 atom Parameter を置き換えた場合は wrapper を作り直す。
 
+## 通常PyTorchと同じく独自finite検査を追加しない経路
+
+`CSTOptimizer(..., check_finite=False)`はoptimizer内の値の有限性検査を追加しない。
+NaN/Infの自動拒否やstep skipを行わない通常AdamWの流れに合わせる選択肢である。
+shape/dtype/device、group/Plan、固定設定の検証は常に保つ。既定Trueは従来の検査を維持する。
+modeは呼出しのscope内だけに適用し、closureや呼出し外のgeometry検証は抑制しない。
+checkpointの数学的契約やAdam内部状態は変えず、modeは呼出し側で選ぶ。
+
+次節のFlatTorus用Planを選ぶ構成なら、末尾に`check_finite=False`を加える。
+固定設定のFP32/fused AdamW/FlatTorusで、定常optimizer stepの同期API0・DtoH0を実測した。
+設定の初回準備・変更後の再検証、他のPlan/optimizer、closure、AMP/GradScaler、学習全体の
+同期ゼロまで保証するものではない。CUDA Graphは引き続き未対応。
+
 ## 現在の範囲
+
+CUDA FP32のPolarと1次元FlatTorus chartの組では、更新専用Planを明示して
+Polar更新と中心の周期折り返しをTritonで融合できる。
+
+```python
+from torchcst import FixedSelector, make_algorithm_registry
+from torchcst._backends.cuda.algorithms.polar_update.plans import FLAT_TORUS_FUSED
+
+optimizer = CSTOptimizer(
+    base_optimizer,
+    model=model,
+    update_selector=FixedSelector(FLAT_TORUS_FUSED, registry=make_algorithm_registry()),
+)
+```
+
+これは`atom_update`の実装選択であり、LinearのPlanとは独立する。2座標の中心を
+持つ連続FP32 `[atom_count, 4]`が対象で、ほかのgeometryやdtypeにはこのPlanを
+指定しない。既定は引き続きTorch参照経路。Adamのproposal・moments・step、
+勾配射影とstate adapter、異常値検査は共通wrapperが担当する。
+周期とPolar scalarはlive bufferから読み、設定変更時の宣言検証も維持する。
+既存のEuclidean用`FUSED`とは別Planで、周期版もeager実行を要求する。
 
 Linear / Conv2d の forward backend に依存しない。Euclidean trainable Chart は
 処理できる。trainable 非 Euclidean Chart は atom center と異なる更新契約が
 必要なので、専用 policy を追加するまで拒否する。
+
+CUDA実数の有限性検査はdevice/dtypeごとにまとめ、小さな判定vectorだけをhostへ返す。
+raw勾配は全Parameter分をAdam前に確認する。Euclidean/FlatTorusのtransportも旧点・新点・
+vectorをまとめる。更新則やmomentsの演算は変えず、不正値をその場で拒否する同期は保つ。
+complex/CPU/非対応layoutは従来の検査を使い、CUDA Graphの対応範囲は広げない。
 
 snapshot と更新作業領域は atom parameter 数に比例する。dense weight、
 weight-gradient、Hessian は構築しない。有限性検査は device を同期する。
@@ -91,6 +130,6 @@ CST policy を含む CUDA Graph capture、Tensor learning rate、differentiable
 optimizer step は未対応。`capturable=True` は拒否する。通常の eager CUDA と
 foreach / fused base optimizer は別の実行設定である。
 
-raw gradient の非有限値は base 更新前に拒否する。base 更新後の custom policy
+`check_finite=True`ではraw gradientの非有限値をbase更新前に拒否する。base 更新後の custom policy
 failure まで全 optimizer state を rollback するトランザクションではない。
 custom policy は shape と有限性の契約を守る必要がある。

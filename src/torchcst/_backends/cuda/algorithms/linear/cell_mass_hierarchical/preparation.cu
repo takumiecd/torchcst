@@ -12,6 +12,10 @@ struct CompactPairs {
 
 static CompactPairs make_compact_pairs(const Axis &input, const Axis &output,
                                        torch::ScalarType dtype) {
+    TORCH_CHECK(input.polar == output.polar && (!input.polar ||
+        (input.sigma_min == output.sigma_min && input.sigma_birth == output.sigma_birth &&
+         input.sigma_max == output.sigma_max && input.upper_floor == output.upper_floor)),
+        "compact counting requires shared Polar input/output width bounds");
     CompactPairs result{};
     std::fill(result.base, result.base + MAX_BANKS * MAX_BANKS, -1);
     double max_sigma = std::min(input.period, output.period) / 3;
@@ -54,17 +58,21 @@ __global__ void classify_atoms_kernel(const scalar_t *atoms, int atom_count, Axi
     for (int field = 0; field < 4; ++field)
         if (!isfinite(static_cast<double>(atoms[4 * atom + field])))
             error |= 1;
-    double sigma = static_cast<double>(atoms[4 * atom + 1]);
-    scalar_t maximum_sigma = static_cast<scalar_t>(std::min(input.period, output.period) / 3);
-    if (!(sigma > 0) || atoms[4 * atom + 1] > maximum_sigma)
+    double sigma_input = atom_sigma(atoms, atom, input);
+    double sigma_output = atom_sigma(atoms, atom, output);
+    double maximum_input = input.polar ? input.period / 3 :
+        static_cast<double>(static_cast<scalar_t>(std::min(input.period, output.period) / 3));
+    double maximum_output = output.polar ? output.period / 3 : maximum_input;
+    if (!(sigma_input > 0) || !(sigma_output > 0) ||
+        sigma_input > maximum_input || sigma_output > maximum_output)
         error |= 2;
     if (error) {
         keys[atom] = 0;
         atomicOr(errors, error); // One error word, not an output reduction.
         return;
     }
-    Membership in = classify_axis(sigma, static_cast<double>(atoms[4 * atom + 3]), input);
-    Membership out = classify_axis(sigma, static_cast<double>(atoms[4 * atom + 2]), output);
+    Membership in = classify_axis(sigma_input, atom_center(atoms, atom, input, false), input);
+    Membership out = classify_axis(sigma_output, atom_center(atoms, atom, output, true), output);
     int64_t key = out.level;
     key = key * (input.full_level + 1) + in.level;
     key = key * output.max_owners() + out.owner;
@@ -104,17 +112,21 @@ __global__ void count_memberships_kernel(const scalar_t *atoms, int atom_count, 
     for (int field = 0; field < 4; ++field)
         if (!isfinite(static_cast<double>(atoms[4 * atom + field])))
             error |= 1;
-    double sigma = static_cast<double>(atoms[4 * atom + 1]);
-    scalar_t maximum_sigma = static_cast<scalar_t>(std::min(input.period, output.period) / 3);
-    if (!(sigma > 0) || atoms[4 * atom + 1] > maximum_sigma)
+    double sigma_input = atom_sigma(atoms, atom, input);
+    double sigma_output = atom_sigma(atoms, atom, output);
+    double maximum_input = input.polar ? input.period / 3 :
+        static_cast<double>(static_cast<scalar_t>(std::min(input.period, output.period) / 3));
+    double maximum_output = output.polar ? output.period / 3 : maximum_input;
+    if (!(sigma_input > 0) || !(sigma_output > 0) ||
+        sigma_input > maximum_input || sigma_output > maximum_output)
         error |= 2;
     if (error) {
         keys[atom] = -1;
         atomicOr(errors, error);
         return;
     }
-    Membership in = classify_axis(sigma, static_cast<double>(atoms[4 * atom + 3]), input);
-    Membership out = classify_axis(sigma, static_cast<double>(atoms[4 * atom + 2]), output);
+    Membership in = classify_axis(sigma_input, atom_center(atoms, atom, input, false), input);
+    Membership out = classify_axis(sigma_output, atom_center(atoms, atom, output, true), output);
     Bank ib = input.banks[bank_for_level(input, in.level)];
     Bank ob = output.banks[bank_for_level(output, out.level)];
     int key = ob.node_offset * input.node_count + ob.tile_count * ib.node_offset +
@@ -144,17 +156,21 @@ __global__ void count_compact_memberships_kernel(const scalar_t *atoms, int atom
     for (int field = 0; field < 4; ++field)
         if (!isfinite(static_cast<double>(atoms[4 * atom + field])))
             error |= 1;
-    double sigma = static_cast<double>(atoms[4 * atom + 1]);
-    scalar_t maximum_sigma = static_cast<scalar_t>(std::min(input.period, output.period) / 3);
-    if (!(sigma > 0) || atoms[4 * atom + 1] > maximum_sigma)
+    double sigma_input = atom_sigma(atoms, atom, input);
+    double sigma_output = atom_sigma(atoms, atom, output);
+    double maximum_input = input.polar ? input.period / 3 :
+        static_cast<double>(static_cast<scalar_t>(std::min(input.period, output.period) / 3));
+    double maximum_output = output.polar ? output.period / 3 : maximum_input;
+    if (!(sigma_input > 0) || !(sigma_output > 0) ||
+        sigma_input > maximum_input || sigma_output > maximum_output)
         error |= 2;
     if (error) {
         keys[atom] = -1;
         atomicOr(errors, error);
         return;
     }
-    Membership in = classify_axis(sigma, static_cast<double>(atoms[4 * atom + 3]), input);
-    Membership out = classify_axis(sigma, static_cast<double>(atoms[4 * atom + 2]), output);
+    Membership in = classify_axis(sigma_input, atom_center(atoms, atom, input, false), input);
+    Membership out = classify_axis(sigma_output, atom_center(atoms, atom, output, true), output);
     int ii = bank_for_level(input, in.level), oi = bank_for_level(output, out.level);
     int base = pairs.base[oi * MAX_BANKS + ii];
     int key = base + out.owner * input.banks[ii].tile_count + in.owner;
@@ -435,12 +451,16 @@ __global__ void scatter_counting_rows_kernel(const int *keys, int atom_count,
 // thread reaches every block barrier, including unused teams and merge jobs.
 template <typename scalar_t>
 __global__ void build_direct_kernel(const scalar_t *signal, double *z, int batches, Axis axis,
-                                    bool merge, int team_size) {
+                                    bool merge, int team_size, const int *bank_masks = nullptr,
+                                    int mask_index = 0) {
     __shared__ double partials[THREADS];
     int node = blockIdx.x;
     int bank_index = 0;
     while (bank_index + 1 < axis.bank_count && node >= axis.banks[bank_index + 1].node_offset)
         ++bank_index;
+    // This CTA owns one bank, so the early return is uniform before barriers.
+    if (bank_masks && !(bank_masks[mask_index] & (1 << bank_index)))
+        return;
     Bank bank = axis.banks[bank_index];
     int first = (node - bank.node_offset) * bank.tile_sites;
     int team_count = THREADS / team_size;
@@ -501,9 +521,11 @@ __global__ void build_direct_kernel(const scalar_t *signal, double *z, int batch
 template <typename scalar_t>
 __global__ void build_direct_chunk_kernel(const scalar_t *signal, double *scratch, int batches,
                                           Axis axis, bool merge, int team_size, int chunk_sites,
-                                          int chunks) {
+                                          int chunks, const int *bank_masks = nullptr, int mask_index = 0) {
     __shared__ double partials[THREADS];
     int bank_index = blockIdx.x / chunks;
+    if (bank_masks && !(bank_masks[mask_index] & (1 << bank_index)))
+        return;
     int chunk = blockIdx.x % chunks;
     Bank bank = axis.banks[bank_index];
     int first = chunk * chunk_sites;
@@ -562,7 +584,8 @@ __global__ void build_direct_chunk_kernel(const scalar_t *signal, double *scratc
 // A unique writer reduces each node's chunks; inherited modes are left for
 // the subsequent level merges and do not read uninitialized scratch.
 __global__ void reduce_direct_chunks_kernel(const double *scratch, double *z, int batches,
-                                            Axis axis, bool merge, int chunk_sites, int chunks) {
+                                            Axis axis, bool merge, int chunk_sites, int chunks,
+                                            const int *bank_masks = nullptr, int mask_index = 0) {
     int64_t work = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
     int64_t count = static_cast<int64_t>(batches) * axis.node_count * axis.basis_count();
     if (work >= count)
@@ -573,6 +596,8 @@ __global__ void reduce_direct_chunks_kernel(const double *scratch, double *z, in
     int bank_index = 0;
     while (bank_index + 1 < axis.bank_count && node >= axis.banks[bank_index + 1].node_offset)
         ++bank_index;
+    if (bank_masks && !(bank_masks[mask_index] & (1 << bank_index)))
+        return;
     Bank bank = axis.banks[bank_index];
     int harmonic = (mode + 1) / 2;
     bool direct = !merge || bank_index == 0 || bank.full_chart || (mode != 0 && harmonic % 2 == 1);
@@ -593,7 +618,10 @@ __global__ void reduce_direct_chunks_kernel(const double *scratch, double *z, in
 
 // P_parent=2*P_child: parent harmonic 2*j matches child harmonic j.
 // Odd parent harmonics were built directly, not inherited with the same index.
-__global__ void merge_bank_kernel(double *z, int batches, Axis axis, int bank_index) {
+__global__ void merge_bank_kernel(double *z, int batches, Axis axis, int bank_index,
+                                  const int *bank_masks = nullptr, int mask_index = 0) {
+    if (bank_masks && !(bank_masks[mask_index] & (1 << bank_index)))
+        return;
     Bank parent_bank = axis.banks[bank_index];
     Bank child_bank = axis.banks[bank_index - 1];
     int work = blockIdx.x * blockDim.x + threadIdx.x;
@@ -615,7 +643,7 @@ __global__ void merge_bank_kernel(double *z, int batches, Axis axis, int bank_in
 // Collapse each owner's retained period after every raw hierarchy merge.
 // This is independent of atom values. Never feed these windows into merge_bank.
 __global__ void build_window_moments_kernel(const double *z, double *window, int elements,
-                                            Axis axis) {
+                                            Axis axis, const int *bank_masks = nullptr, int mask_index = 0) {
     int work = blockIdx.x * blockDim.x + threadIdx.x;
     if (work >= elements)
         return;
@@ -625,6 +653,8 @@ __global__ void build_window_moments_kernel(const double *z, double *window, int
     int bank_index = 0;
     while (bank_index + 1 < axis.bank_count && node >= axis.banks[bank_index + 1].node_offset)
         ++bank_index;
+    if (bank_masks && !(bank_masks[mask_index] & (1 << bank_index)))
+        return;
     Bank bank = axis.banks[bank_index];
     if (bank.full_chart) {
         window[work] = z[work];
@@ -649,6 +679,35 @@ __global__ void build_window_moments_kernel(const double *z, double *window, int
     }
     window[work] = total;
 }
+
+// Four device words: input consumer/raw, output consumer/raw. Nonempty groups
+// represent every atom, including amplitude zero. No host scalar is read.
+__global__ void mark_consumer_banks_kernel(const int *groups, const int64_t *offsets,
+                                          int group_count, int *masks, Axis input, Axis output) {
+    int group = blockIdx.x * blockDim.x + threadIdx.x;
+    if (group >= group_count || offsets[group] == offsets[group + 1])
+        return;
+    int output_bank = bank_for_level(output, groups[4 * group]);
+    int input_bank = bank_for_level(input, groups[4 * group + 1]);
+    atomicOr(masks, 1 << input_bank);
+    atomicOr(masks + 2, 1 << output_bank);
+}
+
+// Every active interior parent needs preceding raw banks for inherited even
+// modes/DC. The full-chart bank is direct and has no child dependency.
+__global__ void close_raw_bank_masks_kernel(int *masks, Axis input, Axis output) {
+    if (threadIdx.x != 0)
+        return;
+    for (int side = 0; side < 2; ++side) {
+        Axis axis = side ? output : input;
+        int consumer = masks[2 * side], raw = consumer;
+        for (int bank = 0; bank < axis.bank_count; ++bank)
+            if (!axis.banks[bank].full_chart && (consumer & (1 << bank)))
+                raw |= (1 << (bank + 1)) - 1;
+        masks[2 * side + 1] = raw;
+    }
+}
+
 } // namespace
 
 std::vector<torch::Tensor> classify_atoms(torch::Tensor atoms, std::vector<double> input_config,
@@ -896,17 +955,25 @@ torch::Tensor decode_groups(torch::Tensor keys, std::vector<double> input_config
     return groups;
 }
 
-torch::Tensor build_hierarchy(torch::Tensor signal, std::vector<double> config, bool merge,
-                              int team_size) {
+// Both public routes share the same node computation and merge implementation.
+// The masked route zeroes inactive output nodes and allocates no chunk scratch.
+static void check_bank_masks(torch::Tensor masks, torch::Tensor reference, int side);
+static torch::Tensor build_hierarchy_impl(torch::Tensor signal, std::vector<double> config,
+                                         bool merge, int team_size,
+                                         torch::Tensor masks, int side) {
     check_cuda_float_matrix(signal);
     Axis axis = parse_axis(config);
     TORCH_CHECK(signal.size(1) == axis.sites, "signal does not match axis");
     TORCH_CHECK(signal.size(0) <= INT_MAX / (axis.node_count * axis.basis_count()),
                 "hierarchy exceeds prototype index capacity");
     TORCH_CHECK(power_of_two(team_size) && team_size <= 32, "invalid Z team size");
+    TORCH_CHECK(signal.size(0) <= static_cast<int64_t>(65535) * BATCH_TILE,
+                "node grid exceeds CUDA grid.y capacity");
     c10::cuda::CUDAGuard guard(signal.device());
     auto z = torch::empty({signal.size(0), axis.node_count, axis.basis_count()},
                           signal.options().dtype(torch::kFloat64));
+    if (masks.defined())
+        z.zero_(); // The full tensor layout stays defined for inactive nodes.
     if (signal.size(0) == 0)
         return z;
     auto stream = c10::cuda::getCurrentCUDAStream();
@@ -914,21 +981,39 @@ torch::Tensor build_hierarchy(torch::Tensor signal, std::vector<double> config, 
     AT_DISPATCH_FLOATING_TYPES(signal.scalar_type(), "hierarchical_build_z", [&] {
         build_direct_kernel<<<grid, THREADS, 0, stream>>>(signal.data_ptr<scalar_t>(),
                                                           z.data_ptr<double>(), signal.size(0),
-                                                          axis, merge, team_size);
+                                                          axis, merge, team_size,
+                                                          masks.defined() ? masks.data_ptr<int>() : nullptr,
+                                                          2 * side + 1);
     });
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     // Kernel order on this stream is the inter-block dependency boundary.
     for (int bank = 1; merge && bank < axis.bank_count - 1; ++bank) {
         int work = signal.size(0) * axis.banks[bank].tile_count * axis.basis_count();
         merge_bank_kernel<<<(work + THREADS - 1) / THREADS, THREADS, 0, stream>>>(
-            z.data_ptr<double>(), signal.size(0), axis, bank);
+            z.data_ptr<double>(), signal.size(0), axis, bank,
+            masks.defined() ? masks.data_ptr<int>() : nullptr, 2 * side + 1);
         C10_CUDA_KERNEL_LAUNCH_CHECK();
     }
     return z;
 }
 
-torch::Tensor build_hierarchy_chunked(torch::Tensor signal, std::vector<double> config, bool merge,
-                                      int team_size, int requested_chunk_sites) {
+// Preserve the old ABI and default path. Masked node moments are opt-in only.
+torch::Tensor build_hierarchy(torch::Tensor signal, std::vector<double> config,
+                              bool merge, int team_size) {
+    return build_hierarchy_impl(signal, config, merge, team_size, {}, 0);
+}
+
+// This route is useful when active raw banks have short tiles: each node CTA
+// sums its own tile directly, avoiding chunk scratch and the chunk reduction.
+// Full-chart banks remain correct but may become long-lived CTAs when active.
+torch::Tensor build_hierarchy_masked(torch::Tensor signal, std::vector<double> config,
+                                     bool merge, int team_size, torch::Tensor masks, int side) {
+    check_bank_masks(masks, signal, side);
+    return build_hierarchy_impl(signal, config, merge, team_size, masks, side);
+}
+
+static torch::Tensor build_hierarchy_chunked_impl(torch::Tensor signal, std::vector<double> config, bool merge,
+                                      int team_size, int requested_chunk_sites, torch::Tensor masks, int side) {
     check_cuda_float_matrix(signal);
     Axis axis = parse_axis(config);
     TORCH_CHECK(signal.size(1) == axis.sites, "signal does not match axis");
@@ -951,6 +1036,8 @@ torch::Tensor build_hierarchy_chunked(torch::Tensor signal, std::vector<double> 
     c10::cuda::CUDAGuard guard(signal.device());
     auto z = torch::empty({signal.size(0), axis.node_count, axis.basis_count()},
                           signal.options().dtype(torch::kFloat64));
+    if (masks.defined())
+        z.zero_(); // Define inactive elements; scratch stays full-sized and unread when masked.
     if (signal.size(0) == 0)
         return z;
     auto scratch =
@@ -960,18 +1047,19 @@ torch::Tensor build_hierarchy_chunked(torch::Tensor signal, std::vector<double> 
     AT_DISPATCH_FLOATING_TYPES(signal.scalar_type(), "hierarchical_build_z_chunked", [&] {
         build_direct_chunk_kernel<<<grid, THREADS, 0, stream>>>(
             signal.data_ptr<scalar_t>(), scratch.data_ptr<double>(), signal.size(0), axis, merge,
-            team_size, chunk_sites, chunks);
+            team_size, chunk_sites, chunks, masks.defined() ? masks.data_ptr<int>() : nullptr, 2 * side + 1);
     });
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     int64_t work = signal.size(0) * z_per_batch;
     reduce_direct_chunks_kernel<<<(work + THREADS - 1) / THREADS, THREADS, 0, stream>>>(
         scratch.data_ptr<double>(), z.data_ptr<double>(), signal.size(0), axis, merge, chunk_sites,
-        chunks);
+        chunks, masks.defined() ? masks.data_ptr<int>() : nullptr, 2 * side + 1);
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     for (int bank = 1; merge && bank < axis.bank_count - 1; ++bank) {
         int merge_work = signal.size(0) * axis.banks[bank].tile_count * axis.basis_count();
         merge_bank_kernel<<<(merge_work + THREADS - 1) / THREADS, THREADS, 0, stream>>>(
-            z.data_ptr<double>(), signal.size(0), axis, bank);
+            z.data_ptr<double>(), signal.size(0), axis, bank,
+            masks.defined() ? masks.data_ptr<int>() : nullptr, 2 * side + 1);
         C10_CUDA_KERNEL_LAUNCH_CHECK();
     }
     return z;
@@ -992,6 +1080,74 @@ torch::Tensor build_window_moments(torch::Tensor z, std::vector<double> config) 
         auto stream = c10::cuda::getCurrentCUDAStream();
         build_window_moments_kernel<<<(z.numel() + THREADS - 1) / THREADS, THREADS, 0, stream>>>(
             z.data_ptr<double>(), window.data_ptr<double>(), z.numel(), axis);
+        C10_CUDA_KERNEL_LAUNCH_CHECK();
+    }
+    return window;
+}
+
+// Mask payload is immutable forward-scoped metadata; validate shape/device
+// without copying its contents or synchronizing to read a scalar.
+static void check_bank_masks(torch::Tensor masks, torch::Tensor reference, int side) {
+    TORCH_CHECK(masks.device() == reference.device() && masks.is_contiguous() &&
+                masks.scalar_type() == torch::kInt32 && masks.dim() == 1 && masks.numel() == 4,
+                "bank masks must be device-local int32[4]");
+    TORCH_CHECK(side == 0 || side == 1, "mask side must be input=0 or output=1");
+}
+
+// Consumers and dependency closure are derived from this exact live layout.
+torch::Tensor prepare_bank_masks(torch::Tensor groups, torch::Tensor offsets,
+                                 std::vector<double> input_config,
+                                 std::vector<double> output_config) {
+    TORCH_CHECK(groups.is_cuda() && groups.scalar_type() == torch::kInt32 &&
+                groups.is_contiguous() && groups.dim() == 2 && groups.size(1) == 4,
+                "groups must be CUDA int32[G,4]");
+    TORCH_CHECK(offsets.device() == groups.device() && offsets.is_contiguous() &&
+                offsets.scalar_type() == torch::kInt64 && offsets.dim() == 1 &&
+                offsets.numel() == groups.size(0) + 1, "invalid group offsets");
+    Axis input = parse_axis(input_config), output = parse_axis(output_config);
+    TORCH_CHECK(input.bank_count < 31 && output.bank_count < 31, "bank mask capacity");
+    c10::cuda::CUDAGuard guard(groups.device());
+    auto masks = torch::zeros({4}, groups.options());
+    auto stream = c10::cuda::getCurrentCUDAStream();
+    if (groups.size(0)) {
+        mark_consumer_banks_kernel<<<(groups.size(0) + THREADS - 1) / THREADS, THREADS, 0, stream>>>(
+            groups.data_ptr<int>(), offsets.data_ptr<int64_t>(), groups.size(0),
+            masks.data_ptr<int>(), input, output);
+        C10_CUDA_KERNEL_LAUNCH_CHECK();
+    }
+    close_raw_bank_masks_kernel<<<1, 1, 0, stream>>>(masks.data_ptr<int>(), input, output);
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+    return masks;
+}
+
+torch::Tensor build_hierarchy_chunked(torch::Tensor signal, std::vector<double> config,
+                                     bool merge, int team_size, int chunk_sites) {
+    return build_hierarchy_chunked_impl(signal, config, merge, team_size, chunk_sites, {}, 0);
+}
+
+torch::Tensor build_hierarchy_chunked_masked(torch::Tensor signal, std::vector<double> config,
+                                            bool merge, int team_size, int chunk_sites,
+                                            torch::Tensor masks, int side) {
+    check_bank_masks(masks, signal, side);
+    return build_hierarchy_chunked_impl(signal, config, merge, team_size, chunk_sites, masks, side);
+}
+
+// Window consumers use the narrow mask, not the raw dependency closure.
+// Inactive returned elements are defined zeros, never uninitialized memory.
+torch::Tensor build_window_moments_masked(torch::Tensor z, std::vector<double> config,
+                                         torch::Tensor masks, int side) {
+    check_bank_masks(masks, z, side);
+    Axis axis = parse_axis(config);
+    TORCH_CHECK(z.is_cuda() && z.scalar_type() == torch::kFloat64 && z.is_contiguous() &&
+                z.dim() == 3 && z.size(1) == axis.node_count &&
+                z.size(2) == axis.basis_count() && z.numel() <= INT_MAX, "invalid raw moments");
+    c10::cuda::CUDAGuard guard(z.device());
+    auto window = torch::zeros_like(z);
+    auto stream = c10::cuda::getCurrentCUDAStream();
+    if (z.numel()) {
+        build_window_moments_kernel<<<(z.numel() + THREADS - 1) / THREADS, THREADS, 0, stream>>>(
+            z.data_ptr<double>(), window.data_ptr<double>(), z.numel(), axis,
+            masks.data_ptr<int>(), 2 * side);
         C10_CUDA_KERNEL_LAUNCH_CHECK();
     }
     return window;
