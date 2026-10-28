@@ -2,6 +2,20 @@
 
 ## 設計の正本と、現在の実装範囲
 
+**実装の区切り（2026-10-28）：** 既存σ版と検証済み最適化はPR #122から
+`main`へmerge済み（`0047e29c`）。次期半径APIと以下の設計は、そこから切った
+`kernel/support-radius-pipeline`で進める。以下の追加方針を現CUDAへ実装済みとは扱わない。
+
+**最新の設計指定：** [周期・完成response・階層別tile処理](#周期完成response階層別tile処理の最新指定)を参照。
+直前の提案にあった全local階層共通の固定Kや部分responseの受け渡しを、確定規約とは扱わない。
+
+**2026-10-28 追加方針：** 小幅profileの設計条件とコード上の名前は、下の
+[support_widthとone-hot近似の設計方針](#support_widthとone-hot近似の設計方針)を正本とする。
+これは合意した次の設計であり、既存profile・Plan・測定済み結果を変更したものではない。
+現在の最小tile入力4／出力8 sitesではone-hot近似の条件を満たしていない。
+さらに、次の公開APIは[半径を主語にする契約](#support_radiusを主語にする公開api方針)を採用する方向で設計する。
+以下の既存σ規約とcheckpointを、単なる名前変更でその契約へ読み替えない。
+
 **2026-10-27 目標の訂正：** ユーザーが指定した達成条件は、検査とメモリ条件を保ち、
 完全step時間を同条件のdenseの2倍以下にすることである。以前の「denseの2倍の速度、
 時間半分が最終目標」という記述は取り違えであり、以下の履歴もこの条件で判定する。
@@ -24,7 +38,7 @@
 Zの二分集約木があることと、sigmaから異なるtile/周期を選ぶことを区別する。
 既存の固定bank版は比較・復元用に維持する。以前追加した「sigma=全幅、I=sigma/2」は撤回する。
 
-| 項目 | この文書の設計 | 固定bank版 `cell_mass/`（source `7c1404c1`） |
+| 項目 | 現実装の設計（追加方針は下記） | 固定bank版 `cell_mass/`（source `7c1404c1`） |
 | --- | --- | --- |
 | sigmaの意味 | 既存の幅制御値。I=effective_radius(profile,sigma,P) | 同じ幅制御値・半径下限補正 |
 | 階層分類 | T_minから2倍ずつ、sigma<=T_hの最小local bankを選ぶ | 未実装。軸ごとに一つのAxis設定 |
@@ -41,6 +55,375 @@ Zの二分集約木があることと、sigmaから異なるtile/周期を選ぶ
 [`executor.py`](../src/torchcst/_backends/cuda/algorithms/linear/cell_mass/executor.py)、
 [`kernels.cu`](../src/torchcst/_backends/cuda/algorithms/linear/cell_mass/kernels.cu)。
 現状と測定条件の入口は[実測状態](cell-mass-status.ja.md)。
+
+### 周期・完成response・階層別tile処理の最新指定
+
+2026-10-28。ユーザーが繰り返し指定していた処理方針を、未確定事項として戻さない。
+新しいradius契約について次を設計規約とし、既存CUDAや過去の実測条件とは区別する。
+
+**周期の式：**
+
+\[
+ 2L=\left\lceil\frac{2R}{T}\right\rceil T,
+ \qquad K=\left\lceil\frac{2R}{T}\right\rceil.
+\]
+
+Rは`support_radius`、Tはその階層のtileの物理幅。
+従来コードではFourier密度の一周を`P=2L`とし、`cos(2*pi*x/P)`を使う。
+会話中の「どちらだったか」という確認に対し、この従来表記を説明した。
+以降も一周をP（コードでは`period`）、半周期をLと区別して記述する。
+したがって式は`period = ceil(2 * support_radius / tile_width) * tile_width`と読める。
+周期の式自体に`+1`を足したり、固定の`P=3T`へ置き換えたりしない。
+以降の固定K=3や`(ceil(2I/T)+1)T`の式は、既存実装・先行案の条件として残す。
+Lを一周と呼ぶ別の記法へ変更する場合も係数2の対応を明示し、P=2Lと混用しない。
+
+Kはこの式から導かれる整数倍率であり、全atom・全階層について独立に固定したKを仮定しない。
+同じ階層でもKが異なる場合、共有momentsの基底周期が一致する単位へさらに分ける。
+中心／tile位置、chart端、K個のtile窓の配置と、全周rootの扱いはこの式に従う実装で検証する。
+このceil則で得た周期に対するprofileの成立性・漏れ・正規化を確認する前に、
+固定P=3dのCPU試算値を新しい則の検証済み結果として使わない。
+
+**responseは必要範囲を全て加算して完成させてから使う。**
+
+- `atom_response` Hは、そのatomの必要な全入力tile／siteについて足し終えた値とする。
+- backwardのGも、そのatomの必要な全出力tile／siteについて足し終えた値とする。
+- coeffs生成・出力への直接展開・Parameter勾配へ、未完成のresponseを渡さない。
+  direct・局所的な経路も同じ規約を使う。
+- threadやblock内で加算途中の値を持つことはあるが、それは内部の集計途中状態であり、
+  公開するresponse bufferや段階間の受け渡しには使わない。
+
+これは完成responseを必ずglobalに保存する規則ではない。
+全寄与の集計後にregister／sharedからcoeffsやYへ使う融合経路も認める。
+
+**今後のコード・説明で使う名前：**
+
+| 数式 | forward | backwardの対応 | 意味 |
+| --- | --- | --- | --- |
+| Zx / Zy | `input_moments` | `grad_output_moments` | X／dYをtileの各基底へ集約 |
+| H / G | `atom_response` | `grad_response` | X／dYを各atomのprofileへ投影した完成値 |
+| C_out / C_in | `output_coeffs` | `grad_input_coeffs` | Y／dXへ展開する基底係数 |
+
+H/Gはいずれも振幅を掛ける前の値。`grad_response` GはdYを出力profileで集約した値で、
+H自体の勾配は`amp * G`である。振幅勾配は`sum_batch(H * G)`。
+Parameter勾配では入力／出力のprofile微分への投影も使う。dXだけの逆向きpipelineと区別する。
+既存σ版のsource名・native ABIを直ちに一括変更する規則ではない。
+
+forward内で使うmoments・response・coeffsはregister／sharedでの局所完結を基本候補とする。
+backwardへ残す値はgroupごとに、完成response保存／moments保存からresponse再計算／Xから再計算を選ぶ。
+responseは振幅勾配・出力中心勾配で再利用するが、入力中心勾配にはresponseだけでは足りない。
+同じmomentsを複数blockが生成する場合はglobalへの保存担当も定義する。
+保存精度は現時点で固定しない。FP64で集計することとglobalへFP64保存することを区別する。
+全momentsと全responseを常に両方保存する前提にはしない。
+
+**担当はradiusから決まる階層とtileでまとめ、sortして割り振る。**
+
+radiusの生値ごとに別々の小groupを作る意味ではない。階層・周期・入出力tileなど、
+同じ基盤を共有できるキーでatomをまとめる。大きさ別に処理方式とデータ移動を分け、
+完成responseの再利用を近づける。元atomの値は複製せず、sortされた元行indexとgroup範囲を使う。
+周期を区別する必要がある場合のキー候補は`(h_out,h_in,K_out,K_in,q_out,q_in)`。
+同じ入力窓のmoments共有と、同じatomの完成Hを複数の出力先で使うことは区別する。
+異なるatomが同じH値になるとは仮定しない。
+blockへ渡すtile群には、そのatomのresponseを完成させる全依存範囲を含める。
+group全体が一つのblockに収まることは要求せず、各blockへatom／batchの担当を分けても
+response完成前に段階をまたがない規約を守る。
+
+### support_widthとone-hot近似の設計方針
+
+2026-10-28合意。σという制御値と実際の集中幅を区別する。コードでは次の名前を使う。
+現時点では設計上の名前であり、公開SpecやCUDA引数へ追加済みではない。
+
+| 名前 | 意味 |
+| --- | --- |
+| `support_width` | 確率の`1 - support_eps`以上を含む、中心まわりの最小区間の全幅 |
+| `support_radius` | `support_width / 2`。同じ物理座標単位の半幅 |
+| `support_eps` | 選んだ幅の外に漏れる確率の総量。Mなどのprofile設定から導出し、必要ならその上限で報告する |
+
+**2026-10-28の最新方針：Mを設定し、その設定で実現するsupport_epsを求める。**
+99%／99.9%などのεを一律の必須条件として固定し、Mを自動的に増やす設計にはしない。
+Mは計算量・保存量と集中度の調整項目とする。現在のprofileではM自体が数学的な関数を変えるため、
+別Mは同じ固定関数の丸め精度だけを変える設定ではない。
+最小幅では評価する区間幅を`support_width=spacing`とし、実現する中心セル確率を報告する。
+Mだけで一意に決まるのではなく、σ・周期P・profile設定・評価幅を揃えて比較する。
+
+非負のprofileを一周期Pで面積正規化した密度をf、中心をμとし、
+中心からの周期距離で区間を取る。運用上はwを指定し、漏れを次で求める。
+
+\[
+ \varepsilon(M,\sigma,P,w)
+ =1-\int_{-w/2}^{w/2}f(\mu+t;M,\sigma,P)\,dt.
+\]
+
+逆にεから対応する幅を調べる場合、`support_radius`は次の最小のrになる。
+
+\[
+ r_\varepsilon=\min\left\{r\in[0,P/2]:
+ \int_{-r}^{r}f(\mu+t)\,dt\ge1-\varepsilon\right\},
+ \qquad w_\varepsilon=2r_\varepsilon,
+ \qquad\varepsilon=\texttt{support_eps}.
+\]
+
+区間外の**合計**を表す量であり、各siteにεずつ漏れるという意味ではない。
+有限Fourierの非負profileでは周囲の区間を全て厳密な0にはできないため、
+この名前のsupportは有効支持区間を意味する。セル積分と面積正規化は維持する。
+次節のCPU調査に残す`ε=1e-3`の逆算は過去の試算であり、採用条件ではない。
+Mの選択では、漏れに加えて振幅・入力・寄与の重なりと出力／勾配への影響も見る。公開既定値は未変更。
+既存の`tail_bound=1e-3`とは同じ量ではない。
+既存の`tail_bound`はprofile値の裾の条件で、区間外の確率積分を直接指定しない。
+既存の集中半径`I=effective_radius(...)`とも区別し、Iをそのまま`support_radius`と改名しない。
+
+#### 最小幅と階層・directの使い分け
+
+- 最小幅では`support_width <= spacing`を満たせることを設計条件とする。
+  中心がsite中央にあるとき、そのセルの確率は`1 - support_eps`以上となる。
+  中心がセル境界に動いたときは隣接セルへ滑らかに分配する。全ての中心位置でone-hotとはしない。
+- 表現・分割の最小単位は1 siteとし、合体数を指定できる階層を考える。
+  最初の比較は2子ずつまとめる`1 -> 2 -> 4 -> 8 -> ...`を基準とする。
+  全1-site nodeについてFourier基底表をglobalに生成することを要求しない。
+  数学的なprofile周期と、blockが処理するtile／chunkの大きさも区別する。
+- 集約が割に合わない範囲ではXから直接Hを作る。再利用が得になる範囲ではZからHを作る。
+  どちらも`H[b,a] = sum_i X[b,i] * p[a,i]`を計算し、Hを出力への寄与に使う。
+  Hを論理的に経由することは、全Hをglobal Tensorへ保存することを意味しない。
+- 同じ入力窓を使うatomをまとめ、3タイルの集約からH生成までを同じblock内で処理する候補を持つ。
+  集約値の共有はshared、各threadのHはregisterを基本候補とし、global Rxを必須としない。
+  blockをまたぐ出力集計と、backward用に残すZ／X等の寿命は別途設計する。
+- directと階層版は同じセル確率・正規化・微分を使う。同じprofileをdirect評価しても集中幅は変わらない。
+  `support_eps`だけからY・dX・Parameter勾配の誤差上限が決まるとはしない。
+  外側を0と近似する場合も、その近似を含む演算と勾配を明示して独立検証する。
+- directへ切り替えるsite数／再利用量は、同じ数学条件の完全step時間とallocated／reservedで決める。
+  batch・atom分布・group内のatom数も測り、σだけで固定的に担当thread数を決めない。
+
+#### support_radiusを主語にする公開API方針
+
+2026-10-28のユーザー指定。新しいsupportベースの契約では、公開の幅を`support_radius`とし、
+`support_width = 2 * support_radius`を併せて扱う。σを全profile共通の物理半径とみなさない。
+Mと半径・周期から得られる漏れを`support_eps`として報告する。εからMを自動的に増やさない。
+
+| profile | 新APIで扱う幅と範囲 |
+| --- | --- |
+| Triweight等のcompact profile | `support_radius`は厳密に0となる境界までの半径 |
+| 有限Fourier profile | `support_radius`は評価する有効支持区間の半幅。外の確率は`support_eps`で報告 |
+| Gaussian | 標準偏差σを維持。有限半径を自動付与せず、今回の有限support階層最適化の対象外 |
+
+Gaussianをライブラリから削除する方針ではない。既存の正確な参照経路を維持する。
+Gaussianを有限範囲へ打ち切る別契約を将来追加する場合は、その近似と勾配を明示する。
+compactでも旧σと半径の換算はprofileごとに確認する。現TriweightではR=σだが、
+QuadraticBSplineではR=sqrt(6)*σであり、全profileで同じ数値へ改名できるわけではない。
+
+新APIの設計名は`RadiusBounds(minimum, birth, maximum, upper_floor)`、
+`input_radius_bounds`／`output_radius_bounds`とする（いずれも未実装の案）。
+値は入力・出力／各軸の物理座標単位の半径。最小有効全幅をspacingにするなら
+`radius_min = spacing / 2`であり、旧`σ_min=spacing`と同じ数値ではない。
+幅の意味は数学的なSpecとcheckpointの識別情報へ残し、CUDA Recipeだけの設定にしない。
+同じprofileのTorch/CUDA・direct/階層は、その半径の意味とセル確率を共有する。
+
+**Fourier密度の半径入力候補（CPUのみ確認、まだ採用・実装していない）：**
+旧`effective_radius(σ,P)`を通さず、Chebyshev式の集中半径IへRを直接渡す。
+
+\[
+ \beta=\sec(\pi R/P),\qquad
+ g_R(t)=\left[\frac{T_M(\beta\cos(\pi t/P))}{T_M(\beta)}\right]^2,
+ \qquad f_R(t)=\frac{g_R(t)}{\int_{-P/2}^{P/2}g_R(s)\,ds}.
+\]
+
+候補の局所範囲は`0<R<=P/3`として調べた。旧σからの集中半径下限補正はこの式には含めない。
+`support_eps = 1 - integral_{-R}^{R} f_R(t) dt`をM・R・Pから求める。
+同じ有限Fourier密度なので、セル積分のatom係数／site基底への分離は維持できる。
+`R=spacing/2,P=3*spacing`のCPU数値積分では、中心siteの確率は
+M6/8/10で約0.988407/0.998506/0.999815になった。
+M8でも約99.85%という結果は、以前の`σ=spacing`の結果とは異なる幅契約によるもので、
+同じ演算の高速化や、既存CUDAの検証済み結果とは扱わない。
+256/512点の独立Gauss–Legendre積分と3セルの確率和1を確認し、
+式・条件・script hash・結果をignored `output/support-design-20261028/radius-candidate*`へ保存した。
+この候補でも階層でPが切り替わる際のprofile変化は別途検討する。
+
+Polarの(s,t)から振幅・activityを出す更新則は維持する。
+新契約ではactivityから決める幅の出力をRとして宣言し、そのboundsとprofileを同じ意味で接続する。
+これは旧σの数値を黙って半径と読む変更ではなく、新しい数学的な契約／revisionである。
+既存モデル・optimizer state・旧σ版は比較・再現用に残す。Parameter／momentの読み替えを伴う
+checkpoint変換は、必要になった場合に明示的な変換として独立に検証する。
+全σ名の一括置換や新API対応前の既存selectorへの自動採用は行わない。
+
+実装順は半径の宣言・serialization → Torchのセル確率と勾配参照 → CUDA対応・独立勾配gate →
+同条件の完全step／メモリ比較とする。公開READMEは対応実装が揃った時点で更新し、
+この設計案を現在使えるAPIとして例示しない。
+
+#### 合体数・Z開始階層・周期倍率の明示設定（2026-10-28合意）
+
+以下の固定K設定例は先行提案である。
+最新指定の`K=ceil(2R/T)`が優先し、固定倍率で同じ基底を共有する説明はKが一致するgroup内に適用する。
+偶数KやK=1を旧実装だけの制約で新契約から除外せず、最新の窓規約として検討・検証する。
+
+次の3項目は明示指定できる設計とする。以下は設定の擬似コードであり、新しい公開APIの実装ではない。
+Mはprofile側で別に指定する。入力・出力それぞれに適用する設定として扱う。
+
+```python
+hierarchy = {
+    "base_tile_sites": 1,
+    "merge_factor": 2,       # 親を作る子タイル数。2に固定しない。
+    "period_tiles": 3,       # local周期 P / tile幅 T。全local階層で同じ整数倍率。
+}
+compute = {
+    "z_start_level": "auto", # 0以上の整数で固定もできる。例: 2。
+}
+```
+
+各軸のsite間隔をd、最小site数をn_0、合体数をr、周期倍率をKとすると、
+
+\[
+ n_h=n_0 r^h,\qquad T_h=d\,n_h,\qquad
+ P_h=2L_h=K T_h.
+\]
+
+`merge_factor`は2以上の整数、`period_tiles`は正の整数の定数倍率として扱う。
+例としてr=2なら1/2/4/8 sites、r=3なら1/3/9/27 sitesとなる。
+現在のwhole-tile窓で中心tileと左右同数を保持する初期実装では、localのKは3以上の奇数から対応する。
+K=1は全周を覆うrootの特例とする。偶数Kを扱うなら先に窓の配置規約を定義する。
+Kを変えても旧`σ<=T`分類をそのまま適用できるとはしない。profileの集中範囲と窓の対応を再確認する。
+最後にlocal周期がchart周期Qへ収まらなくなる場合は、P=Qの全周rootを別に定義し、
+周期だけを黙って切り詰めない。
+
+**z_start_levelはZを使う演算を始める階層であり、下位階層のatom計算を省く指定ではない。**
+例えばr=2・`z_start_level=2`なら、1/2-site階層のatomはXからdirectでHを作り、
+4-site以上の階層では生成したZを利用する。各atomの数学的な所属・P・profile係数は同じままにする。
+上位Zのために下位Zが必要な場合も、開始階層をXから直接生成する方法と、
+必要な子だけを作る方法を選べる。未使用の全1-site Z表を常に確保する設計にはしない。
+出力側の小幅profileも同じ規約のセル積分で直接展開し、入力側のdirect指定からCの保持方式を勝手に変えない。
+
+自動選択の候補は、M、batch数、階層／ownerごとのatom数、対象site数、入出力での再利用、
+Z／Cの保存量を使って見積もり、同条件の完全step実測で較正する。
+Mが大きい小タイルでは基底生成・保存が割高になり得るが、Mだけでは再利用量は分からない。
+`auto`が解決した開始階層は実行計画と測定結果へ残し、整数指定で再現・比較できるようにする。
+既定selectorやGPU計測による自動探索を実装済みとは扱わない。
+
+**周波数が一致するmodeだけ継承する。** Kが全階層で一定なら`P_parent=r*P_child`なので、
+親harmonic kを子から継承できるのはkがrの倍数の場合で、子harmonicはk/rになる。DCも継承できる。
+それ以外のmodeはその親区間について直接生成する。子タイルをr個足すだけで
+全modeの親Zが完成するとはしない。原点・周期端の位相規約も揃える。
+
+`merge_factor`やKを変えることでatomの所属周期が変わる場合、その設定はprofileを含む数学的宣言側に置く。
+`z_start_level`やthread配分は実行Recipe／解決済み計画側に置き、変更してもYと正しいbackwardは同値とする。
+これにより、GPUごとに開始階層を変えても学習対象のprofileを変えずに済む。
+
+現CUDAはpower-of-two／2子マージ・K=3または全周root・既存presetの開始規則で動いており、
+上の一般化は未実装。r=3などを指定しても黙ってr=2へ丸めない。
+site数をrで割り切れない場合の端タイルは追加設計が必要で、対応前はその組合せを明示的に拒否する。
+例えばN1024でr=3の多階層を使えると現時点で保証しない。
+
+#### 現実装との違いと、次に決める順序
+
+現M8・最小tile入力4／出力8 sites・σ_min=spacingでは、中心がsite上にある場合の
+中心セル確率は入力約0.57284、出力約0.30901であり、one-hot近似を保証しない。
+これはCPU FP64セル積分参照の確認で、GPUの性能測定ではない。
+ignored `output/cell-mass-hc-20261028/profile-width-check.json`に全セル値・条件・source hashを保存した。
+
+1. M・σ・Pと評価幅を明示し、導出される`support_eps`、中心位置の移動・周期端でのセル確率を調べる。
+2. 新しい半径契約では`support_radius=spacing/2`を最小幅の基準に、
+   Mごとの集中度・保存量・演算量を比較する。数学的な関数を変更する設定は明示する。
+   旧σ契約の意味とPolarの更新則は保存し、新契約へ黙って読み替えない。
+3. 指定合体数の階層と最新の`2L=ceil(2R/T)T`規約に従い、radius分類とtile窓の実装・検証を進める。
+   最初の比較は合体数2。既存の固定`P=3T`と`σ<=T`を新しい規約へ混用しない。
+4. 同じprofileのdirect／階層経路とRxをglobal保存しない融合候補を比較し、
+   Y・dX・全atom勾配の検証後、batchを揃えた単層stepとMNIST完全stepで速度・メモリを測る。
+
+名前と集中条件・実行方針は合意済み。次節にεと最小幅profileのCPU検証済み候補を示す。
+階層への対応式・実行方式の切替点・新しい高速経路は未確定・未実装。
+以降のσ分類式と実測表は、既存profile設定の実装・履歴として保持する。
+
+#### 最小幅の具体候補とCPU検証（2026-10-28）
+
+最初の試算では`ε=1e-3`を**各軸profile**に指定して逆算した。
+最新方針はMからεを求める向きであり、この値を全Mへ要求しない。
+既存ChebyshevSquareのσ・半径補正・面積正規化はそのまま使い、
+最小の数学tileを入力／出力とも1 site、`T_min=d=spacing`、`P_min=3d`にする候補である。
+`sigma_min=d`とPolar更新則は変更しない。
+
+セル積分は既存Fourier係数から厳密に評価できる。生密度を
+`g(t)=c_0 + 2 sum_{k=1}^M c_k cos(2 pi k t/P)`、正規化係数を`P*c_0`とすると、
+中心まわりの幅wに含まれる確率は次になる。
+
+\[
+ F(w;\sigma,P,M)=\frac wP+
+ \frac2\pi\sum_{k=1}^M\frac{c_k}{k c_0}
+     \sin\left(\frac{\pi k w}{P}\right).
+\]
+
+主に報告する量は`support_eps = 1-F(support_width)`である。
+逆算では`F(w)>=1-eps`となる最小wを求められる。
+このCPU調査ではwを二分探索したが、各GPU threadが毎回二分探索する実装を提案するものではない。
+既存式では`σ=T_min=d`のとき`I=d`、`beta=sec(pi/3)=2`。
+そのためこの最小幅での分布は`tail_bound`によらず、Mと`P/d=3`で決まる。
+
+最小幅`σ=d,P=3d,support_width=d`で得られる漏れは次のとおり。
+
+| M | 中心セル確率 F(d) | 導出されるsupport_eps |
+| --- | ---: | ---: |
+| 8 | 0.983139494 | 0.016860506 |
+| 10 | 0.992182317 | 0.007817683 |
+| 12 | 0.996328216 | 0.003671784 |
+| 14 | 0.998259056 | 0.001740944 |
+| 16 | 0.999168538 | 0.000831462 |
+
+次はε=1e-3を指定して幅を逆算した比較であり、採用の合否表ではない。
+
+| M（密度の最高harmonic） | 中心セル確率 F(d) | support_width / d（ε=1e-3） | 試算上の99.9%条件 |
+| --- | ---: | ---: | --- |
+| 8 | 0.983139494 | 1.326919440 | 不成立 |
+| 14 | 0.998259056 | 1.046529146 | 不成立 |
+| **16** | **0.999168538** | **0.985760957** | **成立** |
+| 18 | 0.999600612 | 0.934395316 | 成立。現nativeの上限16の外 |
+
+M=4..64の偶数を調べた範囲では、ε=1e-2/1e-3/1e-4/1e-5を初めて満たすMは
+それぞれ10/16/22/30だった。これは`σ=d,P=3d`という候補に対する結果である。
+M16・1-siteはε=1e-3についてCPU検証した例であり、M16やM10を採用する決定ではない。
+全階層をM16にして高速になるという判断や、現在のM8 presetへの自動置換は行わない。
+input/outputの両profileに各εを指定した場合、中心位置が両方site上でも
+2次元積の中心セル対の確率はこの候補で約0.998337767である。
+積全体にε_totalを要求する場合は`(1-eps_in)*(1-eps_out)>=1-eps_total`を別途満たす必要がある。
+
+独立検証では、係数／FFTを使わない生Chebyshev密度のGauss–Legendre積分と照合した。
+128/1024 sites、spacing=1/0.125/0.37、原点の移動、中心のセル内移動・境界・torus端を含む21ケースで
+確率和1・丸め誤差内の非負を確認。セル積分の最大差は約1.12e-15、積分次数256/512間の差は約3.78e-15。
+中心がセル境界なら隣接セルの値は各0.5となる。中心微分のautogradと独立積分の有限差分は
+spacingを掛けた絶対差で約1.03e-9以内。CUDAのY/dX/全atom勾配検証を完了したとは扱わない。
+script・全条件・結果・source hashはignored `output/support-design-20261028/`に保存した。
+
+**εはampを含む演算誤差でも評価する（2026-10-28追加）。** M16は99.9%という試算条件を
+満たす候補であり、全階層の採用値ではない。同じ最小周期でM8/12/14の中心セル確率は
+約98.314/99.633/99.826%。許容漏れを小さくする前に、その漏れが実際の振幅でどれだけ効くかを調べる。
+one-hotへの入力投影の比較では、中心セル外の確率がε以下なら、各atomについて
+
+\[
+ |H_a-X_{i_a}|\le\varepsilon\max_i|X_i-X_{i_a}|.
+\]
+
+振幅を掛け、同じ非負・和1の出力profileへ展開する場合、この入力側差の出力L1ノルムは
+`abs(amp_a)`倍以下になる。出力profile側の漏れと複数atomの集積は別途含める。
+これは近似を導入した場合のtask勾配の精度や、別Mの二つのprofileの誤差を自動保証する式ではない。
+
+同じN1024の凍結epoch3 checkpointをCPUで読み直すと、`abs(dense W)`の中央値／最大は
+約0.028686／0.450348、RMSは約0.052644。一方`abs(atom amp)`は中央値約0.798768、
+最大約1.137184、RMS約0.801817で、約31.4%のatomが絶対値1を超える。
+面積正規化profileでは`W[o,i]=sum_a amp[a]*u[a,o]*v[a,i]`であり、atomのampとdenseの1要素は
+同じ尺度ではない。今回のamp上限は既存初期化で実効WのRMSを1/sqrt(N)へ合わせて較正した値。
+新しい狭いprofileで同じW尺度を比較するときは初期振幅の較正もやり直し、
+旧profileのamp分布をそのまま将来の一般則にしない。Polar更新則自体は維持する。
+checkpoint SHAと分位値はignored `output/support-design-20261028/amplitude-scale.json`に保存した。
+
+**以下は先行する固定K案の診断である。最新のceil規約は冒頭の指定を使う。**
+現行の`σ<=T`の境界を越えてPを2倍にすると、
+同じMでもprofile自体が変わる。M16でσ/dが1の直前／直後の場合、
+中心セル確率は約0.999169から0.972562へ、`support_width/d`は約0.985761から1.423331へ跳ぶ。
+これはdirect／階層という同じ演算の実行方式の切替とは別であり、
+`support_width`がσに滑らかに対応する設計として分類まで確定したとはしない。
+新実装では最新のradius・ceil規約に対して成立性と値を検証し、この固定K案の診断をそのまま流用しない。
+
+**保存量の制約：** 1-site階層をそのまま全global表にすると、N1024では各軸2045 nodes。
+M16の33基底をB32・FP64で全保存するとZだけで各軸17,276,160 bytes（約16.476MiB）になる。
+これは容量計算でありGPU peakの実測ではない。最下位はXそのものを使うdirect候補とし、
+集約が得になる階層から必要なZだけを生成する。全node表を確保してmaskで演算を省くだけでは
+この保存量は減らない。binary階層の概念と、実際に生成・保存するnodeを区別する。
+最小の3セル窓をdirect評価してHを作る場合も、小さい裾を含めた同じ3セル確率を使えば面積和1を保てる。
+εを理由に周辺セルを黙って切り捨てたり、Hを単純なXのコピーに置き換えたりしない。
 
 ### 実装の配置と、新しい階層版の段階
 
@@ -2685,6 +3068,9 @@ q_out[0], ..., q_out[Dout-1], q_in[0], ..., q_in[Din-1])`の辞書順。
 中心の所属キーと、支持が重なる全タイルの集合は別である。
 
 ### sigmaから階層と周期を決める規約
+
+以下は測定済みの既存profile設定に対する規約である。
+次の[one-hot近似の設計方針](#support_widthとone-hot近似の設計方針)を実装済みとは扱わない。
 
 #### 既存profileとsigmaを維持する
 
