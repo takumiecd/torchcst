@@ -340,7 +340,46 @@ privateな`z^j/u^j`は各9要素。M8以外は従来の汎用計算へ進み、o
 hostの1,632条件で前段との係数・微分を照合し、別の102条件を独立70桁多項式oracleへ照合した。
 後者の誤差は`|Δc|P<=2.64e-16`、`|Δdr|P²<=5.82e-15`。
 R/Pが0または0.5へ近づく場合も含み、M8以外の差は0だった。
-これはCPUでの数式検証であり、GPUの正しさ・完全stepの採否は後続実測で決める。
+このhost検査と、以下のGPU検査・完全step測定を分けて記録する。
+
+**GPU検証と採用判断：** L4で149テストが成功した。N128・A819のFP32/64について、
+追加のmemcheckは0 errors、racecheckは0 hazards（各2ケース）。
+同じL4で前段の固定DFT版→多項式版→多項式版→固定DFT版の順に、
+既存runnerをfresh processから実行した。各2回、warmup3・21サンプルである。
+
+| 係数の求め方 | fresh process 1 ms | fresh process 2 ms | peak allocated / reserved bytes |
+| --- | ---: | ---: | ---: |
+| M8固定標本・DFT（前段） | 16.516910 | 16.466935 | 291328 / 2097152 |
+| M8正の多項式 | 10.282051 | 10.274260 | 291328 / 2097152 |
+
+denseは同じ4実行で0.725859〜0.752762ms、allocated/reservedは17313280/23068672 bytes。
+多項式版をこの半径版のM8候補として採用する。完全stepは前段から約1.60倍速く、
+最初の汎用DFT版の約34.2msからは約3.3倍だが、denseの約14倍の時間であり速度目標は未達である。
+これはN128/B4の研究fixtureの結果で、MNISTや半径版N1024へ外挿しない。
+Graph・全GPU process総量は未測定。数学定数以外のglobal保存表を増やしていない。
+
+`cuobjdump`のblock_local register数は255→130、atom勾配は218→93へ減った。
+stackはそれぞれ1376/1112 bytesで前段と同じ。これはcompilerのresource情報で、
+Torch allocator peakやGPU process全体のメモリ量とは異なる。
+別計装のstepはforward/loss約5.19ms、backward約5.42ms、optimizer約1.95ms。
+計装値を完全stepへ足したり差し引いたりしない。
+
+旧版を次に参考にする箇所も明確である。
+`cell_mass_hierarchical/contraction.cu`の32atom単位のshared係数再利用と、
+`common.cuh::HarmonicStream`の1回のsincosからの位相漸化式は移植候補になる。
+各threadが別atomの係数を作り、共有したchunkからmode別にCを集約すれば、
+現在の`radius_cell_mass/hybrid.cuh::compact_coefficient_tile`の1 threadによるatom直列走査を減らせる。
+これらは未実装。完成responseを使う順序、48KiB予算、保存値のsingle writer、
+radius版固有のP・tile窓を保った別の変更として検証する。
+旧版のσからのbeta変換、固定tail／bank、globalなwindow-moments追加表は自動的に持ち込まない。
+
+job=`l4job-21b44424ff0e4eaaa751dac050951d80`、committed source=`494c1243`、
+snapshot SHA256=`000f4fe707298a6db8ae3962ce69963d47a0832fa79ac179a465cb955dbaa6e2`、
+result archive SHA256=`88a02b8038fc5e7bf52a804b0f5fed2d1e5942feb718e4ab599c30458b012d42`。
+native module=`torchcst_radius_cell_mass_1ca51a7c912d`、binary SHA256=
+`df616996d2e10c1d37f9e40c540421aa839d3812444558afac989163c2f3c64c`。
+raw結果・両版のnative source照合・resource情報・sanitizer・oracle・receiptは
+ignored `output/radius-optimize-20261028/`に保持する。元のDFT候補もcommit `bde973ff`から復元できる。
 
 **先行候補（対称融合前）の検証結果：** CPU全体2,355 passed／5,671 skipped／既存警告18件。
 L4で旧参照と新候補を含む106件成功（宣言等31件、CUDA実行75件）。
