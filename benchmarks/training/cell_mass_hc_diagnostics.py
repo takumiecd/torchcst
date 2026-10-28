@@ -178,7 +178,16 @@ def _layer_diagnostics(layer, batch_size, grain, cap, batch_tile):
     }
 
 
-def diagnose(model, batch_size=32, grain=256, cap=128, *, batch_tile=4):
+def diagnose(
+    model,
+    batch_size=32,
+    grain=256,
+    cap=128,
+    *,
+    batch_tile=4,
+    reuse_sigma_decode=False,
+    known_input_bank=False,
+):
     """Return JSON-safe actual live-layout work statistics for all CST layers."""
     if type(batch_size) is not int or batch_size < 1:
         raise ValueError("batch_size must be positive")
@@ -188,6 +197,8 @@ def diagnose(model, batch_size=32, grain=256, cap=128, *, batch_tile=4):
         raise ValueError("cap must lie in [1,256]")
     if type(batch_tile) is not int or batch_tile not in (4, 8):
         raise ValueError("batch_tile must be 4 or 8")
+    if type(reuse_sigma_decode) is not bool or type(known_input_bank) is not bool:
+        raise ValueError("exact H/C reuse switches must be bool")
     layers = {}
     for name, layer in model.named_modules():
         if (
@@ -214,7 +225,15 @@ def diagnose(model, batch_size=32, grain=256, cap=128, *, batch_tile=4):
     native = _extension()
     resources = {
         str(tile): dict(
-            zip(resource_fields, native.hc_kernel_resources(tile), strict=True)
+            zip(
+                resource_fields,
+                native.hc_reuse_kernel_resources(
+                    tile, reuse_sigma_decode, known_input_bank
+                )
+                if reuse_sigma_decode or known_input_bank
+                else native.hc_kernel_resources(tile),
+                strict=True,
+            )
         )
         for tile in (4, 8)
     }
@@ -224,6 +243,8 @@ def diagnose(model, batch_size=32, grain=256, cap=128, *, batch_tile=4):
         "scope": "untimed live sorted GPU layout copied to CPU; payload bytes are not allocator peaks",
         "batch_size": batch_size,
         "batch_tile": batch_tile,
+        "hc_reuse_sigma_decode": reuse_sigma_decode,
+        "hc_known_input_bank": known_input_bank,
         "cta_threads": 32,
         "grain": grain,
         "cap": cap,

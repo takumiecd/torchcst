@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 
 _SITE_SCALED_TUNING = re.compile(
-    r"site_scaled_hc(4|8)_g(64|128|256|512|1024)_cin(256|512|1024)(?:_slab(8|16))?"
+    r"site_scaled_hc(4|8)_g(64|128|256|512|1024)_cin(256|512|1024)(?:_slab(8|16))?(?:_(reuse_sigma|known_bank|exact_reuse))?(_active_z)?"
 )
 
 
@@ -56,6 +56,17 @@ class HierarchicalCellMassRecipe:
                 )
                 if tuning.group(4):
                     options["cin_batch_slab"] = int(tuning.group(4))
+                if tuning.group(5):
+                    options["hc_reuse_sigma_decode"] = tuning.group(5) in (
+                        "reuse_sigma",
+                        "exact_reuse",
+                    )
+                    options["hc_known_input_bank"] = tuning.group(5) in (
+                        "known_bank",
+                        "exact_reuse",
+                    )
+                if tuning.group(6):
+                    options["active_bank_z"] = True
             return options
         if self.preset == "validated_1024":
             return dict(

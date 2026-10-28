@@ -204,6 +204,26 @@ __device__ inline double wrapped_center(double center, const Axis &axis) {
     return value < 0 ? value + axis.period : value;
 }
 
+// Exact owner quantization shared with preparation. Preserve division/floor,
+// chart wrapping and the final-half-cell modulo convention.
+__device__ inline int owner_from_center(double center, const Axis &axis, int tile_sites) {
+    double relative = wrapped_center(center, axis);
+    int owner =
+        static_cast<int>(floor((relative + axis.spacing / 2) / (tile_sites * axis.spacing)));
+    return owner % (axis.sites / tile_sites);
+}
+
+// Width decode depends on these fields only, not the selected bank or centers.
+// Unequal laws retain two evaluations, even when their outputs happen to match.
+__host__ __device__ inline bool same_sigma_decode(const Axis &a, const Axis &b) {
+    return a.polar == b.polar && (!a.polar ||
+        (a.amplitude_max == b.amplitude_max && a.w_c == b.w_c &&
+         a.kappa == b.kappa && a.lower_kappa == b.lower_kappa &&
+         a.upper_decay_power == b.upper_decay_power && a.sigma_min == b.sigma_min &&
+         a.sigma_birth == b.sigma_birth && a.sigma_max == b.sigma_max &&
+         a.upper_floor == b.upper_floor));
+}
+
 __device__ inline Membership classify_axis(double sigma, double center, const Axis &axis) {
     int tile_sites = axis.min_tile_sites;
     int level = 0;
@@ -214,10 +234,7 @@ __device__ inline Membership classify_axis(double sigma, double center, const Ax
     if (3 * tile_sites > axis.sites)
         return {axis.full_level, 0};
 
-    double relative = wrapped_center(center, axis);
-    int owner =
-        static_cast<int>(floor((relative + axis.spacing / 2) / (tile_sites * axis.spacing)));
-    return {level, owner % (axis.sites / tile_sites)};
+    return {level, owner_from_center(center, axis, tile_sites)};
 }
 
 __device__ inline double integrated_basis(const Axis &axis, const Bank &bank, int mode, int site) {

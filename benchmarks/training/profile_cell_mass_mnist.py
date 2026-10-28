@@ -795,7 +795,13 @@ def main():
         cap = recipe_options.get("c_splits", 128)
         batch_tile = recipe_options.get("hc_batch_tile", 4)
         diagnostics = diagnose(
-            model, batch_size=32, grain=grain or 256, cap=cap, batch_tile=batch_tile
+            model,
+            batch_size=32,
+            grain=grain or 256,
+            cap=cap,
+            batch_tile=batch_tile,
+            reuse_sigma_decode=recipe_options.get("hc_reuse_sigma_decode", False),
+            known_input_bank=recipe_options.get("hc_known_input_bank", False),
         )
         report["hc_diagnostics_after_four_warm_updates"] = diagnostics
         torch.cuda.synchronize()

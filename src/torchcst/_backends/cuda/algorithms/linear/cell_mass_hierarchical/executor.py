@@ -243,7 +243,16 @@ def prepare_layout(plan, atoms, *, method="sort", signal=None, reverse=False):
     )
 
 
-def build_hierarchy(signal, axis, *, method="merge", team_size=4, chunk_sites=0):
+def build_hierarchy(
+    signal,
+    axis,
+    *,
+    method="merge",
+    team_size=4,
+    chunk_sites=0,
+    bank_masks=None,
+    mask_side=0,
+):
     """Return double Z[batch,node,1+2*M] for the banks declared by axis.
 
     One team cooperates on a single (node,batch,mode) sum. The merge route
@@ -277,6 +286,18 @@ def build_hierarchy(signal, axis, *, method="merge", team_size=4, chunk_sites=0)
         or (chunk_sites and chunk_sites & (chunk_sites - 1))
     ):
         raise ValueError("chunk_sites must be zero or a positive power of two")
+    if bank_masks is not None:
+        if not chunk_sites:
+            raise ValueError("masked hierarchy requires positive chunk_sites")
+        return _extension().build_hierarchy_chunked_masked(
+            signal,
+            axis.native_config(),
+            method == "merge",
+            team_size,
+            chunk_sites,
+            bank_masks,
+            mask_side,
+        )
     if chunk_sites:
         return _extension().build_hierarchy_chunked(
             signal, axis.native_config(), method == "merge", team_size, chunk_sites
@@ -286,13 +307,17 @@ def build_hierarchy(signal, axis, *, method="merge", team_size=4, chunk_sites=0)
     )
 
 
-def build_window_moments(z, axis):
+def build_window_moments(z, axis, *, bank_masks=None, mask_side=0):
     """Sum each owner's retained tiles in its periodic image, once per node.
 
     Run this only after the raw hierarchy is complete. The returned FP64 tensor
     has the same shape as Z, so pass windowed=True to every projection consumer.
     Neither hierarchy merge nor C expansion consumes this layout.
     """
+    if bank_masks is not None:
+        return _extension().build_window_moments_masked(
+            z, axis.native_config(), bank_masks, mask_side
+        )
     return _extension().build_window_moments(z, axis.native_config())
 
 
@@ -465,6 +490,8 @@ def compute_h_c(
     compensated=False,
     ragged=False,
     batch_tile=4,
+    reuse_sigma_decode=False,
+    known_input_bank=False,
 ):
     """Compute H and output C together for M8 axes; H uses the atom dtype."""
     if type(splits) is not int or not 1 <= splits <= 256:
@@ -477,6 +504,10 @@ def compute_h_c(
         raise ValueError("H/C batch tile must be 4 or 8")
     if batch_tile != 4 and not ragged:
         raise ValueError("larger H/C batch tiles require ragged C")
+    if type(reuse_sigma_decode) is not bool or type(known_input_bank) is not bool:
+        raise ValueError("exact H/C reuse switches must be bool")
+    if (reuse_sigma_decode or known_input_bank) and not ragged:
+        raise ValueError("exact H/C reuse requires ragged C")
     if plan.input.modes != 8 or plan.output.modes != 8:
         raise ValueError("fused H/C requires M8 axes")
     _validate_compensated(compensated, atoms, atoms.dtype, plan.input)
@@ -486,6 +517,22 @@ def compute_h_c(
     )
     layout.validate_for(atoms, plan)
     native = _extension()
+    if reuse_sigma_decode or known_input_bank:
+        return native.compute_h_c_ragged_exact(
+            atoms,
+            layout.rows,
+            layout.groups,
+            layout.offsets,
+            zx,
+            plan.input.native_config(),
+            plan.output.native_config(),
+            splits,
+            atoms_per_split,
+            windowed,
+            batch_tile,
+            reuse_sigma_decode,
+            known_input_bank,
+        )
     if ragged:
         if batch_tile != 4:
             return native.compute_h_c_ragged_batched(
@@ -907,18 +954,35 @@ class _HierarchicalLinear(torch.autograd.Function):
         release_workspaces,
         hc_atoms_per_split,
         cin_batch_slab,
+        hc_reuse_sigma_decode,
+        hc_known_input_bank,
+        active_bank_z,
     ):
+        bank_masks = (
+            _extension().prepare_bank_masks(
+                layout.groups,
+                layout.offsets,
+                plan.input.native_config(),
+                plan.output.native_config(),
+            )
+            if active_bank_z
+            else None
+        )
         zx = build_hierarchy(
             x,
             plan.input,
             method=z_method,
             team_size=team_size,
             chunk_sites=z_chunk_sites,
+            bank_masks=bank_masks,
+            mask_side=0,
         )
         if window_moments:
             # The assignment releases raw Z after the transformation. Save only
             # the immutable owner windows needed by H and parameter gradients.
-            zx = build_window_moments(zx, plan.input)
+            zx = build_window_moments(
+                zx, plan.input, bank_masks=bank_masks, mask_side=0
+            )
         if fuse_h_c and plan.input.modes == 8 and plan.output.modes == 8:
             h, c = compute_h_c(
                 plan,
@@ -931,6 +995,8 @@ class _HierarchicalLinear(torch.autograd.Function):
                 compensated=compensated_values,
                 ragged=ragged_c_splits,
                 batch_tile=hc_batch_tile,
+                reuse_sigma_decode=hc_reuse_sigma_decode,
+                known_input_bank=hc_known_input_bank,
             )
         else:
             h = compute_h(
@@ -992,6 +1058,7 @@ class _HierarchicalLinear(torch.autograd.Function):
             layout.offsets,
             layout.reverse_slots,
             layout.reverse_offsets,
+            bank_masks,
         )
         if ctx.needs_input_grad[1]:
             # Polar reprojects H in FP64 registers for its task pullback.
@@ -1003,9 +1070,16 @@ class _HierarchicalLinear(torch.autograd.Function):
     @staticmethod
     @torch.autograd.function.once_differentiable
     def backward(ctx, dy):
-        atoms, rows, groups, offsets, reverse_slots, reverse_offsets, *forward_state = (
-            ctx.saved_tensors
-        )
+        (
+            atoms,
+            rows,
+            groups,
+            offsets,
+            reverse_slots,
+            reverse_offsets,
+            bank_masks,
+            *forward_state,
+        ) = ctx.saved_tensors
         plan = ctx.plan
         layout = PreparedLayout(
             rows,
@@ -1026,9 +1100,13 @@ class _HierarchicalLinear(torch.autograd.Function):
             method=ctx.z_method,
             team_size=ctx.team_size,
             chunk_sites=ctx.z_chunk_sites,
+            bank_masks=bank_masks,
+            mask_side=1,
         )
         if ctx.window_moments:
-            zy = build_window_moments(zy, plan.output)
+            zy = build_window_moments(
+                zy, plan.output, bank_masks=bank_masks, mask_side=1
+            )
         dx = datoms = cin = None
         if ctx.needs_input_grad[1] and plan.input.polar is not None:
             (zx,) = forward_state
@@ -1152,6 +1230,9 @@ class _HierarchicalLinear(torch.autograd.Function):
             None,
             None,
             None,
+            None,
+            None,
+            None,
         )
 
 
@@ -1184,6 +1265,9 @@ def hierarchical_linear(
     release_workspaces=False,
     hc_atoms_per_split=0,
     cin_batch_slab=0,
+    hc_reuse_sigma_decode=False,
+    hc_known_input_bank=False,
+    active_bank_z=False,
 ):
     """Private research autograd route, using this forward's bank/owner choices.
 
@@ -1204,6 +1288,16 @@ def hierarchical_linear(
     Double backward and full-route CUDA Graph capture are not supported yet
     (preparation has dynamic output shapes and host checks).
     """
+    if type(active_bank_z) is not bool:
+        raise ValueError("active_bank_z must be bool")
+    if active_bank_z and (not z_chunk_sites or z_method != "merge"):
+        raise ValueError("active_bank_z prototype requires chunked merge moments")
+    if type(hc_reuse_sigma_decode) is not bool or type(hc_known_input_bank) is not bool:
+        raise ValueError("exact H/C reuse switches must be bool")
+    if (hc_reuse_sigma_decode or hc_known_input_bank) and not (
+        fuse_h_c and ragged_c_splits
+    ):
+        raise ValueError("exact H/C reuse requires fused ragged H/C")
     if type(fuse_h_c) is not bool:
         raise ValueError("fuse_h_c must be bool")
     if type(hc_batch_tile) is not int or hc_batch_tile not in (4, 8):
@@ -1316,4 +1410,7 @@ def hierarchical_linear(
         release_workspaces,
         hc_atoms_per_split,
         cin_batch_slab,
+        hc_reuse_sigma_decode,
+        hc_known_input_bank,
+        active_bank_z,
     )

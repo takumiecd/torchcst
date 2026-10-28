@@ -294,3 +294,42 @@ def test_cell_mass_cstlinear_cuda_matches_qualified_route_and_fft(n, plan):
     dx2, dp2 = torch.autograd.grad(y, (x, model.atoms.p), 2 * dy)
     torch.testing.assert_close(dx2, 2 * dx, rtol=3e-6, atol=2e-7)
     torch.testing.assert_close(dp2, 2 * dp, rtol=3e-6, atol=2e-7)
+
+
+@pytest.mark.parametrize(
+    "suffix,sigma,bank",
+    [
+        ("reuse_sigma", True, False),
+        ("known_bank", False, True),
+        ("exact_reuse", True, True),
+    ],
+)
+def test_site_scaled_exact_reuse_preset_codec(suffix, sigma, bank):
+    from torchcst._backends.schema import ExecutionPlan
+
+    recipe = HierarchicalCellMassRecipe("site_scaled_hc8_g64_cin512_slab16_" + suffix)
+    arguments = recipe.arguments()
+    assert arguments["hc_reuse_sigma_decode"] is sigma
+    assert arguments["hc_known_input_bank"] is bank
+    algorithm = HierarchicalCellMassAlgorithm()
+    algorithm.validate_recipe(recipe)
+    registry = get_registry()
+    plan = ExecutionPlan(algorithm.id, algorithm.revision, recipe)
+    assert registry.loads_plan(registry.dumps_plan(plan)) == plan
+
+
+@pytest.mark.parametrize("slab", ["", "_slab8", "_slab16"])
+@pytest.mark.parametrize("reuse", ["", "_reuse_sigma", "_known_bank", "_exact_reuse"])
+@pytest.mark.parametrize("batch_tile", [4, 8])
+def test_site_scaled_active_bank_preset_composes_with_exact_reuse(
+    slab, reuse, batch_tile
+):
+    from torchcst._backends.schema import ExecutionPlan
+
+    prefix = f"site_scaled_hc{batch_tile}_g64_cin512" + slab + reuse
+    baseline = HierarchicalCellMassRecipe(prefix).arguments()
+    recipe = HierarchicalCellMassRecipe(prefix + "_active_z")
+    assert recipe.arguments() == dict(baseline, active_bank_z=True)
+    registry = get_registry()
+    plan = ExecutionPlan("cuda_cell_mass_hierarchical", "v1", recipe)
+    assert registry.loads_plan(registry.dumps_plan(plan)) == plan

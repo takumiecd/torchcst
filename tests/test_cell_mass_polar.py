@@ -279,8 +279,12 @@ def test_polar_integrated_cuda_all_gradients(n, batch, split):
 
 
 @cuda_only
-@pytest.mark.parametrize("input_grad,atom_grad", [(True, True), (True, False), (False, True)])
-def test_polar_backward_local_release_preserves_retained_gradients(input_grad, atom_grad):
+@pytest.mark.parametrize(
+    "input_grad,atom_grad", [(True, True), (True, False), (False, True)]
+)
+def test_polar_backward_local_release_preserves_retained_gradients(
+    input_grad, atom_grad
+):
     from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
         hierarchical_linear,
     )
@@ -305,15 +309,22 @@ def test_polar_backward_local_release_preserves_retained_gradients(input_grad, a
     reference_targets = tuple(t for t in (xr, pr) if t.requires_grad)
     expected = torch.autograd.grad(yr, reference_targets, dy.cpu().double())
     for actual, repeated, reference in zip(first, second, expected):
-        torch.testing.assert_close(actual.cpu().double(), reference, rtol=3e-6, atol=2e-7)
+        torch.testing.assert_close(
+            actual.cpu().double(), reference, rtol=3e-6, atol=2e-7
+        )
         torch.testing.assert_close(repeated, -2 * actual, rtol=3e-6, atol=2e-7)
 
 
 @cuda_only
 @pytest.mark.parametrize("batch", [1, 5, 9])
 @pytest.mark.parametrize("release_workspaces", [False, True])
+@pytest.mark.parametrize(
+    "reuse_sigma,known_bank",
+    [(False, False), (True, False), (False, True), (True, True)],
+)
+@pytest.mark.parametrize("split", [False, True])
 def test_polar_ragged_hc_batch_tile_tails_match_oracle_and_retained_backward(
-    batch, release_workspaces
+    batch, release_workspaces, reuse_sigma, known_bank, split
 ):
     from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
         build_hierarchy,
@@ -323,7 +334,25 @@ def test_polar_ragged_hc_batch_tile_tails_match_oracle_and_retained_backward(
         prepare_layout,
     )
 
-    model = layer(count=37, dtype=torch.float32, device="cuda", site_scaled=True)
+    model = layer(
+        count=37, dtype=torch.float32, device="cuda", site_scaled=True, split=split
+    )
+    # Exact and adjacent boundaries, including final-half-cell wrap and
+    # negative/multiple chart images; every local tile boundary is covered.
+    with torch.no_grad():
+        edges = torch.tensor(
+            [-256.0, -0.5, 0.0, 3.5, 7.5, 15.5, 31.5, 63.5, 127.5, 128.0, 256.0],
+            device="cuda",
+        )
+        boundaries = torch.cat(
+            (
+                edges,
+                torch.nextafter(edges, torch.full_like(edges, -torch.inf)),
+                torch.nextafter(edges, torch.full_like(edges, torch.inf)),
+            )
+        )
+        model.atoms.p[: len(boundaries), 2] = boundaries
+        model.atoms.p[: len(boundaries), 3] = boundaries.flip(0)
     plan = hierarchy_from_operator(model.declaration())
     x = torch.randn(batch, 128, device="cuda", requires_grad=True)
     dy = torch.randn_like(x)
@@ -342,9 +371,26 @@ def test_polar_ragged_hc_batch_tile_tails_match_oracle_and_retained_backward(
             compensated=True,
             ragged=True,
             batch_tile=tile,
+            reuse_sigma_decode=reuse_sigma,
+            known_input_bank=known_bank,
         )
         for tile in (4, 8)
     ]
+    for tile, candidate_pair in zip((4, 8), hc):
+        baseline_pair = compute_h_c(
+            plan,
+            model.atoms.p,
+            layout,
+            rx,
+            splits=128,
+            atoms_per_split=256,
+            windowed=True,
+            compensated=True,
+            ragged=True,
+            batch_tile=tile,
+        )
+        for baseline_value, candidate_value in zip(baseline_pair, candidate_pair):
+            torch.testing.assert_close(candidate_value, baseline_value, rtol=0, atol=0)
     for base, candidate in zip(*hc):
         torch.testing.assert_close(candidate, base, rtol=3e-6, atol=2e-7)
     outputs = []
@@ -356,6 +402,8 @@ def test_polar_ragged_hc_batch_tile_tails_match_oracle_and_retained_backward(
             **arguments,
             hc_batch_tile=tile,
             release_workspaces=release_workspaces,
+            hc_reuse_sigma_decode=reuse_sigma,
+            hc_known_input_bank=known_bank,
         )
         first = torch.autograd.grad(y, (x, model.atoms.p), dy, retain_graph=True)
         second = torch.autograd.grad(y, (x, model.atoms.p), -2 * dy)
@@ -430,7 +478,9 @@ def test_polar_cin_slabs_match_unslabbed_oracle_and_retained_backward(batch, sla
     yr = oracle(model, xr, pr)
     reference = (yr, *torch.autograd.grad(yr, (xr, pr), dy.cpu().double()))
     for actual, expected in zip(outputs[1], reference):
-        torch.testing.assert_close(actual.cpu().double(), expected, rtol=3e-6, atol=2e-7)
+        torch.testing.assert_close(
+            actual.cpu().double(), expected, rtol=3e-6, atol=2e-7
+        )
 
 
 @cuda_only
@@ -472,3 +522,75 @@ def test_polar_pullback_does_not_retain_global_h():
     ) in shapes
     y.sum().backward()
     assert torch.isfinite(model.atoms.p.grad).all()
+
+
+@cuda_only
+@pytest.mark.parametrize("spacing,origin", [(1.0, 0.0), (1.1, 0.375)])
+@pytest.mark.parametrize("split", [False, True])
+def test_exact_hc_reuse_owner_boundaries_general_chart(spacing, origin, split):
+    from dataclasses import replace
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        build_hierarchy,
+        build_window_moments,
+        compute_h_c,
+        prepare_layout,
+    )
+
+    model = layer(
+        count=37, dtype=torch.float32, device="cuda", site_scaled=True, split=split
+    )
+    original = hierarchy_from_operator(model.declaration())
+    plan = replace(
+        original,
+        input=replace(original.input, spacing=spacing, origin=origin),
+        output=replace(original.output, spacing=spacing, origin=-origin),
+    )
+    period = plan.input.period
+    # Owner boundaries for every local bank plus full-chart/image limits.
+    edges = torch.tensor(
+        [
+            origin - 2 * period,
+            origin - spacing / 2,
+            origin,
+            *[origin + (tile - 0.5) * spacing for tile in (4, 8, 16, 32)],
+            origin + period - spacing / 2,
+            origin + period,
+            origin + 2 * period,
+        ],
+        device="cuda",
+    )
+    boundary = torch.cat(
+        (
+            edges,
+            torch.nextafter(edges, torch.full_like(edges, -torch.inf)),
+            torch.nextafter(edges, torch.full_like(edges, torch.inf)),
+        )
+    )
+    with torch.no_grad():
+        model.atoms.p[: len(boundary), 2] = boundary
+        model.atoms.p[: len(boundary), 3] = boundary.flip(0)
+    x = torch.randn(9, 128, device="cuda")
+    layout = prepare_layout(plan, model.atoms.p, method="sort", reverse=True)
+    rx = build_window_moments(build_hierarchy(x, plan.input), plan.input)
+    for tile in (4, 8):
+        kwargs = dict(
+            splits=128,
+            atoms_per_split=64,
+            windowed=True,
+            compensated=True,
+            ragged=True,
+            batch_tile=tile,
+        )
+        baseline = compute_h_c(plan, model.atoms.p, layout, rx, **kwargs)
+        for sigma, bank in ((True, False), (False, True), (True, True)):
+            actual = compute_h_c(
+                plan,
+                model.atoms.p,
+                layout,
+                rx,
+                **kwargs,
+                reuse_sigma_decode=sigma,
+                known_input_bank=bank,
+            )
+            for expected, candidate in zip(baseline, actual):
+                torch.testing.assert_close(candidate, expected, rtol=0, atol=0)
