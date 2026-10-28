@@ -81,6 +81,27 @@ atom Parameter を置き換えた場合は wrapper を作り直す。
 
 ## 現在の範囲
 
+CUDA FP32のPolarと1次元FlatTorus chartの組では、更新専用Planを明示して
+Polar更新と中心の周期折り返しをTritonで融合できる。
+
+```python
+from torchcst import FixedSelector, make_algorithm_registry
+from torchcst._backends.cuda.algorithms.polar_update.plans import FLAT_TORUS_FUSED
+
+optimizer = CSTOptimizer(
+    base_optimizer,
+    model=model,
+    update_selector=FixedSelector(FLAT_TORUS_FUSED, registry=make_algorithm_registry()),
+)
+```
+
+これは`atom_update`の実装選択であり、LinearのPlanとは独立する。2座標の中心を
+持つ連続FP32 `[atom_count, 4]`が対象で、ほかのgeometryやdtypeにはこのPlanを
+指定しない。既定は引き続きTorch参照経路。Adamのproposal・moments・step、
+勾配射影とstate adapter、異常値検査は共通wrapperが担当する。
+周期とPolar scalarはlive bufferから読み、設定変更時の宣言検証も維持する。
+既存のEuclidean用`FUSED`とは別Planで、周期版もeager実行を要求する。
+
 Linear / Conv2d の forward backend に依存しない。Euclidean trainable Chart は
 処理できる。trainable 非 Euclidean Chart は atom center と異なる更新契約が
 必要なので、専用 policy を追加するまで拒否する。

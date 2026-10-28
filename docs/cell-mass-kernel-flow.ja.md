@@ -265,13 +265,86 @@ PolarのTriton融合更新は既存`cuda/algorithms/polar_update/kernels.py::app
 FlatTorusの中心wrapは含まない。今回の中心更新は`flat_torus.retract`のremainderを保つ。
 CSTOptimizerの既定update Planは`torch_atom_update`で、Linear Planとは独立している。
 今回はそのTorch参照更新のままcacheの効果だけを分離した。
-周期座標への対応は既存fusionを拡張する候補だが、未実装・未計測であり、
+このcache比較を測った時点では周期座標への対応は未実装・未計測であり、
 Euclidean用FUSEDをそのまま有効化しない。Triton数値計算やPolar則自体は今回変更していない。
 
 source archive SHA256 `112d7ac51a29f6f508ef9b7e66c3579ad93e407a4cca0ce8cdfdd57cc05a3fe9`。
 source/tests/training494ファイルを照合、source/results/receiptなど73ファイルを
 `output/cell-mass-optimizer-cache-20261028/verified-run/`へ保存した。
 同親`analysis.json`と`complete-step.png`に比較を残す。所有GPU/pool supervisorは停止確認済み。
+
+#### FlatTorusのPolar更新を融合する（2026-10-28）
+
+更新専用Plan `cuda_flat_torus_polar_update_fused/v1`（`FLAT_TORUS_FUSED`）を追加した。
+既存のEuclidean `FUSED`の対応範囲と既定Torch経路は保ち、`CSTOptimizer`の
+`update_selector=`で選ぶ。LinearのPlan、profile、Z/H/C/G/dXの数値カーネルは変えない。
+
+AdamWが通常どおりproposalとmoments/stepを更新した後、Tritonの各laneが1atomを担当する。
+128atomのblockで、旧Polar座標とproposalを読み、接方向の変位、活動量による半径更新、
+半径正則化を計算し、2つの中心をそれぞれlive periodへ折り返してParameterへ直接書く。
+中心は参照実装と同じ`old + (proposal - old)`を経て`fmod`と符号補正を使う。
+`center - floor(center / period) * period`への置換や、幅への通常SGDは行わない。
+
+書込前には旧中心と中心変位の有限性を専用kernelで同時に検査する。
+blockごとの判定を4byteのint32 failure flagへまとめ、有効blockはatomic操作をしない。
+flagだけをhostへ戻して異常時は書込前に拒否する。論理workspace上限は4byteで、
+allocatorの割当単位とは区別する。旧座標snapshotは従来どおりatom数に比例する。
+全model勾配の事前検査、射影勾配・更新結果・transportしたmomentsの検査はwrapperが保つ。
+有限性検査の同期は残るため、このPlanもeager実行のみである。
+
+設定変更は従来どおりidentity/versionにより再検証し、kernel scalarとperiodをliveに読む。
+AtomUpdateContextにはgeometry bufferのdtype/device/numelも追加し、periodの配置が
+非対応になった場合はAdam更新前のPlan選択で拒否する。
+CPU全体検証は2,063 passed / 5,402 skipped / 既存警告18件。
+計測runtimeは`54c53958`、job `l4job-54f18e9e8a74457596f0fd62669b57a6`。
+比較元は固定layoutキャッシュ済みのTorch更新で、両群とも今回の共通metadata事前検査を使う。
+N1024/A52,428/B32、Q128/spacing=.125、σ_min=.125/σ_max=12.5、SITE_SCALED Plan、
+GPU常駐MNIST、同じ初期・epoch3 checkpointとoptimizer状態、同じAdamWを維持した。
+L4 / Torch2.11.0+cu130 / CUDA13.0 / Triton3.6.0、TF32/Graphなし。
+3epochの学習をもう一度回した結果ではなく、保存した学習状態からの完全step比較である。
+各群fresh process 2回、2回目は順序を反転し、21step窓3回の中央値を用いた。
+
+| 状態 / fresh process | Torch完全step ms | 融合後 ms | 短縮率 |
+| --- | ---: | ---: | ---: |
+| initial / 1 | 17.931 | 16.090 | 10.26% |
+| initial / 2 | 17.673 | 16.265 | 7.97% |
+| epoch3 / 1 | 18.066 | 16.441 | 9.00% |
+| epoch3 / 2 | 18.122 | 16.486 | 9.03% |
+
+同期を入れたoptimizer単独診断では、epoch3で5.272/5.083→3.458/3.384ms。
+GPU起動160→75、copy24→18、同期20→15回/step。本体GPU時間は約.409→.219ms。
+本体以外の差を純粋なPython時間と断定しない。profilerのsync待ちには先行計算の待ちも含むため、
+その時間をoptimizer固有費用として加算しない。全Parameterの勾配検査やmoment transportの
+検査は残っており、現行APIはその場で異常をhostへ報告するeager契約である。
+更新式だけなら同一stream上のGPU kernelで順序を保てる。host同期をゼロにする場合は、
+異常時にParameter/moments/clockをdevice側で更新しない処理と、異常報告時点を別途設計する。
+
+peak allocatedは初期241.827MiB、epoch3 240.773MiBで旧/新同一。
+epoch3 reservedは融合版394MiB、Torch396MiB、dense control402MiBだった。
+dense allocated239.551MiB、完全step1.972/2.038msなので、速度・allocatedとも目標は未達。
+reservedの差はこのcheckpoint復元・割当順の条件の観測であり、allocated削減と混同しない。
+
+GPU scoped suite94 passed（既存のdirty Graph拒否テストの警告1件）。
+初期・epoch3それぞれ全52,428atomのY/dX/全4列勾配を独立FP64参照へ照合し、
+rtol3e-6/atol2e-7を維持した。両状態の同一勾配4更新ではParameterが既存Polar融合許容差
+rtol2e-6/atol2e-6内、全modelのAdam moments/stepはbit一致。4更新目の設定変更も通過した。
+全10processで計測器あり/なしの更新がbit一致し、allocatorの全境界・peakの照合も通過した。
+wheel/sdistの全346runtimeファイルを現在のsourceへbyte照合した。
+
+source SHA256 `07dbb154c222e9620ea61d907f57314bd2a00e74e642d360950cbf58618ff682`、
+result archive SHA256 `36df93fcd27d818b393df12bff033330d5d13a2cb723b8c63e91577705035625`。
+`output/cell-mass-flat-polar-20261028/verified-run/`へ73ファイルを保存し、
+source/tests/training495ファイルが現在値と一致した。所有pool/GPUは停止確認済み。
+同親`analysis.json`と`complete-step.png`に比較を保存した。
+
+先行job `l4job-ba7e1d9c510b46e29614d5d48fcaf762`（metadata配置検証追加前）でも
+92 test成功、epoch3完全step18.149/18.000→16.704/16.348msを観測したが、上の最終版の値と混ぜない。
+それ以前の2job `l4job-ab79f0e5e99c435b9a0f1506dde9ba55` と
+`l4job-80066d5062cf4000b36d142693e2c94d` は追加テストがperiodのみを変更し、
+`period = site_count * spacing`を破ったため6件失敗した。数学的契約は変えず、
+テストでspacingも合わせて変更した。これらは性能測定前に停止し、速度の証拠に含めない。
+source/result/ログは同親`failed-live-period-check-v1/`と`v2/`に保全した。
+
 
 #### 1024の学習状態を使った段階別時間・メモリ監査（2026-10-28）
 

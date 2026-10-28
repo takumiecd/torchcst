@@ -261,6 +261,14 @@ coordinate laws and Sphere/Torus retraction, gradient projection and vector-stat
 transport. The base optimizer still owns proposal generation and step counting.
 `CSTOptimizer` as a whole still requires eager execution.
 
+For CUDA FP32 Polar atoms with two one-dimensional FlatTorus charts, the
+explicit `cuda_flat_torus_polar_update_fused/v1` Plan fuses the post-proposal
+Polar update and periodic center retraction. Select it through
+`CSTOptimizer(update_selector=...)`; the Linear Plan does not enable it.
+Adam proposals, finite-gradient checks and vector-state transport stay in the
+public optimizer wrapper. The existing `cuda_polar_update_fused/v1` Plan
+continues to accept Euclidean centers only.
+
 `CSTLinear(chart=chart, atoms=p, kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT)`
 uses the globally L2-normalized Euclidean Triweight operator. Its amplitude / log
 width / center coordinates use ordinary optimizer updates. Common dispatch selects

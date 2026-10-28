@@ -37,10 +37,21 @@ Polar専用のFP64 register pullbackへ修正した。Hをbackwardまで保存�
 計測順を逆にした2 fresh processで17.45〜20.26%短縮。optimizer同期は204→20/step。
 設定変更を含む全model Parameter/moments/stepはbit一致、初期/epoch3全atom参照も通過。
 メモリpeakは変わらず、速度・allocated目標はなお未達。新たなepoch学習は行っていない。
-既存のTriton Polar fusionはEuclidean用で、今回のFlatTorus中心wrapには未対応。
+このcache比較の時点のTriton Polar fusionはEuclidean用で、FlatTorus中心wrapには未対応だった。
 source f56af001、job `l4job-1a9b42fc2b96442c8a5a5915e64bcc29`、
 rawと494source照合は`output/cell-mass-optimizer-cache-20261028/verified-run/`。
 CPU2,062 passed/5,385 skipped、GPU scoped66 passed。所有GPUは停止済み。
+
+続いてFlatTorus中心wrapを保つ明示更新Plan `cuda_flat_torus_polar_update_fused/v1`を追加した。
+Adam本体・Polar法則・勾配射影とmomentsのtransportは維持し、更新と周期折り返しを融合する。
+中心の有限性検査は4byte flagへ集約し、period bufferの配置もAdam更新前に検証する。
+最終source `54c53958`、job `l4job-54f18e9e8a74457596f0fd62669b57a6`。
+cache済みTorch更新との2 fresh process比較でepoch3完全step18.066/18.122→16.441/16.486ms、
+約9%短縮。optimizer単独5.272/5.083→3.458/3.384ms、kernel160→75、同期20→15/step。
+allocated peak240.773MiBは変わらず、dense239.551MiBをまだ超える。新たなepoch学習ではない。
+CPU2,063 passed/5,402 skipped、GPU94 passed、初期/epoch3全atomの独立参照、更新・moments/step、
+計測器とallocator照合を通過。495sourceと73証拠ファイルは
+`output/cell-mass-flat-polar-20261028/verified-run/`へ保全。所有GPUは停止済み。
 
 1024の初期/epoch3 checkpointを使う段階別診断も完了（job `l4job-5432773eb82647e18a402c9868116fa8`）。
 計測なし完全stepは20.686/21.084ms。同期診断のepoch3はprepare1.134、Zx/R2.151、HC3.191、
