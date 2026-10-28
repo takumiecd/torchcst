@@ -132,6 +132,7 @@ def test_fused_periodic_update_matches_reference_and_live_periods(mode, rate):
             model.kernel.scalar("radial_regularization").mul_(1.1)
             for chart in model.cst_charts():
                 chart.geometry.periods.mul_(2.0)
+                chart.spacing.mul_(2.0)
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
