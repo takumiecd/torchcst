@@ -25,6 +25,13 @@ class AtomUpdateAlgorithm(Algorithm[DefaultRecipe]):
     def supports(self, context, recipe):
         if not isinstance(context, AtomUpdateContext):
             return SupportResult(("requires AtomUpdateContext",))
+        kernel = context.kernel
+        while kernel.composition == "amplitude":
+            kernel = kernel.inner
+        if kernel.revision == 7 and context.device.type != "cpu":
+            return SupportResult(("radius cell-mass reference currently requires CPU",))
+        if kernel.revision == 7 and context.dtype not in (torch.float32, torch.float64):
+            return SupportResult(("radius reference requires float32 or float64",))
         if context.execution_mode == "cuda_graph":
             return SupportResult(
                 ("general coordinate reference requires eager execution",)

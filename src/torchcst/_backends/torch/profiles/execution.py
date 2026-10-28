@@ -22,9 +22,15 @@ _TYPES = (
 
 
 def _module(state):
-    from torchcst.kernels.spec import CellIntegratedProfileBinding
+    from torchcst.kernels.spec import (
+        CellIntegratedProfileBinding,
+        RadiusIntegratedProfileBinding,
+    )
 
-    if type(state.binding) is CellIntegratedProfileBinding:
+    if type(state.binding) in (
+        CellIntegratedProfileBinding,
+        RadiusIntegratedProfileBinding,
+    ):
         return import_module("torchcst._backends.torch.profiles.cell_integrated")
     if type(state.binding.profile) not in _TYPES:
         raise ValueError("unsupported profile shape or revision")

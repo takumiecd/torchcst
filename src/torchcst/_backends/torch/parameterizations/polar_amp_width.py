@@ -137,16 +137,37 @@ def _sigma_bounds(
     *,
     side: Literal["input", "output"] = "input",
 ) -> tuple[Tensor, Tensor, Tensor]:
+    return _width_bounds(state, amplitude, alpha, side=side)
+
+
+def _width_bounds(
+    state,
+    amplitude: Tensor,
+    alpha: Tensor | None = None,
+    *,
+    side: Literal["input", "output"] = "input",
+    scalar_names=None,
+) -> tuple[Tensor, Tensor, Tensor]:
+    """One unchanged Polar width law, with explicitly declared buffer names."""
+    # Legacy CUDA/Torus executors supply lightweight scalar-only adapters.
+    # Do not require KernelState or a declaration on that existing surface.
+    scalar_names = scalar_names or (
+        ("sigma_min", "minimum"),
+        ("sigma_birth", "birth"),
+        ("sigma_max", "maximum"),
+        ("upper_floor", "upper_floor"),
+    )
+    names = {field: name for name, field in scalar_names}
     if side == "input":
-        minimum = state.scalar("sigma_min_input")
-        birth = state.scalar("sigma_birth_input")
-        maximum = state.scalar("sigma_max_input")
-        floor = state.scalar("upper_floor_input")
+        minimum = state.scalar(names["minimum"] + "_input")
+        birth = state.scalar(names["birth"] + "_input")
+        maximum = state.scalar(names["maximum"] + "_input")
+        floor = state.scalar(names["upper_floor"] + "_input")
     elif side == "output":
-        minimum = state.scalar("sigma_min_output")
-        birth = state.scalar("sigma_birth_output")
-        maximum = state.scalar("sigma_max_output")
-        floor = state.scalar("upper_floor_output")
+        minimum = state.scalar(names["minimum"] + "_output")
+        birth = state.scalar(names["birth"] + "_output")
+        maximum = state.scalar(names["maximum"] + "_output")
+        floor = state.scalar(names["upper_floor"] + "_output")
     else:
         raise ValueError("side must be 'input' or 'output'")
     x = (amplitude / state.scalar("w_c").to(amplitude)).square()

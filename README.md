@@ -162,6 +162,58 @@ Checkpoints from old point-sampled/L2 profiles are not silently reinterpreted.
 See
 [the authoritative kernel flow](docs/cell-mass-kernel-flow.ja.md).
 
+### Radius-native cell masses: CPU reference
+
+`RadiusBounds` declares physical half-width bounds, independently of the legacy
+`BandwidthBounds` sigma contract. `ChebyshevRadiusSpec(modes=M)` selects the
+radius-native finite Fourier density; M can be any integer from 1 through 512.
+The probability outside the specified radius is a result of the profile, not
+a fixed tolerance that automatically increases M.
+
+```python
+import torch
+from torchcst import CSTLinear, ChebyshevRadiusSpec, RadiusBounds, chart_presets, presets
+
+n = 128
+spacing = 128 / n
+grid = chart_presets.regular_grid(((n,),), spacing=spacing, geometry="flat_torus")
+layer = CSTLinear(
+    grid, grid, atoms=8, device="cpu", dtype=torch.float64, backend="factored",
+    kernel=presets.polar_radius_cell_mass(
+        amplitude_max=1.0, w_c=0.3,
+        input_radius_bounds=RadiusBounds(
+            minimum=spacing / 2, birth=4 * spacing,
+            maximum=50 * spacing, upper_floor=spacing,
+        ),
+        profile=ChebyshevRadiusSpec(modes=8),
+        input_base_tile_sites=1, output_base_tile_sites=1, merge_factor=2,
+    ),
+)
+y = layer(torch.randn(4, n, dtype=torch.float64))
+input_radius, output_radius = layer.support_radii()
+```
+
+This revision-7 reference supports fixed one-dimensional periodic regular grids.
+The chart/base-tile ratio must be a power of `merge_factor`; non-divisible
+hierarchies are rejected. Each atom uses the smallest tile width T at least R,
+with full local period **P = (ceil(2R/T) + 1) T = 2L**. The nearest tile-aligned
+whole-period window is retained. Cells wrap and add onto the chart, including
+repeated images when P exceeds the chart circumference; probabilities sum to 1.
+Discrete hierarchy/window choices are held fixed within each backward branch.
+
+Polar coordinates remain `[s, t, input_center, output_center]`. The existing
+Polar update and moment transport are reused; task gradients through derived
+radii remain detached. `presets.radius_cell_mass(...)` instead uses live
+physical `[amplitude, support_radius, output_center, input_center]` rows, with
+`radius_init` and `radius_floor`. Radii must fit the chart half-period.
+Old sigma APIs, presets and checkpoints keep their original interpretation;
+loading a sigma checkpoint into a radius kernel is rejected.
+
+This is a CPU reference with temporary profile factors. Existing CUDA Plans
+reject the new contract; no new CUDA timing or memory result is claimed.
+Gaussian retains sigma and does not enter this finite-support optimization.
+See [the design and implementation status](docs/cell-mass-kernel-flow.ja.md).
+
 ### Other profile and chart contracts
 
 `QuadraticBSplineSpec()` declares the peak-one C1 quadratic B-spline with

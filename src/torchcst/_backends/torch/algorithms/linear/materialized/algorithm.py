@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 
+import torch
+
 from torchcst._backends.algorithm import Algorithm
 from torchcst._backends.schema import DefaultRecipe, SupportResult
 from torchcst.operators.context import LinearContext
@@ -34,6 +36,13 @@ class MaterializedAlgorithm(Algorithm[DefaultRecipe]):
     def supports(self, context, recipe):
         if not isinstance(context, LinearContext):
             return SupportResult(("requires a LinearContext",))
+        kernel = context.operator.kernel
+        while kernel.composition == "amplitude":
+            kernel = kernel.inner
+        if kernel.revision == 7 and context.device.type != "cpu":
+            return SupportResult(("radius cell-mass reference currently requires CPU",))
+        if kernel.revision == 7 and context.dtype not in (torch.float32, torch.float64):
+            return SupportResult(("radius reference requires float32 or float64",))
         return SupportResult()
 
     def workspace_bound(self, context, recipe):

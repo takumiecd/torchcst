@@ -6,6 +6,21 @@
 `main`へmerge済み（`0047e29c`）。次期半径APIと以下の設計は、そこから切った
 `kernel/support-radius-pipeline`で進める。以下の追加方針を現CUDAへ実装済みとは扱わない。
 
+**半径APIの初版：** revision7の半径宣言とCPU/Torch参照を追加した。
+`RadiusBounds`・`ChebyshevRadiusSpec`・物理／Polar用preset・`CSTModule.support_radii()`を公開する。
+旧σ版のAPI・checkpointは維持し、半径版との相互読み替えを拒否する。
+新CUDAのmoments生成・融合・保存方式・速度／メモリはまだ実装・検証していない。
+
+CPU検証は全体2,324 passed／5,596 skipped／既存警告18件。
+新規69ケースには、独立Chebyshev数値積分とのセル確率照合、FP32/64のY・dX・全物理atom列の勾配、
+中心／半径のgradcheck、奇数M、周期端・繰り返し像、retained backward、空batchを含む。
+全物理列の独立勾配gateはN16・B3・2atomの小さい検査であり、新しいN1024全atomのGPU gateではない。
+同じ外部勾配を与えた旧／新Polarの5更新では、ParameterとSGD／Adam／AdamWのmoment・stepがbit一致した。
+旧σ checkpointと半径checkpointの取り違え、Gaussian・未対応device／dtypeの拒否も検査した。
+READMEのCPU例を実行し、wheel/sdist双方の352 packageファイルをsourceへbyte照合した。
+ログ・配布物・hashはignored `output/support-radius-implementation-20261028/`に保持する。
+再現は`PYTHONPATH=src:. python -m tools.kernel_dev test --suite cpu`。
+
 **最新の設計指定：** [周期・完成response・階層別tile処理](#周期完成response階層別tile処理の最新指定)を参照。
 直前の提案にあった全local階層共通の固定Kや部分responseの受け渡しを、確定規約とは扱わない。
 
@@ -64,16 +79,16 @@ Zの二分集約木があることと、sigmaから異なるtile/周期を選ぶ
 **周期の式：**
 
 \[
- 2L=\left\lceil\frac{2R}{T}\right\rceil T,
- \qquad K=\left\lceil\frac{2R}{T}\right\rceil.
+ P=2L=\left(\left\lceil\frac{2R}{T}\right\rceil+1\right)T,
+ \qquad K=\left\lceil\frac{2R}{T}\right\rceil+1.
 \]
 
 Rは`support_radius`、Tはその階層のtileの物理幅。
 従来コードではFourier密度の一周を`P=2L`とし、`cos(2*pi*x/P)`を使う。
 会話中の「どちらだったか」という確認に対し、この従来表記を説明した。
 以降も一周をP（コードでは`period`）、半周期をLと区別して記述する。
-したがって式は`period = ceil(2 * support_radius / tile_width) * tile_width`と読める。
-周期の式自体に`+1`を足したり、固定の`P=3T`へ置き換えたりしない。
+ユーザーの訂正により、式は`period = (ceil(2 * support_radius / tile_width) + 1) * tile_width`である。
+直前の`+1`なしの記述は撤回する。paddingの1 tileを落としたり、無条件に固定の`P=3T`へ置き換えたりしない。
 以降の固定K=3や`(ceil(2I/T)+1)T`の式は、既存実装・先行案の条件として残す。
 Lを一周と呼ぶ別の記法へ変更する場合も係数2の対応を明示し、P=2Lと混用しない。
 
@@ -82,6 +97,16 @@ Kはこの式から導かれる整数倍率であり、全atom・全階層につ
 中心／tile位置、chart端、K個のtile窓の配置と、全周rootの扱いはこの式に従う実装で検証する。
 このceil則で得た周期に対するprofileの成立性・漏れ・正規化を確認する前に、
 固定P=3dのCPU試算値を新しい則の検証済み結果として使わない。
+
+CPU初版では最小の`T_h >= R`を選び、`K=ceil(2R/T_h)+1`を各atomについて計算する。
+Kの偶奇によらず、中心に最も近いtile-alignedなK-tile窓を選ぶ。
+原点を除いてchart内へwrapした中心をu、間隔をdとすると、開始tileは
+`floor((u+d/2)/T_h - (K-1)/2)`（tieは大きい開始tile側）。
+窓中心とatom中心の距離は最大T_h/2であり、`P/2 >= R+T_h/2`なので半径Rの区間を窓内に収められる。
+Pがchart周期Qを超えても式を切り詰めず、一周Pのセル積分をsite index modulo Nへ加算する。
+これはchartを一度だけ走査して切る処理とは異なり、繰り返し像も含めて確率和1を保つ。
+hierarchy・K・開始tileはbackwardのsmooth branch内で固定する。
+切替点そのものの微分や、近似された裾の窓切替が滑らかだとは保証しない。
 
 **responseは必要範囲を全て加算して完成させてから使う。**
 
@@ -130,7 +155,7 @@ response完成前に段階をまたがない規約を守る。
 ### support_widthとone-hot近似の設計方針
 
 2026-10-28合意。σという制御値と実際の集中幅を区別する。コードでは次の名前を使う。
-現時点では設計上の名前であり、公開SpecやCUDA引数へ追加済みではない。
+半径の公開SpecとCPU参照を実装した。CUDA引数・新しい融合kernelはまだ追加していない。
 
 | 名前 | 意味 |
 | --- | --- |
@@ -210,13 +235,13 @@ compactでも旧σと半径の換算はprofileごとに確認する。現Triweig
 QuadraticBSplineではR=sqrt(6)*σであり、全profileで同じ数値へ改名できるわけではない。
 
 新APIの設計名は`RadiusBounds(minimum, birth, maximum, upper_floor)`、
-`input_radius_bounds`／`output_radius_bounds`とする（いずれも未実装の案）。
+`input_radius_bounds`／`output_radius_bounds`とし、revision7のCPU APIへ実装した。
 値は入力・出力／各軸の物理座標単位の半径。最小有効全幅をspacingにするなら
 `radius_min = spacing / 2`であり、旧`σ_min=spacing`と同じ数値ではない。
 幅の意味は数学的なSpecとcheckpointの識別情報へ残し、CUDA Recipeだけの設定にしない。
 同じprofileのTorch/CUDA・direct/階層は、その半径の意味とセル確率を共有する。
 
-**Fourier密度の半径入力候補（CPUのみ確認、まだ採用・実装していない）：**
+**新しいCPU参照のFourier密度：**
 旧`effective_radius(σ,P)`を通さず、Chebyshev式の集中半径IへRを直接渡す。
 
 \[
@@ -225,7 +250,9 @@ QuadraticBSplineではR=sqrt(6)*σであり、全profileで同じ数値へ改名
  \qquad f_R(t)=\frac{g_R(t)}{\int_{-P/2}^{P/2}g_R(s)\,ds}.
 \]
 
-候補の局所範囲は`0<R<=P/3`として調べた。旧σからの集中半径下限補正はこの式には含めない。
+旧σからの集中半径下限補正はこの式には含めない。
+新しい周期選択では`P>2R`。scaled Chebyshev recurrenceで密度を作り、最高harmonic Mの
+密度を2M+1点からFFTすることで奇数Mにも対応した。旧偶数Mのprofile宣言は変更しない。
 `support_eps = 1 - integral_{-R}^{R} f_R(t) dt`をM・R・Pから求める。
 同じ有限Fourier密度なので、セル積分のatom係数／site基底への分離は維持できる。
 `R=spacing/2,P=3*spacing`のCPU数値積分では、中心siteの確率は
@@ -234,7 +261,9 @@ M8でも約99.85%という結果は、以前の`σ=spacing`の結果とは異な
 同じ演算の高速化や、既存CUDAの検証済み結果とは扱わない。
 256/512点の独立Gauss–Legendre積分と3セルの確率和1を確認し、
 式・条件・script hash・結果をignored `output/support-design-20261028/radius-candidate*`へ保存した。
-この候補でも階層でPが切り替わる際のprofile変化は別途検討する。
+固定P=3dの試算は、訂正後の周期選択そのものの検証ではない。
+最新則で`R=d/2,T=d`なら`P=2d`となり、中心site確率はM3/5/8で
+約0.981545725/0.999276680/0.999995417。これも厳密に指定条件を揃えて解釈する。
 
 Polarの(s,t)から振幅・activityを出す更新則は維持する。
 新契約ではactivityから決める幅の出力をRとして宣言し、そのboundsとprofileを同じ意味で接続する。
@@ -243,14 +272,14 @@ Polarの(s,t)から振幅・activityを出す更新則は維持する。
 checkpoint変換は、必要になった場合に明示的な変換として独立に検証する。
 全σ名の一括置換や新API対応前の既存selectorへの自動採用は行わない。
 
-実装順は半径の宣言・serialization → Torchのセル確率と勾配参照 → CUDA対応・独立勾配gate →
-同条件の完全step／メモリ比較とする。公開READMEは対応実装が揃った時点で更新し、
-この設計案を現在使えるAPIとして例示しない。
+半径宣言・checkpoint識別とTorchのセル確率・勾配参照を実装した。
+公開READMEにはCPU参照としてのみ使用例を載せる。既存CUDA PlanとCUDA上の汎用Torch実行も
+この初版の新契約を拒否する。次はCUDA対応・独立勾配gate・完全step／メモリ比較へ進める。
 
 #### 合体数・Z開始階層・周期倍率の明示設定（2026-10-28合意）
 
 以下の固定K設定例は先行提案である。
-最新指定の`K=ceil(2R/T)`が優先し、固定倍率で同じ基底を共有する説明はKが一致するgroup内に適用する。
+最新指定の`K=ceil(2R/T)+1`が優先し、固定倍率で同じ基底を共有する説明はKが一致するgroup内に適用する。
 偶数KやK=1を旧実装だけの制約で新契約から除外せず、最新の窓規約として検討・検証する。
 
 次の3項目は明示指定できる設計とする。以下は設定の擬似コードであり、新しい公開APIの実装ではない。
@@ -320,7 +349,7 @@ ignored `output/cell-mass-hc-20261028/profile-width-check.json`に全セル値�
 2. 新しい半径契約では`support_radius=spacing/2`を最小幅の基準に、
    Mごとの集中度・保存量・演算量を比較する。数学的な関数を変更する設定は明示する。
    旧σ契約の意味とPolarの更新則は保存し、新契約へ黙って読み替えない。
-3. 指定合体数の階層と最新の`2L=ceil(2R/T)T`規約に従い、radius分類とtile窓の実装・検証を進める。
+3. 指定合体数の階層と最新の`P=2L=(ceil(2R/T)+1)T`規約に従い、radius分類とtile窓の実装・検証を進める。
    最初の比較は合体数2。既存の固定`P=3T`と`σ<=T`を新しい規約へ混用しない。
 4. 同じprofileのdirect／階層経路とRxをglobal保存しない融合候補を比較し、
    Y・dX・全atom勾配の検証後、batchを揃えた単層stepとMNIST完全stepで速度・メモリを測る。

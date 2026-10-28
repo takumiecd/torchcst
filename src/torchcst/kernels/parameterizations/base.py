@@ -45,6 +45,13 @@ class PhysicalAmpWidthSpec(ParameterizationSpec):
 
 
 @dataclass(frozen=True, kw_only=True)
+class PhysicalAmpRadiusSpec(ParameterizationSpec):
+    """Physical rows [amplitude, support_radius, output_center, input_center]."""
+
+    id: str = field(default="physical_amplitude_radius", init=False)
+
+
+@dataclass(frozen=True, kw_only=True)
 class BandwidthBounds:
     minimum: float
     birth: float
@@ -58,3 +65,21 @@ class BandwidthBounds:
             raise ValueError("birth bandwidth must lie within its bounds")
         if not self.minimum <= self.upper_floor <= self.maximum:
             raise ValueError("upper floor must lie within bandwidth bounds")
+
+
+@dataclass(frozen=True, kw_only=True)
+class RadiusBounds:
+    """Physical support-radius bounds, distinct from legacy sigma bounds."""
+
+    minimum: float
+    birth: float
+    maximum: float
+    upper_floor: float
+
+    def __post_init__(self):
+        for name in ("minimum", "birth", "maximum", "upper_floor"):
+            positive(getattr(self, name), name)
+        if not self.minimum <= self.birth <= self.maximum:
+            raise ValueError("birth radius must lie within its bounds")
+        if not self.minimum <= self.upper_floor <= self.maximum:
+            raise ValueError("upper floor must lie within radius bounds")

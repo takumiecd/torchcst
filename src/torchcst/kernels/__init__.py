@@ -10,8 +10,11 @@ from .parameterizations import (
     FixedWidthSpec,
     LogWidthSpec,
     ParameterizationSpec,
+    PhysicalAmpRadiusSpec,
     PhysicalAmpWidthSpec,
+    PolarAmpRadiusSpec,
     PolarAmpWidthSpec,
+    RadiusBounds,
 )
 from .profiles import (
     BiweightSpec,
@@ -22,7 +25,12 @@ from .profiles import (
     TriweightSpec,
     WendlandC2Spec,
 )
-from .profiles.fourier import ChebyshevSquareSpec, DPSSSquareSpec, KaiserSquareSpec
+from .profiles.fourier import (
+    ChebyshevRadiusSpec,
+    ChebyshevSquareSpec,
+    DPSSSquareSpec,
+    KaiserSquareSpec,
+)
 from .profiles.matern import MaternMixtureSpec
 from .spec import (
     AtomInit,
@@ -30,6 +38,7 @@ from .spec import (
     FourierProductKernelSpec,
     KernelSpec,
     ProfileBinding,
+    RadiusIntegratedProfileBinding,
     StatePolicySpec,
 )
 from .support import FourierTileSupportSpec
@@ -40,6 +49,7 @@ __all__ = [
     "BandwidthBounds",
     "BiweightSpec",
     "CellIntegratedProfileBinding",
+    "ChebyshevRadiusSpec",
     "ChebyshevSquareSpec",
     "DPSSSquareSpec",
     "DirectAmpWidthSpec",
@@ -54,11 +64,15 @@ __all__ = [
     "MaternMixtureSpec",
     "NormalizationSpec",
     "ParameterizationSpec",
+    "PhysicalAmpRadiusSpec",
     "PhysicalAmpWidthSpec",
+    "PolarAmpRadiusSpec",
     "PolarAmpWidthSpec",
     "ProfileBinding",
     "ProfileSpec",
     "QuadraticBSplineSpec",
+    "RadiusBounds",
+    "RadiusIntegratedProfileBinding",
     "StatePolicySpec",
     "TriangleSpec",
     "TriweightSpec",

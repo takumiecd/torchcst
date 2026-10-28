@@ -7,7 +7,7 @@ import torch
 from torchcst._backends.algorithm import Algorithm
 from torchcst._backends.schema import DefaultRecipe, SupportResult
 from torchcst.geometry.spec import EuclideanGeometrySpec
-from torchcst.kernels.parameterizations import PolarAmpWidthSpec
+from torchcst.kernels.parameterizations import PolarAmpRadiusSpec, PolarAmpWidthSpec
 from torchcst.operators.atom_update import AtomUpdateContext, AtomUpdateInputs
 
 
@@ -27,13 +27,19 @@ class PolarUpdateAlgorithm(Algorithm[DefaultRecipe]):
     def supports(self, context, recipe):
         if not isinstance(context, AtomUpdateContext):
             return SupportResult(("requires AtomUpdateContext",))
+        radius = type(context.kernel.parameterization) is PolarAmpRadiusSpec
+        if radius and context.device.type != "cpu":
+            return SupportResult(("radius cell-mass reference currently requires CPU",))
+        if radius and context.dtype not in (torch.float32, torch.float64):
+            return SupportResult(("radius reference requires float32 or float64",))
         if (
-            type(context.kernel.parameterization) is not PolarAmpWidthSpec
+            type(context.kernel.parameterization)
+            not in (PolarAmpWidthSpec, PolarAmpRadiusSpec)
             or context.kernel.composition not in ("separable", "profile_product")
-            or context.kernel.update.id != "polar_activity_width"
-            or len(context.geometries) != (
-                1 if context.kernel.composition == "profile_product" else 2
-            )
+            or context.kernel.update.id
+            != ("polar_activity_radius" if radius else "polar_activity_width")
+            or len(context.geometries)
+            != (1 if context.kernel.composition == "profile_product" else 2)
             or context.parameter_shape[1]
             != 2 + sum(g.center_parameter_dim for g in context.geometries)
         ):

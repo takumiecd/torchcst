@@ -108,6 +108,23 @@ class CSTModule(nn.Module):
 
         raise NotImplementedError
 
+    def support_radii(self) -> tuple[Tensor, Tensor]:
+        """Return input/output physical radii for a radius-native kernel.
+
+        Legacy sigma kernels retain their original meaning and do not support
+        this query. Returned radii are derived values, not new Parameters.
+        """
+        from torchcst._backends.torch.kernels import execution as _kernel
+
+        if self.kernel.spec.revision != 7:
+            raise ValueError("support_radii requires a radius-native kernel")
+        return _kernel.coordinate(
+            self.kernel,
+            "support_radii",
+            *self.cst_charts(),
+            self.execution_parameters(),
+        )
+
     def cst_charts(self) -> tuple[ChartState, ...]:
         """Return the charts whose coordinates this site observes."""
 
