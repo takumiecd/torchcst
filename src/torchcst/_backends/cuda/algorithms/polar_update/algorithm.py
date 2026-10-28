@@ -124,6 +124,18 @@ class FlatTorusPolarUpdateAlgorithm(FusedPolarUpdateAlgorithm):
         )
         if not flat_pair:
             return SupportResult(("requires two one-dimensional FlatTorus charts",))
+        scalar_metadata = {
+            name: (dtype, device, size)
+            for name, dtype, device, size in context.scalar_metadata
+        }
+        if any(
+            scalar_metadata.get(f"geometry.{axis}.periods")
+            != (context.dtype, context.device, 1)
+            for axis in range(2)
+        ):
+            return SupportResult(
+                ("FlatTorus periods must be live matching FP32 tensors",)
+            )
         # Share only the scalar/dtype/Polar checks; do not widen FUSED itself.
         euclidean = replace(
             context,

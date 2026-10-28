@@ -173,7 +173,9 @@ def test_optimizer_matches_reference_parameters_moments_and_step(n):
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
-@pytest.mark.parametrize("fault", ["gradient", "sigma", "period"])
+@pytest.mark.parametrize(
+    "fault", ["gradient", "sigma", "period", "period_dtype", "period_device"]
+)
 def test_invalid_changes_reject_before_base_optimizer_mutation(fault):
     model = layer(count=7, dtype=torch.float32, device="cuda")
     opt = CSTOptimizer(
@@ -189,6 +191,10 @@ def test_invalid_changes_reject_before_base_optimizer_mutation(fault):
         model.atoms.p.grad[0, 0] = float("nan")
     elif fault == "sigma":
         model.kernel.scalar("sigma_min_input").fill_(-1)
+    elif fault == "period_dtype":
+        model.input_chart.geometry.periods = model.input_chart.geometry.periods.double()
+    elif fault == "period_device":
+        model.input_chart.geometry.periods = model.input_chart.geometry.periods.cpu()
     else:
         model.input_chart.geometry.periods.fill_(0)
     with pytest.raises((ValueError, FloatingPointError)):
