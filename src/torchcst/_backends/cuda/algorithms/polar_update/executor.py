@@ -5,7 +5,7 @@ import math
 import torch
 
 
-def fused_update_(value, previous, proposal, *, step_size):
+def fused_update_(value, previous, proposal, *, step_size, periods=None):
     """Apply the same update in place; AdamW owns moments and step counting.
 
     Research FP32 CUDA route only. Scalars remain live device tensors and no
@@ -47,6 +47,18 @@ def fused_update_(value, previous, proposal, *, step_size):
         for s in scalars
     ):
         raise ValueError("polar scalars must be live CUDA FP32 scalar tensors")
+    if periods is not None:
+        if len(periods) != 2 or any(
+            p.device != proposal.device or p.dtype != proposal.dtype or p.numel() != 1
+            for p in periods
+        ):
+            raise ValueError("periods must be two live CUDA FP32 scalar tensors")
+        # Match the public geometry's finite-point/displacement rejection. The
+        # fixed positive periods are validated through the binding declaration.
+        if not bool(torch.isfinite(previous[:, 2:]).all()):
+            raise ValueError("points must contain only finite values")
+        if not bool(torch.isfinite(proposal[:, 2:] - previous[:, 2:]).all()):
+            raise ValueError("displacement must contain only finite values")
     from .kernels import apply_polar
 
     if len(proposal):
@@ -58,6 +70,15 @@ def fused_update_(value, previous, proposal, *, step_size):
             step_size,
             mode == "time_energy",
             128,
+            **(
+                {
+                    "INPUT_PERIOD": periods[0],
+                    "OUTPUT_PERIOD": periods[1],
+                    "PERIODIC": True,
+                }
+                if periods is not None
+                else {}
+            ),
             num_warps=4,
             enable_fp_fusion=False,
         )

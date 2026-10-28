@@ -515,6 +515,9 @@ def main():
     parser.add_argument("--data-directory", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--legacy-layout-validation", type=Path)
+    parser.add_argument(
+        "--polar-update", choices=("torch", "flat-fused"), default="torch"
+    )
     args = parser.parse_args()
     if args.legacy_layout_validation:
         # A frozen old implementation lets the before/after arms share all
@@ -535,7 +538,22 @@ def main():
     assert initial["width"] == 1024 and initial["kernel_settings"]["minimum"] == 0.125
     model = make_model(initial, args.kind).cuda().train()
     base = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=0.0, fused=True)
-    optimizer = CSTOptimizer(base, model=model) if args.kind == "cst" else base
+    update_selector = None
+    if args.polar_update == "flat-fused":
+        if args.kind != "cst":
+            raise ValueError("flat-fused update requires the CST model")
+        from torchcst._backends.catalog import get_registry
+        from torchcst._backends.cuda.algorithms.polar_update.plans import (
+            FLAT_TORUS_FUSED,
+        )
+        from torchcst._backends.dispatch import FixedSelector
+
+        update_selector = FixedSelector(FLAT_TORUS_FUSED, registry=get_registry())
+    optimizer = (
+        CSTOptimizer(base, model=model, update_selector=update_selector)
+        if args.kind == "cst"
+        else base
+    )
     if args.checkpoint:
         checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=True)
         model.load_state_dict(checkpoint["model"])
@@ -561,6 +579,7 @@ def main():
     plain = Stages(None)
     report = {
         "kind": args.kind,
+        "polar_update": args.polar_update,
         "layout_validation": "legacy" if args.legacy_layout_validation else "cached",
         "legacy_validation_sha256": hashlib.sha256(
             args.legacy_layout_validation.read_bytes()

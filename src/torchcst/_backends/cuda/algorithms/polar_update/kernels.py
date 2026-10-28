@@ -18,6 +18,9 @@ def apply_polar(
     STEP: tl.constexpr,
     TIME_ENERGY: tl.constexpr,
     BLOCK: tl.constexpr,
+    INPUT_PERIOD=None,
+    OUTPUT_PERIOD=None,
+    PERIODIC: tl.constexpr = False,
 ):
     a = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     mask = a < COUNT
@@ -62,4 +65,11 @@ def apply_polar(
     for j in tl.static_range(2, 4):
         old = tl.load(OLD + 4 * a + j, mask, 0)
         proposed = tl.load(PROPOSAL + 4 * a + j, mask, 0)
-        tl.store(PROPOSAL + 4 * a + j, old + (proposed - old), mask)
+        center = old + (proposed - old)
+        if PERIODIC:
+            period = tl.load(INPUT_PERIOD if j == 2 else OUTPUT_PERIOD)
+            # torch.remainder uses fmod plus a sign correction, not x-floor(x/p)*p.
+            # fmod also preserves accuracy for centers many periods from zero.
+            center = libdevice.fmod(center, period)
+            center = tl.where(center < 0.0, center + period, center)
+        tl.store(PROPOSAL + 4 * a + j, center, mask)
