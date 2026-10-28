@@ -260,6 +260,13 @@ The optimizer has no Polar-specific dispatcher. Torch fallback preserves Kernel
 coordinate laws and Sphere/Torus retraction, gradient projection and vector-state
 transport. The base optimizer still owns proposal generation and step counting.
 `CSTOptimizer` as a whole still requires eager execution.
+`check_finite=True` preserves the default nonfinite-value rejection. Explicit
+`check_finite=False` follows ordinary AdamW's lack of added finite checks:
+nonfinite gradients are not automatically rejected or skipped. Structural and
+fixed-configuration validation remain enabled. With the FP32 fused AdamW and
+FlatTorus update Plan below, steady optimizer steps have zero synchronization
+and device-to-host copies. This does not qualify Graphs or the entire AMP loop.
+
 
 For CUDA FP32 Polar atoms with two one-dimensional FlatTorus charts, the
 explicit `cuda_flat_torus_polar_update_fused/v1` Plan fuses the post-proposal

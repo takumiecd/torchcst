@@ -47,7 +47,7 @@ Adam本体・Polar法則・勾配射影とmomentsのtransportは維持し、更�
 中心の有限性検査は4byte flagへ集約し、period bufferの配置もAdam更新前に検証する。
 最終source `54c53958`、job `l4job-54f18e9e8a74457596f0fd62669b57a6`。
 cache済みTorch更新との2 fresh process比較でepoch3完全step18.066/18.122→16.441/16.486ms、
-約9%短縮。optimizer単独5.272/5.083→3.458/3.384ms、kernel160→75、同期20→15/step。
+約9%短縮。optimizer単独5.272/5.083→3.458/3.384ms、kernel160→75（当初Runtime APIのみの集計）、同期20→15/step。
 allocated peak240.773MiBは変わらず、dense239.551MiBをまだ超える。新たなepoch学習ではない。
 CPU2,063 passed/5,402 skipped、GPU94 passed、初期/epoch3全atomの独立参照、更新・moments/step、
 計測器とallocator照合を通過。495sourceと73証拠ファイルは
@@ -62,6 +62,17 @@ CPU2,063 passed/5,402 skipped、GPU94 passed、初期/epoch3全atomの独立参�
 peak allocated240.773MiBは不変で目標未達。CPU2,069 passed/5,409 skipped、GPU161+13 passed。
 主/確認の497source照合と73/29証拠ファイルを
 `output/cell-mass-batched-checks-20261028/`へ保全した。所有GPUは停止済み。
+
+PyTorchの流儀に合わせ、`CSTOptimizer(..., check_finite=False)`の明示経路を追加した。
+既定Trueは維持し、Falseでは通常AdamW同様にoptimizer独自のNaN/Inf検査を追加しない。
+固定設定・型・配置検証と更新則は保つ。runtime `66593872`、job
+`l4job-122ccce94ed9491492423289b34e4696`で、定常optimizer scopeの同期API0・DtoH0を確認。
+epoch3完全step16.136/16.187→12.058/12.032ms、約25%短縮。Parameter/moments/stepはbit一致。
+Driver API込みkernel46→5、残る3copyはD2D。allocated240.773MiBは不変で目標未達。
+CPU2,075 passed/5,411 skipped、GPU169 passed。347runtimeと498提出sourceの照合、73証拠ファイルを
+`output/cell-mass-pytorch-step-20261028/verified-run/`へ保全。所有GPUは停止済み。
+profiling集計はpostprocessing `7aa9a993`でTritonのDriver APIを追加した。
+過去のRuntime-only kernel75/44/4は全APIでは77/46/5で、完全step計時は不変。
 
 1024の初期/epoch3 checkpointを使う段階別診断も完了（job `l4job-5432773eb82647e18a402c9868116fa8`）。
 計測なし完全stepは20.686/21.084ms。同期診断のepoch3はprepare1.134、Zx/R2.151、HC3.191、

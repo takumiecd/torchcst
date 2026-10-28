@@ -312,7 +312,7 @@ L4 / Torch2.11.0+cu130 / CUDA13.0 / Triton3.6.0、TF32/Graphなし。
 | epoch3 / 2 | 18.122 | 16.486 | 9.03% |
 
 同期を入れたoptimizer単独診断では、epoch3で5.272/5.083→3.458/3.384ms。
-GPU起動160→75、copy24→18、同期20→15回/step。本体GPU時間は約.409→.219ms。
+GPU起動160→75（当初Runtime APIのみの集計）、copy24→18、同期20→15回/step。本体GPU時間は約.409→.219ms。
 本体以外の差を純粋なPython時間と断定しない。profilerのsync待ちには先行計算の待ちも含むため、
 その時間をoptimizer固有費用として加算しない。全Parameterの勾配検査やmoment transportの
 検査は残っており、現行APIはその場で異常をhostへ報告するeager契約である。
@@ -380,7 +380,7 @@ L4 / Torch2.11.0+cu130 / CUDA13.0 / Triton3.6.0、TF32/Graphなし。
 | 独立確認job epoch3/1 | 17.231 | 16.979 | 1.47% |
 
 完全stepは約1.5〜2.1%の小さい短縮で、同期回数の減少率と同一視しない。
-optimizer内の`cudaStreamSynchronize`は15→7、kernel75→44、copy18→10、memset5→3回/step。
+optimizer内の`cudaStreamSynchronize`は15→7、kernel75→44（当初Runtime APIのみの集計）、copy18→10、memset5→3回/step。
 主jobのepoch3単独同期診断は3.871/3.270→2.983/2.980ms、確認jobは3.825→3.605msだった。
 GPU本体は約.218→.207msで、大幅な演算量削減ではない。
 残る7回はraw勾配、射影勾配、中心/変位、更新結果、2軸のtransport、transport結果の検査。
@@ -412,6 +412,72 @@ result `478a0166309cba238e16f69a256cea93bbde803e51b0043a7bcbb7d69dad125f`。
 `output/cell-mass-batched-checks-20261028/verified-run/`へ73ファイル、
 同親`confirmation-run/`へ29ファイルを保全し、`analysis.json`、`confirmation-analysis.json`、
 `complete-step.png`へ集計した。所有GPU/pool supervisorは停止確認済み。
+
+#### PyTorch流の任意finite検査でoptimizerのCPU同期をなくす（2026-10-28）
+
+ユーザー指定「PyTorchの流儀」に合わせ、`CSTOptimizer(..., check_finite=False)`を追加した。
+通常のAdamWと同様にoptimizer独自のNaN/Inf検査を追加しない経路であり、異常時にGPUで
+全更新をskipして後で報告する方式ではない。既存呼出しの挙動を保つため既定はTrueとする。
+Falseでもshape/dtype/device・group・Plan・固定Kernel/Chart設定の検証は維持する。
+有限入力のPolar更新則、Adam演算、moments/step、幅stop-gradientは一切変えない。
+設定変更で必要な宣言の読出し・検証は残すため、同期ゼロの確認対象は通常の固定設定・
+versioned buffer・closureなし・FP32/fused AdamW/FlatTorus FUSED Planの定常stepである。
+CUDA GraphやAMP/GradScaler全体の同期ゼロを追加したものではない。
+
+finiteチェックの有効性はContextVarでoptimizer呼出し内だけ切り替え、例外でも必ず元に戻す。
+ユーザーclosureはそのscopeの外で一度だけ評価し、通常のgeometry validationを維持する。
+外部のgeometry関数の検証を恒久的に変更せず、他threadへglobal flagを漏らさない。
+デバッグ時は`check_finite=True`を使う。通常AdamWのstepとAMPの検査の区別は
+[PyTorch 2.11 Adam実装](https://github.com/pytorch/pytorch/blob/v2.11.0/torch/optim/adam.py)と
+[AMP examples](https://docs.pytorch.org/docs/2.11/notes/amp_examples.html)に対応する。
+
+計測runtime `66593872`、job `l4job-122ccce94ed9491492423289b34e4696`。
+両群とも同じ`FLAT_TORUS_FUSED`、比較元は前節のbatched検査あり、候補だけFalse。
+N1024/A52,428/B32、Q128/spacing=.125、σ_min=.125/σ_max=12.5、SITE_SCALED Plan、
+常駐MNIST、同じ初期/epoch3 checkpointとoptimizer状態、AdamW lr=.001/wd=0を維持。
+L4/Torch2.11.0+cu130/CUDA13.0/Triton3.6.0、TF32/Graphなし。
+各群2 fresh process、2回目は順序を反転、4更新warmup後の21step窓3回の中央値。
+新しいepoch学習ではなく保存した学習状態での完全step比較である。
+
+| 状態/独立process | 検査あり完全step ms | PyTorch流 ms | 短縮率 |
+| --- | ---: | ---: | ---: |
+| initial/1 | 15.704 | 11.831 | 24.66% |
+| initial/2 | 15.749 | 11.653 | 26.01% |
+| epoch3/1 | 16.136 | 12.058 | 25.27% |
+| epoch3/2 | 16.187 | 12.032 | 25.67% |
+
+4つのPyTorch流processすべてでoptimizer scopeの同期APIは0、GPU→CPU転送も0を確認した。
+Runtime/Driver両APIを含むGPU kernel起動は46→5/step、copy10→3で、残る3copyはすべてD2D。
+Polar自身は1kernel、ほかはAdamとgradient/momentの組立で、CPUへの結果受渡しはない。
+実GPUのoptimizer kernel本体は約.214→.058ms。epoch3の同期を入れたoptimizer単独診断は
+3.373/3.277→2.047/2.040msだった。CPUの配置・宣言・dispatch処理は残るが、値をCPUで
+待たずにGPUへ並べられるため前段との重なりも変わる。段階診断の差を完全stepへ加算しない。
+
+peak allocatedは旧/新同一で初期241.827MiB、epoch3 240.773MiB。
+reservedも初期392MiB、epoch3 394MiBで旧/新同一。
+dense epoch3 controlは1.899/1.961ms、allocated239.551MiBで、最終的な速度/allocated目標は未達。
+
+CPU全体2,075 passed/5,411 skipped/既存警告18件、GPU scoped169 passed/警告2件。
+同一勾配4更新・途中の設定変更を含め、初期/epoch3の全model Parameter/moments/stepはbit一致。
+全52,428atomの独立FP64 Y/dX/全4列勾配は既存3e-6/2e-7を維持して通過。
+全10processの計測器あり/なしの更新、allocator全境界/peakも一致した。
+NaNを自動拒否しない通常AdamWとの一致、例外後のscope復旧、closure、設定検証も検査した。
+
+**起動数の集計修正**：初期の`trace_stage_costs`はcuda_runtimeだけを見ており、Tritonの
+`cuda_driver::cuLaunchKernelEx`がunassignedになっていた。postprocessing `7aa9a993`で
+Driver APIを含め、CPU regression testを追加した。主計測とinstrumentationのASTは変更していない。
+過去節のRuntime-only値75/44/4は、Driver API込みでは77/46/5である。
+この訂正は同期ゼロ・完全step・メモリ・数値結果に影響しない。
+`corrected-trace-costs.json`で全10traceを再集計し、4候補すべての0同期/0DtoHを再確認した。
+旧集計も`analysis-runtime-only.json`に残し、`analysis.json`は訂正版とした。
+source347runtimeの現在値一致と、postprocessing関数を除くbenchmark AST一致は
+`postprocessing-audit.json`に保存した。postprocessing更新後のCPU全体は2,076 passed/5,411 skipped/既存警告18件。
+
+source archive SHA256 `163ea0d77b279b3c50e8b323d0d686a69159a6e7d7415bea7eedcb8e0614a454`、
+result archive `7cc047e8a3dbfc1bd7b2eaea8df45b00e39d419e132d00508c8a3ae02941cc06`。
+source/tests/training498ファイルを提出sourceへ照合し、73証拠ファイルを
+`output/cell-mass-pytorch-step-20261028/verified-run/`へ保全した。
+wheel/sdistの全347runtimeファイルもbyte一致。所有GPU/pool supervisorは停止確認済み。
 
 #### 1024の学習状態を使った段階別時間・メモリ監査（2026-10-28）
 
