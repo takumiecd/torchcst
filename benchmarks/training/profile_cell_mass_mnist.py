@@ -382,8 +382,8 @@ def routing(layer, initial_sigma, recipe):
     plan = hierarchy_from_operator(layer.declaration())
     result = {
         "sigma": stats,
-        "atom_threads": 64,
-        "atom_blocks": math.ceil(len(layer.atoms.p) / 64),
+        "atom_threads": options.get("atom_threads", 64),
+        "atom_blocks": math.ceil(len(layer.atoms.p) / options.get("atom_threads", 64)),
         "forward_grain": forward_grain,
         "reverse_grain": reverse_grain,
         "split_cap": cap,
@@ -804,6 +804,27 @@ def main():
             known_input_bank=recipe_options.get("hc_known_input_bank", False),
         )
         report["hc_diagnostics_after_four_warm_updates"] = diagnostics
+        native = executor._extension()
+        fields = (
+            "registers",
+            "local_bytes",
+            "static_shared_bytes",
+            "max_threads",
+            "predicted_blocks_per_SM",
+            "dynamic_shared_bytes",
+            "SM_count",
+        )
+        report["polar_g_grad_compiler_resources"] = {
+            f"threads{threads}_cache{cache}": dict(
+                zip(
+                    fields,
+                    native.polar_g_grad_kernel_resources(threads, cache, True),
+                    strict=True,
+                )
+            )
+            for threads in (32, 64)
+            for cache in (False, True)
+        }
         torch.cuda.synchronize()
     (output / "profile.json").write_text(json.dumps(report, indent=2))
     print(

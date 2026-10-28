@@ -73,14 +73,14 @@ def test_masked_moments_and_physical_pullback(case, windowed):
                     else torch.zeros_like(reference[:, nodes])
                 )
                 torch.testing.assert_close(actual[:, nodes], expected, rtol=0, atol=0)
-    options = dict(
-        layout=layout,
-        z_chunk_sites=32,
-        window_moments=windowed,
-        active_bank_z=True,
-        c_splits=2,
-        fuse_g_grad=True,
-    )
+    options = {
+        "layout": layout,
+        "z_chunk_sites": 32,
+        "window_moments": windowed,
+        "active_bank_z": True,
+        "c_splits": 2,
+        "fuse_g_grad": True,
+    }
     y = executor.hierarchical_linear(plan, x, p, **options)
     dx, dp = torch.autograd.grad(y, (x, p), dy, retain_graph=True)
     again = torch.autograd.grad(y, (x, p), -2 * dy)

@@ -529,6 +529,7 @@ def test_polar_pullback_does_not_retain_global_h():
 @pytest.mark.parametrize("split", [False, True])
 def test_exact_hc_reuse_owner_boundaries_general_chart(spacing, origin, split):
     from dataclasses import replace
+
     from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
         build_hierarchy,
         build_window_moments,
@@ -573,14 +574,14 @@ def test_exact_hc_reuse_owner_boundaries_general_chart(spacing, origin, split):
     layout = prepare_layout(plan, model.atoms.p, method="sort", reverse=True)
     rx = build_window_moments(build_hierarchy(x, plan.input), plan.input)
     for tile in (4, 8):
-        kwargs = dict(
-            splits=128,
-            atoms_per_split=64,
-            windowed=True,
-            compensated=True,
-            ragged=True,
-            batch_tile=tile,
-        )
+        kwargs = {
+            "splits": 128,
+            "atoms_per_split": 64,
+            "windowed": True,
+            "compensated": True,
+            "ragged": True,
+            "batch_tile": tile,
+        }
         baseline = compute_h_c(plan, model.atoms.p, layout, rx, **kwargs)
         for sigma, bank in ((True, False), (False, True), (True, True)):
             actual = compute_h_c(
@@ -594,3 +595,149 @@ def test_exact_hc_reuse_owner_boundaries_general_chart(spacing, origin, split):
             )
             for expected, candidate in zip(baseline, actual):
                 torch.testing.assert_close(candidate, expected, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize("enabled", [None, 1, "yes"])
+def test_polar_coefficient_cache_rejects_nonboolean_before_cuda(enabled):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        compute_polar_g_and_parameter_grad,
+        hierarchical_linear,
+    )
+
+    model = layer(dtype=torch.float32, site_scaled=True)
+    plan = hierarchy_from_operator(model.declaration())
+    with pytest.raises(ValueError, match="cache_polar_coefficients must be bool"):
+        hierarchical_linear(
+            plan, torch.empty(0, 128), model.atoms.p, cache_polar_coefficients=enabled
+        )
+    with pytest.raises(ValueError, match="cache_polar_coefficients must be bool"):
+        compute_polar_g_and_parameter_grad(
+            plan, model.atoms.p, None, None, None, cache_coefficients=enabled
+        )
+
+
+@pytest.mark.parametrize("threads,dtype", [(128, torch.float32), (64, torch.float64)])
+def test_polar_coefficient_cache_rejects_unsupported_configuration(threads, dtype):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        hierarchical_linear,
+    )
+
+    model = layer(dtype=dtype, site_scaled=True)
+    plan = hierarchy_from_operator(model.declaration())
+    with pytest.raises(ValueError, match="requires FP32 M8 and 32/64 threads"):
+        hierarchical_linear(
+            plan,
+            torch.empty(0, 128, dtype=dtype),
+            model.atoms.p,
+            atom_threads=threads,
+            cache_polar_coefficients=True,
+        )
+
+
+def test_polar_coefficient_cache_rejects_shape_reuse_combination():
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        hierarchical_linear,
+    )
+
+    model = layer(dtype=torch.float32, site_scaled=True)
+    plan = hierarchy_from_operator(model.declaration())
+    with pytest.raises(ValueError, match="cannot combine with shape reuse"):
+        hierarchical_linear(
+            plan,
+            torch.empty(0, 128),
+            model.atoms.p,
+            atom_threads=64,
+            cache_polar_coefficients=True,
+            reuse_shape_coefficients=True,
+        )
+
+
+@cuda_only
+@pytest.mark.parametrize("threads", [32, 64])
+@pytest.mark.parametrize(
+    "batch,windowed,split", [(1, False, False), (5, True, True), (32, True, False)]
+)
+def test_polar_coefficient_cache_all_gradients_and_retained_backward(
+    threads, batch, windowed, split
+):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        hierarchical_linear,
+    )
+
+    model = layer(
+        count=37, dtype=torch.float32, device="cuda", site_scaled=True, split=split
+    )
+    plan = hierarchy_from_operator(model.declaration())
+    x = torch.randn(batch, 128, device="cuda", requires_grad=True)
+    dy = torch.randn_like(x)
+    options = dict(
+        SITE_SCALED.recipe.arguments(),
+        atom_threads=threads,
+        window_moments=windowed,
+        release_workspaces=True,
+    )
+    outputs = []
+    for cached in (False, True):
+        y = hierarchical_linear(
+            plan, x, model.atoms.p, **options, cache_polar_coefficients=cached
+        )
+        first = torch.autograd.grad(y, (x, model.atoms.p), dy, retain_graph=True)
+        second = torch.autograd.grad(y, (x, model.atoms.p), -2 * dy)
+        for actual, repeated in zip(first, second):
+            torch.testing.assert_close(repeated, -2 * actual, rtol=3e-6, atol=2e-7)
+        outputs.append((y, *first))
+    xr = x.detach().cpu().double().requires_grad_()
+    pr = model.atoms.p.detach().cpu().double().requires_grad_()
+    yr = oracle(model, xr, pr)
+    expected = (yr, *torch.autograd.grad(yr, (xr, pr), dy.cpu().double()))
+    for base, candidate, reference in zip(*outputs, expected):
+        torch.testing.assert_close(candidate, base, rtol=3e-6, atol=2e-7)
+        torch.testing.assert_close(
+            candidate.cpu().double(), reference, rtol=3e-6, atol=2e-7
+        )
+
+
+@cuda_only
+@pytest.mark.parametrize("threads", [32, 64])
+@pytest.mark.parametrize("count", [0, 1, 31, 32, 33, 65])
+@pytest.mark.parametrize("compensated", [False, True])
+def test_polar_coefficient_cache_partial_blocks_and_resources(
+    threads, count, compensated
+):
+    from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.executor import (
+        _extension,
+        build_hierarchy,
+        build_window_moments,
+        compute_polar_g_and_parameter_grad,
+        prepare_layout,
+    )
+
+    model = layer(
+        count=max(1, count), dtype=torch.float32, device="cuda", site_scaled=True
+    )
+    atoms = model.atoms.p[:count].contiguous()
+    plan = hierarchy_from_operator(model.declaration())
+    layout = prepare_layout(plan, atoms, method="sort", reverse=True)
+    x = torch.randn(5, 128, device="cuda")
+    rx = build_window_moments(build_hierarchy(x, plan.input), plan.input)
+    ry = build_window_moments(build_hierarchy(x, plan.output), plan.output)
+    values = []
+    for cached in (False, True):
+        values.append(
+            compute_polar_g_and_parameter_grad(
+                plan,
+                atoms,
+                layout,
+                rx,
+                ry,
+                threads=threads,
+                windowed=True,
+                compensated=compensated,
+                cache_coefficients=cached,
+            )
+        )
+        info = _extension().polar_g_grad_kernel_resources(threads, cached, compensated)
+        assert len(info) == 7 and info[0] > 0 and info[4] > 0
+        assert info[5] == (2 * 17 * threads * 8 if cached else 0)
+    for base, candidate in zip(*values):
+        torch.testing.assert_close(candidate, base, rtol=3e-6, atol=2e-7)

@@ -46,7 +46,62 @@ __device__ inline void polar_projection(const double *z, int batches, int begin,
     }
 }
 
-template <typename atom_t, int FixedModes, bool Compensated>
+// Each lane owns one column and reads only values that it wrote itself.
+// The cache needs no cross-thread synchronization, including a partial block.
+// Values remain FP64; center derivatives are formed from the same cc/cs below.
+template <int FixedModes, bool Compensated>
+__device__ inline void cache_polar_coefficients(const Profile &profile, double *coefficients,
+                                               int coefficient_stride) {
+    HarmonicStream<false, Compensated> stream(profile, FixedModes);
+#pragma unroll
+    for (int harmonic = 0; harmonic <= FixedModes; ++harmonic) {
+        double cc, cs, unused_c, unused_s;
+        stream.next(cc, cs, unused_c, unused_s);
+        coefficients[(harmonic == 0 ? 0 : 2 * harmonic - 1) * coefficient_stride] = cc;
+        if (harmonic != 0)
+            coefficients[2 * harmonic * coefficient_stride] = cs;
+    }
+}
+
+template <int FixedModes>
+__device__ inline void polar_projection_cached(const double *z, int batches, int begin,
+    const Axis &axis, const Bank &bank, int owner, const Profile &profile,
+    bool windowed, const double *coefficients, int coefficient_stride,
+    double *value, double *dcenter) {
+    int retained = windowed || bank.full_chart ? 1 : 3;
+    int first = windowed ? owner : (bank.full_chart ? 0 : owner - 1);
+    int modes = FixedModes ? FixedModes : axis.modes;
+#pragma unroll
+    for (int harmonic = 0; harmonic <= modes; ++harmonic) {
+        double cc = coefficients[(harmonic == 0 ? 0 : 2 * harmonic - 1) * coefficient_stride];
+        double cs = harmonic == 0 ? 0 : coefficients[2 * harmonic * coefficient_stride];
+        double omega = profile.omega * harmonic;
+        for (int offset = 0; offset < retained; ++offset) {
+            double rs = 0, rc = 1;
+            int node = bank.node_offset + owner;
+            if (!windowed) {
+                int raw = first + offset;
+                int tile = positive_mod(raw, bank.tile_count);
+                image_rotation(bank, harmonic, (raw - tile) / bank.tile_count, rs, rc);
+                node = bank.node_offset + tile;
+            }
+            for (int b = 0; b < BATCH_TILE && begin + b < batches; ++b) {
+                int base = ((begin + b) * axis.node_count + node) * axis.basis_count();
+                if (harmonic == 0) {
+                    value[b] += cc * z[base];
+                } else {
+                    double zc = z[base + 2 * harmonic - 1], zs = z[base + 2 * harmonic];
+                    double rotated_c = zc * rc - zs * rs;
+                    double rotated_s = zs * rc + zc * rs;
+                    value[b] += cc * rotated_c + cs * rotated_s;
+                    dcenter[b] += omega * (-cs * rotated_c + cc * rotated_s);
+                }
+            }
+        }
+    }
+}
+
+template <typename atom_t, int FixedModes, bool Compensated, bool CacheCoefficients = false>
 __global__ void polar_g_parameter_grad_kernel(const atom_t *atoms, const int64_t *rows,
     const int *groups, const int64_t *offsets, const double *zx, const double *zy,
     atom_t *g, atom_t *gradient, int atom_count, int group_count, int batches,
@@ -63,14 +118,30 @@ __global__ void polar_g_parameter_grad_kernel(const atom_t *atoms, const int64_t
         atom_sigma(atoms, original, input), atom_center(atoms, original, input, false), input_owner);
     Profile op = make_profile<false, FixedModes, Compensated>(output, ob,
         atom_sigma(atoms, original, output), atom_center(atoms, original, output, true), output_owner);
+    double *input_coefficients = nullptr, *output_coefficients = nullptr;
+    if constexpr (CacheCoefficients) {
+        static_assert(FixedModes == 8, "Polar coefficient cache specializes M8");
+        extern __shared__ double coefficient_cache[];
+        input_coefficients = coefficient_cache + threadIdx.x;
+        output_coefficients = coefficient_cache + (1 + 2 * FixedModes) * blockDim.x + threadIdx.x;
+        cache_polar_coefficients<FixedModes, Compensated>(ip, input_coefficients, blockDim.x);
+        cache_polar_coefficients<FixedModes, Compensated>(op, output_coefficients, blockDim.x);
+    }
     double da = 0, dmi = 0, dmo = 0;
     for (int begin = 0; begin < batches; begin += BATCH_TILE) {
         double hv[BATCH_TILE] = {}, gv[BATCH_TILE] = {};
         double dhi[BATCH_TILE] = {}, dgo[BATCH_TILE] = {};
-        polar_projection<FixedModes, Compensated>(zx, batches, begin, input, ib, input_owner,
-                                                ip, windowed, hv, dhi);
-        polar_projection<FixedModes, Compensated>(zy, batches, begin, output, ob, output_owner,
-                                                op, windowed, gv, dgo);
+        if constexpr (CacheCoefficients) {
+            polar_projection_cached<FixedModes>(zx, batches, begin, input, ib, input_owner,
+                ip, windowed, input_coefficients, blockDim.x, hv, dhi);
+            polar_projection_cached<FixedModes>(zy, batches, begin, output, ob, output_owner,
+                op, windowed, output_coefficients, blockDim.x, gv, dgo);
+        } else {
+            polar_projection<FixedModes, Compensated>(zx, batches, begin, input, ib, input_owner,
+                                                    ip, windowed, hv, dhi);
+            polar_projection<FixedModes, Compensated>(zy, batches, begin, output, ob, output_owner,
+                                                    op, windowed, gv, dgo);
+        }
         for (int b = 0; b < BATCH_TILE && begin + b < batches; ++b) {
             g[(begin + b) * atom_count + slot] = static_cast<atom_t>(gv[b]);
             da += hv[b] * gv[b];
@@ -350,11 +421,15 @@ std::vector<torch::Tensor> compute_g_and_parameter_grad(
 std::vector<torch::Tensor> compute_polar_g_and_parameter_grad(
     torch::Tensor atoms, torch::Tensor rows, torch::Tensor groups, torch::Tensor offsets,
     torch::Tensor zx, torch::Tensor zy, std::vector<double> input_config,
-    std::vector<double> output_config, int threads, bool windowed, bool compensated) {
+    std::vector<double> output_config, int threads, bool windowed, bool compensated,
+    bool cache_coefficients) {
     TORCH_CHECK(power_of_two(threads) && threads >= 32 && threads <= 256, "invalid atom threads");
     check_layout(atoms, rows, groups, offsets);
     Axis input = parse_axis(input_config), output = parse_axis(output_config);
     TORCH_CHECK(input.polar && output.polar, "precise Polar pullback requires Polar axes");
+    TORCH_CHECK(!cache_coefficients || (input.modes == 8 && output.modes == 8 &&
+        atoms.scalar_type() == torch::kFloat32 && (threads == 32 || threads == 64)),
+        "Polar coefficient cache requires FP32 M8 and 32/64 threads");
     TORCH_CHECK(!compensated || (input.modes == 8 && output.modes == 8 &&
         input.tail_bound == 1e-3 && output.tail_bound == 1e-3 &&
         atoms.scalar_type() == torch::kFloat32), "invalid compensated Polar projection");
@@ -368,21 +443,64 @@ std::vector<torch::Tensor> compute_polar_g_and_parameter_grad(
     TORCH_CHECK(groups.size(0) > 0, "nonempty atoms need groups");
     auto stream = c10::cuda::getCurrentCUDAStream();
     AT_DISPATCH_FLOATING_TYPES(atoms.scalar_type(), "precise_polar_pullback", [&] {
-        auto launch = [&](auto mode_tag, auto compensated_tag) {
+        auto launch = [&](auto mode_tag, auto compensated_tag, auto cache_tag) {
             constexpr int modes = decltype(mode_tag)::value;
             constexpr bool use_compensated = decltype(compensated_tag)::value;
-            polar_g_parameter_grad_kernel<scalar_t, modes, use_compensated>
-                <<<(atoms.size(0) + threads - 1) / threads, threads, 0, stream>>>(
+            constexpr bool use_cache = decltype(cache_tag)::value;
+            size_t shared = use_cache ? 2 * (1 + 2 * modes) * threads * sizeof(double) : 0;
+            polar_g_parameter_grad_kernel<scalar_t, modes, use_compensated, use_cache>
+                <<<(atoms.size(0) + threads - 1) / threads, threads, shared, stream>>>(
                     atoms.data_ptr<scalar_t>(), rows.data_ptr<int64_t>(), groups.data_ptr<int>(),
                     offsets.data_ptr<int64_t>(), zx.data_ptr<double>(), zy.data_ptr<double>(),
                     g.data_ptr<scalar_t>(), gradient.data_ptr<scalar_t>(), atoms.size(0),
                     groups.size(0), zx.size(0), input, output, windowed);
         };
-        if (compensated) launch(std::integral_constant<int, 8>{}, std::true_type{});
+        if (cache_coefficients) {
+            // The checked cache contract is FP32 only. Do not instantiate
+            // unsupported FP64 cache kernels during AT_DISPATCH expansion.
+            if constexpr (std::is_same<scalar_t, float>::value) {
+                if (compensated)
+                    launch(std::integral_constant<int, 8>{}, std::true_type{}, std::true_type{});
+                else
+                    launch(std::integral_constant<int, 8>{}, std::false_type{}, std::true_type{});
+            }
+        } else if (compensated)
+            launch(std::integral_constant<int, 8>{}, std::true_type{}, std::false_type{});
         else if (input.modes == 8 && output.modes == 8)
-            launch(std::integral_constant<int, 8>{}, std::false_type{});
-        else launch(std::integral_constant<int, 0>{}, std::false_type{});
+            launch(std::integral_constant<int, 8>{}, std::false_type{}, std::false_type{});
+        else launch(std::integral_constant<int, 0>{}, std::false_type{}, std::false_type{});
     });
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return {g, gradient};
+}
+
+// Untimed compiler/runtime diagnostics for the FP32 M8 Polar pullback.
+// Occupancy API output is a prediction, not measured achieved occupancy.
+template <bool CacheCoefficients, bool Compensated>
+static std::vector<int64_t> polar_g_grad_resources_impl(int threads) {
+    size_t shared = CacheCoefficients ? 2 * 17 * threads * sizeof(double) : 0;
+    cudaFuncAttributes attributes{};
+    C10_CUDA_CHECK(cudaFuncGetAttributes(&attributes,
+        polar_g_parameter_grad_kernel<float, 8, Compensated, CacheCoefficients>));
+    int active_blocks = 0;
+    C10_CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&active_blocks,
+        polar_g_parameter_grad_kernel<float, 8, Compensated, CacheCoefficients>, threads, shared));
+    int device = 0;
+    C10_CUDA_CHECK(cudaGetDevice(&device));
+    cudaDeviceProp properties{};
+    C10_CUDA_CHECK(cudaGetDeviceProperties(&properties, device));
+    return {attributes.numRegs, static_cast<int64_t>(attributes.localSizeBytes),
+        static_cast<int64_t>(attributes.sharedSizeBytes), attributes.maxThreadsPerBlock,
+        active_blocks, static_cast<int64_t>(shared), properties.multiProcessorCount};
+}
+
+std::vector<int64_t> polar_g_grad_kernel_resources(int threads, bool cache_coefficients,
+                                                 bool compensated) {
+    TORCH_CHECK(threads == 32 || threads == 64, "resource query requires 32/64 threads");
+    if (cache_coefficients) {
+        if (compensated) return polar_g_grad_resources_impl<true, true>(threads);
+        return polar_g_grad_resources_impl<true, false>(threads);
+    }
+    if (compensated) return polar_g_grad_resources_impl<false, true>(threads);
+    return polar_g_grad_resources_impl<false, false>(threads);
 }

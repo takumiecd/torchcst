@@ -76,6 +76,10 @@ class HierarchicalCellMassAlgorithm(Algorithm[HierarchicalCellMassRecipe]):
         except (ValueError, TypeError) as error:
             return SupportResult((str(error),))
         reasons = []
+        if recipe.arguments().get("cache_polar_coefficients") and (
+            plan.input.polar is None or plan.output.polar is None
+        ):
+            reasons.append("coefficient cache requires Polar input/output axes")
         if context.device.type != "cuda":
             reasons.append("requires a CUDA device")
         if context.dtype not in (torch.float32, torch.float64):

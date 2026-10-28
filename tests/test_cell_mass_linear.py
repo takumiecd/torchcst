@@ -333,3 +333,29 @@ def test_site_scaled_active_bank_preset_composes_with_exact_reuse(
     registry = get_registry()
     plan = ExecutionPlan("cuda_cell_mass_hierarchical", "v1", recipe)
     assert registry.loads_plan(registry.dumps_plan(plan)) == plan
+
+
+@pytest.mark.parametrize("threads", [32, 64])
+@pytest.mark.parametrize("suffix", ["", "_exact_reuse_active_z"])
+def test_polar_cached_recipe_codec_and_metadata(threads, suffix):
+    from benchmarks.training.cell_mass_mnist import make_polar_cst
+    from torchcst._backends.schema import ExecutionPlan
+
+    recipe = HierarchicalCellMassRecipe(
+        f"site_scaled_hc8_g64_cin512_slab16{suffix}_cached{threads}"
+    )
+    options = recipe.arguments()
+    assert options["cache_polar_coefficients"] is True
+    assert options["atom_threads"] == threads
+    algorithm = HierarchicalCellMassAlgorithm()
+    registry = get_registry()
+    plan = ExecutionPlan(algorithm.id, algorithm.revision, recipe)
+    assert registry.loads_plan(registry.dumps_plan(plan)) == plan
+    model = make_polar_cst(128, torch.randn(7, 4), site_scaled=True)
+    ctx = model.build_context(model.input_type(torch.zeros(4, 128)))
+    ctx = replace(ctx, device=DeviceInfo("cuda", 0, "metadata test", (8, 9), 58))
+    assert algorithm.supports(ctx, recipe).supported
+    physical = layer(dtype=torch.float32)
+    ctx = physical.build_context(physical.input_type(torch.zeros(4, 128)))
+    ctx = replace(ctx, device=DeviceInfo("cuda", 0, "metadata test", (8, 9), 58))
+    assert not algorithm.supports(ctx, recipe).supported

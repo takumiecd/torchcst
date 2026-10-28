@@ -764,14 +764,40 @@ def compute_input_c(
     )
 
 
+def _validate_polar_coefficient_cache(enabled, atoms, plan, threads):
+    if type(enabled) is not bool:
+        raise ValueError("cache_polar_coefficients must be bool")
+    if enabled and (
+        plan.input.polar is None
+        or plan.output.polar is None
+        or atoms.dtype != torch.float32
+        or plan.input.modes != 8
+        or plan.output.modes != 8
+        or threads not in (32, 64)
+    ):
+        raise ValueError("Polar coefficient cache requires FP32 M8 and 32/64 threads")
+
+
 def compute_polar_g_and_parameter_grad(
-    plan, atoms, layout, zx, zy, *, threads=128, windowed=False, compensated=False
+    plan,
+    atoms,
+    layout,
+    zx,
+    zy,
+    *,
+    threads=128,
+    windowed=False,
+    compensated=False,
+    cache_coefficients=False,
 ):
     """Recompute H/G in FP64 registers; return rounded G and Polar gradients.
 
+    The optional M8 FP32 cache computes each axis coefficient stream once per
+    atom in private shared-memory columns, reused over all batch tiles.
     No global H is required by this pullback. Width remains detached, so each
     projection computes only its value and center derivative, not d/dsigma.
     """
+    _validate_polar_coefficient_cache(cache_coefficients, atoms, plan, threads)
     if plan.input.polar is None:
         raise ValueError("requires a Polar hierarchy")
     if type(threads) is not int or threads not in (32, 64, 128, 256):
@@ -793,6 +819,7 @@ def compute_polar_g_and_parameter_grad(
         threads,
         windowed,
         compensated,
+        cache_coefficients,
     )
 
 
@@ -957,6 +984,7 @@ class _HierarchicalLinear(torch.autograd.Function):
         hc_reuse_sigma_decode,
         hc_known_input_bank,
         active_bank_z,
+        cache_polar_coefficients,
     ):
         bank_masks = (
             _extension().prepare_bank_masks(
@@ -1046,6 +1074,7 @@ class _HierarchicalLinear(torch.autograd.Function):
         ctx.ragged_c_splits = ragged_c_splits
         ctx.release_workspaces = release_workspaces
         ctx.cin_batch_slab = cin_batch_slab
+        ctx.cache_polar_coefficients = cache_polar_coefficients
         ctx.source_version = atoms._version
         ctx.layout_method = layout.method
         # save_for_backward checks atom AND layout-buffer mutations. Avoid
@@ -1119,6 +1148,7 @@ class _HierarchicalLinear(torch.autograd.Function):
                 threads=ctx.atom_threads,
                 windowed=ctx.window_moments,
                 compensated=ctx.compensated_grad,
+                cache_coefficients=ctx.cache_polar_coefficients,
             )
         elif (
             ctx.fuse_backward_cin
@@ -1233,6 +1263,7 @@ class _HierarchicalLinear(torch.autograd.Function):
             None,
             None,
             None,
+            None,
         )
 
 
@@ -1268,6 +1299,7 @@ def hierarchical_linear(
     hc_reuse_sigma_decode=False,
     hc_known_input_bank=False,
     active_bank_z=False,
+    cache_polar_coefficients=False,
 ):
     """Private research autograd route, using this forward's bank/owner choices.
 
@@ -1282,6 +1314,8 @@ def hierarchical_linear(
     memory, avoiding a second width evaluation when both profile shapes match.
     The optional fused H/C forward is used for M8 axes, with separate fallback
     for other mode counts.
+    cache_polar_coefficients reuses FP64 coefficients across batch tiles in the
+    Polar pullback, with a private shared-memory column per atom thread.
     specialize_g_grad controls standalone G/gradient fusion; fused Cin is unchanged.
     compensated_cdot applies only to separate output/input C generation; it
     keeps the FP64 fallback and is incompatible with the experimental fusions.
@@ -1298,6 +1332,11 @@ def hierarchical_linear(
         fuse_h_c and ragged_c_splits
     ):
         raise ValueError("exact H/C reuse requires fused ragged H/C")
+    _validate_polar_coefficient_cache(
+        cache_polar_coefficients, atoms, plan, atom_threads
+    )
+    if cache_polar_coefficients and reuse_shape_coefficients:
+        raise ValueError("Polar coefficient cache cannot combine with shape reuse")
     if type(fuse_h_c) is not bool:
         raise ValueError("fuse_h_c must be bool")
     if type(hc_batch_tile) is not int or hc_batch_tile not in (4, 8):
@@ -1413,4 +1452,5 @@ def hierarchical_linear(
         hc_reuse_sigma_decode,
         hc_known_input_bank,
         active_bank_z,
+        cache_polar_coefficients,
     )
