@@ -420,6 +420,53 @@ GPU最大値の読戻しを伴う可能性があるbincountを避ける候補で
 sorted keysと境界の一時領域も完全stepのpeakへ含める。
 CPU全体は2367 passed／5768 skipped／既存警告18件。
 
+**完了した再確認：** job `l4job-02934bee8794488288d10c6753195594`で215テスト成功。
+native経路だけに分けた7ケース（M3 chunk tail、M8/A819、M16の33modeとshared fallback、
+FP32/64・P>Qを含む）はmemcheck 0 errors、racecheck 0 hazardsだった。
+これは前jobの時間切れを成功と読み替えたものではなく、同じbinaryをsource照合して別jobで確認した結果である。
+
+同一L4、旧版→shared＋位相＋key保存→固定境界検索、逆順の計6 fresh processで測定した。
+条件は前節のN128/B4/A819/M8/seed41/eager AdamW、warmup3・21サンプルのまま。
+
+| 経路 | fresh process 1 ms | fresh process 2 ms | peak allocated / reserved bytes |
+| --- | ---: | ---: | ---: |
+| 前段の多項式版 | 10.244239 | 10.225017 | 291328 / 2097152 |
+| shared C・位相・分類key保存 | 5.231266 | 5.218902 | 297984 / 2097152 |
+| 上記＋固定境界検索 | 4.456594 | 4.463809 | 297984 / 2097152 |
+
+denseは同じ6実行で0.695353〜0.710390ms、allocated/reservedは17313280/23068672 bytes。
+固定境界検索までを次の検証済み候補とする。約2.29倍の改善だが、denseの約6.4倍の時間であり目標未達。
+allocatedの6656 bytes増加は保存keyのallocator丸めと対応し、予算値6552 bytesと区別する。
+shared Cの追加17952 bytes/CTA（この条件では4 warp分）はSM内の資源で、global表の追加ではない。
+全GPU processメモリとGraphは未測定。
+
+別のinstrumented traceではbincountのpageable DtoH 2回が消え、`aten::item`は3回から1回になった。
+残る1回はforward分類の異常値確認で、同期ゼロを意味しない。
+transform kernel 2回の合計は約2.567ms、atom勾配は約0.244msだった。
+これらのdevice時間や計装phase時間を完全stepへ足したり差し引いたりしない。
+Python profileでは3 stepで`AxisPlan.banks`が75回呼ばれ、BankPlanを1200回構築していた。
+この不変な階層metadataの再構築も次の削減対象とする。
+
+committed source=`f5ba4332`、snapshot SHA256=
+`10caee22bb99f238ecbd8dd1e0cfdf430e08ac47a3daf198f92d316ca1162a70`、
+result archive SHA256=`c32ca516525abf15945ea186a585ee39cbf8b7e552d07d4c47bf22eb67bd9f8b`。
+native module=`torchcst_radius_cell_mass_dd670b6e96a5`、binary SHA256=
+`4aec159dfc2582f9c0109790ec54dfe6a7c40b7fef15e2067ef2ee93335fb14e`。
+前jobの未採用な切り分け結果も含め、raw結果・source照合・trace・Python profile・sanitizer・receiptを
+同じignored `output/radius-optimize-20261028/`へ保持する。
+
+#### 不変bankのcacheと、moment内のサイト位相
+
+次の候補は、frozenなAxisPlanのbank tupleを初期検証時に一度だけ作り、以後再利用する。
+保持するのは変更不能な整数／floatのmetadataだけで、atom値・分類・Tensorはcacheしない。
+`dataclasses.replace`で設定を変えれば新しいbankを作り、`native_config()`は引き続き独立したlistを返す。
+
+GPU側では旧`cell_mass_hierarchical/preparation.cu`と同様に、momentの入力site走査の位相を回転で進める。
+半径版はtile相対座標なので初期位相を正確に(cos,sin)=(1,0)とし、DCは三角関数なし、1siteも専用処理とする。
+セル積分filter、入力の加算順、子から継承するmerge枝は変更しない。
+host実runtime抽出の1179648条件では最大絶対差3.84e-13、重み付きL1比3.07e-15、merge枝の差は0。
+bank cacheのみと、site位相も変えた版を別々に完全stepで比較してから採否を決める。
+
 **先行候補（対称融合前）の検証結果：** CPU全体2,355 passed／5,671 skipped／既存警告18件。
 L4で旧参照と新候補を含む106件成功（宣言等31件、CUDA実行75件）。
 入力directのみ／出力directのみ／両方direct／両方階層、全階層direct、非対称軸、

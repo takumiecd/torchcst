@@ -68,11 +68,21 @@ __device__ inline double compact_moment_element(const T *signal, const double *z
             double argument = PI * harmonic * axis.spacing / bank.period;
             filter *= sin(argument) / argument;
         }
-        for (int local_site = 0; local_site < bank.tile_sites; ++local_site) {
-            int site = tile * bank.tile_sites + local_site;
-            double phase = 2 * PI * harmonic * local_site * axis.spacing / bank.period;
-            double phi = basis == 0 ? 1 : (sine ? sin(phase) : cos(phase));
-            sum += double(signal[b * axis.sites + site]) * filter * phi;
+        int first_site = tile * bank.tile_sites;
+        if (basis == 0) {
+            for (int local_site = 0; local_site < bank.tile_sites; ++local_site)
+                sum += double(signal[b * axis.sites + first_site + local_site]) * filter;
+        } else if (bank.tile_sites == 1) {
+            // Tile-relative phase is exactly zero at the only site.
+            sum += double(signal[b * axis.sites + first_site]) * filter * (sine ? 0 : 1);
+        } else {
+            HarmonicPhase phase(2 * PI * harmonic * axis.spacing / bank.period);
+            for (int local_site = 0; local_site < bank.tile_sites; ++local_site) {
+                double phi = sine ? phase.sine : phase.cosine;
+                sum += double(signal[b * axis.sites + first_site + local_site]) * filter * phi;
+                double unused_cosine, unused_sine;
+                phase.next(unused_cosine, unused_sine);
+            }
         }
     }
     return sum;

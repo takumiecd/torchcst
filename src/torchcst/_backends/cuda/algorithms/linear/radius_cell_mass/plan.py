@@ -2,6 +2,7 @@
 
 import math
 from dataclasses import dataclass
+from functools import cached_property
 
 
 @dataclass(frozen=True)
@@ -105,8 +106,11 @@ class AxisPlan:
     def basis_count(self):
         return 1 + 2 * self.modes
 
-    @property
+    @cached_property
     def banks(self):
+        # AxisPlan is frozen: these banks depend only on its immutable fields.
+        # Validation warms this once; normal execution must not rebuild every
+        # BankPlan when asking for node counts or compact-buffer boundaries.
         banks = []
         tile_sites, level, offset = self.base_tile_sites, 0, 0
         while tile_sites <= self.site_count:

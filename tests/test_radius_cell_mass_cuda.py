@@ -411,3 +411,69 @@ def test_low_level_autocast_and_deterministic_rejected():
             radius_linear(plan, x, p)
     finally:
         torch.use_deterministic_algorithms(previous)
+
+
+def test_axis_banks_cached_after_validation_without_runtime_state(monkeypatch):
+    from dataclasses import fields
+
+    from torchcst._backends.cuda.algorithms.linear.radius_cell_mass import (
+        plan as metadata,
+    )
+
+    original = metadata.BankPlan
+    constructions = []
+
+    def construct(*args, **kwargs):
+        bank = original(*args, **kwargs)
+        constructions.append(bank)
+        return bank
+
+    monkeypatch.setattr(metadata, "BankPlan", construct)
+    a = axis_plan(128, modes=8)
+    banks = a.banks
+    assert len(constructions) == len(banks)
+    expected_nodes = sum(bank.tile_count for bank in banks)
+    for _ in range(5):
+        assert a.banks is banks
+        assert a.node_count == expected_nodes
+        for start in range(len(banks) // 2 + 1):
+            prefix = sum(bank.tile_count for bank in banks if bank.level < start)
+            assert a.prefix_nodes(start) == prefix
+            assert a.active_nodes(start) == expected_nodes - prefix
+    assert len(constructions) == len(banks)
+    # The cache contains immutable geometry declarations, never atom values,
+    # routing tensors, or device-specific execution buffers.
+    assert set(vars(a)) == {field.name for field in fields(a)} | {"banks"}
+    assert isinstance(banks, tuple)
+    for bank in banks:
+        assert isinstance(bank, original)
+        assert all(
+            type(getattr(bank, field.name)) in (int, float) for field in fields(bank)
+        )
+
+
+def test_replaced_axis_rebuilds_geometry_cache_and_native_config_is_detached():
+    a = axis_plan(128, modes=8, spacing=0.7, origin=-0.3)
+    banks = a.banks
+    changed = replace(a, spacing=1.4, modes=3)
+    assert changed.banks is not banks
+    assert [bank.period for bank in changed.banks] == [
+        2 * bank.period for bank in banks
+    ]
+    assert changed.basis_count == 7
+    assert a.basis_count == 17
+    assert changed.node_count == a.node_count
+    assert changed.native_config()[4] == 3
+    with pytest.raises(ValueError):
+        replace(a, spacing=0)
+    with pytest.raises(ValueError):
+        replace(a, modes=17)
+    config = changed.native_config()
+    expected_config = list(config)
+    config[0] = -1
+    config[1] = float("nan")
+    config.append(torch.tensor([123]))
+    assert changed.native_config() == expected_config
+    assert changed.banks is not banks
+    assert a.banks is banks
+    assert changed.banks[0].period == 2 * banks[0].period
