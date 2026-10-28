@@ -162,7 +162,7 @@ Checkpoints from old point-sampled/L2 profiles are not silently reinterpreted.
 See
 [the authoritative kernel flow](docs/cell-mass-kernel-flow.ja.md).
 
-### Radius-native cell masses: CPU reference
+### Radius-native cell masses
 
 `RadiusBounds` declares physical half-width bounds, independently of the legacy
 `BandwidthBounds` sigma contract. `ChebyshevRadiusSpec(modes=M)` selects the
@@ -209,8 +209,28 @@ physical `[amplitude, support_radius, output_center, input_center]` rows, with
 Old sigma APIs, presets and checkpoints keep their original interpretation;
 loading a sigma checkpoint into a radius kernel is rejected.
 
-This is a CPU reference with temporary profile factors. Existing CUDA Plans
-reject the new contract; no new CUDA timing or memory result is claimed.
+The CPU reference uses temporary profile factors. A separate, opt-in native
+CUDA pipeline implements first-order forward/backward for N<=128, A<=4096 and
+M=1..16, including odd M. Initialize on CPU, then select the CUDA Plan:
+
+```python
+from torchcst import FixedSelector, make_algorithm_registry
+from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plans import REFERENCE
+
+layer = layer.to("cuda")
+layer.selector = FixedSelector(REFERENCE, registry=make_algorithm_registry())
+y = layer(torch.randn(4, n, device="cuda", dtype=torch.float64))
+y.square().sum().backward()
+```
+
+`REFERENCE` reuses matching frequencies between hierarchy levels; `DIRECT`
+builds each moment directly. Both compute the same profiles. This initial
+implementation saves FP64 moments and complete responses in global memory;
+it does not yet meet a dense-memory or complete-step speed target. It is
+eager-only, without autocast, deterministic-mode qualification, CUDA Graphs
+or higher-order derivatives. The existing sigma CUDA Plans reject radius
+profiles. Radius Polar optimizer integration on GPU is a separate next stage;
+the example above verifies Linear differentiation, not a full optimizer step.
 Gaussian retains sigma and does not enter this finite-support optimization.
 See [the design and implementation status](docs/cell-mass-kernel-flow.ja.md).
 

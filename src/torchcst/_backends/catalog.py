@@ -13,6 +13,9 @@ def make_registry():
         NormalizedFullAlgorithm,
         NormalizedWindowAlgorithm,
     )
+    from .cuda.algorithms.linear.radius_cell_mass.algorithm import (
+        RadiusCellMassAlgorithm,
+    )
     from .cuda.algorithms.linear.strip_torus.fused.algorithm import (
         FusedStripTorusAlgorithm,
     )
@@ -29,6 +32,7 @@ def make_registry():
     registry = Registry()
     for algorithm in (
         HierarchicalCellMassAlgorithm(),
+        RadiusCellMassAlgorithm(),
         MaterializedAlgorithm(),
         FactoredAlgorithm(),
         FourierTilesAlgorithm(),

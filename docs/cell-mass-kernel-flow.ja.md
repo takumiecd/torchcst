@@ -9,7 +9,7 @@
 **半径APIの初版：** revision7の半径宣言とCPU/Torch参照を追加した。
 `RadiusBounds`・`ChebyshevRadiusSpec`・物理／Polar用preset・`CSTModule.support_radii()`を公開する。
 旧σ版のAPI・checkpointは維持し、半径版との相互読み替えを拒否する。
-新CUDAのmoments生成・融合・保存方式・速度／メモリはまだ実装・検証していない。
+新CUDAの初版は以下の別経路へ実装する。融合・保存量削減・速度／メモリの目標達成は別の段階とする。
 
 CPU検証は全体2,324 passed／5,596 skipped／既存警告18件。
 新規69ケースには、独立Chebyshev数値積分とのセル確率照合、FP32/64のY・dX・全物理atom列の勾配、
@@ -20,6 +20,64 @@ CPU検証は全体2,324 passed／5,596 skipped／既存警告18件。
 READMEのCPU例を実行し、wheel/sdist双方の352 packageファイルをsourceへbyte照合した。
 ログ・配布物・hashはignored `output/support-radius-implementation-20261028/`に保持する。
 再現は`PYTHONPATH=src:. python -m tools.kernel_dev test --suite cpu`。
+
+### 半径CUDAの初版：処理と保存の対応
+
+`_backends/cuda/algorithms/linear/radius_cell_mass/`に専用Algorithmと
+明示Plan `REFERENCE`／`DIRECT`を置く。旧σ版のPlan・数式・checkpointは変更しない。
+最初の対応範囲は1次元周期格子、N<=128、A<=4096、FP32/64、M=1..16（奇数も可）。
+CPUで初期化したCSTLinearをCUDAへ移し、FixedSelectorで選ぶ。
+この段階はLinearのforward／一次backwardの数値基準であり、半径PolarのGPU optimizer、
+Graph、autocast、高階微分、dense以下の完全stepメモリ／速度を達成した実装ではない。
+
+| 呼び出し | 1 threadが担当するもの | 保存先・寿命 |
+| --- | --- | --- |
+| `prepare_layout` | 1 atomの入出力bank・最初のtileを分類 | 一時keyをsortし、元atom行番号とrange offsetsだけ残す。atom値のコピーは作らない |
+| `build_moments` | batch×tile×1実基底の和 | `input_moments[B,node,2M+1]`。backwardまで保存 |
+| `compute_response` | batch×atom。必要なK枚すべてを足し終える | 完成`atom_response[B,A]`のみ公開し、backwardまで保存 |
+| `compute_coefficients` | batch×出力tileの全基底 | sorted range内の完成responseを集約して`output_coeffs`をglobal scratchへ保存 |
+| `expand_coefficients` | 最終出力の1 site | 各階層の寄与をregisterへ加算し、Yへ1回だけ書く。coeffsはforward後に解放 |
+| backwardの`build_moments`／`compute_response` | dYを同じ仕組みで処理 | `grad_output_moments`、完成`grad_response`をbackward中だけ保持 |
+| `parameter_grad` | 1 atomの全batch | 保存H・完成Gとmomentsから振幅・半径・中心の勾配を集約。Polarは半径のtask勾配を切る |
+| backwardの`compute_coefficients`／`expand_coefficients` | 入力tile／最終入力site | 逆向きsort rangeから`grad_input_coeffs`を作り、dXへ1回だけ書く |
+
+momentsはセル積分済みの基底を使う。`merge`ではDCとmerge_factorで割り切れる周波数を
+子tileから正確に継承し、それ以外の周波数は入力から直接計算する。
+有限個の子周波数だけでは親の全周波数を復元できないため、近似補間で埋めない。
+子level→親levelには依存があるが、同一levelのbatch・tile・基底は並列である。
+`direct`はlevel依存なしに同じ和を生成する。
+
+各levelにK=2とK=3のbankを持ち、現在のRから使う方を選ぶ。
+P=(ceil(2R/T)+1)Tを全周Qで打ち切らず、K枚の窓がチャートを一周以上する場合も、
+同じtileの繰り返し像を異なるunwrapped座標で加算する。
+H/Gの途中の和からcoeffsや勾配を作る経路はない。
+
+この初版ではshared memoryは使わず、thread内の係数・累積はprivateな配列／scalar、
+kernel間の受け渡しはglobalで行う。private配列がregisterに収まるかspillするかはcompiler依存である。
+すべてのbankのmoments／coeffsをFP64で確保するので、これを最終メモリ設計とはしない。
+例えばN128・base1・merge2・M8・B4では1軸510 nodesで、1つのmoments／coeffs配列は277,440 bytes。
+H/Gはそれぞれ8BA bytes、元Parameterは4A要素で、batchに比例するscratchが主な削減対象になる。
+将来のactive bank省略・block内融合・選択保存と比較できるよう、この初版の明示境界を残す。
+
+launch順序で依存を保証し、blockを越えたspin waitは使わない。
+sort前の異常値検査は1 error wordをCPUへ読み戻すため、この版では同期ゼロ／Graph対応を主張しない。
+positiveなR/Tが数値的に0へunderflowする尺度は、K=1の不正bankへ進まず拒否する。
+
+**初版の検証（2026-10-28）：** CPU全体2,339 passed／5,625 skipped／既存警告18件。
+共有L4で44ケース成功（PyTorch 2.11.0+cu130、CUDA13.0、Python3.13.16）。
+N16/27/128、M1/3/8/16、merge2/3、非対称軸、K=2/3、P>Qの繰り返し像、
+セル中心one-hot近似、空batch／atom、retained backward、公開FixedSelectorを確認した。
+Y/dXは独立Chebyshev数値積分へ、全物理列・Polar列の勾配はCPU/Torch参照へ照合した。
+N128・B4・A819（5%）のFP32/64でもY・dX・全atom列の勾配を照合した。
+これは速度測定／完全optimizer step／memory peakの検査ではない。
+初回はテストの参照行列の余計な転置で7失敗し、修正後に42件、5%条件追加後に44件が通過した。
+
+最終GPU jobは`l4job-beac5aa0da4a406c881746807f620eb7`、snapshot SHA256は
+`ed26030d0a401a394aa45fb2ca13f14c639d7020822bc4edf5a4ac477d70bd75`。
+native moduleは`torchcst_radius_cell_mass_94e7b1de3936`、回収binary SHA256は
+`6d7aa4a78cd2500fa053f6cb5621d423560747b1fe40bd0560b6b36d52566c13`。
+再現は同snapshotで`python -m pytest -q tests/test_radius_cell_mass_cuda.py`。
+source照合・pool receipt・結果・binaryはignored `output/radius-cuda-20261028/`へ保持する。
 
 **最新の設計指定：** [周期・完成response・階層別tile処理](#周期完成response階層別tile処理の最新指定)を参照。
 直前の提案にあった全local階層共通の固定Kや部分responseの受け渡しを、確定規約とは扱わない。
