@@ -288,7 +288,14 @@ def build_hierarchy(
         raise ValueError("chunk_sites must be zero or a positive power of two")
     if bank_masks is not None:
         if not chunk_sites:
-            raise ValueError("masked hierarchy requires positive chunk_sites")
+            return _extension().build_hierarchy_masked(
+                signal,
+                axis.native_config(),
+                method == "merge",
+                team_size,
+                bank_masks,
+                mask_side,
+            )
         return _extension().build_hierarchy_chunked_masked(
             signal,
             axis.native_config(),
@@ -575,7 +582,7 @@ def compute_h_c(
     )
 
 
-def expand_c(c, axis, like, *, sites_per_block=32):
+def expand_c(c, axis, like, *, sites_per_block=32, bank_masks=None, mask_side=0):
     """Expand each bank's C with cell-integrated bases, then add into Y.
 
     like supplies batch/device/dtype, not output coordinates. Chart seams use
@@ -585,6 +592,10 @@ def expand_c(c, axis, like, *, sites_per_block=32):
         raise TypeError("axis must be AxisPlan")
     if type(sites_per_block) is not int:
         raise ValueError("sites_per_block must be a power of two in [1,256]")
+    if bank_masks is not None:
+        return _extension().expand_c_masked(
+            c, like, axis.native_config(), sites_per_block, bank_masks, mask_side
+        )
     return _extension().expand_c(c, like, axis.native_config(), sites_per_block)
 
 
@@ -985,6 +996,7 @@ class _HierarchicalLinear(torch.autograd.Function):
         hc_known_input_bank,
         active_bank_z,
         cache_polar_coefficients,
+        active_bank_expand,
     ):
         bank_masks = (
             _extension().prepare_bank_masks(
@@ -993,7 +1005,7 @@ class _HierarchicalLinear(torch.autograd.Function):
                 plan.input.native_config(),
                 plan.output.native_config(),
             )
-            if active_bank_z
+            if active_bank_z or active_bank_expand
             else None
         )
         zx = build_hierarchy(
@@ -1002,14 +1014,17 @@ class _HierarchicalLinear(torch.autograd.Function):
             method=z_method,
             team_size=team_size,
             chunk_sites=z_chunk_sites,
-            bank_masks=bank_masks,
+            bank_masks=bank_masks if active_bank_z else None,
             mask_side=0,
         )
         if window_moments:
             # The assignment releases raw Z after the transformation. Save only
             # the immutable owner windows needed by H and parameter gradients.
             zx = build_window_moments(
-                zx, plan.input, bank_masks=bank_masks, mask_side=0
+                zx,
+                plan.input,
+                bank_masks=bank_masks if active_bank_z else None,
+                mask_side=0,
             )
         if fuse_h_c and plan.input.modes == 8 and plan.output.modes == 8:
             h, c = compute_h_c(
@@ -1054,7 +1069,14 @@ class _HierarchicalLinear(torch.autograd.Function):
             # Polar reprojects H in backward; only the generic atom pullback
             # needs this forward activation after output C has been built.
             del h
-        y = expand_c(c, plan.output, x, sites_per_block=sites_per_block)
+        y = expand_c(
+            c,
+            plan.output,
+            x,
+            sites_per_block=sites_per_block,
+            bank_masks=bank_masks if active_bank_expand else None,
+            mask_side=1,
+        )
         ctx.plan = plan
         ctx.z_method = z_method
         ctx.team_size = team_size
@@ -1075,6 +1097,8 @@ class _HierarchicalLinear(torch.autograd.Function):
         ctx.release_workspaces = release_workspaces
         ctx.cin_batch_slab = cin_batch_slab
         ctx.cache_polar_coefficients = cache_polar_coefficients
+        ctx.active_bank_z = active_bank_z
+        ctx.active_bank_expand = active_bank_expand
         ctx.source_version = atoms._version
         ctx.layout_method = layout.method
         # save_for_backward checks atom AND layout-buffer mutations. Avoid
@@ -1129,12 +1153,15 @@ class _HierarchicalLinear(torch.autograd.Function):
             method=ctx.z_method,
             team_size=ctx.team_size,
             chunk_sites=ctx.z_chunk_sites,
-            bank_masks=bank_masks,
+            bank_masks=bank_masks if ctx.active_bank_z else None,
             mask_side=1,
         )
         if ctx.window_moments:
             zy = build_window_moments(
-                zy, plan.output, bank_masks=bank_masks, mask_side=1
+                zy,
+                plan.output,
+                bank_masks=bank_masks if ctx.active_bank_z else None,
+                mask_side=1,
             )
         dx = datoms = cin = None
         if ctx.needs_input_grad[1] and plan.input.polar is not None:
@@ -1219,7 +1246,14 @@ class _HierarchicalLinear(torch.autograd.Function):
                 not ctx.needs_input_grad[1] or datoms is not None
             ):
                 del g
-            dx = expand_c(cin, plan.input, dy, sites_per_block=ctx.sites_per_block)
+            dx = expand_c(
+                cin,
+                plan.input,
+                dy,
+                sites_per_block=ctx.sites_per_block,
+                bank_masks=bank_masks if ctx.active_bank_expand else None,
+                mask_side=0,
+            )
             del cin
         if ctx.needs_input_grad[1] and datoms is None:
             zx, h = forward_state
@@ -1237,6 +1271,7 @@ class _HierarchicalLinear(torch.autograd.Function):
         return (
             dx,
             datoms,
+            None,
             None,
             None,
             None,
@@ -1300,6 +1335,7 @@ def hierarchical_linear(
     hc_known_input_bank=False,
     active_bank_z=False,
     cache_polar_coefficients=False,
+    active_bank_expand=False,
 ):
     """Private research autograd route, using this forward's bank/owner choices.
 
@@ -1322,10 +1358,12 @@ def hierarchical_linear(
     Double backward and full-route CUDA Graph capture are not supported yet
     (preparation has dynamic output shapes and host checks).
     """
+    if type(active_bank_expand) is not bool:
+        raise ValueError("active_bank_expand must be bool")
     if type(active_bank_z) is not bool:
         raise ValueError("active_bank_z must be bool")
-    if active_bank_z and (not z_chunk_sites or z_method != "merge"):
-        raise ValueError("active_bank_z prototype requires chunked merge moments")
+    if active_bank_z and z_method != "merge":
+        raise ValueError("active_bank_z prototype requires merge moments")
     if type(hc_reuse_sigma_decode) is not bool or type(hc_known_input_bank) is not bool:
         raise ValueError("exact H/C reuse switches must be bool")
     if (hc_reuse_sigma_decode or hc_known_input_bank) and not (
@@ -1453,4 +1491,5 @@ def hierarchical_linear(
         hc_known_input_bank,
         active_bank_z,
         cache_polar_coefficients,
+        active_bank_expand,
     )

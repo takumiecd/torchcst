@@ -359,3 +359,19 @@ def test_polar_cached_recipe_codec_and_metadata(threads, suffix):
     ctx = physical.build_context(physical.input_type(torch.zeros(4, 128)))
     ctx = replace(ctx, device=DeviceInfo("cuda", 0, "metadata test", (8, 9), 58))
     assert not algorithm.supports(ctx, recipe).supported
+
+
+@pytest.mark.parametrize("suffix", ["_expand", "_node_z", "_node_z_cached32_expand"])
+def test_masked_node_and_expansion_recipe_codec(suffix):
+    from torchcst._backends.schema import ExecutionPlan
+
+    recipe = HierarchicalCellMassRecipe(
+        "site_scaled_hc8_g64_cin512_slab16_exact_reuse" + suffix
+    )
+    options = recipe.arguments()
+    assert options.get("active_bank_expand", False) == suffix.endswith("_expand")
+    if "_node_z" in suffix:
+        assert options["active_bank_z"] and options["z_chunk_sites"] == 0
+    registry = get_registry()
+    plan = ExecutionPlan("cuda_cell_mass_hierarchical", "v1", recipe)
+    assert registry.loads_plan(registry.dumps_plan(plan)) == plan

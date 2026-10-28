@@ -21,6 +21,8 @@ Tensor build_hierarchy(Tensor signal, Config axis, bool merge, int team_size);
 Tensor build_hierarchy_chunked(Tensor signal, Config axis, bool merge,
                                int team_size, int chunk_sites);
 Tensor build_window_moments(Tensor z, Config axis);
+Tensor build_hierarchy_masked(Tensor signal, Config axis, bool merge,
+                              int team_size, Tensor masks, int side);
 Tensor prepare_bank_masks(Tensor groups, Tensor offsets, Config input, Config output);
 Tensor build_hierarchy_chunked_masked(Tensor signal, Config axis, bool merge,
                                       int team_size, int chunk_sites, Tensor masks, int side);
@@ -100,6 +102,7 @@ std::vector<Tensor> compute_g_parameter_grad_cin_reverse(
     Tensor h, Config input, Config output, int splits, bool windowed,
     int atoms_per_split);
 Tensor expand_c(Tensor c, Tensor like, Config axis, int width);
+Tensor expand_c_masked(Tensor c, Tensor like, Config axis, int width, Tensor bank_masks, int mask_side);
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("classify_atoms", &classify_atoms);
@@ -115,6 +118,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("prepare_compact_layout_reverse_signal",
         &prepare_compact_layout_reverse_signal);
   m.def("build_hierarchy", &build_hierarchy);
+  m.def("build_hierarchy_masked", &build_hierarchy_masked);
   m.def("build_hierarchy_chunked", &build_hierarchy_chunked);
   m.def("build_window_moments", &build_window_moments);
   m.def("prepare_bank_masks", &prepare_bank_masks);
@@ -123,6 +127,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("compute_h", &compute_h);
   m.def("compute_c", &compute_c);
   m.def("expand_c", &expand_c);
+  m.def("expand_c_masked", &expand_c_masked);
   m.def("compute_c_split", &compute_c_split);
   m.def("compute_c_ragged", &compute_c_ragged);
   m.def("compute_h_c", &compute_h_c);

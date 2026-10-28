@@ -1394,7 +1394,8 @@ __global__ void ragged_reduce_kernel(const int *task_offsets, const double *part
 // Unique output site/batch ownership: add contributions from each bank after
 // evaluating C in that bank's basis. No Y atomic or mixed-basis C summation.
 template <typename scalar_t>
-__global__ void expand_c_kernel(const double *c, scalar_t *y, int batches, Axis axis, int width) {
+__global__ void expand_c_kernel(const double *c, scalar_t *y, int batches, Axis axis, int width,
+                                const int *bank_masks = nullptr, int mask_side = 0) {
     for (int work = threadIdx.x; work < width * BATCH_TILE; work += blockDim.x) {
         int site = blockIdx.x * width + work % width;
         int batch = blockIdx.y * BATCH_TILE + work / width;
@@ -1402,6 +1403,9 @@ __global__ void expand_c_kernel(const double *c, scalar_t *y, int batches, Axis 
             continue;
         double total = 0;
         for (int index = 0; index < axis.bank_count; ++index) {
+            // Consumer bits only: raw ancestor banks need not contribute C.
+            if (bank_masks && !(bank_masks[2 * mask_side] & (1 << index)))
+                continue;
             Bank bank = axis.banks[index];
             int tile = site / bank.tile_sites;
             int retained = bank.full_chart ? 1 : 3;
@@ -2263,12 +2267,20 @@ torch::Tensor compute_input_c_reverse_ragged_slab(torch::Tensor atoms, torch::Te
                            splits, grain, false, batch_slab)[1];
 }
 
-torch::Tensor expand_c(torch::Tensor c, torch::Tensor like, std::vector<double> config, int width) {
+static torch::Tensor expand_c_impl(torch::Tensor c, torch::Tensor like,
+                                   std::vector<double> config, int width,
+                                   torch::Tensor bank_masks, int mask_side) {
     check_cuda_float_matrix(like);
     Axis axis = parse_axis(config);
     check_moments(c, like, axis);
     TORCH_CHECK(c.size(0) == like.size(0), "batch mismatch");
     TORCH_CHECK(width >= 1 && width <= 256 && power_of_two(width), "invalid output block width");
+    if (bank_masks.defined()) {
+        TORCH_CHECK(bank_masks.device() == like.device() && bank_masks.is_contiguous() &&
+                    bank_masks.scalar_type() == torch::kInt32 && bank_masks.dim() == 1 &&
+                    bank_masks.numel() == 4, "bank masks must be device-local int32[4]");
+        TORCH_CHECK(mask_side == 0 || mask_side == 1, "mask side must be input=0 or output=1");
+    }
     c10::cuda::CUDAGuard guard(like.device());
     auto y = torch::empty({c.size(0), axis.sites}, like.options());
     if (y.numel() == 0)
@@ -2277,8 +2289,22 @@ torch::Tensor expand_c(torch::Tensor c, torch::Tensor like, std::vector<double> 
     auto stream = c10::cuda::getCurrentCUDAStream();
     AT_DISPATCH_FLOATING_TYPES(like.scalar_type(), "hierarchical_expand_c", [&] {
         expand_c_kernel<<<grid, THREADS, 0, stream>>>(c.data_ptr<double>(), y.data_ptr<scalar_t>(),
-                                                      c.size(0), axis, width);
+                                                      c.size(0), axis, width,
+                                                      bank_masks.defined() ? bank_masks.data_ptr<int>() : nullptr,
+                                                      mask_side);
     });
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return y;
+}
+
+// Existing entry keeps all banks; the optional route receives forward-scoped
+// masks derived from every nonempty atom group, irrespective of amplitude.
+torch::Tensor expand_c(torch::Tensor c, torch::Tensor like, std::vector<double> config, int width) {
+    return expand_c_impl(c, like, config, width, {}, 0);
+}
+
+torch::Tensor expand_c_masked(torch::Tensor c, torch::Tensor like, std::vector<double> config,
+                             int width, torch::Tensor bank_masks, int mask_side) {
+    TORCH_CHECK(bank_masks.defined(), "masked expansion requires bank masks");
+    return expand_c_impl(c, like, config, width, bank_masks, mask_side);
 }

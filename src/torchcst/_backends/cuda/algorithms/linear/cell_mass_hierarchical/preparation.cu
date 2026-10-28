@@ -451,12 +451,16 @@ __global__ void scatter_counting_rows_kernel(const int *keys, int atom_count,
 // thread reaches every block barrier, including unused teams and merge jobs.
 template <typename scalar_t>
 __global__ void build_direct_kernel(const scalar_t *signal, double *z, int batches, Axis axis,
-                                    bool merge, int team_size) {
+                                    bool merge, int team_size, const int *bank_masks = nullptr,
+                                    int mask_index = 0) {
     __shared__ double partials[THREADS];
     int node = blockIdx.x;
     int bank_index = 0;
     while (bank_index + 1 < axis.bank_count && node >= axis.banks[bank_index + 1].node_offset)
         ++bank_index;
+    // This CTA owns one bank, so the early return is uniform before barriers.
+    if (bank_masks && !(bank_masks[mask_index] & (1 << bank_index)))
+        return;
     Bank bank = axis.banks[bank_index];
     int first = (node - bank.node_offset) * bank.tile_sites;
     int team_count = THREADS / team_size;
@@ -951,17 +955,25 @@ torch::Tensor decode_groups(torch::Tensor keys, std::vector<double> input_config
     return groups;
 }
 
-torch::Tensor build_hierarchy(torch::Tensor signal, std::vector<double> config, bool merge,
-                              int team_size) {
+// Both public routes share the same node computation and merge implementation.
+// The masked route zeroes inactive output nodes and allocates no chunk scratch.
+static void check_bank_masks(torch::Tensor masks, torch::Tensor reference, int side);
+static torch::Tensor build_hierarchy_impl(torch::Tensor signal, std::vector<double> config,
+                                         bool merge, int team_size,
+                                         torch::Tensor masks, int side) {
     check_cuda_float_matrix(signal);
     Axis axis = parse_axis(config);
     TORCH_CHECK(signal.size(1) == axis.sites, "signal does not match axis");
     TORCH_CHECK(signal.size(0) <= INT_MAX / (axis.node_count * axis.basis_count()),
                 "hierarchy exceeds prototype index capacity");
     TORCH_CHECK(power_of_two(team_size) && team_size <= 32, "invalid Z team size");
+    TORCH_CHECK(signal.size(0) <= static_cast<int64_t>(65535) * BATCH_TILE,
+                "node grid exceeds CUDA grid.y capacity");
     c10::cuda::CUDAGuard guard(signal.device());
     auto z = torch::empty({signal.size(0), axis.node_count, axis.basis_count()},
                           signal.options().dtype(torch::kFloat64));
+    if (masks.defined())
+        z.zero_(); // The full tensor layout stays defined for inactive nodes.
     if (signal.size(0) == 0)
         return z;
     auto stream = c10::cuda::getCurrentCUDAStream();
@@ -969,17 +981,35 @@ torch::Tensor build_hierarchy(torch::Tensor signal, std::vector<double> config, 
     AT_DISPATCH_FLOATING_TYPES(signal.scalar_type(), "hierarchical_build_z", [&] {
         build_direct_kernel<<<grid, THREADS, 0, stream>>>(signal.data_ptr<scalar_t>(),
                                                           z.data_ptr<double>(), signal.size(0),
-                                                          axis, merge, team_size);
+                                                          axis, merge, team_size,
+                                                          masks.defined() ? masks.data_ptr<int>() : nullptr,
+                                                          2 * side + 1);
     });
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     // Kernel order on this stream is the inter-block dependency boundary.
     for (int bank = 1; merge && bank < axis.bank_count - 1; ++bank) {
         int work = signal.size(0) * axis.banks[bank].tile_count * axis.basis_count();
         merge_bank_kernel<<<(work + THREADS - 1) / THREADS, THREADS, 0, stream>>>(
-            z.data_ptr<double>(), signal.size(0), axis, bank);
+            z.data_ptr<double>(), signal.size(0), axis, bank,
+            masks.defined() ? masks.data_ptr<int>() : nullptr, 2 * side + 1);
         C10_CUDA_KERNEL_LAUNCH_CHECK();
     }
     return z;
+}
+
+// Preserve the old ABI and default path. Masked node moments are opt-in only.
+torch::Tensor build_hierarchy(torch::Tensor signal, std::vector<double> config,
+                              bool merge, int team_size) {
+    return build_hierarchy_impl(signal, config, merge, team_size, {}, 0);
+}
+
+// This route is useful when active raw banks have short tiles: each node CTA
+// sums its own tile directly, avoiding chunk scratch and the chunk reduction.
+// Full-chart banks remain correct but may become long-lived CTAs when active.
+torch::Tensor build_hierarchy_masked(torch::Tensor signal, std::vector<double> config,
+                                     bool merge, int team_size, torch::Tensor masks, int side) {
+    check_bank_masks(masks, signal, side);
+    return build_hierarchy_impl(signal, config, merge, team_size, masks, side);
 }
 
 static torch::Tensor build_hierarchy_chunked_impl(torch::Tensor signal, std::vector<double> config, bool merge,
