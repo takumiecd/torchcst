@@ -359,4 +359,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("expand_hybrid", &radius_cell_mass::expand_hybrid);
     m.def("hybrid_parameter_grad", &radius_cell_mass::hybrid_parameter_grad);
     m.def("block_local_forward", &radius_cell_mass::block_local_forward);
+    m.def("block_local_backward", &radius_cell_mass::block_local_backward);
+    m.def("block_local_project", &radius_cell_mass::block_local_project);
 }

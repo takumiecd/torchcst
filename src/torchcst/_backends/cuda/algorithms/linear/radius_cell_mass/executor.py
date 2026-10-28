@@ -1,8 +1,8 @@
 """Opt-in native radius pipeline, with explicit and inspectable stage boundaries.
 
-The reference saves input moments; hybrid routes omit direct levels, and the
-block-local forward keeps moment/C scratch in shared memory. All routes save
-complete responses for backward. These are numerical candidates, not complete
+The reference saves input moments; hybrid routes omit direct levels. Block-local
+compute builds moments/response/C in shared, returning the completed moments and
+response alongside Y/dX for reuse. These are numerical candidates, not complete
 training-step speed results. No weights, packed atoms or global atom Fourier
 tables are materialized.
 """
@@ -141,52 +141,124 @@ def _complete_hybrid_response(signal, atoms, axis, start_level, recipe, output_s
     return moments, response
 
 
-class _HybridRadiusLinear(torch.autograd.Function):
+class _BlockLocalRadiusLinear(torch.autograd.Function):
+    """One forward transform, one reverse transform, then atom gradients.
+
+    prepare_layout supplies routing metadata outside these compute kernels.
+    Each transform returns its final values AND the completed projection caches.
+    Coefficients stay in shared scratch; moments/response are saved once.
+    """
+
     @staticmethod
     def forward(ctx, x, atoms, plan, recipe):
         native = _extension()
         rows, offsets = prepare_layout(plan, atoms)
-        if recipe.schedule == "block_local":
-            # One compute launch after sorting. Each output CTA constructs its
-            # own shared moments and complete H, reuses scratch for shared C,
-            # and writes only its final Y interval. No global moments/C here.
-            y, response = native.block_local_forward(
-                x,
+        y, input_moments, atom_response = native.block_local_forward(
+            x,
+            atoms,
+            rows,
+            offsets,
+            plan.input.native_config(),
+            plan.output.native_config(),
+            recipe.input_direct_levels,
+            recipe.output_direct_levels,
+            recipe.moment_method == "merge",
+            recipe.output_tile_sites,
+        )
+        ctx.plan, ctx.recipe = plan, recipe
+        # X/dY are still used for derivatives of direct atoms. The hierarchy
+        # moments and H are actual completed caches, not empty placeholders.
+        ctx.save_for_backward(x, atoms, input_moments, atom_response)
+        return y
+
+    @staticmethod
+    @once_differentiable
+    def backward(ctx, dy):
+        x, atoms, input_moments, atom_response = ctx.saved_tensors
+        plan, recipe = ctx.plan, ctx.recipe
+        native = _extension()
+        dy = dy.contiguous()
+        grad_input = None
+        if ctx.needs_input_grad[0]:
+            rows, offsets = prepare_layout(plan, atoms, reverse=True)
+            # The SAME transform runs in reverse: dY -> moments -> G -> dX.
+            # No intermediate moment/G/Cin launch or global Cin is needed.
+            grad_input, grad_output_moments, grad_response = (
+                native.block_local_backward(
+                    dy,
+                    atoms,
+                    rows,
+                    offsets,
+                    plan.input.native_config(),
+                    plan.output.native_config(),
+                    recipe.input_direct_levels,
+                    recipe.output_direct_levels,
+                    recipe.moment_method == "merge",
+                    recipe.output_tile_sites,
+                )
+            )
+        elif ctx.needs_input_grad[1]:
+            # Atom-only backward publishes the two required caches in ONE
+            # projection kernel; it has no dX expansion or routing sort.
+            grad_output_moments, grad_response = native.block_local_project(
+                dy,
                 atoms,
-                rows,
-                offsets,
+                plan.output.native_config(),
+                True,
+                recipe.output_direct_levels,
+                recipe.moment_method == "merge",
+            )
+        else:
+            return None, None, None, None
+
+        grad_atoms = None
+        if ctx.needs_input_grad[1]:
+            grad_atoms = native.hybrid_parameter_grad(
+                atoms,
+                x,
+                dy,
+                input_moments,
+                grad_output_moments,
+                atom_response,
+                grad_response,
                 plan.input.native_config(),
                 plan.output.native_config(),
                 recipe.input_direct_levels,
                 recipe.output_direct_levels,
-                recipe.moment_method == "merge",
-                recipe.output_tile_sites,
             )
-            moments = x.new_empty((0,), dtype=torch.float64)
-        else:
-            moments, response = _complete_hybrid_response(
-                x, atoms, plan.input, recipe.input_direct_levels, recipe, False
-            )
-            coefficients = native.compact_coefficients(
-                atoms,
-                rows,
-                offsets,
-                response,
-                plan.output.native_config(),
-                True,
-                recipe.output_direct_levels,
-            )
-            y = native.expand_hybrid(
-                atoms,
-                rows,
-                offsets,
-                response,
-                coefficients,
-                x,
-                plan.output.native_config(),
-                True,
-                recipe.output_direct_levels,
-            )
+        return grad_input, grad_atoms, None, None
+
+
+class _HybridRadiusLinear(torch.autograd.Function):
+    """Staged sequential/stream-overlap comparisons to the fused transform."""
+
+    @staticmethod
+    def forward(ctx, x, atoms, plan, recipe):
+        native = _extension()
+        rows, offsets = prepare_layout(plan, atoms)
+        moments, response = _complete_hybrid_response(
+            x, atoms, plan.input, recipe.input_direct_levels, recipe, False
+        )
+        coefficients = native.compact_coefficients(
+            atoms,
+            rows,
+            offsets,
+            response,
+            plan.output.native_config(),
+            True,
+            recipe.output_direct_levels,
+        )
+        y = native.expand_hybrid(
+            atoms,
+            rows,
+            offsets,
+            response,
+            coefficients,
+            x,
+            plan.output.native_config(),
+            True,
+            recipe.output_direct_levels,
+        )
         ctx.plan, ctx.recipe = plan, recipe
         ctx.save_for_backward(x, atoms, moments, response)
         return y
@@ -232,21 +304,12 @@ class _HybridRadiusLinear(torch.autograd.Function):
                 False,
                 recipe.input_direct_levels,
             )
-            # Cin is not an input to atom gradients. Release its scratch before
-            # the block-local route reconstructs input moments from saved X.
+            # Cin is not an input to atom gradients. Release it before the
+            # parameter-gradient stage while retaining the shared moments/G.
             del coefficients
 
         grad_atoms = None
         if ctx.needs_input_grad[1]:
-            if recipe.schedule == "block_local":
-                # Only X and H were checkpointed. This reconstruction is for
-                # input-profile derivatives, not another output moments/G pass.
-                input_moments = build_moments(
-                    x,
-                    plan.input,
-                    method=recipe.moment_method,
-                    start_level=recipe.input_direct_levels,
-                )
             grad_atoms = native.hybrid_parameter_grad(
                 atoms,
                 x,
@@ -373,11 +436,14 @@ def radius_linear(plan, x, atoms, *, recipe=None):
     with torch.cuda.device(x.device):
         if torch.cuda.is_current_stream_capturing():
             raise ValueError("radius baseline uses eager preparation, not CUDA Graphs")
-        function = (
-            _HybridRadiusLinear
-            if recipe.input_direct_levels
+        if recipe.schedule == "block_local":
+            function = _BlockLocalRadiusLinear
+        elif (
+            recipe.input_direct_levels
             or recipe.output_direct_levels
-            or recipe.schedule != "sequential"
-            else _RadiusLinear
-        )
+            or recipe.schedule == "overlap"
+        ):
+            function = _HybridRadiusLinear
+        else:
+            function = _RadiusLinear
         return function.apply(x.contiguous(), atoms.contiguous(), plan, recipe)

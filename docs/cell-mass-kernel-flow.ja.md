@@ -118,16 +118,19 @@ direct atomはmoments／coeffsを使わず、同じprofileのセル積分で処�
 block内では明示した段階の同期を行い、direct responseとmomentsを別teamで同時実行する版ではない。
 複数stream版と、block内の段階を融合する版を別の候補として比較する。
 
-この版は出力CTAごとに入力moments／responseを再計算するので、global転送の削減と重複演算が交換条件になる。
-完成responseのglobal保存は出力CTA0だけが担当する。
-backwardはXと保存responseから必要なinput momentsを一度再構築し、上のhybrid処理を使う。
-したがって「forward computeが1 kernel」であって、prepareやbackward全体も1 kernelという意味ではない。
+この版は出力CTAごとに入力moments／responseを計算するので、共有と重複演算が交換条件になる。
+完成momentsとresponseのglobal保存は出力CTA0だけが担当し、各CTAは自分のshared値を使う。
+forwardは`(Y,input_moments,atom_response)`を返し、後二者をbackwardへ保存する。
+backwardは同じcompute kernelを逆向きに使い、`(dX,grad_output_moments,grad_response)`を返す。
+その後のatom勾配kernelは保存済みX側moments/Hと、逆向きに作った同じmoments/Gを再利用する。
+input momentsを再構築する段階はない。coeffsは両方向ともshared scratchで、global表を作らない。
+prepareを除いてforward computeは1 kernel、通常backwardは逆compute 1 kernel＋atom勾配1 kernelになる。
 sharedの上限は1 CTAあたり48KiBで、超える設定は拒否する。
 `output_tile_sites`は出力CTAの担当範囲であり、profileの階層tile幅を変更する設定ではない。
 
 **backwardの実行順：** 全候補で、出力側moments／直接投影→完成G→dX→grad_atomとする。
 grad_atomはdXの値そのものではなく、dX側で生成した同じ出力moments・完成Gを使う。
-X側momentsとHは保存値を使い、block_localだけはX側momentsをdX後に一度再構築する。
+X側momentsとHは、block_localも含めforwardの保存値を使う。
 dX用coeffsのscratchは展開後に解放し、grad_atom段階へ残さない。
 片方の勾配だけが必要なら、不要なdX／grad_atomの段階は実行しない。
 これは同じstreamへのenqueue順であり、CPU同期を追加したり、前の層のbackwardまで同時に開始できると保証したりしない。
@@ -137,10 +140,56 @@ job=`l4job-895949990509471f8bf01b3daff41078`、snapshot SHA256=
 native sourceは不変で、検証済みbinaryをsource／runtime照合して再利用した。
 新しいPython実行順のsource hash、結果、receiptはignored `output/radius-backward-order-20261028/`へ保持する。
 
+#### 対称な融合computeと、保存値の契約
+
+2026-10-28。前節の順序変更だけでは十分でないため、block_localのbackwardも融合する。
+momentsは使用する階層分だけを保存し、全階層directなら0要素でもよい。
+directなprofile微分を含むatom勾配には、raw X/dYも使用する。
+
+```text
+forward_compute(X)              -> Y,  input_moments,       atom_response   [1 kernel]
+backward_compute(dY)            -> dX, grad_output_moments, grad_response   [1 kernel]
+parameter_grad(保存値と逆向き値) -> grad_atom                                [1 kernel]
+```
+
+3つを返すのはnative computeの契約である。公開`CSTLinear.forward`の戻り値はYのまま維持し、
+input momentsとatom responseはautogradが保存してbackwardへ渡す。
+
+atom勾配だけ必要なら`backward_project(dY) -> (grad_output_moments,grad_response)`を
+1 kernelで計算してからparameter_gradへ進む。dX展開・dX用coeffs・逆向きsortは行わない。
+dXだけ必要なら逆computeだけを実行し、parameter_gradを起動しない。
+moments/Gを作り直す段階や、block間で完成を待つspin waitはない。
+kernel内部では依存順にblock同期し、momentsを保存してからshared scratchをcoeffs用に再利用する。
+これらはcomputeの起動数であり、prepareの分類・sort等まで1 kernelに含む意味ではない。
+旧REFERENCE／HYBRID_SERIAL／HYBRID_OVERLAPは分割実行の比較候補として残し、融合版とは区別する。
+
+**対称融合後の検証：** CPU全体2,355 passed／5,697 skipped／既存警告18件。
+L4で132件成功（宣言等31件、CUDA実行101件）。新規26件は、実際のnative呼び出しを記録して
+forward triple、逆向きtriple、atom-onlyの2値、不要段階の省略を検査する。
+forwardのmoments/Hと逆向きのmoments/Gが同じstorageのままparameter_gradへ渡ること、
+input momentsの再構築がないことも検査した。FP32/64のN128・A819・B4、非対称軸、
+奇数M、全direct、Polar別bounds、retained backwardを参照値へ照合した。
+
+N128・A819・B4・M8の実GPU traceでは、通常経路はforward＋reverseのtransform kernelが2回、
+atom勾配kernelが1回で、別moments／response／coeffs／展開kernelは0回だった。
+atom-onlyはforward＋projectionの2回とatom勾配1回、dX-onlyはforward＋reverseの2回だけだった。
+この観測は準備・sortを除くcomputeの起動数であり、未計装の完全step速度比較ではない。
+同条件で1方向の保存momentsは`[4,126,17]` FP64＝68,544 bytes、responseは`[4,819]` FP64＝26,208 bytes。
+これはcache本体の容量であり、完全stepのallocated/reserved peakではない。
+勾配有無・directの組合せとA819を含む18ケースでmemcheckは0 errors、racecheckは0 hazards。
+
+gate job=`l4job-f77c56e6f1c04ff69097c8c483292748`、snapshot SHA256=
+`047b898cc3e964f8791de3945b56a1f8befed908aa03bf24719e0d2b44ed1d1a`。
+起動数・sanitizer job=`l4job-41ca88725b1d458e82be7c5cb60ae924`、snapshot SHA256=
+`e95cd93dceeadf8841a57f526c0aa83d4c5d2295e1ccacb2b5ca4af9c771a525`。
+native binary SHA256=`0f103d5bfa3c86a8e351aacb1baf8b8cef9171588efae8f20b28ff8e3230eb63`。
+source照合・receipt・binary・Chrome trace・検査logはignored `output/radius-fused-backward-20261028/`に保持する。
+再現gateは前節の2ファイルに`tests/test_radius_cell_mass_fused_backward.py`を追加する。
+
 初期候補のdirect_levels=2は比較用の明示設定で、最適閾値や全GPU共通の既定としては採用しない。
 なお従来の`DIRECT` Planはmomentsの直接生成（`moment_method="direct"`）であり、atomのdirect経路とは区別する。
 
-**検証結果：** CPU全体2,355 passed／5,671 skipped／既存警告18件。
+**先行候補（対称融合前）の検証結果：** CPU全体2,355 passed／5,671 skipped／既存警告18件。
 L4で旧参照と新候補を含む106件成功（宣言等31件、CUDA実行75件）。
 入力directのみ／出力directのみ／両方direct／両方階層、全階層direct、非対称軸、
 空shape、retained backward、Polar別bounds、非既定stream上の一時tensor寿命を確認した。
@@ -150,8 +199,8 @@ N128・A819・B4・M8のFP32/64でも、全3候補のY・dX・全atom列をCPU�
 同じN128・A819・B4・M8をinstrumented profilerで1回ずつ観測すると、
 overlap版にはdirect response（stream7）とcompact moments（stream13）の実行区間の重なりがあった。
 serial版の同じ2処理には重なりがなかった。これは同時実行の観測であり、時間の改善率や
-完全stepの採用判定ではない。block_local版はforwardのcomputeを1 launchへまとめ、
-backwardにはcompact moments構築等の複数launchがある。
+完全stepの採用判定ではない。このtraceの先行block_local版はforwardのみ融合し、backwardは分割していた。
+上記の対称な融合版とはnative sourceが異なるため、その検証結果として読み替えない。
 N128・A819の3候補×FP32/64の6ケースで、memcheckは0 errors、racecheckは0 hazardsだった。
 
 gate job=`l4job-ee6e51862006463780e2b1ac74072cf9`、snapshot SHA256=

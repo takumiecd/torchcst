@@ -215,10 +215,10 @@ M=1..16, including odd M. Initialize on CPU, then select the CUDA Plan:
 
 ```python
 from torchcst import FixedSelector, make_algorithm_registry
-from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plans import REFERENCE
+from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plans import BLOCK_LOCAL
 
 layer = layer.to("cuda")
-layer.selector = FixedSelector(REFERENCE, registry=make_algorithm_registry())
+layer.selector = FixedSelector(BLOCK_LOCAL, registry=make_algorithm_registry())
 y = layer(torch.randn(4, n, device="cuda", dtype=torch.float64))
 y.square().sum().backward()
 ```
@@ -229,10 +229,14 @@ builds each moment directly. This `DIRECT` name does not mean bypassing moments.
 direct output expansion below independently configured hierarchy levels.
 The overlap Plan runs direct response work beside moment construction on an
 auxiliary stream and joins complete responses before output consumers.
-`BLOCK_LOCAL` fuses forward compute after sorting into one kernel, with moments,
-complete responses and coefficients in shared memory. It recomputes input work
-per output CTA and reconstructs input moments in backward; only complete
-responses are globally checkpointed. A 48-KiB per-CTA shared limit applies.
+`BLOCK_LOCAL` uses one forward compute kernel after sorting. It constructs
+moments, complete responses and coefficients in shared, and returns
+`(Y, input_moments, atom_response)`. Completed moments and responses are saved
+once for backward; coefficients remain shared scratch. The reverse compute
+kernel returns `(dX, grad_output_moments, grad_response)`, then one atom-gradient
+kernel reuses both saved projections. Atom-only backward skips dX and produces
+its moments/response together in one projection kernel. No input-moment rebuild
+is needed. Work is recomputed per destination CTA; a 48-KiB shared limit applies.
 All Plans compute the same profiles. The reference saves FP64 moments and
 complete responses in global memory; hybrid buffers omit low direct levels.
 These candidates do not establish dense-memory or complete-step speed success. They are
