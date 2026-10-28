@@ -1,12 +1,14 @@
 """Opt-in native radius pipeline, with explicit and inspectable stage boundaries.
 
-This first implementation saves complete responses and input moments for
-backward. It establishes a numerical baseline, not a low-memory speed result.
-It never materializes weights, packed atoms, or global atom Fourier tables.
+The reference saves input moments; hybrid routes omit direct levels, and the
+block-local forward keeps moment/C scratch in shared memory. All routes save
+complete responses for backward. These are numerical candidates, not complete
+training-step speed results. No weights, packed atoms or global atom Fourier
+tables are materialized.
 """
 
 import hashlib
-from functools import lru_cache
+from functools import cache, lru_cache
 from pathlib import Path
 
 import torch
@@ -23,11 +25,12 @@ def _extension():
     from torch.utils.cpp_extension import load
 
     directory = Path(__file__).parent
-    sources = [directory / "pipeline.cu", directory / "common.cuh"]
+    source = directory / "pipeline.cu"
+    sources = [source, *sorted(directory.glob("*.cuh"))]
     digest = hashlib.sha256(b"".join(p.read_bytes() for p in sources)).hexdigest()[:12]
     return load(
         name=f"torchcst_radius_cell_mass_{digest}",
-        sources=[str(sources[0])],
+        sources=[str(source)],
         extra_cflags=["-O2"],
         extra_cuda_cflags=["-O2", "--ftz=false"],
         verbose=False,
@@ -66,7 +69,7 @@ def prepare_layout(plan, atoms, *, reverse=False):
     return rows, offsets
 
 
-def build_moments(signal, axis, *, method="merge"):
+def build_moments(signal, axis, *, method="merge", start_level=0):
     """Build [batch, bank-node, real basis] cell-integrated moments.
 
     Direct evaluates every frequency from signal. Merge inherits DC and
@@ -76,9 +79,182 @@ def build_moments(signal, axis, *, method="merge"):
     """
     if method not in ("direct", "merge"):
         raise ValueError("moment method must be direct or merge")
+    axis.prefix_nodes(start_level)
+    if start_level:
+        return _extension().build_compact_moments(
+            signal.contiguous(), axis.native_config(), method == "merge", start_level
+        )
     return _extension().build_moments(
         signal.contiguous(), axis.native_config(), method == "merge"
     )
+
+
+@cache
+def _moment_stream(device_index):
+    """A reusable auxiliary stream; it reserves no SMs or tensor workspace."""
+    return torch.cuda.Stream(device=device_index)
+
+
+def _complete_hybrid_response(signal, atoms, axis, start_level, recipe, output_side):
+    """Fork independent direct and moment work, then join final responses.
+
+    Low/high kernels write disjoint atom entries of the same response tensor.
+    The join precedes every coefficient/gradient consumer. Stream separation
+    permits concurrency; it does not guarantee concurrent SM residency.
+    """
+    native = _extension()
+    config = axis.native_config()
+    response = torch.empty(
+        (signal.shape[0], atoms.shape[0]), device=signal.device, dtype=torch.float64
+    )
+    if recipe.schedule == "overlap":
+        parent = torch.cuda.current_stream(signal.device)
+        auxiliary = _moment_stream(signal.device.index)
+        # Fork AFTER response allocation but BEFORE the direct kernel. Waiting
+        # after launching direct would accidentally serialize the two branches.
+        auxiliary.wait_stream(parent)
+        native.direct_response_into(
+            signal, atoms, response, config, output_side, start_level
+        )
+        with torch.cuda.stream(auxiliary):
+            signal.record_stream(auxiliary)
+            atoms.record_stream(auxiliary)
+            response.record_stream(auxiliary)
+            moments = build_moments(
+                signal, axis, method=recipe.moment_method, start_level=start_level
+            )
+            native.complete_response(
+                atoms, moments, response, config, output_side, start_level
+            )
+        parent.wait_stream(auxiliary)
+        moments.record_stream(parent)
+    else:
+        native.direct_response_into(
+            signal, atoms, response, config, output_side, start_level
+        )
+        moments = build_moments(
+            signal, axis, method=recipe.moment_method, start_level=start_level
+        )
+        native.complete_response(
+            atoms, moments, response, config, output_side, start_level
+        )
+    return moments, response
+
+
+class _HybridRadiusLinear(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x, atoms, plan, recipe):
+        native = _extension()
+        rows, offsets = prepare_layout(plan, atoms)
+        if recipe.schedule == "block_local":
+            # One compute launch after sorting. Each output CTA constructs its
+            # own shared moments and complete H, reuses scratch for shared C,
+            # and writes only its final Y interval. No global moments/C here.
+            y, response = native.block_local_forward(
+                x,
+                atoms,
+                rows,
+                offsets,
+                plan.input.native_config(),
+                plan.output.native_config(),
+                recipe.input_direct_levels,
+                recipe.output_direct_levels,
+                recipe.moment_method == "merge",
+                recipe.output_tile_sites,
+            )
+            moments = x.new_empty((0,), dtype=torch.float64)
+        else:
+            moments, response = _complete_hybrid_response(
+                x, atoms, plan.input, recipe.input_direct_levels, recipe, False
+            )
+            coefficients = native.compact_coefficients(
+                atoms,
+                rows,
+                offsets,
+                response,
+                plan.output.native_config(),
+                True,
+                recipe.output_direct_levels,
+            )
+            y = native.expand_hybrid(
+                atoms,
+                rows,
+                offsets,
+                response,
+                coefficients,
+                x,
+                plan.output.native_config(),
+                True,
+                recipe.output_direct_levels,
+            )
+        ctx.plan, ctx.recipe = plan, recipe
+        ctx.save_for_backward(x, atoms, moments, response)
+        return y
+
+    @staticmethod
+    @once_differentiable
+    def backward(ctx, dy):
+        x, atoms, input_moments, response = ctx.saved_tensors
+        plan, recipe = ctx.plan, ctx.recipe
+        native = _extension()
+        dy = dy.contiguous()
+        # Prepare routing before the expensive projections, so its error-word
+        # validation does not force a CPU wait for an already-launched G.
+        rows, offsets = (
+            prepare_layout(plan, atoms, reverse=True)
+            if ctx.needs_input_grad[0]
+            else (None, None)
+        )
+        output_moments, grad_response = _complete_hybrid_response(
+            dy, atoms, plan.output, recipe.output_direct_levels, recipe, True
+        )
+        grad_atoms = None
+        if ctx.needs_input_grad[1]:
+            if recipe.schedule == "block_local":
+                # The single-forward-kernel route checkpointed only X and H.
+                # Rebuild the compact input hierarchy once for all gradients.
+                input_moments = build_moments(
+                    x,
+                    plan.input,
+                    method=recipe.moment_method,
+                    start_level=recipe.input_direct_levels,
+                )
+            grad_atoms = native.hybrid_parameter_grad(
+                atoms,
+                x,
+                dy,
+                input_moments,
+                output_moments,
+                response,
+                grad_response,
+                plan.input.native_config(),
+                plan.output.native_config(),
+                recipe.input_direct_levels,
+                recipe.output_direct_levels,
+            )
+        grad_input = None
+        if ctx.needs_input_grad[0]:
+            coefficients = native.compact_coefficients(
+                atoms,
+                rows,
+                offsets,
+                grad_response,
+                plan.input.native_config(),
+                False,
+                recipe.input_direct_levels,
+            )
+            grad_input = native.expand_hybrid(
+                atoms,
+                rows,
+                offsets,
+                grad_response,
+                coefficients,
+                dy,
+                plan.input.native_config(),
+                False,
+                recipe.input_direct_levels,
+            )
+        return grad_input, grad_atoms, None, None
 
 
 class _RadiusLinear(torch.autograd.Function):
@@ -155,6 +331,8 @@ def radius_linear(plan, x, atoms, *, recipe=None):
     if recipe is None:
         recipe = RadiusCellMassRecipe()
     RadiusCellMassAlgorithm().validate_recipe(recipe)
+    zi = plan.input.active_nodes(recipe.input_direct_levels) * plan.input.basis_count
+    co = plan.output.active_nodes(recipe.output_direct_levels) * plan.output.basis_count
     if (
         x.device.type != "cuda"
         or atoms.device != x.device
@@ -174,6 +352,11 @@ def radius_linear(plan, x, atoms, *, recipe=None):
     )
     if x.shape[0] * work_per_batch > 2**31 - 128:
         raise ValueError("radius baseline exceeds its native 32-bit work-index limit")
+    if recipe.schedule == "block_local":
+        if 8 * (atoms.shape[0] + max(zi, co)) > 48 * 1024:
+            raise ValueError("block-local shared storage exceeds 48 KiB")
+        if x.shape[0] > 65535:
+            raise ValueError("block-local batch grid exceeds 65535")
     if torch.is_autocast_enabled("cuda"):
         raise ValueError("radius baseline requires execution without autocast")
     if torch.are_deterministic_algorithms_enabled():
@@ -181,4 +364,11 @@ def radius_linear(plan, x, atoms, *, recipe=None):
     with torch.cuda.device(x.device):
         if torch.cuda.is_current_stream_capturing():
             raise ValueError("radius baseline uses eager preparation, not CUDA Graphs")
-        return _RadiusLinear.apply(x.contiguous(), atoms.contiguous(), plan, recipe)
+        function = (
+            _HybridRadiusLinear
+            if recipe.input_direct_levels
+            or recipe.output_direct_levels
+            or recipe.schedule != "sequential"
+            else _RadiusLinear
+        )
+        return function.apply(x.contiguous(), atoms.contiguous(), plan, recipe)

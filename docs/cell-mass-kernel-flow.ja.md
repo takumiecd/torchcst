@@ -79,6 +79,79 @@ native moduleは`torchcst_radius_cell_mass_94e7b1de3936`、回収binary SHA256�
 再現は同snapshotで`python -m pytest -q tests/test_radius_cell_mass_cuda.py`。
 source照合・pool receipt・結果・binaryはignored `output/radius-cuda-20261028/`へ保持する。
 
+### direct／階層を独立に選び、依存のない計算を重ねる
+
+2026-10-28。上の初版が全atomにmoments→response→coeffsを使うのは、数値照合のための
+比較基準であって、全atomにその直列依存があるという意味ではない。追加する候補は次のとおり。
+
+| 入力側の選択 | 出力側の選択 | atomの計算経路 |
+| --- | --- | --- |
+| direct | direct | Xのセル確率から完成responseを作り、そのままYのセルへ展開。moments／coeffsなし |
+| direct | coeffs | momentsなしで完成responseを作り、出力側coeffsへ集約 |
+| moments | direct | momentsから完成responseを作り、coeffsを介さずYへ展開 |
+| moments | coeffs | moments→完成response→coeffs→Y |
+
+Recipeの`input_direct_levels`／`output_direct_levels`より小さい階層をdirectとする。
+0なら従来どおり全階層を使い、level数を指定すると全atomをdirectで処理する。
+入力側と出力側の設定は独立で、profileのR・P・M・セル積分・正規化は変更しない。
+省略した低階層のmoments／coeffs用global領域は確保しない。
+最下位の残るmomentsは入力から直接作り、それより上で一致周波数を子から継承する。
+
+`HYBRID_SERIAL`は順次実行の比較用、`HYBRID_OVERLAP`は次の依存を使う。
+
+```text
+prepare/sort ─┬─ direct response ─────────────────┐
+              └─ moments構築 → hierarchy response ┤
+                                  完成値をjoin ──┴─ direct展開／coeffs → Y
+```
+
+別streamは同じresponse配列の異なるatom要素だけに書き、使用前にeventでjoinする。
+全GPUのCPU同期やblock間spin waitではない。streamを分けてもSMの専有率は指定できず、
+資源競合やlaunchのタイミングにより実際には重ならない場合もある。
+この候補の出力展開は完成response全体のjoin後に始める。
+直接経路のYまで先行させる二重出力bufferは、この段階では追加しない。
+
+`BLOCK_LOCAL`はsort後のforward computeを1 kernelへまとめる。
+1 CTAがbatchの1行と出力site範囲を持ち、sharedにinput momentsと完成responseを作る。
+block同期後、moments領域をoutput coeffsのscratchへ転用してYを一度だけ書く。
+direct atomはmoments／coeffsを使わず、同じprofileのセル積分で処理する。
+block内では明示した段階の同期を行い、direct responseとmomentsを別teamで同時実行する版ではない。
+複数stream版と、block内の段階を融合する版を別の候補として比較する。
+
+この版は出力CTAごとに入力moments／responseを再計算するので、global転送の削減と重複演算が交換条件になる。
+完成responseのglobal保存は出力CTA0だけが担当する。
+backwardはXと保存responseから必要なinput momentsを一度再構築し、上のhybrid処理を使う。
+したがって「forward computeが1 kernel」であって、prepareやbackward全体も1 kernelという意味ではない。
+sharedの上限は1 CTAあたり48KiBで、超える設定は拒否する。
+`output_tile_sites`は出力CTAの担当範囲であり、profileの階層tile幅を変更する設定ではない。
+
+初期候補のdirect_levels=2は比較用の明示設定で、最適閾値や全GPU共通の既定としては採用しない。
+なお従来の`DIRECT` Planはmomentsの直接生成（`moment_method="direct"`）であり、atomのdirect経路とは区別する。
+
+**検証結果：** CPU全体2,355 passed／5,671 skipped／既存警告18件。
+L4で旧参照と新候補を含む106件成功（宣言等31件、CUDA実行75件）。
+入力directのみ／出力directのみ／両方direct／両方階層、全階層direct、非対称軸、
+空shape、retained backward、Polar別bounds、非既定stream上の一時tensor寿命を確認した。
+N128・A819・B4・M8のFP32/64でも、全3候補のY・dX・全atom列をCPU参照へ照合した。
+全direct時にmoments／coeffsが実際に0要素であることも検査した。
+
+同じN128・A819・B4・M8をinstrumented profilerで1回ずつ観測すると、
+overlap版にはdirect response（stream7）とcompact moments（stream13）の実行区間の重なりがあった。
+serial版の同じ2処理には重なりがなかった。これは同時実行の観測であり、時間の改善率や
+完全stepの採用判定ではない。block_local版はforwardのcomputeを1 launchへまとめ、
+backwardにはcompact moments構築等の複数launchがある。
+N128・A819の3候補×FP32/64の6ケースで、memcheckは0 errors、racecheckは0 hazardsだった。
+
+gate job=`l4job-ee6e51862006463780e2b1ac74072cf9`、snapshot SHA256=
+`fcb5e52f93a3e764d04b7fc2ab0a2ef7a06dc8246af5ce46f480de747b179f71`。
+trace／sanitizer job=`l4job-7bd1ce0eb46b4647862507fcf1500c5b`、snapshot SHA256=
+`373fb409d7e4341d512d2b82e1c1ff08a9a08c5fd0300be98700c090c8c74a87`。
+同一gate済みnative binary（SHA256 `9d69a3e28a106b2b0c19db430c7e82b2a2bac3424b182879acc24a9db89c26a6`）を
+runtime／source照合して再利用した。raw結果・Chrome trace・検査log・source照合は
+ignored `output/radius-hybrid-20261028/`へ保持する。
+再現gateは`python -m pytest -q tests/test_radius_cell_mass_cuda.py tests/test_radius_cell_mass_hybrid.py`。
+完全optimizer step時間・allocated/reserved peakはこの候補では未測定であり、閾値2も未採用である。
+
 **最新の設計指定：** [周期・完成response・階層別tile処理](#周期完成response階層別tile処理の最新指定)を参照。
 直前の提案にあった全local階層共通の固定Kや部分responseの受け渡しを、確定規約とは扱わない。
 
@@ -213,7 +286,7 @@ response完成前に段階をまたがない規約を守る。
 ### support_widthとone-hot近似の設計方針
 
 2026-10-28合意。σという制御値と実際の集中幅を区別する。コードでは次の名前を使う。
-半径の公開SpecとCPU参照を実装した。CUDA引数・新しい融合kernelはまだ追加していない。
+半径の公開SpecとCPU参照を実装した。新しいCUDA経路とdirect／融合の実装状況は冒頭の節を参照する。
 
 | 名前 | 意味 |
 | --- | --- |

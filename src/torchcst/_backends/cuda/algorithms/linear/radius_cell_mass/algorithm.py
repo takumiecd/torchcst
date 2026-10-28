@@ -69,6 +69,22 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             raise ValueError("expected a radius recipe with direct or merge moments")
         if type(recipe.save_response) is not bool or not recipe.save_response:
             raise ValueError("radius CUDA currently requires save_response=True")
+        if any(
+            type(level) is not int or level < 0
+            for level in (recipe.input_direct_levels, recipe.output_direct_levels)
+        ):
+            raise ValueError("direct levels must be nonnegative integers")
+        if type(recipe.schedule) is not str or recipe.schedule not in (
+            "sequential",
+            "overlap",
+            "block_local",
+        ):
+            raise ValueError("schedule must be sequential, overlap or block_local")
+        if (
+            type(recipe.output_tile_sites) is not int
+            or not 1 <= recipe.output_tile_sites <= 128
+        ):
+            raise ValueError("output_tile_sites must lie in [1,128]")
 
     def supports(self, context, recipe):
         try:
@@ -79,6 +95,14 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             return SupportResult(("requires a LinearContext",))
         try:
             plan = hierarchy_from_operator(context.operator)
+            zi = (
+                plan.input.active_nodes(recipe.input_direct_levels)
+                * plan.input.basis_count
+            )
+            co = (
+                plan.output.active_nodes(recipe.output_direct_levels)
+                * plan.output.basis_count
+            )
         except (ValueError, TypeError) as error:
             return SupportResult((str(error),))
         reasons = []
@@ -95,6 +119,11 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
         )
         if context.m * work > 2**31 - 128:
             reasons.append("exceeds native 32-bit work-index limit")
+        if recipe.schedule == "block_local":
+            if 8 * (context.atom_count + max(zi, co)) > 48 * 1024:
+                reasons.append("block-local shared storage exceeds 48 KiB")
+            if context.m > 65535:
+                reasons.append("block-local batch grid exceeds 65535")
         if context.execution_mode != "eager" or context.precision.autocast:
             reasons.append("requires eager execution without autocast")
         if context.workspace_limit_bytes is not None:

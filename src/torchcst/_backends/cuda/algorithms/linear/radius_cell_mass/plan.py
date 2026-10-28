@@ -132,6 +132,18 @@ class AxisPlan:
         last = self.banks[-1]
         return last.node_offset + last.tile_count
 
+    def prefix_nodes(self, direct_levels):
+        """Number of low-level nodes omitted from a compact moment/C buffer."""
+        if (
+            type(direct_levels) is not int
+            or not 0 <= direct_levels <= len(self.banks) // 2
+        ):
+            raise ValueError("direct levels must lie between zero and level count")
+        return sum(b.tile_count for b in self.banks if b.level < direct_levels)
+
+    def active_nodes(self, direct_levels):
+        return self.node_count - self.prefix_nodes(direct_levels)
+
     def native_config(self):
         return [
             self.site_count,

@@ -224,9 +224,18 @@ y.square().sum().backward()
 ```
 
 `REFERENCE` reuses matching frequencies between hierarchy levels; `DIRECT`
-builds each moment directly. Both compute the same profiles. This initial
-implementation saves FP64 moments and complete responses in global memory;
-it does not yet meet a dense-memory or complete-step speed target. It is
+builds each moment directly. This `DIRECT` name does not mean bypassing moments.
+`HYBRID_SERIAL` and `HYBRID_OVERLAP` instead use direct input projections and
+direct output expansion below independently configured hierarchy levels.
+The overlap Plan runs direct response work beside moment construction on an
+auxiliary stream and joins complete responses before output consumers.
+`BLOCK_LOCAL` fuses forward compute after sorting into one kernel, with moments,
+complete responses and coefficients in shared memory. It recomputes input work
+per output CTA and reconstructs input moments in backward; only complete
+responses are globally checkpointed. A 48-KiB per-CTA shared limit applies.
+All Plans compute the same profiles. The reference saves FP64 moments and
+complete responses in global memory; hybrid buffers omit low direct levels.
+These candidates do not establish dense-memory or complete-step speed success. They are
 eager-only, without autocast, deterministic-mode qualification, CUDA Graphs
 or higher-order derivatives. The existing sigma CUDA Plans reject radius
 profiles. Radius Polar optimizer integration on GPU is a separate next stage;

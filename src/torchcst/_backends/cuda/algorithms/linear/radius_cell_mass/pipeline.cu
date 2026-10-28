@@ -341,6 +341,9 @@ Tensor parameter_grad(Tensor p, Tensor zx, Tensor zy, Tensor h, Tensor g, Config
 }
 } // namespace radius_cell_mass
 
+#include "hybrid.cuh"
+#include "block_local.cuh"
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("classify_atoms", &radius_cell_mass::classify_atoms);
     m.def("build_moments", &radius_cell_mass::build_moments);
@@ -348,4 +351,12 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("compute_coefficients", &radius_cell_mass::compute_coefficients);
     m.def("expand_coefficients", &radius_cell_mass::expand_coefficients);
     m.def("parameter_grad", &radius_cell_mass::parameter_grad);
+    m.def("build_compact_moments", &radius_cell_mass::build_compact_moments);
+    m.def("direct_response", &radius_cell_mass::direct_response);
+    m.def("direct_response_into", &radius_cell_mass::direct_response_into);
+    m.def("complete_response", &radius_cell_mass::complete_response);
+    m.def("compact_coefficients", &radius_cell_mass::compact_coefficients);
+    m.def("expand_hybrid", &radius_cell_mass::expand_hybrid);
+    m.def("hybrid_parameter_grad", &radius_cell_mass::hybrid_parameter_grad);
+    m.def("block_local_forward", &radius_cell_mass::block_local_forward);
 }
