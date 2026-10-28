@@ -60,16 +60,21 @@ def _ranges_from_layout_keys(plan, keys, *, reverse=False):
     This does not decode atom parameters or read an error word to the CPU.
     It is safe only for keys from the same unchanged forward atom Tensor.
     """
-    input_node = keys.remainder(plan.input.node_count)
-    output_node = torch.div(keys, plan.input.node_count, rounding_mode="floor")
     if reverse:
+        input_node = keys.remainder(plan.input.node_count)
+        output_node = torch.div(keys, plan.input.node_count, rounding_mode="floor")
         keys = input_node * plan.output.node_count + output_node
-        owner, count = input_node, plan.input.node_count
+        stride, count = plan.output.node_count, plan.input.node_count
     else:
-        owner, count = output_node, plan.output.node_count
-    rows = torch.argsort(keys, stable=True)
-    counts = torch.bincount(owner, minlength=count)
-    offsets = torch.cat((counts.new_zeros(1), counts.cumsum(0)))
+        stride, count = plan.input.node_count, plan.output.node_count
+    sorted_keys, rows = torch.sort(keys, stable=True)
+    # Composite keys for owner q lie in [q*stride, (q+1)*stride).
+    # Searching these fixed boundaries also represents empty owner ranges.
+    # Unlike bincount, the output size needs no maximum read from the GPU.
+    boundaries = torch.arange(
+        0, (count + 1) * stride, stride, dtype=keys.dtype, device=keys.device
+    )
+    offsets = torch.searchsorted(sorted_keys, boundaries, right=False)
     return rows, offsets
 
 
@@ -80,7 +85,7 @@ def prepare_layout(plan, atoms, *, reverse=False):
     Standalone preparation releases its keys. Fused autograd separately saves
     one owner key per atom when dX is needed, avoiding a second classification
     and its CPU error-word read in backward. No atom values are packed.
-    Preparation remains eager-only; sort/count operations are unchanged.
+    Preparation remains eager-only; fixed boundaries replace owner counting.
     """
     if type(reverse) is not bool or type(plan) is not HierarchyPlan:
         raise ValueError("expected a radius hierarchy and bool reverse")

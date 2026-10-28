@@ -406,6 +406,20 @@ hostでは位相の9,856条件、出力nodeの割当992,448条件、shared予算
 CPU全体は2361 passed／5768 skipped／既存警告18件。GPU向けには偏ったowner、32/64atom境界、
 M1/3/8/16、FP32/64、P>Q、M16のshared fallback、分類の再利用と更新検査を追加した。
 
+初回job `l4job-f9fdc9945af34aa3b2549105eb2b3d45`では209テストと6回のrunner測定が完了したが、
+最後の広いmemcheck subprocessが240秒の制限を超え、job全体は失敗した。
+性能JSON・source・binary・失敗logは保全し、このjobだけで採用確定とはしない。
+sanitizerは数値参照の重い処理と分けたnative経路の検査へ切り分け、後続jobで完了させる。
+
+次の範囲取得候補では、ownerのhistogram/cumsumを作る代わりに、ソート済みcomposite keyの
+固定境界を`searchsorted(..., right=False)`で直接引く。
+forwardのkey `o*N_in+i`は`[o*N_in,(o+1)*N_in)`に入り、reverseは役割を入れ替える。
+このlower boundがownerのbegin/endになり、空ownerは同じoffsetを繰り返す。
+stable sortの元atom行順を維持し、0atom・重複key・異なる入出力node数もCPU6ケースで照合した。
+GPU最大値の読戻しを伴う可能性があるbincountを避ける候補であり、同期削減は別のtraceで確認する。
+sorted keysと境界の一時領域も完全stepのpeakへ含める。
+CPU全体は2367 passed／5768 skipped／既存警告18件。
+
 **先行候補（対称融合前）の検証結果：** CPU全体2,355 passed／5,671 skipped／既存警告18件。
 L4で旧参照と新候補を含む106件成功（宣言等31件、CUDA実行75件）。
 入力directのみ／出力directのみ／両方direct／両方階層、全階層direct、非対称軸、

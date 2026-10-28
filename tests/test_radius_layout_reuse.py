@@ -12,6 +12,39 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plan import (
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plans import BLOCK_LOCAL
 
 
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("distribution", ["empty", "skewed", "mixed"])
+def test_fixed_range_boundaries_include_gaps_and_preserve_equal_key_order(
+    reverse, distribution
+):
+    plan = HierarchyPlan(input=axis_plan(27, merge=3, modes=3), output=axis_plan(16))
+    ni, no = plan.input.node_count, plan.output.node_count
+    if distribution == "empty":
+        pairs = []
+    elif distribution == "skewed":
+        pairs = [(ni - 1, no - 1)] * 97
+    else:
+        rng = torch.Generator().manual_seed(1063)
+        pairs = list(
+            zip(
+                torch.randint(ni, (97,), generator=rng).tolist(),
+                torch.randint(no, (97,), generator=rng).tolist(),
+            )
+        ) + [(0, 0), (ni - 1, no - 1), (0, 0)]
+    keys = torch.tensor([o * ni + i for i, o in pairs], dtype=torch.int64)
+    rows, offsets = ex._ranges_from_layout_keys(plan, keys, reverse=reverse)
+    order = sorted(
+        range(len(pairs)),
+        key=lambda row: (pairs[row][0], pairs[row][1])
+        if reverse
+        else (pairs[row][1], pairs[row][0]),
+    )
+    assert rows.tolist() == order
+    owner_column, count = (0, ni) if reverse else (1, no)
+    expected = [sum(pair[owner_column] < q for pair in pairs) for q in range(count + 1)]
+    assert offsets.tolist() == expected
+
+
 def setup(monkeypatch, *, needs_x=True, needs_p=True):
     a = axis_plan(32, modes=3)
     plan = HierarchyPlan(input=a, output=a)
