@@ -467,6 +467,46 @@ GPU側では旧`cell_mass_hierarchical/preparation.cu`と同様に、momentの�
 host実runtime抽出の1179648条件では最大絶対差3.84e-13、重み付きL1比3.07e-15、merge枝の差は0。
 bank cacheのみと、site位相も変えた版を別々に完全stepで比較してから採否を決める。
 
+**後続の検証・採用結果：** job `l4job-bfe086a49b634c59bc971da46fddfd11`で217テスト成功
+（CPU/宣言45、CUDA実行172）。上と同じnative経路の7ケースでmemcheck 0 errors、racecheck 0 hazards。
+CPU全体は2369 passed／5768 skipped／既存警告18件。
+
+同一L4、固定境界検索版→bank cache→moment回転、逆順の6 fresh processで測定した。
+前節と同じN128/B4/A819/M8/seed41/eager AdamW、warmup3・21サンプル。
+Parameter・X・target・初期半径のfingerprintは6実行で一致し、更新後のlevelも全atomが2だった。
+
+| 経路 | fresh process 1 ms | fresh process 2 ms | peak allocated / reserved bytes |
+| --- | ---: | ---: | ---: |
+| 前段の固定境界検索版 | 4.509981 | 4.551533 | 297984 / 2097152 |
+| bank cache | 3.884308 | 3.895434 | 297984 / 2097152 |
+| bank cache＋moment回転 | 3.606726 | 3.583001 | 297984 / 2097152 |
+
+denseは同じ6実行で0.704189〜0.769767ms、allocated/reservedは17313280/23068672 bytes。
+bank cacheとmoment回転を採用する。最初の多項式版約10.24msからは約2.85倍速いが、
+denseの約5倍の時間を要し、完全stepの速度目標は未達。N1024やMNISTでの結果ではない。
+allocated/reservedは不変で、cached bankはCPUの不変metadataだけを保持する。
+全GPU process量とGraphは未測定であり、denseのlibrary workspaceを除いた比較へ読み替えない。
+
+別のdevice traceではtransform 2回の合計が約2.567→1.588ms、atom勾配は約0.244msのまま。
+block kernelのregister数は151→152、stackは1376 bytesのまま。atom勾配は110 register／1112 bytes。
+別のPython profileで3stepあたりのBankPlan構築は1200→96回、bank生成は75→6回へ減った。
+新しい宣言を検証する分は残し、同じAxisPlanの読み取りでは作り直さない。
+計装phaseはforward/loss約1.71〜1.76ms、backward約1.58〜1.59ms、optimizer約1.85〜1.89ms。
+これらを未計装の完全stepへ足したり差し引いたりせず、残るCPU処理・GPU処理の診断として扱う。
+
+残る候補は、旧版のbatch間の係数共有とactive-bank masksである。
+現在のBLOCK_LOCALは各出力CTAがmoments/Hを再生成し、使われないbankのmomentsも構築する。
+これらは未移植。maskを使う場合は返すmoment cacheの有効範囲とconsumer側の契約も明示する。
+旧版の補償FP32演算も自動的には持ち込まず、精度と全勾配を別候補として検証する。
+今回の変更はFP64のmoments/H/G保存、半径の定義、Polarの更新則を維持する。
+
+committed source=`d36032fc`、snapshot SHA256=
+`b092d3b553813506efa850b754cf862c01e889f062a39e61a0e6381aa970f8ab`、
+result archive SHA256=`a209f4cc38fb7cc8fd9122d5a37b76a617c57ce7857f4e45db55b0c57c580dd9`。
+native module=`torchcst_radius_cell_mass_cf34d733bd80`、binary SHA256=
+`1dca007d8fcd382f408debe396b08189da668d157462f7794a86d7347f467896`。
+raw結果、source/binary照合、trace、profile、sanitizer、host oracleとreceiptを同じignored保全先に保持する。
+
 **先行候補（対称融合前）の検証結果：** CPU全体2,355 passed／5,671 skipped／既存警告18件。
 L4で旧参照と新候補を含む106件成功（宣言等31件、CUDA実行75件）。
 入力directのみ／出力directのみ／両方direct／両方階層、全階層direct、非対称軸、
