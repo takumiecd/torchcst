@@ -71,8 +71,13 @@ class Algorithm(ABC, Generic[RecipeT]):
         self.validate_recipe(state.recipe)
         if not state.is_current():
             self.prepare(state)
-        if not state.is_current():
-            raise RuntimeError("algorithm did not prepare the current binding state")
+            # A prepared state must certify the current placement. A hot state
+            # already passed that check above; no work or callback intervenes,
+            # so checking it twice only repeats live metadata traversal.
+            if not state.is_current():
+                raise RuntimeError(
+                    "algorithm did not prepare the current binding state"
+                )
         result = self.execute(state, inputs)
         owner = state.atom_state
         return (

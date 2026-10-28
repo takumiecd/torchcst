@@ -101,12 +101,26 @@ def _split(
     output_chart: ChartState,
     p: Tensor,
 ) -> tuple[Tensor, Tensor, Tensor]:
+    return _split_many(state, input_chart, output_chart, p)[0]
+
+
+def _split_many(state, input_chart, output_chart, *tables):
+    """Validate one live layout and split related tables without copying.
+
+    Projection and vector transport use several tables in the same coordinate
+    system. Their shapes still need individual checks, but rereading the same
+    chart/profile metadata for each table adds no validation between those
+    adjacent operations. No declaration or numerical values are cached here.
+    """
     expected_dim = _kernel.parameter_dim(state, input_chart, output_chart)
-    if p.ndim != 2 or p.shape[1] != expected_dim:
-        raise ValueError(f"p must have shape [atoms, {expected_dim}]")
     input_dim = _profile.parameter_dim(state.profiles[0], input_chart)
     input_end = 2 + input_dim
-    return p[:, :2], p[:, 2:input_end], p[:, input_end:]
+    result = []
+    for p in tables:
+        if p.ndim != 2 or p.shape[1] != expected_dim:
+            raise ValueError(f"p must have shape [atoms, {expected_dim}]")
+        result.append((p[:, :2], p[:, 2:input_end], p[:, input_end:]))
+    return tuple(result)
 
 
 def _amplitude_and_alpha(

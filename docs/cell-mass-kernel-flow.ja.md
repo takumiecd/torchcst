@@ -516,6 +516,12 @@ raw結果、source/binary照合、trace、profile、sanitizer、host oracleとre
 **1. 軽いhost区間計測。** 各phaseの前後のhost時計だけを読み、途中にCUDA同期を入れず、
 stepの最後だけ同期する。warmup5＋21step。これはCPU計算・enqueue・CUDA API内の待ちを含み、
 GPU kernel時間ではない。各step内の区間は時系列を分割するが、中央値同士を足し合わせない。
+CPUはCUDAへ処理をenqueueすると、GPUの完了前に関数から戻れる。
+従ってbackwardのhost呼出し0.610msと、別traceでのGPU処理1.109msは矛盾しない。
+「host呼出し」は関数の入口からCPUへ戻るまでであり、CUDA完了までの時間を意味しない。
+CUDA API内で待つ場合も含むため、host区間のすべてをPython計算時間と断定もしない。
+この測定でもoptimizerは明示した`RADIUS_FLAT_TORUS_FUSED`を通り、前に最適化した
+`apply_polar`を実行している。約1.775msのwrapper呼出しと約2.784µsのPolar kernelを区別する。
 
 | host区間 | CST中央値 ms | dense中央値 ms |
 | --- | ---: | ---: |
@@ -605,6 +611,51 @@ production binaryは同じ`1dca007d…`。report/CSV・command・警告・導出
 またH/Cで値だけが必要な呼出しにも`profile_coefficients_m8`が微分係数を返しているため、
 値だけの評価経路が候補になる。ただし現binaryでのdead-code eliminationやその独立コストは未測定である。
 今回のprofile段階では、これらの最適化やPolar更新則の変更は行っていない。
+
+#### CPU wrapperの重複検証を削減（2026-10-29）
+
+前回のGPU Polarを引き続き明示選択したまま、CPU側の重複だけを減らした。
+`Algorithm.run`は準備済みstateを確認した直後の同じ確認を省き、cold時のprepare後検証は保持する。
+Polarのgradient projectionとvector transportは、隣接する複数tableを`_split_many`で分割し、
+同じlive layoutを1回だけ確認する。各tableのrank/列幅検査・slice位置・計算式は維持する。
+宣言や数値の新しいcacheは追加せず、次の呼出しでは設定変更を検知する。
+base optimizerのhookを挟む前後のContext/Plan検証は省略しない。
+
+比較は同じL4、N128/B4/A819/M8、FP32 IEEE、公開初期化、eager AdamW+Polar、
+`check_finite=False`。既存Linear runnerをbaseline/candidate/candidate/baselineの順に
+別processで実行した。2回ずつの未計装完全step中央値は以下の通り。
+
+| 条件 | 完全step ms | peak allocated bytes | peak reserved bytes |
+| --- | ---: | ---: | ---: |
+| 変更前 | 3.504480 / 3.553039 | 297984 | 2097152 |
+| CPU重複削減後 | 3.229141 / 3.244558 | 297984 | 2097152 |
+| 各runのdense対照 | 0.704169〜0.726363 | 17313280 | 23068672 |
+
+2回の中央値の平均で所要時間約8.3%減。denseとの速度差はまだ残る。
+全比較の初期Parameter/X/targetのfingerprint一致、独立Y/dX/全atom勾配・matched-state更新を通過。
+別途、同じ外部勾配と途中のregularization変更を与えた5stepで、ParameterとAdamWの
+exp_avg/exp_avg_sq/stepの計20tensorが変更前後でbit一致した。
+
+未同期のhost区間診断ではoptimizer呼出し1.793064→1.473819ms、
+診断step全体3.575346→3.235677ms。これは完全stepの採用測定とは別のprocessであり、
+host区間とGPU時間を足したり、中央値を引いて純Python時間を算出したりしない。
+別のcProfileのcall countでは`fixed_state_signature`が39→27回/3step（13→9回/step）、
+`operator_declaration`が24→21回/3step。計装下の累積時間は速度の根拠には使わない。
+別traceのoptimizer scope内は両方とも同期CUDA API 0回、`aten::item` 0回。
+`apply_polar`は両方とも2.816µsで、GPU更新式の高速化としては扱わない。
+
+CPU全体2383 passed／5768 skipped／既存警告18件。L4の選択gateは337 passed。
+hot/cold state、失敗prepare、live配置・設定変更、不正tableのshapeを確認した。
+CUDAのnative sourceとbinaryは不変で、前段のsanitizerを今回再実行したとは主張しない。
+wheel/sdist buildも成功し、全361package fileのsource一致を確認した。
+
+job=`l4job-851744f7057a4f83bce384a158282ce0`、snapshot SHA256=
+`b6e9b270c4ee9bdb0dd916bd30b53976f893c35e81481b311fc6173a139a8c65`、
+result archive SHA256=`797a9fe05d5612f3f84cfd2f070fec14172df00a0b5bae782a7348cb4a6adb13`。
+同じproduction binary `1dca007d…`をsource/runtime/hash照合して使った。
+source snapshot・正逆順のrunner JSON・host区間・trace・5step state・テストlogを
+ignored `output/radius-optimize-20261028/l4job-851744f7057a4f83bce384a158282ce0/`に保持する。
+再現driverは同じoutput下の`optimizer-host-confirm-driver.py`。
 
 **先行候補（対称融合前）の検証結果：** CPU全体2,355 passed／5,671 skipped／既存警告18件。
 L4で旧参照と新候補を含む106件成功（宣言等31件、CUDA実行75件）。

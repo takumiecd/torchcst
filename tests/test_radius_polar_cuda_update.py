@@ -204,3 +204,71 @@ def test_radius_layout_cache_tracks_fixed_state_but_not_atom_writes(monkeypatch)
     with pytest.raises(ValueError):
         validate()
     assert layer.kernel.__dict__["_radius_layout_signature"] == certified
+
+
+@pytest.mark.parametrize("operation", ["project", "transport"])
+def test_related_polar_tables_validate_live_layout_once(monkeypatch, operation):
+    from torchcst._backends.torch.algorithms.polar_update import executor
+    from torchcst._backends.torch.kernels import execution
+
+    layer = radius_model()
+    charts = layer.cst_charts()
+    p = layer.atoms.p.detach()
+    original = execution.validate_layout
+    calls = []
+
+    def validate(state, charts):
+        calls.append((state, charts))
+        return original(state, charts)
+
+    monkeypatch.setattr(execution, "validate_layout", validate)
+    if operation == "project":
+        value = executor.project_parameter_gradient(
+            layer.kernel, *charts, p, torch.ones_like(p)
+        )
+    else:
+        value = executor.transport_parameter_state(
+            layer.kernel, *charts, p, p.clone(), torch.ones_like(p)
+        )
+    assert value.shape == p.shape
+    assert len(calls) == 1
+    # The next invocation must still see changed live configuration despite
+    # sharing validation within each operation.
+    layer.kernel.scalar("radius_min_input").fill_(-1)
+    with pytest.raises(ValueError):
+        if operation == "project":
+            executor.project_parameter_gradient(
+                layer.kernel, *charts, p, torch.ones_like(p)
+            )
+        else:
+            executor.transport_parameter_state(
+                layer.kernel, *charts, p, p.clone(), torch.ones_like(p)
+            )
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize(
+    "operation,table_index",
+    [
+        ("project", 0),
+        ("project", 1),
+        ("transport", 0),
+        ("transport", 1),
+        ("transport", 2),
+    ],
+)
+@pytest.mark.parametrize("invalid", ["ndim", "width"])
+def test_each_related_polar_table_shape_is_checked(operation, table_index, invalid):
+    from torchcst._backends.torch.algorithms.polar_update import executor
+
+    layer = radius_model()
+    p = layer.atoms.p.detach()
+    tables = [p.clone() for _ in range(2 if operation == "project" else 3)]
+    tables[table_index] = p.flatten() if invalid == "ndim" else p[:, :-1]
+    function = (
+        executor.project_parameter_gradient
+        if operation == "project"
+        else executor.transport_parameter_state
+    )
+    with pytest.raises(ValueError, match="p must have shape"):
+        function(layer.kernel, *layer.cst_charts(), *tables)

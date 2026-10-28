@@ -94,11 +94,8 @@ def project_parameter_gradient(
     p: Tensor,
     gradient: Tensor,
 ) -> Tensor:
-    _, input_p, output_p = _parameterizations._split(
-        state, input_chart, output_chart, p
-    )
-    polar_g, input_g, output_g = _parameterizations._split(
-        state, input_chart, output_chart, gradient
+    (_, input_p, output_p), (polar_g, input_g, output_g) = (
+        _parameterizations._split_many(state, input_chart, output_chart, p, gradient)
     )
     return torch.cat(
         (
@@ -120,14 +117,10 @@ def transport_parameter_state(
     new: Tensor,
     state: Tensor,
 ) -> Tensor:
-    _, old_i, old_o = _parameterizations._split(
-        kernel_state, input_chart, output_chart, old
-    )
-    _, new_i, new_o = _parameterizations._split(
-        kernel_state, input_chart, output_chart, new
-    )
-    polar_s, state_i, state_o = _parameterizations._split(
-        kernel_state, input_chart, output_chart, state
+    (_, old_i, old_o), (_, new_i, new_o), (polar_s, state_i, state_o) = (
+        _parameterizations._split_many(
+            kernel_state, input_chart, output_chart, old, new, state
+        )
     )
     return torch.cat(
         (
