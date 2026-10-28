@@ -127,7 +127,7 @@ def test_steady_optimizer_has_no_sync_or_device_to_host_copy(tmp_path):
     runtime = [
         e
         for e in events
-        if e.get("cat") == "cuda_runtime"
+        if e.get("cat") in ("cuda_runtime", "cuda_driver")
         and e["pid"] == span["pid"]
         and e["tid"] == span["tid"]
         and span["ts"] <= e["ts"] < span["ts"] + span["dur"]

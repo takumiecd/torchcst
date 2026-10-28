@@ -470,7 +470,9 @@ def trace_stage_costs(events, steps):
         for e in events
         if e.get("cat") == "user_annotation" and e.get("name", "").startswith("stage::")
     ]
-    runtime = [e for e in events if e.get("cat") == "cuda_runtime"]
+    # Triton launches through the Driver API (cuLaunchKernelEx). Excluding it
+    # leaves its kernel events unassigned even when the CPU stage is known.
+    runtime = [e for e in events if e.get("cat") in ("cuda_runtime", "cuda_driver")]
     launches = {
         e.get("args", {}).get("correlation"): e
         for e in runtime

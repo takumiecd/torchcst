@@ -1,5 +1,7 @@
 """Allocator evidence distinguishes requested bytes, live blocks and reservation."""
 
+import pytest
+
 from benchmarks.training.profile_cell_mass_mnist import replay_peak, trace_stage_costs
 
 
@@ -61,7 +63,13 @@ def test_large_block_keeps_small_remainder_in_allocated_counter():
     assert report["blocks"][0]["logical_bytes"] == 2621440
 
 
-def test_active_gpu_cost_uses_launch_thread_and_avoids_nested_range_double_count():
+@pytest.mark.parametrize(
+    ("category", "launch"),
+    [("cuda_runtime", "cudaLaunchKernel"), ("cuda_driver", "cuLaunchKernelEx")],
+)
+def test_active_gpu_cost_uses_launch_thread_and_avoids_nested_range_double_count(
+    category, launch
+):
     events = [
         {
             "cat": "user_annotation",
@@ -80,8 +88,8 @@ def test_active_gpu_cost_uses_launch_thread_and_avoids_nested_range_double_count
             "dur": 100,
         },
         {
-            "cat": "cuda_runtime",
-            "name": "cudaLaunchKernel",
+            "cat": category,
+            "name": launch,
             "pid": 1,
             "tid": 2,
             "ts": 110,
