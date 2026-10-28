@@ -53,12 +53,26 @@ def fused_update_(value, previous, proposal, *, step_size, periods=None):
             for p in periods
         ):
             raise ValueError("periods must be two live CUDA FP32 scalar tensors")
-        # Match the public geometry's finite-point/displacement rejection. The
-        # fixed positive periods are validated through the binding declaration.
-        if not bool(torch.isfinite(previous[:, 2:]).all()):
-            raise ValueError("points must contain only finite values")
-        if not bool(torch.isfinite(proposal[:, 2:] - previous[:, 2:]).all()):
-            raise ValueError("displacement must contain only finite values")
+        # Match the public geometry's finite-point/displacement rejection.
+        # Reduce both checks to a four-byte status, without per-atom scratch.
+        # The fixed positive periods are validated by the binding declaration.
+        if len(proposal):
+            from .kernels import check_periodic_centers
+
+            invalid = torch.zeros((), dtype=torch.int32, device=proposal.device)
+            check_periodic_centers[((len(proposal) + 127) // 128,)](
+                previous,
+                proposal,
+                invalid,
+                len(proposal),
+                128,
+                num_warps=4,
+                enable_fp_fusion=False,
+            )
+            if bool(invalid):
+                raise ValueError(
+                    "points and displacement must contain only finite values"
+                )
     from .kernels import apply_polar
 
     if len(proposal):

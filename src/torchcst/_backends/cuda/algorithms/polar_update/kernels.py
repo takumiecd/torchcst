@@ -6,6 +6,26 @@ from triton.language.extra.cuda import libdevice
 
 
 @tr.jit
+def check_periodic_centers(
+    OLD, PROPOSAL, INVALID, COUNT: tl.constexpr, BLOCK: tl.constexpr
+):
+    """Reject nonfinite old centers or displacements before the update writes.
+
+    Only a four-byte status crosses back to the host. No per-atom check table
+    or displacement tensor is materialized, and valid blocks do not use atomics.
+    """
+    a = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    valid = tl.full((BLOCK,), True, tl.int1)
+    for j in tl.static_range(2, 4):
+        old = tl.load(OLD + 4 * a + j, a < COUNT, 0)
+        proposal = tl.load(PROPOSAL + 4 * a + j, a < COUNT, 0)
+        valid = valid & (tl.abs(old) < float("inf"))
+        valid = valid & (tl.abs(proposal - old) < float("inf"))
+    if tl.sum((~valid).to(tl.int32), 0) != 0:
+        tl.atomic_or(INVALID, 1)
+
+
+@tr.jit
 def apply_polar(
     OLD,
     PROPOSAL,

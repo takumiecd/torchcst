@@ -101,6 +101,10 @@ class FlatTorusPolarUpdateAlgorithm(FusedPolarUpdateAlgorithm):
 
     id: str = "cuda_flat_torus_polar_update_fused"
 
+    def workspace_bound(self, context, recipe):
+        # Logical scratch, excluding allocator rounding: one int32 failure flag.
+        return 4 if context.parameter_shape[0] else 0
+
     def supports(self, context, recipe):
         if not isinstance(context, AtomUpdateContext):
             return SupportResult(("requires AtomUpdateContext",))

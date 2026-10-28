@@ -43,8 +43,39 @@ def test_periodic_plan_is_registered_separately_and_rejects_cpu():
     )
     algorithm = registry.validate_plan(FLAT_TORUS_FUSED)
     assert algorithm.supports(context, FLAT_TORUS_FUSED.recipe).supported
+    assert algorithm.workspace_bound(context, FLAT_TORUS_FUSED.recipe) == 4
+    assert not algorithm.supports(
+        replace(context, execution_mode="cuda_graph"), FLAT_TORUS_FUSED.recipe
+    ).supported
+    assert registry.load_plan(registry.dump_plan(FLAT_TORUS_FUSED)) == FLAT_TORUS_FUSED
     euclidean = registry.validate_plan(FUSED)
     assert not euclidean.supports(context, FUSED.recipe).supported
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+@pytest.mark.parametrize("fault", ["old_nan", "old_inf", "proposal_nan", "overflow"])
+def test_nonfinite_center_checks_do_not_write_proposal(fault):
+    model = layer(count=259, dtype=torch.float32, device="cuda")
+    p = model.atoms.p
+    previous = p.detach().clone()
+    with torch.no_grad():
+        if fault == "old_nan":
+            previous[0, 2] = float("nan")
+        elif fault == "old_inf":
+            previous[-1, 3] = float("inf")
+        elif fault == "proposal_nan":
+            p[-1, 2] = float("nan")
+        else:
+            previous[0, 2] = -3e38
+            p[0, 2] = 3e38
+    initial = p.detach().clone()
+    with pytest.raises(ValueError, match="finite"):
+        Dispatcher(registry=get_registry()).run(
+            AtomUpdateBinding(model.operator),
+            AtomUpdateInputs(previous, 0.01),
+            plan=FLAT_TORUS_FUSED,
+        )
+    torch.testing.assert_close(p, initial, rtol=0, atol=0, equal_nan=True)
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
