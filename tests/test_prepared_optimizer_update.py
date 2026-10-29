@@ -57,7 +57,7 @@ def example():
     )
     functions = _definitions(callbacks)
     assert functions is not None
-    native = _native_guard(binding, dispatcher, cached, callbacks, functions)
+    native = _native_guard(binding, dispatcher, cached, callbacks, functions, model)
     if native is None:
         pytest.skip("optional native optimizer guard unavailable")
     return model, opt, dispatcher, cached, native
@@ -92,7 +92,20 @@ def test_function_wrapper_copying_annotations_is_not_a_builtin():
 
 @pytest.mark.parametrize(
     "target",
-    ["module", "class", "instance", "code", "moment_shape", "recipe", "registry"],
+    [
+        "module",
+        "class",
+        "instance",
+        "code",
+        "moment_shape",
+        "recipe",
+        "registry",
+        "buffer_write",
+        "registration",
+        "geometry",
+        "operator_kernel",
+        "site_config",
+    ],
 )
 def test_native_guard_rejects_callback_and_storage_changes(monkeypatch, target):
     model, _opt, dispatcher, cached, (guard, roots) = example()
@@ -118,8 +131,24 @@ def test_native_guard_rejects_callback_and_storage_changes(monkeypatch, target):
         model.atom_state.optimizer_state.fields["exp_avg"].resize_(1)
     elif target == "recipe":
         object.__setattr__(cached.decision.plan, "schema_version", 0)
-    else:
+    elif target == "registry":
         dispatcher.registry._entries = dict(dispatcher.registry._entries)
+    elif target == "buffer_write":
+        model.kernel.scalar("w_c").add_(0)
+    elif target == "registration":
+        model.kernel._buffers["w_c"] = model.kernel.scalar("w_c").clone()
+    elif target == "geometry":
+        model.input_chart.geometry.embedding_dim = 2
+    elif target == "operator_kernel":
+        import copy
+
+        object.__setattr__(
+            cached.state.binding.operator, "kernel", copy.deepcopy(model.kernel)
+        )
+    else:
+        import copy
+
+        model.input_chart = copy.deepcopy(model.input_chart)
     assert not guard.check(roots)
 
 
@@ -142,6 +171,47 @@ def test_binding_serialization_drops_prepared_program():
     binding = opt._update_bindings[model]
     binding.__dict__["_optimizer_program"] = object()
     assert "_optimizer_program" not in binding.__getstate__()
+
+
+@pytest.mark.parametrize("generic", [False, True])
+def test_empty_standard_hooks_skip_only_the_extra_post_launch_guard(
+    monkeypatch, generic
+):
+    from typing import Generic, TypeVar
+
+    from torchcst._backends.cuda.algorithms.polar_update.compiled_launch import (
+        CompiledPolarLaunch,
+        _empty_hook_certificate,
+        _hook_loop,
+    )
+
+    item = TypeVar("item")
+
+    class GenericChain(Generic[item]):
+        __call__ = _hook_loop
+
+    chain_type = (
+        GenericChain if generic else type("HookChain", (), {"__call__": _hook_loop})
+    )
+    enter, exit = chain_type(), chain_type()
+    enter.calls, exit.calls = [], []
+    enter.reversed, exit.reversed = False, True
+    knobs = SimpleNamespace(
+        HookChain=chain_type,
+        runtime=SimpleNamespace(launch_enter_hook=enter, launch_exit_hook=exit),
+    )
+    launch = CompiledPolarLaunch.__new__(CompiledPolarLaunch)
+    launch.knobs = knobs
+    launch.empty_hook = _empty_hook_certificate(knobs)
+    assert launch.empty_hook is not None
+    assert not launch.hooks_active()
+    exit.calls.append(lambda: None)
+    assert launch.hooks_active()
+    exit.calls.clear()
+    assert not launch.hooks_active()
+    monkeypatch.setattr(chain_type, "__call__", lambda *a, **kw: None)
+    assert launch.hooks_active()
+    assert _empty_hook_certificate(knobs) is None
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
@@ -237,6 +307,9 @@ def test_cuda_prepared_optimizer_matches_generic_and_live_changes(
                     + str(_definitions(cb) is not None)
                 )
             assert program.launch is not None
+            # This test runs without profiler/launch callbacks until i == 2.
+            assert program.launch.empty_hook is not None
+            assert not program.launch.hooks_active()
             with finite.checking(False):
                 assert program.preflight(
                     oa._update_dispatcher,

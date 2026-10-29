@@ -92,7 +92,33 @@ def make_guard(roots, modules, standard_walk, api):
         return None
 
 
-def _build_guard(guard, roots, kind):
+def guard_callable_metadata(root, behavior, kind, verbose):
+    """Check code/defaults in native accessors with one small callback.
+
+    The callback returns a fixed function tuple. It does not run a Python
+    generator to compare every function field on every metadata check.
+    """
+    functions = tuple(record[0] for record in behavior)
+    node = root.lambda_manager(
+        lambda _: functions, "callback definitions", functions, kind
+    )
+    for index, (function, code, defaults, keywords) in enumerate(behavior):
+        fn = node.tuple_getitem_manager(index, "callback", function, kind)
+        for name, value, accessor in (
+            ("__code__", code, "code_manager"),
+            ("__defaults__", defaults, "func_defaults_manager"),
+            ("__kwdefaults__", keywords, "func_kwdefaults_manager"),
+        ):
+            method = getattr(fn, accessor, None)
+            child = (
+                method(name, value, kind)
+                if method is not None and value is not None
+                else fn.getattr_manager(name, name, value, kind)
+            )
+            child.add_id_match_guard(id(value), verbose, None)
+
+
+def _build_guard(guard, roots, kind, *, epilogue_root=None):
     verbose = ["CST fixed metadata"]
     seen_modules, seen_classes, seen_class_dicts = set(), set(), set()
     guard.add_length_check_guard(len(roots), verbose, None)
@@ -105,17 +131,10 @@ def _build_guard(guard, roots, kind):
         )
     )
 
-    def callbacks_unchanged(_):
-        # Function objects can change code/defaults without changing their
-        # containing dictionary. Keep this outside dictionary fast checks.
-        return all(
-            fn.__code__ is code
-            and fn.__defaults__ is defaults
-            and fn.__kwdefaults__ is keywords
-            for fn, code, defaults, keywords in behavior
-        )
-
-    guard.add_epilogue_lambda_guard(callbacks_unchanged, verbose, None)
+    # Keep callback checks outside dictionary fast paths: changing a function's
+    # code/defaults does not change the class or module namespace version.
+    target = guard if epilogue_root is None else epilogue_root
+    guard_callable_metadata(target, behavior, kind, verbose)
 
     def attribute(manager, name, value):
         return manager.getattr_manager(name, name, value, kind)

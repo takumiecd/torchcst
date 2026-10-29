@@ -1298,6 +1298,96 @@ driverは同outputの`prepared-optimizer-confirm-driver.py`と
 再現検証は`python -m pytest -q tests/test_prepared_optimizer_update.py`、
 完全stepは既存Linear runnerと`radius-cell-mass-128-initial.json`を使う。
 
+
+#### optimizerの残存CPU処理とguard統合（2026-10-29）
+
+直前の96825723を比較元に、同じN128/B4/A819/M8・amp-only条件で残る呼び出しを計測した。
+一定gradient、20 warmup/101 updatesのoptimizer-onlyはhost .902892 ms／同期込み.929280 ms。
+41 updatesの別nested timerでは次の費用だった。包含する行どうしは加算しない。
+
+| 96825723での処理 | 回数 / update | 合計中央値 ms |
+| --- | ---: | ---: |
+| prepared program guard | 3 | .242321 |
+| 固定設定guard | 3 | .110754 |
+| `_validate_groups` | 2 | .076422 |
+| `CompiledPolarLaunch.run` | 1 | .041913 |
+| `_sync_from_base` | 1 | .000982 |
+
+全体同期や大きなoptimizer stateのcopyが主因ではなかった。
+`hooks_active`がTritonの空HookChainを常に有効と扱い、更新後にも全guardを実行していた。
+`_matches`も設定確認のために`execution_declaration`を経由し、別のguardへ入り直していた。
+
+**採用した変更：**
+
+- 空の標準HookChainはuser codeを実行しないので、追加の更新後確認を省く。
+  標準loopのcode/defaults・Genericの継承・属性方式を限定して適合確認する。
+  実hook、変更された実装、未対応runtimeでは従来の更新後確認を残す。
+- 固定設定の検査を、同じ`_build_guard`でprogram guardへ組み込む。
+  通常はAdam前後の2回、それぞれ登録・buffer version・配置・callbackを検査する。
+  検証項目を減らさず、`execution_declaration`経由の二重確認をなくす。
+  derived geometry dimensions、OperatorのKernel/Chart、siteの登録先identityも明示的に検査する。
+- 標準ModuleのParameter/子Moduleは、登録辞書をnativeで確認する。
+  native guard内からPythonの`nn.Module.__getattr__`へ戻る回数を減らす。
+  同じMROの辞書検査は共有し、関数code/defaultsの変更検出にはnative accessorを使う。
+- 固定設定guard自身のcallback確認もnative accessorへ移す。
+  Python callbackは固定function tupleを返すだけにし、関数ごとのPython比較loopを省く。
+  不適合なprivate APIは従来のfresh validationへ戻る。
+
+Polar/AdamWの更新則、amp-only decay、階層、profile、GPU kernelと配列は変えない。
+base pre/post hook、lr/decayの値検証、設定変更時の再構築、有限検査policyも維持する。
+名前だけでなくcallback code変更、数値が同じbuffer write、登録先/Parameter storage変更も検出する。
+
+**採用版の完全step：** 一つのNVIDIA L4、baseline→candidate→candidate→baseline、
+各fresh process、10 warmup/101 samples。loss/dX/全atom勾配/fused AdamW+Polarを含む。
+
+| 条件 | 未計装の完全step中央値2回 ms | allocated / reserved bytes |
+| --- | ---: | ---: |
+| 96825723 | 2.717420 / 2.549276 | 297984 / 2097152 |
+| guard統合・callback確認のnative化 | 2.476592 / 2.412705 | 297984 / 2097152 |
+
+2中央値の平均は**2.633348→2.444649 ms、約7.2%短縮**。
+メモリは増えずdense以下。eager allocator peakで、Graph/process総量は未測定。
+このjobのdense対照も.712793〜.758565 msへ揺れており、改善率の精度には限界がある。
+絶対時間を別jobと直接比較せず、対照のある測定として扱う。
+別optimizer-only診断はCST 0.754732 ms、dense 0.108973 ms。
+これはforward/backwardを含まず、完全stepやphase診断と同じ区間ではない。
+**dense同等は未達**で、別batch/1024/MNISTでの速度はこの変更では測っていない。
+
+別nested timerで、残るprogram+固定設定の一体guardは2回合計
+0.195205 ms。
+base AdamW呼び出しのうちtemporary pre-hookを除く時間は
+0.155103 ms、
+temporary pre-hook自身の残りは0.090981 ms。
+後者は旧座標snapshot、入力/gradient確認、groupsの対応付け等を含む。
+包含関係と計測wrapperの負担があるため、これらをplain timeから差し引かない。
+GPU更新は引き続き3 kernelsとsnapshot copy1回、同期API/item/DtoHは0。
+
+**不採用の試行：** `named_parameters`による所有者走査のnative cacheも試した。
+最初の完全step比較では小さな上乗せが見えたが、独立比較とgroup単体では安定しなかった。
+最終の3条件比較でも統合のみ2.246631/2.269500 ms、cache込み2.222015/2.304347 msで、
+cache込みの2中央値平均がわずかに悪化した。今回はhelperと関連APIを除去し、
+`_validate_groups`の値と所有者の検証はそのまま残す。
+先行のdefault accessor適合確認はNoneを扱えずfallbackし、空HookChainの初回適合も
+Generic継承を除外していた。これらは速度採用しておらず、修正後に実経路の再利用を検証した。
+
+CPU全体2558 passed／5861 skipped／既存警告18件。採用版L4関連346件と各runnerの
+Y/dX/全atom勾配・独立quadrature・matched-state gateが成功し、
+Parameter/Adam moment/stepの20 Tensorは5 updatesでbit一致した。
+両Polar modeの実hookによるstate transport変更、custom callback、layout/登録/shape変更も回帰検証した。
+変更PythonのRuff、isolated wheel/sdist buildと全367 package sourceの内容照合を通過した。
+
+採用版job=`l4job-2d298c84ccec4a3f9da59554f9b3590f`、snapshot SHA256=`c7cad9babd2a7011a079705bb5d40189443937309bd073b0802f42efef1fd5d8`、
+result archive SHA256=`f43a4f8e25050dc74458ad8ecef5c3b0feabbd54a5c8daf09514f0ac965aa040`。
+最終単体・nested診断job=`l4job-30a3521a5a3f42249eca1046bbde4935`。
+初期診断job=`l4job-d1fefb309c0c429fa05cedc23160a420`、
+3条件比較job=`l4job-d1b167d9f64d47a89bb0424c2ef42ab5`、
+所有者cache再比較job=`l4job-4a0a7bdd9a3643c69cb352e9fdca9089`。
+Torch2.11.0+cu130/CUDA13.0/Triton3.6.0/Python3.13.16、NVIDIA L4。
+原本・失敗job・不採用source・receipt・traceはignored `output/optimizer-host-20261029/<job>/`へ保全する。
+driverは同outputの`final-comparison-driver.py`と`adopted-breakdown-driver.py`。
+比較元は変更runtimeファイルをすべて96825723へ戻す別sourceで、同じnative source/binary
+(a6de79d2683a)をSHA照合して使う。新規CUDA/Triton数式やcustom CUDA optimizerは追加していない。
+
 **先行候補（対称融合前）の検証結果：** CPU全体2,355 passed／5,671 skipped／既存警告18件。
 L4で旧参照と新候補を含む106件成功（宣言等31件、CUDA実行75件）。
 入力directのみ／出力directのみ／両方direct／両方階層、全階層direct、非対称軸、

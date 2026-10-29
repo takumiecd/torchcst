@@ -6,6 +6,7 @@ from typing import Literal
 
 from torch import Tensor, nn
 
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
 from torchcst.atoms import Atoms, AtomState
 from torchcst.charts import ChartState
 
@@ -153,3 +154,6 @@ class CSTModule(nn.Module):
 
         summed, kappa = self.repulsion_terms(kind=kind)
         return summed.square().sum() - kappa
+
+
+_seal_functions(globals())

@@ -5,9 +5,64 @@ compiles a different equation or retains previous/proposal invocation tensors.
 Unsupported runtimes, hooks and changed specializations use Algorithm.execute.
 """
 
+import __future__
+
 import sys
+from types import FunctionType
+from typing import Generic
 
 import torch
+
+_REVERSED = reversed
+
+
+def _hook_loop(self, *args, **kwargs):
+    # Reference bytecode for Triton's standard HookChain, never executed here.
+    for call in self.calls if not self.reversed else reversed(self.calls):
+        call(*args, **kwargs)
+
+
+def _empty_hook_certificate(knobs):
+    """Qualify the standard loop; unknown/custom implementations stay active."""
+    cls = getattr(knobs, "HookChain", None)
+    if type(cls) is not type or cls.__mro__ not in (
+        (cls, object),
+        (cls, Generic, object),
+    ):
+        return None
+    fn = cls.__dict__.get("__call__")
+    if type(fn) is not FunctionType:
+        return None
+    expected, actual = _hook_loop.__code__, fn.__code__
+    fields = (
+        "co_code",
+        "co_consts",
+        "co_names",
+        "co_varnames",
+        "co_argcount",
+        "co_kwonlyargcount",
+        "co_freevars",
+        "co_cellvars",
+        "co_exceptiontable",
+    )
+    if (
+        cls.__getattribute__ is not object.__getattribute__
+        or any(
+            name in base.__dict__
+            for base in cls.__mro__
+            for name in ("calls", "reversed", "__getattr__")
+        )
+        or any(
+            getattr(actual, name, None) != getattr(expected, name, None)
+            for name in fields
+        )
+        or (actual.co_flags ^ expected.co_flags) & ~__future__.annotations.compiler_flag
+        or fn.__defaults__ is not None
+        or fn.__kwdefaults__ is not None
+    ):
+        return None
+    return cls, fn, actual
+
 
 _SCALARS = (
     "amplitude_max",
@@ -42,6 +97,7 @@ class CompiledPolarLaunch:
         self.kernel = kernel
         self.key = self.jit.cache_key
         self.knobs = knobs
+        self.empty_hook = _empty_hook_certificate(knobs)
         self.device = device
         self.debug = (
             self.jit.debug,
@@ -68,6 +124,8 @@ class CompiledPolarLaunch:
             (kernel, ()),
             (type(kernel), ()),
         ]
+        if self.empty_hook is not None:
+            self.guarded_owners.append((self.empty_hook[0], ()))
         for dictionary in dictionaries:
             if type(dictionary) is dict and id(dictionary) not in seen:
                 seen.add(id(dictionary))
@@ -92,11 +150,33 @@ class CompiledPolarLaunch:
         )
 
     def hooks_active(self):
+        """Empty standard HookChains execute no user code and need no recheck."""
         runtime = self.knobs.runtime
-        return (
-            runtime.launch_enter_hook is not None
-            or runtime.launch_exit_hook is not None
-        )
+        for hook in (runtime.launch_enter_hook, runtime.launch_exit_hook):
+            if hook is None:
+                continue
+            if self.empty_hook is None:
+                return True
+            cls, fn, code = self.empty_hook
+            if (
+                type(hook) is not cls
+                or cls.__call__ is not fn
+                or fn.__code__ is not code
+                or fn.__defaults__ is not None
+                or fn.__kwdefaults__ is not None
+            ):
+                return True
+            values = hook.__dict__
+            calls = values.get("calls")
+            reverse = values.get("reversed")
+            if type(calls) is not list or calls or type(reverse) is not bool:
+                return True
+            if reverse and (
+                fn.__globals__.get("reversed", _REVERSED) is not _REVERSED
+                or fn.__builtins__.get("reversed") is not _REVERSED
+            ):
+                return True
+        return False
 
     def run(self, previous, point, inputs):
         """Return False without writes if a new specialization is required."""

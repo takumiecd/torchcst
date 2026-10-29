@@ -29,6 +29,7 @@ def _callbacks():
     from torchcst.atoms.state import AtomState
     from torchcst.charts.base import ChartState
     from torchcst.kernels.state import KernelState
+    from torchcst.nn.module import CSTModule
     from torchcst.operators.atom_update import AtomUpdateBinding
     from torchcst.operators.binding import Operator
     from torchcst.optim.state import OptimizerStateAdapter
@@ -61,6 +62,7 @@ def _callbacks():
         (cuda_executor, ("fused_update_",)),
         (ChartState, ("center_parameter_dim",)),
         (OptimizerStateAdapter, ("transport",)),
+        (CSTModule, ("atoms",)),
         (
             kernel,
             (
@@ -112,6 +114,7 @@ def _definitions(callbacks):
 
 def _native_guard(binding, dispatcher, cached, callbacks, functions, site=None):
     from torchcst.operators._native_metadata_guard import (
+        _build_guard,
         guard_api,
         tensor_metadata_guard,
     )
@@ -122,7 +125,8 @@ def _native_guard(binding, dispatcher, cached, callbacks, functions, site=None):
     cls, kind = api
     guard = cls()
     owners = tuple(owner for owner, _ in callbacks)
-    roots = (binding, dispatcher, cached.state, owners, functions, site)
+    fixed_roots = (*binding.cst_charts(), binding.kernel)
+    roots = (binding, dispatcher, cached.state, owners, functions, site, fixed_roots)
     verbose = ["prepared atom optimizer metadata"]
 
     def attr(node, name, value):
@@ -130,6 +134,14 @@ def _native_guard(binding, dispatcher, cached, callbacks, functions, site=None):
 
     def item(node, key, value):
         return node.dict_getitem_manager(key, str(key), value, kind)
+
+    def registered(node, owner, name, table="_modules"):
+        # Standard nn.Module attributes otherwise call Python __getattr__ from
+        # inside every native guard. Check their actual registration directly.
+        namespace = attr(node, "__dict__", owner.__dict__)
+        namespace.add_dict_contains_guard(False, name, verbose, None)
+        values = owner.__dict__[table]
+        return item(item(namespace, table, values), name, values[name])
 
     def same(node, value):
         node.add_type_match_guard(id(type(value)), verbose, None)
@@ -182,9 +194,25 @@ def _native_guard(binding, dispatcher, cached, callbacks, functions, site=None):
         field(bm, binding, "workspace_limit_bytes")
         om = attr(bm, "operator", binding.operator)
         same(om, binding.operator)
+        same(attr(om, "kernel", binding.kernel), binding.kernel)
         am = attr(om, "atoms", binding.operator.atoms)
         same(am, binding.operator.atoms)
-        tensor(attr(am, "p", binding.operator.p), binding.operator.p)
+        tensor(
+            registered(am, binding.operator.atoms, "p", "_parameters"),
+            binding.operator.p,
+        )
+        charts = binding.cst_charts()
+        chart_nodes = attr(om, "charts", charts)
+        same(chart_nodes, charts)
+        for i, chart in enumerate(charts):
+            cn = chart_nodes.tuple_getitem_manager(i, "chart", chart, kind)
+            same(cn, chart)
+            geometry = chart.geometry
+            gn = registered(cn, chart, "geometry")
+            same(gn, geometry)
+            field(gn, geometry, "embedding_dim")
+            field(gn, geometry, "center_parameter_dim")
+            field(attr(gn, "spec", geometry.spec), geometry.spec, "revision")
         dm = root(1, dispatcher)
         no_overrides(dm, dispatcher, ("_prepare", "prepare", "run", "select"))
         for name in ("registry", "selector"):
@@ -228,7 +256,7 @@ def _native_guard(binding, dispatcher, cached, callbacks, functions, site=None):
         same(owner_node, owner)
         field(owner_node, owner, "layout_version")
         optimizer_state = owner.optimizer_state
-        owned = attr(owner_node, "optimizer_state", optimizer_state)
+        owned = registered(owner_node, owner, "optimizer_state")
         fields = optimizer_state.fields
         fm = attr(owned, "fields", fields)
         fm.add_dict_version_guard(fields, verbose, None)
@@ -243,6 +271,7 @@ def _native_guard(binding, dispatcher, cached, callbacks, functions, site=None):
             field(pm, plan, name)
         same(attr(pm, "recipe", plan.recipe), plan.recipe)
         own = root(3, owners)
+        seen_bases = set()
         for index, value in enumerate(owners):
             node = own.tuple_getitem_manager(index, str(index), value, kind)
             same(node, value)
@@ -252,7 +281,8 @@ def _native_guard(binding, dispatcher, cached, callbacks, functions, site=None):
                 for i, base in enumerate(value.__mro__):
                     bn = bases.tuple_getitem_manager(i, "base", base, kind)
                     same(bn, base)
-                    if not base.__flags__ & (1 << 8):
+                    if base not in seen_bases and not base.__flags__ & (1 << 8):
+                        seen_bases.add(base)
                         raw = next(
                             d
                             for d in gc.get_referents(base.__dict__)
@@ -276,7 +306,19 @@ def _native_guard(binding, dispatcher, cached, callbacks, functions, site=None):
             same(fnm, function)
             for name in ("__code__", "__defaults__", "__kwdefaults__"):
                 value = getattr(function, name)
-                node = attr(fnm, name, value)
+                accessor = {
+                    "__code__": "code_manager",
+                    "__defaults__": "func_defaults_manager",
+                    "__kwdefaults__": "func_kwdefaults_manager",
+                }[name]
+                method = getattr(fnm, accessor, None)
+                # Some versions treat a null defaults slot as a failed accessor
+                # rather than Python None. Its ordinary attribute stays checked.
+                node = (
+                    method(name, value, kind)
+                    if method and value is not None
+                    else attr(fnm, name, value)
+                )
                 same(node, value)
                 if type(value) is dict:
                     node.add_dict_version_guard(value, verbose, None)
@@ -297,14 +339,21 @@ def _native_guard(binding, dispatcher, cached, callbacks, functions, site=None):
                     same(attr(cn, "cell_contents", value), value)
         if site is not None:
             node = root(5, site)
-            no_overrides(node, site, ("cst_charts",))
+            no_overrides(node, site, ("cst_charts", "atoms"))
             for name, value in (
                 ("kernel", binding.kernel),
-                ("atoms", binding.operator.atoms),
                 ("input_chart", binding.operator.charts[0]),
                 ("output_chart", binding.operator.charts[1]),
             ):
-                same(attr(node, name, value), value)
+                same(registered(node, site, name), value)
+            state_node = registered(node, site, "atom_state")
+            same(state_node, owner)
+            same(registered(state_node, owner, "atoms"), binding.operator.atoms)
+        # Reuse the fixed-state guard builder, rather than checking the same
+        # tree through operator_declaration and a second native entrance.
+        # Every callback boundary still checks all versions and registrations.
+        fixed_node = guard.tuple_getitem_manager(6, "fixed state", fixed_roots, kind)
+        _build_guard(fixed_node, fixed_roots, kind, epilogue_root=guard)
         return (guard, roots) if guard.check(roots) else None
     except (AttributeError, RuntimeError, TypeError, StopIteration, ValueError):
         return None
@@ -351,19 +400,10 @@ class PreparedPolarOptimizerUpdate:
             or (self.launch is not None and not self.launch.enabled())
         ):
             return False
-        # Derived geometry fields are live attributes as well as a declaration.
-        for chart in self.binding.cst_charts():
-            geometry = chart.geometry
-            if (
-                chart.center_parameter_dim != 1
-                or geometry.embedding_dim != 1
-                or geometry.center_parameter_dim != 1
-                or geometry.spec.revision != 1
-            ):
-                return False
         if torch.cuda.is_current_stream_capturing():
             return False
-        self.binding.execution_declaration()
+        # The combined native guard already checked this live fixed tree.
+        # Changed metadata returns to ordinary declaration rebuilding.
         fixed = self.binding.kernel.__dict__.get("_fixed_signature_cache")
         return (
             self.binding.__dict__.get("_execution_declaration") is self.declaration
