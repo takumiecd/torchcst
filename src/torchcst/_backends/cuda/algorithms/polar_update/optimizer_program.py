@@ -112,7 +112,16 @@ def _definitions(callbacks):
     return tuple(result)
 
 
-def _native_guard(binding, dispatcher, cached, callbacks, functions, site=None):
+def _native_guard(
+    binding,
+    dispatcher,
+    cached,
+    callbacks,
+    functions,
+    site=None,
+    *,
+    function_factory=None,
+):
     from torchcst.operators._native_metadata_guard import (
         _build_guard,
         guard_api,
@@ -122,11 +131,16 @@ def _native_guard(binding, dispatcher, cached, callbacks, functions, site=None):
     api = guard_api()
     if api is None:
         return None
+    from .function_metadata import prepare_checks
+
     cls, kind = api
     guard = cls()
     owners = tuple(owner for owner, _ in callbacks)
     fixed_roots = (*binding.cst_charts(), binding.kernel)
     roots = (binding, dispatcher, cached.state, owners, functions, site, fixed_roots)
+    checker, dictionaries = prepare_checks(function_factory, functions, owners)
+    if checker is not None:
+        roots = (*roots, dictionaries)
     verbose = ["prepared atom optimizer metadata"]
 
     def attr(node, name, value):
@@ -297,46 +311,61 @@ def _native_guard(binding, dispatcher, cached, callbacks, functions, site=None):
                 raw = value.__dict__
                 data = attr(node, "__dict__", raw)
                 data.add_dict_version_guard(raw, verbose, None)
-        funcs = root(4, functions)
-        globals_seen = set()
-        for index, function in enumerate(functions):
-            # Function guards are roots, outside dictionary fast paths: code
-            # changes need not change the module/class namespace version.
-            fnm = funcs.tuple_getitem_manager(index, str(index), function, kind)
-            same(fnm, function)
-            for name in ("__code__", "__defaults__", "__kwdefaults__"):
-                value = getattr(function, name)
-                accessor = {
-                    "__code__": "code_manager",
-                    "__defaults__": "func_defaults_manager",
-                    "__kwdefaults__": "func_kwdefaults_manager",
-                }[name]
-                method = getattr(fnm, accessor, None)
-                # Some versions treat a null defaults slot as a failed accessor
-                # rather than Python None. Its ordinary attribute stays checked.
-                node = (
-                    method(name, value, kind)
-                    if method and value is not None
-                    else attr(fnm, name, value)
+        if checker is not None:
+            # Function slots are checked together through CPython's C API.
+            # The immutable function tuple and every mutable dictionary remain
+            # guarded. No callback, tensor value, or CUDA API is executed here.
+            root(4, functions)
+            guard.add_lambda_guard(checker, verbose, None)
+            dictionaries_node = root(7, dictionaries)
+            for index, value in enumerate(dictionaries):
+                node = dictionaries_node.tuple_getitem_manager(
+                    index, "function dictionary", value, kind
                 )
-                same(node, value)
-                if type(value) is dict:
-                    node.add_dict_version_guard(value, verbose, None)
-            values = function.__dict__
-            attr(fnm, "__dict__", values).add_dict_version_guard(values, verbose, None)
-            if id(function.__globals__) not in globals_seen:
-                globals_seen.add(id(function.__globals__))
-                values = function.__globals__
-                attr(fnm, "__globals__", values).add_dict_version_guard(
+                node.add_dict_version_guard(value, verbose, None)
+        else:
+            funcs = root(4, functions)
+            globals_seen = set()
+            for index, function in enumerate(functions):
+                # Function guards are roots, outside dictionary fast paths: code
+                # changes need not change the module/class namespace version.
+                fnm = funcs.tuple_getitem_manager(index, str(index), function, kind)
+                same(fnm, function)
+                for name in ("__code__", "__defaults__", "__kwdefaults__"):
+                    value = getattr(function, name)
+                    accessor = {
+                        "__code__": "code_manager",
+                        "__defaults__": "func_defaults_manager",
+                        "__kwdefaults__": "func_kwdefaults_manager",
+                    }[name]
+                    method = getattr(fnm, accessor, None)
+                    # Some versions treat a null defaults slot as a failed accessor
+                    # rather than Python None. Its ordinary attribute stays checked.
+                    node = (
+                        method(name, value, kind)
+                        if method and value is not None
+                        else attr(fnm, name, value)
+                    )
+                    same(node, value)
+                    if type(value) is dict:
+                        node.add_dict_version_guard(value, verbose, None)
+                values = function.__dict__
+                attr(fnm, "__dict__", values).add_dict_version_guard(
                     values, verbose, None
                 )
-            closure = function.__closure__
-            if closure:
-                cm = attr(fnm, "__closure__", closure)
-                for i, cell in enumerate(closure):
-                    value = cell.cell_contents
-                    cn = cm.tuple_getitem_manager(i, "cell", cell, kind)
-                    same(attr(cn, "cell_contents", value), value)
+                if id(function.__globals__) not in globals_seen:
+                    globals_seen.add(id(function.__globals__))
+                    values = function.__globals__
+                    attr(fnm, "__globals__", values).add_dict_version_guard(
+                        values, verbose, None
+                    )
+                closure = function.__closure__
+                if closure:
+                    cm = attr(fnm, "__closure__", closure)
+                    for i, cell in enumerate(closure):
+                        value = cell.cell_contents
+                        cn = cm.tuple_getitem_manager(i, "cell", cell, kind)
+                        same(attr(cn, "cell_contents", value), value)
         if site is not None:
             node = root(5, site)
             no_overrides(node, site, ("cst_charts", "atoms"))
@@ -371,6 +400,7 @@ class PreparedPolarOptimizerUpdate:
         self.declaration = binding.__dict__["_execution_declaration"]
         self.fixed_guard = binding.kernel.__dict__["_fixed_signature_cache"].guard
         self.guard, self.roots = guard
+        self.native_function_metadata = len(self.roots) == 8
         self.point = binding.execution_parameters()
         self.owner = binding.atom_state
         self.adapter_keys = ("exp_avg",)
@@ -452,6 +482,9 @@ class PreparedPolarOptimizerUpdate:
                 return None
             result = self.point.detach()
         else:
+            # The generic Triton entrance may run user pre-run/launch hooks.
+            # Recheck transport after those hooks, just as for a hooked runner.
+            self.transport_required = True
             result = self.state.algorithm.execute(self.state, inputs)
         result = self.binding.atom_state.protect_tensor(result)
         # The certified standard FlatTorus exp_avg transport is also identity.
@@ -464,7 +497,9 @@ class PreparedPolarOptimizerUpdate:
         )
 
 
-def prepare_program(dispatcher, cached, adapter, site=None):
+def prepare_program(
+    dispatcher, cached, adapter, site=None, *, _function_factory=_MISSING
+):
     """Compile only a supported, already-prepared standard radius update."""
     from torchcst._backends.dispatch.runtime import Dispatcher
     from torchcst._backends.dispatch.select import FixedSelector
@@ -569,6 +604,11 @@ def prepare_program(dispatcher, cached, adapter, site=None):
         for name in ("_is_torch_function_mode_enabled", "_len_torch_dispatch_stack")
     ):
         return None
+    if (
+        torch._C._is_torch_function_mode_enabled()
+        or torch._C._len_torch_dispatch_stack()
+    ):
+        return None
     point = binding.execution_parameters()
     fixed = binding.kernel.__dict__.get("_fixed_signature_cache")
     if (
@@ -593,6 +633,16 @@ def prepare_program(dispatcher, cached, adapter, site=None):
         ).supported
     ):
         return None
+    if _function_factory is _MISSING:
+        from .function_metadata import get_factory
+
+        # Import/compilation is cold and may execute external build machinery.
+        # Re-enter all eligibility/state checks afterwards rather than trusting
+        # metadata observed before that work. The factory is process-cached.
+        factory = get_factory()
+        return prepare_program(
+            dispatcher, cached, adapter, site, _function_factory=factory
+        )
     from .compiled_launch import prepare_launch
 
     launch = prepare_launch(binding, state) if point.numel() else None
@@ -601,7 +651,15 @@ def prepare_program(dispatcher, cached, adapter, site=None):
         *((type(chart), ()) for chart in binding.cst_charts()),
         *((launch.guarded_owners) if launch is not None else ()),
     )
-    guard = _native_guard(binding, dispatcher, cached, callbacks, functions, site)
+    guard = _native_guard(
+        binding,
+        dispatcher,
+        cached,
+        callbacks,
+        functions,
+        site,
+        function_factory=_function_factory,
+    )
     if guard is None:
         return None
     return PreparedPolarOptimizerUpdate(binding, dispatcher, cached, guard, launch)

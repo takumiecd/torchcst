@@ -27,7 +27,7 @@ from torchcst._backends.state import AlgorithmState
 from torchcst._builtin_callbacks import original_functions
 
 
-def example():
+def example(*, function_factory=None):
     importlib.import_module("torch._dynamo.guards")
     model = radius_model()
     opt = CSTOptimizer(
@@ -57,7 +57,15 @@ def example():
     )
     functions = _definitions(callbacks)
     assert functions is not None
-    native = _native_guard(binding, dispatcher, cached, callbacks, functions, model)
+    native = _native_guard(
+        binding,
+        dispatcher,
+        cached,
+        callbacks,
+        functions,
+        model,
+        function_factory=function_factory,
+    )
     if native is None:
         pytest.skip("optional native optimizer guard unavailable")
     return model, opt, dispatcher, cached, native
@@ -234,6 +242,7 @@ def test_empty_standard_hooks_skip_only_the_extra_post_launch_guard(
         "unit_decay",
         "checked",
         "jit_hook",
+        "jit_hook_transport",
         "launch_hook",
         "grad_none",
         "zero_rate",
@@ -396,15 +405,24 @@ def test_cuda_prepared_optimizer_matches_generic_and_live_changes(
                     )
             elif change == "checked":
                 oa.check_finite = ob.check_finite = True
-            elif change == "jit_hook":
+            elif change in ("jit_hook", "jit_hook_transport"):
                 from torchcst._backends.cuda.algorithms.polar_update.kernels import (
                     apply_polar,
                 )
 
+                original_transport = profiles.transport_state
+
+                def pre_run(*args, _transport=original_transport, **kwargs):
+                    # First let the generic path prepare a program whose launch
+                    # uses Algorithm.execute, then mutate inside that entrance.
+                    if change == "jit_hook_transport" and len(jit_calls) == 2:
+                        monkeypatch.setattr(
+                            profiles, "transport_state", lambda *a: _transport(*a) * 0.9
+                        )
+                    jit_calls.append(1)
+
                 monkeypatch.setattr(
-                    apply_polar,
-                    "pre_run_hooks",
-                    [*apply_polar.pre_run_hooks, lambda *a, **kw: jit_calls.append(1)],
+                    apply_polar, "pre_run_hooks", [*apply_polar.pre_run_hooks, pre_run]
                 )
             elif change == "launch_hook":
                 from triton import knobs
@@ -422,6 +440,9 @@ def test_cuda_prepared_optimizer_matches_generic_and_live_changes(
 
                 hooks = knobs.runtime.launch_exit_hook
                 monkeypatch.setattr(hooks, "calls", [*hooks.calls, change_transport])
+        if i == 3 and change == "jit_hook_transport":
+            current = oa._update_bindings[actual].__dict__.get("_optimizer_program")
+            assert current is not None and current.launch is None
         if i >= 2:
             if change == "grad_none":
                 actual.atoms.p.grad = baseline.atoms.p.grad = None
@@ -446,5 +467,5 @@ def test_cuda_prepared_optimizer_matches_generic_and_live_changes(
         assert sa.keys() == sb.keys()
         for key in sa:
             torch.testing.assert_close(sa[key], sb[key], atol=0, rtol=0)
-    if change in ("jit_hook", "launch_hook"):
+    if change in ("jit_hook", "jit_hook_transport", "launch_hook"):
         assert len(jit_calls) == 8
