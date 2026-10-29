@@ -837,6 +837,90 @@ source snapshot・6個のrunner JSON・各scopeの同期集計・host区間・tr
 新binary・sanitizer logはignored `output/radius-optimize-20261028/l4job-61656d9fa3ea4ec1a7d7fdddf7e711af/`へ保持する。
 再現driverは同じoutput下の`prepared-dispatch-confirm-driver.py`。
 
+#### Optimizerのhost区間の切り分け（2026-10-29、実装変更なし）
+
+`4999d405`のoptimizerを、同じN128/B4/A819/M8・FP32 IEEE・lr1e-4・
+weight_decay=.01・fused AdamW・`check_finite=False`で診断した。
+本番ソースは変更せず、ignored driver内で`_step_impl`のstatement境界へ時計だけを挿入した。
+途中にCUDA同期を入れず、8 warmup/41 sample、2 fresh processで区間を測った。
+計測用wrapperのオーバーヘッドを含むため、以下は完全stepの採用判断用の時間ではない。
+
+| 処理 | 2 processの区間中央値 ms（通常の未fence経路） |
+| --- | ---: |
+| group検証 | .0448 / .0579 |
+| active Parameterとgroupの対応 | .0124 / .0126 |
+| finite policy用の勾配列作成 | .0085 / .0091 |
+| Polarの勾配射影＋検証 | .2368 / .2282 |
+| old point snapshot | .0345 / .0336 |
+| 更新Planのpreflight | .1972 / .1909 |
+| 射影勾配のcopy | .0253 / .0239 |
+| base AdamW＋hooks | .1552 / .1566 |
+| baseとのPython参照の再接続 | .0030 / .0034 |
+| 更新dispatch＋Polar CUDA起動 | .4016 / .4143 |
+| optimizer vector state transport＋copy | .2971 / .2817 |
+| 計装したoptimizer呼び出し全体 | 1.5287 / 1.5081 |
+
+区間中央値の和は全体中央値と一致する必要はなく、表外にはpublic wrapper、import、return等もある。
+時計を挿入しない元のoptimizer呼び出しは1.4896 / 1.4801 msだった。
+同じworker内で、直前のbackwardをCUDA同期で完了させてから元のoptimizerを呼ぶと
+1.5055 / 1.4779 msで、待たせない条件に対する大きな短縮はない。
+**直前のbackwardのGPU待ちがoptimizerの約1.5 msを作っている、という説明は支持されない。**
+このfenceは診断用の比較条件だけであり、本番経路には追加していない。
+
+別のprofiler passで、optimizer scope内の同期API・`aten::item`・DtoHは全て0。
+correlationで対応したGPU kernelは5個、合計14.305 / 14.272 µs、
+別にDtoD 3回が合計3.584 / 3.520 µsだった。`apply_polar`自体は約2.8 µs。
+profilerのactivity buffer準備が最初のcat等へ乗るため、profilerのCPU累積時間を
+上表のhost区間の代わりに使わない。GPU実行時間とhost時間を加算しない。
+`_sync_from_base()`はparam_groups/state/defaultsのPython参照を揃えるだけで、CUDA同期ではない。
+
+**重複している仕事：** 1 optimizer stepで`fixed_state_signature`を5回、
+`AtomUpdateBinding.build_context`を2回、Plan宣言検証を4回行っている。
+fixtureのsignature対象は8 module/23 buffer、Contextのscalar metadataは19項目。
+各Contextで20個のDeviceInfoを作る。prepared cacheはsupport/選択を省くが、この構築までは省かない。
+
+さらに別のlight nested計測では、signature 5回の合計が.2533 / .2527 ms、
+Context 2回がinclusive .2838 / .2911 ms、内側で計測したsignatureを除く部分が
+.1755 / .1834 msだった。Context以外も含む`_split_many`2回はinclusive .2806 / .2756 ms、
+内側signature等を除く部分が.1793 / .1773 ms。Plan宣言検証4回自体は.0095 / .0096 ms。
+これらは包含関係のある別計測なので、全行を加えてhost全体に対する割合を作らない。
+この別L4割当では未計装の呼び出しも約1.56〜1.65 msと変動しており、割当間の差を改善率にしない。
+
+FlatTorusの勾配射影とvector transportは数学的にidentityだが、現在は両profileの検査を行い、
+sliceをcatして、元のgrad/exp_avgへcopyしている。検査やcustom hookまで消す必要はない。
+優先する候補は、(1)検査後に両profileの結果が入力sliceそのものなら元Tensorを返し、
+同一objectへのcopyを省く、(2)fresh declaration/config guardを残した上でContextの不変metadataを
+binding所有で再利用すること。preflightとbase optimizer hook後のlive検証は維持する。
+**今回は原因の切り分けまでで、この候補の実装・高速化・メモリ削減は未検証。**
+
+初回stage診断job=`l4job-4c6c2ee3eba1497ba09d579042b5bf7a`、snapshot SHA256=
+`9bdc0bd815ecd65d448d86bb544d14832d94564b24a97eacc778d37e9f181d9f`、
+result archive SHA256=`d66ddb835cbf4da916125e8f8e5de064851a8481ea08e68cab3b37029c7d190e`。
+追加nested診断job=`l4job-7cf56ca98e354e868f652e2b0f25253c`、snapshot SHA256=
+`b00a214acae5498a21413b4f0ce6a5c317eccd3c47fdcc208ef365fe31d9f449`、
+result archive SHA256=`610c93c3907503efadf98c2e1d8eaa531490de7fb366d168ed7c8b289f37bf48`。
+途中job `l4job-86549d14bb1241798cb7596a2c21b3ea`のnested集計は、sample辞書を共有したため
+次stepのforwardの3 signatureが混入しており不採用。辞書をコピーして上記jobで再計測した。
+全raw証拠はignored outputへ保持する。再現driverは
+`output/radius-optimize-20261028/optimizer-diagnose-driver.py`。
+nativeは前節と同じ`a6de79d2683a`をsource/runtime/binary hash照合して再使用した。
+本番の演算・optimizer設定・保存配列を変えておらず、新たな完全step高速化やpeak memoryの結果はない。
+
+**AdamW weight decayの作用先：** 現在のfixtureの`.01`はamp専用ではない。
+`radius_cell_mass.optimizer()`はatom Parameter全体をAdamWへ渡すため、
+raw `(s,t,mu_input,mu_output)`全体にdecayが入る。
+公開READMEはCST側groupの`weight_decay=0`を例示しており、このbenchmark設定とは区別する。
+
+現行Polarの振幅は`amp=amplitude_max*s/sqrt(s*s+t*t)`なので、s/tの同率縮小は
+振幅の減衰ではない。中心座標のdecayはそのまま更新に入る。
+ゼロ勾配・lr1e-4のCPU診断では、`.01`でcenterが30.26513671875から30.265106201171875へ動き、
+全centerの変化は`old_center*(1-lr*weight_decay)`とbit一致した。
+`weight_decay=0`ではcenterは不変だった。raw結果は
+`output/radius-optimize-20261028/zero-gradient-weight-decay-audit.json`。
+Polarのradial_regularizationは活動半径/幅の制御で、amp用AdamW decayとは別物である。
+今後の「中心等にdecayを掛けない」条件ではraw atomのAdamW decayを0とし、ampだけの減衰を
+採る場合は別の数式/APIとして扱う。既存の`.01`条件の速度結果を、その新条件の結果へ読み替えない。
+
 **先行候補（対称融合前）の検証結果：** CPU全体2,355 passed／5,671 skipped／既存警告18件。
 L4で旧参照と新候補を含む106件成功（宣言等31件、CUDA実行75件）。
 入力directのみ／出力directのみ／両方direct／両方階層、全階層direct、非対称軸、
