@@ -146,7 +146,7 @@ class Dispatcher:
             cached is not None
             and cached.registry is self.registry
             and cached.recipe is cached.decision.plan.recipe
-            and cached.context == context
+            and (cached.context is context or cached.context == context)
             and cached.placement == placement
             and (
                 (

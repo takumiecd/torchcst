@@ -46,7 +46,7 @@ def test_hot_tuple_reuse_reads_fresh_declaration_without_extra_walk(monkeypatch)
     monkeypatch.setattr(metadata, "fixed_state_signature", signature)
     first = binding.build_context(inputs(model))
     second = binding.build_context(inputs(model))
-    assert second is not first
+    assert second is first
     assert second.scalar_metadata is first.scalar_metadata
     assert len(calls) == 2  # Exactly one fresh declaration guard per context.
     with torch.no_grad():

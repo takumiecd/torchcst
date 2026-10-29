@@ -185,10 +185,8 @@ def validate_layout(state, charts):
         # update. CPU-only factor evaluators and update Algorithms retain their
         # own device guards; validating immutable layout is device-independent.
         signature = fixed_state_signature((*charts, state))
-        if (
-            signature is not None
-            and state.__dict__.get("_radius_layout_signature") == signature
-        ):
+        certified = state.__dict__.get("_radius_layout_signature")
+        if signature is not None and (certified is signature or certified == signature):
             return
         if (
             any(t.is_cuda for t in state.buffers())
@@ -215,10 +213,8 @@ def validate_layout(state, charts):
         # Validate the live mathematical configuration once, then check only
         # identities/versions. Atom updates do not change this configuration.
         signature = fixed_state_signature((*charts, state))
-        if (
-            signature is not None
-            and state.__dict__.get("_cell_mass_layout_signature") == signature
-        ):
+        certified = state.__dict__.get("_cell_mass_layout_signature")
+        if signature is not None and (certified is signature or certified == signature):
             return
         if (
             any(t.is_cuda for t in state.buffers())

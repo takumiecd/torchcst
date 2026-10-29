@@ -154,20 +154,62 @@ class AtomUpdateBinding:
         declaration = self.execution_declaration()
         p = self.execution_parameters()
         cuda = p.is_cuda
-        return AtomUpdateContext(
+        geometries = tuple(chart.geometry.spec for chart in self.operator.charts)
+        metadata = self._scalar_metadata(declaration)
+        mode = (
+            "cuda_graph"
+            if cuda and torch.cuda.is_current_stream_capturing()
+            else "eager"
+        )
+        contiguous = p.is_contiguous() and inputs.previous.is_contiguous()
+        decay = inputs.amplitude_weight_decay != 0
+        key = (
+            tuple(id(geometry) for geometry in geometries),
+            tuple(p.shape),
+            p.dtype,
+            p.device,
+            contiguous,
+            mode,
+            self.workspace_limit_bytes,
+            decay,
+        )
+        validated = self.__dict__.get("_execution_declaration")
+        cacheable = (
+            validated is not None
+            and validated[0] is not None
+            and validated[1] is declaration
+            and type(decay) is bool
+            and (
+                self.workspace_limit_bytes is None
+                or type(self.workspace_limit_bytes) is int
+            )
+        )
+        cached = self.__dict__.get("_context_cache")
+        if (
+            cacheable
+            and cached is not None
+            and cached[0] is validated
+            and cached[1] is metadata
+            and cached[2] == key
+        ):
+            return cached[3]
+        context = AtomUpdateContext(
             kernel=declaration.kernel,
-            geometries=tuple(chart.geometry.spec for chart in self.operator.charts),
+            geometries=geometries,
             parameter_shape=tuple(p.shape),
             dtype=p.dtype,
             device=DeviceInfo(p.device.type, p.device.index),
-            contiguous=p.is_contiguous() and inputs.previous.is_contiguous(),
-            scalar_metadata=self._scalar_metadata(declaration),
-            execution_mode="cuda_graph"
-            if cuda and torch.cuda.is_current_stream_capturing()
-            else "eager",
+            contiguous=contiguous,
+            scalar_metadata=metadata,
+            execution_mode=mode,
             workspace_limit_bytes=self.workspace_limit_bytes,
-            amplitude_decay=inputs.amplitude_weight_decay != 0,
+            amplitude_decay=decay,
         )
+        if cacheable:
+            self.__dict__["_context_cache"] = (validated, metadata, key, context)
+        else:
+            self.__dict__.pop("_context_cache", None)
+        return context
 
     def _scalar_metadata(self, declaration):
         """Reuse placement metadata only after the live declaration guard ran.
@@ -244,4 +286,5 @@ class AtomUpdateBinding:
         state.pop("_prepared_dispatch", None)
         state.pop("_prepared_dispatch_stats", None)
         state.pop("_scalar_metadata_cache", None)
+        state.pop("_context_cache", None)
         return state

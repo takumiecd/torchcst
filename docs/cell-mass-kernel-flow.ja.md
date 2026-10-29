@@ -1058,6 +1058,94 @@ source/spec/receipt/4 runner JSON/trace/metadata計数/20 Tensor比較をignored
 `output/radius-optimize-20261028/l4job-cab68a7dd994451bbc3782538f5ac5be/`へ保持する。
 再現driverは同じoutput下の`identity-metadata-confirm-driver.py`。
 
+#### 固定設定signatureとAtomUpdateContextの再利用（2026-10-29）
+
+`5cfc651b`を比較元に、設定検査の境界を維持してCPU側の組立を削減した。
+
+- 固定設定の確認はcallback/hookの前後で毎回行う。通常のModule・Tensor bufferでは、
+  PyTorchのCPU metadata guardで登録構造・spec/binding identity・buffer identity/version・
+  dtype/device/shape/layoutとclass変更を確認し、未変更なら同じsignature tupleを返す。
+  Pythonの`modules()`再帰走査とsignature再組立を省く。学習するatom Parameterの数値更新は
+  固定設定の変更に含めない。bufferの同値write・rename・所有者移動も再検証する。
+- AtomUpdateContextはfreshな宣言確認とscalar metadata guardの後で再利用する。
+  検証済みentry/metadataのidentity、geometry identity、Parameterのshape/dtype/device、
+  current/previousのcontiguity、capture mode、workspace、amp-decay有無がkey。
+  lr・amp decay係数の大きさ・previous TensorはContextへ保存せず、毎回Inputsとして検証する。
+  設定変更後の再選択、custom Algorithmの検証、base optimizerのpre/post hook境界は維持する。
+- privateなPyTorch guard APIはfeature検出し、構築直後のcheckで利用可能性も確認する。
+  PythonのDynamo/tracing stackをこの機能からimportせず、PyTorchが既にロードしたAPIだけ使う。
+  custom walker/属性provider、Tensor subclass、inference buffer、未対応API等はfreshな
+  Python検証へ戻す。guardやContextのcacheは各ownerの直近1件に限定し、pickle/deepcopyで消去する。
+  cacheは入力、旧座標、Parameter、buffer自体を保持しない。
+
+CPUだけのPython比較cache案は、signature確認が約12→16µsへ悪化したため不採用。
+その後のネイティブ案の初回L4検証は17 failed/274 passedで性能採用していない。
+Torch2.11/Python3.13ではimmutableな組込み型のTypeDictGuardAccessorがnullになることが原因だった。
+修正版はtype/MRO identityを確認したうえで変更不能な型の辞書検査を省く。
+変更可能なModule/Tensor classの辞書検査、canonical callbackのcode/defaults変更検査は残し、
+L4の短いAPI確認jobでguard.check=Trueを確認した。
+CUDA/Triton kernel、Polar activity/radial/amp-decay則、profile、階層や中間配列は変更していない。
+
+**完全stepと切り分け：** 同じN128/B4/A819/M8・seed41・base1/merge2、FP32 IEEE、
+raw decay=0／amp decay=.01、loss/dX/全atom勾配/fused AdamW+Polar、check_finite=False。
+初回は一つのL4でbaseline→candidate→candidate→baseline、3 warmup/21 samples。
+変更前2.743986 / 2.803769 ms、両方を再利用した版2.788669 / 2.821477 msで、
+この初回測定では改善を示せなかった。メモリは全runで同じだった。
+
+続けて別の一つのL4で、baseline→Contextのみ→両方→両方→Contextのみ→baseline、
+各fresh process、10 warmup/101 samplesへ増やして切り分けた。
+配列shape・初期値・更新則・Planは同じで、6 runのParameter/X/target fingerprintが一致した。
+
+| 条件 | 完全step中央値2回 ms | allocated / reserved bytes |
+| --- | ---: | ---: |
+| 比較元5cfc651b | 2.773119 / 2.814898 | 297984 / 2097152 |
+| Context再利用のみ | 2.774644 / 2.743653 | 297984 / 2097152 |
+| native metadata guard＋Context再利用 | 2.730094 / 2.735081 | 297984 / 2097152 |
+| 6 runのdense対照 | .677001〜.724073 | 17313280 / 23068672 |
+
+2中央値の平均は2.794009→2.732587 ms、**追加比較では約2.2%短縮**。
+Contextのみは2.759148 msだった。初回の結果も含め、完全stepの改善は小さく、
+大幅高速化や別条件での改善を示した結果ではない。denseより依然遅い。
+メモリは維持してdense以下。eager allocator peakでありGraph/process総量は未測定。
+
+| optimizerの別診断 | 比較元 | Contextのみ | 両方 |
+| --- | ---: | ---: | ---: |
+| host呼び出し区間 ms | 1.296328 | 1.276697 | 1.258649 |
+| Context実生成回数 / step | 2 | 0 | 0 |
+| DeviceInfo実生成回数 / step | 2 | 0 | 0 |
+| fresh signature確認回数 / step | 5 | 5 | 5 |
+| CPU上のsignature単体中央値 µs | 32.630 | 32.703 | 21.773 |
+
+host区間は別の21 sample診断で、enqueue/API blockingを含み、GPU時間へ加算しない。
+signature単体は実L4ホスト上のCPU fixture、warm確認50回後、3000 calls×7回の別診断。
+両方を再利用する版ではoptimizer内の`_flatten_modules`呼び出しが3回の観測すべて0回だった。
+比較元とContextのみにはこのhelper自体がなく、raw counterの0は走査省略を意味しない。
+両経路は従来の関数内で毎回full scanする。fresh signature確認5回はcallback境界として残る。
+GPU kernel数3、DtoD copy数1、同期API/item/DtoH=0は全3条件で維持した。
+
+**検証：** CPU全体2,540 passed／5,825 skipped／既存警告18件、両方を変更する版のL4関連suite
+292件、Contextのみの切り分けsuite114件が成功（coverageは重なる）。
+各runnerのY/dX/全atom勾配・独立quadrature・matched-state gateも成功した。
+同じ外部勾配で5step、途中でradial_regularizationとamp decay係数を変える比較で、
+各20個のParameter/Adam moment/step Tensorが3条件でbit一致した。
+設定・Tensor配置/shape・登録名/所有者・custom callback・hook・invalid Inputs・
+inference・GC非保持・serializationと、利用不能guardのbounded fallbackを回帰検証した。
+変更PythonのRuffとisolated wheel/sdist build・内容照合も通過した。
+
+初回確認job=`l4job-f1a08ebfb8264659b63b2fbaa7a4d391`、snapshot SHA256=
+`e5f1384f8eb045d40992cf62aab5b0a8feb9942c65f25d3567d462f5c7914bc0`、
+result archive SHA256=`c620fc2f067ac02f1669b88bb58d365dd3c00aa8482a076f5ade23adfe910da5`。
+切り分けjob=`l4job-09d43c66259e448193211989c879fc5c`、snapshot SHA256=
+`0cbaa9b4490b2c928ff8b11ae1e788707698a16a9548953222ce6dbfe62ff4be`、
+result archive SHA256=`f2d46519bd83b85c129731331b6696dbefaebd9d8099af6725d1765adc2954ec`。
+Torch2.11.0+cu130/CUDA13.0/Triton3.6.0/Python3.13.16、実機NVIDIA L4。
+両jobとも比較元は4ファイルを5cfc651bへ戻し、Contextのみはmetadata.pyだけを戻した。
+native CUDA source/binaryは同一a6de79d2683aをSHA照合して再利用し、実装Pythonもsnapshotと照合した。
+raw evidenceはignored `output/radius-optimize-20261028/<job>/`、driverは同outputの
+`native-guard-confirm-driver.py`と`native-guard-isolation-driver.py`へ保存した。
+先行失敗job3732f076・API診断jobc4cc0f80/28770cb2も同outputへsource/receipt付きで残した。
+
+
 **先行候補（対称融合前）の検証結果：** CPU全体2,355 passed／5,671 skipped／既存警告18件。
 L4で旧参照と新候補を含む106件成功（宣言等31件、CUDA実行75件）。
 入力directのみ／出力directのみ／両方direct／両方階層、全階層direct、非対称軸、
