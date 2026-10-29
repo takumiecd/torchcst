@@ -1146,6 +1146,50 @@ raw evidenceはignored `output/radius-optimize-20261028/<job>/`、driverは同ou
 先行失敗job3732f076・API診断jobc4cc0f80/28770cb2も同outputへsource/receipt付きで残した。
 
 
+#### optimizerのCPU呼び出し経路の追加診断（2026-10-29）
+
+runtimeはb944a283のまま、N128/B4/A819/M8 fixtureのoptimizerだけを追加計測した。
+一定の外部gradientを設定し、CST・denseともfused AdamW、20 warmup後101 updates。
+各updateの直前直後を同期した中央値はCST 1.279729 ms、dense .104418 ms、
+同期前のhost呼び出し区間はそれぞれ1.250760 / .089359 msだった。
+これはforward/backwardを走らせないoptimizer-only診断で、前節の完全stepや、
+学習stepから切り出したphase診断（CST約1.35 / dense約.18 ms）とは同じ測定区間ではない。
+新たな完全stepの速度改善・メモリ測定を示す値ではない。
+
+別passで41 updatesに軽いnested timerを付けると次の中央値になった。
+inclusive行は包含する子の値と加算しない。wrapper自身の計測負担も含む。
+
+| 処理 | 回数 / update | inclusive ms |
+| --- | ---: | ---: |
+| group/所有者検証 | 2 | .080354 |
+| 勾配射影 | 1 | .182267 |
+| AtomUpdateContext確認 | 2 | .179434 |
+| Dispatcher._prepare | 2 | .282620 |
+| Registry.validate_plan | 4 | .008236 |
+| AlgorithmState signature | 1 | .053420 |
+| Algorithm.run | 1 | .203274 |
+| state移送adapter | 1 | .223328 |
+| その内部のKernel transport | 1 | .207329 |
+
+単一の重いGPU演算というより、更新前後の構造確認・汎用呼び出しが積み重なっている。
+既測のGPU更新kernel合計約9.5µs／Polar約2.9µsと合わせると、denseに近いoptimizer時間を
+狙う余地はある。ただしdense同等は未達で、この診断だけで到達を保証しない。
+次の大きな候補は、設定が同じ間の更新前後処理を検証済み実行経路へまとめること。
+型/shape/配置、lr/amp decay、設定変更とpre/post hook境界の確認は維持し、
+customなcallback・Algorithm・state adapterは元の汎用経路を使う設計を検討する。
+この実行経路の統合はまだ実装・速度検証していない。
+
+clean診断job=`l4job-96eb5c6adaf34975a30993d82d623d77`、snapshot SHA256=
+`18f089f9abd769a2e281a4e18dc72b85d6ad9ce9cbee104591359c15fae97dc9`、
+result archive SHA256=`df7d6e367ebb143beb4161b8682b607e72d332293241522d5ea5eee3e01a1493`。
+Torch2.11.0+cu130/CUDA13.0/Python3.13.16、NVIDIA L4。
+一定gradient・nested timer・cProfile・runtime・receipt・sourceをignored
+`output/radius-optimize-20261028/<job>/`、driverを同outputの
+`optimizer-current-profile-simple-driver.py`へ保持する。採用値はplain/nested timer。
+cProfileはnative guard内のPython callbackでcall treeの時間帰属が崩れるため参考扱いにした。
+先行job3571b06eは不要なnative loaderのmetadata不足をstderrに出したため採用せず、
+このclean jobではそのloaderを使わず、optimizer自身のTriton実装を実行した。
+
 **先行候補（対称融合前）の検証結果：** CPU全体2,355 passed／5,671 skipped／既存警告18件。
 L4で旧参照と新候補を含む106件成功（宣言等31件、CUDA実行75件）。
 入力directのみ／出力directのみ／両方direct／両方階層、全階層direct、非対称軸、
