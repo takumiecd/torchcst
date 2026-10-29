@@ -391,4 +391,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("shared_forward", &radius_cell_mass::shared_forward);
     m.def("shared_backward", &radius_cell_mass::shared_backward);
     m.def("shared_project", &radius_cell_mass::shared_project);
+    m.def("shared_forward_parallel", &radius_cell_mass::shared_forward_parallel);
+    m.def("shared_backward_parallel", &radius_cell_mass::shared_backward_parallel);
+    m.def("shared_project_parallel", &radius_cell_mass::shared_project_parallel);
+    m.def("hybrid_parameter_grad_parallel", &radius_cell_mass::hybrid_parameter_grad_parallel);
 }

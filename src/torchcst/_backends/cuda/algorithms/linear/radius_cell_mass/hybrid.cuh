@@ -418,8 +418,8 @@ Tensor expand_hybrid(Tensor p, Tensor rows, Tensor offsets, Tensor h, Tensor c,
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return y;
 }
-Tensor hybrid_parameter_grad(Tensor p, Tensor x, Tensor dy, Tensor zx, Tensor zy,
-    Tensor h, Tensor g, Config input_config, Config output_config, int input_start, int output_start) {
+Tensor hybrid_parameter_grad_impl(Tensor p, Tensor x, Tensor dy, Tensor zx, Tensor zy,
+    Tensor h, Tensor g, Config input_config, Config output_config, int input_start, int output_start, int threads) {
     check_atoms(p);
     Axis input = parse_axis(input_config), output = parse_axis(output_config);
     check_compact(zx, p, input, input_start); check_compact(zy, p, output, output_start);
@@ -431,7 +431,7 @@ Tensor hybrid_parameter_grad(Tensor p, Tensor x, Tensor dy, Tensor zx, Tensor zy
     auto grad = torch::empty_like(p);
     if (!p.numel()) return grad;
     AT_DISPATCH_FLOATING_TYPES(p.scalar_type(), "radius_hybrid_parameter_grad", [&] {
-        hybrid_parameter_kernel<<<(p.size(0) + THREADS - 1) / THREADS, THREADS, 0,
+        hybrid_parameter_kernel<<<(p.size(0) + threads - 1) / threads, threads, 0,
             at::cuda::getCurrentCUDAStream()>>>(p.data_ptr<scalar_t>(), x.data_ptr<scalar_t>(),
             dy.data_ptr<scalar_t>(), zx.data_ptr<double>(), zy.data_ptr<double>(),
             h.data_ptr<double>(), g.data_ptr<double>(), grad.data_ptr<scalar_t>(), p.size(0),
@@ -440,4 +440,15 @@ Tensor hybrid_parameter_grad(Tensor p, Tensor x, Tensor dy, Tensor zx, Tensor zy
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return grad;
 }
+Tensor hybrid_parameter_grad(Tensor p, Tensor x, Tensor dy, Tensor zx, Tensor zy,
+    Tensor h, Tensor g, Config input, Config output, int input_start, int output_start) {
+    return hybrid_parameter_grad_impl(p, x, dy, zx, zy, h, g, input, output,
+        input_start, output_start, THREADS);
+}
+Tensor hybrid_parameter_grad_parallel(Tensor p, Tensor x, Tensor dy, Tensor zx, Tensor zy,
+    Tensor h, Tensor g, Config input, Config output, int input_start, int output_start) {
+    return hybrid_parameter_grad_impl(p, x, dy, zx, zy, h, g, input, output,
+        input_start, output_start, 32);
+}
+
 } // namespace radius_cell_mass

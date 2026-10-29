@@ -78,8 +78,11 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "sequential",
             "overlap",
             "block_local",
+            "block_local_parallel",
         ):
-            raise ValueError("schedule must be sequential, overlap or block_local")
+            raise ValueError(
+                "schedule must be sequential, overlap, block_local or block_local_parallel"
+            )
         if (
             type(recipe.output_tile_sites) is not int
             or not 1 <= recipe.output_tile_sites <= 128
@@ -119,7 +122,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
         )
         if context.m * work > 2**31 - 128:
             reasons.append("exceeds native 32-bit work-index limit")
-        if recipe.schedule == "block_local":
+        if recipe.schedule in ("block_local", "block_local_parallel"):
             if 8 * (context.atom_count + max(zi, co)) > 48 * 1024:
                 reasons.append("block-local shared storage exceeds 48 KiB")
             if context.m > 65535:

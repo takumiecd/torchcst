@@ -29,12 +29,13 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plan import (
 )
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plans import (
     BLOCK_LOCAL,
+    BLOCK_LOCAL_PARALLEL,
     HYBRID_OVERLAP,
     HYBRID_SERIAL,
     REFERENCE,
 )
 
-VARIANTS = (HYBRID_SERIAL, HYBRID_OVERLAP, BLOCK_LOCAL)
+VARIANTS = (HYBRID_SERIAL, HYBRID_OVERLAP, BLOCK_LOCAL, BLOCK_LOCAL_PARALLEL)
 
 
 @pytest.mark.parametrize("plan", VARIANTS)

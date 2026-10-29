@@ -1,12 +1,13 @@
 #pragma once
 #include "block_local.cuh"
+#include "parallel_projection.cuh"
 
 namespace radius_cell_mass {
 
 // One CTA owns a batch row's complete projection. Output tiles NEVER rebuild
 // these moments or responses. The next launch is the cross-block dependency
 // boundary; there is no inter-block spin wait or output atomic accumulation.
-template<class T>
+template<class T, bool ProduceResponse = true>
 __global__ void shared_projection_kernel(
     const T *signal, const T *p, double *moments, double *response,
     int atoms, Axis axis, int start, bool merge, bool output_side) {
@@ -55,18 +56,20 @@ __global__ void shared_projection_kernel(
     // for exact merge dependencies and backward's selected-bank contractions.
     for (int i = threadIdx.x; i < elements; i += blockDim.x)
         moments[int64_t(b) * elements + i] = scratch[i];
-    for (int atom = threadIdx.x; atom < atoms; atom += blockDim.x) {
-        double R = radius(p, atom, axis);
-        double original = center(p, atom, axis, output_side);
-        Membership member = classify(R, original, axis);
-        Bank bank = axis.banks[member.bank];
-        double c[17], dr[17], dR, dmu;
-        profile_coefficients(R, bank.period, axis.modes, c, dr);
-        double mu = wrapped_center(original, axis);
-        double value = bank.level < start
-            ? direct_project(row, 0, axis, member, mu, c, dr, dR, dmu)
-            : compact_project(scratch, 0, axis, member, mu, c, dr, start, dR, dmu);
-        response[int64_t(b) * atoms + atom] = value;
+    if constexpr (ProduceResponse) {
+        for (int atom = threadIdx.x; atom < atoms; atom += blockDim.x) {
+            double R = radius(p, atom, axis);
+            double original = center(p, atom, axis, output_side);
+            Membership member = classify(R, original, axis);
+            Bank bank = axis.banks[member.bank];
+            double c[17], dr[17], dR, dmu;
+            profile_coefficients(R, bank.period, axis.modes, c, dr);
+            double mu = wrapped_center(original, axis);
+            double value = bank.level < start
+                ? direct_project(row, 0, axis, member, mu, c, dr, dR, dmu)
+                : compact_project(scratch, 0, axis, member, mu, c, dr, start, dR, dmu);
+            response[int64_t(b) * atoms + atom] = value;
+        }
     }
 }
 
@@ -139,7 +142,8 @@ __global__ void shared_expand_kernel(
 inline std::vector<Tensor> shared_apply(
     Tensor x, Tensor p, Tensor rows, Tensor offsets,
     Config input_config, Config output_config, int input_start, int output_start,
-    bool merge, int output_tile_sites, bool projection_output_side, bool emit_output) {
+    bool merge, int output_tile_sites, bool projection_output_side, bool emit_output,
+    bool parallel_projection = false) {
     check_matrix(x); check_atoms(p);
     Axis input = parse_axis(input_config), output = parse_axis(output_config);
     TORCH_CHECK(x.device() == p.device() && x.scalar_type() == p.scalar_type() &&
@@ -175,10 +179,29 @@ inline std::vector<Tensor> shared_apply(
     if (emit_output) y = torch::empty({x.size(0), output.sites}, x.options());
     if (!x.size(0)) return emit_output ? std::vector<Tensor>{y, z, h} : std::vector<Tensor>{z, h};
     AT_DISPATCH_FLOATING_TYPES(x.scalar_type(), "radius_shared_apply", [&] {
-        shared_projection_kernel<<<x.size(0), THREADS, projection_bytes, at::cuda::getCurrentCUDAStream()>>>(
-            x.data_ptr<scalar_t>(), p.data_ptr<scalar_t>(), z.data_ptr<double>(), h.data_ptr<double>(),
-            p.size(0), input, input_start, merge, projection_output_side);
-        C10_CUDA_KERNEL_LAUNCH_CHECK();
+        if (parallel_projection) {
+            if (input_elements) {
+                shared_projection_kernel<scalar_t, false><<<x.size(0), THREADS, projection_bytes,
+                    at::cuda::getCurrentCUDAStream()>>>(
+                    x.data_ptr<scalar_t>(), p.data_ptr<scalar_t>(), z.data_ptr<double>(),
+                    h.data_ptr<double>(), p.size(0), input, input_start, merge, projection_output_side);
+                C10_CUDA_KERNEL_LAUNCH_CHECK();
+            }
+            if (p.size(0)) {
+                dim3 response_grid((p.size(0) + PARALLEL_RESPONSE_THREADS - 1) / PARALLEL_RESPONSE_THREADS,
+                    (x.size(0) + PARALLEL_RESPONSE_BATCH - 1) / PARALLEL_RESPONSE_BATCH);
+                parallel_response_kernel<<<response_grid, PARALLEL_RESPONSE_THREADS, 0,
+                    at::cuda::getCurrentCUDAStream()>>>(
+                    x.data_ptr<scalar_t>(), p.data_ptr<scalar_t>(), z.data_ptr<double>(),
+                    h.data_ptr<double>(), p.size(0), x.size(0), input, input_start, projection_output_side);
+                C10_CUDA_KERNEL_LAUNCH_CHECK();
+            }
+        } else {
+            shared_projection_kernel<<<x.size(0), THREADS, projection_bytes, at::cuda::getCurrentCUDAStream()>>>(
+                x.data_ptr<scalar_t>(), p.data_ptr<scalar_t>(), z.data_ptr<double>(), h.data_ptr<double>(),
+                p.size(0), input, input_start, merge, projection_output_side);
+            C10_CUDA_KERNEL_LAUNCH_CHECK();
+        }
         if (emit_output) {
             dim3 grid((output.sites + output_tile_sites - 1) / output_tile_sites, x.size(0));
             shared_expand_kernel<<<grid, THREADS, expansion_bytes, at::cuda::getCurrentCUDAStream()>>>(
@@ -205,6 +228,24 @@ inline std::vector<Tensor> shared_project(Tensor signal, Tensor p, Config axis,
     bool output_side, int start, bool merge) {
     return shared_apply(signal, p, Tensor(), Tensor(), axis, axis,
         start, start, merge, 1, output_side, false);
+}
+
+// Explicit opt-in schedule. The caches and their lifetime match shared_apply;
+// only the response ownership and the additional launch boundary differ.
+inline std::vector<Tensor> shared_forward_parallel(Tensor x, Tensor p, Tensor rows, Tensor offsets,
+    Config input, Config output, int input_start, int output_start, bool merge, int tile_sites) {
+    return shared_apply(x, p, rows, offsets, input, output, input_start, output_start,
+        merge, tile_sites, false, true, true);
+}
+inline std::vector<Tensor> shared_backward_parallel(Tensor dy, Tensor p, Tensor rows, Tensor offsets,
+    Config input, Config output, int input_start, int output_start, bool merge, int tile_sites) {
+    return shared_apply(dy, p, rows, offsets, output, input, output_start, input_start,
+        merge, tile_sites, true, true, true);
+}
+inline std::vector<Tensor> shared_project_parallel(Tensor signal, Tensor p, Config axis,
+    bool output_side, int start, bool merge) {
+    return shared_apply(signal, p, Tensor(), Tensor(), axis, axis,
+        start, start, merge, 1, output_side, false, true);
 }
 
 } // namespace radius_cell_mass

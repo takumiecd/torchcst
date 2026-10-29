@@ -193,7 +193,12 @@ class _BlockLocalRadiusLinear(torch.autograd.Function):
         native = _extension()
         layout_keys = _classify_layout_keys(plan, atoms)
         rows, offsets = _ranges_from_layout_keys(plan, layout_keys)
-        y, input_moments, atom_response = native.shared_forward(
+        forward = (
+            native.shared_forward_parallel
+            if recipe.schedule == "block_local_parallel"
+            else native.shared_forward
+        )
+        y, input_moments, atom_response = forward(
             x,
             atoms,
             rows,
@@ -232,23 +237,30 @@ class _BlockLocalRadiusLinear(torch.autograd.Function):
             # The SAME transform runs in reverse: one dY projection produces
             # moments/G, then all dX tiles reuse G. Cin stays in shared memory.
             grad_input, grad_output_moments, grad_response = (
-                native.shared_backward(
-                    dy,
-                    atoms,
-                    rows,
-                    offsets,
-                    plan.input.native_config(),
-                    plan.output.native_config(),
-                    recipe.input_direct_levels,
-                    recipe.output_direct_levels,
-                    recipe.moment_method == "merge",
-                    recipe.output_tile_sites,
-                )
+                native.shared_backward_parallel
+                if recipe.schedule == "block_local_parallel"
+                else native.shared_backward
+            )(
+                dy,
+                atoms,
+                rows,
+                offsets,
+                plan.input.native_config(),
+                plan.output.native_config(),
+                recipe.input_direct_levels,
+                recipe.output_direct_levels,
+                recipe.moment_method == "merge",
+                recipe.output_tile_sites,
             )
         elif ctx.needs_input_grad[1]:
             # Atom-only backward publishes the two required caches in ONE
             # projection kernel; it has no dX expansion or routing sort.
-            grad_output_moments, grad_response = native.shared_project(
+            project = (
+                native.shared_project_parallel
+                if recipe.schedule == "block_local_parallel"
+                else native.shared_project
+            )
+            grad_output_moments, grad_response = project(
                 dy,
                 atoms,
                 plan.output.native_config(),
@@ -261,7 +273,12 @@ class _BlockLocalRadiusLinear(torch.autograd.Function):
 
         grad_atoms = None
         if ctx.needs_input_grad[1]:
-            grad_atoms = native.hybrid_parameter_grad(
+            parameter_grad = (
+                native.hybrid_parameter_grad_parallel
+                if recipe.schedule == "block_local_parallel"
+                else native.hybrid_parameter_grad
+            )
+            grad_atoms = parameter_grad(
                 atoms,
                 x,
                 dy,
@@ -472,7 +489,7 @@ def radius_linear(plan, x, atoms, *, recipe=None):
     )
     if x.shape[0] * work_per_batch > 2**31 - 128:
         raise ValueError("radius baseline exceeds its native 32-bit work-index limit")
-    if recipe.schedule == "block_local":
+    if recipe.schedule in ("block_local", "block_local_parallel"):
         if 8 * (atoms.shape[0] + max(zi, co)) > 48 * 1024:
             raise ValueError("block-local shared storage exceeds 48 KiB")
         if x.shape[0] > 65535:
@@ -484,7 +501,7 @@ def radius_linear(plan, x, atoms, *, recipe=None):
     with torch.cuda.device(x.device):
         if torch.cuda.is_current_stream_capturing():
             raise ValueError("radius baseline uses eager preparation, not CUDA Graphs")
-        if recipe.schedule == "block_local":
+        if recipe.schedule in ("block_local", "block_local_parallel"):
             function = _BlockLocalRadiusLinear
         elif (
             recipe.input_direct_levels

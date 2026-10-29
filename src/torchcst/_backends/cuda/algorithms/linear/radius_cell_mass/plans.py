@@ -28,3 +28,11 @@ BLOCK_LOCAL = ExecutionPlan(
         input_direct_levels=2, output_direct_levels=2, schedule="block_local"
     ),
 )
+
+BLOCK_LOCAL_PARALLEL = ExecutionPlan(
+    "cuda_radius_cell_mass",
+    "v1",
+    RadiusCellMassRecipe(
+        input_direct_levels=2, output_direct_levels=2, schedule="block_local_parallel"
+    ),
+)

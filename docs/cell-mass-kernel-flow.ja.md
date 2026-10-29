@@ -5233,6 +5233,19 @@ physical sigmaの解析微分は実装済み。bank/ownerの離散的な選択�
 
 ## 確認すること
 
+### 追加比較: atomを担当するprojectionブロック
+
+`radius-block-local-parallel`は既存`radius-block-local`との明示的な比較用Planである。
+momentsは従来どおりbatch行ごとのCTAで一度だけ作る。そのlaunchが完了した後、
+32threadのCTAへatomを分配し、各threadが同じatomの最大4batch行の完全responseを作る。
+profile係数と位相をbatch間で使い回すが、各行の加算順・FP64中間値は維持する。
+parameter勾配も同じ数式のまま32thread/CTAで実行する。
+
+N128/B4/A819ではresponseのCTA数は4から26、parameter勾配は7から26になる。
+momentsの生成とresponseを別launchにするため、起動回数との交換がある。
+globalのmoments/response、sharedのcoeffs、autogradの保存寿命は既存Planと同じ。
+この段階では実装した比較候補であり、GPU正しさ・完全step・メモリの採用判定は未実施。
+
 各段階の保存値、配列のshape、書き手、寿命を先に確定し、独立oracleで
 Y/dX/全atom勾配を検証してから速度を比較する。上記は実機での正しさ・性能の結果ではない。
 H/Gの保存を省く案では、同じforward状態での再計算と、全利用先の終了を明示する。

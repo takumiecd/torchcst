@@ -11,14 +11,20 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass import executor 
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plan import (
     HierarchyPlan,
 )
-from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plans import BLOCK_LOCAL
+from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plans import (
+    BLOCK_LOCAL,
+    BLOCK_LOCAL_PARALLEL,
+)
 from torchcst._backends.torch.kernels.radius_cell_mass import axis_masses
 
 
 @GPU
 @pytest.mark.parametrize("start", [0, 2, "all"])
 @pytest.mark.parametrize("method", ["direct", "merge"])
-def test_shared_projection_only_active_bank_and_merge_dependencies(start, method):
+@pytest.mark.parametrize("suffix", ["", "_parallel"])
+def test_shared_projection_only_active_bank_and_merge_dependencies(
+    start, method, suffix
+):
     a = axis_plan(128, modes=3)
     plan = HierarchyPlan(input=a, output=a)
     start = len(a.banks) // 2 if start == "all" else start
@@ -34,7 +40,7 @@ def test_shared_projection_only_active_bank_and_merge_dependencies(start, method
     rows, offsets = ex.prepare_layout(plan, p)
     reverse_rows, reverse_offsets = ex.prepare_layout(plan, p, reverse=True)
     native = ex._extension()
-    y, zx, h = native.shared_forward(
+    y, zx, h = getattr(native, "shared_forward" + suffix)(
         x,
         p,
         rows,
@@ -46,7 +52,7 @@ def test_shared_projection_only_active_bank_and_merge_dependencies(start, method
         method == "merge",
         32,
     )
-    dx, zy, g = native.shared_backward(
+    dx, zy, g = getattr(native, "shared_backward" + suffix)(
         dy,
         p,
         reverse_rows,
@@ -58,7 +64,7 @@ def test_shared_projection_only_active_bank_and_merge_dependencies(start, method
         method == "merge",
         32,
     )
-    projected, projected_g = native.shared_project(
+    projected, projected_g = getattr(native, "shared_project" + suffix)(
         dy, p, a.native_config(), True, start, method == "merge"
     )
     vi = axis_masses(grid(a), p.cpu()[:, 1], p.cpu()[:, 3])
@@ -104,7 +110,8 @@ def test_shared_projection_only_active_bank_and_merge_dependencies(start, method
 @GPU
 @pytest.mark.parametrize("distribution", ["mixed", "empty", "all_direct"])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
-def test_shared_public_vjps_mixed_empty_and_all_direct(distribution, dtype):
+@pytest.mark.parametrize("variant", [BLOCK_LOCAL, BLOCK_LOCAL_PARALLEL])
+def test_shared_public_vjps_mixed_empty_and_all_direct(distribution, dtype, variant):
     a = axis_plan(32, modes=3)
     plan = HierarchyPlan(input=a, output=a)
     p = (
@@ -116,9 +123,7 @@ def test_shared_public_vjps_mixed_empty_and_all_direct(distribution, dtype):
     rng = torch.Generator().manual_seed(728)
     check_vjp(
         plan,
-        replace(
-            BLOCK_LOCAL.recipe, input_direct_levels=start, output_direct_levels=start
-        ),
+        replace(variant.recipe, input_direct_levels=start, output_direct_levels=start),
         torch.randn(3, 32, dtype=dtype, generator=rng),
         p,
         torch.randn(3, 32, dtype=dtype, generator=rng),

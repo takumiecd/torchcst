@@ -16,7 +16,10 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass import executor 
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plan import (
     HierarchyPlan,
 )
-from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plans import BLOCK_LOCAL
+from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plans import (
+    BLOCK_LOCAL,
+    BLOCK_LOCAL_PARALLEL,
+)
 from torchcst._backends.torch.kernels.radius_cell_mass import axis_masses
 
 
@@ -44,6 +47,7 @@ def _same_storage(actual, expected):
 
 
 @GPU
+@pytest.mark.parametrize("variant", [BLOCK_LOCAL, BLOCK_LOCAL_PARALLEL])
 @pytest.mark.parametrize(
     "needs_x,needs_p", [(True, True), (True, False), (False, True), (False, False)]
 )
@@ -52,14 +56,14 @@ def _same_storage(actual, expected):
     [(False, False), (True, False), (False, True), (True, True)],
 )
 def test_fused_launches_and_saved_projections(
-    monkeypatch, needs_x, needs_p, direct_input, direct_output
+    monkeypatch, needs_x, needs_p, direct_input, direct_output, variant
 ):
     plan = HierarchyPlan(
         input=axis_plan(27, merge=3, modes=3, spacing=0.7, origin=-1.1),
         output=axis_plan(16, modes=8, spacing=1.3, origin=2.1),
     )
     recipe = replace(
-        BLOCK_LOCAL.recipe,
+        variant.recipe,
         input_direct_levels=len(plan.input.banks) // 2 if direct_input else 2,
         output_direct_levels=len(plan.output.banks) // 2 if direct_output else 2,
     )
@@ -80,7 +84,8 @@ def test_fused_launches_and_saved_projections(
         for call in native.calls
         if call[0] not in {"classify_atoms", "classify_atoms_async"}
     ]
-    assert [call[0] for call in forward] == ["shared_forward"]
+    suffix = "_parallel" if variant is BLOCK_LOCAL_PARALLEL else ""
+    assert [call[0] for call in forward] == ["shared_forward" + suffix]
     assert len(forward[0][2]) == 3
     _, zx, h = forward[0][2]
     assert zx.shape == (
@@ -109,9 +114,9 @@ def test_fused_launches_and_saved_projections(
             if call[0] not in {"classify_atoms", "classify_atoms_async"}
         ]
         names = [call[0] for call in calls]
-        assert names == (["shared_backward"] if needs_x else ["shared_project"]) + (
-            ["hybrid_parameter_grad"] if needs_p else []
-        )
+        assert names == (
+            ["shared_backward" + suffix] if needs_x else ["shared_project" + suffix]
+        ) + (["hybrid_parameter_grad" + suffix] if needs_p else [])
         projection = calls[0]
         if needs_x:
             assert len(projection[2]) == 3
