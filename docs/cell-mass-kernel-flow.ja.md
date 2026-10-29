@@ -5343,11 +5343,11 @@ raw pstats、source、binary、receipt、`paired-driver.py`は同じignored outp
 
 ### Linear側の宣言共有とnative layout範囲計算（2026-10-30）
 
-Dispatcherはbindingのoptional `prepare_context(inputs)`へ入力検証とContext構築を委譲できる。
-標準CSTLinearでは変更されていないcallbackとplain Tensorを確認し、一度読んだ現在の宣言と
-Parameterをその2処理で共有する。Contextのgrad/precision/deterministic等は毎回取得し、
-入力TensorもContextも保存しない。custom callback、関数codeの変更、subclass、Tensor mode、
-未対応private APIは従来のvalidate_inputs→build_contextへ戻る。実行段階のlive宣言検証も残る。
+不採用の試作ではDispatcherにoptional `prepare_context(inputs)`を追加した。
+標準CSTLinearの変更されていないcallbackとplain Tensorを確認し、一度読んだ現在の宣言と
+Parameterを入力検証とContext構築で共有した。Contextのgrad/precision/deterministic等は
+毎回取得し、入力TensorもContextも保存しない案だった。custom callback、関数codeの変更、
+subclass、Tensor mode、未対応private APIでは従来の2 callbackへ戻した。最終sourceには残さない。
 
 radius layoutは現在のatomから毎forward再分類する。CUDAでのforward/reverse key変換・
 安定ソート・全ownerのlower_boundをnative呼出し1回へまとめる。ATenのstable sortは維持し、
@@ -5375,6 +5375,40 @@ native layoutだけの最終sourceを別途測定する。
 `1233e5a9dbeba2d7e61b4cb813a588d4bafc5cbcbee87b3e4a1ba7132aaef357`、
 result archive SHA256=`58eb727a80cfe225d4c2d3f226be04b4cc0660d7512ad4cdc18eb490b53f0ee6`。
 source/result/receipt/traceと復元用driverはignored `output/linear-host-20261030/`。
+
+**最終採用はnative layoutだけ:** runtime `88eb8008`で、通常の入力/宣言/Context検証は
+1c232dcbのままにした。比較元も1c232dcb。両方で同じexplicit parallel Planを使い、
+上記と同じN128/B4/A819/M8/seed41・FP32 IEEE・amp-only条件で測定した。
+各fresh processで変更前→変更後→変更後→変更前、10 warmup/101 samples。
+
+| 条件 | 完全step中央値2回 ms | allocated / reserved peak B |
+| --- | ---: | ---: |
+| 1c232dcb | 2.144717 / 2.123830 | 297984 / 2097152 |
+| native layout | 2.011921 / 2.028915 | 297984 / 2097152 |
+
+平均中央値は**2.134274→2.020418 ms、約5.3%短縮**。全4回のメモリ増加なし。
+matched denseは.693543〜.729819 ms、allocated/reservedは17313280 / 23068672 Bで、
+dense並みの完全stepには未達。eager allocator peakでありGraph/process総量ではない。
+別traceのkernel数は30→25、合計約1.030→1.022 ms。moments/H/G・coeffs/site展開・
+parameter勾配はほぼ横ばい。Python経由のlayout Tensor操作とlaunch/割当の入口を
+減らした結果と整合するが、kernel時間を完全stepから差し引いて純Python費用としない。
+
+関連584件成功。独立Y/dX/全atom勾配・quadrature・matched-state gate、
+Parameter/Adam moment/step20 Tensorの5 updates bit一致が成功した。
+空/偏った/混在key、同一key内のstable順序、最大510 ownerと4096 atom、
+forward/reverse、invalid metadata、retained backward、別stream寿命を含む。
+optimizerはprepared経路のまま、3 kernels、snapshot copy1回、sync/item/DtoH0。
+最終CPU全体2598 passed / 5942 skipped（既存警告19件）、変更PythonのRuff/diff検査が成功。
+runtime全372ファイルを最終測定snapshotへbyte照合した。CUDA source/binaryは両条件でSHA照合し、
+試作の検証済みbinaryを再利用した。入力/精度/Polar/AdamW則は変更しない。
+
+最終job=`l4job-87c20e61371d45ee910ed3d3795c1855`、snapshot SHA256=
+`5deae9ae766e7247d4dff2a0ed85d0d23281e19f930fbb6d7303119acf0f2b85`、
+result archive SHA256=`fa6790bf90d969cb47a44a808a4b5dfb332fcedca120e9c12177ec85448d1ba7`。
+NVIDIA L4、Python3.13.16、Torch2.11.0+cu130/CUDA13.0、Triton3.6.0。
+source/result/receipt/trace/state/binaryと`final-driver.py`、`final-verified-summary.json`は
+同じignored output配下へ保全した。所有L4は停止済み。
+この変更の1024/MNIST、他GPU世代、Graph/process peak、新規sanitizerは未測定。
 
 各段階の保存値、配列のshape、書き手、寿命を先に確定し、独立oracleで
 Y/dX/全atom勾配を検証してから速度を比較する。上記は実機での正しさ・性能の結果ではない。
