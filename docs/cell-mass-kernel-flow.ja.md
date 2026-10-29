@@ -990,6 +990,74 @@ source/spec/receipt/suite/4 runner JSON/traceは各job名のignored output配下
 fixtureがraw=0/amp=要求係数である追加回帰を含む対象CPUテスト37件も通過した。
 
 
+#### 恒等変換の組立・自己copy削除と更新metadata再利用（2026-10-29）
+
+amp-onlyの更新則を保ったまま、`802799c6`に対して次の2点を変更した。
+
+- Polarの両profile callbackでshape/layout/finite等を従来どおり検証し、結果がそれぞれの
+  入力viewそのものなら、元のgradient/vector Tensorを返す。optimizerとstate adapterは
+  同じobjectへのcopyを省く。Sphereや値を変えるcustom callbackは従来のcatへ進む。
+  値が等しいことだけでは省略しない。Tensorのaliasとgrad/vectorのversion増分は変わるが、
+  Parameter・Adam stateの数値更新は変えない。
+- AtomUpdateBindingは毎回freshなexecution_declarationを確認した後、scalar placement metadataを
+  1件だけ再利用する。検証済み宣言entryのidentityとbufferのname/id/numel topologyをkeyにする。
+  bufferのrenameは固定設定signatureが同じでも検出する。parameter shape/device/contiguity、
+  capture、workspace、amp-decay flagを含むContext本体は毎回構築する。
+  signatureがNoneのinference Tensorや、返却宣言に対応する検証済みentryがない場合は再利用しない。
+  cacheはTensorやold pointを保持せず、pickle/deepcopyでは消去する。
+
+設定signatureの走査や、base hook後のlive検証自体を消した変更ではない。
+raw atom decay=0／amp decay=.01、既存Polar activity/radial則、profile、階層、H/G保存量は同じ。
+CUDA/Triton kernelのコードは変更していない。
+
+**完全step：** 一つのNVIDIA L4割当内でbaseline→candidate→candidate→baselineの順に
+各2 fresh process、3 warmup/21 samplesを実行した。N128/B4/A819/M8・seed41・base1/merge2、
+FP32 IEEE、loss/dX/全atom勾配/fused AdamW+Polar、check_finite=False。
+4 runの初期Parameter/X/target fingerprintは一致した。
+
+| 条件 | 完全step中央値 ms | allocated / reserved bytes |
+| --- | ---: | ---: |
+| amp-only変更前 | 3.055410 / 3.075820 | 297984 / 2097152 |
+| 恒等変換省略＋metadata再利用 | 2.869463 / 2.802360 | 297984 / 2097152 |
+| 各runのdense対照 | .698100〜.739150 | 17313280 / 23068672 |
+
+2中央値の平均は3.065615→2.835912 ms、**完全stepは約7.5%短縮**。
+メモリは維持してdense以下。これはeager allocator peakで、Graph/process総量は未測定。
+denseに対する速度目標は未達で、N1024/MNIST等の別条件へこの改善率を外挿しない。
+
+**optimizer内部の別診断：** host呼び出し区間は1.711464→1.309260 ms。
+これはCPU準備/起動/API blockingを含む別計測で、完全stepの採用時間の代わりにせず、
+GPU時間と加算しない。
+
+| optimizer trace / metadata計数 | 変更前 | 変更後 |
+| --- | ---: | ---: |
+| aten::cat | 2 | 0 |
+| GPU kernel数 | 5 | 3 |
+| GPU kernel合計 µs | 14.208 | 9.600 |
+| GPU DtoD copy数 | 3 | 1 |
+| DeviceInfo構築数 / optimizer step | 40 | 2 |
+| 同期API / aten::item / DtoH | 0 / 0 / 0 | 0 / 0 / 0 |
+
+残るcopyは旧座標のsnapshot。metadata計数はtimingとは別passでfactoryを包んで行い、
+各3stepとも同じ回数だった。Context構築2回は維持し、scalar metadata分38個の生成を省いた。
+
+**検証：** CPU全体2,474 passed／5,825 skipped／既存警告18件。新規35件でidentity/fallback、
+型/shape/finite、設定・buffer変更、inference、serialization等を確認した。L4関連suite226件通過。
+各runnerのY/dX/全atom勾配・独立小ケースquadrature・matched-state更新gateも通過した。
+同じ外部勾配で5step、途中にradial_regularizationとamp decay係数を変更した別比較では、
+20個のParameter/AdamW moment/step Tensorがbaseline/candidateでbit一致した。
+変更PythonのRuffも通過。既存の全src Ruffの未変更ファイルの指摘は前節と同じ範囲である。
+
+job=`l4job-cab68a7dd994451bbc3782538f5ac5be`、snapshot SHA256=
+`31f0c216172cdd570f513a9b4461d02d91b0a9f6daea17b72f88244db2b28036`、
+result archive SHA256=`f6bef603d7a3b10ee827618c4712f54217b4a2e9ded5361265ec4dcf81f71640`。
+Torch2.11.0+cu130/CUDA13.0/Triton3.6.0/Python3.13.16、実機NVIDIA L4。
+両経路は同じCST native a6de79d2683aをsource/runtime/binary hash照合して使った。
+比較元4ファイルはcommit802799c6の内容へ戻して隔離し、それ以外のsourceは共通。
+source/spec/receipt/4 runner JSON/trace/metadata計数/20 Tensor比較をignored
+`output/radius-optimize-20261028/l4job-cab68a7dd994451bbc3782538f5ac5be/`へ保持する。
+再現driverは同じoutput下の`identity-metadata-confirm-driver.py`。
+
 **先行候補（対称融合前）の検証結果：** CPU全体2,355 passed／5,671 skipped／既存警告18件。
 L4で旧参照と新候補を含む106件成功（宣言等31件、CUDA実行75件）。
 入力directのみ／出力directのみ／両方direct／両方階層、全階層direct、非対称軸、

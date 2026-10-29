@@ -121,14 +121,18 @@ def project_parameter_gradient(
     (_, input_p, output_p), (polar_g, input_g, output_g) = (
         _parameterizations._split_many(state, input_chart, output_chart, p, gradient)
     )
+    projected_input = _profile.project_gradient(
+        state.profiles[0], input_chart, input_p, input_g
+    )
+    projected_output = _profile.project_gradient(
+        state.profiles[1], output_chart, output_p, output_g
+    )
+    # Geometry callbacks still run their validation. Euclidean/FlatTorus
+    # callbacks return the original views, so no reassembly is needed.
+    if projected_input is input_g and projected_output is output_g:
+        return gradient
     return torch.cat(
-        (
-            polar_g,
-            _profile.project_gradient(state.profiles[0], input_chart, input_p, input_g),
-            _profile.project_gradient(
-                state.profiles[1], output_chart, output_p, output_g
-            ),
-        ),
+        (polar_g, projected_input, projected_output),
         dim=-1,
     )
 
@@ -146,16 +150,16 @@ def transport_parameter_state(
             kernel_state, input_chart, output_chart, old, new, state
         )
     )
+    transported_input = _profile.transport_state(
+        kernel_state.profiles[0], input_chart, old_i, new_i, state_i
+    )
+    transported_output = _profile.transport_state(
+        kernel_state.profiles[1], output_chart, old_o, new_o, state_o
+    )
+    if transported_input is state_i and transported_output is state_o:
+        return state
     return torch.cat(
-        (
-            polar_s,
-            _profile.transport_state(
-                kernel_state.profiles[0], input_chart, old_i, new_i, state_i
-            ),
-            _profile.transport_state(
-                kernel_state.profiles[1], output_chart, old_o, new_o, state_o
-            ),
-        ),
+        (polar_s, transported_input, transported_output),
         dim=-1,
     )
 

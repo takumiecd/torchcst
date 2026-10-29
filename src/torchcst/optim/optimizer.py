@@ -258,7 +258,8 @@ class CSTOptimizer(Optimizer):
                 inputs = AtomUpdateInputs(old, rate)
                 binding = self._update_bindings[site]
                 plan = self._update_dispatcher.prepare(binding, inputs).plan
-            point.grad.copy_(projected)
+            if projected is not point.grad:
+                point.grad.copy_(projected)
             old_points.append((site, point, rate, old, plan))
         if not has_closure:
             result = self.base_optimizer.step()
@@ -367,7 +368,8 @@ class CSTOptimizer(Optimizer):
                     plan = self._update_dispatcher.prepare(
                         self._update_bindings[site], inputs
                     ).plan
-                point.grad.copy_(projected)
+                if projected is not point.grad:
+                    point.grad.copy_(projected)
                 prepared.append(
                     _PreparedAtomStep(site, point, previous, rate, decay, plan)
                 )

@@ -44,7 +44,8 @@ class OptimizerStateAdapter:
                 raise ValueError("transported optimizer state has the wrong shape")
             if finite.checks_enabled() and not bool(torch.isfinite(transported).all()):
                 raise FloatingPointError("non-finite transported optimizer state")
-            vector.copy_(transported)
+            if transported is not vector:
+                vector.copy_(transported)
 
 
 def default_state_adapter(optimizer) -> OptimizerStateAdapter:
