@@ -26,6 +26,7 @@ class _PreparedAtomStep:
     amplitude_weight_decay: float
     plan: object
     program: object = None
+    inputs: object = None
 
 
 class CSTOptimizer(Optimizer):
@@ -111,7 +112,9 @@ class CSTOptimizer(Optimizer):
     def _validate_groups(self, groups):
         names = {id(p): name for name, p in self.model.named_parameters()}
         atom_ids = {id(site.atoms.p) for site in self._sites}
-        seen = set()
+        # Build the live lookup while checking ownership and uniqueness. It is
+        # invocation-local: user hooks may replace groups before Adam runs.
+        by_parameter = {}
         for group in groups:
             if "amplitude_weight_decay" in group:
                 decay = group["amplitude_weight_decay"]
@@ -149,9 +152,9 @@ class CSTOptimizer(Optimizer):
             for p in group["params"]:
                 if id(p) not in names:
                     raise ValueError("optimizer parameter is not owned by model")
-                if id(p) in seen:
+                if id(p) in by_parameter:
                     raise ValueError("optimizer parameters must be unique")
-                seen.add(id(p))
+                by_parameter[id(p)] = group
         owners = set()
         for site in self._sites:
             if id(site.atoms.p) in owners:
@@ -165,6 +168,8 @@ class CSTOptimizer(Optimizer):
                     raise ValueError(
                         "trainable non-Euclidean charts need a chart update policy"
                     )
+
+        return by_parameter
 
     def add_param_group(self, param_group):
         if not hasattr(self, "base_optimizer"):
@@ -206,8 +211,7 @@ class CSTOptimizer(Optimizer):
 
         if any("amplitude_weight_decay" in group for group in self.param_groups):
             return self._step_with_amplitude_decay(loss, has_closure=has_closure)
-        self._validate_groups(self.param_groups)
-        groups = {id(p): group for group in self.param_groups for p in group["params"]}
+        groups = self._validate_groups(self.param_groups)
         active = []
         for site, point in self._bound_parameters.items():
             if site.atoms.p is not point:
@@ -232,16 +236,17 @@ class CSTOptimizer(Optimizer):
         # Check before base optimizer mutates any parameter or state.
         from torchcst._backends.torch import finite
 
-        gradients = []
-        for group in self.param_groups:
-            for point in group["params"]:
-                if point.grad is not None:
-                    grad = point.grad
-                    values = grad.coalesce().values() if grad.is_sparse else grad
-                    gradients.append(values)
-        if finite.first_nonfinite(gradients) is not None:
-            raise FloatingPointError("non-finite parameter gradient")
-        del gradients  # Release any temporary coalesced sparse values before Adam.
+        if finite.checks_enabled():
+            gradients = []
+            for group in self.param_groups:
+                for point in group["params"]:
+                    if point.grad is not None:
+                        grad = point.grad
+                        values = grad.coalesce().values() if grad.is_sparse else grad
+                        gradients.append(values)
+            if finite.first_nonfinite(gradients) is not None:
+                raise FloatingPointError("non-finite parameter gradient")
+            del gradients  # Release temporary sparse values before Adam.
         old_points = []
         for site, point, rate in active:
             projected = _kernel.project_parameter_gradient(
@@ -293,13 +298,13 @@ class CSTOptimizer(Optimizer):
         from torchcst._backends.torch.kernels import execution as _kernel
         from torchcst.operators.atom_update import AtomUpdateInputs
 
-        self._validate_groups(self.param_groups)
+        initial_groups = self._validate_groups(self.param_groups)
         protected = {
-            id(p)
-            for group in self.param_groups
+            key
+            for key, group in initial_groups.items()
             if "amplitude_weight_decay" in group
-            for p in group["params"]
         }
+        del initial_groups
         prepared = []
         guard_called = False
         replay_closure = (lambda: loss) if has_closure else None
@@ -312,16 +317,19 @@ class CSTOptimizer(Optimizer):
                 or kwargs.get("closure") is not replay_closure
             ):
                 raise ValueError("amplitude decay hooks must not replace the closure")
-            self._validate_groups(base.param_groups)
-            groups = {id(p): g for g in base.param_groups for p in g["params"]}
-            gradients = [
-                p.grad.coalesce().values() if p.grad.is_sparse else p.grad
-                for group in base.param_groups
-                for p in group["params"]
-                if p.grad is not None
-            ]
-            if finite.first_nonfinite(gradients) is not None:
-                raise FloatingPointError("non-finite parameter gradient")
+            groups = self._validate_groups(base.param_groups)
+            # The finite checker returns immediately in unchecked mode. Avoid
+            # preparing its input list (and coalescing sparse gradients) too.
+            if finite.checks_enabled():
+                gradients = [
+                    p.grad.coalesce().values() if p.grad.is_sparse else p.grad
+                    for group in base.param_groups
+                    for p in group["params"]
+                    if p.grad is not None
+                ]
+                if finite.first_nonfinite(gradients) is not None:
+                    raise FloatingPointError("non-finite parameter gradient")
+                del gradients
             for site, point in self._bound_parameters.items():
                 if site.atoms.p is not point:
                     raise RuntimeError(
@@ -373,7 +381,14 @@ class CSTOptimizer(Optimizer):
                     binding.validate_inputs(inputs)
                     prepared.append(
                         _PreparedAtomStep(
-                            site, point, previous, rate, decay, program.plan, program
+                            site,
+                            point,
+                            previous,
+                            rate,
+                            decay,
+                            program.plan,
+                            program,
+                            inputs,
                         )
                     )
                     continue
@@ -415,10 +430,10 @@ class CSTOptimizer(Optimizer):
         for step in prepared:
             if not step.step_size:
                 continue
-            inputs = AtomUpdateInputs(
-                step.previous, step.step_size, step.amplitude_weight_decay
-            )
+            # Only the certified path reuses its private, frozen inputs. Generic
+            # callbacks keep fresh input construction after Adam and user hooks.
             if step.program is not None:
+                inputs = step.inputs
                 updated = step.program.run(
                     self._update_dispatcher,
                     self.state_adapter,
@@ -445,6 +460,9 @@ class CSTOptimizer(Optimizer):
                                 step.site, step.previous, updated, state
                             )
                     continue
+            inputs = AtomUpdateInputs(
+                step.previous, step.step_size, step.amplitude_weight_decay
+            )
             updated = self._update_dispatcher.run(
                 self._update_bindings[step.site], inputs, plan=step.plan
             )

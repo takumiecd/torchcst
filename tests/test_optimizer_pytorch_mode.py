@@ -142,3 +142,29 @@ def test_steady_optimizer_has_no_sync_or_device_to_host_copy(tmp_path):
         and "DtoH" in e.get("name", "")
         and e.get("args", {}).get("correlation") in correlations
     ]
+
+
+def test_unchecked_sparse_gradient_does_not_prepare_unused_finite_check(monkeypatch):
+    model = torch.nn.Linear(3, 2, bias=False)
+    reference = copy.deepcopy(model)
+    wrapped = CSTOptimizer(
+        torch.optim.SGD(model.parameters(), lr=0.01),
+        model=model,
+        check_finite=False,
+    )
+    plain = torch.optim.SGD(reference.parameters(), lr=0.01)
+    gradient = torch.sparse_coo_tensor([[0, 0, 1], [1, 1, 2]], [0.2, 0.3, 0.4], (2, 3))
+    model.weight.grad = gradient.clone()
+    reference.weight.grad = gradient.clone()
+    original = torch.Tensor.coalesce
+    calls = []
+
+    def coalesce(value):
+        calls.append(value)
+        return original(value)
+
+    monkeypatch.setattr(torch.Tensor, "coalesce", coalesce)
+    wrapped.step()
+    plain.step()
+    assert not calls
+    torch.testing.assert_close(model.weight, reference.weight, atol=0, rtol=0)

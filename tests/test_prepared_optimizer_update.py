@@ -226,6 +226,7 @@ def test_empty_standard_hooks_skip_only_the_extra_post_launch_guard(
         "post_hook",
         "custom_projection",
         "custom_validator",
+        "input_constructor_post_hook",
         "custom_transport",
         "custom_adapter",
         "replaced_moment",
@@ -349,6 +350,25 @@ def test_cuda_prepared_optimizer_matches_generic_and_live_changes(
                     return _original(self, state, inputs)
 
                 monkeypatch.setattr(Algorithm, "validate_inputs", validate)
+            elif change == "input_constructor_post_hook":
+                from torchcst.operators.atom_update import AtomUpdateInputs
+
+                original = AtomUpdateInputs.__init__
+
+                def construct(
+                    self,
+                    previous,
+                    step_size,
+                    amplitude_weight_decay=0.0,
+                    _original=original,
+                ):
+                    _original(self, previous, step_size * 0.9, amplitude_weight_decay)
+
+                def change_inputs(*args, _construct=construct):
+                    monkeypatch.setattr(AtomUpdateInputs, "__init__", _construct)
+
+                for optimizer in (oa, ob):
+                    optimizer.base_optimizer.register_step_post_hook(change_inputs)
             elif change == "custom_transport":
                 original = profiles.transport_state
                 monkeypatch.setattr(

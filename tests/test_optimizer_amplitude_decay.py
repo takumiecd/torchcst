@@ -538,3 +538,31 @@ def test_algorithm_decay_context_must_match_invocation():
     context = binding.build_context(inputs)
     with pytest.raises(ValueError, match="prepared context"):
         amplitude_decay_amount(replace(context, amplitude_decay=False), inputs)
+
+
+@pytest.mark.parametrize("check_finite", [False, True])
+def test_generic_inputs_keep_post_adam_constructor_callbacks(monkeypatch, check_finite):
+    """Only certified builtins may reuse inputs across user callbacks."""
+    model = layer()
+    opt = optimizer(model, 0.3, lr=0.02)
+    opt.check_finite = check_finite
+    model.atoms.p.grad = torch.zeros_like(model.atoms.p)
+    original = AtomUpdateInputs.__init__
+    calls = []
+
+    def construct(self, previous, step_size, amplitude_weight_decay=0.0):
+        calls.append((step_size, amplitude_weight_decay))
+        original(self, previous, step_size, amplitude_weight_decay)
+
+    def change_constructor(base, args, kwargs):
+        monkeypatch.setattr(AtomUpdateInputs, "__init__", construct)
+        # These are next-step settings. The current update keeps Adam's rate.
+        base.param_groups[0]["lr"] = 0.07
+        base.param_groups[0]["amplitude_weight_decay"] = 0.8
+
+    handle = opt.base_optimizer.register_step_post_hook(change_constructor)
+    try:
+        opt.step()
+    finally:
+        handle.remove()
+    assert calls == [(0.02, 0.3)]
