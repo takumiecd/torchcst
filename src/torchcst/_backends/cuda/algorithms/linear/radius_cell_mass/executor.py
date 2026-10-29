@@ -38,12 +38,27 @@ def _extension():
 
 
 def _classify_layout_keys(plan, atoms):
-    """Classify current atoms once and validate before any indexed reads.
+    """Classify current atoms once, validating on device without a CPU wait.
 
     Each integer key contains the two bank/tile owners, never atom values.
     A fused forward may save these keys for its backward, whose saved atom
     Tensor already enforces PyTorch's version check before they are reused.
+    Invalid CUDA values raise a device-side assertion, reported at a later CUDA
+    API or synchronization point. Shape/configuration errors stay CPU errors.
     """
+    return _extension().classify_atoms_async(
+        atoms, plan.input.native_config(), plan.output.native_config()
+    )
+
+
+def prepare_layout_checked(plan, atoms, *, reverse=False):
+    """Synchronous diagnostic path; never called by normal Linear execution.
+
+    This preserves immediate ValueError reporting for deliberate invalid-input
+    inspection. Training uses device validation through prepare_layout instead.
+    """
+    if type(reverse) is not bool or type(plan) is not HierarchyPlan:
+        raise ValueError("expected a radius hierarchy and bool reverse")
     keys, error = _extension().classify_atoms(
         atoms, plan.input.native_config(), plan.output.native_config()
     )
@@ -51,7 +66,7 @@ def _classify_layout_keys(plan, atoms):
         raise ValueError(
             "atoms must be finite, with radii in (0, chart half-period] and representable radius/tile ratios"
         )
-    return keys
+    return _ranges_from_layout_keys(plan, keys, reverse=reverse)
 
 
 def _ranges_from_layout_keys(plan, keys, *, reverse=False):
@@ -84,7 +99,7 @@ def prepare_layout(plan, atoms, *, reverse=False):
     Sort order is (output bank/tile, input bank/tile), reversed for dX.
     Standalone preparation releases its keys. Fused autograd separately saves
     one owner key per atom when dX is needed, avoiding a second classification
-    and its CPU error-word read in backward. No atom values are packed.
+    in backward. No atom values are packed or read back to the CPU.
     Preparation remains eager-only; fixed boundaries replace owner counting.
     """
     if type(reverse) is not bool or type(plan) is not HierarchyPlan:

@@ -381,16 +381,16 @@ def test_public_integer_initialization_then_cuda_fixed_selector():
 @GPU
 @pytest.mark.parametrize("value", [0.0, -1.0, 8.1, float("nan"), float("inf")])
 def test_invalid_low_level_radius_rejected(value):
-    from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.executor import (
-        radius_linear,
-    )
+    from torchcst._backends.cuda.algorithms.linear.radius_cell_mass import executor
 
+    # Checked diagnostics retain ValueError without poisoning the CUDA context.
+    # The asynchronous public path is tested in isolated subprocesses instead.
     a = axis_plan()
     plan = HierarchyPlan(input=a, output=a)
     p = atoms(plan).cuda()
     p[0, 1] = value
     with pytest.raises(ValueError):
-        radius_linear(plan, torch.ones(3, 16, dtype=torch.float64, device="cuda"), p)
+        executor.prepare_layout_checked(plan, p)
 
 
 @GPU

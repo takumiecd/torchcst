@@ -71,7 +71,7 @@ def test_saved_keys_classify_once_and_retained_vjps(monkeypatch, needs_x, needs_
     expected = reference(plan, rx, rp)
     expected_grads = torch.autograd.grad(expected, (rx, rp), dy.cpu())
     y = ex.radius_linear(plan, x, p, recipe=BLOCK_LOCAL.recipe)
-    assert sum(name == "classify_atoms" for name, _, _ in native.calls) == 1
+    assert sum(name == "classify_atoms_async" for name, _, _ in native.calls) == 1
     saved_keys = y.grad_fn.saved_tensors[-1]
     if needs_x:
         assert saved_keys.dtype == torch.int64
@@ -87,7 +87,7 @@ def test_saved_keys_classify_once_and_retained_vjps(monkeypatch, needs_x, needs_
     for retain in (True, False):
         native.calls.clear()
         grads = torch.autograd.grad(y, selected, dy, retain_graph=retain)
-        assert not any(name == "classify_atoms" for name, _, _ in native.calls)
+        assert not any(name == "classify_atoms_async" for name, _, _ in native.calls)
         for actual, target in zip(grads, targets):
             torch.testing.assert_close(actual.cpu(), target, atol=2e-9, rtol=2e-8)
 
@@ -114,13 +114,13 @@ def test_new_forward_after_update_classifies_current_atoms(monkeypatch):
         p[0, 1] = 1.3
     native.calls.clear()
     updated = ex.radius_linear(plan, x, p, recipe=BLOCK_LOCAL.recipe)
-    assert sum(name == "classify_atoms" for name, _, _ in native.calls) == 1
+    assert sum(name == "classify_atoms_async" for name, _, _ in native.calls) == 1
     rx, rp = x.detach().cpu().requires_grad_(), p.detach().cpu().requires_grad_()
     expected = reference(plan, rx, rp)
     expected_grads = torch.autograd.grad(expected, (rx, rp), dy.cpu())
     native.calls.clear()
     grads = torch.autograd.grad(updated, (x, p), dy)
-    assert not any(name == "classify_atoms" for name, _, _ in native.calls)
+    assert not any(name == "classify_atoms_async" for name, _, _ in native.calls)
     torch.testing.assert_close(updated.cpu(), expected, atol=2e-9, rtol=2e-8)
     for actual, target in zip(grads, expected_grads):
         torch.testing.assert_close(actual.cpu(), target, atol=2e-9, rtol=2e-8)

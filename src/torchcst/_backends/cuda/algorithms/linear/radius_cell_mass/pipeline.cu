@@ -33,7 +33,7 @@ __device__ inline int bank_for_node(int node, const Axis &axis) {
 }
 
 // Temporary sortable keys refer to original Parameter rows; no packed atoms.
-template<class T>
+template<class T, bool Async = false>
 __global__ void classify_kernel(const T *p, int64_t *keys, int *error, int atoms,
                                Axis input, Axis output) {
     int atom = blockIdx.x * blockDim.x + threadIdx.x;
@@ -47,7 +47,18 @@ __global__ void classify_kernel(const T *p, int64_t *keys, int *error, int atoms
     // underflow to zero, rather than indexing a nonexistent K=1 bank.
     valid &= (2 * ri / (input.base_tile_sites * input.spacing)) > 0 &&
              (2 * ro / (output.base_tile_sites * output.spacing)) > 0;
-    if (!valid) { atomicExch(error, 1); keys[atom] = 0; return; }
+    if (!valid) {
+        // Define the key before rejecting it: invalid data never reaches bank
+        // indexing. The normal route reports a device-side assertion through
+        // CUDA's asynchronous error handling instead of reading a flag on CPU.
+        keys[atom] = 0;
+        if constexpr (Async) {
+            CUDA_KERNEL_ASSERT_MSG(valid, "invalid radius atom: finite coordinates and representable supported radii required");
+        } else {
+            atomicExch(error, 1);
+        }
+        return;
+    }
     Membership mi = classify(ri, center(p, atom, input, false), input);
     Membership mo = classify(ro, center(p, atom, output, true), output);
     Bank bi = input.banks[mi.bank], bo = output.banks[mo.bank];
@@ -248,6 +259,20 @@ std::vector<Tensor> classify_atoms(Tensor p, Config input_config, Config output_
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return {keys, error};
 }
+Tensor classify_atoms_async(Tensor p, Config input_config, Config output_config) {
+    check_atoms(p);
+    Axis input = parse_axis(input_config), output = parse_axis(output_config);
+    c10::cuda::CUDAGuard guard(p.device());
+    auto keys = torch::empty({p.size(0)}, p.options().dtype(torch::kLong));
+    if (p.size(0)) AT_DISPATCH_FLOATING_TYPES(p.scalar_type(), "radius_classify_async", [&] {
+        classify_kernel<scalar_t, true><<<(p.size(0) + THREADS - 1) / THREADS,
+            THREADS, 0, at::cuda::getCurrentCUDAStream()>>>(
+            p.data_ptr<scalar_t>(), keys.data_ptr<int64_t>(), nullptr,
+            p.size(0), input, output);
+    });
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+    return keys;
+}
 Tensor build_moments(Tensor signal, Config config, bool merge) {
     check_matrix(signal);
     Axis axis = parse_axis(config);
@@ -347,6 +372,7 @@ Tensor parameter_grad(Tensor p, Tensor zx, Tensor zy, Tensor h, Tensor g, Config
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("classify_atoms", &radius_cell_mass::classify_atoms);
+    m.def("classify_atoms_async", &radius_cell_mass::classify_atoms_async);
     m.def("build_moments", &radius_cell_mass::build_moments);
     m.def("compute_response", &radius_cell_mass::compute_response);
     m.def("compute_coefficients", &radius_cell_mass::compute_coefficients);

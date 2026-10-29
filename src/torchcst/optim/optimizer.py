@@ -214,10 +214,7 @@ class CSTOptimizer(Optimizer):
 
                 inputs = AtomUpdateInputs(old, rate)
                 binding = self._update_bindings[site]
-                binding.validate_inputs(inputs)
-                plan = self._update_dispatcher.select(
-                    binding.build_context(inputs)
-                ).plan
+                plan = self._update_dispatcher.prepare(binding, inputs).plan
             point.grad.copy_(projected)
             old_points.append((site, point, rate, old, plan))
         if not has_closure:

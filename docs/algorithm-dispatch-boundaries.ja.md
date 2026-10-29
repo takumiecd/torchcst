@@ -117,6 +117,15 @@ dispatcher.run(binding, inputs)
   9. Algorithm.run(state, inputs)で実行する
 ```
 
+固定Planまたは厳密なFixedSelectorでは、明示的に対応したbindingが選択済みのmetadataと
+AlgorithmState参照を1件だけ保持し、同じ実行条件のsupport/workspace判定を再利用できる。
+Dispatcher自身はbinding/Tensor/Stateを保持しない。Inputs検証とlive Contextの構築、Plan宣言の
+型・schema・Recipe検証は毎回行う。設定、配置、所有者、layout世代、shape/stride、必要勾配や
+精度設定の変化はcacheを失効させ、custom selectorは毎回選択する。atom数値の更新は失効条件に
+せず、その値に依存する分類や計算はGPUで実行ごとに行う。cacheはcheckpoint/deepcopyへ残さない。
+optimizerのpreflightを`Dispatcher.prepare`で共有できるが、base optimizerのhookを挟んだ後も
+新しいInputs/Contextから条件を確認する。以前の検証を現在の入力の検証済み証明にはしない。
+
 候補ごとの対応検証は共通の一つの処理にまとめ、SelectorとDispatcherに別々の検証規則を
 実装しない。Selectorは順位・探索・完全一致表などの方針を担当する。未選択・非対応と
 不正なPlanを区別し、未知のID、revision、壊れたRecipeをfallbackで隠さない。

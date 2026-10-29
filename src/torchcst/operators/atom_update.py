@@ -145,6 +145,11 @@ class AtomUpdateBinding:
             workspace_limit_bytes=self.workspace_limit_bytes,
         )
 
+    def prepared_dispatch_signature(self):
+        from torchcst._backends.dispatch.prepared import placement_signature
+
+        return placement_signature(self)
+
     def state_signature(self):
         from torchcst._backends.state import tensor_signature
 
@@ -164,4 +169,6 @@ class AtomUpdateBinding:
         state = self.__dict__.copy()
         state["_algorithm_states"] = []
         state.pop("_execution_declaration", None)
+        state.pop("_prepared_dispatch", None)
+        state.pop("_prepared_dispatch_stats", None)
         return state

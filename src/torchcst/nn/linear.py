@@ -11,7 +11,6 @@ from torch import Tensor, nn
 from torchcst._backends.catalog import get_registry
 from torchcst._backends.dispatch import (
     Dispatcher,
-    FixedSelector,
     OrderedSelector,
     Selector,
 )
@@ -370,13 +369,14 @@ class CSTLinear(CSTModule):
             )
         else:
             selector = self.selector
-            if selector is None:
-                selector = (
-                    _default_selector()
-                    if self.backend == "auto"
-                    else FixedSelector(_PLANS[self.backend], registry=get_registry())
+            if selector is None and self.backend != "auto":
+                result = Dispatcher(registry=get_registry()).run(
+                    self, LinearInputs(flat), plan=_PLANS[self.backend]
                 )
-            result = Dispatcher(selector=selector).run(self, LinearInputs(flat))
+            else:
+                result = Dispatcher(selector=selector or _default_selector()).run(
+                    self, LinearInputs(flat)
+                )
         return self.atom_state.guard_result(
             result.reshape(*inputs.shape[:-1], self.out_features)
         )

@@ -61,7 +61,14 @@ class CSTModule(nn.Module):
         state = super().__getstate__()
         state.pop("_algorithm_states", None)
         state.pop("_execution_declaration", None)
+        state.pop("_prepared_dispatch", None)
+        state.pop("_prepared_dispatch_stats", None)
         return state
+
+    def prepared_dispatch_signature(self):
+        from torchcst._backends.dispatch.prepared import placement_signature
+
+        return placement_signature(self)
 
     def execution_parameters(self):
         return self.atoms.p

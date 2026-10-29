@@ -75,7 +75,11 @@ def test_fused_launches_and_saved_projections(
     cx = x.detach().cuda().requires_grad_(needs_x)
     cp = p.detach().cuda().requires_grad_(needs_p)
     y = ex.radius_linear(plan, cx, cp, recipe=recipe)
-    forward = [call for call in native.calls if call[0] != "classify_atoms"]
+    forward = [
+        call
+        for call in native.calls
+        if call[0] not in {"classify_atoms", "classify_atoms_async"}
+    ]
     assert [call[0] for call in forward] == ["shared_forward"]
     assert len(forward[0][2]) == 3
     _, zx, h = forward[0][2]
@@ -99,7 +103,11 @@ def test_fused_launches_and_saved_projections(
         gradients = torch.autograd.grad(y, selected, dy.cuda(), retain_graph=retained)
         for actual, target in zip(gradients, targets):
             torch.testing.assert_close(actual.cpu(), target, atol=2e-9, rtol=2e-8)
-        calls = [call for call in native.calls if call[0] != "classify_atoms"]
+        calls = [
+            call
+            for call in native.calls
+            if call[0] not in {"classify_atoms", "classify_atoms_async"}
+        ]
         names = [call[0] for call in calls]
         assert names == (["shared_backward"] if needs_x else ["shared_project"]) + (
             ["hybrid_parameter_grad"] if needs_p else []

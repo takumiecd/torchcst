@@ -229,14 +229,18 @@ builds each moment directly. This `DIRECT` name does not mean bypassing moments.
 direct output expansion below independently configured hierarchy levels.
 The overlap Plan runs direct response work beside moment construction on an
 auxiliary stream and joins complete responses before output consumers.
-`BLOCK_LOCAL` uses one forward compute kernel after sorting. It constructs
-moments, complete responses and coefficients in shared, and returns
-`(Y, input_moments, atom_response)`. Completed moments and responses are saved
-once for backward; coefficients remain shared scratch. The reverse compute
-kernel returns `(dX, grad_output_moments, grad_response)`, then one atom-gradient
-kernel reuses both saved projections. Atom-only backward skips dX and produces
-its moments/response together in one projection kernel. No input-moment rebuild
-is needed. Work is recomputed per destination CTA; a 48-KiB shared limit applies.
+`BLOCK_LOCAL` builds moments and complete responses once per batch row, then
+all destination tiles reuse those saved global values. A second compute kernel
+fuses coefficient construction and site expansion in shared memory. The native
+forward returns `(Y, input_moments, atom_response)`; reverse returns
+`(dX, grad_output_moments, grad_response)`, then an atom-gradient kernel reuses
+both saved projections. Public forward still returns Y. Atom-only backward
+skips dX and produces its moments/response in one projection kernel. Unused
+banks are skipped while required merge dependencies are retained; fixed-capacity
+moment buffers define skipped slots as zero. A 48-KiB dynamic shared limit applies.
+CUDA atom-value validation is asynchronous: invalid device values produce a
+CUDA device assertion reported by a later CUDA API or synchronization point.
+Shape and configuration errors retain synchronous host validation.
 All Plans compute the same profiles. The reference saves FP64 moments and
 complete responses in global memory; hybrid buffers omit low direct levels.
 These candidates do not establish dense-memory or complete-step speed success. They are
