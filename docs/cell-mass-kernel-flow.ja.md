@@ -5320,6 +5320,27 @@ source/result/receipt/trace/driver/集計はignored `output/radius-parallel-2026
 CPU全体2598 passed / 5928 skipped（既存警告19件）、変更PythonのRuffとdiff検査、
 wheel/sdistのruntime全371ファイルのbyte照合が成功した。
 
+**完全stepの補助交互比較と残るhost区間:** 既存train()を2モデル交互順、
+20 warmup/101 pairs、独立2 processで測った。通常中央値は2.304201→2.277955 msと
+2.220142→2.187477 ms、pair差の中央値は**.031355/.039651 ms**。
+両processで121 updates後のParameterはbit一致。小さな改善を補足する結果であり、
+GPU kernel時間の短縮率を完全stepへ読み替えない。2モデル常駐のメモリはdense比較に使わない。
+
+別cProfileでは新Planのforward呼出し内が約1.11〜1.12 ms、
+そのうちruntimeの_prepare約.32〜.34 ms、Linear build_context約.18〜.21 ms、
+forward/backward合計の_ranges_from_layout_keys約.32 msだった。
+3回のexecution_declaration約.24〜.28 ms、protect_tensor約.18〜.19 msも観測した。
+包含する行が重なり、profiling overheadやCUDA driverの待ちも含み得るため、
+純Python時間の内訳として加算しない。次の調査対象はLinear側の宣言/Contextの再準備と
+layout範囲取得。Tensor・設定変更時の検証や現在のatomの再分類を無条件に省略する案ではない。
+
+補助job=`l4job-7428cb8d7cfd487f903f23bb7435637c`、snapshot SHA256=
+`e7a7e1557416983c55c6f70455cb6de72b6fb9b2de981b668d15608412566127`、
+result archive SHA256=`20941f1d76963c992ce9d17e2dc1eeea9d0828fc23a03ce5717d5b05deeaf0d1`。
+両実験のCUDA source群をSHA照合し、最終runtime371ファイルも主測定snapshotと一致した。
+raw pstats、source、binary、receipt、`paired-driver.py`は同じignored output配下へ保全した。
+この変更の1024/MNIST、他GPU世代、CUDA Graph、sanitizerは未測定。
+
 各段階の保存値、配列のshape、書き手、寿命を先に確定し、独立oracleで
 Y/dX/全atom勾配を検証してから速度を比較する。上記は実機での正しさ・性能の結果ではない。
 H/Gの保存を省く案では、同じforward状態での再計算と、全利用先の終了を明示する。
