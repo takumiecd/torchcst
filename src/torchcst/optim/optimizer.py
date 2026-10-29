@@ -13,6 +13,7 @@ from torchcst.atoms import OptimizerFieldSpec
 from torchcst.geometry.spec import EuclideanGeometrySpec
 from torchcst.nn import CSTModule
 
+from . import _group_validation
 from .binding import bind_atom_states, field_specs, validate_binding
 from .state import OptimizerStateAdapter, default_state_adapter
 
@@ -110,6 +111,9 @@ class CSTOptimizer(Optimizer):
         self.defaults = self.base_optimizer.defaults
 
     def _validate_groups(self, groups):
+        cached = self.__dict__.get("_group_validation")
+        if cached is not None and cached.current(self, groups):
+            return cached.mapping
         names = {id(p): name for name, p in self.model.named_parameters()}
         atom_ids = {id(site.atoms.p) for site in self._sites}
         # Build the live lookup while checking ownership and uniqueness. It is
@@ -169,6 +173,12 @@ class CSTOptimizer(Optimizer):
                         "trainable non-Euclidean charts need a chart update policy"
                     )
 
+        if hasattr(self, "base_optimizer") and self.check_finite is False:
+            self._group_validation = _group_validation.prepare(
+                self, groups, by_parameter
+            )
+        else:
+            self.__dict__.pop("_group_validation", None)
         return by_parameter
 
     def add_param_group(self, param_group):
@@ -547,3 +557,9 @@ class CSTOptimizer(Optimizer):
             self.base_optimizer, self._sites, self._state_specs, restored=True
         )
         self._sync_from_base()
+
+
+# Prepared validation may specialize only the original wrapper callbacks.
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
+
+_seal_functions(globals())
