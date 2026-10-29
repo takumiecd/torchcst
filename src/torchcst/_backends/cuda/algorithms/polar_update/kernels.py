@@ -38,6 +38,8 @@ def apply_polar(
     STEP: tl.constexpr,
     TIME_ENERGY: tl.constexpr,
     BLOCK: tl.constexpr,
+    AMPLITUDE_DECAY=0.0,
+    HAS_AMPLITUDE_DECAY: tl.constexpr = False,
     INPUT_PERIOD=None,
     OUTPUT_PERIOD=None,
     PERIODIC: tl.constexpr = False,
@@ -79,8 +81,24 @@ def apply_polar(
     regularized = tl.div_rn(1.0, 1.0 - tl.div_rn(task_q - 1.0, task_q) * decay)
     r = tl.sqrt_rn(task_q)
     rescale = tl.sqrt_rn(tl.div_rn(regularized, task_q))
-    tl.store(PROPOSAL + 4 * a, v0 * r * rescale, mask)
-    tl.store(PROPOSAL + 4 * a + 1, v1 * r * rescale, mask)
+    updated_s = v0 * r * rescale
+    updated_t = v1 * r * rescale
+    if HAS_AMPLITUDE_DECAY:
+        # AdamW's decoupled term uses the old amplitude, not the task increment.
+        # Retain accepted q, including the sign branch at t == +/-0.
+        accepted_r = tl.sqrt_rn(updated_s * updated_s + updated_t * updated_t)
+        old_u = tl.div_rn(tl.load(OLD + 4 * a, mask, 0), safe)
+        target = tl.div_rn(updated_s, accepted_r) - AMPLITUDE_DECAY * old_u
+        bounded = tl.minimum(tl.maximum(target, -1.0), 1.0)
+        target = tl.where(libdevice.isnan(target), target, bounded)
+        absolute = tl.abs(target)
+        magnitude = accepted_r * tl.sqrt_rn(
+            tl.maximum((1.0 - absolute) * (1.0 + absolute), 0.0)
+        )
+        updated_s = accepted_r * target
+        updated_t = libdevice.copysign(magnitude, updated_t)
+    tl.store(PROPOSAL + 4 * a, updated_s, mask)
+    tl.store(PROPOSAL + 4 * a + 1, updated_t, mask)
     # Keep old + (proposal - old), including cancellation at small centres.
     for j in tl.static_range(2, 4):
         old = tl.load(OLD + 4 * a + j, mask, 0)

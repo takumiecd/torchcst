@@ -20,6 +20,7 @@ class AtomUpdateInputs:
 
     previous: Tensor
     step_size: float
+    amplitude_weight_decay: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -33,7 +34,37 @@ class AtomUpdateContext:
     scalar_metadata: tuple[tuple[str, torch.dtype, DeviceInfo, int], ...]
     execution_mode: str = "eager"
     workspace_limit_bytes: int | None = None
+    amplitude_decay: bool = False
     operation_id: str = field(default="atom_update", init=False)
+
+
+def amplitude_decay_amount(context, inputs):
+    """Validate the declared decay before an Algorithm writes any coordinates."""
+    decay, rate = inputs.amplitude_weight_decay, inputs.step_size
+    if (
+        type(decay) not in (int, float)
+        or not math.isfinite(decay)
+        or decay < 0
+        or type(rate) not in (int, float)
+        or not math.isfinite(rate)
+        or rate <= 0
+        or rate * decay > 1
+    ):
+        raise ValueError("invalid amplitude_weight_decay or step_size")
+    if context.amplitude_decay != (decay != 0):
+        raise ValueError("amplitude decay inputs differ from the prepared context")
+    if decay:
+        from torchcst.kernels.parameterizations import (
+            PolarAmpRadiusSpec,
+            PolarAmpWidthSpec,
+        )
+
+        if type(context.kernel.parameterization) not in (
+            PolarAmpWidthSpec,
+            PolarAmpRadiusSpec,
+        ):
+            raise ValueError("amplitude decay requires Polar atoms")
+    return rate * decay
 
 
 class AtomUpdateBinding:
@@ -80,12 +111,28 @@ class AtomUpdateBinding:
         ):
             raise TypeError("AtomUpdateInputs requires a Tensor previous point")
         previous, proposal = inputs.previous, self.execution_parameters()
+        decay = inputs.amplitude_weight_decay
+        if type(decay) not in (int, float) or not math.isfinite(decay) or decay < 0:
+            raise ValueError("amplitude_weight_decay must be finite and nonnegative")
         if (
             type(inputs.step_size) not in (int, float)
             or not math.isfinite(inputs.step_size)
             or inputs.step_size <= 0
         ):
             raise ValueError("step_size must be finite and positive")
+        if inputs.step_size * decay > 1:
+            raise ValueError("step_size * amplitude_weight_decay must not exceed 1")
+        if decay:
+            from torchcst.kernels.parameterizations import (
+                PolarAmpRadiusSpec,
+                PolarAmpWidthSpec,
+            )
+
+            if type(self.kernel.spec.parameterization) not in (
+                PolarAmpWidthSpec,
+                PolarAmpRadiusSpec,
+            ):
+                raise ValueError("amplitude_weight_decay requires Polar atoms")
         if (
             previous.layout != torch.strided
             or proposal.layout != torch.strided
@@ -143,6 +190,7 @@ class AtomUpdateBinding:
             if cuda and torch.cuda.is_current_stream_capturing()
             else "eager",
             workspace_limit_bytes=self.workspace_limit_bytes,
+            amplitude_decay=inputs.amplitude_weight_decay != 0,
         )
 
     def prepared_dispatch_signature(self):

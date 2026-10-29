@@ -151,9 +151,15 @@ def optimizer(model, case, *, gpu=True):
         )
     return CSTOptimizer(
         torch.optim.AdamW(
-            model.parameters(),
+            [
+                {
+                    "params": model.parameters(),
+                    "weight_decay": 0.0,
+                    "amplitude_weight_decay": case.optimizer.weight_decay,
+                }
+            ],
             lr=case.optimizer.lr,
-            weight_decay=case.optimizer.weight_decay,
+            weight_decay=0.0,
             fused=case.optimizer.fused,
             capturable=False,
         ),
@@ -440,7 +446,15 @@ def measure_case(args, run):
         "peak_reserved_training_bytes": peak[1],
         "total_gpu_process_bytes": None,
         "optimizer": asdict(case.optimizer),
-        "optimizer_policy": "eager public CSTOptimizer; check_finite=False (PyTorch-style); live configuration validation; explicit radius fused update; dense AdamW control",
+        "optimizer_effective_groups": [
+            {
+                "lr": group["lr"],
+                "weight_decay": group.get("weight_decay", 0.0),
+                "amplitude_weight_decay": group.get("amplitude_weight_decay", 0.0),
+            }
+            for group in opt.param_groups
+        ],
+        "optimizer_policy": "case weight_decay is the requested coefficient: CST uses raw weight_decay=0 and amplitude_weight_decay; dense uses ordinary AdamW weight_decay; check_finite=False; live configuration validation; explicit radius fused update",
         "scope": "complete eager forward/loss/backward/optimizer; dX included; FP32 IEEE",
         "parameter_payload_bytes": sum(
             p.numel() * p.element_size() for p in model.parameters()

@@ -14,9 +14,9 @@ from torchcst.operators.atom_update import AtomUpdateContext, AtomUpdateInputs
 @dataclass(frozen=True)
 class PolarUpdateAlgorithm(Algorithm[DefaultRecipe]):
     id: str = "torch_polar_update"
-    revision: str = "v1"
+    revision: str = "v2"
     operation_id: str = "atom_update"
-    semantics_id: str = "kernel-coordinate-update-v1"
+    semantics_id: str = "kernel-coordinate-update-v2"
     recipe_type: type = DefaultRecipe
     input_type: type = AtomUpdateInputs
 
@@ -64,8 +64,11 @@ class PolarUpdateAlgorithm(Algorithm[DefaultRecipe]):
 
     @torch.no_grad()
     def execute(self, state, inputs):
+        from torchcst.operators.atom_update import amplitude_decay_amount
+
         from .executor import apply_parameter_update, graph_update
 
+        decay = amplitude_decay_amount(state.context, inputs)
         binding = state.binding
         previous, proposal = inputs.previous, binding.execution_parameters()
         displacement = proposal - previous
@@ -85,6 +88,15 @@ class PolarUpdateAlgorithm(Algorithm[DefaultRecipe]):
                 displacement,
                 step_size=inputs.step_size,
             )
+        from torchcst._backends.torch.algorithms.polar_update.executor import (
+            decay_amplitude,
+        )
+
+        updated = decay_amplitude(
+            inputs.previous,
+            updated,
+            amount=decay,
+        )
         proposal.copy_(updated)
         # The optimizer result is a mutation, not a differentiable borrow.
         return proposal.detach()

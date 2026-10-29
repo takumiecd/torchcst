@@ -14,6 +14,30 @@ from torchcst._backends.torch.profiles import execution as _profile
 from torchcst.charts import ChartState
 
 
+def decay_amplitude(previous: Tensor, updated: Tensor, *, amount: float) -> Tensor:
+    """Subtract decoupled old-amplitude decay at fixed accepted Polar activity.
+
+    AdamW's decay uses the old value, not the task increment. The bounded
+    amplitude is the normalized first Polar coordinate. Reconstruct the pair
+    on its accepted circle, retaining the second coordinate's signed branch.
+    Centers and Adam state are not decayed. Zero decay keeps the old path exact.
+    """
+    if amount == 0:
+        return updated
+    old_pair, new_pair = previous[:, :2], updated[:, :2]
+    tiny = torch.finfo(previous.dtype).tiny
+    old_radius = old_pair.square().sum(-1).clamp_min(tiny).sqrt()
+    new_radius = new_pair.square().sum(-1).clamp_min(tiny).sqrt()
+    old_amplitude = old_pair[:, 0] / old_radius
+    target = (new_pair[:, 0] / new_radius - amount * old_amplitude).clamp(-1, 1)
+    # (1-|u|)(1+|u|) avoids cancellation near the bounded endpoints.
+    absolute = target.abs()
+    magnitude = new_radius * ((1 - absolute) * (1 + absolute)).clamp_min(0).sqrt()
+    s = new_radius * target
+    t = torch.copysign(magnitude, new_pair[:, 1])
+    return torch.cat((s[:, None], t[:, None], updated[:, 2:]), dim=-1)
+
+
 def apply_parameter_update(
     state,
     input_chart: ChartState,

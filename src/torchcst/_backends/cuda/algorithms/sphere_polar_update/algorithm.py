@@ -28,6 +28,8 @@ class SpherePolarUpdateAlgorithm(Algorithm[DefaultRecipe]):
     def supports(self, context, recipe):
         if not isinstance(context, AtomUpdateContext):
             return SupportResult(("requires AtomUpdateContext",))
+        if context.amplitude_decay:
+            return SupportResult(("this v1 Plan does not support amplitude decay",))
         reasons = []
         if (
             context.kernel.revision != 1

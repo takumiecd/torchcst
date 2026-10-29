@@ -12,9 +12,9 @@ from torchcst.operators.atom_update import AtomUpdateContext, AtomUpdateInputs
 @dataclass(frozen=True)
 class AtomUpdateAlgorithm(Algorithm[DefaultRecipe]):
     id: str = "torch_atom_update"
-    revision: str = "v1"
+    revision: str = "v2"
     operation_id: str = "atom_update"
-    semantics_id: str = "kernel-coordinate-update-v1"
+    semantics_id: str = "kernel-coordinate-update-v2"
     recipe_type: type = DefaultRecipe
     input_type: type = AtomUpdateInputs
 
@@ -26,6 +26,17 @@ class AtomUpdateAlgorithm(Algorithm[DefaultRecipe]):
         if not isinstance(context, AtomUpdateContext):
             return SupportResult(("requires AtomUpdateContext",))
         kernel = context.kernel
+        if context.amplitude_decay:
+            from torchcst.kernels.parameterizations import (
+                PolarAmpRadiusSpec,
+                PolarAmpWidthSpec,
+            )
+
+            if type(kernel.parameterization) not in (
+                PolarAmpWidthSpec,
+                PolarAmpRadiusSpec,
+            ):
+                return SupportResult(("amplitude decay requires Polar atoms",))
         while kernel.composition == "amplitude":
             kernel = kernel.inner
         if kernel.revision == 7 and context.device.type != "cpu":
@@ -44,7 +55,9 @@ class AtomUpdateAlgorithm(Algorithm[DefaultRecipe]):
     @torch.no_grad()
     def execute(self, state, inputs):
         from torchcst._backends.torch.kernels import execution
+        from torchcst.operators.atom_update import amplitude_decay_amount
 
+        decay = amplitude_decay_amount(state.context, inputs)
         binding = state.binding
         proposal = binding.execution_parameters()
         updated = execution.apply_parameter_update(
@@ -53,6 +66,15 @@ class AtomUpdateAlgorithm(Algorithm[DefaultRecipe]):
             inputs.previous,
             proposal - inputs.previous,
             step_size=inputs.step_size,
+        )
+        from torchcst._backends.torch.algorithms.polar_update.executor import (
+            decay_amplitude,
+        )
+
+        updated = decay_amplitude(
+            inputs.previous,
+            updated,
+            amount=decay,
         )
         proposal.copy_(updated)
         return proposal.detach()

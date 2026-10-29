@@ -17,9 +17,9 @@ from torchcst.operators.atom_update import (
 @dataclass(frozen=True)
 class FusedPolarUpdateAlgorithm(Algorithm[DefaultRecipe]):
     id: str = "cuda_polar_update_fused"
-    revision: str = "v1"
+    revision: str = "v2"
     operation_id: str = "atom_update"
-    semantics_id: str = "kernel-coordinate-update-v1"
+    semantics_id: str = "kernel-coordinate-update-v2"
     recipe_type: type = DefaultRecipe
     input_type: type = AtomUpdateInputs
 
@@ -82,11 +82,19 @@ class FusedPolarUpdateAlgorithm(Algorithm[DefaultRecipe]):
 
     @torch.no_grad()
     def execute(self, state, inputs):
+        from torchcst.operators.atom_update import amplitude_decay_amount
+
         from .executor import fused_update_
+
+        amplitude_decay_amount(state.context, inputs)
 
         proposal = state.binding.execution_parameters()
         fused_update_(
-            state.binding.kernel, inputs.previous, proposal, step_size=inputs.step_size
+            state.binding.kernel,
+            inputs.previous,
+            proposal,
+            step_size=inputs.step_size,
+            amplitude_weight_decay=inputs.amplitude_weight_decay,
         )
         return proposal.detach()
 
@@ -145,7 +153,11 @@ class FlatTorusPolarUpdateAlgorithm(FusedPolarUpdateAlgorithm):
 
     @torch.no_grad()
     def execute(self, state, inputs):
+        from torchcst.operators.atom_update import amplitude_decay_amount
+
         from .executor import fused_update_
+
+        amplitude_decay_amount(state.context, inputs)
 
         binding = state.binding
         proposal = binding.execution_parameters()
@@ -154,6 +166,7 @@ class FlatTorusPolarUpdateAlgorithm(FusedPolarUpdateAlgorithm):
             inputs.previous,
             proposal,
             step_size=inputs.step_size,
+            amplitude_weight_decay=inputs.amplitude_weight_decay,
             periods=tuple(chart.geometry.periods for chart in binding.cst_charts()),
         )
         return proposal.detach()

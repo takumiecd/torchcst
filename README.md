@@ -26,7 +26,7 @@ device, dtype and precision constraints.
 ## Training with a standard optimizer
 
 CSTOptimizer wraps an existing PyTorch optimizer. The base optimizer determines
-learning rates, moments, weight decay and proposals. Kernel policies project
+learning rates, moments, ordinary weight decay and proposals. Kernel policies project
 gradients, adjust accepted updates and transport vector state. Ordinary autograd
 supplies Parameter gradients; there is no optimizer-specific backward route.
 
@@ -49,7 +49,8 @@ layer = CSTLinear(
 )
 model = nn.Sequential(layer, nn.Linear(8, 2))
 base = torch.optim.AdamW([
-    {"params": layer.parameters(), "lr": 1e-3, "weight_decay": 0.0},
+    {"params": layer.parameters(), "lr": 1e-3,
+     "weight_decay": 0.0, "amplitude_weight_decay": 0.01},
     {"params": model[1].parameters(), "lr": 1e-3, "weight_decay": 0.01},
 ])
 optimizer = CSTOptimizer(base, model=model)
@@ -66,8 +67,13 @@ scheduler.step()
 Replace `base` with SGD or Adam to change the optimizer. Step the wrapper once;
 do not also step the base. Ordinary parameters and Euclidean trainable chart
 coordinates pass through. The optimizer places no factored-backend requirement
-on Linear or Conv2d. CST group weight decay would act on raw atom coordinates;
-choose it explicitly rather than confusing it with Kernel regularization.
+on Linear or Conv2d. For Polar atoms, use an AdamW group with raw
+`weight_decay=0` and `amplitude_weight_decay` to decay only the logical amplitude.
+Centers and the accepted Polar activity are not decayed. This option requires
+the exact PyTorch AdamW type and `lr * amplitude_weight_decay <= 1`.
+Ordinary parameter groups keep their usual AdamW weight decay.
+Groups without this option retain their previous raw-coordinate behavior;
+raw weight decay is not amplitude decay and is separate from Kernel regularization.
 
 Built-in adapters cover SGD, Adam, AdamW, RMSprop, Adamax, Adagrad, Adadelta and
 Rprop. Custom optimizers explicitly declare their vector state using

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 
 import torch
 from torch import nn
@@ -15,6 +15,16 @@ from torchcst.nn import CSTModule
 
 from .binding import bind_atom_states, field_specs, validate_binding
 from .state import OptimizerStateAdapter, default_state_adapter
+
+
+@dataclass
+class _PreparedAtomStep:
+    site: CSTModule
+    point: torch.Tensor
+    previous: torch.Tensor
+    step_size: float
+    amplitude_weight_decay: float
+    plan: object
 
 
 class CSTOptimizer(Optimizer):
@@ -44,6 +54,7 @@ class CSTOptimizer(Optimizer):
         if type(check_finite) is not bool:
             raise TypeError("check_finite must be a bool")
         self.check_finite = check_finite
+        self._allows_amplitude_decay = type(optimizer) is torch.optim.AdamW
         if isinstance(optimizer, LBFGS):
             raise TypeError("LBFGS repeated proposals require a dedicated integration")
         if state_adapter is not None and not isinstance(
@@ -98,8 +109,38 @@ class CSTOptimizer(Optimizer):
 
     def _validate_groups(self, groups):
         names = {id(p): name for name, p in self.model.named_parameters()}
+        atom_ids = {id(site.atoms.p) for site in self._sites}
         seen = set()
         for group in groups:
+            if "amplitude_weight_decay" in group:
+                decay = group["amplitude_weight_decay"]
+                if not self._allows_amplitude_decay:
+                    raise ValueError("amplitude_weight_decay requires exact AdamW")
+                if (
+                    type(decay) not in (int, float)
+                    or not math.isfinite(decay)
+                    or decay < 0
+                ):
+                    raise ValueError(
+                        "amplitude_weight_decay must be a finite nonnegative Python scalar"
+                    )
+                if not any(id(p) in atom_ids for p in group["params"]):
+                    raise ValueError("amplitude_weight_decay requires an atom group")
+                raw_decay = group.get("weight_decay", 0)
+                if type(raw_decay) not in (int, float) or raw_decay != 0:
+                    raise ValueError(
+                        "amplitude_weight_decay requires raw weight_decay=0"
+                    )
+                rate = group["lr"]
+                if (
+                    type(rate) not in (int, float)
+                    or not math.isfinite(rate)
+                    or rate < 0
+                    or rate * decay > 1
+                ):
+                    raise ValueError(
+                        "lr * amplitude_weight_decay must be in [0, 1] with finite Python lr"
+                    )
             if group.get("differentiable", False):
                 raise ValueError(
                     "CSTOptimizer does not support differentiable optimizer steps"
@@ -162,6 +203,8 @@ class CSTOptimizer(Optimizer):
     def _step_impl(self, loss, *, has_closure):
         from torchcst._backends.torch.kernels import execution as _kernel
 
+        if any("amplitude_weight_decay" in group for group in self.param_groups):
+            return self._step_with_amplitude_decay(loss, has_closure=has_closure)
         self._validate_groups(self.param_groups)
         groups = {id(p): group for group in self.param_groups for p in group["params"]}
         active = []
@@ -235,6 +278,130 @@ class CSTOptimizer(Optimizer):
             if self.check_finite and not bool(torch.isfinite(new).all()):
                 raise FloatingPointError("non-finite CST parameter update")
             self.state_adapter.transport(site, old, new, self.state.get(point, {}))
+        return loss if has_closure else result
+
+    def _step_with_amplitude_decay(self, loss, *, has_closure):
+        """Prepare atoms after user pre-hooks and decay their logical amplitude.
+
+        A final, temporary base pre-hook observes the settings and gradients
+        actually used by AdamW. It never replaces groups or reruns the user's
+        closure. Ordinary parameters therefore keep standard AdamW behavior.
+        """
+        from torchcst._backends.torch import finite
+        from torchcst._backends.torch.kernels import execution as _kernel
+        from torchcst.operators.atom_update import AtomUpdateInputs
+
+        self._validate_groups(self.param_groups)
+        protected = {
+            id(p)
+            for group in self.param_groups
+            if "amplitude_weight_decay" in group
+            for p in group["params"]
+        }
+        prepared = []
+        guard_called = False
+        replay_closure = (lambda: loss) if has_closure else None
+
+        def prepare_before_adam(base, args, kwargs):
+            nonlocal guard_called
+            if (
+                len(args) != 1
+                or args[0] is not base
+                or kwargs.get("closure") is not replay_closure
+            ):
+                raise ValueError("amplitude decay hooks must not replace the closure")
+            self._validate_groups(base.param_groups)
+            groups = {id(p): g for g in base.param_groups for p in g["params"]}
+            gradients = [
+                p.grad.coalesce().values() if p.grad.is_sparse else p.grad
+                for group in base.param_groups
+                for p in group["params"]
+                if p.grad is not None
+            ]
+            if finite.first_nonfinite(gradients) is not None:
+                raise FloatingPointError("non-finite parameter gradient")
+            for site, point in self._bound_parameters.items():
+                if site.atoms.p is not point:
+                    raise RuntimeError(
+                        "atom Parameter was replaced; rebuild CSTOptimizer"
+                    )
+                group = groups.get(id(point))
+                if group is None:
+                    continue
+                raw_decay = group.get("weight_decay", 0)
+                if id(point) in protected and (
+                    type(raw_decay) not in (int, float) or raw_decay != 0
+                ):
+                    raise ValueError("amplitude decay requires raw weight_decay=0")
+                if point.grad is None:
+                    continue
+                rate = group["lr"]
+                if (
+                    type(rate) not in (int, float)
+                    or not math.isfinite(rate)
+                    or rate < 0
+                ):
+                    raise ValueError(
+                        "CST learning rates must be finite nonnegative Python scalars"
+                    )
+                if group.get("capturable", False):
+                    raise ValueError(
+                        "CST coordinate policies do not yet support CUDA Graph capture"
+                    )
+                if point.grad.is_sparse:
+                    raise ValueError(
+                        "CST coordinate policies require strided atom gradients"
+                    )
+                projected = _kernel.project_parameter_gradient(
+                    site.kernel, *site.cst_charts(), point, point.grad
+                )
+                if projected.shape != point.shape:
+                    raise ValueError("projected atom gradient has the wrong shape")
+                if finite.first_nonfinite((projected,)) is not None:
+                    raise FloatingPointError("non-finite projected atom gradient")
+                previous = point.detach().clone()
+                decay = group.get("amplitude_weight_decay", 0.0)
+                plan = None
+                if rate:
+                    inputs = AtomUpdateInputs(previous, rate, decay)
+                    plan = self._update_dispatcher.prepare(
+                        self._update_bindings[site], inputs
+                    ).plan
+                point.grad.copy_(projected)
+                prepared.append(
+                    _PreparedAtomStep(site, point, previous, rate, decay, plan)
+                )
+            guard_called = True
+
+        # Registered last, after existing user pre-hooks; always remove it,
+        # including on invalid settings, hook exceptions or AdamW failures.
+        handle = self.base_optimizer.register_step_pre_hook(prepare_before_adam)
+        try:
+            if has_closure:
+                result = self.base_optimizer.step(closure=replay_closure)
+            else:
+                result = self.base_optimizer.step()
+        finally:
+            handle.remove()
+        if not guard_called:
+            raise RuntimeError("AdamW must execute its standard step pre-hooks")
+        self._sync_from_base()
+        for step in prepared:
+            if not step.step_size:
+                continue
+            inputs = AtomUpdateInputs(
+                step.previous, step.step_size, step.amplitude_weight_decay
+            )
+            updated = self._update_dispatcher.run(
+                self._update_bindings[step.site], inputs, plan=step.plan
+            )
+            if updated.shape != step.point.shape:
+                raise ValueError("updated atom parameters have the wrong shape")
+            if finite.first_nonfinite((updated,)) is not None:
+                raise FloatingPointError("non-finite CST parameter update")
+            self.state_adapter.transport(
+                step.site, step.previous, updated, self.state.get(step.point, {})
+            )
         return loss if has_closure else result
 
     def _manifest(self):

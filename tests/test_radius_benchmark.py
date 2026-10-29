@@ -68,3 +68,15 @@ def test_radius_submission_adapter_rejects_research_only():
     }
     with pytest.raises(ValueError, match="polar_radius_cell_mass is research-only"):
         project(artifact)
+
+
+def test_training_fixture_decays_amplitude_instead_of_coordinates():
+    from benchmarks.cuda.linear.radius_cell_mass import optimizer
+
+    run = case()
+    model, *_ = fixture(run.case)
+    opt = optimizer(model, run.case, gpu=False)
+    assert opt.param_groups[0]["weight_decay"] == 0.0
+    assert (
+        opt.param_groups[0]["amplitude_weight_decay"] == run.case.optimizer.weight_decay
+    )

@@ -9,7 +9,8 @@ AtomGrad は削除した。旧実験の再現には変更前の Git revision `33
 | 項目 | 所有者 / 処理 |
 | --- | --- |
 | Parameter | model |
-| learning rate、weight decay、optimizer state | base optimizer |
+| learning rate、通常のweight decay、optimizer state | base optimizer |
+| amp専用weight decay | groupのamplitude_weight_decayをKernel更新時に適用 |
 | gradient | backend の通常の autograd |
 | 勾配射影・更新規則・vector transport | KernelSpec が定める Parameterization / Geometry。計算本体は backend |
 | 更新順序・CST site 発見 | CSTOptimizer |
@@ -33,6 +34,55 @@ optimizer を替えても同じ規則を使うが、学習軌道が同じにな�
 raw atom coordinates への weight decay は base の proposal に含まれ、その後
 Kernel の規則で射影・調整される。Kernel の正則化とは別なので、必要に応じて
 CST group を `weight_decay=0` にする。
+
+### Polarのampだけにweight decayを掛ける
+
+AdamWのatom groupに`weight_decay=0`と`amplitude_weight_decay=λ`を指定する。
+通常のDense parameterは別groupの通常`weight_decay`を使う。groupを自動分割したり、
+baseのgroup設定をstep中に書き換えたりしない。
+
+```python
+base = torch.optim.AdamW([
+    {"params": cst_layer.parameters(), "weight_decay": 0.0,
+     "amplitude_weight_decay": 0.01},
+    {"params": dense_layer.parameters(), "weight_decay": 0.01},
+], lr=1e-3)
+optimizer = CSTOptimizer(base, model=model)
+```
+
+λは有限・非負のPython scalar、`0 <= lr*λ <= 1`とする。このoptionはexact
+`torch.optim.AdamW`用であり、subclassや別optimizerのclosure意味を推定しない。
+raw decayとの併用は、AdamWがParameter/stateを書き換える前に拒否する。
+optionを指定しないgroupは互換性のため従来どおりで、raw decayが自動的にamp用へ変わるわけではない。
+
+Polarで`q=s²+t²`、`amp=Amax*s/sqrt(q)`とする。まずraw decayなしのAdamW proposalへ
+従来のPolar task/activity/radial更新を適用して`(sf,tf)`を得る。
+`rf=sqrt(sf²+tf²)`、`u_old=amp_old/Amax`として、
+
+\[
+u'=\operatorname{clamp}\left(\frac{s_f}{r_f}-\mathrm{lr}\lambda u_{old},-1,1\right),
+\quad s'=r_f u',\quad
+t'=\operatorname{copysign}\left(r_f\sqrt{(1-|u'|)(1+|u'|)},t_f\right).
+\]
+
+これは`amp_target = amp_after_Polar - lr*λ*amp_old`というold-value項の減衰で、
+taskによる増分をさらに減衰させない。上限を超えた場合は振幅領域へ射影する。
+taskがなければ`amp_new=(1-lr*λ)*amp_old`。λ=0では再構成自体を省く。
+`t=±0`でも符号側を保ち、中心座標・Adam moments・stepにはこの減衰を適用しない。
+実数上`q_new=q_after_Polar`であり、既存の活動状態の更新則は変えない。
+profileのradius/bandwidthの上限がampに依存する契約では、その通常のdecodeにより
+profile radiusが変わる可能性がある。`q`の保存とprofile radiusの固定は別である。
+
+baseの既存pre-hook後に一時的な最後のpre-hookで検証・勾配射影・snapshot・Plan準備を行い、
+実際にAdamWが使うlr/λ/gradを捕捉する。post-hookが設定を変えても現在stepは捕捉値を使う。
+closureはwrapper入口で一度だけ評価し、baseへの再提示では再評価しない。
+pre-hookによるclosureの差し替えはこのmodeでは拒否する。一時hookは例外時にも除去する。
+定常stepでGPUの値をCPUへ読み出す操作は追加しない。
+
+amp decay対応の汎用Torch/Polar Torch/Euclidean・FlatTorus・radius融合Planはv2。
+旧Sphere融合・intrinsic Torus専用v1 Planは正のamp decayを拒否するため、対応する
+Torch参照Planを使う。λはstepごとのInputsとして渡し、係数の変更でFourier係数や
+atomのコピーを常駐させない。CUDA融合版では既存Polar kernelの中で再構成する。
 
 ## State adapter
 

@@ -921,6 +921,75 @@ Polarのradial_regularizationは活動半径/幅の制御で、amp用AdamW decay
 今後の「中心等にdecayを掛けない」条件ではraw atomのAdamW decayを0とし、ampだけの減衰を
 採る場合は別の数式/APIとして扱う。既存の`.01`条件の速度結果を、その新条件の結果へ読み替えない。
 
+#### amp専用weight decay（2026-10-29）
+
+前節で確認したraw座標へのdecayを避けるため、radius fixtureのAdamW設定を
+`weight_decay=0, amplitude_weight_decay=case.optimizer.weight_decay`へ変更した。
+通常Dense対照は従来のAdamW `weight_decay`を使う。case上の`.01`はCSTではamp専用係数、
+Denseでは通常の重み係数となる。**これ以前のraw decay `.01`の学習則とは異なるため、
+旧timingに対する高速化率はこの変更から算出しない。**
+
+公開APIはAdamW groupの`amplitude_weight_decay`。raw decayとの併用、非有限/負の係数、
+`lr*係数>1`、対応しないoptimizerは更新前に拒否する。optionを省略した既存groupの
+raw座標の更新は互換性のため維持する。amp-only条件では必ず新optionとraw decay=0を指定する。
+通常ParameterのgroupやAdamWのmoment/stepは変更しない。
+
+既存Polar更新で得た正規化振幅を`u_task`、更新前を`u_old`として、
+`u_new=clamp(u_task-lr*λ*u_old,-1,1)`を適用する。更新後の`q=s²+t²`を保って
+`s,t`を再構成し、`t`の符号側を`copysign`で保持する。減衰係数0では再構成を省き旧経路と
+bit一致させる。中心座標にはこの減衰を掛けない。ampからprofileのR-boundsを決める元の契約は
+変えず、そのdecodeによるradius変化と活動状態qの保存は区別する。
+式・clamp・group設定の詳細は[CSTOptimizer](cst-optimizer.ja.md#polarのampだけにweight-decayを掛ける)を正本とする。
+
+baseの最後のpre-hookで、ユーザーhook後のgrad/lr/係数を使って検証・射影・snapshot・Plan準備を行う。
+元のclosureは一度だけ評価し、baseへの再提示の差し替えは拒否する。一時hookはfinallyで除去する。
+post-hookによる係数変更は次stepへ効かせ、現在stepは実proposal前に捕捉した値を使う。
+通常stepにCPUのTensor値読出しを追加しない。明示CUDA融合Planでは既存のPolar更新kernel内へ減衰を融合し、
+追加kernel・常駐arrayを作らない。係数はruntime scalarであり、係数値ごとのconstexpr化もしない。
+
+対応するTorch汎用/Polar参照とEuclidean/FlatTorus/radius融合の更新Planをv2へ上げた。
+実装未対応の旧Sphere/Torus専用v1 Planは正のamp decayを拒否し、黙って無視しない。
+非PolarのContextでamp decayを要求した場合も汎用Algorithmのsupports/実行前検証で拒否する。
+
+**検証：** CPU全体2,438 passed／5,825 skipped／既存警告18件。新しい独立law・ゼロ勾配・
+符号付きt=0・clamp・moments/step・通常group・checkpoint・pre/post hook・closureの検証は
+CPU32件通過。L4の関連suite403件通過。別の確認jobで新modeとdispatchの61件も通過した。
+CUDAの新6ケースでは0/7/257 atom、liveなlr/係数、ゼロ勾配の周期端center不変、
+5stepのTorch参照・独立law/q・AdamW state照合、係数0のlegacy bit一致を確認した。
+runnerのY/dX/全atom勾配・独立FP64小ケースquadrature・3 matched-state更新gateも通過した。
+
+同じN128/B4/A819/M8・seed41・FP32 IEEE・3 warmup/21step、2 fresh processで、
+新しいamp-only条件の完全stepを測定した。最後の確認jobのBLOCK_LOCALは
+3.314006 / 3.180609 ms、dense対照は.711969 / .739176 ms。
+その前のL4割当でも3.066594 / 3.030523 ms（dense .733258 / .809294 ms）だった。
+別割当間のCPU/実行時間の変動があり、旧raw-decay条件との改善率は主張しない。
+BLOCK_LOCALのeager peakは全runでallocated 297984 / reserved 2097152 bytes、
+denseは17313280 / 23068672 bytes。Graph/process全体のメモリは未測定。
+
+別traceのoptimizer内は同期API0・aten::item0・DtoH0。GPU kernelは従来どおり5個で
+合計13.985 µs、そのうちamp decayを融合したapply_polarは2.912 µsだった。
+別の軽いhost診断はoptimizer呼び出し1.610864 ms。設定走査・Tensor組立等の重さを
+解消した結果ではなく、まず更新対象を正した段階である。
+
+suite/初回runner job=`l4job-cf097dcd94a44f268884baaa38013613`、snapshot SHA256=
+`3712b217a81cba0c5f3a49c4e902fa42b636c83c136c10783d1dcde51bb98ebf`、
+result archive SHA256=`b59350aafd83dbb9a2cb8706c4fd8dbe309a686bde168bb7c7a47ac258a7c697`。
+このjobは403 suite/2 runner通過後、診断用profile.pyがstdlib profileをshadowして最終traceだけ失敗した。
+診断名を修正し、同じruntime/tests/benchmarkの全source hash一致を確認して再実行した。
+確認job=`l4job-2ea072cf0e2540e697b599e237022b6e`は全体PASS、snapshot SHA256=
+`dbd9a640fca1a00068d0548807351d84bef3bfea097a688955b5991f55fba1e9`、
+result archive SHA256=`f677d6d31e26609dc926260ca19e8d1047108f7ac39d6d567c1b344e883b7010`。
+Torch2.11.0+cu130/CUDA13.0/Triton3.6.0/Python3.13.16、実機は各jobともNVIDIA L4。
+CST nativeは前節と同じa6de79d2683aを照合して再使用し、今回変更したのは別のTriton Polar更新等である。
+source/spec/receipt/suite/4 runner JSON/traceは各job名のignored output配下へ保持する。
+再現driverは`output/radius-optimize-20261028/amplitude-decay-confirm-driver.py`。
+変更PythonのRuffとwheel/sdist buildも確認した。全srcのRuffで報告される既存の
+未変更torus_profile_product実装15件は、この変更のlint結果と区別する。
+計測後、runnerの返却metadataへ`optimizer_effective_groups`を追加し、caseの要求係数と
+実際のraw/amp係数を区別した。時間計測・更新処理・runtime sourceは変えていない。
+fixtureがraw=0/amp=要求係数である追加回帰を含む対象CPUテスト37件も通過した。
+
+
 **先行候補（対称融合前）の検証結果：** CPU全体2,355 passed／5,671 skipped／既存警告18件。
 L4で旧参照と新候補を含む106件成功（宣言等31件、CUDA実行75件）。
 入力directのみ／出力directのみ／両方direct／両方階層、全階層direct、非対称軸、
