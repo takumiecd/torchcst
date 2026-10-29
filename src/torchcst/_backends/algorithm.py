@@ -6,6 +6,8 @@ from typing import Generic, TypeVar
 
 from torch import Tensor
 
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
+
 from .schema import Context, SupportResult
 from .state import AlgorithmState
 
@@ -89,3 +91,8 @@ class Algorithm(ABC, Generic[RecipeT]):
     @abstractmethod
     def execute(self, state, inputs):
         """Execute with the bound recipe/configuration and typed invocation data."""
+
+
+# Optional prepared updates may specialize only these original definitions.
+
+_seal_functions(globals())

@@ -5,6 +5,8 @@ from contextvars import ContextVar
 
 import torch
 
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
+
 _enabled = ContextVar("torchcst_finite_checks", default=True)
 
 
@@ -63,3 +65,8 @@ def first_nonfinite(tensors):
         valid = torch.isfinite(torch.stack(norms)).tolist()
         invalid.extend(index for (index, _), ok in zip(entries, valid) if not ok)
     return min(invalid) if invalid else None
+
+
+# Optional prepared updates may specialize only these original definitions.
+
+_seal_functions(globals())

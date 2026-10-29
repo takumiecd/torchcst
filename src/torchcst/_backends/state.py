@@ -3,6 +3,8 @@
 import torch
 from torch import Tensor
 
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
+
 
 def tensor_signature(tensor):
     if not isinstance(tensor, Tensor) or tensor.layout != torch.strided:
@@ -76,3 +78,8 @@ class AlgorithmState:
         self._storage = None
         self.layout = None
         self.buffers.clear()
+
+
+# Optional prepared updates may specialize only these original definitions.
+
+_seal_functions(globals())

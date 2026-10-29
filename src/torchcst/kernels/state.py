@@ -5,6 +5,8 @@ from dataclasses import asdict, fields, replace
 import torch
 from torch import nn
 
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
+
 from .options import KernelOptions
 from .parameterizations import FixedWidthSpec, LogWidthSpec
 from .parameterizations.activity_width import ActivityWidthSpec
@@ -231,3 +233,7 @@ class KernelState(nn.Module):
     def set_extra_state(self, state):
         if state != self.get_extra_state():
             raise RuntimeError("kernel checkpoint contract differs")
+
+
+# Optional prepared updates may specialize only these original definitions.
+_seal_functions(globals())

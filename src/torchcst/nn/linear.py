@@ -15,6 +15,7 @@ from torchcst._backends.dispatch import (
     Selector,
 )
 from torchcst._backends.schema import DefaultRecipe, ExecutionPlan
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
 from torchcst._derivatives import AtomDerivatives, AutogradFrameGeometry
 from torchcst.atoms import Atoms
 from torchcst.charts import ChartSpec, ChartState, StripChartState, compile_chart
@@ -387,3 +388,7 @@ class CSTLinear(CSTModule):
             f"atoms={self.atom_count}, parameter_dim={self.atoms.parameter_dim}, "
             f"atom_init={self.atom_init!r}, backend={self.backend!r}"
         )
+
+
+# Optional prepared updates may specialize only these original definitions.
+_seal_functions(globals())

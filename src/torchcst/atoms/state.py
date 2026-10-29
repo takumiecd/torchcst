@@ -7,6 +7,8 @@ import weakref
 import torch
 from torch import Tensor, nn
 
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
+
 from .atoms import Atoms
 from .optimizer_state import AtomOptimizerState
 
@@ -275,3 +277,7 @@ class AtomState(nn.Module):
         # child itself is still being populated. for_atoms completes the link.
         if hasattr(self.atoms, "p"):
             self.atoms.p.__dict__["_atom_state_owner"] = self
+
+
+# Optional prepared updates may specialize only these original definitions.
+_seal_functions(globals())

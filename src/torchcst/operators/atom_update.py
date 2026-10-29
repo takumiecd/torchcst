@@ -7,6 +7,7 @@ import torch
 from torch import Tensor
 
 from torchcst._backends.schema import DeviceInfo
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
 from torchcst.geometry.spec import GeometrySpec
 from torchcst.kernels.spec import KernelSpec
 
@@ -287,4 +288,10 @@ class AtomUpdateBinding:
         state.pop("_prepared_dispatch_stats", None)
         state.pop("_scalar_metadata_cache", None)
         state.pop("_context_cache", None)
+        state.pop("_optimizer_program", None)
         return state
+
+
+# Optional prepared updates may specialize only these original definitions.
+
+_seal_functions(globals())

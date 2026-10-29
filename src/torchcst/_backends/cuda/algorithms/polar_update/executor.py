@@ -4,9 +4,18 @@ import math
 
 import torch
 
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
+
 
 def fused_update_(
-    value, previous, proposal, *, step_size, periods=None, amplitude_weight_decay=0.0
+    value,
+    previous,
+    proposal,
+    *,
+    step_size,
+    periods=None,
+    amplitude_weight_decay=0.0,
+    capture_launch=None,
 ):
     """Apply the same update in place; AdamW owns moments and step counting.
 
@@ -87,7 +96,7 @@ def fused_update_(
     from .kernels import apply_polar
 
     if len(proposal):
-        apply_polar[((len(proposal) + 127) // 128,)](
+        compiled = apply_polar[((len(proposal) + 127) // 128,)](
             previous,
             proposal,
             *scalars,
@@ -109,5 +118,19 @@ def fused_update_(
             num_warps=4,
             enable_fp_fusion=False,
         )
+        if capture_launch is not None:
+            # Record only compiled code and scalar specialization, never inputs.
+            capture_launch(
+                compiled,
+                apply_polar,
+                len(proposal),
+                step_size,
+                mode == "time_energy",
+                step_size * amplitude_weight_decay,
+            )
         torch.autograd.graph.increment_version(proposal)
     return proposal
+
+
+# Optional prepared updates may specialize only these original definitions.
+_seal_functions(globals())

@@ -25,6 +25,7 @@ class _PreparedAtomStep:
     step_size: float
     amplitude_weight_decay: float
     plan: object
+    program: object = None
 
 
 class CSTOptimizer(Optimizer):
@@ -353,6 +354,29 @@ class CSTOptimizer(Optimizer):
                     raise ValueError(
                         "CST coordinate policies require strided atom gradients"
                     )
+                binding = self._update_bindings[site]
+                decay = group.get("amplitude_weight_decay", 0.0)
+                program = binding.__dict__.get("_optimizer_program")
+                if (
+                    rate
+                    and program is not None
+                    and program.preflight(
+                        self._update_dispatcher,
+                        self.state_adapter,
+                        point,
+                        point.grad,
+                        decay,
+                    )
+                ):
+                    previous = point.detach().clone()
+                    inputs = AtomUpdateInputs(previous, rate, decay)
+                    binding.validate_inputs(inputs)
+                    prepared.append(
+                        _PreparedAtomStep(
+                            site, point, previous, rate, decay, program.plan, program
+                        )
+                    )
+                    continue
                 projected = _kernel.project_parameter_gradient(
                     site.kernel, *site.cst_charts(), point, point.grad
                 )
@@ -394,6 +418,33 @@ class CSTOptimizer(Optimizer):
             inputs = AtomUpdateInputs(
                 step.previous, step.step_size, step.amplitude_weight_decay
             )
+            if step.program is not None:
+                updated = step.program.run(
+                    self._update_dispatcher,
+                    self.state_adapter,
+                    inputs,
+                    self.state.get(step.point, {}),
+                )
+                if updated is not None:
+                    if step.program.transport_required:
+                        if updated.shape != step.point.shape:
+                            raise ValueError(
+                                "updated atom parameters have the wrong shape"
+                            )
+                        if finite.first_nonfinite((updated,)) is not None:
+                            raise FloatingPointError("non-finite CST parameter update")
+                        state = self.state.get(step.point, {})
+                        if not step.program.transport_is_identity(
+                            self._update_dispatcher,
+                            self.state_adapter,
+                            step.point,
+                            inputs,
+                            state,
+                        ):
+                            self.state_adapter.transport(
+                                step.site, step.previous, updated, state
+                            )
+                    continue
             updated = self._update_dispatcher.run(
                 self._update_bindings[step.site], inputs, plan=step.plan
             )
@@ -404,6 +455,15 @@ class CSTOptimizer(Optimizer):
             self.state_adapter.transport(
                 step.site, step.previous, updated, self.state.get(step.point, {})
             )
+            binding = self._update_bindings[step.site]
+            if not self.check_finite:
+                binding.__dict__["_optimizer_program"] = (
+                    self._update_dispatcher.prepare_optimizer_update(
+                        binding, self.state_adapter, step.site
+                    )
+                )
+            else:
+                binding.__dict__.pop("_optimizer_program", None)
         return loss if has_closure else result
 
     def _manifest(self):

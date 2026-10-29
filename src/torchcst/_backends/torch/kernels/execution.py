@@ -3,6 +3,7 @@
 from importlib import import_module
 
 from torchcst._backends.torch.charts import execution as _charts
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
 from torchcst.charts import StripChartState
 from torchcst.geometry.spec import EuclideanGeometrySpec
 from torchcst.kernels.options import KernelOptions
@@ -365,3 +366,8 @@ def coordinate(state, operation, *args, **kwargs):
         if operation != "_project_polar"
         else _operation(state, operation, area)(*args, **kwargs)
     )
+
+
+# Optional prepared updates may specialize only these original definitions.
+
+_seal_functions(globals())

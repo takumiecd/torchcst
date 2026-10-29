@@ -2,6 +2,7 @@
 
 from importlib import import_module
 
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
 from torchcst.kernels.profiles import (
     BiweightSpec,
     GaussianSpec,
@@ -101,3 +102,8 @@ def shape_function(state, operation, *args):
     module = _module(state)
     name = state.binding.profile.id.replace("wendland_c2", "wendlandc2")
     return getattr(module, name + "_" + operation)(state, *args)
+
+
+# Optional prepared updates may specialize only these original definitions.
+
+_seal_functions(globals())

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from torch import Tensor
 
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
 from torchcst.atoms import Atoms
 from torchcst.charts import ChartState
 from torchcst.kernels.state import KernelState
@@ -100,3 +101,8 @@ class Operator:
         from torchcst._backends.torch.operators.linear import apply
 
         return apply(self, inputs, self._parameters(p), algorithm=algorithm)
+
+
+# Optional prepared updates may specialize only these original definitions.
+
+_seal_functions(globals())

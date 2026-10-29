@@ -55,6 +55,28 @@ def guard_api():
     return (cls, kind) if cls is not None and kind is not None else None
 
 
+def tensor_metadata_guard(manager, tensor, source, verbose):
+    """Batch shape/stride/dtype/device checks without reading Tensor values.
+
+    PyTorch exposes both six- and eight-argument versions of this private CPU
+    guard. Unsupported versions keep the individual attribute checks below.
+    The guard owns metadata, not the example Tensor or its storage.
+    """
+    args = (tensor, list(tensor.shape), list(tensor.stride()), source, verbose, None)
+    try:
+        manager.add_tensor_match_guard(
+            *args, type(tensor), torch._C._dispatch_keys(tensor)
+        )
+    except TypeError:
+        try:
+            manager.add_tensor_match_guard(*args)
+        except (AttributeError, TypeError, RuntimeError):
+            return False
+    except (AttributeError, RuntimeError):
+        return False
+    return True
+
+
 def make_guard(roots, modules, standard_walk, api):
     """Build metadata checks, retaining neither examples nor input snapshots."""
     if api is None or not all(_plain_owner(m, standard_walk) for m in modules):
@@ -167,7 +189,13 @@ def _build_guard(guard, roots, kind):
                     tm = item(dm, key, tensor)
                     identity(tm, tensor)
                     class_guards(tm, tensor)
-                    for field in ("_version", "dtype", "device", "shape", "layout"):
+                    matched = tensor_metadata_guard(tm, tensor, key, verbose)
+                    fields = (
+                        ("_version",)
+                        if matched
+                        else ("_version", "dtype", "device", "shape", "layout")
+                    )
+                    for field in fields:
                         metadata = getattr(tensor, field)
                         attribute(tm, field, metadata).add_equals_match_guard(
                             metadata, verbose, None

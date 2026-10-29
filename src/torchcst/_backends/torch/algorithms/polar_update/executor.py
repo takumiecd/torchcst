@@ -11,6 +11,7 @@ from torchcst._backends.torch.parameterizations import (
     polar_amp_width as _parameterizations,
 )
 from torchcst._backends.torch.profiles import execution as _profile
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
 from torchcst.charts import ChartState
 
 
@@ -206,3 +207,8 @@ def graph_update(value, p, displacement, *, step_size):
     # Preserve the same operation order as production, including radius rescaling.
     updated = direction * task_q.sqrt() * (regularized / task_q).sqrt()
     return torch.cat((updated, p[:, 2:] + displacement[:, 2:]), 1)
+
+
+# Optional prepared updates may specialize only these original definitions.
+
+_seal_functions(globals())

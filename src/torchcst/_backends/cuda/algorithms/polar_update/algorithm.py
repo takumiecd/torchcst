@@ -6,6 +6,7 @@ import torch
 
 from torchcst._backends.algorithm import Algorithm
 from torchcst._backends.schema import DefaultRecipe, SupportResult
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
 from torchcst.geometry.spec import EuclideanGeometrySpec, FlatTorusGeometrySpec
 from torchcst.kernels.parameterizations import PolarAmpWidthSpec
 from torchcst.operators.atom_update import (
@@ -161,6 +162,12 @@ class FlatTorusPolarUpdateAlgorithm(FusedPolarUpdateAlgorithm):
 
         binding = state.binding
         proposal = binding.execution_parameters()
+        capture = None
+        if type(self) is RadiusFlatTorusPolarUpdateAlgorithm:
+
+            def capture(*record):
+                state._polar_launch = record
+
         fused_update_(
             binding.kernel,
             inputs.previous,
@@ -168,6 +175,7 @@ class FlatTorusPolarUpdateAlgorithm(FusedPolarUpdateAlgorithm):
             step_size=inputs.step_size,
             amplitude_weight_decay=inputs.amplitude_weight_decay,
             periods=tuple(chart.geometry.periods for chart in binding.cst_charts()),
+            capture_launch=capture,
         )
         return proposal.detach()
 
@@ -177,6 +185,11 @@ class RadiusFlatTorusPolarUpdateAlgorithm(FlatTorusPolarUpdateAlgorithm):
     """Explicit radius contract using the unchanged Polar coordinate law."""
 
     id: str = "cuda_radius_flat_torus_polar_update_fused"
+
+    def prepare_optimizer_program(self, dispatcher, cached, adapter, site=None):
+        from .optimizer_program import prepare_program
+
+        return prepare_program(dispatcher, cached, adapter, site)
 
     def supports(self, context, recipe):
         from torchcst.kernels.parameterizations import PolarAmpRadiusSpec
@@ -226,3 +239,8 @@ class RadiusFlatTorusPolarUpdateAlgorithm(FlatTorusPolarUpdateAlgorithm):
                 "radius Polar scalars and periods must be live matching FP32 tensors"
             )
         return SupportResult(tuple(reasons))
+
+
+# Optional prepared updates may specialize only these original definitions.
+
+_seal_functions(globals())

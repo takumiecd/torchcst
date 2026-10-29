@@ -4,6 +4,7 @@ from dataclasses import is_dataclass
 from typing import Protocol
 
 from torchcst._backends.schema import Context, DispatchDecision
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
 
 from .validation import UnsupportedPlan, validate_plan_context
 
@@ -229,3 +230,20 @@ class Dispatcher:
     def run(self, binding: ExecutionBinding, inputs, *, plan=None):
         _, algorithm, state = self._prepare(binding, inputs, plan=plan)
         return algorithm.run(state, inputs)
+
+    def prepare_optimizer_update(self, binding, adapter, site=None):
+        """Ask an already-selected update Algorithm for its optional hot path.
+
+        The binding owns the result. Custom/unsupported implementations keep
+        the same prepare/run entrance; the Dispatcher stores no model state.
+        """
+        cached = binding.__dict__.get("_prepared_dispatch")
+        if cached is None or cached.registry is not self.registry:
+            return None
+        factory = getattr(cached.algorithm, "prepare_optimizer_program", None)
+        return None if factory is None else factory(self, cached, adapter, site)
+
+
+# Optional prepared updates may specialize only these original definitions.
+
+_seal_functions(globals())

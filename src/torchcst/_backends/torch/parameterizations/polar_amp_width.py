@@ -9,6 +9,7 @@ from torch import Tensor
 
 from torchcst._backends.torch.kernels import execution as _kernel
 from torchcst._backends.torch.profiles import execution as _profile
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
 from torchcst.charts import ChartState
 
 
@@ -220,3 +221,8 @@ def _require_shared_bandwidths(state) -> None:
     )
     if not all(bool(torch.equal(left, right)) for left, right in pairs):
         raise ValueError("input and output bandwidths differ; use the by-side API")
+
+
+# Optional prepared updates may specialize only these original definitions.
+
+_seal_functions(globals())

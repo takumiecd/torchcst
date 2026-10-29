@@ -1177,7 +1177,7 @@ inclusive行は包含する子の値と加算しない。wrapper自身の計測�
 次の大きな候補は、設定が同じ間の更新前後処理を検証済み実行経路へまとめること。
 型/shape/配置、lr/amp decay、設定変更とpre/post hook境界の確認は維持し、
 customなcallback・Algorithm・state adapterは元の汎用経路を使う設計を検討する。
-この実行経路の統合はまだ実装・速度検証していない。
+この診断時点では未実装だった。下の「標準Polar更新経路の事前準備」で実装・測定結果を記録する。
 
 clean診断job=`l4job-96eb5c6adaf34975a30993d82d623d77`、snapshot SHA256=
 `18f089f9abd769a2e281a4e18dc72b85d6ad9ce9cbee104591359c15fae97dc9`、
@@ -1189,6 +1189,114 @@ Torch2.11.0+cu130/CUDA13.0/Python3.13.16、NVIDIA L4。
 cProfileはnative guard内のPython callbackでcall treeの時間帰属が崩れるため参考扱いにした。
 先行job3571b06eは不要なnative loaderのmetadata不足をstderrに出したため採用せず、
 このclean jobではそのloaderを使わず、optimizer自身のTriton実装を実行した。
+
+
+#### 標準Polar更新経路の事前準備（2026-10-29）
+
+前節の診断を受け、radius/FlatTorusの標準callback・明示的な固定Plan・
+標準AdamW state adapterを使うamp-only更新に、binding所有の準備済み経路を加えた。
+対象は`check_finite=False`の通常eager step。公開既定の`check_finite=True`は変えない。
+
+```text
+初回／設定変更時：従来の射影 → Dispatcher検証 → fused AdamW → Polar → state輸送
+                 → 条件が合えば、この経路を1件だけ事前準備
+通常step：user pre-hooks → 設定・shape・storage・callback確認 → 旧座標snapshot
+         → 通常のfused AdamW → user post-hooks → 再確認 → 同じPolar kernel
+         → state輸送がidentityであることを確認
+```
+
+- `optim/optimizer.py`は標準hookの実行順と、このstep用に捕捉したlr/amp decayを維持する。
+  係数・shape・device・stride・storage・Plan・Registry・設定bufferは毎step確認する。
+  不正な設定は従来どおりAdam更新前に検査する。数値異常検査の有無は従来のpolicyに従う。
+- `polar_update/optimizer_program.py`が、標準の恒等射影／恒等state輸送と、
+  再構築不要なContext/選択済みAlgorithmの呼び出しをまとめる。custom callback、
+  state adapter、Tensor subclass、TorchFunction/Dispatch mode等は汎用経路へ戻す。
+  数値更新のたびに変わるParameter/Adam stateのversionは固定設定の変更とはしないが、
+  shape/dtype/device/layout/stride/data pointerとstate辞書の差し替えは検査する。
+- 元の関数のidentity/code/defaults/globals/closureとclass/moduleの変更も確認する。
+  `functools.wraps`で注釈をコピーした関数は標準関数として扱わない。
+  共通の`_builtin_callbacks.py`はこの識別情報だけを持ち、backend選択やTensor計算はしない。
+- `compiled_launch.py`は、通常のTriton実行が返した**同じCompiledKernel**を再利用する。
+  同じTensor配置・constexpr・lr/amp decay specialization・device/cacheのときに、
+  同じTriton runnerへそのstepのTensorを渡す。JITの引数binding/hash準備を省く。
+  未対応API・変更時は元のAlgorithm.executeを使い、JIT pre-run hookも省略しない。
+  launch hookは同じrunnerで実行し、その後にcallback/状態を再確認する。
+  Polar/Triton数式やCUDA source、階層、profile、AdamW更新則は変更していない。
+- guardはCPU metadataだけを扱う。Tensorのshape/stride/dtype/device検査は、対応時には
+  native TensorMatch guardへまとめる。private APIは構築時に適合を確認し、未対応時は
+  従来の検査へ戻る。通常stepへ同期・`.item()`・device readbackは追加しない。
+- cacheは各bindingで直近1件。model所有のParameter/固定scalar/stateへの参照と
+  コンパイル済みcodeを持ち、snapshot・入力・gradientのコピーは保持しない。
+  旧座標のcloneは従来と同じ1回で、更新後に破棄する。GPU配列は追加しない。
+  pickle/deepcopyでは準備済みprogramを除去する。
+
+**最終比較：** aeec9360（runtime b944a283）を比較元に、同じ一つのL4で
+baseline→candidate→candidate→baseline、各fresh process、10 warmup/101 samples。
+N128/B4/A819/M8・seed41・base1/merge2・FP32 IEEE・raw decay0/amp decay.01・
+loss/dX/全atom勾配/fused AdamW+Polarを含む。4 runの初期Parameter/X/targetは同じ。
+
+| 条件 | 未計装の完全step中央値2回 ms | allocated / reserved bytes |
+| --- | ---: | ---: |
+| 比較元 | 2.741230 / 2.781407 | 297984 / 2097152 |
+| 準備済み更新経路 | 2.407448 / 2.439732 | 297984 / 2097152 |
+| 同じ4 runのdense対照 | .682137〜.709832 | 17313280 / 23068672 |
+
+2中央値の平均は**2.761319→2.423590 ms、約12.2%短縮**。
+メモリは変わらずdense以下。ここではeager allocator peakを測っており、
+Graph/process総量や別batch/1024/MNISTでの改善は未確認。
+このN128のdense allocatedにはGEMM用のruntime作業領域も含まれるため、
+全量を重みやoptimizer stateのサイズと解釈しない。
+
+別の同期入りphase診断ではoptimizerが1.311849/1.315004→1.000770/1.008032 ms、
+denseは.172945〜.179607 ms。**optimizerのdense同等は未達**。
+同じjobの別host診断は1.270034→.929226 msだった。host区間はenqueue/API blockingも
+含むため純粋なPython時間とはせず、phaseやGPU時間と足したり完全stepから引いたりしない。
+GPU更新kernelは3個、合計9.568→9.632 µs（Polarは2.944→2.976 µs）、
+旧座標copyは1個で両方1.120 µs。同期API/item/DtoHは0を維持した。
+準備済み経路のpreflight/実行が3 updatesすべて再利用されたことも別passで確認した。
+
+一定の外部gradientを与えるoptimizer-onlyの別jobでは、20 warmup/101 updates、
+CST .921456 ms／dense .108966 ms（各update前後を同期）、hostは.892584/.093661 ms。
+forward/backwardを含まない診断であり、完全stepや上のphaseとは測定範囲が異なる。
+
+**検証と限界：** CPU全体2551 passed／5861 skipped／既存警告18件。
+最終比較jobのL4関連337件と各runnerのY/dX/全atom勾配・独立quadrature・matched-state gateが成功。
+同じ外部勾配で5step、途中でradial設定とamp decayを変更する比較でも、
+Parameter/Adam moment/stepの20 Tensorがbit一致した。
+両Polar modeの6step比較では、係数変更・lr pre/post hook・custom射影/validator/transport/adapter・
+state差し替え・有限検査切替・gradなし・lr0・JIT hookを検査した。
+非連続gradは標準fused AdamWも拒否するため、その例外と例外時stateを両経路で比較する。
+GC非保持、serialization、native guardでのcallback/code/Plan変更検出も回帰検証した。
+追加のL4 47件ではlaunch-exit hook内でstate輸送を変更し、更新後の再確認で
+その変更も取り込むことを両Polar modeで確認した（上の337件とcoverageは重なる）。
+Python Ruff、isolated wheel/sdist buildと全367 package sourceの内容照合が成功。
+
+先行のprepared経路（compiled runner追加前）も完全step2.739727→2.396118 ms、約12.5%短縮だった。
+今回の追加launch変更による上乗せ効果は、この別job間の数値からは主張しない。
+初回launch適合確認ではTritonの空HookChainをNoneと区別できず汎用経路へ戻っていた。
+診断後に同じrunnerでhookを実行する形へ直し、bit一致を確認した。
+非連続gradの先行テストは「成功する」というfixture側の想定が誤って失敗したもので、
+最終比較では標準AdamWと同じ拒否を確認している。失敗jobも原本を保持する。
+
+最終比較job=`l4job-3a610851c9ff4530b29fa67579389d3f`、snapshot SHA256=
+`192d033dc19659769b6771747ab3de0976b943993be4fe1d77bfaa873b98c459`、
+result archive SHA256=`49bdcc142d291a7dded9777e6b65871498736e31fd81a40d5b45e312a5786b64`。
+optimizer-only job=`l4job-bae8cda9e469471e9913911b92b181d9`、snapshot SHA256=
+`0777bff6286aa3014b72dc6ad2da6a76f1dcef9b94509e32079e38c6a9e109a8`、
+result archive SHA256=`327b670054d275902be40f1415f6361f1f8f1666527b081cffac08f2da79a472`。
+追加hook検証job=`l4job-4e8e9c9afbb3448286862d28abece189`、snapshot SHA256=
+`24d358a8f55b26185d1e621ed032acc5c21c35640802a8acdb06ed31d6f4fd78`、
+result archive SHA256=`97af4f28d277f56c66cfce8688590883b18158172f0f145202a45d18479853f4`。
+Torch2.11.0+cu130/CUDA13.0/Triton3.6.0/Python3.13.16、NVIDIA L4。
+先行prepared比較job=`l4job-facbaab2ff6e463e900690ee11374e35`、snapshot SHA256=
+`fb788cf1523fe3e8cf6716e9aa59758ca5c5cc87083d4d2d3463803a512f25ca`、
+result archive SHA256=`0a388f4947cbb4895d0ba751118174316c662ab1515ffdddae515e9035edfe16`。
+raw logs/trace/state Tensor/receipt/sourceはignored `output/radius-optimize-20261028/<job>/`、
+driverは同outputの`prepared-optimizer-confirm-driver.py`と
+`prepared-optimizer-only-final-driver.py`。最終比較は全変更済みruntimeファイルを
+比較元へ戻す別sourceを作り、native source/binaryは従来と同じa6de79d2683aをSHA照合して再利用した。
+再現検証は`python -m pytest -q tests/test_prepared_optimizer_update.py`、
+完全stepは既存Linear runnerと`radius-cell-mass-128-initial.json`を使う。
 
 **先行候補（対称融合前）の検証結果：** CPU全体2,355 passed／5,671 skipped／既存警告18件。
 L4で旧参照と新候補を含む106件成功（宣言等31件、CUDA実行75件）。
