@@ -13,12 +13,11 @@ class LinearInputs:
     x: Tensor
 
 
-def validate_linear_inputs(binding, inputs, *, parameters=None, operator=None):
+def validate_linear_inputs(binding, inputs):
     if type(inputs) is not LinearInputs or not isinstance(inputs.x, Tensor):
         raise TypeError("LinearInputs requires a Tensor x")
-    x = inputs.x
-    p = binding.execution_parameters() if parameters is None else parameters
-    op = binding.execution_declaration() if operator is None else operator
+    x, p = inputs.x, binding.execution_parameters()
+    op = binding.execution_declaration()
     if x.ndim != 2 or x.shape[-1] != op.in_features:
         raise ValueError("expected a flattened [M, in_features] input")
     if not isinstance(p, Tensor) or p.ndim != 2:

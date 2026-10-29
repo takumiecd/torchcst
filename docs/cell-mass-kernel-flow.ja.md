@@ -5341,7 +5341,7 @@ result archive SHA256=`20941f1d76963c992ce9d17e2dc1eeea9d0828fc23a03ce5717d5b05d
 raw pstats、source、binary、receipt、`paired-driver.py`は同じignored output配下へ保全した。
 この変更の1024/MNIST、他GPU世代、CUDA Graph、sanitizerは未測定。
 
-### Linear側の宣言共有とnative layout範囲計算（2026-10-30、比較準備）
+### Linear側の宣言共有とnative layout範囲計算（2026-10-30）
 
 Dispatcherはbindingのoptional `prepare_context(inputs)`へ入力検証とContext構築を委譲できる。
 標準CSTLinearでは変更されていないcallbackとplain Tensorを確認し、一度読んだ現在の宣言と
@@ -5353,7 +5353,28 @@ radius layoutは現在のatomから毎forward再分類する。CUDAでのforward
 安定ソート・全ownerのlower_boundをnative呼出し1回へまとめる。ATenのstable sortは維持し、
 boundary配列は生成せずthreadのregisterで計算する。空ownerのbegin=end、同じkey内の元の
 atom順、保存したforward keyのbackwardでの再利用を変えない。CPU診断は従来のTorch式。
-moments/H/G/coeffsとPolar/AdamWの数式は変更しない。この段階で速度採用は未判定。
+moments/H/G/coeffsとPolar/AdamWの数式は変更しない。
+
+**宣言共有の試作は不採用:** runtime `3efb7634`で3条件を別process、
+変更前→Contextのみ→両方→両方→Contextのみ→変更前の順に測定した。
+N128/B4/A819/M8/seed41、explicit parallel Plan、FP32 IEEE、base1/merge2、amp-only、
+10 warmup/101 samples。完全step中央値は変更前2.200744/2.165796 ms、
+Contextのみ2.304337/2.309520 ms、両方2.051531/2.117500 ms。
+Contextのみの平均中央値は約5.7%遅く、callbackの適合確認を増やす案は採用しない。
+このoptional Dispatcher/CSTLinear入口と専用testは次のcommitで取り除き、
+従来のvalidate_inputs→build_contextと各宣言検証を維持する。
+試作はcommit `3efb7634`とjobのfrozen sourceから復元できる。
+
+両方では約4.5%短縮したが、この差をnative単独の結果としない。
+全条件のallocated/reservedは297984 / 2097152 B、独立Y/dX/全atom勾配・quadrature・
+matched-state gate、関連595件が成功。3条件のParameter/Adam moment/step20 Tensorは
+5 updatesでbit一致。GPU更新は3 kernels、snapshot copy1回、sync/item/DtoH0。
+native layoutだけの最終sourceを別途測定する。
+
+試作job=`l4job-6538791929604b268cd0a2734b4065ae`、snapshot SHA256=
+`1233e5a9dbeba2d7e61b4cb813a588d4bafc5cbcbee87b3e4a1ba7132aaef357`、
+result archive SHA256=`58eb727a80cfe225d4c2d3f226be04b4cc0660d7512ad4cdc18eb490b53f0ee6`。
+source/result/receipt/traceと復元用driverはignored `output/linear-host-20261030/`。
 
 各段階の保存値、配列のshape、書き手、寿命を先に確定し、独立oracleで
 Y/dX/全atom勾配を検証してから速度を比較する。上記は実機での正しさ・性能の結果ではない。

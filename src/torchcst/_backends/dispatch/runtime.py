@@ -92,14 +92,8 @@ class Dispatcher:
         # An earlier Context never proves this invocation's inputs are valid.
         if type(inputs) is not binding.input_type:
             raise TypeError("inputs type differs from binding contract")
-        prepare_context = getattr(binding, "prepare_context", None)
-        if prepare_context is None:
-            binding.validate_inputs(inputs)
-            context = binding.build_context(inputs)
-        else:
-            # A binding may share declaration reads across these two operations.
-            # It must still validate THIS invocation and observe live settings.
-            context = prepare_context(inputs)
+        binding.validate_inputs(inputs)
+        context = binding.build_context(inputs)
         from .prepared import PreparedDispatch
         from .select import FixedSelector
 

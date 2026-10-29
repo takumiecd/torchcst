@@ -15,7 +15,6 @@ from torchcst._backends.dispatch import (
     Selector,
 )
 from torchcst._backends.schema import DefaultRecipe, ExecutionPlan
-from torchcst._builtin_callbacks import original_functions
 from torchcst._builtin_callbacks import seal_functions as _seal_functions
 from torchcst._derivatives import AtomDerivatives, AutogradFrameGeometry
 from torchcst.atoms import Atoms
@@ -354,40 +353,6 @@ class CSTLinear(CSTModule):
             self.execution_declaration(), inputs.x, self.atoms.p
         )
 
-    def prepare_context(self, inputs):
-        """Share one live declaration between input checks and fresh Context.
-
-        Only the unchanged built-in callbacks and plain tensors use this path.
-        Custom callbacks, subclasses and Tensor modes retain both original
-        callback boundaries. No invocation tensor or Context is cached here.
-        """
-        standard = type(self) is CSTLinear and all(
-            name not in self.__dict__
-            and getattr(CSTLinear, name) is function
-            and original_functions(function) is not None
-            for name, function in _CONTEXT_METHODS
-        )
-        function_mode = getattr(torch._C, "_is_torch_function_mode_enabled", None)
-        dispatch_depth = getattr(torch._C, "_len_torch_dispatch_stack", None)
-        if (
-            standard
-            and type(inputs) is LinearInputs
-            and type(inputs.x) is Tensor
-            and function_mode is not None
-            and dispatch_depth is not None
-            and not function_mode()
-            and dispatch_depth() == 0
-        ):
-            parameters = self.execution_parameters()
-            if type(parameters) is nn.Parameter:
-                operator = self.execution_declaration()
-                validate_linear_inputs(
-                    self, inputs, parameters=parameters, operator=operator
-                )
-                return context_from_tensors(operator, inputs.x, parameters)
-        self.validate_inputs(inputs)
-        return self.build_context(inputs)
-
     def forward(self, inputs: Tensor) -> Tensor:
         if inputs.ndim < 1 or inputs.shape[-1] != self.in_features:
             raise ValueError(
@@ -426,14 +391,4 @@ class CSTLinear(CSTModule):
 
 
 # Optional prepared updates may specialize only these original definitions.
-_CONTEXT_METHODS = tuple(
-    (name, getattr(CSTLinear, name))
-    for name in (
-        "validate_inputs",
-        "build_context",
-        "execution_parameters",
-        "execution_declaration",
-        "cst_charts",
-    )
-)
 _seal_functions(globals())
