@@ -5,8 +5,8 @@
 **実装の区切り（2026-10-28）：** 既存σ版と検証済み最適化はPR #122から
 `main`へmerge済み（`0047e29c`）。次期半径APIと以下の設計は、そこから切った
 `kernel/support-radius-pipeline`で進める。
-現在は半径APIのCPU参照とN<=128の明示CUDA Plan、対称な融合forward/backward、
-FP32半径PolarのGPU更新まで実装している。以下では初版・後続候補・測定結果を区別する。
+現在は半径APIのCPU参照とN<=128の明示CUDA Plan、moments/responseの共有投影と
+C/site展開の融合forward/backward、FP32半径PolarのGPU更新まで実装している。以下では初版・後続候補・測定結果を区別する。
 この半径版でN1024以上、Graph、自動dispatch、dense相当の速度を達成したとは扱わない。
 
 **半径APIの初版：** revision7の半径宣言とCPU/Torch参照を追加した。
@@ -143,7 +143,10 @@ job=`l4job-895949990509471f8bf01b3daff41078`、snapshot SHA256=
 native sourceは不変で、検証済みbinaryをsource／runtime照合して再利用した。
 新しいPython実行順のsource hash、結果、receiptはignored `output/radius-backward-order-20261028/`へ保持する。
 
-#### 対称な融合computeと、保存値の契約
+#### 対称な融合computeと、保存値の契約（2026-10-28の先行版）
+
+2026-10-29の共有投影版では、以下の入出力・保存契約を維持し、1方向のcomputeを
+「moments/responseを一度作るkernel」と「C/site展開kernel」に分ける。起動数と結果は後述する。
 
 2026-10-28。前節の順序変更だけでは十分でないため、block_localのbackwardも融合する。
 momentsは使用する階層分だけを保存し、全階層directなら0要素でもよい。
@@ -656,6 +659,108 @@ result archive SHA256=`797a9fe05d5612f3f84cfd2f070fec14172df00a0b5bae782a7348cb4
 source snapshot・正逆順のrunner JSON・host区間・trace・5step state・テストlogを
 ignored `output/radius-optimize-20261028/l4job-851744f7057a4f83bce384a158282ce0/`に保持する。
 再現driverは同じoutput下の`optimizer-host-confirm-driver.py`。
+
+#### 共有投影：moments/H/Gを1回だけ構築（2026-10-29）
+
+source `d0324fb4`。明示`BLOCK_LOCAL`のcomputeを以下へ変更した。
+旧`block_local_*` native入口は比較用に保持し、自動dispatchの採用は変更しない。
+
+```text
+forward:
+  shared_projection_kernel(X) -> input_moments, atom_response   [1 kernel]
+  shared_expand_kernel(H)     -> sharedのC -> Y                [1 kernel]
+backward:
+  shared_projection_kernel(dY)-> grad_output_moments, G         [1 kernel]
+  shared_expand_kernel(G)     -> sharedのC_in -> dX             [1 kernel]
+  hybrid_parameter_grad(保存moments/H, 同じ逆moments/G) -> grad_atom [1 kernel]
+```
+
+nativeの`shared_forward`／`shared_backward`は上の2 kernelを同じcurrent streamへenqueueし、
+従来と同じ3値を返す。先行projection完了が次のlaunchの依存境界で、CPU同期・block間spin waitはない。
+atom-onlyは`shared_project`の1 kernel＋atom勾配だけ、dX-onlyは逆向き2 kernelだけを実行する。
+X側moments/Hと逆向きmoments/Gは実際に保存した同じstorageを使い、再構築しない。
+
+projectionはbatchの1行を1 CTAが担当する。必要なmomentsをsharedに構築し、
+各threadが別atomの全K tileを足し終えてからglobalのH/Gへ1回だけ保存する。
+後段の出力CTAはこの完成responseを読み、Cとsite展開を融合する。
+N128/B4/A819・出力32siteでは、H/Gの投影回数が方向ごとに13,104→3,276になる。
+4batch間の係数生成共有は今回まだ復活させていない。
+
+必要な入力bank（階層とKの組）は現在のatom分類からsharedのbitmaskへ集約する。
+mergeでは同じKの`bank-2`をstart levelまで閉包し、子→親のbarrierを維持する。
+直接生成では子bankを要求しない。出力bankの有効性は既存のsorted offsets両端の差で判定し、
+C生成と`hybrid_site`の両方でinactive bankを読む前に除外する。
+新しいglobal mask、packed atom、全atom Fourier係数表、global C表は追加しない。
+
+現在のfixtureは全819atomがlevel2/K3なので、start2では12 retained bank中1 bank、
+126 node中32 nodeだけを数値計算する。保存配列は従来の固定compact shapeを維持し、
+未使用slotはゼロに定義する。したがって**階層の演算省略であり、global確保容量の圧縮ではない**。
+各forwardが独立した保存領域を持ち、設定・atomが変われば次の呼出しで分類し直す。
+
+L4で350件成功。必要bankとmergeの子依存、inactive momentsのzero、direct/merge、
+非対称軸、odd M、M16、all-direct、空atom/batch、retained backward、複数forwardの保存独立性、
+独立Y/dX/全atom勾配と公開optimizerを確認した。
+同じ外部勾配と途中のregularization変更を与えた5stepは、Parameter/AdamW moment/stepの
+計20tensorが変更前後でbit一致した。nativeのみの7ケースでmemcheck 0 errors、racecheck 0 hazards。
+CPU全体2383 passed／5781 skipped／既存警告18件。
+
+最初の比較は同じresident L4、N128/B4/A819/M8、公開初期化・FP32 IEEE・eager AdamW+Polar、
+warmup3/21step、baseline/candidate/candidate/baselineの4 fresh process。
+初期Parameter/X/target fingerprintは全runで一致した。
+
+| 初回比較 | 完全step中央値 ms | allocated / reserved bytes |
+| --- | ---: | ---: |
+| 出力CTAごとに再投影する旧版 | 3.220690 / 3.308590 | 297984 / 2097152 |
+| 共有投影＋inactive bank省略 | 3.352655 / 3.332686 | 297984 / 2097152 |
+| 各runのdense対照 | 0.710179〜0.735280 | 17313280 / 23068672 |
+
+初回完全stepは短縮せず、2中央値の平均では共有版が約2.4%遅かった。
+メモリは増えておらず、この条件のdense対照以下を維持する。
+これらはTorch allocatorのeager peakであり、GraphとGPU process全体は未測定。
+
+別の未同期host診断は総計3.256506→3.251686ms、forward呼出し1.089134→1.084366ms、
+backward呼出し0.605583→0.598335ms、optimizer呼出し1.480270→1.487666ms。
+最後のGPU完了待ちは0.028973→0.028153msだった。
+別traceの実kernelのみではforward transform768.416→585.154µs、
+reverse transform821.057→638.402µs。atom勾配は244.321→243.521µs。
+forward/backwardのlaunchは各1回増え、stepの実kernel総数29→31、
+実kernel時間合計1954.945→1588.131µs。host区間と重なるため足してstep時間を作らない。
+GPU処理の削減だけでは、host呼出しが占めるこのfixtureの完全step改善を示せなかった。
+projectionは4 CTA、C/site展開は16 CTAなので、batch共有と仕事の分割は引き続き検討対象である。
+
+job=`l4job-bc66a7dc50684300ba1d4e082d0a1e75`、snapshot SHA256=
+`76be2a55595836f453942ab12fcf7e7cd43b2a10a98483a5f7abc5e2995c9f52`、
+result archive SHA256=`6eac3a1dc63d197a5af8ebb347ba9c341fe69a60c1e043da334cfb53f82b4db9`。
+新native=`torchcst_radius_cell_mass_a47d30b38549`、binary SHA256=
+`15c0c76596ba74784b24bac6cea74b519edb98ea073f69aa5fb9fb2c17fd81db`。
+baselineは検証済み旧binary `1dca007d…`をsource/runtime/hash照合して使用した。
+source snapshot・runner JSON・raw trace・state・sanitizer log・新binaryを
+ignored `output/radius-optimize-20261028/l4job-bc66a7dc50684300ba1d4e082d0a1e75/`へ保持する。
+再現driverは同じoutput下の`shared-projection-confirm-driver.py`。
+
+**同sourceの再確認：** 別のL4割当で、各比較内のhardwareを固定し、
+candidate/baseline/baseline/candidateの順に2 fresh processずつ再測定した。
+fixture・3 warmup/21step・dtype・optimizer・native binaryは変更していない。
+source/バイナリhashをロード時に照合し、全runの初期Parameter/X/targetの一致を確認した。
+
+| 再確認 | 完全step中央値 ms | allocated / reserved bytes |
+| --- | ---: | ---: |
+| 旧版 | 3.316176 / 3.247524 | 297984 / 2097152 |
+| 共有投影版 | 3.283822 / 3.321738 | 297984 / 2097152 |
+| 各runのdense対照 | 0.732475〜0.801015 | 17313280 / 23068672 |
+
+再確認でも完全stepの短縮は示せず、2中央値の平均で共有版が約0.6%遅い。
+初回の約2.4%を普遍的な退化率とは扱わず、**GPUの重複削減は検証済みだが、
+完全stepでは横ばい〜微増で、高速化の採用条件は未達**とする。
+各runner内の独立勾配・更新gateは再確認でも通過した。350件suite/sanitizerの再実行ではない。
+保存配列の固定容量を維持しているため、global allocator peakの減少も今回の成果ではない。
+
+再確認job=`l4job-050cb06549ab41f8834c51b17ab91db7`、snapshot SHA256=
+`bd43ac112bf98c1a8a8945ea5ba7431e0b4fc5d551c94295745e9019890d9613`、
+result archive SHA256=`3a93640608f3628e41c6a61b45e05a9cf3fffa4d0e53971802d956dc73c9a99c`。
+raw source/spec/receipt/runner JSONは同じignored output配下のjob directoryへ保持する。
+再現driverは`shared-projection-reconfirm-driver.py`。新たなCUDA compileは行わず、
+初回に生成した`15c0c765…`と旧binaryをsource/runtime/hash照合して使った。
 
 **先行候補（対称融合前）の検証結果：** CPU全体2,355 passed／5,671 skipped／既存警告18件。
 L4で旧参照と新候補を含む106件成功（宣言等31件、CUDA実行75件）。
