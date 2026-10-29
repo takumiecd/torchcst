@@ -1,8 +1,8 @@
 """Opt-in native radius pipeline, with explicit and inspectable stage boundaries.
 
-The reference saves input moments; hybrid routes omit direct levels. Block-local
-compute builds moments/response/C in shared, returning the completed moments and
-response alongside Y/dX for reuse. These are numerical candidates, not complete
+The reference saves input moments; hybrid routes omit direct levels. Projection
+builds moments/response once, then output tiles reuse the completed global values
+and fuse C/site expansion in shared. These are numerical candidates, not complete
 training-step speed results. No weights, packed atoms or global atom Fourier
 tables are materialized.
 """
@@ -166,11 +166,11 @@ def _complete_hybrid_response(signal, atoms, axis, start_level, recipe, output_s
 
 
 class _BlockLocalRadiusLinear(torch.autograd.Function):
-    """One forward transform, one reverse transform, then atom gradients.
+    """Shared forward projection/expansion, reverse, then atom gradients.
 
     prepare_layout supplies routing metadata outside these compute kernels.
-    Each transform returns its final values AND the completed projection caches.
-    Coefficients stay in shared scratch; moments/response are saved once.
+    Each transform builds its projection caches only once, then every output
+    interval consumes those caches. Coefficients stay in shared scratch.
     """
 
     @staticmethod
@@ -178,7 +178,7 @@ class _BlockLocalRadiusLinear(torch.autograd.Function):
         native = _extension()
         layout_keys = _classify_layout_keys(plan, atoms)
         rows, offsets = _ranges_from_layout_keys(plan, layout_keys)
-        y, input_moments, atom_response = native.block_local_forward(
+        y, input_moments, atom_response = native.shared_forward(
             x,
             atoms,
             rows,
@@ -214,10 +214,10 @@ class _BlockLocalRadiusLinear(torch.autograd.Function):
         grad_input = None
         if ctx.needs_input_grad[0]:
             rows, offsets = _ranges_from_layout_keys(plan, layout_keys, reverse=True)
-            # The SAME transform runs in reverse: dY -> moments -> G -> dX.
-            # No intermediate moment/G/Cin launch or global Cin is needed.
+            # The SAME transform runs in reverse: one dY projection produces
+            # moments/G, then all dX tiles reuse G. Cin stays in shared memory.
             grad_input, grad_output_moments, grad_response = (
-                native.block_local_backward(
+                native.shared_backward(
                     dy,
                     atoms,
                     rows,
@@ -233,7 +233,7 @@ class _BlockLocalRadiusLinear(torch.autograd.Function):
         elif ctx.needs_input_grad[1]:
             # Atom-only backward publishes the two required caches in ONE
             # projection kernel; it has no dX expansion or routing sort.
-            grad_output_moments, grad_response = native.block_local_project(
+            grad_output_moments, grad_response = native.shared_project(
                 dy,
                 atoms,
                 plan.output.native_config(),

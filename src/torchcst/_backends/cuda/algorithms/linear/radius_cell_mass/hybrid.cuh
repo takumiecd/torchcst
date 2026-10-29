@@ -212,10 +212,12 @@ __global__ void compact_coefficients_kernel(const T *p, const int64_t *rows,
 template<class T>
 __device__ inline double hybrid_site(const T *p, const int64_t *rows,
     const int64_t *offsets, const double *h, const double *coefficients, int atoms,
-    int b, int site, Axis axis, bool output_side, int start) {
+    int b, int site, Axis axis, bool output_side, int start,
+    unsigned active_banks = 0xffffffffu) {
     double value = 0;
     int prefix = prefix_nodes(axis, start), nodes = axis.node_count - prefix;
     for (int bi = 0; bi < axis.bank_count; ++bi) {
+        if (!(active_banks & (1u << bi))) continue;
         Bank bank = axis.banks[bi];
         int tile = site / bank.tile_sites, local = site % bank.tile_sites;
         if (bank.level >= start) {

@@ -343,6 +343,7 @@ Tensor parameter_grad(Tensor p, Tensor zx, Tensor zy, Tensor h, Tensor g, Config
 
 #include "hybrid.cuh"
 #include "block_local.cuh"
+#include "shared_projection.cuh"
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("classify_atoms", &radius_cell_mass::classify_atoms);
@@ -361,4 +362,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("block_local_forward", &radius_cell_mass::block_local_forward);
     m.def("block_local_backward", &radius_cell_mass::block_local_backward);
     m.def("block_local_project", &radius_cell_mass::block_local_project);
+    m.def("shared_forward", &radius_cell_mass::shared_forward);
+    m.def("shared_backward", &radius_cell_mass::shared_backward);
+    m.def("shared_project", &radius_cell_mass::shared_project);
 }

@@ -76,7 +76,7 @@ def test_fused_launches_and_saved_projections(
     cp = p.detach().cuda().requires_grad_(needs_p)
     y = ex.radius_linear(plan, cx, cp, recipe=recipe)
     forward = [call for call in native.calls if call[0] != "classify_atoms"]
-    assert [call[0] for call in forward] == ["block_local_forward"]
+    assert [call[0] for call in forward] == ["shared_forward"]
     assert len(forward[0][2]) == 3
     _, zx, h = forward[0][2]
     assert zx.shape == (
@@ -101,9 +101,9 @@ def test_fused_launches_and_saved_projections(
             torch.testing.assert_close(actual.cpu(), target, atol=2e-9, rtol=2e-8)
         calls = [call for call in native.calls if call[0] != "classify_atoms"]
         names = [call[0] for call in calls]
-        assert names == (
-            ["block_local_backward"] if needs_x else ["block_local_project"]
-        ) + (["hybrid_parameter_grad"] if needs_p else [])
+        assert names == (["shared_backward"] if needs_x else ["shared_project"]) + (
+            ["hybrid_parameter_grad"] if needs_p else []
+        )
         projection = calls[0]
         if needs_x:
             assert len(projection[2]) == 3
