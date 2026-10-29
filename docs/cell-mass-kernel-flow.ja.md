@@ -762,6 +762,81 @@ raw source/spec/receipt/runner JSONは同じignored output配下のjob directory
 再現driverは`shared-projection-reconfirm-driver.py`。新たなCUDA compileは行わず、
 初回に生成した`15c0c765…`と旧binaryをsource/runtime/hash照合して使った。
 
+#### 通常stepの同期除去と、固定Planの準備再利用（2026-10-29）
+
+source `a471b585`。共有投影・数学的profile・Polar更新則は維持して、次の2点を変更した。
+
+- 通常の`_classify_layout_keys`は`classify_atoms_async`を呼ぶ。異常値を検出したthreadは
+  keyを0に定義してからdevice assertionを発生させ、bank indexの計算へ進まない。
+  CPUでerror wordを読む`.item()`は通常経路にない。異常値は後続CUDA APIまたは同期点で
+  RuntimeErrorとして報告される。即時ValueErrorが必要な診断用`prepare_layout_checked`は
+  旧checked classifierを使い、通常Linearからは呼ばれない。
+- 明示した固定Planはbindingに1件だけprepared metadataを持ち、同じContext・配置・所有者・
+  layout世代・live設定signatureなら選択済みAlgorithm/Stateとsupport/workspaceの判定を再利用する。
+  custom selector、mutable Context/Recipe、対応を明示しないbindingは従来の選択経路へ進む。
+
+**毎stepの検査を全廃した実装ではない。** Inputsとlive Contextの構築、型・shape・device・
+Plan schema/Recipe等の宣言検証、AlgorithmStateの鮮度確認は維持する。
+重い選択・対応判定を再利用する一方、設定・入力条件・配置が変われば失効させる。
+Planの比較はidentityで行い、偽の`__eq__`で型/schema/Recipe検証を通過できないことも確認した。
+通常のatom値更新は失効条件にせず、radius/centerの分類はGPUで毎forward更新する。
+cacheはbinding所有で、Dispatcher/RegistryがTensorやStateを保持する設計にはしない。
+checkpoint/deepcopyへprepared cacheや統計を残さない。
+
+optimizerのpreflightも同じ`Dispatcher.prepare`へまとめ、base optimizerのhookを挟んだ後に
+fresh Inputs/Contextから条件を確認する。先行検証を理由にhook後の検証を省略しない。
+既存の固定設定signatureを借用するので、cache確認のためのmodule巡回は追加しない。
+`torch.compile`やCUDA Graphは導入しておらず、この段階もeagerの比較である。
+
+**同条件の完全step：** 1台のL4内で変更前→同期除去のみ→同期除去＋prepared→逆順に
+各2 fresh process、3 warmup/21stepを測った。N128/B4/A819/M8・seed41・公開初期化、
+FP32 IEEE、dX/全atom勾配・loss・fused AdamW+Polarを含む。
+`check_finite=False`・AdamW lr1e-4/wd.01/capturable=Falseは従来と同じ。
+初期Parameter/X/target fingerprintは全6 runで一致した。
+
+| 条件 | 完全step中央値 ms | allocated / reserved bytes |
+| --- | ---: | ---: |
+| 共有投影版・変更前 | 3.282665 / 3.250319 | 297984 / 2097152 |
+| 同期除去のみ | 3.294300 / 3.233293 | 297984 / 2097152 |
+| 同期除去＋固定Plan準備再利用 | 3.067269 / 3.068885 | 297984 / 2097152 |
+| 各runのdense対照 | 0.706788〜0.721539 | 17313280 / 23068672 |
+
+2中央値の平均で完全stepは約6.1%短縮した。同期除去だけでは明確な改善を示しておらず、
+主な改善は固定Planのprepared経路による。denseとの速度差は残る。
+メモリは増えずdense対照以下。この値はTorchのeager allocator peakで、Graph/process総量ではない。
+
+**通常stepの同期確認：** 別の1step traceで、変更前はforwardに同期API 1回／`aten::item` 1回。
+同期除去のみ・preparedの両方はforward/loss、backward、optimizerの全scopeで同期API 0回、
+`aten::item` 0回、GPU→CPU copyも0回だった。計測末尾の完了待ちはscope外へ分離した。
+初回準備、設定変更時の再検証、`check_finite=True`の任意数値検査、診断用checked経路まで
+無同期化したという意味ではない。
+
+別の未同期host区間は変更前→preparedで、forward1.080564→0.842046ms、
+backward0.603019→0.612988ms、optimizer1.480919→1.521235ms、総計3.258469→3.087118ms。
+これらは完全stepの正本と別processの診断であり、GPU時間と足し合わせない。
+optimizerは改善しておらず、残るCPU側処理の大きな候補である。
+30stepの診断を通したcache統計は、Linear miss1/hit29、AtomUpdate miss1/hit59。
+別cProfileの固定設定巡回は27→24回/3step（9→8回/step）で、入力・設定確認はなお残る。
+Registryの軽い宣言検証もhot時に継続し、cProfile累積時間は純CPU損失や速度の根拠に使わない。
+
+CPU全体2406 passed／5819 skipped／既存警告18件。L4の選択gateは411 passed。
+22個の隔離子processで不正CUDA値の非同期assertionを確認し、正常/空keysのchecked版一致、
+通常経路のscalar抽出禁止、設定変更・配置/shape/flags変更・optimizer hook・serialization・
+偽Plan/Recipeの拒否を確認した。Y/dX/全atom勾配・matched-state更新gateも通過。
+同じ外部勾配と途中のregularization変更を使う5stepでは、20個のParameter/AdamW moment/stepが
+変更前・同期除去のみ・preparedの3経路でbit一致した。
+新nativeの7ケースでmemcheck 0 errors、racecheck 0 hazards。
+
+job=`l4job-61656d9fa3ea4ec1a7d7fdddf7e711af`、snapshot SHA256=
+`421457c3c21037d56a50c16f6e269945c519f3b957ecdc83e6ab05e293808ba0`、
+result archive SHA256=`77b3a9dcc30f814dd2205a8975467ad02065ac5babcfd2a1382ee381aeac17d8`。
+新native=`torchcst_radius_cell_mass_a6de79d2683a`、binary SHA256=
+`536cdb38e21c857af909ceeabc8741c1009b950093a2458a2bacd95b99bc7624`。
+変更前の比較は旧shared native `15c0c765…`をsource/runtime/hash照合して使った。
+source snapshot・6個のrunner JSON・各scopeの同期集計・host区間・trace・cache統計・state・
+新binary・sanitizer logはignored `output/radius-optimize-20261028/l4job-61656d9fa3ea4ec1a7d7fdddf7e711af/`へ保持する。
+再現driverは同じoutput下の`prepared-dispatch-confirm-driver.py`。
+
 **先行候補（対称融合前）の検証結果：** CPU全体2,355 passed／5,671 skipped／既存警告18件。
 L4で旧参照と新候補を含む106件成功（宣言等31件、CUDA実行75件）。
 入力directのみ／出力directのみ／両方direct／両方階層、全階層direct、非対称軸、
