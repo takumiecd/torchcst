@@ -82,7 +82,7 @@ def test_fused_launches_and_saved_projections(
     forward = [
         call
         for call in native.calls
-        if call[0] not in {"classify_atoms", "classify_atoms_async"}
+        if call[0] not in {"classify_atoms", "classify_atoms_async", "layout_ranges"}
     ]
     suffix = "_parallel" if variant is BLOCK_LOCAL_PARALLEL else ""
     assert [call[0] for call in forward] == ["shared_forward" + suffix]
@@ -111,7 +111,7 @@ def test_fused_launches_and_saved_projections(
         calls = [
             call
             for call in native.calls
-            if call[0] not in {"classify_atoms", "classify_atoms_async"}
+            if call[0] not in {"classify_atoms", "classify_atoms_async", "layout_ranges"}
         ]
         names = [call[0] for call in calls]
         assert names == (

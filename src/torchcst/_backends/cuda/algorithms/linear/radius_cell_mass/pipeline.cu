@@ -369,8 +369,10 @@ Tensor parameter_grad(Tensor p, Tensor zx, Tensor zy, Tensor h, Tensor g, Config
 #include "hybrid.cuh"
 #include "block_local.cuh"
 #include "shared_projection.cuh"
+#include "layout.cuh"
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+    m.def("layout_ranges", &radius_cell_mass::layout_ranges);
     m.def("classify_atoms", &radius_cell_mass::classify_atoms);
     m.def("classify_atoms_async", &radius_cell_mass::classify_atoms_async);
     m.def("build_moments", &radius_cell_mass::build_moments);

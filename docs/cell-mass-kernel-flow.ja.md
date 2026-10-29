@@ -5341,6 +5341,20 @@ result archive SHA256=`20941f1d76963c992ce9d17e2dc1eeea9d0828fc23a03ce5717d5b05d
 raw pstats、source、binary、receipt、`paired-driver.py`は同じignored output配下へ保全した。
 この変更の1024/MNIST、他GPU世代、CUDA Graph、sanitizerは未測定。
 
+### Linear側の宣言共有とnative layout範囲計算（2026-10-30、比較準備）
+
+Dispatcherはbindingのoptional `prepare_context(inputs)`へ入力検証とContext構築を委譲できる。
+標準CSTLinearでは変更されていないcallbackとplain Tensorを確認し、一度読んだ現在の宣言と
+Parameterをその2処理で共有する。Contextのgrad/precision/deterministic等は毎回取得し、
+入力TensorもContextも保存しない。custom callback、関数codeの変更、subclass、Tensor mode、
+未対応private APIは従来のvalidate_inputs→build_contextへ戻る。実行段階のlive宣言検証も残る。
+
+radius layoutは現在のatomから毎forward再分類する。CUDAでのforward/reverse key変換・
+安定ソート・全ownerのlower_boundをnative呼出し1回へまとめる。ATenのstable sortは維持し、
+boundary配列は生成せずthreadのregisterで計算する。空ownerのbegin=end、同じkey内の元の
+atom順、保存したforward keyのbackwardでの再利用を変えない。CPU診断は従来のTorch式。
+moments/H/G/coeffsとPolar/AdamWの数式は変更しない。この段階で速度採用は未判定。
+
 各段階の保存値、配列のshape、書き手、寿命を先に確定し、独立oracleで
 Y/dX/全atom勾配を検証してから速度を比較する。上記は実機での正しさ・性能の結果ではない。
 H/Gの保存を省く案では、同じforward状態での再計算と、全利用先の終了を明示する。

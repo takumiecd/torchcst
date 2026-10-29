@@ -75,6 +75,13 @@ def _ranges_from_layout_keys(plan, keys, *, reverse=False):
     This does not decode atom parameters or read an error word to the CPU.
     It is safe only for keys from the same unchanged forward atom Tensor.
     """
+    if keys.is_cuda:
+        rows, offsets = _extension().layout_ranges(
+            keys, plan.input.node_count, plan.output.node_count, reverse
+        )
+        return rows, offsets
+    # CPU metadata diagnostics retain the transparent Torch implementation.
+    # Normal CUDA execution enters native once for orientation/sort/ranges.
     if reverse:
         input_node = keys.remainder(plan.input.node_count)
         output_node = torch.div(keys, plan.input.node_count, rounding_mode="floor")
@@ -83,14 +90,10 @@ def _ranges_from_layout_keys(plan, keys, *, reverse=False):
     else:
         stride, count = plan.input.node_count, plan.output.node_count
     sorted_keys, rows = torch.sort(keys, stable=True)
-    # Composite keys for owner q lie in [q*stride, (q+1)*stride).
-    # Searching these fixed boundaries also represents empty owner ranges.
-    # Unlike bincount, the output size needs no maximum read from the GPU.
     boundaries = torch.arange(
         0, (count + 1) * stride, stride, dtype=keys.dtype, device=keys.device
     )
-    offsets = torch.searchsorted(sorted_keys, boundaries, right=False)
-    return rows, offsets
+    return rows, torch.searchsorted(sorted_keys, boundaries, right=False)
 
 
 def prepare_layout(plan, atoms, *, reverse=False):

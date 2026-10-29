@@ -239,9 +239,9 @@ def test_prepared_cache_does_not_add_configuration_signature_walks(monkeypatch):
     dispatcher.prepare(model, inputs, plan=plan)
     calls.clear()
     dispatcher.prepare(model, inputs, plan=plan)
-    # validate_inputs and build_context each refresh live declaration. The
-    # prepared key borrows that signature instead of traversing a third time.
-    assert len(calls) == 2
+    # Standard Linear shares one live declaration between validation/Context.
+    # The prepared key borrows it without another configuration traversal.
+    assert len(calls) == 1
     assert model._prepared_dispatch_stats["hits"] == 1
 
 

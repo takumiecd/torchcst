@@ -14,8 +14,9 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plans import BLO
 
 @pytest.mark.parametrize("reverse", [False, True])
 @pytest.mark.parametrize("distribution", ["empty", "skewed", "mixed"])
+@pytest.mark.parametrize("device", ["cpu", pytest.param("cuda", marks=GPU)])
 def test_fixed_range_boundaries_include_gaps_and_preserve_equal_key_order(
-    reverse, distribution
+    reverse, distribution, device
 ):
     plan = HierarchyPlan(input=axis_plan(27, merge=3, modes=3), output=axis_plan(16))
     ni, no = plan.input.node_count, plan.output.node_count
@@ -31,18 +32,60 @@ def test_fixed_range_boundaries_include_gaps_and_preserve_equal_key_order(
                 torch.randint(no, (97,), generator=rng).tolist(),
             )
         ) + [(0, 0), (ni - 1, no - 1), (0, 0)]
-    keys = torch.tensor([o * ni + i for i, o in pairs], dtype=torch.int64)
+    keys = torch.tensor(
+        [o * ni + i for i, o in pairs], dtype=torch.int64, device=device
+    )
     rows, offsets = ex._ranges_from_layout_keys(plan, keys, reverse=reverse)
     order = sorted(
         range(len(pairs)),
-        key=lambda row: (pairs[row][0], pairs[row][1])
-        if reverse
-        else (pairs[row][1], pairs[row][0]),
+        key=lambda row: (
+            (pairs[row][0], pairs[row][1])
+            if reverse
+            else (pairs[row][1], pairs[row][0])
+        ),
     )
     assert rows.tolist() == order
     owner_column, count = (0, ni) if reverse else (1, no)
     expected = [sum(pair[owner_column] < q for pair in pairs) for q in range(count + 1)]
     assert offsets.tolist() == expected
+
+
+@GPU
+@pytest.mark.parametrize("reverse", [False, True])
+def test_native_ranges_largest_owners_and_all_atoms(reverse):
+    a = axis_plan(128)
+    plan = HierarchyPlan(input=a, output=a)
+    rng = torch.Generator().manual_seed(27)
+    keys = torch.randint(a.node_count**2, (4096,), generator=rng)
+    keys[::4] = 0
+    keys[1::4] = a.node_count**2 - 1
+    expected = ex._ranges_from_layout_keys(plan, keys, reverse=reverse)
+    actual = ex._ranges_from_layout_keys(plan, keys.cuda(), reverse=reverse)
+    for got, want in zip(actual, expected):
+        assert torch.equal(got.cpu(), want)
+
+
+@GPU
+@pytest.mark.parametrize(
+    "kind", ["cpu", "float", "matrix", "strided", "too_many", "nodes"]
+)
+def test_native_ranges_reject_bad_metadata_without_device_value_reads(kind):
+    keys = torch.zeros(16, device="cuda", dtype=torch.int64)
+    ni, no = 16, 32
+    if kind == "cpu":
+        keys = keys.cpu()
+    elif kind == "float":
+        keys = keys.float()
+    elif kind == "matrix":
+        keys = keys.reshape(4, 4)
+    elif kind == "strided":
+        keys = keys[::2]
+    elif kind == "too_many":
+        keys = torch.zeros(4097, device="cuda", dtype=torch.int64)
+    else:
+        ni = 511
+    with pytest.raises(RuntimeError, match="owner|node"):
+        ex._extension().layout_ranges(keys, ni, no, False)
 
 
 def setup(monkeypatch, *, needs_x=True, needs_p=True):
