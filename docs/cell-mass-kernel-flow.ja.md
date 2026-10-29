@@ -1517,6 +1517,51 @@ result archive SHA256=`1e27fa9c5ab8b15a1c627b0eeda43ec95370634c84387e7be9567b0a3
 新helperを取り除く。既存Linear runnerと同じnative source/binary a6de79d2683aをSHA照合して使う。
 Torch2.11.0+cu130/CUDA13.0/Triton3.6.0、NVIDIA L4。Polar/AdamWやCST数式とGPU kernelは変更しない。
 
+#### 関数metadataの一括検査（2026-10-30）
+
+runtime commit `27b9da42`では、prepared optimizerが確認するPython関数のcode/defaults/
+kwdefaults/globals/closure/dictionary identityを、GILを保持したCPython C++ helperへまとめた。
+dictionaryの内容変更は従来のnative dictionary-version guardで検出する。
+Python callback、Tensor値の読出し、CUDA処理はhelper内にない。
+非CPython/free-threaded Python、compiler/API非対応では従来のguardへ戻る。
+helperのimport/build後は適合条件を再検査し、cold JIT hookが変更したtransportも再検査する。
+設定変更時の検証、Polar/AdamW則、amp-only decay、GPU配列・snapshot数は変えない。
+
+同じN128/B4/A819/M8/seed41/base1/merge2、FP32 IEEE、raw decay0/amp decay.01、
+check_finite=Falseで比較元35edaf98とbaseline/candidate/candidate/baselineのfresh process測定。
+完全stepは10 warmup/101 samples、optimizer-onlyは20 warmup/101 updates。
+
+| 条件 | 完全step中央値2回 ms | optimizer-only中央値2回 ms |
+| --- | ---: | ---: |
+| 35edaf98 | 2.208162 / 2.254113 | .704499 / .689706 |
+| 一括検査 | 2.204973 / 2.232900 | .637537 / .648932 |
+
+optimizer-onlyの平均中央値は**.697103→.643234 ms、約7.7%短縮**。
+完全stepは**2.231137→2.218937 ms、約.55%の小さな差**で、別processの揺れが残る。
+既存train()を同一process内で交互順に測った補助比較は20 warmup/101 pairsを独立2回実施し、
+pair差の中央値は.051469/.048981 ms。121 updates後のParameterはbit一致。
+2モデル常駐の補助測定のメモリはdense比較には使わない。
+正規の全4回のallocated/reservedは**297984 / 2097152 B**で変化なし。
+denseの17313280 / 23068672 B以下。eager peakでありGraph/process総量は未測定。
+denseの完全stepは.700780〜.726952 ms、optimizer-onlyは.102710〜.103852 ms。
+dense並みのoptimizer速度には依然として届いていない。
+
+別nested timerの2回合計program guardは.186841/.177463→.147696/.151672 ms。
+GPU更新は3 kernels合計約9.6 µs、snapshot copy1回、sync API/item/DtoH0。
+包含する診断値は完全stepに加算・減算しない。L4関連402件成功、独立Y/dX/全atom勾配・
+quadrature・matched-state gate成功。5 updatesのParameter/Adam moment/step20 Tensorはbit一致。
+host helperのcold build/importは7.432秒であり、steady timingには含めない。
+Python3.13.16、Torch2.11.0+cu130、CUDA13.0、Triton3.6.0、NVIDIA L4。
+
+job=`l4job-b92ad68d94044f3dbc7b6f6d6fb2a82a`、snapshot SHA256=
+`2f718173cf512f7333a9770a3763c23857099270b560e756d4f42c93e51b2acb`、
+result archive SHA256=`964469377dc387dcde1d0bafe925aa08d573b1dfe341f6126d49617c5ca9225b`。
+linear source/binaryは従来a6de79d2683aのままSHA照合した。
+初回はNinja欠如、次回は記録scriptのmodule取得で失敗し、速度根拠から除外した。
+最終driverはNinjaをjob-local --targetへ導入し、system packageを変更しない。
+失敗原本を含むsource/result/receipt/trace/stateと`qualified-driver.py`、集計はignored
+`output/optimizer-native-20261029/`へ保全する。新しいGPU並列化の結果とは混ぜない。
+
 **先行候補（対称融合前）の検証結果：** CPU全体2,355 passed／5,671 skipped／既存警告18件。
 L4で旧参照と新候補を含む106件成功（宣言等31件、CUDA実行75件）。
 入力directのみ／出力directのみ／両方direct／両方階層、全階層direct、非対称軸、
@@ -5244,7 +5289,36 @@ parameter勾配も同じ数式のまま32thread/CTAで実行する。
 N128/B4/A819ではresponseのCTA数は4から26、parameter勾配は7から26になる。
 momentsの生成とresponseを別launchにするため、起動回数との交換がある。
 globalのmoments/response、sharedのcoeffs、autogradの保存寿命は既存Planと同じ。
-この段階では実装した比較候補であり、GPU正しさ・完全step・メモリの採用判定は未実施。
+runtime `e20acd57`をL4で検証し、関連258件が成功した。非対称軸、direct/merge、
+混在/空/全direct、batch1/4/5と端数、M1/8/16、FP32/64、saved-cacheのpointer再利用、
+dX-only/atom-only/両方のbackward、別stream寿命を含む。N128/B4/A819/M8/seed41、
+base1/merge2、amp-only、FP32 IEEEで、独立Y/dX/全atom勾配・quadrature・
+matched-state optimizer gateも成功した。
+
+同じ新規compiled binary内の旧Planと新Planを、fresh processで旧/新/新/旧の順に測った。
+各10 warmup/101 samples。両方とも前節の一括optimizer metadata検査を使う。
+
+| 条件 | 完全step中央値2回 ms | allocated / reserved peak B |
+| --- | ---: | ---: |
+| radius-block-local | 2.265875 / 2.433527 | 297984 / 2097152 |
+| radius-block-local-parallel | 2.380437 / 2.256816 | 297984 / 2097152 |
+
+平均中央値2.349701→2.318626 msの差は約1.3%だが、ばらつきが大きく、
+この比較だけで安定した完全step改善とは判断しない。matched denseは.696273〜.733030 ms、
+allocated/reservedは17313280 / 23068672 B。Graph/process総量は未測定。
+
+別traceのGPU時間は、forward/reverse合計のmoments+responseが744.704→308.194 µs
+（内訳: moments251.233、response56.961 µs）、parameter勾配243.712→128.929 µs。
+coeffs/site展開は477.249→478.112 µsで横ばい。kernel自身は短縮したが、
+これらを完全step時間へ加算・減算しない。自動dispatchや既存Planの意味は変更しない。
+
+job=`l4job-41eab8ef158e4a0d80602a6f69d6b228`、snapshot SHA256=
+`f7bc33884d0f473b0c4b23685850eec7b68802a2a583c4a5cdacf8bc9fdb34e4`、
+result archive SHA256=`093fdce897db647a5ade5ca2cfa0ec3c89ce66c9bc5dbe01c12e2ff18f4aa0cf`。
+NVIDIA L4、Torch2.11.0+cu130/CUDA13.0、Triton3.6.0、nvcc13.0、job-local Ninja。
+source/result/receipt/trace/driver/集計はignored `output/radius-parallel-20261030/`。
+CPU全体2598 passed / 5928 skipped（既存警告19件）、変更PythonのRuffとdiff検査、
+wheel/sdistのruntime全371ファイルのbyte照合が成功した。
 
 各段階の保存値、配列のshape、書き手、寿命を先に確定し、独立oracleで
 Y/dX/全atom勾配を検証してから速度を比較する。上記は実機での正しさ・性能の結果ではない。
