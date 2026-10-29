@@ -1446,6 +1446,77 @@ constructor回帰gate=`l4job-9b71d0b600b14e0e9701a932ff044b97`。
 既存Linear runnerと同じnative source/binary a6de79d2683aをSHA照合して使う。
 新規CUDA/Triton kernel、PolarとAdamWの数式変更はない。
 
+
+#### group検証全体のcontract再利用（2026-10-29）
+
+前節の小さなstep内整理とは別に、`_validate_groups`全体の成功結果をnative guardで
+再利用する経路を追加した。比較元は5711978e、runtime commitは5a37271b。
+以前不採用だった所有者名だけのcacheでは、group値のPython検証が残っていた。
+今回はParameter→group対応と、その妥当性を決める設定・登録構造を一緒に検査する。
+
+- 既定`check_finite=True`、custom walker/site、Tensor mode、未対応private APIはfresh検証を保つ。
+  最適化は`check_finite=False`、標準CSTLinear/RegularGrid等の適合を確認できた場合に限定する。
+- 通常の各検証境界ではgroupの辞書version、paramsの長さ/要素identity、modelの
+  Parameter/子Module登録、site/chart/spec、class/MRO、関数code/defaults/globalsを確認する。
+  変更があればPythonで全検証し直してからguardを作り直す。invalid値ならAdam前に失敗する。
+  pre-hook後も必ず再確認し、最初の検証結果を無条件には渡さない。
+- custom callbackをcache適合確認のためだけに追加実行しない。登録を直接検査して判定する。
+  未登録属性による登録先のshadowing、Parameter差し替え、trainable条件の変更も検出する。
+- group contractはIDと既存groupへの参照だけを保持する。数値更新で変わるTensor versionや
+  kernel bufferはこのgroup検査に含めないが、従来の更新program guardによる数式設定・
+  shape/stride/storage等のAdam前後検証は引き続き実行する。
+- snapshotは従来の1個。新しいGPU配列や保持activationはない。pickle/deepcopyでは
+  optional guardを捨て、optimizer/modelを解放した後の参照残存も検査した。
+
+**最終sourceのL4比較：** N128/B4/A819/M8/seed41/base1/merge2、FP32 IEEE、
+raw decay0/amp decay.01、fused AdamW+Polar、check_finite=False。
+同一L4上でbaseline→candidate→candidate→baselineを各fresh processで実行した。
+完全stepは10 warmup/101 samples、別optimizer-onlyは20 warmup/101 updates。
+
+| 条件 | 完全step中央値2回 ms | optimizer-only中央値2回 ms |
+| --- | ---: | ---: |
+| 5711978e | 2.195570 / 2.229130 | .734726 / .704923 |
+| group contract再利用 | 2.198661 / 2.197335 | .689533 / .691138 |
+
+optimizer-onlyの2中央値平均は**.719825→.690336 ms、約4.1%短縮**。
+完全stepは**2.212350→2.197998 ms、約.65%の小さな差**で、hostの揺れも残る。
+この完全step比率を他条件へ一般化しない。matched denseの完全stepは.692913〜.708078 ms、
+optimizer-onlyは.104338〜.107420 msで、dense並みには届いていない。
+
+差が小さいため、補助測定では同じ既存`train()`を使い、同一process内の2モデルを
+交互順で実行した。独立した2 process、20 warmup/101 pairs、各step前後を同期する。
+各pairのbaseline−candidate差の中央値は**.035924 / .046582 ms**。
+それぞれの通常中央値は2.217337→2.175725 ms、2.311045→2.254237 msだった。
+両processで121 updates後のParameterがbit一致し、学習中も同じgroup contractを再利用した。
+これは小さな短縮を補足する診断で、2モデル常駐時のメモリをdense比較に使わない。
+
+正規の別process測定のallocated/reservedは全4回**297984 / 2097152 B**で増加なし。
+denseの**17313280 / 23068672 B**以下を維持する。eager allocator peakで、
+Graph capture/replay・process総量と1024/MNISTの再測定は今回未実施。
+別nested timerのgroup検査は従来2回合計.078688/.075483 msから、native検査2回合計
+.043673/.044152 msへ短縮した。測定wrapperで`_validate_groups`自体を置き換えると
+cacheを無効化するため、candidateはnative guardを直接計時した。
+包含する診断値は足し合わせず、未計装の完全stepから差し引かない。
+GPU更新は引き続き3 kernels合計約9.5 µs、snapshot copy1回、sync API/item/DtoHは0。
+
+CPU全体**2594 passed / 5863 skipped**（警告19件）。最終L4関連**384 passed**。
+独立Y/dX/全atom勾配・quadrature・matched-state gate、Parameter/Adam moment/stepの
+20 Tensorの5 updates bit一致が成功した。新しいgroup contract関連33件では、
+設定変更/不正値、pre-hook、所属/登録/属性shadow、callback code、Tensor mode、
+custom callbackの実行回数、mutable option、serializationと解放を検証した。
+最終runtime全368ファイルは計測snapshotとbyte一致した。
+
+最終job=`l4job-7f3e815039ee48af829e5045c4bd8237`、
+snapshot SHA256=`215839d5377c0baef8b516d6fd8b86f69d93526adf933cc4ea71a1bb55aab956`、
+result archive SHA256=`1e27fa9c5ab8b15a1c627b0eeda43ec95370634c84387e7be9567b0a3ad7277a`。
+先行比較は`l4job-e346a67b1f06486ebe2a1e4e54309c9a`と
+`l4job-449cb3b6b0c342bba92a8b1e887331d7`。pair-onlyの
+`l4job-315cf494544c468f92e86a489e168256`はqueuedのまま取り消し、最終jobへ統合した。
+原本・source・receipt・trace・driverはignored `output/optimizer-group-20261029/`へ保全する。
+再現は同outputの`verified-driver.py`。比較元ではoptimizer.pyを5711978eへ戻し、
+新helperを取り除く。既存Linear runnerと同じnative source/binary a6de79d2683aをSHA照合して使う。
+Torch2.11.0+cu130/CUDA13.0/Triton3.6.0、NVIDIA L4。Polar/AdamWやCST数式とGPU kernelは変更しない。
+
 **先行候補（対称融合前）の検証結果：** CPU全体2,355 passed／5,671 skipped／既存警告18件。
 L4で旧参照と新候補を含む106件成功（宣言等31件、CUDA実行75件）。
 入力directのみ／出力directのみ／両方direct／両方階層、全階層direct、非対称軸、
