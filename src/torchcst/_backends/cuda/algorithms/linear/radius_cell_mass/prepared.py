@@ -300,36 +300,39 @@ def _guard(dispatcher, cached, inputs, callbacks, functions, factory, metadata):
         plan = cached.decision.plan
         plan_node = attr(selector, "_plan", plan)
         namespace_version(plan_node, plan)
-        recipe = attr(state_node, "recipe", state.recipe)
-        namespace_version(recipe, state.recipe)
-        context = attr(state_node, "context", state.context)
-        namespace_version(context, state.context)
-        layout = attr(state_node, "layout", state.layout)
-        namespace_version(layout, state.layout)
-        for name in ("input", "output"):
-            axis = getattr(state.layout, name)
-            namespace_version(attr(layout, name, axis), axis)
+        # Frozen declaration dictionaries are already checked by callback_guard
+        # below. The identity fields above connect those snapshots to live state.
 
         own = root(4, owners, manager=callback_guard)
         seen_bases = set()
+        raw_dictionaries = list(dictionaries)
+        seen_dicts = {id(value) for value in raw_dictionaries}
+
+        def dictionary(value):
+            if id(value) not in seen_dicts:
+                seen_dicts.add(id(value))
+                raw_dictionaries.append(value)
+
         for index, value in enumerate(owners):
             node = own.tuple_getitem_manager(index, "callback owner", value, kind)
             same(node, value)
             if isinstance(value, type):
-                bases = node.type_mro_manager("callback bases", value.__mro__, kind)
-                for i, base in enumerate(value.__mro__):
+                # The CPython checker already checks each complete MRO pointer.
+                # Class/module namespace identities are read-only in CPython;
+                # guard their dictionaries directly rather than retraverse MROs
+                # and descriptors on every check. Every mutable version remains.
+                for base in value.__mro__:
                     if base in seen_bases or base.__flags__ & (1 << 8):
                         continue
                     seen_bases.add(base)
-                    bn = bases.tuple_getitem_manager(i, "base", base, kind)
                     raw = next(
                         d for d in gc.get_referents(base.__dict__) if type(d) is dict
                     )
-                    bn.type_dict_manager(
-                        "callback namespace", raw, kind
-                    ).add_dict_version_guard(raw, verbose, None)
+                    dictionary(raw)
             else:
-                namespace_version(node, value)
+                dictionary(value.__dict__)
+        dictionaries = tuple(raw_dictionaries)
+        roots = (*roots[:7], dictionaries, roots[8])
         root(5, functions, manager=callback_guard)
         callback_guard.add_lambda_guard(checker, verbose, None)
         dicts = root(7, dictionaries, manager=callback_guard)
