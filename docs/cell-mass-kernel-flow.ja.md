@@ -6737,3 +6737,21 @@ result archive SHA256=`e837557aafddc122a5e9d1a33f994100a6a2ca4fd42d8a577d4a8d478
 optimizerの更新則やpre/post-Adamの検査境界は変更せず、CPython checkerが完全なMROを
 確認する場合だけraw dictionary version確認へまとめる。checkerなしのfallbackは従来通り。
 独立レビューで必要な110 namespace辞書がすべて残ることを確認した。
+
+統合版だけの待機job `l4job-b0b2ecf5a6884dd2a2c461e654d52a3a`も実行前に取消し、
+同じsourceの出力タイル幅32/16/8/64をまとめたjob
+`l4job-9c85563a9c24426bba73135e0d3ce1d2`へ置換した。旧jobの性能結果は存在しない。
+新jobはまず通常入口/統合版をABBAで比較し、その後16/8/64を逆順も含めて各2回の
+独立processで測る。各processで既存の初期/更新後Y・dX・全atom勾配gateも実行する。
+radius階層のTと出力CTAの担当site幅は別の設定であり、階層やPの式は変更しない。
+正しさと未計装完全stepが通るまで、タイル幅変更の採用や目標達成を宣言しない。
+統合版のCPU全体2804 passed/6231 skipped（53.10s）、commit
+`41fc25154c8cb3f78bfcccb9776b050ecdbf3a47`のCPU validation CIも成功。
+
+大型化の事前見積り：A=floor(.05*N²)、FP64の完成済みH/Gを両方同時に保持すると
+保存量は`16*B*A` bytes。N1024/A52428ではB32で25.60MiB、B64で51.20MiB。
+これは実測peakではなく配列量の下限で、FP32 denseのweight/grad/Adam momentsの
+`16*N²=16MiB`より大きい。MNISTの共通層/activation/workspaceも含む実測が別途必要。
+shared moments/Cの分割だけではH/Gの全量同時保存は減らない。必要なら有効batchを保つ
+勾配蓄積や明示的な再計算/offload方針を比較する。forwardを分割しても全chunkのHを
+保存し続ければ合計保存量は減らない。128の結果をそのまま大型化の達成とみなさない。
