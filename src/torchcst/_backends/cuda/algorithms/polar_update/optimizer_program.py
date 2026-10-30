@@ -318,10 +318,33 @@ def _native_guard(
         same(attr(pm, "recipe", plan.recipe), plan.recipe)
         own = root(3, owners)
         seen_bases = set()
+        raw_dictionaries = list(dictionaries)
+        seen_dictionaries = {id(value) for value in raw_dictionaries}
+
+        def dictionary(value):
+            if id(value) not in seen_dictionaries:
+                seen_dictionaries.add(id(value))
+                raw_dictionaries.append(value)
+
         for index, value in enumerate(owners):
             node = own.tuple_getitem_manager(index, str(index), value, kind)
             same(node, value)
-            if isinstance(value, type):
+            if isinstance(value, type) and checker is not None:
+                # The CPython checker already checks the full MRO pointer.
+                # Class namespace identity is immutable; retain/version-check
+                # its raw dictionary rather than traverse each MRO per call.
+                for base in value.__mro__:
+                    if base in seen_bases or base.__flags__ & (1 << 8):
+                        continue
+                    seen_bases.add(base)
+                    dictionary(
+                        next(
+                            d
+                            for d in gc.get_referents(base.__dict__)
+                            if type(d) is dict
+                        )
+                    )
+            elif isinstance(value, type):
                 bases = node.type_mro_manager("callback bases", value.__mro__, kind)
                 if checker is None:
                     bases.add_length_check_guard(len(value.__mro__), verbose, None)
@@ -346,6 +369,8 @@ def _native_guard(
                         bn.type_dict_manager(
                             "callback class", raw, kind
                         ).add_dict_version_guard(raw, verbose, None)
+            elif checker is not None:
+                dictionary(value if type(value) is dict else value.__dict__)
             elif type(value) is dict:
                 node.add_dict_version_guard(value, verbose, None)
             else:
@@ -353,6 +378,8 @@ def _native_guard(
                 data = attr(node, "__dict__", raw)
                 data.add_dict_version_guard(raw, verbose, None)
         if checker is not None:
+            dictionaries = tuple(raw_dictionaries)
+            roots = (*roots[:7], dictionaries)
             # Function slots are checked together through CPython's C API.
             # The immutable function tuple and every mutable dictionary remain
             # guarded. No callback, tensor value, or CUDA API is executed here.
