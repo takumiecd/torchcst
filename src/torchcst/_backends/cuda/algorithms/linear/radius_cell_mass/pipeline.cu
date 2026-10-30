@@ -125,6 +125,7 @@ __global__ void moments_kernel(const T *signal, double *z, int batch, Axis axis,
 // One thread owns a complete response for one atom and batch. It sums ALL K
 // input tiles in registers before publishing H/G. dr/dmu are optional outputs
 // of the same contraction used later by parameter_grad.
+template<bool Derivatives = true>
 __device__ inline double project(const double *z, int b, const Axis &axis,
     Membership member, double mu, const double *c, const double *dr,
     double &radius_gradient, double &center_gradient) {
@@ -142,8 +143,10 @@ __device__ inline double project(const double *z, int b, const Axis &axis,
             double cp = cos(omega * displacement), sp = sin(omega * displacement);
             double moment = cp * tile[2 * k - 1] + sp * tile[2 * k];
             value += 2 * c[k] * moment;
-            radius_gradient += 2 * dr[k] * moment;
-            center_gradient += 2 * c[k] * omega * (-sp * tile[2 * k - 1] + cp * tile[2 * k]);
+            if constexpr (Derivatives) {
+                radius_gradient += 2 * dr[k] * moment;
+                center_gradient += 2 * c[k] * omega * (-sp * tile[2 * k - 1] + cp * tile[2 * k]);
+            }
         }
     }
     return value;
@@ -156,9 +159,9 @@ __global__ void response_kernel(const T *p, const double *z, double *h,
     int atom = index % atoms, b = index / atoms;
     double R = radius(p, atom, axis), mu = wrapped_center(center(p, atom, axis, output_side), axis);
     Membership member = classify(R, center(p, atom, axis, output_side), axis);
-    double c[17], dr[17], dR, dmu;
-    profile_coefficients(R, axis.banks[member.bank].period, axis.modes, c, dr);
-    h[index] = project(z, b, axis, member, mu, c, dr, dR, dmu);
+    double c[17], dR, dmu;
+    profile_values(R, axis.banks[member.bank].period, axis.modes, c);
+    h[index] = project<false>(z, b, axis, member, mu, c, nullptr, dR, dmu);
 }
 
 // A thread owns one complete (batch, output tile) coefficient vector. It reads
@@ -184,8 +187,8 @@ __global__ void coefficients_kernel(const T *p, const int64_t *rows,
             Membership member = classify(R, original_center, axis);
             int unwrapped_tile = member.first_tile + part;
             double displacement = wrapped_center(original_center, axis) - unwrapped_tile * bank.tile_sites * axis.spacing;
-            double c[17], dr[17];
-            profile_coefficients(R, bank.period, axis.modes, c, dr);
+            double c[17];
+            profile_values(R, bank.period, axis.modes, c);
             double value = amplitude(p, atom, axis) * response[b * atoms + atom];
             accumulator[0] += value * c[0];
             for (int k = 1; k <= axis.modes; ++k) {
@@ -455,7 +458,10 @@ Tensor autograd_parameter_grad(Tensor p, Tensor x, Tensor dy, Tensor zx, Tensor 
 }
 } // namespace radius_cell_mass
 
+#include "profile_probe.cuh"
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+    m.def("profile_value_comparison", &radius_cell_mass::profile_value_comparison);
     radius_cell_mass::bind_host_autograd(m);
     m.def("hybrid_parameter_grad_batched", &radius_cell_mass::hybrid_parameter_grad_batched);
     m.def("parameter_grad_comparison", &radius_cell_mass::parameter_grad_comparison);

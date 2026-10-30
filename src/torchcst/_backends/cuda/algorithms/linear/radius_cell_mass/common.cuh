@@ -219,3 +219,6 @@ __device__ inline int positive_mod(int value, int count) {
     return result < 0 ? result + count : result;
 }
 } // namespace radius_cell_mass
+
+// Definitions above are complete before the value-only helper is included.
+#include "profile_values.cuh"

@@ -69,12 +69,12 @@ __global__ void shared_projection_kernel(
             double original = center(p, atom, axis, output_side);
             Membership member = classify(R, original, axis);
             Bank bank = axis.banks[member.bank];
-            double c[17], dr[17], dR, dmu;
-            profile_coefficients(R, bank.period, axis.modes, c, dr);
+            double c[17], dR, dmu;
+            profile_values(R, bank.period, axis.modes, c);
             double mu = wrapped_center(original, axis);
             double value = bank.level < start
-                ? direct_project(row, 0, axis, member, mu, c, dr, dR, dmu)
-                : compact_project(scratch, 0, axis, member, mu, c, dr, start, dR, dmu);
+                ? direct_project<T, false>(row, 0, axis, member, mu, c, nullptr, dR, dmu)
+                : compact_project<false>(scratch, 0, axis, member, mu, c, nullptr, start, dR, dmu);
             response[int64_t(b) * atoms + atom] = value;
         }
     }

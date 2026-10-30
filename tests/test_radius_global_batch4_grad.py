@@ -221,7 +221,7 @@ def test_large_grad4_all_physical_vjps_tail_and_retained(selected, dtype, batch,
         (GLOBAL_BATCHED_RESPONSE4_GRAD4, GLOBAL_ACTIVE_GRAD4),
     ],
 )
-@pytest.mark.parametrize("batch", [5, 32])
+@pytest.mark.parametrize("batch", [4, 5, 32, 33])
 def test_large_grad4_matches_response4_public_three_step_parameter_and_adam_bytes(
     choices,
     batch,
@@ -291,3 +291,132 @@ def test_large_grad4_native_probe_rejects_changed_metadata_before_launch(wrong):
             p, x, dy, zx, zy, h, g, axis.native_config(), axis.native_config(), 2, 2
         )
     torch.cuda.synchronize()
+
+
+def test_large_value_integration_keeps_small_default_and_large_explicit_flags():
+    from benchmarks.training.cell_mass_mnist import make_radius_cst, radius_plan
+
+    small = radius_plan()
+    large = radius_plan("global-response4")
+    assert small.recipe.schedule == "block_local_cached_parallel"
+    assert small.recipe.native_autograd and small.recipe.native_entry
+    assert large == GLOBAL_BATCHED_RESPONSE4
+    assert not large.recipe.native_autograd and not large.recipe.native_entry
+    layer = make_radius_cst(1024, 9, radius_execution="global-response4")
+    assert layer.selector._plan == large
+    assert layer.atoms.p.shape == (9, 4)
+
+
+@GPU
+@pytest.mark.parametrize(
+    "selected", [GLOBAL_BATCHED_RESPONSE4_GRAD4, GLOBAL_ACTIVE_GRAD4]
+)
+@pytest.mark.parametrize("offload", [False, True])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("batch,start", [(4, 2), (5, 2), (32, 2), (5, 5)])
+def test_large_polar_value_only_and_task_gradient_vjp_probe_retained(
+    selected, offload, dtype, batch, start
+):
+    from test_radius_batch4_grad import assert_probe_agreement
+
+    from benchmarks.cuda.linear.radius_cell_mass import chunked_reference
+    from benchmarks.training.cell_mass_mnist import make_radius_cst
+    from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.algorithm import (
+        hierarchy_from_operator,
+    )
+
+    # Same public radius bounds/profile/spacing as large MNIST, with a small
+    # all-atom oracle. Center images and activity endpoints exercise routing
+    # independently of the CPU Fourier coefficient/gradient reference.
+    layer = make_radius_cst(1024, 9, dtype=dtype, radius_execution="global-response4")
+    with torch.no_grad():
+        layer.atoms.p[:, :2] = torch.tensor(
+            [
+                [0, 1],
+                [0, 2],
+                [1, 0],
+                [3, 4],
+                [-1, 0],
+                [0, 1.5],
+                [0.3, 0.4],
+                [1, 1],
+                [-1, 1],
+            ],
+            dtype=dtype,
+        )
+        layer.atoms.p[:, 2:] = torch.tensor(
+            [
+                [0, 1024],
+                [-1024, -1e-7],
+                [1023.99, 1024.01],
+                [4096, -4096],
+                [-0.0, 0],
+                [2048, -2048],
+                [7.3, 8.2],
+                [32, 64],
+                [128, 256],
+            ],
+            dtype=dtype,
+        )
+    plan = hierarchy_from_operator(layer.declaration())
+    gen = torch.Generator().manual_seed(1049)
+    host_x = torch.randn(batch, 1024, dtype=dtype, generator=gen)
+    host_dy = torch.randn(batch, 1024, dtype=dtype, generator=gen)
+    expected = chunked_reference(
+        copy.deepcopy(layer).double(), host_x.double(), host_dy.double(), chunk_atoms=4
+    )
+    recipe = replace(
+        selected.recipe,
+        input_direct_levels=start,
+        output_direct_levels=start,
+    )
+    assert not recipe.native_autograd and not recipe.native_entry
+    x = host_x.cuda().requires_grad_()
+    p = layer.atoms.p.detach().cuda().requires_grad_()
+    dy = host_dy.cuda()
+
+    def pack(value):
+        return (value.detach().cpu().clone(), value.device) if offload else value
+
+    def unpack(saved):
+        return saved[0].to(saved[1]) if offload else saved
+
+    with torch.autograd.graph.saved_tensors_hooks(pack, unpack):
+        actual = ex.radius_linear(plan, x, p, recipe=recipe)
+    gradients = torch.autograd.grad(actual, (x, p), dy, retain_graph=True)
+    again = torch.autograd.grad(actual, (x, p), dy)
+    for first, second in zip(gradients, again):
+        assert torch.equal(first.view(torch.uint8), second.view(torch.uint8))
+    tolerance = (
+        {"atol": 3e-5, "rtol": 3e-4}
+        if dtype == torch.float32
+        else {"atol": 2e-9, "rtol": 2e-8}
+    )
+    for got, want in zip((actual, *gradients), expected):
+        torch.testing.assert_close(got.cpu().double(), want, **tolerance)
+
+    zx, h = ex._complete_hybrid_response(
+        x.detach(), p.detach(), plan.input, start, recipe, False
+    )
+    zy, g = ex._complete_hybrid_response(
+        dy, p.detach(), plan.output, start, recipe, True
+    )
+    caches = (zx, zy, h, g)
+    before = [value.clone() for value in caches]
+    scalar, specialized = ex._extension().parameter_grad_comparison(
+        p.detach(),
+        x.detach(),
+        dy,
+        zx,
+        zy,
+        h,
+        g,
+        plan.input.native_config(),
+        plan.output.native_config(),
+        start,
+        start,
+    )
+    assert_probe_agreement(specialized, scalar)
+    assert_probe_agreement(specialized, gradients[1])
+    for value, saved in zip(caches, before):
+        assert torch.equal(value.view(torch.uint8), saved.view(torch.uint8))

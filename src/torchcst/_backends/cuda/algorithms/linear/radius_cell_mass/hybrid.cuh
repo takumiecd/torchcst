@@ -102,6 +102,7 @@ __global__ void compact_moments_kernel(const T *signal, double *z, int batch,
     if (required_banks && !(*required_banks & (uint32_t(1) << bank))) return;
     z[index] = compact_moment_element(signal, z, index / (nodes * F), node, index % F, axis, start, merge);
 }
+template<bool Derivatives = true>
 __device__ inline double compact_project(const double *z, int b, const Axis &axis,
     Membership member, double mu, const double *c, const double *dr,
     int start, double &radius_gradient, double &center_gradient) {
@@ -121,15 +122,17 @@ __device__ inline double compact_project(const double *z, int b, const Axis &axi
             phase.next(cp, sp);
             double moment = cp * tile[2 * k - 1] + sp * tile[2 * k];
             value += 2 * c[k] * moment;
-            radius_gradient += 2 * dr[k] * moment;
-            center_gradient += 2 * c[k] * omega * (-sp * tile[2 * k - 1] + cp * tile[2 * k]);
+            if constexpr (Derivatives) {
+                radius_gradient += 2 * dr[k] * moment;
+                center_gradient += 2 * c[k] * omega * (-sp * tile[2 * k - 1] + cp * tile[2 * k]);
+            }
         }
     }
     return value;
 }
 // Wrap the signal index only: unwrapped phases retain repeated chart images
 // whenever the padded local Fourier period exceeds the chart period.
-template<class T>
+template<class T, bool Derivatives = true>
 __device__ inline double direct_project(const T *signal, int b, Axis axis,
     Membership member, double mu, const double *c, const double *dr, double &dR, double &dmu) {
     Bank bank = axis.banks[member.bank];
@@ -148,11 +151,14 @@ __device__ inline double direct_project(const T *signal, int b, Axis axis,
                 phase.next(cp, sp); cell_phase.next(cell_cosine, cell_sine);
                 double filter = axis.spacing * cell_sine / argument;
                 mass += 2 * c[k] * filter * cp;
-                mr += 2 * dr[k] * filter * cp;
-                mm -= 2 * c[k] * filter * omega * sp;
+                if constexpr (Derivatives) {
+                    mr += 2 * dr[k] * filter * cp;
+                    mm -= 2 * c[k] * filter * omega * sp;
+                }
             }
             double x = double(signal[int64_t(b) * axis.sites + positive_mod(site, axis.sites)]);
-            value += x * mass; dR += x * mr; dmu += x * mm;
+            value += x * mass;
+            if constexpr (Derivatives) { dR += x * mr; dmu += x * mm; }
         }
     }
     return value;
@@ -166,11 +172,11 @@ __global__ void hybrid_response_kernel(const T *p, const T *signal, const double
     double R = radius(p, atom, axis), original = center(p, atom, axis, output_side);
     Membership member = classify(R, original, axis);
     if ((axis.banks[member.bank].level < start) != Direct) return;
-    double c[17], dr[17], dR, dmu;
-    profile_coefficients(R, axis.banks[member.bank].period, axis.modes, c, dr);
+    double c[17], dR, dmu;
+    profile_values(R, axis.banks[member.bank].period, axis.modes, c);
     double mu = wrapped_center(original, axis);
-    h[index] = Direct ? direct_project(signal, b, axis, member, mu, c, dr, dR, dmu)
-                     : compact_project(z, b, axis, member, mu, c, dr, start, dR, dmu);
+    h[index] = Direct ? direct_project<T, false>(signal, b, axis, member, mu, c, nullptr, dR, dmu)
+                     : compact_project<false>(z, b, axis, member, mu, c, nullptr, start, dR, dmu);
 }
 template<class T>
 __device__ inline void compact_coefficient_tile(const T *p, const int64_t *rows,
@@ -189,8 +195,8 @@ __device__ inline void compact_coefficient_tile(const T *p, const int64_t *rows,
             Membership member = classify(R, original_center, axis);
             int unwrapped_tile = member.first_tile + part;
             double displacement = wrapped_center(original_center, axis) - unwrapped_tile * bank.tile_sites * axis.spacing;
-            double c[17], dr[17];
-            profile_coefficients(R, bank.period, axis.modes, c, dr);
+            double c[17];
+            profile_values(R, bank.period, axis.modes, c);
             double value = amplitude(p, atom, axis) * response[b * atoms + atom];
             accumulator[0] += value * c[0];
             HarmonicPhase phase(2 * PI * displacement / bank.period);
@@ -248,8 +254,8 @@ __device__ inline double hybrid_site(const T *p, const int64_t *rows,
                 double R = radius(p, atom, axis), original = center(p, atom, axis, output_side);
                 Membership member = classify(R, original, axis);
                 int unwrapped_site = (member.first_tile + part) * bank.tile_sites + local;
-                double c[17], dr[17];
-                profile_coefficients(R, bank.period, axis.modes, c, dr);
+                double c[17];
+                profile_values(R, bank.period, axis.modes, c);
                 double mass = axis.spacing * c[0];
                 HarmonicPhase phase(2 * PI * (wrapped_center(original, axis) -
                                              unwrapped_site * axis.spacing) / bank.period);
@@ -446,12 +452,18 @@ Tensor hybrid_parameter_grad_impl(Tensor p, Tensor x, Tensor dy, Tensor zx, Tens
     auto grad = torch::empty_like(p);
     if (!p.numel()) return grad;
     AT_DISPATCH_FLOATING_TYPES(p.scalar_type(), "radius_hybrid_parameter_grad", [&] {
-        if (batch4) batched_parameter_kernel<<<(p.size(0) + threads - 1) / threads, threads, 0,
-            at::cuda::getCurrentCUDAStream()>>>(p.data_ptr<scalar_t>(), x.data_ptr<scalar_t>(),
-            dy.data_ptr<scalar_t>(), zx.data_ptr<double>(), zy.data_ptr<double>(),
-            h.data_ptr<double>(), g.data_ptr<double>(), grad.data_ptr<scalar_t>(), p.size(0),
-            x.size(0), input, output, input_start, output_start);
-        else hybrid_parameter_kernel<<<(p.size(0) + threads - 1) / threads, threads, 0,
+        if (batch4) {
+            if (input.polar) batched_parameter_kernel<scalar_t, false><<<(p.size(0) + threads - 1) / threads, threads, 0,
+                at::cuda::getCurrentCUDAStream()>>>(p.data_ptr<scalar_t>(), x.data_ptr<scalar_t>(),
+                dy.data_ptr<scalar_t>(), zx.data_ptr<double>(), zy.data_ptr<double>(),
+                h.data_ptr<double>(), g.data_ptr<double>(), grad.data_ptr<scalar_t>(), p.size(0),
+                x.size(0), input, output, input_start, output_start);
+            else batched_parameter_kernel<scalar_t, true><<<(p.size(0) + threads - 1) / threads, threads, 0,
+                at::cuda::getCurrentCUDAStream()>>>(p.data_ptr<scalar_t>(), x.data_ptr<scalar_t>(),
+                dy.data_ptr<scalar_t>(), zx.data_ptr<double>(), zy.data_ptr<double>(),
+                h.data_ptr<double>(), g.data_ptr<double>(), grad.data_ptr<scalar_t>(), p.size(0),
+                x.size(0), input, output, input_start, output_start);
+        } else hybrid_parameter_kernel<<<(p.size(0) + threads - 1) / threads, threads, 0,
             at::cuda::getCurrentCUDAStream()>>>(p.data_ptr<scalar_t>(), x.data_ptr<scalar_t>(),
             dy.data_ptr<scalar_t>(), zx.data_ptr<double>(), zy.data_ptr<double>(),
             h.data_ptr<double>(), g.data_ptr<double>(), grad.data_ptr<scalar_t>(), p.size(0),

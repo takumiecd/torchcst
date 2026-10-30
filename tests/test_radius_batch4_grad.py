@@ -20,6 +20,32 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plans import (
 )
 
 
+# N128/M8 start=0 retains 510*17 doubles (>48 KiB). Start=1 still
+# exercises compact low-level banks while fitting the real native budgets.
+POLAR_STARTS = (1, 2, 8)
+
+
+@pytest.mark.parametrize("start", POLAR_STARTS)
+def test_polar_fixture_fits_projection_and_both_expansion_budgets(start):
+    from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.expansion_layout import (
+        batched_coefficient_layout,
+    )
+
+    layer = make_radius_cst(128, 7)
+    plan = hierarchy_from_operator(layer.declaration())
+    for axis in (plan.input, plan.output):
+        elements = axis.active_nodes(start) * axis.basis_count
+        # Saved moments plus responses share projection scratch. Cached2 also
+        # holds atom profiles and one transposed coefficient warp; schedule3
+        # has its own metadata-only native-layout mirror.
+        assert 8 * (7 + elements) <= 48 * 1024
+        cached_bytes = 8 * elements + 32 * ((axis.modes + 3) * 8 + 4)
+        if elements:
+            cached_bytes += axis.basis_count * 33 * 8
+        assert cached_bytes <= 48 * 1024
+        assert batched_coefficient_layout(axis, start, 32).bytes <= 48 * 1024
+
+
 def assert_probe_agreement(actual, reference):
     """Keep FP32 bytes exact and allow a small FP64 roundoff-scale difference.
 
@@ -210,8 +236,8 @@ def test_batch4_gradient_full_vjps_retained_and_offloaded_saved_tensors(
 
 @GPU
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
-@pytest.mark.parametrize("start", [2, 5])
-@pytest.mark.parametrize("batch", [5, 32])
+@pytest.mark.parametrize("start", POLAR_STARTS)
+@pytest.mark.parametrize("batch", [1, 4, 5, 31, 32, 33])
 def test_batch4_polar_full_vjp_and_probe_match_public_cpu(dtype, start, batch):
     layer = make_radius_cst(128, 7, dtype=dtype)
     with torch.no_grad():
@@ -249,7 +275,19 @@ def test_batch4_polar_full_vjp_and_probe_match_public_cpu(dtype, start, batch):
         output_direct_levels=start,
     )
     actual = ex.radius_linear(plan, x, p, recipe=recipe)
-    gradients = torch.autograd.grad(actual, (x, p), dy)
+    gradients = torch.autograd.grad(actual, (x, p), dy, retain_graph=True)
+    repeated = torch.autograd.grad(actual, (x, p), dy)
+    for first, second in zip(gradients, repeated):
+        assert torch.equal(first.view(torch.uint8), second.view(torch.uint8))
+    # The task gradient is tangent to (s,t); radius querying remains live in
+    # the separate public CPU contract test, not an additional task path.
+    radial = (gradients[1][:, :2] * p.detach()[:, :2]).sum(1)
+    torch.testing.assert_close(
+        radial,
+        torch.zeros_like(radial),
+        atol=3e-5 if dtype == torch.float32 else 2e-12,
+        rtol=0,
+    )
     tolerance = (
         dict(atol=3e-5, rtol=3e-4)
         if dtype == torch.float32
@@ -268,3 +306,63 @@ def test_batch4_polar_full_vjp_and_probe_match_public_cpu(dtype, start, batch):
         p.detach(), x.detach(), dy, zx, zy, h, g, config_i, config_o, start, start
     )
     assert_probe_agreement(candidate, old)
+
+
+@GPU
+@pytest.mark.parametrize("start", POLAR_STARTS)
+def test_polar_task_specialization_preserves_public_adamw_state(start):
+    """Scalar and specialized task gradients feed identical public updates.
+
+    This isolates the eliminated derivative work using the existing probe;
+    independent full-VJP tests above gate the forward/backward mathematics.
+    """
+    from torchcst import CSTAdamW, FixedSelector, make_algorithm_registry
+    from torchcst._backends.cuda.algorithms.polar_update.plans import (
+        RADIUS_FLAT_TORUS_FUSED,
+    )
+
+    models = [make_radius_cst(128, 7).cuda() for _ in range(2)]
+    models[1].load_state_dict(models[0].state_dict())
+    optimizers = [
+        CSTAdamW(
+            model.parameters(),
+            model=model,
+            lr=1e-4,
+            weight_decay=0.0,
+            amplitude_weight_decay=0.01,
+            fused=True,
+            check_finite=False,
+            update_selector=FixedSelector(
+                RADIUS_FLAT_TORUS_FUSED, registry=make_algorithm_registry()
+            ),
+        )
+        for model in models
+    ]
+    plan = hierarchy_from_operator(models[0].declaration())
+    config_i, config_o = plan.input.native_config(), plan.output.native_config()
+    native = ex._extension()
+    gen = torch.Generator().manual_seed(458)
+    for batch in (4, 5, 32):
+        x = torch.randn(batch, 128, generator=gen).cuda()
+        dy = torch.randn(batch, 128, generator=gen).cuda()
+        p = models[0].atoms.p.detach()
+        zx, h = native.shared_project_parallel(x, p, config_i, False, start, True)
+        zy, g = native.shared_project_parallel(dy, p, config_o, True, start, True)
+        gradients = native.parameter_grad_comparison(
+            p, x, dy, zx, zy, h, g, config_i, config_o, start, start
+        )
+        assert_probe_agreement(gradients[1], gradients[0])
+        for model, optimizer, gradient in zip(models, optimizers, gradients):
+            model.atoms.p.grad = gradient
+            optimizer.step()
+            optimizer.zero_grad(set_to_none=True)
+        assert torch.equal(
+            models[0].atoms.p.view(torch.uint8), models[1].atoms.p.view(torch.uint8)
+        )
+        states = [opt.state[model.atoms.p] for model, opt in zip(models, optimizers)]
+        assert states[0].keys() == states[1].keys()
+        for key in states[0]:
+            assert torch.equal(
+                states[0][key].reshape(-1).view(torch.uint8),
+                states[1][key].reshape(-1).view(torch.uint8),
+            ), key

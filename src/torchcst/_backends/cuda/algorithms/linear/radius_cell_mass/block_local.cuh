@@ -39,8 +39,8 @@ __device__ inline void block_local_coefficient_tile(
                 int unwrapped_tile = member.first_tile + part;
                 double displacement = wrapped_center(original, axis) -
                     unwrapped_tile * bank.tile_sites * axis.spacing;
-                double c[17], dr[17];
-                profile_coefficients(R, bank.period, axis.modes, c, dr);
+                double c[17];
+                profile_values(R, bank.period, axis.modes, c);
                 double value = amplitude(p, atom, axis) * response[atom];
                 columns[lane] = value * c[0];
                 HarmonicPhase phase(2 * PI * displacement / bank.period);
@@ -130,13 +130,13 @@ __global__ void block_local_kernel(
         double mu = wrapped_center(original_center, input);
         Membership member = classify(R, original_center, input);
         Bank bank = input.banks[member.bank];
-        double coefficients[17], derivative[17], dR, dmu;
-        profile_coefficients(R, bank.period, input.modes, coefficients, derivative);
+        double coefficients[17], dR, dmu;
+        profile_values(R, bank.period, input.modes, coefficients);
         double value = bank.level < input_start
-            ? direct_project(signal, 0, input, member, mu,
-                             coefficients, derivative, dR, dmu)
-            : compact_project(scratch, 0, input, member, mu,
-                              coefficients, derivative, input_start, dR, dmu);
+            ? direct_project<T, false>(signal, 0, input, member, mu,
+                                       coefficients, nullptr, dR, dmu)
+            : compact_project<false>(scratch, 0, input, member, mu,
+                                     coefficients, nullptr, input_start, dR, dmu);
         response[atom] = value;
         // H has exactly one global writer, even when output CTAs overlap atoms.
         if (blockIdx.x == 0) saved_h[int64_t(b) * atoms + atom] = value;
