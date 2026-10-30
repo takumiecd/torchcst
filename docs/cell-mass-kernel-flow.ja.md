@@ -5491,4 +5491,41 @@ Parameterの対応を確認する。Polar更新、amp-only decay、snapshot寿�
 atom-owned stateの再接続を扱う。native checkpointと明示的な旧wrapper checkpoint移行を分ける。
 PyTorch 2.6+、check_finite=Falseをnative既定とする。
 AMPではGradScalerの通常unscale/skip経路を使い、overflowならCSTを含む全stepを止める。
-CUDAでの速度とメモリの判定は未実施。
+実測runtime `31169b9c`。N128/B4/A819/M8/seed41、base1/merge2、FP32 IEEE、
+explicit parallel Plan、raw decay0/amp decay.01、fused AdamW、check_finite=Falseを共通にした。
+比較元は公開済み`efe2984b`のwrapper。新経路は上記native保存先検証も含むため、
+差のすべてを二重wrapper除去だけへ帰属させない。変更前→native→native→変更前の
+fresh processで各10 warmup/101 complete steps、別に20 warmup/101 optimizer-only updates。
+
+| 条件 | 完全step中央値2回 ms | optimizer単独中央値2回 ms | allocated / reserved peak B |
+| --- | ---: | ---: | ---: |
+| efe2984b wrapper | 2.041999 / 2.016069 | .625522 / .623704 | 297984 / 2097152 |
+| native CSTAdamW | 1.888717 / 1.923996 | .527303 / .529000 | 297984 / 2097152 |
+
+平均中央値は完全step **2.029034→1.906357 ms（約6.0%短縮）**、optimizer単独
+**.624613→.528152 ms（約15.4%短縮）**。matched denseは完全step.672〜.703 ms、
+optimizer単独.102〜.104 msで、dense並みには未達。dense allocator peakは
+17313280/23068672 B。CSTのGPU配列の追加なし。通常eagerのallocator peakであり、
+Graph/process全体のメモリではない。
+
+関連247件が成功。CPUのforeach/AMSGrad/maximize/lr0/grad=None/通常Parameter混在、
+closure・step/state-dict hooks・scheduler・live lr/decay・checkpoint再開/明示移行、
+CUDA GradScalerのfused/unfusedと明示/自動unscale・overflow全step skipを含む。
+独立Y/dX/全atom勾配・quadrature・matched-state gateが成功。別5 updatesの
+Parameter/Adam moment/step20 Tensorがbit一致。別traceでnativeのGPU更新3 kernels、
+合計約9.50 us、snapshot copy1回。sync/item/DtoH0、prepared programの再利用も確認した。
+新経路にgroup-validation cacheはなく、検証のための全model走査もない。
+CPU全体2629 passed/5954 skipped（既存警告19件）、Ruff/diff検査が成功。
+wheel/sdistのruntime全374ファイルを現在のsourceとbyte照合した。
+CUDA source/binaryを両条件でSHA照合し、検証済みbinaryを再利用した。
+
+job=`l4job-2d33d531877844bcb3b13c851c070292`、snapshot SHA256=
+`9dfc7fa53d3d50ea2a9f84a556e11e9cdfb5e4123bab88e72116c737d95386eb`、
+result archive SHA256=`81a8888537ddb08728b82b396921a4b9236137fb0505b209d560fa292290ce23`。
+最初のjob `l4job-db026f8564c84d9e9906950deb2fdd32`はAMPテストのupdate Planが
+CPU参照のままで4件失敗し、速度測定前に停止した。テストへ対応CUDA Planを明示して修正した。
+失敗原本も含め、source/result/receipt/trace/state・driverと復元用sourceは
+ignored `output/optimizer-hook-20261030/`へ保全した。所有L4は停止済み。
+このnative optimizerの1024/MNIST、他GPU世代、Torch 2.6〜2.10、Graph/process peak、
+新規sanitizerは未測定。標準ライフサイクルの継承をすべてのPyTorch拡張への対応と
+同一視しない。数値比較は上記有限入力・固定条件の結果であり任意学習軌道の保証ではない。
