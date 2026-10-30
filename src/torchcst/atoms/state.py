@@ -107,19 +107,8 @@ class AtomState(nn.Module):
         if not self._usable:
             raise RuntimeError("AtomState is invalid after an interrupted relayout")
         if torch.is_grad_enabled() and tensor.requires_grad:
-            guard = _native_read_lease._completion_guard
-            if (
-                guard is not None
-                and _native_read_lease._prepared is not None
-                and _native_read_lease._prepared
-                is _native_read_lease._completion_factory
-                and guard(tensor, self)
-            ):
-                return tensor
-            # Dead CPU weakrefs own no Tensor/storage. Amortize this bookkeeping
-            # instead of reallocating the list through Module.__setattr__ on
-            # every borrow. A placement boundary still prunes unconditionally;
-            # every live/retained reader therefore keeps exactly its old lease.
+            # Dead CPU weakrefs own no Tensor/storage. Amortize list allocation;
+            # placement boundaries still check every live/retained reader.
             if len(self._readers) >= 32:
                 self._readers = [r for r in self._readers if r() is not None]
             # Protect this zero-sized lifetime marker from an outer offload/

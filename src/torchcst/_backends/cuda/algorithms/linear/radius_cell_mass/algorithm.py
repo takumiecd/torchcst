@@ -91,10 +91,10 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             recipe.native_autograd and not recipe.schedule.startswith("block_local")
         ):
             raise ValueError("native_autograd requires a block-local schedule")
-        if type(recipe.native_read_lease) is not bool or (
-            recipe.native_read_lease and not recipe.native_autograd
+        if type(recipe.native_entry) is not bool or (
+            recipe.native_entry and not recipe.native_autograd
         ):
-            raise ValueError("native_read_lease requires native_autograd")
+            raise ValueError("native_entry requires native_autograd")
 
     def supports(self, context, recipe):
         try:
@@ -165,30 +165,23 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
         return None
 
     def prepare(self, state):
-        from torchcst.atoms import _native_read_lease
+        from torchcst.atoms._native_read_lease import prepare
 
-        proof = _native_read_lease.prepare()
-        if state.recipe.native_read_lease and proof is not None:
-            from .executor import _extension
-
-            _native_read_lease._completion_guard = _extension().radius_lease_guard(
-                proof
-            )
-            _native_read_lease._completion_factory = proof
+        prepare()
         state.invalidate()
         state.layout = hierarchy_from_operator(state.binding.execution_declaration())
         state.mark_current()
 
     def execute(self, state, inputs):
         x, parameters, _, _ = linear_execution(state, inputs)
-        from .executor import radius_linear
+        from .executor import checked_radius_linear, radius_linear
 
         # Only immutable geometry is cached; routing follows current radius values.
         # Initialization remains on the CPU reference before the module moves to CUDA.
-        return radius_linear(
+        execute = checked_radius_linear if state.recipe.native_entry else radius_linear
+        return execute(
             state.layout,
             x,
             parameters,
             recipe=state.recipe,
-            owner=state.atom_state if state.recipe.native_read_lease else None,
         )

@@ -469,7 +469,43 @@ class _RadiusLinear(torch.autograd.Function):
         return grad_input, grad_atoms, None, None
 
 
-def radius_linear(plan, x, atoms, *, recipe=None, owner=None):
+def checked_radius_linear(plan, x, atoms, *, recipe):
+    """Internal native entrance with fresh C++ validation, never a trusted skip.
+
+    Dispatcher/Algorithm input, recipe and live-setting checks still run. The
+    native entry checks shape/device/dtype/index/shared limits and current
+    autocast, determinism and capture state before classification. Generic
+    Tensor/function transforms retain the original Python Function entrance.
+    """
+    RadiusCellMassAlgorithm().validate_recipe(recipe)
+    if (
+        type(plan) is not HierarchyPlan
+        or type(x) not in (torch.Tensor, torch.nn.Parameter)
+        or type(atoms) not in (torch.Tensor, torch.nn.Parameter)
+        or torch.overrides.has_torch_function((x, atoms))
+        or torch._C._are_functorch_transforms_active()
+        or torch._C._get_tracing_state() is not None
+        or torch.autograd.forward_ad._current_level != -1
+    ):
+        from dataclasses import replace
+
+        return radius_linear(plan, x, atoms, recipe=replace(recipe, native_entry=False))
+    return _extension().checked_autograd_linear(
+        x.contiguous(),
+        atoms.contiguous(),
+        plan.input.native_config(),
+        plan.output.native_config(),
+        recipe.input_direct_levels,
+        recipe.output_direct_levels,
+        recipe.moment_method == "merge",
+        recipe.output_tile_sites,
+        {"block_local": 0, "block_local_parallel": 1, "block_local_cached_parallel": 2}[
+            recipe.schedule
+        ],
+    )
+
+
+def radius_linear(plan, x, atoms, *, recipe=None):
     """Execute a bounded first-order research route through an explicit Plan.
 
     Initialize CSTLinear with the CPU reference and then move it to CUDA.
@@ -481,6 +517,8 @@ def radius_linear(plan, x, atoms, *, recipe=None, owner=None):
     if recipe is None:
         recipe = RadiusCellMassRecipe()
     RadiusCellMassAlgorithm().validate_recipe(recipe)
+    if recipe.native_entry:
+        return checked_radius_linear(plan, x, atoms, recipe=recipe)
     zi = plan.input.active_nodes(recipe.input_direct_levels) * plan.input.basis_count
     co = plan.output.active_nodes(recipe.output_direct_levels) * plan.output.basis_count
     if (
@@ -542,20 +580,7 @@ def radius_linear(plan, x, atoms, *, recipe=None, owner=None):
                 and not torch._C._are_functorch_transforms_active()
                 and torch.autograd.forward_ad._current_level == -1
             ):
-                native = _extension()
-                extra = ()
-                forward = native.autograd_linear
-                if recipe.native_read_lease and owner is not None:
-                    from torchcst.atoms import _native_read_lease
-
-                    if (
-                        _native_read_lease._prepared is not None
-                        and _native_read_lease._prepared
-                        is _native_read_lease._completion_factory
-                    ):
-                        forward = native.autograd_linear_leased
-                        extra = (owner, _native_read_lease._prepared)
-                return forward(
+                return _extension().autograd_linear(
                     x.contiguous(),
                     atoms.contiguous(),
                     plan.input.native_config(),
@@ -569,7 +594,6 @@ def radius_linear(plan, x, atoms, *, recipe=None, owner=None):
                         "block_local_parallel": 1,
                         "block_local_cached_parallel": 2,
                     }[recipe.schedule],
-                    *extra,
                 )
             function = _BlockLocalRadiusLinear
         elif (

@@ -6504,3 +6504,86 @@ hash確認済みの既存native binaryを比較元へ再利用し、重複compil
 次はgrid direct moments・value-only M8係数・同じradius/periodの軸間再利用を
 **組合せとして**比較する。Polarではtask radius微分を元から使わないが、
 物理radiusのparameter化では既存のradius微分を維持する。
+
+#### 組合せの結果とGPU変更の不採用
+
+job `l4job-c2b30bbbdd534ad5b30961453318f1d3`は157 GPU-host tests、
+5更新後35 Tensorのbit一致、8 primary/screen recordsのgatesが通過した。
+同じdirect-moment recipeで、比較元1.672780/1.667976ms、組合せ版
+1.695344/1.706612ms。平均1.670378→1.700978ms（1.83%悪化）だった。
+全primaryのallocated/reservedは287232/2097152B、denseは17313280/23068672B。
+2回のmatched denseは比較元.718268/.719992ms、候補.739092/.734991ms。
+別traceではcached expansion130.31→108.77us、parameter kernel128.88→112.94us。
+direct momentsは従来90.93usに対しmask63.54us＋grid6.53usになったが、
+追加launchもあり、完全stepでは改善しなかった。
+
+candidate内のsingle-process screenも、direct/tile16=1.702750ms、
+direct/tile64=1.776467ms、merge/tile32=1.702985ms、merge/tile16=1.690705ms。
+時間2倍以内は未達。GPUのbank集約・grid direct moments・value-only係数・
+軸間profile共有は`d33013cf`でruntimeから戻し、
+採用済みC++ hostの元のnative source digest `55a6bafe9bf2`へ復帰した。
+候補は`97419371`/`7438135a`/`0dc46a77`とignored evidenceから復元できる。
+
+snapshot SHA256=`41e9761fc7eef4b6633ffce23acea7c045618f649a5598886fafac3528989169`、
+result archive SHA256=`cf253dc1e6d419a4338c7b0f19f9aea7743f032e14cb7993cd67d2819f8f9771`。
+source/binaries/results/receipt/profile/state/screenはignored
+`output/radius-combined-projection-20261030/`へ保全した。
+
+#### 読取リスト整理と出力leaseの比較
+
+CPU weakrefの整理を32件ごとにし、配置変更境界では従来どおり全件確認する候補を比較した。
+死んだweakrefはTensor/storageを保持せず、live/retained graphの保護は変えない。
+最初のjob `l4job-0b8c1774fdbb4086a87611b16fff3166`はresult-readyの後に
+archiveのdownloadがfile-not-foundで失敗した。回収できていないため性能値は採用しない。
+pool所有VMのstopped確認とrecoverを経て、明示的に新jobを投入した。
+
+再測定job `l4job-980923884b194bc384ca0ee64807f308`は80 testsと35 Tensorのbit一致が通過。
+同一GPU binary・shared-profile/C++ hostの2 fresh processesずつで、
+比較元1.641184/1.584592ms、整理候補1.599014/1.598209ms。
+平均1.612888→1.598611ms（.89%）で、各287232/2097152Bのまま。
+matched denseは.686581–.704079ms。時間2倍以内は未達で、次の組合せでも再確認する。
+snapshot SHA256=`2eb2d648c14ed45cbd2e6aa030e747ec0d1b282e26470905f727a32163793722`、
+result archive SHA256=`9d20deeaee03d6eeeb763c9c8c29ebecdee265e7dd725b467884a3b09dd87314`。
+失敗jobの運用記録と成功job原本をignored `output/radius-read-pruning-20261030/`へ保全する。
+
+次の明示recipeは`native_autograd=True, native_read_lease=True`。
+数学とnumeric SavedVariablesは標準CppNodeへ委譲し、実際の`release_variables`で
+出力の配置read leaseも終了させる。backward hookで代用しないため、後続のuser hookが
+例外を出した場合にsaved graphが残っているのにleaseだけを解除しない。
+graph/ownerへの参照はweak、intrusive_ptr版ではstrong参照が0になった時にnumeric resourceを
+解放する。Parameter借用前の既存保護とcustom callback fallbackは維持する。
+CPUでoffload/retained/通常backward/hook例外/graph破棄を検証し、GPU job
+`l4job-8037da8c052a47de9f86ccf8482f25d9`で比較中。未確認の性能採用はしない。
+
+#### 出力leaseは不採用、native入口検証を継続
+
+job `l4job-8037da8c052a47de9f86ccf8482f25d9`は205 testsと35 Tensorのbit一致が通過。
+比較元1.700151/1.710475ms、出力lease統合版1.673881/1.718510msで、
+平均1.705313→1.696196ms（.53%）。両者ともallocated287232/reserved2097152B。
+`protect_tensor`は別診断で112.31→80.50usだが、`radius_linear`は160.55→185.26us。
+統合するためのqualification/graph wrapperにも費用があり、完全stepの改善は小さい。
+通常/retained/offload、hook例外、graph破棄を通したものの、この複雑さは採用しない。
+prototypeは`ad4bc03d`とfrozen sourceから復元可能で、runtime/test/recipeの
+`native_read_lease`を削除する。既存のParameter/出力identity保護は元どおり残す。
+snapshot SHA256=`8d0258b3187560f438b09bccbf811ade381465b56cad88103ffdc5811800b06e`、
+result archive SHA256=`d8a872c525999fa68d2ef55cadfaae1404a94526f23f643275995c31fe0d19c8`。
+
+次の比較は`native_entry=True`。毎stepの検証を省かず、入力/atomのmatrix・dtype・device、
+hierarchy設定、shared容量/index/grid上限、現在のautocast/決定論/capture状態を
+C++入口で検査してからclassifyを開始する。公開Dispatcher/Algorithmの検証は維持し、
+Tensor subclass/function transformは従来入口へ戻す。計算stage/保存cacheは共通。
+
+初回job `l4job-67135bb6537a43ac9ad5000124819e5c`は222 tests、35 Tensorのbit一致が通過。
+比較元1.712537/1.690881ms、native入口1.620235/1.640561msで、
+平均1.701709→1.630398ms（4.19%）。CSTは287232/2097152B、
+matched denseは17313280/23068672B、候補のdense時間は.708857/.737733ms。
+時間2倍以内はまだ未達。独立したメタデータ拒否テストでは、誤shape/dtype/shared容量/
+cutoff/tileをGPU計算の前に拒否し、現在のautocast/決定論設定も検査した。
+snapshot SHA256=`eb0eede4b0cff29a1f8440e3a912a99a790bad4c208d0fb44a5ab36d4d88bdf6`、
+result archive SHA256=`3bf29e5ac6b64d3996c1684d5246d99478f5180dcc853a9c74daa86203505171`。
+
+出力lease prototypeを除いた候補のCPU全体は2753 passed/6219 skipped、既存warning19件。
+最終候補の独立job `l4job-46d6577a27b344d58463baecd9abcc7a`では、同じ完全stepを再測定し、
+追加の単一code-object診断でforward/backward/optimizerの上位区間も調べる。
+ここまでのsource/binaries/results/receipt/state/profile/失敗を含むCPU診断はignored
+`output/radius-output-lease-20261030/`と`output/radius-native-entry-20261030/`へ保全した。
