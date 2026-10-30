@@ -5,22 +5,22 @@
 **実装の区切り（2026-10-28）：** 既存σ版と検証済み最適化はPR #122から
 `main`へmerge済み（`0047e29c`）。次期半径APIと以下の設計は、そこから切った
 `kernel/support-radius-pipeline`で進める。
-**現在（2026-10-31）：** 半径APIのCPU参照、N<=128/A<=4096/48KiBのnative・block-local経路、
-N<=1024/A<=65536の明示global経路、階層momentsと完成responseの再利用、
+**現在（2026-10-31）：** 半径APIのCPU参照、N<=128/A<=4096/48KiBの小型native・block-local経路、
+N<=1024/A<=65536の明示global経路（専用native host版を含む）、階層momentsと完成responseの再利用、
 shared C/site展開、既存則を保つFP32 Polar更新を実装した。自動dispatchは変更していない。
 
 | 検証条件 | 採用・検証状況 | 完全stepとメモリの結論 |
 | --- | --- | --- |
 | N128/B4/A819/M8単体 | native cached Planを採用 | 2fresh runでdense比約1.94倍、allocated/reservedともdense未満 |
 | N128/B32/A819/M8単体 | 明示batched/grad4 Planを採用 | 2fresh runで約1.41〜1.43ms、dense比2倍以内、両ピークもdense未満 |
-| N1024/B4/A52428/M8単体 | active moments＋response4/grad4＋value-only profileを採用 | 約4.30ms、両ピークはdense未満、速度2倍以内は未達 |
+| N1024/B4/A52428/M8単体 | global native＋active moments/response4/grad4を採用 | 約4.01ms、両ピークはdense未満、速度2倍以内は未達 |
 | MNIST N128/B4・3epoch | 同じ初期W/外側層/data orderで実学習 | 速度は約1.60〜1.76倍、allocatedは下回るがreserved同値 |
 | MNIST N128/B32・1epoch | 同条件の別batch検証 | 速度約2.07〜2.12倍、allocated超過、同時目標は未達 |
-| MNIST N1024/B4・3epoch | 同じ初期化を使う明示active-grad4 Planで再測定 | 約3.92〜3.99ms対dense1.26〜1.35ms、両ピークは下回る、速度未達 |
+| MNIST N1024/B4・3epoch | 同じ初期化を使う明示global-native Planで再測定 | 約3.75〜3.82ms対dense1.28〜1.30ms、両ピークは下回る、速度未達 |
 | active moments省略 | grad4との統合GPU884件通過、明示Planに採用 | 未使用bank計算を省く。配列shapeとメモリ量は同じ |
 
 MNIST N1024の最終test accuracyは97.37%対97.87%（1seed/3epoch）。精度同等・一般化は主張しない。
-現在の統合CPU検査は3168 passed/6664 skipped。追加ごとの検証範囲は末尾に記録する。
+現在の統合CPU検査は3172 passed/6711 skipped。追加ごとの検証範囲は末尾に記録する。
 配布wheel/sdistのruntime388ファイルと、実行snapshotのbyte照合も通過した。
 Graph、autocast、高階微分、自動dispatch、N1024より大きい形状の達成は未検証である。
 末尾の各実測節にjob ID・source/archive hash・採用範囲と失敗結果を残す。
@@ -7569,3 +7569,80 @@ CPU shimを`radius_test_sincos`へ分離し、標準cmathを先に読み込ん�
 macOS clangの該当実算術テストは1 passed。Linuxは次のCIで再検証する。
 この変更はtestsのみで、qualified8b native sourceとruntimeのbyteは変更しない。
 元ログはignored `output/radius-mnist-native-20261031/ci645-github-job.log`へ保全した。
+
+### global native hostの採用と、独立の候補比較（2026-10-31）
+
+`5143b4ee`で新しい明示Plan `radius-global-native-active-grad4`を採用した。
+CUDAの算術kernelは8b版と同じで、C++ autogradがactive Z→完成H/G→shared C/展開を呼び、
+backwardはdXの後で保存Zx/H・Zy/Gを使うgrad4を呼ぶ。Pythonのstage間呼出しとbackwardの再分類を減らす。
+小型nativeのshape/shared制約は変えず、global専用mode5だけN<=1024/A<=65536へ対応する。
+各入口でmetadataを検査し、SavedVariables、保存hook/read lease、version検査、once_differentiable、
+no_grad/inference、atom-only/dX-only、custom Tensor/モードのfallbackを保つ。mode4はこの版では未対応のまま。
+旧Plan・自動dispatch・MNIST初期化の既定選択は変えない。
+
+job `l4job-86ba6e64c49442a4b53ba0c3bd452177`でnative3b5305691809を実compileし、
+GPU991 passed／1 skipped、実MNIST first-batchの全model／全atom／積分／CPU-reference更新gateを通過した。
+公開N1024/B4のpaired比較は旧Python active 4.362189/4.347841ms→native4.016808/4.008405ms、
+dense0.721831/0.721784ms。nativeピーク9179136/29360128Bは旧9211904/31457280Bより低かった。
+保存key自体は8A bytesだが、実peakは他の一時Tensorの寿命も含む。keyの容量だけからpeak増加とは判断しない。
+
+同じ初期化5ef7・真のB4・データ順・optimizerでMNISTを3epoch比較した。
+
+| epoch | CST step ms | dense step ms | 比率 | CST allocated/reserved B |
+| --- | ---: | ---: | ---: | ---: |
+| 1 | 3.824976 | 1.302248 | 2.93721 | 258305024 / 272629760 |
+| 2 | 3.752841 | 1.282409 | 2.92640 | 258305024 / 274726912 |
+| 3 | 3.800630 | 1.304780 | 2.91285 | 258305024 / 272629760 |
+
+denseのpeakはepoch1で270021120/287309824B、epoch2/3で270484480/287309824B。
+両メモリ指標は下回るが、速度2倍以内は未達。最終精度97.37%対97.87%は変わらず、
+最終CST model33/optimizer15・dense model5/optimizer15 tensorは初版0acdと全byte一致した。
+途中epochのtensorは未保存。照合記録`checkpoint-global-native-audit.json`のSHA256は
+`6d0d7cbbde4a88ed885097e30d867048ba76a2e06422277dc5015ba9777483e5`。
+binary SHA256=`aee6e775d967a8774119033983d030b76a2dee674309fe85f81212ad3eb9ff94`。
+source_sha256=`d56ccb125086fc7377e42ad24050745a9a6aa3d200179c36fd2607f82a8aaef1`.
+archive_sha256=`904041942d11c24c3740240242e43484922cbae670848a7d47c086c9fb54683c`.
+
+**same-profile候補（未採用）：** 別branch6e85c5a0はPolarの入出力radius則・bank geometryが完全一致するときだけ
+parameter勾配のprofile生成を1回にする。異なるgeometryや物理radiusは既存経路のまま。
+job `l4job-a33351a4c0a1440e9a9a3ef54efc6592`の実compileでGPU931 passed／1 skippedと
+generic/optimized FP32勾配のbyte一致24ケースを通過した。N1024 activeは4.151259/4.146184ms、
+以前の8b 4.300627/4.302096msより短い一方、小型B32は1.429740/1.343383msとばらついた。
+MNIST・新nativeとの統合は未測定で、改善率を加算しない。
+source_sha256=`61c9ed3cb5e69d60bd984e5ce6cc07d5f8f993c989a3e5bd1d0467de7fbd4dde`.
+archive_sha256=`e793af5c68fafcf82bd97ac3d7598f2bd9cde50e738a9651fae3656a49c3d064`.
+
+**local tile moments候補（速度未達で未採用）：** 別branch abfbecc5/native6fafは、低い階層のmomentsをowner CTA内の
+sharedで作り、高い階層だけglobalへ保存する。完成FP64 H/Gとforward Hのbackward再利用は保つ。
+初回30b25は新設テストの空batch保存hook・整数0atom fixture・エラー文regexで8件失敗した。
+数値基準を変えずテスト側の前提だけ直し、検証済みbinaryを照合してretryした。
+job `l4job-e86f7f30ff954c3aa9664fb71e920d7c`でGPU575 passed／2 skippedと独立MNIST gateを通過。
+B32単体は旧1.422358/1.435008ms→新1.609435/1.608798msと遅くなったが、allocatedは
+1684992→731648B。reservedは2097152Bで同じ。B4は約1.369msでallocated186880B。
+
+MNIST N128/B32/inplace・同じae13初期化の1epochは2.759727ms対dense1.321156ms=2.08887倍。
+allocated241362432Bはdense241428992Bを下回るが、reserved247463936Bは同値。
+test87.97%対91.22%で、速度・両メモリ同時目標は未達。メモリ削減を速度向上とは扱わない。
+source_sha256=`027c9f24285703234cface8514f1ae1234aee1510f2b60cf597762bf951675f9`.
+archive_sha256=`2e3c4fbfcea38e84bf4ee4176bd8aafbaaedcd51740cf055b82e610965ddfe47`.
+
+**output tile幅の比較（既定32を維持）：** 検証済み8bを使うjob
+`l4job-dbe5065b4fd146c385ed62dff524c910`は、同じN1024/B4/A52428で既存Recipeの担当幅だけ変え、
+全候補の独立Y/dX/全atom勾配・optimizer gateの後、2fresh public runnerで測定した。
+
+| output_tile_sites | 完全step ms（2process） |
+| ---: | ---: |
+| 4 | 4.632311 / 4.630001 |
+| 8 | 4.566202 / 4.561172 |
+| 16 | 4.286583 / 4.261803 |
+| 32 | 4.299146 / 4.292907 |
+| 64 | 5.667212 / 5.660681 |
+
+全候補のpeakは9211904/31457280B。16の改善は1%未満で、別のMNIST学習を増やす根拠にはしない。
+32 blockしかないことから大幅改善を予測した仮説は支持されなかった。担当幅を減らすと読み取り／profileの重複も増える。
+source_sha256=`76d2b797db3a014bfea57b90a94381365278d8217555b5c6b10a3d1eb18f6856`.
+archive_sha256=`838b0ed7644545b872e24f15f937ea64b5f3cd456beb2c581c01cecccb35dcb6`.
+
+CPU sincos shim修正後のGitHub run646はsuccess。`5143b4ee`統合状態は、両native guardを有効にした
+CPU全体3172 passed／6711 skipped／既存警告19件。runtimeとbenchmarkはGPU検証23125266とbyte同一、
+testsは前述のportable shim修正のみ追加されている。wheel/sdistのruntime388ファイルもsourceへbyte照合した。
