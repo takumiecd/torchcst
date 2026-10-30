@@ -6813,3 +6813,44 @@ byte一致も確認した。GPU比較sourceと現在sourceの配置差は最終�
 共有poolは既存実験の正常終了とVM停止を確認してから`--workers 2`で再起動し、上記2jobを
 別々のL4へ配置した。各job自身のmatched denseを使い、異なるVMの絶対時間だけを
 差し引いて効果とみなさない。結果回収と停止確認までpoolの所有手順に従う。
+
+#### 構築方式と未使用level削減の結果（2026-10-31 JST）
+
+moments方式job `l4job-acc85bd3dacc4406806c4f8f3fbd4737`は正常終了・回収済み。
+全8processの独立Y/dX/全atom勾配、small-atom quadrature、3step matched-state optimizer、
+初期/更新後の全atom gateを確認した。設定変更で階層分類・profile・response再利用は変えない。
+
+| moments / 出力幅 | CST ms（独立1/2） | dense ms | CST/dense |
+| --- | --- | --- | --- |
+| direct / 8 | 1.464112 / 1.445583 | .707472 / .698413 | 2.06950 / 2.06981 |
+| direct / 16 | 1.452209 / 1.425558 | .690874 / .687263 | 2.10199 / 2.07425 |
+| direct / 32 | 1.401239 / 1.418352 | .699111 / .685457 | 2.00432 / 2.06921 |
+| merge / 4 | 1.427850 / 1.407744 | .721247 / .700088 | 1.97970 / 2.01081 |
+
+全条件でCST allocated/reserved=287232/2097152B、dense=17313280/23068672B。
+両独立processで2倍以内となる設定はなく、この比較だけでは変更を採用しない。
+result archive SHA256=`c7c19756a43bade851a9179d29c6e4acc32107455cc2f0cf5a5e77a340d0b256`。
+証拠は`output/radius-prepared-entry-20261030/l4job-acc85bd3dacc4406806c4f8f3fbd4737/`。
+
+未使用level削減job `l4job-ad78884e92e64a93aa335734fe0db4c0`も正常終了・回収済み。
+新CUDA sourceを実際にcompileし、461 tests、5step35 Tensorのbit一致が通過。
+元kernel1.504444/1.498665msに対し新kernel1.502817/1.450439ms。
+新kernel自身のmatched dense .709443/.722097ms、2.11831/2.00865倍で時間目標は未達。
+新kernel・幅8も1.496848/1.529330ms（2.11768/2.08032倍）で安定した改善にならない。
+メモリは前記と同じ。計装projection kernelの平均は125.54→91.33µsだったが、
+完全stepの余裕には結びついていない。GPU単体の短縮だけで最終採用を決めない。
+新binary SHA256=`74aed5fa9401bfb7dbe8998fae5c550337218dd8f11c0ccfbc5d9fa26568d598`、
+result archive SHA256=`43d9042ded6d0b09aea38dcce72e29f111001f95ab66b0c365b62f91c8bb490f`。
+証拠は`output/radius-prepared-entry-20261030/l4job-ad78884e92e64a93aa335734fe0db4c0/`。
+
+CPU側の次の試作はgradient preflightの既存TensorMatch再利用（commit `04a28ff4`）。
+Python fallback条件は元のpredicateとAST一致のまま、nativeで適合しない勾配は通常経路へ戻す。
+custom detachのcold認証も加え、勾配/例Tensorを保持しない。関連138 tests、CPU全体
+2831 passed/6231 skipped（72.71s）。localのfull preflightは8.295→8.059µsと小さい。
+job `l4job-3e766d1bdc3f486b9f3586f08883be78`で同じCUDA49af・共通helper配置のまま
+旧preflightと比較し、別passでCPU call profileも採る。現時点でL4の改善は未確認。
+
+CSTAdamWのgroup検証cacheもlocalで調べたが、単一groupの削減は約.224µs、2groupでも
+.395〜.427µsで、100行以上のcold認証/mutation/fallbackコードに見合わず本体変更を見送った。
+既存optimizer CPU31件は通過。再現script/独立2processのraw logと安全性の前提は
+`output/adamw-groups-guard/assessment.txt`ほかに保全した。L4の速度効果とはみなさない。
