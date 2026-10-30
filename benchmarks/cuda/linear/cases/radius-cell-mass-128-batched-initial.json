@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "case": {
+    "id": "radius-cell-mass-128-batched-initial",
+    "fixture": "polar_radius_cell_mass",
+    "size": 128,
+    "rows": 32,
+    "atoms": 819,
+    "profile": "initial",
+    "dtype": "float32",
+    "seed": 41,
+    "warmup": 10,
+    "rounds": 101,
+    "optimizer": {
+      "name": "AdamW",
+      "lr": 0.0001,
+      "weight_decay": 0.01,
+      "fused": true,
+      "capturable": false
+    }
+  },
+  "plans": [
+    "radius-native-cached-parallel",
+    "radius-native-batched-cached-parallel"
+  ],
+  "baseline": "radius-native-cached-parallel",
+  "dense": true
+}

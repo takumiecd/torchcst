@@ -2,6 +2,7 @@
 #include "block_local.cuh"
 #include "parallel_projection.cuh"
 #include "cached_coefficients.cuh"
+#include "batched_cached_coefficients.cuh"
 
 namespace radius_cell_mass {
 
@@ -149,7 +150,8 @@ inline std::vector<Tensor> shared_apply(
     Tensor x, Tensor p, Tensor rows, Tensor offsets,
     Config input_config, Config output_config, int input_start, int output_start,
     bool merge, int output_tile_sites, bool projection_output_side, bool emit_output,
-    bool parallel_projection = false, bool cache_coefficients = false) {
+    bool parallel_projection = false, bool cache_coefficients = false,
+    bool batched_coefficients = false) {
     check_matrix(x); check_atoms(p);
     Axis input = parse_axis(input_config), output = parse_axis(output_config);
     TORCH_CHECK(x.device() == p.device() && x.scalar_type() == p.scalar_type() &&
@@ -177,10 +179,15 @@ inline std::vector<Tensor> shared_apply(
             (48 * 1024 - expansion_bytes) / warp_bytes));
         expansion_bytes += coefficient_warps * warp_bytes;
     }
+    BatchedCoefficientLayout batched_layout{};
     CoefficientCacheLayout cache_layout{};
     if (emit_output && cache_coefficients) {
         cache_layout = coefficient_cache_layout(output, output_start);
         expansion_bytes = cache_layout.bytes;
+    }
+    if (emit_output && batched_coefficients) {
+        batched_layout = batched_coefficient_layout(output, output_start, output_tile_sites);
+        expansion_bytes = batched_layout.bytes;
     }
     c10::cuda::CUDAGuard guard(x.device());
     auto z = torch::empty({x.size(0), input_elements / input.basis_count(), input.basis_count()},
@@ -215,7 +222,14 @@ inline std::vector<Tensor> shared_apply(
         }
         if (emit_output) {
             dim3 grid((output.sites + output_tile_sites - 1) / output_tile_sites, x.size(0));
-            if (cache_coefficients) {
+            if (batched_coefficients) {
+                grid.y = (x.size(0) + EXPANSION_BATCH - 1) / EXPANSION_BATCH;
+                batched_cached_expand_kernel<scalar_t><<<grid, THREADS, expansion_bytes, at::cuda::getCurrentCUDAStream()>>>(
+                    p.data_ptr<scalar_t>(), rows.data_ptr<int64_t>(), offsets.data_ptr<int64_t>(),
+                    h.data_ptr<double>(), y.data_ptr<scalar_t>(), p.size(0), x.size(0), output,
+                    output_start, output_tile_sites, batched_layout.capacity, batched_layout.warps,
+                    batched_layout.destinations, !projection_output_side);
+            } else if (cache_coefficients) {
                 cached_expand_kernel<scalar_t><<<grid, THREADS, expansion_bytes, at::cuda::getCurrentCUDAStream()>>>(
                     p.data_ptr<scalar_t>(), rows.data_ptr<int64_t>(), offsets.data_ptr<int64_t>(),
                     h.data_ptr<double>(), y.data_ptr<scalar_t>(), p.size(0), output, output_start,
@@ -275,6 +289,18 @@ inline std::vector<Tensor> shared_backward_cached_parallel(Tensor dy, Tensor p, 
         merge, tile_sites, true, true, true, true);
 }
 
+// Four-row expansion reuses exactly the same completed projection caches.
+inline std::vector<Tensor> shared_forward_batched_cached_parallel(Tensor x, Tensor p, Tensor rows, Tensor offsets,
+    Config input, Config output, int input_start, int output_start, bool merge, int tile_sites) {
+    return shared_apply(x, p, rows, offsets, input, output, input_start, output_start,
+        merge, tile_sites, false, true, true, false, true);
+}
+inline std::vector<Tensor> shared_backward_batched_cached_parallel(Tensor dy, Tensor p, Tensor rows, Tensor offsets,
+    Config input, Config output, int input_start, int output_start, bool merge, int tile_sites) {
+    return shared_apply(dy, p, rows, offsets, output, input, output_start, input_start,
+        merge, tile_sites, true, true, true, false, true);
+}
+
 // Tests only: a separate specialization counts producers without adding a
 // counter allocation, atomic, or instrumentation to normal training.
 inline std::vector<Tensor> counted_cached_expansion(Tensor p, Tensor rows, Tensor offsets,
@@ -298,6 +324,33 @@ inline std::vector<Tensor> counted_cached_expansion(Tensor p, Tensor rows, Tenso
                 p.data_ptr<scalar_t>(), rows.data_ptr<int64_t>(), offsets.data_ptr<int64_t>(),
                 response.data_ptr<double>(), y.data_ptr<scalar_t>(), p.size(0), axis, start,
                 tile_sites, layout.capacity, layout.warps, output_side, counts.data_ptr<int>());
+        });
+        C10_CUDA_KERNEL_LAUNCH_CHECK();
+    }
+    return {y, counts};
+}
+inline std::vector<Tensor> counted_batched_cached_expansion(Tensor p, Tensor rows, Tensor offsets,
+    Tensor response, Config config, int start, int tile_sites, bool output_side) {
+    check_atoms(p);
+    Axis axis = parse_axis(config);
+    checked_start(axis, start); check_ranges(rows, offsets, p, axis);
+    TORCH_CHECK(tile_sites >= 1 && tile_sites <= 128, "invalid batched cached tile size");
+    TORCH_CHECK(response.device() == p.device() && response.scalar_type() == torch::kDouble &&
+        response.dim() == 2 && response.is_contiguous() && response.size(1) == p.size(0) &&
+        response.size(0) <= 65535, "invalid counted batched cache response");
+    c10::cuda::CUDAGuard guard(p.device());
+    auto y = torch::empty({response.size(0), axis.sites}, p.options());
+    int blocks = (axis.sites + tile_sites - 1) / tile_sites;
+    int batch_blocks = (response.size(0) + EXPANSION_BATCH - 1) / EXPANSION_BATCH;
+    auto counts = torch::zeros({batch_blocks, blocks, p.size(0)}, p.options().dtype(torch::kInt));
+    auto layout = batched_coefficient_layout(axis, start, tile_sites);
+    if (response.size(0)) {
+        dim3 grid(blocks, batch_blocks);
+        AT_DISPATCH_FLOATING_TYPES(p.scalar_type(), "counted_batched_cached_expansion", [&] {
+            batched_cached_expand_kernel<scalar_t, true><<<grid, THREADS, layout.bytes, at::cuda::getCurrentCUDAStream()>>>(
+                p.data_ptr<scalar_t>(), rows.data_ptr<int64_t>(), offsets.data_ptr<int64_t>(),
+                response.data_ptr<double>(), y.data_ptr<scalar_t>(), p.size(0), response.size(0), axis, start,
+                tile_sites, layout.capacity, layout.warps, layout.destinations, output_side, counts.data_ptr<int>());
         });
         C10_CUDA_KERNEL_LAUNCH_CHECK();
     }

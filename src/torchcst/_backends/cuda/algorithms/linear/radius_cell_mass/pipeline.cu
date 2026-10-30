@@ -387,7 +387,7 @@ void check_autograd_entry(Tensor x, Tensor p, Config input_config,
         x.size(1) == input.sites, "expected matching CUDA signal and atoms");
     int zi = (input.node_count - checked_start(input, input_start)) * input.basis_count();
     int co = (output.node_count - checked_start(output, output_start)) * output.basis_count();
-    TORCH_CHECK(tile_sites >= 1 && tile_sites <= 128 && schedule >= 0 && schedule <= 2,
+    TORCH_CHECK(tile_sites >= 1 && tile_sites <= 128 && schedule >= 0 && schedule <= 3,
         "invalid native radius launch configuration");
     int work = std::max({input.node_count * input.basis_count(),
         output.node_count * output.basis_count(), int(p.size(0))});
@@ -404,6 +404,10 @@ void check_autograd_entry(Tensor x, Tensor p, Config input_config,
             TORCH_CHECK(minimum <= 48 * 1024,
                 "coefficient cache shared storage exceeds 48 KiB");
         }
+    }
+    if (schedule == 3) {
+        batched_coefficient_layout(input, input_start, tile_sites);
+        batched_coefficient_layout(output, output_start, tile_sites);
     }
     TORCH_CHECK(!at::autocast::is_autocast_enabled(at::kCUDA),
         "radius baseline requires execution without autocast");
@@ -428,7 +432,7 @@ std::vector<Tensor> autograd_transform(Tensor x, Tensor p, Tensor rows, Tensor o
     return shared_apply(x, p, rows, offsets, reverse ? output : input,
         reverse ? input : output, reverse ? output_start : input_start,
         reverse ? input_start : output_start, merge, tile_sites, reverse,
-        true, schedule >= 1, schedule == 2);
+        true, schedule >= 1, schedule == 2, schedule == 3);
 }
 std::vector<Tensor> autograd_project(Tensor x, Tensor p, Config output,
     int start, bool merge, int schedule) {
@@ -447,6 +451,10 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     radius_cell_mass::bind_host_autograd(m);
     m.def("shared_forward_cached_parallel", &radius_cell_mass::shared_forward_cached_parallel);
     m.def("shared_backward_cached_parallel", &radius_cell_mass::shared_backward_cached_parallel);
+    m.def("shared_forward_batched_cached_parallel", &radius_cell_mass::shared_forward_batched_cached_parallel);
+    m.def("shared_backward_batched_cached_parallel", &radius_cell_mass::shared_backward_batched_cached_parallel);
+    m.def("batched_cached_expansion", &radius_cell_mass::batched_cached_expansion);
+    m.def("counted_batched_cached_expansion", &radius_cell_mass::counted_batched_cached_expansion);
     m.def("counted_cached_expansion", &radius_cell_mass::counted_cached_expansion);
     m.def("run_expansion_probe", &radius_cell_mass::run_expansion_probe);
     m.def("expansion_probe_resources", &radius_cell_mass::expansion_probe_resources);

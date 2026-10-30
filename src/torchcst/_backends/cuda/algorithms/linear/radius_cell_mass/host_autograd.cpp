@@ -135,7 +135,7 @@ void bind_host_autograd(pybind11::module_ &module) {
     module.def("autograd_linear", [](Tensor x, Tensor atoms, Config input,
         Config output, int input_start, int output_start, bool merge,
         int tile_sites, int schedule) {
-        TORCH_CHECK(schedule >= 0 && schedule <= 2, "invalid native host schedule");
+        TORCH_CHECK(schedule >= 0 && schedule <= 3, "invalid native host schedule");
         return RadiusLinear::apply(x, atoms, input, output, input_start,
             output_start, merge, tile_sites, schedule);
     }, pybind11::call_guard<pybind11::gil_scoped_release>());

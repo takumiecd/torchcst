@@ -200,11 +200,17 @@ class _BlockLocalRadiusLinear(torch.autograd.Function):
         forward = (
             native.shared_forward_parallel
             if recipe.schedule
-            in ("block_local_parallel", "block_local_cached_parallel")
+            in (
+                "block_local_parallel",
+                "block_local_cached_parallel",
+                "block_local_batched_cached_parallel",
+            )
             else native.shared_forward
         )
         if recipe.schedule == "block_local_cached_parallel":
             forward = native.shared_forward_cached_parallel
+        elif recipe.schedule == "block_local_batched_cached_parallel":
+            forward = native.shared_forward_batched_cached_parallel
         y, input_moments, atom_response = forward(
             x,
             atoms,
@@ -244,11 +250,17 @@ class _BlockLocalRadiusLinear(torch.autograd.Function):
             # The SAME transform runs in reverse: one dY projection produces
             # moments/G, then all dX tiles reuse G. Cin stays in shared memory.
             reverse = (
-                native.shared_backward_cached_parallel
+                native.shared_backward_batched_cached_parallel
+                if recipe.schedule == "block_local_batched_cached_parallel"
+                else native.shared_backward_cached_parallel
                 if recipe.schedule == "block_local_cached_parallel"
                 else native.shared_backward_parallel
                 if recipe.schedule
-                in ("block_local_parallel", "block_local_cached_parallel")
+                in (
+                    "block_local_parallel",
+                    "block_local_cached_parallel",
+                    "block_local_batched_cached_parallel",
+                )
                 else native.shared_backward
             )
             grad_input, grad_output_moments, grad_response = reverse(
@@ -269,7 +281,11 @@ class _BlockLocalRadiusLinear(torch.autograd.Function):
             project = (
                 native.shared_project_parallel
                 if recipe.schedule
-                in ("block_local_parallel", "block_local_cached_parallel")
+                in (
+                    "block_local_parallel",
+                    "block_local_cached_parallel",
+                    "block_local_batched_cached_parallel",
+                )
                 else native.shared_project
             )
             grad_output_moments, grad_response = project(
@@ -288,7 +304,11 @@ class _BlockLocalRadiusLinear(torch.autograd.Function):
             parameter_grad = (
                 native.hybrid_parameter_grad_parallel
                 if recipe.schedule
-                in ("block_local_parallel", "block_local_cached_parallel")
+                in (
+                    "block_local_parallel",
+                    "block_local_cached_parallel",
+                    "block_local_batched_cached_parallel",
+                )
                 else native.hybrid_parameter_grad
             )
             grad_atoms = parameter_grad(
@@ -499,9 +519,12 @@ def checked_radius_linear(plan, x, atoms, *, recipe):
         recipe.output_direct_levels,
         recipe.moment_method == "merge",
         recipe.output_tile_sites,
-        {"block_local": 0, "block_local_parallel": 1, "block_local_cached_parallel": 2}[
-            recipe.schedule
-        ],
+        {
+            "block_local": 0,
+            "block_local_parallel": 1,
+            "block_local_cached_parallel": 2,
+            "block_local_batched_cached_parallel": 3,
+        }[recipe.schedule],
     )
 
 
@@ -544,6 +567,7 @@ def radius_linear(plan, x, atoms, *, recipe=None):
         "block_local",
         "block_local_parallel",
         "block_local_cached_parallel",
+        "block_local_batched_cached_parallel",
     ):
         if 8 * (atoms.shape[0] + max(zi, co)) > 48 * 1024:
             raise ValueError("block-local shared storage exceeds 48 KiB")
@@ -560,6 +584,14 @@ def radius_linear(plan, x, atoms, *, recipe=None):
                     minimum += axis.basis_count * 33 * 8
                 if minimum > 48 * 1024:
                     raise ValueError("coefficient cache shared storage exceeds 48 KiB")
+    if recipe.schedule == "block_local_batched_cached_parallel":
+        from .expansion_layout import batched_coefficient_layout
+
+        for axis, start in (
+            (plan.input, recipe.input_direct_levels),
+            (plan.output, recipe.output_direct_levels),
+        ):
+            batched_coefficient_layout(axis, start, recipe.output_tile_sites)
     if torch.is_autocast_enabled("cuda"):
         raise ValueError("radius baseline requires execution without autocast")
     if torch.are_deterministic_algorithms_enabled():
@@ -571,6 +603,7 @@ def radius_linear(plan, x, atoms, *, recipe=None):
             "block_local",
             "block_local_parallel",
             "block_local_cached_parallel",
+            "block_local_batched_cached_parallel",
         ):
             if (
                 recipe.native_autograd
@@ -593,6 +626,7 @@ def radius_linear(plan, x, atoms, *, recipe=None):
                         "block_local": 0,
                         "block_local_parallel": 1,
                         "block_local_cached_parallel": 2,
+                        "block_local_batched_cached_parallel": 3,
                     }[recipe.schedule],
                 )
             function = _BlockLocalRadiusLinear

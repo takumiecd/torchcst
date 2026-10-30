@@ -81,6 +81,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "block_local",
             "block_local_parallel",
             "block_local_cached_parallel",
+            "block_local_batched_cached_parallel",
         ):
             raise ValueError("unsupported radius schedule")
         if (
@@ -134,6 +135,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "block_local",
             "block_local_parallel",
             "block_local_cached_parallel",
+            "block_local_batched_cached_parallel",
         ):
             if 8 * (context.atom_count + max(zi, co)) > 48 * 1024:
                 reasons.append("block-local shared storage exceeds 48 KiB")
@@ -153,6 +155,17 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
                             "coefficient cache shared storage exceeds 48 KiB"
                         )
                         break
+        if recipe.schedule == "block_local_batched_cached_parallel":
+            from .expansion_layout import batched_coefficient_layout
+
+            try:
+                for axis, start in (
+                    (plan.input, recipe.input_direct_levels),
+                    (plan.output, recipe.output_direct_levels),
+                ):
+                    batched_coefficient_layout(axis, start, recipe.output_tile_sites)
+            except ValueError as error:
+                reasons.append(str(error))
         if context.execution_mode != "eager" or context.precision.autocast:
             reasons.append("requires eager execution without autocast")
         if context.workspace_limit_bytes is not None:

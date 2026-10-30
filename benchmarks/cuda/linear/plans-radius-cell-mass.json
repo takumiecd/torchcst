@@ -144,6 +144,42 @@
           "native_entry": true
         }
       }
+    },
+    {
+      "id": "radius-block-local-batched-cached-parallel",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_radius_cell_mass",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "moment_method": "merge",
+          "save_response": true,
+          "input_direct_levels": 2,
+          "output_direct_levels": 2,
+          "schedule": "block_local_batched_cached_parallel",
+          "output_tile_sites": 32,
+          "native_autograd": false,
+          "native_entry": false
+        }
+      }
+    },
+    {
+      "id": "radius-native-batched-cached-parallel",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_radius_cell_mass",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "moment_method": "merge",
+          "save_response": true,
+          "input_direct_levels": 2,
+          "output_direct_levels": 2,
+          "schedule": "block_local_batched_cached_parallel",
+          "output_tile_sites": 32,
+          "native_autograd": true,
+          "native_entry": true
+        }
+      }
     }
   ]
 }
