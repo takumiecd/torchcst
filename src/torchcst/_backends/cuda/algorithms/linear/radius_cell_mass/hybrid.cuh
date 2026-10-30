@@ -89,12 +89,17 @@ __device__ inline double compact_moment_element(const T *signal, const double *z
 }
 template<class T>
 __global__ void compact_moments_kernel(const T *signal, double *z, int batch,
-    Axis axis, int start, int level, bool merge) {
+    Axis axis, int start, int level, bool merge, const uint32_t *required_banks = nullptr) {
+    // The immutable mask includes all required lower child banks before launch.
+    // Empty levels return uniformly; no barrier or global-layout change occurs.
+    if (required_banks && level >= 0 && !(*required_banks & (3u << (2 * level)))) return;
     int index = blockIdx.x * blockDim.x + threadIdx.x;
     int nodes = axis.node_count - prefix_nodes(axis, start), F = axis.basis_count();
     if (index >= batch * nodes * F) return;
     int node = prefix_nodes(axis, start) + (index / F) % nodes;
-    if (level >= 0 && axis.banks[bank_for_node(node, axis)].level != level) return;
+    int bank = bank_for_node(node, axis);
+    if (level >= 0 && axis.banks[bank].level != level) return;
+    if (required_banks && !(*required_banks & (uint32_t(1) << bank))) return;
     z[index] = compact_moment_element(signal, z, index / (nodes * F), node, index % F, axis, start, merge);
 }
 __device__ inline double compact_project(const double *z, int b, const Axis &axis,
@@ -305,7 +310,9 @@ __global__ void hybrid_parameter_kernel(const T *p, const T *x, const T *dy, con
 #include "batched_parameter_grad.cuh"
 namespace radius_cell_mass {
 
-Tensor build_compact_moments(Tensor signal, Config config, bool merge, int start) {
+inline Tensor build_compact_moments_impl(Tensor signal, Config config, bool merge, int start,
+    const uint32_t *required_banks = nullptr) {
+
     check_matrix(signal);
     Axis axis = parse_axis(config);
     int nodes = axis.node_count - checked_start(axis, start), F = axis.basis_count();
@@ -321,14 +328,18 @@ Tensor build_compact_moments(Tensor signal, Config config, bool merge, int start
         if (merge) {
             for (int level = start; level < axis.bank_count / 2; ++level)
                 compact_moments_kernel<<<blocks, THREADS, 0, at::cuda::getCurrentCUDAStream()>>>(
-                    signal.data_ptr<scalar_t>(), z.data_ptr<double>(), signal.size(0), axis, start, level, true);
+                    signal.data_ptr<scalar_t>(), z.data_ptr<double>(), signal.size(0), axis, start, level, true, required_banks);
         } else {
             compact_moments_kernel<<<blocks, THREADS, 0, at::cuda::getCurrentCUDAStream()>>>(
-                signal.data_ptr<scalar_t>(), z.data_ptr<double>(), signal.size(0), axis, start, -1, false);
+                signal.data_ptr<scalar_t>(), z.data_ptr<double>(), signal.size(0), axis, start, -1, false, required_banks);
         }
     });
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return z;
+}
+
+Tensor build_compact_moments(Tensor signal, Config config, bool merge, int start) {
+    return build_compact_moments_impl(signal, config, merge, start);
 }
 
 inline void check_hybrid_signal(const Tensor &signal, const Tensor &p, const Axis &axis) {

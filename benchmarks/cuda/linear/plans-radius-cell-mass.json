@@ -234,6 +234,42 @@
           "native_entry": false
         }
       }
+    },
+    {
+      "id": "radius-global-batched-active-moments",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_radius_cell_mass",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "moment_method": "merge",
+          "save_response": true,
+          "input_direct_levels": 2,
+          "output_direct_levels": 2,
+          "schedule": "global_batched_cached_active_moments",
+          "output_tile_sites": 32,
+          "native_autograd": false,
+          "native_entry": false
+        }
+      }
+    },
+    {
+      "id": "radius-global-active-grad4",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_radius_cell_mass",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "moment_method": "merge",
+          "save_response": true,
+          "input_direct_levels": 2,
+          "output_direct_levels": 2,
+          "schedule": "global_batched_cached_active_moments_grad4",
+          "output_tile_sites": 32,
+          "native_autograd": false,
+          "native_entry": false
+        }
+      }
     }
   ]
 }

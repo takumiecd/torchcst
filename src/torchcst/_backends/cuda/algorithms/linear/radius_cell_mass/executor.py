@@ -153,12 +153,24 @@ def _complete_hybrid_response(signal, atoms, axis, start_level, recipe, output_s
     if recipe.schedule in (
         "global_batched_cached_response4",
         "global_batched_cached_response4_grad4",
+        "global_batched_cached_active_moments",
+        "global_batched_cached_active_moments_grad4",
     ):
         # The same global hierarchy is completed first. One launch then writes
         # all low/high atom responses, reusing geometry across four batch rows.
-        moments = build_moments(
-            signal, axis, method=recipe.moment_method, start_level=start_level
-        )
+        if recipe.schedule in (
+            "global_batched_cached_active_moments",
+            "global_batched_cached_active_moments_grad4",
+        ):
+            # No readback or compacted layout: only bank work is masked. The
+            # current P is reclassified every invocation, including backward.
+            moments = native.build_compact_moments_active(
+                signal, atoms, config, recipe.moment_method == "merge", start_level
+            )
+        else:
+            moments = build_moments(
+                signal, axis, method=recipe.moment_method, start_level=start_level
+            )
         native.parallel_response_into(
             signal, atoms, moments, response, config, output_side, start_level
         )
@@ -355,6 +367,8 @@ class _HybridRadiusLinear(torch.autograd.Function):
             "global_batched_cached",
             "global_batched_cached_response4",
             "global_batched_cached_response4_grad4",
+            "global_batched_cached_active_moments",
+            "global_batched_cached_active_moments_grad4",
         ):
             # Consume the same completed H. Only a destination bank/tile's C
             # exists in shared memory; no global coefficient Tensor is created.
@@ -418,6 +432,8 @@ class _HybridRadiusLinear(torch.autograd.Function):
                 "global_batched_cached",
                 "global_batched_cached_response4",
                 "global_batched_cached_response4_grad4",
+                "global_batched_cached_active_moments",
+                "global_batched_cached_active_moments_grad4",
             ):
                 # Reverse expansion consumes final G once for each destination
                 # tile. Saved Zx/H and completed Zy/G still feed all dP below.
@@ -460,7 +476,11 @@ class _HybridRadiusLinear(torch.autograd.Function):
         if ctx.needs_input_grad[1]:
             parameter_grad = (
                 native.hybrid_parameter_grad_batched
-                if recipe.schedule == "global_batched_cached_response4_grad4"
+                if recipe.schedule
+                in (
+                    "global_batched_cached_response4_grad4",
+                    "global_batched_cached_active_moments_grad4",
+                )
                 else native.hybrid_parameter_grad
             )
             grad_atoms = parameter_grad(
@@ -653,6 +673,8 @@ def radius_linear(plan, x, atoms, *, recipe=None):
         "global_batched_cached",
         "global_batched_cached_response4",
         "global_batched_cached_response4_grad4",
+        "global_batched_cached_active_moments",
+        "global_batched_cached_active_moments_grad4",
     ):
         from .expansion_layout import batched_coefficient_layout
 
@@ -711,6 +733,8 @@ def radius_linear(plan, x, atoms, *, recipe=None):
                 "global_batched_cached",
                 "global_batched_cached_response4",
                 "global_batched_cached_response4_grad4",
+                "global_batched_cached_active_moments",
+                "global_batched_cached_active_moments_grad4",
             )
         ):
             function = _HybridRadiusLinear

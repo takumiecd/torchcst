@@ -26,6 +26,8 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plan import (
     HierarchyPlan,
 )
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plans import (
+    GLOBAL_ACTIVE_GRAD4,
+    GLOBAL_BATCHED_ACTIVE_MOMENTS,
     GLOBAL_BATCHED_CACHED,
     GLOBAL_BATCHED_RESPONSE4,
     HYBRID_SERIAL,
@@ -138,7 +140,13 @@ def test_support_rejects_tile_local_budget_overflow_from_live_declaration():
 
 
 @pytest.mark.parametrize(
-    "selected", [GLOBAL_BATCHED_CACHED, GLOBAL_BATCHED_RESPONSE4, HYBRID_SERIAL]
+    "selected",
+    [
+        GLOBAL_BATCHED_CACHED,
+        GLOBAL_BATCHED_RESPONSE4,
+        GLOBAL_BATCHED_ACTIVE_MOMENTS,
+        HYBRID_SERIAL,
+    ],
 )
 @pytest.mark.parametrize(
     "needs_x,needs_p", [(True, True), (False, True), (True, False)]
@@ -204,6 +212,7 @@ def test_stage_contract_reuses_complete_hg_and_preserves_parameter_projection(
     if selected.recipe.schedule in (
         "global_batched_cached",
         "global_batched_cached_response4",
+        "global_batched_cached_active_moments",
     ):
         assert expansions == ([True, False] if needs_x else [True])
         assert coefficients == []
@@ -212,7 +221,10 @@ def test_stage_contract_reuses_complete_hg_and_preserves_parameter_projection(
 
 
 @GPU
-@pytest.mark.parametrize("selected", [GLOBAL_BATCHED_CACHED, GLOBAL_BATCHED_RESPONSE4])
+@pytest.mark.parametrize(
+    "selected",
+    [GLOBAL_BATCHED_CACHED, GLOBAL_BATCHED_RESPONSE4, GLOBAL_BATCHED_ACTIVE_MOMENTS],
+)
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 @pytest.mark.parametrize(
     "n,merge,modes,batch,tile",
@@ -235,7 +247,13 @@ def test_global_batched_all_physical_vjps_and_retained_backward(
 
 @GPU
 @pytest.mark.parametrize(
-    "selected_plan", [GLOBAL_BATCHED_CACHED, GLOBAL_BATCHED_RESPONSE4]
+    "selected_plan",
+    [
+        GLOBAL_BATCHED_CACHED,
+        GLOBAL_BATCHED_RESPONSE4,
+        GLOBAL_BATCHED_ACTIVE_MOMENTS,
+        GLOBAL_ACTIVE_GRAD4,
+    ],
 )
 @pytest.mark.parametrize("offload", [False, True])
 @pytest.mark.parametrize(

@@ -94,3 +94,27 @@ GLOBAL_BATCHED_RESPONSE4_GRAD4 = ExecutionPlan(
         schedule="global_batched_cached_response4_grad4",
     ),
 )
+
+
+# Response4 plus current-P bank work skipping; full global Z layout is retained.
+GLOBAL_BATCHED_ACTIVE_MOMENTS = ExecutionPlan(
+    "cuda_radius_cell_mass",
+    "v1",
+    RadiusCellMassRecipe(
+        input_direct_levels=2,
+        output_direct_levels=2,
+        schedule="global_batched_cached_active_moments",
+    ),
+)
+
+
+# Independently qualified active Z and grad4 compose behind a new explicit Plan.
+GLOBAL_ACTIVE_GRAD4 = ExecutionPlan(
+    "cuda_radius_cell_mass",
+    "v1",
+    RadiusCellMassRecipe(
+        input_direct_levels=2,
+        output_direct_levels=2,
+        schedule="global_batched_cached_active_moments_grad4",
+    ),
+)

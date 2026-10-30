@@ -25,6 +25,8 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plan import (
     HierarchyPlan,
 )
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plans import (
+    GLOBAL_ACTIVE_GRAD4,
+    GLOBAL_BATCHED_ACTIVE_MOMENTS,
     GLOBAL_BATCHED_CACHED,
     GLOBAL_BATCHED_RESPONSE4,
     GLOBAL_BATCHED_RESPONSE4_GRAD4,
@@ -119,7 +121,13 @@ def test_cpu_response4_producer_order_and_complete_response_are_unchanged(
 
 @pytest.mark.parametrize(
     "selected",
-    [GLOBAL_BATCHED_CACHED, GLOBAL_BATCHED_RESPONSE4, GLOBAL_BATCHED_RESPONSE4_GRAD4],
+    [
+        GLOBAL_BATCHED_CACHED,
+        GLOBAL_BATCHED_RESPONSE4,
+        GLOBAL_BATCHED_RESPONSE4_GRAD4,
+        GLOBAL_BATCHED_ACTIVE_MOMENTS,
+        GLOBAL_ACTIVE_GRAD4,
+    ],
 )
 @pytest.mark.parametrize(
     "needs_x,needs_p", [(True, True), (False, True), (True, False)]
@@ -174,23 +182,28 @@ def test_cpu_only_explicit_grad4_changes_parameter_consumer(
     expected = ["Y"] + (["dX"] if needs_x else [])
     if needs_p:
         expected.append(
-            "grad4 dP" if selected is GLOBAL_BATCHED_RESPONSE4_GRAD4 else "scalar dP"
+            "grad4 dP"
+            if selected in (GLOBAL_BATCHED_RESPONSE4_GRAD4, GLOBAL_ACTIVE_GRAD4)
+            else "scalar dP"
         )
     assert stages == expected and len(caches) == 2
     assert (gradients[0] is not None, gradients[1] is not None) == (needs_x, needs_p)
 
 
 @GPU
+@pytest.mark.parametrize(
+    "selected", [GLOBAL_BATCHED_RESPONSE4_GRAD4, GLOBAL_ACTIVE_GRAD4]
+)
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 @pytest.mark.parametrize("batch,start", [(5, 2), (32, 2), (5, 5)])
-def test_large_grad4_all_physical_vjps_tail_and_retained(dtype, batch, start):
+def test_large_grad4_all_physical_vjps_tail_and_retained(selected, dtype, batch, start):
     axis = axis_plan(1024)
     plan = HierarchyPlan(input=axis, output=axis)
     gen = torch.Generator().manual_seed(1044)
     check_vjp(
         plan,
         replace(
-            GLOBAL_BATCHED_RESPONSE4_GRAD4.recipe,
+            selected.recipe,
             input_direct_levels=start,
             output_direct_levels=start,
         ),
@@ -201,14 +214,22 @@ def test_large_grad4_all_physical_vjps_tail_and_retained(dtype, batch, start):
 
 
 @GPU
+@pytest.mark.parametrize(
+    "choices",
+    [
+        (GLOBAL_BATCHED_RESPONSE4, GLOBAL_BATCHED_RESPONSE4_GRAD4),
+        (GLOBAL_BATCHED_RESPONSE4_GRAD4, GLOBAL_ACTIVE_GRAD4),
+    ],
+)
 @pytest.mark.parametrize("batch", [5, 32])
 def test_large_grad4_matches_response4_public_three_step_parameter_and_adam_bytes(
+    choices,
     batch,
 ):
     case = replace(run().case, rows=batch, atoms=41)
     cpu, host_x, target, _ = fixture(case)
     results = []
-    for selected in (GLOBAL_BATCHED_RESPONSE4, GLOBAL_BATCHED_RESPONSE4_GRAD4):
+    for selected in choices:
         layer = configure(copy.deepcopy(cpu).cuda(), selected)
         opt = optimizer(layer, case)
         x = host_x.cuda().requires_grad_()

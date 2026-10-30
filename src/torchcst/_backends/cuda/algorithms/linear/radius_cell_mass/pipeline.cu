@@ -373,6 +373,7 @@ Tensor parameter_grad(Tensor p, Tensor zx, Tensor zy, Tensor h, Tensor g, Config
 } // namespace radius_cell_mass
 
 #include "hybrid.cuh"
+#include "active_moments.cuh"
 #include "block_local.cuh"
 #include "shared_projection.cuh"
 #include "batched_cached_coefficients.cuh"
@@ -477,6 +478,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("expand_coefficients", &radius_cell_mass::expand_coefficients);
     m.def("parameter_grad", &radius_cell_mass::parameter_grad);
     m.def("build_compact_moments", &radius_cell_mass::build_compact_moments);
+    m.def("active_moment_banks", &radius_cell_mass::active_moment_banks);
+    m.def("build_compact_moments_active", &radius_cell_mass::build_compact_moments_active);
     m.def("direct_response", &radius_cell_mass::direct_response);
     m.def("direct_response_into", &radius_cell_mass::direct_response_into);
     m.def("complete_response", &radius_cell_mass::complete_response);

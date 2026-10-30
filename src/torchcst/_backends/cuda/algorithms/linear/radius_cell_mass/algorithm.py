@@ -82,6 +82,8 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "global_batched_cached",
             "global_batched_cached_response4",
             "global_batched_cached_response4_grad4",
+            "global_batched_cached_active_moments",
+            "global_batched_cached_active_moments_grad4",
             "block_local",
             "block_local_parallel",
             "block_local_cached_parallel",
@@ -171,6 +173,8 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "global_batched_cached",
             "global_batched_cached_response4",
             "global_batched_cached_response4_grad4",
+            "global_batched_cached_active_moments",
+            "global_batched_cached_active_moments_grad4",
         ):
             from .expansion_layout import batched_coefficient_layout
 
