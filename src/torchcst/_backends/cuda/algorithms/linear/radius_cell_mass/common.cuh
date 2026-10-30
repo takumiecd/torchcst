@@ -196,38 +196,6 @@ __device__ inline void profile_coefficients(double R, double P, int M, double *c
     else profile_coefficients_generic(R, P, M, c, dr);
 }
 
-// Forward/expansion and detached Polar radii need values, not d(profile)/dR.
-// Keep exactly the value polynomial and normalization order above; omit its
-// slope polynomial instead of writing an unused derivative array. Other M
-// retain the generic reference until a value-only implementation is measured.
-__device__ __noinline__ void profile_values_m8(double R, double P, double *c) {
-    double angle = PI * (R / P), cb = cos(angle);
-    double z = cb * cb, u = 1 - z;
-    double zp[9], up[9];
-    zp[0] = up[0] = 1;
-    for (int j = 1; j <= 8; ++j) { zp[j] = zp[j - 1] * z; up[j] = up[j - 1] * u; }
-    double zero = 0;
-    for (int k = 0; k < 8; ++k) {
-        int degree = 8 - k;
-        double raw = k == 0 ? 0.5 * zp[8] : 0;
-        double value = 0;
-        for (int j = 1; j <= degree; ++j)
-            value += profile_m8_terms[k][j - 1] * zp[degree - j] * up[j];
-        raw += (4.0 / (8 + k)) * value;
-        if (k == 0) { zero = raw; c[0] = 1 / P; }
-        else c[k] = (raw / zero) / P;
-    }
-    c[8] = (0.25 / zero) / P;
-}
-
-__device__ inline void profile_values(double R, double P, int M, double *c) {
-    if (M == 8) profile_values_m8(R, P, c);
-    else {
-        double ignored[17];
-        profile_coefficients_generic(R, P, M, c, ignored);
-    }
-}
-
 template<class T>
 __device__ inline void store_gradient(const T *atoms, T *gradient, int atom,
     const Axis &input, double da, double dR, double dmu_input, double dmu_output) {
