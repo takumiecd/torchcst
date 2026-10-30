@@ -378,6 +378,20 @@ def make_cst(width, atoms, *, dtype=torch.float32):
     )
 
 
+def normalize_images(images, device, mean, std, *, data_normalization="original"):
+    """Normalize MNIST pixels; the opt-in allocation variant never aliases input."""
+    if data_normalization == "original":
+        return ((images.to(device).float() / 255) - mean) / std
+    if data_normalization == "inplace":
+        return (
+            images.to(device=device, dtype=torch.float32, copy=True)
+            .div_(255)
+            .sub_(mean)
+            .div_(std)
+        )
+    raise ValueError("data_normalization must be original or inplace")
+
+
 def polar_bounds(width, *, site_scaled):
     spacing = 128 / width
     if site_scaled:
@@ -788,9 +802,12 @@ def run_training(
     lr=None,
     allow_radius_batch32=False,
     initialization_sha256=None,
+    data_normalization="original",
 ):
     if epochs < 1 or batch_size < 1:
         raise ValueError("epochs and batch_size must be positive")
+    if data_normalization not in ("original", "inplace"):
+        raise ValueError("data_normalization must be original or inplace")
     radius = initialization.get("parameterization") == "polar_radius"
     if radius:
         validate_radius_initialization(initialization)
@@ -810,12 +827,20 @@ def run_training(
     data, data_info = load_mnist(data_directory)
     device = torch.device("cuda")
     model = make_model(initialization, kind).to(device)
-    tx = ((data["train_x"].to(device).float() / 255) - data_info["mean"]) / data_info[
-        "std"
-    ]
-    vx = ((data["t10k_x"].to(device).float() / 255) - data_info["mean"]) / data_info[
-        "std"
-    ]
+    tx = normalize_images(
+        data["train_x"],
+        device,
+        data_info["mean"],
+        data_info["std"],
+        data_normalization=data_normalization,
+    )
+    vx = normalize_images(
+        data["t10k_x"],
+        device,
+        data_info["mean"],
+        data_info["std"],
+        data_normalization=data_normalization,
+    )
     ty, vy = data["train_y"].to(device), data["t10k_y"].to(device)
     optimizer = make_optimizer(model, initialization, kind, lr=lr)
     if radius:
@@ -963,6 +988,10 @@ def run_training(
         if radius
         else "complete training epoch; resident data/model included",
         "data": data_info,
+        "data_normalization": data_normalization,
+        "data_normalization_policy": "original transfer/float32 conversion and out-of-place div/sub/div"
+        if data_normalization == "original"
+        else "opt-in independent float32 transfer (copy=True) and in-place div/sub/div; same pixel arithmetic",
         "torch": torch.__version__,
         "cuda": torch.version.cuda,
         "gpu": torch.cuda.get_device_name(),
@@ -981,6 +1010,12 @@ def main():
     )
     parser.add_argument("--kind", choices=["cst", "dense"])
     parser.add_argument("--data-directory", type=Path)
+    parser.add_argument(
+        "--data-normalization",
+        choices=["original", "inplace"],
+        default="original",
+        help="resident MNIST allocation policy; original protocol is the default",
+    )
     parser.add_argument("--output", type=Path)
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--batch-size", type=int, default=32)
@@ -1041,6 +1076,7 @@ def main():
         initialization_sha256=hashlib.sha256(
             args.initialization.read_bytes()
         ).hexdigest(),
+        data_normalization=args.data_normalization,
     )
 
 

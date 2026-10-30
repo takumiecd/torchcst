@@ -217,3 +217,44 @@ assert not torch.cuda.is_initialized()
     restored = torch.load(artifact, map_location="cpu", weights_only=True)
     mnist.validate_radius_initialization(restored)
     assert json.loads(result.stdout)["cohort"] == mnist.RADIUS_COHORT
+
+
+@pytest.mark.parametrize("dtype", [torch.uint8, torch.float32])
+def test_data_normalization_choices_are_exact_and_do_not_mutate_input(dtype):
+    images = torch.arange(256).reshape(16, 16).to(dtype)
+    if dtype == torch.float32:
+        images.add_(0.125)
+    saved = images.clone()
+    mean, std = 0.13066047430038452, 0.30810782313346863
+    expected = ((images.float() / 255) - mean) / std
+    original = mnist.normalize_images(images, "cpu", mean, std)
+    inplace = mnist.normalize_images(
+        images, "cpu", mean, std, data_normalization="inplace"
+    )
+    assert original.dtype == inplace.dtype == torch.float32
+    assert torch.equal(original, expected) and torch.equal(inplace, expected)
+    assert torch.equal(images, saved)
+    assert original.data_ptr() != images.data_ptr()
+    assert inplace.data_ptr() != images.data_ptr()
+
+
+def test_unknown_data_normalization_rejects_before_data_or_output(
+    initialization, monkeypatch, tmp_path
+):
+    monkeypatch.setattr(
+        mnist, "load_mnist", lambda _: pytest.fail("must not load MNIST")
+    )
+    with pytest.raises(ValueError, match="data_normalization"):
+        mnist.normalize_images(
+            torch.ones(2), "cpu", 0.1, 0.2, data_normalization="other"
+        )
+    with pytest.raises(ValueError, match="data_normalization"):
+        mnist.run_training(
+            initialization,
+            "dense",
+            tmp_path,
+            tmp_path / "out",
+            batch_size=4,
+            data_normalization="other",
+        )
+    assert not (tmp_path / "out").exists()
