@@ -7302,3 +7302,46 @@ fresh union CUDA binaryの128/1024両方のGPU再確認は次jobで行う。
 source_sha256=`fea7f07892d4d7d78f32e183a4a15e9924b2a90f29b0f496d425edf6793ef22e`.
 
 archive_sha256=`6a9d26043ea755957106d2f39d4f89f07e42197847be146ffe14bac059dc5035`.
+
+### 統合版の実GPU確認と採用（2026-10-31）
+
+job `l4job-9bf65b69e5764a4f8f9ebee14a9a65b1`で統合版を実compileし、GPU661件を通過。
+module=`torchcst_radius_cell_mass_bcd98ac2a3cb`、binary SHA256=
+`91d49385563731ab8cb6df92a2ee4c12bb9387069bb4d7feba7da9fc4c1887dd`。
+N128/B4は1.378396/1.388928ms、dense0.709148/0.715507msで両方約1.94倍。
+ピークは従来のCST287232/2097152B、dense17313280/23068672Bを維持する。
+N1024/B4のresponse4版は6.993471/6.988053ms、dense0.711520/0.709722ms、
+ピークCST9211904/31457280B、dense33900032/44040192B。large速度目標は未達。
+
+primaryへ`295b8d79`で採用し、測定snapshotのruntime383ファイルがすべてbyte一致することを確認。
+general経路はN1024/A65536までの明示Plan、native/block-local経路はN128/A4096/48KiBまで。
+既定dispatchを変えず、N1024のMNIST学習は別に検証する。
+
+### 4行分のparameter grad共有（2026-10-31）
+
+別branch `kernel/radius-batch4-grad` / `581b914f`とtest-only修正`20a19e29`は、
+1atom/threadを保ち、4batch行で位相を共有する。完成H/GとZ、batch加算順、FP64中間計算を維持し、
+追加global配列や出力atomicを使わない。物理radius勾配も省略しない。
+新設差分検査はFP32でbyte一致、FP64ではfiniteと明記した診断用丸めbudgetを検査し、
+既存の独立oracle許容値は変えない。FP64の具体的なFMA差の原因は未証明とする。
+
+job `l4job-356d240af2ad45338594563f099c1598`は、先行compile job
+`l4job-11077ac601214b5f8637a23af9543da3`の同じbinaryをSHA検証して再使用し、GPU413件を通過。
+module=`torchcst_radius_cell_mass_05524d1f41b5`、binary SHA256=
+`13803067676af9fc49f64610943302f72edbc1b76d7bc9ff6fe561e54013ce6a`。
+先行jobは新設FP64 bitwise差分20件で停止したが、独立検査とFP32 byte比較を含む372件は通過した。
+
+B32単体の新batched完全stepは1.427050/1.427654ms、dense0.727122/0.717842msで
+両方2倍以内。ピークは従来の1684992/2097152Bでdense17384960/23068672Bを下回る。
+一方MNIST B32/inplace/1epochは2.783016ms / dense1.321053ms=2.10666倍で速度改善なし。
+direct_levels5では5.605553ms（旧10.127948msより短縮）、dense比4.24324倍。
+そのメモリ241340928/245366784Bはdense241428992/247463936Bを下回るが、速度との同時達成は未達。
+この候補は統合large版への移植を別途GPU検証してから取り込む。
+
+`l4job-9bf65b69e5764a4f8f9ebee14a9a65b1`:
+source_sha256=`f5e07b43df39a255de19f7dcdc8dbb259c379226bbf1bf482fc85c94f0e0662a`.
+archive_sha256=`2304f2837399805d472f7f1fa79629bb48f33cbb6c594bd95b59b9935bcbfde2`.
+
+`l4job-356d240af2ad45338594563f099c1598`:
+source_sha256=`41c9852a0579a04365cd59e163df3016bedc367c0613cbb12d163fac507db68f`.
+archive_sha256=`c303e8cb1de571ceee7661ee8bd6e6169af958afe4250903fffe91f0dbf31a9a`.
