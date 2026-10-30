@@ -10,8 +10,6 @@ import inspect
 
 import torch
 
-from torchcst.operators import _function_metadata
-
 # Capture the standard walkers when the optimizer module is first imported.
 _WALKERS = tuple(
     (fn, fn.__code__, fn.__defaults__, fn.__kwdefaults__)
@@ -27,19 +25,16 @@ _WALKERS = tuple(
 
 
 class GroupValidation:
-    def __init__(self, guard, optimizer, groups, mapping, factory, native):
+    def __init__(self, guard, optimizer, groups, mapping):
         self.guard = guard
         self.optimizer = optimizer
         self.groups = groups
         self.mapping = mapping
-        self.function_factory = factory
-        self.native_function_metadata = native
 
     def current(self, optimizer, groups):
         return (
             optimizer is self.optimizer
             and groups is self.groups
-            and self.function_factory is _function_metadata._loaded_factory
             and not torch._C._is_torch_function_mode_enabled()
             and not torch._C._len_torch_dispatch_stack()
             and self.guard.check(optimizer)
@@ -51,8 +46,6 @@ class GroupValidation:
 
     def __setstate__(self, state):
         self.guard = self.optimizer = self.groups = self.mapping = None
-        self.function_factory = None
-        self.native_function_metadata = False
 
 
 def _prepare(optimizer, groups, mapping):
@@ -296,32 +289,17 @@ def _prepare(optimizer, groups, mapping):
                 for fn in callbacks
             ),
         )
-        functions = tuple(row[0] for row in behavior)
-        factory = _function_metadata._loaded_factory
-        checker, dictionaries = _function_metadata.prepare_checks(
-            factory, functions, ()
-        )
-        if checker is not None:
-            guard.add_lambda_guard(checker, verbose, None)
+        guard_callable_metadata(guard, behavior, kind, verbose)
+        globals_seen = set()
+        for fn in (*[row[0] for row in _WALKERS], *callbacks):
+            namespace = fn.__globals__
+            if id(namespace) in globals_seen:
+                continue
+            globals_seen.add(id(namespace))
             node = guard.lambda_manager(
-                lambda _: dictionaries, "function dictionaries", dictionaries, kind
+                lambda _, ns=namespace: ns, "callback globals", namespace, kind
             )
-            for i, values in enumerate(dictionaries):
-                node.tuple_getitem_manager(
-                    i, "dictionary", values, kind
-                ).add_dict_version_guard(values, verbose, None)
-        else:
-            guard_callable_metadata(guard, behavior, kind, verbose)
-            globals_seen = set()
-            for fn in functions:
-                namespace = fn.__globals__
-                if id(namespace) in globals_seen:
-                    continue
-                globals_seen.add(id(namespace))
-                node = guard.lambda_manager(
-                    lambda _, ns=namespace: ns, "callback globals", namespace, kind
-                )
-                node.add_dict_version_guard(namespace, verbose, None)
+            node.add_dict_version_guard(namespace, verbose, None)
         # Validation calls math.isfinite through this module. Its binding can
         # change without replacing the wrapper's global `math` module itself.
         namespace = callbacks[0].__globals__["math"].__dict__
@@ -329,9 +307,7 @@ def _prepare(optimizer, groups, mapping):
             lambda _: namespace, "math callbacks", namespace, kind
         ).add_dict_version_guard(namespace, verbose, None)
         return (
-            GroupValidation(
-                guard, optimizer, groups, mapping, factory, checker is not None
-            )
+            GroupValidation(guard, optimizer, groups, mapping)
             if guard.check(optimizer)
             else None
         )

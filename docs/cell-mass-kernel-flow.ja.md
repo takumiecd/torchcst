@@ -5410,7 +5410,7 @@ source/result/receipt/trace/state/binaryと`final-driver.py`、`final-verified-s
 同じignored output配下へ保全した。所有L4は停止済み。
 この変更の1024/MNIST、他GPU世代、Graph/process peak、新規sanitizerは未測定。
 
-### Optimizerのhook登録とgroup関数metadataの再利用（2026-10-30、比較候補）
+### Optimizerのhook登録とgroup関数metadataの再利用（2026-10-30）
 
 check_finite=False・closureなし・標準AdamW hook登録APIの場合、最後のCST pre-hookの
 登録だけを再利用する。各stepで末尾へ移し、後から追加されたuser pre-hookより後で準備する。
@@ -5427,6 +5427,23 @@ factoryが利用可能になった次の境界ではgroup全体をfresh検証し
 未対応環境は従来のnative accessorsへ戻る。callback変更・group設定・登録/所属・Tensor metadataの
 検証境界は減らさない。Polar/AdamW則、amp-only decayとGPU配列は変更しない。
 速度と完全stepの採用判定は、hookのみ/groupのみ/両方/変更前を同条件で測って行う。
+
+4条件の比較では、group一括化はoptimizer単独の平均中央値で.654720→.645784 msに
+留まり、完全stepは2.030540→2.031258 msで横ばいだった。両方でも上積みを確認できず、
+group一括化とhelperの共通ディレクトリ移動は不採用とした。group検証と更新programは
+efe2984bの実装を維持する。試作はe91b7b72/f6fef2b5とfrozen sourceから復元できる。
+hookのみはoptimizer単独.654720→.638258 msだが、完全stepは2.030540→2.067027 msと
+ばらつきがあるため、これだけで完全step改善とは判断しない。最終hook単独版を別途比較する。
+4条件すべてでParameter/Adam moment/step20 Tensorは5 updatesでbit一致。
+同じN128/B4/A819/M8、FP32 IEEE、amp-only、parallel Planで10 warmup/101 full steps、
+別optimizer-onlyは20 warmup/101 updates。全条件でallocated/reserved297984/2097152 B。
+関連513件と独立Y/dX/全atom勾配・quadrature・matched-state gateが成功した。
+
+比較job=`l4job-27b98dbe6b61436ea7913eb4ee1d9ee7`、snapshot SHA256=
+`69145dcc8ecabbb6c0c3e4616cc387d700940c4448e4ea0095a7a7ea71343fbf`、
+result archive SHA256=`3e275b3a838195dfb870093a7f3779bee8c1deca579f92e030c4432bbb73938e`。
+最初のjob `l4job-e15662cf554a44ec88f755f2ad3aaeb2`はoptimizer-only scriptのPlan指定で失敗した。
+失敗原本も含めignored `output/optimizer-hook-20261030/`へsource/result/receipt/trace/stateを保全する。
 
 各段階の保存値、配列のshape、書き手、寿命を先に確定し、独立oracleで
 Y/dX/全atom勾配を検証してから速度を比較する。上記は実機での正しさ・性能の結果ではない。
