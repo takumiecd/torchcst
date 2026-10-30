@@ -5854,3 +5854,142 @@ result archive SHA256=`dee61ed4064d909100749b712ca938a38fb29f2dd7d5cac98863cfba5
 再現driver、source/result/receipt、traces、counter結果、state tensors、
 CPU/build logsはignored `output/radius-cache-20261030/`へ保全する。
 1024/MNIST、他GPU/Torch版、新規Graph/sanitizer/process peakは今回未検証。
+
+### N128完全stepのCPU呼び出し・同期・dispatch診断（2026-10-30）
+
+前節の「GPUは短縮したが完全stepは約1%遅い」を、runtime `9412cb7a`の同じsourceと
+CUDA binaryで再検査した。製品code・検証・callback・Polar則は変更していない。
+N128/B4/A819/M8/seed41、FP32 IEEE、base1/merge2、direct levels2、32-site CTA、
+native CSTAdamW（fused AdamW、raw decay0/amp decay.01、check_finite=False）を維持する。
+L4、Torch2.11.0+cu130/CUDA13.0、Python3.13.16、Triton3.6.0。
+
+primaryは旧/共有/共有/旧/共有/旧/旧/共有の8 fresh processesで、各10 warmup/101 samples。
+両Planとも同じ現在のPython sourceと検証済みbinary
+`torchcst_radius_cell_mass_b1d35927a8ff`を使い、source/binary SHAを照合した。
+各runnerの独立Y/dX/全atom勾配、quadrature、matched-state検査が成功した。
+
+| 方式 | 完全step中央値4回 ms | 平均中央値 ms |
+| --- | ---: | ---: |
+| 旧parallel | 1.918028 / 1.873163 / 1.969099 / 1.865652 | 1.906485 |
+| shared profile cache | 1.899762 / 1.907743 / 1.911712 / 1.903319 | 1.905634 |
+
+平均中央値差は約−.000852ms（−.045%）で実質同じ。前回の約1%遅延は再現せず、
+定常的な性能回帰とは確認できない。一方、この通常のfresh-process測定で
+大きな完全step改善が得られていないという判断も変わらない。
+matched denseは.676165〜.708533ms。
+
+次に2 fresh processesで、それぞれ旧/共有の2 modelを同居させ、20 warmup後に
+101 pairsをAB/BA交互で測った。2 process目は最初の順序も逆にする。
+両modelの実更新数は揃え、測定中には内部timerやfunction差し替えを入れず、
+step前後のCUDA同期とhost時計だけを使う。2 model同居はtimingの補助実験であり、
+そのmemoryをsingle-modelのprimary memoryと混ぜない。
+
+| process・方式 | 完全step中央値 ms | train()のhost呼び出し中央値 ms | 呼び出し後の同期中央値 ms |
+| --- | ---: | ---: | ---: |
+| 0 旧 | 1.867235 | 1.839948 | .026430 |
+| 0 共有 | 1.836529 | 1.810183 | .026461 |
+| 1 旧 | 1.913601 | 1.886928 | .026497 |
+| 1 共有 | 1.888954 | 1.860597 | .026544 |
+
+同じpair内の共有−旧の中央値は−.031757/−.027195msで、両processとも101中88 pairsで
+共有版が短かった。小さな改善が見えるが、前記fresh-process primaryの大きな速度改善を
+立証するものではない。host呼び出し中にもGPUは非同期に進むため、
+**host時間とGPU kernel時間を足して完全stepにはしない**。
+呼び出し後の同期時間もCUDA APIの費用を含み、純粋なGPU残り時間とは限らない。
+
+別の軽い区間計測は51 stepsずつ、zero-grad/forward-loss/backward/optimizerの
+CPU呼び出し境界だけに時計を入れ、途中のCUDA同期は追加しなかった。
+共有版の各区間の中央値（2 processes）は以下。これもprimaryの内訳へ機械的に加算しない。
+
+| host側の区間 | process0 / process1 ms |
+| --- | ---: |
+| zero_grad・x.grad解放 | .046897 / .047068 |
+| forward・loss投入 | .727357 / .732309 |
+| backward呼び出し | .484367 / .566106 |
+| optimizer呼び出し | .534684 / .544752 |
+| 最後の同期 | .025887 / .025924 |
+
+**同期の有無**は、別のphase付きTorch profiler traceで確認した。
+2 processes×8 train scopes＝16 scopesのすべてで、内部のCUDA同期API、
+`aten::item`/`aten::_local_scalar_dense`、DtoHコピー、cudaMalloc/cudaFreeは0。
+意図的なstep末尾の`boundary_sync`はtrain scopeの外に置いて区別した。
+毎step25 kernels、capture状態の問い合わせ5回を確認した。
+`cudaStreamIsCapturing`等の問い合わせはGPU完了待ちではない。
+`executor.py::prepare_layout_checked`の`error.item()`は診断専用で、
+通常の非同期classificationからは呼ばれていない。
+
+**CPUの場所**はcProfileでcall数を確認し、さらに独立L4 runtimeの2 fresh processesで
+Python3.13の[sys.monitoring](https://docs.python.org/3.13/library/sys.monitoring.html)を使って
+対象code objectを1つずつ局所計測した。functionや`__code__`を交換せず、
+PY_START/PY_RETURNだけを観測する。各対象の前に同じ20更新後のParameter/Adam状態へ
+内容を戻し、10 warm monitored steps＋51 recorded stepsを使う。
+prepared object/programのidentity、miss数不変を毎対象で確認した。
+下表は共有版の1 stepあたりの呼び出し時間合計の中央値（2 runsの範囲、us）。
+local timerの負荷とruntime間のCPU実行時間差を含む目安であり、
+primaryの1.906msの厳密な内訳ではない。親子のinclusive値は足さない。
+
+| 場所 | calls/step | 局所計測 us | codeで行うこと |
+| --- | ---: | ---: | --- |
+| `CSTLinear.forward` | 1 | 676.88〜687.74 | flatten、dispatch、出力reshape/保護。下記forward処理を含む |
+| `Dispatcher._prepare` | 1 | 147.05〜151.06 | 入力検証、Context構築、配置・Registry・cache照合 |
+| `CSTLinear.build_context` | 1 | 63.62〜64.34 | 現在の宣言とTensor metadataからContextを作る。_prepare内 |
+| `operator_declaration` | 3 | 91.85〜94.88 | 入力検証・Context・実行入口で固定状態guardを確認 |
+| `AlgorithmState.is_current` | 1 | 24.40〜24.55 | owner/layout/storage/state対応を確認 |
+| `Registry.validate_plan` | 2 | 9.56〜9.99 | 登録先とrecipe型/内容の確認 |
+| `RadiusCellMassAlgorithm.validate_recipe` | 4 | 10.88〜11.95 | Registry2回、Algorithm.run、radius_linear。Registryと重複する包含値 |
+| `radius_linear` | 1 | 250.44〜277.74 | metadata検証からforward native起動まで。layout処理を含む |
+| `_ranges_from_layout_keys` | 2 | 179.18〜183.79 | forward/reverseのnative layout_ranges。stable ATen sortとoffset kernelを起動 |
+| `_classify_layout_keys` | 1 | 37.28〜37.95 | deviceで現在atomのownerを分類して非同期検証 |
+| `AxisPlan.native_config` | 8 | 13.51〜13.86 | 2軸configを各native入口へ渡すlist生成 |
+| `prepare_atom_steps` | 1 | 185.31〜188.89 | 更新guard、snapshot、入力検証。下位の_matches/validateを含む |
+| `finish_atom_steps` | 1 | 158.80〜178.16 | 更新直前の確認、compiled Polar launch等 |
+| optimizer `_matches` | 2 | 111.07〜116.30 | preflight/runでlive設定と実行条件を確認。prepare/finish内 |
+| optimizer `validate_inputs` | 2 | 27.63〜27.74 | snapshot metadata、scalar、non-alias確認。prepare/finish内 |
+| `_adamw_proposal` | 1 | 93.92〜97.52 | PyTorch functional AdamWへのhost入口 |
+
+`operator_declaration`の3回は`validate_linear_inputs`、`CSTLinear.build_context`、
+`linear_execution`から来る。宣言を作り直す3回ではなく、現行固定状態guardを確認して
+同じcacheを返す3回である。`layout_ranges`の約.18msもGPU sortの実行時間ではなく、
+ATen/allocator/launchを含むCPU呼び出し時間である。GPU活動との重なりを含む。
+
+**Planの探索や階層metadataの作り直しが主因ではない。**
+交互測定では両modelともprepared dispatchのmissは初回1のまま、hit19→120。
+同じalgorithm stateとcompiled optimizer programを使い続けた。
+cProfileのsteady区間でも`Dispatcher.select`/`select_plan`やAlgorithm.prepareは0回。
+RootGuardManager、native function metadata、CompiledPolarLaunchの使用も確認し、
+generic fallbackへ落ちた計測ではない。
+共有版で追加されたshared容量検証によりactive_nodesは2→4 calls/stepで、
+局所計測は旧約8.1us→共有約12.2us。小さい追加費用はあるが、
+GPUの約220us削減と同じ規模の新しいCPU処理が増えたわけではない。
+
+全面cProfileはsnapshot validate_inputsを約.38〜.39ms/stepと表示したが、
+局所計測は約.028msだった。このcProfile値を未計装の純CPU費用とは読まない。
+profilerありのtrain scopeも約2.5〜10msへ増え、primaryとは異なる。
+呼び出し回数と経路の確認、局所timer、未計装完全stepを使い分ける。
+
+結論は、前回の1%遅延は再現せず、この128条件の完全stepは主にhost側の
+検証・投入・autograd等の経路に制約されている、というもの。
+GPUのcoeffs/site短縮の大部分が他のCPU呼び出しと重なるため、完全stepへ同じ量は現れない。
+次に調べる優先箇所はnative layout/sortのCPU入口と、forwardの重複した宣言・Context確認。
+設定変更時の検証とcustom callbackを維持する必要があり、全面的な検証停止は行わない。
+recipe検証だけの約11usや、内部には見つからなかった同期を主因とはしない。
+optimizerの約.54msもhost費用が中心で、PolarのGPU更新則が重くなったという結果ではない。
+
+primaryのallocated/reservedは全8回297984/2097152B、dense17313280/23068672Bで不変。
+診断用の2 model同居やprofilerのmemoryはこの比較に含めない。
+入力と初期Parameterのhashも全回同じだった。交互101 pairs後（計121更新）の
+P/dP/dX/Adam step/exp_avg/exp_avg_sqの6 Tensorは2 processesともbit一致。
+製品source全376ファイルは測定snapshotとbyte照合済み。既存190件のGPU gateと
+CPU2672件の検査・package照合を再利用し、今回はruntime codeを変更していない。
+
+primary/trace job=`l4job-4cc1ec1deef4473cb4669bdde7fe6c4d`、snapshot SHA256=
+`afb89dc668e86d1c6842618333cbffb146b3111e7755150ba56a9fb25853c0c5`、
+result archive SHA256=`cdcf3c188dfcb4489e303d1c8632de9587225d9c77245798e82541ce5fff446e`。
+局所計測job=`l4job-7ce88b44eabd457694dc48ba2c1569a1`、snapshot SHA256=
+`8ed54d4b179442db6425d100d75bb067b1028d85bfa362589ae63cf8c3ad4f89`、
+result archive SHA256=`41c810f7fbae76b9efa179f7581dd8262542117b24b22dac4d32859e8e8d1867`。
+2件目は既存の共有pool supervisorへqueue投入し、別supervisorやGPUを増やさず完了した。
+再現driver/worker、source/result/receipt、8 fresh records、paired/phases JSON、
+pstats、全trace、monitor結果・集計scriptはignored
+`output/radius-host-diagnosis-20261030/`へ保全した。
+1024/MNIST、他GPU/Torch版、Graph/process peakはこの診断の対象外。
