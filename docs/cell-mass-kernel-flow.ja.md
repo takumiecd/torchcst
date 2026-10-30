@@ -5470,7 +5470,7 @@ descriptorとinstance辞書を直接確認する最終版（cb81643b）は、同
 optimizer単独.726479/.657449→.645377/.651079 ms。平均中央値は2.061973→1.981329 ms、
 .691964→.648228 ms。ただしoptimizerの変更前1回が高いため、この6.3%を一般的な改善率と
 しない。全条件のallocated/reservedは297984/2097152 B、GPU更新3 kernels、snapshot copy1、
-sync/item/DtoH0。関連222件、独立Y/dX/全atom勾配・quadrature・matched-state gateと
+sync/item/DtoH0。関連212件、独立Y/dX/全atom勾配・quadrature・matched-state gateと
 20 state Tensorの5 updates bit一致が成功。最終sourceのCPU全体2598 passed/5950 skipped、
 追加の実native helper検査23 passed/1 skipped。
 job=`l4job-42981aba9ff54a529f5526e82172446d`、snapshot SHA256=
