@@ -6400,3 +6400,26 @@ state/trace、集計script・JSON、CPU/build/package記録をignored
 `output/radius-state-dependencies-20261030/`へ保全した。
 共有poolは結果取得後のstoppedを確認した。
 1024/MNIST、他GPU世代/Torch版、Graph/process memory、cold開始の速度は今回の対象外。
+
+### 2026-10-30: 完全stepの時間・メモリ目標と次の比較
+
+新しいgoalは、上記と同じN128/B4/A819/M8/seed41・FP32 IEEE・native
+CSTAdamWの**未計装・同期済み完全step**で、CST時間をmatched denseの2倍以内、
+ピークallocated/reservedをそれぞれdense未満にすること。
+forwardだけやhost関数の局所短縮では達成としない。設定変更時の検証、Polar更新則、
+階層moments、完成済みresponseの再利用、独立Y/dX/全atom勾配、read lease、
+offload/retained backwardの契約を維持する。
+128で達成したら、同じ目標をMNISTの完全stepと1024以上へ広げる。
+MNISTは実際のradius/階層分布と学習条件を記録し、B4の結果を一般化しない。
+
+比較候補は、(a) Parameter/出力の読取寿命を保つidentity autograd nodeのC++化、
+(b) 既存CUDA stageをC++ autograd graphから直接呼ぶ明示的な
+`native_autograd=True` recipeである。後者もmoments/Hを1回だけ保存し、
+backwardはdYのmoments/G→dX→atom勾配の順とする。各CUDA計算式は共通で、
+coeffsは引き続きshared scratchに置く。既存Python autograd routeは比較元として残す。
+CPU側のsaved-variable寿命・offload・再backwardを確認しただけでは性能採用しない。
+
+(a) snapshotは`c534c260`、GPU比較jobは
+`l4job-efa9002130ff4b4dbcebf56954459449`。
+(b) のGPU比較jobは`l4job-bd290528c167442db9df9ffb48538c02`。
+この追記時点では両候補ともGPU比較待ちであり、目標達成・最終採用は未確認。

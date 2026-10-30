@@ -87,6 +87,11 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             or not 1 <= recipe.output_tile_sites <= 128
         ):
             raise ValueError("output_tile_sites must lie in [1,128]")
+        if type(recipe.native_autograd) is not bool or (
+            recipe.native_autograd
+            and not recipe.schedule.startswith("block_local")
+        ):
+            raise ValueError("native_autograd requires a block-local schedule")
 
     def supports(self, context, recipe):
         try:

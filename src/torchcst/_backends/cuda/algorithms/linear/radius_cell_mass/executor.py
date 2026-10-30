@@ -26,11 +26,12 @@ def _extension():
 
     directory = Path(__file__).parent
     source = directory / "pipeline.cu"
-    sources = [source, *sorted(directory.glob("*.cuh"))]
+    host = directory / "host_autograd.cpp"
+    sources = [source, host, *sorted(directory.glob("*.cuh"))]
     digest = hashlib.sha256(b"".join(p.read_bytes() for p in sources)).hexdigest()[:12]
     return load(
         name=f"torchcst_radius_cell_mass_{digest}",
-        sources=[str(source)],
+        sources=[str(source), str(host)],
         extra_cflags=["-O2"],
         extra_cuda_cflags=["-O2", "--ftz=false"],
         verbose=False,
@@ -533,6 +534,28 @@ def radius_linear(plan, x, atoms, *, recipe=None):
             "block_local_parallel",
             "block_local_cached_parallel",
         ):
+            if (
+                recipe.native_autograd
+                and type(x) in (torch.Tensor, torch.nn.Parameter)
+                and type(atoms) in (torch.Tensor, torch.nn.Parameter)
+                and not torch._C._are_functorch_transforms_active()
+                and torch.autograd.forward_ad._current_level == -1
+            ):
+                return _extension().autograd_linear(
+                    x.contiguous(),
+                    atoms.contiguous(),
+                    plan.input.native_config(),
+                    plan.output.native_config(),
+                    recipe.input_direct_levels,
+                    recipe.output_direct_levels,
+                    recipe.moment_method == "merge",
+                    recipe.output_tile_sites,
+                    {
+                        "block_local": 0,
+                        "block_local_parallel": 1,
+                        "block_local_cached_parallel": 2,
+                    }[recipe.schedule],
+                )
             function = _BlockLocalRadiusLinear
         elif (
             recipe.input_direct_levels

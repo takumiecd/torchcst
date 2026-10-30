@@ -14,3 +14,5 @@ class RadiusCellMassRecipe:
     output_direct_levels: int = 0
     schedule: str = "sequential"
     output_tile_sites: int = 32
+    # Opt-in C++ host/autograd graph; all CUDA arithmetic stages are identical.
+    native_autograd: bool = False

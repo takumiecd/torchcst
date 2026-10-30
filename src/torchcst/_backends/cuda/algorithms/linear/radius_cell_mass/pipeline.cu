@@ -372,7 +372,38 @@ Tensor parameter_grad(Tensor p, Tensor zx, Tensor zy, Tensor h, Tensor g, Config
 #include "layout.cuh"
 #include "expansion_probe.cuh"
 
+namespace radius_cell_mass {
+void bind_host_autograd(pybind11::module_ &);
+
+// Host autograd links to these wrappers, reusing the exact existing CUDA
+// implementations instead of crossing Python/pybind for every stage.
+std::vector<Tensor> autograd_ranges(Tensor keys, Config input, Config output, bool reverse) {
+    return layout_ranges(keys, parse_axis(input).node_count,
+        parse_axis(output).node_count, reverse);
+}
+std::vector<Tensor> autograd_transform(Tensor x, Tensor p, Tensor rows, Tensor offsets,
+    Config input, Config output, int input_start, int output_start,
+    bool merge, int tile_sites, int schedule, bool reverse) {
+    return shared_apply(x, p, rows, offsets, reverse ? output : input,
+        reverse ? input : output, reverse ? output_start : input_start,
+        reverse ? input_start : output_start, merge, tile_sites, reverse,
+        true, schedule >= 1, schedule == 2);
+}
+std::vector<Tensor> autograd_project(Tensor x, Tensor p, Config output,
+    int start, bool merge, int schedule) {
+    return shared_apply(x, p, Tensor(), Tensor(), output, output, start, start,
+        merge, 1, true, false, schedule >= 1);
+}
+Tensor autograd_parameter_grad(Tensor p, Tensor x, Tensor dy, Tensor zx, Tensor zy,
+    Tensor h, Tensor g, Config input, Config output, int input_start,
+    int output_start, int schedule) {
+    return hybrid_parameter_grad_impl(p, x, dy, zx, zy, h, g, input, output,
+        input_start, output_start, schedule >= 1 ? 32 : THREADS);
+}
+} // namespace radius_cell_mass
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+    radius_cell_mass::bind_host_autograd(m);
     m.def("shared_forward_cached_parallel", &radius_cell_mass::shared_forward_cached_parallel);
     m.def("shared_backward_cached_parallel", &radius_cell_mass::shared_backward_cached_parallel);
     m.def("counted_cached_expansion", &radius_cell_mass::counted_cached_expansion);
