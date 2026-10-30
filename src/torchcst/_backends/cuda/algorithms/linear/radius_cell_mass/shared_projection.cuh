@@ -24,12 +24,18 @@ __global__ void shared_projection_kernel(
 
     // Membership depends on the current atom, not a previous-step cache. Only
     // retained banks need moments; lower-level atoms project directly from X.
+    unsigned thread_banks = 0;
     for (int atom = threadIdx.x; atom < atoms; atom += blockDim.x) {
         Membership member = classify(radius(p, atom, axis),
             center(p, atom, axis, output_side), axis);
         if (axis.banks[member.bank].level >= start)
-            atomicOr(&required_banks, 1u << member.bank);
+            thread_banks |= 1u << member.bank;
     }
+    // Many atoms often occupy the SAME bank. Publish one mask per warp,
+    // instead of serializing every atom on one shared-memory atomic address.
+    for (int distance = 16; distance; distance /= 2)
+        thread_banks |= __shfl_down_sync(0xffffffff, thread_banks, distance);
+    if (threadIdx.x % 32 == 0) atomicOr(&required_banks, thread_banks);
     __syncthreads();
     if (threadIdx.x == 0 && merge) {
         // Even/divisible harmonics inherit from the same K in the child level.
@@ -42,13 +48,21 @@ __global__ void shared_projection_kernel(
 
     int levels = axis.bank_count / 2;
     for (int level = start; level < (merge ? levels : start + 1); ++level) {
-        for (int i = threadIdx.x; i < elements; i += blockDim.x) {
-            int node = prefix + i / axis.basis_count();
-            int bi = bank_for_node(node, axis);
+        // The dependency barrier is between LEVELS, not elements. Traverse
+        // only selected banks in this level; zeroed inactive slots stay zero.
+        // K=2/K=3 banks at the same level are independent of each other.
+        int first_bank = 2 * level;
+        int last_bank = merge ? first_bank + 2 : axis.bank_count;
+        for (int bi = first_bank; bi < last_bank; ++bi) {
             if (!(required_banks & (1u << bi))) continue;
-            if (merge && axis.banks[bi].level != level) continue;
-            scratch[i] = compact_moment_element(row, scratch, 0, node,
-                i % axis.basis_count(), axis, start, merge);
+            Bank bank = axis.banks[bi];
+            int begin = (bank.node_offset - prefix) * axis.basis_count();
+            int end = begin + bank.tile_count * axis.basis_count();
+            for (int i = begin + threadIdx.x; i < end; i += blockDim.x) {
+                int node = prefix + i / axis.basis_count();
+                scratch[i] = compact_moment_element(row, scratch, 0, node,
+                    i % axis.basis_count(), axis, start, merge);
+            }
         }
         __syncthreads();
     }

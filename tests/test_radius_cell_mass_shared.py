@@ -19,6 +19,36 @@ from torchcst._backends.torch.kernels.radius_cell_mass import axis_masses
 
 
 @GPU
+@pytest.mark.parametrize("count", [0, 1, 33, 819, 4096])
+@pytest.mark.parametrize("method", ["direct", "merge"])
+def test_single_bank_concentration_preserves_moments_and_complete_response(
+    count, method
+):
+    """Warp tails and repeated per-thread atoms still publish every needed bank."""
+    axis = axis_plan(128, modes=8)
+    p = torch.empty(count, 4, dtype=torch.float64)
+    p[:, 0] = 0.2
+    p[:, 1] = 3.2
+    p[:, 2] = torch.arange(count, dtype=p.dtype) * 0.17 - 0.31
+    p[:, 3] = torch.arange(count, dtype=p.dtype) * 0.23 + 0.19
+    signal = torch.randn(
+        2, 128, dtype=p.dtype, generator=torch.Generator().manual_seed(73)
+    )
+    z, h = ex._extension().shared_project_parallel(
+        signal.cuda(), p.cuda(), axis.native_config(), False, 2, method == "merge"
+    )
+    expected = signal @ axis_masses(grid(axis), p[:, 1], p[:, 3]).T
+    torch.testing.assert_close(h.cpu(), expected, atol=3e-10, rtol=3e-10)
+    # Only the K=3 level-2 bank is required; all other compact slots stay zero.
+    active = axis.banks[5]
+    begin = active.node_offset - axis.prefix_nodes(2)
+    assert not bool(z[:, :begin].count_nonzero())
+    assert not bool(z[:, begin + active.tile_count :].count_nonzero())
+    if count == 0:
+        assert not bool(z.count_nonzero())
+
+
+@GPU
 @pytest.mark.parametrize("start", [0, 2, "all"])
 @pytest.mark.parametrize("method", ["direct", "merge"])
 @pytest.mark.parametrize("suffix", ["", "_parallel"])
