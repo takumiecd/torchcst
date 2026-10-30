@@ -10,6 +10,93 @@
 namespace radius_cell_mass {
 using Tensor = torch::Tensor;
 using Config = std::vector<double>;
+namespace py = pybind11;
+using NodePointer = decltype(std::declval<torch::autograd::Edge>().function);
+template<class Pointer> struct WeakNodeType {
+    using type = std::weak_ptr<torch::autograd::Node>;
+};
+template<class T> struct WeakNodeType<c10::intrusive_ptr<T>> {
+    using type = c10::weak_intrusive_ptr<T>;
+};
+using NodeWeak = typename WeakNodeType<NodePointer>::type;
+template<class Base, class = void> struct HasResourceRelease : std::false_type {};
+template<class Base> struct HasResourceRelease<Base,
+    std::void_t<decltype(std::declval<Base &>().release_resources())>> : std::true_type {};
+template<class Base> void release_base_resources(Base *node) {
+    if constexpr (HasResourceRelease<Base>::value) node->Base::release_resources();
+}
+
+// A callable in AtomState's reader list. It owns no model, Tensor or Node.
+// Its Python owner is weak; the graph is weak too, so abandoning a graph or
+// owner cannot leave a cycle. Only Python/GIL-held paths own this object.
+struct RadiusReadProbe {
+    py::weakref owner;
+    NodeWeak node;
+    bool active = true;
+    RadiusReadProbe(py::object owner_, NodePointer node_)
+        : owner(owner_), node(node_) {}
+    py::object check() const {
+        return active && !node.expired() ? py::object(py::bool_(true)) : py::none();
+    }
+};
+
+// Delegate computation and SavedVariables to the standard CppNode. The outer
+// Node intercepts the actual release_variables boundary, not a backward hook:
+// a later user-hook exception therefore cannot release the lease prematurely.
+struct RadiusLeaseNode : torch::autograd::Node {
+    NodePointer inner;
+    std::weak_ptr<RadiusReadProbe> probe;
+    RadiusLeaseNode(NodePointer inner_, std::weak_ptr<RadiusReadProbe> probe_)
+        : inner(std::move(inner_)), probe(std::move(probe_)) {
+        set_next_edges(torch::autograd::edge_list(inner->next_edges()));
+    }
+    torch::autograd::variable_list apply(
+            torch::autograd::variable_list &&inputs) override {
+        return (*inner)(std::move(inputs));
+    }
+    void will_release_variables() override {
+        if (inner) inner->will_release_variables();
+    }
+    void release_variables() override {
+        if (inner) inner->release_variables();
+        // A weak_ptr lock may become the last probe owner if Python concurrently
+        // discards its AtomState. Acquire the GIL BEFORE locking, including for
+        // destruction of the probe's weak Python reference.
+        py::gil_scoped_acquire acquire;
+        if (auto reader = probe.lock()) reader->active = false;
+    }
+    // On intrusive_ptr PyTorch, weak observers may outlive the last strong
+    // graph reference. Drop saved numerical resources at STRONG-count zero.
+    // Older shared_ptr Node versions simply use the ordinary destructor.
+    void release_resources() {
+        release_base_resources<torch::autograd::Node>(this);
+        inner.reset();
+    }
+    std::string name() const override { return "RadiusLeaseNode"; }
+};
+
+template<class Pointer, class Node = RadiusLeaseNode>
+auto lease_node(NodePointer inner, std::weak_ptr<RadiusReadProbe> probe) {
+    if constexpr (std::is_same_v<Pointer, c10::intrusive_ptr<torch::autograd::Node>>)
+        return c10::make_intrusive<Node>(std::move(inner), std::move(probe));
+    else return std::make_shared<Node>(std::move(inner), std::move(probe));
+}
+
+Tensor attach_radius_lease(Tensor result, const py::object &owner,
+        const py::object &qualifies) {
+    if (!result.requires_grad() || owner.is_none() || qualifies.is_none()) return result;
+    py::gil_scoped_acquire acquire;
+    // Keep custom callbacks/modes on the original identity protection path.
+    if (qualifies(py::cast(result), owner, true).is_none()) return result;
+    auto readers = owner.attr("_readers");
+    if (!PyList_CheckExact(readers.ptr())) return result;
+    auto reader = std::make_shared<RadiusReadProbe>(owner, result.grad_fn());
+    auto wrapper = lease_node<NodePointer>(result.grad_fn(), reader);
+    reader->node = NodeWeak(wrapper);
+    readers.attr("append")(py::cast(reader));
+    torch::autograd::set_history(result, wrapper);
+    return result;
+}
 
 // PyTorch changed Node ownership from shared_ptr to intrusive_ptr. Select the
 // matching constructor from the installed header instead of pinning a version.
@@ -119,6 +206,32 @@ public:
 };
 
 void bind_host_autograd(pybind11::module_ &module) {
+    py::class_<RadiusReadProbe, std::shared_ptr<RadiusReadProbe>>(
+        module, "RadiusReadProbe", py::module_local())
+        .def("__call__", &RadiusReadProbe::check);
+    module.def("radius_lease_guard", [](py::object qualifies) {
+        return py::cpp_function([qualifies](Tensor result, py::object owner) {
+            auto node = result.grad_fn();
+            auto wrapper = dynamic_cast<RadiusLeaseNode *>(node.get());
+            if (!wrapper) return false;
+            auto probe = wrapper->probe.lock();
+            return probe && probe->active && !probe->node.expired()
+                && probe->owner().is(owner)
+                && !qualifies(py::cast(result), owner, true).is_none();
+        });
+    });
+    module.def("autograd_linear_leased", [](Tensor x, Tensor atoms, Config input,
+        Config output, int input_start, int output_start, bool merge,
+        int tile_sites, int schedule, py::object owner, py::object qualifies) {
+        TORCH_CHECK(schedule >= 0 && schedule <= 2, "invalid native host schedule");
+        Tensor result;
+        {
+            py::gil_scoped_release release;
+            result = RadiusLinear::apply(x, atoms, input, output, input_start,
+                output_start, merge, tile_sites, schedule);
+        }
+        return attach_radius_lease(result, owner, qualifies);
+    });
     module.def("autograd_linear", [](Tensor x, Tensor atoms, Config input,
         Config output, int input_start, int output_start, bool merge,
         int tile_sites, int schedule) {

@@ -88,10 +88,13 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
         ):
             raise ValueError("output_tile_sites must lie in [1,128]")
         if type(recipe.native_autograd) is not bool or (
-            recipe.native_autograd
-            and not recipe.schedule.startswith("block_local")
+            recipe.native_autograd and not recipe.schedule.startswith("block_local")
         ):
             raise ValueError("native_autograd requires a block-local schedule")
+        if type(recipe.native_read_lease) is not bool or (
+            recipe.native_read_lease and not recipe.native_autograd
+        ):
+            raise ValueError("native_read_lease requires native_autograd")
 
     def supports(self, context, recipe):
         try:
@@ -162,9 +165,16 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
         return None
 
     def prepare(self, state):
-        from torchcst.atoms._native_read_lease import prepare
+        from torchcst.atoms import _native_read_lease
 
-        prepare()
+        proof = _native_read_lease.prepare()
+        if state.recipe.native_read_lease and proof is not None:
+            from .executor import _extension
+
+            _native_read_lease._completion_guard = _extension().radius_lease_guard(
+                proof
+            )
+            _native_read_lease._completion_factory = proof
         state.invalidate()
         state.layout = hierarchy_from_operator(state.binding.execution_declaration())
         state.mark_current()
@@ -175,4 +185,10 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
 
         # Only immutable geometry is cached; routing follows current radius values.
         # Initialization remains on the CPU reference before the module moves to CUDA.
-        return radius_linear(state.layout, x, parameters, recipe=state.recipe)
+        return radius_linear(
+            state.layout,
+            x,
+            parameters,
+            recipe=state.recipe,
+            owner=state.atom_state if state.recipe.native_read_lease else None,
+        )

@@ -87,6 +87,28 @@ def test_discarded_graph_releases_marker_and_factory_keeps_no_model(prepared):
     assert all(r() is None for r in references)
 
 
+@pytest.mark.parametrize("enabled", [False, True])
+def test_pruning_is_bounded_but_never_discards_a_live_or_retained_lease(
+    prepared, monkeypatch, enabled
+):
+    if not enabled:
+        monkeypatch.setattr(native, "_prepared", None)
+    state = owner()
+    retained = state.protect_tensor(state.atoms.p)
+    marker = state._readers[0]
+    for _ in range(200):
+        transient = state.protect_tensor(state.atoms.p)
+        del transient
+        assert len(state._readers) <= 33
+        assert marker() is not None
+    retained.sum().backward(retain_graph=True)
+    with pytest.raises(RuntimeError, match="backward"):
+        state.relayout(torch.tensor([2, 0, 1]))
+    retained.sum().backward()
+    state.relayout(torch.tensor([2, 0, 1]))
+    assert state._readers == []
+
+
 @pytest.mark.parametrize(
     "needs_x,needs_p", [(True, True), (True, False), (False, True)]
 )

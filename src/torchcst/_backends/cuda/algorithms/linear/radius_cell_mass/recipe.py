@@ -16,3 +16,5 @@ class RadiusCellMassRecipe:
     output_tile_sites: int = 32
     # Opt-in C++ host/autograd graph; all CUDA arithmetic stages are identical.
     native_autograd: bool = False
+    # Save the output read lease on that graph instead of another identity node.
+    native_read_lease: bool = False

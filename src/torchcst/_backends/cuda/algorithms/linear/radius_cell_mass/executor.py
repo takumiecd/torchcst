@@ -469,7 +469,7 @@ class _RadiusLinear(torch.autograd.Function):
         return grad_input, grad_atoms, None, None
 
 
-def radius_linear(plan, x, atoms, *, recipe=None):
+def radius_linear(plan, x, atoms, *, recipe=None, owner=None):
     """Execute a bounded first-order research route through an explicit Plan.
 
     Initialize CSTLinear with the CPU reference and then move it to CUDA.
@@ -542,7 +542,20 @@ def radius_linear(plan, x, atoms, *, recipe=None):
                 and not torch._C._are_functorch_transforms_active()
                 and torch.autograd.forward_ad._current_level == -1
             ):
-                return _extension().autograd_linear(
+                native = _extension()
+                extra = ()
+                forward = native.autograd_linear
+                if recipe.native_read_lease and owner is not None:
+                    from torchcst.atoms import _native_read_lease
+
+                    if (
+                        _native_read_lease._prepared is not None
+                        and _native_read_lease._prepared
+                        is _native_read_lease._completion_factory
+                    ):
+                        forward = native.autograd_linear_leased
+                        extra = (owner, _native_read_lease._prepared)
+                return forward(
                     x.contiguous(),
                     atoms.contiguous(),
                     plan.input.native_config(),
@@ -556,6 +569,7 @@ def radius_linear(plan, x, atoms, *, recipe=None):
                         "block_local_parallel": 1,
                         "block_local_cached_parallel": 2,
                     }[recipe.schedule],
+                    *extra,
                 )
             function = _BlockLocalRadiusLinear
         elif (

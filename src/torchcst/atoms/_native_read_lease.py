@@ -11,6 +11,8 @@ from types import FunctionType, ModuleType
 import torch
 
 _prepared = None
+_completion_guard = None
+_completion_factory = None
 _capability = None
 
 

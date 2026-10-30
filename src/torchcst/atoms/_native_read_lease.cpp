@@ -116,7 +116,8 @@ py::object make_protector(py::object owner_type, py::object tensor_type,
     for (auto record : lookups) attributes->emplace_back(py::cast<py::tuple>(record));
     py::object mro = owner_type.attr("__mro__");
     py::object read_name = py::str("_readers");
-    return py::cpp_function([=](py::object object, py::object state) -> py::object {
+    return py::cpp_function([=](py::object object, py::object state,
+            bool eligible_only) -> py::object {
         // Check capabilities before invoking any replaced callback or unpacking
         // a Tensor subclass. Every rejection returns to the original Python
         // autograd Function in the same protect_tensor invocation.
@@ -139,6 +140,7 @@ py::object make_protector(py::object owner_type, py::object tensor_type,
         if (input.is_cuda() && py::cast<bool>(capturing())) return py::none();
         py::object readers = state.attr("_readers");
         if (!PyList_CheckExact(readers.ptr())) return py::none();
+        if (eligible_only) return py::bool_(true);
 
         auto marker = at::empty({0}, at::TensorOptions().device(at::kCPU));
         // Keep this wrapper alive through apply/save_variables_to_ctx. The
@@ -147,7 +149,7 @@ py::object make_protector(py::object owner_type, py::object tensor_type,
         readers.attr("append")(py::weakref(marker_object));
         auto result = ReadLease::apply(input, marker);
         return py::cast(result);
-    });
+    }, py::arg("tensor"), py::arg("state"), py::arg("eligible_only") = false);
 }
 } // namespace
 
