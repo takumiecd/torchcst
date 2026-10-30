@@ -6755,3 +6755,29 @@ radius階層のTと出力CTAの担当site幅は別の設定であり、階層や
 shared moments/Cの分割だけではH/Gの全量同時保存は減らない。必要なら有効batchを保つ
 勾配蓄積や明示的な再計算/offload方針を比較する。forwardを分割しても全chunkのHを
 保存し続ければ合計保存量は減らない。128の結果をそのまま大型化の達成とみなさない。
+
+#### 修正後の統合入口と出力幅の比較（2026-10-30）
+
+job `l4job-9c85563a9c24426bba73135e0d3ce1d2`は正常終了・hash確認済みで回収した。
+最終callback認証修正とoptimizer辞書走査削減を含むsourceで461 testsが通過し、
+5step35 TensorのParameter/Y/dX/全atom勾配/Adam stateが通常入口とbit一致した。
+同一N128/B4/A819/M8/seed41、FP32 IEEE、native CSTAdamW、10 warmup/101 samples。
+通常入口は1.576297/1.593188ms、統合入口（幅32）は1.438426/1.436839ms。
+matched dense .702707/.697241msで、2.04698/2.06075倍。時間目標は未達。
+
+| 出力CTA幅 | CST完全step ms（独立process 1/2） | matched dense ms | CST/dense |
+| --- | --- | --- | --- |
+| 16 | 1.443524 / 1.428140 | .706232 / .710989 | 2.04398 / 2.00867 |
+| 8 | 1.444024 / 1.406958 | .718434 / .712295 | 2.00996 / 1.97525 |
+| 64 | 1.447762 / 1.427002 | .710081 / .722951 | 2.03887 / 1.97386 |
+
+各processで初期/更新後の独立Y・dX・全atom勾配とmatched-state optimizer検証が通過。
+CST allocated/reserved=287232/2097152B、dense=17313280/23068672Bは全幅で同じ。
+幅8/64の片方だけ2倍を下回る結果や、process平均だけで達成とはしない。
+出力幅だけでは安定した余裕は得られておらず、階層momentsの構築方式も次に比較する。
+`moment_method=direct`は階層ごとのmomentsを入力から作る方式で、低階層atomのdirect経路や
+階層分類・周期式・完成responseの共有とは別の設定。これらを維持して比較する。
+そのjobは`l4job-acc85bd3dacc4406806c4f8f3fbd4737`（未採用）。
+source SHA256=`dd6c088e977bd3de26a4d551ae22062cfa3b8b4d626df9fbfb6a339fa6ca681c`、
+result archive SHA256=`46cbdbbead5035a320b74d682ef386cdfbdbb5fd71258873afeb36b1af6d65cb`。
+証拠は`output/radius-prepared-entry-20261030/l4job-9c85563a9c24426bba73135e0d3ce1d2/`。
