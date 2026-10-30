@@ -6954,3 +6954,30 @@ fallback、設定変更時の再検証、通常PyTorch hooks、read-lease/offloa
 次は既存MNIST harnessの中間CST層をradius/native版へ接続し、真のbatch 4から完全model
 step・学習・分布・ピークを比較する。batch 32のglobal moments/response保存量と、
 N1024/A52428のshared/layout上限は別途検証・設計する。
+
+#### 次段階：既存MNIST harnessへのradius接続（2026-10-31 JST、実測中）
+
+`benchmarks/training/cell_mass_mnist.py`へ明示cohort
+`polar_radius_native_128_v1`を追加した（commit `91567f6e`）。旧sigma fixtureや既存cohortの
+意味は変えない。構成は既存の784→128→128→10/ReLUで、中間128→128だけをCST/denseで
+比較する。公開radius初期化の実際のW、外側層state、seed/data順、FP32 scalar buffer、
+Planとoptimizer設定をartifactに固定する。振幅の再調整やsigmaからの変換は行わない。
+
+N128/A819/M8/spacing=1、radius bounds=(minimum .5,birth 4,maximum 50,upper_floor 1)、
+amplitude_max=1/w_c=.3。最小support直径`2R_min=spacing`で、R_max/R_min=100。
+seed41の初期radiusは[3.985522,4.000000]に集中し、input/outputとも全819 atomが
+level2/T=4/k=3に所属する。周期は`P=kT=12`。この学習実験は均等な階層分布ではなく、
+学習前後の実radius分位点・bank人数・owner偏りを記録する。
+
+真のbatch4から開始し、B32は明示opt-inの別条件とする。CSTは公開CSTAdamWとnative Polar
+Planを使い、outer raw decay=.01、中間atom raw decay=0/logical amplitude decay=.01。
+denseも同じlr=1e-4とordinary/middle decay=.01。両者の学習軌跡の一致は前提にしない。
+先に実MNISTの最初のbatchでlogits/dX、CST中間層の独立Y/dX/全atom勾配とquadrature、
+1stepのCPU参照optimizerを確認し、それからfresh processで各1epochを測る。
+初回epochはoptimizer/JIT/cold準備を含むと明示し、隠れたwarmup更新は行わない。
+数epochの比較では後続epochも別に示す。memoryはresidentデータ/modelを含め、
+初期evaluation/backward warmupとtrainingのピーク上限、training単独のピークをともに残す。
+
+CPU全体2890 passed/6254 skipped（55.36s）、cohort固有の初期化・旧経路互換・CLI・hash/
+optimizer設定テスト、Ruff/diff検査が通過。GPU pilot jobは
+`l4job-a7ff212818bc4c519b1cf2d4d49dd6d5`。MNISTの速度・メモリ・精度の達成はまだ主張しない。
