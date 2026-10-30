@@ -6469,3 +6469,38 @@ source/results/receipt/8 primary JSON/stateと再利用可能なnative binaryを
 grid全体へ配る方式（`l4job-9972b42d198549098b7c0547d676cf47`）。
 後者の追加global scratchはbank maskの4 bytes（allocator単位では別）だけで、
 coeffsのglobal表やatomの複製を作らない。比較完了までは性能採用未確認とする。
+
+#### bank集約だけの結果とlaunch候補のscreen
+
+job `l4job-9173c82f2f264e5fac51399ee8be55d6`は147 tests、5更新後35 Tensorの
+bit一致、全10 primary/screen benchmark gatesが通過した。
+shared-profile/C++ hostの比較元2回は1.695940/1.680413ms、bank変更後は
+1.697767/1.677755ms。平均1.688176→1.687761msで、完全stepの改善は確認できない。
+別traceのmoments kernelは125.59→85.41usだが、局所GPU短縮を採用根拠にしない。
+メモリは全primaryでallocated287232/reserved2097152Bのまま。
+
+同じ初期値・profileのままexecution recipeだけを変えた各1 processのscreen：
+
+| direct cutoff / output sites / moments | 完全step ms | matched dense ms | CST allocated B |
+| --- | ---: | ---: | ---: |
+| 1 / 32 / merge | 1.681964 | .731855 | 426496 |
+| 2 / 8 / merge | 1.768103 | .725938 | 287232 |
+| 2 / 16 / merge | 1.664208 | .715546 | 287232 |
+| 2 / 64 / merge | 1.686941 | .739207 | 287232 |
+| 3 / 32 / merge | 4.308174 | .734443 | 217600 |
+| 2 / 32 / direct（batch毎CTA） | 1.832280 | .726255 | 287232 |
+
+どれも時間2倍以内は未達であり、最小メモリの条件が最速ではない。
+これはscreenで、最良の1件だけを選んで達成としない。
+snapshot SHA256=`4b9ee0dc3a05f211298ff4e1c45363e8cf7e09d134af5b2d8d15dd33ff8d482c`、
+result archive SHA256=`130329003b427b21ce032bff631aa5e0e506ef4ba5b39682d9abdc2c9100f011`。
+原本・両compiled binaries・profile/state・10 recordsはignored
+`output/radius-projection-banks-20261030/`へ保全した。
+
+queuedの`l4job-9972b42d198549098b7c0547d676cf47`と
+`l4job-d91a9b23b2434f6da05b0c91cce1dcde`は実行前にcancelした。
+hash確認済みの既存native binaryを比較元へ再利用し、重複compileを減らした
+`l4job-c2b30bbbdd534ad5b30961453318f1d3`へ置き換えた。
+次はgrid direct moments・value-only M8係数・同じradius/periodの軸間再利用を
+**組合せとして**比較する。Polarではtask radius微分を元から使わないが、
+物理radiusのparameter化では既存のradius微分を維持する。
