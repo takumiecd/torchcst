@@ -5,6 +5,46 @@
 
 namespace radius_cell_mass {
 
+// Direct moment construction has no parent/child dependency. Determine its
+// needed banks once, then distribute (batch, bank, tile, basis) over the grid.
+// The one-word routing scratch contains no numerical model/cache information.
+template<class T>
+__global__ void direct_moment_banks(const T *p, int atoms, Axis axis, int start,
+    bool output_side, unsigned *mask) {
+    __shared__ unsigned warp_masks[THREADS / 32];
+    unsigned bits = 0;
+    for (int atom = threadIdx.x; atom < atoms; atom += blockDim.x) {
+        Membership member = classify(radius(p, atom, axis),
+            center(p, atom, axis, output_side), axis);
+        if (axis.banks[member.bank].level >= start) bits |= 1u << member.bank;
+    }
+    for (int distance = 16; distance; distance /= 2)
+        bits |= __shfl_down_sync(0xffffffff, bits, distance);
+    if (threadIdx.x % 32 == 0) warp_masks[threadIdx.x / 32] = bits;
+    __syncthreads();
+    if (threadIdx.x == 0) {
+        unsigned all = 0;
+        for (int warp = 0; warp < THREADS / 32; ++warp) all |= warp_masks[warp];
+        *mask = all;
+    }
+}
+
+template<class T>
+__global__ void direct_moment_grid(const T *signal, double *moments,
+    int batch, Axis axis, int start, const unsigned *mask) {
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    int features = axis.basis_count();
+    int elements = (axis.node_count - prefix_nodes(axis, start)) * features;
+    if (index >= batch * elements) return;
+    int node = prefix_nodes(axis, start) + (index % elements) / features;
+    if (!(*mask & (1u << bank_for_node(node, axis)))) {
+        moments[index] = 0;
+        return;
+    }
+    moments[index] = compact_moment_element(signal, moments, index / elements,
+        node, index % features, axis, start, false);
+}
+
 // One CTA owns a batch row's complete projection. Output tiles NEVER rebuild
 // these moments or responses. The next launch is the cross-block dependency
 // boundary; there is no inter-block spin wait or output atomic accumulation.
@@ -201,10 +241,22 @@ inline std::vector<Tensor> shared_apply(
     AT_DISPATCH_FLOATING_TYPES(x.scalar_type(), "radius_shared_apply", [&] {
         if (parallel_projection) {
             if (input_elements) {
-                shared_projection_kernel<scalar_t, false><<<x.size(0), THREADS, projection_bytes,
-                    at::cuda::getCurrentCUDAStream()>>>(
-                    x.data_ptr<scalar_t>(), p.data_ptr<scalar_t>(), z.data_ptr<double>(),
-                    h.data_ptr<double>(), p.size(0), input, input_start, merge, projection_output_side);
+                if (!merge) {
+                    auto mask = torch::empty({}, x.options().dtype(torch::kInt));
+                    direct_moment_banks<<<1, THREADS, 0, at::cuda::getCurrentCUDAStream()>>>(
+                        p.data_ptr<scalar_t>(), p.size(0), input, input_start,
+                        projection_output_side, reinterpret_cast<unsigned *>(mask.data_ptr<int>()));
+                    C10_CUDA_KERNEL_LAUNCH_CHECK();
+                    direct_moment_grid<<<(z.numel() + THREADS - 1) / THREADS, THREADS, 0,
+                        at::cuda::getCurrentCUDAStream()>>>(x.data_ptr<scalar_t>(),
+                        z.data_ptr<double>(), x.size(0), input, input_start,
+                        reinterpret_cast<const unsigned *>(mask.data_ptr<int>()));
+                } else {
+                    shared_projection_kernel<scalar_t, false><<<x.size(0), THREADS, projection_bytes,
+                        at::cuda::getCurrentCUDAStream()>>>(
+                        x.data_ptr<scalar_t>(), p.data_ptr<scalar_t>(), z.data_ptr<double>(),
+                        h.data_ptr<double>(), p.size(0), input, input_start, merge, projection_output_side);
+                }
                 C10_CUDA_KERNEL_LAUNCH_CHECK();
             }
             if (p.size(0)) {
