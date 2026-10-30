@@ -167,3 +167,9 @@ def operator_declaration(binding):
     declaration = binding.declaration()
     binding.__dict__["_execution_declaration"] = (signature, declaration)
     return declaration
+
+
+# Optional prepared execution may specialize only these original definitions.
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
+
+_seal_functions(globals())

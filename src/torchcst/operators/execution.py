@@ -113,6 +113,8 @@ class LinearBinding:
         state.pop("_prepared_dispatch", None)
         state.pop("_prepared_dispatch_stats", None)
         state.pop("_linear_context_cache", None)
+        state.pop("_execution_program", None)
+        state.pop("_execution_program_attempt", None)
         return state
 
     def execution_declaration(self):
@@ -183,3 +185,9 @@ def validate_live_operator(state, inputs):
 
     if not isinstance(state.binding.operator, Operator):
         raise TypeError("this Algorithm requires a live Operator binding")
+
+
+# Optional prepared execution may specialize only these original definitions.
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
+
+_seal_functions(globals())

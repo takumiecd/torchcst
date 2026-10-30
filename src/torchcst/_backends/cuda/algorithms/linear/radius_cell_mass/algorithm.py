@@ -6,6 +6,7 @@ import torch
 
 from torchcst._backends.algorithm import Algorithm
 from torchcst._backends.schema import SupportResult
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
 from torchcst.kernels.parameterizations import PolarAmpRadiusSpec
 from torchcst.kernels.radius_cell_mass import radius_cell_mass_axes
 from torchcst.operators.context import LinearContext
@@ -185,3 +186,13 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             parameters,
             recipe=state.recipe,
         )
+
+    def prepare_execution_program(self, dispatcher, cached, inputs, *, plan=None):
+        if not cached.state.recipe.native_entry:
+            return None
+        from .prepared import prepare_program
+
+        return prepare_program(dispatcher, cached, inputs, plan=plan)
+
+
+_seal_functions(globals())

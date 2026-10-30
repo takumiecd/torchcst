@@ -183,3 +183,9 @@ def context_from_tensors(
     if cacheable:
         namespace["_linear_context_cache"] = (validated, key, context)
     return context
+
+
+# Optional prepared execution may specialize only these original definitions.
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
+
+_seal_functions(globals())

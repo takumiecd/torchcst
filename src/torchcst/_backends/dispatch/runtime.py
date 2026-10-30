@@ -228,8 +228,28 @@ class Dispatcher:
         return self._prepare(binding, inputs, plan=plan)[0]
 
     def run(self, binding: ExecutionBinding, inputs, *, plan=None):
+        namespace = getattr(binding, "__dict__", {})
+        prepared = namespace.get("_execution_program")
+        if prepared is not None:
+            result = prepared.run(self, inputs, plan=plan)
+            if result is not None:
+                return result
         _, algorithm, state = self._prepare(binding, inputs, plan=plan)
-        return algorithm.run(state, inputs)
+        result = algorithm.run(state, inputs)
+        factory = getattr(algorithm, "prepare_execution_program", None)
+        cached = namespace.get("_prepared_dispatch")
+        if factory is not None and cached is not None:
+            previous = namespace.get("_execution_program_attempt")
+            if (
+                previous is None
+                or previous[0] is not cached
+                or previous[1] is not state._storage
+            ):
+                namespace["_execution_program_attempt"] = (cached, state._storage)
+                namespace["_execution_program"] = factory(
+                    self, cached, inputs, plan=plan
+                )
+        return result
 
     def prepare_optimizer_update(self, binding, adapter, site=None):
         """Ask an already-selected update Algorithm for its optional hot path.

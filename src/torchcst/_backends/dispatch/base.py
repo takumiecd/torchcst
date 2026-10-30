@@ -57,3 +57,9 @@ class Selector(ABC):
         from .runtime import select_plan
 
         return select_plan(self, context)
+
+
+# Optional prepared execution may specialize only these original definitions.
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
+
+_seal_functions(globals())

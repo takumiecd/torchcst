@@ -40,3 +40,9 @@ class OrderedSelector(Selector):
                     plan, ("ordered", plan.algorithm_id), "first eligible Plan"
                 )
         return None
+
+
+# Optional prepared execution may specialize only these original definitions.
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
+
+_seal_functions(globals())

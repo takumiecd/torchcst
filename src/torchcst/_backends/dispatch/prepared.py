@@ -29,3 +29,9 @@ class PreparedDispatch:
     state: object
     recipe: object
     state_recipe: object
+
+
+# Optional prepared execution may specialize only these original definitions.
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
+
+_seal_functions(globals())

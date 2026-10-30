@@ -6653,3 +6653,24 @@ source SHA256=`9ecf6e5cd6bf0ebe901d90d1480ef9f0f0f295ba5785766623f028f3b26fe073`
 result archive SHA256=`26fd7f41d9f96151e0c3a6e5e76e423d81c5525da04f2aa726440671c132e613`。
 結果は`output/radius-public-runner-20261030/l4job-b88134409a204d0f9895dd73a010b428/`に保全した。
 このsourceのPR commit `6cf0b5883b74b18ce1bf5631ab549c85d63a0568`のCPU validation CIも成功。
+
+#### 固定Planの準備済み実行入口（検証中）
+
+`native_entry=True`の標準CSTLinear/FixedSelectorに限り、一つのbinding-owned
+execution programを試作する。現在の入力Tensor metadata、Parameter/optimizer fieldの
+storage、登録、固定buffer version、Plan/recipe/state、標準callback定義、PyTorch global
+stateをnative guardで確認する。callbackの確認を先に行い、差し替えられたaccessorを
+guardの途中で実行しない。変更・custom callback・非対応API・Tensor modeは通常Dispatcherへ戻す。
+初回入力Tensorは保持せず、新しい入力storageでも同じmetadataなら処理できる。
+deepcopy/checkpointではprogramと試行stampを捨てる。
+
+置き換えるのはDispatcher/Algorithmの純粋なmetadata prologueだけ。
+`RadiusCellMassAlgorithm.execute`はそのまま呼び、Parameter借用、その後の宣言確認、
+現在atomの分類、階層moments/responseの生成・共有、checked CUDA入口、出力read leaseは維持する。
+数値計算のcacheをstep間で共有したり、検証なしで以前のroutingを再利用したりしない。
+generic Dispatcherは演算を区別せず、Algorithmが任意に提供する準備済み入口だけを扱う。
+
+CPU全体2771 testsが通過し、変更検知/弱い入力寿命の17 testsも通過。
+CPU metadataだけの局所比較では通常prologue約31µs、guard約6.2µsだった。
+これはCPU上の局所診断であり、GPU完全stepの改善や目標達成を示すものではない。
+同一native入口・同一CUDA binaryで、通常prologueと準備済み入口の実GPU比較を次に行う。
