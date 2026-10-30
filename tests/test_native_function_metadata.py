@@ -160,7 +160,9 @@ def test_batched_storage_check_owns_no_tensor(native_factory):
     assert not checker(None)
 
 
-@pytest.mark.parametrize("target", ["instance", "class", "builtin_instance"])
+@pytest.mark.parametrize(
+    "target", ["instance", "class", "builtin_instance", "property", "getattribute"]
+)
 def test_storage_accessor_replacement_is_detected_without_calling_it(
     native_factory, monkeypatch, target
 ):
@@ -177,6 +179,10 @@ def test_storage_accessor_replacement_is_detected_without_calling_it(
         tensor.data_ptr = custom
     elif target == "builtin_instance":
         tensor.data_ptr = tensor.numel
+    elif target == "property":
+        monkeypatch.setattr(torch.Tensor, "data_ptr", property(custom))
+    elif target == "getattribute":
+        monkeypatch.setattr(torch.Tensor, "__getattribute__", custom)
     else:
         monkeypatch.setattr(torch.Tensor, "data_ptr", custom)
     assert not checker(None)

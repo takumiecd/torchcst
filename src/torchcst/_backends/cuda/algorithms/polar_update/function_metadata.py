@@ -17,6 +17,7 @@ import torch
 _loaded_function_factory = None
 _loaded_storage_factory = None
 _tensor_data_ptr = torch.Tensor.data_ptr
+_tensor_getattribute = torch.Tensor.__getattribute__
 
 
 @cache
@@ -57,8 +58,9 @@ def prepare_storage_checks(factory, tensors):
         return None
     if any(
         type(value) not in (torch.Tensor, torch.nn.Parameter)
-        or "data_ptr" in value.__dict__
+        or type(value).__getattribute__ is not _tensor_getattribute
         or type(value).data_ptr is not _tensor_data_ptr
+        or "data_ptr" in value.__dict__
         for value in tensors
     ):
         return None

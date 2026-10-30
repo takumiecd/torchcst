@@ -83,12 +83,15 @@ namespace {
 struct Storage {
     py::object reference;  // Weak: a guard must not keep the example Tensor alive.
     py::object address;
+    py::object descriptor;
+    getattrofunc getter;
     PyCFunction method;
 };
 
 static py::object make_storage_guard(py::tuple references, py::tuple methods) {
     if (references.size() != methods.size()) throw py::value_error("storage arity");
     auto records = std::make_shared<std::vector<Storage>>();
+    py::str name("data_ptr");
     for (size_t i = 0; i < references.size(); ++i) {
         PyObject* ref = references[i].ptr();
         PyObject* method = methods[i].ptr();
@@ -104,19 +107,26 @@ static py::object make_storage_guard(py::tuple references, py::tuple methods) {
             fn(PyCFunction_GetSelf(method), nullptr));
         if (!address) throw py::error_already_set();
         if (!PyLong_CheckExact(address.ptr())) throw py::type_error("expected address");
-        records->push_back({py::reinterpret_borrow<py::object>(ref), address, fn});
+        PyObject* value = PyWeakref_GetObject(ref);
+        PyObject* descriptor = _PyType_Lookup(Py_TYPE(value), name.ptr());
+        if (!descriptor) throw py::type_error("missing data_ptr descriptor");
+        records->push_back({py::reinterpret_borrow<py::object>(ref), address,
+            py::reinterpret_borrow<py::object>(descriptor), Py_TYPE(value)->tp_getattro, fn});
     }
-    return py::cpp_function([records](py::object) {
+    return py::cpp_function([records, name](py::object) {
         for (const Storage& r : *records) {
             PyObject* value = PyWeakref_GetObject(r.reference.ptr());
             if (value == Py_None) return false;
-            py::object method = py::reinterpret_steal<py::object>(
-                PyObject_GetAttrString(value, "data_ptr"));
-            if (!method) { PyErr_Clear(); return false; }
-            if (!PyCFunction_Check(method.ptr())
-                || PyCFunction_GetFlags(method.ptr()) != METH_NOARGS
-                || PyCFunction_GetFunction(method.ptr()) != r.method
-                || PyCFunction_GetSelf(method.ptr()) != value) return false;
+            // Look up the descriptor without invoking it. A newly installed
+            // property/custom __getattribute__ must invalidate, never execute.
+            if (Py_TYPE(value)->tp_getattro != r.getter
+                || _PyType_Lookup(Py_TYPE(value), name.ptr()) != r.descriptor.ptr()) return false;
+            py::object dictionary = py::reinterpret_steal<py::object>(
+                PyObject_GenericGetDict(value, nullptr));
+            if (!dictionary) { PyErr_Clear(); return false; }
+            int overridden = PyDict_Contains(dictionary.ptr(), name.ptr());
+            if (overridden < 0) { PyErr_Clear(); return false; }
+            if (overridden) return false;
             py::object address = py::reinterpret_steal<py::object>(r.method(value, nullptr));
             if (!address) { PyErr_Clear(); return false; }
             int same = PyLong_CheckExact(address.ptr())
