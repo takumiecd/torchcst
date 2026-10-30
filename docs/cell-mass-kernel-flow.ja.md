@@ -6910,3 +6910,47 @@ Ruff/diff検査が通過。Python 3.11ではwatcher本体を使えないため�
 併行して調べたcoordinate-stepのimport移動は、全体テストで宣言/実行のimport境界を
 破ったため本体変更を取り消した。約1µsのlocal診断短縮を理由に境界を変更しない。
 fresh import順とlive callbackの回帰検査だけを残した。失敗logも同じoutputに保全している。
+
+#### N128完全step・メモリ目標の達成（2026-10-31 JST）
+
+commit `b6a285d0a1d43de8b41d4e60c388c3e16bc12299`の両consumerへのepoch接続を
+実GPUで検証した。N128/B4/A819/M8/seed41、FP32 IEEE、公開CSTAdamW/fused AdamW、
+raw decay=0・amplitude decay=.01・check_finite=False、10 warmup/101 samplesを維持。
+下表は未計装・同期済みforward/loss/backward/optimizer完全stepのmedianで、microやtraceから
+推定したものではない。CUDA49afの階層・完成response共有・更新則は比較両版で同じ。
+
+| 独立process | 旧consumer ms | epoch接続 ms | 接続版自身のdense ms | CST/dense |
+| --- | --- | --- | --- | --- |
+| ABBA 1 | 1.509955 | 1.375293 | .707463 | 1.943979 |
+| ABBA 2 | 1.407406 | 1.317650 | .682119 | 1.931701 |
+| 公開runner 1 | — | 1.366333 | .722017 | 1.892383 |
+| 公開runner 2 | — | 1.312774 | .706161 | 1.859029 |
+
+**全4独立processで時間はdenseの2倍以内。** 公開runnerの2回は別のL4で、既存の
+`radius-cell-mass-128-native-initial.json`、Plan catalog、runtime sourceを変更せず実行した。
+各process自身のmatched denseを使い、異なるVMの絶対時間を直接差し引かない。
+全回のCST allocated/reserved=**287232/2097152B**、dense=**17313280/23068672B**。
+両ピークとも厳密にdense未満。総GPU processメモリやGraph captureの達成は主張しない。
+
+GPU **550 passed/1 skipped**（skipは旧Python専用fallback検査）、初期/更新後の独立
+Y・dX・全atom勾配、small-atom quadrature、matched-state optimizer gateが通過した。
+旧consumerと接続版の5stepのY/dX/dP/Parameter/Adam state、35 Tensorがbit一致。
+実際のprogramを変更せずguard構造とnative統計を確認し、Linear・Polarの両consumerが
+epochを使用していることを検証した。従来のtuple TYPE/IDチェックは残り、旧版の辞書子node
+133+58/134個が接続版では0個、watch登録は276辞書/325登録。slot/MRO/storage検証も残る。
+
+比較job=`l4job-a847e658c7e24b79969b74e89bb76895`、
+source SHA256=`9e2d2e8115ed8cbce1e265cce741ebd5d533e466bd98a379e9dce286a62f287c`、
+result archive SHA256=`44597e1de5117f1e65887ee76952e9eac18357c15f7ee382f5f20cfb793099c3`。
+公開runner確認job=`l4job-e5797d337ef34d309d928a6b56a82f0a`、
+source SHA256=`b6b70a94706924776d7f3f2da7b47784d17b8980c154e415ef5efb4d87e22606`、
+result archive SHA256=`cd41d0b4b4b7a194b1daeab0aa8e1b0f106aad26b1eef5a80dee7099c3b26b01`。
+両jobのspec/receipt/resultsを既存の`output/radius-prepared-entry-20261030/<job-id>/`へ保全。
+同commitのCPU validation CI（run 631）も成功。wheel/sdist内の変更5fileのbyte一致を確認済み。
+
+この結果に基づき、限定された明示Planの研究経路としてepoch接続を採用する。非対応Pythonの
+fallback、設定変更時の再検証、通常PyTorch hooks、read-lease/offload/retained-backward契約は
+維持する。自動dispatchへの採用やmainへのmerge、MNIST/B32/N1024以降の達成とは別である。
+次は既存MNIST harnessの中間CST層をradius/native版へ接続し、真のbatch 4から完全model
+step・学習・分布・ピークを比較する。batch 32のglobal moments/response保存量と、
+N1024/A52428のshared/layout上限は別途検証・設計する。
