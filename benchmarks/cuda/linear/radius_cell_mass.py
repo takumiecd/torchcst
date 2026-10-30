@@ -10,6 +10,7 @@ import torch
 
 from torchcst import (
     ChebyshevRadiusSpec,
+    CSTAdamW,
     CSTLinear,
     CSTOptimizer,
     RadiusBounds,
@@ -148,6 +149,19 @@ def optimizer(model, case, *, gpu=True):
 
         kwargs["update_selector"] = FixedSelector(
             RADIUS_FLAT_TORUS_FUSED, registry=get_registry()
+        )
+        # Use the public native optimizer measured by the complete-step study.
+        # The CPU oracle below retains the independent compatibility wrapper.
+        return CSTAdamW(
+            model.parameters(),
+            model=model,
+            lr=case.optimizer.lr,
+            amplitude_weight_decay=case.optimizer.weight_decay,
+            weight_decay=0.0,
+            fused=case.optimizer.fused,
+            capturable=False,
+            check_finite=False,
+            **kwargs,
         )
     return CSTOptimizer(
         torch.optim.AdamW(
@@ -446,6 +460,7 @@ def measure_case(args, run):
         "peak_reserved_training_bytes": peak[1],
         "total_gpu_process_bytes": None,
         "optimizer": asdict(case.optimizer),
+        "optimizer_implementation": f"{type(opt).__module__}.{type(opt).__qualname__}",
         "optimizer_effective_groups": [
             {
                 "lr": group["lr"],

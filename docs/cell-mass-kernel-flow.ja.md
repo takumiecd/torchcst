@@ -6626,3 +6626,22 @@ allocated/reservedはCST 287232/2097152B、dense 17313280/23068672Bのまま。
 source SHA256=`9a94092167e503bc0fb1799f31d7885496aa81433d22e0a2ae56a3c5414abb58`、
 result archive SHA256=`2a1bc4105bd45af1543c341f62f282c6c2fb62649e4a41bfda5424c27b845d58`。
 全結果は`output/radius-batched-versions-20261030/`に保全した。
+
+#### 通常runnerからの再現
+
+`radius-native-cached-parallel`を追加し、明示Planで`native_autograd=True, native_entry=True`を
+選べるようにした。自動dispatcherへの採用は行わない。radius benchmarkのGPU optimizerは
+公開`CSTAdamW`を使用し、CPU oracleは従来の`CSTOptimizer(AdamW)`を維持する。
+以前の比較driverがGPU側へ注入していたものと同じconstructor/更新設定であり、今後は
+benchmark sourceの書換えが不要になる。結果には実際のoptimizer class名も記録する。
+
+```bash
+PYTHONPATH=src python -m benchmarks.cuda.linear.run \
+  --plans benchmarks/cuda/linear/plans-radius-cell-mass.json \
+  --case benchmarks/cuda/linear/cases/radius-cell-mass-128-native-initial.json \
+  --polar-update radius --output output/radius-native-complete-step.json
+```
+
+このCaseは128×128/B4/A819/M8/seed41、warmup10/rounds101で、前述の目標条件と同じ。
+変更後のCPU全体は2754 passed/6219 skipped。通常runnerを無変更で実行する独立job
+`l4job-b88134409a204d0f9895dd73a010b428`を投入し、GPU再確認中。
