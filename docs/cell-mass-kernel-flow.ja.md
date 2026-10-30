@@ -7203,3 +7203,25 @@ SHA256=`7de2ba2302f61fae417f92b8b83bcfd34294ae05ee537950f7a95ca30fa0f096`。
 source SHA256=`41f3b8a2a63c436410d06827e1c6b2bcb5565d87b7960e13ce9caaa1edcb2ec2`、
 結果archive SHA256=`c609fe2d447222c7a82878856c972057c6635454329b93765f2a8dc2b60f51b2`。
 rawは既存`output/radius-mnist-native-20261031/`と共有pool jobへ保全する。
+
+### MNISTへのbatched Plan接続の完全step再測定（2026-10-31）
+
+既存harnessへ`--radius-execution cached|batched`を追加した（既定cached）。初期化のPlanとhashは
+変更せず、実際の実行Planを`execution_linear_plan`へ別記する。warmup/evaluationを含むメモリ
+定義、データ順、Polar更新則も維持。両jobの初期化SHAは従来ae13d18d…のままである。
+
+- 真のB4、inplaceデータ、1epoch：CST 2.105509 / dense 1.239231ms = 1.69905倍。
+  allocated/reserved：CST [241069568, 245366784]、dense [241252864, 245366784]B。
+  test accuracy 91.26% / 93.35%。job `l4job-ef1feee3b02e4798bb90701327e1dd5b`。
+  source_sha256=`7c1e4aaae7dc2862eda3f1d4f617fb4b24664140a2659826526c8c92ea71eb4a`。
+  archive_sha256=`457e7c9ea1e4b9d269056757079e34670f25ead7f39b21c7f9ee0dbb968fe064`。
+- 真のB32、inplaceデータ、1epoch：CST 2.765070 / dense 1.365386ms = 2.02512倍。
+  allocated/reserved：CST [242315776, 247463936]、dense [241428992, 247463936]B。
+  test accuracy 87.97% / 91.22%。job `l4job-7c11bb77a5c4452f8c2872c2b8666b41`。
+  source_sha256=`8efd6378c5bd54e511b35221dfa983553a80eceed2c51671b8ec9f20748bd428`。
+  archive_sha256=`825e7cebc8c6f028008d51a3637ece36c13e56c92402268cffdf48c0c4973b09`。
+
+両jobで最初の実MNIST batchのY/dX/全atom勾配・独立積分・full-model更新検査を通過。
+単体B32の約20%短縮をfull-modelの短縮と読み替えない。MNIST完全stepは旧版とほぼ同じで、
+B32の速度2倍以内およびメモリdense未満は未達。B4は速度を満たしallocatedは下回るがreservedは同値。
+次は既存direct-level設定の損益分岐とglobal中間配列の寿命を別々に調べる。

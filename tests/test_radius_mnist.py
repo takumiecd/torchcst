@@ -326,3 +326,128 @@ def test_radius_execution_rejects_invalid_or_legacy_override_before_data(
             legacy, "dense", tmp_path, tmp_path / "out", radius_execution="batched"
         )
     assert not (tmp_path / "out").exists()
+
+
+@pytest.mark.parametrize("execution", ["cached", "batched"])
+@pytest.mark.parametrize("direct_levels", [0, 2, 5, 8])
+def test_direct_levels_change_execution_only_and_preserve_atoms_dense_and_defaults(
+    initialization, execution, direct_levels
+):
+    frozen = copy.deepcopy(initialization)
+    baseline = mnist.make_model(initialization, "cst")
+    candidate = mnist.make_model(
+        initialization,
+        "cst",
+        radius_execution=execution,
+        radius_direct_levels=direct_levels,
+    )
+    dense = mnist.make_model(initialization, "dense")
+    dense_candidate = mnist.make_model(
+        initialization,
+        "dense",
+        radius_execution=execution,
+        radius_direct_levels=direct_levels,
+    )
+    recipe = candidate[2].selector._plan.recipe
+    assert recipe.input_direct_levels == recipe.output_direct_levels == direct_levels
+    assert candidate[2].selector._plan == mnist.radius_plan(
+        execution, direct_levels=direct_levels
+    )
+    assert mnist.radius_plan() == mnist.radius_plan("cached", direct_levels=2)
+    assert baseline[2].selector._plan.recipe.input_direct_levels == 2
+    for left, right in ((baseline, candidate), (dense, dense_candidate)):
+        for before, after in zip(left.parameters(), right.parameters()):
+            assert torch.equal(before, after)
+    assert torch.equal(candidate[2].dense_weight(), dense_candidate[2].weight)
+    assert initialization["linear_plan"] == frozen["linear_plan"]
+    assert initialization["initial_hashes"] == frozen["initial_hashes"]
+    mnist.validate_radius_initialization(initialization)
+
+
+@pytest.mark.parametrize("direct_levels", [-1, 9, True, 2.0, "5", None])
+def test_direct_level_validation_happens_before_data_or_output(
+    initialization, monkeypatch, tmp_path, direct_levels
+):
+    monkeypatch.setattr(
+        mnist, "load_mnist", lambda _: pytest.fail("must not load data")
+    )
+    with pytest.raises(ValueError, match="radius_direct_levels"):
+        mnist.radius_plan(direct_levels=direct_levels)
+    for kind in ("cst", "dense"):
+        with pytest.raises(ValueError, match="radius_direct_levels"):
+            mnist.make_model(initialization, kind, radius_direct_levels=direct_levels)
+        with pytest.raises(ValueError, match="radius_direct_levels"):
+            mnist.run_training(
+                initialization,
+                kind,
+                tmp_path,
+                tmp_path / "out",
+                batch_size=4,
+                radius_direct_levels=direct_levels,
+            )
+    assert not (tmp_path / "out").exists()
+
+
+def test_direct_level_override_rejects_legacy_initialization_before_data(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(
+        mnist, "load_mnist", lambda _: pytest.fail("must not load data")
+    )
+    legacy = {"width": 128}
+    with pytest.raises(
+        ValueError,
+        match="radius_direct_levels overrides require a radius initialization",
+    ):
+        mnist.make_model(legacy, "dense", radius_direct_levels=5)
+    with pytest.raises(
+        ValueError,
+        match="radius_direct_levels overrides require a radius initialization",
+    ):
+        mnist.run_training(
+            legacy, "dense", tmp_path, tmp_path / "out", radius_direct_levels=5
+        )
+    assert not (tmp_path / "out").exists()
+
+
+def test_radius_direct_levels_cli_forwards_execution_override_only(
+    initialization, monkeypatch, tmp_path
+):
+    artifact = tmp_path / "radius.pt"
+    torch.save(initialization, artifact)
+    seen = {}
+
+    def capture(value, kind, data_directory, output, **kwargs):
+        mnist.validate_radius_initialization(value)
+        assert value["linear_plan"] == initialization["linear_plan"]
+        assert value["initial_hashes"] == initialization["initial_hashes"]
+        seen.update(kwargs)
+
+    monkeypatch.setattr(mnist, "run_training", capture)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "mnist",
+            "--initialization",
+            str(artifact),
+            "--kind",
+            "cst",
+            "--data-directory",
+            str(tmp_path),
+            "--output",
+            str(tmp_path / "out"),
+            "--radius-execution",
+            "batched",
+            "--radius-direct-levels",
+            "5",
+            "--batch-size",
+            "32",
+            "--allow-radius-batch32",
+        ],
+    )
+    mnist.main()
+    assert seen["radius_execution"] == "batched"
+    assert seen["radius_direct_levels"] == 5
+    assert seen["batch_size"] == 32
+    assert not (tmp_path / "out").exists()
