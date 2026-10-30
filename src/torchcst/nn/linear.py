@@ -350,7 +350,7 @@ class CSTLinear(CSTModule):
 
     def build_context(self, inputs):
         return context_from_tensors(
-            self.execution_declaration(), inputs.x, self.atoms.p
+            self.execution_declaration(), inputs.x, self.atoms.p, cache_owner=self
         )
 
     def forward(self, inputs: Tensor) -> Tensor:

@@ -64,6 +64,7 @@ class CSTModule(nn.Module):
         state.pop("_execution_declaration", None)
         state.pop("_prepared_dispatch", None)
         state.pop("_prepared_dispatch_stats", None)
+        state.pop("_linear_context_cache", None)
         return state
 
     def prepared_dispatch_signature(self):

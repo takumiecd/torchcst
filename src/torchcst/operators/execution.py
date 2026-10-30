@@ -112,6 +112,7 @@ class LinearBinding:
         state.pop("_execution_declaration", None)
         state.pop("_prepared_dispatch", None)
         state.pop("_prepared_dispatch_stats", None)
+        state.pop("_linear_context_cache", None)
         return state
 
     def execution_declaration(self):
@@ -136,6 +137,7 @@ class LinearBinding:
             inputs.x,
             self.execution_parameters(),
             workspace_limit_bytes=self.workspace_limit_bytes,
+            cache_owner=self,
         )
 
     def prepared_dispatch_signature(self):

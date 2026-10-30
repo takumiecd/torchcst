@@ -120,12 +120,53 @@ def context_from_metadata(
     )
 
 
-def context_from_tensors(operator, x, parameters, *, workspace_limit_bytes=None):
+def context_from_tensors(
+    operator, x, parameters, *, workspace_limit_bytes=None, cache_owner=None
+):
+    """Read fresh input metadata; optionally intern a binding's immutable Context.
+
+    The caller must refresh its live declaration before entering. A cache hit
+    skips Context construction/metadata validation, never input validation or
+    the declaration guard. Only metadata is retained, not invocation tensors.
+    """
     if x.device != parameters.device or x.dtype != parameters.dtype:
         raise ValueError("input and parameters must have the same device and dtype")
     if parameters.ndim != 2 or parameters.shape[1] <= 0:
         raise ValueError("parameters must have shape [atoms, D] with D > 0")
-    return context_from_metadata(
+    namespace = None if cache_owner is None else cache_owner.__dict__
+    validated = None if namespace is None else namespace.get("_execution_declaration")
+    cacheable = (
+        validated is not None
+        and validated[0] is not None
+        and validated[1] is operator
+        and type(x) in (torch.Tensor, torch.nn.Parameter)
+        and type(parameters) in (torch.Tensor, torch.nn.Parameter)
+        and (workspace_limit_bytes is None or type(workspace_limit_bytes) is int)
+        and all(type(n) is int for n in (*x.shape, *x.stride(), *parameters.shape))
+    )
+    if cacheable:
+        cuda = x.device.type == "cuda"
+        # These flags remain live even when tensor shape and declaration match.
+        key = (
+            tuple(x.shape),
+            tuple(x.stride()),
+            x.dtype,
+            x.device,
+            tuple(parameters.shape),
+            torch.is_grad_enabled() and x.requires_grad,
+            torch.is_grad_enabled() and parameters.requires_grad,
+            cuda and torch.cuda.is_current_stream_capturing(),
+            torch.are_deterministic_algorithms_enabled(),
+            cuda and torch.is_autocast_enabled(),
+            cuda and torch.backends.cuda.matmul.allow_tf32,
+            workspace_limit_bytes,
+        )
+        cached = namespace.get("_linear_context_cache")
+        if cached is not None and cached[0] is validated and cached[1] == key:
+            return cached[2]
+    elif namespace is not None:
+        namespace.pop("_linear_context_cache", None)
+    context = context_from_metadata(
         operator,
         input_shape=tuple(x.shape),
         input_strides=tuple(x.stride()),
@@ -139,3 +180,6 @@ def context_from_tensors(operator, x, parameters, *, workspace_limit_bytes=None)
         ),
         workspace_limit_bytes=workspace_limit_bytes,
     )
+    if cacheable:
+        namespace["_linear_context_cache"] = (validated, key, context)
+    return context
