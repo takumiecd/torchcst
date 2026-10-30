@@ -6993,3 +6993,56 @@ checked/unchecked、no_grad/inference、全凍結、FP32/FP64と通常のVJPを�
 failed pilotのsource SHA256=`ada602c6c8e34f0b36fd0d52730992ac25cf26dd49d18157653e7242ce0db643`、
 result archive SHA256=`99fc642a0b1c8d9125f776d305fa3ce595ff8888c12a8f54bff2fcf6c7b730ee`。
 spec/receipt/resultsは`output/radius-mnist-native-20261031/<job-id>/`へ保全し、学習速度には使わない。
+
+#### no-grad修正とMNIST学習の実測結果（2026-10-31 JST）
+
+commit `94a8338e`をjob `l4job-f9b54db727a74f82aeb857daaa381987`で実際にcompileし、
+新module=`torchcst_radius_cell_mass_8d716ff5fa0d`、binary SHA256=
+`f45f27cc8c443212acd7c81146bf22648ac86bb7060013bd66fcc952b2ae4b30`を回収した。
+GPU **619 passed/1 skipped**、追加50条件、実MNIST最初のbatchのlogits/dX・独立中間層
+Y/dX/全atom勾配・quadrature・CPU参照との1回の完全model更新が通過。
+CPU全体2890 passed/6304 skipped（57.47s）、wheel/sdistのhost source byte一致も確認した。
+既存N128公開runnerを変更せず再実行し、CST1.331525/1.381614ms、dense.741259/.702659ms、
+1.796302/1.966265倍。CST287232/2097152B、dense17313280/23068672Bで、
+no-grad修正後もN128/B4の時間・両ピーク目標を満たした。
+同jobのsource SHA256=`a4a5ece9c39b09c01a8eabf0a9cc2f3c21ca54d6245ddc3c630e7332b44f0ce8`、
+result archive SHA256=`f8a50ffdab61d7c7110dadc5a52151ee7975e89fb11cf44f522de3bfbc83a3e8`。
+
+MNIST pilotの真のB4・1epochはCST平均2.168916ms/step、dense1.265943ms、1.71328倍。
+test accuracy91.26%/93.35%、allocated240972288/241155584B、reservedは両方381681664B。
+速度は2倍以内、allocatedは少ないがreservedは同じなので、MNISTの両ピーク目標は未達。
+
+続く独立fresh-processのB4・3epochも全60000/10000件、同じ初期W/outer state/data順で比較した。
+初期test accuracyは両者とも8.92%。epoch時間はinput gather/metricsを含む実際の完全学習loop、
+evaluation/diagnostics/checkpointは別。epoch1はoptimizer/JIT/cold準備を含む。
+
+| epoch（真のB4） | CST平均step ms | dense ms | CST/dense | CST test accuracy | dense test accuracy |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 2.261365 | 1.285185 | 1.759564 | 91.26% | 93.35% |
+| 2 | 2.160005 | 1.274387 | 1.694937 | 92.79% | 95.67% |
+| 3 | 2.146149 | 1.339832 | 1.601805 | 93.92% | 96.68% |
+
+epoch2/3のallocated CST/dense=241439232/241623040B、reservedは両方383778816B。
+CSTのallocatedは183808B少ないが、reservedは同値。3epochの精度差は2.76 percentage pointsで、
+dense同等精度や他seedへの一般化は主張しない。radius中央値は3.999312→3.515043、
+inputのlevel1/direct atomは0→8→18→34、level2は819→811→801→785へ変化した。
+完成response・階層分類は学習に追従しており、均等な階層分布を仮定していない。
+
+別の真のB32・1epochはCST2.774184ms、dense1.331469ms、**2.083551倍**。
+allocated242218496/241331712BでCSTが886784B多く、reservedは両方383778816B。
+test accuracy87.97%/91.22%。同じlrでもB4とB32では1epochのoptimizer更新回数が異なるため、
+この精度差をbatch変更だけの優劣や収束比較とはみなさない。B32の時間・メモリ目標は未達。
+次は別のmemory診断passでresident data、optimizer、Z/H/Gの保存とallocatorのinactive領域を
+切り分ける。計装したpassの時間を未計装の学習速度として使わない。
+
+B4・3epoch job=`l4job-17f16b67d5e443a0bca21786bfa2ea70`、
+B32・1epoch job=`l4job-91dd916704c849f08a38071b46dc1b41`。
+B4 source/archive SHA256=
+`e9c9415bb54797d35955d30dabe812e9f669e37fa6240f94c7022fa35e3cb3dd` /
+`85f1e8bc3e1d09e1721a64ab662b18c2847c627d64fa72ba9b9469b9c5627342`。
+B32 source/archive SHA256=
+`b6f942179b960722fcc611421f9d0eef4bad657f5c0d3e1d1084eb2b1512121a` /
+`600d43f220c31f413ba1dca9f7ce82c144895d98b639d45ecac307b53186ba40`。
+初期化artifact SHA256は全比較で
+`ae13d18df2b8df94ff032bdd2e9de2679c76a323bcca4f9e53df2e8ec4bfa9de`。
+spec/receipt/results/checkpointsは既存`output/radius-mnist-native-20261031/<job-id>/`に保全。
