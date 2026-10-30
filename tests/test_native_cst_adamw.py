@@ -247,7 +247,16 @@ def test_custom_state_transport_callback_remains_live_in_unchecked_steps():
 def test_gradscaler_success_and_overflow_skip_entire_coordinate_step(
     fused, explicit_unscale
 ):
+    from torchcst import FixedSelector, make_algorithm_registry
+    from torchcst._backends.cuda.algorithms.polar_update.plans import (
+        RADIUS_FLAT_TORUS_FUSED,
+    )
+
+    selector = FixedSelector(
+        RADIUS_FLAT_TORUS_FUSED, registry=make_algorithm_registry()
+    )
     actual = layer().float().cuda()
+    reference = copy.deepcopy(actual)
     opt = CSTAdamW(
         actual.parameters(),
         model=actual,
@@ -255,8 +264,8 @@ def test_gradscaler_success_and_overflow_skip_entire_coordinate_step(
         amplitude_weight_decay=0.3,
         fused=fused,
         check_finite=False,
+        update_selector=selector,
     )
-    reference = copy.deepcopy(actual)
     plain = CSTAdamW(
         reference.parameters(),
         model=reference,
@@ -264,6 +273,7 @@ def test_gradscaler_success_and_overflow_skip_entire_coordinate_step(
         amplitude_weight_decay=0.3,
         fused=fused,
         check_finite=False,
+        update_selector=selector,
     )
     scaler = torch.amp.GradScaler("cuda", init_scale=8.0)
     scaler.scale(actual.atoms.p.square().sum()).backward()
