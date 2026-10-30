@@ -5459,4 +5459,36 @@ result archive SHA256=`17730c547c921a005bb4ed5dda10d88f1483a3d7bb69d6baf26512d0f
 個別accessorへ戻す。後からaccessorが変われば独自callbackを実行せずguardを失効させる。
 shape/dtype/device/stride、設定変更、Adam前後の検証境界は維持する。
 数式・CUDA kernel・GPU配列とその寿命を変えない。CPUの実native helperで保存先変更、
-数値更新、弱参照の解放、accessor差し替えを確認済み。速度の採用判定は未実施。
+数値更新、弱参照の解放、accessor差し替えを確認済み。最初の個別builtin lookup版（9e49caf8）は完全step
+2.025678→2.030235 ms、optimizer単独.658112→.664299 msで改善なし。
+job=`l4job-e42aaa4ab1cf452886f746c71c9c2e82`、snapshot SHA256=
+`757ff48a64e814f290c6beee8f7621dffa452ef4bb24bc885ca7a96236d06bf6`、
+result SHA256=`4a4bb4bc85fbb4e1cc89f651eed052e23cfc9341a8e6774d5f5834252d164bc1`。
+
+descriptorとinstance辞書を直接確認する最終版（cb81643b）は、同条件のfresh process
+変更前→変更後→変更後→変更前で、完全step中央値2.009271/2.114675→1.972790/1.989867 ms、
+optimizer単独.726479/.657449→.645377/.651079 ms。平均中央値は2.061973→1.981329 ms、
+.691964→.648228 ms。ただしoptimizerの変更前1回が高いため、この6.3%を一般的な改善率と
+しない。全条件のallocated/reservedは297984/2097152 B、GPU更新3 kernels、snapshot copy1、
+sync/item/DtoH0。関連222件、独立Y/dX/全atom勾配・quadrature・matched-state gateと
+20 state Tensorの5 updates bit一致が成功。最終sourceのCPU全体2598 passed/5950 skipped、
+追加の実native helper検査23 passed/1 skipped。
+job=`l4job-42981aba9ff54a529f5526e82172446d`、snapshot SHA256=
+`621d52c56a8fa422014b6b02f58bc67759a4c3c0918fb1924e6c357709a72410`、
+result SHA256=`1313e815d26f89bc601d0c25c55a6280ff5f181a21db551b5c75da4781375aa1`。
+raw source/result/receipt/trace/stateは同じignored output配下へ保存した。
+
+### CSTAdamWの単一stepへの構造変更（2026-10-30）
+
+標準AdamW用にCSTAdamWを追加する。1つのOptimizerがgroups/state/hooks/scheduler接続を持ち、
+CST準備→PyTorch functional AdamW→CST retraction/transportをstep本体で実行する。
+一時base pre-hook、closure replay、base/wrapper間のstate同期は使わない。
+既存CSTOptimizerは任意optimizerとの互換経路として残す。
+atom準備とfinishの数式を_coordinate_step.pyへ抽出して両方で共有する。
+構造・所有の全model走査は構築/add-group/loadへ寄せ、毎stepは現在のgroup scalarと
+Parameterの対応を確認する。Polar更新、amp-only decay、snapshot寿命、
+現在のKernel/Geometry/adapter callbackを尊重する。PyTorchのstate-dict hookでmanifestと
+atom-owned stateの再接続を扱う。native checkpointと明示的な旧wrapper checkpoint移行を分ける。
+PyTorch 2.6+、check_finite=Falseをnative既定とする。
+AMPではGradScalerの通常unscale/skip経路を使い、overflowならCSTを含む全stepを止める。
+CUDAでの速度とメモリの判定は未実施。

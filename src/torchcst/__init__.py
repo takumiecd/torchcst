@@ -74,7 +74,7 @@ from .nn import CSTConv2d, CSTLinear, CSTModule
 from .operators import ChartPairSpec, Operator, OperatorSpec, SingleChartSpec
 from .operators.atom_update import AtomUpdateBinding, AtomUpdateInputs
 from .operators.execution import LinearBinding, LinearInputs
-from .optim import CSTOptimizer, OptimizerStateAdapter
+from .optim import CSTAdamW, CSTOptimizer, OptimizerStateAdapter
 from .patterns import (
     GridPatternSpec,
     LinePatternSpec,
@@ -95,6 +95,7 @@ __all__ = [
     "Atoms",
     "BandwidthBounds",
     "BiweightSpec",
+    "CSTAdamW",
     "CSTConv2d",
     "CSTLinear",
     "CSTModule",

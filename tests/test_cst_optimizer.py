@@ -363,7 +363,7 @@ def test_old_optimizer_api_is_removed():
     import torchcst
     import torchcst.optim
 
-    assert torchcst.optim.__all__ == ["CSTOptimizer", "OptimizerStateAdapter"]
+    assert torchcst.optim.__all__ == ["CSTAdamW", "CSTOptimizer", "OptimizerStateAdapter"]
     for name in (
         "CSTParameterAdam",
         "CSTQuadraticAdam",

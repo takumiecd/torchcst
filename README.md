@@ -25,6 +25,40 @@ device, dtype and precision constraints.
 
 ## Training with a standard optimizer
 
+`CSTAdamW(params, model=model, ...)` provides one native PyTorch AdamW lifecycle
+(PyTorch 2.6+). It owns `param_groups`, `state`, hooks and scheduler integration.
+Each step projects CST gradients, calls PyTorch's functional AdamW, then applies
+the existing Kernel coordinate policy. Pre-hooks run once before this sequence;
+post-hooks run once and see the final CST parameters. `zero_grad`, closures and
+`torch.amp.GradScaler` use the ordinary optimizer interface. The complete step is
+skipped on AMP overflow, including the CST update. CUDA Graph capture and
+differentiable optimizer steps for managed atoms are not supported.
+
+Use `CSTAdamW` instead of the `base`/`CSTOptimizer` constructor below:
+
+```python
+optimizer = CSTAdamW(
+    [{"params": layer.parameters(), "amplitude_weight_decay": 0.01},
+     {"params": model[1].parameters(), "weight_decay": 0.01}],
+    model=model, lr=1e-3,
+)
+```
+
+Import it with `from torchcst import CSTAdamW`. Managed atom groups default to
+raw `weight_decay=0`; ordinary groups retain AdamW's default `weight_decay=0.01`.
+An explicitly supplied nonzero raw decay for an atom group is rejected. Logical
+`amplitude_weight_decay` affects the amplitude and preserves the accepted Polar
+radius and centers. It requires finite Python scalars with `lr * decay <= 1`.
+`check_finite=False` is the native default, following PyTorch's propagation of
+nonfinite values; `check_finite=True` enables the additional strict checks.
+Live learning-rate/decay and active atom metadata checks remain enabled in both
+modes. Ownership/topology is validated at construction, `add_param_group` and
+checkpoint load. Rebuild the optimizer after replacing an atom Parameter.
+Native checkpoints use standard state-dict hooks plus a `cst` contract entry.
+To migrate a matching current `CSTOptimizer(AdamW(...))` checkpoint into a fresh
+model, use `load_legacy_state_dict`; ordinary `load_state_dict` resumes native
+checkpoints. The legacy wrapper's base hooks keep their existing semantics.
+
 CSTOptimizer wraps an existing PyTorch optimizer. The base optimizer determines
 learning rates, moments, ordinary weight decay and proposals. Kernel policies project
 gradients, adjust accepted updates and transport vector state. Ordinary autograd

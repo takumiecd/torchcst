@@ -1,4 +1,31 @@
-# CSTOptimizer
+# CSTのoptimizer
+
+## CSTAdamW: 単一のPyTorch lifecycle
+
+`CSTAdamW(params, model=model, ...)`（PyTorch 2.6+）はAdamWを継承し、
+`param_groups`・`state`・hook・scheduler接続を1つのoptimizerが所有する。
+step内では勾配射影と旧座標snapshot、PyTorch functional AdamW、既存Kernelの
+更新・vector transportの順に実行する。wrapped parentの`step()`は呼ばず、
+標準step pre/post-hookが1回ずつ動き、post-hookはCST更新後の値を見る。
+既存wrapperのbase post-hookが見るAdam proposalとは境界が違うため、移行は明示的に行う。
+
+managed atom groupはraw `weight_decay=0`が既定で、ampだけの減衰は
+`amplitude_weight_decay`で指定する。通常parameter groupはAdamW既定のraw decay=.01を
+保つ。明示的にatomへ非ゼロraw decayを与えると拒否する。Kernelの数式は下記wrapperと共通。
+`grad=None`では更新せず、`lr=0`でもAdam clock/momentsの通常の更新は維持する。
+`check_finite=False`が既定で、追加の厳密検査を使う場合はTrueにする。
+lr/decay・active atomのmetadataとcallback変更の検証は残す。model全体の所有・構造の走査は
+構築、add_param_group、checkpoint load時に行い、stepごとには繰り返さない。
+
+`zero_grad`、scheduler、closure、state-dict hookはPyTorchの通常の仕組みを使う。
+GradScalerは通常のunscale/skip経路で全stepをskipする。fused Adamの内部overflow判定だけで
+Polarが実行される状態にはしない。managed atomのcapturable/differentiable modeは未対応。
+checkpoint post-hookはcst manifestと再接続済みのatom-owned stateを観測できる。
+標準`load_state_dict`はnative checkpoint用。現在のexact AdamW wrapperからの移行は、
+新しいmodelへmodel checkpointを読み込んでnative optimizerを作り、
+`load_legacy_state_dict`を明示的に呼ぶ。すでに別optimizerがbindしたmodelは共用しない。
+
+## CSTOptimizer: 任意optimizerの互換wrapper
 
 `CSTOptimizer(base_optimizer, model=model, state_adapter=None)` は既存の
 PyTorch optimizer を包む。`check_finite=True`が既定。旧 optimizer、config、N/D solver、moment system、
