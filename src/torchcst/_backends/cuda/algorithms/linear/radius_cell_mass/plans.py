@@ -82,3 +82,15 @@ GLOBAL_BATCHED_RESPONSE4 = ExecutionPlan(
         schedule="global_batched_cached_response4",
     ),
 )
+
+
+# Keep response4 as the scalar-gradient baseline; opt in to four-row dP here.
+GLOBAL_BATCHED_RESPONSE4_GRAD4 = ExecutionPlan(
+    "cuda_radius_cell_mass",
+    "v1",
+    RadiusCellMassRecipe(
+        input_direct_levels=2,
+        output_direct_levels=2,
+        schedule="global_batched_cached_response4_grad4",
+    ),
+)

@@ -301,6 +301,10 @@ __global__ void hybrid_parameter_kernel(const T *p, const T *x, const T *dy, con
     store_gradient(p, gradient, atom, input, da, dR, dmi, dmo);
 }
 
+} // namespace radius_cell_mass
+#include "batched_parameter_grad.cuh"
+namespace radius_cell_mass {
+
 Tensor build_compact_moments(Tensor signal, Config config, bool merge, int start) {
     check_matrix(signal);
     Axis axis = parse_axis(config);
@@ -419,7 +423,7 @@ Tensor expand_hybrid(Tensor p, Tensor rows, Tensor offsets, Tensor h, Tensor c,
     return y;
 }
 Tensor hybrid_parameter_grad_impl(Tensor p, Tensor x, Tensor dy, Tensor zx, Tensor zy,
-    Tensor h, Tensor g, Config input_config, Config output_config, int input_start, int output_start, int threads) {
+    Tensor h, Tensor g, Config input_config, Config output_config, int input_start, int output_start, int threads, bool batch4 = false) {
     check_atoms(p);
     Axis input = parse_axis(input_config), output = parse_axis(output_config);
     check_compact(zx, p, input, input_start); check_compact(zy, p, output, output_start);
@@ -431,7 +435,12 @@ Tensor hybrid_parameter_grad_impl(Tensor p, Tensor x, Tensor dy, Tensor zx, Tens
     auto grad = torch::empty_like(p);
     if (!p.numel()) return grad;
     AT_DISPATCH_FLOATING_TYPES(p.scalar_type(), "radius_hybrid_parameter_grad", [&] {
-        hybrid_parameter_kernel<<<(p.size(0) + threads - 1) / threads, threads, 0,
+        if (batch4) batched_parameter_kernel<<<(p.size(0) + threads - 1) / threads, threads, 0,
+            at::cuda::getCurrentCUDAStream()>>>(p.data_ptr<scalar_t>(), x.data_ptr<scalar_t>(),
+            dy.data_ptr<scalar_t>(), zx.data_ptr<double>(), zy.data_ptr<double>(),
+            h.data_ptr<double>(), g.data_ptr<double>(), grad.data_ptr<scalar_t>(), p.size(0),
+            x.size(0), input, output, input_start, output_start);
+        else hybrid_parameter_kernel<<<(p.size(0) + threads - 1) / threads, threads, 0,
             at::cuda::getCurrentCUDAStream()>>>(p.data_ptr<scalar_t>(), x.data_ptr<scalar_t>(),
             dy.data_ptr<scalar_t>(), zx.data_ptr<double>(), zy.data_ptr<double>(),
             h.data_ptr<double>(), g.data_ptr<double>(), grad.data_ptr<scalar_t>(), p.size(0),
@@ -451,4 +460,16 @@ Tensor hybrid_parameter_grad_parallel(Tensor p, Tensor x, Tensor dy, Tensor zx, 
         input_start, output_start, 32);
 }
 
+Tensor hybrid_parameter_grad_batched(Tensor p, Tensor x, Tensor dy, Tensor zx, Tensor zy,
+    Tensor h, Tensor g, Config input, Config output, int input_start, int output_start) {
+    return hybrid_parameter_grad_impl(p, x, dy, zx, zy, h, g, input, output,
+        input_start, output_start, 32, true);
+}
+// Diagnostic only: compare complete gradients from identical completed caches.
+// Normal training allocates just its one gradient result, with no probe scratch.
+std::vector<Tensor> parameter_grad_comparison(Tensor p, Tensor x, Tensor dy, Tensor zx, Tensor zy,
+    Tensor h, Tensor g, Config input, Config output, int input_start, int output_start) {
+    return {hybrid_parameter_grad_parallel(p, x, dy, zx, zy, h, g, input, output, input_start, output_start),
+        hybrid_parameter_grad_batched(p, x, dy, zx, zy, h, g, input, output, input_start, output_start)};
+}
 } // namespace radius_cell_mass

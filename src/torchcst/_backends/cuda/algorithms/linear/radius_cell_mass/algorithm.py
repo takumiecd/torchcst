@@ -81,6 +81,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "overlap",
             "global_batched_cached",
             "global_batched_cached_response4",
+            "global_batched_cached_response4_grad4",
             "block_local",
             "block_local_parallel",
             "block_local_cached_parallel",
@@ -169,6 +170,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "block_local_batched_cached_parallel",
             "global_batched_cached",
             "global_batched_cached_response4",
+            "global_batched_cached_response4_grad4",
         ):
             from .expansion_layout import batched_coefficient_layout
 

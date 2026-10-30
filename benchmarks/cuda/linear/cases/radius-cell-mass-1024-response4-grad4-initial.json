@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "case": {
+    "id": "radius-cell-mass-1024-response4-grad4-initial",
+    "fixture": "polar_radius_cell_mass",
+    "size": 1024,
+    "rows": 4,
+    "atoms": 52428,
+    "profile": "initial",
+    "dtype": "float32",
+    "seed": 41,
+    "warmup": 10,
+    "rounds": 101,
+    "optimizer": {
+      "name": "AdamW",
+      "lr": 0.0001,
+      "weight_decay": 0.01,
+      "fused": true,
+      "capturable": false
+    }
+  },
+  "plans": [
+    "radius-global-batched-response4",
+    "radius-global-response4-grad4"
+  ],
+  "baseline": "radius-global-batched-response4",
+  "dense": true
+}

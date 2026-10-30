@@ -150,7 +150,10 @@ def _complete_hybrid_response(signal, atoms, axis, start_level, recipe, output_s
     response = torch.empty(
         (signal.shape[0], atoms.shape[0]), device=signal.device, dtype=torch.float64
     )
-    if recipe.schedule == "global_batched_cached_response4":
+    if recipe.schedule in (
+        "global_batched_cached_response4",
+        "global_batched_cached_response4_grad4",
+    ):
         # The same global hierarchy is completed first. One launch then writes
         # all low/high atom responses, reusing geometry across four batch rows.
         moments = build_moments(
@@ -311,7 +314,9 @@ class _BlockLocalRadiusLinear(torch.autograd.Function):
         grad_atoms = None
         if ctx.needs_input_grad[1]:
             parameter_grad = (
-                native.hybrid_parameter_grad_parallel
+                native.hybrid_parameter_grad_batched
+                if recipe.schedule == "block_local_batched_cached_parallel"
+                else native.hybrid_parameter_grad_parallel
                 if recipe.schedule
                 in (
                     "block_local_parallel",
@@ -349,6 +354,7 @@ class _HybridRadiusLinear(torch.autograd.Function):
         if recipe.schedule in (
             "global_batched_cached",
             "global_batched_cached_response4",
+            "global_batched_cached_response4_grad4",
         ):
             # Consume the same completed H. Only a destination bank/tile's C
             # exists in shared memory; no global coefficient Tensor is created.
@@ -411,6 +417,7 @@ class _HybridRadiusLinear(torch.autograd.Function):
             if recipe.schedule in (
                 "global_batched_cached",
                 "global_batched_cached_response4",
+                "global_batched_cached_response4_grad4",
             ):
                 # Reverse expansion consumes final G once for each destination
                 # tile. Saved Zx/H and completed Zy/G still feed all dP below.
@@ -451,7 +458,12 @@ class _HybridRadiusLinear(torch.autograd.Function):
 
         grad_atoms = None
         if ctx.needs_input_grad[1]:
-            grad_atoms = native.hybrid_parameter_grad(
+            parameter_grad = (
+                native.hybrid_parameter_grad_batched
+                if recipe.schedule == "global_batched_cached_response4_grad4"
+                else native.hybrid_parameter_grad
+            )
+            grad_atoms = parameter_grad(
                 atoms,
                 x,
                 dy,
@@ -640,6 +652,7 @@ def radius_linear(plan, x, atoms, *, recipe=None):
         "block_local_batched_cached_parallel",
         "global_batched_cached",
         "global_batched_cached_response4",
+        "global_batched_cached_response4_grad4",
     ):
         from .expansion_layout import batched_coefficient_layout
 
@@ -693,7 +706,12 @@ def radius_linear(plan, x, atoms, *, recipe=None):
             recipe.input_direct_levels
             or recipe.output_direct_levels
             or recipe.schedule
-            in ("overlap", "global_batched_cached", "global_batched_cached_response4")
+            in (
+                "overlap",
+                "global_batched_cached",
+                "global_batched_cached_response4",
+                "global_batched_cached_response4_grad4",
+            )
         ):
             function = _HybridRadiusLinear
         else:

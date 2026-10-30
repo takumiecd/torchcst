@@ -450,12 +450,14 @@ Tensor autograd_parameter_grad(Tensor p, Tensor x, Tensor dy, Tensor zx, Tensor 
     Tensor h, Tensor g, Config input, Config output, int input_start,
     int output_start, int schedule) {
     return hybrid_parameter_grad_impl(p, x, dy, zx, zy, h, g, input, output,
-        input_start, output_start, schedule >= 1 ? 32 : THREADS);
+        input_start, output_start, schedule >= 1 ? 32 : THREADS, schedule == 3);
 }
 } // namespace radius_cell_mass
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     radius_cell_mass::bind_host_autograd(m);
+    m.def("hybrid_parameter_grad_batched", &radius_cell_mass::hybrid_parameter_grad_batched);
+    m.def("parameter_grad_comparison", &radius_cell_mass::parameter_grad_comparison);
     m.def("shared_forward_cached_parallel", &radius_cell_mass::shared_forward_cached_parallel);
     m.def("shared_backward_cached_parallel", &radius_cell_mass::shared_backward_cached_parallel);
     m.def("shared_forward_batched_cached_parallel", &radius_cell_mass::shared_forward_batched_cached_parallel);
