@@ -7128,3 +7128,45 @@ N1024の高速化・MNIST1024達成とは主張せず、次は別passの実kerne
 いずれもspec/receipt/resultsを既存`output/radius-mnist-native-20261031/<job-id>/`へ保全。
 byte検証JSONは回収済みcheckpointからlocalで生成した追加検証で、pool原本archiveの一部とは
 扱わない。large失敗d966の原本も保持し、速度集計には含めない。
+
+#### N1024の実kernel profileと次の候補（2026-10-31 JST）
+
+job `l4job-2545d6d169794f04bc89315cfabc6590`は、同じN1024/5%/B4の20 warmup後に
+未計装の同期済み5step、別passのCUDA event、さらに3stepのCPU/CUDA profilerを採取した。
+未計装medianは51.062833ms。別event区間はforward/loss22.882303ms、backward27.976704ms、
+optimizer.038912ms。eventにはlaunch gapも入り、別passの値を加算/差し引きして完全stepを
+再構成しない。以下はChrome traceの`cat=kernel`実eventだけを3stepで割った値であり、
+record_functionのinclusive device時間を二重に加えない。
+
+| CUDA kernel family | ms/step（計装pass） | 3step中のcall数 |
+| --- | --- | --- |
+| compact_coefficients_kernel | 43.160672 | 6 |
+| hybrid_response_kernel（moment側） | 2.189932 | 6 |
+| hybrid_response_kernel（direct側） | .576019 | 6 |
+| hybrid_parameter_kernel | 1.913549 | 3 |
+| compact_moments_kernel | 1.413029 | 54 |
+| hybrid_expand_kernel | .407796 | 6 |
+
+主因はC生成で、対応コードは`hybrid.cuh::compact_coefficient_tile`。
+batch/出力node担当threadがatom列を直列に走査し、同じatomのprofile係数を複数node/rowで
+繰り返している。profileだけで理論的な上限達成を主張せず、実際の共有化候補を比較する。
+
+別branch `kernel/radius-batched-tile-coeffs`の実験commit `8329702c`は、4batch行/CTAで
+profile係数を共有し、1bankの担当出力node分だけCをsharedに置く。Yはregisterに足し込む。
+FP64中間計算、完成H/Gの再利用、従来path/defaultは維持し、global C/packed atoms/出力atomic
+は追加しない。N128/M8/start2/tile32のshared budgetは37152B。新経路は明示Planでのみ選ぶ。
+研究説明は新しい追跡対象documentを増やさず、この正本とignored outputに保全する。
+
+初回job `l4job-ad592e9cc600477e8d68339aa27f8ca5`は新sourceを実compileしたが、
+VJP test fixtureのphysical cap=23.68をFP32で上側23.680000305へ丸め、device assertで停止。
+その後の同一processの多数の失敗は汚染されたCUDA contextによるもので、別々のkernel故障とは
+数えない。runtimeのradius検査は緩めず、新test入力だけをcap以下の最大表現値に直す
+（`5d601bec`）。FP64ではexact capを維持し、CPUで妥当性/最大性を検査する。
+新binary=`torchcst_radius_cell_mass_3a377ca61557`、SHA256=
+`13e060df64ce08cac976e290aeff816722326b614f386bcc4d3012f74cb30b3f`。
+この失敗jobの速度値は採用しない。修正fixtureのjob
+`l4job-13e083242d594ff3b1903fa7f3a03e83`で独立GPU検査とB32完全stepを再確認する。
+
+N1024への最初の移植は別branch `kernel/radius-large-batched`で、global projection/parameter
+gradientをそのままに、H/GからC生成とsite展開の対だけをこの独立consumerへ置き換える。
+どちらもまだ未採用/速度未検証の候補であり、既存N128の達成と混同しない。
