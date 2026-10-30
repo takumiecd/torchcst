@@ -12,6 +12,8 @@ from functools import cache
 
 import torch
 
+from . import _native_metadata_versions
+
 _MISSING = object()
 
 
@@ -132,6 +134,7 @@ def _build_guard(
     # and namespaces elsewhere in the same check(). Instance type identities
     # still belong here; only duplicate descendants are shared with that tree.
     seen_modules = set()
+    version_checks = []
     seen_classes = set(guarded_classes)
     seen_class_dicts = set(guarded_class_dicts)
     guard.add_length_check_guard(len(roots), verbose, None)
@@ -228,11 +231,8 @@ def _build_guard(
                         identity(tm, tensor)
                     if not matched or type(tensor) not in seen_classes:
                         class_guards(tm, tensor)
-                    fields = (
-                        ("_version",)
-                        if matched
-                        else ("_version", "dtype", "device", "shape", "layout")
-                    )
+                    fields = () if matched else ("dtype", "device", "shape", "layout")
+                    version_checks.append((tm, tensor))
                     for field in fields:
                         metadata = getattr(tensor, field)
                         attribute(tm, field, metadata).add_equals_match_guard(
@@ -245,4 +245,17 @@ def _build_guard(
 
     for index, root in enumerate(roots):
         walk(guard.tuple_getitem_manager(index, "root", root, kind), root)
+    factory = _native_metadata_versions._factory
+    checker = None
+    if version_checks and factory is not None:
+        checker = factory(tuple(tensor for _, tensor in version_checks))
+    target = guard if epilogue_root is None else epilogue_root
+    if checker is not None and hasattr(target, "add_lambda_guard"):
+        target.add_lambda_guard(checker, verbose, None)
+    else:
+        for node, tensor in version_checks:
+            version = tensor._version
+            attribute(node, "_version", version).add_equals_match_guard(
+                version, verbose, None
+            )
     return guard

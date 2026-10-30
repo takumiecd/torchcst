@@ -6583,7 +6583,46 @@ snapshot SHA256=`eb0eede4b0cff29a1f8440e3a912a99a790bad4c208d0fb44a5ab36d4d88bdf
 result archive SHA256=`3bf29e5ac6b64d3996c1684d5246d99478f5180dcc853a9c74daa86203505171`。
 
 出力lease prototypeを除いた候補のCPU全体は2753 passed/6219 skipped、既存warning19件。
-最終候補の独立job `l4job-46d6577a27b344d58463baecd9abcc7a`では、同じ完全stepを再測定し、
-追加の単一code-object診断でforward/backward/optimizerの上位区間も調べる。
+最終候補の独立job `l4job-46d6577a27b344d58463baecd9abcc7a`も完了した。
+222 testsと35 Tensorのbit一致が通り、同じ未計装・同期済み完全stepは次のとおり。
+
+| 独立process | Python実行入口 ms | native実行入口 ms | nativeとmatched denseの時間比 |
+|---|---:|---:|---:|
+| 1 | 1.638342 | 1.583040 | 2.2376 |
+| 2 | 1.644470 | 1.598065 | 2.1759 |
+
+平均1.641406→1.590553ms（3.10%）。nativeのmatched denseは.707483/.734430ms。
+全processでCSTのallocated/reservedは287232/2097152B、denseは17313280/23068672B。
+メモリ条件は満たすが、**時間2倍以内はまだ未達**で、MNIST/1024への達成宣言はしない。
+
+単一code-object診断ではnative候補のforward約479µs、autograd.backward約351µs、
+optimizer本体約471µsだった。内訳のDispatcher._prepare約131µs、
+fixed_state_signatureの3回合計約75µs、optimizer prepare/finish約172/149µsは
+上位区間に含まれる。計装の影響もあるため、これらを合計して完全stepを説明しない。
+optimizer programは`PreparedPolarOptimizerUpdate`で、generic経路に落ちていたわけではない。
+source SHA256=`10fc209dbad0eba480c947f143be0778efbe877f1b24e9c6d6c9f57384cbbb21`、
+result archive SHA256=`1f3b19474ab645fe784045ebb2ce73bef53c4d17f1778a10edb336fc8d8f7d09`。
+結果・CPU/GPU trace・35 Tensor・同一native binaryは
+`output/radius-native-entry-clean-20261030/l4job-46d6577a27b344d58463baecd9abcc7a/`に保存した。
 ここまでのsource/binaries/results/receipt/state/profile/失敗を含むCPU診断はignored
 `output/radius-output-lease-20261030/`と`output/radius-native-entry-20261030/`へ保全した。
+
+#### 固定bufferバージョンの一括確認（不採用）
+
+個々の`_version` getterを弱いTensorImpl/Python wrapper参照のC++ epilogueへ
+まとめる候補を試した。Tensor値・GPU data・同期を追加せず、型/構造の検査は維持する。
+初回job `l4job-b706ca5bb79145589f1bd00f1b330de9`はTorch 2.11のTensorMatchだけでは
+同じbufferの`__class__`変更を検知できないケースでテストが失敗したため、計時に進まず停止。
+weak wrapperからの明示型確認を追加して修正した。CPU全体は2763 passed/6219 skipped、
+追加のdtype/shape/layout/getattribute変更テストも通過した。
+
+修正版job `l4job-be14c6fded1b48acae9b209b928c31b3`は252 testsと35 Tensorのbit一致が通過。
+同じnative入口を両側に使い、通常getter 1.608984/1.641977ms、
+一括確認1.609876/1.596200ms（平均1.625481→1.603038ms、1.38%）。
+候補のmatched denseは.697376/.733529msで、**時間条件は未達**。
+allocated/reservedはCST 287232/2097152B、dense 17313280/23068672Bのまま。
+局所guardの改善は約1µs、完全stepの片方は改善せず、別CPU拡張を追加する効果として小さい。
+候補のsource/testsは研究checkpointとignored証拠に残し、実行経路からは外す。
+source SHA256=`9a94092167e503bc0fb1799f31d7885496aa81433d22e0a2ae56a3c5414abb58`、
+result archive SHA256=`2a1bc4105bd45af1543c341f62f282c6c2fb62649e4a41bfda5424c27b845d58`。
+全結果は`output/radius-batched-versions-20261030/`に保全した。

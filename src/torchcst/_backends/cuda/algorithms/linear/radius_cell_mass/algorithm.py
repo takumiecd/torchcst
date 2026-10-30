@@ -168,6 +168,10 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
         from torchcst.atoms._native_read_lease import prepare
 
         prepare()
+        if state.recipe.native_entry:
+            from torchcst.operators._native_metadata_versions import refresh
+
+            refresh(state.binding)
         state.invalidate()
         state.layout = hierarchy_from_operator(state.binding.execution_declaration())
         state.mark_current()
