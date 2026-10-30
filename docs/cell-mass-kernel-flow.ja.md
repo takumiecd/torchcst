@@ -5,9 +5,25 @@
 **実装の区切り（2026-10-28）：** 既存σ版と検証済み最適化はPR #122から
 `main`へmerge済み（`0047e29c`）。次期半径APIと以下の設計は、そこから切った
 `kernel/support-radius-pipeline`で進める。
-現在は半径APIのCPU参照とN<=128の明示CUDA Plan、moments/responseの共有投影と
-C/site展開の融合forward/backward、FP32半径PolarのGPU更新まで実装している。以下では初版・後続候補・測定結果を区別する。
-この半径版でN1024以上、Graph、自動dispatch、dense相当の速度を達成したとは扱わない。
+**現在（2026-10-31）：** 半径APIのCPU参照、N<=128/A<=4096/48KiBのnative・block-local経路、
+N<=1024/A<=65536の明示global経路、階層momentsと完成responseの再利用、
+shared C/site展開、既存則を保つFP32 Polar更新を実装した。自動dispatchは変更していない。
+
+| 検証条件 | 採用・検証状況 | 完全stepとメモリの結論 |
+| --- | --- | --- |
+| N128/B4/A819/M8単体 | native cached Planを採用 | 2fresh runでdense比約1.94倍、allocated/reservedともdense未満 |
+| N128/B32/A819/M8単体 | 明示batched/grad4 Planを採用 | 2fresh runで約1.41〜1.43ms、dense比2倍以内、両ピークもdense未満 |
+| N1024/B4/A52428/M8単体 | general response4/grad4 Planを採用 | 約6.25ms、両ピークはdense未満、速度2倍以内は未達 |
+| MNIST N128/B4・3epoch | 同じ初期W/外側層/data orderで実学習 | 速度は約1.60〜1.76倍、allocatedは下回るがreserved同値 |
+| MNIST N128/B32・1epoch | 同条件の別batch検証 | 速度約2.07〜2.12倍、allocated超過、同時目標は未達 |
+| MNIST N1024/B4・3epoch | 明示global-response4の別cohortを採用 | 約6.62〜6.76ms対dense1.24〜1.30ms、両ピークは下回る、速度未達 |
+| active moments省略 | 別branchでGPU718件通過 | N1024約5.81ms、メモリ同じ。grad4との統合は別検証 |
+
+MNIST N1024の最終test accuracyは97.37%対97.87%（1seed/3epoch）。精度同等・一般化は主張しない。
+現在の統合CPU検査は3109 passed/6529 skipped。配布物と実行snapshotのbyte照合も通過した。
+Graph、autocast、高階微分、自動dispatch、N1024より大きい形状の達成は未検証である。
+末尾の各実測節にjob ID・source/archive hash・採用範囲と失敗結果を残す。
+以下の初版・候補・時系列の記述は、それぞれの段階の制約として読む。
 
 **半径APIの初版：** revision7の半径宣言とCPU/Torch参照を追加した。
 `RadiusBounds`・`ChebyshevRadiusSpec`・物理／Polar用preset・`CSTModule.support_radii()`を公開する。
