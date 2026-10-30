@@ -62,20 +62,24 @@ def radius_optimizer_contract():
     }
 
 
-def radius_plan():
+def radius_plan(execution="cached"):
     """The explicit recipe in plans-radius-cell-mass.json, without dispatch changes."""
     from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.recipe import (
         RadiusCellMassRecipe,
     )
     from torchcst._backends.schema import ExecutionPlan
 
+    if execution not in ("cached", "batched"):
+        raise ValueError("radius_execution must be cached or batched")
     return ExecutionPlan(
         "cuda_radius_cell_mass",
         "v1",
         RadiusCellMassRecipe(
             input_direct_levels=2,
             output_direct_levels=2,
-            schedule="block_local_cached_parallel",
+            schedule="block_local_cached_parallel"
+            if execution == "cached"
+            else "block_local_batched_cached_parallel",
             output_tile_sites=32,
             native_autograd=True,
             native_entry=True,
@@ -109,7 +113,7 @@ def radius_settings():
     }
 
 
-def make_radius_cst(width, atoms, *, dtype=torch.float32):
+def make_radius_cst(width, atoms, *, dtype=torch.float32, radius_execution="cached"):
     """Current N128 public radius fixture, with no sigma/radius conversion."""
     if width != 128:
         raise ValueError("native radius MNIST currently qualifies only width 128")
@@ -129,7 +133,9 @@ def make_radius_cst(width, atoms, *, dtype=torch.float32):
         atoms=atoms,
         kernel=kernel,
         dtype=dtype,
-        selector=FixedSelector(radius_plan(), registry=make_algorithm_registry()),
+        selector=FixedSelector(
+            radius_plan(radius_execution), registry=make_algorithm_registry()
+        ),
     )
 
 
@@ -539,15 +545,21 @@ def make_initialization(width, seed=120):
     }
 
 
-def make_model(initialization, kind):
+def make_model(initialization, kind, *, radius_execution="cached"):
     n = initialization["width"]
     if kind not in ("cst", "dense"):
         raise ValueError("kind must be cst or dense")
     radius = initialization.get("parameterization") == "polar_radius"
+    if radius_execution not in ("cached", "batched"):
+        raise ValueError("radius_execution must be cached or batched")
+    if not radius and radius_execution != "cached":
+        raise ValueError("radius_execution overrides require a radius initialization")
     if radius:
         validate_radius_initialization(initialization)
     hidden = (
-        make_radius_cst(n, initialization["atoms"].clone())
+        make_radius_cst(
+            n, initialization["atoms"].clone(), radius_execution=radius_execution
+        )
         if radius and kind == "cst"
         else (
             (
@@ -803,12 +815,17 @@ def run_training(
     allow_radius_batch32=False,
     initialization_sha256=None,
     data_normalization="original",
+    radius_execution="cached",
 ):
     if epochs < 1 or batch_size < 1:
         raise ValueError("epochs and batch_size must be positive")
     if data_normalization not in ("original", "inplace"):
         raise ValueError("data_normalization must be original or inplace")
     radius = initialization.get("parameterization") == "polar_radius"
+    if radius_execution not in ("cached", "batched"):
+        raise ValueError("radius_execution must be cached or batched")
+    if not radius and radius_execution != "cached":
+        raise ValueError("radius_execution overrides require a radius initialization")
     if radius:
         validate_radius_initialization(initialization)
         if batch_size != 4 and not (batch_size == 32 and allow_radius_batch32):
@@ -826,7 +843,14 @@ def run_training(
     output.mkdir(parents=True, exist_ok=False)
     data, data_info = load_mnist(data_directory)
     device = torch.device("cuda")
-    model = make_model(initialization, kind).to(device)
+    model = make_model(initialization, kind, radius_execution=radius_execution).to(
+        device
+    )
+    execution_linear_plan = (
+        make_algorithm_registry().dump_plan(radius_plan(radius_execution))
+        if radius and kind == "cst"
+        else None
+    )
     tx = normalize_images(
         data["train_x"],
         device,
@@ -951,6 +975,8 @@ def run_training(
             "width": initialization["width"],
             "kind": kind,
             "epoch": epochs,
+            "radius_execution": radius_execution if radius else None,
+            "execution_linear_plan": execution_linear_plan,
         },
         output / "final.pt",
     )
@@ -980,6 +1006,11 @@ def run_training(
             for group in optimizer.param_groups
         ],
         "linear_plan": initialization.get("linear_plan"),
+        "radius_execution": radius_execution if radius else None,
+        "execution_linear_plan": execution_linear_plan,
+        "linear_plan_scope": "linear_plan is the frozen initialization contract; execution_linear_plan is the actual CST execution override (None for dense)"
+        if radius
+        else None,
         "update_plan": initialization.get("update_plan") if kind == "cst" else None,
         "batch_policy": "true batch; no gradient accumulation",
         "batch32_separately_opted_in": radius and batch_size == 32,
@@ -1017,6 +1048,12 @@ def main():
         help="resident MNIST allocation policy; original protocol is the default",
     )
     parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--radius-execution",
+        choices=["cached", "batched"],
+        default="cached",
+        help="opt-in radius execution Plan; initialization contract is unchanged",
+    )
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument(
@@ -1077,6 +1114,7 @@ def main():
             args.initialization.read_bytes()
         ).hexdigest(),
         data_normalization=args.data_normalization,
+        radius_execution=args.radius_execution,
     )
 
 

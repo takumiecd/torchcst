@@ -258,3 +258,71 @@ def test_unknown_data_normalization_rejects_before_data_or_output(
             data_normalization="other",
         )
     assert not (tmp_path / "out").exists()
+
+
+def test_batched_execution_override_preserves_frozen_initialization_and_dense_control(
+    initialization,
+):
+    frozen = copy.deepcopy(initialization)
+    cached = mnist.make_model(initialization, "cst")
+    batched = mnist.make_model(initialization, "cst", radius_execution="batched")
+    dense_cached = mnist.make_model(initialization, "dense")
+    dense_batched = mnist.make_model(
+        initialization, "dense", radius_execution="batched"
+    )
+    assert cached[2].selector._plan == mnist.radius_plan()
+    assert batched[2].selector._plan == mnist.radius_plan("batched")
+    catalog = json.loads(
+        (
+            Path(__file__).resolve().parents[1]
+            / "benchmarks/cuda/linear/plans-radius-cell-mass.json"
+        ).read_text()
+    )
+    expected = next(
+        row["plan"]
+        for row in catalog["plans"]
+        if row["id"] == "radius-native-batched-cached-parallel"
+    )
+    assert (
+        mnist.make_algorithm_registry().dump_plan(batched[2].selector._plan) == expected
+    )
+    assert initialization["linear_plan"] == frozen["linear_plan"]
+    assert (
+        initialization["linear_plan"]["recipe"]["schedule"]
+        == "block_local_cached_parallel"
+    )
+    mnist.validate_radius_initialization(initialization)
+    for left, right in ((cached, batched), (dense_cached, dense_batched)):
+        for before, after in zip(left.parameters(), right.parameters()):
+            assert torch.equal(before, after)
+    assert torch.equal(batched[2].dense_weight(), dense_batched[2].weight)
+    assert initialization["initial_hashes"] == frozen["initial_hashes"]
+
+
+def test_radius_execution_rejects_invalid_or_legacy_override_before_data(
+    initialization, monkeypatch, tmp_path
+):
+    monkeypatch.setattr(
+        mnist, "load_mnist", lambda _: pytest.fail("must not load data")
+    )
+    with pytest.raises(ValueError, match="radius_execution"):
+        mnist.radius_plan("other")
+    with pytest.raises(ValueError, match="radius_execution"):
+        mnist.make_model(initialization, "cst", radius_execution="other")
+    with pytest.raises(ValueError, match="radius_execution"):
+        mnist.run_training(
+            initialization,
+            "cst",
+            tmp_path,
+            tmp_path / "out",
+            batch_size=4,
+            radius_execution="other",
+        )
+    legacy = {"width": 128}
+    with pytest.raises(ValueError, match="require a radius initialization"):
+        mnist.make_model(legacy, "dense", radius_execution="batched")
+    with pytest.raises(ValueError, match="require a radius initialization"):
+        mnist.run_training(
+            legacy, "dense", tmp_path, tmp_path / "out", radius_execution="batched"
+        )
+    assert not (tmp_path / "out").exists()

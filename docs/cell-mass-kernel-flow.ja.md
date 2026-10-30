@@ -7169,4 +7169,37 @@ VJP test fixtureのphysical cap=23.68をFP32で上側23.680000305へ丸め、dev
 
 N1024への最初の移植は別branch `kernel/radius-large-batched`で、global projection/parameter
 gradientをそのままに、H/GからC生成とsite展開の対だけをこの独立consumerへ置き換える。
-どちらもまだ未採用/速度未検証の候補であり、既存N128の達成と混同しない。
+以下の実測後も既定pathは変更せず、明示Planの候補として扱う。既存N128の達成と混同しない。
+
+### batched係数生成の実測とCPU参照の境界修正（2026-10-31）
+
+CPU参照`axis_masses`はFP32 radiusをPython float境界と直接比較すると、その境界自体を
+FP32へ丸めてしまっていた。`routing_radius=radius.detach().double()`で分類とdomain検査だけを
+物理境界の精度へ揃える。積分と微分には元のradiusを使う。CUDA式・検査は変更しない。
+spacing=0.37のnextafter境界で独立積分との差0.03467524が発生した参照側の不具合を修正し、
+20件のCPU境界・Y/dX/全physical勾配回帰を追加した。primary commit `dad138ce`。
+
+job `l4job-c35ea2bdf5e0425baee2338ed0f41bb2`は、この参照修正とcap以下fixtureでGPU299件を通過。
+N128/B32/A819/M8の未計装完全stepは、2つのfresh processで旧2.268914/2.261464ms、
+新1.820384/1.808972ms、dense0.700490/0.719276ms。同じglobal中間配列を保ち、
+allocated/reservedは両CSTとも1684992/2097152B（dense17384960/23068672B）。
+約20%短縮だがdense比2.60/2.51倍なので、このB32単体の速度目標は未達。
+B4既存pathの回帰は1.353711ms / dense0.686574ms=1.97169倍。
+GPU検証済み候補をprimaryへ`fb99c7b7`と`dcb6f3e1`で取り込み、
+`radius-native-batched-cached-parallel`を明示した時だけ使用する。自動dispatchは変えない。
+source SHA256=`3d84704212acd2552cf39c8c8ddc239c8a54d82b8b6b1fd381acb33b35ec504c`、
+結果archive SHA256=`05a42282cb5ab3e7ec263f4bd050234d0c5a8370bf0974b62e5ebe4d9d121087`。
+
+別branch `kernel/radius-large-batched` / `d3f6dac0`のN1024/B4/A52428/M8は
+job `l4job-62d2ca70e9f244aab496c00c7816eb83`で実compile、GPU351件、
+全atomの独立Y/dX/dPとmatched-state更新を通過した。global moments/responseとparameter gradは
+旧版のまま、完成H/Gのconsumerだけtile-local batched Cへ交換した比較である。
+旧50.817124/50.817638ms→新9.000168/9.018308ms、dense0.706106/0.712809ms。
+約5.64倍速いがdense比12.75/12.65倍で、1024の速度目標は未達。
+両CSTピーク9211904/31457280B、dense33900032/44040192Bなのでメモリは両指標とも下回る。
+この結果はLinear単体の完全stepであり、1024のMNIST学習結果ではない。
+新binary=`torchcst_radius_cell_mass_2ee89e4aa200.so`、
+SHA256=`7de2ba2302f61fae417f92b8b83bcfd34294ae05ee537950f7a95ca30fa0f096`。
+source SHA256=`41f3b8a2a63c436410d06827e1c6b2bcb5565d87b7960e13ce9caaa1edcb2ec2`、
+結果archive SHA256=`c609fe2d447222c7a82878856c972057c6635454329b93765f2a8dc2b60f51b2`。
+rawは既存`output/radius-mnist-native-20261031/`と共有pool jobへ保全する。
