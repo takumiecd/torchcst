@@ -128,3 +128,72 @@ def test_native_host_saved_version_check_and_second_derivative_rejection():
     assert gradient.requires_grad
     with pytest.raises(RuntimeError):
         torch.autograd.grad(gradient.sum(), x)
+
+
+@GPU
+@pytest.mark.parametrize("checked", [False, True])
+@pytest.mark.parametrize("mode", ["grad", "no_grad", "inference"])
+@pytest.mark.parametrize(
+    "needs_x,needs_p", [(False, False), (True, False), (False, True), (True, True)]
+)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_native_host_forward_without_edges_and_grad_flags_match_python(
+    checked, mode, needs_x, needs_p, dtype
+):
+    axis = axis_plan(32, modes=3)
+    plan = HierarchyPlan(input=axis, output=axis)
+    x = torch.randn(2, 32, dtype=dtype, device="cuda", requires_grad=needs_x)
+    p = atoms(plan, dtype).cuda().requires_grad_(needs_p)
+    cfg = recipe(native_entry=checked)
+    context = {
+        "grad": torch.enable_grad,
+        "no_grad": torch.no_grad,
+        "inference": torch.inference_mode,
+    }[mode]
+    saved = []
+
+    def pack(tensor):
+        saved.append(tuple(tensor.shape))
+        return tensor
+
+    with context():
+        with torch.autograd.graph.saved_tensors_hooks(pack, lambda tensor: tensor):
+            actual = ex.radius_linear(plan, x, p, recipe=cfg)
+        expected = ex.radius_linear(
+            plan, x, p, recipe=replace(cfg, native_autograd=False, native_entry=False)
+        )
+    torch.testing.assert_close(actual, expected, atol=0, rtol=0)
+    executable = mode == "grad" and (needs_x or needs_p)
+    assert actual.requires_grad == expected.requires_grad == executable
+    assert (actual.grad_fn is not None) == executable
+    assert actual.is_inference() == expected.is_inference() == (mode == "inference")
+    if executable:
+        assert len(saved) == (5 if needs_x else 4)
+        selected = tuple(value for value in (x, p) if value.requires_grad)
+        dy = torch.randn_like(actual)
+        gradients = torch.autograd.grad(actual, selected, dy)
+        reference = torch.autograd.grad(expected, selected, dy)
+        for value, target in zip(gradients, reference):
+            torch.testing.assert_close(value, target, atol=0, rtol=0)
+    else:
+        assert not saved  # Non-executable contexts commit no SavedVariables/hooks.
+        assert expected.grad_fn is None and x.grad is None and p.grad is None
+
+
+@GPU
+@pytest.mark.parametrize("checked", [False, True])
+def test_native_host_inference_tensors_created_inside_inference_mode(checked):
+    axis = axis_plan(32, modes=3)
+    plan = HierarchyPlan(input=axis, output=axis)
+    cfg = recipe(native_entry=checked)
+    with torch.inference_mode():
+        x = torch.randn(2, 32, dtype=torch.float32, device="cuda")
+        p = atoms(plan, x.dtype).cuda()
+        assert x.is_inference() and p.is_inference()
+        actual = ex.radius_linear(plan, x, p, recipe=cfg)
+        expected = ex.radius_linear(
+            plan, x, p, recipe=replace(cfg, native_autograd=False, native_entry=False)
+        )
+        torch.testing.assert_close(actual, expected, atol=0, rtol=0)
+        assert actual.is_inference() and not actual.requires_grad
+        assert actual.grad_fn is None

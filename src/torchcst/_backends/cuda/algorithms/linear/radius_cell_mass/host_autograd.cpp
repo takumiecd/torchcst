@@ -57,8 +57,12 @@ public:
         ctx->saved_data["schedule"] = schedule;
         // Ordinary SavedVariables preserve offload hooks, version checking,
         // retain_graph and release on normal backward. No global tensor cache.
+        // Function::apply has no next_edges under no_grad/inference or when
+        // every input is frozen, so needs_input_grad(0) is not queryable here.
+        // Input requires_grad is equivalent when executable; otherwise this
+        // context is discarded without committing any SavedVariables.
         ctx->save_for_backward({x, atoms, values[1], values[2],
-            ctx->needs_input_grad(0) ? keys : Tensor()});
+            x.requires_grad() ? keys : Tensor()});
         return values[0];
     }
 

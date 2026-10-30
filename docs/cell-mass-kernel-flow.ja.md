@@ -6981,3 +6981,15 @@ denseも同じlr=1e-4とordinary/middle decay=.01。両者の学習軌跡の一�
 CPU全体2890 passed/6254 skipped（55.36s）、cohort固有の初期化・旧経路互換・CLI・hash/
 optimizer設定テスト、Ruff/diff検査が通過。GPU pilot jobは
 `l4job-a7ff212818bc4c519b1cf2d4d49dd6d5`。MNISTの速度・メモリ・精度の達成はまだ主張しない。
+
+同pilotは学習開始前、評価用`torch.no_grad()`のnative forwardで停止した。
+C++ Function::applyは勾配を記録しない場合next_edgesを持たず、forward内の
+`ctx->needs_input_grad(0)`が`Index out of range`になっていた。これまでの勾配を有効にした
+完全stepの測定結果とは別の、評価/全凍結経路の不具合である。forwardでrouting keyを
+保存する条件を`x.requires_grad()`へ変更する。実行可能なautograd nodeでは従来と同じ条件、
+記録しないcontextではSavedVariables自体がcommitされず破棄される。backwardは変更しない。
+checked/unchecked、no_grad/inference、全凍結、FP32/FP64と通常のVJPを含む50 GPU回帰条件を
+追加し、C++ syntax検査を通した。新binaryの実compile/GPU検査と完全step再確認が必要。
+failed pilotのsource SHA256=`ada602c6c8e34f0b36fd0d52730992ac25cf26dd49d18157653e7242ce0db643`、
+result archive SHA256=`99fc642a0b1c8d9125f776d305fa3ce595ff8888c12a8f54bff2fcf6c7b730ee`。
+spec/receipt/resultsは`output/radius-mnist-native-20261031/<job-id>/`へ保全し、学習速度には使わない。
