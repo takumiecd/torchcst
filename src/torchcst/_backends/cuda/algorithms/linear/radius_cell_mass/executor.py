@@ -538,6 +538,7 @@ def radius_linear(plan, x, atoms, *, recipe=None):
                 recipe.native_autograd
                 and type(x) in (torch.Tensor, torch.nn.Parameter)
                 and type(atoms) in (torch.Tensor, torch.nn.Parameter)
+                and not torch.overrides.has_torch_function((x, atoms))
                 and not torch._C._are_functorch_transforms_active()
                 and torch.autograd.forward_ad._current_level == -1
             ):

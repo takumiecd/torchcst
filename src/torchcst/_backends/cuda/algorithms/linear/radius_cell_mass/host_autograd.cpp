@@ -13,15 +13,15 @@ using Config = std::vector<double>;
 
 // PyTorch changed Node ownership from shared_ptr to intrusive_ptr. Select the
 // matching constructor from the installed header instead of pinning a version.
-template<class Pointer>
+template<class Pointer, class Error = torch::autograd::DelayedError>
 auto first_order_error(int outputs) {
     const char *message = "trying to differentiate twice a function that was "
         "marked with @once_differentiable";
     if constexpr (std::is_same_v<Pointer,
         c10::intrusive_ptr<torch::autograd::Node>>) {
-        return c10::make_intrusive<torch::autograd::DelayedError>(message, outputs);
+        return c10::make_intrusive<Error>(message, outputs);
     } else {
-        return std::make_shared<torch::autograd::DelayedError>(message, outputs);
+        return std::make_shared<Error>(message, outputs);
     }
 }
 

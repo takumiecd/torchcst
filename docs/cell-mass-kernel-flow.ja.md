@@ -6421,5 +6421,26 @@ CPU側のsaved-variable寿命・offload・再backwardを確認しただけでは
 
 (a) snapshotは`c534c260`、GPU比較jobは
 `l4job-efa9002130ff4b4dbcebf56954459449`。
-(b) のGPU比較jobは`l4job-bd290528c167442db9df9ffb48538c02`。
+(b) のGPU比較jobは`l4job-1004f07e73d24214aa862eb71299bc8d`。
+初回queued job `l4job-bd290528c167442db9df9ffb48538c02`は、recipeに追加した
+fieldがcatalogに欠けていることをCPU suiteで検出したため、実行前にcancelした。
+catalog修正後のfixture/registry対象テストは6 passed。
 この追記時点では両候補ともGPU比較待ちであり、目標達成・最終採用は未確認。
+
+
+#### native read leaseの初回比較
+
+job `l4job-efa9002130ff4b4dbcebf56954459449`は298 GPU-host testsが通過した。
+同じCUDA binary `37a00de5c036`で、baseline/候補を各Plan 2 fresh processes、
+各10 warmups/101 synchronized complete stepsで比較した。
+通常parallelは平均中央値1.787915→1.753215ms（1.94%）、
+shared-profileは1.784483→1.771731ms（.71%）。
+全8回のallocated/reservedは297984/2097152B、denseは17313280/23068672B。
+両Planの5更新後35 Tensor（Y/dX/dP/P/Adam状態）はbit一致した。
+この差だけでは時間2倍以内の目標に届かない。小さな差なので、次の候補との
+最終組合せも独立に再測定して採否を決める。
+
+snapshot SHA256=`25423ead014a71a2cd616fcf720928fcb256473e3eb5dbfe24918dd6e0d0f353`、
+result archive SHA256=`455311010d82267d667dd01764de6b319f9300b279fc6d4efa312fd5edf91046`。
+source/results/receipt/8 primary JSON/単一code-object診断/trace/stateをignored
+`output/radius-read-lease-20261030/`へ保全した。

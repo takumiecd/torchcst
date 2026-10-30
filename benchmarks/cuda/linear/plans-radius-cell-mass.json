@@ -13,7 +13,8 @@
           "input_direct_levels": 0,
           "output_direct_levels": 0,
           "schedule": "sequential",
-          "output_tile_sites": 32
+          "output_tile_sites": 32,
+          "native_autograd": false
         }
       }
     },
@@ -29,7 +30,8 @@
           "input_direct_levels": 2,
           "output_direct_levels": 2,
           "schedule": "sequential",
-          "output_tile_sites": 32
+          "output_tile_sites": 32,
+          "native_autograd": false
         }
       }
     },
@@ -45,7 +47,8 @@
           "input_direct_levels": 2,
           "output_direct_levels": 2,
           "schedule": "overlap",
-          "output_tile_sites": 32
+          "output_tile_sites": 32,
+          "native_autograd": false
         }
       }
     },
@@ -61,7 +64,8 @@
           "input_direct_levels": 2,
           "output_direct_levels": 2,
           "schedule": "block_local",
-          "output_tile_sites": 32
+          "output_tile_sites": 32,
+          "native_autograd": false
         }
       }
     },
@@ -77,7 +81,8 @@
           "input_direct_levels": 2,
           "output_direct_levels": 2,
           "schedule": "block_local",
-          "output_tile_sites": 64
+          "output_tile_sites": 64,
+          "native_autograd": false
         }
       }
     },
@@ -93,7 +98,8 @@
           "input_direct_levels": 2,
           "output_direct_levels": 2,
           "schedule": "block_local_parallel",
-          "output_tile_sites": 32
+          "output_tile_sites": 32,
+          "native_autograd": false
         }
       }
     },
@@ -109,7 +115,8 @@
           "input_direct_levels": 2,
           "output_direct_levels": 2,
           "schedule": "block_local_cached_parallel",
-          "output_tile_sites": 32
+          "output_tile_sites": 32,
+          "native_autograd": false
         }
       }
     }
