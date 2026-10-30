@@ -258,6 +258,7 @@ def test_batched_counts_one_profile_per_four_rows_and_preserves_complete_caches(
     "sites,modes,start,tile,batch,merge,method",
     [
         (128, 8, 2, 32, 32, 2, "merge"),
+        (128, 8, 5, 32, 32, 2, "merge"),
         (16, 16, 0, 7, 5, 2, "direct"),
         (27, 3, 1, 13, 3, 3, "merge"),
         (16, 5, 5, 7, 1, 2, "direct"),
