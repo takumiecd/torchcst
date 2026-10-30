@@ -23,7 +23,7 @@ shared C/site展開、既存則を保つFP32 Polar更新を実装した。自動
 MNIST N1024の最終test accuracyは97.37%対97.87%（1seed/3epoch）。精度同等・一般化は主張しない。
 単体denseの小型ピーク差にはcuBLAS workspace約17.04MBが大きく寄与する。MNISTでは両モデルに共通であり、
 単体の総ピーク差をCSTのParameterや中間配列そのものの削減量と読み替えない。末尾に因果実験を記録する。
-現在の統合CPU検査は3172 passed/6711 skipped。追加ごとの検証範囲は末尾に記録する。
+現在の統合CPU検査は3191 passed/6712 skipped。追加ごとの検証範囲は末尾に記録する。
 配布wheel/sdistのruntime388ファイルと、実行snapshotのbyte照合も通過した。
 Graph、autocast、高階微分、自動dispatch、N1024より大きい形状の達成は未検証である。
 末尾の各実測節にjob ID・source/archive hash・採用範囲と失敗結果を残す。
@@ -7763,3 +7763,34 @@ activation/H/G/Zのbatch比例分だけが、単体と全modelの差の原因だ
 snapshot照合・raw causal記録は同じ研究outputとpool結果に保存した。
 source_sha256=`5f4803005a7102ac493a84448e4b11f6e82f215eb5c036d0f6ce5564729a9042`.
 archive_sha256=`fe8760ab6929d6e551ff5c7e524f000a9b9de0c0fd3f06562e324bd90cea2ac0`.
+
+
+### 非ゼロoriginのtorus座標とCPU参照の修正（2026-10-31）
+
+owner融合候補6660の初回job `l4job-016bd35815334cbb9fa0a328065a3789`は
+1049 passed/7 failed/2 skippedで停止し、性能測定へ進めなかった。
+うち6件はFP64の非ゼロorigin/skew fixture、1件は新規empty fixtureの誤指定だった。
+失敗した原本は保持し、独立診断job `l4job-5e77db8f6de247cca249f3e0dd7213d4`で切り分けた。
+
+旧native mode5と候補mode6の両方に同じCPU参照との差があり、両native同士は約1e-16で一致した。
+encoded FP64のcenter=`79*13.7`、origin=`-1.2`、chart period=`1024`では、
+先にcenter-originを計算すると59.5へ丸まり、T4/K3のfirst tileは14になる。
+各座標を先にfmodで縮約する既存native式では59.49999999999996でfirst tileは13となる。
+入力floatそのものをFractionへ変換した独立計算も後者に一致した。epsilonや境界のsnappingは追加しない。
+またcenter=1e300、origin=0.5、period=1024では正しい相対座標1023.5が、先行減算だと0になる。
+
+CPU referenceのaxis_massesだけを既存nativeと同じmodular-relative座標へ合わせる。
+同じ座標でwindow選択とcell phaseを計算し、中心の単位VJPを保つ。
+CPU fmodの極端な有限値でのNaNはscalar libmで修復し、DBL_MAX近傍のperiodも別途検証する。
+このreferenceは既にCPU専用であり、追加したCPU分岐がnative高速経路へ入ることはない。
+CUDAの式、radius、profile、正規化、既存oracleの許容誤差、legacy Planは変更しない。
+
+保存済みの実GPU tensorを修正CPU参照で再評価するとH/Y/dX/全parameter勾配は最大1.11e-15で一致した。
+これは保存tensorの再評価であり、新しい実GPU qualificationの通過とは別に記録する。
+新しいテストはexact/nextafter/巨大center/逆符号/overflow/符号付きzero/中心VJPと、
+既存global-native Planの元の境界fixtureを対象にする。候補Planへの依存は持ち込まない。
+focused CPU検査は73 passed/48 skipped、全CPU検査は3191 passed/6712 skipped/19 warnings。
+全CPU raw logは`output/radius-mnist-native-20261031/primary-canonical-reference-cpu.log`。GPU再qualificationは別途実行中。
+証拠はignored `output/radius-mnist-native-20261031/owner-canonicalization-audit/`と上記pool結果に保持する。
+実GPU binary SHA256=`48557033186f1ee1fd7dfcd9081a0679cafa2b9efd6919eaf76ac9407fb56b02`。
+Fraction proofと再評価JSON SHA256=`b1b79e66263ef4ec075213747ee3b4c166da08b12eca0b06f92b1b3cc163d482`。

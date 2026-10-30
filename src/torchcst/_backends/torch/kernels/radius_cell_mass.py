@@ -4,12 +4,63 @@ The reference uses direct probability factors. It does not allocate hierarchical
 moments or expose partial responses. Routing is piecewise constant in backward.
 """
 
+import math
+
 import torch
 
 from torchcst.kernels.parameterizations import PhysicalAmpRadiusSpec
 from torchcst.kernels.radius_cell_mass import radius_cell_mass_axes
 
 from ..profiles.radius_fourier import integrated_cells
+
+
+def _relative_centers(centers, origin, period):
+    """Stable FP64 modular-relative coordinates, as in native radius grids.
+
+    Reducing each encoded coordinate first preserves a small origin even when
+    center-origin would round it away or overflow. Use the same resulting
+    coordinate for window selection and smooth cell phases; fmod keeps the
+    ordinary unit center derivative, including at the selected wrap branch.
+    """
+    encoded = centers.double()
+    residue = torch.fmod(encoded, period)
+    invalid = ~torch.isfinite(residue)
+    if bool(invalid.any()):
+        # Some vectorized CPU fmod implementations return NaN when their
+        # internal quotient overflows. Scalar libm still handles finite inputs.
+        # Replace those values while retaining the same unit center VJP.
+        indices = invalid.nonzero().flatten()
+        selected = encoded[indices]
+        stable = selected.new_tensor(
+            [math.fmod(value, period) for value in selected.detach().tolist()]
+        )
+        # Subtracting this zero correction also preserves libm's signed zero.
+        repaired = stable - (-selected + selected.detach())
+        residue = residue.index_copy(0, indices, repaired)
+    origin_residue = math.fmod(origin, period)
+    difference = residue - origin_residue
+    finite = torch.isfinite(difference)
+    if not bool(finite.all()):
+        # A CPU grid can have a period near DBL_MAX. Normalize the two
+        # residues before subtracting, so neither a difference nor P+delta
+        # can overflow. CUDA axes already require finite 3*P.
+        negative = residue < 0
+        negative_part = torch.where(negative, residue, 0.0)
+        positive = torch.where(negative, negative_part + period, residue)
+        positive = torch.where(positive >= period, positive - period, positive)
+        other = origin_residue + period if origin_residue < 0 else origin_residue
+        if other >= period:
+            other -= period
+        delta = positive - other
+        nonnegative = delta >= 0
+        gap = torch.where(nonnegative, delta, -delta)
+        fallback = torch.where(nonnegative, gap, period - gap)
+        fallback = torch.where(fallback >= period, fallback - period, fallback)
+        difference = torch.where(finite, difference, fallback)
+    relative = torch.fmod(difference, period)
+    negative = relative < 0
+    negative_part = torch.where(negative, relative, 0.0)
+    return torch.where(negative, negative_part + period, relative)
 
 
 def axis_masses(axis, radius, centers):
@@ -45,9 +96,7 @@ def axis_masses(axis, radius, centers):
         counts = (2 * routing_radius / tile_width).ceil().long() + 1
         for count in counts[selected].unique().tolist():
             indices = (selected & (counts == count)).nonzero().flatten()
-            local_center = (centers[indices].double() - axis.origin).remainder(
-                axis.period
-            )
+            local_center = _relative_centers(centers[indices], axis.origin, axis.period)
             first_tile = (
                 ((local_center + axis.spacing / 2) / tile_width - (count - 1) / 2)
                 .floor()
