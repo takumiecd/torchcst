@@ -7252,3 +7252,31 @@ run_backward30calls/19ms。inclusive費用を足し合わせたりepoch速度か
 同期eventには測定終端のcudaDeviceSynchronizeが含まれるため、これをruntime内部同期と断定しない。
 source_sha256=`11f5d9eaf9941d9e106258f52064798cf07533c6e4679525a761db95679635c4`。
 archive_sha256=`589d090097d2463691e789da49f8bde3948e711364a29ba291dd17833d3f164f`。
+
+### M8多項式のHorner候補：正しさ通過、速度効果なし（2026-10-31）
+
+`kernel/radius-m8-horner` / `725cac58`は、既存の正係数・斉次多項式を
+割り算なしHornerへ変形する差分候補。独立Chebyshev Laurent多項式のFraction展開で
+全係数と微分を厳密照合し、元のprofile・正規化・Mは変更しない。
+job `l4job-00a24777337643aea8b0c1a2d70f4352`で実compile/GPU差分10件を通過。
+
+execution子branch `kernel/radius-m8-horner-execution` / `5917ce5b`だけでM8の評価器を交換した。
+job `l4job-5acca242c13142d5a709a9178db38347`で実compile、GPU309件通過。
+B32単体のcached/batched完全stepはrun1 2.252948/1.854375ms、run2 2.244845/1.829956ms、
+dense0.728902/0.728516ms。旧batched1.820384/1.808972msより改善せず、
+MNIST B32/inplace/1epochも2.761022ms / dense1.332986ms=2.07131倍、
+ピーク242315776/247463936B / dense241428992/247463936Bで変わらない。
+未採用として元評価器をprimaryに保持する。演算数の理論減少だけで性能向上としない。
+
+`l4job-00a24777337643aea8b0c1a2d70f4352`：
+source_sha256=`f43e59e0a163c63d3c6d49192dbf3fe829fc8578b4a3eff48249c96c96a1c512`。
+archive_sha256=`a63214b38aca4374dc8614959cf6f9fffbcbb38ffc3c8939e37f0f4e8ad932ba`。
+`l4job-5acca242c13142d5a709a9178db38347`：
+source_sha256=`96456d49d4243e6646d4d2fa47064b05f74ff738cb148d45f31473ef7ccbbc84`。
+archive_sha256=`fe77a4a01514941a1138ff4e3d8cc6a996901205cfe083ed46b4e08c6da8c5ca`。
+
+4行response候補job `l4job-46fe8eac364a42d8b483757cceb67fd3`は独立微分/更新を含む392件を
+通過したが、新設したH/Gのbitwise比較15件で約1e-16の差が出て停止し、速度は未測定。
+実binary PTXでは、同じsine再帰のFMAに取り込まれる積の側がscalarと4行版で異なることを
+確認した。独立oracle/optimizerの既存許容値は変えず、新stage比較だけをFP64丸め誤差上界と
+finite検査へ修正して別jobで再確認する。失敗結果も同じoutputに保全する。
