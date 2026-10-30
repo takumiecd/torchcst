@@ -6218,3 +6218,185 @@ driver/worker、2件のsource/result/receipt、16 fresh records、状態、全tr
 集計・manifest照合、CPU/build/package記録はignored
 `output/radius-forward-context-20261030/`へ保全した。
 1024/MNIST、他GPU世代/Torch版、Graph/process memoryは今回の検証範囲に含めない。
+
+### radius階層の配置確認からoptimizerだけの依存を外す（比較・不採用、2026-10-30）
+
+このState変更は局所時間を減らしたが、通常parallelの完全stepを短縮できなかった。
+`eb3fbe4b`で専用Stateとその専用テストを戻した。最終runtimeには残さず、
+候補の復元先は`e0f44e5b`と以下のfrozen source/resultsである。
+
+次のCPU候補は`AlgorithmState._signature()`のoptimizer field走査である。
+汎用Stateは`owner.optimizer_state.fields`をsortし、各Tensorの
+device/dtype/shape/stride/data_ptrまで調べる。optimizer状態を使うAlgorithmには必要だが、
+radius Linearの準備はimmutableな階層幾何であり、Adamのmoment/clockを読まない。
+optimizer reloadでmoment storageだけが替わっても、その階層の再準備は必要ない。
+
+`e0f44e5b`は具体的な`RadiusCellMassAlgorithm`だけが作る
+`RadiusCellMassState`を追加する。共通のAlgorithmStateやoptimizerの更新・検証は変更しない。
+
+```text
+旧Radius Stateの配置signature:
+  owner ID + Parameter配置 + 全optimizer field配置 + Context + binding callback
+
+新Radius Stateの配置signature:
+  owner ID + Parameter配置 + Context + binding callback
+
+layout_versionと保存済みsignatureの照合は既存AlgorithmState.is_currentを使う。
+```
+
+Parameter配置は引き続きidentity/device/dtype/shape/stride/data_ptrを含む。
+Chart/Kernelの固定設定と入力・実行条件は、既存の宣言検証/Context/prepared dispatchから
+渡す。現在のatom値とroutingは毎実行の入力から作る。
+任意の`binding.state_signature` callbackも毎回呼ぶ。
+カスタムRadius Algorithm subclassは追加依存を持ち得るため、汎用Stateへ戻す。
+数値GPUコード・階層moments・完成済みresponseとその再利用・保存寿命は変更しない。
+新たなTensor表や永続数値cacheは追加しない。
+
+CPUではoptimizer reloadやmoment storage変更が階層を無効化しない一方、
+Parameterのstorage/identity/dtype、relayout世代、入力Context、設定の変更を検出すること、
+不正設定がContext構築で拒否されること、custom callback/subclassとserializationの
+従来境界を確認する。追加GPU検査は両parallel Plansと全/dX-only/atom-onlyの3勾配条件で、
+optimizer field storageが変わってもretained backwardのread leaseが解除されず、
+通常backward完了後のrelayoutがStateを無効化することを対象にする。
+
+同時に`6a8c98d1`でnative metadata guardの重複subtreeも比較する。
+`guard_callable_metadata`は元からdict fast pathの外側でModule walker関数の
+code/default/kwdefault identityを確認しているため、class namespace側で同じ3 fieldsを
+再確認しない。kwdefault辞書の内容変更は別途dict-version guardを残す。
+bufferについては、親`_buffers`辞書のversion guardが登録objectの差し替えを検出し、
+TensorMatchがその現在typeとmetadataを検査する。この場合だけ重複object ID/typeノードを省き、
+Tensor class/MRO/namespaceのsubtreeはclassごとに1件残す。
+TensorMatch APIが使えなければ、以前のID/type/field guardへ戻す。
+bufferの`_version`チェック、設定変更時のPython再走査と検証、callback境界そのものは省かない。
+
+追加した検査は、辞書全体の差し替え、最初以外のbufferの`__class__`変更、
+TensorMatch非対応時のidentity/dtype検査を対象にする。
+既存のbuffer/登録/metadata変更、同値書き込み、Module walkerのcode/default変更、
+custom property/callback、guard非対応fallback、参照寿命の検査も維持する。
+旧版、State依存だけ削減、guardだけ削減、両方の4条件を同じ数値GPU binaryで比較し、
+片方だけの効果と組合せの効果を分けて判断する。
+
+#### 4条件の同時比較
+
+比較元は`e4adbc70`。N128/B4/A819/M8/seed41、spacing1、base1/merge2、
+direct levels2、32-site CTA、FP32 IEEE、native CSTAdamW/fused AdamW、
+raw decay0/amp decay.01/check_finite=Falseは前節から固定した。
+L4/Torch2.11.0+cu130/CUDA13.0/Python3.13.16/Triton3.6.0で、
+各Planの旧版/Stateのみ/guardのみ/両方を2 fresh processesずつ、
+往復する順序で計16回測定した。各回10 warmups/101 synchronized complete steps。
+全回でbenchmarkの独立Y/dX/全atom勾配・quadrature・matched-state gateが通過した。
+
+| Plan / 条件 | step中央値2回 ms | 中央値の平均 ms | 旧版からの短縮率 |
+| --- | --- | ---: | ---: |
+| parallel / 旧版 | 1.788814 / 1.786755 | 1.787785 | — |
+| parallel / State | 1.803208 / 1.807631 | 1.805419 | -0.99% |
+| parallel / guard | 1.792807 / 1.761931 | 1.777369 | .58% |
+| parallel / 両方 | 1.865664 / 1.745646 | 1.805655 | -1.00% |
+| shared-profile / 旧版 | 1.848337 / 1.846360 | 1.847348 | — |
+| shared-profile / State | 1.806592 / 1.835082 | 1.820837 | 1.44% |
+| shared-profile / guard | 1.765540 / 1.821022 | 1.793281 | 2.93% |
+| shared-profile / 両方 | 1.809416 / 1.774560 | 1.791988 | 3.00% |
+
+Stateだけの変更では、別の単一code-object計測で`_signature`が17.130→6.773us、
+`is_current`が22.204→10.146us、`tensor_signature`が5→2 callsになった。
+それでも両Planの完全step改善を確認できなかったため、局所時間を理由に採用しない。
+両方を入れた版も同じ理由で採らず、guardだけを独立再測定する。
+これはState変更が一般に遅いという証明ではなく、この比較の採用基準を満たさないという判断。
+
+このjobのGPU-host suiteは472 passed。3候補×2 Plansの5実更新後35 Tensorはすべて旧版と
+bit一致した。全16回のallocated/reservedは297984/2097152Bで、
+matched denseの17313280/23068672B以下。matched denseのstepは.700507–.745767ms。
+数値GPU binaryは全条件同じ`37a00de5c036`で、runtime全376ファイルの差は
+State条件で`radius_cell_mass/algorithm.py`だけ、guard条件で
+`operators/_native_metadata_guard.py`だけ、両方の条件でその2ファイルだけだった。
+
+別code-object計測は各関数を1つずつ有効化し、測定前にP/Adamの数値状態を同じsnapshotへ戻す。
+各関数10 warm monitored steps/51 samplesで、function/code/dictionaryの差し替えはしない。
+定常prepared/program identityとmiss数も不変だった。
+guard版のshared-profileで残るinclusive CPU費用は以下のとおり。
+
+| 関数 | stepあたりcalls | 合計usの中央値 |
+| --- | ---: | ---: |
+| `CSTLinear.forward` | 1 | 588.542 |
+| `Dispatcher._prepare` | 1 | 135.672 |
+| `operator_declaration` | 3 | 94.377 |
+| `fixed_state_signature` | 3 | 78.156 |
+| `AtomState.protect_tensor` | 3 | 126.487 |
+| `AtomState.parameters_for_execution` | 1 | 69.541 |
+| `Registry.validate_plan` | 2 | 10.244 |
+| `RadiusCellMassAlgorithm.validate_recipe` | 4 | 11.546 |
+| `radius_linear` | 1 | 177.015 |
+| `_BlockLocalRadiusLinear.forward` | 1 | 94.761 |
+| `_BlockLocalRadiusLinear.backward` | 1 | 91.399 |
+| `CSTAdamW._adamw_proposal` | 1 | 95.124 |
+| `_ranges_from_layout_keys` | 2 | 45.549 |
+| `AxisPlan.native_config` | 8 | 10.423 |
+
+親子と異なる対象の計測が含まれるため足し合わせない。autograd wrapperやCUDA投入も
+host呼び出しの一部で、残りをすべて宣言検証の費用と扱わない。
+次の大きめのCPU候補は`protect_tensor`を軸にした読取寿命管理とautograd境界である。
+Parameter借用前の保護、dX-only、retained backward、saved-tensor offload、relayout禁止を
+保つ必要があり、guardを単純に外す案にはしない。
+
+4条件×2 Plans×4 trace scopesでGPU kernelはすべて20、内部sync/item/DtoH/
+cudaMalloc/cudaFreeは0。kernel busyは通常parallel約1005us、shared-profile約786usで、
+数学演算や階層・responseの再利用を変更した短縮ではない。
+inclusive host時間とこのbusy時間を足したり、primary stepから差し引いたりしない。
+
+job=`l4job-52c0de5e9e54426c9f60a31abaeeaa94`、snapshot SHA256=
+`0039dd913125e2fc7c0c716690b7dad4d0aac9ab8bab62f4ff5e35b23a0d8c5e`、
+result archive SHA256=`9e0cef066c55385d22246c9a5b3d9e557918ae14e0bd0cd6992648dc794dd19b`。
+先にqueuedだった`l4job-bfd6d0de69974b018247a351510ee713`は実行前にcancelし、
+4条件比較へ置き換えた。GPU時間・性能結果として数えていない。
+
+#### guardだけの独立再測定と採用
+
+State変更を戻した`eb3fbe4b`で、旧版/guardを両Plan各2 fresh processes、
+計8回独立再測定した。10 warmups/101 samplesと全benchmark correctness gateは同じ。
+以下の結果に加え、両Planの5実更新後35 Tensorも旧新bit一致した。
+
+| Plan | 旧版中央値2回 ms | guard中央値2回 ms | 中央値の平均の短縮率 |
+| --- | --- | --- | ---: |
+| parallel | 1.754909 / 1.788632 | 1.754601 / 1.699856 | 2.51% |
+| shared-profile | 1.768765 / 1.718681 | 1.746267 / 1.728400 | .37% |
+
+4条件jobの旧版/guardと合わせた4 process中央値の平均は、
+通常parallel **1.779778→1.752299ms（1.54%）**、
+shared-profile **1.795536→1.765307ms（1.68%）**。
+独立2 jobsの平均では両Planとも短縮したため、guard重複の削減だけを採用する。
+個別runには悪化もあり、shared-profileの2件目は小さな差である。
+一般的な大幅改善や各runの保証とはせず、各job/反復の値も残す。
+Stateの依存削減と両方の組合せは最終runtimeへ入れない。
+
+全24 primary processesでCST allocated/reservedは297984/2097152B
+（.284180/2MiB）、denseは17313280/23068672B（16.511230/22MiB）で不変。
+採用する旧/guardの比較はこのうち16 processesで、残り8は不採用候補の比較である。
+matched denseのstepは全24回で.699634–.745767msで、denseとの差はなお大きい。
+GraphやGPU process全体の使用量を測った値ではない。
+
+独立再測定の単一code-object診断でも、shared-profileの
+`fixed_state_signature`は77.024→71.043us、`operator_declaration`は92.776→86.428us、
+`Dispatcher._prepare`は133.497→126.560usだった。
+呼び出し回数は各3/3/1のままで、設定確認やcallback入口の回数を減らした効果ではない。
+`protect_tensor`は117.492→117.762us（各3 calls）で今回の削減対象外だった。
+この2件目も全16 trace scopesでGPU kernel20、内部sync/item/DtoH/cudaMalloc/cudaFreeは0。
+
+最終runtimeの差は`operators/_native_metadata_guard.py`だけで、
+2 jobsのguard版と現ソース全376ファイルはbyte一致する。
+両jobsの同variant/factory hash、および全24回の入力・target・初期P hashも一致した。
+4条件のGPU-host suiteは472 passedを再利用し、独立再測定は毎benchmarkの
+Y/dX/全atom勾配・quadrature・matched-state gateを実行した。
+最終guard-onlyのCPU全体は2718 passed/6163 skipped、既存warning19件。
+Ruff/diffと最終wheel/sdist全376 runtimeファイルの照合も通過した。
+
+job=`l4job-c9c6bf00b9354825a33d4eee0fac3ac4`、snapshot SHA256=
+`7c3892635472bd508f1fac8c24696ffcc503977de3b6a5f5e5f41e197d0ce187`、
+result archive SHA256=`470d51eeb152cfcda29780f67083708f6aae32f54bfccfe73a02620cbc9df0a2`。
+native binaryは両jobsとも`torchcst_radius_cell_mass_37a00de5c036`、SHA256=
+`7c81476250b4ea1651a0e36f4afb8edb9ab5ebb88d3f77d4ad29969855ac70eb`。
+
+driver/worker、4条件/独立再測定/未実行cancelのsource/results/receipt、24 records、
+state/trace、集計script・JSON、CPU/build/package記録をignored
+`output/radius-state-dependencies-20261030/`へ保全した。
+共有poolは結果取得後のstoppedを確認した。
+1024/MNIST、他GPU世代/Torch版、Graph/process memory、cold開始の速度は今回の対象外。
