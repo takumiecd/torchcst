@@ -7225,3 +7225,30 @@ rawは既存`output/radius-mnist-native-20261031/`と共有pool jobへ保全す�
 単体B32の約20%短縮をfull-modelの短縮と読み替えない。MNIST完全stepは旧版とほぼ同じで、
 B32の速度2倍以内およびメモリdense未満は未達。B4は速度を満たしallocatedは下回るがreservedは同値。
 次は既存direct-level設定の損益分岐とglobal中間配列の寿命を別々に調べる。
+
+### direct境界の損益とMNIST host/GPU分離診断（2026-10-31）
+
+`--radius-direct-levels`は実行Planだけを変える既存recipeの調整入口（既定2、0..8）。
+初期atom・profile・M・frozen Planは変えない。level5ならT32以上で階層を使い、
+小さいradiusを直接計算する。Zpairは予算上1096704→121856Bに減る。
+
+B32/inplace/1epochの実測はCST 10.127948 / dense 1.308486ms = 7.74020倍。
+allocated/reservedはCST [241340928, 245366784]、dense [241428992, 247463936]B。
+両メモリ指標を下回ったが速度が悪化したので未採用。初期実batchの独立勾配・更新検査を通過し、
+accuracyは既存B32と同じ87.97/91.22%。job `l4job-1158bee098a74fbdbef9a0b9c651fd29`。
+source_sha256=`eea13217837bed3c36292fec398c070c20d97508c223a9a88aefba79c8cdaedd`。
+archive_sha256=`5f56ee67942a20cf2063089629b975bd7451776942adea6407c94c977fdbd6f9`。
+
+混在radiusでdirectとretained T32/T64の両方を通るGPU VJP検査も追加した。
+この追加ケースのGPU実行は次の候補比較で確認する（追加時点は未実行）。
+
+別診断job `l4job-3621f468ad3e471a9895f360fe4c1a90`ではB32実MNIST先頭batchを継続し、30warmup後の
+未計装15step、別の3step Torch trace、別の30step cProfileを測る。epoch速度証拠とは区別する。
+未計装median CST2.298030/dense1.473265ms。traceのcat=kernelだけの実GPU集計では
+hybrid_parameter_kernel0.770267ms/step、batched C/site0.288894、sharedmoments0.183231、
+parallelresponse0.101738。parameter_gradのbatch loopが固定atomのphaseを繰り返す。
+CPU cProfileでは30stepでvalidate_inputs60calls/12ms inclusive、prepared._execute30calls/14ms、
+run_backward30calls/19ms。inclusive費用を足し合わせたりepoch速度から差し引かない。
+同期eventには測定終端のcudaDeviceSynchronizeが含まれるため、これをruntime内部同期と断定しない。
+source_sha256=`11f5d9eaf9941d9e106258f52064798cf07533c6e4679525a761db95679635c4`。
+archive_sha256=`589d090097d2463691e789da49f8bde3948e711364a29ba291dd17833d3f164f`。
