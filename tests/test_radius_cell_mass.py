@@ -21,7 +21,7 @@ from torchcst._backends.torch.profiles.radius_fourier import (
     density_coefficients,
     support_eps,
 )
-from torchcst.kernels.radius_cell_mass import RadiusCellMassGrid
+from torchcst.kernels.radius_cell_mass import RadiusCellMassGrid, radius_cell_mass_axes
 
 
 def axis(n=16, *, spacing=1.0, origin=0.0, modes=8, merge=2):
@@ -103,6 +103,172 @@ def test_cells_match_independent_quadrature(modes, n, spacing, origin, merge):
         actual.sum(1), torch.ones(6, dtype=torch.float64), atol=3e-12, rtol=0
     )
     assert float(actual.min()) > -3e-12
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("modes", [3, 8])
+@pytest.mark.parametrize("n,merge", [(16, 2), (27, 3), (128, 2)])
+def test_decimal_hierarchy_thresholds_and_neighbors_match_encoded_fp64_and_quadrature(
+    dtype, modes, n, merge
+):
+    grid = axis(n, spacing=0.37, origin=-1.2, modes=modes, merge=merge)
+    radii = []
+    tile = grid.binding.base_tile_sites
+    while tile * grid.spacing <= grid.period / 2:
+        boundary = torch.tensor(tile * grid.spacing, dtype=dtype)
+        for value in (
+            torch.nextafter(boundary, torch.full_like(boundary, -math.inf)),
+            boundary,
+            torch.nextafter(boundary, torch.full_like(boundary, math.inf)),
+        ):
+            if 0 < value.item() <= grid.period / 2:
+                radii.append(value)
+        tile *= merge
+    radius = torch.stack(radii)
+    centers = torch.linspace(-1.43, grid.period + 0.17, len(radius), dtype=dtype)
+    actual = axis_masses(grid, radius, centers)
+    # Conversion retains exactly the encoded parameters; only input dtype differs.
+    same_values = axis_masses(grid, radius.double(), centers.double())
+    torch.testing.assert_close(actual, same_values, atol=0, rtol=0)
+    expected = np.stack(
+        [oracle_mass(grid, float(r), float(c)) for r, c in zip(radius, centers)]
+    )
+    torch.testing.assert_close(
+        actual, torch.from_numpy(expected), atol=3e-12, rtol=3e-12
+    )
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("n", [16, 128])
+def test_decimal_chart_cap_uses_physical_threshold_not_fp32_rounded_threshold(dtype, n):
+    grid = axis(n, spacing=0.37, modes=3)
+    cap = torch.tensor(grid.period / 2, dtype=dtype)
+    if cap.item() > grid.period / 2:
+        cap = torch.nextafter(cap, torch.full_like(cap, -math.inf))
+    above = torch.nextafter(cap, torch.full_like(cap, math.inf))
+    assert cap.item() <= grid.period / 2 < above.item()
+    actual = axis_masses(grid, cap[None], torch.zeros(1, dtype=dtype))
+    torch.testing.assert_close(actual.sum(), torch.tensor(1.0, dtype=torch.float64))
+    for radius in (above[None], above[None].double()):
+        with pytest.raises(ValueError, match="chart period/2"):
+            axis_masses(grid, radius, torch.zeros_like(radius))
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("modes", [3, 8])
+def test_public_decimal_boundary_y_dx_and_all_atom_gradients_against_quadrature(
+    dtype, modes
+):
+    grid = axis(16, spacing=0.37, origin=-1.2, modes=modes)
+    chart = chart_presets.regular_grid(
+        ((16,),), spacing=grid.spacing, origin=grid.origin, geometry="flat_torus"
+    )
+    boundary = torch.tensor(grid.spacing, dtype=dtype)
+    radii = torch.stack(
+        [
+            torch.nextafter(boundary, torch.full_like(boundary, -math.inf)),
+            boundary,
+            torch.nextafter(boundary, torch.full_like(boundary, math.inf)),
+        ]
+    )
+    p = torch.tensor(
+        [[0.3, 0.0, -0.23, 3.31], [-0.2, 0.0, 4.57, 0.23], [0.4, 0.0, 1.17, -0.71]],
+        dtype=dtype,
+    )
+    p[:, 1] = radii
+    model = CSTLinear(
+        chart,
+        chart,
+        atoms=p,
+        kernel=presets.radius_cell_mass(profile=ChebyshevRadiusSpec(modes=modes)),
+        dtype=dtype,
+        backend="factored",
+    )
+    # Public chart buffers follow model dtype, so use their resulting physical
+    # declaration in the scalar oracle rather than the pre-conversion decimals.
+    declaration = model.declaration()
+    grid = radius_cell_mass_axes(declaration.charts, declaration.kernel)[0]
+    gen = torch.Generator().manual_seed(742)
+    x = torch.randn(3, 16, dtype=dtype, generator=gen, requires_grad=True)
+    dy = torch.randn(3, 16, dtype=dtype, generator=gen)
+    actual = model(x)
+    actual.backward(dy)
+    anchors = model.atoms.p.detach().double().numpy().copy()
+
+    def fixed_route_mass(radius, center, anchor_radius, anchor_center):
+        # At a hierarchy boundary the contract differentiates the selected smooth
+        # branch. Freeze only integer routing for quadrature finite differences.
+        tile = grid.binding.base_tile_sites
+        while anchor_radius > tile * grid.spacing:
+            tile *= grid.binding.merge_factor
+        width = tile * grid.spacing
+        count = math.ceil(2 * anchor_radius / width) + 1
+        period = count * width
+        routed_center = (anchor_center - grid.origin) % grid.period
+        first = (
+            math.floor((routed_center + grid.spacing / 2) / width - (count - 1) / 2)
+            * tile
+        )
+        center = (center - grid.origin) % grid.period
+        normalization = integral(radius, period, modes, -period / 2, period / 2)
+        mass = np.zeros(grid.site_count)
+        for site in range(first, first + count * tile):
+            left = (site - 0.5) * grid.spacing - center
+            mass[site % grid.site_count] += (
+                integral(radius, period, modes, left, left + grid.spacing)
+                / normalization
+            )
+        return mass
+
+    def independent_weight(parameters):
+        weight = np.zeros((16, 16))
+        for row, anchor in zip(parameters, anchors):
+            amplitude, radius, output_center, input_center = row
+            outputs = fixed_route_mass(radius, output_center, anchor[1], anchor[2])
+            inputs = fixed_route_mass(radius, input_center, anchor[1], anchor[3])
+            weight += amplitude * np.outer(outputs, inputs)
+        return weight
+
+    weight = independent_weight(anchors)
+    # Also verify the frozen branch at its anchor with the ordinary scalar oracle.
+    ordinary = sum(
+        amplitude
+        * np.outer(
+            oracle_mass(grid, radius, output_center),
+            oracle_mass(grid, radius, input_center),
+        )
+        for amplitude, radius, output_center, input_center in anchors
+    )
+    np.testing.assert_allclose(weight, ordinary, atol=3e-12, rtol=3e-12)
+    tolerance = (
+        dict(rtol=3e-6, atol=2e-7)
+        if dtype == torch.float32
+        else dict(rtol=2e-11, atol=2e-12)
+    )
+    np.testing.assert_allclose(
+        actual.detach().numpy(), x.detach().numpy() @ weight.T, **tolerance
+    )
+    np.testing.assert_allclose(x.grad.numpy(), dy.numpy() @ weight, **tolerance)
+    step = 1e-5
+    numerical = np.zeros_like(anchors)
+    for atom in range(len(anchors)):
+        for column in range(4):
+            plus, minus = anchors.copy(), anchors.copy()
+            plus[atom, column] += step
+            minus[atom, column] -= step
+            numerical[atom, column] = np.sum(
+                (
+                    x.detach().numpy()
+                    @ (independent_weight(plus) - independent_weight(minus)).T
+                )
+                * dy.numpy()
+            ) / (2 * step)
+    np.testing.assert_allclose(
+        model.atoms.p.grad.numpy(),
+        numerical,
+        rtol=3e-6 if dtype == torch.float32 else 2e-6,
+        atol=2e-7 if dtype == torch.float32 else 2e-8,
+    )
 
 
 def test_plus_one_padding_and_chart_folding_are_not_dropped():

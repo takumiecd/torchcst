@@ -27,7 +27,11 @@ def axis_masses(axis, radius, centers):
         torch.isfinite(radius).all()
     ):
         raise ValueError("radius and centers must be finite")
-    if bool(((radius <= 0) | (radius > axis.period / 2)).any()):
+    # Compare the encoded radii with the physical FP64 chart thresholds. A
+    # Python float compared to FP32 would round the threshold to FP32 first.
+    # Only routing is detached; integrated_cells below keeps the live radius.
+    routing_radius = radius.detach().double()
+    if bool(((routing_radius <= 0) | (routing_radius > axis.period / 2)).any()):
         raise ValueError("radius must lie in (0, chart period/2]")
     result = (radius.double()[:, None] + centers.double()[:, None]).expand(
         -1, axis.site_count
@@ -36,9 +40,9 @@ def axis_masses(axis, radius, centers):
     tile_sites = axis.binding.base_tile_sites
     while tile_sites <= axis.site_count:
         tile_width = tile_sites * axis.spacing
-        selected = remaining & (radius <= tile_width)
+        selected = remaining & (routing_radius <= tile_width)
         # Ceil and integer routing are deliberately outside the smooth branch.
-        counts = (2 * radius.detach().double() / tile_width).ceil().long() + 1
+        counts = (2 * routing_radius / tile_width).ceil().long() + 1
         for count in counts[selected].unique().tolist():
             indices = (selected & (counts == count)).nonzero().flatten()
             local_center = (centers[indices].double() - axis.origin).remainder(
