@@ -7791,6 +7791,37 @@ CUDAの式、radius、profile、正規化、既存oracleの許容誤差、legacy
 既存global-native Planの元の境界fixtureを対象にする。候補Planへの依存は持ち込まない。
 focused CPU検査は73 passed/48 skipped、全CPU検査は3191 passed/6712 skipped/19 warnings。
 全CPU raw logは`output/radius-mnist-native-20261031/primary-canonical-reference-cpu.log`。GPU再qualificationは別途実行中。
+be52decfのGitHub CPU validation run41146807786は成功した。
+be52decfのwheel/sdistはruntime388ファイルがsourceとbyte一致し、
+`output/radius-mnist-native-20261031/package-be52decf-audit.json`にhashを保持する。
 証拠はignored `output/radius-mnist-native-20261031/owner-canonicalization-audit/`と上記pool結果に保持する。
 実GPU binary SHA256=`48557033186f1ee1fd7dfcd9081a0679cafa2b9efd6919eaf76ac9407fb56b02`。
 Fraction proofと再評価JSON SHA256=`b1b79e66263ef4ec075213747ee3b4c166da08b12eca0b06f92b1b3cc163d482`。
+
+
+### Cのshared paddingと別Planのseeded Cは速度採用しない（2026-10-31）
+
+両候補とも独立oracle/legacy byte gateを通過したが、完全stepの有効な改善は得られなかった。
+rawはprimary ignored `output/radius-mnist-native-20261031/<job>/results/`へ保全し、
+source/result全manifestと実binaryの照合は`output/cache-layout-terminal-audit-20261031/audit.json`に残す。
+
+| 候補 / job | suite | paired baseline → candidate ms | allocated / reserved B |
+| --- | --- | --- | --- |
+| shared cache stride14→15 / `l4job-d8f5b296ee2043c38732542b11b5655e` | 1079 passed/2 skipped | 3.960352→3.958454、3.954693→3.966433 | 両者9179136 / 29360128 |
+| 明示seeded C別Plan / `l4job-bfcbb80b7d5f4c70a6e2dcdae30da899` | 1041 passed/3 skipped | 4.294860→4.270823、4.301858→4.293986 | 両者9211904 / 31457280 |
+
+各workerは101標本、fresh process2組、L4/Torch2.11/CUDA13、N1024/B4/A52428。
+denseのallocated/reservedは両jobで33900032/44040192B。candidate/dense時間は約5.6〜6.0倍。
+paddingはnative5、seededは旧Python hostを基準とするため、候補同士の絶対値差を効果としない。
+paddingは一方が0.05%改善、他方が0.30%悪化。seededは0.56%/0.18%改善に留まり、両方メモリ改善なし。
+主goalの大幅な短縮に寄与せず、既定Planやprimary runtimeへ取り込まない。MNIST測定は未実施。
+
+元binaryとの旧Plan比較は両jobとも63/63 recordでY/dX/dP/P/Adam/clockがbyte一致した。
+別Plan seededの観察用cross-route比較はY/dXの11recordが異なり、A41/3stepでdP/P/Adam/clockは一致した。
+これは全学習の同一性を主張する証拠ではない。旧653/b65の同一Plan置換失敗とed/bf90のfallback失敗は
+負の原本として保持し、新Planの通過で書き換えない。fallbackはliteral旧kernelへdispatchして修復した。
+
+padding source/archive SHA256=`8616ee105fa0a7d8930e75e175244e60f23f2a04f0998c9663684f3139a5e229` /
+`78789a9a22b240d9a2595f1ba7740796e4aead160a4b1706ce9e4f7f4a0f9c08`。
+seeded source/archive SHA256=`c75ee8c5f82ab924dd3da06d360ad551feadbd030f971216f422050b4a12000e` /
+`56dbc8457d56d9050bf89b7af70ad046b22372be9bc427c6d8bf576f9109defb`。
