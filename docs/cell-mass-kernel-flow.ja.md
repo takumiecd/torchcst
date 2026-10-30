@@ -7046,3 +7046,85 @@ B32 source/archive SHA256=
 初期化artifact SHA256は全比較で
 `ae13d18df2b8df94ff032bdd2e9de2679c76a323bcca4f9e53df2e8ec4bfa9de`。
 spec/receipt/results/checkpointsは既存`output/radius-mnist-native-20261031/<job-id>/`に保全。
+
+#### MNISTのallocator原因と同値なデータ準備（2026-10-31 JST）
+
+別の計装job `l4job-64d702e96e7047f7bc56061daeb9bb2c`で、CST/dense×B4/B32×
+original/inplaceの8条件についてallocation/free履歴、native stack、段階ごとのstorage inventory、
+segment snapshotを回収した。これは20 warmup後の1step診断で、学習時間には使わない。
+元の正規化は、31360000Bのtest画像を188743680Bのsegmentへ残し、157383680Bのinactive
+領域を同じsegmentに保持していた。resident画像があるためempty_cacheだけではそのsegmentを
+返却できない。計算中のCST bufferだけがreserved増加の原因ではなかった。
+
+CST固有の保存もnative stackで別に確認した。F=2M+1=17、retained nodes J=126なので、
+各軸momentsは`8*B*J*F`、各responseは`8*B*A` bytes。B32では548352Bと209664Bの
+allocをforward/backwardでそれぞれ1回、計2回ずつ確認した。forward保存Zx/Hが758016B、
+reverseでZy/Gも加わると1516032B。coeffsはsharedで、global C表のallocではない。
+この保存量とbatch拡大を、データのinactive segmentとは分けて扱う。
+
+commit `4a03f85c`は既存harnessに`--data-normalization inplace`を追加する。
+float32への独立転送`copy=True`の後にdiv/sub/divをin-placeで行い、元画像は変更しない。
+default `original`と旧fixture/protocolは保持する。両モデルに同じ選択を適用する。
+診断でGPU画像hashがoriginal/inplace間で一致し、さらにfresh-processの実1epochを回した。
+
+| データ準備inplace | CST平均step ms | dense ms | CST/dense | CST/dense allocated B | 両者reserved B |
+| --- | --- | --- | --- | --- | --- |
+| 真のB4 | 2.105118 | 1.265322 | 1.663702 | 241069568 / 241252864 | 245366784 |
+| 真のB32 | 2.764622 | 1.302600 | 2.122388 | 242315776 / 241428992 | 247463936 |
+
+reservedは両モデルともoriginalより136314880B（130MiB）少ない。
+allocatedの一律97280B増加は、test画像のrequested storageは同じ31360000Bのまま、
+inplace側では31457280B block全体がactiveとして数えられることに対応する。
+CST/denseの差やB32の中間保存問題を、この共通の削減で解決したとは扱わない。
+実学習checkpointのTensorをraw bytesで比較し、各batchでCSTの48 Tensor、denseの20 Tensorが
+originalとbit一致した（model/optimizerの数値state）。精度・lossも同じ。データ準備の選択肢として
+採用するが、別VMの小さな時間差をkernel速度改善とは呼ばない。CPU全体2893 passed/
+6304 skipped（58.41s）、Ruff/diff検査が通過。
+
+実学習jobはB4=`l4job-02c26f8ee72b40589c0edbd024f06698`、
+B32=`l4job-b179d388d4474c50a9cdf8413775f153`。
+raw trace、8条件のinventory/snapshot、比較checkpointとbyte検証JSONは既存outputの各jobに保全。
+
+#### N1024汎用経路の初回実機検証（2026-10-31 JST、速度目標未達）
+
+別worktree/branch `kernel/radius-large-shapes`の実験commit `3ab77f6a`/`afb7301e`は、
+N1024/A52428へ既存sequential/global compact moments経路を拡張する。N128 shared経路の
+上限は外さず、大きいowner keyは既存stable ATen sortへ戻す。共有H/G、階層、周期式、
+profile、更新則を維持し、packed atomコピーは作らない。primary実装への採用はまだ行わない。
+
+初回job `l4job-d966d8e48da84bd1b5b670dfe57fd232`は254 GPU tests後、CPU参照との
+更新座標差で停止した。711.1985473632812対711.198486328125の差6.103515625e-5は
+FP32の1隣接値で、その座標の更新前勾配はbit一致していた。旧固定2e-5は128座標では
+数ULPだが1024座標では1ULP未満になる。kernelを変えず、large中心だけ要素ごとに
+`max(2e-5, expectedからactual方向のFP32隣接間隔)`で確認する。隣接間隔が基準となる大きい
+座標では2ULPを拒否し、非有限値も拒否する。
+振幅s/t・N128・勾配・Adam stateの基準は維持する。差を生んだprimitiveは未特定。
+別に同一GPU/P/grad/Adam stateからCSTAdamWと互換CSTOptimizer(同じfused AdamW/native Polar)
+を動かすraw-byte gateを追加し、CPU丸め差とwrapper一致を分離した。
+
+job `l4job-5b0bc245c12349c08ccefe95a3f6c1fd`では全52428 atomの独立Y/dX/dP、
+stratified quadrature、3回のCPU参照更新と同GPU wrapper/state byte gateが通過した。
+Y/dX/dP max absは約1.14e-10/1.16e-10/1.19e-7。参照は256 atomずつのCPU public実装を使い、
+全atomを評価しながらN×Aの巨大なfactor/graphを保持しない。実compileしたmoduleは
+`torchcst_radius_cell_mass_6b1501d1da24`、binary SHA256=
+`f64b649f2ec90ed298749566e6aed03582536afc1270962c35dcc0830a29e97d`。
+
+完全stepは2独立processで**50.864570/50.864004ms**、dense .679625/.719782ms、
+74.8421/70.6658倍。CST allocated/reserved=9211904/31457280B、dense33900032/44040192B。
+両ピークは少ないが、速度目標は大幅に未達。N128 regressionは1.84111倍で通過した。
+N1024の高速化・MNIST1024達成とは主張せず、次は別passの実kernel profileで原因を特定する。
+
+上記追加jobのsource / verified result archive SHA256：
+
+- memory診断64d702：`417b327fe73bb1f1d1e2b81956854f9bed41ade4a2c14e18de10f0b828505d75` /
+  `d42f1f55eacb4f3080c1b3da6e5adbeba46de0b5ada14c3920d2a6a4ab8b5ab1`。
+- B4 inplace 02c26f：`f7b6d65752e604be8272e6ae10bba17a832ddbcd94be70e39e4e8ae161824acb` /
+  `d21e5fcdd312749d311128042b4ac733fbf87163d1f7c599633ce014ee4f555c`。
+- B32 inplace b179d3：`15cd1d30570dfd1831860ff172dc09439fe04f29d69268e65de3b0d095a55439` /
+  `68f4f98aa47502e3a1f9711dafcc62520f0ede2865aa305dc9b4e0cb495ccde6`。
+- N1024 qualified 5b0bc2：`97b4825b341d872ae073d3c7226ffd15c4c86c21955ff8ff0a5ed3d8d89a347c` /
+  `694dce89b66ba45aef8059909756703cd319f20ad62d96edab4e710562ec72be`。
+
+いずれもspec/receipt/resultsを既存`output/radius-mnist-native-20261031/<job-id>/`へ保全。
+byte検証JSONは回収済みcheckpointからlocalで生成した追加検証で、pool原本archiveの一部とは
+扱わない。large失敗d966の原本も保持し、速度集計には含めない。
