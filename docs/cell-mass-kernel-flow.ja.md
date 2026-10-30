@@ -7401,3 +7401,11 @@ N1024旧6.987939/6.992331ms→active5.810253/5.808056ms（dense0.698520/0.717056
 `add_lambda_guard`で処理を追加してもprepared guardは通るが、通常のdeclaration呼出しは追加処理を実行する。
 省略すると挙動が変わるため、この0.137msを安全に除ける時間とは扱わない。
 proofはignored `output/radius-prepared-live-entry-audit-20261031/`に保全し、runtimeは変更しない。
+
+`l4job-58828a5eccac4e53805d80b2f97b0864`:
+source_sha256=`395bba85296134108a30f82926cc9a912ea8210794fc2c01b723a7175f545475`.
+archive_sha256=`4d0142a796a5b6f775d32cd7307994f97e0d155bfe841deeea0bc1ac0d45bfe9`.
+
+`l4job-435995bebefa47709ac781551c23b3af`:
+source_sha256=`ae2e29a69e12195d2b807f3351201459864cfec6a65bd0b21aae3ab2d81a8ffb`.
+archive_sha256=`70f01c6c96c1390a88e9a654ec43af938bf0018b843aba9e342e24f7b203499d`.
