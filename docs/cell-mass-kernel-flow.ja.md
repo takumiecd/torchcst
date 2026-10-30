@@ -6584,7 +6584,7 @@ result archive SHA256=`3bf29e5ac6b64d3996c1684d5246d99478f5180dcc853a9c74daa8620
 
 出力lease prototypeを除いた候補のCPU全体は2753 passed/6219 skipped、既存warning19件。
 最終候補の独立job `l4job-46d6577a27b344d58463baecd9abcc7a`も完了した。
-222 testsと35 Tensorのbit一致が通り、同じ未計装・同期済み完全stepは次のとおり。
+206 testsと35 Tensorのbit一致が通り、同じ未計装・同期済み完全stepは次のとおり。
 
 | 独立process | Python実行入口 ms | native実行入口 ms | nativeとmatched denseの時間比 |
 |---|---:|---:|---:|
@@ -6644,4 +6644,12 @@ PYTHONPATH=src python -m benchmarks.cuda.linear.run \
 
 このCaseは128×128/B4/A819/M8/seed41、warmup10/rounds101で、前述の目標条件と同じ。
 変更後のCPU全体は2754 passed/6219 skipped。通常runnerを無変更で実行する独立job
-`l4job-b88134409a204d0f9895dd73a010b428`を投入し、GPU再確認中。
+`l4job-b88134409a204d0f9895dd73a010b428`も212 tests、独立oracleと更新後の全勾配検証が通過。
+独立processの完全stepはCST 1.567546/1.586360ms、matched dense .699269/.701042ms
+（2.2417/2.2629倍）。メモリはCST 287232/2097152B、dense 17313280/23068672B。
+native optimizer class名は`torchcst.optim.adamw.CSTAdamW`として記録された。
+通常入口でもメモリ条件は満たすが、時間2倍以内はまだ未達。
+source SHA256=`9ecf6e5cd6bf0ebe901d90d1480ef9f0f0f295ba5785766623f028f3b26fe073`、
+result archive SHA256=`26fd7f41d9f96151e0c3a6e5e76e423d81c5525da04f2aa726440671c132e613`。
+結果は`output/radius-public-runner-20261030/l4job-b88134409a204d0f9895dd73a010b428/`に保全した。
+このsourceのPR commit `6cf0b5883b74b18ce1bf5631ab549c85d63a0568`のCPU validation CIも成功。
