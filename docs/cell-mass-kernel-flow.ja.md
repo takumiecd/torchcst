@@ -13,15 +13,15 @@ shared C/site展開、既存則を保つFP32 Polar更新を実装した。自動
 | --- | --- | --- |
 | N128/B4/A819/M8単体 | native cached Planを採用 | 2fresh runでdense比約1.94倍、allocated/reservedともdense未満 |
 | N128/B32/A819/M8単体 | 明示batched/grad4 Planを採用 | 2fresh runで約1.41〜1.43ms、dense比2倍以内、両ピークもdense未満 |
-| N1024/B4/A52428/M8単体 | active moments＋response4/grad4 Planを採用 | 約5.18〜5.22ms、両ピークはdense未満、速度2倍以内は未達 |
+| N1024/B4/A52428/M8単体 | active moments＋response4/grad4＋value-only profileを採用 | 約4.30ms、両ピークはdense未満、速度2倍以内は未達 |
 | MNIST N128/B4・3epoch | 同じ初期W/外側層/data orderで実学習 | 速度は約1.60〜1.76倍、allocatedは下回るがreserved同値 |
 | MNIST N128/B32・1epoch | 同条件の別batch検証 | 速度約2.07〜2.12倍、allocated超過、同時目標は未達 |
-| MNIST N1024/B4・3epoch | 同じ初期化を使う明示active-grad4 Planで再測定 | 約4.71〜4.77ms対dense1.27〜1.32ms、両ピークは下回る、速度未達 |
+| MNIST N1024/B4・3epoch | 同じ初期化を使う明示active-grad4 Planで再測定 | 約3.92〜3.99ms対dense1.26〜1.35ms、両ピークは下回る、速度未達 |
 | active moments省略 | grad4との統合GPU884件通過、明示Planに採用 | 未使用bank計算を省く。配列shapeとメモリ量は同じ |
 
 MNIST N1024の最終test accuracyは97.37%対97.87%（1seed/3epoch）。精度同等・一般化は主張しない。
-統合large grad4までのCPU検査は3109 passed/6529 skipped。以降の追加は末尾に検証範囲を記録する。
-配布物と実行snapshotのbyte照合も各検証時点で通過した。
+現在の統合CPU検査は3168 passed/6664 skipped。追加ごとの検証範囲は末尾に記録する。
+配布wheel/sdistのruntime388ファイルと、実行snapshotのbyte照合も通過した。
 Graph、autocast、高階微分、自動dispatch、N1024より大きい形状の達成は未検証である。
 末尾の各実測節にjob ID・source/archive hash・採用範囲と失敗結果を残す。
 以下の初版・候補・時系列の記述は、それぞれの段階の制約として読む。
@@ -7474,3 +7474,91 @@ radius診断とdata-order hashも一致した。epoch1/2のtensor checkpointは�
 `18941c11`統合状態でCPU全体は3163 passed／6592 skipped／既存警告19件。
 CUDA skipは追加のGPU検証件数に数えない。再現はcommand-localの
 `CXX=/usr/bin/clang++ TORCH_NO_COMPILER_WRAPPER=1 MAX_JOBS=1 CST_TEST_NATIVE_READ_LEASE=1 CST_TEST_NATIVE_FUNCTION_GUARD=1 PYTHONPATH=src:tests python -m tools.kernel_dev test --suite cpu`。
+
+### value-only統合の段階別検証と、実MNIST profile（2026-10-31）
+
+研究branch `kernel/radius-active-value-profiles` / `fd0854a0`は、H/Yなど値だけが必要な箇所で
+radius微分の係数生成を省き、Polar taskが使わないradius勾配も作らない。物理radius経路には微分を残す。
+階層moments・完成H/G・既存の中心／振幅勾配・Polar更新則は維持する。
+job `l4job-de59e907480b496dbd41daf40debd896`でnative `8b4a8fd887b6`を実compileし、
+GPU960 passed／1 old-Python-only skipped、公開runnerのN128/B4、B32、N1024/B4を通過した。
+その後のMNIST用driverで`zlib`のimport不足により停止したため、**job全体はfailed**。
+保存済みの上記stage成果は個別に確認し、MNIST実学習の証拠としては扱わない。
+
+N1024単体のactive+grad4は4.300627/4.302096ms、同jobの非active grad4は
+5.483575/5.484421ms、denseは0.721757/0.719460ms。allocated/reservedは従来の
+9211904/31457280Bで変わらない。N128/B4は1.378838/1.351073ms対dense0.713845/0.724613ms、
+B32 batchedは1.348727/1.347308ms対dense0.740251/0.726456msで、いずれも単体目標を維持した。
+これは別binaryとの同時AB比較ではなく、このsnapshotのPlan比較とfresh controlsである。
+
+実compile済みbinary SHA256=`9e464d0918ba80833b3cc324cd48f6a4e26e7425eb5c6d94d11e11de4aa9c5a5`。
+修正後の学習はこのbinaryと全native source hashを照合して別jobで行う。
+
+独立診断job `l4job-8001b86aab544ac89a31e79d525047f4`は同じ8b binaryと初期化5ef7を照合し、
+実MNIST N1024/B4の同じ30更新prefixを復元したfresh processで、未計装control、Torch profiler、
+cProfile、memory履歴を別々に取得した。未計装300更新prefixはCST平均3.954423ms対dense1.303753ms、
+ピーク258337792/274726912B対270021120/287309824B。これは3epoch平均の代用ではない。
+
+Chrome traceの`cat=kernel`だけを5step分集計した時間は以下。GPU user annotationの包含時間は除いた。
+
+| CUDA kernelの処理 | 対応する実装 | ms/step（診断） |
+| --- | --- | ---: |
+| coeffsとY/dX展開の2回分 | `batched_cached_coefficients.cuh` | 1.54653 |
+| Polar parameter勾配 | `batched_parameter_grad.cuh` | 0.83805 |
+| 完成H/Gの2回分 | `parallel_projection.cuh` | 0.62048 |
+| 入出力の再分類・2回分 | `pipeline.cu`のclassify | 0.34366 |
+| active bank mask・2回分 | `active_moments.cuh` | 0.16397 |
+| 18回のmoment level launch合計 | compact moments | 0.07056 |
+
+CPUの30step cProfileではlayout_ranges60呼出しが約9ms inclusive、forward/backward wrapperが
+それぞれ約10/11ms、optimizer validation60呼出しが約15ms inclusiveだった。
+これらは親子区間と非同期投入を含み、GPU時間との足し算・未計装stepからの差し引きはできない。
+最大のGPU処理はmoments構築ではなくcoeffs/展開である。CPU同期が新たに見つかった、とは結論しない。
+
+Zx/Zyはそれぞれ[4,1022,17] FP64=555968B、H/Gはそれぞれ[4,52428] FP64=1677696B。
+4配列の同時payloadは4467328Bで、sort・元Parameter・optimizer・resident dataは別に存在する。
+Zx/HはforwardからdPまで、Zy/Gはbackward生成からdX/dPまで保持する。global coeffs配列はない。
+保存hookでZx/H、allocation履歴でbackward peakを確認し、optimizerはそのpeakを上回らなかった。
+cuobjdumpはFP32 expansion REG128/STACK704、Polar grad4 REG128/STACK704、response REG80/STACK568を報告した。
+LOCAL0はstack traffic/spillがない証拠ではなく、動的sharedはこの静的dumpのshared0にも含まれない。
+
+現統合`ac55f9e6`のwheel/sdistはruntime386ファイルをsourceへbyte照合済み。
+同headのGitHub CPU validation run644もsuccess。新候補のGPU資格をこのCPU CIで代用しない。
+
+### value-only統合後のMNIST完走と採用（2026-10-31）
+
+import不足を直した学習専用job `l4job-3bee545a736a459ab7881270e3973f9a`は、
+前節と同じ実compile済み8b binaryと初期化artifact5ef7のbyte／native source／ABIを検証し、
+独立先頭batch gateを通過後、既存harness・同じPlan／データ順で真のB4を3epoch実行した。
+
+| epoch | CST step ms | dense step ms | 比率 | CST test | dense test |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 1 | 3.990713 | 1.271784 | 3.13789 | 94.87% | 96.41% |
+| 2 | 3.917658 | 1.351526 | 2.89869 | 96.47% | 96.94% |
+| 3 | 3.963593 | 1.263152 | 3.13786 | 97.37% | 97.87% |
+
+CSTのallocated/reservedは258337792/274726912Bで、denseのepoch1
+270021120/287309824B、epoch2/3 270484480/287309824Bを下回る。
+速度2倍以内は依然未達。epoch1はoptimizer cold startを含み、評価と診断はstep時間から除く。
+前回0acdと最終CST model33／optimizer15、dense model5／optimizer15 tensorが全てbyte一致した。
+途中epochのtensor一致は未検証。独立gate・学習metricを変えずに約6.7ms→約4.0msへ短縮できた範囲を採用し、
+primaryへ`abdb2c88`で取り込んだ。runtime/tests/benchmark全byteはGPU検証snapshot fd0854a0と同一である。
+照合記録`output/radius-mnist-native-20261031/checkpoint-active-value-audit.json`のSHA256は
+`7effc82817af8a40132d74c73f6b3224c212eb6480843e03165d761bfb64e2fc`。
+
+`l4job-de59e907480b496dbd41daf40debd896`（部分成果のみ。job全体はimport不足でfailed）:
+source_sha256=`3a99781dada8f9f6517b080445896b7cfa455a714fbadba9378ce4d25f1936bf`.
+archive_sha256=`a80fbccfde8180333c30fc8abc2fa514fc09fced400e833dbb036b9c5b79ba57`.
+
+`l4job-3bee545a736a459ab7881270e3973f9a`:
+source_sha256=`684b61a614fa021ab3b6a417d0f211ccaf55e44b8ef38514ea128a7a2621a74f`.
+archive_sha256=`cfb57967d9d9f899cdafd94ad53994531d98aa2367f783488a5dc533207253f2`.
+
+`l4job-8001b86aab544ac89a31e79d525047f4`（別processの診断と未計装prefix control）:
+source_sha256=`57c7d8125d6e594d9cb8203b951f75bb4a57456f5d882e9eb8315d5b3ac5e49a`.
+archive_sha256=`5a6ce5143f37d2e24667d22748f71f9b2e397434a30d85a03062690c49324349`.
+
+`abdb2c88`採用状態のCPU全体は3168 passed／6664 skipped／既存警告19件。
+wheel/sdistはruntime388ファイルをsourceへbyte照合した。検証記録はignored
+`output/radius-mnist-native-20261031/{primary-abdb2c88-cpu.log,package-abdb2c88-audit.json}`。
+GPU native source・Python runtime・tests・benchmarkはfd0854a0との全byte一致を確認済み。
