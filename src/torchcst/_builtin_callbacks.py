@@ -2,12 +2,56 @@
 
 An unchanged function is a capability, not a claim based on its name. A wrapper
 which copies attributes with functools.wraps still has a different identity.
-This metadata holds functions/code only, never model or invocation tensors.
+This metadata holds definitions/structural metadata, never model or input tensors.
 """
 
+import inspect
+import sys
 from types import FunctionType
 
 _MISSING = object()
+_UNSUPPORTED = object()
+_SEALED_ATTRIBUTES = {}
+
+
+def _attribute_record(value):
+    # Keep definitions and immutable scalar/type metadata, never arbitrary
+    # class-level runtime objects (in particular Tensor storage).
+    if isinstance(value, (type, property, staticmethod, classmethod)) or type(
+        value
+    ) in (
+        FunctionType,
+        str,
+        int,
+        float,
+        bool,
+        type(None),
+    ):
+        return value
+    if inspect.ismethoddescriptor(value) or inspect.isgetsetdescriptor(value):
+        return value
+    return _UNSUPPORTED
+
+
+def original_attribute(owner, name):
+    """Check the definition bound to an owner at library-definition time.
+
+    A different library function can be sealed too. It is not automatically
+    an equivalent replacement for this owner's particular callback/accessor.
+    """
+    record = _SEALED_ATTRIBUTES.get(owner)
+    if record is None:
+        return False
+    mro, attributes = record
+    if mro is not None:
+        current = owner.__mro__
+        if len(current) != len(mro) or any(a is not b for a, b in zip(current, mro)):
+            return False
+    expected = attributes.get(name, _MISSING)
+    return (
+        expected is not _UNSUPPORTED
+        and inspect.getattr_static(owner, name, _MISSING) is expected
+    )
 
 
 def _cell_value(cell):
@@ -61,10 +105,28 @@ def _functions(function):
 def seal_functions(namespace):
     """Mark original module functions/classes at their definition boundary."""
     module = namespace["__name__"]
+    owner = sys.modules.get(module)
+    if owner is not None:
+        _SEALED_ATTRIBUTES.setdefault(
+            owner,
+            (
+                None,
+                {name: _attribute_record(value) for name, value in namespace.items()},
+            ),
+        )
     for value in tuple(namespace.values()):
         if type(value) is FunctionType and value.__module__ == module:
             functions = (value,)
         elif isinstance(value, type) and value.__module__ == module:
+            attributes = {}
+            for base in reversed(value.__mro__):
+                attributes.update(
+                    {
+                        name: _attribute_record(member)
+                        for name, member in vars(base).items()
+                    }
+                )
+            _SEALED_ATTRIBUTES.setdefault(value, (value.__mro__, attributes))
             functions = tuple(
                 fn.fget if isinstance(fn, property) else fn
                 for fn in vars(value).values()

@@ -188,8 +188,6 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
         )
 
     def prepare_execution_program(self, dispatcher, cached, inputs, *, plan=None):
-        if not cached.state.recipe.native_entry:
-            return None
         from .prepared import prepare_program
 
         return prepare_program(dispatcher, cached, inputs, plan=plan)

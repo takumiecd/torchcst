@@ -231,24 +231,33 @@ class Dispatcher:
         namespace = getattr(binding, "__dict__", {})
         prepared = namespace.get("_execution_program")
         if prepared is not None:
-            result = prepared.run(self, inputs, plan=plan)
+            result = prepared.run(self, binding, inputs, plan=plan)
             if result is not None:
                 return result
+            # A restored callback or TLS mode can make the same placement
+            # eligible again. Do not permanently pin a failed guard attempt.
+            namespace.pop("_execution_program_attempt", None)
         _, algorithm, state = self._prepare(binding, inputs, plan=plan)
         result = algorithm.run(state, inputs)
         factory = getattr(algorithm, "prepare_execution_program", None)
         cached = namespace.get("_prepared_dispatch")
-        if factory is not None and cached is not None:
+        if (
+            factory is not None
+            and cached is not None
+            and cached.state is state
+            and state.binding is binding
+            and cached.algorithm is algorithm
+        ):
             previous = namespace.get("_execution_program_attempt")
             if (
                 previous is None
                 or previous[0] is not cached
                 or previous[1] is not state._storage
             ):
-                namespace["_execution_program_attempt"] = (cached, state._storage)
-                namespace["_execution_program"] = factory(
-                    self, cached, inputs, plan=plan
-                )
+                program = factory(self, cached, inputs, plan=plan)
+                namespace["_execution_program"] = program
+                if program is not None:
+                    namespace["_execution_program_attempt"] = (cached, state._storage)
         return result
 
     def prepare_optimizer_update(self, binding, adapter, site=None):

@@ -18,3 +18,8 @@ class RadiusCellMassRecipe:
     native_autograd: bool = False
     # Validate tensor/configuration/stream flags in the native execution entry.
     native_entry: bool = False
+
+
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
+
+_seal_functions(globals())

@@ -185,6 +185,108 @@ def test_instance_override_and_registry_override_are_not_certified(monkeypatch):
     assert prepared.prepare_program(dispatcher, cached, inputs) is None
 
 
+@pytest.mark.parametrize(
+    "name", ["run", "validate_inputs", "validate_recipe", "execute", "prepare"]
+)
+def test_preexisting_algorithm_instance_callback_is_not_certified(monkeypatch, name):
+    _, dispatcher, inputs, cached, _ = case()
+    monkeypatch.setitem(cached.algorithm.__dict__, name, lambda *a, **k: None)
+    assert prepared.prepare_program(dispatcher, cached, inputs) is None
+
+
+@pytest.mark.parametrize("name", ["run", "validate_inputs", "validate_recipe"])
+def test_preexisting_algorithm_class_callback_is_not_certified(monkeypatch, name):
+    _, dispatcher, inputs, cached, _ = case()
+    monkeypatch.setattr(type(cached.algorithm), name, lambda *a, **k: None)
+    assert prepared.prepare_program(dispatcher, cached, inputs) is None
+
+
+def test_a_different_sealed_function_is_not_the_same_callback(monkeypatch):
+    from torchcst._backends.algorithm import Algorithm
+    from torchcst._builtin_callbacks import original_functions
+
+    _, dispatcher, inputs, cached, _ = case()
+    assert original_functions(Algorithm.validate_inputs) is not None
+    monkeypatch.setattr(type(cached.algorithm), "run", Algorithm.validate_inputs)
+    assert prepared.prepare_program(dispatcher, cached, inputs) is None
+
+
+def test_preexisting_input_type_accessor_is_not_invoked_or_certified(monkeypatch):
+    model, dispatcher, inputs, cached, _ = case()
+    calls = []
+
+    def getter(self):
+        calls.append(1)
+        return LinearInputs
+
+    monkeypatch.setattr(type(model), "input_type", property(getter))
+    assert prepared.prepare_program(dispatcher, cached, inputs) is None
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    "name", ["execution_declaration", "prepared_dispatch_signature", "cst_charts"]
+)
+def test_preexisting_resolved_inherited_callbacks_reject_without_calling(
+    monkeypatch, name
+):
+    model, dispatcher, inputs, cached, _ = case()
+    original = getattr(type(model), name)
+    calls = []
+
+    def callback(self, *args, **kwargs):
+        calls.append(1)
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(type(model), name, callback)
+    assert prepared.prepare_program(dispatcher, cached, inputs) is None
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    "owner_name,name",
+    [
+        ("linear", "atoms"),
+        ("linear", "atom_state"),
+        ("linear", "kernel"),
+        ("linear", "input_chart"),
+        ("linear", "output_chart"),
+        ("owner", "atoms"),
+        ("owner", "optimizer_state"),
+        ("atoms", "p"),
+    ],
+)
+def test_preinstalled_registration_descriptors_reject_without_calling(
+    monkeypatch, owner_name, name
+):
+    model, dispatcher, inputs, cached, _ = case()
+    values = {"linear": model, "owner": model.atom_state, "atoms": model.atoms}
+    target = values[owner_name]
+    value = getattr(target, name)
+    calls = []
+
+    def getter(self):
+        calls.append(1)
+        return value
+
+    monkeypatch.setattr(type(target), name, property(getter), raising=False)
+    assert prepared.prepare_program(dispatcher, cached, inputs) is None
+    assert calls == []
+
+
+def test_preexisting_state_check_is_rejected_without_calling(monkeypatch):
+    _, dispatcher, inputs, cached, _ = case()
+    calls = []
+    monkeypatch.setattr(type(cached.state), "is_current", lambda self: calls.append(1))
+    assert prepared.prepare_program(dispatcher, cached, inputs) is None
+    assert calls == []
+
+
+def test_a_program_cannot_execute_for_another_binding():
+    _, dispatcher, inputs, _, program = case()
+    assert program.run(dispatcher, object(), inputs) is None
+
+
 def test_program_and_attempt_stamp_are_removed_from_model_copies():
     model, _, _, cached, program = case()
     model._execution_program = program
@@ -247,12 +349,28 @@ def test_public_prepared_module_has_bit_identical_five_step_states():
 @pytest.mark.parametrize(
     "needs_x,needs_p", [(True, True), (True, False), (False, True)]
 )
-def test_prepared_read_lease_retained_backward_and_offload(offload, needs_x, needs_p):
+def test_prepared_read_lease_retained_backward_and_offload(
+    offload, needs_x, needs_p, monkeypatch
+):
     from contextlib import nullcontext
 
     model, x, _, _ = gpu_case()
     x.requires_grad_(needs_x)
     model.atoms.p.requires_grad_(needs_p)
+    # A requires_grad change first takes the ordinary route and rebuilds the
+    # Context. The tested call must be the following prepared hit.
+    warm = model(x)
+    del warm
+    program = model._execution_program
+    assert program is not None
+    hits = []
+
+    def observe(dispatcher, binding, inputs, *, plan=None):
+        result = type(program).run(program, dispatcher, binding, inputs, plan=plan)
+        hits.append(result is not None)
+        return result
+
+    monkeypatch.setattr(program, "run", observe)
 
     def pack(value):
         return value.cpu(), value.device
@@ -266,6 +384,7 @@ def test_prepared_read_lease_retained_backward_and_offload(offload, needs_x, nee
         else nullcontext()
     ):
         y = model(x)
+    assert hits == [True]
     selected = tuple(v for v in (x, model.atoms.p) if v.requires_grad)
     torch.autograd.grad(y, selected, torch.ones_like(y), retain_graph=True)
     with pytest.raises(RuntimeError, match="outstanding|retained"):
@@ -324,3 +443,17 @@ def test_instance_validation_callback_runs_once_on_fallback():
     model.validate_inputs = validate
     assert torch.isfinite(model(x)).all()
     assert len(calls) == 1
+
+
+@GPU
+def test_initially_custom_callback_can_restore_prepared_eligibility():
+    model, x, _, _ = gpu_case()
+    original = model.validate_inputs
+    model.validate_inputs = lambda inputs: original(inputs)
+    warm = model(x)
+    del warm
+    assert model._execution_program is None
+    del model.validate_inputs
+    warm = model(x)
+    del warm
+    assert model._execution_program is not None

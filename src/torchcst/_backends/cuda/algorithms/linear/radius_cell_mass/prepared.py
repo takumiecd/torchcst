@@ -13,7 +13,7 @@ from dataclasses import is_dataclass
 
 import torch
 
-from torchcst._builtin_callbacks import original_functions
+from torchcst._builtin_callbacks import original_attribute, original_functions
 
 
 def _callbacks():
@@ -33,18 +33,29 @@ def _callbacks():
     return (
         (
             CSTLinear,
-            ("validate_inputs", "build_context", "execution_parameters", "cst_charts"),
+            (
+                "validate_inputs",
+                "build_context",
+                "execution_parameters",
+                "cst_charts",
+                "atoms",
+                "execution_declaration",
+                "prepared_dispatch_signature",
+            ),
         ),
         (CSTModule, ("atoms", "prepared_dispatch_signature", "execution_declaration")),
         (runtime.Dispatcher, ("_prepare", "run", "select")),
         (runtime, ("select_plan",)),
-        (select.FixedSelector, ("_match",)),
+        (select.FixedSelector, ("_match", "registry", "revision", "fallback_plan")),
         (base.Selector, ("registry", "revision", "fallback_plan")),
         (registry.Registry, ("validate_plan", "get")),
         (algorithm.Algorithm, ("run", "validate_inputs")),
         (state.AlgorithmState, ("_signature", "is_current", "atom_state")),
         (state, ("tensor_signature",)),
-        (RadiusCellMassAlgorithm, ("validate_recipe", "execute", "prepare")),
+        (
+            RadiusCellMassAlgorithm,
+            ("run", "validate_inputs", "validate_recipe", "execute", "prepare"),
+        ),
         (AtomState, ("parameters_for_execution", "protect_tensor")),
         (Atoms, ()),
         (AtomOptimizerState, ("fields",)),
@@ -64,6 +75,8 @@ def _definitions(callbacks):
     functions, seen = [], set()
     for owner, names in callbacks:
         for name in names:
+            if not original_attribute(owner, name):
+                return None
             fn = inspect.getattr_static(owner, name)
             if isinstance(fn, property):
                 fn = fn.fget
@@ -371,8 +384,12 @@ class PreparedRadiusLinear:
         self.cached = cached
         self.guard, self.callback_guard, self.template = checked
 
-    def run(self, dispatcher, inputs, *, plan=None):
-        if plan is not None:
+    def run(self, dispatcher, binding, inputs, *, plan=None):
+        if (
+            plan is not None
+            or binding is not self.template[0]
+            or self.cached is not self.template[3]
+        ):
             return None
         if (
             torch._C._is_torch_function_mode_enabled()
@@ -400,6 +417,10 @@ class PreparedRadiusLinear:
 
 
 def prepare_program(dispatcher, cached, inputs, *, plan=None):
+    from torchcst._backends.cuda.algorithms.polar_update.function_metadata import (
+        get_factory,
+    )
+    from torchcst._backends.dispatch.prepared import PreparedDispatch
     from torchcst._backends.dispatch.runtime import Dispatcher
     from torchcst._backends.dispatch.select import FixedSelector
     from torchcst._backends.registry import Registry
@@ -408,48 +429,173 @@ def prepare_program(dispatcher, cached, inputs, *, plan=None):
     from torchcst.atoms.optimizer_state import AtomOptimizerState
     from torchcst.atoms.state import AtomState
     from torchcst.nn.linear import CSTLinear
+    from torchcst.operators import metadata
+    from torchcst.operators._native_metadata_guard import _plain_owner, guard_api
+    from torchcst.operators.context import LinearContext
     from torchcst.operators.execution import LinearInputs
 
     from .algorithm import RadiusCellMassAlgorithm
+    from .recipe import RadiusCellMassRecipe
 
+    # Authenticate the small recipe header before reading any instance value.
+    # In particular, the ordinary non-native recipe remains a cheap rejection.
+    for owner, names in (
+        (PreparedDispatch, ("state", "__getattribute__", "__dict__")),
+        (AlgorithmState, ("recipe", "__getattribute__", "__dict__")),
+        (RadiusCellMassRecipe, ("native_entry", "__getattribute__", "__dict__")),
+    ):
+        if not all(original_attribute(owner, name) for name in names):
+            return None
+    if type(cached) is not PreparedDispatch or type(cached.state) is not AlgorithmState:
+        return None
     state = cached.state
+    if type(state.recipe) is not RadiusCellMassRecipe or not state.recipe.native_entry:
+        return None
+    if guard_api() is None:
+        return None
+    factory = get_factory()
+    if factory is None:
+        return None
+
+    # Every registration/dict lookup below substitutes an ordinary attribute
+    # read. Authenticate those descriptors AND resolved inherited callbacks
+    # before calling state.is_current, atoms, cst_charts or any other getter.
+    for owner, names in (
+        (
+            CSTLinear,
+            (
+                "input_type",
+                "__getattribute__",
+                "__getattr__",
+                "__dict__",
+                "atom_state",
+                "kernel",
+                "input_chart",
+                "output_chart",
+                "chart",
+                "state_signature",
+                "_modules",
+                "_buffers",
+                "_parameters",
+            ),
+        ),
+        (AlgorithmState, ("binding", "algorithm", "context", "layout")),
+        (
+            AtomState,
+            (
+                "layout_version",
+                "atoms",
+                "optimizer_state",
+                "__getattribute__",
+                "__getattr__",
+                "__dict__",
+                "_modules",
+                "_parameters",
+            ),
+        ),
+        (Atoms, ("p", "__getattribute__", "__getattr__", "__dict__", "_parameters")),
+        (
+            AtomOptimizerState,
+            ("_fields", "__getattribute__", "__getattr__", "__dict__"),
+        ),
+        (Dispatcher, ("registry", "selector", "__getattribute__", "__dict__")),
+        (Registry, ("_entries", "__getattribute__", "__dict__")),
+        (LinearContext, ("workspace_limit_bytes", "__getattribute__", "__dict__")),
+        (LinearInputs, ("x", "__getattribute__", "__dict__")),
+    ):
+        if not all(original_attribute(owner, name) for name in names):
+            return None
+    callbacks = _callbacks()
+    functions = _definitions(callbacks)
+    if functions is None:
+        return None
+
     binding = state.binding
     if (
-        plan is not None
+        type(binding) is not CSTLinear
         or type(dispatcher) is not Dispatcher
+        or type(cached.algorithm) is not RadiusCellMassAlgorithm
+        or type(inputs) is not LinearInputs
+    ):
+        return None
+    for obj, names in (
+        (
+            binding,
+            (
+                "validate_inputs",
+                "build_context",
+                "execution_parameters",
+                "execution_declaration",
+                "cst_charts",
+                "state_signature",
+                "prepared_dispatch_signature",
+                "atoms",
+                "atom_state",
+                "kernel",
+                "input_chart",
+                "output_chart",
+                "chart",
+                "input_type",
+            ),
+        ),
+        (state, ("_signature", "is_current", "atom_state")),
+        (
+            cached.algorithm,
+            ("run", "validate_inputs", "validate_recipe", "execute", "prepare"),
+        ),
+        (dispatcher, ("run", "_prepare", "select")),
+    ):
+        if any(name in obj.__dict__ for name in names):
+            return None
+    if not metadata._standard_walk(binding):
+        return None
+    if (
+        plan is not None
         or not isinstance(dispatcher.registry, Registry)
         or type(type(dispatcher.registry)) is not type
         or type(dispatcher.registry).__getattribute__ is not object.__getattribute__
         or type(dispatcher.registry).validate_plan is not Registry.validate_plan
         or type(dispatcher.registry).get is not Registry.get
+        or inspect.getattr_static(type(dispatcher.registry), "_entries", None)
+        is not None
         or type(dispatcher.selector) is not FixedSelector
         or dispatcher.selector.fallback_plan is not None
         or dispatcher.selector._plan is not cached.decision.plan
-        or type(binding) is not CSTLinear
         or type(binding.atom_state) is not AtomState
         or type(binding.atoms) is not Atoms
         or type(binding.atom_state.optimizer_state) is not AtomOptimizerState
-        or type(state) is not AlgorithmState
-        or type(cached.algorithm) is not RadiusCellMassAlgorithm
-        or type(inputs) is not LinearInputs
-        or LinearInputs.__getattribute__ is not object.__getattribute__
-        or "x" in LinearInputs.__dict__
         or type(inputs.x) is not torch.Tensor
         or type(binding.atoms.p) is not torch.nn.Parameter
         or hasattr(binding, "state_signature")
         or "chart" in binding._modules
         or state.context.workspace_limit_bytes is not None
-        or not state.recipe.native_entry
         or not state.is_current()
     ):
         return None
-    from torchcst.operators import metadata
-    from torchcst.operators._native_metadata_guard import _plain_owner
 
     fixed = (*binding.cst_charts(), binding.kernel)
-    modules = tuple(module for root in fixed for module in root.modules())
-    if not all(_plain_owner(module, metadata._standard_walk) for module in modules):
-        return None
+    # Walk registrations without calling an as-yet-unqualified custom walker or
+    # descriptor. The ordinary metadata path remains responsible for such states.
+    pending, modules, seen = list(fixed), [], set()
+    while pending:
+        module = pending.pop()
+        if id(module) in seen:
+            continue
+        seen.add(id(module))
+        kind = type(module)
+        if (
+            kind.__getattribute__ is not object.__getattribute__
+            or inspect.getattr_static(kind, "__dict__", None)
+            is not torch.nn.Module.__dict__["__dict__"]
+            or any(
+                inspect.getattr_static(kind, name, None) is not None
+                for name in ("_modules", "_buffers", "_parameters")
+            )
+            or not _plain_owner(module, metadata._standard_walk)
+        ):
+            return None
+        modules.append(module)
+        pending.extend(child for child in module._modules.values() if child is not None)
     for axis in (state.layout.input, state.layout.output):
         # Finish lazy immutable Python metadata before capturing namespaces.
         _ = axis.banks
@@ -461,17 +607,7 @@ def prepare_program(dispatcher, cached, inputs, *, plan=None):
         + [type(module) for module in modules]
         + list(declared[0])
     )
-    callbacks = (*_callbacks(), *((kind, ()) for kind in classes))
-    functions = _definitions(callbacks)
-    if functions is None:
-        return None
-    from torchcst._backends.cuda.algorithms.polar_update.function_metadata import (
-        get_factory,
-    )
-
-    factory = get_factory()
-    if factory is None:
-        return None
+    callbacks = (*callbacks, *((kind, ()) for kind in classes))
     checked = _guard(
         dispatcher, cached, inputs, callbacks, functions, factory, declared
     )
