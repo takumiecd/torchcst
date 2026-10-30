@@ -6,12 +6,29 @@ import torch
 
 from torchcst._backends.algorithm import Algorithm
 from torchcst._backends.schema import SupportResult
+from torchcst._backends.state import AlgorithmState, tensor_signature
 from torchcst.kernels.parameterizations import PolarAmpRadiusSpec
 from torchcst.kernels.radius_cell_mass import radius_cell_mass_axes
 from torchcst.operators.context import LinearContext
 from torchcst.operators.execution import LinearInputs, linear_execution
 
 from .recipe import RadiusCellMassRecipe
+
+
+class RadiusCellMassState(AlgorithmState):
+    """Hierarchy preparation depends on atom placement, not Adam storage.
+
+    The Linear executor never reads optimizer moments or clocks. Their own
+    optimizer validates/rebinds them; replacing them does not change this
+    hierarchy. Keep live binding callbacks and Context/Parameter placement in
+    the signature, and retain the base class's layout-generation checks.
+    """
+
+    def _signature(self):
+        owner = self.atom_state
+        owned = () if owner is None else (id(owner), tensor_signature(owner.atoms.p))
+        signature = getattr(self.binding, "state_signature", None)
+        return owned, self.context, (() if signature is None else signature())
 
 
 def hierarchy_from_operator(operator):
@@ -59,6 +76,13 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
     semantics_id: str = "kernel-atom-sum-v1"
     recipe_type: type = RadiusCellMassRecipe
     input_type: type = LinearInputs
+
+    def create_state(self, binding, *, recipe, **configuration):
+        # A custom Algorithm subclass may have additional storage dependencies.
+        if type(self) is not RadiusCellMassAlgorithm:
+            return super().create_state(binding, recipe=recipe, **configuration)
+        self.validate_recipe(recipe)
+        return RadiusCellMassState(binding, self, recipe=recipe, **configuration)
 
     def validate_recipe(self, recipe):
         if (
