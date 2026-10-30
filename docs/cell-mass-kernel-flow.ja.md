@@ -6100,3 +6100,121 @@ ignored `output/radius-block-layout-20261030/`へ保全した。
 この範囲では完全stepが両Plan・両反復とも短縮したため、A<=1024のlayoutを採用する。
 Plan/自動selector/数式・許容誤差・階層とresponseの再利用は変更しない。
 1024行列/MNIST、他GPU/Torch版、Graph/process memory、新たなsanitizer検査は対象外である。
+
+### forwardの不変Contextをbinding内で再利用する（2026-10-30）
+
+`28a15c2c`は`CSTLinear.build_context`とlive `LinearBinding.build_context`で、
+検証済み宣言と実行メタデータが同じときだけ、直前の`LinearContext`を再利用する。
+Contextに含まれるmetadataの型・範囲検査と、DeviceInfo/RequiredGrads/PrecisionPolicy等の
+生成を毎step繰り返さない。Dispatcherの選択・配置検証と数値処理は変更しない。
+
+```text
+毎回 validate_inputs（現在のx/p、宣言の確認）
+  → build_context（現在の宣言を再確認）
+      → x/pのdevice・dtype・parameter次元を確認
+      → 検証済み宣言のtokenと現在のmetadata keyを比較
+      → 一致: 直前のimmutable Contextを返す
+        不一致: 通常のContext構築・metadata検証、cacheを1件だけ置き換える
+  → 既存のprepared dispatch / Algorithm.run / 実行時の宣言確認
+```
+
+keyは入力shape/stride/dtype/device、Parameter shape、現在の入力/Parameterの勾配要否、
+grad-enabled/capture/決定性/autocast/TF32、workspace制約から得る。
+grad-enabledは必要勾配のboolへ反映し、CPUでは従来どおりautocast/TF32を使わない。
+atomの数値、xの値とstorageはContextの条件ではなく、毎回の実入力と既存の
+placement guard/AtomState経由で扱う。数値や所有storageの正しさをcacheで証明しない。
+
+cacheはbinding所有の`_linear_context_cache`に1件だけ置き、Tensor・Parameter・
+input/response/momentsを保持しない。保存・deepcopyでは消し、checkpointへ追加しない。
+現在の`execution_declaration`が検証済みentryと同一であり、固定stateのsignatureが有効で、
+通常Tensor/Parameter・整数shape/stride・整数またはNoneのworkspaceの場合だけ使う。
+未検証の宣言、固定stateのinference Tensor、Tensor subclassやsymbolic metadata等は
+通常構築へ戻して古いcacheを消す。OperatorSpecだけのdirect bindingも通常構築を保つ。
+
+入力検証・build_context・execution_declarationのcallback入口は省略しない。
+宣言の確認にはカスタムcallbackが介在できるため、最初の案のように
+入力検証で得た宣言を無条件に次の境界へ渡す方式は採らなかった。
+従来の約5.7%悪化したContext共有案も踏まえ、今回も完全stepで判定する。
+有効/無効な設定変更と同じ値のbuffer書き込み、現在のshape/stride/勾配要否/精度設定、
+callback内の設定変更をcacheより前で観察する。
+
+#### 同じN128条件での完全step比較
+
+比較元は`049d4f62`、候補は`28a15c2c`。前節のblock sort、階層moments、
+完成済みH/Gとresponseの再利用、coeffs/site展開、Polar更新則は共通である。
+runtime全376ファイルの差は`operators/context.py`、`operators/execution.py`、
+`nn/linear.py`、`nn/module.py`の4ファイルだけ。
+両者は同じSHA検証済みnative binary `torchcst_radius_cell_mass_37a00de5c036`を使う。
+
+N128/B4/A819/M8/seed41、spacing1、base1/merge2、direct levels2、32-site CTA、
+FP32 IEEE、native CSTAdamW/fused AdamW、raw decay0/amp decay.01、
+check_finite=Falseは前節から固定。L4、Torch2.11.0+cu130/CUDA13.0、
+Python3.13.16/Triton3.6.0、CPU1 Torch threadで測った。
+独立した2 GPU jobsで、各jobが旧/新×2 Plansを2 fresh processesずつ、順序を入れ替えて
+計8回実行した。各processは10 warmups/101 synchronized complete stepsで、
+毎回独立Y/dX/全atom勾配・quadrature・matched-state検査を先に通す。
+
+| job / Plan | 旧版の中央値2回 ms | 候補の中央値2回 ms | 中央値の平均の短縮率 |
+| --- | --- | --- | --- |
+| 1 / 通常parallel | 1.842211 / 1.801759 | 1.765542 / 1.804278 | 2.03% |
+| 1 / shared-profile | 1.783319 / 1.787599 | 1.785040 / 1.728544 | 1.61% |
+| 2 / 通常parallel | 1.817390 / 1.823728 | 1.787191 / 1.740829 | 3.11% |
+| 2 / shared-profile | 1.853002 / 1.848081 | 1.783540 / 1.789890 | 3.45% |
+
+2 jobsの4 process中央値の平均は、通常parallel **1.821272→1.774460ms（2.57%）**、
+shared-profile **1.818000→1.771753ms（2.54%）**。
+job1にはわずかに遅い反復もあり、全runが必ず速いという結果ではない。
+ただし両独立jobの平均で両Planとも短縮が再現したため、このContext再利用を採用する。
+異なるjobsやPlans同士の順位を、この集計から一般化しない。
+matched denseは全16回で.692145–.739654msで、速度同等には未達である。
+
+| eager allocator peak（全16回同じ） | CST | matched dense |
+| --- | ---: | ---: |
+| allocated | 297984 B = .284180 MiB | 17313280 B = 16.511230 MiB |
+| reserved | 2097152 B = 2 MiB | 23068672 B = 22 MiB |
+
+設定が変わるcold経路では通常のContext生成・検証を行い、metadata keyの生成費用もある。
+今回の主測定は既定のwarmup後であり、cold開始・設定変更stepの速度改善は主張しない。
+
+#### 呼び出しとの対応と検証
+
+job1の別code-event計測では、定常stepの`context_from_metadata`と
+`LinearContext.__post_init__`は各1→0 callsになった。
+`context_from_tensors`は通常parallel61.613→30.912us、shared-profile61.219→30.590us、
+親の`CSTLinear.build_context`は106.847→83.906us / 107.300→84.316usだった。
+`Dispatcher._prepare`は236.675→204.958us / 234.579→207.125us。
+monitorのcallback費用を含むinclusive値であり、親子を足したり、未計装の完全stepと
+差し引いて純CPU時間を求めたりしない。
+
+`validate_linear_inputs`/`build_context`/`context_from_tensors`は各1回、
+`operator_declaration`/`fixed_state_signature`は各3回のまま。
+入力検証の設定確認、Context構築前の設定確認、Algorithm実行時の確認を省いた結果ではない。
+prepared/program identityは変わらず、cache statsはhits19/miss1→hits80/miss1。
+4条件×4 training trace scopesでGPU kernelは旧新とも20、
+内部sync/item/local_scalar_dense/DtoHは0。数値GPU処理の短縮ではなく、
+同じmetadataからContextを作り直すhost処理を減らした変更である。
+
+新しい検査を含むGPU-host suiteは400 passed。
+CUDA Contextの現在のautocast/TF32/captureフラグ、通常/逆向きlayout、saved-key寿命、
+prepared dispatchとoptimizerのcallback・変更検証も対象とする。
+captureフラグの検査は実際のGraph capture/replay性能検証ではない。
+job1の5実更新後の35 Tensorは、両Planとも旧新bit一致。
+CPU全体は2715 passed/6163 skipped、既存warning19件。
+Ruff/diff、wheel/sdistの376 runtimeファイルbyte照合も通過した。
+両jobsの同variant全runtimeとfactory hashは一致し、候補は現ソース全376ファイルと一致する。
+入力・target・初期Parameterも全16回同一である。
+
+job1=`l4job-0d02c86147a34c0f8d21e2d156513373`、snapshot SHA256=
+`2b83df05ccbe9859805f26613756c374b9912daeaed6c6334b1e890437a66e40`、
+result archive SHA256=`5e19ce3b476985a285c303ffdb3c8df34504ca4f827d7a2564a535021c9d2372`。
+job2=`l4job-036f7ebee62643eca6cc4f5b9a8e3782`、snapshot SHA256=
+`d82726accc9fd352ead5eedb429b8a6352f73cc79c4e63b070e27c849ef2e34f`、
+result archive SHA256=`eb3fe89fc4b420c3d64072bf956582ff9ce2fcf30fd9db8029d50507c06a7c98`。
+GPU UUIDは別だが、いずれもNVIDIA L4/driver580.82.07である。
+job2は同runtimeとbinaryの独立再測定であり、400件suiteと35 Tensor比較はjob1の記録を使う。
+各benchmark自体の独立correctness gateはjob2も全回実行した。
+
+driver/worker、2件のsource/result/receipt、16 fresh records、状態、全trace、
+集計・manifest照合、CPU/build/package記録はignored
+`output/radius-forward-context-20261030/`へ保全した。
+1024/MNIST、他GPU世代/Torch版、Graph/process memoryは今回の検証範囲に含めない。
