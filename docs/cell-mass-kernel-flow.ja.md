@@ -5410,6 +5410,23 @@ source/result/receipt/trace/state/binaryと`final-driver.py`、`final-verified-s
 同じignored output配下へ保全した。所有L4は停止済み。
 この変更の1024/MNIST、他GPU世代、Graph/process peak、新規sanitizerは未測定。
 
+### Optimizerのhook登録とgroup関数metadataの再利用（2026-10-30、比較候補）
+
+check_finite=False・closureなし・標準AdamW hook登録APIの場合、最後のCST pre-hookの
+登録だけを再利用する。各stepで末尾へ移し、後から追加されたuser pre-hookより後で準備する。
+global/local hookの実行順とAdam前後の検証は維持する。step固有のcallbackは終了時に必ず
+消し、入力・gradient・snapshotは保持しない。休止中のhookは何もしない。
+例外、closure経路、amplitude decay解除、非標準の登録APIでは従来の一時登録/解除へ戻る。
+弱参照のfinalizerがwrapper解放時に登録を取り除く。再入stepはAdam前に拒否する。
+
+group検証の関数code/defaults/globals/closure/dictionaryは、更新programと同じhost C++
+helperで一括確認する。共用する実装をoperators/_function_metadataへ移した。
+group検証中にbuild/importは開始せず、すでにロード済みのfactoryだけを使う。
+factoryが利用可能になった次の境界ではgroup全体をfresh検証してからguardを作り直す。
+未対応環境は従来のnative accessorsへ戻る。callback変更・group設定・登録/所属・Tensor metadataの
+検証境界は減らさない。Polar/AdamW則、amp-only decayとGPU配列は変更しない。
+速度と完全stepの採用判定は、hookのみ/groupのみ/両方/変更前を同条件で測って行う。
+
 各段階の保存値、配列のshape、書き手、寿命を先に確定し、独立oracleで
 Y/dX/全atom勾配を検証してから速度を比較する。上記は実機での正しさ・性能の結果ではない。
 H/Gの保存を省く案では、同じforward状態での再計算と、全利用先の終了を明示する。

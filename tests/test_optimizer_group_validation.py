@@ -6,9 +6,53 @@ import pickle
 
 import pytest
 import torch
+from test_native_function_metadata import native_factory as _native_factory
 from test_radius_polar_cuda_update import radius_model
 
 from torchcst import CSTOptimizer
+from torchcst.operators import _function_metadata
+
+
+@pytest.fixture(scope="module")
+def native_factory():
+    return _native_factory.__wrapped__()
+
+
+def test_group_guard_upgrades_only_after_helper_is_loaded(monkeypatch, native_factory):
+    monkeypatch.setattr(_function_metadata, "_loaded_factory", None)
+
+    def forbidden():
+        pytest.fail("group validation must not compile or import the helper")
+
+    monkeypatch.setattr(_function_metadata, "get_factory", forbidden)
+    _, opt, previous, _ = prepared()
+    assert not previous.native_function_metadata
+    monkeypatch.setattr(_function_metadata, "_loaded_factory", native_factory)
+    assert not previous.current(opt, opt.param_groups)
+    opt._validate_groups(opt.param_groups)
+    assert opt._group_validation.native_function_metadata
+    assert opt._group_validation.current(opt, opt.param_groups)
+
+
+@pytest.mark.parametrize("change", ["code", "defaults", "dictionary"])
+def test_batched_group_guard_detects_function_slot_changes(
+    monkeypatch, native_factory, change
+):
+    monkeypatch.setattr(_function_metadata, "_loaded_factory", native_factory)
+    _, opt, cached, _ = prepared()
+    assert cached.native_function_metadata
+    fn = CSTOptimizer._validate_groups
+    if change == "code":
+
+        def changed(self, groups):
+            return {}
+
+        monkeypatch.setattr(fn, "__code__", changed.__code__)
+    elif change == "defaults":
+        monkeypatch.setattr(fn, "__defaults__", (None,))
+    else:
+        monkeypatch.setattr(fn, "__dict__", dict(fn.__dict__, changed=True))
+    assert not cached.current(opt, opt.param_groups)
 
 
 def prepared():

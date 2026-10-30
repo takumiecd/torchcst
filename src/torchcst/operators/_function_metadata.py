@@ -11,9 +11,15 @@ import sysconfig
 from functools import cache
 from pathlib import Path
 
+# Group guards only borrow an already-loaded helper. They never start a build
+# after group validation: compilation/import can invoke application callbacks.
+_loaded_factory = None
+
 
 @cache
 def get_factory():
+    global _loaded_factory
+    _loaded_factory = None
     if sys.implementation.name != "cpython" or sysconfig.get_config_var(
         "Py_GIL_DISABLED"
     ):
@@ -30,7 +36,8 @@ def get_factory():
             with_cuda=False,
             verbose=False,
         )
-        return module.make_guard
+        _loaded_factory = module.make_guard
+        return _loaded_factory
     except (ImportError, OSError, RuntimeError, TypeError, ValueError):
         return None
 
