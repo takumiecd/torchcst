@@ -11,7 +11,10 @@ import math
 
 import torch
 
+from torchcst._backends.torch import finite as _finite
 from torchcst._builtin_callbacks import original_functions
+from torchcst.kernels import parameterizations as _parameterizations
+from torchcst.optim import state as _optimizer_state
 
 _MISSING = object()
 
@@ -545,14 +548,9 @@ class PreparedPolarOptimizerUpdate:
                 and rate * decay <= 1
             )
             if valid_scalars and decay:
-                from torchcst.kernels.parameterizations import (
-                    PolarAmpRadiusSpec,
-                    PolarAmpWidthSpec,
-                )
-
                 valid_scalars = type(self.binding.kernel.spec.parameterization) in (
-                    PolarAmpWidthSpec,
-                    PolarAmpRadiusSpec,
+                    _parameterizations.PolarAmpWidthSpec,
+                    _parameterizations.PolarAmpRadiusSpec,
                 )
             if (
                 valid_scalars
@@ -566,13 +564,10 @@ class PreparedPolarOptimizerUpdate:
         return False
 
     def _matches(self, dispatcher, adapter, point, decay, *, checked=False):
-        from torchcst._backends.torch import finite
-        from torchcst.optim.state import OptimizerStateAdapter
-
         if (
             dispatcher is not self.dispatcher
             or point is not self.point
-            or type(adapter) is not OptimizerStateAdapter
+            or type(adapter) is not _optimizer_state.OptimizerStateAdapter
         ):
             return False
         if not checked and not self.guard.check(self.roots):
@@ -581,7 +576,7 @@ class PreparedPolarOptimizerUpdate:
             "transport" in adapter.__dict__
             or type(adapter.vector_keys) is not tuple
             or adapter.vector_keys != self.adapter_keys
-            or finite.checks_enabled()
+            or _finite.checks_enabled()
             or (decay != 0) != self.context.amplitude_decay
             or torch._C._is_torch_function_mode_enabled()
             or torch._C._len_torch_dispatch_stack()

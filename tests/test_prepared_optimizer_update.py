@@ -435,6 +435,66 @@ def test_preflight_gradient_and_snapshot_example_are_not_retained(monkeypatch):
     assert program.snapshot_guard is not None
 
 
+@pytest.mark.parametrize("change", ["module_type", "live_parameterization"])
+def test_validation_import_cleanup_keeps_live_parameterization_checks(
+    monkeypatch, change
+):
+    from torchcst._backends.cuda.algorithms.polar_update import optimizer_program
+    from torchcst.operators.atom_update import AtomUpdateInputs
+
+    model, _opt, dispatcher, cached, guard = example()
+    program = optimizer_program.PreparedPolarOptimizerUpdate(
+        cached.state.binding, dispatcher, cached, guard
+    )
+    inputs = AtomUpdateInputs(model.atoms.p.detach().clone(), 0.01, 0.01)
+    assert program.validate_inputs(inputs)
+    if change == "module_type":
+        monkeypatch.setattr(
+            optimizer_program._parameterizations, "PolarAmpRadiusSpec", object
+        )
+    else:
+        monkeypatch.setitem(
+            program.binding.kernel.spec.__dict__, "parameterization", object()
+        )
+    with pytest.raises(ValueError, match="requires Polar atoms"):
+        program.validate_inputs(inputs)
+
+
+@pytest.mark.parametrize("change", ["adapter_type", "finite_callback"])
+def test_matches_import_cleanup_reads_live_module_attributes(monkeypatch, change):
+    from torchcst._backends.cuda.algorithms.polar_update import optimizer_program
+
+    model, opt, dispatcher, cached, guard = example()
+    program = optimizer_program.PreparedPolarOptimizerUpdate(
+        cached.state.binding, dispatcher, cached, guard
+    )
+    monkeypatch.setattr(torch.cuda, "is_current_stream_capturing", lambda: False)
+    calls = []
+    monkeypatch.setattr(
+        optimizer_program._finite,
+        "checks_enabled",
+        lambda: calls.append(False) or False,
+    )
+    assert program._matches(
+        dispatcher, opt.state_adapter, model.atoms.p, 0.01, checked=True
+    )
+    assert calls == [False]
+    if change == "adapter_type":
+        monkeypatch.setattr(
+            optimizer_program._optimizer_state, "OptimizerStateAdapter", object
+        )
+    else:
+        monkeypatch.setattr(
+            optimizer_program._finite,
+            "checks_enabled",
+            lambda: calls.append(True) or True,
+        )
+    assert not program._matches(
+        dispatcher, opt.state_adapter, model.atoms.p, 0.01, checked=True
+    )
+    assert calls == ([False] if change == "adapter_type" else [False, True])
+
+
 def test_binding_serialization_drops_prepared_program():
     model, opt, _dispatcher, _cached, _native = example()
     binding = opt._update_bindings[model]
