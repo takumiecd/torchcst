@@ -6781,3 +6781,35 @@ CST allocated/reserved=287232/2097152B、dense=17313280/23068672Bは全幅で同
 source SHA256=`dd6c088e977bd3de26a4d551ae22062cfa3b8b4d626df9fbfb6a339fa6ca681c`、
 result archive SHA256=`46cbdbbead5035a320b74d682ef386cdfbdbb5fd71258873afeb36b1af6d65cb`。
 証拠は`output/radius-prepared-entry-20261030/l4job-9c85563a9c24426bba73135e0d3ce1d2/`。
+
+#### 未使用階層の走査削減と共通guardの配置（2026-10-31 JST、検証中）
+
+`shared_projection_kernel`はrequired-bank maskに親が使う子bankを加えた後も、未使用levelを
+全threadで走査・同期していた。commit `5c66dd65`ではmerge時のみ、そのlevelの2bankが
+両方不要ならblock全体でloop本体と同期を飛ばす。maskは直前の同期後に不変で、全threadが
+同じ分岐を通る。必要な子levelの同期、zero初期化、direct方式、保存配列は変えない。
+独立レビューでも同期の妥当性を確認したが、GPUのbit一致/速度は別途検証する。
+job `l4job-ad78884e92e64a93aa335734fe0db4c0`は、同じ準備済みPython入口で
+元のCUDA binary `torchcst_radius_cell_mass_9dbaec7aa25f`と新sourceを比較する。
+新binaryは実GPUで実際にcompileし、source digest名は`torchcst_radius_cell_mass_49af2a2b1ff9`。
+source SHA256=`a291808afe99701d5c328f36dc28348c9cf2fc58e8a40215690fd5fdbfe7c666`。
+実行中の比較に共通guard移動後のsourceを混ぜない。
+
+別のmoments方式job `l4job-acc85bd3dacc4406806c4f8f3fbd4737`は旧CUDA source固定で、
+source SHA256=`b56c18efde90fd78fdd68040924806282d8c3306ce2afc1b7927fd7225a7e4f8`。
+DIRECT/MERGEはatomが消費するbankで数学的に同じmomentsを作るが、merge専用の子bankは
+directではzeroのままで、保存buffer全体や異なる加算順序のbit一致を主張しない。
+両方式の比較でも階層分類、period式、完成H/Gの共有を保ち、各processの独立oracleと
+matched-state optimizer検証を通す。まだ採用/目標達成とは扱わない。
+
+LinearとPolarが実際に共有するCPU helperは、配置規約に合わせ
+`_backends/cuda/_host_function_metadata.py/.cpp`へ移動した（commit `034e7970`）。
+旧private pathのshimは追加しない。C++は移動前とbyte一致
+（SHA256=`25808b593fca09e5c25621a80c2457f2ee7303d934bf4dd3eb0a3fb79c66ced2`）、
+Pythonもdocstring以外は同じ。関連CPU111件、CPU全体2804 passed/6231 skipped
+（51.60s）、Ruff/diff検査とwheel/sdist buildが通過。配布物内の共通helperとCUDA headerの
+byte一致も確認した。GPU比較sourceと現在sourceの配置差は最終再測定時に揃える。
+
+共有poolは既存実験の正常終了とVM停止を確認してから`--workers 2`で再起動し、上記2jobを
+別々のL4へ配置した。各job自身のmatched denseを使い、異なるVMの絶対時間だけを
+差し引いて効果とみなさない。結果回収と停止確認までpoolの所有手順に従う。
