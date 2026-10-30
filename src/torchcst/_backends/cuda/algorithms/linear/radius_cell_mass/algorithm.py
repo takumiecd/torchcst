@@ -79,10 +79,9 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "overlap",
             "block_local",
             "block_local_parallel",
+            "block_local_cached_parallel",
         ):
-            raise ValueError(
-                "schedule must be sequential, overlap, block_local or block_local_parallel"
-            )
+            raise ValueError("unsupported radius schedule")
         if (
             type(recipe.output_tile_sites) is not int
             or not 1 <= recipe.output_tile_sites <= 128
@@ -122,11 +121,29 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
         )
         if context.m * work > 2**31 - 128:
             reasons.append("exceeds native 32-bit work-index limit")
-        if recipe.schedule in ("block_local", "block_local_parallel"):
+        if recipe.schedule in (
+            "block_local",
+            "block_local_parallel",
+            "block_local_cached_parallel",
+        ):
             if 8 * (context.atom_count + max(zi, co)) > 48 * 1024:
                 reasons.append("block-local shared storage exceeds 48 KiB")
             if context.m > 65535:
                 reasons.append("block-local batch grid exceeds 65535")
+            if recipe.schedule == "block_local_cached_parallel":
+                for axis, start in (
+                    (plan.input, recipe.input_direct_levels),
+                    (plan.output, recipe.output_direct_levels),
+                ):
+                    elements = axis.active_nodes(start) * axis.basis_count
+                    minimum = 8 * elements + 32 * ((axis.modes + 3) * 8 + 4)
+                    if elements:
+                        minimum += axis.basis_count * 33 * 8
+                    if minimum > 48 * 1024:
+                        reasons.append(
+                            "coefficient cache shared storage exceeds 48 KiB"
+                        )
+                        break
         if context.execution_mode != "eager" or context.precision.autocast:
             reasons.append("requires eager execution without autocast")
         if context.workspace_limit_bytes is not None:

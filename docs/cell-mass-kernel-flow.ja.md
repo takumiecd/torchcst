@@ -5743,3 +5743,114 @@ CUDA binary=`torchcst_radius_cell_mass_a7525eeb93a3`（初回jobでbuild成功�
 再現用driver/probe worker、2 jobのsource/result/receipt、GPU traces、
 state tensors、初期負荷カウントと集計JSONをignored
 `output/radius-expansion-20261030/`へ保全した。
+
+### block内のatom profile共有（2026-10-30）
+
+coeffs生成の重複評価を減らすため、明示Plan
+`BLOCK_LOCAL_CACHED_PARALLEL`（benchmark alias
+`radius-block-local-cached-parallel`、schedule=`block_local_cached_parallel`）を追加する。
+既存のPlanと自動selectorは変更しない。入力moments/Hと逆向きmoments/Gは従来の
+parallel projectionで各方向1回だけ作り、atom勾配にも同じ完成済みcacheを渡す。
+変更するのは、完成responseからcoeffs/siteへ進むdestination kernelである。
+
+```text
+1 CTA = 1 batch行 × 1出力区間（今回32 sites）
+  active bankごとに、区間へ寄与し得るfirst-tile ownerを列挙
+  周期wrapを重複しない最大2区間に分ける
+  各区間を最大128 atomsずつ処理:
+    threadごとに別atomのradius・分類・profile係数を1回だけ計算
+    sharedへprofile係数・wrapped center・amp×response・first tileを公開
+    CTA同期
+    retained bank: 担当warpが同じcacheから各寄与タイルのcoeffsを集約
+    direct bank: 担当siteのthreadが同じcacheからセル質量を積算
+    CTA同期 → shared cacheを次のchunkに再利用
+  retained coeffsを展開し、direct寄与と合わせてY/dXを保存
+```
+
+`cached_coefficients.cuh`のproducerはradiusをregisterで一度復元し、そこから求めた
+profileをsharedへ置く。consumerはradius/profileを再計算しない。
+同じatomでも入力・出力で異なるradius bounds/周期を持てるため、
+方向を超えてprofileが同一だとは仮定しない。今回もbatch行が異なるCTA間の共有はしない。
+profile式とradius微分を含む既存の`profile_coefficients`自体は変更せず、共有効果を分離する。
+
+bankのtile数をN、Kをperiodのtile倍数、出力区間と重なるdestination tile数をDとすると、
+必要なfirst-tile ownerは連続した`min(N,D+K−1)`個である。
+KがNより大きい場合も全ownerを一度だけ読み、同じatomの複数のunwrapped像へcacheを使う。
+atomのParameter行は並べ替えず、既存のrows/offsetsだけで必要範囲を取る。
+
+shared cacheはatom数に比例して保持せず、128/64/32 slotsの中から
+48KiBへ収まる容量とconsumer warp数をhostの固定metadataで決める。
+今回M8/start2では、coeffs17136B、4 warpの列17952B、
+128 slotsのprofile/center/value11264B、first tile512B、合計46864B。
+通常経路にはglobalのprofile表・packed atom・counter配列を追加しない。
+検査専用の別specializationだけが`[batch, destination CTA, atom]`のproducer回数を数える。
+
+chunkごとに寄与を集約するため、異なるfirst-tile範囲のFP64加算順が既存kernelと
+異なる場合がある。数学的な和とセル質量の定義は同じであり、独立Y/dX/全atom勾配、
+retained backward、実更新のstate比較で誤差を検査する。
+
+実L4、Torch2.11.0+cu130/CUDA13.0、Python3.13.16、Triton3.6.0で、前節と同じ
+N128/B4/A819/M8/seed41、base1/merge2、direct levels2、32-site CTA、FP32 IEEE、
+native CSTAdamW（fused AdamW、raw decay0/amp decay.01、check_finite=False）を測った。
+比較元は`bbf0cb3a`の`radius-block-local-parallel`、候補は新しいcached Plan。
+baseline→cached→cached→baselineのfresh process順に各10 warmup/101 samplesを使い、
+各runnerで独立Y/dX/全atom勾配・quadrature・matched-state検査を通した。
+
+| 条件 | 完全step中央値2回 ms | 平均中央値 ms | allocated / reserved peak B |
+| --- | ---: | ---: | ---: |
+| 変更前parallel | 1.954870 / 1.953213 | 1.954042 | 297984 / 2097152 |
+| shared profile cache | 1.984635 / 1.962660 | 1.973647 | 297984 / 2097152 |
+| matched dense（4回） | .705771〜.727790 | — | 17313280 / 23068672 |
+
+今回の完全stepでは約1.0%遅く、**完全stepの高速化は確認できなかった**。
+候補は明示Planとして比較可能に残し、既存Planの置換や自動採用は行わない。
+allocated/reservedは全回同じでdense以下。通常eagerのPyTorch allocator peakであり、
+GraphやGPUプロセス全体のpeakではない。新しいglobal Tensorは通常経路に追加していない。
+
+一方、111更新と別profile stepの後の同じ状態で、同一candidate binary内の
+旧/新destination kernelを11回ずつtraceした結果は以下だった。
+projectionは両方で同じparallel方式を使い、その時間を表には含めない。
+
+| 方向 | 旧coeffs＋site us | cached coeffs＋site us | profile生成回数 旧→新 |
+| --- | ---: | ---: | ---: |
+| Y | 213.057 | 129.600 | 9828→4072 |
+| dX | 266.144 | 130.209 | 9828→4092 |
+
+旧の生成回数は、この状態でもGPUで分類された819 atomsすべてがT4/K3のため
+`B×A×K`から求める。新の回数は別のcounted specializationで実際に数えた。
+`[batch, CTA, atom]`の最大countは両方向とも1で、周期の複数像でもproducerを
+重複させていない。1 batch行の各出力CTAでYは252/257/257/252 atoms、
+dXは257/247/264/255 atomsをcacheした。counted出力と旧出力の最大絶対差は両方向0。
+GPU kernelだけではY約39%、dX約51%短縮したが、これは完全stepの短縮率ではない。
+
+別の1 complete-step traceでも、destination kernel合計479.809→260.097us、
+全25 kernelsのbusy時間1022.528→802.785usを確認した。
+Z構築251.712→251.328us、responses56.896→56.896us、
+atom勾配128.352→128.960usで、再利用するprojection/atom勾配はほぼ同じ。
+GPU上ではZ構築とdestinationが同程度の費用になった。
+新kernelは140 registers/thread、shared46864B、旧は152 registers/thread、
+shared属性35104B（dynamic35088B＋static16B）。128 threads/CTA、grid4×4は同じ。
+
+計装traceにはkernel間のCPU投入待ちがあるが、profilerの大きな追加費用もある。
+そのspanやkernel busy時間を未計装の完全stepから引いて純CPU時間とはしない。
+**GPUの短縮が完全stepへ現れない主因の特定は未完了**であり、
+CPU投入・dispatch・検証等を未計装条件と対応させて別途調べる必要がある。
+共有化だけで学習stepが高速になったとは報告しない。
+
+実GPUホスト上の関連190件が成功。混合階層、direct/all-direct、torusの繰り返し像、
+空atom、FP32/FP64、merge/direct moment、batch端、retained backwardを含む。
+新cached経路のVJPはM3/M8/M16、既存Planの回帰検査はM1〜16を含む。
+別5 updatesのY/dX/全atom勾配/Parameter/Adam state35 Tensorは全てbit一致し、
+今回のFP32条件で最大差0だった。FP64の加算順差が一般に0になるという保証ではない。
+CPU全体2672 passed/5965 skipped（既存警告19件）、Ruff/diffが成功。
+wheel/sdistの現在runtime全376ファイルをbyte照合した。
+
+job=`l4job-5a667546ad3d44b4a84ef93edea5c339`、snapshot SHA256=
+`f73996d069feee4c86be834fe44ddda9333c6be934b0427d9f423cb8e3af4fb2`、
+result archive SHA256=`dee61ed4064d909100749b712ca938a38fb29f2dd7d5cac98863cfba588be0ec`。
+新CUDA binary=`torchcst_radius_cell_mass_b1d35927a8ff`、binary SHA256=
+`7fd5cf591cf8fe45d47fc08f2f6f9ef353fb64af947a25b628246960810f65a8`。
+旧binaryもnative source digestとSHAを照合して再利用した。
+再現driver、source/result/receipt、traces、counter結果、state tensors、
+CPU/build logsはignored `output/radius-cache-20261030/`へ保全する。
+1024/MNIST、他GPU/Torch版、新規Graph/sanitizer/process peakは今回未検証。
