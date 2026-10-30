@@ -79,7 +79,7 @@ def test_all_equal_keys_keep_original_rows_across_padding_and_warp_boundaries(re
 
 @GPU
 def test_changed_owner_shape_is_read_on_each_call_without_a_layout_value_cache():
-    keys = torch.tensor([0, 7, 17, 7, 31, 1, 17], dtype=torch.int64)
+    keys = torch.tensor([0, 7, 17, 7, 31, 1, 17, 4], dtype=torch.int64)
     device_keys = keys.cuda()
     results = []
     for ni, no in [(8, 4), (4, 8), (8, 4)]:
