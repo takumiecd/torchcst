@@ -131,7 +131,7 @@ def _native_guard(
     api = guard_api()
     if api is None:
         return None
-    from .function_metadata import prepare_checks
+    from .function_metadata import prepare_checks, prepare_storage_checks
 
     cls, kind = api
     guard = cls()
@@ -142,6 +142,7 @@ def _native_guard(
     if checker is not None:
         roots = (*roots, dictionaries)
     verbose = ["prepared atom optimizer metadata"]
+    storage_nodes = []
 
     def attr(node, name, value):
         return node.getattr_manager(name, name, value, kind)
@@ -179,12 +180,13 @@ def _native_guard(
         for name in () if matched else ("shape", "dtype", "device", "layout"):
             field(node, value, name)
         # Numerical versions change on every AdamW update and are excluded.
-        for name in ("data_ptr",) if matched else ("stride", "data_ptr"):
+        for name in () if matched else ("stride",):
             method = getattr(value, name)
             call = attr(node, name, method).call_function_no_args_manager(
                 name, method(), kind
             )
             equal(call, method())
+        storage_nodes.append((node, value))
 
     def root(index, value):
         node = guard.tuple_getitem_manager(index, str(index), value, kind)
@@ -383,6 +385,18 @@ def _native_guard(
         # Every callback boundary still checks all versions and registrations.
         fixed_node = guard.tuple_getitem_manager(6, "fixed state", fixed_roots, kind)
         _build_guard(fixed_node, fixed_roots, kind, epilogue_root=guard)
+        storage_checker = prepare_storage_checks(
+            function_factory, tuple(value for _, value in storage_nodes)
+        )
+        if storage_checker is not None:
+            guard.add_lambda_guard(storage_checker, verbose, None)
+        else:
+            for node, value in storage_nodes:
+                method = value.data_ptr
+                call = attr(node, "data_ptr", method).call_function_no_args_manager(
+                    "data_ptr", method(), kind
+                )
+                equal(call, method())
         return (guard, roots) if guard.check(roots) else None
     except (AttributeError, RuntimeError, TypeError, StopIteration, ValueError):
         return None

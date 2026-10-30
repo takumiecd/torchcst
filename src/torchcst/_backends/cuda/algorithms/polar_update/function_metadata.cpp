@@ -79,4 +79,57 @@ static py::object make_guard(py::tuple functions) {
 }
 } // namespace
 
-PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) { m.def("make_guard", &make_guard); }
+namespace {
+struct Storage {
+    py::object reference;  // Weak: a guard must not keep the example Tensor alive.
+    py::object address;
+    PyCFunction method;
+};
+
+static py::object make_storage_guard(py::tuple references, py::tuple methods) {
+    if (references.size() != methods.size()) throw py::value_error("storage arity");
+    auto records = std::make_shared<std::vector<Storage>>();
+    for (size_t i = 0; i < references.size(); ++i) {
+        PyObject* ref = references[i].ptr();
+        PyObject* method = methods[i].ptr();
+        if (!PyWeakref_CheckRef(ref) || !PyCFunction_Check(method)
+            || PyCFunction_GetFlags(method) != METH_NOARGS
+            || PyCFunction_GetSelf(method) != PyWeakref_GetObject(ref)) {
+            throw py::type_error("expected weak Tensor references and builtin data_ptr");
+        }
+        // Only the qualified builtin is called. No custom Python accessor runs
+        // inside this checker. data_ptr reads host metadata, never Tensor values.
+        PyCFunction fn = PyCFunction_GetFunction(method);
+        py::object address = py::reinterpret_steal<py::object>(
+            fn(PyCFunction_GetSelf(method), nullptr));
+        if (!address) throw py::error_already_set();
+        if (!PyLong_CheckExact(address.ptr())) throw py::type_error("expected address");
+        records->push_back({py::reinterpret_borrow<py::object>(ref), address, fn});
+    }
+    return py::cpp_function([records](py::object) {
+        for (const Storage& r : *records) {
+            PyObject* value = PyWeakref_GetObject(r.reference.ptr());
+            if (value == Py_None) return false;
+            py::object method = py::reinterpret_steal<py::object>(
+                PyObject_GetAttrString(value, "data_ptr"));
+            if (!method) { PyErr_Clear(); return false; }
+            if (!PyCFunction_Check(method.ptr())
+                || PyCFunction_GetFlags(method.ptr()) != METH_NOARGS
+                || PyCFunction_GetFunction(method.ptr()) != r.method
+                || PyCFunction_GetSelf(method.ptr()) != value) return false;
+            py::object address = py::reinterpret_steal<py::object>(r.method(value, nullptr));
+            if (!address) { PyErr_Clear(); return false; }
+            int same = PyLong_CheckExact(address.ptr())
+                ? PyObject_RichCompareBool(address.ptr(), r.address.ptr(), Py_EQ) : 0;
+            if (same < 0) { PyErr_Clear(); return false; }
+            if (!same) return false;
+        }
+        return true;
+    });
+}
+} // namespace
+
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+    m.def("make_guard", &make_guard);
+    m.def("make_storage_guard", &make_storage_guard);
+}

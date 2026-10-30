@@ -5410,41 +5410,53 @@ source/result/receipt/trace/state/binaryと`final-driver.py`、`final-verified-s
 同じignored output配下へ保全した。所有L4は停止済み。
 この変更の1024/MNIST、他GPU世代、Graph/process peak、新規sanitizerは未測定。
 
-### Optimizerのhook登録とgroup関数metadataの再利用（2026-10-30）
+### Optimizerのhook登録とgroup関数metadataの再利用の試作（2026-10-30）
 
-check_finite=False・closureなし・標準AdamW hook登録APIの場合、最後のCST pre-hookの
-登録だけを再利用する。各stepで末尾へ移し、後から追加されたuser pre-hookより後で準備する。
-global/local hookの実行順とAdam前後の検証は維持する。step固有のcallbackは終了時に必ず
-消し、入力・gradient・snapshotは保持しない。休止中のhookは何もしない。
-例外、closure経路、amplitude decay解除、非標準の登録APIでは従来の一時登録/解除へ戻る。
-弱参照のfinalizerがwrapper解放時に登録を取り除く。再入stepはAdam前に拒否する。
-hook辞書自体も弱参照にし、辞書差し替え後に古いuser callbackやそのTensorを保持しない。
+試作では最後のCST pre-hookの登録を再利用し、各stepでuser pre-hookの後へ移した。
+step固有callbackを終了時に消し、wrapper・古いhook辞書を弱参照にした。
+別の試作ではgroup検証の関数metadataを更新programと同じhost C++ helperで一括確認した。
+どちらもPolar/AdamW則、amp-only decay、設定変更時の検証とuser hook順序は維持した。
 
-group検証の関数code/defaults/globals/closure/dictionaryは、更新programと同じhost C++
-helperで一括確認する。共用する実装をoperators/_function_metadataへ移した。
-group検証中にbuild/importは開始せず、すでにロード済みのfactoryだけを使う。
-factoryが利用可能になった次の境界ではgroup全体をfresh検証してからguardを作り直す。
-未対応環境は従来のnative accessorsへ戻る。callback変更・group設定・登録/所属・Tensor metadataの
-検証境界は減らさない。Polar/AdamW則、amp-only decayとGPU配列は変更しない。
-速度と完全stepの採用判定は、hookのみ/groupのみ/両方/変更前を同条件で測って行う。
-
-4条件の比較では、group一括化はoptimizer単独の平均中央値で.654720→.645784 msに
-留まり、完全stepは2.030540→2.031258 msで横ばいだった。両方でも上積みを確認できず、
-group一括化とhelperの共通ディレクトリ移動は不採用とした。group検証と更新programは
-efe2984bの実装を維持する。試作はe91b7b72/f6fef2b5とfrozen sourceから復元できる。
-hookのみはoptimizer単独.654720→.638258 msだが、完全stepは2.030540→2.067027 msと
-ばらつきがあるため、これだけで完全step改善とは判断しない。最終hook単独版を別途比較する。
+4条件の比較では、group一括化のoptimizer単独の平均中央値は.654720→.645784 ms、
+完全stepは2.030540→2.031258 msで横ばいだった。両方でも上積みを確認できず、
+group一括化とhelperの共通ディレクトリ移動は不採用。hookのみはoptimizer単独
+.654720→.638258 msだが、完全stepは2.030540→2.067027 msとばらついた。
 4条件すべてでParameter/Adam moment/step20 Tensorは5 updatesでbit一致。
-同じN128/B4/A819/M8、FP32 IEEE、amp-only、parallel Planで10 warmup/101 full steps、
-別optimizer-onlyは20 warmup/101 updates。全条件でallocated/reserved297984/2097152 B。
+N128/B4/A819/M8、FP32 IEEE、amp-only、parallel Planで10 warmup/101 full steps、
+optimizer-onlyは20 warmup/101 updates。全条件のallocated/reservedは297984/2097152 B。
 関連513件と独立Y/dX/全atom勾配・quadrature・matched-state gateが成功した。
 
 比較job=`l4job-27b98dbe6b61436ea7913eb4ee1d9ee7`、snapshot SHA256=
 `69145dcc8ecabbb6c0c3e4616cc387d700940c4448e4ea0095a7a7ea71343fbf`、
 result archive SHA256=`3e275b3a838195dfb870093a7f3779bee8c1deca579f92e030c4432bbb73938e`。
-最初のjob `l4job-e15662cf554a44ec88f755f2ad3aaeb2`はoptimizer-only scriptのPlan指定で失敗した。
-失敗原本も含めignored `output/optimizer-hook-20261030/`へsource/result/receipt/trace/stateを保全する。
+最初のjob `l4job-e15662cf554a44ec88f755f2ad3aaeb2`はoptimizer-only scriptのPlan指定で失敗。
+失敗原本も含めignored `output/optimizer-hook-20261030/`へ保全した。
 
-各段階の保存値、配列のshape、書き手、寿命を先に確定し、独立oracleで
-Y/dX/全atom勾配を検証してから速度を比較する。上記は実機での正しさ・性能の結果ではない。
-H/Gの保存を省く案では、同じforward状態での再計算と、全利用先の終了を明示する。
+hook単独の最終再測定（runtime `2cb70c60`）も通常測定では短縮を再現しなかった。
+変更前→変更後→変更後→変更前のfresh processで、完全stepの平均中央値は
+2.037018→2.041250 ms、optimizer単独は.646428→.647283 ms。
+補助の交互ペア測定では約.032/.038 msの差があったが、通常のoptimizer単独と
+完全stepで再現しなかったためhookの常設化も不採用とし、`f174cec2`で取り除いた。
+現在のhook登録・group検証は`efe2984b`のまま。試作は
+`e91b7b72`/`f6fef2b5`/`2cb70c60`とfrozen sourceから復元できる。
+
+最終hook比較は関連217件・独立oracleが成功、20 state Tensorが5 updatesでbit一致。
+補助ペア測定も121 updates後のParameter/Adam stateがbit一致した。
+通常測定のallocated/reservedは297984/2097152 B、matched denseは
+17313280/23068672 B。dense完全stepは.683〜.703 ms、optimizer単独は.103〜.106 ms。
+GPU更新3 kernels、snapshot copy1回、sync/item/DtoH0。ペア測定の2モデル同居時の
+メモリは比較に使わない。eager allocator peakでありGraph/process総量ではない。
+job=`l4job-b28a5a647b4d43a6837d54320d9e8502`、snapshot SHA256=
+`97cc28d1d81128a0f5c88fd13c13aa67783dc42e06986f1dda847cdd64366398`、
+result archive SHA256=`17730c547c921a005bb4ed5dda10d88f1483a3d7bb69d6baf26512d0f9b4ec4f`。
+
+### Optimizerの保存先metadata検証の一括化の試作（2026-10-30）
+
+更新programでParameter・Adam stateの`data_ptr()`を個別のguard accessorから呼ぶ処理を、
+任意のhost C++ helperで一括確認する。Tensorは弱参照のみで保持し、値やversionは読まない。
+各Tensorの`data_ptr`が準備時と同じbuiltinで同じTensorに結び付いていることを確かめてから、
+そのbuiltinのC入口で保存先metadataを取得する。独自accessorや未対応環境は従来の
+個別accessorへ戻す。後からaccessorが変われば独自callbackを実行せずguardを失効させる。
+shape/dtype/device/stride、設定変更、Adam前後の検証境界は維持する。
+数式・CUDA kernel・GPU配列とその寿命を変えない。CPUの実native helperで保存先変更、
+数値更新、弱参照の解放、accessor差し替えを確認済み。速度の採用判定は未実施。

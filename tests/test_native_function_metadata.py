@@ -135,6 +135,79 @@ def test_model_is_not_retained_by_the_native_function_records(native_factory):
     assert guard is not None
 
 
+def test_batched_storage_checks_track_addresses_not_numeric_versions(native_factory):
+    tensor = torch.ones(4)
+    parameter = torch.nn.Parameter(torch.ones(4))
+    checker = function_metadata.prepare_storage_checks(native_factory, (tensor, parameter))
+    assert checker is not None and checker(None)
+    with torch.no_grad():
+        tensor.add_(1)
+        parameter.add_(1)
+    assert checker(None)
+    with torch.no_grad():
+        parameter.data = parameter.data.clone()
+    assert not checker(None)
+
+
+def test_batched_storage_check_owns_no_tensor(native_factory):
+    tensor = torch.ones(4)
+    reference = weakref.ref(tensor)
+    checker = function_metadata.prepare_storage_checks(native_factory, (tensor,))
+    assert checker is not None and checker(None)
+    del tensor
+    gc.collect()
+    assert reference() is None
+    assert not checker(None)
+
+
+@pytest.mark.parametrize("target", ["instance", "class", "builtin_instance"])
+def test_storage_accessor_replacement_is_detected_without_calling_it(
+    native_factory, monkeypatch, target
+):
+    tensor = torch.ones(4)
+    checker = function_metadata.prepare_storage_checks(native_factory, (tensor,))
+    assert checker is not None and checker(None)
+    calls = []
+
+    def custom(*args):
+        calls.append(1)
+        return 0
+
+    if target == "instance":
+        tensor.data_ptr = custom
+    elif target == "builtin_instance":
+        tensor.data_ptr = tensor.numel
+    else:
+        monkeypatch.setattr(torch.Tensor, "data_ptr", custom)
+    assert not checker(None)
+    assert not calls
+    assert function_metadata.prepare_storage_checks(native_factory, (tensor,)) is None
+    assert not calls
+
+
+def test_native_program_uses_batched_storage_and_keeps_post_hook_gate(
+    native_factory, monkeypatch
+):
+    calls = []
+    original = function_metadata.prepare_storage_checks
+
+    def capture(factory, tensors):
+        result = original(factory, tensors)
+        calls.append(result)
+        return result
+
+    monkeypatch.setattr(function_metadata, "prepare_storage_checks", capture)
+    model, _opt, _dispatcher, _cached, (guard, roots) = example(
+        function_factory=native_factory
+    )
+    assert len(roots) == 8 and calls[-1] is not None
+    assert guard.check(roots)
+    with torch.no_grad():
+        fields = model.atom_state.optimizer_state.fields
+        fields["exp_avg"].set_(fields["exp_avg"].clone())
+    assert not guard.check(roots)
+
+
 def test_unsupported_interpreter_keeps_existing_guard(monkeypatch):
     function_metadata.get_factory.cache_clear()
     try:
