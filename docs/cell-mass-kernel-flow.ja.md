@@ -13,14 +13,15 @@ shared C/site展開、既存則を保つFP32 Polar更新を実装した。自動
 | --- | --- | --- |
 | N128/B4/A819/M8単体 | native cached Planを採用 | 2fresh runでdense比約1.94倍、allocated/reservedともdense未満 |
 | N128/B32/A819/M8単体 | 明示batched/grad4 Planを採用 | 2fresh runで約1.41〜1.43ms、dense比2倍以内、両ピークもdense未満 |
-| N1024/B4/A52428/M8単体 | general response4/grad4 Planを採用 | 約6.25ms、両ピークはdense未満、速度2倍以内は未達 |
+| N1024/B4/A52428/M8単体 | active moments＋response4/grad4 Planを採用 | 約5.18〜5.22ms、両ピークはdense未満、速度2倍以内は未達 |
 | MNIST N128/B4・3epoch | 同じ初期W/外側層/data orderで実学習 | 速度は約1.60〜1.76倍、allocatedは下回るがreserved同値 |
 | MNIST N128/B32・1epoch | 同条件の別batch検証 | 速度約2.07〜2.12倍、allocated超過、同時目標は未達 |
-| MNIST N1024/B4・3epoch | 明示global-response4の別cohortを採用 | 約6.62〜6.76ms対dense1.24〜1.30ms、両ピークは下回る、速度未達 |
-| active moments省略 | 別branchでGPU718件通過 | N1024約5.81ms、メモリ同じ。grad4との統合は別検証 |
+| MNIST N1024/B4・3epoch | 同じ初期化を使う明示active-grad4 Planで再測定 | 約4.71〜4.77ms対dense1.27〜1.32ms、両ピークは下回る、速度未達 |
+| active moments省略 | grad4との統合GPU884件通過、明示Planに採用 | 未使用bank計算を省く。配列shapeとメモリ量は同じ |
 
 MNIST N1024の最終test accuracyは97.37%対97.87%（1seed/3epoch）。精度同等・一般化は主張しない。
-現在の統合CPU検査は3109 passed/6529 skipped。配布物と実行snapshotのbyte照合も通過した。
+統合large grad4までのCPU検査は3109 passed/6529 skipped。以降の追加は末尾に検証範囲を記録する。
+配布物と実行snapshotのbyte照合も各検証時点で通過した。
 Graph、autocast、高階微分、自動dispatch、N1024より大きい形状の達成は未検証である。
 末尾の各実測節にjob ID・source/archive hash・採用範囲と失敗結果を残す。
 以下の初版・候補・時系列の記述は、それぞれの段階の制約として読む。
@@ -7425,3 +7426,51 @@ archive_sha256=`4d0142a796a5b6f775d32cd7307994f97e0d155bfe841deeea0bc1ac0d45bfe9
 `l4job-435995bebefa47709ac781551c23b3af`:
 source_sha256=`ae2e29a69e12195d2b807f3351201459864cfec6a65bd0b21aae3ab2d81a8ffb`.
 archive_sha256=`70f01c6c96c1390a88e9a654ec43af938bf0018b843aba9e342e24f7b203499d`.
+
+### active moments＋grad4の統合とMNIST再測定（2026-10-31）
+
+`18941c11`で明示`radius-global-active-grad4`を採用した。旧global Planの選択は変更しない。
+実compileしたjob `l4job-6827da61ce564c0cafb06a7572ddec02`でGPU884件を通過し、
+N1024/B4単体は非active grad4の6.463579/6.454866msから5.181212/5.219086msへ短縮した。
+denseは0.707896/0.712054ms、allocated/reservedは9211904/31457280Bのまま。
+active maskは4Bで、選択bankとmergeに必要な子bankの計算だけ残す。Z配列を縮小した結果ではない。
+
+MNISTは既存harnessに`--radius-plan`で登録済みPlanのJSONを渡す。設定は実行前に検証し、
+raw/canonical Plan hashを結果に残す。データ処理・初期化・optimizer条件は変更しない。
+job `l4job-812252a12de64eabae44a6f0dfe993a9`は、前回0acdの初期化artifactを同じbyte列で再利用し、
+真のB4、784→1024→1024→10、seed41、inplace normalizationで3epochを実行した。
+実compile済みnative `e73fa314ccd1`をbinary SHA256
+`d15c4b07689079c2ec85833d8052ab45a329087c8f02e8945cb5a3e7221815a9`で照合して再使用した。
+実先頭batchの全model Y/dX・全Parameter勾配・public CPU-reference更新、全atom Fourierと
+層化8atomの独立積分を別processで通過してから学習した。
+
+| epoch | CST step ms | dense step ms | 比率 | CST test | dense test |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 1 | 4.774085 | 1.268861 | 3.76250 | 94.87% | 96.41% |
+| 2 | 4.706828 | 1.318559 | 3.56968 | 96.47% | 96.94% |
+| 3 | 4.745863 | 1.317406 | 3.60243 | 97.37% | 97.87% |
+
+CSTピークは全epochで258337792/274726912B。denseはepoch1で270021120/287309824B、
+epoch2/3で270484480/287309824B。両指標とも下回るが、速度2倍以内は未達。
+stepはgather/loss/backward/optimizer/metricsを含むepoch wall、epoch1はoptimizer cold start込み。
+同じ学習の別実行なので、baselineとの時間差と各job内のdense比を分けて読む。
+1seed/3epochの結果であり、精度同等・一般化を主張しない。
+
+`l4job-6827da61ce564c0cafb06a7572ddec02`:
+source_sha256=`5f3439ec816076684a2b6f89a561ae21c44319baf679dec1f6a007a2a910b4d2`.
+archive_sha256=`54409efb7f56e0d01ce3725f01d15b530dd168568bb88c803da5cbf1bc5d85f7`.
+
+`l4job-812252a12de64eabae44a6f0dfe993a9`:
+source_sha256=`632f30269cb49fb86f0f4df0b81fed6f3db1a3c060210b1fc693e125b395a6b4`.
+archive_sha256=`7373e67ae9941dbf8e3bc93ec4108cfe630aa2cdcdfb21d132d701272b0de9ac`.
+
+再測定後のcheckpoint照合では、CSTの保存済み最終model33／optimizer15 tensor、
+denseのmodel5／optimizer15 tensorが前回0acdとbyte一致した。全epochの学習・評価metric、
+radius診断とdata-order hashも一致した。epoch1/2のtensor checkpointは保存していないため、
+途中の全tensor一致とは主張しない。照合記録はignored
+`output/radius-mnist-native-20261031/checkpoint-active-grad4-audit.json`、SHA256
+`4268b1e9e110b3887c3fe0452a628d3ade5f9a958631b8f8b1b6218953851cb9`。
+
+`18941c11`統合状態でCPU全体は3163 passed／6592 skipped／既存警告19件。
+CUDA skipは追加のGPU検証件数に数えない。再現はcommand-localの
+`CXX=/usr/bin/clang++ TORCH_NO_COMPILER_WRAPPER=1 MAX_JOBS=1 CST_TEST_NATIVE_READ_LEASE=1 CST_TEST_NATIVE_FUNCTION_GUARD=1 PYTHONPATH=src:tests python -m tools.kernel_dev test --suite cpu`。
