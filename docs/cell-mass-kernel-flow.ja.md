@@ -5993,3 +5993,110 @@ result archive SHA256=`41c810f7fbae76b9efa179f7581dd8262542117b24b22dac4d32859e8
 pstats、全trace、monitor結果・集計scriptはignored
 `output/radius-host-diagnosis-20261030/`へ保全した。
 1024/MNIST、他GPU/Torch版、Graph/process peakはこの診断の対象外。
+
+### 小さいatom表のlayout/sortを単一起動へまとめる（2026-10-30）
+
+前節で約.18ms/stepだった`_ranges_from_layout_keys`のCPU入口を対象にする。
+`layout.cuh::layout_ranges`は1024 atoms以下で、キーの向きの変換、stable sort、
+全ownerのlower-bound offsetを1 CTAで実行する。
+1024を超える既存上限4096までの表は、従来のATen経路を保つ。
+階層、profile、moments、完成済みH/G、atom勾配、Polar更新則、dispatchの検証は変更しない。
+
+```text
+旧 forward: ATen stable sort → offset生成
+旧 backward: 逆向きkey表を生成 → ATen stable sort → offset生成
+
+新（A <= 1024、両方向共通）:
+  保存された元keyをsharedへ読む（backwardならここで向きを変換）
+  → 元atom番号をtie-breakにしたbitonic sort
+  → 元atom番号のrowsと全ownerのoffsetsを保存
+```
+
+元keyは`q_out * input_nodes + q_in`、逆向きは
+`q_in * output_nodes + q_out`である。両軸のnode数は既存契約どおり510以下なので、
+owner keyは18 bits以内。元atom番号を下位12 bitsへ付けたunsigned key
+`(owner_key << 12) | atom_row`を使うと30 bits以内となり、
+同値owner keyの順序は元atom番号の昇順、つまり従来のstable sortと一致する。
+次の2冪までUINT_MAXでpaddingし、paddingを除いたA個だけをrowsへ戻す。
+owner境界は`(owner * stride) << 12`のlower-boundで、空ownerと最後のend=Aも定義する。
+
+1 CTAは256 threads、dynamic sharedは`4 * next_power_of_two(max(A,1))`B。
+今回A819では4096B。並べ替え対象はshared内の一時キーだけで、
+元のforward key・atom Parameter・response表を変更しない。
+新しい永続cacheはなく、ni/noの変更は各呼び出しで読む。
+通常の小さい経路で確保するglobal Tensorは返り値のrowsとoffsetsだけで、
+sorted-key表・reverse-key表・ATen sort workspaceは作らない。
+
+CUDA/連続性/dtype/shape/A上限/ni/noの既存host検証を維持する。
+小さい経路のキー内容は`[0,ni*no)`をdevice assertionで検証し、
+CPUへの値読み出しや同期待ちは追加しない。通常経路はdeviceで検証済みの
+classification keyだけを渡す。保存済みキーのversion検査、現在atomの再分類、
+Kernel/Chart設定変更時の検証と再準備もそのままである。
+従来の`layout_ranges_aten`は大きい表へのfallbackと検査・計測用の比較入口として残す。
+
+#### 完全stepとメモリの採用判定
+
+比較元は`ef4c027a`のlayout、候補は`bff96eb1`のCUDA実装と
+`b2c0b18c`の検査。runtime全376ファイルの差は`layout.cuh`と
+診断用bindingを追加した`pipeline.cu`だけで、Python入口やoptimizerは同一である。
+L4/Torch2.11.0+cu130/CUDA13.0/Python3.13.16、N128/B4/A819/M8/seed41、
+FP32 IEEE、spacing1、base1/merge2、direct levels2、32-site CTA、
+native CSTAdamW/fused AdamW、raw decay0/amp decay.01/check_finite=Falseを固定した。
+旧/新×通常parallel/shared-profileの4条件を各2 fresh processes、
+順番を入れ替えて計8回測った。各回10 warmups/101 synchronized complete stepsで、
+入力・target・初期Parameter hashも同じである。
+
+| Plan | 旧layoutのstep中央値2回 ms | 新layoutのstep中央値2回 ms | 中央値の平均の変化 |
+| --- | --- | --- | --- |
+| 通常parallel | 1.996941 / 2.067898 | 1.842697 / 1.801634 | 2.032420 → 1.822166、10.35%短縮 |
+| shared-profile | 1.985200 / 1.984384 | 1.863882 / 1.862510 | 1.984792 → 1.863196、6.13%短縮 |
+| matched dense（全8回） | .696102–.741802 | — | denseとの速度同等は未達 |
+
+| eager allocatorのpeak（全8回同じ） | CST | matched dense |
+| --- | ---: | ---: |
+| allocated | 297984 B = .284180 MiB | 17313280 B = 16.511230 MiB |
+| reserved | 2097152 B = 2 MiB | 23068672 B = 22 MiB |
+
+globalのlayout一時表は減ったが、学習全体のpeakは旧版から変わらない。
+この計測だけからpeakを作る配列・時点は特定しない。
+新しい永続保存を追加せず、今回の両Planでdense以下を維持した。
+
+同じ実学習を別途code-eventで観察すると、`_ranges_from_layout_keys`の
+2呼び出し合計は通常189.596→47.879us、shared-profile182.414→46.864usになった。
+Python入口の回数はforward/backward各1回のままで、内部のATen呼び出し・
+allocation・kernel起動を削った効果である。prepared/program identityは同じで、
+dispatch cacheはhits19/miss1からhits80/miss1へ進み、再prepareは起きなかった。
+計16 training trace scopesで内部sync/item/DtoHは0、stepのGPU kernelは25→20。
+同一binaryのlayout単体traceでは旧forward3 kernels約29.30us、旧reverse4 kernels
+約30.48usから、各1 kernel約21.29/21.60usへ変わった。
+新kernelは32 registers/thread、shared4096B、grid1/block256だった。
+別計測のinclusive host時間やprofilerのbusy時間は、primary stepと加減算しない。
+
+今回のGPU gateは412 passed。stable rows/offsetsは独立CPU oracleと完全一致し、
+A0–4096、padding境界、同値key、空owner、両方向、owner数変更、
+1024を超えるfallback、deviceの不正keyを含む。
+独立Y/dX/全atom勾配・quadrature検査も各測定前に通過した。
+5回実更新後の35 Tensor（Parameter/勾配/Adam状態等）は、両Planとも旧新bit一致。
+CPU suiteは2672 passed/6162 skipped（既存warning19件）、Ruff/diff検査と
+wheel/sdistの全376 runtimeファイル照合も通過した。
+
+最初のjob `l4job-de5d857f719e490c802bec73d988df5e`は411 passed/1 failed。
+owner数を変えても偶然同順になる入力を、異順になると期待した検査fixtureの誤りで、
+実装の出力は両設定ともCPU oracleと一致していた。入力へkey4を足して修正し、
+runtimeを変更せず、ソース・binary SHA照合済みのビルドを再利用して全gateを再実行した。
+失敗jobの性能値は採用していない。
+
+成功job=`l4job-490403651edb4e668858c17a32b3dbae`、snapshot SHA256=
+`446f662e4947882051887bf6f2bab790424a37ef3ee1fa205bc57ccdeecd9200`、
+result archive SHA256=`6aa6dbf11292c47b7c3fa70521ba78069132afd4de633111910f6a635a63d4a9`。
+候補binary=`torchcst_radius_cell_mass_37a00de5c036`、SHA256=
+`7c81476250b4ea1651a0e36f4afb8edb9ab5ebb88d3f77d4ad29969855ac70eb`。
+比較元binary=`torchcst_radius_cell_mass_b1d35927a8ff`、SHA256=
+`7fd5cf591cf8fe45d47fc08f2f6f9ef353fb64af947a25b628246960810f65a8`。
+driver/worker/source/results/receipt、raw timing/state/trace、集計と失敗jobも
+ignored `output/radius-block-layout-20261030/`へ保全した。
+共有poolは結果取得後にstoppedを確認した。
+
+この範囲では完全stepが両Plan・両反復とも短縮したため、A<=1024のlayoutを採用する。
+Plan/自動selector/数式・許容誤差・階層とresponseの再利用は変更しない。
+1024行列/MNIST、他GPU/Torch版、Graph/process memory、新たなsanitizer検査は対象外である。
