@@ -42,6 +42,11 @@ __global__ void shared_projection_kernel(
 
     int levels = axis.bank_count / 2;
     for (int level = start; level < (merge ? levels : start + 1); ++level) {
+        // The required mask is complete and immutable after the barrier above.
+        // Every thread takes this branch together. Keep barriers for producers
+        // consumed by a parent, but do not scan/synchronize an unused level.
+        // Direct construction visits all selected banks in its single pass.
+        if (merge && !(required_banks & (3u << (2 * level)))) continue;
         for (int i = threadIdx.x; i < elements; i += blockDim.x) {
             int node = prefix + i / axis.basis_count();
             int bi = bank_for_node(node, axis);
