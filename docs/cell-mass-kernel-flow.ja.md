@@ -6444,3 +6444,28 @@ snapshot SHA256=`25423ead014a71a2cd616fcf720928fcb256473e3eb5dbfe24918dd6e0d0f35
 result archive SHA256=`455311010d82267d667dd01764de6b319f9300b279fc6d4efa312fd5edf91046`。
 source/results/receipt/8 primary JSON/単一code-object診断/trace/stateをignored
 `output/radius-read-lease-20261030/`へ保全した。
+
+#### C++ host autogradの初回比較
+
+catalog修正後のjob `l4job-1004f07e73d24214aa862eb71299bc8d`は147 GPU-host tests、
+各Planの5更新後35 Tensorのbit一致、8 primary processesのbenchmark gatesが通過した。
+両条件が同じCUDA stage binaryを使い、recipeの`native_autograd`だけを切り替えた。
+通常parallelは平均中央値1.786286→1.688557ms（5.47%）、shared-profileは
+1.771156→1.688535ms（4.66%）。候補のdenseは.726257–.741576msで、時間条件は未達。
+候補のallocated/reservedは287232/2097152B、denseは17313280/23068672B。
+baseline allocatedは297984B。C++ backwardではdXのrouting rows/offsetsを
+atom勾配の前に解放するため、同じ保存cacheのままピークの重なりも減る。
+
+CPU全体はcatalog修正後2750 passed/6194 skipped、既存warning19件。
+新native host nodeのoffload、retained/通常backward、dX-only/atom-only、
+saved-version検査、二階微分の拒否はGPUテストでも対象にした。
+snapshot SHA256=`771bd648f41399e7ee8ce0cb3e75b859794e9b4f49a09b19ef07e72dc8446220`、
+result archive SHA256=`dacff5f0ee9fd9218e4d2161f930b504e3402d12a18d44b6ed199ad50d3ba0a3`。
+source/results/receipt/8 primary JSON/stateと再利用可能なnative binaryをignored
+`output/radius-host-autograd-20261030/`へ保全した。
+
+次のGPU比較は、必要bankのwarp内集約・bank範囲だけの走査
+（`l4job-9173c82f2f264e5fac51399ee8be55d6`）と、依存のないdirect momentsを
+grid全体へ配る方式（`l4job-9972b42d198549098b7c0547d676cf47`）。
+後者の追加global scratchはbank maskの4 bytes（allocator単位では別）だけで、
+coeffsのglobal表やatomの複製を作らない。比較完了までは性能採用未確認とする。

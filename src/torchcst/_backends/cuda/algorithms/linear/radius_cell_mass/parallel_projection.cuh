@@ -21,8 +21,8 @@ __global__ void parallel_response_kernel(
     double original = center(p, atom, axis, output_side);
     Membership member = classify(R, original, axis);
     Bank bank = axis.banks[member.bank];
-    double c[17], dr[17];
-    profile_coefficients(R, bank.period, axis.modes, c, dr);
+    double c[17];
+    profile_values(R, bank.period, axis.modes, c);
     double mu = wrapped_center(original, axis);
     double values[PARALLEL_RESPONSE_BATCH] = {};
 

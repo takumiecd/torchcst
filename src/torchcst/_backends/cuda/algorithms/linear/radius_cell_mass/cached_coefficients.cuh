@@ -155,8 +155,8 @@ __global__ void cached_expand_kernel(
                     double R = radius(p, atom, axis);
                     double original = center(p, atom, axis, output_side);
                     Membership member = classify(R, original, axis);
-                    double c[17], dr[17];
-                    profile_coefficients(R, bank.period, axis.modes, c, dr);
+                    double c[17];
+                    profile_values(R, bank.period, axis.modes, c);
                     double *saved = cache + threadIdx.x * stride;
                     for (int k = 0; k <= axis.modes; ++k) saved[k] = c[k];
                     saved[axis.modes + 1] = wrapped_center(original, axis);

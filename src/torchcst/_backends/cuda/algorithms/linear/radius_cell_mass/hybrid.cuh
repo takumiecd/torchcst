@@ -280,9 +280,17 @@ __global__ void hybrid_parameter_kernel(const T *p, const T *x, const T *dy, con
     double muo = wrapped_center(center(p, atom, output, true), output);
     Membership mi = classify(ri, center(p, atom, input, false), input);
     Membership mo = classify(ro, center(p, atom, output, true), output);
-    double ci[17], di[17], co[17], dout[17];
-    profile_coefficients(ri, input.banks[mi.bank].period, input.modes, ci, di);
-    profile_coefficients(ro, output.banks[mo.bank].period, output.modes, co, dout);
+    double ci[17], di[17] = {}, co[17], dout[17] = {};
+    double input_period = input.banks[mi.bank].period;
+    double output_period = output.banks[mo.bank].period;
+    if (input.polar) profile_values(ri, input_period, input.modes, ci);
+    else profile_coefficients(ri, input_period, input.modes, ci, di);
+    if (ri == ro && input_period == output_period && input.modes == output.modes) {
+        // Center changes phase, never the radial polynomial. Symmetric axes
+        // share both coefficients and their derivatives in thread-local memory.
+        for (int k = 0; k <= output.modes; ++k) { co[k] = ci[k]; dout[k] = di[k]; }
+    } else if (output.polar) profile_values(ro, output_period, output.modes, co);
+    else profile_coefficients(ro, output_period, output.modes, co, dout);
     double da = 0, dR = 0, dmi = 0, dmo = 0, amp = amplitude(p, atom, input);
     for (int b = 0; b < batch; ++b) {
         double dri, dci, dro, dco;

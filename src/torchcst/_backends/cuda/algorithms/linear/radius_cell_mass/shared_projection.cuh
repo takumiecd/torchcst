@@ -117,8 +117,8 @@ __global__ void shared_projection_kernel(
             double original = center(p, atom, axis, output_side);
             Membership member = classify(R, original, axis);
             Bank bank = axis.banks[member.bank];
-            double c[17], dr[17], dR, dmu;
-            profile_coefficients(R, bank.period, axis.modes, c, dr);
+            double c[17], dr[17] = {}, dR, dmu;
+            profile_values(R, bank.period, axis.modes, c);
             double mu = wrapped_center(original, axis);
             double value = bank.level < start
                 ? direct_project(row, 0, axis, member, mu, c, dr, dR, dmu)
