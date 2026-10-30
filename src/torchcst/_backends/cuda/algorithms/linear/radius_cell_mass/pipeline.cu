@@ -19,7 +19,12 @@ inline void check_matrix(const Tensor &x) {
 }
 inline void check_atoms(const Tensor &p) {
     check_matrix(p);
-    TORCH_CHECK(p.size(1) == 4 && p.size(0) <= 4096, "expected at most 4096 four-column atoms");
+    TORCH_CHECK(p.size(1) == 4 && p.size(0) <= MAX_ATOMS, "expected at most 65536 four-column atoms");
+}
+inline void check_shared_shape(const Tensor &p, const Axis &input, const Axis &output) {
+    TORCH_CHECK(input.sites <= SHARED_MAX_SITES && output.sites <= SHARED_MAX_SITES &&
+        p.size(0) <= SHARED_MAX_ATOMS,
+        "shared radius schedules require at most 128 sites and 4096 atoms");
 }
 inline void check_moments(const Tensor &z, const Tensor &p, const Axis &axis) {
     TORCH_CHECK(z.device() == p.device() && z.scalar_type() == torch::kDouble &&
@@ -370,6 +375,7 @@ Tensor parameter_grad(Tensor p, Tensor zx, Tensor zy, Tensor h, Tensor g, Config
 #include "hybrid.cuh"
 #include "block_local.cuh"
 #include "shared_projection.cuh"
+#include "batched_cached_coefficients.cuh"
 #include "layout.cuh"
 #include "expansion_probe.cuh"
 
@@ -383,6 +389,7 @@ void check_autograd_entry(Tensor x, Tensor p, Config input_config,
     int tile_sites, int schedule) {
     check_matrix(x); check_atoms(p);
     Axis input = parse_axis(input_config), output = parse_axis(output_config);
+    check_shared_shape(p, input, output);
     TORCH_CHECK(x.device() == p.device() && x.scalar_type() == p.scalar_type() &&
         x.size(1) == input.sites, "expected matching CUDA signal and atoms");
     int zi = (input.node_count - checked_start(input, input_start)) * input.basis_count();
@@ -471,8 +478,10 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("direct_response", &radius_cell_mass::direct_response);
     m.def("direct_response_into", &radius_cell_mass::direct_response_into);
     m.def("complete_response", &radius_cell_mass::complete_response);
+    m.def("parallel_response_into", &radius_cell_mass::parallel_response_into);
     m.def("compact_coefficients", &radius_cell_mass::compact_coefficients);
     m.def("expand_hybrid", &radius_cell_mass::expand_hybrid);
+    m.def("batched_cached_expansion", &radius_cell_mass::batched_cached_expansion);
     m.def("hybrid_parameter_grad", &radius_cell_mass::hybrid_parameter_grad);
     m.def("block_local_forward", &radius_cell_mass::block_local_forward);
     m.def("block_local_backward", &radius_cell_mass::block_local_backward);

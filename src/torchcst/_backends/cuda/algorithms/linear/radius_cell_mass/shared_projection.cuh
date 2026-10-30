@@ -154,6 +154,7 @@ inline std::vector<Tensor> shared_apply(
     bool batched_coefficients = false) {
     check_matrix(x); check_atoms(p);
     Axis input = parse_axis(input_config), output = parse_axis(output_config);
+    check_shared_shape(p, input, output);
     TORCH_CHECK(x.device() == p.device() && x.scalar_type() == p.scalar_type() &&
         x.size(1) == input.sites, "signal and atoms must match radius projection axis/device/dtype");
     checked_start(input, input_start); checked_start(output, output_start);
@@ -307,6 +308,7 @@ inline std::vector<Tensor> counted_cached_expansion(Tensor p, Tensor rows, Tenso
     Tensor response, Config config, int start, int tile_sites, bool output_side) {
     check_atoms(p);
     Axis axis = parse_axis(config);
+    check_shared_shape(p, axis, axis);
     checked_start(axis, start); check_ranges(rows, offsets, p, axis);
     TORCH_CHECK(tile_sites >= 1 && tile_sites <= 128, "invalid cached tile size");
     TORCH_CHECK(response.device() == p.device() && response.scalar_type() == torch::kDouble &&

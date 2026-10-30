@@ -12,6 +12,8 @@ class RadiusCellMassRecipe:
     # The two axes are independent; zero preserves the original reference.
     input_direct_levels: int = 0
     output_direct_levels: int = 0
+    # global_batched_cached retains global hierarchical Z/H/G while keeping
+    # expansion coefficients in one bank/tile-local bounded shared cache.
     schedule: str = "sequential"
     output_tile_sites: int = 32
     # Opt-in C++ host/autograd graph; all CUDA arithmetic stages are identical.

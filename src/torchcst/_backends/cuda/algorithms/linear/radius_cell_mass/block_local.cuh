@@ -207,6 +207,7 @@ inline std::vector<Tensor> block_local_apply(
     check_matrix(x);
     check_atoms(p);
     Axis input = parse_axis(input_config), output = parse_axis(output_config);
+    check_shared_shape(p, input, output);
     TORCH_CHECK(x.device() == p.device() && x.scalar_type() == p.scalar_type() &&
                 x.size(1) == input.sites, "signal and atoms must match radius projection axis/device/dtype");
     TORCH_CHECK(input_start >= 0 && input_start <= input.bank_count / 2 &&

@@ -1,4 +1,5 @@
 #pragma once
+#include "limits.cuh"
 #include <torch/extension.h>
 #include <cfloat>
 #include <climits>
@@ -29,7 +30,7 @@ struct Axis {
 inline Axis parse_axis(const std::vector<double> &config) {
     TORCH_CHECK(config.size() == 6 || config.size() == 15, "radius axis requires 6 or 15 scalars");
     for (double v : config) TORCH_CHECK(std::isfinite(v), "axis scalars must be finite");
-    TORCH_CHECK(config[0] >= 1 && config[0] <= 128 && config[0] == floor(config[0]), "invalid sites");
+    TORCH_CHECK(config[0] >= 1 && config[0] <= MAX_SITES && config[0] == floor(config[0]), "invalid sites");
     TORCH_CHECK(config[2] >= 1 && config[2] <= config[0] && config[2] == floor(config[2]), "invalid base tile");
     TORCH_CHECK(config[4] >= 1 && config[4] <= 16 && config[4] == floor(config[4]), "invalid modes");
     TORCH_CHECK(config[5] >= 2 && config[5] <= INT_MAX && config[5] == floor(config[5]), "invalid merge factor");

@@ -7,6 +7,8 @@ from test_radius_cell_mass_fused_backward import RecordingNative
 
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass import executor as ex
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plan import (
+    MAX_ATOMS,
+    MAX_SITES,
     HierarchyPlan,
 )
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plans import BLOCK_LOCAL
@@ -81,9 +83,9 @@ def test_native_ranges_reject_bad_metadata_without_device_value_reads(kind):
     elif kind == "strided":
         keys = keys[::2]
     elif kind == "too_many":
-        keys = torch.zeros(4097, device="cuda", dtype=torch.int64)
+        keys = torch.zeros(MAX_ATOMS + 1, device="cuda", dtype=torch.int64)
     else:
-        ni = 511
+        ni = 4 * MAX_SITES - 1
     with pytest.raises(RuntimeError, match="owner|node"):
         ex._extension().layout_ranges(keys, ni, no, False)
 

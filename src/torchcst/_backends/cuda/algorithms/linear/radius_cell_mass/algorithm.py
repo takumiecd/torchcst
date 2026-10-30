@@ -12,6 +12,7 @@ from torchcst.kernels.radius_cell_mass import radius_cell_mass_axes
 from torchcst.operators.context import LinearContext
 from torchcst.operators.execution import LinearInputs, linear_execution
 
+from .plan import MAX_ATOMS, SHARED_MAX_ATOMS, SHARED_MAX_SITES
 from .recipe import RadiusCellMassRecipe
 
 
@@ -78,6 +79,8 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
         if type(recipe.schedule) is not str or recipe.schedule not in (
             "sequential",
             "overlap",
+            "global_batched_cached",
+            "global_batched_cached_response4",
             "block_local",
             "block_local_parallel",
             "block_local_cached_parallel",
@@ -122,8 +125,8 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             reasons.append("requires a CUDA device")
         if context.dtype not in (torch.float32, torch.float64):
             reasons.append("requires float32 or float64")
-        if context.atom_count > 4096 or context.parameter_dim != 4:
-            reasons.append("requires at most 4096 four-column radius atoms")
+        if context.atom_count > MAX_ATOMS or context.parameter_dim != 4:
+            reasons.append(f"requires at most {MAX_ATOMS} four-column radius atoms")
         work = max(
             plan.input.node_count * plan.input.basis_count,
             plan.output.node_count * plan.output.basis_count,
@@ -137,6 +140,13 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "block_local_cached_parallel",
             "block_local_batched_cached_parallel",
         ):
+            if (
+                max(plan.input.site_count, plan.output.site_count) > SHARED_MAX_SITES
+                or context.atom_count > SHARED_MAX_ATOMS
+            ):
+                reasons.append(
+                    "shared radius schedules require at most 128 sites and 4096 atoms"
+                )
             if 8 * (context.atom_count + max(zi, co)) > 48 * 1024:
                 reasons.append("block-local shared storage exceeds 48 KiB")
             if context.m > 65535:
@@ -155,9 +165,15 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
                             "coefficient cache shared storage exceeds 48 KiB"
                         )
                         break
-        if recipe.schedule == "block_local_batched_cached_parallel":
+        if recipe.schedule in (
+            "block_local_batched_cached_parallel",
+            "global_batched_cached",
+            "global_batched_cached_response4",
+        ):
             from .expansion_layout import batched_coefficient_layout
 
+            if recipe.schedule.startswith("global_") and context.m > 65535:
+                reasons.append("batched expansion batch exceeds 65535")
             try:
                 for axis, start in (
                     (plan.input, recipe.input_direct_levels),
@@ -166,6 +182,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
                     batched_coefficient_layout(axis, start, recipe.output_tile_sites)
             except ValueError as error:
                 reasons.append(str(error))
+
         if context.execution_mode != "eager" or context.precision.autocast:
             reasons.append("requires eager execution without autocast")
         if context.workspace_limit_bytes is not None:

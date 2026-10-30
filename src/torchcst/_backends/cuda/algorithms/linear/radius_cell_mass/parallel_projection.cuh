@@ -88,4 +88,29 @@ __global__ void parallel_response_kernel(
     }
 }
 
+// General global-moment entry: projection is already complete on this stream.
+// Reuse the same profile/phase once for up to four H/G rows, without shared
+// projection's N128 budget or any atom-value cache/copy. The caller owns H/G.
+inline void parallel_response_into(Tensor signal, Tensor p, Tensor z, Tensor response,
+    Config config, bool output_side, int start) {
+    check_atoms(p);
+    Axis axis = parse_axis(config);
+    check_hybrid_signal(signal, p, axis);
+    check_compact(z, p, axis, start);
+    TORCH_CHECK(z.size(0) == signal.size(0), "parallel response moment batch differs");
+    check_response(response, p, signal.size(0));
+    TORCH_CHECK(signal.size(0) <= 65535, "parallel response batch exceeds 65535");
+    if (!response.numel()) return;
+    c10::cuda::CUDAGuard guard(signal.device());
+    dim3 grid((p.size(0) + PARALLEL_RESPONSE_THREADS - 1) / PARALLEL_RESPONSE_THREADS,
+        (signal.size(0) + PARALLEL_RESPONSE_BATCH - 1) / PARALLEL_RESPONSE_BATCH);
+    AT_DISPATCH_FLOATING_TYPES(signal.scalar_type(), "radius_parallel_response", [&] {
+        parallel_response_kernel<scalar_t><<<grid, PARALLEL_RESPONSE_THREADS, 0,
+            at::cuda::getCurrentCUDAStream()>>>(
+            signal.data_ptr<scalar_t>(), p.data_ptr<scalar_t>(), z.data_ptr<double>(),
+            response.data_ptr<double>(), p.size(0), signal.size(0), axis, start, output_side);
+    });
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+}
+
 } // namespace radius_cell_mass

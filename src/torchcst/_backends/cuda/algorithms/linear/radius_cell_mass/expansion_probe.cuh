@@ -156,6 +156,7 @@ void run_expansion_probe(Tensor p, Tensor rows, Tensor offsets, Tensor responses
     check_atoms(p);
     TORCH_CHECK(p.scalar_type() == torch::kFloat, "expansion probe requires FP32 atoms");
     Axis axis = parse_axis(config);
+    check_shared_shape(p, axis, axis);
     checked_start(axis, start); check_ranges(rows, offsets, p, axis);
     TORCH_CHECK(axis.sites == 128, "expansion probe is scoped to 128 sites");
     TORCH_CHECK(tile_sites == 32, "expansion probe requires the existing 32-site CTA");

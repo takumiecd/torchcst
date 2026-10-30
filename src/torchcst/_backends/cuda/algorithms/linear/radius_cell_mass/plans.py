@@ -58,3 +58,27 @@ BLOCK_LOCAL_BATCHED_CACHED_PARALLEL = ExecutionPlan(
         schedule="block_local_batched_cached_parallel",
     ),
 )
+
+
+# Experimental general projection + tile-local expansion; no native host entry.
+GLOBAL_BATCHED_CACHED = ExecutionPlan(
+    "cuda_radius_cell_mass",
+    "v1",
+    RadiusCellMassRecipe(
+        input_direct_levels=2,
+        output_direct_levels=2,
+        schedule="global_batched_cached",
+    ),
+)
+
+
+# Response-only attribution against GLOBAL_BATCHED_CACHED's serial H/G stages.
+GLOBAL_BATCHED_RESPONSE4 = ExecutionPlan(
+    "cuda_radius_cell_mass",
+    "v1",
+    RadiusCellMassRecipe(
+        input_direct_levels=2,
+        output_direct_levels=2,
+        schedule="global_batched_cached_response4",
+    ),
+)

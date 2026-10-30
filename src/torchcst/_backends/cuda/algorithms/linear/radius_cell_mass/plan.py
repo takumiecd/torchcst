@@ -4,6 +4,11 @@ import math
 from dataclasses import dataclass
 from functools import cached_property
 
+MAX_SITES = 1024
+MAX_ATOMS = 65536
+SHARED_MAX_SITES = 128
+SHARED_MAX_ATOMS = 4096
+
 
 @dataclass(frozen=True)
 class BankPlan:
@@ -53,8 +58,8 @@ class AxisPlan:
             type(v) is not int or v < 1 for v in (self.site_count, self.base_tile_sites)
         ):
             raise ValueError("site_count and base_tile_sites must be positive integers")
-        if self.site_count > 128 or self.site_count % self.base_tile_sites:
-            raise ValueError("base_tile_sites must divide site_count <= 128")
+        if self.site_count > MAX_SITES or self.site_count % self.base_tile_sites:
+            raise ValueError(f"base_tile_sites must divide site_count <= {MAX_SITES}")
         if type(self.merge_factor) is not int or self.merge_factor < 2:
             raise ValueError("merge_factor must be an integer at least two")
         ratio = self.site_count // self.base_tile_sites

@@ -15,7 +15,7 @@ import torch
 from torch.autograd.function import once_differentiable
 
 from .algorithm import RadiusCellMassAlgorithm
-from .plan import HierarchyPlan
+from .plan import MAX_ATOMS, SHARED_MAX_ATOMS, SHARED_MAX_SITES, HierarchyPlan
 from .recipe import RadiusCellMassRecipe
 
 
@@ -139,18 +139,27 @@ def _moment_stream(device_index):
 
 
 def _complete_hybrid_response(signal, atoms, axis, start_level, recipe, output_side):
-    """Fork independent direct and moment work, then join final responses.
+    """Complete H/G using the selected global-moment response schedule.
 
-    Low/high kernels write disjoint atom entries of the same response tensor.
-    The join precedes every coefficient/gradient consumer. Stream separation
-    permits concurrency; it does not guarantee concurrent SM residency.
+    Serial/overlap low/high kernels write disjoint atom entries. The four-row
+    option instead waits for moments and writes every response in one launch.
+    Every consumer follows completion; overlap does not guarantee SM residency.
     """
     native = _extension()
     config = axis.native_config()
     response = torch.empty(
         (signal.shape[0], atoms.shape[0]), device=signal.device, dtype=torch.float64
     )
-    if recipe.schedule == "overlap":
+    if recipe.schedule == "global_batched_cached_response4":
+        # The same global hierarchy is completed first. One launch then writes
+        # all low/high atom responses, reusing geometry across four batch rows.
+        moments = build_moments(
+            signal, axis, method=recipe.moment_method, start_level=start_level
+        )
+        native.parallel_response_into(
+            signal, atoms, moments, response, config, output_side, start_level
+        )
+    elif recipe.schedule == "overlap":
         parent = torch.cuda.current_stream(signal.device)
         auxiliary = _moment_stream(signal.device.index)
         # Fork AFTER response allocation but BEFORE the direct kernel. Waiting
@@ -337,26 +346,43 @@ class _HybridRadiusLinear(torch.autograd.Function):
         moments, response = _complete_hybrid_response(
             x, atoms, plan.input, recipe.input_direct_levels, recipe, False
         )
-        coefficients = native.compact_coefficients(
-            atoms,
-            rows,
-            offsets,
-            response,
-            plan.output.native_config(),
-            True,
-            recipe.output_direct_levels,
-        )
-        y = native.expand_hybrid(
-            atoms,
-            rows,
-            offsets,
-            response,
-            coefficients,
-            x,
-            plan.output.native_config(),
-            True,
-            recipe.output_direct_levels,
-        )
+        if recipe.schedule in (
+            "global_batched_cached",
+            "global_batched_cached_response4",
+        ):
+            # Consume the same completed H. Only a destination bank/tile's C
+            # exists in shared memory; no global coefficient Tensor is created.
+            y = native.batched_cached_expansion(
+                atoms,
+                rows,
+                offsets,
+                response,
+                plan.output.native_config(),
+                recipe.output_direct_levels,
+                recipe.output_tile_sites,
+                True,
+            )
+        else:
+            coefficients = native.compact_coefficients(
+                atoms,
+                rows,
+                offsets,
+                response,
+                plan.output.native_config(),
+                True,
+                recipe.output_direct_levels,
+            )
+            y = native.expand_hybrid(
+                atoms,
+                rows,
+                offsets,
+                response,
+                coefficients,
+                x,
+                plan.output.native_config(),
+                True,
+                recipe.output_direct_levels,
+            )
         ctx.plan, ctx.recipe = plan, recipe
         ctx.save_for_backward(x, atoms, moments, response)
         return y
@@ -382,29 +408,46 @@ class _HybridRadiusLinear(torch.autograd.Function):
         # atom gradients; neither is rebuilt by the parameter-gradient stage.
         grad_input = None
         if ctx.needs_input_grad[0]:
-            coefficients = native.compact_coefficients(
-                atoms,
-                rows,
-                offsets,
-                grad_response,
-                plan.input.native_config(),
-                False,
-                recipe.input_direct_levels,
-            )
-            grad_input = native.expand_hybrid(
-                atoms,
-                rows,
-                offsets,
-                grad_response,
-                coefficients,
-                dy,
-                plan.input.native_config(),
-                False,
-                recipe.input_direct_levels,
-            )
-            # Cin is not an input to atom gradients. Release it before the
-            # parameter-gradient stage while retaining the shared moments/G.
-            del coefficients
+            if recipe.schedule in (
+                "global_batched_cached",
+                "global_batched_cached_response4",
+            ):
+                # Reverse expansion consumes final G once for each destination
+                # tile. Saved Zx/H and completed Zy/G still feed all dP below.
+                grad_input = native.batched_cached_expansion(
+                    atoms,
+                    rows,
+                    offsets,
+                    grad_response,
+                    plan.input.native_config(),
+                    recipe.input_direct_levels,
+                    recipe.output_tile_sites,
+                    False,
+                )
+            else:
+                coefficients = native.compact_coefficients(
+                    atoms,
+                    rows,
+                    offsets,
+                    grad_response,
+                    plan.input.native_config(),
+                    False,
+                    recipe.input_direct_levels,
+                )
+                grad_input = native.expand_hybrid(
+                    atoms,
+                    rows,
+                    offsets,
+                    grad_response,
+                    coefficients,
+                    dy,
+                    plan.input.native_config(),
+                    False,
+                    recipe.input_direct_levels,
+                )
+                # Cin is not an input to atom gradients. Release it before the
+                # parameter-gradient stage while retaining the shared moments/G.
+                del coefficients
 
         grad_atoms = None
         if ctx.needs_input_grad[1]:
@@ -532,8 +575,10 @@ def radius_linear(plan, x, atoms, *, recipe=None):
     """Execute a bounded first-order research route through an explicit Plan.
 
     Initialize CSTLinear with the CPU reference and then move it to CUDA.
-    This stage supports N<=128, M<=16 and A<=4096, without autocast/Graph or
-    higher-order derivatives. These limits are execution choices, not API math.
+    General stages support N<=1024 and A<=65536 with global hierarchical
+    moments/responses. global_batched_cached keeps C local to a bounded tile;
+    sequential/overlap retain global C. Shared projection stays N<=128/A<=4096. All
+    routes require M<=16 and eager first-order execution without autocast.
     """
     if type(plan) is not HierarchyPlan:
         raise TypeError("expected a radius HierarchyPlan")
@@ -553,7 +598,7 @@ def radius_linear(plan, x, atoms, *, recipe=None):
         or x.shape[1] != plan.input.site_count
         or atoms.ndim != 2
         or atoms.shape[1] != 4
-        or atoms.shape[0] > 4096
+        or atoms.shape[0] > MAX_ATOMS
     ):
         raise ValueError("expected matching CUDA float32/64 signal and [atom,4] rows")
     work_per_batch = max(
@@ -569,6 +614,13 @@ def radius_linear(plan, x, atoms, *, recipe=None):
         "block_local_cached_parallel",
         "block_local_batched_cached_parallel",
     ):
+        if (
+            max(plan.input.site_count, plan.output.site_count) > SHARED_MAX_SITES
+            or atoms.shape[0] > SHARED_MAX_ATOMS
+        ):
+            raise ValueError(
+                "shared radius schedules require at most 128 sites and 4096 atoms"
+            )
         if 8 * (atoms.shape[0] + max(zi, co)) > 48 * 1024:
             raise ValueError("block-local shared storage exceeds 48 KiB")
         if x.shape[0] > 65535:
@@ -584,8 +636,15 @@ def radius_linear(plan, x, atoms, *, recipe=None):
                     minimum += axis.basis_count * 33 * 8
                 if minimum > 48 * 1024:
                     raise ValueError("coefficient cache shared storage exceeds 48 KiB")
-    if recipe.schedule == "block_local_batched_cached_parallel":
+    if recipe.schedule in (
+        "block_local_batched_cached_parallel",
+        "global_batched_cached",
+        "global_batched_cached_response4",
+    ):
         from .expansion_layout import batched_coefficient_layout
+
+        if x.shape[0] > 65535:
+            raise ValueError("batched expansion batch exceeds 65535")
 
         for axis, start in (
             (plan.input, recipe.input_direct_levels),
@@ -633,7 +692,8 @@ def radius_linear(plan, x, atoms, *, recipe=None):
         elif (
             recipe.input_direct_levels
             or recipe.output_direct_levels
-            or recipe.schedule == "overlap"
+            or recipe.schedule
+            in ("overlap", "global_batched_cached", "global_batched_cached_response4")
         ):
             function = _HybridRadiusLinear
         else:

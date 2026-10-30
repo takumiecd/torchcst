@@ -99,14 +99,90 @@ def oracle(model, x, p=None):
     return (x @ vi) @ uo.T
 
 
+REFERENCE_CHUNK_ATOMS = 256
+
+
+def _reference_model(model, parameters):
+    """Fresh public CPU site with current fixed charts/kernel and selected P."""
+    return CSTLinear(
+        *model.cst_charts(),
+        atoms=parameters.detach().clone(),
+        kernel=model.kernel.declaration(),
+        backend="factored",
+    )
+
+
+def chunked_reference(model, x, dy=None, *, chunk_atoms=REFERENCE_CHUNK_ATOMS):
+    """Public CPU Fourier Y and optional VJP with at most one chunk graph live.
+
+    All current atom rows are evaluated, in original order. Fixed chart/kernel
+    values come from the live model, not the initializer. Chunking bounds the
+    site-by-atom factors and frees each graph before processing the next chunk.
+    Returned values are detached; this is benchmark validation, not a backend.
+    """
+    if type(chunk_atoms) is not int or chunk_atoms < 1:
+        raise ValueError("reference chunk_atoms must be a positive integer")
+    if x.device.type != "cpu" or model.atoms.p.device.type != "cpu":
+        raise ValueError("chunked reference requires a CPU model and inputs")
+    if dy is not None and (dy.shape != x.shape or dy.dtype != x.dtype):
+        raise ValueError("reference dy must have the input shape and dtype")
+    tx = x.detach().requires_grad_(dy is not None)
+    y = x.new_zeros((x.shape[0], model.out_features))
+    dx = torch.zeros_like(x) if dy is not None else None
+    dp = []
+    part = None
+    for start in range(0, model.atoms.count, chunk_atoms):
+        parameters = model.atoms.p[start : start + chunk_atoms]
+        if part is None or part.atoms.count != len(parameters):
+            part = _reference_model(model, parameters)
+        else:
+            with torch.no_grad():
+                part.atoms.p.copy_(parameters)
+        with torch.set_grad_enabled(dy is not None):
+            value = part(tx)
+            if dy is not None:
+                gx, gp = torch.autograd.grad(value, (tx, part.atoms.p), dy.detach())
+                dx.add_(gx.detach())
+                dp.append(gp.detach())
+        y.add_(value.detach())
+        # Explicitly drop SavedVariables before constructing the next chunk.
+        del value
+    return y if dy is None else (y, dx, torch.cat(dp))
+
+
+def _chunked_loss_backward(model, x, target, *, chunk_atoms=REFERENCE_CHUNK_ATOMS):
+    # Loss couples atoms: derive one global dY before the per-chunk VJPs.
+    y = chunked_reference(model, x, chunk_atoms=chunk_atoms)
+    dy = 2 * (y - target) / y.numel()
+    _, x.grad, model.atoms.p.grad = chunked_reference(
+        model, x, dy, chunk_atoms=chunk_atoms
+    )
+
+
+def stratified_subset(model, count=8):
+    """Current atom rows spanning the decoded input/output radius range."""
+    from torchcst._backends.torch.parameterizations.radius_cell_mass import (
+        decoded_values,
+    )
+
+    _, ri, ro = decoded_values(model.kernel, model.atoms.p.detach())
+    order = torch.maximum(ri, ro).argsort(stable=True)
+    indices = order[torch.linspace(0, len(order) - 1, min(count, len(order))).long()]
+    return _reference_model(model, model.atoms.p[indices]), indices.tolist()
+
+
 def check(model, x, dy, *, independent=False):
     cpu = copy.deepcopy(model).cpu().double()
     tx = x.detach().cpu().double().requires_grad_()
     # CPU reference must use its public Torch route after copying a CUDA selector.
     cpu.selector = None
     cpu.backend = "factored"
-    expected = oracle(cpu, tx) if independent else cpu(tx)
-    reference = torch.autograd.grad(expected, (tx, cpu.atoms.p), dy.cpu().double())
+    chunked = not independent and cpu.in_features > 128
+    if chunked:
+        expected, *reference = chunked_reference(cpu, tx, dy.detach().cpu().double())
+    else:
+        expected = oracle(cpu, tx) if independent else cpu(tx)
+        reference = torch.autograd.grad(expected, (tx, cpu.atoms.p), dy.cpu().double())
     xx = x.detach().clone().requires_grad_()
     actual = model(xx)
     gradients = torch.autograd.grad(actual, (xx, model.atoms.p), dy)
@@ -126,6 +202,7 @@ def check(model, x, dy, *, independent=False):
             else "full sites/all atoms; FP64 public Torch Fourier reference (separately quadrature-qualified)"
         ),
         "errors": errors,
+        **({"reference_chunk_atoms": REFERENCE_CHUNK_ATOMS} if chunked else {}),
     }
 
 
@@ -138,7 +215,7 @@ def configure(model, plan):
     return model
 
 
-def optimizer(model, case, *, gpu=True):
+def optimizer(model, case, *, gpu=True, compatibility=False):
     kwargs = {}
     if gpu:
         from torchcst._backends.catalog import get_registry
@@ -152,17 +229,18 @@ def optimizer(model, case, *, gpu=True):
         )
         # Use the public native optimizer measured by the complete-step study.
         # The CPU oracle below retains the independent compatibility wrapper.
-        return CSTAdamW(
-            model.parameters(),
-            model=model,
-            lr=case.optimizer.lr,
-            amplitude_weight_decay=case.optimizer.weight_decay,
-            weight_decay=0.0,
-            fused=case.optimizer.fused,
-            capturable=False,
-            check_finite=False,
-            **kwargs,
-        )
+        if not compatibility:
+            return CSTAdamW(
+                model.parameters(),
+                model=model,
+                lr=case.optimizer.lr,
+                amplitude_weight_decay=case.optimizer.weight_decay,
+                weight_decay=0.0,
+                fused=case.optimizer.fused,
+                capturable=False,
+                check_finite=False,
+                **kwargs,
+            )
     return CSTOptimizer(
         torch.optim.AdamW(
             [
@@ -193,6 +271,80 @@ def train(model, opt, x, target, *, reference=False):
     opt.step()
 
 
+def parameter_quantization_gate(actual, expected, *, large):
+    """Keep the old floor; large centers also allow one adjacent FP32 value."""
+    actual = actual.detach().cpu().double()
+    expected32 = expected.detach().cpu().float()
+    expected = expected32.double()
+    delta = (actual - expected).abs()
+    up = torch.nextafter(expected32, torch.full_like(expected32, math.inf)).double()
+    down = torch.nextafter(expected32, torch.full_like(expected32, -math.inf)).double()
+    # Direction matters at power-of-two boundaries: two smaller downward steps
+    # must not pass using the larger upward spacing.
+    ulp = torch.where(actual >= expected, up - expected, expected - down)
+    allowed = torch.full_like(delta, 2e-5)
+    if large:
+        allowed[:, 2:] = torch.maximum(allowed[:, 2:], ulp[:, 2:])
+    worst = tuple(int(v) for v in torch.unravel_index(delta.argmax(), delta.shape))
+    finite = torch.isfinite(actual) & torch.isfinite(expected)
+    failed = ~finite | (delta > allowed)
+    return {
+        "status": "FAIL" if bool(failed.any()) else "PASS",
+        "absolute_floor": 2e-5,
+        "center_adjacent_fp32_allowance": int(large),
+        "failed_elements": int(failed.sum()),
+        "worst_abs_index": list(worst),
+        "worst_abs_delta": float(delta[worst]),
+        "worst_abs_allowed": float(allowed[worst]),
+        "worst_abs_ulp_up": float((up - expected)[worst]),
+        "worst_abs_ulp_down": float((expected - down)[worst]),
+        "worst_abs_delta_in_directed_ulp": float((delta / ulp)[worst]),
+        "per_column_max_directed_ulp": (delta / ulp).max(dim=0).values.tolist(),
+    }
+
+
+def _copy_optimizer_inputs(actual, source, compatibility, target):
+    """Exact same-device point/gradient/Adam inputs before either wrapper runs."""
+    with torch.no_grad():
+        target.copy_(source)
+    target.grad = source.grad.detach().clone()
+    compatibility.state[target].clear()
+    compatibility.state[target].update(
+        {
+            name: value.detach().clone()
+            if isinstance(value, torch.Tensor)
+            else copy.deepcopy(value)
+            for name, value in actual.state[source].items()
+        }
+    )
+
+
+def optimizer_bitgate(actual, source, compatibility, target):
+    """Byte equality includes signed zero; report each owned Adam state field."""
+    pairs = {"parameters": (source, target), "gradients": (source.grad, target.grad)}
+    if actual.state[source].keys() != compatibility.state[target].keys():
+        raise AssertionError("optimizer state field names differ")
+    pairs.update(
+        {
+            name: (value, compatibility.state[target][name])
+            for name, value in actual.state[source].items()
+        }
+    )
+    fields = {}
+    for name, (a, b) in pairs.items():
+        same = a.dtype == b.dtype and a.shape == b.shape and a.device == b.device
+        same = same and torch.equal(
+            a.detach().reshape(-1).view(torch.uint8),
+            b.detach().reshape(-1).view(torch.uint8),
+        )
+        fields[name] = bool(same)
+    if not all(fields.values()):
+        raise AssertionError(
+            {"gate": "GPU_optimizer_wrapper_bitwise", "fields": fields}
+        )
+    return fields
+
+
 def matched_steps(base, case, plan):
     """Three local update checks from identical FP32 states along the GPU path.
 
@@ -209,6 +361,10 @@ def matched_steps(base, case, plan):
     b.selector = None
     b.backend = "factored"
     oa, ob = optimizer(a, case), optimizer(b, case, gpu=False)
+    # Large-only same-device wrapper proof is separate from CPU FP32 rounding.
+    c = copy.deepcopy(base).cuda() if case.size > 128 else None
+    oc = optimizer(c, case, compatibility=True) if c is not None else None
+    wrapper_records = []
     torch.manual_seed(case.seed + 1)
     x = torch.randn(case.rows, case.size)
     target = torch.randn_like(x)
@@ -239,12 +395,21 @@ def matched_steps(base, case, plan):
         ):
             opt.zero_grad(set_to_none=True)
             inputs.grad = None
-            (model(inputs) - targets).square().mean().backward()
+            if model is b and case.size > 128:
+                _chunked_loss_backward(model, inputs, targets)
+            else:
+                (model(inputs) - targets).square().mean().backward()
         grad_a = a.atoms.p.grad.detach().cpu().double()
         grad_b = b.atoms.p.grad.detach().clone()
         pre_grad_error = error(grad_a, grad_b)
+        if oc is not None:
+            _copy_optimizer_inputs(oa, a.atoms.p, oc, c.atoms.p)
+            optimizer_bitgate(oa, a.atoms.p, oc, c.atoms.p)
         oa.step()
         ob.step()
+        if oc is not None:
+            oc.step()
+            wrapper_records.append(optimizer_bitgate(oa, a.atoms.p, oc, c.atoms.p))
         pairs = {"parameters": (a.atoms.p, b.atoms.p), "dX": (xa.grad, xb.grad)}
         for key in ("exp_avg", "exp_avg_sq", "step"):
             pairs[key] = (oa.state[a.atoms.p][key], ob.state[b.atoms.p][key])
@@ -257,6 +422,11 @@ def matched_steps(base, case, plan):
         }
         failures = ["preupdate_all_dP"] if pre_grad_error["max_abs"] > 5e-4 else []
         for name, (actual, expected) in pairs.items():
+            quantization = (
+                parameter_quantization_gate(actual, expected, large=case.size > 128)
+                if name == "parameters"
+                else None
+            )
             actual, expected = (
                 actual.detach().cpu().double(),
                 expected.detach().cpu().double(),
@@ -279,6 +449,7 @@ def matched_steps(base, case, plan):
             if name == "parameters":
                 detail.update(
                     {
+                        "float_quantization": quantization,
                         "before_actual": float(before_a[loc]),
                         "before_expected": float(before_b[loc]),
                         "gradient_actual": float(grad_a[loc]),
@@ -294,7 +465,11 @@ def matched_steps(base, case, plan):
                     }
                 )
             report["fields"][name] = detail
-            if value > (2e-5 if name == "parameters" else 5e-4):
+            if (
+                quantization["status"] != "PASS"
+                if name == "parameters"
+                else value > 5e-4
+            ):
                 failures.append(name)
         gradient_delta = (grad_a - grad_b).abs()
         gradient_flat = int(gradient_delta.reshape(-1).argmax())
@@ -327,21 +502,47 @@ def matched_steps(base, case, plan):
         "scope": "3 matched-state CPU FP32 reference steps along native GPU trajectory",
         "reference": "public CPU FP32 Fourier/CSTOptimizer; Parameter and AdamW state reset from GPU before each step",
         "step_diagnostics": diagnostics,
+        **(
+            {
+                "gpu_compatibility_optimizer_bitgate": {
+                    "status": "PASS",
+                    "steps": len(wrapper_records),
+                    "scope": "same GPU P/gradients/Adam states; CSTAdamW versus CSTOptimizer(AdamW), same explicit native Polar Plan; byte-exact outputs",
+                    "fused": case.optimizer.fused,
+                    "step_fields": wrapper_records,
+                }
+            }
+            if wrapper_records
+            else {}
+        ),
     }
 
 
 def correctness(args, run):
     plan = run.entry(args.plan_id).plan
-    small, sx, _, sdy = fixture(replace(run.case, atoms=8))
+    if run.case.size > 128:
+        base, x, _, dy = fixture(run.case)
+        small, indices = stratified_subset(base)
+        sx, sdy = x, dy
+    else:
+        small, sx, _, sdy = fixture(replace(run.case, atoms=8))
+        indices = None
     independent = check(
         configure(small.cuda(), plan), sx.cuda(), sdy.cuda(), independent=True
     )
-    base, x, _, dy = fixture(run.case)
+    if indices is not None:
+        independent["current_fixture_atom_indices"] = indices
+    else:
+        base, x, _, dy = fixture(run.case)
     model = configure(copy.deepcopy(base).cuda(), plan)
+    proof = check(model, x.cuda(), dy.cuda())
+    matched = matched_steps(base, run.case, plan)
+    wrapper = matched.pop("gpu_compatibility_optimizer_bitgate", None)
     return {
-        **check(model, x.cuda(), dy.cuda()),
+        **proof,
         "independent_quadrature_small_atoms": independent,
-        "matched_state_optimizer_steps": matched_steps(base, run.case, plan),
+        "matched_state_optimizer_steps": matched,
+        **({"gpu_compatibility_optimizer_bitgate": wrapper} if wrapper else {}),
     }
 
 
@@ -398,7 +599,11 @@ def measure_case(args, run):
     if dense:
         model = torch.nn.Linear(case.size, case.size, bias=False)
         with torch.no_grad():
-            model.weight.copy_(base(torch.eye(case.size)).T)
+            identity = torch.eye(case.size)
+            weight = (
+                chunked_reference(base, identity) if case.size > 128 else base(identity)
+            )
+            model.weight.copy_(weight.T)
         model = model.cuda()
         opt = torch.optim.AdamW(
             model.parameters(),

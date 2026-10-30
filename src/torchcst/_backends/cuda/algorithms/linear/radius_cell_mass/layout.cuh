@@ -33,10 +33,10 @@ __global__ void owner_range_offsets(const int64_t *sorted_keys, int64_t *offsets
 
 inline void check_layout_keys(const Tensor &keys, int input_nodes, int output_nodes) {
     TORCH_CHECK(keys.is_cuda() && keys.scalar_type() == torch::kLong &&
-        keys.dim() == 1 && keys.is_contiguous() && keys.numel() <= 4096,
-        "expected at most 4096 contiguous CUDA int64 owner keys");
-    TORCH_CHECK(input_nodes > 0 && input_nodes <= 510 &&
-        output_nodes > 0 && output_nodes <= 510, "invalid owner node counts");
+        keys.dim() == 1 && keys.is_contiguous() && keys.numel() <= MAX_ATOMS,
+        "expected at most 65536 contiguous CUDA int64 owner keys");
+    TORCH_CHECK(input_nodes > 0 && input_nodes <= MAX_OWNER_NODES &&
+        output_nodes > 0 && output_nodes <= MAX_OWNER_NODES, "invalid owner node counts");
 }
 
 // Retain the general ATen path for larger atom tables and for diagnostic
@@ -67,13 +67,10 @@ inline std::vector<Tensor> layout_ranges_aten(Tensor keys, int input_nodes,
 }
 
 constexpr int BLOCK_LAYOUT_THREADS = 256;
-constexpr int BLOCK_LAYOUT_LIMIT = 1024;
-constexpr unsigned OWNER_ROW_BITS = 12;
-constexpr unsigned OWNER_ROW_MASK = (1u << OWNER_ROW_BITS) - 1;
 
 // One CTA performs orientation, stable sorting, and all owner boundaries.
-// Owner keys need at most 18 bits (510*510 owners). Appending the original
-// row in 12 bits gives a unique 30-bit key: ties retain original atom order.
+// Only eligible owner products enter this 32-bit packing. Appending the
+// original row in 12 bits preserves original atom order for equal owners.
 // Padding is UINT_MAX, strictly above every valid key. Input keys stay intact
 // for the saved forward/backward lifetime; only shared memory is sorted.
 __global__ void block_layout_ranges(const int64_t *keys, int64_t *rows,
@@ -139,7 +136,7 @@ inline std::vector<Tensor> layout_ranges(Tensor keys, int input_nodes,
     int output_nodes, bool reverse) {
     check_layout_keys(keys, input_nodes, output_nodes);
     int atoms = keys.numel();
-    if (atoms > BLOCK_LAYOUT_LIMIT)
+    if (!can_use_block_layout(atoms, input_nodes, output_nodes))
         return layout_ranges_aten(keys, input_nodes, output_nodes, reverse);
     c10::cuda::CUDAGuard guard(keys.device());
     int owners = reverse ? input_nodes : output_nodes;
