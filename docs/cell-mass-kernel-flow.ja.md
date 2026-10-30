@@ -5418,6 +5418,7 @@ global/local hookの実行順とAdam前後の検証は維持する。step固有�
 消し、入力・gradient・snapshotは保持しない。休止中のhookは何もしない。
 例外、closure経路、amplitude decay解除、非標準の登録APIでは従来の一時登録/解除へ戻る。
 弱参照のfinalizerがwrapper解放時に登録を取り除く。再入stepはAdam前に拒否する。
+hook辞書自体も弱参照にし、辞書差し替え後に古いuser callbackやそのTensorを保持しない。
 
 group検証の関数code/defaults/globals/closure/dictionaryは、更新programと同じhost C++
 helperで一括確認する。共用する実装をoperators/_function_metadataへ移した。

@@ -74,13 +74,17 @@ def install(owner, callback, *, reuse):
     if cached is None:
         cached = _CachedHook()
         owner.__dict__["_amplitude_pre_hook"] = cached
-    if cached.table is not table or table.get(cached.handle.id) is not cached:
+    if (
+        cached.table is None
+        or cached.table() is not table
+        or table.get(cached.handle.id) is not cached
+    ):
         # A replaced/copied hook table may still contain the old callable.
         for key in [key for key, value in table.items() if value is cached]:
             del table[key]
         cached.close()
         cached.handle = base.register_step_pre_hook(cached)
-        cached.table = table
+        cached.table = weakref.ref(table)
         cached.finalizer = weakref.finalize(owner, cached.handle.remove)
     # Users can register more local hooks between steps. CST remains LAST,
     # exactly where a newly registered temporary callback would have run.

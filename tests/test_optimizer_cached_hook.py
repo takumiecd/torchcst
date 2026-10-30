@@ -162,6 +162,24 @@ def test_base_optimizer_outlives_wrapper_without_retaining_it():
     assert not base._optimizer_step_pre_hooks
 
 
+def test_replaced_hook_table_does_not_retain_old_callbacks_or_tensors():
+    model, opt = setup()
+    tensor = torch.ones(3)
+    reference = weakref.ref(tensor)
+
+    def callback(base, args, kwargs, saved=tensor):
+        return None
+
+    opt.base_optimizer.register_step_pre_hook(callback)
+    step(model, opt)
+    table = weakref.ref(opt.base_optimizer._optimizer_step_pre_hooks)
+    opt.base_optimizer._optimizer_step_pre_hooks = OrderedDict()
+    del tensor, callback
+    gc.collect()
+    assert table() is None
+    assert reference() is None
+
+
 @pytest.mark.parametrize("phase", ["pre", "post"])
 def test_global_hooks_keep_order_and_step_values(monkeypatch, phase):
     from torch.optim.optimizer import (
