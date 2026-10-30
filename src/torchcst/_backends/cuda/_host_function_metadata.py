@@ -16,6 +16,8 @@ import torch
 
 _loaded_function_factory = None
 _loaded_storage_factory = None
+_loaded_dictionary_factory = None
+_loaded_dictionary_stats = None
 _tensor_data_ptr = torch.Tensor.data_ptr
 _tensor_getattribute = torch.Tensor.__getattribute__
 
@@ -23,7 +25,9 @@ _tensor_getattribute = torch.Tensor.__getattribute__
 @cache
 def get_factory():
     global _loaded_function_factory, _loaded_storage_factory
+    global _loaded_dictionary_factory, _loaded_dictionary_stats
     _loaded_function_factory = _loaded_storage_factory = None
+    _loaded_dictionary_factory = _loaded_dictionary_stats = None
     if sys.implementation.name != "cpython" or sysconfig.get_config_var(
         "Py_GIL_DISABLED"
     ):
@@ -42,8 +46,35 @@ def get_factory():
         )
         _loaded_function_factory = module.make_guard
         _loaded_storage_factory = module.make_storage_guard
+        _loaded_dictionary_factory = module.make_dictionary_guard
+        _loaded_dictionary_stats = module.dictionary_guard_stats
         return _loaded_function_factory
     except (ImportError, OSError, RuntimeError, TypeError, ValueError):
+        return None
+
+
+def prepare_dictionary_checks(factory, dictionaries):
+    """Optionally watch the same raw dictionaries as the version-guard fallback.
+
+    CPython 3.12+ GIL builds can invalidate one sticky native epoch on any
+    dictionary event. The checker owns neither dictionaries nor their contents.
+    Function-slot/MRO/storage checks remain separate and must still be installed:
+    a watcher cannot detect replacement of an owner's dictionary pointer.
+    """
+    if (
+        factory is None
+        or factory is not _loaded_function_factory
+        or _loaded_dictionary_factory is None
+        or sys.version_info < (3, 12)
+    ):
+        return None
+    try:
+        dictionaries = tuple(dictionaries)
+        if any(type(value) is not dict for value in dictionaries):
+            return None
+        checker = _loaded_dictionary_factory(dictionaries)
+        return checker if checker is not None and checker(None) else None
+    except (AttributeError, TypeError, ValueError, RuntimeError):
         return None
 
 

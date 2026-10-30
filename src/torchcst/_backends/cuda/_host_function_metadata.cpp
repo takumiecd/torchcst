@@ -1,5 +1,8 @@
 #include <pybind11/pybind11.h>
+#include <algorithm>
 #include <memory>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 namespace py = pybind11;
 namespace {
@@ -159,7 +162,146 @@ static py::object make_storage_guard(py::tuple references, py::tuple methods) {
 }
 } // namespace
 
+namespace {
+#if PY_VERSION_HEX >= 0x030C0000 && !defined(Py_GIL_DISABLED)
+struct DictionaryEpoch;
+struct DictionaryRegistration {
+    bool watched = false;
+    std::vector<std::weak_ptr<DictionaryEpoch>> epochs;
+};
+struct DictionaryWatchState {
+    bool attempted = false;
+    int watcher = -1;
+    PyInterpreterState* interpreter = nullptr;
+    std::unordered_map<PyObject*, DictionaryRegistration> dictionaries;
+};
+
+static DictionaryWatchState& dictionary_watch_state() {
+    // No Python objects are owned by this process-wide registration table.
+    static DictionaryWatchState state;
+    return state;
+}
+
+struct DictionaryEpoch {
+    bool valid = true;
+    DictionaryWatchState* state;
+    std::vector<PyObject*> dictionaries;  // Addresses only; no owning references.
+    explicit DictionaryEpoch(DictionaryWatchState* value) : state(value) {}
+    ~DictionaryEpoch();
+};
+
+static void prune_epochs(DictionaryRegistration& registration) {
+    auto& epochs = registration.epochs;
+    epochs.erase(std::remove_if(epochs.begin(), epochs.end(),
+        [](const std::weak_ptr<DictionaryEpoch>& epoch) { return epoch.expired(); }),
+        epochs.end());
+}
+
+DictionaryEpoch::~DictionaryEpoch() {
+    // cpp_function's capsule is released with the GIL. During interpreter exit
+    // or unsupported ownership contexts, do not call into a dead interpreter.
+    if (!Py_IsInitialized() || !PyGILState_Check()
+        || PyInterpreterState_Get() != state->interpreter) return;
+    PyObject *error_type, *error_value, *error_traceback;
+    PyErr_Fetch(&error_type, &error_value, &error_traceback);
+    for (PyObject* dictionary : dictionaries) {
+        auto found = state->dictionaries.find(dictionary);
+        if (found == state->dictionaries.end()) continue;
+        prune_epochs(found->second);
+        if (!found->second.epochs.empty()) continue;
+        // DEALLOCATED removes the table entry before an address can be reused.
+        // An entry still present here therefore denotes a live watched dict.
+        if (found->second.watched
+            && PyDict_Unwatch(state->watcher, dictionary) < 0) PyErr_Clear();
+        state->dictionaries.erase(found);
+    }
+    PyErr_Restore(error_type, error_value, error_traceback);
+}
+
+static int dictionary_changed(PyDict_WatchEvent event, PyObject* dictionary,
+    PyObject*, PyObject*) {
+    auto& state = dictionary_watch_state();
+    auto found = state.dictionaries.find(dictionary);
+    if (found == state.dictionaries.end()) return 0;
+    // Watchers run before modification and may enter with a pending exception.
+    // Only native bookkeeping runs here: no Python API, allocation, callback,
+    // dictionary write, or reference that could resurrect a dying dictionary.
+    for (const auto& reference : found->second.epochs) {
+        if (auto epoch = reference.lock()) epoch->valid = false;
+    }
+    if (event == PyDict_EVENT_DEALLOCATED) state.dictionaries.erase(found);
+    return 0;
+}
+#endif
+
+static py::object make_dictionary_guard(py::tuple dictionaries) {
+#if PY_VERSION_HEX >= 0x030C0000 && !defined(Py_GIL_DISABLED)
+    std::unordered_set<PyObject*> unique;
+    for (py::handle value : dictionaries) {
+        if (!PyDict_CheckExact(value.ptr())) throw py::type_error("expected exact dictionaries");
+        unique.insert(value.ptr());
+    }
+    if (unique.empty()) return py::cpp_function([](py::object) { return true; });
+    auto& state = dictionary_watch_state();
+    auto interpreter = PyInterpreterState_Get();
+    if (!state.attempted) {
+        state.attempted = true;
+        state.interpreter = interpreter;
+        state.watcher = PyDict_AddWatcher(dictionary_changed);
+        // Other extensions (including Dynamo) may exhaust the finite slots.
+        // Reserve at most one ID; failed registration stays a cheap fallback.
+        if (state.watcher < 0) PyErr_Clear();
+    }
+    if (state.watcher < 0 || state.interpreter != interpreter) return py::none();
+    auto epoch = std::make_shared<DictionaryEpoch>(&state);
+    epoch->dictionaries.reserve(unique.size());
+    for (PyObject* dictionary : unique) {
+        auto& registration = state.dictionaries[dictionary];
+        prune_epochs(registration);
+        // Record before any allocation/watch failure so epoch destruction also
+        // rolls back partially prepared registrations without retaining dicts.
+        epoch->dictionaries.push_back(dictionary);
+        if (!registration.watched) {
+            if (PyDict_Watch(state.watcher, dictionary) < 0) {
+                PyErr_Clear();
+                return py::none();
+            }
+            registration.watched = true;
+        }
+        registration.epochs.push_back(epoch);
+    }
+    return py::cpp_function([epoch](py::object) {
+        return epoch->valid
+            && PyInterpreterState_Get() == epoch->state->interpreter;
+    });
+#else
+    return py::none();
+#endif
+}
+
+static py::dict dictionary_guard_stats() {
+    py::dict result;
+#if PY_VERSION_HEX >= 0x030C0000 && !defined(Py_GIL_DISABLED)
+    auto& state = dictionary_watch_state();
+    size_t registrations = 0;
+    for (const auto& item : state.dictionaries) registrations += item.second.epochs.size();
+    result["supported"] = true;
+    result["watcher"] = state.watcher;
+    result["dictionaries"] = state.dictionaries.size();
+    result["registrations"] = registrations;
+#else
+    result["supported"] = false;
+    result["watcher"] = -1;
+    result["dictionaries"] = 0;
+    result["registrations"] = 0;
+#endif
+    return result;
+}
+} // namespace
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("make_guard", &make_guard, py::arg("functions"), py::arg("classes") = py::tuple());
     m.def("make_storage_guard", &make_storage_guard);
+    m.def("make_dictionary_guard", &make_dictionary_guard);
+    m.def("dictionary_guard_stats", &dictionary_guard_stats);
 }
