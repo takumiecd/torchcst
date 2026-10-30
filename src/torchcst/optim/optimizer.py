@@ -13,7 +13,7 @@ from torchcst.atoms import OptimizerFieldSpec
 from torchcst.geometry.spec import EuclideanGeometrySpec
 from torchcst.nn import CSTModule
 
-from . import _amplitude_hook, _group_validation
+from . import _group_validation
 from .binding import bind_atom_states, field_specs, validate_binding
 from .state import OptimizerStateAdapter, default_state_adapter
 
@@ -205,28 +205,22 @@ class CSTOptimizer(Optimizer):
     def step(self, closure=None):
         from torchcst._backends.torch import finite
 
-        try:
-            loss = None
-            if closure is not None:
-                # Evaluate once before projection/snapshot, at the current point.
-                # Standard SGD/Adam-family steps only use the closure's result.
-                with torch.enable_grad():
-                    loss = closure()
-            # A closure executes outside this scope: only optimizer value checks
-            # are optional. Model/geometry calls made by the closure keep theirs.
-            with finite.checking(self.check_finite):
-                return self._step_impl(loss, has_closure=closure is not None)
-        except BaseException:
-            _amplitude_hook.clear(self)
-            raise
+        loss = None
+        if closure is not None:
+            # Evaluate once before projection/snapshot, at the current point.
+            # Standard SGD/Adam-family steps only use the closure's result.
+            with torch.enable_grad():
+                loss = closure()
+        # A closure executes outside this scope: only optimizer value checks
+        # are optional. Model/geometry calls made by the closure keep theirs.
+        with finite.checking(self.check_finite):
+            return self._step_impl(loss, has_closure=closure is not None)
 
     def _step_impl(self, loss, *, has_closure):
         from torchcst._backends.torch.kernels import execution as _kernel
 
         if any("amplitude_weight_decay" in group for group in self.param_groups):
             return self._step_with_amplitude_decay(loss, has_closure=has_closure)
-        if "_amplitude_pre_hook" in self.__dict__:
-            _amplitude_hook.clear(self)
         groups = self._validate_groups(self.param_groups)
         active = []
         for site, point in self._bound_parameters.items():
@@ -306,7 +300,7 @@ class CSTOptimizer(Optimizer):
     def _step_with_amplitude_decay(self, loss, *, has_closure):
         """Prepare atoms after user pre-hooks and decay their logical amplitude.
 
-        A final base pre-hook observes the settings and gradients
+        A final, temporary base pre-hook observes the settings and gradients
         actually used by AdamW. It never replaces groups or reruns the user's
         closure. Ordinary parameters therefore keep standard AdamW behavior.
         """
@@ -430,22 +424,16 @@ class CSTOptimizer(Optimizer):
                 )
             guard_called = True
 
-        # Reuse only a standard registration in unchecked, closure-free steps.
-        # Its invocation callback is always cleared, and failures detach it.
-        handle, reusable = _amplitude_hook.install(
-            self,
-            prepare_before_adam,
-            reuse=self.check_finite is False and not has_closure,
-        )
-        success = False
+        # Registered last, after existing user pre-hooks; always remove it,
+        # including on invalid settings, hook exceptions or AdamW failures.
+        handle = self.base_optimizer.register_step_pre_hook(prepare_before_adam)
         try:
             if has_closure:
                 result = self.base_optimizer.step(closure=replay_closure)
             else:
                 result = self.base_optimizer.step()
-            success = True
         finally:
-            _amplitude_hook.finish(self, handle, reusable, success=success)
+            handle.remove()
         if not guard_called:
             raise RuntimeError("AdamW must execute its standard step pre-hooks")
         self._sync_from_base()
