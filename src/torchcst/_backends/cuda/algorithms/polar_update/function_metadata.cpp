@@ -19,12 +19,27 @@ struct Definition {
     std::vector<py::object> cell_values;
 };
 
+struct ClassDefinition {
+    py::object type;
+    py::object mro;
+};
+
 static PyObject* none_if_null(PyObject* value) {
     return value == nullptr ? Py_None : value;
 }
 
-static py::object make_guard(py::tuple functions) {
+static py::object make_guard(py::tuple functions, py::tuple classes) {
     auto records = std::make_shared<std::vector<Definition>>();
+    auto types = std::make_shared<std::vector<ClassDefinition>>();
+    for (py::handle value : classes) {
+        if (!PyType_Check(value.ptr())) throw py::type_error("expected classes");
+        PyObject* mro = reinterpret_cast<PyTypeObject*>(value.ptr())->tp_mro;
+        if (!mro || !PyTuple_CheckExact(mro)) throw py::type_error("expected MRO tuple");
+        // Keep the immutable tuple alive: an identity comparison must not be
+        // fooled by address reuse after __bases__ replaces a class's MRO.
+        types->push_back({py::reinterpret_borrow<py::object>(value),
+            py::reinterpret_borrow<py::object>(mro)});
+    }
     records->reserve(functions.size());
     for (py::handle value : functions) {
         PyObject* fn = value.ptr();
@@ -50,9 +65,14 @@ static py::object make_guard(py::tuple functions) {
         }
         records->push_back(std::move(r));
     }
-    return py::cpp_function([records](py::object) {
+    return py::cpp_function([records, types](py::object) {
         // Called with the GIL. Read CPython metadata only: no Python callbacks,
         // tensor values, CUDA calls, or modification of the guarded functions.
+        for (const ClassDefinition& r : *types) {
+            if (reinterpret_cast<PyTypeObject*>(r.type.ptr())->tp_mro != r.mro.ptr()) {
+                return false;
+            }
+        }
         for (const Definition& r : *records) {
             PyObject* fn = r.function.ptr();
             if (!PyFunction_Check(fn)
@@ -140,6 +160,6 @@ static py::object make_storage_guard(py::tuple references, py::tuple methods) {
 } // namespace
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-    m.def("make_guard", &make_guard);
+    m.def("make_guard", &make_guard, py::arg("functions"), py::arg("classes") = py::tuple());
     m.def("make_storage_guard", &make_storage_guard);
 }

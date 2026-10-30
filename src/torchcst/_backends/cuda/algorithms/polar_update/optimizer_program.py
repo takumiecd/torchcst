@@ -7,12 +7,40 @@ custom callback returns to the ordinary Dispatcher before doing numerical work.
 
 import gc
 import inspect
+import math
 
 import torch
 
 from torchcst._builtin_callbacks import original_functions
 
 _MISSING = object()
+
+
+def _snapshot_metadata_guard(point):
+    """Own shape/stride/type metadata, never an example snapshot or storage."""
+    from torchcst.operators._native_metadata_guard import (
+        guard_api,
+        tensor_metadata_guard,
+    )
+
+    api = guard_api()
+    if api is None:
+        return None
+    cls, _kind = api
+    guard = cls()
+    example = point.detach()
+    verbose = ["detached atom snapshot metadata"]
+    try:
+        guard.add_type_match_guard(id(torch.Tensor), verbose, None)
+        if not tensor_metadata_guard(guard, example, "previous point", verbose):
+            return None
+        # requires_grad is part of TensorMatch on supported versions. Keep an
+        # explicit check as well: this is a required snapshot invariant.
+        node = guard.getattr_manager("requires_grad", "requires_grad", False, _kind)
+        node.add_false_match_guard(verbose, None)
+        return guard if guard.check(example) else None
+    except (AttributeError, TypeError, RuntimeError):
+        return None
 
 
 def _callbacks():
@@ -138,7 +166,9 @@ def _native_guard(
     owners = tuple(owner for owner, _ in callbacks)
     fixed_roots = (*binding.cst_charts(), binding.kernel)
     roots = (binding, dispatcher, cached.state, owners, functions, site, fixed_roots)
-    checker, dictionaries = prepare_checks(function_factory, functions, owners)
+    checker, dictionaries = prepare_checks(
+        function_factory, functions, owners, with_class_mro=True
+    )
     if checker is not None:
         roots = (*roots, dictionaries)
     verbose = ["prepared atom optimizer metadata"]
@@ -293,10 +323,19 @@ def _native_guard(
             same(node, value)
             if isinstance(value, type):
                 bases = node.type_mro_manager("callback bases", value.__mro__, kind)
-                bases.add_length_check_guard(len(value.__mro__), verbose, None)
+                if checker is None:
+                    bases.add_length_check_guard(len(value.__mro__), verbose, None)
                 for i, base in enumerate(value.__mro__):
+                    # The CPython checker owns/checks the complete immutable
+                    # MRO tuple. Repeated base IDs/types need no child guards;
+                    # each mutable namespace still gets its version check.
+                    if checker is not None and (
+                        base in seen_bases or base.__flags__ & (1 << 8)
+                    ):
+                        continue
                     bn = bases.tuple_getitem_manager(i, "base", base, kind)
-                    same(bn, base)
+                    if checker is None:
+                        same(bn, base)
                     if base not in seen_bases and not base.__flags__ & (1 << 8):
                         seen_bases.add(base)
                         raw = next(
@@ -384,7 +423,14 @@ def _native_guard(
         # tree through operator_declaration and a second native entrance.
         # Every callback boundary still checks all versions and registrations.
         fixed_node = guard.tuple_getitem_manager(6, "fixed state", fixed_roots, kind)
-        _build_guard(fixed_node, fixed_roots, kind, epilogue_root=guard)
+        _build_guard(
+            fixed_node,
+            fixed_roots,
+            kind,
+            epilogue_root=guard,
+            guarded_classes=tuple(value for value in owners if isinstance(value, type)),
+            guarded_class_dicts=seen_bases,
+        )
         storage_checker = prepare_storage_checks(
             function_factory, tuple(value for _, value in storage_nodes)
         )
@@ -416,10 +462,54 @@ class PreparedPolarOptimizerUpdate:
         self.guard, self.roots = guard
         self.native_function_metadata = len(self.roots) == 8
         self.point = binding.execution_parameters()
+        self.snapshot_guard = _snapshot_metadata_guard(self.point)
         self.owner = binding.atom_state
         self.adapter_keys = ("exp_avg",)
         self.launch = launch
         self.transport_required = False
+
+    def validate_inputs(self, inputs):
+        """Use native snapshot metadata after this program's live guard passes.
+
+        The program already guards the current Parameter and Polar declaration.
+        Scalar validity, detachment and non-aliasing still apply at both call
+        boundaries. Unsupported layouts/types use the original validator and
+        request ordinary dispatch rather than a mismatched compiled launch.
+        """
+        if self.snapshot_guard is None:
+            self.binding.validate_inputs(inputs)
+            return True
+        if type(inputs) is self.binding.input_type:
+            rate, decay = inputs.step_size, inputs.amplitude_weight_decay
+            valid_scalars = (
+                type(rate) in (int, float)
+                and math.isfinite(rate)
+                and rate > 0
+                and type(decay) in (int, float)
+                and math.isfinite(decay)
+                and decay >= 0
+                and rate * decay <= 1
+            )
+            if valid_scalars and decay:
+                from torchcst.kernels.parameterizations import (
+                    PolarAmpRadiusSpec,
+                    PolarAmpWidthSpec,
+                )
+
+                valid_scalars = type(self.binding.kernel.spec.parameterization) in (
+                    PolarAmpWidthSpec,
+                    PolarAmpRadiusSpec,
+                )
+            if (
+                valid_scalars
+                and self.snapshot_guard.check(inputs.previous)
+                and not torch._C._is_alias_of(inputs.previous, self.point)
+            ):
+                return True
+        # Preserve the ordinary validation errors, including custom or invalid
+        # inputs. A valid noncontiguous input is unsupported by this fast path.
+        self.binding.validate_inputs(inputs)
+        return False
 
     def _matches(self, dispatcher, adapter, point, decay, *, checked=False):
         from torchcst._backends.torch import finite
@@ -485,7 +575,8 @@ class PreparedPolarOptimizerUpdate:
             return None
         # With canonical callbacks and ordinary Tensors, input validation only
         # reads metadata; it cannot change a previously checked callback table.
-        self.binding.validate_inputs(inputs)
+        if self.validate_inputs(inputs) is False:
+            return None
         if state is not self.owner.optimizer_state.fields or not self._matches(
             dispatcher, adapter, self.point, inputs.amplitude_weight_decay, checked=True
         ):

@@ -120,6 +120,50 @@ def test_none_slots_and_unsupported_inputs(native_factory):
     assert function_metadata.prepare_checks(native_factory, (empty,), ()) == (None, ())
 
 
+def test_native_mro_check_keeps_the_tuple_alive_and_observes_replacement(
+    native_factory,
+):
+    class Base:
+        pass
+
+    class Alternate:
+        pass
+
+    class Owner(Base):
+        pass
+
+    checker, _ = function_metadata.prepare_checks(
+        native_factory, (definition(),), (Owner,), with_class_mro=True
+    )
+    assert checker is not None and checker(None)
+    old_mro = Owner.__mro__
+    Owner.__bases__ = (Alternate,)
+    assert Owner.__mro__ is not old_mro
+    assert not checker(None)
+    Owner.__bases__ = (Base,)
+    # Even restoring the same bases creates a new tuple and must requalify.
+    assert Owner.__mro__ == old_mro and Owner.__mro__ is not old_mro
+    assert not checker(None)
+
+
+@pytest.mark.parametrize("target", ["kernel", "chart", "geometry", "tensor"])
+def test_native_mro_sharing_keeps_mutable_class_namespaces_live(
+    native_factory, monkeypatch, target
+):
+    model, _opt, _dispatcher, _cached, (guard, roots) = example(
+        function_factory=native_factory
+    )
+    owners = {
+        "kernel": type(model.kernel),
+        "chart": type(model.input_chart),
+        "geometry": type(model.input_chart.geometry),
+        "tensor": torch.Tensor,
+    }
+    assert guard.check(roots)
+    monkeypatch.setattr(owners[target], "_test_guard_revision", object(), raising=False)
+    assert not guard.check(roots)
+
+
 def test_model_is_not_retained_by_the_native_function_records(native_factory):
     model, opt, dispatcher, cached, native = example(function_factory=native_factory)
     guard, roots = native
@@ -138,7 +182,9 @@ def test_model_is_not_retained_by_the_native_function_records(native_factory):
 def test_batched_storage_checks_track_addresses_not_numeric_versions(native_factory):
     tensor = torch.ones(4)
     parameter = torch.nn.Parameter(torch.ones(4))
-    checker = function_metadata.prepare_storage_checks(native_factory, (tensor, parameter))
+    checker = function_metadata.prepare_storage_checks(
+        native_factory, (tensor, parameter)
+    )
     assert checker is not None and checker(None)
     with torch.no_grad():
         tensor.add_(1)

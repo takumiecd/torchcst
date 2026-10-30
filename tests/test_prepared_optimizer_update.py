@@ -174,6 +174,115 @@ def test_native_guard_itself_does_not_retain_model_or_input_examples():
     assert guard is not None
 
 
+@pytest.mark.parametrize("target", ["kernel", "chart", "geometry", "tensor"])
+def test_shared_class_namespace_checks_still_observe_every_fixed_owner(
+    monkeypatch, target
+):
+    model, _opt, _dispatcher, _cached, (guard, roots) = example()
+    owners = {
+        "kernel": type(model.kernel),
+        "chart": type(model.input_chart),
+        "geometry": type(model.input_chart.geometry),
+        "tensor": torch.Tensor,
+    }
+    assert guard.check(roots)
+    monkeypatch.setattr(owners[target], "_test_guard_revision", object(), raising=False)
+    assert not guard.check(roots)
+
+
+def test_shared_class_mro_checks_still_observe_fixed_owner_base_changes(monkeypatch):
+    model, _opt, _dispatcher, _cached, (guard, roots) = example()
+
+    class AlternateModule(torch.nn.Module):
+        pass
+
+    owner_type = type(model.kernel)
+    assert owner_type.__bases__ == (torch.nn.Module,)
+    assert guard.check(roots)
+    previous_bases = owner_type.__bases__
+    try:
+        owner_type.__bases__ = (AlternateModule,)
+        assert not guard.check(roots)
+    finally:
+        owner_type.__bases__ = previous_bases
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "shape",
+        "dtype",
+        "sparse",
+        "requires_grad",
+        "alias",
+        "rate_zero",
+        "rate_nan",
+        "decay_negative",
+        "amount_large",
+    ],
+)
+def test_snapshot_metadata_fast_path_keeps_the_original_input_rejections(change):
+    from torchcst._backends.cuda.algorithms.polar_update.optimizer_program import (
+        PreparedPolarOptimizerUpdate,
+    )
+    from torchcst.operators.atom_update import AtomUpdateInputs
+
+    model, _opt, dispatcher, cached, guard = example()
+    binding = cached.state.binding
+    program = PreparedPolarOptimizerUpdate(binding, dispatcher, cached, guard)
+    previous = model.atoms.p.detach().clone()
+    rate, decay = 0.01, 0.01
+    if change == "shape":
+        previous = previous[:1]
+    elif change == "dtype":
+        previous = previous.double()
+    elif change == "sparse":
+        previous = previous.to_sparse()
+    elif change == "requires_grad":
+        previous.requires_grad_()
+    elif change == "alias":
+        previous = model.atoms.p.detach()
+    elif change == "rate_zero":
+        rate = 0.0
+    elif change == "rate_nan":
+        rate = float("nan")
+    elif change == "decay_negative":
+        decay = -0.1
+    else:
+        decay = 101.0
+    inputs = AtomUpdateInputs(previous, rate, decay)
+    with pytest.raises(ValueError):
+        binding.validate_inputs(inputs)
+    with pytest.raises(ValueError):
+        program.validate_inputs(inputs)
+
+
+def test_snapshot_guard_owns_no_tensor_and_requests_fallback_for_different_stride():
+    from torchcst._backends.cuda.algorithms.polar_update.optimizer_program import (
+        PreparedPolarOptimizerUpdate,
+    )
+    from torchcst.operators.atom_update import AtomUpdateInputs
+
+    model, opt, dispatcher, cached, guard = example()
+    program = PreparedPolarOptimizerUpdate(
+        cached.state.binding, dispatcher, cached, guard
+    )
+    assert program.snapshot_guard is not None
+    previous = model.atoms.p.detach().clone()
+    assert program.validate_inputs(AtomUpdateInputs(previous, 0.01, 0.01))
+    noncontiguous = previous.t().contiguous().t()
+    assert noncontiguous.shape == previous.shape and not noncontiguous.is_contiguous()
+    inputs = AtomUpdateInputs(noncontiguous, 0.01, 0.01)
+    program.binding.validate_inputs(inputs)
+    assert program.validate_inputs(inputs) is False
+    reference = weakref.ref(previous)
+    metadata = program.snapshot_guard
+    del inputs, previous, noncontiguous, model, opt, dispatcher, cached, guard, program
+    gc.collect()
+    assert reference() is None
+    assert metadata is not None
+
+
 def test_binding_serialization_drops_prepared_program():
     model, opt, _dispatcher, _cached, _native = example()
     binding = opt._update_bindings[model]

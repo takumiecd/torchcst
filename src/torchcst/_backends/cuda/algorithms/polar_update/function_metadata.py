@@ -74,7 +74,7 @@ def prepare_storage_checks(factory, tensors):
         return None
 
 
-def prepare_checks(factory, functions, owners):
+def prepare_checks(factory, functions, owners, *, with_class_mro=False):
     """Return a slot checker and unique dictionaries whose versions stay guarded.
 
     The slot checker also checks dictionary identity. The existing RootGuard
@@ -84,7 +84,12 @@ def prepare_checks(factory, functions, owners):
     if factory is None:
         return None, ()
     try:
-        checker = factory(functions)
+        if with_class_mro:
+            checker = factory(
+                functions, tuple(owner for owner in owners if isinstance(owner, type))
+            )
+        else:
+            checker = factory(functions)
         checked = {
             id(owner if type(owner) is dict else owner.__dict__)
             for owner in owners

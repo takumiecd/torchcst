@@ -82,7 +82,8 @@ def prepare_atom_steps(optimizer, groups, *, param_groups, protected=()):
         ):
             previous = point.detach().clone()
             inputs = AtomUpdateInputs(previous, rate, decay)
-            binding.validate_inputs(inputs)
+            validate = getattr(program, "validate_inputs", binding.validate_inputs)
+            use_program = validate(inputs) is not False
             prepared.append(
                 _PreparedAtomStep(
                     site,
@@ -91,7 +92,7 @@ def prepare_atom_steps(optimizer, groups, *, param_groups, protected=()):
                     rate,
                     decay,
                     program.plan,
-                    program,
+                    program if use_program else None,
                     inputs,
                 )
             )

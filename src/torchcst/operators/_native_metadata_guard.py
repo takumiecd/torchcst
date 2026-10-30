@@ -118,9 +118,22 @@ def guard_callable_metadata(root, behavior, kind, verbose):
             child.add_id_match_guard(id(value), verbose, None)
 
 
-def _build_guard(guard, roots, kind, *, epilogue_root=None):
+def _build_guard(
+    guard,
+    roots,
+    kind,
+    *,
+    epilogue_root=None,
+    guarded_classes=(),
+    guarded_class_dicts=(),
+):
     verbose = ["CST fixed metadata"]
-    seen_modules, seen_classes, seen_class_dicts = set(), set(), set()
+    # A composite guard may already check these exact class objects, their MRO
+    # and namespaces elsewhere in the same check(). Instance type identities
+    # still belong here; only duplicate descendants are shared with that tree.
+    seen_modules = set()
+    seen_classes = set(guarded_classes)
+    seen_class_dicts = set(guarded_class_dicts)
     guard.add_length_check_guard(len(roots), verbose, None)
     behavior = tuple(
         (fn, fn.__code__, fn.__defaults__, fn.__kwdefaults__)

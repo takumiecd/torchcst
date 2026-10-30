@@ -5529,3 +5529,31 @@ ignored `output/optimizer-hook-20261030/`へ保全した。所有L4は停止済�
 このnative optimizerの1024/MNIST、他GPU世代、Torch 2.6〜2.10、Graph/process peak、
 新規sanitizerは未測定。標準ライフサイクルの継承をすべてのPyTorch拡張への対応と
 同一視しない。数値比較は上記有限入力・固定条件の結果であり任意学習軌道の保証ではない。
+
+### Native optimizerのmetadata費用の診断と共有化の試作（2026-10-30）
+
+b50901b8のnative CSTAdamWを同じN128/B4/A819/M8条件で診断した。
+未計装optimizer単独中央値は.640895 ms。別cProfileでは_matches/runに含まれる
+大きなlive guardと2回のsnapshot入力検証が目立つ。cProfileによる負荷とinclusive時間の
+重複があるため、各行を足して未計装時間の内訳とはしない。
+job=`l4job-56791d726c4d47998a80f4f9c529ab18`、snapshot SHA256=
+`9f3ac5ce57094487ba510d4919e6afcf0014910b998f10f2ff190947a303dffd`、
+result SHA256=`9652a4be043ecfb48dc3a76389d3c80b6d511c49ccc57a31beda8a081a7b9d4a`。
+source/result/receipt/pstatsはignored `output/optimizer-native-profile-20261030/`に保全する。
+
+試作Aはcallback classの不変なMRO tupleをhost C++ helperが保持して一括確認し、
+各baseの重複したtype/id guardを減らす。mutable class namespaceのversion確認は残す。
+固定state側とcallback側で同じclass/MRO/namespaceを確認する部分も共有する。
+MRO tupleを強参照で保持し、__bases__変更後のアドレス再利用による誤判定を防ぐ。
+Tensorや入力snapshotは保持しない。未対応native helperは従来のguardへ戻す。
+
+試作Bはsnapshotのshape/stride/dtype/device/type/detachednessをnative TensorMatchで
+確認する。現在のParameter・Kernel設定・callbackは従来のlive guardで確認済みの範囲だけを
+使う。Python scalarのlr/decayとPolar対応・non-aliasは引き続き検証し、変更前後の
+2つの境界を維持する。未対応APIは元のvalidator、異なるstride等は元の検証を通した上で
+通常dispatchへ戻す。旧snapshotやGPU配列を常駐させない。
+
+実native helperを使ったCPU検査92 passed/45 skipped。
+class namespace/MRO変更、snapshotのshape/dtype/stride/sparse/alias/requires_grad、
+lr/decayの不正値と解放を含む。Aのみ/Bのみ/両方/変更前をfresh processで比較し、
+完全step・optimizer単独・memory・state一致で採否を決める。GPU速度は未測定。
