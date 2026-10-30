@@ -183,3 +183,8 @@ def validate_profile_product_layout(chart, kernel):
         raise ValueError("revision 1 requires a Euclidean Product/Strip grid chart")
     if len(kernel.profiles) != chart.geometry.intrinsic_dim:
         raise ValueError("profile count must match the chart coordinate dimension")
+
+
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
+
+_seal_functions(globals())

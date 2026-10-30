@@ -9,6 +9,7 @@ returns to Dispatcher before a Tensor is borrowed or numerical work begins.
 
 import gc
 import inspect
+from dataclasses import is_dataclass
 
 import torch
 
@@ -21,9 +22,11 @@ def _callbacks():
     from torchcst.atoms import Atoms
     from torchcst.atoms.optimizer_state import AtomOptimizerState
     from torchcst.atoms.state import AtomState
+    from torchcst.charts.base import ChartSpec
     from torchcst.nn.linear import CSTLinear
     from torchcst.nn.module import CSTModule
     from torchcst.operators import context, execution, metadata
+    from torchcst.operators.spec import ChartPairSpec, OperatorSpec
 
     from .algorithm import RadiusCellMassAlgorithm
 
@@ -51,6 +54,9 @@ def _callbacks():
         (metadata, ("operator_declaration", "fixed_state_signature")),
         (metadata._FixedSignatureCache, ("current",)),
         (prepared, ("placement_signature",)),
+        (OperatorSpec, ("in_features", "out_features", "shape", "charts")),
+        (ChartPairSpec, ("shape", "charts")),
+        (ChartSpec, ("features",)),
     )
 
 
@@ -71,7 +77,44 @@ def _definitions(callbacks):
     return tuple(functions)
 
 
-def _guard(dispatcher, cached, inputs, callbacks, functions, factory):
+def _metadata_snapshot(*values):
+    """Guard frozen declarations, including explicit object.__setattr__ edits."""
+    classes, dictionaries, seen = {}, [], set()
+
+    def visit(value):
+        if id(value) in seen:
+            return
+        seen.add(id(value))
+        if isinstance(value, torch.Tensor):
+            raise TypeError("execution metadata cannot own a Tensor")
+        if type(value) is tuple:
+            for child in value:
+                visit(child)
+        elif type(value) is dict:
+            dictionaries.append(value)
+            for child in value.values():
+                visit(child)
+        elif is_dataclass(value):
+            cls = type(value)
+            if (
+                cls.__getattribute__ is not object.__getattribute__
+                or not cls.__dataclass_params__.frozen
+            ):
+                raise TypeError("only plain frozen declarations are supported")
+            classes[cls] = None
+            visit(value.__dict__)
+        elif type(value) is list:
+            raise TypeError("mutable lists are not execution declarations")
+
+    try:
+        for value in values:
+            visit(value)
+    except (AttributeError, TypeError):
+        return None
+    return tuple(classes), tuple(dictionaries)
+
+
+def _guard(dispatcher, cached, inputs, callbacks, functions, factory, metadata):
     """Check current inputs, ownership, fixed buffers, callbacks and global TLS.
 
     This uses the same optional PyTorch guard accessors as the existing optimizer
@@ -104,6 +147,7 @@ def _guard(dispatcher, cached, inputs, callbacks, functions, factory):
         return None
     # Inputs is deliberately absent from the retained template. Its Tensor is
     # supplied afresh to check() and may have different storage on every call.
+    namespaces = metadata[1]
     roots = (
         binding,
         dispatcher,
@@ -113,6 +157,7 @@ def _guard(dispatcher, cached, inputs, callbacks, functions, factory):
         functions,
         fixed,
         dictionaries,
+        namespaces,
     )
     verbose = ["prepared native radius Linear metadata"]
     storage = []
@@ -280,6 +325,12 @@ def _guard(dispatcher, cached, inputs, callbacks, functions, factory):
                 i, "function dictionary", dictionary, kind
             )
             node.add_dict_version_guard(dictionary, verbose, None)
+        declared = root(8, namespaces, manager=callback_guard)
+        for i, dictionary in enumerate(namespaces):
+            node = declared.tuple_getitem_manager(
+                i, "immutable declaration", dictionary, kind
+            )
+            node.add_dict_version_guard(dictionary, verbose, None)
         fixed_node = guard.tuple_getitem_manager(6, "fixed state", fixed, kind)
         _build_guard(
             fixed_node,
@@ -297,7 +348,17 @@ def _guard(dispatcher, cached, inputs, callbacks, functions, factory):
 
         guard.add_global_state_guard(GlobalStateGuard(), verbose, None)
         # This template owns fixed metadata/model state only, not Inputs/X.
-        template = (binding, None, None, cached, owners, functions, fixed, dictionaries)
+        template = (
+            binding,
+            None,
+            None,
+            cached,
+            owners,
+            functions,
+            fixed,
+            dictionaries,
+            namespaces,
+        )
         if callback_guard.check(roots) and guard.check(roots):
             return guard, callback_guard, template
         return None
@@ -389,9 +450,16 @@ def prepare_program(dispatcher, cached, inputs, *, plan=None):
     modules = tuple(module for root in fixed for module in root.modules())
     if not all(_plain_owner(module, metadata._standard_walk) for module in modules):
         return None
+    for axis in (state.layout.input, state.layout.output):
+        # Finish lazy immutable Python metadata before capturing namespaces.
+        _ = axis.banks
+    declared = _metadata_snapshot(state.context, state.layout, cached.decision.plan)
+    if declared is None:
+        return None
     classes = dict.fromkeys(
-        [type(dispatcher.registry), torch.Tensor, torch.nn.Parameter]
+        [type(dispatcher.registry), type(cached), torch.Tensor, torch.nn.Parameter]
         + [type(module) for module in modules]
+        + list(declared[0])
     )
     callbacks = (*_callbacks(), *((kind, ()) for kind in classes))
     functions = _definitions(callbacks)
@@ -404,5 +472,7 @@ def prepare_program(dispatcher, cached, inputs, *, plan=None):
     factory = get_factory()
     if factory is None:
         return None
-    checked = _guard(dispatcher, cached, inputs, callbacks, functions, factory)
+    checked = _guard(
+        dispatcher, cached, inputs, callbacks, functions, factory, declared
+    )
     return None if checked is None else PreparedRadiusLinear(cached, checked)

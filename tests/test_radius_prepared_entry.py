@@ -112,7 +112,8 @@ def test_changed_input_metadata_uses_the_ordinary_entrance(change):
 
 
 @pytest.mark.parametrize(
-    "change", ["storage", "optimizer", "layout", "buffer", "recipe", "state"]
+    "change",
+    ["storage", "optimizer", "layout", "buffer", "recipe", "state", "declaration"],
 )
 def test_changed_live_metadata_cannot_reuse_the_prepared_program(change):
     model, dispatcher, inputs, cached, program = case()
@@ -128,8 +129,10 @@ def test_changed_live_metadata_cannot_reuse_the_prepared_program(change):
             value.copy_(value)  # Same values still require declaration refresh.
     elif change == "recipe":
         object.__setattr__(cached.state.recipe, "output_tile_sites", 16)
-    else:
+    elif change == "state":
         cached.state.recipe = replace(cached.state.recipe, output_tile_sites=16)
+    else:
+        object.__setattr__(cached.context.operator.layout.input_chart, "shape", (64,))
     assert not check(program, dispatcher, inputs)
 
 
@@ -147,6 +150,19 @@ def test_replaced_class_accessor_is_rejected_before_it_is_called(monkeypatch):
         type(model), "input_type", property(lambda self: calls.append(1))
     )
     assert not check(program, dispatcher, inputs)
+    assert calls == []
+
+
+def test_replaced_declaration_accessor_is_not_certified_or_invoked(monkeypatch):
+    from torchcst.operators.spec import OperatorSpec
+
+    _, dispatcher, inputs, cached, program = case()
+    calls = []
+    monkeypatch.setattr(
+        OperatorSpec, "in_features", property(lambda self: calls.append(1))
+    )
+    assert not check(program, dispatcher, inputs)
+    assert prepared.prepare_program(dispatcher, cached, inputs) is None
     assert calls == []
 
 

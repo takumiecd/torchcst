@@ -165,3 +165,8 @@ class _AxisChartState(ChartState):
 # Optional prepared updates may specialize only these original definitions.
 
 _seal_functions(globals())
+
+
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
+
+_seal_functions(globals())
