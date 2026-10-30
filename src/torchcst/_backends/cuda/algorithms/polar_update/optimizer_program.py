@@ -188,6 +188,7 @@ def _native_guard(
         return None
     from torchcst._backends.cuda._host_function_metadata import (
         prepare_checks,
+        prepare_dictionary_checks,
         prepare_storage_checks,
     )
 
@@ -416,11 +417,15 @@ def _native_guard(
             root(4, functions)
             guard.add_lambda_guard(checker, verbose, None)
             dictionaries_node = root(7, dictionaries)
-            for index, value in enumerate(dictionaries):
-                node = dictionaries_node.tuple_getitem_manager(
-                    index, "function dictionary", value, kind
-                )
-                node.add_dict_version_guard(value, verbose, None)
+            epoch = prepare_dictionary_checks(function_factory, dictionaries)
+            if epoch is not None:
+                guard.add_lambda_guard(epoch, verbose, None)
+            else:
+                for index, value in enumerate(dictionaries):
+                    node = dictionaries_node.tuple_getitem_manager(
+                        index, "function dictionary", value, kind
+                    )
+                    node.add_dict_version_guard(value, verbose, None)
         else:
             funcs = root(4, functions)
             globals_seen = set()

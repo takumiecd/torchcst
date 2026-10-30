@@ -6854,3 +6854,59 @@ CSTAdamWのgroup検証cacheもlocalで調べたが、単一groupの削減は約.
 .395〜.427µsで、100行以上のcold認証/mutation/fallbackコードに見合わず本体変更を見送った。
 既存optimizer CPU31件は通過。再現script/独立2processのraw logと安全性の前提は
 `output/adamw-groups-guard/assessment.txt`ほかに保全した。L4の速度効果とはみなさない。
+
+#### optimizer host guardの測定と辞書変更検知の試作（2026-10-31 JST）
+
+gradient preflight再利用job `l4job-3e766d1bdc3f486b9f3586f08883be78`は488 testsと
+5step35 Tensorのbit一致を通過した。候補の完全stepは1.483964/1.441370ms、
+自身のmatched dense .729854/.695375ms、比率2.03323/2.07280で、時間目標は未達。
+source SHA256=`4d8286a8829e18aed5f4e936eced0e5b8104018071b83712303b4c6eda1d3158`、
+result archive SHA256=`4d15ddaa2c246d81ce09b5fa46a558a51ef070d40846871a0da97891f84776f7`。
+
+Polarの固定importをmodule aliasへ移したjob `l4job-bddd099c60764ba58900760b3dacef68`も
+492 tests、35 Tensor bit一致を通過。属性はその都度moduleから取得するので、callbackや
+parameterizationの変更検証は維持する。元版1.429023/1.400714msに対し候補は
+1.395532/1.432693ms、dense .692218/.705734ms、2.01603/2.03008倍。
+メモリは両版ともCST allocated/reserved=287232/2097152B、dense=17313280/23068672B。
+両独立processの2倍以内は未達で、import削減だけの安定した完全step改善とも断定しない。
+source SHA256=`3fb3b62cec618a6c32f7dd99674e9b7354e0cfa433f17d6b33ae6b08774092dc`、
+result archive SHA256=`bd2ddb11f2bf0006ed2b0a24221fcce4d7ceee4b7da78a066862786b74a853a2`。
+
+同jobの未計装micro測定（外側でno_grad/finite無効、各5×1000回）では、候補の実際の
+optimizer guardが28.334µs、validate_inputs 2.627µs、preflight 35.116µs。
+重複importを除いてもguard走査が残る。cProfileの時間は計装の影響があるので、
+それを未計装の関数時間や完全stepの内訳として加算しない。
+
+snapshot方式job `l4job-e4d49eec73654198b34addef3171532c`では、A819×4 FP32の
+detach().clone()がidle時13.47–19.62µs、clone()が12.05–17.08µs、pending CUDA時は
+それぞれ約14.9/13.1µsだった。GPU copy自体は約1.1–1.34µs。専用copy kernelによる
+大幅な短縮は支持されず、本体のsnapshot方式は変更しない。これはoptimizer全step測定ではない。
+source SHA256=`12d0f104fed3766aa5aef4e02c1906e5f2ae5a3d18df8199282e3a3b32b5c0af`、
+result archive SHA256=`d7f64d032c63998a3739aeb4cafb9871279f02a1bb08caeee9adec2a24ef9a40`。
+
+次の試作はCPython 3.12+のdictionary watcherを使い、同じ辞書群の変更を1個のstickyな
+native epochへまとめる（commit `3bc361f7`）。function slot・辞書pointer・MRO・Tensor
+storageの検証は別に残す。対応しないPython、watcher枠不足などでは従来の辞書version
+guardへ戻す。epochは辞書やTensorを強参照しない。辞書変更後に値を元に戻しても古い
+epochを有効にせず、通常経路で改めて認証する。CUDA演算・階層・responseの寿命は変えない。
+
+helper単体の実機job `l4job-46a170d616a9441faaf7d197eb91c2b8`はPython 3.13/L4で
+57 passed/1 skipped（skipは旧Python専用fallback検査）。PYTHONMALLOC=debug下で
+変更・clone・GC・アドレス再利用・循環Tensor・watcher枯渇を検査した。
+110辞書のRootGuard microは10.1803→.8162µs。ただしこれはhelperの結果であり、
+Linear/Polarへ接続した完全step改善や目標達成はまだ意味しない。
+source SHA256=`604a4defc47ad6b537e898541d07d619ca1f10dc635c14b59e3a20e7a0210679`、
+result archive SHA256=`1fa7125c7ae3ae708c97779028bbe68cfac7e119c74e6f2ebbda35692b7c145b`。
+各jobのspec/receipt/resultsは既存の`output/radius-prepared-entry-20261030/<job-id>/`へ保全。
+次は両consumerでepochが実際に有効なこと、独立oracle/全勾配/状態bit一致、未計装の完全stepと
+denseに対する両ピークを同じ条件で確認する。
+
+Linear/Polarのconsumerは同じepoch checkerをnative RootGuardへ直接組み込み、余分な
+Python wrapperを追加しない。tuple identity・function slot・MRO・storage/data guard、
+非対応時の従来loopを維持する。CPU全体2871 passed/6254 skipped（53.85s）、
+Ruff/diff検査が通過。Python 3.11ではwatcher本体を使えないため、GPU側のPython 3.13で
+実際の両consumerの有効化と完全stepを別途検証する。
+
+併行して調べたcoordinate-stepのimport移動は、全体テストで宣言/実行のimport境界を
+破ったため本体変更を取り消した。約1µsのlocal診断短縮を理由に境界を変更しない。
+fresh import順とlive callbackの回帰検査だけを残した。失敗logも同じoutputに保全している。

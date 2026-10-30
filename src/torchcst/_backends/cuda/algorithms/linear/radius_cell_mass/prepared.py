@@ -139,6 +139,7 @@ def _guard(dispatcher, cached, inputs, callbacks, functions, factory, metadata):
     """
     from torchcst._backends.cuda._host_function_metadata import (
         prepare_checks,
+        prepare_dictionary_checks,
         prepare_storage_checks,
     )
     from torchcst.operators._native_metadata_guard import (
@@ -348,17 +349,21 @@ def _guard(dispatcher, cached, inputs, callbacks, functions, factory, metadata):
         root(5, functions, manager=callback_guard)
         callback_guard.add_lambda_guard(checker, verbose, None)
         dicts = root(7, dictionaries, manager=callback_guard)
-        for i, dictionary in enumerate(dictionaries):
-            node = dicts.tuple_getitem_manager(
-                i, "function dictionary", dictionary, kind
-            )
-            node.add_dict_version_guard(dictionary, verbose, None)
         declared = root(8, namespaces, manager=callback_guard)
-        for i, dictionary in enumerate(namespaces):
-            node = declared.tuple_getitem_manager(
-                i, "immutable declaration", dictionary, kind
-            )
-            node.add_dict_version_guard(dictionary, verbose, None)
+        epoch = prepare_dictionary_checks(factory, (*dictionaries, *namespaces))
+        if epoch is not None:
+            callback_guard.add_lambda_guard(epoch, verbose, None)
+        else:
+            for i, dictionary in enumerate(dictionaries):
+                node = dicts.tuple_getitem_manager(
+                    i, "function dictionary", dictionary, kind
+                )
+                node.add_dict_version_guard(dictionary, verbose, None)
+            for i, dictionary in enumerate(namespaces):
+                node = declared.tuple_getitem_manager(
+                    i, "immutable declaration", dictionary, kind
+                )
+                node.add_dict_version_guard(dictionary, verbose, None)
         fixed_node = guard.tuple_getitem_manager(6, "fixed state", fixed, kind)
         _build_guard(
             fixed_node,

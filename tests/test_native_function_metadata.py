@@ -179,6 +179,197 @@ def test_model_is_not_retained_by_the_native_function_records(native_factory):
     assert guard is not None
 
 
+def _runtime_dictionary_guard(factory, builder, previous=None):
+    importlib.import_module("torch._dynamo.guards")
+    if builder == "linear":
+        from test_radius_prepared_entry import case
+
+        from torchcst._backends.cuda.algorithms.linear.radius_cell_mass import prepared
+        from torchcst.operators.execution import LinearInputs
+
+        if previous is None:
+            model, dispatcher, inputs, cached, program = case()
+        else:
+            model, dispatcher, cached = (
+                previous["model"],
+                previous["dispatcher"],
+                previous["cached"],
+            )
+            inputs = LinearInputs(previous["input"])
+            program = prepared.prepare_program(dispatcher, cached, inputs)
+            assert program is not None
+        roots = (model, dispatcher, inputs.x, *program.template[3:])
+        guards = (program.callback_guard, program.guard)
+        value = inputs.x
+    else:
+        if previous is None:
+            model, _opt, dispatcher, cached, (guard, roots) = example(
+                function_factory=factory
+            )
+        else:
+            from torchcst._backends.cuda.algorithms.polar_update.optimizer_program import (
+                _native_guard,
+            )
+
+            model, dispatcher, cached = (
+                previous["model"],
+                previous["dispatcher"],
+                previous["cached"],
+            )
+            callbacks = tuple((owner, ()) for owner in previous["roots"][3])
+            guard, roots = _native_guard(
+                cached.state.binding,
+                dispatcher,
+                cached,
+                callbacks,
+                previous["roots"][4],
+                model,
+                function_factory=factory,
+            )
+        guards = (guard,)
+        value = model.atoms.p.grad
+    return {
+        "model": model,
+        "dispatcher": dispatcher,
+        "cached": cached,
+        "roots": roots,
+        "guards": guards,
+        "input": value,
+    }
+
+
+@pytest.mark.parametrize("builder", ["linear", "polar"])
+@pytest.mark.parametrize("force_none", [False, True])
+def test_runtime_builders_capture_optional_epochs_and_keep_tuple_identity_guards(
+    native_factory, monkeypatch, builder, force_none
+):
+    original = function_metadata.prepare_dictionary_checks
+    probe = {}
+    watcher_available = original(native_factory, (probe,)) is not None
+    captures = []
+
+    def capture(factory, dictionaries):
+        checker = None if force_none else original(factory, dictionaries)
+        captures.append((tuple(id(value) for value in dictionaries), checker))
+        return checker
+
+    monkeypatch.setattr(function_metadata, "prepare_dictionary_checks", capture)
+    actual = _runtime_dictionary_guard(native_factory, builder)
+    roots, guards = actual["roots"], actual["guards"]
+    assert all(guard.check(roots) for guard in guards)
+    expected = roots[7] + (roots[8] if builder == "linear" else ())
+    assert captures[-1][0] == tuple(id(value) for value in expected)
+    assert (captures[-1][1] is not None) == (watcher_available and not force_none)
+    assert len(roots) == (9 if builder == "linear" else 8)
+    for index in (7, 8) if builder == "linear" else (7,):
+        replacement = (*roots[index],)
+        assert replacement is not roots[index]
+        changed = (*roots[:index], replacement, *roots[index + 1 :])
+        assert not all(guard.check(changed) for guard in guards)
+
+
+@pytest.mark.parametrize("builder", ["linear", "polar"])
+def test_runtime_builders_install_returned_native_checker_on_older_python(
+    native_factory, monkeypatch, builder
+):
+    # Exercise the non-None branch even where dictionary watchers are absent.
+    # This independent native slot checker changes without touching any actual
+    # runtime dictionary, so only installation of the returned checker rejects.
+    function = definition()
+    checker = native_factory((function,), ())
+    monkeypatch.setattr(
+        function_metadata, "prepare_dictionary_checks", lambda *args: checker
+    )
+    actual = _runtime_dictionary_guard(native_factory, builder)
+    roots, guards = actual["roots"], actual["guards"]
+    assert all(guard.check(roots) for guard in guards)
+    function.__defaults__ = (2,)
+    assert not all(guard.check(roots) for guard in guards)
+
+
+@pytest.mark.parametrize("builder", ["linear", "polar"])
+@pytest.mark.parametrize("force_none", [False, True])
+def test_runtime_dictionary_mutations_stay_invalid_until_resnapshot(
+    native_factory, monkeypatch, builder, force_none
+):
+    if force_none:
+        monkeypatch.setattr(
+            function_metadata, "prepare_dictionary_checks", lambda *args: None
+        )
+    actual = _runtime_dictionary_guard(native_factory, builder)
+    roots, guards = actual["roots"], actual["guards"]
+    dictionary = (
+        actual["cached"].context.__dict__
+        if builder == "linear"
+        else roots[4][0].__dict__
+    )
+    assert all(guard.check(roots) for guard in guards)
+    dictionary["_test_epoch_event"] = object()
+    del dictionary["_test_epoch_event"]
+    assert not all(guard.check(roots) for guard in guards)
+    fresh = _runtime_dictionary_guard(native_factory, builder, previous=actual)
+    assert all(guard.check(fresh["roots"]) for guard in fresh["guards"])
+    assert not all(guard.check(roots) for guard in guards)
+
+
+@pytest.mark.parametrize("builder", ["linear", "polar"])
+@pytest.mark.parametrize("force_none", [False, True])
+@pytest.mark.parametrize("change", ["dictionary_pointer", "mro"])
+def test_runtime_epochs_keep_function_slots_and_complete_mro_checks(
+    native_factory, monkeypatch, builder, force_none, change
+):
+    if force_none:
+        monkeypatch.setattr(
+            function_metadata, "prepare_dictionary_checks", lambda *args: None
+        )
+    actual = _runtime_dictionary_guard(native_factory, builder)
+    roots, guards = actual["roots"], actual["guards"]
+    assert all(guard.check(roots) for guard in guards)
+    if change == "dictionary_pointer":
+        function = roots[5 if builder == "linear" else 4][0]
+        monkeypatch.setattr(function, "__dict__", dict(function.__dict__))
+        assert not all(guard.check(roots) for guard in guards)
+    else:
+
+        class AlternateModule(torch.nn.Module):
+            pass
+
+        owner = type(actual["model"].kernel)
+        bases = owner.__bases__
+        try:
+            owner.__bases__ = (AlternateModule,)
+            assert not all(guard.check(roots) for guard in guards)
+        finally:
+            owner.__bases__ = bases
+
+
+@pytest.mark.parametrize("builder", ["linear", "polar"])
+@pytest.mark.parametrize("force_none", [False, True])
+def test_runtime_epoch_and_classic_guards_retain_no_model_or_input(
+    native_factory, monkeypatch, builder, force_none
+):
+    original = function_metadata.prepare_dictionary_checks
+    epochs = []
+
+    def capture(factory, dictionaries):
+        checker = None if force_none else original(factory, dictionaries)
+        epochs.append(checker)
+        return checker
+
+    monkeypatch.setattr(function_metadata, "prepare_dictionary_checks", capture)
+    actual = _runtime_dictionary_guard(native_factory, builder)
+    refs = [
+        weakref.ref(actual["model"]),
+        weakref.ref(actual["model"].atoms.p),
+        weakref.ref(actual["input"]),
+    ]
+    guards = actual["guards"]
+    del actual
+    gc.collect()
+    assert all(reference() is None for reference in refs)
+    assert guards and epochs  # Both native guard objects/checkers remain alive.
+
+
 def test_batched_storage_checks_track_addresses_not_numeric_versions(native_factory):
     tensor = torch.ones(4)
     parameter = torch.nn.Parameter(torch.ones(4))
