@@ -184,17 +184,16 @@ def _build_guard(
             dm = bm.type_dict_manager("class namespace", raw, kind)
             dm.add_dict_version_guard(raw, verbose, None)
             if base is torch.nn.Module:
-                # Changing a function's code/defaults does not change its
-                # class dictionary. These callbacks must still fall back.
+                # guard_callable_metadata already checks these functions'
+                # code/default/keyword identities outside dict fast paths.
+                # Only mutable keyword contents need this additional check.
                 for name in ("modules", "named_modules", "__getattr__"):
                     function = base.__dict__[name]
-                    fm = item(dm, name, function)
-                    for field in ("__code__", "__defaults__", "__kwdefaults__"):
-                        value = getattr(function, field)
-                        child = attribute(fm, field, value)
-                        identity(child, value)
-                        if type(value) is dict:
-                            child.add_dict_version_guard(value, verbose, None)
+                    keywords = function.__kwdefaults__
+                    if type(keywords) is dict:
+                        fm = item(dm, name, function)
+                        child = attribute(fm, "__kwdefaults__", keywords)
+                        child.add_dict_version_guard(keywords, verbose, None)
 
     def walk(manager, module):
         identity(manager, module)
@@ -219,9 +218,16 @@ def _build_guard(
                     if tensor is None:
                         continue
                     tm = item(dm, key, tensor)
-                    identity(tm, tensor)
-                    class_guards(tm, tensor)
                     matched = tensor_metadata_guard(tm, tensor, key, verbose)
+                    # The parent _buffers dict-version check already pins the
+                    # registered object. TensorMatch checks its current exact
+                    # type, so repeated type nodes add no information. Keep one
+                    # class/MRO/namespace subtree per tensor class, and retain
+                    # the original guards when TensorMatch is unavailable.
+                    if not matched:
+                        identity(tm, tensor)
+                    if not matched or type(tensor) not in seen_classes:
+                        class_guards(tm, tensor)
                     fields = (
                         ("_version",)
                         if matched

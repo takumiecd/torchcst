@@ -362,6 +362,49 @@ def test_buffer_data_replacement_without_version_still_invalidates(change):
     assert metadata.fixed_state_signature((chart, kernel)) is second
 
 
+def test_replaced_buffer_dictionary_cannot_reuse_tensor_match_only_guards():
+    chart, kernel = roots()
+    first = metadata.fixed_state_signature((chart, kernel))
+    old = kernel.scale
+    kernel._buffers = {name: value.clone() for name, value in kernel._buffers.items()}
+    assert kernel.scale is not old
+    second = metadata.fixed_state_signature((chart, kernel))
+    assert second is not first and second != first
+
+
+def test_later_buffer_type_change_is_observed_by_tensor_match():
+    class CustomTensor(torch.Tensor):
+        pass
+
+    chart, kernel = roots()
+    metadata.fixed_state_signature((chart, kernel))
+    cache = kernel.__dict__["_fixed_signature_cache"]
+    if cache.guard is None:
+        pytest.skip("optional PyTorch metadata guard is unavailable")
+    assert cache.guard.check((chart, kernel))
+    # Keep object, parent dictionary and numerical metadata unchanged. The
+    # earlier chart buffer has already supplied the shared Tensor class tree.
+    kernel.scale.__class__ = CustomTensor
+    assert not cache.guard.check((chart, kernel))
+
+
+def test_unavailable_tensor_match_keeps_identity_type_and_metadata_checks(monkeypatch):
+    from torchcst.operators import _native_metadata_guard
+
+    monkeypatch.setattr(
+        _native_metadata_guard, "tensor_metadata_guard", lambda *a: False
+    )
+    chart, kernel = roots()
+    first = metadata.fixed_state_signature((chart, kernel))
+    assert metadata.fixed_state_signature((chart, kernel)) is first
+    kernel.scale = kernel.scale.clone()
+    second = metadata.fixed_state_signature((chart, kernel))
+    assert second is not first
+    kernel.scale.data = kernel.scale.double()
+    third = metadata.fixed_state_signature((chart, kernel))
+    assert third is not second
+
+
 def test_native_guard_does_not_keep_any_root_or_tensor_alive():
     chart, kernel = roots()
     references = [
