@@ -26,11 +26,35 @@ def _snapshot_metadata_guard(point):
     api = guard_api()
     if api is None:
         return None
+    # A custom detach must remain on the ordinary path. Read its definition and
+    # instance namespace without invoking an unqualified Python accessor. The
+    # actual example uses the immutable TensorBase descriptor only after this
+    # qualification; an override cannot supply unrelated example metadata.
+    point_type = type(point)
+    tensor_base = torch._C.TensorBase
+    if point_type not in (torch.Tensor, torch.nn.Parameter):
+        return None
+    namespace = inspect.getattr_static(point_type, "__dict__", None)
+    if (
+        not inspect.isgetsetdescriptor(namespace)
+        or namespace.__objclass__ is not torch.Tensor
+        or inspect.getattr_static(point_type, "__getattribute__", None)
+        is not object.__getattribute__
+        or inspect.getattr_static(point_type, "detach", None) is not tensor_base.detach
+        or inspect.getattr_static(torch.Tensor, "detach", None)
+        is not tensor_base.detach
+        or inspect.getattr_static(torch.Tensor, "requires_grad", None)
+        is not tensor_base.requires_grad
+        or "detach" in namespace.__get__(point, point_type)
+    ):
+        return None
     cls, _kind = api
     guard = cls()
-    example = point.detach()
     verbose = ["detached atom snapshot metadata"]
     try:
+        if not tensor_base.is_contiguous(point):
+            return None
+        example = tensor_base.detach(point)
         guard.add_type_match_guard(id(torch.Tensor), verbose, None)
         if not tensor_metadata_guard(guard, example, "previous point", verbose):
             return None
@@ -578,7 +602,12 @@ class PreparedPolarOptimizerUpdate:
 
     def preflight(self, dispatcher, adapter, point, gradient, decay):
         """The certified FlatTorus gradient projection is an identity map."""
-        if (
+        if self.snapshot_guard is not None:
+            # Ordinary gradients have the same detached, contiguous metadata as
+            # old-point snapshots. This guard owns no gradient or example data.
+            if not self.snapshot_guard.check(gradient):
+                return False
+        elif (
             type(point) is not torch.nn.Parameter
             or type(gradient) is not torch.Tensor
             or gradient.layout != torch.strided

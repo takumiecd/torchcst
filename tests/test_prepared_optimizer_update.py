@@ -283,6 +283,158 @@ def test_snapshot_guard_owns_no_tensor_and_requests_fallback_for_different_strid
     assert metadata is not None
 
 
+@pytest.mark.parametrize("native", [False, True])
+@pytest.mark.parametrize(
+    "change",
+    [
+        "none",
+        "shape",
+        "dtype",
+        "device",
+        "sparse",
+        "stride",
+        "grad",
+        "parameter",
+        "subclass",
+    ],
+)
+def test_preflight_gradient_metadata_preserves_live_check_and_never_writes(
+    native, change
+):
+    from torchcst._backends.cuda.algorithms.polar_update.optimizer_program import (
+        PreparedPolarOptimizerUpdate,
+        _snapshot_metadata_guard,
+    )
+
+    importlib.import_module("torch._dynamo.guards")
+    point = torch.nn.Parameter(torch.arange(24.0).reshape(6, 4))
+    gradient = torch.ones_like(point)
+    if change == "shape":
+        gradient = gradient[:1]
+    elif change == "dtype":
+        gradient = gradient.double()
+    elif change == "device":
+        gradient = torch.ones(point.shape, device="meta")
+    elif change == "sparse":
+        gradient = gradient.to_sparse()
+    elif change == "stride":
+        gradient = gradient.T.contiguous().T
+    elif change == "grad":
+        gradient.requires_grad_()
+    elif change == "parameter":
+        gradient = torch.nn.Parameter(gradient)
+    elif change == "subclass":
+
+        class Custom(torch.Tensor):
+            pass
+
+        gradient = gradient.as_subclass(Custom)
+    program = PreparedPolarOptimizerUpdate.__new__(PreparedPolarOptimizerUpdate)
+    program.snapshot_guard = _snapshot_metadata_guard(point) if native else None
+    if native and program.snapshot_guard is None:
+        pytest.skip("optional snapshot metadata guard unavailable")
+    calls = []
+    program._matches = lambda *args: calls.append(args) or False
+    before = point.detach().clone()
+    assert not program.preflight(None, None, point, gradient, 0.01)
+    accepted_metadata = change == "none" or (
+        not native and change in ("stride", "grad")
+    )
+    assert len(calls) == int(accepted_metadata)
+    program._matches = lambda *args: True
+    assert program.preflight(None, None, point, gradient, 0.01) is accepted_metadata
+    torch.testing.assert_close(point, before, rtol=0, atol=0)
+    assert point.grad is None
+
+
+@pytest.mark.parametrize("owner", ["instance", "parameter", "tensor"])
+def test_snapshot_guard_rejects_custom_detach_without_calling_it(monkeypatch, owner):
+    from torchcst._backends.cuda.algorithms.polar_update.optimizer_program import (
+        _snapshot_metadata_guard,
+    )
+
+    importlib.import_module("torch._dynamo.guards")
+    point = torch.nn.Parameter(torch.ones(6, 4))
+    calls = []
+
+    def custom(*args):
+        calls.append(args)
+        return torch.ones(1)
+
+    target = {
+        "instance": point,
+        "parameter": torch.nn.Parameter,
+        "tensor": torch.Tensor,
+    }
+    monkeypatch.setattr(target[owner], "detach", custom)
+    assert _snapshot_metadata_guard(point) is None
+    assert calls == []
+
+
+@pytest.mark.parametrize("change", ["storage", "callback", "point", "adapter", "decay"])
+def test_preflight_keeps_live_owner_and_callback_checks(monkeypatch, change):
+    from torchcst._backends.algorithm import Algorithm
+    from torchcst._backends.cuda.algorithms.polar_update.optimizer_program import (
+        PreparedPolarOptimizerUpdate,
+    )
+    from torchcst._backends.torch import finite
+
+    model, opt, dispatcher, cached, guard = example()
+    program = PreparedPolarOptimizerUpdate(
+        cached.state.binding, dispatcher, cached, guard
+    )
+    point, adapter, decay = model.atoms.p, opt.state_adapter, 0.01
+    gradient = torch.ones_like(point)
+    calls = []
+    if change == "storage":
+        point.data = point.detach().clone()
+    elif change == "callback":
+        monkeypatch.setattr(Algorithm, "validate_inputs", lambda *args: calls.append(1))
+    elif change == "point":
+        point = torch.nn.Parameter(point.detach().clone())
+    elif change == "adapter":
+        adapter = SimpleNamespace(vector_keys=("exp_avg",))
+    else:
+        decay = 0.0
+    before = point.detach().clone()
+    with finite.checking(False):
+        assert not program.preflight(dispatcher, adapter, point, gradient, decay)
+    assert calls == []
+    torch.testing.assert_close(point, before, rtol=0, atol=0)
+
+
+def test_preflight_gradient_and_snapshot_example_are_not_retained(monkeypatch):
+    from torchcst._backends.cuda.algorithms.polar_update.optimizer_program import (
+        PreparedPolarOptimizerUpdate,
+        _snapshot_metadata_guard,
+    )
+    from torchcst.operators import _native_metadata_guard as metadata
+
+    importlib.import_module("torch._dynamo.guards")
+    references = []
+    original = metadata.tensor_metadata_guard
+
+    def observe(manager, tensor, *args):
+        references.append(weakref.ref(tensor))
+        return original(manager, tensor, *args)
+
+    monkeypatch.setattr(metadata, "tensor_metadata_guard", observe)
+    point = torch.nn.Parameter(torch.ones(6, 4))
+    program = PreparedPolarOptimizerUpdate.__new__(PreparedPolarOptimizerUpdate)
+    program.snapshot_guard = _snapshot_metadata_guard(point)
+    if program.snapshot_guard is None:
+        pytest.skip("optional snapshot metadata guard unavailable")
+    program._matches = lambda *args: True
+    for _ in range(3):
+        gradient = torch.ones_like(point)
+        references.append(weakref.ref(gradient))
+        assert program.preflight(None, None, point, gradient, 0.01)
+    del gradient, point
+    gc.collect()
+    assert all(reference() is None for reference in references)
+    assert program.snapshot_guard is not None
+
+
 def test_binding_serialization_drops_prepared_program():
     model, opt, _dispatcher, _cached, _native = example()
     binding = opt._update_bindings[model]
