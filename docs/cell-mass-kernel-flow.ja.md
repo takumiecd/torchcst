@@ -7646,3 +7646,59 @@ archive_sha256=`838b0ed7644545b872e24f15f937ea64b5f3cd456beb2c581c01cecccb35dcb6
 CPU sincos shim修正後のGitHub run646はsuccess。`5143b4ee`統合状態は、両native guardを有効にした
 CPU全体3172 passed／6711 skipped／既存警告19件。runtimeとbenchmarkはGPU検証23125266とbyte同一、
 testsは前述のportable shim修正のみ追加されている。wheel/sdistのruntime388ファイルもsourceへbyte照合した。
+
+### 位相seed再利用と小型診断の限定結果（2026-10-31）
+
+`kernel/radius-fixed-k-phase` / b93ea5b7はP=K*T*spacingを使い、response/compact parameter微分の
+part0でsin/cosを求め、K2は符号反転、K3は固定回転で他partのfundamentalを作る。
+C cacheは変えず、part→harmonic→batchの加算順序を保つ。数学的には同じだがFP64の丸めは変わる。
+job `l4job-1831538cb2754820a48f0b9182c7d047`で817f645dcea3を実compileし、
+GPU955 passed／2 skippedと既存の厳密byte/state gateを通過した。
+N1024 activeは4.165755/4.160563msで、base same-profileの4.151259/4.146184msより速くならなかった。
+ピーク9211904/31457280Bは同じ。演算回数の削減を速度改善と扱わず、この候補は未採用とする。
+source_sha256=`32ff704e38d57729af0798b5e1eaadab4bd18b0bc4f246fe108b1ba35e34aeba`.
+archive_sha256=`7b93929297c7081683af3cc14a00d28c1dba30ba4bd9083b5db0fc153d28ab75`.
+
+N128 local-tileの診断job `l4job-8ca4f82ef95f4b548aaf1aa7768ae838`は、実compile済み6fafとae13初期値を照合し、
+30更新後の300-update prefixで2.513884ms対dense1.297071msとなった。
+ただしpeak allocatedはCST241362432B対dense241345536BでCSTが16896B高く、reservedは247463936Bで同じ。
+この短いprefixの時間を前節の1875更新・全epoch2.759727msと置き換えない。
+補助hostコードのコンパイル環境・prepared経路の可用性も全epoch driverと照合中で、
+そのCPU profileを全学習の内訳として断定しない。
+source_sha256=`3a304f7f5576d8b012ae20a6ad2889e6f5134668b7e7c7194d0f942dfb53b49f`.
+archive_sha256=`ca4e1a49ae146a4f495d234b3b8427fefccb94a9cdf269cb4c6a9ec2d7bc9723`.
+
+現在の採用状態3113d6d5のGitHub CPU validation run647はsuccess。
+owner CTA内で完成responseとC生成をまとめる次のmode6は別branchの試作中で、GPU性能・peakは未検証。
+
+### shared C seed候補の厳密置換gate失敗と、診断環境の修正（2026-10-31）
+
+別branch653198ed/native566167b2cde8は、C cacheへ2つのFP64 fundamental seedを加え、
+K2/K3のpart位相を回転で再利用した。容量不足時は元のunseeded経路へ戻し、旧chunk容量・順序を保った。
+job `l4job-b65c07f2248a4689971e6939c68f78d3`は実compile後、GPU2 failed／1011 passed／2 skipped。
+B4/B32の3更新における「同じPlanの出力bytesを全て保つ」gateでdXが不一致となり、速度測定は行っていない。
+
+全42記録のraw snapshot再計数では、5つのdX記録に計50/13824要素・51bytesの差があり、
+最大絶対差8.470329472543003e-22、最大29 ULP、全値finiteで符号変化なしだった。
+Y/dP/P/Adam moments/stepは保存したA41・B4/B32の各3更新でbyte一致した。
+これは外側層を含む学習や一般のcheckpoint一致の証拠ではない。
+同じPlanの互換置換としてはfailedのまま保持し、gateを緩めたり測定済み速度を主張したりしない。
+元の候補と証拠は凍結し、旧Planをliteralにunseededへ保つ別の明示Planを作る場合は、
+既存の独立Y/dX/全atom勾配・CPU-reference更新基準で新しい数値経路として検証する。
+新経路の数値同値と、既存経路のbyte互換を混同しない。
+再計数はignored `output/cached-phase-seed-negative-audit-20261031/`へ保存した。
+source_sha256=`712527f063d39820226160eb74684919e878a456eeb0eb57cb2453633d2dae76`.
+archive_sha256=`97b4d36910a5535f824fd8b3f6bc6e3a26af8677b5af0fc63cdd83ed6ae2f616`.
+
+小型診断8caは、全epoch driver e86にあったjob-local Ninjaのinstall/PATH設定を省いていた。
+実cProfileではPython ReadParameter forward/backwardが60回、prepared Linear本体は0回だった。
+8caはhelperの失敗例外・PATH・loaded状態を保存していないため、Ninja不足を歴史的な確定原因とはしない。
+補助factory/leaseのoptional loadがNoneをcacheする仕組みとNinja依存は別CPU実験で確認した。
+修正した診断driverはe86と同じNinja環境を用意し、自然warmup後のhelper状態を非破壊で記録する。
+
+また、prefix driverは30回の実更新後にsteps31–330を測り、各30stepで同期する。
+全epoch harnessは初期評価とbackward-only warmupの後、cold optimizerを含む1875stepを一括で測る。
+後者ではloopのinputs/logits/loss参照が次の代入まで生存するが、prefixのstep関数はreturn時に解放する。
+データgather/zero_grad/CE/backward/optimizer/metricsの演算は同じでも、Tensor寿命と測定境界は同じではない。
+最終radius bankは全819atomがL2/K3/T4のままで、endpointのtier移動は観測されていない。
+短いprefixから全学習の時間差やメモリ差の原因を断定しない。
