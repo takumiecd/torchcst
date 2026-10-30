@@ -370,8 +370,11 @@ Tensor parameter_grad(Tensor p, Tensor zx, Tensor zy, Tensor h, Tensor g, Config
 #include "block_local.cuh"
 #include "shared_projection.cuh"
 #include "layout.cuh"
+#include "expansion_probe.cuh"
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+    m.def("run_expansion_probe", &radius_cell_mass::run_expansion_probe);
+    m.def("expansion_probe_resources", &radius_cell_mass::expansion_probe_resources);
     m.def("layout_ranges", &radius_cell_mass::layout_ranges);
     m.def("classify_atoms", &radius_cell_mass::classify_atoms);
     m.def("classify_atoms_async", &radius_cell_mass::classify_atoms_async);

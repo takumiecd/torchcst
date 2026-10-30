@@ -5605,3 +5605,141 @@ optimizerはここで区切り、CSTLinear側の完全step費用へ対象を移�
 この変更の1024/MNIST、他GPU世代、Torch 2.6〜2.10、Graph/process peak、新規sanitizerは未測定。
 source/result/receipt/trace/state/pstatsと4条件・最終driverは同じignored output配下へ保存し、
 所有L4は停止済み。更新則・精度・階層タイルとamp-only decayは変えない。
+
+### coeffs生成とsite展開の分離計測（2026-10-30）
+
+対象をoptimizerからCSTLinearへ移し、同じN128/B4/A819/M8/seed41、FP32 IEEE、
+base1/merge2、direct levels2、32-site CTA、explicit `radius-block-local-parallel`、
+native CSTAdamW（fused AdamW、raw decay0/amp decay.01、check_finite=False）で診断する。
+階層・profile・Polar更新則は変えず、入力moments/Hと逆向きmoments/Gは各方向1回だけ作る。
+通常のPlan・dispatcherは変更しない。
+
+```text
+既存のshared_expand_kernel（Y側/dX側とも同じ構成）
+  completed H / G + atom ranges
+    → block_local_coefficient_tile → shared coeffs
+    → CTA barrier
+    → hybrid_site → Y / dX
+```
+
+ここでいうcoeffs生成は、atomのFourier係数を求めるだけではなく、
+`amplitude × completed response`を掛けてタイルの17係数へ集約する処理である。
+`block_local.cuh`の`block_local_coefficient_tile`は各nodeの寄与atomに対して、
+Polar radiusの復元、中心のwrap・分類、profile係数とradius微分、位相の計算、
+sharedのpadded列への書き込み、atom順序を保った加算を行う。
+`common.cuh`の`profile_coefficients_m8`は`__noinline__`であり、C側で使わない
+radius微分も求める。今回はその費用も含む現行実装を測る。
+`hybrid.cuh`の`hybrid_site`は、retained bankではcoeffsをセル積分した基底で展開し、
+direct bankではatomのprofileをsiteごとに評価する。後者が混ざる条件では
+「coeffsからの展開」だけの時間とは呼ばず、site/direct展開とする。
+
+計測用の`expansion_probe.cuh`には以下の入口を追加した。通常のforward/backwardからは
+呼ばれず、global C・timestamp用の配列も通常経路には追加しない。
+
+- 同じ既存kernelをcaller-owned出力へ反復起動する未計装の基準。
+- 同じCTA内でsetup/coeffs/siteの境界を記録する融合probe。
+- 同じCTA所有・node重複・atom順序でCを作り、必要なslotだけglobalへ書き出すkernel。
+- そのslotをsharedへ読み戻して同じsite/direct本体を実行するkernel。
+
+分離kernelの時間はglobalへの書き出し/読み戻しも含む。CTA単位の時刻は足し合わせず、
+CTA中央値・最後に完了したCTA・device全体のspanを別々に報告する。
+融合probeには最後のbarrierと時刻記録が増えるため、未計装版との時間と
+register/local/shared使用量も併記する。PTX `%globaltimer`はこのL4でのtool用計測であり、
+他GPUで同じ性質を保証しない（[NVIDIA PTX ISA](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#special-registers-globaltimer-globaltimer-lo-globaltimer-hi)）。
+
+benchmark側の`SplitExpansionNative`だけがprojection→C→siteの分離を呼ぶ。
+H/Gを再計算・コピーせず、Cは同一streamのconsumer投入後に解放する。
+公開Planへの登録や高速化候補の採用ではなく、追加起動・一時メモリも含む診断である。
+同じCTAのCを保持するので、粗いnodeをCTA間で1回だけ作る別方式には変えていない。
+
+実L4（Torch2.11.0+cu130/CUDA13.0、Python3.13.16、Triton3.6.0）で検査後、
+変更前融合→追加後融合→分割→分割→追加後融合→変更前融合のfresh process順に、
+各10 warmup/101 complete stepsを実行した。各回は独立Y/dX/全atom勾配、
+quadratureとmatched-state検査も通す。分割版は上記benchmark注入を明示した診断であり、
+通常Planの性能観測としてDBやdispatcherへ提出しない。
+
+| 条件 | 完全step中央値2回 ms | 平均中央値 ms | allocated / reserved peak B |
+| --- | ---: | ---: | ---: |
+| 1a06c11dの変更前融合 | 1.982342 / 1.906974 | 1.944658 | 297984 / 2097152 |
+| 計測入口追加後・通常融合 | 1.923351 / 1.965219 | 1.944285 | 297984 / 2097152 |
+| 診断用C/site分割 | 2.225497 / 2.214679 | 2.220088 | 560128 / 2097152 |
+| matched dense（全6回） | .698692〜.728067 | — | 17313280 / 23068672 |
+
+追加後の通常融合に速度・メモリの実質的な変化は認めない。
+分割は約14.2%遅く、通常経路には採用しない。これはC export/reload、追加launch、
+host proxyの追加処理を含む差であり、kernel時間の差だけに帰属させない。
+メモリは通常融合.284MiB、分割.534MiB、dense16.511MiBのallocated peakで、
+全回でallocated/reservedともdense以下。model/optimizer/activation/workspaceを含む
+通常eagerのPyTorch allocatorピークであり、bare weight量、Graph peak、
+GPUプロセス全体の使用量を示す数値ではない。
+
+別microprobeは初期状態と111回の実更新後を固定し、各方向のmoments/responseを
+1回だけ作って再利用した。全5 modeを4 warmup後に64反復×31 samplesのCUDA Eventで測り、
+別7反復のGPU traceと、9回のCTA時刻記録も保存した。表は1反復あたりの中央値us。
+
+| 状態・方向 | 未計装融合全体 | 時刻計装融合 | C生成＋export | reload＋site展開 | split pair |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 初期 Y | 213.903 | 222.160 | 222.048 | 14.640 | 237.072 |
+| 初期 dX | 265.958 | 272.985 | 272.107 | 14.705 | 286.959 |
+| 111更新後 Y | 213.152 | 221.355 | 221.032 | 14.715 | 236.194 |
+| 111更新後 dX | 266.134 | 272.791 | 272.146 | 14.704 | 287.153 |
+
+GPU traceも同じ傾向を示した。111更新後の融合probeで最後に完了したCTAの
+phase中央値は、Yがsetup1.184/C211.936/site6.656us、
+dXがsetup1.152/C262.400/site6.720usだった。
+CTAごとの中央値とwall timeは異なるため、全CTAの時間は合計しない。
+Cとsiteの計装区間の約97%をC生成が占め、**この融合kernel内の主因はsite展開ではなくC生成**。
+profile係数の生成・微分・radius復元・shared集約の個別の寄与率までは分離していない。
+
+| kernel | registers / thread | local B / thread（compiler属性） |
+| --- | ---: | ---: |
+| 未計装融合 | 152 | 1104 |
+| 時刻計装融合 | 162 | 3408 |
+| C＋export | 158 | 2256 |
+| reload＋site | 125 | 840 |
+
+いずれも128 threads/CTA、dynamic shared35088B（C17136B＋warp列17952B）、
+static shared属性16B。計装融合は未計装より約2.5〜3.9%遅い。
+したがって上記Cの時刻を未計装kernelの厳密な内訳とは断言しない。
+分割probeのCは`[B,4,126×17]`のFP64で274176B、mask64B、出力2048B、
+timestamp512B、payload計276800B。これは診断用の一時容量であり、
+通常経路にはない。別probeの最大allocatedは588288B/reserved2097152Bで、dense以下。
+Torch allocatorは上表のcompiler local領域を個別Tensorとして数えるものではない。
+
+分布は均等な階層混合ではなかった。GPUの実分類では、入力・出力とも初期と111更新後の
+819 atomsすべてがlevel2/T4/K3/P12に属し、direct bankは0だった。
+runnerでの初期radiusは3.985522〜4.000000、111更新後は3.942180〜3.999791。
+各方向のC生成で`4 batch ×819 atoms ×3 tiles = 9828`回のprofile評価がある。
+B4を共有するresponse計算と異なり、C側はbatch行ごと・寄与nodeごとに同じatomの
+profile/radiusを再評価している。
+
+初期中心から、GPUで確認済みのK3/T4分類のfirst tileをCPUでも再構成した。
+Yのfirst-tile atom数は23〜26、dXは16〜35。
+`block_local_coefficient_tile`は各rangeを32 atomsずつ処理するため、
+1 batchのnode全体のwarp chunk数はY96→dX111、各CTAで最大のwarp担当は
+Y6→dX8 chunksとなる。dXの最終CTAも主にその重い区間に対応した。
+これは同じ9828評価でも逆向きの負荷が揃わない機構であり、時間差の全量を
+この偏りだけで説明した比較実験ではない。
+次の候補は、Cで使わないradius微分の計算除去、profile/radiusの再評価削減、
+32個の境界で増えるchunk処理の配分改善。階層と完成responseの再利用は維持する。
+この分布での結果をMNIST/1024や広いradius混合へ一般化しない。
+
+実GPUホスト上の関連検査171件が成功し、混合階層・direct・torus・空atom・retained backwardを含む。
+変更前/追加後通常融合/分割の別5 updatesでY/dX/全atom勾配/Parameter/Adam stateの
+35 Tensorがbit一致。probe前後のatoms/moments/H/GのSHAも不変だった。
+CPU全体2671 passed/5947 skipped（既存警告19件）、Ruff/diff検査、
+wheel/sdistのruntime全375ファイルのbyte照合が成功した。
+最初のjobでは新規テストがstart0/M8/N128の既存48KiB上限を超える設定を指定して
+4件失敗した。対応内のstart1へテストを修正し、上記171件と実測を再実行した。
+製品kernelの数式・処理・上限は変更していない。
+
+成功job=`l4job-fbbd0228e8dc4da6a9934970708828d2`、snapshot SHA256=
+`614a1c77bc4218a24fc427d99a87310ca597caf4410f9b20a4e8f31e14188a29`、
+result archive SHA256=`b723fdc18450a4996618683a9e2d792fd8567094bcaa97ac21f9900e07cefb80`。
+CUDA binary=`torchcst_radius_cell_mass_a7525eeb93a3`（初回jobでbuild成功後、
+同一native source digestとbinary SHAを照合して再利用）。
+初回job=`l4job-c27a7e21ccc7459d807b7bf7c0e18e2a`、snapshot SHA256=
+`1a3c29bee6aa6ddea06b43b535248c0032054e12f66205fd08d591b29e422732`。
+再現用driver/probe worker、2 jobのsource/result/receipt、GPU traces、
+state tensors、初期負荷カウントと集計JSONをignored
+`output/radius-expansion-20261030/`へ保全した。
