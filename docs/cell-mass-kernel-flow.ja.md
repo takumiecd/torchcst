@@ -5556,4 +5556,52 @@ Tensorや入力snapshotは保持しない。未対応native helperは従来のgu
 実native helperを使ったCPU検査92 passed/45 skipped。
 class namespace/MRO変更、snapshotのshape/dtype/stride/sparse/alias/requires_grad、
 lr/decayの不正値と解放を含む。Aのみ/Bのみ/両方/変更前をfresh processで比較し、
-完全step・optimizer単独・memory・state一致で採否を決める。GPU速度は未測定。
+完全step・optimizer単独・memory・state一致で採否を決める。
+
+runtime `0eeb2a9e`の4条件比較では、全条件を同じnative CSTAdamW・N128/B4/A819/M8、
+FP32 IEEE・explicit parallel Plan・base1/merge2・amp-only .01・fused AdamWにした。
+変更前→A→B→両方→両方→B→A→変更前のfresh processで、
+各10 warmup/101 full steps、別に20 warmup/101 optimizer-only updates。
+
+| 条件 | 完全stepの平均中央値 ms | optimizer単独の平均中央値 ms | allocated / reserved peak B |
+| --- | ---: | ---: | ---: |
+| b50901b8 | 1.980261 | .541695 | 297984 / 2097152 |
+| A: MRO共有のみ | 1.939362 | .532462 | 297984 / 2097152 |
+| B: snapshot検証のみ | 1.950688 | .534873 | 297984 / 2097152 |
+| 両方 | 1.961873 | .516395 | 297984 / 2097152 |
+
+267件のGPU関連検査、独立Y/dX/全atom勾配・quadrature・matched-state gateが成功。
+4条件のParameter/Adam moment/step20 Tensorは5 updatesでbit一致。
+job=`l4job-72648a62e07840088186a485d4403058`、snapshot SHA256=
+`9816b7d9caa96d51e550f0cf8aaf4a4a289fc8f57016a8b20b465a9c87a427bc`、
+result SHA256=`59b84da1552a5948397bd1462bfb58aee4431b1f72ff334751d3932a7dd749f5`。
+
+両方を入れた同じruntime全374ファイルをbyte照合して最終再測定した。
+変更前→両方→両方→変更前のfresh process、warmup/samplesは同じ。
+完全step中央値は変更前1.953512/1.907893→変更後1.939686/1.894630 ms、
+optimizer単独は.538338/.534543→.517331/.508414 ms。
+平均中央値は **1.930703→1.917158 ms（約.7%短縮）**、
+**.536441→.512873 ms（約4.4%短縮）**。改善を再現したため両方を採用する。
+メモリは全4回で297984/2097152 Bのまま。matched denseは完全step.697〜.714 ms、
+optimizer単独.102〜.105 ms、allocator peak17313280/23068672 B。
+いずれも通常eagerのallocator peakであり、Graph/process全体のメモリではない。
+
+最終job=`l4job-ce094532b18f4e6094bf4cc785468080`、snapshot SHA256=
+`a172977347484bccfabafa689ba1649298fb1215c7a2b6f6289b00333b2eebc0`、
+result SHA256=`a536e95aa5fd33ae47bec13bae53d0e9bb564a371ebe10e1e2e7610b939ec4bb`。
+新しいsource変更はなく267件の検査を再利用し、各runnerの独立oracleと
+別5 updatesの20 state Tensor bit一致を再確認した。
+別traceのGPU更新3 kernels・合計約9.54 us、snapshot copy1回、sync/item/DtoH0。
+全CPU suite2644 passed/5959 skipped（既存警告19件）、Ruff/diffとwheel/sdist照合が成功。
+CUDA source/binaryを各条件で照合し、従来の検証済みbinaryを再利用した。
+
+最終の別instrumented stepでは、大きなprogram guardが2回で約.133 ms、
+PyTorch AdamW proposalが約.089 ms、snapshot入力検証2回が約.028 ms、
+compiled launch入口が約.037 ms。これはtimer負荷を含む診断で、inclusive中央値は足さない。
+各stepのpreflight/run成功と同じprogramの再利用を確認し、計装でgeneric経路へ落ちた
+値ではないことを確かめた。単純なgroup走査は約.008 msであり主因ではない。
+今後の大幅削減には、残るlive guard・snapshot・launchを含む実行方式の再設計が必要になる。
+optimizerはここで区切り、CSTLinear側の完全step費用へ対象を移す。
+この変更の1024/MNIST、他GPU世代、Torch 2.6〜2.10、Graph/process peak、新規sanitizerは未測定。
+source/result/receipt/trace/state/pstatsと4条件・最終driverは同じignored output配下へ保存し、
+所有L4は停止済み。更新則・精度・階層タイルとamp-only decayは変えない。
