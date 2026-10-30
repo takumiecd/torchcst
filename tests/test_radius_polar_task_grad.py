@@ -49,6 +49,7 @@ def test_value_only_coefficients_and_both_gradient_specializations_compile(tmp_p
     program = (
         r"""
 #include <cassert>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <limits>
@@ -60,11 +61,13 @@ def test_value_only_coefficients_and_both_gradient_specializations_compile(tmp_p
 #define TORCH_CHECK(condition, ...) assert(condition)
 struct { int x = 0; } blockIdx, threadIdx;
 struct { int x = 1; } blockDim;
-inline void sincos(double x, double *s, double *c);
+// Keep the CPU-only CUDA shim separate from glibc's noexcept sincos symbol.
+inline void radius_test_sincos(double x, double *s, double *c);
+#define sincos radius_test_sincos
 """
         + common
         + r"""
-inline void sincos(double x, double *s, double *c) { *s = sin(x); *c = cos(x); }
+inline void radius_test_sincos(double x, double *s, double *c) { *s = sin(x); *c = cos(x); }
 namespace radius_cell_mass {
 """
         + phase

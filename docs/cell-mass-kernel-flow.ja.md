@@ -7562,3 +7562,10 @@ archive_sha256=`5a6ce5143f37d2e24667d22748f71f9b2e397434a30d85a03062690c49324349
 wheel/sdistはruntime388ファイルをsourceへbyte照合した。検証記録はignored
 `output/radius-mnist-native-20261031/{primary-abdb2c88-cpu.log,package-abdb2c88-audit.json}`。
 GPU native source・Python runtime・tests・benchmarkはfd0854a0との全byte一致を確認済み。
+
+GitHub CPU run645は新しいCPU用C++ smokeの`sincos`宣言がglibcの例外指定と衝突し、
+1 failed／3035 passed／6796 skippedとなった。CUDA本体の失敗ではない。
+CPU shimを`radius_test_sincos`へ分離し、標準cmathを先に読み込んでからCUDA呼出しだけmacroで向ける。
+macOS clangの該当実算術テストは1 passed。Linuxは次のCIで再検証する。
+この変更はtestsのみで、qualified8b native sourceとruntimeのbyteは変更しない。
+元ログはignored `output/radius-mnist-native-20261031/ci645-github-job.log`へ保全した。
