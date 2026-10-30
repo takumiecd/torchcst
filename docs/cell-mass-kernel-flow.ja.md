@@ -6674,3 +6674,66 @@ CPU全体2771 testsが通過し、変更検知/弱い入力寿命の17 testsも�
 CPU metadataだけの局所比較では通常prologue約31µs、guard約6.2µsだった。
 これはCPU上の局所診断であり、GPU完全stepの改善や目標達成を示すものではない。
 同一native入口・同一CUDA binaryで、通常prologueと準備済み入口の実GPU比較を次に行う。
+
+その後の独立レビューで、準備前のinstance/class callback差替え、継承されたmemberの
+shadow、登録atomへのdescriptor差替えをcold qualification前に拒否するよう修正した。
+ライブラリ定義時のowner/member対応と関数本体を両方確認し、別のsealed関数を同じcallbackとは
+みなさない。custom getterを呼んでから拒否する順番も修正した。変更を元へ戻した際には
+準備の再試行を許し、別bindingのprogramを実行しない。これらのCPU回帰42件が通過し、
+CPU全体は2796 passed/6230 skipped。単一勾配/offloadテストも再warm後のprepared hitを明示する。
+
+job `l4job-7197d7ed0c114da09193460c1548aa2e`で281 tests、5step分35 Tensorのbit一致が通過。
+通常入口1.567622/1.520113msに対し、準備済み入口1.530794/1.505848ms
+（平均1.543868→1.518321ms、1.65%）。候補のmatched denseは.699678/.714281ms
+（2.1879/2.1082倍）。CST allocated/reserved=287232/2097152B、dense=17313280/23068672B。
+メモリ条件は満たすが**時間2倍以内は未達**。
+計装ではDispatcher._prepare/state.is_currentがhot callから消え、fixed_state_signatureも
+3回から1回へ減った一方、forward全体の短縮は小さい。次にguard自体の内訳を測る。
+source SHA256=`76a4accbeaa611bba07531d8a3f7f388df0298bf175ef67dbaba0f2f5f562084`、
+result archive SHA256=`8f267c09bfb21e6bd927f3109aa71fc7cbc0481fc82614fe5bc2ea48f9ef5521`。
+証拠は`output/radius-prepared-entry-20261030/l4job-7197d7ed0c114da09193460c1548aa2e/`。
+
+先行job `l4job-b4d1ae71570748e583cf41fa3145b68c`はdriverのcatalog書換えによる重複Plan、
+`l4job-b9411d216506406e868920d5073a5f28`は古いoptimizer注入処理のlocal importによる
+UnboundLocalErrorで停止した。後者の257 testsは通過したが、両jobとも性能結果から除外する。
+通常catalog/optimizerを無変更で使うdriverへ修正し、variantごとにpytest設定も分離した。
+
+class/moduleの辞書がCPythonで差替え不能であることと完全なMRO pointerのnative確認を利用し、
+callback guard内の重複したMRO走査を定義時に収集した辞書version確認へまとめた。
+job `l4job-c95de37852034bbcbb149532fcb4c4c1`で281 testsと5step35 Tensorのbit一致が通過。
+通常入口1.542809/1.535098msに対し候補1.506404/1.482536ms
+（平均1.538954→1.494470ms、2.89%）。matched dense .700190/.706308msで
+2.15142/2.09899倍、時間の目標は未達。allocated/reservedは前記と同じでdense未満。
+実L4での未計装metadata局所測定は通常prologue約94.26µsに対し、候補は
+callback guard18.46µs、data guard15.78µs、mode確認1.91µsだった。
+計装forwardは469.64→432.13µs、backward352.59→347.16µs、optimizer463.47→464.73µs。
+局所測定/計装時間を足して完全stepとみなさず、独立processの未計装結果を採否に使う。
+source SHA256=`cf5f2bab4c7e4079df654afa24d75fd0de361e09bfe617f6884d6f5ea650f2da`、
+result archive SHA256=`0a6de881f43a22cc434f2b4c47af74b006cea381e9e533e4a54c2968a855d483`。
+証拠は`output/radius-prepared-entry-20261030/l4job-c95de37852034bbcbb149532fcb4c4c1/`。
+
+次の試作はCSTLinear.forward内部の2次元・連続した標準Tensorだけを同じprogramへ渡し、
+reshape/contiguous、feature取得、Dispatcher構築の重複を省く。nn.Module.__call__は維持し、
+pre/post/full-backward hooksとTensor勾配hooks、数値計算とread leaseは同じ経路を使う。
+raw Tensor metadataと現在のModule.selectorを確認し、形状・stride・設定変更は通常入口へ戻す。
+新しいLinearInputsは呼出しごとに生成して保持しない。constructorの__init__/__new__と
+inputのreshape/contiguousの差替えを認めず、custom動作をshortcutで隠さない。
+独立レビューで、準備前のLinearInputs.__new__差替えと、標準Tensor instanceのreshape/
+contiguous差替えを新入口が隠せる問題を再現し、cold認証とraw input guardへ拒否条件を追加した。
+__new__の意図的な変更はCPython slotを汚染するため、回帰検証は独立subprocessへ隔離する。
+CPU全体2804 passed/6231 skipped（51.55s）。GPU比較と完全stepの採否は以下で別に記録する。
+
+Module入口の先行job `l4job-cc6ab8bc120d42c2aa8c46dba223bf66`では285 testsと
+5step35 Tensorのbit一致が通過。通常入口1.555658/1.569555msに対し
+候補1.466828/1.429843ms、matched dense .692519/.671758ms（2.11811/2.12851倍）。
+allocated/reserved=287232/2097152Bは維持。時間の目標は未達。
+計装forward472.839→368.933µs、backward352.464→324.679µs、optimizer461.501→460.008µs。
+source SHA256=`b0e8bfef2f9b30ae9464152ebb7b456eb36689afa3b9eef3265bbb31c36ea649`、
+result archive SHA256=`e837557aafddc122a5e9d1a33f994100a6a2ca4fd42d8a577d4a8d47857fb927`。
+証拠は`output/radius-prepared-entry-20261030/l4job-cc6ab8bc120d42c2aa8c46dba223bf66/`。
+このsnapshotは上記allocator/input callbackの認証修正前であり、そのまま最終採用とはしない。
+修正版のみの待機job `l4job-3e9c50b3053d4937b6f53c468113854c`は実行前に取消し、
+同じ修正とoptimizer guardの辞書走査削減をまとめた比較へ置換した。取消jobに性能結果はない。
+optimizerの更新則やpre/post-Adamの検査境界は変更せず、CPython checkerが完全なMROを
+確認する場合だけraw dictionary version確認へまとめる。checkerなしのfallbackは従来通り。
+独立レビューで必要な110 namespace辞書がすべて残ることを確認した。
