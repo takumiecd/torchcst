@@ -393,18 +393,20 @@ void check_autograd_entry(Tensor x, Tensor p, Config input_config,
     int tile_sites, int schedule) {
     check_matrix(x); check_atoms(p);
     Axis input = parse_axis(input_config), output = parse_axis(output_config);
-    check_shared_shape(p, input, output);
+    const bool global = schedule == 5;
+    if (!global) check_shared_shape(p, input, output);
     TORCH_CHECK(x.device() == p.device() && x.scalar_type() == p.scalar_type() &&
         x.size(1) == input.sites, "expected matching CUDA signal and atoms");
     int zi = (input.node_count - checked_start(input, input_start)) * input.basis_count();
     int co = (output.node_count - checked_start(output, output_start)) * output.basis_count();
-    TORCH_CHECK(tile_sites >= 1 && tile_sites <= 128 && schedule >= 0 && schedule <= 3,
+    TORCH_CHECK(tile_sites >= 1 && tile_sites <= 128 &&
+        ((schedule >= 0 && schedule <= 3) || global),
         "invalid native radius launch configuration");
     int work = std::max({input.node_count * input.basis_count(),
         output.node_count * output.basis_count(), int(p.size(0))});
     TORCH_CHECK(x.size(0) <= 65535 && x.size(0) * work <= INT_MAX - THREADS,
         "radius batch/grid work exceeds native index limit");
-    TORCH_CHECK(8 * (p.size(0) + std::max(zi, co)) <= 48 * 1024,
+    TORCH_CHECK(global || 8 * (p.size(0) + std::max(zi, co)) <= 48 * 1024,
         "block-local shared storage exceeds 48 KiB");
     if (schedule == 2) {
         for (int side = 0; side < 2; ++side) {
@@ -416,7 +418,7 @@ void check_autograd_entry(Tensor x, Tensor p, Config input_config,
                 "coefficient cache shared storage exceeds 48 KiB");
         }
     }
-    if (schedule == 3) {
+    if (schedule == 3 || global) {
         batched_coefficient_layout(input, input_start, tile_sites);
         batched_coefficient_layout(output, output_start, tile_sites);
     }
@@ -437,9 +439,27 @@ std::vector<Tensor> autograd_ranges(Tensor keys, Config input, Config output, bo
     return layout_ranges(keys, parse_axis(input).node_count,
         parse_axis(output).node_count, reverse);
 }
+// Only the host dependency graph changes. Each projection completes the same
+// global hierarchy and H/G before expansion; dP consumes those saved Tensors.
+inline std::vector<Tensor> autograd_global_project(Tensor x, Tensor p, Config config,
+    int start, bool merge, bool output_side) {
+    auto h = torch::empty({x.size(0), p.size(0)}, x.options().dtype(torch::kDouble));
+    auto z = build_compact_moments_active(x, p, config, merge, start);
+    parallel_response_into(x, p, z, h, config, output_side, start);
+    return {z, h};
+}
 std::vector<Tensor> autograd_transform(Tensor x, Tensor p, Tensor rows, Tensor offsets,
     Config input, Config output, int input_start, int output_start,
     bool merge, int tile_sites, int schedule, bool reverse) {
+    if (schedule == 5) {
+        auto source = reverse ? output : input, destination = reverse ? input : output;
+        int source_start = reverse ? output_start : input_start;
+        int destination_start = reverse ? input_start : output_start;
+        auto projection = autograd_global_project(x, p, source, source_start, merge, reverse);
+        auto y = batched_cached_expansion(p, rows, offsets, projection[1],
+            destination, destination_start, tile_sites, !reverse);
+        return {y, projection[0], projection[1]};
+    }
     return shared_apply(x, p, rows, offsets, reverse ? output : input,
         reverse ? input : output, reverse ? output_start : input_start,
         reverse ? input_start : output_start, merge, tile_sites, reverse,
@@ -447,6 +467,7 @@ std::vector<Tensor> autograd_transform(Tensor x, Tensor p, Tensor rows, Tensor o
 }
 std::vector<Tensor> autograd_project(Tensor x, Tensor p, Config output,
     int start, bool merge, int schedule) {
+    if (schedule == 5) return autograd_global_project(x, p, output, start, merge, true);
     return shared_apply(x, p, Tensor(), Tensor(), output, output, start, start,
         merge, 1, true, false, schedule >= 1);
 }
@@ -454,7 +475,7 @@ Tensor autograd_parameter_grad(Tensor p, Tensor x, Tensor dy, Tensor zx, Tensor 
     Tensor h, Tensor g, Config input, Config output, int input_start,
     int output_start, int schedule) {
     return hybrid_parameter_grad_impl(p, x, dy, zx, zy, h, g, input, output,
-        input_start, output_start, schedule >= 1 ? 32 : THREADS, schedule == 3);
+        input_start, output_start, schedule >= 1 ? 32 : THREADS, schedule == 3 || schedule == 5);
 }
 } // namespace radius_cell_mass
 

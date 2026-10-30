@@ -118,3 +118,17 @@ GLOBAL_ACTIVE_GRAD4 = ExecutionPlan(
         schedule="global_batched_cached_active_moments_grad4",
     ),
 )
+
+
+# General global stages behind C++ host autograd; mode4 is reserved for tile-local Z.
+GLOBAL_ACTIVE_GRAD4_NATIVE = ExecutionPlan(
+    "cuda_radius_cell_mass",
+    "v1",
+    RadiusCellMassRecipe(
+        input_direct_levels=2,
+        output_direct_levels=2,
+        schedule="global_batched_cached_active_moments_grad4_native",
+        native_autograd=True,
+        native_entry=True,
+    ),
+)

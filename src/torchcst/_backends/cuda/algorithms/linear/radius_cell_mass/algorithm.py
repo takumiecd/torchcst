@@ -84,6 +84,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "global_batched_cached_response4_grad4",
             "global_batched_cached_active_moments",
             "global_batched_cached_active_moments_grad4",
+            "global_batched_cached_active_moments_grad4_native",
             "block_local",
             "block_local_parallel",
             "block_local_cached_parallel",
@@ -96,9 +97,16 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
         ):
             raise ValueError("output_tile_sites must lie in [1,128]")
         if type(recipe.native_autograd) is not bool or (
-            recipe.native_autograd and not recipe.schedule.startswith("block_local")
+            recipe.native_autograd
+            and not (
+                recipe.schedule.startswith("block_local")
+                or recipe.schedule
+                == "global_batched_cached_active_moments_grad4_native"
+            )
         ):
-            raise ValueError("native_autograd requires a block-local schedule")
+            raise ValueError(
+                "native_autograd requires a block-local or explicit global-native schedule"
+            )
         if type(recipe.native_entry) is not bool or (
             recipe.native_entry and not recipe.native_autograd
         ):
@@ -175,6 +183,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "global_batched_cached_response4_grad4",
             "global_batched_cached_active_moments",
             "global_batched_cached_active_moments_grad4",
+            "global_batched_cached_active_moments_grad4_native",
         ):
             from .expansion_layout import batched_coefficient_layout
 
