@@ -102,6 +102,84 @@ def radius_plan(execution="cached", *, direct_levels=2):
     )
 
 
+def _resolve_radius_execution_plan(
+    execution_plan, *, radius_execution="cached", radius_direct_levels=2
+):
+    default = radius_plan(radius_execution, direct_levels=radius_direct_levels)
+    if execution_plan is None:
+        return default
+    from torchcst._backends.schema import ExecutionPlan
+    from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.algorithm import (
+        RadiusCellMassAlgorithm,
+    )
+    from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.recipe import (
+        RadiusCellMassRecipe,
+    )
+
+    if radius_execution != "cached" or radius_direct_levels != 2:
+        raise ValueError(
+            "execution_plan requires default radius_execution='cached' and radius_direct_levels=2; the Plan supplies execution choices"
+        )
+    if type(execution_plan) is not ExecutionPlan:
+        raise ValueError("execution_plan must be a radius ExecutionPlan")
+    algorithm = RadiusCellMassAlgorithm()
+    if (execution_plan.algorithm_id, execution_plan.algorithm_revision) != (
+        algorithm.id,
+        algorithm.revision,
+    ) or type(execution_plan.recipe) is not RadiusCellMassRecipe:
+        raise ValueError(
+            "execution_plan must use cuda_radius_cell_mass/v1 and RadiusCellMassRecipe"
+        )
+    make_algorithm_registry().validate_plan(execution_plan)
+    return execution_plan
+
+
+def load_radius_execution_plan(path):
+    """Read one registry Plan JSON; its raw-file hash stays separate from the artifact."""
+    payload = Path(path).read_bytes()
+    plan = make_algorithm_registry().loads_plan(payload)
+    return _resolve_radius_execution_plan(plan), hashlib.sha256(payload).hexdigest()
+
+
+def _radius_plan_snapshot(execution_plan, source_sha256):
+    if source_sha256 is not None and (
+        type(source_sha256) is not str
+        or len(source_sha256) != 64
+        or any(character not in "0123456789abcdef" for character in source_sha256)
+    ):
+        raise ValueError("execution_plan_source_sha256 must be a lowercase SHA256")
+    if execution_plan is None:
+        if source_sha256 is not None:
+            raise ValueError("execution_plan_source_sha256 requires execution_plan")
+        return None
+    registry = make_algorithm_registry()
+    canonical = registry.dumps_plan(execution_plan).encode()
+    return {
+        "plan": registry.dump_plan(execution_plan),
+        "source_file_sha256": source_sha256,
+        "canonical_sha256": hashlib.sha256(canonical).hexdigest(),
+    }
+
+
+def _validate_radius_execution_width(
+    width, radius_execution, radius_direct_levels, execution_plan
+):
+    # A registered explicit Plan is checked for actual shape/device support by
+    # the ordinary first CUDA dispatch. No execution settings are bypassed here.
+    if execution_plan is not None:
+        return
+    if width == 1024 and (
+        radius_execution != "global-response4" or radius_direct_levels != 2
+    ):
+        raise ValueError(
+            "N1024 requires explicit global-response4 execution at direct levels 2"
+        )
+    if width == 128 and radius_execution == "global-response4":
+        raise ValueError(
+            "global-response4 learning execution requires the N1024 cohort"
+        )
+
+
 def radius_settings():
     return {
         "profile": "ChebyshevRadiusSpec",
@@ -135,19 +213,18 @@ def make_radius_cst(
     dtype=torch.float32,
     radius_execution="cached",
     radius_direct_levels=2,
+    execution_plan=None,
 ):
     """Public radius cohorts with physical spacing one, without sigma conversion."""
     radius_cohort(width)
-    if width == 1024 and (
-        radius_execution != "global-response4" or radius_direct_levels != 2
-    ):
-        raise ValueError(
-            "N1024 requires explicit global-response4 execution at direct levels 2"
-        )
-    if width == 128 and radius_execution == "global-response4":
-        raise ValueError(
-            "global-response4 learning execution requires the N1024 cohort"
-        )
+    selected_plan = _resolve_radius_execution_plan(
+        execution_plan,
+        radius_execution=radius_execution,
+        radius_direct_levels=radius_direct_levels,
+    )
+    _validate_radius_execution_width(
+        width, radius_execution, radius_direct_levels, execution_plan
+    )
     chart = chart_presets.regular_grid(((width,),), spacing=1.0, geometry="flat_torus")
     kernel = presets.polar_radius_cell_mass(
         amplitude_max=1.0,
@@ -165,7 +242,7 @@ def make_radius_cst(
         kernel=kernel,
         dtype=dtype,
         selector=FixedSelector(
-            radius_plan(radius_execution, direct_levels=radius_direct_levels),
+            selected_plan,
             registry=make_algorithm_registry(),
         ),
     )
@@ -607,13 +684,24 @@ def make_initialization(width, seed=120):
 
 
 def make_model(
-    initialization, kind, *, radius_execution="cached", radius_direct_levels=2
+    initialization,
+    kind,
+    *,
+    radius_execution="cached",
+    radius_direct_levels=2,
+    execution_plan=None,
 ):
     n = initialization["width"]
     if kind not in ("cst", "dense"):
         raise ValueError("kind must be cst or dense")
     radius = initialization.get("parameterization") == "polar_radius"
-    radius_plan(radius_execution, direct_levels=radius_direct_levels)
+    _resolve_radius_execution_plan(
+        execution_plan,
+        radius_execution=radius_execution,
+        radius_direct_levels=radius_direct_levels,
+    )
+    if not radius and execution_plan is not None:
+        raise ValueError("execution_plan overrides require a radius initialization")
     if not radius and radius_execution != "cached":
         raise ValueError("radius_execution overrides require a radius initialization")
     if not radius and radius_direct_levels != 2:
@@ -622,22 +710,16 @@ def make_model(
         )
     if radius:
         validate_radius_initialization(initialization)
-        if n == 1024 and (
-            radius_execution != "global-response4" or radius_direct_levels != 2
-        ):
-            raise ValueError(
-                "N1024 requires explicit global-response4 execution at direct levels 2"
-            )
-        if n == 128 and radius_execution == "global-response4":
-            raise ValueError(
-                "global-response4 learning execution requires the N1024 cohort"
-            )
+        _validate_radius_execution_width(
+            n, radius_execution, radius_direct_levels, execution_plan
+        )
     hidden = (
         make_radius_cst(
             n,
             initialization["atoms"].clone(),
             radius_execution=radius_execution,
             radius_direct_levels=radius_direct_levels,
+            execution_plan=execution_plan,
         )
         if radius and kind == "cst"
         else (
@@ -940,13 +1022,22 @@ def run_training(
     radius_execution="cached",
     radius_direct_levels=2,
     allow_radius_1024=False,
+    execution_plan=None,
+    execution_plan_source_sha256=None,
 ):
     if epochs < 1 or batch_size < 1:
         raise ValueError("epochs and batch_size must be positive")
     if data_normalization not in ("original", "inplace"):
         raise ValueError("data_normalization must be original or inplace")
     radius = initialization.get("parameterization") == "polar_radius"
-    radius_plan(radius_execution, direct_levels=radius_direct_levels)
+    selected_plan = _resolve_radius_execution_plan(
+        execution_plan,
+        radius_execution=radius_execution,
+        radius_direct_levels=radius_direct_levels,
+    )
+    plan_snapshot = _radius_plan_snapshot(execution_plan, execution_plan_source_sha256)
+    if not radius and execution_plan is not None:
+        raise ValueError("execution_plan overrides require a radius initialization")
     if not radius and radius_execution != "cached":
         raise ValueError("radius_execution overrides require a radius initialization")
     if not radius and radius_direct_levels != 2:
@@ -960,10 +1051,12 @@ def run_training(
                 raise ValueError("N1024 learning requires explicit allow_radius_1024")
             if batch_size != 4:
                 raise ValueError("N1024 learning currently permits true batch 4 only")
-            if radius_execution != "global-response4" or radius_direct_levels != 2:
-                raise ValueError(
-                    "N1024 requires explicit global-response4 execution at direct levels 2"
-                )
+        _validate_radius_execution_width(
+            initialization["width"],
+            radius_execution,
+            radius_direct_levels,
+            execution_plan,
+        )
         if batch_size != 4 and not (batch_size == 32 and allow_radius_batch32):
             raise ValueError(
                 "radius requires true batch 4; batch 32 needs explicit allow_radius_batch32"
@@ -977,6 +1070,10 @@ def run_training(
     )
     output = Path(output)
     output.mkdir(parents=True, exist_ok=False)
+    if plan_snapshot is not None:
+        (output / "execution-plan-snapshot.json").write_text(
+            json.dumps(plan_snapshot, indent=2)
+        )
     data, data_info = load_mnist(data_directory)
     device = torch.device("cuda")
     model = make_model(
@@ -984,11 +1081,10 @@ def run_training(
         kind,
         radius_execution=radius_execution,
         radius_direct_levels=radius_direct_levels,
+        execution_plan=execution_plan,
     ).to(device)
     execution_linear_plan = (
-        make_algorithm_registry().dump_plan(
-            radius_plan(radius_execution, direct_levels=radius_direct_levels)
-        )
+        make_algorithm_registry().dump_plan(selected_plan)
         if radius and kind == "cst"
         else None
     )
@@ -1119,6 +1215,7 @@ def run_training(
             "radius_execution": radius_execution if radius else None,
             "radius_direct_levels": radius_direct_levels if radius else None,
             "execution_linear_plan": execution_linear_plan,
+            "execution_plan_override": plan_snapshot,
         },
         output / "final.pt",
     )
@@ -1155,7 +1252,8 @@ def run_training(
         "radius_execution": radius_execution if radius else None,
         "radius_direct_levels": radius_direct_levels if radius else None,
         "execution_linear_plan": execution_linear_plan,
-        "linear_plan_scope": "linear_plan is the frozen initialization contract; execution_linear_plan is the actual CST execution override (None for dense)"
+        "execution_plan_override": plan_snapshot,
+        "linear_plan_scope": "linear_plan is the frozen initialization contract; execution_linear_plan is the actual CST execution override (None for dense); execution_plan_override records the requested Plan and source-file hash"
         if radius
         else None,
         "update_plan": initialization.get("update_plan") if kind == "cst" else None,
@@ -1220,6 +1318,11 @@ def main():
         default=2,
         help="opt-in number of direct radius levels for both axes; frozen initialization stays at 2",
     )
+    parser.add_argument(
+        "--radius-plan",
+        type=Path,
+        help="registry Plan JSON override; requires default --radius-execution cached and --radius-direct-levels 2; N1024 still requires --allow-radius-1024 and true batch 4",
+    )
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument(
@@ -1237,6 +1340,7 @@ def main():
             value is not None
             for value in (
                 args.initialization,
+                args.radius_plan,
                 args.kind,
                 args.data_directory,
                 args.output,
@@ -1267,6 +1371,11 @@ def main():
         parser.error(
             "training requires --initialization, --kind, --data-directory and --output"
         )
+    execution_plan, execution_plan_source_sha256 = (
+        load_radius_execution_plan(args.radius_plan)
+        if args.radius_plan is not None
+        else (None, None)
+    )
     initialization = torch.load(
         args.initialization, map_location="cpu", weights_only=True
     )
@@ -1285,6 +1394,8 @@ def main():
         radius_execution=args.radius_execution,
         radius_direct_levels=args.radius_direct_levels,
         allow_radius_1024=args.allow_radius_1024,
+        execution_plan=execution_plan,
+        execution_plan_source_sha256=execution_plan_source_sha256,
     )
 
 
