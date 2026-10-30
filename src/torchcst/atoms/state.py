@@ -9,6 +9,7 @@ from torch import Tensor, nn
 
 from torchcst._builtin_callbacks import seal_functions as _seal_functions
 
+from . import _native_read_lease
 from .atoms import Atoms
 from .optimizer_state import AtomOptimizerState
 
@@ -112,6 +113,10 @@ class AtomState(nn.Module):
             with torch.autograd.graph.saved_tensors_hooks(
                 _identity_saved, _identity_saved
             ):
+                if _native_read_lease._prepared is not None:
+                    result = _native_read_lease._prepared(tensor, self)
+                    if result is not None:
+                        return result
                 return _ReadParameter.apply(tensor, self)
         return tensor
 
@@ -281,3 +286,4 @@ class AtomState(nn.Module):
 
 # Optional prepared updates may specialize only these original definitions.
 _seal_functions(globals())
+_native_read_lease.register(AtomState, _ReadParameter, globals())

@@ -157,6 +157,9 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
         return None
 
     def prepare(self, state):
+        from torchcst.atoms._native_read_lease import prepare
+
+        prepare()
         state.invalidate()
         state.layout = hierarchy_from_operator(state.binding.execution_declaration())
         state.mark_current()
