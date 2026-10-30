@@ -22,6 +22,45 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plans import (
 )
 
 
+def bounded_atoms(plan, dtype):
+    """Keep the widest fixture at the largest dtype value inside the domain.
+
+    Decimal chart periods can round upward in FP32. The runtime checks the
+    physical FP64 cap, so fix this fixture instead of changing that contract.
+    """
+    p = atoms(plan, dtype)
+    maximum = min(plan.input.period, plan.output.period) / 2
+    cap = torch.tensor(maximum, dtype=dtype)
+    if cap.item() > maximum:
+        cap = torch.nextafter(cap, torch.full_like(cap, -math.inf))
+    p[-1, 1] = cap
+    assert bool(torch.isfinite(p).all())
+    assert bool(((p[:, 1].double() > 0) & (p[:, 1].double() <= maximum)).all())
+    return p
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "sites,merge,spacing", [(16, 2, 0.37), (27, 3, 0.37), (128, 2, 0.37), (128, 2, 1.0)]
+)
+def test_batched_atom_fixture_stays_inside_exact_physical_radius_cap(
+    dtype, sites, merge, spacing
+):
+    axis = axis_plan(sites, merge=merge, spacing=spacing, origin=-1.2)
+    plan = HierarchyPlan(input=axis, output=axis)
+    p = bounded_atoms(plan, dtype)
+    maximum = min(plan.input.period, plan.output.period) / 2
+    assert bool(((p[:, 1].double() > 0) & (p[:, 1].double() <= maximum)).all())
+    if dtype == torch.float64:
+        assert p[-1, 1].item() == maximum
+    else:
+        above = torch.nextafter(p[-1, 1], torch.full_like(p[-1, 1], math.inf))
+        assert above.item() > maximum
+    # Only the widest atom changes; all other bank/seam fixtures are retained.
+    assert torch.equal(p[:-1], atoms(plan, dtype)[:-1])
+    assert torch.equal(p[-1, [0, 2, 3]], atoms(plan, dtype)[-1, [0, 2, 3]])
+
+
 @pytest.mark.parametrize(
     "native,checked", [(False, False), (True, False), (True, True)]
 )
@@ -170,7 +209,7 @@ def test_batched_counts_one_profile_per_four_rows_and_preserves_complete_caches(
 ):
     axis = axis_plan(128, modes=8)
     plan = HierarchyPlan(input=axis, output=axis)
-    p = torch.empty(0, 4) if empty else atoms(plan, torch.float32).repeat(33, 1)
+    p = torch.empty(0, 4) if empty else bounded_atoms(plan, torch.float32).repeat(33, 1)
     p = p.cuda()
     x = torch.randn(batch, 128, generator=torch.Generator().manual_seed(720)).cuda()
     rows, offsets = ex.prepare_layout(plan, p, reverse=not output_side)
@@ -243,7 +282,7 @@ def test_batched_full_vjp_against_independent_cell_mass_oracle(
         plan,
         recipe,
         torch.randn(batch, sites, dtype=dtype, generator=gen),
-        atoms(plan, dtype),
+        bounded_atoms(plan, dtype),
         torch.randn(batch, sites, dtype=dtype, generator=gen),
     )
 
@@ -254,7 +293,7 @@ def test_batched_full_vjp_against_independent_cell_mass_oracle(
 def test_batched_native_entry_preserves_no_edge_forward(checked, mode):
     axis = axis_plan(16, modes=3)
     plan = HierarchyPlan(input=axis, output=axis)
-    p = atoms(plan, torch.float64).cuda().requires_grad_()
+    p = bounded_atoms(plan, torch.float64).cuda().requires_grad_()
     x = torch.randn(5, 16, dtype=p.dtype, device=p.device, requires_grad=True)
     recipe = replace(
         BLOCK_LOCAL_BATCHED_CACHED_PARALLEL.recipe,
