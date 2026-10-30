@@ -354,6 +354,12 @@ class CSTLinear(CSTModule):
         )
 
     def forward(self, inputs: Tensor) -> Tensor:
+        program = self.__dict__.get("_execution_program")
+        if program is not None:
+            result = program.forward(self, inputs)
+            if result is not None:
+                return result
+
         if inputs.ndim < 1 or inputs.shape[-1] != self.in_features:
             raise ValueError(
                 f"expected input shape [..., {self.in_features}], "

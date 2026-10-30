@@ -76,7 +76,7 @@ def case():
 
 
 def check(program, dispatcher, inputs):
-    roots = (program.template[0], dispatcher, inputs, *program.template[3:])
+    roots = (program.template[0], dispatcher, inputs.x, *program.template[3:])
     return program.callback_guard.check(roots) and program.guard.check(roots)
 
 
@@ -365,12 +365,12 @@ def test_prepared_read_lease_retained_backward_and_offload(
     assert program is not None
     hits = []
 
-    def observe(dispatcher, binding, inputs, *, plan=None):
-        result = type(program).run(program, dispatcher, binding, inputs, plan=plan)
+    def observe(binding, inputs):
+        result = type(program).forward(program, binding, inputs)
         hits.append(result is not None)
         return result
 
-    monkeypatch.setattr(program, "run", observe)
+    monkeypatch.setattr(program, "forward", observe)
 
     def pack(value):
         return value.cpu(), value.device
@@ -457,3 +457,52 @@ def test_initially_custom_callback_can_restore_prepared_eligibility():
     warm = model(x)
     del warm
     assert model._execution_program is not None
+
+
+@pytest.mark.parametrize("change", ["replace", "remove", "instance_forward"])
+def test_module_entrance_cannot_hide_changed_routing(change):
+    model, dispatcher, inputs, _, program = case()
+    if change == "replace":
+        from torchcst._backends.dispatch.select import FixedSelector
+
+        model.selector = FixedSelector(
+            model.selector._plan, registry=dispatcher.registry
+        )
+    elif change == "remove":
+        model.selector = None
+    else:
+        model.forward = lambda x: x
+    assert not check(program, dispatcher, inputs)
+
+
+@GPU
+def test_module_hooks_and_tensor_gradient_hooks_are_preserved():
+    snapshots = []
+    for native_entry in (False, True):
+        model, x, _, _ = gpu_case(native_entry=native_entry)
+        calls = []
+        handles = [
+            model.register_forward_pre_hook(
+                lambda module, args: calls.append("pre") or (args[0] + 0.125,)
+            ),
+            model.register_forward_hook(
+                lambda module, args, value: calls.append("post") or value * 0.5
+            ),
+            model.register_full_backward_hook(
+                lambda module, grad_input, grad_output: calls.append("backward")
+            ),
+            x.register_hook(lambda grad: calls.append("x") or grad * 0.25),
+            model.atoms.p.register_hook(lambda grad: calls.append("p") or grad * 0.75),
+        ]
+        x.grad = None
+        model.atoms.p.grad = None
+        y = model(x)
+        y.square().sum().backward()
+        assert sorted(calls) == sorted(["pre", "post", "backward", "x", "p"])
+        snapshots.append(
+            tuple(v.detach().cpu().clone() for v in (y, x.grad, model.atoms.p.grad))
+        )
+        for handle in handles:
+            handle.remove()
+    for baseline, candidate in zip(*snapshots):
+        torch.testing.assert_close(baseline, candidate, rtol=0, atol=0)

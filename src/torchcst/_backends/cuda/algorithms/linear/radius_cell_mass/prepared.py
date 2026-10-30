@@ -34,6 +34,9 @@ def _callbacks():
         (
             CSTLinear,
             (
+                "forward",
+                "in_features",
+                "out_features",
                 "validate_inputs",
                 "build_context",
                 "execution_parameters",
@@ -56,11 +59,11 @@ def _callbacks():
             RadiusCellMassAlgorithm,
             ("run", "validate_inputs", "validate_recipe", "execute", "prepare"),
         ),
-        (AtomState, ("parameters_for_execution", "protect_tensor")),
+        (AtomState, ("parameters_for_execution", "protect_tensor", "guard_result")),
         (Atoms, ()),
         (AtomOptimizerState, ("fields",)),
         (execution, ("validate_linear_inputs", "linear_execution")),
-        (execution.LinearInputs, ()),
+        (execution.LinearInputs, ("__init__",)),
         (context, ("context_from_tensors", "context_from_metadata")),
         (metadata, ("operator_declaration", "fixed_state_signature")),
         (metadata._FixedSignatureCache, ("current",)),
@@ -164,7 +167,7 @@ def _guard(dispatcher, cached, inputs, callbacks, functions, factory, metadata):
     roots = (
         binding,
         dispatcher,
-        inputs,
+        inputs.x,
         cached,
         owners,
         functions,
@@ -234,6 +237,9 @@ def _guard(dispatcher, cached, inputs, callbacks, functions, factory, metadata):
             bm,
             binding,
             (
+                "forward",
+                "in_features",
+                "out_features",
                 "validate_inputs",
                 "build_context",
                 "execution_parameters",
@@ -250,7 +256,9 @@ def _guard(dispatcher, cached, inputs, callbacks, functions, factory, metadata):
         owner = binding.atom_state
         om = registered(bm, binding, "atom_state")
         field(om, owner, "layout_version")
-        no_overrides(om, owner, ("parameters_for_execution", "protect_tensor"))
+        no_overrides(
+            om, owner, ("parameters_for_execution", "protect_tensor", "guard_result")
+        )
         atoms = owner.atoms
         am = registered(om, owner, "atoms")
         tensor(registered(am, atoms, "p", "_parameters"), atoms.p, owned=True)
@@ -271,6 +279,9 @@ def _guard(dispatcher, cached, inputs, callbacks, functions, factory, metadata):
             registered(bm, binding, name)
         namespace = attr(bm, "__dict__", binding.__dict__)
         same(item(namespace, "_prepared_dispatch", cached), cached)
+        # The direct Module entrance reuses a dispatcher only while its selector
+        # is still the exact live selector registered on this Module.
+        same(item(namespace, "selector", dispatcher.selector), dispatcher.selector)
 
         dm = root(1, dispatcher, identity=False)
         no_overrides(dm, dispatcher, ("run", "_prepare", "select"))
@@ -285,8 +296,7 @@ def _guard(dispatcher, cached, inputs, callbacks, functions, factory, metadata):
             entries, verbose, None
         )
 
-        ins = root(2, inputs, identity=False)
-        tensor(attr(ins, "x", inputs.x), inputs.x)
+        tensor(root(2, inputs.x, identity=False), inputs.x)
         cache = root(3, cached)
         namespace_version(cache, cached)
         state_node = attr(cache, "state", state)
@@ -383,11 +393,12 @@ def _guard(dispatcher, cached, inputs, callbacks, functions, factory, metadata):
 
 
 class PreparedRadiusLinear:
-    def __init__(self, cached, checked):
+    def __init__(self, dispatcher, cached, checked):
+        self.dispatcher = dispatcher
         self.cached = cached
         self.guard, self.callback_guard, self.template = checked
 
-    def run(self, dispatcher, binding, inputs, *, plan=None):
+    def _checked_roots(self, dispatcher, binding, value, *, plan=None):
         if (
             plan is not None
             or binding is not self.template[0]
@@ -404,19 +415,44 @@ class PreparedRadiusLinear:
             or torch.is_autocast_enabled()
         ):
             return None
-        roots = (self.template[0], dispatcher, inputs, *self.template[3:])
-        # Reject modified accessors/callbacks before inspecting model attributes.
-        # The two checks hold the GIL and run no intervening user callbacks.
-        if not self.callback_guard.check(roots) or not self.guard.check(roots):
+        roots = (binding, dispatcher, value, *self.template[3:])
+        # Authenticate accessors before inspecting live data or constructing an
+        # invocation wrapper. The native checks hold the GIL throughout.
+        if not self.callback_guard.check(roots):
             return None
+        return roots
+
+    def _execute(self, inputs):
         cached = self.cached
-        # Keep numerical execution, parameter borrowing, its final declaration
-        # check, and result protection identical to Algorithm.run. Only the
-        # now-certified metadata prologue is replaced by the native guard.
+        # Numerical execution and both placement protections are unchanged.
         result = cached.algorithm.execute(cached.state, inputs)
         result = cached.state.atom_state.protect_tensor(result)
         cached.state.binding.__dict__["_prepared_dispatch_stats"]["hits"] += 1
         return result
+
+    def run(self, dispatcher, binding, inputs, *, plan=None):
+        roots = self._checked_roots(dispatcher, binding, None, plan=plan)
+        if roots is None:
+            return None
+        from torchcst.operators.execution import LinearInputs
+
+        if type(inputs) is not LinearInputs:
+            return None
+        roots = (*roots[:2], inputs.x, *roots[3:])
+        if not self.guard.check(roots):
+            return None
+        return self._execute(inputs)
+
+    def forward(self, binding, value):
+        """Narrow two-dimensional Module entrance; other inputs use forward."""
+        roots = self._checked_roots(self.dispatcher, binding, value)
+        if roots is None or not self.guard.check(roots):
+            return None
+        from torchcst.operators.execution import LinearInputs
+
+        # A fresh wrapper owns this invocation only. No input/graph is cached.
+        result = self._execute(LinearInputs(value))
+        return binding.atom_state.guard_result(result)
 
 
 def prepare_program(dispatcher, cached, inputs, *, plan=None):
@@ -468,6 +504,7 @@ def prepare_program(dispatcher, cached, inputs, *, plan=None):
             CSTLinear,
             (
                 "input_type",
+                "selector",
                 "__getattribute__",
                 "__getattr__",
                 "__dict__",
@@ -525,6 +562,9 @@ def prepare_program(dispatcher, cached, inputs, *, plan=None):
         (
             binding,
             (
+                "forward",
+                "in_features",
+                "out_features",
                 "validate_inputs",
                 "build_context",
                 "execution_parameters",
@@ -614,4 +654,6 @@ def prepare_program(dispatcher, cached, inputs, *, plan=None):
     checked = _guard(
         dispatcher, cached, inputs, callbacks, functions, factory, declared
     )
-    return None if checked is None else PreparedRadiusLinear(cached, checked)
+    return (
+        None if checked is None else PreparedRadiusLinear(dispatcher, cached, checked)
+    )
