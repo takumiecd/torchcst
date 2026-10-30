@@ -7280,3 +7280,25 @@ archive_sha256=`fe77a4a01514941a1138ff4e3d8cc6a996901205cfe083ed46b4e08c6da8c5ca
 実binary PTXでは、同じsine再帰のFMAに取り込まれる積の側がscalarと4行版で異なることを
 確認した。独立oracle/optimizerの既存許容値は変えず、新stage比較だけをFP64丸め誤差上界と
 finite検査へ修正して別jobで再確認する。失敗結果も同じoutputに保全する。
+
+### N1024 response4共有の再確認（2026-10-31）
+
+test-only修正`edd56271`後、job `l4job-e31b11ba10894bd7ac9802b944c21584`で
+前回実compile済み`torchcst_radius_cell_mass_2ac0d353250a`をSHA検証して再使用した。
+このjobでの再compileではない。GPU152件と全atom独立Fourier/小部分quadrature、
+matched-state更新を通過。実binary SHA256は
+`de50e3da970074b42c864809761f1d88d5a33085ed8db045e35bfe0f11add264`。
+
+N1024/B4/A52428/M8の2fresh processは、旧global-batched9.039005/9.019444ms、
+response4版7.006179/7.005878ms、dense0.716053/0.730737ms。
+allocated/reservedは両CST9211904/31457280B、dense33900032/44040192Bで変わらない。
+約22%短縮だがdense比9.78/9.59倍なので速度目標は未達。mainへの自動採用はしない。
+
+N128 native/batchedとlarge generalの統合候補は別branch
+`kernel/radius-large-integration` / `f31084e1`へ保存し、CPU3062件と配布物確認を通過した。
+fresh union CUDA binaryの128/1024両方のGPU再確認は次jobで行う。
+この節の測定だけを統合版の実測としない。
+
+source_sha256=`fea7f07892d4d7d78f32e183a4a15e9924b2a90f29b0f496d425edf6793ef22e`.
+
+archive_sha256=`6a9d26043ea755957106d2f39d4f89f07e42197847be146ffe14bac059dc5035`.
