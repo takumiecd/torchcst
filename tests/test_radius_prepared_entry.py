@@ -481,22 +481,42 @@ def test_module_hooks_and_tensor_gradient_hooks_are_preserved():
     for native_entry in (False, True):
         model, x, _, _ = gpu_case(native_entry=native_entry)
         calls = []
+        hits = []
+        if native_entry:
+            program = model._execution_program
+
+            def observe(binding, inputs, program=program, hits=hits):
+                result = type(program).forward(program, binding, inputs)
+                hits.append(result is not None)
+                return result
+
+            program.forward = observe
         handles = [
             model.register_forward_pre_hook(
-                lambda module, args: calls.append("pre") or (args[0] + 0.125,)
+                lambda module, args, calls=calls: (
+                    calls.append("pre") or (args[0] + 0.125,)
+                )
             ),
             model.register_forward_hook(
-                lambda module, args, value: calls.append("post") or value * 0.5
+                lambda module, args, value, calls=calls: (
+                    calls.append("post") or value * 0.5
+                )
             ),
             model.register_full_backward_hook(
-                lambda module, grad_input, grad_output: calls.append("backward")
+                lambda module, grad_input, grad_output, calls=calls: calls.append(
+                    "backward"
+                )
             ),
-            x.register_hook(lambda grad: calls.append("x") or grad * 0.25),
-            model.atoms.p.register_hook(lambda grad: calls.append("p") or grad * 0.75),
+            x.register_hook(lambda grad, calls=calls: calls.append("x") or grad * 0.25),
+            model.atoms.p.register_hook(
+                lambda grad, calls=calls: calls.append("p") or grad * 0.75
+            ),
         ]
         x.grad = None
         model.atoms.p.grad = None
         y = model(x)
+        if native_entry:
+            assert hits == [True]
         y.square().sum().backward()
         assert sorted(calls) == sorted(["pre", "post", "backward", "x", "p"])
         snapshots.append(
@@ -506,3 +526,44 @@ def test_module_hooks_and_tensor_gradient_hooks_are_preserved():
             handle.remove()
     for baseline, candidate in zip(*snapshots):
         torch.testing.assert_close(baseline, candidate, rtol=0, atol=0)
+
+
+def test_preexisting_inputs_allocator_is_rejected_without_invocation():
+    # CPython's tp_new slot cannot be restored faithfully after adding a Python
+    # allocator to an existing class, even after deleting the attribute. Isolate
+    # this deliberate mutation so subsequent tests use the original dataclass.
+    import subprocess
+    import sys
+
+    code = """
+import runpy
+import torch._dynamo.guards
+ns = runpy.run_path('tests/test_radius_prepared_entry.py')
+_, dispatcher, inputs, cached, _ = ns['case']()
+calls = []
+def allocate(cls, value):
+    calls.append(value)
+    return object()
+ns['LinearInputs'].__new__ = staticmethod(allocate)
+assert ns['prepared'].prepare_program(dispatcher, cached, inputs) is None
+assert calls == []
+"""
+    subprocess.run([sys.executable, "-c", code], check=True)
+
+
+@pytest.mark.parametrize("name", ["reshape", "contiguous"])
+def test_input_instance_callbacks_cannot_be_skipped(name):
+    _, dispatcher, inputs, _, program = case()
+    calls = []
+    setattr(inputs.x, name, lambda *args: calls.append(1))
+    assert not check(program, dispatcher, inputs)
+    assert calls == []
+
+
+@pytest.mark.parametrize("name", ["reshape", "contiguous"])
+def test_preexisting_tensor_class_callbacks_cannot_be_certified(name, monkeypatch):
+    _, dispatcher, inputs, cached, _ = case()
+    calls = []
+    monkeypatch.setattr(torch.Tensor, name, lambda *args: calls.append(1))
+    assert prepared.prepare_program(dispatcher, cached, inputs) is None
+    assert calls == []

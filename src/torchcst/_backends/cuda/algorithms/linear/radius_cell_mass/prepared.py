@@ -296,7 +296,9 @@ def _guard(dispatcher, cached, inputs, callbacks, functions, factory, metadata):
             entries, verbose, None
         )
 
-        tensor(root(2, inputs.x, identity=False), inputs.x)
+        input_node = root(2, inputs.x, identity=False)
+        tensor(input_node, inputs.x)
+        no_overrides(input_node, inputs.x, ("reshape", "contiguous"))
         cache = root(3, cached)
         namespace_version(cache, cached)
         state_node = attr(cache, "state", state)
@@ -544,6 +546,17 @@ def prepare_program(dispatcher, cached, inputs, *, plan=None):
         (LinearInputs, ("x", "__getattribute__", "__dict__")),
     ):
         if not all(original_attribute(owner, name) for name in names):
+            return None
+    # The Module entrance constructs a fresh dataclass after guarding raw X.
+    # A custom allocator could return a different object/Tensor instead.
+    if inspect.getattr_static(LinearInputs, "__new__") is not object.__new__:
+        return None
+    # TensorBase is immutable in CPython. A Python override on Tensor must use
+    # the ordinary Module path where reshape/contiguous are actually invoked.
+    for name in ("reshape", "contiguous", "shape", "ndim", "__getattribute__"):
+        if inspect.getattr_static(torch.Tensor, name) is not inspect.getattr_static(
+            torch._C.TensorBase, name
+        ):
             return None
     callbacks = _callbacks()
     functions = _definitions(callbacks)
