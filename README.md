@@ -47,8 +47,8 @@ optimizer = CSTAdamW(
 Import it with `from torchcst import CSTAdamW`. Managed atom groups default to
 raw `weight_decay=0`; ordinary groups retain AdamW's default `weight_decay=0.01`.
 An explicitly supplied nonzero raw decay for an atom group is rejected. Logical
-`amplitude_weight_decay` affects the amplitude and preserves the accepted Polar
-radius and centers. It requires finite Python scalars with `lr * decay <= 1`.
+`amplitude_weight_decay` affects the amplitude and preserves the accepted
+`s²+t²` and centers. It requires finite Python scalars with `lr * decay <= 1`.
 `check_finite=False` is the native default, following PyTorch's propagation of
 nonfinite values; `check_finite=True` enables the additional strict checks.
 Live learning-rate/decay and active atom metadata checks remain enabled in both

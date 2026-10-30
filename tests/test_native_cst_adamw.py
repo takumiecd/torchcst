@@ -10,6 +10,11 @@ from torchcst import CSTOptimizer
 from torchcst.optim.adamw import CSTAdamW
 from torchcst.optim.state import OptimizerStateAdapter
 
+pytestmark = pytest.mark.skipif(
+    tuple(map(int, torch.__version__.split(".")[:2])) < (2, 6),
+    reason="native CSTAdamW requires PyTorch 2.6+",
+)
+
 
 def make(model, *, legacy=False, **options):
     groups = [
