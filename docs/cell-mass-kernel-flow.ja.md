@@ -16,10 +16,13 @@ shared C/site展開、既存則を保つFP32 Polar更新を実装した。自動
 | N1024/B4/A52428/M8単体 | global native＋active moments/response4/grad4を採用 | 約4.01ms、両ピークはdense未満、速度2倍以内は未達 |
 | MNIST N128/B4・3epoch | 同じ初期W/外側層/data orderで実学習 | 速度は約1.60〜1.76倍、allocatedは下回るがreserved同値 |
 | MNIST N128/B32・1epoch | 同条件の別batch検証 | 速度約2.07〜2.12倍、allocated超過、同時目標は未達 |
+| MNIST N128/B32・local tile候補3epoch | 別branch、初回コストも含める | 全体平均1.79倍、allocatedは下回るがreserved同値、両ピーク厳密未満は未達 |
 | MNIST N1024/B4・3epoch | 同じ初期化を使う明示global-native Planで再測定 | 約3.75〜3.82ms対dense1.28〜1.30ms、両ピークは下回る、速度未達 |
 | active moments省略 | grad4との統合GPU884件通過、明示Planに採用 | 未使用bank計算を省く。配列shapeとメモリ量は同じ |
 
 MNIST N1024の最終test accuracyは97.37%対97.87%（1seed/3epoch）。精度同等・一般化は主張しない。
+単体denseの小型ピーク差にはcuBLAS workspace約17.04MBが大きく寄与する。MNISTでは両モデルに共通であり、
+単体の総ピーク差をCSTのParameterや中間配列そのものの削減量と読み替えない。末尾に因果実験を記録する。
 現在の統合CPU検査は3172 passed/6711 skipped。追加ごとの検証範囲は末尾に記録する。
 配布wheel/sdistのruntime388ファイルと、実行snapshotのbyte照合も通過した。
 Graph、autocast、高階微分、自動dispatch、N1024より大きい形状の達成は未検証である。
@@ -7702,3 +7705,61 @@ archive_sha256=`97b4d36910a5535f824fd8b3f6bc6e3a26af8677b5af0fc63cdd83ed6ae2f616
 データgather/zero_grad/CE/backward/optimizer/metricsの演算は同じでも、Tensor寿命と測定境界は同じではない。
 最終radius bankは全819atomがL2/K3/T4のままで、endpointのtier移動は観測されていない。
 短いprefixから全学習の時間差やメモリ差の原因を断定しない。
+
+### N128/B32の3epochと初回optimizerの実測（2026-10-31）
+
+修正環境の診断dd5は、同じNinja準備でnative lease/factory/storage/dictionary epoch helperのloaded状態と
+実際のprepared Linear呼出しを記録した。300-update prefixは2.111300ms対dense1.318120ms、
+全1epochは2.857667ms対1.323668msだった。prefixを全epochへ置き換えず、3epochで切り分けた。
+
+job `l4job-d19d7541c69b49049195460d188e2a22`はfrozen abf/6faf、ae13、同じdata order、
+trueB32、inplace、独立先頭batch gate、通常harnessを保ってCST/denseを3epoch実行した。
+
+| epoch | CST step ms | dense step ms | 比率 | CST/dense test |
+| --- | ---: | ---: | ---: | --- |
+| 1（cold込み） | 2.896591 | 1.352565 | 2.14155 | 87.97% / 91.22% |
+| 2 | 2.161973 | 1.336248 | 1.61794 | 90.51% / 92.67% |
+| 3 | 2.174449 | 1.348096 | 1.61298 | 91.34% / 93.92% |
+
+5625更新の合計時間/更新数はCST2.411004ms対dense1.345637ms=1.79172倍。
+初回を除外していない。3epochのmax allocatedは241625088B対241808896BでCSTが183808B低い。
+reservedは247463936Bで同値。時間とallocatedの条件は満たすが、両ピーク厳密未満の条件は未達。
+小型単体ではlocaltileが遅くなることも前節のままで、万能な既定選択にはしない。
+
+別のfresh診断processで実optimizer.stepを同期して測ると、CSTは1回目1282.244302ms、2回目1.081057ms。
+denseは9.266584ms、0.407486ms。別cProfileの初回CSTはTritonのtriton_keyに約1.20s、
+うちhashlib.updateに約1.124sを費やした。初回の大部分は更新の算術ではなくcache key準備である。
+filesystem/JIT cacheの状態は診断に記録し、cache削除や学習時間からの差し引きは行わない。
+1回目と継続時を混同せず、後者もfull forward/loss/backward/optimizerを含める。
+
+`l4job-dd5cf63952ff4690bcf8af390607101a`:
+source_sha256=`54602d5b923ede846221304553c5413bd0755975907ece73db6267cdd9ea006b`.
+archive_sha256=`ee5741b80452e416268f6238da6d878704efd8a313d6bab660fbc922a1062ed2`.
+
+`l4job-d19d7541c69b49049195460d188e2a22`:
+source_sha256=`e1dc1e8413da8af77ac1654e340ab2f2399f10c5652bdb1455f1a6fe9b8dbacc`.
+archive_sha256=`90f0472f4a86ba991bc16d13640e0522d054f83ba234bceed6559a7b1949bb95`.
+
+### 小型denseの大きなメモリ差は主にcuBLAS workspace（2026-10-31）
+
+N128単体denseの総peak17313280Bには、Parameter/grad/Adam状態だけでは説明できない容量があった。
+8ca/8001のCST/dense4つの実snapshotには、それぞれ8519680Bのlive blockが2個あり、
+同じTorch v2.11.0の[commit固定のCublasHandlePool.cpp](https://github.com/pytorch/pytorch/blob/70d99e998b4955e0049d13a98d77ae1b14db1f45/aten/src/ATen/cuda/CublasHandlePool.cpp#L147)の既定容量と一致した。
+frameがないblockなので、サイズ一致だけで所有者を確定せず、Torchのみの隔離processで因果確認した。
+
+job `l4job-a1b1fef382a244eab1634d326b6c2a2a`はN128/N1024の各fresh processでX/Wを保持し、
+そのpointerと値hashを維持したままprivateなclearCublasWorkspaces hookだけを呼んだ。
+forward後は8519680B、forward/backward後は17039360Bのallocatedが減り、両サイズで同じだった。
+行列演算を一度も使わないfresh fusedAdamW processでは、このhookによる減少は0Bだった。
+GPU Torch git hashも上記commitと一致した。reservedの減少は0Bで、allocator cacheに残ることも区別する。
+
+したがって単体dense対CSTで見えた約17MBの差の大部分は、このライブラリworkspaceの有無である。
+MNISTのCSTも外側のnn.Linearで同じworkspaceを使うため、その差は共通化する。
+activation/H/G/Zのbatch比例分だけが、単体と全modelの差の原因だったわけではない。
+既存の測定済み総peakはそのまま保持するが、それを固有の中間配列payloadや総GPU process使用量とは呼ばない。
+この診断のworkspace解放を実装・benchmark最適化として採用せず、clear後の値を元のpeakから引いて達成判定もしない。
+
+公式sourceはignored `output/cublas-workspace-attribution-20261031/official-pytorch-v2.11.0/`へhash付きで保全し、
+snapshot照合・raw causal記録は同じ研究outputとpool結果に保存した。
+source_sha256=`5f4803005a7102ac493a84448e4b11f6e82f215eb5c036d0f6ce5564729a9042`.
+archive_sha256=`fe8760ab6929d6e551ff5c7e524f000a9b9de0c0fd3f06562e324bd90cea2ac0`.
