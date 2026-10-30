@@ -31,7 +31,7 @@ def native_checks():
         pytest.skip("explicit CPU native-check build or CUDA required")
     importlib.import_module("torch._dynamo.guards")
 
-    from torchcst._backends.cuda.algorithms.polar_update.function_metadata import (
+    from torchcst._backends.cuda._host_function_metadata import (
         get_factory,
     )
 

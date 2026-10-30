@@ -53,6 +53,8 @@ torchcst/
     serialization.py           宣言metadataの厳密なJSON codec
     catalog.py                 組込みTorch/CUDA Algorithmの遅延登録
     cuda/
+      _host_function_metadata.py / .cpp
+                              Linear・Polarで共有するCPU callback/storage guard
       algorithms/
         linear/
           normalized_euclidean_strip/

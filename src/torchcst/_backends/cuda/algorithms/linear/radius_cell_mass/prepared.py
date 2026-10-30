@@ -137,7 +137,7 @@ def _guard(dispatcher, cached, inputs, callbacks, functions, factory, metadata):
     preparation. No Tensor values, CUDA operation or input snapshot is cached.
     The two operation families share only CPU function/storage-check helpers.
     """
-    from torchcst._backends.cuda.algorithms.polar_update.function_metadata import (
+    from torchcst._backends.cuda._host_function_metadata import (
         prepare_checks,
         prepare_storage_checks,
     )
@@ -458,7 +458,7 @@ class PreparedRadiusLinear:
 
 
 def prepare_program(dispatcher, cached, inputs, *, plan=None):
-    from torchcst._backends.cuda.algorithms.polar_update.function_metadata import (
+    from torchcst._backends.cuda._host_function_metadata import (
         get_factory,
     )
     from torchcst._backends.dispatch.prepared import PreparedDispatch

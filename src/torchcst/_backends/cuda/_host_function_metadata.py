@@ -1,8 +1,8 @@
-"""Optional CPython slot checks for the already-certified optimizer callbacks.
+"""Optional CPython slot checks for already-certified CUDA host callbacks.
 
 Compilation is a cold preparation step. The helper reads function metadata with
 its GIL held; it performs no tensor operations or CUDA calls. Unsupported builds
-keep the existing PyTorch guard accessors and the identical update algorithm.
+keep the existing PyTorch guard accessors and ordinary execution paths.
 """
 
 import hashlib

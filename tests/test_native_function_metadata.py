@@ -10,7 +10,7 @@ import pytest
 import torch
 from test_prepared_optimizer_update import example
 
-from torchcst._backends.cuda.algorithms.polar_update import function_metadata
+from torchcst._backends.cuda import _host_function_metadata as function_metadata
 from torchcst.operators._native_metadata_guard import guard_api
 
 

@@ -159,7 +159,10 @@ def _native_guard(
     api = guard_api()
     if api is None:
         return None
-    from .function_metadata import prepare_checks, prepare_storage_checks
+    from torchcst._backends.cuda._host_function_metadata import (
+        prepare_checks,
+        prepare_storage_checks,
+    )
 
     cls, kind = api
     guard = cls()
@@ -766,7 +769,7 @@ def prepare_program(
     ):
         return None
     if _function_factory is _MISSING:
-        from .function_metadata import get_factory
+        from torchcst._backends.cuda._host_function_metadata import get_factory
 
         # Import/compilation is cold and may execute external build machinery.
         # Re-enter all eligibility/state checks afterwards rather than trusting
