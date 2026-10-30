@@ -7345,3 +7345,59 @@ archive_sha256=`2304f2837399805d472f7f1fa79629bb48f33cbb6c594bd95b59b9935bcbfde2
 `l4job-356d240af2ad45338594563f099c1598`:
 source_sha256=`41c9852a0579a04365cd59e163df3016bedc367c0613cbb12d163fac507db68f`.
 archive_sha256=`c303e8cb1de571ceee7661ee8bd6e6169af958afe4250903fffe91f0dbf31a9a`.
+
+### N1024 MNISTの3epoch実学習（2026-10-31）
+
+既存harnessの別cohort `polar_radius_global_response4_1024_v1`を`9197e8e1`で採用した。
+N128初期化と旧sigma fixtureは変更せず、N1024はA52428、spacing1、M8、物理radius bounds
+0.5/4/50/1、同じPolar更新則、真のB4を明示opt-inして使う。
+`global-response4`はnative host flags=falseのglobal経路で、N128 native版と混同しない。
+初期Wは256atomずつのpublic CPU参照から一度だけ作り、両モデルに同じWと外側層を渡す。
+CPU全体参照も完成したmiddle Yから一つの大域dYを作ってからchunk VJPし、optimizerは最後に一度更新する。
+
+job `l4job-0acd946cd9904de9af6ae11523bcff06`は、実MNIST先頭batchの全model Y/dX/全parameter勾配・
+全atom Fourier参照と層化8atomの独立積分・full-model CPU-reference更新を通過し、全splitを3epoch実行。
+seed41、784→1024→1024→10の中間層だけCST、同じ初期W・外側層・data order・optimizer条件で比較した。
+初期化artifact SHA256=`5ef7a7890367641835d1d5216ff2a9d21a2c4638f6d73fa7f2a3c2582319a539`。
+以前に検証した実compile済みbcd98ac2a3cb binaryをSHA検証して再使用した。
+
+| epoch | CST step ms | dense step ms | 比率 | CST test | dense test |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 1 | 6.688933 | 1.304621 | 5.12711 | 94.87% | 96.41% |
+| 2 | 6.623426 | 1.243213 | 5.32767 | 96.47% | 96.94% |
+| 3 | 6.756943 | 1.255705 | 5.38100 | 97.37% | 97.87% |
+
+各epochのCSTピークallocated/reservedは258337792/274726912B、denseはepoch1で
+270021120/287309824B、epoch2/3で270484480/287309824B。両指標ともCSTが下回る。
+stepはgather/loss/backward/optimizer/metricsを含むepoch wall、最初のepochはoptimizer cold start込み。
+1seed/3epochの結果で、精度同等・一般化や速度目標達成は主張しない。
+radius中央値はepoch1/2/3で3.96607/3.95073/3.93860。3epoch後はlevel2/T4/K3が52423atom、
+level1/T2/K3が5atomで、均等な階層分布ではない。input/outputの物理radiusは同じだがowner分布は別々に記録する。
+
+source SHA256=`812249c459a0ffdde9542355cfb55faa66ecbe5cd638c0e887a9d1c2c44a119f`、
+archive SHA256=`227c3c320e4c4f1d8dc9d89a7e172abcd920a156b6a60937c6920bee7197a214`。
+
+### large grad4とactive momentsの段階別検証（2026-10-31）
+
+job `l4job-58828a5eccac4e53805d80b2f97b0864`でlarge grad4版を実compileし、GPU795件を通過。
+N1024完全stepは旧response4 6.978640/6.985781ms→grad4 6.255403/6.253121ms、
+dense0.696032/0.724249ms。ピークは9211904/31457280Bで変わらず、large速度目標は未達。
+small B32の2fresh processでも1.431758/1.413957ms（dense0.739813/0.755772ms）で2倍以内。
+同候補をprimaryへ`1e20cfdf`で採用した。旧global aliasのgradient選択は変えず、
+新`radius-global-response4-grad4`を明示した時だけlarge grad4を使う。
+
+別branch `kernel/radius-active-moments` / `5dc47ff2`は4BのGPU bank maskで未使用moment計算を省く。
+mergeでは選択bankの同じKの子をstart階層まで含め、完全なZ/H/Gだけをconsumerへ渡す。
+Zのshapeとhostのlevel launch数は変えず、メモリ削減とは呼ばない。
+job `l4job-435995bebefa47709ac781551c23b3af`で実compile、GPU718件を通過。
+N1024旧6.987939/6.992331ms→active5.810253/5.808056ms（dense0.698520/0.717056ms）。
+ピークは9211904/31457280Bのまま。これはgrad4とは別の比較で、改善率を単純に足し合わせない。
+両者の統合は別候補で確認する。
+
+### prepared declarationの単純省略は未採用（2026-10-31）
+
+診断3621でaxis configとrecipe検査は合計約13us/step、execution_declarationのinclusive範囲は約0.137ms/step。
+後者を既存prepared guardだけで省く案はCPU反例で中止した。同じnative RootGuardManagerに
+`add_lambda_guard`で処理を追加してもprepared guardは通るが、通常のdeclaration呼出しは追加処理を実行する。
+省略すると挙動が変わるため、この0.137msを安全に除ける時間とは扱わない。
+proofはignored `output/radius-prepared-live-entry-audit-20261031/`に保全し、runtimeは変更しない。
