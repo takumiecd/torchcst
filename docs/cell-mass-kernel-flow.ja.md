@@ -14,7 +14,7 @@ shared C/site展開とbounded owner partials、既存則を保つFP32 Polar更�
 | N128/B4/A819/M8単体 | native cached/local tile Planを採用 | 統合版2fresh runで約1.37〜1.39ms、dense比2倍以内、allocated/reservedともdense未満 |
 | N128/B32/A819/M8単体 | 明示batched/grad4 Planを維持 | 統合版2fresh runで約1.36〜1.38ms、dense比2倍以内、両ピークもdense未満。local tileは約1.58〜1.59msで速度2倍以内は未達 |
 | N1024/B4/A52428/M8単体 | 明示compact keyed owner Planを採用 | 約2.56〜2.57ms、両ピークはdense未満、裸の速度はdenseの約3.5〜3.6倍で未達 |
-| MNIST N128/B4・3epoch | 従来native Planで同じ初期W/外側層/data orderの実学習 | 約1.60〜1.76倍、allocatedは下回るがreserved同値。最新統合sourceのこのcohort全epoch再測定ではない |
+| MNIST N128/B4・local tile統合版3epoch | N128/B32・N1024と同じsourceで補足実測済み | 全体平均1.65028倍、全epochで2倍以内、allocatedは下回るがreserved同値 |
 | MNIST N128/B32・local tile統合版3epoch | 明示Planを採用、cold初回込み | 全体平均1.79842倍、allocatedは下回るがreserved同値。epoch1単独は2.11789倍、両ピーク厳密未満は未達 |
 | MNIST N1024/B4・3epoch | 明示compact owner/Jacobian再利用Planを採用 | 全体平均1.91495倍、allocated/reservedともdense未満、このcohortは同時達成 |
 | MNIST N1024/B4・compact keyed統合版3epoch | N128 local tileと同じsourceで採用 | 全体平均1.91565倍、allocated/reservedともdense未満。全epochでも2倍以内 |
@@ -8363,3 +8363,57 @@ CST_TEST_NATIVE_READ_LEASE=1、CST_TEST_NATIVE_FUNCTION_GUARD=1、PYTHONPATH=src
 を使い、親だけが`serve --workers 1`を所有する。対象runtimeはL4/Torch2.11.0+cu130/CUDA13/Python3.13。
 primaryの最新docsまで含む新treeを元driverの全file hash検査へそのまま渡すことはせず、
 元のsource archive/実driver/receiptを使う。旧研究branch・ignored raw証拠は削除していない。
+
+
+### 同じ統合sourceでN128・真のB4の全3epochも確認（2026-10-31）
+
+完了前のscope監査で、822はN128/B4の単体stepとN128/B32の全学習を確認している一方、
+N128/B4の全3epochは旧source17fの記録だったため、これを最新実測へ読み替えず補足した。
+新実装や新数学式は追加しない。frozen558608f3/native89ca09a9、LOCAL_TILE_MOMENTSをそのまま使い、
+job `l4job-f991fe52bbb34bf780f7e374d1292377` で通常のtrueB4・3epoch・45000更新を実行した。
+元のfull-control worker/harness、ae13初期値、inplace画像準備、data順、optimizer条件、
+backward-only warmup（更新なし）、cold初回optimizerを維持する。数値kernelやCPU helperのpreloadはしない。
+
+新規compileした実binary b0c9は822の9164とSHAが異なる。source hashだけでbinary同一とは扱わない。
+別fresh processの元9164対新b0c9 raw21fieldは、全finite・全byte一致を確認した。
+元先頭batch[0,1,2,3]と実shuffle先頭batch[662,7370,43809,28502]の両方で、全atom Fourier Y/dX/dP、
+層化quadrature、全model logits/dXとCPU-reference optimizer更新を通過した。
+許容値のassert_close ASTと元NN gateはB4指定以外を変更しない。
+2152件のbroad GPU検査は822の結果であり、この補足で再実行したとは数えない。
+
+| epoch | CST ms | dense ms | 比率 | CST allocated/reserved B | dense allocated/reserved B |
+| --- | ---: | ---: | ---: | --- | --- |
+| 1（cold込み） | 2.178170 | 1.298285 | 1.67773 | 241069568 / 245366784 | 241252864 / 245366784 |
+| 2 | 2.094003 | 1.282725 | 1.63246 | 241536512 / 247463936 | 241720320 / 247463936 |
+| 3 | 2.090552 | 1.274531 | 1.64025 | 241536512 / 247463936 | 241720320 / 247463936 |
+
+3epoch平均はCST2.120908477ms対dense1.285180369ms=1.650280791倍。全epochで2倍以内である。
+allocated241536512<241720320Bだが、reservedは双方247463936Bで同値。厳密な両ピーク低減とはしない。
+最終accuracyは93.92%対96.68%で、同等精度は主張しない。
+半径中央値は3.676522→3.569217→3.515043、L1/T2/K3は8→18→34atom、L2/T4/K3は811→801→785atom。
+最終半径は1.087103〜3.999977（両軸）。均等な階層分布や、全atomが同じ半径とはみなさない。
+
+独立terminal監査は全1887spec file・1545実行source・1886tracked file・全9worker・77結果fileを
+source/archive/manifestと照合した。元P・初期有効W・外側層を再hashし、3epochのrandpermをCPUで
+独立再生成した。各control3×15000更新と5個のAdam時計45000、CST48tensor/997scalar・
+dense20tensor/31scalarのfinite性、tensor dtype/shape/stride/hash、最終radius/ownerのCPU再構築を確認した。
+旧17f/別PlanのtrueB4 finalとの任意diagnosticではCST48・dense20tensorも全byte一致した。
+これは新cohortの合否条件ではなく、B32のtrajectoryとは比較していない。
+source/provenance/数値/更新回数の監査にblockerはない。reserved同値は性能目標の制約として残す。
+
+source archive SHA256=`47c7bbb6dbbcad721935a35e217d1ec2fa000bce854d1f8816ddc6d29b900a5c`。
+result archive SHA256=`e3c8f6e4820a63e94d3d8d40e3e054b77a403ff87fe07c4b69a6795680948906`。
+実binary SHA256=`b0c9cc1ea4fbe869e6e44025bb7d1ca4be72cd09e44f8614ba60a02add1bfac0`。
+driver SHA256=`e8a0774a0dcde107f76d987b624624567a291be0b97a5e6c65ba96e46ad45040`。
+監査はignored `output/radius-n128-b4-terminal-audit-20261031/` に保存し、summary.json SHA256=
+`6607ca5baceb5988d3b3159d9536585632baef185fa070836ab73a619bd79797`、report.md SHA256=
+`e060ae6678f28ea532f2c2552a95035c158571ee97e2557b55fb244cb0da830d`。
+raw/spec/receipt/resultsは既存job別ignored directory、driver/readiness/selfcheckは
+`output/radius-n128-b4-supplement-20261031/`へ保持した。pool全slot停止・supervisor正常終了も確認した。
+
+これで同一計算sourceのN128/B4、N128/B32、N1024/B4の各3epochが揃った。
+3epoch平均の完全stepとpeak allocatedは各cohortでdense比2倍以内・dense未満を確認した。
+peak reservedはN128で同値、N1024でstrictに少ない。bare N1024/新local-tile B32の速度未達、
+B32初回epoch2倍超、accuracy差、Graph/autocast/高階微分/N>1024/総GPU process量未検証はそのまま残す。
+primary433033c5の全CPU3312 passed/7207 skipped、CI41158577697成功、配布物runtime401file一致を
+確認済みで、この補足にruntime/benchmark/testの変更はない。旧σ fixtureも変更していない。
