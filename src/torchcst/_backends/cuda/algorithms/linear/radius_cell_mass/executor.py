@@ -586,10 +586,24 @@ def checked_radius_linear(plan, x, atoms, *, recipe):
         or torch._C._are_functorch_transforms_active()
         or torch._C._get_tracing_state() is not None
         or torch.autograd.forward_ad._current_level != -1
+        or (
+            recipe.schedule == "global_owner_response_coefficients"
+            and (
+                torch._C._is_torch_function_mode_enabled()
+                or torch._C._len_torch_dispatch_stack()
+            )
+        )
     ):
         from dataclasses import replace
 
-        return radius_linear(plan, x, atoms, recipe=replace(recipe, native_entry=False))
+        fallback = replace(recipe, native_entry=False)
+        if recipe.schedule == "global_owner_response_coefficients":
+            fallback = replace(
+                fallback,
+                schedule="global_batched_cached_active_moments_grad4",
+                native_autograd=False,
+            )
+        return radius_linear(plan, x, atoms, recipe=fallback)
     return _extension().checked_autograd_linear(
         x.contiguous(),
         atoms.contiguous(),
@@ -605,6 +619,7 @@ def checked_radius_linear(plan, x, atoms, *, recipe):
             "block_local_cached_parallel": 2,
             "block_local_batched_cached_parallel": 3,
             "global_batched_cached_active_moments_grad4_native": 5,
+            "global_owner_response_coefficients": 6,
         }[recipe.schedule],
     )
 
@@ -615,6 +630,7 @@ def radius_linear(plan, x, atoms, *, recipe=None):
     Initialize CSTLinear with the CPU reference and then move it to CUDA.
     General stages support N<=1024 and A<=65536 with global hierarchical
     moments/responses. global_batched_cached keeps C local to a bounded tile;
+    global_owner_response_coefficients uses temporary owner/part C instead.
     sequential/overlap retain global C. Shared projection stays N<=128/A<=4096. All
     routes require M<=16 and eager first-order execution without autocast.
     """

@@ -35,6 +35,8 @@ std::vector<Tensor> autograd_transform(Tensor, Tensor, Tensor, Tensor,
 std::vector<Tensor> autograd_project(Tensor, Tensor, Config, int, bool, int);
 Tensor autograd_parameter_grad(Tensor, Tensor, Tensor, Tensor, Tensor, Tensor,
     Tensor, Config, Config, int, int, int);
+void autograd_check_owner_saved(Tensor, Tensor, Tensor, Tensor, Tensor, Tensor,
+    Config, Config, bool);
 
 class RadiusLinear : public torch::autograd::Function<RadiusLinear> {
 public:
@@ -86,6 +88,8 @@ public:
             const int tile_sites = ctx->saved_data["tile_sites"].toInt();
             const int schedule = ctx->saved_data["schedule"].toInt();
             auto dy = gradients[0].contiguous();
+            if (schedule == 6) autograd_check_owner_saved(x, atoms, saved[2], saved[3],
+                saved[4], dy, input, output, ctx->needs_input_grad(0));
             Tensor output_moments, grad_response;
             if (ctx->needs_input_grad(0)) {
                 auto ranges = autograd_ranges(saved[4], input, output, true);
@@ -129,18 +133,20 @@ void bind_host_autograd(pybind11::module_ &module) {
         int tile_sites, int schedule) {
         check_autograd_entry(x, atoms, input, output, input_start,
             output_start, tile_sites, schedule);
+        TORCH_CHECK(schedule != 6 || merge, "owner response coefficients require merge moments");
         return RadiusLinear::apply(x, atoms, input, output, input_start,
             output_start, merge, tile_sites, schedule);
     }, pybind11::call_guard<pybind11::gil_scoped_release>());
     module.def("autograd_linear", [](Tensor x, Tensor atoms, Config input,
         Config output, int input_start, int output_start, bool merge,
         int tile_sites, int schedule) {
-        TORCH_CHECK((schedule >= 0 && schedule <= 3) || schedule == 5,
+        TORCH_CHECK((schedule >= 0 && schedule <= 3) || schedule == 5 || schedule == 6,
             "invalid native host schedule");
         // Unlike the old shared modes, the new raw global entry always checks
         // general launch/configuration limits before device classification.
-        if (schedule == 5) check_autograd_entry(x, atoms, input, output,
+        if (schedule == 5 || schedule == 6) check_autograd_entry(x, atoms, input, output,
             input_start, output_start, tile_sites, schedule);
+        TORCH_CHECK(schedule != 6 || merge, "owner response coefficients require merge moments");
         return RadiusLinear::apply(x, atoms, input, output, input_start,
             output_start, merge, tile_sites, schedule);
     }, pybind11::call_guard<pybind11::gil_scoped_release>());

@@ -7,24 +7,25 @@
 `kernel/support-radius-pipeline`で進める。
 **現在（2026-10-31）：** 半径APIのCPU参照、N<=128/A<=4096/48KiBの小型native・block-local経路、
 N<=1024/A<=65536の明示global経路（専用native host版を含む）、階層momentsと完成responseの再利用、
-shared C/site展開、既存則を保つFP32 Polar更新を実装した。自動dispatchは変更していない。
+shared C/site展開とbounded owner partials、既存則を保つFP32 Polar更新を実装した。自動dispatchは変更していない。
 
 | 検証条件 | 採用・検証状況 | 完全stepとメモリの結論 |
 | --- | --- | --- |
 | N128/B4/A819/M8単体 | native cached Planを採用 | 2fresh runでdense比約1.94倍、allocated/reservedともdense未満 |
 | N128/B32/A819/M8単体 | 明示batched/grad4 Planを採用 | 2fresh runで約1.41〜1.43ms、dense比2倍以内、両ピークもdense未満 |
-| N1024/B4/A52428/M8単体 | global native＋active moments/response4/grad4を採用 | 約4.01ms、両ピークはdense未満、速度2倍以内は未達 |
+| N1024/B4/A52428/M8単体 | 明示owner response/C融合Planを追加 | 約3.13ms、両ピークはdense未満、速度2倍以内は未達 |
 | MNIST N128/B4・3epoch | 同じ初期W/外側層/data orderで実学習 | 速度は約1.60〜1.76倍、allocatedは下回るがreserved同値 |
 | MNIST N128/B32・1epoch | 同条件の別batch検証 | 速度約2.07〜2.12倍、allocated超過、同時目標は未達 |
-| MNIST N128/B32・local tile候補3epoch | 別branch、初回コストも含める | 全体平均1.79倍、allocatedは下回るがreserved同値、両ピーク厳密未満は未達 |
-| MNIST N1024/B4・3epoch | 同じ初期化を使う明示global-native Planで再測定 | 約3.75〜3.82ms対dense1.28〜1.30ms、両ピークは下回る、速度未達 |
+| MNIST N128/B32・local tile候補3epoch | 別branch、初回コストも含める | 再compileを含む別runで全体平均1.74倍、allocatedは下回るがreserved同値、両ピーク厳密未満は未達 |
+| MNIST N1024/B4・3epoch | 同じ初期化を使う明示owner融合Planで再測定 | 約2.89〜2.97ms対dense1.30〜1.32ms、両ピークは下回る、速度2.19〜2.29倍で未達 |
 | active moments省略 | grad4との統合GPU884件通過、明示Planに採用 | 未使用bank計算を省く。配列shapeとメモリ量は同じ |
 
 MNIST N1024の最終test accuracyは97.37%対97.87%（1seed/3epoch）。精度同等・一般化は主張しない。
 単体denseの小型ピーク差にはcuBLAS workspace約17.04MBが大きく寄与する。MNISTでは両モデルに共通であり、
 単体の総ピーク差をCSTのParameterや中間配列そのものの削減量と読み替えない。末尾に因果実験を記録する。
-現在の統合CPU検査は3191 passed/6712 skipped。追加ごとの検証範囲は末尾に記録する。
-配布wheel/sdistのruntime388ファイルと、実行snapshotのbyte照合も通過した。
+現在の統合CPU検査は3198 passed/6771 skipped。追加ごとの検証範囲は末尾に記録する。
+CPU参照修正時の配布wheel/sdistはruntime388ファイルがbyte一致。owner融合追加後の再buildは別途記録する。
+owner融合統合時のruntime/benchmarkは実GPU qualificationの5a snapshotとbyte一致した。
 Graph、autocast、高階微分、自動dispatch、N1024より大きい形状の達成は未検証である。
 末尾の各実測節にjob ID・source/archive hash・採用範囲と失敗結果を残す。
 以下の初版・候補・時系列の記述は、それぞれの段階の制約として読む。
@@ -7825,3 +7826,69 @@ padding source/archive SHA256=`8616ee105fa0a7d8930e75e175244e60f23f2a04f0998c966
 `78789a9a22b240d9a2595f1ba7740796e4aead160a4b1706ce9e4f7f4a0f9c08`。
 seeded source/archive SHA256=`c75ee8c5f82ab924dd3da06d360ad551feadbd030f971216f422050b4a12000e` /
 `56dbc8457d56d9050bf89b7af70ad046b22372be9bc427c6d8bf576f9109defb`。
+
+
+### ownerごとの完成response/C融合で1024を短縮（2026-10-31）
+
+明示Plan `radius-global-owner-response-coeffs` / schedule `global_owner_response_coefficients`
+をprimaryへ追加する。N1024/B<=4/M8/base1/merge2などの宣言条件を満たす場合だけ選べる。
+自動dispatchと従来Planは変更しない。式P、normalization、全atom、Polar更新則も同じである。
+
+`owner_response_coefficients.cuh::owner_response_coefficients_kernel`は、destination ownerごとに
+128thread CTAを使い、各threadがatomを担当して完成H（逆方向は完成G）を一度だけ計算する。
+profile/radius/phaseをblock内で保持し、同じ完成responseをshared Cの集計へ使う。
+低階層は積分済みsite contributionを直接保持し、高階層はFourier係数を使う。
+`owner_expand_kernel`が各siteを一意に担当してowner partialsを集め、Y/dXへ展開する。
+ブロック間のspin待ちやatomicsは使わない。dX完了後のatom勾配は従来grad4を使う。
+完成していないHからCを導かず、forward Hとmomentsはbackwardまで保存して再利用する。
+
+CTA sharedは34432B。ここで完成したowner partialsは一時global配列[B,node,3,F]へ書く。
+N1024/B4では6681408Bで、永続的なatom/profileコピーではない。
+裸の完全step allocatedは9179136→15474176Bへ増えるため、速度だけの無償な改善とは説明しない。
+MNISTでも一時配列を含む全peakを測り、dense未満を確認した。
+
+job `l4job-2e2ddf55f2b94425b626d72650621398`はsource5aから実module6660を新規compileし、
+独立Y/dX/全atom勾配・metadata/hooks/lease・retained/offload・optimizer検査を含む
+1076 passed/3 skippedを通過。旧016の失敗を上書きせず、CPU参照修正後の別qualificationとする。
+2fresh bare比較は旧native5の3.982109/3.979447msから3.132372/3.134375msへ約21%短縮した。
+対応denseは0.732583/0.717382ms。CST allocated/reserved=15474176/29360128B、
+dense=33900032/44040192B。裸1024の速度2倍目標は未達である。
+
+同じ5ef7初期bytes・外側層・data order・optimizer条件で、trueB4の全MNISTを3epoch回した。
+
+| epoch | owner融合 CST ms | dense ms | 比率 | CST allocated/reserved B | dense allocated/reserved B |
+| --- | ---: | ---: | ---: | --- | --- |
+| 1（cold込み） | 2.971069 | 1.299282 | 2.28670 | 264600064 / 272629760 | 270021120 / 287309824 |
+| 2 | 2.887671 | 1.315609 | 2.19493 | 264600064 / 274726912 | 270484480 / 287309824 |
+| 3 | 2.910388 | 1.311122 | 2.21977 | 264600064 / 272629760 | 270484480 / 287309824 |
+
+最終accuracyはCST97.37%対dense97.87%。1seedでの精度同等・一般化は主張しない。
+旧native5の実学習3.75〜3.82msより短縮したが、時間2倍以内は未達のまま。
+独立にfinal.ptの全CST model33/optimizer15、dense model5/optimizer15 tensor leafを比較し、
+旧86結果とbyte一致した。A41/3stepのcross-route診断も全byte一致だったが、
+新Planを全入力でbit-compatibleとする保証にはしない。独立数値gateを採用条件とする。
+
+統合primaryの全CPU検査は3198 passed/6771 skipped/19 warnings。
+runtime/benchmarkの全hashは実5a snapshotに一致し、追加のCPU回帰fixtureだけowner Plan依存を避けた形にしている。
+rawはignored `output/radius-mnist-native-20261031/l4job-2e2ddf55f2b94425b626d72650621398/results/`。
+source SHA256=`d89e31876ec705e599f6557974073cfc1d9cdf8d924518cb17706ce2da45e501`。
+archive SHA256=`4ccceb01ce7caeee02a9de63f90c891b9bbc536ca0bf1223cf605dbaea38c8ae`。
+実binary SHA256=`6062eb966c340b8f15d87f5b5e7677a08183416749ab91526c46f2fec786655e`。
+
+### local tile/global native併存sourceの再qualification（2026-10-31）
+
+別branch799f7b2のunion module0724を新規compileした
+job `l4job-49e992a4765746c39cf98fada2520887`は1602 passed/3 skippedを通過した。
+mode4のlocal tileとmode5のglobal nativeは明示的に併存し、既存modeの挙動を変えない。
+このunion sourceはprimaryへ未統合で、N128/B32のメモリ削減候補として保持する。
+
+trueB32/ae13/同じdata orderの全MNIST3epochはCST2.791092/2.084941/2.084597ms対
+1.331040/1.325906/1.335662ms。cold込み5625step平均は2.320210対1.330869ms=1.74338倍。
+max allocated=241625088対241808896Bで下回るが、reservedは247463936Bで同じ。
+速度とallocatedの条件は満たし、両ピーク厳密未満は未達。最終accuracyは91.34%対93.92%。
+final.ptの全model/optimizer tensor leafは旧d19 localtile結果とbyte一致した。
+既知の裸B32の速度低下を隠さず、万能な既定にはしない。
+rawは同じprimary ignored output配下のjob別resultsへ保持する。
+source SHA256=`233c527f4cd53e7bed4dc6137fa502b6c632a80a93f1a272fbaf1eb35d54054a`。
+archive SHA256=`7c705b48ea702ed8a120a9e8989e322f74286206bbd4dae4fddebf31867c5f22`。
+実binary SHA256=`ba0fc422bd4354d9a9c90522fd720b265fd364d6b59eef7e14002b8de787fe0a`。

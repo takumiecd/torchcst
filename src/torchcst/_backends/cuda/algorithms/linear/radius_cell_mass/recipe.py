@@ -16,7 +16,7 @@ class RadiusCellMassRecipe:
     # expansion coefficients in one bank/tile-local bounded shared cache.
     schedule: str = "sequential"
     output_tile_sites: int = 32
-    # Opt-in C++ host/autograd graph; all CUDA arithmetic stages are identical.
+    # Opt-in C++ host/autograd graph; schedule selects the CUDA stages.
     native_autograd: bool = False
     # Validate tensor/configuration/stream flags in the native execution entry.
     native_entry: bool = False

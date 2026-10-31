@@ -85,6 +85,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "global_batched_cached_active_moments",
             "global_batched_cached_active_moments_grad4",
             "global_batched_cached_active_moments_grad4_native",
+            "global_owner_response_coefficients",
             "block_local",
             "block_local_parallel",
             "block_local_cached_parallel",
@@ -101,7 +102,10 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             and not (
                 recipe.schedule.startswith("block_local")
                 or recipe.schedule
-                == "global_batched_cached_active_moments_grad4_native"
+                in (
+                    "global_batched_cached_active_moments_grad4_native",
+                    "global_owner_response_coefficients",
+                )
             )
         ):
             raise ValueError(
@@ -111,6 +115,17 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             recipe.native_entry and not recipe.native_autograd
         ):
             raise ValueError("native_entry requires native_autograd")
+        if recipe.schedule == "global_owner_response_coefficients" and (
+            recipe.moment_method != "merge"
+            or recipe.input_direct_levels != 2
+            or recipe.output_direct_levels != 2
+            or recipe.output_tile_sites != 32
+            or not recipe.native_autograd
+            or not recipe.native_entry
+        ):
+            raise ValueError(
+                "owner response coefficients require merge, cutoffs2, tile32 and native entry"
+            )
 
     def supports(self, context, recipe):
         try:
@@ -132,6 +147,21 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
         except (ValueError, TypeError) as error:
             return SupportResult((str(error),))
         reasons = []
+        if recipe.schedule == "global_owner_response_coefficients" and (
+            context.m > 4
+            or plan.input != plan.output
+            or any(
+                axis.site_count != 1024
+                or axis.polar is None
+                or axis.modes != 8
+                or axis.base_tile_sites != 1
+                or axis.merge_factor != 2
+                for axis in (plan.input, plan.output)
+            )
+        ):
+            reasons.append(
+                "owner response coefficients require identical N1024 Polar M8 base1 merge2 axes and B<=4"
+            )
         if context.device.type != "cuda":
             reasons.append("requires a CUDA device")
         if context.dtype not in (torch.float32, torch.float64):

@@ -382,9 +382,15 @@ Tensor parameter_grad(Tensor p, Tensor zx, Tensor zy, Tensor h, Tensor g, Config
 #include "batched_cached_coefficients.cuh"
 #include "layout.cuh"
 #include "expansion_probe.cuh"
+#include "owner_response_coefficients.cuh"
 
 namespace radius_cell_mass {
 void bind_host_autograd(pybind11::module_ &);
+
+void autograd_check_owner_saved(Tensor x, Tensor p, Tensor zx, Tensor h, Tensor keys,
+    Tensor dy, Config input, Config output, bool needs_x) {
+    check_owner_saved(x, p, zx, h, keys, dy, input, output, needs_x);
+}
 
 // Same eager contract as radius_linear's Python entrance. No current atom
 // value, error word, or CUDA event is read back to the host here.
@@ -393,7 +399,7 @@ void check_autograd_entry(Tensor x, Tensor p, Config input_config,
     int tile_sites, int schedule) {
     check_matrix(x); check_atoms(p);
     Axis input = parse_axis(input_config), output = parse_axis(output_config);
-    const bool global = schedule == 5;
+    const bool global = schedule == 5 || schedule == 6;
     if (!global) check_shared_shape(p, input, output);
     TORCH_CHECK(x.device() == p.device() && x.scalar_type() == p.scalar_type() &&
         x.size(1) == input.sites, "expected matching CUDA signal and atoms");
@@ -408,6 +414,8 @@ void check_autograd_entry(Tensor x, Tensor p, Config input_config,
         "radius batch/grid work exceeds native index limit");
     TORCH_CHECK(global || 8 * (p.size(0) + std::max(zi, co)) <= 48 * 1024,
         "block-local shared storage exceeds 48 KiB");
+    if (schedule == 6) check_owner_axes(input, output, x.size(0), input_start,
+        output_start, true, tile_sites);
     if (schedule == 2) {
         for (int side = 0; side < 2; ++side) {
             const Axis &axis = side ? output : input;
@@ -433,14 +441,14 @@ void check_autograd_entry(Tensor x, Tensor p, Config input_config,
         "radius baseline uses eager preparation, not CUDA Graphs");
 }
 
-// Host autograd links to these wrappers, reusing the exact existing CUDA
-// implementations instead of crossing Python/pybind for every stage.
+// Host autograd links to these wrappers without crossing Python per stage.
+// Modes0..3/5 retain their CUDA stages; mode6 opts into owner response/C.
 std::vector<Tensor> autograd_ranges(Tensor keys, Config input, Config output, bool reverse) {
     return layout_ranges(keys, parse_axis(input).node_count,
         parse_axis(output).node_count, reverse);
 }
-// Only the host dependency graph changes. Each projection completes the same
-// global hierarchy and H/G before expansion; dP consumes those saved Tensors.
+// The existing global projection also serves mode6's atom-only backward.
+// It completes the hierarchy and G without allocating owner C or dX scratch.
 inline std::vector<Tensor> autograd_global_project(Tensor x, Tensor p, Config config,
     int start, bool merge, bool output_side) {
     auto h = torch::empty({x.size(0), p.size(0)}, x.options().dtype(torch::kDouble));
@@ -451,6 +459,10 @@ inline std::vector<Tensor> autograd_global_project(Tensor x, Tensor p, Config co
 std::vector<Tensor> autograd_transform(Tensor x, Tensor p, Tensor rows, Tensor offsets,
     Config input, Config output, int input_start, int output_start,
     bool merge, int tile_sites, int schedule, bool reverse) {
+    if (schedule == 6) return owner_transform(x, p, rows, offsets,
+        reverse ? output : input, reverse ? input : output,
+        reverse ? output_start : input_start, reverse ? input_start : output_start,
+        merge, tile_sites, reverse);
     if (schedule == 5) {
         auto source = reverse ? output : input, destination = reverse ? input : output;
         int source_start = reverse ? output_start : input_start;
@@ -467,7 +479,7 @@ std::vector<Tensor> autograd_transform(Tensor x, Tensor p, Tensor rows, Tensor o
 }
 std::vector<Tensor> autograd_project(Tensor x, Tensor p, Config output,
     int start, bool merge, int schedule) {
-    if (schedule == 5) return autograd_global_project(x, p, output, start, merge, true);
+    if (schedule == 5 || schedule == 6) return autograd_global_project(x, p, output, start, merge, true);
     return shared_apply(x, p, Tensor(), Tensor(), output, output, start, start,
         merge, 1, true, false, schedule >= 1);
 }
@@ -475,7 +487,7 @@ Tensor autograd_parameter_grad(Tensor p, Tensor x, Tensor dy, Tensor zx, Tensor 
     Tensor h, Tensor g, Config input, Config output, int input_start,
     int output_start, int schedule) {
     return hybrid_parameter_grad_impl(p, x, dy, zx, zy, h, g, input, output,
-        input_start, output_start, schedule >= 1 ? 32 : THREADS, schedule == 3 || schedule == 5);
+        input_start, output_start, schedule >= 1 ? 32 : THREADS, schedule == 3 || schedule == 5 || schedule == 6);
 }
 } // namespace radius_cell_mass
 

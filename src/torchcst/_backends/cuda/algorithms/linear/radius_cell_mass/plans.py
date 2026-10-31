@@ -132,3 +132,17 @@ GLOBAL_ACTIVE_GRAD4_NATIVE = ExecutionPlan(
         native_entry=True,
     ),
 )
+
+
+# Bounded first cohort: owner-local complete responses and coefficient partials.
+GLOBAL_OWNER_RESPONSE_COEFFICIENTS = ExecutionPlan(
+    "cuda_radius_cell_mass",
+    "v1",
+    RadiusCellMassRecipe(
+        input_direct_levels=2,
+        output_direct_levels=2,
+        schedule="global_owner_response_coefficients",
+        native_autograd=True,
+        native_entry=True,
+    ),
+)
