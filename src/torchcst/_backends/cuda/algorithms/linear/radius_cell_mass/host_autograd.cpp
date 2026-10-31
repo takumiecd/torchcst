@@ -162,3 +162,5 @@ void bind_host_autograd(pybind11::module_ &module) {
 #include "host_response_derivatives.cuh"
 
 #include "host_compact_partials.cuh"
+
+#include "host_local_tile.cuh"

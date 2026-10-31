@@ -92,6 +92,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "block_local_parallel",
             "block_local_cached_parallel",
             "block_local_batched_cached_parallel",
+            "block_local_tile_moments",
         ):
             raise ValueError("unsupported radius schedule")
         if (
@@ -133,6 +134,18 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
         ):
             raise ValueError(
                 "owner response coefficients require merge, cutoffs2, tile32 and native entry"
+            )
+
+        if recipe.schedule == "block_local_tile_moments" and (
+            recipe.moment_method != "merge"
+            or recipe.input_direct_levels != 2
+            or recipe.output_direct_levels != 2
+            or recipe.output_tile_sites != 32
+            or not recipe.native_autograd
+            or not recipe.native_entry
+        ):
+            raise ValueError(
+                "local tile moments require merge, direct levels2, tiles32 and native checked entry"
             )
 
     def supports(self, context, recipe):
@@ -192,6 +205,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "block_local_parallel",
             "block_local_cached_parallel",
             "block_local_batched_cached_parallel",
+            "block_local_tile_moments",
         ):
             if (
                 max(plan.input.site_count, plan.output.site_count) > SHARED_MAX_SITES
@@ -200,7 +214,10 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
                 reasons.append(
                     "shared radius schedules require at most 128 sites and 4096 atoms"
                 )
-            if 8 * (context.atom_count + max(zi, co)) > 48 * 1024:
+            if (
+                recipe.schedule != "block_local_tile_moments"
+                and 8 * (context.atom_count + max(zi, co)) > 48 * 1024
+            ):
                 reasons.append("block-local shared storage exceeds 48 KiB")
             if context.m > 65535:
                 reasons.append("block-local batch grid exceeds 65535")
@@ -220,6 +237,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
                         break
         if recipe.schedule in (
             "block_local_batched_cached_parallel",
+            "block_local_tile_moments",
             "global_batched_cached",
             "global_batched_cached_response4",
             "global_batched_cached_response4_grad4",
@@ -239,6 +257,21 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
                     batched_coefficient_layout(axis, start, recipe.output_tile_sites)
             except ValueError as error:
                 reasons.append(str(error))
+
+        if recipe.schedule == "block_local_tile_moments" and (
+            context.m > 32
+            or any(
+                axis.site_count != 128
+                or axis.polar is None
+                or axis.modes != 8
+                or axis.base_tile_sites != 1
+                or axis.merge_factor != 2
+                for axis in (plan.input, plan.output)
+            )
+        ):
+            reasons.append(
+                "local tile moments require N128 Polar M8 base1 merge2 and B<=32"
+            )
 
         if context.execution_mode != "eager" or context.precision.autocast:
             reasons.append("requires eager execution without autocast")

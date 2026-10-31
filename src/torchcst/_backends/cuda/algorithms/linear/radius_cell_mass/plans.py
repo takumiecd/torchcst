@@ -175,3 +175,19 @@ GLOBAL_OWNER_COMPACT_PARTIALS = ExecutionPlan(
         native_entry=True,
     ),
 )
+
+
+# Experimental: C/direct cutoff2, retained global Z starts at level5 instead.
+# Complete FP64 H/G are still built once and reused by all same-side consumers.
+LOCAL_TILE_MOMENTS = ExecutionPlan(
+    "cuda_radius_cell_mass",
+    "v1",
+    RadiusCellMassRecipe(
+        input_direct_levels=2,
+        output_direct_levels=2,
+        schedule="block_local_tile_moments",
+        output_tile_sites=32,
+        native_autograd=True,
+        native_entry=True,
+    ),
+)
