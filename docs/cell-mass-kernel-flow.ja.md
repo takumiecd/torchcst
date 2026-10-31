@@ -18,6 +18,7 @@ shared C/site展開とbounded owner partials、既存則を保つFP32 Polar更�
 | MNIST N128/B32・1epoch | 同条件の別batch検証 | 速度約2.07〜2.12倍、allocated超過、同時目標は未達 |
 | MNIST N128/B32・local tile候補3epoch | 別branch、初回コストも含める | 再compileを含む別runで全体平均1.74倍、allocatedは下回るがreserved同値、両ピーク厳密未満は未達 |
 | MNIST N1024/B4・3epoch | 明示compact owner/Jacobian再利用Planを採用 | 全体平均1.91495倍、allocated/reservedともdense未満、このcohortは同時達成 |
+| MNIST N1024/B4・key mask統合候補3epoch | 別branch、独立artifact監査通過 | 全体平均1.91221倍、両ピークともdense未満。128 local tileとの同一source統合検証は継続中 |
 | MNIST N1024/B4・中心Jacobian再利用候補3epoch | 別branch、正しさと速度は通過 | 平均1.91485倍、allocatedは低いがreserved280MiB対274MiBで超過、同時目標は未達 |
 | active moments省略 | grad4との統合GPU884件通過、明示Planに採用 | 未使用bank計算を省く。配列shapeとメモリ量は同じ |
 
@@ -8187,3 +8188,79 @@ H_muとG_muはloss勾配ではない。lossのHへの勾配はA*Gであり、混
 b6553aefのCPU全検査3229 passed/6982 skipped、GitHub run41154225371は成功した。
 wheel/sdistのruntime394file、GPU qualified4b0のruntime/benchmark1329fileのbyte一致は
 ignored `output/radius-mnist-native-20261031/package-compact9-audit.json`へ記録した。
+
+
+### compact ownerとkey-derived moments maskの結合実測（2026-10-31）
+
+別branch `kernel/radius-compact-keyed-owner` の `94973726` では、qualified compact9の
+floating演算を保ち、owner keyから使用moments bankを求めるmode10を追加した。
+保存済みforward keyをmetadata/version検査後にreverseでも使い、radius/Pの再計算を省く。
+keyは元向きの `output_node * input_nodes + input_node` であり、逆向きのowner順と混同しない。
+parameter-only経路はmode9のprojection/maskを保持する。新しいglobal atom/profile複製は作らない。
+この候補はN128 local tileと同じsourceでの統合検証が残っており、primary採用済みとは扱わない。
+
+実job `l4job-773069b1652f43b18d81dd51fb600031` は2043 passed/8 skipped、
+独立Y/dX/全atom勾配、元batchと実shuffle先頭batch、CPU optimizer updateを通過した。
+独立artifact監査では全104結果file、1537実行sourceのhash、実binaryとsource/receipt/archiveを照合した。
+raw PTの旧binary対照126field、mode7対9の42field、mode9対10の42fieldは、全finite・全byte一致。
+A52428の公開3更新も含む。最終CST48tensor/52606 model・optimizer scalar、dense20tensor/31scalarは
+fef64(mode9)・fc34(mode7)・2e2(mode6)の各finalと一致した。
+差は列挙済みのroot Plan schedule/hash注記だけで、epoch1/2のtensor checkpointは存在しない。
+したがって全途中stepの保存tensor照合を行ったとは主張しない。
+
+| epoch | CST ms | dense ms | 比率 | CST allocated/reserved B | dense allocated/reserved B |
+| --- | ---: | ---: | ---: | --- | --- |
+| 1（cold込み） | 2.500304 | 1.300608 | 1.92241 | 262435840 / 272629760 | 270021120 / 287309824 |
+| 2 | 2.422552 | 1.235264 | 1.96116 | 262435840 / 272629760 | 270484480 / 287309824 |
+| 3 | 2.422147 | 1.305233 | 1.85572 | 262435840 / 272629760 | 270484480 / 287309824 |
+
+既存trueB4/N1024/5ef7初期値・外側層・data order・Polar/AdamW条件を固定した通常3epoch/45000step。
+重み付き平均は2.448334ms対1.280368ms=1.9122108倍。allocatedとreservedもdense未満である。
+最終accuracyは97.37%対97.87%（1seed/3epoch）。学習・test/radius数値summaryは旧runと一致した。
+job間のfull MNIST時間差には環境変動もあるため、mode9からの速度向上率をそこから断定しない。
+
+同一job内の2fresh bare対照ではmode9の2.723402/2.721044msから、mode10の
+2.567632/2.564896msへ5.72%/5.74%短縮した。両者のallocated/reservedは13309952/29360128Bで同じ。
+denseは0.717436/0.727025msなので、bare N1024は依然3.58/3.53倍であり、速度2倍以内は未達。
+MNISTの同時達成とこの単体結果は別cohortとして記録する。
+
+source SHA256=`f2c2a89352c34c4c9e5c853675f6e3a58e240972ab2624e692a56c74ca549db5`。
+archive SHA256=`d83f40a3013c2e44581e8e83bebf246ff035ee7be6f0acaad7c5ad1cc518f29a`。
+実binary SHA256=`9edf790ccf5737f26eeb7309719195a97c35886d674f568dc77c1ea612736399`。
+独立監査はignored `output/radius-mnist-native-20261031/mode10-773-independent-audit.json` と同名md。
+audit JSON SHA256=`421b28bbf565a3a8fd3240979967a6b5df1c74936c4160f70589ce009b106956`。
+rawは同directoryのjob別resultsへ保持した。自動dispatch・mainは変更していない。
+
+
+### N128のreserved同値：共通baselineと部分成果の照合（2026-10-31）
+
+local tile候補の診断job `l4job-4d790b1b276947249c373e22c92d5555`（CST）と
+`l4job-8cf9f73721894d1183d5624318794ad1`（dense）は、どちらも3epoch・final.pt・20個の
+allocator snapshotを保存後に診断処理で失敗した。poolのFAILED/returncode1を保持する。
+前者はreturn時observerのmarshal hash、後者はmetadata検査がTorchVersionというstr subclassを
+拒否したことが失敗点である。ソースを変更しなくてもco_constsへの参照状態でmarshal serializationが
+変わるCPU再現と、plain str化するmetadata修正のCPU回帰を保存した。診断を成功jobへ書き換えない。
+
+CPUで保存済みsource/init/data/order/各epochのmetricを照合し、final CST48tensor・dense20tensorは
+qualified49eに全byte一致した。source799f7b2d/native0724cc9c、初期値ae13を保っている。
+両jobのsnapshotから、新GPU order確保時に旧indices viewが旧orderを保持し、最初のindices代入で
+旧block（requested480000B/rounded480256B）が解放されることをaddress/stack付きで確認した。
+epoch2のallocatedはCST241144832→241625088→241144832B、dense241328640→241808896→241328640B。
+中間値が元のepoch baseline/peakで、reservedは双方247463936Bである。
+
+baseline small activeはCST4384768B/dense4568576Bで、どちらも2個の2MiB segmentを超える。
+さらに、両snapshotに実在する共通の外側Linear/Adam/data blockだけで4199936Bとなり、
+2個の2MiB容量4194304Bを5632B超える。内訳は1MiB workspace、外側weight/grad/Adam状態、
+bias状態、train labelsと新旧order、test labelsで、middle CST状態は数えていない。
+したがって、現allocatorと共通外側層・optimizer・harnessを固定すると、CSTの一時H/G/Zの寿命だけを
+削っても、このbaselineで必要な3個目のsmall segmentは除けない。後半に空segmentがあっても既に到達した
+peakは変わらない。allocated低減とreserved厳密未満は別であり、後者の達成とはしない。
+
+1MiB blockはdenseではnative getCUDABlasLtWorkspace→gemm_and_bias→addmm→linear frameを直接確認した。
+CSTではPython nn.Linear.forward起点までで、native所有を独立に観測したとはしない。
+両jobはobserverのstack modeが異なるため、診断wall時間を性能比較に使わない。
+cache/workspace clear、環境やharness/order変更でメモリ目標を作り替えることもしない。
+照合結果・復元scriptはignored `output/radius-localtile-epoch-lifetime-finalize-20261031/`へ保全。
+validated-partial-pair.json SHA256=`ebd90e5d38acdaa682fdb1c0887e77cb04ac57c789b3c5a5e2115874a745e008`。
+report SHA256=`0bf63e0707a19bbdb93b93154209d37caa9b23311d9fd19b6f3c81b0fa27f8d9`。
+新しいGPU診断の反復は行わず、次はlocal tile/compact/key maskを同じsourceで統合検証する。
