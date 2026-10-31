@@ -7907,3 +7907,48 @@ MacのCPU suiteでは露出しなかった。元の失敗logを`ci-owner22-faile
 テストの<cmath>を先にincludeし、privateなradius_test_sincosへmacroで変換する。
 CUDA/runtimeの式とソースは一切変更せず、検査の削除・skip化・許容誤差変更も行わない。
 修正後のfocused owner CPU検査は7 passed/59 skipped。Linux CIはこのtest-only修正で再実行する。
+
+
+### 融合後の実MNIST profileと配列寿命（2026-10-31）
+
+job `l4job-db8592add40842fc8b65b03786927e3d`はqualification2e2の実binary6660/6062を
+source/runtime/hash/ELF/ABI照合して再利用し、同じ5ef7/N1024/trueB4/inplace/data orderで診断した。
+旧8001のtrain/warmup/control/host/torch loopはAST一致し、各fresh processで30更新後から測る。
+全3epochの目標判定とは別の300-update prefixで、CST平均2.921183ms対dense1.297198ms。
+allocated/reservedは264600064/272629760対270021120/287309824Bだった。
+
+| 実kernel family | 別profileでのms/step |
+| --- | ---: |
+| owner内の完成H/GとC集計（forward＋backward） | 1.270429 |
+| parameter grad4 | 0.838088 |
+| classify | 0.171770 |
+| active bank mask | 0.163904 |
+| radix sort | 0.121581 |
+| moments | 0.070471 |
+| owner partialsからsite展開 | 0.043360 |
+| Polar kernel | 0.005632 |
+
+Chrome traceの`cat=kernel`/`ph=X`だけを集計し、`gpu_user_annotation`等の包括rangeは除いた。
+TorchのeventsにあるGPU annotationを実kernelとして二重計上しない。
+別passのCPU inclusive時間や上表を完全stepから差し引かず、純粋なCPU時間も推定しない。
+CSTのhost/function/storage/dictionary factoriesとread leaseが自然な呼出しでloadedなのも記録した。
+
+memory診断の同期境界では、forward後allocated255174656/peak262306816B、
+backward後256583168/peak264600064B、optimizer後も同じだった。
+SavedTensor metadataは完成H[4,52428] FP64=1677696Bとkeys[52428] int64=419424Bを観測した。
+Zx/Zyはそれぞれ[4,1022,17] FP64=555968B、H/Gはそれぞれ1677696B。
+owner partials[4,4094,3,17] FP64=6681408Bはforward/reverseで別の一時配列で、
+Y/dX展開後に解放しctxへ保存しない。P/dP各838848B、rows419424B、offsets32760B/axis。
+これらの論理容量を足しただけの値を、測定済みpeakやGPU process総量とは呼ばない。
+raw saved-event/allocator snapshotとsource lifetime mapを保持し、aliasはstorage pointerで区別する。
+
+次は実際に残ったgrad4を削るため、完成H/Gと中心Jacobian H_mu/G_muを同時に計算して再利用する案を検証する。
+これらはlossのresponse勾配Gとは別の量であり、dμ_in=amp*sum_b(G*H_mu)、
+dμ_out=amp*sum_b(H*G_mu)、damp=sum_b(H*G)へ使う。全dXの後にatom勾配を作る順番は保つ。
+派生cacheの増加とZ解放を含むpeakは未測定で、現時点では採用済みとも高速化達成とも扱わない。
+
+source SHA256=`0372c7ee9b0e46774c7bfaa8882c0b4a3e9c20e186257354ff448ed7abd889bd`。
+archive SHA256=`436e38ca31b1294b5ea09da4de50b8ed66d9126bf91de5ae95811bba26fcbd40`。
+rawはprimary ignored `output/radius-mnist-native-20261031/<job>/results/`、
+kernel-only auditは`owner6-actual-profile-audit.json`へ保全した。
+63ef4c15のGitHub CPU validation run41148414942は成功し、Linux shim修正も確認した。
