@@ -8264,3 +8264,25 @@ cache/workspace clear、環境やharness/order変更でメモリ目標を作り�
 validated-partial-pair.json SHA256=`ebd90e5d38acdaa682fdb1c0887e77cb04ac57c789b3c5a5e2115874a745e008`。
 report SHA256=`0bf63e0707a19bbdb93b93154209d37caa9b23311d9fd19b6f3c81b0fa27f8d9`。
 新しいGPU診断の反復は行わず、次はlocal tile/compact/key maskを同じsourceで統合検証する。
+
+
+### N128 local tileとN1024 compact keyedの同一source qualification（進行中）
+
+2026-10-31、別branch `kernel/radius-union-localtile-compact` の `558608f3` を凍結した。
+mode4のlocal tile geometry/momentsはqualified799、mode9/10の既存24headerとhost prefixは
+qualified949とbyte一致する。別LocalTileLinear Functionがmode4のP-only key保存も維持する。
+明示Planだけを追加し、既存schedule/自動dispatch・旧sigma・Polar更新則は変更しない。
+全CPU3312 passed/7207 skipped、独立レビュー70 passed/166 skippedでblockerなし。
+wheel/sdistの全runtime401fileがsourceとbyte一致した。CUDA skipをGPU達成とは扱わない。
+
+最終driverのCPU self-checkで、ae13(N128/B32)/5ef7(N1024/B4)の初期値・有効W・外側層と
+実Plan選択を照合した。実job `l4job-822acc41a51d4d17b02a84c9b49fc8cf` を1L4共有poolへ投入した。
+旧8a/0724/704の3binaryに対する462fieldの公開更新byte gate、独立Y/dX/全atom勾配・
+両cohortの元/実shuffle先頭batch、各2fresh単体対照、通常3epochのCST/dense対照を行う。
+通常学習はcold初回を含め、元harness/data order/optimizerを保持する。これは検証の準備記録で、
+この統合sourceのGPU成功や性能・メモリの結果ではない。結果取得後に別途判定する。
+
+native source SHA256=`89ca09a9b1b44fd11e6e72db76a3ebfa2057ca361d9ed9804994211e137b8f43`。
+driver SHA256=`4e1e20ba3166e0118ccb2477ef3e82a479a8486d5b3ba78d353b8715971de0a4`。
+凍結driver/self-check/package/reviewは研究treeのignored
+`output/radius-union-localtile-compact-20261031/`へ保持する。
