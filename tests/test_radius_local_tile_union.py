@@ -127,6 +127,7 @@ def test_atom_only_keys_are_saved_for_mode4_and_omitted_for_global5(mode):
         ("global_owner_response_coefficients", 6),
         ("global_owner_response_derivatives", 7),
         ("global_owner_compact_partials", 9),
+        ("global_owner_compact_keyed", 10),
     ],
 )
 def test_all_real_entry_boundaries_preserve_local4_and_primary_legacy_modes(
@@ -159,6 +160,10 @@ def test_all_real_entry_boundaries_preserve_local4_and_primary_legacy_modes(
         calls.append((9, args))
         return x
 
+    def keyed_native(*args):
+        calls.append((10, args))
+        return x
+
     monkeypatch.setattr(
         ex,
         "_extension",
@@ -166,6 +171,7 @@ def test_all_real_entry_boundaries_preserve_local4_and_primary_legacy_modes(
             checked_autograd_linear=old_native,
             checked_autograd_linear_local_tile=local_native,
             checked_autograd_linear_compact_partials=compact_native,
+            checked_autograd_linear_compact_keyed=keyed_native,
         ),
     )
     if entry == "algorithm":
@@ -185,4 +191,4 @@ def test_all_real_entry_boundaries_preserve_local4_and_primary_legacy_modes(
     actual_mode, args = calls[0]
     assert actual_mode == mode and args[0] is x and args[1] is p
     assert args[2:4] == (layout.input.native_config(), layout.output.native_config())
-    assert len(args) == (8 if mode == 4 else 4 if mode == 9 else 9)
+    assert len(args) == (8 if mode == 4 else 4 if mode in (9, 10) else 9)

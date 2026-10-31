@@ -434,6 +434,7 @@ def test_compact_raw_checked_metadata_before_any_launch(fault, tmp_path):
         ("block_local_parallel", 1),
         ("block_local_cached_parallel", 2),
         ("block_local_batched_cached_parallel", 3),
+        ("block_local_tile_moments", 4),
         ("global_batched_cached_active_moments_grad4_native", 5),
         ("global_owner_response_coefficients", 6),
         ("global_owner_response_derivatives", 7),
@@ -456,6 +457,10 @@ def test_all_real_algorithm_checked_radius_entries_reach_correct_native_leaf(
         calls.append((args[-1], args))
         return x
 
+    def local(*args):
+        calls.append((4, args))
+        return x
+
     def compact(*args):
         calls.append((9, args))
         return x
@@ -469,6 +474,7 @@ def test_all_real_algorithm_checked_radius_entries_reach_correct_native_leaf(
         "_extension",
         lambda: SimpleNamespace(
             checked_autograd_linear=native,
+            checked_autograd_linear_local_tile=local,
             checked_autograd_linear_compact_partials=compact,
             checked_autograd_linear_compact_keyed=keyed,
         ),
@@ -490,7 +496,7 @@ def test_all_real_algorithm_checked_radius_entries_reach_correct_native_leaf(
     actual, args = calls[0]
     assert actual == mode and args[0] is x and args[1] is p
     assert args[2:4] == (layout.input.native_config(), layout.output.native_config())
-    assert len(args) == (4 if mode in (9, 10) else 9)
+    assert len(args) == (8 if mode == 4 else 4 if mode in (9, 10) else 9)
 
 
 def test_actual_cpp_key_decode_banks_dependencies_and_range_on_cpu(tmp_path):
