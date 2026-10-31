@@ -25,7 +25,7 @@ MNIST N1024の最終test accuracyは97.37%対97.87%（1seed/3epoch）。精度�
 単体denseの小型ピーク差にはcuBLAS workspace約17.04MBが大きく寄与する。MNISTでは両モデルに共通であり、
 単体の総ピーク差をCSTのParameterや中間配列そのものの削減量と読み替えない。末尾に因果実験を記録する。
 現在の統合CPU検査は3229 passed/6982 skipped。追加ごとの検証範囲は末尾に記録する。
-owner融合22a2c44eの配布wheel/sdistはruntime389ファイルがsourceとbyte一致した。compact/Jacobian統合後は再buildして別途記録する。
+owner融合22a2c44eの配布wheel/sdistはruntime389ファイルがsourceとbyte一致した。compact/Jacobian統合b6553aefのwheel/sdistはruntime394ファイルがsourceとbyte一致した。
 owner融合統合時のruntime/benchmarkは実GPU qualificationの5a snapshotとbyte一致した。
 Graph、autocast、高階微分、自動dispatch、N1024より大きい形状の達成は未検証である。
 末尾の各実測節にjob ID・source/archive hash・採用範囲と失敗結果を残す。
@@ -8135,3 +8135,55 @@ raw/復元先はprimary ignored `output/radius-mnist-native-20261031/<job>/resul
 source SHA256=`5c76e1e25af16f694528a7ec55e62e0e6caec0529a5deaf5925fd1da6d9976f0`。
 archive SHA256=`8941aa1d43f8b31a7c2b3874637ab13660d45143f8f0095c11d1fa5d4002083c`。
 実binary SHA256=`ef2e016e7ccf245f6366f3584e6b8281e7c3ddb5e66621f99f1d75c2eff2d4bb`。
+
+
+#### compact配置と中心Jacobianの数式（report用）
+
+bankをℓ、bank内のtile数をS_ℓ、part数をK_ℓ、site単位のtile幅をn_ℓとする。
+物理幅T_ℓ=spacing*n_ℓ、P_ℓ=K_ℓ*T_ℓで、K_ℓ=ceil(2R/T_ℓ)+1を保つ。
+同じ階層にもK=2/3の別bankがあるので、ここでのℓは階層番号そのものではない。
+
+\[
+F_\ell=\begin{cases}
+n_\ell & h_\ell < h_{\rm direct},\\
+2M+1 & h_\ell\ge h_{\rm direct},
+\end{cases}
+\quad O_\ell=\sum_{j<\ell}S_jK_jF_j,\quad
+S_{\rm all}=\sum_\ell S_\ell K_\ell F_\ell.
+\]
+
+ownerのglobal node番号をq、bankのnode_offsetをq_{0,ℓ}、part番号をk、field番号をfとすると、
+
+\[
+\operatorname{index}(b,q,\ell,k,f)
+=bS_{\rm all}+O_\ell+
+\bigl((q-q_{0,\ell})K_\ell+k\bigr)F_\ell+f.
+\]
+
+0<=k<K_ℓ、0<=f<F_ℓ。K個のwrap画像は別partで保持し、同じownerへwrapしても区別する。
+N1024/base1/merge2/start2/M8ではS_all=53675、B4なら8*B*S_all=1717600bytes。
+全bankのindexが重ならず必要範囲を尽くすことと、inactive/空ownerを読まないことを独立に検査する。
+
+入力・出力のセル確率p^in_a(i),p^out_a(o)とphysical amplitude A_aに対し、
+
+\[
+H_{ba}=\sum_iX_{bi}p^{\rm in}_a(i),\quad
+G_{ba}=\sum_o(dY)_{bo}p^{\rm out}_a(o),
+\]
+\[
+(H_\mu)_{ba}=\sum_iX_{bi}\,\partial_{\mu^{\rm in}_a}p^{\rm in}_a(i),\quad
+(G_\mu)_{ba}=\sum_o(dY)_{bo}\,\partial_{\mu^{\rm out}_a}p^{\rm out}_a(o).
+\]
+\[
+dA_a=\sum_bH_{ba}G_{ba},\quad
+d\mu^{\rm in}_a=A_a\sum_bG_{ba}(H_\mu)_{ba},\quad
+d\mu^{\rm out}_a=A_a\sum_bH_{ba}(G_\mu)_{ba}.
+\]
+
+Polarのradiusは既存どおりtask gradientからdetachする。raw s/tへのamplitude chainと更新則は既存helperを使う。
+必要な中心Jacobianをforward/reverseで完成させれば、このparameter contractionへZそのものを保存する必要はない。
+H_muとG_muはloss勾配ではない。lossのHへの勾配はA*Gであり、混同しない。
+
+b6553aefのCPU全検査3229 passed/6982 skipped、GitHub run41154225371は成功した。
+wheel/sdistのruntime394file、GPU qualified4b0のruntime/benchmark1329fileのbyte一致は
+ignored `output/radius-mnist-native-20261031/package-compact9-audit.json`へ記録した。
