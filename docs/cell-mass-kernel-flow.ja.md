@@ -18,6 +18,7 @@ shared C/site展開とbounded owner partials、既存則を保つFP32 Polar更�
 | MNIST N128/B32・1epoch | 同条件の別batch検証 | 速度約2.07〜2.12倍、allocated超過、同時目標は未達 |
 | MNIST N128/B32・local tile候補3epoch | 別branch、初回コストも含める | 再compileを含む別runで全体平均1.74倍、allocatedは下回るがreserved同値、両ピーク厳密未満は未達 |
 | MNIST N1024/B4・3epoch | 同じ初期化を使う明示owner融合Planで再測定 | 約2.89〜2.97ms対dense1.30〜1.32ms、両ピークは下回る、速度2.19〜2.29倍で未達 |
+| MNIST N1024/B4・中心Jacobian再利用候補3epoch | 別branch、正しさと速度は通過 | 平均1.91485倍、allocatedは低いがreserved280MiB対274MiBで超過、同時目標は未達 |
 | active moments省略 | grad4との統合GPU884件通過、明示Planに採用 | 未使用bank計算を省く。配列shapeとメモリ量は同じ |
 
 MNIST N1024の最終test accuracyは97.37%対97.87%（1seed/3epoch）。精度同等・一般化は主張しない。
@@ -7990,3 +7991,62 @@ archive SHA256=`53598f0d845d2fa36e70205c4a48a49b2aca6a26f558a10a56cea33ab8d4703a
 rawはprimary ignored `output/radius-mnist-native-20261031/<job>/results/`へ保持した。
 
 独立manifest/単位極端値/gate/全public pairの監査はignored `output/float-coefficient-terminal-audit-20261031/`へ記録した。
+
+
+### 中心Jacobian再利用で速度達成、reserved超過は未解決（2026-10-31）
+
+別branch26af3564の明示Plan `radius-global-owner-response-derivatives` / mode7は、
+完成H/Gと中心Jacobian H_mu/G_muを同じatom threadで計算する。
+forwardでZからHとH_muを完成した後、保存対象をH/H_muへ変えてZを解放する。
+backwardでもG/G_muを完成し、必要なdXを先に作り、最後にb順の単純積和で全atom勾配を作る。
+旧grad4のprofile/phase/momentsの再読出しをなくすが、Jacobianの配列容量は追加される。
+全legacy header/Plan/classは保持し、新しい独立数値Planとして検証した。
+
+job `l4job-fc34a326aec74ac9a8d3c50edc749d35`は実module5216を新規compileし、
+1703 passed/4 skipped。元のMNIST gateと実際にshuffleした先頭batch gate、
+Y/dX/全atom勾配/CPU-reference optimizer・metadata/hooks/retained/offload/leaseを通過した。
+
+bare2freshはmode6の3.124740/3.127916msからmode7の2.720291/2.712912msへ短縮した。
+対応denseは0.733297/0.723370msで、裸1024の速度2倍以内は未達。
+allocatedは15474176→18273792B、reservedは29360128Bで同じ。denseは33900032/44040192B。
+同じmodule内の旧mode5/6も再測定し、旧経路の実測を保持した。
+
+trueB4/5ef7/同じ外側層・data order・optimizer・inplaceの全MNIST3epochは次の通り。
+
+| epoch | CST ms | dense ms | 比率 | CST allocated/reserved B | dense allocated/reserved B |
+| --- | ---: | ---: | ---: | --- | --- |
+| 1（cold込み） | 2.588613 | 1.321120 | 1.95941 | 267399680 / 293601280 | 270021120 / 287309824 |
+| 2 | 2.500603 | 1.329033 | 1.88152 | 267399680 / 293601280 | 270484480 / 287309824 |
+| 3 | 2.515105 | 1.321086 | 1.90382 | 267399680 / 293601280 | 270484480 / 287309824 |
+
+45000更新のcold込み平均2.534774ms対1.323747ms=1.914848倍で、速度の条件を満たす。
+allocatedもdense未満だが、reservedは280MiB対274MiB、6291456B超過した。
+したがって速度・両メモリの同時目標は未達であり、primary runtimeへまだ採用しない。
+測定済みreservedを単純なtensor budgetで置き換えたり、allocator/workspace解放で帳尻を合わせたりしない。
+同じ6.681MB owner partialsをbankごとの必要K/fieldsだけへ詰める案を次に検証する。
+N1024/start2/B4では論理1717600Bになる見積りだが、実際のpeak/速度は未測定。
+
+最終test accuracyは97.37%対97.87%。mode6の2e2結果と、CST model+optimizer48 tensor leaf、
+dense20 tensor leafがすべてbyte一致した（scalar metadataは別監査）。
+比較JSONはignored `output/radius-mnist-native-20261031/owner7-final-vs-owner6-audit.json`。
+resource dumpはowner6 REG128/STACK704、mode7 REG136/STACK704、最終parameter kernel REG40/STACK0を記録した。
+これはcompiler資源情報であり、物理cache hitやDRAM負荷を実測したとは呼ばない。
+
+source SHA256=`03858aec509d1a2953ae1bca6e1dcc1e23c19a27c176b3354812151fad16f2d3`。
+archive SHA256=`965b9c604ad5bb6ace57ee8aceca6d4ff33d195efe769421cfec51c52f651410`。
+実binary SHA256=`522e51817e74f18ebe6f502b118adfee820d7c4ba159e158004f0852e4bff5d0`。
+rawはprimary ignored `output/radius-mnist-native-20261031/<job>/results/`へ保持した。
+
+### key由来maskの初回qualificationはdispatch不備で停止（2026-10-31）
+
+別branch0cf2d6beのmode8はvalidated keysからactive bank maskを作り、radiusの再分類を省く候補。
+job `l4job-8ac6efe1e8c9478e8252bd664ff86f92`はa99dを新規compileしたが、
+Algorithm.executeが通るshared checked entryに新scheduleのdispatchがなく、KeyErrorで12件失敗した。
+1185 passed/12 failed/3 skippedで停止し、性能測定へ進めていない。失敗原本とsourceを保持する。
+rawは同じprimary ignored output配下。binary SHA256=`7f38b8eff8bf3609261102faa054529049a6b3a61e0e20112d50f6d9d2e633ea`。
+source SHA256=`250f6b24657b0b6211a35ae62dfcf508993e3cf8753a641fccdd603ade6c57d1`、
+archive SHA256=`c96d6384dd0cd790a8983c5fdd43b3f156c454ccf2f670df1ad854688557853c`。
+修正099afa65はshared checked entryの境界を直し、fixtureのchecked entry差替えをなくした。
+実Algorithm.execute/shared checked entry/radius entryを通る21CPU回帰を追加し、
+全CPU3225 passed/6887 skipped、focused28 passed/115 skipped。native a99dの式とソースは変更せず、
+別GPU qualificationの通過まで採用しない。旧失敗を通過結果へ書き換えない。
