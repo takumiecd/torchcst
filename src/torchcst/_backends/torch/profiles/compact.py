@@ -8,6 +8,7 @@ from torch import Tensor
 from torchcst._backends.torch.charts import execution as _charts
 from torchcst._backends.torch.geometry import execution as _geometry_execution
 from torchcst._backends.torch.profiles import execution as _profile
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
 from torchcst.charts import ChartState
 from torchcst.kernels.spec import AtomInit
 from torchcst.profiling import cst_span
@@ -303,3 +304,8 @@ def _l2_column_scale(values: Tensor) -> tuple[Tensor, Tensor]:
 
     scale = torch.linalg.vector_norm(values, dim=0).clamp_min(_L2_FLOOR).reciprocal()
     return values * scale, scale
+
+
+# Optional prepared updates may specialize only these original definitions.
+
+_seal_functions(globals())

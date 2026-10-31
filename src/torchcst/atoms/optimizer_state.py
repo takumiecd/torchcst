@@ -185,3 +185,8 @@ class AtomOptimizerState(nn.Module):
         state = super().__getstate__()
         state["_updater"] = None
         return state
+
+
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
+
+_seal_functions(globals())

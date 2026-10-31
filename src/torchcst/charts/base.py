@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from torch import nn
 
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
 from torchcst._coordinate_state import _floating_dtype, _validate_loaded_state
 from torchcst._validation import _shape
 from torchcst.geometry.spec import GeometrySpec
@@ -159,3 +160,13 @@ class _AxisChartState(ChartState):
             "geometry": self.geometry.declaration(),
             "axes": tuple(axis.declaration() for axis in self.axes),
         }
+
+
+# Optional prepared updates may specialize only these original definitions.
+
+_seal_functions(globals())
+
+
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
+
+_seal_functions(globals())

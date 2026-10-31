@@ -265,3 +265,46 @@ def test_live_binding_does_not_retain_replaced_parameter_and_cache_is_transient(
     torch.testing.assert_close(
         clone.execution_parameters(), binding.execution_parameters()
     )
+
+
+def test_algorithm_hot_checks_once_cold_checks_prepare_postcondition(monkeypatch):
+    dispatcher, binding, algorithm, _, plans = setup()
+    state = binding.algorithm_state(algorithm, recipe=plans[0].recipe)
+    original = state.is_current
+    checks = []
+
+    def checked():
+        current = original()
+        checks.append(current)
+        return current
+
+    monkeypatch.setattr(state, "is_current", checked)
+    inputs = Inputs(torch.tensor([1.0, 2.0]))
+    torch.testing.assert_close(dispatcher.run(binding, inputs), inputs.values)
+    assert checks == [False, True]
+    assert algorithm.preparations == 1
+    checks.clear()
+    dispatcher.run(binding, inputs)
+    assert checks == [True]
+    assert algorithm.preparations == 1
+    binding.offset = 7
+    checks.clear()
+    torch.testing.assert_close(dispatcher.run(binding, inputs), inputs.values + 7)
+    assert checks == [False, True]
+    assert algorithm.preparations == 2
+
+
+def test_algorithm_rejects_prepare_without_current_state():
+    class BrokenPreparation(Add):
+        def prepare(self, state):
+            state.invalidate()
+            state.layout = "unfinished"
+
+        def execute(self, state, inputs):
+            pytest.fail("unprepared state must not execute")
+
+    binding = Binding()
+    algorithm = BrokenPreparation()
+    state = binding.algorithm_state(algorithm, recipe=DefaultRecipe())
+    with pytest.raises(RuntimeError, match="did not prepare the current binding state"):
+        algorithm.run(state, Inputs(torch.ones(2)))

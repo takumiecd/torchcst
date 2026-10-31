@@ -13,6 +13,8 @@ from torchcst.atoms import OptimizerFieldSpec
 from torchcst.geometry.spec import EuclideanGeometrySpec
 from torchcst.nn import CSTModule
 
+from . import _group_validation
+from ._coordinate_step import finish_atom_steps, prepare_atom_steps
 from .binding import bind_atom_states, field_specs, validate_binding
 from .state import OptimizerStateAdapter, default_state_adapter
 
@@ -44,6 +46,7 @@ class CSTOptimizer(Optimizer):
         if type(check_finite) is not bool:
             raise TypeError("check_finite must be a bool")
         self.check_finite = check_finite
+        self._allows_amplitude_decay = type(optimizer) is torch.optim.AdamW
         if isinstance(optimizer, LBFGS):
             raise TypeError("LBFGS repeated proposals require a dedicated integration")
         if state_adapter is not None and not isinstance(
@@ -97,9 +100,44 @@ class CSTOptimizer(Optimizer):
         self.defaults = self.base_optimizer.defaults
 
     def _validate_groups(self, groups):
+        cached = self.__dict__.get("_group_validation")
+        if cached is not None and cached.current(self, groups):
+            return cached.mapping
         names = {id(p): name for name, p in self.model.named_parameters()}
-        seen = set()
+        atom_ids = {id(site.atoms.p) for site in self._sites}
+        # Build the live lookup while checking ownership and uniqueness. It is
+        # invocation-local: user hooks may replace groups before Adam runs.
+        by_parameter = {}
         for group in groups:
+            if "amplitude_weight_decay" in group:
+                decay = group["amplitude_weight_decay"]
+                if not self._allows_amplitude_decay:
+                    raise ValueError("amplitude_weight_decay requires exact AdamW")
+                if (
+                    type(decay) not in (int, float)
+                    or not math.isfinite(decay)
+                    or decay < 0
+                ):
+                    raise ValueError(
+                        "amplitude_weight_decay must be a finite nonnegative Python scalar"
+                    )
+                if not any(id(p) in atom_ids for p in group["params"]):
+                    raise ValueError("amplitude_weight_decay requires an atom group")
+                raw_decay = group.get("weight_decay", 0)
+                if type(raw_decay) not in (int, float) or raw_decay != 0:
+                    raise ValueError(
+                        "amplitude_weight_decay requires raw weight_decay=0"
+                    )
+                rate = group["lr"]
+                if (
+                    type(rate) not in (int, float)
+                    or not math.isfinite(rate)
+                    or rate < 0
+                    or rate * decay > 1
+                ):
+                    raise ValueError(
+                        "lr * amplitude_weight_decay must be in [0, 1] with finite Python lr"
+                    )
             if group.get("differentiable", False):
                 raise ValueError(
                     "CSTOptimizer does not support differentiable optimizer steps"
@@ -107,9 +145,9 @@ class CSTOptimizer(Optimizer):
             for p in group["params"]:
                 if id(p) not in names:
                     raise ValueError("optimizer parameter is not owned by model")
-                if id(p) in seen:
+                if id(p) in by_parameter:
                     raise ValueError("optimizer parameters must be unique")
-                seen.add(id(p))
+                by_parameter[id(p)] = group
         owners = set()
         for site in self._sites:
             if id(site.atoms.p) in owners:
@@ -123,6 +161,14 @@ class CSTOptimizer(Optimizer):
                     raise ValueError(
                         "trainable non-Euclidean charts need a chart update policy"
                     )
+
+        if hasattr(self, "base_optimizer") and self.check_finite is False:
+            self._group_validation = _group_validation.prepare(
+                self, groups, by_parameter
+            )
+        else:
+            self.__dict__.pop("_group_validation", None)
+        return by_parameter
 
     def add_param_group(self, param_group):
         if not hasattr(self, "base_optimizer"):
@@ -162,8 +208,9 @@ class CSTOptimizer(Optimizer):
     def _step_impl(self, loss, *, has_closure):
         from torchcst._backends.torch.kernels import execution as _kernel
 
-        self._validate_groups(self.param_groups)
-        groups = {id(p): group for group in self.param_groups for p in group["params"]}
+        if any("amplitude_weight_decay" in group for group in self.param_groups):
+            return self._step_with_amplitude_decay(loss, has_closure=has_closure)
+        groups = self._validate_groups(self.param_groups)
         active = []
         for site, point in self._bound_parameters.items():
             if site.atoms.p is not point:
@@ -188,16 +235,17 @@ class CSTOptimizer(Optimizer):
         # Check before base optimizer mutates any parameter or state.
         from torchcst._backends.torch import finite
 
-        gradients = []
-        for group in self.param_groups:
-            for point in group["params"]:
-                if point.grad is not None:
-                    grad = point.grad
-                    values = grad.coalesce().values() if grad.is_sparse else grad
-                    gradients.append(values)
-        if finite.first_nonfinite(gradients) is not None:
-            raise FloatingPointError("non-finite parameter gradient")
-        del gradients  # Release any temporary coalesced sparse values before Adam.
+        if finite.checks_enabled():
+            gradients = []
+            for group in self.param_groups:
+                for point in group["params"]:
+                    if point.grad is not None:
+                        grad = point.grad
+                        values = grad.coalesce().values() if grad.is_sparse else grad
+                        gradients.append(values)
+            if finite.first_nonfinite(gradients) is not None:
+                raise FloatingPointError("non-finite parameter gradient")
+            del gradients  # Release temporary sparse values before Adam.
         old_points = []
         for site, point, rate in active:
             projected = _kernel.project_parameter_gradient(
@@ -214,11 +262,9 @@ class CSTOptimizer(Optimizer):
 
                 inputs = AtomUpdateInputs(old, rate)
                 binding = self._update_bindings[site]
-                binding.validate_inputs(inputs)
-                plan = self._update_dispatcher.select(
-                    binding.build_context(inputs)
-                ).plan
-            point.grad.copy_(projected)
+                plan = self._update_dispatcher.prepare(binding, inputs).plan
+            if projected is not point.grad:
+                point.grad.copy_(projected)
             old_points.append((site, point, rate, old, plan))
         if not has_closure:
             result = self.base_optimizer.step()
@@ -238,6 +284,56 @@ class CSTOptimizer(Optimizer):
             if self.check_finite and not bool(torch.isfinite(new).all()):
                 raise FloatingPointError("non-finite CST parameter update")
             self.state_adapter.transport(site, old, new, self.state.get(point, {}))
+        return loss if has_closure else result
+
+    def _step_with_amplitude_decay(self, loss, *, has_closure):
+        """Prepare atoms after user pre-hooks and decay their logical amplitude.
+
+        A final, temporary base pre-hook observes the settings and gradients
+        actually used by AdamW. It never replaces groups or reruns the user's
+        closure. Ordinary parameters therefore keep standard AdamW behavior.
+        """
+        initial_groups = self._validate_groups(self.param_groups)
+        protected = {
+            key
+            for key, group in initial_groups.items()
+            if "amplitude_weight_decay" in group
+        }
+        del initial_groups
+        prepared = []
+        guard_called = False
+        replay_closure = (lambda: loss) if has_closure else None
+
+        def prepare_before_adam(base, args, kwargs):
+            nonlocal guard_called
+            if (
+                len(args) != 1
+                or args[0] is not base
+                or kwargs.get("closure") is not replay_closure
+            ):
+                raise ValueError("amplitude decay hooks must not replace the closure")
+            groups = self._validate_groups(base.param_groups)
+            prepared.extend(
+                prepare_atom_steps(
+                    self, groups, param_groups=base.param_groups, protected=protected
+                )
+            )
+            guard_called = True
+
+        # Registered last, after existing user pre-hooks; always remove it,
+        # including on invalid settings, hook exceptions or AdamW failures.
+        handle = self.base_optimizer.register_step_pre_hook(prepare_before_adam)
+        try:
+            if has_closure:
+                result = self.base_optimizer.step(closure=replay_closure)
+            else:
+                result = self.base_optimizer.step()
+        finally:
+            handle.remove()
+        if not guard_called:
+            raise RuntimeError("AdamW must execute its standard step pre-hooks")
+        self._sync_from_base()
+        finish_atom_steps(self, prepared)
         return loss if has_closure else result
 
     def _manifest(self):
@@ -303,3 +399,9 @@ class CSTOptimizer(Optimizer):
             self.base_optimizer, self._sites, self._state_specs, restored=True
         )
         self._sync_from_base()
+
+
+# Prepared validation may specialize only the original wrapper callbacks.
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
+
+_seal_functions(globals())

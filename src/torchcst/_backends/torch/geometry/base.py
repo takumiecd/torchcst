@@ -5,6 +5,8 @@ from __future__ import annotations
 import torch
 from torch import Tensor
 
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
+
 
 def validate_points(self, points: Tensor, *, name: str = "points") -> None:
     """Validate an arbitrary table whose final axis stores one point."""
@@ -82,3 +84,8 @@ def _validate_atoms(atoms):
 def encode_centers(state, points):
     validate_points(state, points)
     return points
+
+
+# Optional prepared updates may specialize only these original definitions.
+
+_seal_functions(globals())

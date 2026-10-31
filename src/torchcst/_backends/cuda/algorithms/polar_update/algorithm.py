@@ -6,6 +6,7 @@ import torch
 
 from torchcst._backends.algorithm import Algorithm
 from torchcst._backends.schema import DefaultRecipe, SupportResult
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
 from torchcst.geometry.spec import EuclideanGeometrySpec, FlatTorusGeometrySpec
 from torchcst.kernels.parameterizations import PolarAmpWidthSpec
 from torchcst.operators.atom_update import (
@@ -17,9 +18,9 @@ from torchcst.operators.atom_update import (
 @dataclass(frozen=True)
 class FusedPolarUpdateAlgorithm(Algorithm[DefaultRecipe]):
     id: str = "cuda_polar_update_fused"
-    revision: str = "v1"
+    revision: str = "v2"
     operation_id: str = "atom_update"
-    semantics_id: str = "kernel-coordinate-update-v1"
+    semantics_id: str = "kernel-coordinate-update-v2"
     recipe_type: type = DefaultRecipe
     input_type: type = AtomUpdateInputs
 
@@ -82,11 +83,19 @@ class FusedPolarUpdateAlgorithm(Algorithm[DefaultRecipe]):
 
     @torch.no_grad()
     def execute(self, state, inputs):
+        from torchcst.operators.atom_update import amplitude_decay_amount
+
         from .executor import fused_update_
+
+        amplitude_decay_amount(state.context, inputs)
 
         proposal = state.binding.execution_parameters()
         fused_update_(
-            state.binding.kernel, inputs.previous, proposal, step_size=inputs.step_size
+            state.binding.kernel,
+            inputs.previous,
+            proposal,
+            step_size=inputs.step_size,
+            amplitude_weight_decay=inputs.amplitude_weight_decay,
         )
         return proposal.detach()
 
@@ -145,15 +154,93 @@ class FlatTorusPolarUpdateAlgorithm(FusedPolarUpdateAlgorithm):
 
     @torch.no_grad()
     def execute(self, state, inputs):
+        from torchcst.operators.atom_update import amplitude_decay_amount
+
         from .executor import fused_update_
+
+        amplitude_decay_amount(state.context, inputs)
 
         binding = state.binding
         proposal = binding.execution_parameters()
+        capture = None
+        if type(self) is RadiusFlatTorusPolarUpdateAlgorithm:
+
+            def capture(*record):
+                state._polar_launch = record
+
         fused_update_(
             binding.kernel,
             inputs.previous,
             proposal,
             step_size=inputs.step_size,
+            amplitude_weight_decay=inputs.amplitude_weight_decay,
             periods=tuple(chart.geometry.periods for chart in binding.cst_charts()),
+            capture_launch=capture,
         )
         return proposal.detach()
+
+
+@dataclass(frozen=True)
+class RadiusFlatTorusPolarUpdateAlgorithm(FlatTorusPolarUpdateAlgorithm):
+    """Explicit radius contract using the unchanged Polar coordinate law."""
+
+    id: str = "cuda_radius_flat_torus_polar_update_fused"
+
+    def prepare_optimizer_program(self, dispatcher, cached, adapter, site=None):
+        from .optimizer_program import prepare_program
+
+        return prepare_program(dispatcher, cached, adapter, site)
+
+    def supports(self, context, recipe):
+        from torchcst.kernels.parameterizations import PolarAmpRadiusSpec
+
+        if not isinstance(context, AtomUpdateContext):
+            return SupportResult(("requires AtomUpdateContext",))
+        reasons = []
+        if (
+            context.kernel.revision != 7
+            or type(context.kernel.parameterization) is not PolarAmpRadiusSpec
+            or context.kernel.update.id != "polar_activity_radius"
+            or context.kernel.composition != "separable"
+            or len(context.geometries) != 2
+            or not all(
+                type(g) is FlatTorusGeometrySpec and g.intrinsic_dim == 1
+                for g in context.geometries
+            )
+            or len(context.parameter_shape) != 2
+            or context.parameter_shape[1] != 4
+        ):
+            reasons.append("requires radius Polar and two scalar FlatTorus centers")
+        if context.execution_mode != "eager":
+            reasons.append("periodic update finite checks require eager execution")
+        if (
+            context.device.type != "cuda"
+            or context.dtype != torch.float32
+            or not context.contiguous
+        ):
+            reasons.append("radius Polar update requires contiguous CUDA float32 atoms")
+        scalars = {
+            name: (dtype, device, size)
+            for name, dtype, device, size in context.scalar_metadata
+        }
+        if any(
+            scalars.get(name) != (context.dtype, context.device, 1)
+            for name in (
+                "amplitude_max",
+                "w_c",
+                "activity_gain",
+                "dormant_expansion_rate",
+                "radial_regularization",
+                "geometry.0.periods",
+                "geometry.1.periods",
+            )
+        ):
+            reasons.append(
+                "radius Polar scalars and periods must be live matching FP32 tensors"
+            )
+        return SupportResult(tuple(reasons))
+
+
+# Optional prepared updates may specialize only these original definitions.
+
+_seal_functions(globals())

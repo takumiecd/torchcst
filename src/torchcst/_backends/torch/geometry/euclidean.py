@@ -5,6 +5,8 @@ from __future__ import annotations
 import torch
 from torch import Tensor
 
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
+
 from .base import (
     _validate_atoms,
     _validate_center_structure,
@@ -75,3 +77,8 @@ def transport(self, old: Tensor, new: Tensor, vectors: Tensor) -> Tensor:
     if old.shape != new.shape or old.shape != vectors.shape:
         raise ValueError("old, new, and vectors must have matching shapes")
     return vectors
+
+
+# Optional prepared updates may specialize only these original definitions.
+
+_seal_functions(globals())

@@ -6,6 +6,8 @@ import torch
 from torch import Tensor
 from torch.optim import SGD, Adam, Adamax, AdamW, RMSprop
 
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
+
 
 @dataclass(frozen=True)
 class OptimizerStateAdapter:
@@ -44,7 +46,8 @@ class OptimizerStateAdapter:
                 raise ValueError("transported optimizer state has the wrong shape")
             if finite.checks_enabled() and not bool(torch.isfinite(transported).all()):
                 raise FloatingPointError("non-finite transported optimizer state")
-            vector.copy_(transported)
+            if transported is not vector:
+                vector.copy_(transported)
 
 
 def default_state_adapter(optimizer) -> OptimizerStateAdapter:
@@ -67,3 +70,8 @@ def default_state_adapter(optimizer) -> OptimizerStateAdapter:
     if type(optimizer) is ASGD:
         raise ValueError("ASGD averaged parameter state needs a dedicated adapter")
     raise ValueError("custom optimizer requires an explicit OptimizerStateAdapter")
+
+
+# Optional prepared updates may specialize only these original definitions.
+
+_seal_functions(globals())

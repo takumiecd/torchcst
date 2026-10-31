@@ -8,7 +8,9 @@ from .normalization import NormalizationSpec
 from .parameterizations import (
     FixedWidthSpec,
     ParameterizationSpec,
+    PhysicalAmpRadiusSpec,
     PhysicalAmpWidthSpec,
+    PolarAmpRadiusSpec,
     PolarAmpWidthSpec,
 )
 from .profiles import ProfileSpec
@@ -83,6 +85,42 @@ class CellIntegratedProfileBinding(ProfileBinding):
 
 
 @dataclass(frozen=True, kw_only=True)
+class RadiusIntegratedProfileBinding(ProfileBinding):
+    """Whole-cell masses with physical support radius and integer hierarchy.
+
+    Local full periods are P=(ceil(2R/T)+1)*T. Base tiles and merge factor
+    change the mathematical approximation and belong to this declaration.
+    """
+
+    base_tile_sites: int = 1
+    merge_factor: int = 2
+    normalization: NormalizationSpec = field(
+        default_factory=lambda: NormalizationSpec(
+            kind="continuous_mass", domain="profile_support"
+        )
+    )
+
+    def __post_init__(self):
+        from .profiles.fourier import ChebyshevRadiusSpec
+
+        if (
+            type(self.profile) is not ChebyshevRadiusSpec
+            or self.parameterization is not None
+        ):
+            raise ValueError(
+                "radius cell integration requires ChebyshevRadius and shared physical radius"
+            )
+        if self.normalization != NormalizationSpec(
+            kind="continuous_mass", domain="profile_support"
+        ):
+            raise ValueError("radius cell integration requires continuous profile mass")
+        if type(self.base_tile_sites) is not int or self.base_tile_sites < 1:
+            raise ValueError("base_tile_sites must be a positive integer")
+        if type(self.merge_factor) is not int or self.merge_factor < 2:
+            raise ValueError("merge_factor must be an integer at least two")
+
+
+@dataclass(frozen=True, kw_only=True)
 class StatePolicySpec:
     """Initialization or coordinate-update semantics; no execution settings.
 
@@ -141,6 +179,34 @@ class KernelSpec:
             isinstance(p, ProfileBinding) for p in self.profiles
         ):
             raise TypeError("profiles must be an immutable tuple of bindings")
+        from .profiles.fourier import ChebyshevRadiusSpec
+
+        radius_bindings = tuple(
+            type(p) is RadiusIntegratedProfileBinding for p in self.profiles
+        )
+        radius_coordinates = type(self.parameterization) in (
+            PhysicalAmpRadiusSpec,
+            PolarAmpRadiusSpec,
+        )
+        radius_profile = any(
+            isinstance(p.profile, ChebyshevRadiusSpec) for p in self.profiles
+        )
+        if (
+            radius_coordinates
+            or any(radius_bindings)
+            or radius_profile
+            or self.revision == 7
+        ) and (
+            not radius_coordinates
+            or self.composition != "separable"
+            or self.revision != 7
+            or len(radius_bindings) != 2
+            or not all(radius_bindings)
+        ):
+            raise ValueError(
+                "radius cell masses require revision 7, two radius-integrated factors "
+                "and physical or Polar radius coordinates"
+            )
         integrated = tuple(
             type(p) is CellIntegratedProfileBinding for p in self.profiles
         )

@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "case": {
+    "id": "radius-cell-mass-128-initial",
+    "fixture": "polar_radius_cell_mass",
+    "size": 128,
+    "rows": 4,
+    "atoms": 819,
+    "profile": "initial",
+    "dtype": "float32",
+    "seed": 41,
+    "warmup": 3,
+    "rounds": 21,
+    "optimizer": {
+      "name": "AdamW",
+      "lr": 0.0001,
+      "weight_decay": 0.01,
+      "fused": true,
+      "capturable": false
+    }
+  },
+  "plans": [
+    "radius-reference",
+    "radius-hybrid-serial",
+    "radius-hybrid-overlap",
+    "radius-block-local"
+  ],
+  "baseline": "radius-reference",
+  "dense": true
+}

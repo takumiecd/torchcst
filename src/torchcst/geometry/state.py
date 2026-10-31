@@ -5,6 +5,7 @@ from dataclasses import asdict, replace
 import torch
 from torch import nn
 
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
 from torchcst._coordinate_state import _floating_dtype, _validate_loaded_state
 
 from .spec import (
@@ -79,3 +80,8 @@ class GeometryState(nn.Module):
     def set_extra_state(self, state):
         if state != self.get_extra_state():
             raise RuntimeError("geometry checkpoint contract differs")
+
+
+# Optional prepared updates may specialize only these original definitions.
+
+_seal_functions(globals())

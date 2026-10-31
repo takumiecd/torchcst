@@ -1,4 +1,31 @@
-# CSTOptimizer
+# CSTのoptimizer
+
+## CSTAdamW: 単一のPyTorch lifecycle
+
+`CSTAdamW(params, model=model, ...)`（PyTorch 2.6+）はAdamWを継承し、
+`param_groups`・`state`・hook・scheduler接続を1つのoptimizerが所有する。
+step内では勾配射影と旧座標snapshot、PyTorch functional AdamW、既存Kernelの
+更新・vector transportの順に実行する。wrapped parentの`step()`は呼ばず、
+標準step pre/post-hookが1回ずつ動き、post-hookはCST更新後の値を見る。
+既存wrapperのbase post-hookが見るAdam proposalとは境界が違うため、移行は明示的に行う。
+
+managed atom groupはraw `weight_decay=0`が既定で、ampだけの減衰は
+`amplitude_weight_decay`で指定する。通常parameter groupはAdamW既定のraw decay=.01を
+保つ。明示的にatomへ非ゼロraw decayを与えると拒否する。Kernelの数式は下記wrapperと共通。
+`grad=None`では更新せず、`lr=0`でもAdam clock/momentsの通常の更新は維持する。
+`check_finite=False`が既定で、追加の厳密検査を使う場合はTrueにする。
+lr/decay・active atomのmetadataとcallback変更の検証は残す。model全体の所有・構造の走査は
+構築、add_param_group、checkpoint load時に行い、stepごとには繰り返さない。
+
+`zero_grad`、scheduler、closure、state-dict hookはPyTorchの通常の仕組みを使う。
+GradScalerは通常のunscale/skip経路で全stepをskipする。fused Adamの内部overflow判定だけで
+Polarが実行される状態にはしない。managed atomのcapturable/differentiable modeは未対応。
+checkpoint post-hookはcst manifestと再接続済みのatom-owned stateを観測できる。
+標準`load_state_dict`はnative checkpoint用。現在のexact AdamW wrapperからの移行は、
+新しいmodelへmodel checkpointを読み込んでnative optimizerを作り、
+`load_legacy_state_dict`を明示的に呼ぶ。すでに別optimizerがbindしたmodelは共用しない。
+
+## CSTOptimizer: 任意optimizerの互換wrapper
 
 `CSTOptimizer(base_optimizer, model=model, state_adapter=None)` は既存の
 PyTorch optimizer を包む。`check_finite=True`が既定。旧 optimizer、config、N/D solver、moment system、
@@ -9,7 +36,8 @@ AtomGrad は削除した。旧実験の再現には変更前の Git revision `33
 | 項目 | 所有者 / 処理 |
 | --- | --- |
 | Parameter | model |
-| learning rate、weight decay、optimizer state | base optimizer |
+| learning rate、通常のweight decay、optimizer state | base optimizer |
+| amp専用weight decay | groupのamplitude_weight_decayをKernel更新時に適用 |
 | gradient | backend の通常の autograd |
 | 勾配射影・更新規則・vector transport | KernelSpec が定める Parameterization / Geometry。計算本体は backend |
 | 更新順序・CST site 発見 | CSTOptimizer |
@@ -33,6 +61,55 @@ optimizer を替えても同じ規則を使うが、学習軌道が同じにな�
 raw atom coordinates への weight decay は base の proposal に含まれ、その後
 Kernel の規則で射影・調整される。Kernel の正則化とは別なので、必要に応じて
 CST group を `weight_decay=0` にする。
+
+### Polarのampだけにweight decayを掛ける
+
+AdamWのatom groupに`weight_decay=0`と`amplitude_weight_decay=λ`を指定する。
+通常のDense parameterは別groupの通常`weight_decay`を使う。groupを自動分割したり、
+baseのgroup設定をstep中に書き換えたりしない。
+
+```python
+base = torch.optim.AdamW([
+    {"params": cst_layer.parameters(), "weight_decay": 0.0,
+     "amplitude_weight_decay": 0.01},
+    {"params": dense_layer.parameters(), "weight_decay": 0.01},
+], lr=1e-3)
+optimizer = CSTOptimizer(base, model=model)
+```
+
+λは有限・非負のPython scalar、`0 <= lr*λ <= 1`とする。このoptionはexact
+`torch.optim.AdamW`用であり、subclassや別optimizerのclosure意味を推定しない。
+raw decayとの併用は、AdamWがParameter/stateを書き換える前に拒否する。
+optionを指定しないgroupは互換性のため従来どおりで、raw decayが自動的にamp用へ変わるわけではない。
+
+Polarで`q=s²+t²`、`amp=Amax*s/sqrt(q)`とする。まずraw decayなしのAdamW proposalへ
+従来のPolar task/activity/radial更新を適用して`(sf,tf)`を得る。
+`rf=sqrt(sf²+tf²)`、`u_old=amp_old/Amax`として、
+
+\[
+u'=\operatorname{clamp}\left(\frac{s_f}{r_f}-\mathrm{lr}\lambda u_{old},-1,1\right),
+\quad s'=r_f u',\quad
+t'=\operatorname{copysign}\left(r_f\sqrt{(1-|u'|)(1+|u'|)},t_f\right).
+\]
+
+これは`amp_target = amp_after_Polar - lr*λ*amp_old`というold-value項の減衰で、
+taskによる増分をさらに減衰させない。上限を超えた場合は振幅領域へ射影する。
+taskがなければ`amp_new=(1-lr*λ)*amp_old`。λ=0では再構成自体を省く。
+`t=±0`でも符号側を保ち、中心座標・Adam moments・stepにはこの減衰を適用しない。
+実数上`q_new=q_after_Polar`であり、既存の活動状態の更新則は変えない。
+profileのradius/bandwidthの上限がampに依存する契約では、その通常のdecodeにより
+profile radiusが変わる可能性がある。`q`の保存とprofile radiusの固定は別である。
+
+baseの既存pre-hook後に一時的な最後のpre-hookで検証・勾配射影・snapshot・Plan準備を行い、
+実際にAdamWが使うlr/λ/gradを捕捉する。post-hookが設定を変えても現在stepは捕捉値を使う。
+closureはwrapper入口で一度だけ評価し、baseへの再提示では再評価しない。
+pre-hookによるclosureの差し替えはこのmodeでは拒否する。一時hookは例外時にも除去する。
+定常stepでGPUの値をCPUへ読み出す操作は追加しない。
+
+amp decay対応の汎用Torch/Polar Torch/Euclidean・FlatTorus・radius融合Planはv2。
+旧Sphere融合・intrinsic Torus専用v1 Planは正のamp decayを拒否するため、対応する
+Torch参照Planを使う。λはstepごとのInputsとして渡し、係数の変更でFourier係数や
+atomのコピーを常駐させない。CUDA融合版では既存Polar kernelの中で再構成する。
 
 ## State adapter
 

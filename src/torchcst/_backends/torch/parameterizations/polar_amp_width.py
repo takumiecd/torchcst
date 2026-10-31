@@ -9,6 +9,7 @@ from torch import Tensor
 
 from torchcst._backends.torch.kernels import execution as _kernel
 from torchcst._backends.torch.profiles import execution as _profile
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
 from torchcst.charts import ChartState
 
 
@@ -101,12 +102,26 @@ def _split(
     output_chart: ChartState,
     p: Tensor,
 ) -> tuple[Tensor, Tensor, Tensor]:
+    return _split_many(state, input_chart, output_chart, p)[0]
+
+
+def _split_many(state, input_chart, output_chart, *tables):
+    """Validate one live layout and split related tables without copying.
+
+    Projection and vector transport use several tables in the same coordinate
+    system. Their shapes still need individual checks, but rereading the same
+    chart/profile metadata for each table adds no validation between those
+    adjacent operations. No declaration or numerical values are cached here.
+    """
     expected_dim = _kernel.parameter_dim(state, input_chart, output_chart)
-    if p.ndim != 2 or p.shape[1] != expected_dim:
-        raise ValueError(f"p must have shape [atoms, {expected_dim}]")
     input_dim = _profile.parameter_dim(state.profiles[0], input_chart)
     input_end = 2 + input_dim
-    return p[:, :2], p[:, 2:input_end], p[:, input_end:]
+    result = []
+    for p in tables:
+        if p.ndim != 2 or p.shape[1] != expected_dim:
+            raise ValueError(f"p must have shape [atoms, {expected_dim}]")
+        result.append((p[:, :2], p[:, 2:input_end], p[:, input_end:]))
+    return tuple(result)
 
 
 def _amplitude_and_alpha(
@@ -137,16 +152,37 @@ def _sigma_bounds(
     *,
     side: Literal["input", "output"] = "input",
 ) -> tuple[Tensor, Tensor, Tensor]:
+    return _width_bounds(state, amplitude, alpha, side=side)
+
+
+def _width_bounds(
+    state,
+    amplitude: Tensor,
+    alpha: Tensor | None = None,
+    *,
+    side: Literal["input", "output"] = "input",
+    scalar_names=None,
+) -> tuple[Tensor, Tensor, Tensor]:
+    """One unchanged Polar width law, with explicitly declared buffer names."""
+    # Legacy CUDA/Torus executors supply lightweight scalar-only adapters.
+    # Do not require KernelState or a declaration on that existing surface.
+    scalar_names = scalar_names or (
+        ("sigma_min", "minimum"),
+        ("sigma_birth", "birth"),
+        ("sigma_max", "maximum"),
+        ("upper_floor", "upper_floor"),
+    )
+    names = {field: name for name, field in scalar_names}
     if side == "input":
-        minimum = state.scalar("sigma_min_input")
-        birth = state.scalar("sigma_birth_input")
-        maximum = state.scalar("sigma_max_input")
-        floor = state.scalar("upper_floor_input")
+        minimum = state.scalar(names["minimum"] + "_input")
+        birth = state.scalar(names["birth"] + "_input")
+        maximum = state.scalar(names["maximum"] + "_input")
+        floor = state.scalar(names["upper_floor"] + "_input")
     elif side == "output":
-        minimum = state.scalar("sigma_min_output")
-        birth = state.scalar("sigma_birth_output")
-        maximum = state.scalar("sigma_max_output")
-        floor = state.scalar("upper_floor_output")
+        minimum = state.scalar(names["minimum"] + "_output")
+        birth = state.scalar(names["birth"] + "_output")
+        maximum = state.scalar(names["maximum"] + "_output")
+        floor = state.scalar(names["upper_floor"] + "_output")
     else:
         raise ValueError("side must be 'input' or 'output'")
     x = (amplitude / state.scalar("w_c").to(amplitude)).square()
@@ -185,3 +221,8 @@ def _require_shared_bandwidths(state) -> None:
     )
     if not all(bool(torch.equal(left, right)) for left, right in pairs):
         raise ValueError("input and output bandwidths differ; use the by-side API")
+
+
+# Optional prepared updates may specialize only these original definitions.
+
+_seal_functions(globals())

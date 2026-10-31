@@ -7,6 +7,9 @@ import weakref
 import torch
 from torch import Tensor, nn
 
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
+
+from . import _native_read_lease
 from .atoms import Atoms
 from .optimizer_state import AtomOptimizerState
 
@@ -104,12 +107,19 @@ class AtomState(nn.Module):
         if not self._usable:
             raise RuntimeError("AtomState is invalid after an interrupted relayout")
         if torch.is_grad_enabled() and tensor.requires_grad:
-            self._readers = [r for r in self._readers if r() is not None]
+            # Dead CPU weakrefs own no Tensor/storage. Amortize list allocation;
+            # placement boundaries still check every live/retained reader.
+            if len(self._readers) >= 32:
+                self._readers = [r for r in self._readers if r() is not None]
             # Protect this zero-sized lifetime marker from an outer offload/
             # compression hook replacing the Python object we track weakly.
             with torch.autograd.graph.saved_tensors_hooks(
                 _identity_saved, _identity_saved
             ):
+                if _native_read_lease._prepared is not None:
+                    result = _native_read_lease._prepared(tensor, self)
+                    if result is not None:
+                        return result
                 return _ReadParameter.apply(tensor, self)
         return tensor
 
@@ -275,3 +285,8 @@ class AtomState(nn.Module):
         # child itself is still being populated. for_atoms completes the link.
         if hasattr(self.atoms, "p"):
             self.atoms.p.__dict__["_atom_state_owner"] = self
+
+
+# Optional prepared updates may specialize only these original definitions.
+_seal_functions(globals())
+_native_read_lease.register(AtomState, _ReadParameter, globals())

@@ -160,7 +160,11 @@ def _metadata(args, run):
 
     import torchcst
 
-    source_files = sorted(Path(torchcst.__file__).parent.rglob("*.py"))
+    source_files = sorted(
+        p
+        for p in Path(torchcst.__file__).parent.rglob("*")
+        if p.suffix in (".py", ".cu", ".cuh", ".cpp", ".h")
+    )
     source_files += [
         Path(__file__),
         Path(reference.__file__),
@@ -173,6 +177,7 @@ def _metadata(args, run):
         Path(__file__).with_name("global_profile_product.py"),
         Path(__file__).with_name("torus_profile_product.py"),
         Path(__file__).with_name("sphere_baseline.py"),
+        Path(__file__).with_name("radius_cell_mass.py"),
         Path(__file__).parent.parent / "polar_update.py",
     ]
     return {
@@ -212,6 +217,10 @@ def _metadata(args, run):
 
 
 def correctness(args, run):
+    if run.case.fixture == "polar_radius_cell_mass":
+        from .radius_cell_mass import correctness as radius_correctness
+
+        return radius_correctness(args, run)
     if run.case.fixture == "polar_sphere_separable":
         from torchcst._backends.dispatch import FixedSelector
 
@@ -288,6 +297,10 @@ def correctness(args, run):
 
 
 def measure(args, run):
+    if run.case.fixture == "polar_radius_cell_mass":
+        from .radius_cell_mass import measure_case
+
+        return measure_case(args, run)
     if run.case.fixture == "polar_sphere_separable":
         from .sphere_baseline import measure_case
 
@@ -750,9 +763,9 @@ def main():
     ap.add_argument("--kernel-diagnostics", action="store_true")
     ap.add_argument(
         "--polar-update",
-        choices=("torch", "fused", "torus"),
+        choices=("torch", "fused", "torus", "radius"),
         default="torch",
-        help="local-product research polar update; AdamW is unchanged",
+        help="explicit research Polar update route; AdamW is unchanged",
     )
     ap.add_argument("--output", type=Path)
     ap.add_argument(
@@ -798,6 +811,12 @@ def main():
         if args.validate_only:
             print(json.dumps(run.snapshot(), indent=2))
             return
+    if (run.case.fixture == "polar_radius_cell_mass") != (
+        args.polar_update == "radius"
+    ):
+        ap.error(
+            "the radius fixture requires --polar-update radius, and other fixtures reject it"
+        )
     if (run.case.fixture == "polar_torus_profile_product_strip") != (
         args.polar_update == "torus"
     ):

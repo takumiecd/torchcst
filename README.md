@@ -25,8 +25,42 @@ device, dtype and precision constraints.
 
 ## Training with a standard optimizer
 
+`CSTAdamW(params, model=model, ...)` provides one native PyTorch AdamW lifecycle
+(PyTorch 2.6+). It owns `param_groups`, `state`, hooks and scheduler integration.
+Each step projects CST gradients, calls PyTorch's functional AdamW, then applies
+the existing Kernel coordinate policy. Pre-hooks run once before this sequence;
+post-hooks run once and see the final CST parameters. `zero_grad`, closures and
+`torch.amp.GradScaler` use the ordinary optimizer interface. The complete step is
+skipped on AMP overflow, including the CST update. CUDA Graph capture and
+differentiable optimizer steps for managed atoms are not supported.
+
+Use `CSTAdamW` instead of the `base`/`CSTOptimizer` constructor below:
+
+```python
+optimizer = CSTAdamW(
+    [{"params": layer.parameters(), "amplitude_weight_decay": 0.01},
+     {"params": model[1].parameters(), "weight_decay": 0.01}],
+    model=model, lr=1e-3,
+)
+```
+
+Import it with `from torchcst import CSTAdamW`. Managed atom groups default to
+raw `weight_decay=0`; ordinary groups retain AdamW's default `weight_decay=0.01`.
+An explicitly supplied nonzero raw decay for an atom group is rejected. Logical
+`amplitude_weight_decay` affects the amplitude and preserves the accepted
+`s²+t²` and centers. It requires finite Python scalars with `lr * decay <= 1`.
+`check_finite=False` is the native default, following PyTorch's propagation of
+nonfinite values; `check_finite=True` enables the additional strict checks.
+Live learning-rate/decay and active atom metadata checks remain enabled in both
+modes. Ownership/topology is validated at construction, `add_param_group` and
+checkpoint load. Rebuild the optimizer after replacing an atom Parameter.
+Native checkpoints use standard state-dict hooks plus a `cst` contract entry.
+To migrate a matching current `CSTOptimizer(AdamW(...))` checkpoint into a fresh
+model, use `load_legacy_state_dict`; ordinary `load_state_dict` resumes native
+checkpoints. The legacy wrapper's base hooks keep their existing semantics.
+
 CSTOptimizer wraps an existing PyTorch optimizer. The base optimizer determines
-learning rates, moments, weight decay and proposals. Kernel policies project
+learning rates, moments, ordinary weight decay and proposals. Kernel policies project
 gradients, adjust accepted updates and transport vector state. Ordinary autograd
 supplies Parameter gradients; there is no optimizer-specific backward route.
 
@@ -49,7 +83,8 @@ layer = CSTLinear(
 )
 model = nn.Sequential(layer, nn.Linear(8, 2))
 base = torch.optim.AdamW([
-    {"params": layer.parameters(), "lr": 1e-3, "weight_decay": 0.0},
+    {"params": layer.parameters(), "lr": 1e-3,
+     "weight_decay": 0.0, "amplitude_weight_decay": 0.01},
     {"params": model[1].parameters(), "lr": 1e-3, "weight_decay": 0.01},
 ])
 optimizer = CSTOptimizer(base, model=model)
@@ -66,8 +101,13 @@ scheduler.step()
 Replace `base` with SGD or Adam to change the optimizer. Step the wrapper once;
 do not also step the base. Ordinary parameters and Euclidean trainable chart
 coordinates pass through. The optimizer places no factored-backend requirement
-on Linear or Conv2d. CST group weight decay would act on raw atom coordinates;
-choose it explicitly rather than confusing it with Kernel regularization.
+on Linear or Conv2d. For Polar atoms, use an AdamW group with raw
+`weight_decay=0` and `amplitude_weight_decay` to decay only the logical amplitude.
+Centers and the accepted Polar activity are not decayed. This option requires
+the exact PyTorch AdamW type and `lr * amplitude_weight_decay <= 1`.
+Ordinary parameter groups keep their usual AdamW weight decay.
+Groups without this option retain their previous raw-coordinate behavior;
+raw weight decay is not amplitude decay and is separate from Kernel regularization.
 
 Built-in adapters cover SGD, Adam, AdamW, RMSprop, Adamax, Adagrad, Adadelta and
 Rprop. Custom optimizers explicitly declare their vector state using
@@ -161,6 +201,121 @@ its explicit CSTOptimizer policy projects width proposals into
 Checkpoints from old point-sampled/L2 profiles are not silently reinterpreted.
 See
 [the authoritative kernel flow](docs/cell-mass-kernel-flow.ja.md).
+
+### Radius-native cell masses
+
+`RadiusBounds` declares physical half-width bounds, independently of the legacy
+`BandwidthBounds` sigma contract. `ChebyshevRadiusSpec(modes=M)` selects the
+radius-native finite Fourier density; M can be any integer from 1 through 512.
+The probability outside the specified radius is a result of the profile, not
+a fixed tolerance that automatically increases M.
+
+```python
+import torch
+from torchcst import CSTLinear, ChebyshevRadiusSpec, RadiusBounds, chart_presets, presets
+
+n = 128
+spacing = 128 / n
+grid = chart_presets.regular_grid(((n,),), spacing=spacing, geometry="flat_torus")
+layer = CSTLinear(
+    grid, grid, atoms=8, device="cpu", dtype=torch.float64, backend="factored",
+    kernel=presets.polar_radius_cell_mass(
+        amplitude_max=1.0, w_c=0.3,
+        input_radius_bounds=RadiusBounds(
+            minimum=spacing / 2, birth=4 * spacing,
+            maximum=50 * spacing, upper_floor=spacing,
+        ),
+        profile=ChebyshevRadiusSpec(modes=8),
+        input_base_tile_sites=1, output_base_tile_sites=1, merge_factor=2,
+    ),
+)
+y = layer(torch.randn(4, n, dtype=torch.float64))
+input_radius, output_radius = layer.support_radii()
+```
+
+This revision-7 reference supports fixed one-dimensional periodic regular grids.
+The chart/base-tile ratio must be a power of `merge_factor`; non-divisible
+hierarchies are rejected. Each atom uses the smallest tile width T at least R,
+with full local period **P = (ceil(2R/T) + 1) T = 2L**. The nearest tile-aligned
+whole-period window is retained. Cells wrap and add onto the chart, including
+repeated images when P exceeds the chart circumference; probabilities sum to 1.
+Discrete hierarchy/window choices are held fixed within each backward branch.
+
+Polar coordinates remain `[s, t, input_center, output_center]`. The existing
+Polar update and moment transport are reused; task gradients through derived
+radii remain detached. `presets.radius_cell_mass(...)` instead uses live
+physical `[amplitude, support_radius, output_center, input_center]` rows, with
+`radius_init` and `radius_floor`. Radii must fit the chart half-period.
+Old sigma APIs, presets and checkpoints keep their original interpretation;
+loading a sigma checkpoint into a radius kernel is rejected.
+
+The CPU reference uses temporary profile factors. The initial opt-in native
+CUDA Plans implement first-order forward/backward for N<=128, A<=4096 and
+M=1..16, including odd M. Initialize on CPU, then select the CUDA Plan:
+
+```python
+from torchcst import FixedSelector, make_algorithm_registry
+from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plans import BLOCK_LOCAL
+
+layer = layer.to("cuda")
+layer.selector = FixedSelector(BLOCK_LOCAL, registry=make_algorithm_registry())
+y = layer(torch.randn(4, n, device="cuda", dtype=torch.float64))
+y.square().sum().backward()
+```
+
+`REFERENCE` reuses matching frequencies between hierarchy levels; `DIRECT`
+builds each moment directly. This `DIRECT` name does not mean bypassing moments.
+`HYBRID_SERIAL` and `HYBRID_OVERLAP` instead use direct input projections and
+direct output expansion below independently configured hierarchy levels.
+The overlap Plan runs direct response work beside moment construction on an
+auxiliary stream and joins complete responses before output consumers.
+`BLOCK_LOCAL` builds moments and complete responses once per batch row, then
+all destination tiles reuse those saved global values. A second compute kernel
+fuses coefficient construction and site expansion in shared memory. The native
+forward returns `(Y, input_moments, atom_response)`; reverse returns
+`(dX, grad_output_moments, grad_response)`, then an atom-gradient kernel reuses
+both saved projections. Public forward still returns Y. Atom-only backward
+skips dX and produces its moments/response in one projection kernel. Unused
+banks are skipped while required merge dependencies are retained; fixed-capacity
+moment buffers define skipped slots as zero. A 48-KiB dynamic shared limit applies.
+CUDA atom-value validation is asynchronous: invalid device values produce a
+CUDA device assertion reported by a later CUDA API or synchronization point.
+Shape and configuration errors retain synchronous host validation.
+All Plans compute the same profiles. The reference saves FP64 moments and
+complete responses in global memory; hybrid buffers omit low direct levels.
+The separate `GLOBAL_OWNER_COMPACT_PARTIALS` Plan in the same `plans` module
+supports identical N1024 Polar axes, B<=4, A<=65536, M=8, base tiles of one site
+and merge factor two. Select it with `FixedSelector` in the same way as above,
+using a matching N1024 layer. It builds complete responses and center Jacobians
+once, releases temporary moments after projection, and uses compact per-bank
+coefficient partials. Backward completes dX before reusing the saved responses
+and Jacobians for atom gradients. The Linear Plan is independent of optimizer
+selection; no automatic dispatcher selects it.
+
+Two additional explicit choices keep the same profile and Polar update law:
+
+| Plan constant in `radius_cell_mass.plans` | Supported cohort | Storage and reuse |
+| --- | --- | --- |
+| `LOCAL_TILE_MOMENTS` | N128 Polar, B<=32, A<=4096, M=8, base1/merge2 | Build small-tile moments in shared memory; retain global moments only from level5, and save complete H/G for backward. |
+| `GLOBAL_OWNER_COMPACT_KEYED` | The same N1024 conditions as `GLOBAL_OWNER_COMPACT_PARTIALS` | Reuse forward owner keys to select moment banks, retaining the compact partials and complete response/Jacobian caches. |
+
+Choose these with `FixedSelector` on a matching layer. The local-tile Plan
+reduces storage but can be slower than `BLOCK_LOCAL_BATCHED_CACHED_PARALLEL`
+on a bare B32 layer; model-level results do not imply the same speed ratio for
+an isolated layer. All choices remain opt-in.
+
+Performance and memory qualification are specific to each Plan and workload;
+see [the measured scopes and limitations](docs/cell-mass-kernel-flow.ja.md).
+The pipelines are eager-only, without autocast, deterministic-mode qualification,
+CUDA Graphs or higher-order derivatives. The existing sigma CUDA Plans reject radius
+profiles. For FP32 radius Polar training, explicitly select
+`RADIUS_FLAT_TORUS_FUSED` from
+`torchcst._backends.cuda.algorithms.polar_update.plans` as the
+`CSTOptimizer` update selector. It reuses the existing Polar update law and
+supports eager SGD/AdamW; it is separate from the Linear Plan. FP64 Linear
+differentiation above does not qualify FP64 GPU optimizer updates.
+Gaussian retains sigma and does not enter this finite-support optimization.
+See [the design and implementation status](docs/cell-mass-kernel-flow.ja.md).
 
 ### Other profile and chart contracts
 

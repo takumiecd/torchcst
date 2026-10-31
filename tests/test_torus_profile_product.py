@@ -288,6 +288,6 @@ def test_explicit_polar_update_matches_general_geometry_update(representation):
     Dispatcher(registry=get_registry()).run(
         AtomUpdateBinding(layer.operator),
         AtomUpdateInputs(previous=previous, step_size=1e-3),
-        plan=ExecutionPlan("torch_polar_update", "v1", DefaultRecipe()),
+        plan=ExecutionPlan("torch_polar_update", "v2", DefaultRecipe()),
     )
     torch.testing.assert_close(layer.atoms.p, expected, rtol=0, atol=0)

@@ -3,6 +3,7 @@
 from importlib import import_module
 
 from torchcst._backends.torch.charts import execution as _charts
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
 from torchcst.charts import StripChartState
 from torchcst.geometry.spec import EuclideanGeometrySpec
 from torchcst.kernels.options import KernelOptions
@@ -13,13 +14,23 @@ def family(state):
         AmpWidthSpec,
         DirectAmpWidthSpec,
         LogWidthSpec,
+        PhysicalAmpRadiusSpec,
         PhysicalAmpWidthSpec,
+        PolarAmpRadiusSpec,
         PolarAmpWidthSpec,
     )
 
     spec = state.spec
-    if spec.revision != 1 and not (
-        spec.revision in (2, 3, 4, 6) and spec.composition == "profile_product"
+    radius_contract = spec.revision == 7 and type(spec.parameterization) in (
+        PhysicalAmpRadiusSpec,
+        PolarAmpRadiusSpec,
+    )
+    if (
+        spec.revision != 1
+        and not radius_contract
+        and not (
+            spec.revision in (2, 3, 4, 6) and spec.composition == "profile_product"
+        )
     ):
         raise ValueError("unsupported kernel revision")
     if spec.composition == "amplitude":
@@ -69,6 +80,29 @@ def family(state):
                     ("sigma_floor",),
                 ),
             ),
+            PhysicalAmpRadiusSpec: (
+                "radius_cell_mass",
+                (
+                    "radius_cell_mass_centers",
+                    "radius_cell_mass_physical",
+                    ("radius_init_min", "radius_init_max", "amplitude_std"),
+                    ("radius_floor",),
+                ),
+            ),
+            PolarAmpRadiusSpec: (
+                "polar_radius_cell_mass",
+                (
+                    "polar_centers",
+                    "polar_activity_radius",
+                    ("alpha_init",),
+                    (
+                        "radial_regularization",
+                        "activity_gain",
+                        "activity_mode",
+                        "dormant_expansion_rate",
+                    ),
+                ),
+            ),
         }
         try:
             name, policies = contracts[type(spec.parameterization)]
@@ -104,7 +138,12 @@ def family(state):
             type(settings[key]) not in (int, float) or settings[key] < 0
         ):
             raise ValueError(f"{key} must be nonnegative")
-    if name in ("polar_amp_width", "profile_product", "polar_cell_mass") and (
+    if name in (
+        "polar_amp_width",
+        "profile_product",
+        "polar_cell_mass",
+        "polar_radius_cell_mass",
+    ) and (
         type(settings["activity_gain"]) not in (int, float)
         or settings["activity_gain"] <= 0
         or settings["activity_mode"] not in ("finite_chord", "time_energy")
@@ -115,11 +154,15 @@ def family(state):
 
 def _operation(state, operation, area="kernels"):
     name = family(state)
+    polar_radius = name == "polar_radius_cell_mass"
+    if name in ("radius_cell_mass", "polar_radius_cell_mass"):
+        name = "radius_cell_mass"
     if name == "polar_cell_mass" and area == "parameterizations":
         name = "polar_amp_width"
     path = (
         "algorithms.polar_update.executor"
-        if area == "updates" and name in ("polar_amp_width", "polar_cell_mass")
+        if area == "updates"
+        and (name in ("polar_amp_width", "polar_cell_mass") or polar_radius)
         else area + "." + name
     )
     module = import_module("torchcst._backends.torch." + path)
@@ -133,6 +176,34 @@ def validate_layout(state, charts):
     if len(charts) != expected:
         raise ValueError("kernel composition differs from chart layout")
     name = family(state)
+    if name in ("radius_cell_mass", "polar_radius_cell_mass"):
+        import torch
+
+        from torchcst.kernels.radius_cell_mass import radius_cell_mass_axes
+        from torchcst.operators.metadata import fixed_state_signature
+
+        # Coordinate projection/transport is shared by the explicit CUDA Polar
+        # update. CPU-only factor evaluators and update Algorithms retain their
+        # own device guards; validating immutable layout is device-independent.
+        signature = fixed_state_signature((*charts, state))
+        certified = state.__dict__.get("_radius_layout_signature")
+        if signature is not None and (certified is signature or certified == signature):
+            return
+        if (
+            any(t.is_cuda for t in state.buffers())
+            and torch.cuda.is_current_stream_capturing()
+        ):
+            raise RuntimeError(
+                "radius layout must be validated outside CUDA Graph capture"
+            )
+        if any(t.dtype not in (torch.float32, torch.float64) for t in state.buffers()):
+            raise ValueError("radius cell-mass reference requires float32 or float64")
+        radius_cell_mass_axes(
+            tuple(c.declaration() for c in charts), state.declaration()
+        )
+        if signature is not None:
+            state.__dict__["_radius_layout_signature"] = signature
+        return
     if name in ("hierarchical_cell_mass", "polar_cell_mass"):
         import torch
 
@@ -143,10 +214,8 @@ def validate_layout(state, charts):
         # Validate the live mathematical configuration once, then check only
         # identities/versions. Atom updates do not change this configuration.
         signature = fixed_state_signature((*charts, state))
-        if (
-            signature is not None
-            and state.__dict__.get("_cell_mass_layout_signature") == signature
-        ):
+        certified = state.__dict__.get("_cell_mass_layout_signature")
+        if signature is not None and (certified is signature or certified == signature):
             return
         if (
             any(t.is_cuda for t in state.buffers())
@@ -197,6 +266,8 @@ def parameter_dim(state, *charts):
         "log_width": 2,
         "hierarchical_cell_mass": 2,
         "polar_cell_mass": 2,
+        "radius_cell_mass": 2,
+        "polar_radius_cell_mass": 2,
     }.get(family(state), 0)
     return prefix + sum(c.center_parameter_dim for c in charts)
 
@@ -213,6 +284,8 @@ def parameter_dof(state, *charts):
         "log_width": 2,
         "hierarchical_cell_mass": 2,
         "polar_cell_mass": 2,
+        "radius_cell_mass": 2,
+        "polar_radius_cell_mass": 2,
     }.get(family(state), 0)
     return prefix + sum(c.intrinsic_dim for c in charts)
 
@@ -293,3 +366,8 @@ def coordinate(state, operation, *args, **kwargs):
         if operation != "_project_polar"
         else _operation(state, operation, area)(*args, **kwargs)
     )
+
+
+# Optional prepared updates may specialize only these original definitions.
+
+_seal_functions(globals())

@@ -1,8 +1,10 @@
 """Invocation orchestration; the binding owns all persistent execution state."""
 
+from dataclasses import is_dataclass
 from typing import Protocol
 
 from torchcst._backends.schema import Context, DispatchDecision
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
 
 from .validation import UnsupportedPlan, validate_plan_context
 
@@ -86,11 +88,109 @@ class Dispatcher:
             workspace_upper_bound_bytes=bound,
         )
 
-    def run(self, binding: ExecutionBinding, inputs, *, plan=None):
+    def _prepare(self, binding, inputs, *, plan=None):
+        # An earlier Context never proves this invocation's inputs are valid.
         if type(inputs) is not binding.input_type:
             raise TypeError("inputs type differs from binding contract")
         binding.validate_inputs(inputs)
         context = binding.build_context(inputs)
+        from .prepared import PreparedDispatch
+        from .select import FixedSelector
+
+        # Declaration validation is cheap and is never certified by equality
+        # with a cached Plan (which could invoke attacker-defined __eq__).
+        if plan is not None:
+            self.registry.validate_plan(plan)
+        signature = getattr(binding, "prepared_dispatch_signature", None)
+        fixed = type(self.selector) is FixedSelector
+        if plan is None and fixed:
+            self.registry.validate_plan(self.selector._plan)
+            if self.selector.fallback_plan is not None:
+                self.registry.validate_plan(self.selector.fallback_plan)
+        plans = (
+            (plan,)
+            if plan is not None
+            else ((self.selector._plan, self.selector.fallback_plan) if fixed else ())
+        )
+        immutable_recipes = all(
+            is_dataclass(p.recipe) and type(p.recipe).__dataclass_params__.frozen
+            for p in plans
+            if p is not None
+        )
+        eligible = (
+            signature is not None
+            and immutable_recipes
+            and isinstance(getattr(binding, "__dict__", None), dict)
+            and is_dataclass(context)
+            and type(context).__dataclass_params__.frozen
+            and (plan is not None or fixed)
+        )
+        routing = (
+            ("forced", plan)
+            if plan is not None
+            else (
+                "fixed",
+                self.selector.revision,
+                self.selector._plan,
+                self.selector.fallback_plan,
+            )
+            if fixed
+            else None
+        )
+        placement = signature() if eligible else None
+        cached = binding.__dict__.get("_prepared_dispatch") if eligible else None
+        if eligible:
+            stats = binding.__dict__.setdefault(
+                "_prepared_dispatch_stats", {"hits": 0, "misses": 0}
+            )
+        if (
+            cached is not None
+            and cached.registry is self.registry
+            and cached.recipe is cached.decision.plan.recipe
+            and (cached.context is context or cached.context == context)
+            and cached.placement == placement
+            and (
+                (
+                    cached.routing[0] == routing[0]
+                    and (
+                        cached.routing[1] is routing[1]
+                        if routing[0] == "forced"
+                        else cached.routing[1] == routing[1]
+                        and cached.routing[2] is routing[2]
+                        and cached.routing[3] is routing[3]
+                    )
+                )
+                or (plan is not None and cached.decision.plan is plan)
+            )
+        ):
+            algorithm = self.registry.validate_plan(cached.decision.plan)
+            if algorithm is not cached.algorithm:
+                raise ValueError("cached algorithm differs from current Registry")
+            if (
+                cached.state.binding is not binding
+                or cached.state.algorithm is not cached.algorithm
+            ):
+                raise ValueError(
+                    "algorithm state belongs to a different binding/algorithm"
+                )
+            if cached.state.recipe is not cached.state_recipe:
+                raise ValueError("cached algorithm state recipe identity differs")
+            stats["hits"] += 1
+            # A forced execution may reuse preflight preparation while still
+            # describing itself as forced rather than selector-chosen.
+            decision = cached.decision
+            if plan is not None:
+                decision = DispatchDecision(
+                    plan,
+                    "forced-v1",
+                    ("forced", plan.algorithm_id),
+                    "explicit Plan",
+                    workspace_upper_bound_bytes=decision.workspace_upper_bound_bytes,
+                )
+            cached.state.context = context
+            return decision, cached.algorithm, cached.state
+        if eligible:
+            stats["misses"] += 1
         decision = self.select(context, plan=plan)
         algorithm = self.registry.validate_plan(decision.plan)
         if algorithm.input_type is not binding.input_type:
@@ -98,7 +198,81 @@ class Dispatcher:
         state = binding.algorithm_state(algorithm, recipe=decision.plan.recipe)
         if state.binding is not binding or state.algorithm is not algorithm:
             raise ValueError("algorithm state belongs to a different binding/algorithm")
-        if state.recipe != decision.plan.recipe:
+        if (
+            type(state.recipe) is not algorithm.recipe_type
+            or state.recipe != decision.plan.recipe
+        ):
             raise ValueError("algorithm state recipe differs")
         state.context = context
-        return algorithm.run(state, inputs)
+        if eligible:
+            binding.__dict__["_prepared_dispatch"] = PreparedDispatch(
+                self.registry,
+                routing,
+                context,
+                placement,
+                decision,
+                algorithm,
+                state,
+                decision.plan.recipe,
+                state.recipe,
+            )
+        return decision, algorithm, state
+
+    def prepare(self, binding: ExecutionBinding, inputs, *, plan=None):
+        """Validate current inputs/configuration and preflight without executing.
+
+        Preparation is binding-owned and bounded to one fixed-Plan entry. A
+        later run always validates fresh inputs and reconstructs live Context,
+        including after optimizer hooks. Custom selectors are never cached.
+        """
+        return self._prepare(binding, inputs, plan=plan)[0]
+
+    def run(self, binding: ExecutionBinding, inputs, *, plan=None):
+        namespace = getattr(binding, "__dict__", {})
+        prepared = namespace.get("_execution_program")
+        if prepared is not None:
+            result = prepared.run(self, binding, inputs, plan=plan)
+            if result is not None:
+                return result
+            # A restored callback or TLS mode can make the same placement
+            # eligible again. Do not permanently pin a failed guard attempt.
+            namespace.pop("_execution_program_attempt", None)
+        _, algorithm, state = self._prepare(binding, inputs, plan=plan)
+        result = algorithm.run(state, inputs)
+        factory = getattr(algorithm, "prepare_execution_program", None)
+        cached = namespace.get("_prepared_dispatch")
+        if (
+            factory is not None
+            and cached is not None
+            and cached.state is state
+            and state.binding is binding
+            and cached.algorithm is algorithm
+        ):
+            previous = namespace.get("_execution_program_attempt")
+            if (
+                previous is None
+                or previous[0] is not cached
+                or previous[1] is not state._storage
+            ):
+                program = factory(self, cached, inputs, plan=plan)
+                namespace["_execution_program"] = program
+                if program is not None:
+                    namespace["_execution_program_attempt"] = (cached, state._storage)
+        return result
+
+    def prepare_optimizer_update(self, binding, adapter, site=None):
+        """Ask an already-selected update Algorithm for its optional hot path.
+
+        The binding owns the result. Custom/unsupported implementations keep
+        the same prepare/run entrance; the Dispatcher stores no model state.
+        """
+        cached = binding.__dict__.get("_prepared_dispatch")
+        if cached is None or cached.registry is not self.registry:
+            return None
+        factory = getattr(cached.algorithm, "prepare_optimizer_program", None)
+        return None if factory is None else factory(self, cached, adapter, site)
+
+
+# Optional prepared updates may specialize only these original definitions.
+
+_seal_functions(globals())

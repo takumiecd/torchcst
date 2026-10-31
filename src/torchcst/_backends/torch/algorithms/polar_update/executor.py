@@ -11,7 +11,32 @@ from torchcst._backends.torch.parameterizations import (
     polar_amp_width as _parameterizations,
 )
 from torchcst._backends.torch.profiles import execution as _profile
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
 from torchcst.charts import ChartState
+
+
+def decay_amplitude(previous: Tensor, updated: Tensor, *, amount: float) -> Tensor:
+    """Subtract decoupled old-amplitude decay at fixed accepted Polar activity.
+
+    AdamW's decay uses the old value, not the task increment. The bounded
+    amplitude is the normalized first Polar coordinate. Reconstruct the pair
+    on its accepted circle, retaining the second coordinate's signed branch.
+    Centers and Adam state are not decayed. Zero decay keeps the old path exact.
+    """
+    if amount == 0:
+        return updated
+    old_pair, new_pair = previous[:, :2], updated[:, :2]
+    tiny = torch.finfo(previous.dtype).tiny
+    old_radius = old_pair.square().sum(-1).clamp_min(tiny).sqrt()
+    new_radius = new_pair.square().sum(-1).clamp_min(tiny).sqrt()
+    old_amplitude = old_pair[:, 0] / old_radius
+    target = (new_pair[:, 0] / new_radius - amount * old_amplitude).clamp(-1, 1)
+    # (1-|u|)(1+|u|) avoids cancellation near the bounded endpoints.
+    absolute = target.abs()
+    magnitude = new_radius * ((1 - absolute) * (1 + absolute)).clamp_min(0).sqrt()
+    s = new_radius * target
+    t = torch.copysign(magnitude, new_pair[:, 1])
+    return torch.cat((s[:, None], t[:, None], updated[:, 2:]), dim=-1)
 
 
 def apply_parameter_update(
@@ -94,20 +119,21 @@ def project_parameter_gradient(
     p: Tensor,
     gradient: Tensor,
 ) -> Tensor:
-    _, input_p, output_p = _parameterizations._split(
-        state, input_chart, output_chart, p
+    (_, input_p, output_p), (polar_g, input_g, output_g) = (
+        _parameterizations._split_many(state, input_chart, output_chart, p, gradient)
     )
-    polar_g, input_g, output_g = _parameterizations._split(
-        state, input_chart, output_chart, gradient
+    projected_input = _profile.project_gradient(
+        state.profiles[0], input_chart, input_p, input_g
     )
+    projected_output = _profile.project_gradient(
+        state.profiles[1], output_chart, output_p, output_g
+    )
+    # Geometry callbacks still run their validation. Euclidean/FlatTorus
+    # callbacks return the original views, so no reassembly is needed.
+    if projected_input is input_g and projected_output is output_g:
+        return gradient
     return torch.cat(
-        (
-            polar_g,
-            _profile.project_gradient(state.profiles[0], input_chart, input_p, input_g),
-            _profile.project_gradient(
-                state.profiles[1], output_chart, output_p, output_g
-            ),
-        ),
+        (polar_g, projected_input, projected_output),
         dim=-1,
     )
 
@@ -120,25 +146,21 @@ def transport_parameter_state(
     new: Tensor,
     state: Tensor,
 ) -> Tensor:
-    _, old_i, old_o = _parameterizations._split(
-        kernel_state, input_chart, output_chart, old
+    (_, old_i, old_o), (_, new_i, new_o), (polar_s, state_i, state_o) = (
+        _parameterizations._split_many(
+            kernel_state, input_chart, output_chart, old, new, state
+        )
     )
-    _, new_i, new_o = _parameterizations._split(
-        kernel_state, input_chart, output_chart, new
+    transported_input = _profile.transport_state(
+        kernel_state.profiles[0], input_chart, old_i, new_i, state_i
     )
-    polar_s, state_i, state_o = _parameterizations._split(
-        kernel_state, input_chart, output_chart, state
+    transported_output = _profile.transport_state(
+        kernel_state.profiles[1], output_chart, old_o, new_o, state_o
     )
+    if transported_input is state_i and transported_output is state_o:
+        return state
     return torch.cat(
-        (
-            polar_s,
-            _profile.transport_state(
-                kernel_state.profiles[0], input_chart, old_i, new_i, state_i
-            ),
-            _profile.transport_state(
-                kernel_state.profiles[1], output_chart, old_o, new_o, state_o
-            ),
-        ),
+        (polar_s, transported_input, transported_output),
         dim=-1,
     )
 
@@ -185,3 +207,8 @@ def graph_update(value, p, displacement, *, step_size):
     # Preserve the same operation order as production, including radius rescaling.
     updated = direction * task_q.sqrt() * (regularized / task_q).sqrt()
     return torch.cat((updated, p[:, 2:] + displacement[:, 2:]), 1)
+
+
+# Optional prepared updates may specialize only these original definitions.
+
+_seal_functions(globals())

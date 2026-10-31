@@ -11,11 +11,11 @@ from torch import Tensor, nn
 from torchcst._backends.catalog import get_registry
 from torchcst._backends.dispatch import (
     Dispatcher,
-    FixedSelector,
     OrderedSelector,
     Selector,
 )
 from torchcst._backends.schema import DefaultRecipe, ExecutionPlan
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
 from torchcst._derivatives import AtomDerivatives, AutogradFrameGeometry
 from torchcst.atoms import Atoms
 from torchcst.charts import ChartSpec, ChartState, StripChartState, compile_chart
@@ -350,10 +350,16 @@ class CSTLinear(CSTModule):
 
     def build_context(self, inputs):
         return context_from_tensors(
-            self.execution_declaration(), inputs.x, self.atoms.p
+            self.execution_declaration(), inputs.x, self.atoms.p, cache_owner=self
         )
 
     def forward(self, inputs: Tensor) -> Tensor:
+        program = self.__dict__.get("_execution_program")
+        if program is not None:
+            result = program.forward(self, inputs)
+            if result is not None:
+                return result
+
         if inputs.ndim < 1 or inputs.shape[-1] != self.in_features:
             raise ValueError(
                 f"expected input shape [..., {self.in_features}], "
@@ -370,13 +376,14 @@ class CSTLinear(CSTModule):
             )
         else:
             selector = self.selector
-            if selector is None:
-                selector = (
-                    _default_selector()
-                    if self.backend == "auto"
-                    else FixedSelector(_PLANS[self.backend], registry=get_registry())
+            if selector is None and self.backend != "auto":
+                result = Dispatcher(registry=get_registry()).run(
+                    self, LinearInputs(flat), plan=_PLANS[self.backend]
                 )
-            result = Dispatcher(selector=selector).run(self, LinearInputs(flat))
+            else:
+                result = Dispatcher(selector=selector or _default_selector()).run(
+                    self, LinearInputs(flat)
+                )
         return self.atom_state.guard_result(
             result.reshape(*inputs.shape[:-1], self.out_features)
         )
@@ -387,3 +394,7 @@ class CSTLinear(CSTModule):
             f"atoms={self.atom_count}, parameter_dim={self.atoms.parameter_dim}, "
             f"atom_init={self.atom_init!r}, backend={self.backend!r}"
         )
+
+
+# Optional prepared updates may specialize only these original definitions.
+_seal_functions(globals())

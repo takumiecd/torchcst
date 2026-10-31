@@ -43,3 +43,8 @@ class Atoms(nn.Module):
 
     def extra_repr(self) -> str:
         return f"count={self.count}, parameter_dim={self.parameter_dim}"
+
+
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
+
+_seal_functions(globals())

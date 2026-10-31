@@ -67,6 +67,9 @@ from torchcst._backends.cuda.algorithms.linear.profile_product_matrix.square_str
     SquareStripPreparationAlgorithm,
     SquareStripSplitAlgorithm,
 )
+from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.algorithm import (
+    RadiusCellMassAlgorithm,
+)
 from torchcst._backends.cuda.algorithms.linear.sphere_polar.algorithm import (
     SphereAlgorithm,
 )
@@ -135,6 +138,7 @@ class BenchmarkRegistry(Registry):
 
 # This catalog is benchmark-local. Production registration/selection is unchanged.
 REGISTRY = BenchmarkRegistry()
+REGISTRY.register(RadiusCellMassAlgorithm())
 REGISTRY.register(HierarchicalCellMassAlgorithm())
 REGISTRY.register(SphereAlgorithm())
 REGISTRY.register(SphereSupportAlgorithm())
@@ -300,6 +304,7 @@ class BenchmarkCase:
         if self.fixture not in (
             "normalized_euclidean_strip",
             "polar_sphere_separable",
+            "polar_radius_cell_mass",
             "local_polar_product",
             "polar_profile_product",
             "polar_profile_product_strip",
@@ -310,7 +315,16 @@ class BenchmarkCase:
             raise ValueError("unknown benchmark fixture")
         if type(self.optimizer) is not OptimizerSpec:
             raise TypeError("case needs an OptimizerSpec")
-        if self.fixture == "polar_sphere_separable":
+        if self.fixture == "polar_radius_cell_mass":
+            if (
+                self.optimizer.capturable
+                or self.profile != "initial"
+                or self.widths is not None
+            ):
+                raise ValueError(
+                    "radius requires eager optimizer and public initial fixture"
+                )
+        elif self.fixture == "polar_sphere_separable":
             if (
                 self.optimizer.capturable
                 or self.profile not in ("rho3", "rho8")
@@ -322,7 +336,9 @@ class BenchmarkCase:
         elif not self.optimizer.capturable:
             raise ValueError("existing fixtures require capturable AdamW")
         sizes = (
-            (64, 1024, 2048)
+            (128, 1024)
+            if self.fixture == "polar_radius_cell_mass"
+            else (64, 1024, 2048)
             if self.fixture == "polar_sphere_separable"
             else (1024, 2048)
             if self.fixture == "polar_torus_profile_product_strip"
@@ -354,6 +370,7 @@ class BenchmarkCase:
             "polar_profile_product_global",
             "polar_torus_profile_product_strip",
             "polar_sphere_separable",
+            "polar_radius_cell_mass",
         ) and (
             type(self.rows) is not int or not 1 <= self.rows <= 64 or self.atoms < 4
         ):
@@ -362,11 +379,15 @@ class BenchmarkCase:
             )
         for name in ["rows", "atoms", "warmup", "rounds"]:
             _integer(getattr(self, name), name)
+        if self.fixture == "polar_radius_cell_mass" and self.atoms > 65536:
+            raise ValueError("radius fixture supports at most 65536 atoms")
         _integer(self.seed, "seed", 0)
         if self.seed >= 2**63:
             raise ValueError("seed must be less than 2**63")
         profiles = (
-            ("rho3", "rho8")
+            ("initial",)
+            if self.fixture == "polar_radius_cell_mass"
+            else ("rho3", "rho8")
             if self.fixture == "polar_sphere_separable"
             else (
                 "broad",
@@ -440,6 +461,7 @@ class BenchmarkRun:
                     "polar_profile_product_global",
                     "polar_torus_profile_product_strip",
                     "polar_sphere_separable",
+                    "polar_radius_cell_mass",
                 )
                 else LOCAL_SEMANTICS
                 if self.case.fixture == "local_polar_product"

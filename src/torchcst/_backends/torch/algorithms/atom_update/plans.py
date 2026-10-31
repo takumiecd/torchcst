@@ -2,4 +2,4 @@
 
 from torchcst._backends.schema import DefaultRecipe, ExecutionPlan
 
-REFERENCE = ExecutionPlan("torch_atom_update", "v1", DefaultRecipe())
+REFERENCE = ExecutionPlan("torch_atom_update", "v2", DefaultRecipe())

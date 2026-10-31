@@ -5,10 +5,17 @@ from dataclasses import asdict, fields, replace
 import torch
 from torch import nn
 
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
+
 from .options import KernelOptions
-from .parameterizations import BandwidthBounds, FixedWidthSpec, LogWidthSpec
+from .parameterizations import FixedWidthSpec, LogWidthSpec
 from .parameterizations.activity_width import ActivityWidthSpec
-from .spec import CellIntegratedProfileBinding, KernelSpec, ProfileBinding
+from .spec import (
+    CellIntegratedProfileBinding,
+    KernelSpec,
+    ProfileBinding,
+    RadiusIntegratedProfileBinding,
+)
 
 
 class ProfileState(nn.Module):
@@ -38,6 +45,9 @@ class ProfileState(nn.Module):
         }
         if type(self.binding) is CellIntegratedProfileBinding:
             result["cell_mass_min_tile_sites"] = self.binding.min_tile_sites
+        if type(self.binding) is RadiusIntegratedProfileBinding:
+            result["radius_cell_mass_base_tile_sites"] = self.binding.base_tile_sites
+            result["radius_cell_mass_merge_factor"] = self.binding.merge_factor
         return result
 
     def set_extra_state(self, state):
@@ -76,12 +86,7 @@ class KernelState(nn.Module):
                 scalars[name] = getattr(parameterization, name)
             for side in ("input", "output"):
                 bounds = getattr(parameterization, side + "_bounds")
-                for name, field in [
-                    ("sigma_min", "minimum"),
-                    ("sigma_birth", "birth"),
-                    ("sigma_max", "maximum"),
-                    ("upper_floor", "upper_floor"),
-                ]:
+                for name, field in parameterization.width_scalar_names:
                     scalars[name + "_" + side] = getattr(bounds, field)
         elif parameterization is not None:
             scalars.update(
@@ -155,15 +160,10 @@ class KernelState(nn.Module):
                 )
             }
             for side in ("input", "output"):
-                replacements[side + "_bounds"] = BandwidthBounds(
+                replacements[side + "_bounds"] = parameterization.bounds_type(
                     **{
                         field: float(self.scalar(name + "_" + side))
-                        for name, field in [
-                            ("sigma_min", "minimum"),
-                            ("sigma_birth", "birth"),
-                            ("sigma_max", "maximum"),
-                            ("upper_floor", "upper_floor"),
-                        ]
+                        for name, field in parameterization.width_scalar_names
                     }
                 )
             parameterization = replace(parameterization, **replacements)
@@ -233,3 +233,7 @@ class KernelState(nn.Module):
     def set_extra_state(self, state):
         if state != self.get_extra_state():
             raise RuntimeError("kernel checkpoint contract differs")
+
+
+# Optional prepared updates may specialize only these original definitions.
+_seal_functions(globals())

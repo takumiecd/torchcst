@@ -7,6 +7,7 @@ from dataclasses import fields, is_dataclass
 from torchcst._backends.algorithm import Algorithm
 from torchcst._backends.schema import ExecutionPlan
 from torchcst._backends.serialization import decode_json, encode_json
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
 
 
 class Registry:
@@ -101,3 +102,8 @@ class Registry:
         )
         self.validate_plan(plan)
         return plan
+
+
+# Optional prepared updates may specialize only these original definitions.
+
+_seal_functions(globals())

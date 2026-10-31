@@ -4,14 +4,32 @@ import math
 
 import torch
 
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
 
-def fused_update_(value, previous, proposal, *, step_size, periods=None):
+
+def fused_update_(
+    value,
+    previous,
+    proposal,
+    *,
+    step_size,
+    periods=None,
+    amplitude_weight_decay=0.0,
+    capture_launch=None,
+):
     """Apply the same update in place; AdamW owns moments and step counting.
 
     Research FP32 CUDA route only. Scalars remain live device tensors and no
     intermediate polar tensors are allocated. ``previous`` must not alias the
     proposal. The caller owns the old-parameter snapshot.
     """
+    if (
+        type(amplitude_weight_decay) not in (int, float)
+        or not math.isfinite(amplitude_weight_decay)
+        or amplitude_weight_decay < 0
+        or step_size * amplitude_weight_decay > 1
+    ):
+        raise ValueError("invalid amplitude_weight_decay or step_size * decay > 1")
     if (
         previous.shape != proposal.shape
         or proposal.ndim != 2
@@ -22,7 +40,7 @@ def fused_update_(value, previous, proposal, *, step_size, periods=None):
         or previous.device != proposal.device
         or not previous.is_contiguous()
         or not proposal.is_contiguous()
-        or previous.data_ptr() == proposal.data_ptr()
+        or (previous.numel() != 0 and previous.data_ptr() == proposal.data_ptr())
         or not math.isfinite(step_size)
         or step_size <= 0
     ):
@@ -78,7 +96,7 @@ def fused_update_(value, previous, proposal, *, step_size, periods=None):
     from .kernels import apply_polar
 
     if len(proposal):
-        apply_polar[((len(proposal) + 127) // 128,)](
+        compiled = apply_polar[((len(proposal) + 127) // 128,)](
             previous,
             proposal,
             *scalars,
@@ -86,6 +104,8 @@ def fused_update_(value, previous, proposal, *, step_size, periods=None):
             step_size,
             mode == "time_energy",
             128,
+            AMPLITUDE_DECAY=step_size * amplitude_weight_decay,
+            HAS_AMPLITUDE_DECAY=amplitude_weight_decay != 0,
             **(
                 {
                     "INPUT_PERIOD": periods[0],
@@ -98,5 +118,19 @@ def fused_update_(value, previous, proposal, *, step_size, periods=None):
             num_warps=4,
             enable_fp_fusion=False,
         )
+        if capture_launch is not None:
+            # Record only compiled code and scalar specialization, never inputs.
+            capture_launch(
+                compiled,
+                apply_polar,
+                len(proposal),
+                step_size,
+                mode == "time_energy",
+                step_size * amplitude_weight_decay,
+            )
         torch.autograd.graph.increment_version(proposal)
     return proposal
+
+
+# Optional prepared updates may specialize only these original definitions.
+_seal_functions(globals())

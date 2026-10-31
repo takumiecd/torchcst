@@ -2,7 +2,7 @@
 
 This is a learning experiment, not the Linear benchmark runner or a DB result
 adapter. Epoch timings include input gathering, loss/backward and the actual
-optimizer workflow. Validation, sigma diagnostics and checkpoints are separate.
+optimizer workflow. Validation, kernel diagnostics and checkpoints are separate.
 """
 
 from __future__ import annotations
@@ -23,9 +23,12 @@ from torch import nn
 
 from torchcst import (
     BandwidthBounds,
+    ChebyshevRadiusSpec,
+    CSTAdamW,
     CSTLinear,
     CSTOptimizer,
     FixedSelector,
+    RadiusBounds,
     chart_presets,
     make_algorithm_registry,
 )
@@ -38,6 +41,417 @@ from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.plans impo
     VALIDATED_1024,
 )
 from torchcst.kernels import presets
+
+RADIUS_COHORT = "polar_radius_native_128_v1"
+RADIUS_LARGE_COHORT = "polar_radius_global_response4_1024_v1"
+
+
+def radius_cohort(width):
+    if type(width) is not int:
+        raise ValueError("radius MNIST width must be a Python integer")
+    if width == 128:
+        return RADIUS_COHORT
+    if width == 1024:
+        return RADIUS_LARGE_COHORT
+    raise ValueError("radius MNIST cohorts permit only widths 128 and 1024")
+
+
+def radius_optimizer_contract():
+    return {
+        "lr": 1e-4,
+        "ordinary_weight_decay": 0.01,
+        "dense_weight_decay": 0.01,
+        "atom_raw_weight_decay": 0.0,
+        "amplitude_weight_decay": 0.01,
+        "fused": True,
+        "capturable": False,
+        "check_finite": False,
+        "betas": (0.9, 0.999),
+        "eps": 1e-8,
+        "amsgrad": False,
+        "maximize": False,
+    }
+
+
+def radius_plan(execution="cached", *, direct_levels=2):
+    """The explicit recipe in plans-radius-cell-mass.json, without dispatch changes."""
+    from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.recipe import (
+        RadiusCellMassRecipe,
+    )
+    from torchcst._backends.schema import ExecutionPlan
+
+    if execution not in ("cached", "batched", "global-response4"):
+        raise ValueError("radius_execution must be cached, batched or global-response4")
+    if type(direct_levels) is not int or not 0 <= direct_levels <= 8:
+        raise ValueError("radius_direct_levels must be an integer in [0,8]")
+    return ExecutionPlan(
+        "cuda_radius_cell_mass",
+        "v1",
+        RadiusCellMassRecipe(
+            input_direct_levels=direct_levels,
+            output_direct_levels=direct_levels,
+            schedule={
+                "cached": "block_local_cached_parallel",
+                "batched": "block_local_batched_cached_parallel",
+                "global-response4": "global_batched_cached_response4",
+            }[execution],
+            output_tile_sites=32,
+            native_autograd=execution != "global-response4",
+            native_entry=execution != "global-response4",
+        ),
+    )
+
+
+def _resolve_radius_execution_plan(
+    execution_plan, *, radius_execution="cached", radius_direct_levels=2
+):
+    default = radius_plan(radius_execution, direct_levels=radius_direct_levels)
+    if execution_plan is None:
+        return default
+    from torchcst._backends.schema import ExecutionPlan
+    from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.algorithm import (
+        RadiusCellMassAlgorithm,
+    )
+    from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.recipe import (
+        RadiusCellMassRecipe,
+    )
+
+    if radius_execution != "cached" or radius_direct_levels != 2:
+        raise ValueError(
+            "execution_plan requires default radius_execution='cached' and radius_direct_levels=2; the Plan supplies execution choices"
+        )
+    if type(execution_plan) is not ExecutionPlan:
+        raise ValueError("execution_plan must be a radius ExecutionPlan")
+    algorithm = RadiusCellMassAlgorithm()
+    if (execution_plan.algorithm_id, execution_plan.algorithm_revision) != (
+        algorithm.id,
+        algorithm.revision,
+    ) or type(execution_plan.recipe) is not RadiusCellMassRecipe:
+        raise ValueError(
+            "execution_plan must use cuda_radius_cell_mass/v1 and RadiusCellMassRecipe"
+        )
+    make_algorithm_registry().validate_plan(execution_plan)
+    return execution_plan
+
+
+def load_radius_execution_plan(path):
+    """Read one registry Plan JSON; its raw-file hash stays separate from the artifact."""
+    payload = Path(path).read_bytes()
+    plan = make_algorithm_registry().loads_plan(payload)
+    return _resolve_radius_execution_plan(plan), hashlib.sha256(payload).hexdigest()
+
+
+def _radius_plan_snapshot(execution_plan, source_sha256):
+    if source_sha256 is not None and (
+        type(source_sha256) is not str
+        or len(source_sha256) != 64
+        or any(character not in "0123456789abcdef" for character in source_sha256)
+    ):
+        raise ValueError("execution_plan_source_sha256 must be a lowercase SHA256")
+    if execution_plan is None:
+        if source_sha256 is not None:
+            raise ValueError("execution_plan_source_sha256 requires execution_plan")
+        return None
+    registry = make_algorithm_registry()
+    canonical = registry.dumps_plan(execution_plan).encode()
+    return {
+        "plan": registry.dump_plan(execution_plan),
+        "source_file_sha256": source_sha256,
+        "canonical_sha256": hashlib.sha256(canonical).hexdigest(),
+    }
+
+
+def _validate_radius_execution_width(
+    width, radius_execution, radius_direct_levels, execution_plan
+):
+    # A registered explicit Plan is checked for actual shape/device support by
+    # the ordinary first CUDA dispatch. No execution settings are bypassed here.
+    if execution_plan is not None:
+        return
+    if width == 1024 and (
+        radius_execution != "global-response4" or radius_direct_levels != 2
+    ):
+        raise ValueError(
+            "N1024 requires explicit global-response4 execution at direct levels 2"
+        )
+    if width == 128 and radius_execution == "global-response4":
+        raise ValueError(
+            "global-response4 learning execution requires the N1024 cohort"
+        )
+
+
+def radius_settings():
+    return {
+        "profile": "ChebyshevRadiusSpec",
+        "spacing": 1.0,
+        "modes": 8,
+        "base_tile_sites": 1,
+        "merge_factor": 2,
+        "amplitude_max": 1.0,
+        "w_c": 0.3,
+        "radius_bounds": {
+            "minimum": 0.5,
+            "birth": 4.0,
+            "maximum": 50.0,
+            "upper_floor": 1.0,
+        },
+        "alpha_init": 0.0,
+        "kappa": 3.0,
+        "lower_kappa": 3.0,
+        "upper_decay_power": 1.0,
+        "radial_regularization": 0.1,
+        "activity_gain": 1.0,
+        "activity_mode": "finite_chord",
+        "dormant_expansion_rate": 0.0,
+    }
+
+
+def make_radius_cst(
+    width,
+    atoms,
+    *,
+    dtype=torch.float32,
+    radius_execution="cached",
+    radius_direct_levels=2,
+    execution_plan=None,
+):
+    """Public radius cohorts with physical spacing one, without sigma conversion."""
+    radius_cohort(width)
+    selected_plan = _resolve_radius_execution_plan(
+        execution_plan,
+        radius_execution=radius_execution,
+        radius_direct_levels=radius_direct_levels,
+    )
+    _validate_radius_execution_width(
+        width, radius_execution, radius_direct_levels, execution_plan
+    )
+    chart = chart_presets.regular_grid(((width,),), spacing=1.0, geometry="flat_torus")
+    kernel = presets.polar_radius_cell_mass(
+        amplitude_max=1.0,
+        w_c=0.3,
+        input_radius_bounds=RadiusBounds(
+            minimum=0.5, birth=4.0, maximum=50.0, upper_floor=1.0
+        ),
+        profile=ChebyshevRadiusSpec(modes=8),
+        merge_factor=2,
+    )
+    return CSTLinear(
+        chart,
+        chart,
+        atoms=atoms,
+        kernel=kernel,
+        dtype=dtype,
+        selector=FixedSelector(
+            selected_plan,
+            registry=make_algorithm_registry(),
+        ),
+    )
+
+
+def tensor_sha256(value):
+    return hashlib.sha256(
+        value.detach().cpu().contiguous().numpy().tobytes()
+    ).hexdigest()
+
+
+def buffer_metadata(module):
+    return {
+        name: {
+            "dtype": str(value.dtype),
+            "shape": list(value.shape),
+            "values": value.detach().cpu().reshape(-1).tolist(),
+        }
+        for name, value in module.named_buffers()
+    }
+
+
+def make_radius_initialization(width=128, seed=41):
+    """Export exact public radius atoms/effective W and shared ordinary layers."""
+    torch.manual_seed(seed)
+    cohort = radius_cohort(width)
+    execution = "cached" if width == 128 else "global-response4"
+    reference = make_radius_cst(
+        width, math.floor(0.05 * width * width), radius_execution=execution
+    )
+    atoms = reference.atoms.p.detach().clone()
+    with torch.no_grad():
+        if width == 128:
+            weight = reference.dense_weight().detach().clone()
+        else:
+            from benchmarks.cuda.linear.radius_cell_mass import chunked_reference
+
+            weight = chunked_reference(
+                reference, torch.eye(width, dtype=torch.float32)
+            ).T.contiguous()
+    torch.manual_seed(seed + 1)
+    shared_in, shared_out = nn.Linear(784, width), nn.Linear(width, 10)
+    initialization = {
+        "schema_version": 1,
+        "cohort": cohort,
+        "parameterization": "polar_radius",
+        "width": width,
+        "seed": seed,
+        "atoms": atoms,
+        "weight": weight,
+        "amplitude_gain": 1.0,
+        "input": shared_in.state_dict(),
+        "output": shared_out.state_dict(),
+        "kernel_settings": radius_settings(),
+        "kernel_buffers_fp32": buffer_metadata(reference.kernel),
+        "optimizer_contract": radius_optimizer_contract(),
+        "linear_plan": make_algorithm_registry().dump_plan(radius_plan(execution)),
+        "update_plan": "cuda_radius_flat_torus_polar_update_fused/v1",
+        "initialization_policy": "public FP32 radius initialization; no gain calibration; no optimizer updates",
+        "architecture": f"Linear(784,{width})-ReLU-radius({width},{width})-ReLU-Linear({width},10)",
+    }
+    if width == 1024:
+        initialization["reference_export"] = {
+            "method": "chunked_public_CPU_Fourier(identity).T",
+            "chunk_atoms": 256,
+            "dtype": "float32",
+            "graph_scope": "at most one atom chunk; no backward graph during export",
+        }
+    initialization["initial_hashes"] = {
+        "atoms": tensor_sha256(atoms),
+        "weight": tensor_sha256(weight),
+        "input": {
+            name: tensor_sha256(value)
+            for name, value in initialization["input"].items()
+        },
+        "output": {
+            name: tensor_sha256(value)
+            for name, value in initialization["output"].items()
+        },
+        "kernel_buffers_fp32": hashlib.sha256(
+            json.dumps(initialization["kernel_buffers_fp32"], sort_keys=True).encode()
+        ).hexdigest(),
+    }
+    initialization["radius_initial"] = radius_statistics(reference)
+    return initialization
+
+
+def validate_radius_initialization(initialization):
+    required = {
+        "cohort",
+        "parameterization",
+        "schema_version",
+        "width",
+        "seed",
+        "atoms",
+        "weight",
+        "input",
+        "output",
+        "kernel_settings",
+        "kernel_buffers_fp32",
+        "optimizer_contract",
+        "linear_plan",
+        "update_plan",
+        "initial_hashes",
+    }
+    if not required <= initialization.keys():
+        raise ValueError("radius initialization is missing frozen cohort fields")
+    width = initialization["width"]
+    cohort = radius_cohort(width)
+    execution = "cached" if width == 128 else "global-response4"
+    if (
+        initialization.get("cohort") != cohort
+        or initialization.get("parameterization") != "polar_radius"
+        or initialization.get("schema_version") != 1
+        or tuple(initialization["atoms"].shape) != (math.floor(0.05 * width * width), 4)
+        or tuple(initialization["weight"].shape) != (width, width)
+        or any(
+            initialization[name].dtype != torch.float32 for name in ("atoms", "weight")
+        )
+        or initialization["kernel_settings"] != radius_settings()
+        or initialization["optimizer_contract"] != radius_optimizer_contract()
+        or initialization["update_plan"]
+        != "cuda_radius_flat_torus_polar_update_fused/v1"
+        or initialization["linear_plan"]
+        != make_algorithm_registry().dump_plan(radius_plan(execution))
+    ):
+        raise ValueError("radius initialization differs from its frozen cohort")
+    if width == 1024 and initialization.get("reference_export") != {
+        "method": "chunked_public_CPU_Fourier(identity).T",
+        "chunk_atoms": 256,
+        "dtype": "float32",
+        "graph_scope": "at most one atom chunk; no backward graph during export",
+    }:
+        raise ValueError(
+            "radius initialization requires the bounded N1024 reference export"
+        )
+    for name in ("atoms", "weight"):
+        if (
+            tensor_sha256(initialization[name])
+            != initialization["initial_hashes"][name]
+        ):
+            raise ValueError("radius initialization tensor hash differs: " + name)
+    for name in ("input", "output"):
+        if {
+            key: tensor_sha256(value) for key, value in initialization[name].items()
+        } != initialization["initial_hashes"][name]:
+            raise ValueError(
+                "radius initialization ordinary-layer hash differs: " + name
+            )
+    if (
+        hashlib.sha256(
+            json.dumps(initialization["kernel_buffers_fp32"], sort_keys=True).encode()
+        ).hexdigest()
+        != initialization["initial_hashes"]["kernel_buffers_fp32"]
+    ):
+        raise ValueError("radius initialization FP32 buffer metadata differs")
+
+
+def make_optimizer(model, initialization, kind, *, lr=None):
+    if kind not in ("cst", "dense"):
+        raise ValueError("kind must be cst or dense")
+    if initialization.get("parameterization") != "polar_radius":
+        base = torch.optim.AdamW(
+            model.parameters(),
+            lr=1e-3 if lr is None else lr,
+            weight_decay=0.0,
+            fused=True,
+        )
+        return CSTOptimizer(base, model=model) if kind == "cst" else base
+    validate_radius_initialization(initialization)
+    contract = initialization["optimizer_contract"]
+    if lr is not None and lr != contract["lr"]:
+        raise ValueError("radius lr must match the frozen initialization contract")
+    ordinary = [*model[0].parameters(), *model[4].parameters()]
+    groups = [
+        {
+            "params": ordinary,
+            "weight_decay": contract["ordinary_weight_decay"],
+            "role": "ordinary",
+        },
+        {
+            "params": list(model[2].parameters()),
+            "weight_decay": contract["atom_raw_weight_decay"]
+            if kind == "cst"
+            else contract["dense_weight_decay"],
+            "role": "middle",
+        },
+    ]
+    options = {
+        name: contract[name]
+        for name in ("lr", "fused", "capturable", "betas", "eps", "amsgrad", "maximize")
+    }
+    if kind == "dense":
+        return torch.optim.AdamW(groups, **options)
+    from torchcst._backends.cuda.algorithms.polar_update.plans import (
+        RADIUS_FLAT_TORUS_FUSED,
+    )
+
+    groups[1]["amplitude_weight_decay"] = contract["amplitude_weight_decay"]
+    return CSTAdamW(
+        groups,
+        model=model,
+        check_finite=contract["check_finite"],
+        update_selector=FixedSelector(
+            RADIUS_FLAT_TORUS_FUSED, registry=make_algorithm_registry()
+        ),
+        **options,
+    )
+
 
 # The official torchvision MNIST loader publishes these mirror/checksum pairs:
 # https://docs.pytorch.org/vision/main/_modules/torchvision/datasets/mnist.html
@@ -106,6 +520,20 @@ def make_cst(width, atoms, *, dtype=torch.float32):
         dtype=dtype,
         selector=FixedSelector(plan, registry=make_algorithm_registry()),
     )
+
+
+def normalize_images(images, device, mean, std, *, data_normalization="original"):
+    """Normalize MNIST pixels; the opt-in allocation variant never aliases input."""
+    if data_normalization == "original":
+        return ((images.to(device).float() / 255) - mean) / std
+    if data_normalization == "inplace":
+        return (
+            images.to(device=device, dtype=torch.float32, copy=True)
+            .div_(255)
+            .sub_(mean)
+            .div_(std)
+        )
+    raise ValueError("data_normalization must be original or inplace")
 
 
 def polar_bounds(width, *, site_scaled):
@@ -255,41 +683,197 @@ def make_initialization(width, seed=120):
     }
 
 
-def make_model(initialization, kind):
+def make_model(
+    initialization,
+    kind,
+    *,
+    radius_execution="cached",
+    radius_direct_levels=2,
+    execution_plan=None,
+):
     n = initialization["width"]
     if kind not in ("cst", "dense"):
         raise ValueError("kind must be cst or dense")
-    hidden = (
-        (
-            make_polar_cst(
-                n,
-                initialization["atoms"].clone(),
-                amplitude_scale=initialization["amplitude_gain"],
-                site_scaled=initialization.get("cohort") == "site_scaled",
-                # Frozen fixtures carry their own bounds. In particular,
-                # earlier min/spacing=.25 runs must remain reproducible.
-                bounds=BandwidthBounds(
-                    **{
-                        name: initialization["kernel_settings"][name]
-                        for name in ("minimum", "birth", "maximum", "upper_floor")
-                    }
-                ),
-            )
-            if initialization.get("parameterization") == "polar"
-            else make_cst(n, initialization["atoms"].clone())
+    radius = initialization.get("parameterization") == "polar_radius"
+    _resolve_radius_execution_plan(
+        execution_plan,
+        radius_execution=radius_execution,
+        radius_direct_levels=radius_direct_levels,
+    )
+    if not radius and execution_plan is not None:
+        raise ValueError("execution_plan overrides require a radius initialization")
+    if not radius and radius_execution != "cached":
+        raise ValueError("radius_execution overrides require a radius initialization")
+    if not radius and radius_direct_levels != 2:
+        raise ValueError(
+            "radius_direct_levels overrides require a radius initialization"
         )
-        if kind == "cst"
-        else nn.Linear(n, n, bias=False)
+    if radius:
+        validate_radius_initialization(initialization)
+        _validate_radius_execution_width(
+            n, radius_execution, radius_direct_levels, execution_plan
+        )
+    hidden = (
+        make_radius_cst(
+            n,
+            initialization["atoms"].clone(),
+            radius_execution=radius_execution,
+            radius_direct_levels=radius_direct_levels,
+            execution_plan=execution_plan,
+        )
+        if radius and kind == "cst"
+        else (
+            (
+                make_polar_cst(
+                    n,
+                    initialization["atoms"].clone(),
+                    amplitude_scale=initialization["amplitude_gain"],
+                    site_scaled=initialization.get("cohort") == "site_scaled",
+                    # Frozen fixtures carry their own bounds. In particular,
+                    # earlier min/spacing=.25 runs must remain reproducible.
+                    bounds=BandwidthBounds(
+                        **{
+                            name: initialization["kernel_settings"][name]
+                            for name in ("minimum", "birth", "maximum", "upper_floor")
+                        }
+                    ),
+                )
+                if initialization.get("parameterization") == "polar"
+                else make_cst(n, initialization["atoms"].clone())
+            )
+            if kind == "cst"
+            else nn.Linear(n, n, bias=False)
+        )
     )
     if kind == "dense":
         with torch.no_grad():
             hidden.weight.copy_(initialization["weight"])
+    elif (
+        radius
+        and buffer_metadata(hidden.kernel) != initialization["kernel_buffers_fp32"]
+    ):
+        raise ValueError("radius initialization live FP32 buffers differ")
     model = nn.Sequential(
         nn.Linear(784, n), nn.ReLU(), hidden, nn.ReLU(), nn.Linear(n, 10)
     )
     model[0].load_state_dict(copy.deepcopy(initialization["input"]))
     model[4].load_state_dict(copy.deepcopy(initialization["output"]))
     return model
+
+
+@torch.enable_grad()
+def chunked_radius_model_backward(model, inputs, labels, *, chunk_atoms=256):
+    """One bounded CPU full-model CE backward; clear grads, never update state.
+
+    Loss/ReLU couple the atom sum. Compute complete Y, derive one global dY
+    through the ordinary tail, then use that same dY for every atom-chunk VJP.
+    The input-layer graph is small and remains live until its one dH backward.
+    """
+    from benchmarks.cuda.linear.radius_cell_mass import chunked_reference
+
+    if inputs.device.type != "cpu" or any(
+        point.device.type != "cpu" for point in model.parameters()
+    ):
+        raise ValueError("bounded full-model reference requires CPU model and inputs")
+    if len(model) != 5 or not isinstance(model[2], CSTLinear):
+        raise ValueError(
+            "bounded full-model reference requires the five-layer CST MNIST architecture"
+        )
+    model.zero_grad(set_to_none=True)
+    x = inputs.detach().requires_grad_()
+    hidden = model[1](model[0](x))
+    middle = chunked_reference(model[2], hidden.detach(), chunk_atoms=chunk_atoms)
+    middle_leaf = middle.detach().requires_grad_()
+    logits = model[4](model[3](middle_leaf))
+    loss = nn.functional.cross_entropy(logits, labels)
+    loss.backward()
+    global_dy = middle_leaf.grad.detach()
+    _, dh, dp = chunked_reference(
+        model[2], hidden.detach(), global_dy, chunk_atoms=chunk_atoms
+    )
+    model[2].atoms.p.grad = dp
+    hidden.backward(dh)
+    return {
+        "logits": logits.detach(),
+        "loss": loss.detach(),
+        "input_gradient": x.grad.detach(),
+        "hidden_input": hidden.detach(),
+        "middle_output": middle,
+        "middle_gradient": global_dy,
+        "reference_chunk_atoms": chunk_atoms,
+    }
+
+
+def radius_statistics(layer):
+    """Physical radii and exact whole-tile hierarchy membership, never sigma."""
+    from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.algorithm import (
+        hierarchy_from_operator as radius_hierarchy,
+    )
+    from torchcst._backends.torch.parameterizations.radius_cell_mass import (
+        decoded_values,
+    )
+
+    point = layer.atoms.p.detach().cpu()
+    state = copy.deepcopy(layer.kernel).cpu()
+    amplitude, ri, ro = decoded_values(state, point)
+    plan = radius_hierarchy(layer.execution_declaration())
+    quantiles = torch.tensor([0.0, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0], dtype=torch.float64)
+    result = {
+        "parameterization": "polar_radius",
+        "units": "physical support radius",
+        "valid": bool(torch.isfinite(point).all()),
+        "amplitude_quantiles": torch.quantile(amplitude, quantiles).tolist(),
+        "alpha_quantiles": torch.quantile(
+            ((point.double()[:, :2].square().sum(1) - 1) / 3).clamp(0, 1), quantiles
+        ).tolist(),
+    }
+    for side, radii, column in (("input", ri, 2), ("output", ro, 3)):
+        axis = getattr(plan, side)
+        centers = (point[:, column].double() - axis.origin).remainder(axis.period)
+        remaining = torch.ones(len(point), dtype=torch.bool)
+        owners = torch.empty(len(point), dtype=torch.int64)
+        banks = []
+        for bank in axis.banks:
+            tile = bank.tile_sites * axis.spacing
+            selected = (
+                remaining & (radii <= tile) & ((2 * radii / tile).ceil() + 1 == bank.k)
+            )
+            first = (
+                ((centers + axis.spacing / 2) / tile - (bank.k - 1) / 2).floor().long()
+            )
+            owners[selected] = bank.node_offset + first[selected].remainder(
+                bank.tile_count
+            )
+            banks.append(
+                {
+                    "level": bank.level,
+                    "window_tiles": bank.k,
+                    "tile_sites": bank.tile_sites,
+                    "physical_tile_width": tile,
+                    "atoms": int(selected.sum()),
+                }
+            )
+            remaining &= ~selected
+        if remaining.any():
+            raise ValueError("radius diagnostics could not classify every atom")
+        counts = torch.bincount(owners, minlength=axis.node_count)
+        result["valid"] &= bool(
+            torch.isfinite(radii).all()
+            and (radii > 0).all()
+            and (radii <= axis.period / 2).all()
+        )
+        result[side] = {
+            "radius_quantiles": torch.quantile(radii, quantiles).tolist(),
+            "radius_over_spacing_quantiles": torch.quantile(
+                radii / axis.spacing, quantiles
+            ).tolist(),
+            "spacing": axis.spacing,
+            "chart_period": axis.period,
+            "banks": banks,
+            "owner_counts": counts.tolist(),
+            "max_owner_fraction": float(counts.max() / len(point)),
+        }
+    return result
 
 
 def sigma_statistics(layer, initial_sigma):
@@ -424,24 +1008,108 @@ def evaluate(model, x, y, batch_size):
 
 
 def run_training(
-    initialization, kind, data_directory, output, *, epochs=3, batch_size=32, lr=1e-3
+    initialization,
+    kind,
+    data_directory,
+    output,
+    *,
+    epochs=3,
+    batch_size=32,
+    lr=None,
+    allow_radius_batch32=False,
+    initialization_sha256=None,
+    data_normalization="original",
+    radius_execution="cached",
+    radius_direct_levels=2,
+    allow_radius_1024=False,
+    execution_plan=None,
+    execution_plan_source_sha256=None,
 ):
     if epochs < 1 or batch_size < 1:
         raise ValueError("epochs and batch_size must be positive")
+    if data_normalization not in ("original", "inplace"):
+        raise ValueError("data_normalization must be original or inplace")
+    radius = initialization.get("parameterization") == "polar_radius"
+    selected_plan = _resolve_radius_execution_plan(
+        execution_plan,
+        radius_execution=radius_execution,
+        radius_direct_levels=radius_direct_levels,
+    )
+    plan_snapshot = _radius_plan_snapshot(execution_plan, execution_plan_source_sha256)
+    if not radius and execution_plan is not None:
+        raise ValueError("execution_plan overrides require a radius initialization")
+    if not radius and radius_execution != "cached":
+        raise ValueError("radius_execution overrides require a radius initialization")
+    if not radius and radius_direct_levels != 2:
+        raise ValueError(
+            "radius_direct_levels overrides require a radius initialization"
+        )
+    if radius:
+        validate_radius_initialization(initialization)
+        if initialization["width"] == 1024:
+            if not allow_radius_1024:
+                raise ValueError("N1024 learning requires explicit allow_radius_1024")
+            if batch_size != 4:
+                raise ValueError("N1024 learning currently permits true batch 4 only")
+        _validate_radius_execution_width(
+            initialization["width"],
+            radius_execution,
+            radius_direct_levels,
+            execution_plan,
+        )
+        if batch_size != 4 and not (batch_size == 32 and allow_radius_batch32):
+            raise ValueError(
+                "radius requires true batch 4; batch 32 needs explicit allow_radius_batch32"
+            )
+        if lr is not None and lr != initialization["optimizer_contract"]["lr"]:
+            raise ValueError("radius lr must match the frozen initialization contract")
+    lr = (
+        (initialization["optimizer_contract"]["lr"] if radius else 1e-3)
+        if lr is None
+        else lr
+    )
     output = Path(output)
     output.mkdir(parents=True, exist_ok=False)
+    if plan_snapshot is not None:
+        (output / "execution-plan-snapshot.json").write_text(
+            json.dumps(plan_snapshot, indent=2)
+        )
     data, data_info = load_mnist(data_directory)
     device = torch.device("cuda")
-    model = make_model(initialization, kind).to(device)
-    tx = ((data["train_x"].to(device).float() / 255) - data_info["mean"]) / data_info[
-        "std"
-    ]
-    vx = ((data["t10k_x"].to(device).float() / 255) - data_info["mean"]) / data_info[
-        "std"
-    ]
+    model = make_model(
+        initialization,
+        kind,
+        radius_execution=radius_execution,
+        radius_direct_levels=radius_direct_levels,
+        execution_plan=execution_plan,
+    ).to(device)
+    execution_linear_plan = (
+        make_algorithm_registry().dump_plan(selected_plan)
+        if radius and kind == "cst"
+        else None
+    )
+    tx = normalize_images(
+        data["train_x"],
+        device,
+        data_info["mean"],
+        data_info["std"],
+        data_normalization=data_normalization,
+    )
+    vx = normalize_images(
+        data["t10k_x"],
+        device,
+        data_info["mean"],
+        data_info["std"],
+        data_normalization=data_normalization,
+    )
     ty, vy = data["train_y"].to(device), data["t10k_y"].to(device)
-    base = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.0, fused=True)
-    optimizer = CSTOptimizer(base, model=model) if kind == "cst" else base
+    optimizer = make_optimizer(model, initialization, kind, lr=lr)
+    if radius:
+        torch.backends.cuda.matmul.allow_tf32 = False
+        torch.backends.cudnn.allow_tf32 = False
+        torch.set_float32_matmul_precision("highest")
+        torch.cuda.empty_cache()
+        torch.cuda.reset_peak_memory_stats()
     initial_test = evaluate(model, vx, vy, batch_size)
     # Load/compile the implementation and exercise backward before timing.
     # Warmup does not update any Parameter or optimizer state.
@@ -449,11 +1117,20 @@ def run_training(
     nn.functional.cross_entropy(model(tx[:batch_size]), ty[:batch_size]).backward()
     optimizer.zero_grad(set_to_none=True)
     torch.cuda.synchronize()
+    warmup_peak = (
+        (torch.cuda.max_memory_allocated(), torch.cuda.max_memory_reserved())
+        if radius
+        else None
+    )
     rows = []
     if kind == "cst":
-        (output / "sigma-initial.json").write_text(
+        (
+            output / ("radius-initial.json" if radius else "sigma-initial.json")
+        ).write_text(
             json.dumps(
-                sigma_statistics(
+                radius_statistics(model[2])
+                if radius
+                else sigma_statistics(
                     model[2],
                     initialization.get("sigma_initial", initialization["atoms"][:, 1]),
                 ),
@@ -502,12 +1179,26 @@ def run_training(
             "peak_reserved_bytes": torch.cuda.max_memory_reserved(),
             "data_order_sha256": order_sha,
         }
+        if radius:
+            row.update(
+                training_only_peak_allocated_bytes=row["peak_allocated_bytes"],
+                training_only_peak_reserved_bytes=row["peak_reserved_bytes"],
+                peak_allocated_bytes=max(row["peak_allocated_bytes"], warmup_peak[0]),
+                peak_reserved_bytes=max(row["peak_reserved_bytes"], warmup_peak[1]),
+                optimizer_cold_start_included=epoch == 0,
+                timing_scope="complete epoch; first optimizer invocation/JIT/native preparation included"
+                if epoch == 0
+                else "complete later epoch after earlier training; no independent cold start",
+            )
         row["test"] = evaluate(model, vx, vy, batch_size)
         if kind == "cst":
-            row["sigma"] = sigma_statistics(
-                model[2],
-                initialization.get("sigma_initial", initialization["atoms"][:, 1]),
-            )
+            if radius:
+                row["radius"] = radius_statistics(model[2])
+            else:
+                row["sigma"] = sigma_statistics(
+                    model[2],
+                    initialization.get("sigma_initial", initialization["atoms"][:, 1]),
+                )
         rows.append(row)
         (output / "epochs.json").write_text(json.dumps(rows, indent=2))
         print(
@@ -521,6 +1212,10 @@ def run_training(
             "width": initialization["width"],
             "kind": kind,
             "epoch": epochs,
+            "radius_execution": radius_execution if radius else None,
+            "radius_direct_levels": radius_direct_levels if radius else None,
+            "execution_linear_plan": execution_linear_plan,
+            "execution_plan_override": plan_snapshot,
         },
         output / "final.pt",
     )
@@ -537,7 +1232,42 @@ def run_training(
         "lr": lr,
         "seed": initialization["seed"],
         "amplitude_gain": initialization["amplitude_gain"],
+        "initialization_sha256": initialization_sha256,
+        "initial_hashes": initialization.get("initial_hashes"),
+        "optimizer_contract": initialization.get("optimizer_contract"),
+        "kernel_buffers_fp32": initialization.get("kernel_buffers_fp32"),
+        "reference_export": initialization.get("reference_export"),
+        "large_radius_separately_opted_in": radius
+        and initialization["width"] == 1024
+        and allow_radius_1024,
+        "optimizer_implementation": f"{type(optimizer).__module__}.{type(optimizer).__qualname__}",
+        "optimizer_effective_groups": [
+            {
+                key: group.get(key, 0.0)
+                for key in ("role", "lr", "weight_decay", "amplitude_weight_decay")
+            }
+            for group in optimizer.param_groups
+        ],
+        "linear_plan": initialization.get("linear_plan"),
+        "radius_execution": radius_execution if radius else None,
+        "radius_direct_levels": radius_direct_levels if radius else None,
+        "execution_linear_plan": execution_linear_plan,
+        "execution_plan_override": plan_snapshot,
+        "linear_plan_scope": "linear_plan is the frozen initialization contract; execution_linear_plan is the actual CST execution override (None for dense); execution_plan_override records the requested Plan and source-file hash"
+        if radius
+        else None,
+        "update_plan": initialization.get("update_plan") if kind == "cst" else None,
+        "batch_policy": "true batch; no gradient accumulation",
+        "batch32_separately_opted_in": radius and batch_size == 32,
+        "warmup_policy": "one forward/backward followed by zero_grad; no optimizer step or hidden parameter/state update; first training epoch includes optimizer cold start",
+        "memory_scope": "max(initial evaluation/backward-only warmup, complete training epoch); resident data/model included; eager/no Graph"
+        if radius
+        else "complete training epoch; resident data/model included",
         "data": data_info,
+        "data_normalization": data_normalization,
+        "data_normalization_policy": "original transfer/float32 conversion and out-of-place div/sub/div"
+        if data_normalization == "original"
+        else "opt-in independent float32 transfer (copy=True) and in-place div/sub/div; same pixel arithmetic",
         "torch": torch.__version__,
         "cuda": torch.version.cuda,
         "gpu": torch.cuda.get_device_name(),
@@ -549,15 +1279,103 @@ def run_training(
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--initialization", type=Path, required=True)
-    parser.add_argument("--kind", choices=["cst", "dense"], required=True)
-    parser.add_argument("--data-directory", type=Path, required=True)
-    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--initialization", type=Path)
+    parser.add_argument("--create-radius-initialization", type=Path)
+    parser.add_argument(
+        "--radius-width",
+        type=int,
+        choices=[128, 1024],
+        default=128,
+        help="width of a new, separately identified radius initialization",
+    )
+    parser.add_argument(
+        "--allow-radius-1024",
+        action="store_true",
+        help="explicit N1024/A52428 true-B4 learning qualification",
+    )
+    parser.add_argument(
+        "--seed", type=int, default=41, help="seed for a new radius initialization"
+    )
+    parser.add_argument("--kind", choices=["cst", "dense"])
+    parser.add_argument("--data-directory", type=Path)
+    parser.add_argument(
+        "--data-normalization",
+        choices=["original", "inplace"],
+        default="original",
+        help="resident MNIST allocation policy; original protocol is the default",
+    )
+    parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--radius-execution",
+        choices=["cached", "batched", "global-response4"],
+        default="cached",
+        help="opt-in radius execution Plan; initialization contract is unchanged",
+    )
+    parser.add_argument(
+        "--radius-direct-levels",
+        type=int,
+        choices=range(9),
+        default=2,
+        help="opt-in number of direct radius levels for both axes; frozen initialization stays at 2",
+    )
+    parser.add_argument(
+        "--radius-plan",
+        type=Path,
+        help="registry Plan JSON override; requires default --radius-execution cached and --radius-direct-levels 2; N1024 still requires --allow-radius-1024 and true batch 4",
+    )
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument(
+        "--allow-radius-batch32",
+        action="store_true",
+        help="explicit separate B32 qualification; no gradient accumulation",
+    )
     args = parser.parse_args()
     torch.set_num_threads(1)
     torch.backends.cuda.matmul.allow_tf32 = False
+    torch.backends.cudnn.allow_tf32 = False
+    torch.set_float32_matmul_precision("highest")
+    if args.create_radius_initialization is not None:
+        if any(
+            value is not None
+            for value in (
+                args.initialization,
+                args.radius_plan,
+                args.kind,
+                args.data_directory,
+                args.output,
+            )
+        ):
+            parser.error("initialization creation is separate from training")
+        initialization = make_radius_initialization(
+            width=args.radius_width, seed=args.seed
+        )
+        args.create_radius_initialization.parent.mkdir(parents=True, exist_ok=True)
+        with args.create_radius_initialization.open("xb") as stream:
+            torch.save(initialization, stream)
+        print(
+            json.dumps(
+                {
+                    "initialization": str(args.create_radius_initialization),
+                    "cohort": initialization["cohort"],
+                    "initial_hashes": initialization["initial_hashes"],
+                },
+                indent=2,
+            )
+        )
+        return
+    if any(
+        value is None
+        for value in (args.initialization, args.kind, args.data_directory, args.output)
+    ):
+        parser.error(
+            "training requires --initialization, --kind, --data-directory and --output"
+        )
+    execution_plan, execution_plan_source_sha256 = (
+        load_radius_execution_plan(args.radius_plan)
+        if args.radius_plan is not None
+        else (None, None)
+    )
     initialization = torch.load(
         args.initialization, map_location="cpu", weights_only=True
     )
@@ -568,6 +1386,16 @@ def main():
         args.output,
         epochs=args.epochs,
         batch_size=args.batch_size,
+        allow_radius_batch32=args.allow_radius_batch32,
+        initialization_sha256=hashlib.sha256(
+            args.initialization.read_bytes()
+        ).hexdigest(),
+        data_normalization=args.data_normalization,
+        radius_execution=args.radius_execution,
+        radius_direct_levels=args.radius_direct_levels,
+        allow_radius_1024=args.allow_radius_1024,
+        execution_plan=execution_plan,
+        execution_plan_source_sha256=execution_plan_source_sha256,
     )
 
 

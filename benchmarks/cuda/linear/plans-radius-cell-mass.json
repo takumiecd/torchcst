@@ -1,0 +1,383 @@
+{
+  "schema_version": 1,
+  "plans": [
+    {
+      "id": "radius-reference",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_radius_cell_mass",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "moment_method": "merge",
+          "save_response": true,
+          "input_direct_levels": 0,
+          "output_direct_levels": 0,
+          "schedule": "sequential",
+          "output_tile_sites": 32,
+          "native_autograd": false,
+          "native_entry": false
+        }
+      }
+    },
+    {
+      "id": "radius-hybrid-serial",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_radius_cell_mass",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "moment_method": "merge",
+          "save_response": true,
+          "input_direct_levels": 2,
+          "output_direct_levels": 2,
+          "schedule": "sequential",
+          "output_tile_sites": 32,
+          "native_autograd": false,
+          "native_entry": false
+        }
+      }
+    },
+    {
+      "id": "radius-hybrid-overlap",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_radius_cell_mass",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "moment_method": "merge",
+          "save_response": true,
+          "input_direct_levels": 2,
+          "output_direct_levels": 2,
+          "schedule": "overlap",
+          "output_tile_sites": 32,
+          "native_autograd": false,
+          "native_entry": false
+        }
+      }
+    },
+    {
+      "id": "radius-block-local",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_radius_cell_mass",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "moment_method": "merge",
+          "save_response": true,
+          "input_direct_levels": 2,
+          "output_direct_levels": 2,
+          "schedule": "block_local",
+          "output_tile_sites": 32,
+          "native_autograd": false,
+          "native_entry": false
+        }
+      }
+    },
+    {
+      "id": "radius-block-local-tile64",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_radius_cell_mass",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "moment_method": "merge",
+          "save_response": true,
+          "input_direct_levels": 2,
+          "output_direct_levels": 2,
+          "schedule": "block_local",
+          "output_tile_sites": 64,
+          "native_autograd": false,
+          "native_entry": false
+        }
+      }
+    },
+    {
+      "id": "radius-block-local-parallel",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_radius_cell_mass",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "moment_method": "merge",
+          "save_response": true,
+          "input_direct_levels": 2,
+          "output_direct_levels": 2,
+          "schedule": "block_local_parallel",
+          "output_tile_sites": 32,
+          "native_autograd": false,
+          "native_entry": false
+        }
+      }
+    },
+    {
+      "id": "radius-block-local-cached-parallel",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_radius_cell_mass",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "moment_method": "merge",
+          "save_response": true,
+          "input_direct_levels": 2,
+          "output_direct_levels": 2,
+          "schedule": "block_local_cached_parallel",
+          "output_tile_sites": 32,
+          "native_autograd": false,
+          "native_entry": false
+        }
+      }
+    },
+    {
+      "id": "radius-native-cached-parallel",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_radius_cell_mass",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "moment_method": "merge",
+          "save_response": true,
+          "input_direct_levels": 2,
+          "output_direct_levels": 2,
+          "schedule": "block_local_cached_parallel",
+          "output_tile_sites": 32,
+          "native_autograd": true,
+          "native_entry": true
+        }
+      }
+    },
+    {
+      "id": "radius-block-local-batched-cached-parallel",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_radius_cell_mass",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "moment_method": "merge",
+          "save_response": true,
+          "input_direct_levels": 2,
+          "output_direct_levels": 2,
+          "schedule": "block_local_batched_cached_parallel",
+          "output_tile_sites": 32,
+          "native_autograd": false,
+          "native_entry": false
+        }
+      }
+    },
+    {
+      "id": "radius-native-batched-cached-parallel",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_radius_cell_mass",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "moment_method": "merge",
+          "save_response": true,
+          "input_direct_levels": 2,
+          "output_direct_levels": 2,
+          "schedule": "block_local_batched_cached_parallel",
+          "output_tile_sites": 32,
+          "native_autograd": true,
+          "native_entry": true
+        }
+      }
+    },
+    {
+      "id": "radius-global-batched-cached",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_radius_cell_mass",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "moment_method": "merge",
+          "save_response": true,
+          "input_direct_levels": 2,
+          "output_direct_levels": 2,
+          "schedule": "global_batched_cached",
+          "output_tile_sites": 32,
+          "native_autograd": false,
+          "native_entry": false
+        }
+      }
+    },
+    {
+      "id": "radius-global-batched-response4",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_radius_cell_mass",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "moment_method": "merge",
+          "save_response": true,
+          "input_direct_levels": 2,
+          "output_direct_levels": 2,
+          "schedule": "global_batched_cached_response4",
+          "output_tile_sites": 32,
+          "native_autograd": false,
+          "native_entry": false
+        }
+      }
+    },
+    {
+      "id": "radius-global-response4-grad4",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_radius_cell_mass",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "moment_method": "merge",
+          "save_response": true,
+          "input_direct_levels": 2,
+          "output_direct_levels": 2,
+          "schedule": "global_batched_cached_response4_grad4",
+          "output_tile_sites": 32,
+          "native_autograd": false,
+          "native_entry": false
+        }
+      }
+    },
+    {
+      "id": "radius-global-batched-active-moments",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_radius_cell_mass",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "moment_method": "merge",
+          "save_response": true,
+          "input_direct_levels": 2,
+          "output_direct_levels": 2,
+          "schedule": "global_batched_cached_active_moments",
+          "output_tile_sites": 32,
+          "native_autograd": false,
+          "native_entry": false
+        }
+      }
+    },
+    {
+      "id": "radius-global-active-grad4",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_radius_cell_mass",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "moment_method": "merge",
+          "save_response": true,
+          "input_direct_levels": 2,
+          "output_direct_levels": 2,
+          "schedule": "global_batched_cached_active_moments_grad4",
+          "output_tile_sites": 32,
+          "native_autograd": false,
+          "native_entry": false
+        }
+      }
+    },
+    {
+      "id": "radius-global-native-active-grad4",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_radius_cell_mass",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "moment_method": "merge",
+          "save_response": true,
+          "input_direct_levels": 2,
+          "output_direct_levels": 2,
+          "schedule": "global_batched_cached_active_moments_grad4_native",
+          "output_tile_sites": 32,
+          "native_autograd": true,
+          "native_entry": true
+        }
+      }
+    },
+    {
+      "id": "radius-global-owner-response-coeffs",
+      "plan": {
+        "algorithm_id": "cuda_radius_cell_mass",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "moment_method": "merge",
+          "save_response": true,
+          "input_direct_levels": 2,
+          "output_direct_levels": 2,
+          "schedule": "global_owner_response_coefficients",
+          "output_tile_sites": 32,
+          "native_autograd": true,
+          "native_entry": true
+        },
+        "schema_version": 1
+      }
+    },
+    {
+      "id": "radius-global-owner-response-derivatives",
+      "plan": {
+        "algorithm_id": "cuda_radius_cell_mass",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "moment_method": "merge",
+          "save_response": true,
+          "input_direct_levels": 2,
+          "output_direct_levels": 2,
+          "schedule": "global_owner_response_derivatives",
+          "output_tile_sites": 32,
+          "native_autograd": true,
+          "native_entry": true
+        },
+        "schema_version": 1
+      }
+    },
+    {
+      "id": "radius-global-owner-compact-partials",
+      "plan": {
+        "algorithm_id": "cuda_radius_cell_mass",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "moment_method": "merge",
+          "save_response": true,
+          "input_direct_levels": 2,
+          "output_direct_levels": 2,
+          "schedule": "global_owner_compact_partials",
+          "output_tile_sites": 32,
+          "native_autograd": true,
+          "native_entry": true
+        },
+        "schema_version": 1
+      }
+    },
+    {
+      "id": "radius-global-owner-compact-keyed",
+      "plan": {
+        "algorithm_id": "cuda_radius_cell_mass",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "moment_method": "merge",
+          "save_response": true,
+          "input_direct_levels": 2,
+          "output_direct_levels": 2,
+          "schedule": "global_owner_compact_keyed",
+          "output_tile_sites": 32,
+          "native_autograd": true,
+          "native_entry": true
+        },
+        "schema_version": 1
+      }
+    },
+    {
+      "id": "radius-native-local-tile-moments",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_radius_cell_mass",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "moment_method": "merge",
+          "save_response": true,
+          "input_direct_levels": 2,
+          "output_direct_levels": 2,
+          "schedule": "block_local_tile_moments",
+          "output_tile_sites": 32,
+          "native_autograd": true,
+          "native_entry": true
+        }
+      }
+    }
+  ]
+}

@@ -2,6 +2,7 @@
 
 from importlib import import_module
 
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
 from torchcst.geometry.spec import (
     EuclideanGeometrySpec,
     FlatTorusGeometrySpec,
@@ -99,3 +100,8 @@ def circumference(state, *args, **kwargs):
 
 def axis_separation_lower_bound(state, *args, **kwargs):
     return _evaluate(state, "axis_separation_lower_bound", *args, **kwargs)
+
+
+# Optional prepared updates may specialize only these original definitions.
+
+_seal_functions(globals())
