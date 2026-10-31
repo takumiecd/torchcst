@@ -569,6 +569,43 @@ class _RadiusLinear(torch.autograd.Function):
         return grad_input, grad_atoms, None, None
 
 
+def checked_owner_compact_linear(plan, x, atoms, *, recipe):
+    """Explicit mode9: mode7 arithmetic with packed temporary owner partials."""
+    RadiusCellMassAlgorithm().validate_recipe(recipe)
+    if recipe.schedule != "global_owner_compact_partials":
+        raise ValueError("expected the explicit compact owner-partial recipe")
+    if (
+        type(plan) is not HierarchyPlan
+        or type(x) not in (torch.Tensor, torch.nn.Parameter)
+        or type(atoms) not in (torch.Tensor, torch.nn.Parameter)
+        or torch.overrides.has_torch_function((x, atoms))
+        or torch._C._are_functorch_transforms_active()
+        or torch._C._get_tracing_state() is not None
+        or torch.autograd.forward_ad._current_level != -1
+        or torch._C._is_torch_function_mode_enabled()
+        or torch._C._len_torch_dispatch_stack()
+    ):
+        from dataclasses import replace
+
+        return radius_linear(
+            plan,
+            x,
+            atoms,
+            recipe=replace(
+                recipe,
+                schedule="global_batched_cached_active_moments_grad4",
+                native_autograd=False,
+                native_entry=False,
+            ),
+        )
+    return _extension().checked_autograd_linear_compact_partials(
+        x.contiguous(),
+        atoms.contiguous(),
+        plan.input.native_config(),
+        plan.output.native_config(),
+    )
+
+
 def checked_radius_linear(plan, x, atoms, *, recipe):
     """Internal native entrance with fresh C++ validation, never a trusted skip.
 
@@ -578,6 +615,8 @@ def checked_radius_linear(plan, x, atoms, *, recipe):
     Tensor/function transforms retain the original Python Function entrance.
     """
     RadiusCellMassAlgorithm().validate_recipe(recipe)
+    if recipe.schedule == "global_owner_compact_partials":
+        return checked_owner_compact_linear(plan, x, atoms, recipe=recipe)
     if (
         type(plan) is not HierarchyPlan
         or type(x) not in (torch.Tensor, torch.nn.Parameter)
@@ -587,7 +626,11 @@ def checked_radius_linear(plan, x, atoms, *, recipe):
         or torch._C._get_tracing_state() is not None
         or torch.autograd.forward_ad._current_level != -1
         or (
-            recipe.schedule == "global_owner_response_coefficients"
+            recipe.schedule
+            in (
+                "global_owner_response_coefficients",
+                "global_owner_response_derivatives",
+            )
             and (
                 torch._C._is_torch_function_mode_enabled()
                 or torch._C._len_torch_dispatch_stack()
@@ -597,7 +640,10 @@ def checked_radius_linear(plan, x, atoms, *, recipe):
         from dataclasses import replace
 
         fallback = replace(recipe, native_entry=False)
-        if recipe.schedule == "global_owner_response_coefficients":
+        if recipe.schedule in (
+            "global_owner_response_coefficients",
+            "global_owner_response_derivatives",
+        ):
             fallback = replace(
                 fallback,
                 schedule="global_batched_cached_active_moments_grad4",
@@ -620,6 +666,7 @@ def checked_radius_linear(plan, x, atoms, *, recipe):
             "block_local_batched_cached_parallel": 3,
             "global_batched_cached_active_moments_grad4_native": 5,
             "global_owner_response_coefficients": 6,
+            "global_owner_response_derivatives": 7,
         }[recipe.schedule],
     )
 
@@ -639,6 +686,8 @@ def radius_linear(plan, x, atoms, *, recipe=None):
     if recipe is None:
         recipe = RadiusCellMassRecipe()
     RadiusCellMassAlgorithm().validate_recipe(recipe)
+    if recipe.schedule == "global_owner_compact_partials":
+        return checked_owner_compact_linear(plan, x, atoms, recipe=recipe)
     if recipe.native_entry:
         return checked_radius_linear(plan, x, atoms, recipe=recipe)
     zi = plan.input.active_nodes(recipe.input_direct_levels) * plan.input.basis_count

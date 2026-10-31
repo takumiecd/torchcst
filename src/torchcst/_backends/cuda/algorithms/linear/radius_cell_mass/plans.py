@@ -146,3 +146,32 @@ GLOBAL_OWNER_RESPONSE_COEFFICIENTS = ExecutionPlan(
         native_entry=True,
     ),
 )
+
+
+# New numerical route: complete center-derivative responses replace saved Zx.
+# Old owner6 and every default continue to select their original kernels.
+GLOBAL_OWNER_RESPONSE_DERIVATIVES = ExecutionPlan(
+    "cuda_radius_cell_mass",
+    "v1",
+    RadiusCellMassRecipe(
+        input_direct_levels=2,
+        output_direct_levels=2,
+        schedule="global_owner_response_derivatives",
+        native_autograd=True,
+        native_entry=True,
+    ),
+)
+
+
+# Explicit mode9 repacks only temporary owner C; all floating math is mode7.
+GLOBAL_OWNER_COMPACT_PARTIALS = ExecutionPlan(
+    "cuda_radius_cell_mass",
+    "v1",
+    RadiusCellMassRecipe(
+        input_direct_levels=2,
+        output_direct_levels=2,
+        schedule="global_owner_compact_partials",
+        native_autograd=True,
+        native_entry=True,
+    ),
+)

@@ -37,6 +37,8 @@ Tensor autograd_parameter_grad(Tensor, Tensor, Tensor, Tensor, Tensor, Tensor,
     Tensor, Config, Config, int, int, int);
 void autograd_check_owner_saved(Tensor, Tensor, Tensor, Tensor, Tensor, Tensor,
     Config, Config, bool);
+Tensor response_derivative_autograd_linear(Tensor, Tensor, Config, Config,
+    int, int, bool, int);
 
 class RadiusLinear : public torch::autograd::Function<RadiusLinear> {
 public:
@@ -131,6 +133,8 @@ void bind_host_autograd(pybind11::module_ &module) {
     module.def("checked_autograd_linear", [](Tensor x, Tensor atoms, Config input,
         Config output, int input_start, int output_start, bool merge,
         int tile_sites, int schedule) {
+        if (schedule == 7) return response_derivative_autograd_linear(x, atoms,
+            input, output, input_start, output_start, merge, tile_sites);
         check_autograd_entry(x, atoms, input, output, input_start,
             output_start, tile_sites, schedule);
         TORCH_CHECK(schedule != 6 || merge, "owner response coefficients require merge moments");
@@ -140,6 +144,8 @@ void bind_host_autograd(pybind11::module_ &module) {
     module.def("autograd_linear", [](Tensor x, Tensor atoms, Config input,
         Config output, int input_start, int output_start, bool merge,
         int tile_sites, int schedule) {
+        if (schedule == 7) return response_derivative_autograd_linear(x, atoms,
+            input, output, input_start, output_start, merge, tile_sites);
         TORCH_CHECK((schedule >= 0 && schedule <= 3) || schedule == 5 || schedule == 6,
             "invalid native host schedule");
         // Unlike the old shared modes, the new raw global entry always checks
@@ -152,3 +158,7 @@ void bind_host_autograd(pybind11::module_ &module) {
     }, pybind11::call_guard<pybind11::gil_scoped_release>());
 }
 } // namespace radius_cell_mass
+
+#include "host_response_derivatives.cuh"
+
+#include "host_compact_partials.cuh"

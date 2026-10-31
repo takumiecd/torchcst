@@ -13,19 +13,19 @@ shared C/site展開とbounded owner partials、既存則を保つFP32 Polar更�
 | --- | --- | --- |
 | N128/B4/A819/M8単体 | native cached Planを採用 | 2fresh runでdense比約1.94倍、allocated/reservedともdense未満 |
 | N128/B32/A819/M8単体 | 明示batched/grad4 Planを採用 | 2fresh runで約1.41〜1.43ms、dense比2倍以内、両ピークもdense未満 |
-| N1024/B4/A52428/M8単体 | 明示owner response/C融合Planを追加 | 約3.13ms、両ピークはdense未満、速度2倍以内は未達 |
+| N1024/B4/A52428/M8単体 | 明示compact owner/Jacobian再利用Planを採用 | 約2.73ms、両ピークはdense未満、裸の速度2倍以内は未達 |
 | MNIST N128/B4・3epoch | 同じ初期W/外側層/data orderで実学習 | 速度は約1.60〜1.76倍、allocatedは下回るがreserved同値 |
 | MNIST N128/B32・1epoch | 同条件の別batch検証 | 速度約2.07〜2.12倍、allocated超過、同時目標は未達 |
 | MNIST N128/B32・local tile候補3epoch | 別branch、初回コストも含める | 再compileを含む別runで全体平均1.74倍、allocatedは下回るがreserved同値、両ピーク厳密未満は未達 |
-| MNIST N1024/B4・3epoch | 同じ初期化を使う明示owner融合Planで再測定 | 約2.89〜2.97ms対dense1.30〜1.32ms、両ピークは下回る、速度2.19〜2.29倍で未達 |
+| MNIST N1024/B4・3epoch | 明示compact owner/Jacobian再利用Planを採用 | 全体平均1.91495倍、allocated/reservedともdense未満、このcohortは同時達成 |
 | MNIST N1024/B4・中心Jacobian再利用候補3epoch | 別branch、正しさと速度は通過 | 平均1.91485倍、allocatedは低いがreserved280MiB対274MiBで超過、同時目標は未達 |
 | active moments省略 | grad4との統合GPU884件通過、明示Planに採用 | 未使用bank計算を省く。配列shapeとメモリ量は同じ |
 
 MNIST N1024の最終test accuracyは97.37%対97.87%（1seed/3epoch）。精度同等・一般化は主張しない。
 単体denseの小型ピーク差にはcuBLAS workspace約17.04MBが大きく寄与する。MNISTでは両モデルに共通であり、
 単体の総ピーク差をCSTのParameterや中間配列そのものの削減量と読み替えない。末尾に因果実験を記録する。
-現在の統合CPU検査は3198 passed/6771 skipped。追加ごとの検証範囲は末尾に記録する。
-owner融合22a2c44eの配布wheel/sdistはruntime389ファイルがsourceとbyte一致した。
+現在の統合CPU検査は3229 passed/6982 skipped。追加ごとの検証範囲は末尾に記録する。
+owner融合22a2c44eの配布wheel/sdistはruntime389ファイルがsourceとbyte一致した。compact/Jacobian統合後は再buildして別途記録する。
 owner融合統合時のruntime/benchmarkは実GPU qualificationの5a snapshotとbyte一致した。
 Graph、autocast、高階微分、自動dispatch、N1024より大きい形状の達成は未検証である。
 末尾の各実測節にjob ID・source/archive hash・採用範囲と失敗結果を残す。
@@ -8077,3 +8077,61 @@ archive SHA256=`53d8cbb90e711998df6827770b9f21a8503ec12e2f9099b282335dadc59dacb8
 実binary SHA256=`e964703949af9b68a4fd4abde66cb3f9956fd24523e99ccd191aad80414c4f63`。
 独立source/result/archive/worker/binary/init監査はignored `output/owner-key-masks-terminal-audit-20261031/`。
 rawはprimary ignored `output/radius-mnist-native-20261031/<job>/results/`へ保持した。
+
+
+### compact owner partialsでN1024 MNISTの速度・両ピークを同時達成（2026-10-31）
+
+明示Plan `radius-global-owner-compact-partials` / schedule `global_owner_compact_partials`
+をprimaryへ採用する。N1024/A<=65536/B<=4/Polar/M8/base1/merge2等の明示条件を保ち、
+`CSTLinear`から登録済みPlanで選べる。自動dispatchは変更しない。
+中心Jacobianの基盤とmode7は比較用として保持し、目標用に推奨するのはcompact版mode9である。
+裸1024の所要時間2倍以内や、N128のreserved厳密未満を達成したとは扱わない。
+
+流れはX→階層input_moments→完成H/H_mu→shared C→compact owner partials→Y。
+backwardはdY→grad_output_moments→完成G/G_mu→compact C→dXを先に完成し、
+最後に保存H/H_muとG/G_muから全atom勾配を作る。momentsは完成response/Jacobianを作った後に解放できる。
+H/Gは再計算せず、H_mu/G_muはloss勾配ではなくcenter Jacobianである。Polarの既存更新則は変えない。
+
+元の一時配列は全ownerへ一律3part×17fieldを確保していた。
+新しいOwnerPartialLayoutは各bankの実K（2/3）と、directならtile_sites、Fourierなら17fieldだけを割り当てる。
+32bank以下のprefix/field/total（260B）をhostで作り、kernel引数で渡す。globalな追加table/atom/profileコピーはない。
+N1024/start2では全53675field、B4で1717600Bとなり、旧6681408Bから4963808B減る。
+shared34432Bと、全floating式・加算順・H/G/Jacobian・parameter gradの順番は同じで、indexだけを変える。
+
+job `l4job-fef64ce75c4349bc80322d17ea7a960e`は4b0a195eからmodule8a0cを新規compileし、
+1849 passed/6 skipped。元の52161 binaryとのlegacy126recordと、同じmodule内mode7対9の42recordを
+raw PTから独立に再照合して168/168 byte一致した。A52428の公開3更新も含む。
+独立Y/dX/全atom勾配・元batchと実shuffle先頭batch・CPU update・hooks/retained/offload/leasesを通過した。
+
+| epoch | CST ms | dense ms | 比率 | CST allocated/reserved B | dense allocated/reserved B |
+| --- | ---: | ---: | ---: | --- | --- |
+| 1（cold込み） | 2.584859 | 1.334425 | 1.93706 | 262435840 / 272629760 | 270021120 / 287309824 |
+| 2 | 2.504071 | 1.317439 | 1.90071 | 262435840 / 272629760 | 270484480 / 287309824 |
+| 3 | 2.516568 | 1.319782 | 1.90681 | 262435840 / 272629760 | 270484480 / 287309824 |
+
+trueB4、固定5ef7初期値・外側層・data order・optimizer・inplace、cold初回を含む通常3epoch/45000step。
+全体平均2.535166ms対1.323882ms=1.9149485倍、allocated262435840<270484480B、
+reserved260MiB<274MiBで、このN1024 MNIST cohortは3条件を同時に満たした。
+mode7からallocated4963840B、reserved20MiB減ったが、時間はほぼ同じ。
+確保しなくなったpaddingはもともと演算対象でないので、確保量の削減を演算量や物理cache hitの改善と同一視しない。
+reserved差を特定のslab境界へ帰属するには別のallocator traceが必要で、ここでは断定しない。
+
+2fresh bareはmode7の2.726640/2.734152ms対compact9の2.732880/2.730732msで速度差なし。
+compactのallocated/reserved=13309952/29360128B、dense=33900032/44040192B。
+matched dense0.710222/0.703429msなので、裸1024の速度2倍以内は未達である。
+同時達成は全MNISTのこの条件に限定し、全GPUや全shapeの普遍的な比率にしない。
+
+最終CST model33+optimizer15 tensor、dense model5+optimizer15 tensorは、mode7/fc34とmode6/2e2の両方に
+全byte一致した。全model/optimizer scalar metadataも一致し、差はrootのPlan schedule/hashラベルだけだった。
+accuracyは97.37%対97.87%（1seed/3epoch）で、精度同等や一般化の主張はしない。
+最終Rは1.5802880100852525〜3.999999999551842、両軸5atomがL1/K3、52423atomがL2/K3。
+独立CPUによるradius/階層再構築も実保存値に一致した。均等な階層分布へ読み替えない。
+
+統合primaryは全CPU3229 passed/6982 skipped/19 warnings、test-only style修正後のfocused31 passed/211 skipped。
+runtime/benchmark1329fileはqualified4b0 snapshotと全byte一致した。
+追加のtest差分は既存のstandalone canonicalization fixture、explicit subprocess check=False、同義のwith整形である。
+raw/復元先はprimary ignored `output/radius-mnist-native-20261031/<job>/results/`と4b0研究branch。
+独立監査は`output/compact-owner-terminal-audit-20261031/`のreport/summary/auditに保存した。
+source SHA256=`5c76e1e25af16f694528a7ec55e62e0e6caec0529a5deaf5925fd1da6d9976f0`。
+archive SHA256=`8941aa1d43f8b31a7c2b3874637ab13660d45143f8f0095c11d1fa5d4002083c`。
+実binary SHA256=`ef2e016e7ccf245f6366f3584e6b8281e7c3ddb5e66621f99f1d75c2eff2d4bb`。

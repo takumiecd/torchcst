@@ -86,6 +86,8 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "global_batched_cached_active_moments_grad4",
             "global_batched_cached_active_moments_grad4_native",
             "global_owner_response_coefficients",
+            "global_owner_response_derivatives",
+            "global_owner_compact_partials",
             "block_local",
             "block_local_parallel",
             "block_local_cached_parallel",
@@ -105,6 +107,8 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
                 in (
                     "global_batched_cached_active_moments_grad4_native",
                     "global_owner_response_coefficients",
+                    "global_owner_response_derivatives",
+                    "global_owner_compact_partials",
                 )
             )
         ):
@@ -115,7 +119,11 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             recipe.native_entry and not recipe.native_autograd
         ):
             raise ValueError("native_entry requires native_autograd")
-        if recipe.schedule == "global_owner_response_coefficients" and (
+        if recipe.schedule in (
+            "global_owner_response_coefficients",
+            "global_owner_response_derivatives",
+            "global_owner_compact_partials",
+        ) and (
             recipe.moment_method != "merge"
             or recipe.input_direct_levels != 2
             or recipe.output_direct_levels != 2
@@ -147,7 +155,11 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
         except (ValueError, TypeError) as error:
             return SupportResult((str(error),))
         reasons = []
-        if recipe.schedule == "global_owner_response_coefficients" and (
+        if recipe.schedule in (
+            "global_owner_response_coefficients",
+            "global_owner_response_derivatives",
+            "global_owner_compact_partials",
+        ) and (
             context.m > 4
             or plan.input != plan.output
             or any(

@@ -383,6 +383,8 @@ Tensor parameter_grad(Tensor p, Tensor zx, Tensor zy, Tensor h, Tensor g, Config
 #include "layout.cuh"
 #include "expansion_probe.cuh"
 #include "owner_response_coefficients.cuh"
+#include "owner_response_derivatives.cuh"
+#include "owner_compact_partials.cuh"
 
 namespace radius_cell_mass {
 void bind_host_autograd(pybind11::module_ &);
@@ -493,7 +495,12 @@ Tensor autograd_parameter_grad(Tensor p, Tensor x, Tensor dy, Tensor zx, Tensor 
 
 #include "profile_probe.cuh"
 
+namespace radius_cell_mass { void bind_owner_compact_autograd(pybind11::module_ &); }
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+    radius_cell_mass::bind_owner_compact_autograd(m);
+    m.def("owner_derivative_project", &radius_cell_mass::owner_derivative_project);
+    m.def("owner_derivative_parameter_grad", &radius_cell_mass::owner_derivative_parameter_grad);
     m.def("profile_value_comparison", &radius_cell_mass::profile_value_comparison);
     radius_cell_mass::bind_host_autograd(m);
     m.def("hybrid_parameter_grad_batched", &radius_cell_mass::hybrid_parameter_grad_batched);
