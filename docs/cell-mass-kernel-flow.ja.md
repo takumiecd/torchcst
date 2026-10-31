@@ -7952,3 +7952,41 @@ archive SHA256=`436e38ca31b1294b5ea09da4de50b8ed66d9126bf91de5ae95811bba26fcbd40
 rawはprimary ignored `output/radius-mnist-native-20261031/<job>/results/`、
 kernel-only auditは`owner6-actual-profile-audit.json`へ保全した。
 63ef4c15のGitHub CPU validation run41148414942は成功し、Linux shim修正も確認した。
+
+
+### dimensionless FP32 coeffsは正しさ通過、主経路へ採用しない（2026-10-31）
+
+別branch1a58428bの明示 `radius-global-float-coefficients` は、geometry/profile/phase/
+cell filter/global moments/完成H/G/parameter gradをFP64のまま保ち、Cの集計とsite展開だけFP32にした。
+raw densityのc0=1/Pをそのままfloatへ狭めると、spacing=1e-40など有効な単位でoverflowする。
+そのためFP64でq0=d*c0、q_cos/q_sin=2*d*ck*phaseを作ってからfloatへ変換し、
+展開側はspacingを再度掛けずdimensionless sincだけを使う。正規化の定義は変更しない。
+heldのdensity-only4691版はGPUへ提出していない。全旧header/Planはliteralに保持した。
+
+job `l4job-114a7c9f01374b30aa8705aa697cfa77`はmodule455eを新規compileし、
+1172 passed/4 skipped、同じZ/H/Gに対するgeneric/optimized parameter gradの24ケースexact-byte、
+独立先頭MNIST batchのY/dX/全atom勾配と
+CPU-reference optimizer state gateを通過した。FP32の独立許容誤差は変更せず、
+新Planと旧Planのcross-route byte equalityは保証しない。全学習の再実行はしていない。
+この24ケースは旧binary対新binaryの完全step同一性検査ではない。旧200テストfileはqualified5aとliteral一致した。
+別診断の21 record中18がbyte不一致で、Y/dX/dP/P/Adam momentsが含まれ、clock3件だけ一致した。
+最大絶対差はY2.33e-9、dP1.16e-10、P2.52e-9。raw tensorのexportはないため、runtime報告とsourceの照合に限定する。
+
+| cohort | paired 旧Python global-active-grad4 → FP32 C ms | allocated / reserved B |
+| --- | --- | --- |
+| N1024/B4/A52428 | 4.313231→4.136780、4.307449→4.134848 | 両者9211904 / 31457280 |
+| N128/B4/A819 | 1.901833→1.885203、1.930157→1.962263 | 両者291328 / 2097152 |
+| N128/B32/A819 | 1.925048→1.947996、1.967122→1.973393 | 両者1689088 / 2097152 |
+
+各2fresh worker/101標本。N1024は約4%短縮に留まり、メモリ差なし。
+小型では再現する改善がなく、既存native small/owner6の代替にもならない。
+比較元は旧Python hostなので、primary owner6の3.13msと上表の4.31msの差をFP32化の効果としない。
+FP32化だけで主goalを満たせたとは扱わず、primary runtimeと自動dispatchへ採用しない。
+正しさの通過、dimensionless単位での修正、負の性能結果を別branchへ保全する。
+
+source SHA256=`e23db6da65240f26304c5fc9c9d438ec765b65c9cfd44d1bbbd67cd0836da280`。
+archive SHA256=`53598f0d845d2fa36e70205c4a48a49b2aca6a26f558a10a56cea33ab8d4703a`。
+実binary SHA256=`44477eb5049eaf0a8cc1a35e63b82a2638695424a2ea0c497a030c50374f77c9`。
+rawはprimary ignored `output/radius-mnist-native-20261031/<job>/results/`へ保持した。
+
+独立manifest/単位極端値/gate/全public pairの監査はignored `output/float-coefficient-terminal-audit-20261031/`へ記録した。
