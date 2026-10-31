@@ -8050,3 +8050,30 @@ archive SHA256=`c96d6384dd0cd790a8983c5fdd43b3f156c454ccf2f670df1ad854688557853c
 実Algorithm.execute/shared checked entry/radius entryを通る21CPU回帰を追加し、
 全CPU3225 passed/6887 skipped、focused28 passed/115 skipped。native a99dの式とソースは変更せず、
 別GPU qualificationの通過まで採用しない。旧失敗を通過結果へ書き換えない。
+
+
+### checked-entry修正後のkey maskはbit一致と約5%短縮（2026-10-31）
+
+修正099afa65を新規compileしたjob `l4job-6dafe86f4b334d608c329a9eb07c79ef`は1218 passed/3 skipped。
+旧8ac6の失敗を保持し、別qualificationとして通過した。数学的なCUDA/C++/header全byteはa99dのままで、
+runtime変更はshared checked entryの2行delegation。fixtureのshortcutを除き、21CPU境界回帰を追加した。
+実binaryは旧7f38と新e964でbyteが異なるため、source一致をbinary一致とは呼ばない。
+
+必須cross-route gateはN1024/A52428/B4の公開CSTAdamW+Polar5更新を比較し、
+35/35のY/dX/dP/更新P/Adam clock,m,vがbyte一致した。raw PTのexportはなく、
+結果は実行workerとJSON/hashの監査に限定する。別のlegacy worker24件は同じZ/H/Gに対する
+scalar/optimized parameter gradであり、両者の検査範囲を混同しない。
+独立先頭MNIST batch gateの全atom Fourier VJP/full model/CPU updateと、stratified8atom quadratureも通過。
+
+2fresh bare完全stepはowner6の3.109664/3.111005msからkey8の2.951729/2.956233msへ、
+5.08%/4.98%短縮。matched denseは0.720833/0.695902msで、裸1024の2倍以内は未達。
+allocated/reservedは両者15474176/29360128B、dense33900032/44040192Bで、メモリ増加なし。
+全MNIST epochは未測定で、mode7/9との合成効果をこの結果から断定しない。
+完成response/Jacobianとcompact partialsへ組み合わせる別候補を、同じgate/完全step/両peakで検証する。
+primaryの既定や自動dispatchはまだ変更しない。
+
+source SHA256=`a153a78b5bb2a9ac1570ab454793005c8079ef53a6d6078fb9f64c21ab88abaa`。
+archive SHA256=`53d8cbb90e711998df6827770b9f21a8503ec12e2f9099b282335dadc59dacb8`。
+実binary SHA256=`e964703949af9b68a4fd4abde66cb3f9956fd24523e99ccd191aad80414c4f63`。
+独立source/result/archive/worker/binary/init監査はignored `output/owner-key-masks-terminal-audit-20261031/`。
+rawはprimary ignored `output/radius-mnist-native-20261031/<job>/results/`へ保持した。
