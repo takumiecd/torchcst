@@ -249,6 +249,7 @@ def test_actual_owner_helpers_math_mapping_and_kernel_syntax_on_cpu(tmp_path):
 #include <cstdint>
 #include <limits>
 #include <vector>
+#include <cmath>
 #define __host__
 #define __device__
 #define __global__
@@ -261,7 +262,8 @@ def test_actual_owner_helpers_math_mapping_and_kernel_syntax_on_cpu(tmp_path):
 struct { int x=0; } blockIdx,threadIdx;
 struct { int x=128; } blockDim;
 template<class T> T min(T a,T b) {return a<b?a:b;}
-inline void sincos(double x,double*s,double*c) {*s=sin(x);*c=cos(x);}
+inline void radius_test_sincos(double x,double*s,double*c) {*s=std::sin(x);*c=std::cos(x);}
+#define sincos radius_test_sincos
 #include "common.cuh"
 namespace radius_cell_mass {
 constexpr int BLOCK_LOCAL_C_STRIDE=33;

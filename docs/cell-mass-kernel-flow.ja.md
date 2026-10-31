@@ -24,7 +24,7 @@ MNIST N1024の最終test accuracyは97.37%対97.87%（1seed/3epoch）。精度�
 単体denseの小型ピーク差にはcuBLAS workspace約17.04MBが大きく寄与する。MNISTでは両モデルに共通であり、
 単体の総ピーク差をCSTのParameterや中間配列そのものの削減量と読み替えない。末尾に因果実験を記録する。
 現在の統合CPU検査は3198 passed/6771 skipped。追加ごとの検証範囲は末尾に記録する。
-CPU参照修正時の配布wheel/sdistはruntime388ファイルがbyte一致。owner融合追加後の再buildは別途記録する。
+owner融合22a2c44eの配布wheel/sdistはruntime389ファイルがsourceとbyte一致した。
 owner融合統合時のruntime/benchmarkは実GPU qualificationの5a snapshotとbyte一致した。
 Graph、autocast、高階微分、自動dispatch、N1024より大きい形状の達成は未検証である。
 末尾の各実測節にjob ID・source/archive hash・採用範囲と失敗結果を残す。
@@ -7892,3 +7892,18 @@ rawは同じprimary ignored output配下のjob別resultsへ保持する。
 source SHA256=`233c527f4cd53e7bed4dc6137fa502b6c632a80a93f1a272fbaf1eb35d54054a`。
 archive SHA256=`7c705b48ea702ed8a120a9e8989e322f74286206bbd4dae4fddebf31867c5f22`。
 実binary SHA256=`ba0fc422bd4354d9a9c90522fd720b265fd364d6b59eef7e14002b8de787fe0a`。
+
+
+### owner統合後のpackageとLinux CPU test shim（2026-10-31）
+
+22a2c44eのwheel/sdistはruntime389ファイルがsourceとbyte一致した。
+同じ1322 runtime/benchmarkファイルがGPU qualification5a snapshotと一致することも保存した。
+証拠はignored `output/radius-mnist-native-20261031/package-owner6660-audit.json`と
+`owner6660-primary-adoption-audit.json`。
+
+GitHub CPU validation run41147900610は、新規ownerのhost C++ smoke testがlibcのsincosを
+cmathより前に再宣言したため失敗した。Linuxではsin/cos未宣言とexception specification衝突になり、
+MacのCPU suiteでは露出しなかった。元の失敗logを`ci-owner22-failed.log`へ保全した。
+テストの<cmath>を先にincludeし、privateなradius_test_sincosへmacroで変換する。
+CUDA/runtimeの式とソースは一切変更せず、検査の削除・skip化・許容誤差変更も行わない。
+修正後のfocused owner CPU検査は7 passed/59 skipped。Linux CIはこのtest-only修正で再実行する。
