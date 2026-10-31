@@ -292,6 +292,18 @@ coefficient partials. Backward completes dX before reusing the saved responses
 and Jacobians for atom gradients. The Linear Plan is independent of optimizer
 selection; no automatic dispatcher selects it.
 
+Two additional explicit choices keep the same profile and Polar update law:
+
+| Plan constant in `radius_cell_mass.plans` | Supported cohort | Storage and reuse |
+| --- | --- | --- |
+| `LOCAL_TILE_MOMENTS` | N128 Polar, B<=32, A<=4096, M=8, base1/merge2 | Build small-tile moments in shared memory; retain global moments only from level5, and save complete H/G for backward. |
+| `GLOBAL_OWNER_COMPACT_KEYED` | The same N1024 conditions as `GLOBAL_OWNER_COMPACT_PARTIALS` | Reuse forward owner keys to select moment banks, retaining the compact partials and complete response/Jacobian caches. |
+
+Choose these with `FixedSelector` on a matching layer. The local-tile Plan
+reduces storage but can be slower than `BLOCK_LOCAL_BATCHED_CACHED_PARALLEL`
+on a bare B32 layer; model-level results do not imply the same speed ratio for
+an isolated layer. All choices remain opt-in.
+
 Performance and memory qualification are specific to each Plan and workload;
 see [the measured scopes and limitations](docs/cell-mass-kernel-flow.ja.md).
 The pipelines are eager-only, without autocast, deterministic-mode qualification,

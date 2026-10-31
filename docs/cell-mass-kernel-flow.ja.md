@@ -11,21 +11,20 @@ shared C/site展開とbounded owner partials、既存則を保つFP32 Polar更�
 
 | 検証条件 | 採用・検証状況 | 完全stepとメモリの結論 |
 | --- | --- | --- |
-| N128/B4/A819/M8単体 | native cached Planを採用 | 2fresh runでdense比約1.94倍、allocated/reservedともdense未満 |
-| N128/B32/A819/M8単体 | 明示batched/grad4 Planを採用 | 2fresh runで約1.41〜1.43ms、dense比2倍以内、両ピークもdense未満 |
-| N1024/B4/A52428/M8単体 | 明示compact owner/Jacobian再利用Planを採用 | 約2.73ms、両ピークはdense未満、裸の速度2倍以内は未達 |
-| MNIST N128/B4・3epoch | 同じ初期W/外側層/data orderで実学習 | 速度は約1.60〜1.76倍、allocatedは下回るがreserved同値 |
-| MNIST N128/B32・1epoch | 同条件の別batch検証 | 速度約2.07〜2.12倍、allocated超過、同時目標は未達 |
-| MNIST N128/B32・local tile候補3epoch | 別branch、初回コストも含める | 再compileを含む別runで全体平均1.74倍、allocatedは下回るがreserved同値、両ピーク厳密未満は未達 |
+| N128/B4/A819/M8単体 | native cached/local tile Planを採用 | 統合版2fresh runで約1.37〜1.39ms、dense比2倍以内、allocated/reservedともdense未満 |
+| N128/B32/A819/M8単体 | 明示batched/grad4 Planを維持 | 統合版2fresh runで約1.36〜1.38ms、dense比2倍以内、両ピークもdense未満。local tileは約1.58〜1.59msで速度2倍以内は未達 |
+| N1024/B4/A52428/M8単体 | 明示compact keyed owner Planを採用 | 約2.56〜2.57ms、両ピークはdense未満、裸の速度はdenseの約3.5〜3.6倍で未達 |
+| MNIST N128/B4・3epoch | 従来native Planで同じ初期W/外側層/data orderの実学習 | 約1.60〜1.76倍、allocatedは下回るがreserved同値。最新統合sourceのこのcohort全epoch再測定ではない |
+| MNIST N128/B32・local tile統合版3epoch | 明示Planを採用、cold初回込み | 全体平均1.79842倍、allocatedは下回るがreserved同値。epoch1単独は2.11789倍、両ピーク厳密未満は未達 |
 | MNIST N1024/B4・3epoch | 明示compact owner/Jacobian再利用Planを採用 | 全体平均1.91495倍、allocated/reservedともdense未満、このcohortは同時達成 |
-| MNIST N1024/B4・key mask統合候補3epoch | 別branch、独立artifact監査通過 | 全体平均1.91221倍、両ピークともdense未満。128 local tileとの同一source統合検証は継続中 |
+| MNIST N1024/B4・compact keyed統合版3epoch | N128 local tileと同じsourceで採用 | 全体平均1.91565倍、allocated/reservedともdense未満。全epochでも2倍以内 |
 | MNIST N1024/B4・中心Jacobian再利用候補3epoch | 別branch、正しさと速度は通過 | 平均1.91485倍、allocatedは低いがreserved280MiB対274MiBで超過、同時目標は未達 |
 | active moments省略 | grad4との統合GPU884件通過、明示Planに採用 | 未使用bank計算を省く。配列shapeとメモリ量は同じ |
 
 MNIST N1024の最終test accuracyは97.37%対97.87%（1seed/3epoch）。精度同等・一般化は主張しない。
 単体denseの小型ピーク差にはcuBLAS workspace約17.04MBが大きく寄与する。MNISTでは両モデルに共通であり、
 単体の総ピーク差をCSTのParameterや中間配列そのものの削減量と読み替えない。末尾に因果実験を記録する。
-現在の統合CPU検査は3229 passed/6982 skipped。追加ごとの検証範囲は末尾に記録する。
+現在の統合CPU検査は3312 passed/7207 skipped、実GPU検査は2152 passed/10 skipped。追加ごとの検証範囲は末尾に記録する。
 owner融合22a2c44eの配布wheel/sdistはruntime389ファイルがsourceとbyte一致した。compact/Jacobian統合b6553aefのwheel/sdistはruntime394ファイルがsourceとbyte一致した。
 owner融合統合時のruntime/benchmarkは実GPU qualificationの5a snapshotとbyte一致した。
 Graph、autocast、高階微分、自動dispatch、N1024より大きい形状の達成は未検証である。
@@ -8266,7 +8265,7 @@ report SHA256=`0bf63e0707a19bbdb93b93154209d37caa9b23311d9fd19b6f3c81b0fa27f8d9`
 新しいGPU診断の反復は行わず、次はlocal tile/compact/key maskを同じsourceで統合検証する。
 
 
-### N128 local tileとN1024 compact keyedの同一source qualification（進行中）
+### N128 local tileとN1024 compact keyedの同一source qualification投入記録
 
 2026-10-31、別branch `kernel/radius-union-localtile-compact` の `558608f3` を凍結した。
 mode4のlocal tile geometry/momentsはqualified799、mode9/10の既存24headerとhost prefixは
@@ -8280,9 +8279,87 @@ wheel/sdistの全runtime401fileがsourceとbyte一致した。CUDA skipをGPU達
 旧8a/0724/704の3binaryに対する462fieldの公開更新byte gate、独立Y/dX/全atom勾配・
 両cohortの元/実shuffle先頭batch、各2fresh単体対照、通常3epochのCST/dense対照を行う。
 通常学習はcold初回を含め、元harness/data order/optimizerを保持する。これは検証の準備記録で、
-この統合sourceのGPU成功や性能・メモリの結果ではない。結果取得後に別途判定する。
+この統合sourceのGPU成功や性能・メモリの結果ではない。完了後の判定は次節に記録する。
 
 native source SHA256=`89ca09a9b1b44fd11e6e72db76a3ebfa2057ca361d9ed9804994211e137b8f43`。
 driver SHA256=`4e1e20ba3166e0118ccb2477ef3e82a479a8486d5b3ba78d353b8715971de0a4`。
 凍結driver/self-check/package/reviewは研究treeのignored
 `output/radius-union-localtile-compact-20261031/`へ保持する。
+
+
+### 同一source統合版の実GPU完了・採用（2026-10-31）
+
+job `l4job-822acc41a51d4d17b02a84c9b49fc8cf` は558608f3からnative89ca09a9を新規compileし、
+2152 passed/10 skipped/1 warning、4つの元/実shuffle先頭MNIST batch gateを通過した。
+小型mode4と大型mode9/10を同じlibraryで検証し、primaryへbab43363/6e9f0ba3/6cea2db1で取り込んだ。
+全src401・benchmark938・test205fileは、実GPU qualified sourceと全byte一致した。
+追加Planは `LOCAL_TILE_MOMENTS` と `GLOBAL_OWNER_COMPACT_KEYED`。
+前者はN128/Polar/B<=32/A<=4096/M8/base1/merge2、後者は同一N1024軸/B<=4/A<=65536/M8/base1/merge2。
+既存のbatched3/compact9とその他の入口は保持し、自動dispatchは変更しない。
+
+独立artifact監査では全1887spec file、1545実行source、1886tracked file、全176結果manifest fileを
+元Git tree/source/archiveと照合した。3つの元binaryから得たraw273+105+84=462fieldは全finite・byte一致。
+Y/dX/dPだけでなく公開CSTAdamW/Polarによる3更新後のP/Adam moments/stepも含む。
+最終CSTはN128の48tensor/997scalar、N1024の48tensor/52606scalar、denseは各20tensor/31scalarが
+49e/773の元checkpointと一致した。全root metadata/scalar/container metadataも一致した。
+同じ初期値・外側層・画像/label/data order・optimizer・全epochのloss/test/radius数値も照合した。
+全途中stepのtensor checkpointを保存した検査ではないことは維持する。
+
+| cohort / epoch | CST ms | dense ms | 比率 | CST allocated/reserved B | dense allocated/reserved B |
+| --- | ---: | ---: | ---: | --- | --- |
+| N128/B32 / 1（cold込み） | 2.823223 | 1.333033 | 2.11789 | 241362432 / 247463936 | 241428992 / 247463936 |
+| N128/B32 / 2 | 2.144278 | 1.320468 | 1.62388 | 241625088 / 247463936 | 241808896 / 247463936 |
+| N128/B32 / 3 | 2.127576 | 1.291681 | 1.64714 | 241625088 / 247463936 | 241808896 / 247463936 |
+| N1024/B4 / 1（cold込み） | 2.517439 | 1.291710 | 1.94892 | 262435840 / 272629760 | 270021120 / 287309824 |
+| N1024/B4 / 2 | 2.481409 | 1.294285 | 1.91720 | 262435840 / 272629760 | 270484480 / 287309824 |
+| N1024/B4 / 3 | 2.419308 | 1.286411 | 1.88067 | 262435840 / 272629760 | 270484480 / 287309824 |
+
+通常の784→N→N→10で中間層だけCST、N128はae13/B32/5625更新、N1024は5ef7/B4/45000更新。
+両方ともcold初回を除外せず、既存inplace data準備/元harnessを使用した。新しいcache clearや環境変更はない。
+重み付き3epoch平均はN128が2.365026/1.315061ms=1.798415倍、N1024が2.472719/1.290802ms=1.915646倍。
+N128は平均速度とallocatedで条件を満たすが、epoch1単独は2倍超、reservedは同値で厳密未満は未達。
+N1024は各epochと全体で2倍以内、allocated/reservedともdense未満である。
+最終accuracyはN12891.34%/93.92%、N102497.37%/97.87%。各1seed/3epochで、精度同等は主張しない。
+最終半径はN128が1.949132〜4、L1/K3が1atom・L2/K3が818atom、N1024が1.580288〜4、
+L1/K3が5atom・L2/K3が52423atom（両軸）。均等な階層分布へ読み替えない。
+
+2freshの未計装単体stepも元runnerで測った。時間は各fresh対照内の値である。
+
+| 単体cohort | 既存baseline ms（2run） | 新Plan ms（2run） | dense ms（2run） | 新Plan allocated/reserved B |
+| --- | --- | --- | --- | --- |
+| N128/B4 / local tile | 1.386274 / 1.387269 | 1.373742 / 1.392947 | .703351 / .705305 | 186880 / 2097152 |
+| N128/B32 / local tile | 1.363530 / 1.384072 | 1.579385 / 1.592985 | .750874 / .723189 | 731648 / 2097152 |
+| N1024/B4 / compact keyed | 2.727545 / 2.719923 | 2.564738 / 2.570071 | .730725 / .712753 | 13309952 / 29360128 |
+
+bare B32のlocal tileは既存batched3より約15〜16%遅く、denseの2.10/2.20倍である。
+既存batched3は2倍以内を保つので、単体速度用として残す。local tileはZ保存を減らし、
+今回の全MNIST B32でallocatedをdense未満に収める選択肢として採用する。
+裸N1024もdenseの3.51/3.61倍で速度目標未達。全MNISTの比率を単体や他batch/GPUへ一般化しない。
+裸denseのピークはN128/B4が17313280/23068672B、B32が17384960/23068672B、
+N1024/B4が33900032/44040192B。N128のreserved同値の原因は前節の共通baseline診断を参照する。
+
+source archive SHA256=`68061718aeda354ea080a13ff2126591616be4255afa7ad45b70a182fe0b8458`。
+result archive SHA256=`2cfe41fb294eb00a56a9d8e7129281f930397a502c4f4cca4f86bcda128c9ff7`。
+実binary SHA256=`9164a805fa84d038bb0fe819b4ad4bd3e0e0097c5befea105174ba70b99fc65e`。
+独立監査 `output/radius-union-terminal-audit-20261031/summary.json` のSHA256は
+`ad9c17580d551ed3033d0090452d2f93cc73b9e5a83c4b4e44c10754259909a5`、同report.mdは
+`9a3c05497fb2eb804e926579afaeda78729d09d4c90b92829eaf03c83b409152`。
+raw/receipt/spec/resultsは既存ignored `output/radius-mnist-native-20261031/<job>/`へ保持した。
+最終pool statusで全slot停止、supervisor正常終了を確認し、他のsessionには触れていない。
+
+frozen packageの全runtime401fileはwheel/sdist/sourceでbyte一致し、隔離したwheelから
+3Planをimport/Registry roundtripしてCUDA未初期化を確認した。primaryの同一source照合は
+`output/radius-union-terminal-audit-20261031/primary-source-byte-audit.json`。
+変更PythonのRuffは通過した。別途行った全tree Ruffの50指摘は今回の統合19file以外にあり、
+全て統合前679f6151から未変更のfile上である。全tree cleanとは主張せず、元JSONを同auditへ残した。
+Graph/autocast/高階微分・N>1024・GPU process全体のmemoryは引き続き未検証である。
+
+
+採用後のprimary全CPUも3312 passed/7207 skipped/19 warnings（85.38s）を確認した。
+実行環境は既存CPU venv、CXX=/usr/bin/clang++、MAX_JOBS=1、
+CST_TEST_NATIVE_READ_LEASE=1、CST_TEST_NATIVE_FUNCTION_GUARD=1、PYTHONPATH=src:tests。
+再現用の実driverはfrozen研究treeとpool source archiveに保管している。既存共有poolの
+`submit --source <558608f3の凍結tree> --script <gpu_driver.py> --timeout 3600`
+を使い、親だけが`serve --workers 1`を所有する。対象runtimeはL4/Torch2.11.0+cu130/CUDA13/Python3.13。
+primaryの最新docsまで含む新treeを元driverの全file hash検査へそのまま渡すことはせず、
+元のsource archive/実driver/receiptを使う。旧研究branch・ignored raw証拠は削除していない。
