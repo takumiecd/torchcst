@@ -249,8 +249,8 @@ physical `[amplitude, support_radius, output_center, input_center]` rows, with
 Old sigma APIs, presets and checkpoints keep their original interpretation;
 loading a sigma checkpoint into a radius kernel is rejected.
 
-The CPU reference uses temporary profile factors. A separate, opt-in native
-CUDA pipeline implements first-order forward/backward for N<=128, A<=4096 and
+The CPU reference uses temporary profile factors. The initial opt-in native
+CUDA Plans implement first-order forward/backward for N<=128, A<=4096 and
 M=1..16, including odd M. Initialize on CPU, then select the CUDA Plan:
 
 ```python
@@ -283,9 +283,19 @@ CUDA device assertion reported by a later CUDA API or synchronization point.
 Shape and configuration errors retain synchronous host validation.
 All Plans compute the same profiles. The reference saves FP64 moments and
 complete responses in global memory; hybrid buffers omit low direct levels.
-These candidates do not establish dense-memory or complete-step speed success. They are
-eager-only, without autocast, deterministic-mode qualification, CUDA Graphs
-or higher-order derivatives. The existing sigma CUDA Plans reject radius
+The separate `GLOBAL_OWNER_COMPACT_PARTIALS` Plan in the same `plans` module
+supports identical N1024 Polar axes, B<=4, A<=65536, M=8, base tiles of one site
+and merge factor two. Select it with `FixedSelector` in the same way as above,
+using a matching N1024 layer. It builds complete responses and center Jacobians
+once, releases temporary moments after projection, and uses compact per-bank
+coefficient partials. Backward completes dX before reusing the saved responses
+and Jacobians for atom gradients. The Linear Plan is independent of optimizer
+selection; no automatic dispatcher selects it.
+
+Performance and memory qualification are specific to each Plan and workload;
+see [the measured scopes and limitations](docs/cell-mass-kernel-flow.ja.md).
+The pipelines are eager-only, without autocast, deterministic-mode qualification,
+CUDA Graphs or higher-order derivatives. The existing sigma CUDA Plans reject radius
 profiles. For FP32 radius Polar training, explicitly select
 `RADIUS_FLAT_TORUS_FUSED` from
 `torchcst._backends.cuda.algorithms.polar_update.plans` as the
