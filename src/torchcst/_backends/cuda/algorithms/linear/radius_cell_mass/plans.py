@@ -177,6 +177,21 @@ GLOBAL_OWNER_COMPACT_PARTIALS = ExecutionPlan(
 )
 
 
+# Mode10: qualified compact partials + key-derived moment masks. P-only reverse
+# keeps mode9 projection/mask and avoids retaining any extra owner keys.
+GLOBAL_OWNER_COMPACT_KEYED = ExecutionPlan(
+    "cuda_radius_cell_mass",
+    "v1",
+    RadiusCellMassRecipe(
+        input_direct_levels=2,
+        output_direct_levels=2,
+        schedule="global_owner_compact_keyed",
+        native_autograd=True,
+        native_entry=True,
+    ),
+)
+
+
 # Experimental: C/direct cutoff2, retained global Z starts at level5 instead.
 # Complete FP64 H/G are still built once and reused by all same-side consumers.
 LOCAL_TILE_MOMENTS = ExecutionPlan(

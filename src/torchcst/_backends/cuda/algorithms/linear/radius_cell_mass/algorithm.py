@@ -88,6 +88,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "global_owner_response_coefficients",
             "global_owner_response_derivatives",
             "global_owner_compact_partials",
+            "global_owner_compact_keyed",
             "block_local",
             "block_local_parallel",
             "block_local_cached_parallel",
@@ -110,6 +111,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
                     "global_owner_response_coefficients",
                     "global_owner_response_derivatives",
                     "global_owner_compact_partials",
+                    "global_owner_compact_keyed",
                 )
             )
         ):
@@ -124,6 +126,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "global_owner_response_coefficients",
             "global_owner_response_derivatives",
             "global_owner_compact_partials",
+            "global_owner_compact_keyed",
         ) and (
             recipe.moment_method != "merge"
             or recipe.input_direct_levels != 2
@@ -172,6 +175,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "global_owner_response_coefficients",
             "global_owner_response_derivatives",
             "global_owner_compact_partials",
+            "global_owner_compact_keyed",
         ) and (
             context.m > 4
             or plan.input != plan.output

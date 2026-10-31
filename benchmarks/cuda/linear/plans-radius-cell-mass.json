@@ -344,6 +344,24 @@
       }
     },
     {
+      "id": "radius-global-owner-compact-keyed",
+      "plan": {
+        "algorithm_id": "cuda_radius_cell_mass",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "moment_method": "merge",
+          "save_response": true,
+          "input_direct_levels": 2,
+          "output_direct_levels": 2,
+          "schedule": "global_owner_compact_keyed",
+          "output_tile_sites": 32,
+          "native_autograd": true,
+          "native_entry": true
+        },
+        "schema_version": 1
+      }
+    },
+    {
       "id": "radius-native-local-tile-moments",
       "plan": {
         "schema_version": 1,
