@@ -82,7 +82,7 @@ def _definitions(callbacks):
         for name in names:
             if not original_attribute(owner, name):
                 return None
-            fn = inspect.getattr_static(owner, name)
+            fn = inspect.getattr_static(owner, name, None)
             if isinstance(fn, property):
                 fn = fn.fget
             records = original_functions(fn)

@@ -53,3 +53,40 @@ compact は宣言された正の norm floor を使う。Polar / Direct の幅は
 ログは ignored `output/handoff-*.log`、配布物は `output/handoff-dist/` に保全。
 CUDA 回帰の実機結果は、共有 L4 pool の実行・hash 検証付き回収後に追記する。
 性能測定・CUDA Graph の新規資格付け・DB / dispatcher 採用は今回の対象外。
+
+
+## 実機で検出した追加修正
+
+- `9c91fe86` の L4 回帰は **261 passed / 2 failed / 1 skipped**。
+  失敗は二つの native public 3-step ケースで、Chart 単一階層化後も
+  prepared Linear が `ChartSpec.coordinate_shape` を探していたため。
+- `4ec54b8c` で検査対象を `RegularGridChartSpec.coordinate_shape` へ移し、
+  その定義を seal する。検査を削除せず、callback 一覧には実在する関数を要求する。
+  CPU の検査一覧テストと、property 置換時に prepared を拒否するテストを追加した。
+- `8bbfca65` では KernelSpec / KernelState に `center_order="charts"` を記録。
+  shape だけでは区別できない旧中心列順の model / optimizer checkpoint を拒否する。
+  wrapper と native CSTAdamW の双方を検査した。
+- 最終計算ソース `4ec54b8c`: CPU **1,692 passed / 1,854 skipped**、
+  runtime ruff、wheel / sdist build 通過。ローカル Python 3.11.15 / Torch 2.13.0。
+  ログは `output/handoff-cpu-qualified.log` / `output/handoff-build-qualified.log`。
+- 先行 GitHub CI (`9c91fe86`) は Ubuntu / Torch 2.11.0 で
+  **1,687 passed / 1,855 skipped**、宣言検査・build も通過。最終 HEAD の CI は別途確認する。
+
+GPU の準備失敗はコードの数値結果から分ける。初回は Colab Python 3.13 の ensurepip、
+次は job-local ninja の PATH が原因。いずれも raw logs を pool job に保全した。
+システムへの依存追加はせず、job-local target と PATH、事前コンパイルで修正した。
+最終 L4 job は `l4job-7e17660aad874c53a371b68cca96ed4f`、回収結果を追記予定。
+
+
+### prepared の拡張検証
+
+`4ec54b8c` の再実行では、主要な数値・native public 経路に新規 API / callback 一覧検査を
+加えた **267 passed / 1 skipped** の後、追加 prepared-entry 検査の3件が失敗し停止した。
+共通 `original_attribute` は「クラス属性が存在しない」という認証も担っており、その挙動を
+変えると instance 所有属性の資格付けを失って prepared が常に None になるためだった。
+共通の不在認証は元に戻し、`_definitions` の静的取得だけに default=None を指定する。
+存在しない callback は関数として認証せず、instance 属性の不在認証と区別する。
+この境界を CPU テストでも固定した（対象 **24 passed / 12 skipped**）。
+
+macOS の明示的 native-guard 検査は `get_factory()` が None のため実行不能（2 setup errors）。
+これは通常 CPU suite では明示的に skip される経路であり、L4 の Linux 上で実機検証する。

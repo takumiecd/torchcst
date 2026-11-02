@@ -9,7 +9,10 @@ from torchcst.charts.regular_grid import RegularGridChartSpec
 def test_radius_callback_inventory_has_only_real_certified_attributes():
     callbacks = prepared._callbacks()
     assert prepared._definitions(callbacks) is not None
-    assert not original_attribute(ChartSpec, "coordinate_shape")
+    # Absence itself is deliberately certified for instance-owned attributes.
+    assert original_attribute(ChartSpec, "coordinate_shape")
+    # A function inventory still requires a real callback, not absence.
+    assert prepared._definitions(((ChartSpec, ("coordinate_shape",)),)) is None
     assert original_attribute(RegularGridChartSpec, "coordinate_shape")
 
 
