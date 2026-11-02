@@ -308,6 +308,10 @@ For example, `chart_presets.regular_grid((16, 16), spacing=0.1)` is one 2D Chart
 with 256 sites. Pair it with a 128-site output Chart to obtain `[128, 256]`.
 `geometry="flat_torus"` derives each period as grid count times spacing.
 Regular grids generate coordinates from indices without storing a full site table.
+Grid origins/spacings and geometry radii/periods are fixed Python metadata, with
+no Tensor buffers. Moving or casting a model keeps these values at their declared
+precision. Runtime calculations use atom/input Tensor placement; CUDA constants
+are transient AlgorithmState caches, rebuilt after relevant metadata changes.
 
 Explicit points, implicit regular grids and Product charts support Euclidean,
 Sphere or FlatTorus geometry as applicable. Radius cell masses require two 1D
@@ -333,7 +337,9 @@ The wrapper shares parameter groups and state with the base optimizer. Its
 checkpoint also records optimizer type, vector-state keys, parameter names,
 shapes, the mathematical KernelSpec, optimizer field axes, atom row identities
 and policy ownership. Module checkpoints include the atom-owned learning state;
-Algorithm workspace is reconstructed. Restore the model before the optimizer.
+Algorithm workspace is reconstructed. Fixed grid/geometry metadata is stored in
+extra state and must match the recreated model's declaration. Old fixed-buffer
+formats are rejected. Restore the model before the optimizer.
 The new checkpoint formats reject older formats. Move the model to its target device before creating
 the optimizer; rebuild after replacing an atom Parameter.
 

@@ -1,5 +1,6 @@
 """Fused CUDA Polar update with an explicit Torch-compatible contract."""
 
+import math
 from dataclasses import dataclass
 
 import torch
@@ -120,25 +121,10 @@ class FlatTorusPolarUpdateAlgorithm(FusedPolarUpdateAlgorithm):
         flat_pair = (
             context.kernel.composition == "separable"
             and len(context.geometries) == 2
-            and all(
-                type(g) is FlatTorusGeometrySpec and g.intrinsic_dim == 1
-                for g in context.geometries
-            )
+            and all(_scalar_period_supported(g) for g in context.geometries)
         )
         if not flat_pair:
             return SupportResult(("requires two one-dimensional FlatTorus charts",))
-        scalar_metadata = {
-            name: (dtype, device, size)
-            for name, dtype, device, size in context.scalar_metadata
-        }
-        if any(
-            scalar_metadata.get(f"geometry.{axis}.periods")
-            != (context.dtype, context.device, 1)
-            for axis in range(2)
-        ):
-            return SupportResult(
-                ("FlatTorus periods must be live matching FP32 tensors",)
-            )
         # Share only the scalar/dtype/Polar checks; do not widen FUSED itself.
         euclidean = replace(
             context,
@@ -168,7 +154,7 @@ class FlatTorusPolarUpdateAlgorithm(FusedPolarUpdateAlgorithm):
             proposal,
             step_size=inputs.step_size,
             amplitude_weight_decay=inputs.amplitude_weight_decay,
-            periods=tuple(chart.geometry.periods for chart in binding.cst_charts()),
+            periods=_period_tensors(state, proposal),
             capture_launch=capture,
         )
         return proposal.detach()
@@ -197,10 +183,7 @@ class RadiusFlatTorusPolarUpdateAlgorithm(FlatTorusPolarUpdateAlgorithm):
             or context.kernel.update.id != "polar_activity_radius"
             or context.kernel.composition != "separable"
             or len(context.geometries) != 2
-            or not all(
-                type(g) is FlatTorusGeometrySpec and g.intrinsic_dim == 1
-                for g in context.geometries
-            )
+            or not all(_scalar_period_supported(g) for g in context.geometries)
             or len(context.parameter_shape) != 2
             or context.parameter_shape[1] != 4
         ):
@@ -225,14 +208,40 @@ class RadiusFlatTorusPolarUpdateAlgorithm(FlatTorusPolarUpdateAlgorithm):
                 "activity_gain",
                 "dormant_expansion_rate",
                 "radial_regularization",
-                "geometry.0.periods",
-                "geometry.1.periods",
             )
         ):
-            reasons.append(
-                "radius Polar scalars and periods must be live matching FP32 tensors"
-            )
+            reasons.append("radius Polar scalars must be live matching FP32 tensors")
         return SupportResult(tuple(reasons))
+
+
+def _scalar_period_supported(geometry):
+    if type(geometry) is not FlatTorusGeometrySpec or geometry.intrinsic_dim != 1:
+        return False
+    periods = geometry.periods
+    return (
+        type(periods) is tuple
+        and len(periods) == 1
+        and type(periods[0]) in (float, int)
+        and math.isfinite(periods[0])
+        and 2.0**-150 < periods[0] <= torch.finfo(torch.float32).max
+    )
+
+
+def _period_tensors(state, point):
+    """Algorithm-owned device constants; never checkpoint or geometry state."""
+    periods = tuple(chart.geometry.spec.periods for chart in state.binding.cst_charts())
+    key = (periods, point.device, point.dtype)
+    cached = state.buffers.get("geometry_periods")
+    if (
+        cached is None
+        or cached[0] != key
+        or any(type(t) is not torch.Tensor for t in cached[1])
+        or tuple(t._version for t in cached[1]) != cached[2]
+    ):
+        tensors = tuple(point.new_tensor(p) for p in periods)
+        cached = (key, tensors, tuple(t._version for t in tensors))
+        state.buffers["geometry_periods"] = cached
+    return cached[1]
 
 
 # Optional prepared updates may specialize only these original definitions.

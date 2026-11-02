@@ -204,9 +204,18 @@ def _build_guard(
         namespace = attribute(manager, "__dict__", module.__dict__)
         for name in ("spec", "binding", "modules", "named_modules"):
             if name in module.__dict__:
-                identity(
-                    item(namespace, name, module.__dict__[name]), module.__dict__[name]
-                )
+                value = module.__dict__[name]
+                child = item(namespace, name, value)
+                identity(child, value)
+                if (
+                    name == "spec"
+                    and hasattr(type(value), "__dataclass_fields__")
+                    and type(value).__getattribute__ is object.__getattribute__
+                ):
+                    data = value.__dict__
+                    attribute(child, "__dict__", data).add_dict_version_guard(
+                        data, verbose, None
+                    )
             else:
                 namespace.add_dict_contains_guard(False, name, verbose, None)
         for name in ("_buffers", "_modules", "_parameters"):

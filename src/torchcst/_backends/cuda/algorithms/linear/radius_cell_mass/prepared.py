@@ -23,7 +23,8 @@ def _callbacks():
     from torchcst.atoms.optimizer_state import AtomOptimizerState
     from torchcst.atoms.state import AtomState
     from torchcst.charts.base import ChartSpec
-    from torchcst.charts.regular_grid import RegularGridChartSpec
+    from torchcst.charts.regular_grid import RegularGridChartSpec, RegularGridChartState
+    from torchcst.geometry.state import GeometryState
     from torchcst.nn.linear import CSTLinear
     from torchcst.nn.module import CSTModule
     from torchcst.operators import context, execution, metadata
@@ -73,6 +74,8 @@ def _callbacks():
         (ChartPairSpec, ("shape", "charts")),
         (ChartSpec, ("features", "ncs", "num_sites")),
         (RegularGridChartSpec, ("coordinate_shape",)),
+        (RegularGridChartState, ("origin", "spacing", "reference", "declaration")),
+        (GeometryState, ("periods", "radius", "chart_margin", "declaration")),
     )
 
 

@@ -11,12 +11,9 @@ def apply_parameter_update(
     state, output_chart, input_chart, p, displacement, *, step_size
 ):
     proposal = p + displacement
-    exact = (
-        torch.minimum(
-            output_chart.geometry.periods[0].double(),
-            input_chart.geometry.periods[0].double(),
-        )
-        / 2
+    exact = p.new_tensor(
+        min(output_chart.geometry.periods[0], input_chart.geometry.periods[0]) / 2,
+        dtype=torch.float64,
     )
     rounded = exact.to(p)
     ceiling = torch.where(

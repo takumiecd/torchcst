@@ -85,7 +85,7 @@ class ChartState(nn.Module, ABC):
     @property
     @abstractmethod
     def reference(self):
-        """A live coordinate Tensor used for device/dtype metadata."""
+        """Live coordinate Tensor or tensor-free placement hints for initialization."""
 
     @abstractmethod
     def declaration(self) -> ChartSpec:

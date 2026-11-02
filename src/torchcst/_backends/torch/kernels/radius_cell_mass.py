@@ -130,7 +130,7 @@ def initialize(state, output_chart, input_chart, atoms, *, mode):
         (output_chart.declaration(), input_chart.declaration()), state.declaration()
     )
     if atoms == 0:
-        return output_chart.reference.new_empty((0, 4))
+        return torch.empty((0, 4), device=output_chart.device, dtype=output_chart.dtype)
     if type(state.spec.parameterization) is not PhysicalAmpRadiusSpec:
         from .polar_amp_width import initialize as initialize_polar
 
@@ -138,7 +138,7 @@ def initialize(state, output_chart, input_chart, atoms, *, mode):
     low, high = (
         float(state.scalar(name)) for name in ("radius_init_min", "radius_init_max")
     )
-    p = output_chart.reference.new_empty((atoms, 4))
+    p = torch.empty((atoms, 4), device=output_chart.device, dtype=output_chart.dtype)
     p[:, 0].normal_(0, float(state.scalar("amplitude_std")))
     p[:, 1].uniform_(low, high)
     p[:, 2].uniform_(axes[0].origin, axes[0].origin + axes[0].period)

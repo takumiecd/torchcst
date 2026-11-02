@@ -83,6 +83,7 @@ def _callbacks():
     from torchcst._backends.torch.profiles import execution as profiles
     from torchcst.atoms.state import AtomState
     from torchcst.charts.base import ChartState
+    from torchcst.geometry.state import GeometryState
     from torchcst.kernels.state import KernelState
     from torchcst.nn.module import CSTModule
     from torchcst.operators.atom_update import AtomUpdateBinding
@@ -116,6 +117,7 @@ def _callbacks():
         (KernelState, ("scalar", "setting")),
         (cuda_executor, ("fused_update_",)),
         (ChartState, ("center_parameter_dim",)),
+        (GeometryState, ("periods", "radius", "chart_margin", "declaration")),
         (OptimizerStateAdapter, ("transport",)),
         (CSTModule, ("atoms",)),
         (

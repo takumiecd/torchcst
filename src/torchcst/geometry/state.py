@@ -1,12 +1,11 @@
-"""Own scalar/vector tensors of Geometry declarations; no geometric computations."""
+"""Own immutable Geometry metadata; no Tensor buffers or geometric computations."""
 
 from dataclasses import asdict, replace
 
-import torch
 from torch import nn
 
 from torchcst._builtin_callbacks import seal_functions as _seal_functions
-from torchcst._coordinate_state import _floating_dtype, _validate_loaded_state
+from torchcst._coordinate_state import Placement, _validate_loaded_state
 
 from .spec import (
     EuclideanGeometrySpec,
@@ -17,7 +16,7 @@ from .spec import (
 
 
 class GeometryState(nn.Module):
-    """Own fixed scalar/vector tensors, while the immutable spec defines their meaning."""
+    """Own immutable geometry metadata without fixed Tensor buffers."""
 
     def __init__(self, spec: GeometrySpec, *, device=None, dtype=None):
         super().__init__()
@@ -31,45 +30,45 @@ class GeometryState(nn.Module):
             or spec.revision != 1
         ):
             raise ValueError("unsupported geometry declaration or revision")
-        dtype = _floating_dtype(dtype)
+        self._placement = Placement(device=device, dtype=dtype)
         self.register_load_state_dict_post_hook(_validate_loaded_state)
         self.spec = spec
         self.intrinsic_dim = spec.intrinsic_dim
         self.embedding_dim = spec.embedding_dim
         self.center_parameter_dim = spec.center_parameter_dim
         self.representation = getattr(spec, "representation", "ambient")
-        for name in (
-            "radius",
-            "chart_margin",
-            "periods",
-        ):
-            if hasattr(spec, name):
-                self.register_buffer(
-                    name,
-                    torch.tensor(
-                        getattr(spec, name),
-                        device=device,
-                        dtype=dtype or torch.get_default_dtype(),
-                    ),
-                )
+
+    @property
+    def radius(self):
+        return self.spec.radius
+
+    @property
+    def periods(self):
+        return self.spec.periods
+
+    @property
+    def chart_margin(self):
+        return self.spec.chart_margin
+
+    @property
+    def device(self):
+        return self._placement.device
+
+    @property
+    def dtype(self):
+        return self._placement.dtype
+
+    def _apply(self, fn, recurse=True):
+        result = super()._apply(fn, recurse=recurse)
+        self._placement = self._placement.converted(fn)
+        return result
 
     def declaration(self) -> GeometrySpec:
-        """Snapshot current scalar buffers only at a configuration boundary."""
-        return replace(
-            self.spec,
-            **{
-                name: tuple(value.detach().cpu().tolist())
-                if name == "periods"
-                else float(value.detach())
-                for name, value in self.named_buffers(recurse=False)
-            },
-        )
+        """Validate and return fixed metadata at a configuration boundary."""
+        return replace(self.spec)
 
     def get_extra_state(self):
-        values = asdict(self.spec)
-        for name in self._buffers:
-            values.pop(name)
-        return {"format_version": 1, "geometry": values}
+        return {"format_version": 2, "geometry": asdict(self.spec)}
 
     def set_extra_state(self, state):
         if state != self.get_extra_state():

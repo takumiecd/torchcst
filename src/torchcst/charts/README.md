@@ -22,8 +22,10 @@ Factor 内部では Chart の全次元の距離を使い、サイト全体で正
 
 ExplicitChartState は座標 Tensor を持ち、trainable のときだけ Parameter にする。
 ProductChartState は PatternState を所有する。RegularGrid は全サイト表を持たず、
-インデックスから座標を生成する。現時点では origin / spacing と幾何の固定値を
-buffer に保存し、Module.to() と checkpoint に追従する。
+インデックスから座標を生成する。origin / spacing と幾何の固定値は Python metadata として
+保持し、Tensor buffer を持たない。Module.to() は初期化用 device / dtype hints を移すが、
+固定値は丸めない。実行時の距離は atom の中心 Tensor の placement に従う。
+checkpoint は固定 metadata の一致を検証し、異なる配置へ読み替えない。
 
 ## 構築と利用
 

@@ -21,3 +21,17 @@ def test_replaced_coordinate_shape_callback_cannot_be_prepared(monkeypatch):
         RegularGridChartSpec, "coordinate_shape", property(lambda self: (42,))
     )
     assert prepared._definitions(prepared._callbacks()) is None
+
+
+def test_geometry_metadata_accessor_code_changes_cannot_be_prepared(monkeypatch):
+    from torchcst import GeometryState
+    from torchcst._backends.cuda.algorithms.polar_update import optimizer_program
+
+    assert optimizer_program._definitions(optimizer_program._callbacks()) is not None
+
+    def changed(self):
+        return (123.0,)
+
+    monkeypatch.setattr(GeometryState.periods.fget, "__code__", changed.__code__)
+    assert prepared._definitions(prepared._callbacks()) is None
+    assert optimizer_program._definitions(optimizer_program._callbacks()) is None

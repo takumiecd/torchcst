@@ -6,7 +6,7 @@ Antigravity の作業ブランチ `refactor/unify-kernel-chart-api` を引き継
 Step 1/2 は `07f0637a`。未コミットだった Step 3 の差分と `factories.py` は
 ignored `output/antigravity-handoff-20261102-154127/` に元の状態を保存した。
 元の会話タスクリストは `~/.gemini/antigravity/brain/8170020f-e0e3-4b5b-a6ad-84169b2cec5a/task.md`。
-Step 4 の grid / geometry 非 Tensor 化はこの変更には含めない。
+Step 4 の grid / geometry 非 Tensor 化は、この Step 3 checkpoint には含めない。
 
 ## 宣言の契約
 
@@ -90,3 +90,18 @@ GPU の準備失敗はコードの数値結果から分ける。初回は Colab 
 
 macOS の明示的 native-guard 検査は `get_factory()` が None のため実行不能（2 setup errors）。
 これは通常 CPU suite では明示的に skip される経路であり、L4 の Linux 上で実機検証する。
+
+
+## Step 3 最終 L4 結果
+
+計算ソース `cfcd9524` の job `l4job-ad0aa6f7068c49f1a74e5fe00a5cab0e` は
+**433 passed / 1 skipped**。native public 3-step、フック・変更検知を含む prepared Linear / optimizer
+の追加検査も通過した。NVIDIA L4 / driver 580.82.07 / Python 3.13.16 / Torch 2.11.0+cu130 /
+CUDA 13.0 / Triton 3.6.0。source / result archive をローカルで SHA256 再照合済み。
+
+- source archive: `475b26376e2ddb2cdc4ed6f9f592f90364a712482f60c50977d9969cfb9df7c9`
+- result archive: `766039e0d53a9a63af51892274334c9464007add8714915cb1c531197175ec89`
+- raw artifacts: `~/.local/state/colab-l4-pool/jobs/l4job-ad0aa6f7068c49f1a74e5fe00a5cab0e/results/`
+
+この結果を Step 3 の境界とし、ユーザーの追加指示により Step 4 を続行する。
+Step 4 の変更にはこの実機資格をそのまま流用せず、別 snapshot で確認する。

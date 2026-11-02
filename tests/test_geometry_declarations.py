@@ -77,8 +77,12 @@ def test_geometry_snapshot_tracks_matching_checkpoint_load():
     source = _construction.sphere(2, radius=3)
     target = _construction.sphere(2, radius=1)
     before = target.declaration()
-    target.load_state_dict(source.state_dict())
-    assert target.declaration() == source.declaration()
+    with pytest.raises(RuntimeError, match="checkpoint contract"):
+        target.load_state_dict(source.state_dict())
+    assert target.declaration() == before
+    same = _construction.sphere(2, radius=3)
+    same.load_state_dict(source.state_dict())
+    assert same.declaration() == source.declaration()
     assert before.radius == 1
 
 

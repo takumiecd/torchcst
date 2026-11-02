@@ -1,100 +1,84 @@
-# weight軸ごとに宣言する等間隔格子
+# 一つの階層を宣言する等間隔格子
 
-`chart_presets.regular_grid`は、格子の点配置とgeometryを分けて宣言する。
-点数・間隔・原点から必要な座標だけを生成し、全siteの座標表やindex表を保存しない。
-
-このchartを使うprofile-product kernelの今後の最適化は、
-[Hの生成・再利用・寿命を軸にした設計方針](h-lifecycle-kernel-design.ja.md)を参照する。
+`chart_presets.regular_grid` は、一つの Weight 軸に配置するサイトを宣言する。
+全サイトの座標表・index 表・固定 Tensor buffer は持たず、必要な座標だけを生成する。
+Geometry は Euclidean または FlatTorus、点の配置は grid_shape / origin / spacing で定める。
 
 ```python
 import torch
-from torchcst import BandwidthBounds, CSTLinear, TriweightSpec, presets
+from torchcst import BandwidthBounds, CSTLinear, TriweightSpec, kernels
 from torchcst import chart_presets as charts
 
-chart = charts.regular_grid(
-    grid_shape=((16, 16), (128,)),
-    spacing=0.1,
-    geometry="flat_torus",
-)
-assert chart.shape == (256, 128)
-assert chart.geometry.periods == (1.6, 1.6, 12.8)
+out_chart = charts.regular_grid((16, 16), spacing=0.1, geometry="flat_torus")
+in_chart = charts.regular_grid(128, spacing=0.1, geometry="flat_torus")
+assert out_chart.ncs == 256
+assert out_chart.geometry.periods == (1.6, 1.6)
 
-kernel = presets.polar_periodic_profile_product(
-    profiles=(TriweightSpec(),) * 3,
-    amplitude_max=1.0,
-    w_c=0.1,
-    bounds=BandwidthBounds(minimum=0.02, birth=0.1, maximum=0.4, upper_floor=0.05),
+kernel = kernels.product(
+    kernels.l2(TriweightSpec()),
+    coordinates=kernels.polar(
+        amplitude_max=1.0, w_c=0.1,
+        bounds=BandwidthBounds(minimum=0.02, birth=0.4, maximum=0.8, upper_floor=0.2),
+    ),
 )
-model = CSTLinear(chart=chart, atoms=8, kernel=kernel, backend="factored")
+model = CSTLinear(charts=(out_chart, in_chart), atoms=8, kernel=kernel, backend="factored")
 y = model(torch.randn(4, 128))
 assert y.shape == (4, 256)
+assert not tuple(model.output_chart.buffers())
 ```
 
-## 格子とweightの対応
+## サイトと Weight 軸の対応
 
-`grid_shape`の各tupleがweightの一軸に対応する。
-`((16,16),(128,))`なら、weight第0軸は2次元格子の256点、第1軸は1次元の128点。
-LinearではWは`[out,in]`なので、この例の出力側は2次元、入力側は1次元である。
-入力側を2次元にした同じweight shapeには`((256,),(16,8))`を使う。
+D 次元の一つの Chart は `grid_shape=(n_0,...,n_{D-1})` とサイト数
 
 \[
-N_r=\prod_{d\in G_r} n_d,\qquad
-\mathrm{shape}=(N_0,\ldots,N_{R-1}),\qquad D=\sum_r |G_r|.
+N=\prod_{d=0}^{D-1}n_d,\qquad x_d(i_d)=o_d+i_d h_d,\quad 0\le i_d<n_d
 \]
 
-weight shapeと次元数を重複して指定しない。`output_dims`も不要。
-座標の順序は各tupleを先頭から連結した順序で、最後の座標軸が最速。
-各weight軸内の格子も最後の座標軸が最速のrow-majorでflattenする。
-Chart単体は任意の正の次元数・weight軸数を宣言できる。
-`CSTLinear`とprofile-product実行にはweight軸が二つ必要。
+を持つ。最後の座標軸を最速とする row-major 順に平坦化する。
+`charts=(out_chart,in_chart)` なら Weight は `[out_chart.ncs,in_chart.ncs]`。
+多次元 Chart も一つの階層であり、旧二重タプルは受け付けない。
 
-## spacingとgeometry
+`kernels.product` は各 Chart の全次元の距離から一つの Factor を作り、その積をとる。
+L2 は Chart 内の全サイトで正規化する。座標軸ごとの Profile 積ではない。
+`kernels.radial` は同じ Chart ペアの無次元距離の二乗を加算し、一度 Profile を評価する。
+その L2 は Weight 全サイトを対象とする。詳細は [Kernel API](../README.md#compose-a-kernel)。
 
-chartの間隔の名前は`spacing`に統一する。
-scalarはD座標軸すべてへbroadcastし、tuple/listはD個の値を指定する。
-`spacing`は有限の正値、既定値は1.0。
-`origin`もscalarかD個の値で、既定値は0.0。originは格子の最初の点でありatomの中心ではない。
+## 間隔と幾何
 
-\[
-t_d(k)=o_d+k h_d,\qquad 0\le k<n_d.
-\]
+`spacing` は有限の正値で、scalar は D 座標へ broadcast する。
+`origin` も scalar または D 個の値で、最初の観測点を表す。atom の中心とは別の値。
+`"flat_torus"` は各周期を `L_d=n_d h_d` として導出し、終端点を重複せず一周する。
+具体的な Euclidean / FlatTorus GeometrySpec も受け付け、次元数の一致を検証する。
+具体的に渡した周期は上書きしない。
 
-`geometry`を省略するか`"euclidean"`にするとD次元Euclidean。
-`"flat_torus"`にすると各周期を`L_d=n_d h_d`から導出し、終端点を重複せず一周する。
-同じscalar spacingでも点数が異なる軸ではperiodが異なる。
-spacingは隣接点の間隔、geometryのperiodsは一周の長さであり、意味を混同しない。
+FlatTorus は最短周期差、Euclidean は通常の距離を使う。Sphere には別の座標写像が
+必要なので RegularGrid は受け付けない。Sphere のサイトは Explicit / Product Chart で宣言する。
+半径セル積分 `cell_mass` は一周のサイトと周期が整合する二つの 1D FlatTorus Grid に限定する。
 
-具体的な`EuclideanGeometrySpec`または`FlatTorusGeometrySpec`も指定でき、
-次元数がDと一致することを検証する。具体geometryのperiodsは上書きしない。
-その場合、格子spacingとgeometryのperiodsは独立した指定で、一周の全格子とは限らない。
-このCartesian配置に対するTorchのprofile-productはそのまま正規化・距離を計算する。
-Sphereや埋め込みTorusには異なる座標写像が必要なので、このchartでは受け付けない。
+## 保存・placement・復元
 
-geometryの選択はchartの構造から分離する。Euclideanには
-`presets.polar_profile_product`〈revision 1〉、FlatTorusには
-`presets.polar_periodic_profile_product`〈revision 3〉を使う。
-profileはD個必要。距離の異なるrevisionを取り違えた組み合わせは拒否する。
-FlatTorusの中心更新は周期でwrapし、Euclideanの中心更新は既存のEuclidean則を使う。
+origin / spacing / periods は Python の tuple、半径などは Python scalar。
+保存量は O(D) で、Tensor buffer はゼロ。これは固定配置だけの保存量であり、
+学習 step の GPU ピークメモリを表すものではない。
 
-## 正規化と状態
+固定値を `.half()` / `.float()` / `.double()` で量子化しない。初期化前は Tensor を保持しない
+placement hints を使い、実行時の距離計算は atom の中心 Tensor の device / dtype に従う。
+座標を低精度に出力した場合の隣接点の数値的な識別は保証しない。指定 dtype で座標が
+非有限になる配置は、座標生成時に拒否する。
 
-座標ごとのprofile積を使い、full-domain離散L2 normの全積の後にfloorを一度だけ適用する。
-Cartesian格子なので因数分解しても同じWを表す。軸ごとのfloorへ置き換えない。
-既存Polarの共有幅、task-width stop-gradient、振幅・中心の微分とactivity更新を維持する。
+CUDA 更新に必要な周期 Tensor は AlgorithmState の一時キャッシュに置く。
+周期 metadata、atom placement、定数 version が変われば再構築し、checkpoint には含めない。
+固定値を変える場合は新しい検証済み Spec に置き換え、Grid の間隔と Geometry の周期を整合させる。
 
-Stateの点配置bufferはorigin/spacingの計2D個。FlatTorusではgeometryがperiodsのD個を持つ。
-座標軸vectorは必要時に生成する。O(D)は固定配置の保存量であり、学習全体のメモリではない。
-低精度では隣接点が丸められるため、すべての点の数値的な識別は保証しない。
+checkpoint の extra state は固定値と配置を保存し、復元先の宣言との一致を検証する。
+shape が同じでも異なる grid_shape / origin / spacing / geometry は拒否する。
+旧 Tensor-buffer 形式の loader や読み替えは置かない。
 
-origin/spacing/periodsはdevice・dtype・checkpointに追従する。
-固定配置の値を変更する場合はeagerの設定境界で行う。checkpointは具体型と格子の対応を検査し、
-weight shapeが同じでも異なるgrid_shapeは拒否する。非有限origin、非正spacing/periodsを拒否する。
+## 検証
 
-## 検証と実行範囲
-
-`tests/test_regular_grid.py`でscalar/軸別指定、1次元から4次元の座標、
-非対称のweight軸対応、独立全格子oracleによるY/dX/全atom勾配、空支持・singleton・
-広い支持・全積floor、checkpoint、dtype、geometryに応じた公開optimizer更新を検証する。
-Torchのfactored/materialized/autoを接続する。
-既存`PeriodicGridChartSpec`とそのcheckpoint・研究CUDA経路は維持する。
-新RegularGridChart向けのCUDA Algorithm拡張と速度・peak memoryの計測は後続作業である。
+`test_regular_grid.py` は配置・境界・低精度・checkpoint を検証する。
+`test_static_coordinate_metadata.py` は Tensor を保存しないこと、dtype 往復での固定値保存、
+実際の atom placement による距離と勾配、周期キャッシュ更新を独立した値と比較する。
+`test_kernel_composition.py` は非対称の多次元 Chart に対する Y / dX / 全 atom 勾配を検証する。
+CUDA の数値・optimizer・prepared guard は実機で別途確認し、CPU skip を実機資格とは扱わない。

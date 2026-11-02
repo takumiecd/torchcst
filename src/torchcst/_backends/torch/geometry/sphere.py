@@ -11,12 +11,12 @@ from .base import _validate_atoms, _validate_center_structure, _validate_structu
 
 def validate_points(self, points: Tensor, *, name: str = "points") -> None:
     base.validate_points(self, points, name=name)
-    radius = self.radius.to(points)
+    radius = self.radius
     norms = torch.linalg.vector_norm(points, dim=-1)
     # Charts may be constructed in float32 and promoted later. Keep a
     # representation-level tolerance instead of tightening it after a
     # dtype conversion that cannot recover the original precision.
-    tolerance = radius.clamp_min(1) * 1e-5
+    tolerance = max(radius, 1) * 1e-5
     if not bool(torch.all((norms - radius).abs() <= tolerance)):
         raise ValueError(f"{name} must lie on the radius-{float(self.radius):g} sphere")
 
@@ -25,7 +25,7 @@ def _normalize(self, points: Tensor) -> Tensor:
     _validate_structure(self, points, name="points")
     norm = torch.linalg.vector_norm(points, dim=-1, keepdim=True)
     tiny = torch.finfo(points.dtype).tiny
-    return points * (self.radius.to(points) / norm.clamp_min(tiny))
+    return points * (self.radius / norm.clamp_min(tiny))
 
 
 def lift_tangent_sites(self, coordinates: Tensor) -> Tensor:
@@ -42,13 +42,11 @@ def lift_tangent_sites(self, coordinates: Tensor) -> Tensor:
         or not coordinates.is_floating_point()
     ):
         raise ValueError(f"coordinates must have shape [sites, {self.intrinsic_dim}]")
-    radius = self.radius.to(coordinates)
-    denominator = torch.sqrt(
-        radius.square() + coordinates.square().sum(-1, keepdim=True)
-    )
+    radius = self.radius
+    denominator = torch.sqrt(radius**2 + coordinates.square().sum(-1, keepdim=True))
     return (
         torch.cat(
-            (radius.square().expand_as(denominator), radius * coordinates), dim=-1
+            (torch.full_like(denominator, radius**2), radius * coordinates), dim=-1
         )
         / denominator
     )
@@ -58,7 +56,7 @@ def lift_chart_coordinates(self, coordinates: Tensor) -> Tensor:
     return lift_tangent_sites(self, coordinates)
 
 
-def max_parameter_radius(self) -> Tensor:
+def max_parameter_radius(self) -> float:
     """Largest intrinsic coordinate radius, excluding the antipodal cap."""
 
     return self.radius * (torch.pi - self.chart_margin)
@@ -68,24 +66,24 @@ def sample_sites(self, count: int) -> Tensor:
     """Sample ambient observation sites uniformly from the sphere."""
 
     _validate_atoms(count)
-    samples = torch.randn(count, self.embedding_dim, device=self.radius.device)
-    return _normalize(self, samples.to(dtype=self.radius.dtype))
+    samples = torch.randn(count, self.embedding_dim, device=self.device)
+    return _normalize(self, samples.to(dtype=self.dtype))
 
 
 def validate_centers(self, centers: Tensor, *, name: str = "centers") -> None:
     base.validate_centers(self, centers, name=name)
     if self.representation == "ambient":
-        radius = self.radius.to(centers)
+        radius = self.radius
         norms = torch.linalg.vector_norm(centers, dim=-1)
-        tolerance = radius.clamp_min(1) * 1e-5
+        tolerance = max(radius, 1) * 1e-5
         if not bool(torch.all((norms - radius).abs() <= tolerance)):
             raise ValueError(
                 f"{name} must lie on the radius-{float(self.radius):g} sphere"
             )
         return
     norms = torch.linalg.vector_norm(centers, dim=-1)
-    limit = max_parameter_radius(self).to(centers)
-    tolerance = limit.clamp_min(1) * 1e-5
+    limit = max_parameter_radius(self)
+    tolerance = max(limit, 1) * 1e-5
     if not bool(torch.all(norms <= limit + tolerance)):
         raise ValueError(f"{name} must lie inside the intrinsic sphere chart")
 
@@ -94,7 +92,7 @@ def decode_centers(self, centers: Tensor) -> Tensor:
     _validate_center_structure(self, centers, name="centers")
     if self.representation == "ambient":
         return _normalize(self, centers)
-    radius = self.radius.to(centers)
+    radius = self.radius
     radial = torch.linalg.vector_norm(centers, dim=-1, keepdim=True)
     theta = radial / radius
     scale = torch.sinc(theta / torch.pi)
@@ -108,7 +106,7 @@ def encode_centers(self, points: Tensor) -> Tensor:
     points = _normalize(self, points)
     if self.representation == "ambient":
         return points
-    radius = self.radius.to(points)
+    radius = self.radius
     cosine = (points[..., :1] / radius).clamp(-1.0, 1.0)
     theta = torch.acos(cosine)
     tail = points[..., 1:]
@@ -139,7 +137,7 @@ def center_offsets(self, sites: Tensor, centers: Tensor) -> Tensor:
 
     # Pull the ambient chord-distance derivative back through the sphere
     # exponential map. This is J_decode(center)^T @ (site - decoded).
-    radius = self.radius.to(centers)
+    radius = self.radius
     radial = torch.linalg.vector_norm(centers, dim=-1, keepdim=True)
     theta = radial / radius
     scale = torch.sinc(theta / torch.pi)
@@ -148,7 +146,7 @@ def center_offsets(self, sites: Tensor, centers: Tensor) -> Tensor:
     series = -1.0 / 3.0 + theta_square / 30.0 - theta_square.square() / 840.0
     curvature = torch.where(
         theta.abs() < 1e-3,
-        series / radius.square(),
+        series / radius**2,
         (cosine - scale) / radial.square().clamp_min(torch.finfo(centers.dtype).tiny),
     )
     tangent_offset = offsets[..., 1:]
@@ -189,7 +187,7 @@ def project_tangent(self, points: Tensor, vectors: Tensor) -> Tensor:
     points = _normalize(self, points)
     _validate_structure(self, vectors, name="vectors")
     radial = (vectors * points).sum(dim=-1, keepdim=True)
-    return vectors - radial * points / self.radius.to(points).square()
+    return vectors - radial * points / self.radius**2
 
 
 def retract(self, points: Tensor, displacement: Tensor) -> Tensor:
@@ -217,6 +215,6 @@ def transport(self, old: Tensor, new: Tensor, vectors: Tensor) -> Tensor:
 def _clamp_intrinsic(self, centers: Tensor) -> Tensor:
     _validate_center_structure(self, centers, name="centers")
     norm = torch.linalg.vector_norm(centers, dim=-1, keepdim=True)
-    limit = max_parameter_radius(self).to(centers)
+    limit = max_parameter_radius(self)
     scale = (limit / norm.clamp_min(torch.finfo(centers.dtype).tiny)).clamp_max(1)
     return centers * scale

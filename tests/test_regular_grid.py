@@ -61,9 +61,9 @@ def test_broadcast_indexing_ncs_and_bounded_storage(periodic):
     )
     ids = torch.tensor([0, 1, 4, 11, 12, 23, 4])
     torch.testing.assert_close(chart_ops.positions(state, ids), sites[ids].double())
-    assert sum(v.numel() for v in state.buffers()) == (9 if periodic else 6)
+    assert sum(v.numel() for v in state.buffers()) == 0
     large = compile_chart(charts.regular_grid((10000, 20000, 30000), spacing=0.5))
-    assert sum(v.numel() for v in large.buffers()) == 6
+    assert sum(v.numel() for v in large.buffers()) == 0
     assert chart_ops.positions(state, torch.empty(0, dtype=torch.long)).shape == (0, 3)
     if periodic:
         assert spec.geometry.periods == (1.0, 3.0, 8.0)
@@ -126,8 +126,9 @@ def test_scalar_spacing_is_equivalent_to_per_coordinate_values():
 
 def test_integer_origin_uses_floating_state_and_large_index_uniform_bounds():
     state = compile_chart(charts.regular_grid((3, 4), origin=0))
-    assert state.origin.is_floating_point()
-    assert state.spacing.is_floating_point()
+    assert state.dtype.is_floating_point
+    assert state.origin == (0.0, 0.0)
+    assert state.spacing == (1.0, 1.0)
     large = compile_chart(
         charts.regular_grid((100000, 3), spacing=0.0002), dtype=torch.float16
     )
@@ -159,12 +160,16 @@ def test_checkpoint_layout_mismatch_and_live_buffer_validation(periodic):
         ).load_state_dict(saved)
     for name, bad in (("spacing", 0.0), ("origin", float("nan"))):
         broken = copy.deepcopy(saved)
-        broken[name][0] = bad
+        broken["_extra_state"][name] = (bad, *broken["_extra_state"][name][1:])
         with pytest.raises(RuntimeError):
             restored.load_state_dict(broken)
-    for settings in ({"spacing": 1e-20}, {"origin": 1e20}):
-        with pytest.raises(ValueError):
-            compile_chart(charts.regular_grid((3, 4), **settings), dtype=torch.float16)
+    tiny = compile_chart(
+        charts.regular_grid((3, 4), spacing=1e-20), dtype=torch.float16
+    )
+    assert tiny.spacing == (1e-20, 1e-20)  # Metadata is not rounded by placement.
+    huge = compile_chart(charts.regular_grid((3, 4), origin=1e20), dtype=torch.float16)
+    with pytest.raises(ValueError, match="not finite"):
+        chart_ops.positions(huge, torch.tensor([0]))
 
 
 def test_public_optimizer_wraps_periodic_centers_and_preserves_euclidean_centers():

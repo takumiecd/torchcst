@@ -3,9 +3,7 @@
 import math
 from dataclasses import dataclass, field, replace
 
-import torch
-
-from torchcst._coordinate_state import _floating_dtype
+from torchcst._coordinate_state import Placement
 from torchcst._validation import _shape
 from torchcst.geometry.spec import EuclideanGeometrySpec, FlatTorusGeometrySpec
 
@@ -52,38 +50,44 @@ class RegularGridChartSpec(ChartSpec):
 
 
 class RegularGridChartState(ChartState):
-    """Own O(D) origins/spacings, with no site coordinate or index table."""
+    """Own O(D) immutable grid metadata, without Tensor buffers or site tables."""
 
     spec_type = RegularGridChartSpec
 
     def __init__(self, spec, *, device=None, dtype=None):
-        dtype = _floating_dtype(dtype)
-        super().__init__(spec, device=device, dtype=dtype)
+        self._placement = Placement(device=device, dtype=dtype)
+        super().__init__(spec, device=device, dtype=self._placement.dtype)
         self.grid_shape = spec.grid_shape
         self.coordinate_shape = spec.coordinate_shape
-        self.register_buffer(
-            "origin", torch.tensor(spec.origin, device=device, dtype=dtype)
-        )
-        self.register_buffer(
-            "spacing",
-            torch.tensor(spec.spacing, device=device, dtype=self.origin.dtype),
-        )
-        self.declaration()
+
+    @property
+    def origin(self):
+        return self.spec.origin
+
+    @property
+    def spacing(self):
+        return self.spec.spacing
 
     @property
     def reference(self):
-        return self.origin
+        return self._placement
+
+    def _apply(self, fn, recurse=True):
+        result = super()._apply(fn, recurse=recurse)
+        self._placement = self._placement.converted(fn)
+        return result
 
     def declaration(self):
-        return replace(
-            self.spec,
-            geometry=self.geometry.declaration(),
-            origin=tuple(self.origin.detach().cpu().tolist()),
-            spacing=tuple(self.spacing.detach().cpu().tolist()),
-        )
+        return replace(self.spec, geometry=self.geometry.declaration())
 
     def get_extra_state(self):
-        return {**super().get_extra_state(), "grid_shape": self.grid_shape}
+        return {
+            **super().get_extra_state(),
+            "format_version": 3,
+            "grid_shape": self.grid_shape,
+            "origin": self.spec.origin,
+            "spacing": self.spec.spacing,
+        }
 
 
 from torchcst._builtin_callbacks import seal_functions as _seal_functions

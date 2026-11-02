@@ -19,7 +19,7 @@ Inputs・Context・Registry・Dispatcherの境界は
 torchcst/
   geometry/
     spec.py / presets.py       空間・metric の不変な宣言と構築
-    state.py                   GeometryState の scalar/vector と checkpoint
+    state.py                   GeometryState の固定 metadata と checkpoint
   patterns/
     spec.py / presets.py       軸の Line / Grid / Points 宣言と構築
     state.py                   PatternState の bounded な Tensor 状態
@@ -203,3 +203,15 @@ JSON text はキーをソートして決定的に出力する。
 [Selector の契約と完全一致 artifact](dispatch/README.md)を参照。
 full / window の専用選択 API は廃止し、両者を通常の Algorithm 候補にする。
 選択器は `CSTLinear(selector=...)` に渡し、数学的宣言・checkpoint から分離する。
+
+
+## 固定グリッド・幾何 metadata
+
+RegularGrid と Geometry の固定値は Tensor buffer にせず immutable な Spec に置く。
+初期化前の placement hints は Tensor を保持せず、学習開始後の実行 placement は atom / 入力が
+定める。metadata の値は dtype 変換で量子化しない。checkpoint は全固定値を保存・照合する。
+
+CUDA Polar 更新が必要な周期 Tensor は AlgorithmState.buffers の一時キャッシュに置く。
+period tuple・Parameter device/dtype・定数の version が変われば再構築する。
+compiled launch は定数 version も確認し、変更された定数を使い続けない。
+固定状態の署名と native guard は Spec の値・辞書の変更も検出する。

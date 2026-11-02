@@ -145,7 +145,7 @@ def test_radius_invalid_changes_reject_before_optimizer_mutation(fault):
     if fault == "gradient":
         layer.atoms.p.grad[0, 0] = float("nan")
     elif fault == "period":
-        layer.input_chart.geometry.periods.fill_(0)
+        object.__setattr__(layer.input_chart.geometry.spec, "periods", (0.0,))
     else:
         layer.kernel.scalar("radius_min_input").fill_(-1)
     with pytest.raises((ValueError, FloatingPointError)):
@@ -192,12 +192,17 @@ def test_radius_layout_cache_tracks_fixed_state_but_not_atom_writes(monkeypatch)
 
     # Preserve valid chart spacing/period agreement while changing live metadata.
     for chart in {id(chart): chart for chart in charts}.values():
-        chart.geometry.periods.mul_(0.5)
-        chart.spacing.mul_(0.5)
+        geometry = replace(
+            chart.geometry.spec, periods=tuple(v * 0.5 for v in chart.geometry.periods)
+        )
+        chart.geometry.spec = geometry
+        chart.spec = replace(
+            chart.spec, geometry=geometry, spacing=tuple(v * 0.5 for v in chart.spacing)
+        )
     validate()
     assert len(calls) == 3
     certified = layer.kernel.__dict__["_radius_layout_signature"]
-    layer.input_chart.geometry.periods.fill_(0)
+    object.__setattr__(layer.input_chart.geometry.spec, "periods", (0.0,))
     with pytest.raises(ValueError):
         validate()
     assert layer.kernel.__dict__["_radius_layout_signature"] == certified

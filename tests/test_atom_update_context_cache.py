@@ -104,7 +104,7 @@ def test_warm_context_does_not_hide_configuration_changes(mutation):
     if mutation == "invalid_kernel":
         model.kernel.scalar("radius_min_input").fill_(-1)
     elif mutation == "invalid_geometry":
-        model.input_chart.geometry.periods.fill_(0)
+        object.__setattr__(model.input_chart.geometry.spec, "periods", (0.0,))
     elif mutation == "valid_value":
         model.kernel.scalar("activity_gain").mul_(0.9)
     else:
