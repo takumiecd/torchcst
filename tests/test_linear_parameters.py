@@ -13,7 +13,7 @@ from torchcst import (
     CSTLinear,
     CSTOptimizer,
     chart_presets,
-    presets,
+    kernels,
 )
 from torchcst import geometry_presets as space_presets
 from torchcst import pattern_presets as site_presets
@@ -21,7 +21,7 @@ from torchcst import pattern_presets as site_presets
 
 def layer(atoms, **kwargs):
     return CSTLinear(
-        chart=chart(), atoms=atoms, kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT, **kwargs
+        chart=chart(), atoms=atoms, kernel=kernels.NORMALIZED_RADIAL_TRIWEIGHT, **kwargs
     )
 
 
@@ -79,9 +79,9 @@ def test_reuses_frozen_parameter_without_enabling_gradients():
 
 
 def test_existing_atoms_can_be_used_by_ordinary_chart_pair_kernel():
-    kernel = presets.separable(
-        input_profile=presets.fixed_profile(presets.GaussianSpec(), 1.0),
-        output_profile=presets.fixed_profile(presets.GaussianSpec(), 1.0),
+    kernel = kernels.product(
+        input_factor=kernels.l2(kernels.GaussianSpec(), 1.0),
+        output_factor=kernels.l2(kernels.GaussianSpec(), 1.0),
     )
     source = CSTLinear(
         chart_presets.linspace(3, spacing=1.0),
@@ -115,7 +115,7 @@ def test_product_and_strip_share_the_same_mathematical_operation():
     product = ProductChartSpec(geometry=spec.geometry, shape=spec.shape, axes=spec.axes)
     # Storage tiling is not a separate Linear operation.
     model = CSTLinear(
-        chart=product, atoms=mixed(), kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT
+        chart=product, atoms=mixed(), kernel=kernels.NORMALIZED_RADIAL_TRIWEIGHT
     )
     assert model._resolved_backend() == "normalized"
     x = torch.randn(2, 16, dtype=torch.float64)
@@ -164,7 +164,7 @@ def test_non_regular_layout_uses_general_reference():
             geometry=space_presets.euclidean(2),
         ),
         atoms=torch.tensor([[0.5, 0.0, 0.2, 0.3]]),
-        kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT,
+        kernel=kernels.NORMALIZED_RADIAL_TRIWEIGHT,
     )
     assert model._resolved_backend() == "materialized"
     x = torch.randn(2, 4)
@@ -207,7 +207,7 @@ def test_strided_shared_parameter_keeps_identity_and_correct_cuda_gradients():
         model = CSTLinear(
             chart=chart(dtype=torch.float32, device="cuda"),
             atoms=p,
-            kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT,
+            kernel=kernels.NORMALIZED_RADIAL_TRIWEIGHT,
         )
         assert model.atoms.p is p and not p.is_contiguous()
         x = torch.randn(2, 16, device="cuda", requires_grad=True)
@@ -244,7 +244,7 @@ def test_metadata_changes_require_rebinding_outside_graph_capture():
         model = CSTLinear(
             chart=chart(dtype=torch.float32, device="cuda"),
             atoms=mixed(torch.float32, "cuda"),
-            kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT,
+            kernel=kernels.NORMALIZED_RADIAL_TRIWEIGHT,
         )
         x = torch.ones(2, 16, device="cuda")
         # No CUDA work is necessary to reject a stale metadata binding.
@@ -273,7 +273,7 @@ def test_cuda_without_matching_algorithm_uses_general_reference(dtype, spacing):
     model = CSTLinear(
         chart=state,
         atoms=mixed(dtype, "cuda"),
-        kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT,
+        kernel=kernels.NORMALIZED_RADIAL_TRIWEIGHT,
     )
     assert model._resolved_backend() == "materialized"
     x = torch.randn(2, 16, device="cuda", dtype=dtype, requires_grad=True)

@@ -6,7 +6,7 @@ from .base import ProfileSpec
 
 
 @dataclass(frozen=True, kw_only=True)
-class ChebyshevRadiusSpec(ProfileSpec):
+class ChebyshevSpec(ProfileSpec):
     """Chebyshev-square density with a direct physical support radius.
 
     The radius sets beta=sec(pi*R/P), without a sigma concentration floor.
@@ -14,7 +14,7 @@ class ChebyshevRadiusSpec(ProfileSpec):
     """
 
     modes: int = 8
-    id: str = field(default="chebyshev_radius", init=False)
+    id: str = field(default="chebyshev", init=False)
 
     def __post_init__(self):
         super().__post_init__()

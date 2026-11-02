@@ -50,7 +50,9 @@ def initialize(
     if not isinstance(input_chart, ChartState):
         raise TypeError("input_chart must be a Chart")
     output_p = _profile.initialize(state.profiles[0], output_chart, atoms, mode=mode)
-    input_p = _profile.initialize(state.profiles[1], input_chart, atoms, mode="uniform")
+    input_p = _profile.initialize(
+        state.profiles[-1], input_chart, atoms, mode="uniform"
+    )
 
     amplitude = output_p.new_empty(atoms)
     amplitude.normal_(mean=0.0, std=0.1 / math.sqrt(atoms))
@@ -98,7 +100,7 @@ def factors(
         )
     with cst_span("cst.kernel.input_profile"):
         phi_input = _profile.evaluate_with_precision(
-            state.profiles[1], input_chart, input_p, precision_input
+            state.profiles[-1], input_chart, input_p, precision_input
         )
     with cst_span("cst.kernel.amplitude_scale"):
         return phi_input, phi_output * amplitude.unsqueeze(0)

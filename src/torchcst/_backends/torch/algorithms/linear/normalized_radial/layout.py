@@ -6,7 +6,7 @@ from functools import cache
 
 from torchcst.charts import ProductChartSpec
 from torchcst.geometry.spec import EuclideanGeometrySpec
-from torchcst.kernels.presets import NORMALIZED_RADIAL_TRIWEIGHT
+from torchcst.kernels.factories import NORMALIZED_RADIAL_TRIWEIGHT
 from torchcst.operators.spec import OperatorSpec, SingleChartSpec
 from torchcst.patterns import GridPatternSpec, LinePatternSpec
 

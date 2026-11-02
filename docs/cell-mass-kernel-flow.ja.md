@@ -32,7 +32,7 @@ Graph、autocast、高階微分、自動dispatch、N1024より大きい形状の
 以下の初版・候補・時系列の記述は、それぞれの段階の制約として読む。
 
 **半径APIの初版：** revision7の半径宣言とCPU/Torch参照を追加した。
-`RadiusBounds`・`ChebyshevRadiusSpec`・物理／Polar用preset・`CSTModule.support_radii()`を公開する。
+`RadiusBounds`・`ChebyshevSpec`・物理／Polar用preset・`CSTModule.support_radii()`を公開する。
 旧σ版のAPI・checkpointは維持し、半径版との相互読み替えを拒否する。
 新CUDAの初版は以下の別経路へ実装する。融合・保存量削減・速度／メモリの目標達成は別の段階とする。
 

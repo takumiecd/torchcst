@@ -16,22 +16,20 @@ from torchcst import (
     PatternState,
     TriweightSpec,
     compile_chart,
+    kernels,
 )
 from torchcst import (
     chart_presets as layout,
 )
 from torchcst import geometry_presets as space_presets
 from torchcst import pattern_presets as site_presets
-from torchcst import (
-    presets as kernels,
-)
 from torchcst._backends.torch.charts import execution as charts
 from torchcst._backends.torch.geometry import execution as geometry
 from torchcst._backends.torch.patterns import execution as patterns
 
 
 def radial():
-    return kernels.radial(kernels.fixed_profile(TriweightSpec(), sigma=2))
+    return kernels.radial(kernels.l2(TriweightSpec(), sigma=2))
 
 
 def matrix(**settings):
@@ -83,9 +81,9 @@ def test_single_chart_declaration_constructs_an_operator():
 def test_pair_declarations_construct_a_conv_and_linear_with_lazy_axes():
     inp = layout.product((4,), (site_presets.line(4, spacing=0.2),))
     out = layout.product((3,), (site_presets.line(3, spacing=0.3),))
-    kernel = kernels.separable(
-        input_profile=kernels.fixed_profile(TriweightSpec(), sigma=2),
-        output_profile=kernels.fixed_profile(TriweightSpec(), sigma=2),
+    kernel = kernels.product(
+        output_factor=kernels.l2(TriweightSpec(), sigma=2),
+        input_factor=kernels.l2(TriweightSpec(), sigma=2),
     )
     linear = CSTLinear(out, inp, atoms=2, kernel=kernel)
     conv = CSTConv2d(
@@ -104,9 +102,9 @@ def test_pair_declarations_construct_a_conv_and_linear_with_lazy_axes():
 def test_trainable_explicit_coordinates_are_owned_and_visible_to_autograd():
     spec = layout.points(((0.0,), (0.4,), (0.9,)), trainable=True)
     frozen = layout.points(((0.0,), (0.6,)))
-    kernel = kernels.separable(
-        input_profile=kernels.fixed_profile(TriweightSpec(), sigma=2),
-        output_profile=kernels.fixed_profile(TriweightSpec(), sigma=2),
+    kernel = kernels.product(
+        output_factor=kernels.l2(TriweightSpec(), sigma=2),
+        input_factor=kernels.l2(TriweightSpec(), sigma=2),
     )
     layer = CSTLinear(frozen, spec, atoms=2, kernel=kernel)
     assert isinstance(layer.input_chart.coordinates, torch.nn.Parameter)

@@ -96,9 +96,12 @@ def test_chart_pair_preserves_input_output_roles():
 
 def test_incompatible_layouts_fail_instead_of_reinterpreting_kernel():
     single, pair = (make_single().declaration(), make_pair().declaration())
-    for spec, layout in ((single, pair.layout), (pair, single.layout)):
-        with pytest.raises(ValueError, match="composition"):
-            replace(spec, layout=layout)
+    with pytest.raises(ValueError, match="composition"):
+        replace(pair, layout=single.layout)
+    # Radial evaluation now accepts an explicit pair; it remains radial.
+    radial_pair = replace(single, layout=pair.layout)
+    assert radial_pair.kernel.composition == "radial"
+    assert radial_pair.shape == pair.shape
     with pytest.raises(ValueError, match="revision"):
         replace(single, revision=2)
     with pytest.raises(TypeError, match="layout"):
@@ -219,7 +222,7 @@ def test_operator_rebinds_after_replacing_module_state():
 
 
 def test_normalized_strip_is_a_distinct_single_chart_contract():
-    from torchcst import CSTLinear, presets
+    from torchcst import CSTLinear, kernels
     from torchcst._backends.torch.algorithms.linear.normalized_radial.layout import (
         NormalizedStripGeometry,
     )
@@ -234,7 +237,7 @@ def test_normalized_strip_is_a_distinct_single_chart_contract():
     model = CSTLinear(
         chart=chart,
         atoms=torch.tensor([[0.2, 0.0, 1.0, 0.2, 0.3]]),
-        kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT,
+        kernel=kernels.NORMALIZED_RADIAL_TRIWEIGHT,
     )
     spec = model.declaration()
     assert isinstance(spec.layout, SingleChartSpec)

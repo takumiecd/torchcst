@@ -3,26 +3,28 @@
 import pytest
 import torch
 
-from torchcst import chart_presets, compile_chart
+from torchcst import chart_presets, compile_chart, kernels
 from torchcst._backends.cuda.algorithms.polar_update.executor import fused_update_
 from torchcst._backends.torch.algorithms.polar_update.executor import graph_update
-from torchcst.kernels import BandwidthBounds, TriweightSpec, presets
+from torchcst.kernels import BandwidthBounds, TriweightSpec
 from torchcst.kernels.state import KernelState
 
 
 def _polar_state(*, mode: str = "time_energy") -> KernelState:
     return KernelState(
-        presets.polar_activity(
-            amplitude_max=2.0,
-            input_bounds=BandwidthBounds(
-                minimum=0.25, birth=1, maximum=16, upper_floor=1
+        kernels.product(
+            kernels.l2(TriweightSpec()),
+            coordinates=kernels.polar(
+                amplitude_max=2.0,
+                input_bounds=BandwidthBounds(
+                    minimum=0.25, birth=1, maximum=16, upper_floor=1
+                ),
+                w_c=0.2,
+                activity_mode=mode,
+                activity_gain=0.8,
+                radial_regularization=0.3,
+                dormant_expansion_rate=0.05,
             ),
-            w_c=0.2,
-            profile=presets.profile(TriweightSpec()),
-            activity_mode=mode,
-            activity_gain=0.8,
-            radial_regularization=0.3,
-            dormant_expansion_rate=0.05,
         )
     )
 
@@ -69,4 +71,3 @@ def test_fused_update_matches_production_and_live_scalars(mode, step_size):
     torch.cuda.synchronize()
     expected = graph_update(s, old, initial - old, step_size=step_size)
     torch.testing.assert_close(proposal, expected, atol=2e-6, rtol=2e-6)
-

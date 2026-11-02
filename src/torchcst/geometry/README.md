@@ -7,7 +7,7 @@
 ```text
 geometry/
   spec.py       GeometrySpec、EuclideanGeometrySpec、SphereGeometrySpec、TorusGeometrySpec
-  presets.py    euclidean / sphere / torus / flat_torus の純粋な構築
+  presets.py    euclidean / sphere / flat_torus の純粋な構築
   state.py      GeometryState の scalar buffer と checkpoint
 _backends/torch/geometry/
   execution.py  宣言型・版に対応する計算を選ぶ

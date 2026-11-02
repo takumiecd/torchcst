@@ -1,10 +1,21 @@
-"""Single-chart evaluation of a fixed-width radial profile."""
+"""Fixed-width radial profiles on one chart or a pair of charts."""
+
+import torch
 
 from torchcst._backends.torch.profiles import execution as _profile
 
 
-def initialize(state, chart, atoms, *, mode):
-    return _profile.initialize(state.profiles[0], chart, atoms, mode=mode)
+def initialize(state, *charts_and_atoms, mode):
+    *charts, atoms = charts_and_atoms
+    return torch.cat(
+        [
+            _profile.initialize(
+                state.profiles[0], chart, atoms, mode=mode if i == 0 else "uniform"
+            )
+            for i, chart in enumerate(charts)
+        ],
+        dim=-1,
+    )
 
 
 def materialize_atoms(state, chart, p):

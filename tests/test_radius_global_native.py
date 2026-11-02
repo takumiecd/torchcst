@@ -2,12 +2,12 @@
 
 import copy
 import os
-from pathlib import Path
 import shlex
 import shutil
 import subprocess
 import sysconfig
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -263,13 +263,15 @@ def test_global_native_metadata_rejected_before_any_device_kernel(wrong):
     elif wrong == "shared_mode":
         mode = 3
     native = ex._extension()
-    with torch.profiler.profile(
-        activities=[torch.profiler.ProfilerActivity.CUDA]
-    ) as prof:
-        with pytest.raises(RuntimeError):
-            native.checked_autograd_linear(
-                x, p, config, config, start, start, True, tile, mode
-            )
+    with (
+        torch.profiler.profile(
+            activities=[torch.profiler.ProfilerActivity.CUDA]
+        ) as prof,
+        pytest.raises(RuntimeError),
+    ):
+        native.checked_autograd_linear(
+            x, p, config, config, start, start, True, tile, mode
+        )
     assert not any(str(event.device_type).endswith(".CUDA") for event in prof.events())
 
 

@@ -13,8 +13,9 @@ from torchcst import (
     CSTLinear,
     CSTOptimizer,
     Dispatcher,
+    GaussianSpec,
     chart_presets,
-    presets,
+    kernels,
 )
 from torchcst._backends.catalog import get_registry
 from torchcst._backends.cuda.algorithms.polar_update.plans import (
@@ -48,14 +49,12 @@ def layer(
             upper_floor=2 * spacing,
         )
     else:
-        bounds = BandwidthBounds(
-            minimum=2.0, birth=16.0, maximum=40.0, upper_floor=4.0
-        )
-    kernel = presets.polar_activity(
-        amplitude_max=8.0,
-        w_c=2.4,
-        input_bounds=bounds,
-        alpha_init=0.5,
+        bounds = BandwidthBounds(minimum=2.0, birth=16.0, maximum=40.0, upper_floor=4.0)
+    kernel = kernels.product(
+        kernels.l2(GaussianSpec()),
+        coordinates=kernels.polar(
+            amplitude_max=8.0, w_c=2.4, input_bounds=bounds, alpha_init=0.5
+        ),
     )
     rng = torch.Generator().manual_seed(120)
     p = torch.randn(count, 4, generator=rng).to(dtype)

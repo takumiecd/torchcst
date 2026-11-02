@@ -4,7 +4,7 @@ import pytest
 import torch
 from kernel_cases import amplitude_state, gaussian_state, separable_state
 
-from torchcst import CSTLinear, GaussianSpec, presets
+from torchcst import CSTLinear, GaussianSpec, kernels
 from torchcst._backends.torch.charts import construction as _construction
 
 
@@ -72,7 +72,7 @@ def test_nonfactorized_kernel_uses_the_same_kernel_sum_semantics() -> None:
             ),
         ),
         atoms=2,
-        kernel=presets.radial(presets.fixed_profile(GaussianSpec(), 1.0)),
+        kernel=kernels.radial(kernels.l2(GaussianSpec(), 1.0)),
         backend="auto",
     )
     inputs = torch.randn(4, 3)
@@ -93,7 +93,7 @@ def test_factored_backend_rejects_a_kernel_without_that_capability() -> None:
                 ),
             ),
             atoms=2,
-            kernel=presets.radial(presets.fixed_profile(GaussianSpec(), 1.0)),
+            kernel=kernels.radial(kernels.l2(GaussianSpec(), 1.0)),
             backend="factored",
         )
 

@@ -9,13 +9,13 @@ import torch
 from test_radius_cell_mass import axis, oracle_mass
 
 from torchcst import (
-    ChebyshevRadiusSpec,
+    ChebyshevSpec,
     CSTLinear,
     Dispatcher,
     LinearInputs,
     RadiusBounds,
     chart_presets,
-    presets,
+    kernels,
 )
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.algorithm import (
     RadiusCellMassAlgorithm,
@@ -235,22 +235,26 @@ def test_low_level_empty_shapes(batch, count):
 def test_public_cpu_initialization_explicit_cuda_plan_and_polar_task_gradient(polar):
     chart = chart_presets.regular_grid(16, spacing=1.0, geometry="flat_torus")
     if polar:
-        kernel = presets.polar_radius_cell_mass(
-            amplitude_max=1.3,
-            w_c=0.3,
-            input_radius_bounds=RadiusBounds(
-                minimum=0.5, birth=1.0, maximum=4.0, upper_floor=1.0
+        kernel = kernels.product(
+            kernels.cell_mass(ChebyshevSpec(modes=3)),
+            coordinates=kernels.polar(
+                amplitude_max=1.3,
+                w_c=0.3,
+                input_bounds=RadiusBounds(
+                    minimum=0.5, birth=1.0, maximum=4.0, upper_floor=1.0
+                ),
+                output_bounds=RadiusBounds(
+                    minimum=0.6, birth=1.3, maximum=6.0, upper_floor=1.5
+                ),
             ),
-            output_radius_bounds=RadiusBounds(
-                minimum=0.6, birth=1.3, maximum=6.0, upper_floor=1.5
-            ),
-            profile=ChebyshevRadiusSpec(modes=3),
         )
         p = torch.tensor(
             [[1.0, 0.5, 2.17, 3.31], [0.1, 0.1, 15.77, 0.23]], dtype=torch.float64
         )
     else:
-        kernel = presets.radius_cell_mass(profile=ChebyshevRadiusSpec(modes=3))
+        kernel = kernels.product(
+            kernels.cell_mass(ChebyshevSpec(modes=3)), coordinates=kernels.physical()
+        )
         p = torch.tensor(
             [[0.3, 0.63, 2.17, 3.31], [-0.2, 1.3, 15.77, 0.23]], dtype=torch.float64
         )
@@ -368,7 +372,7 @@ def test_public_integer_initialization_then_cuda_fixed_selector():
         chart,
         chart,
         atoms=8,
-        kernel=presets.radius_cell_mass(),
+        kernel=kernels.product(kernels.cell_mass(), coordinates=kernels.physical()),
         dtype=torch.float64,
         backend="factored",
     )

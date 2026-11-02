@@ -10,9 +10,10 @@ from torchcst import (
     BandwidthBounds,
     CSTLinear,
     CSTOptimizer,
+    GaussianSpec,
     RegularGridChartSpec,
     compile_chart,
-    presets,
+    kernels,
 )
 from torchcst import (
     chart_presets as charts,
@@ -24,12 +25,15 @@ from torchcst._backends.torch.charts import execution as chart_ops
 
 
 def kernel(sigma=0.8):
-    return presets.polar_activity(
-        amplitude_max=2.0,
-        input_bounds=BandwidthBounds(
-            minimum=sigma, birth=sigma, maximum=sigma, upper_floor=sigma
+    return kernels.product(
+        kernels.l2(GaussianSpec()),
+        coordinates=kernels.polar(
+            amplitude_max=2.0,
+            input_bounds=BandwidthBounds(
+                minimum=sigma, birth=sigma, maximum=sigma, upper_floor=sigma
+            ),
+            w_c=0.5,
         ),
-        w_c=0.5,
     )
 
 
@@ -151,9 +155,7 @@ def test_checkpoint_layout_mismatch_and_live_buffer_validation(periodic):
     assert restored.declaration() == state.declaration()
     with pytest.raises(RuntimeError):
         compile_chart(
-            charts.regular_grid(
-                (3, 2, 4), geometry="flat_torus" if periodic else None
-            )
+            charts.regular_grid((3, 2, 4), geometry="flat_torus" if periodic else None)
         ).load_state_dict(saved)
     for name, bad in (("spacing", 0.0), ("origin", float("nan"))):
         broken = copy.deepcopy(saved)
@@ -162,19 +164,13 @@ def test_checkpoint_layout_mismatch_and_live_buffer_validation(periodic):
             restored.load_state_dict(broken)
     for settings in ({"spacing": 1e-20}, {"origin": 1e20}):
         with pytest.raises(ValueError):
-            compile_chart(
-                charts.regular_grid((3, 4), **settings), dtype=torch.float16
-            )
+            compile_chart(charts.regular_grid((3, 4), **settings), dtype=torch.float16)
 
 
 def test_public_optimizer_wraps_periodic_centers_and_preserves_euclidean_centers():
     for periodic in (False, True):
-        in_spec = charts.regular_grid(
-            4, geometry="flat_torus" if periodic else None
-        )
-        out_spec = charts.regular_grid(
-            3, geometry="flat_torus" if periodic else None
-        )
+        in_spec = charts.regular_grid(4, geometry="flat_torus" if periodic else None)
+        out_spec = charts.regular_grid(3, geometry="flat_torus" if periodic else None)
         p = torch.tensor([[0.2, 1.2, -0.3, 4.3]], dtype=torch.float64)
         model = CSTLinear(
             in_spec,

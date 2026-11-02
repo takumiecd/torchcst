@@ -8,60 +8,70 @@ from torchcst import (
     TriangleSpec,
     TriweightSpec,
     WendlandC2Spec,
-    presets,
+    kernels,
 )
 from torchcst.kernels.state import KernelState, ProfileState
 
 
 def gaussian_state(sigma, *, normalize_columns=True):
+    if type(normalize_columns) is not bool:
+        raise TypeError("normalize_columns must be a bool")
     return ProfileState(
-        presets.fixed_profile(GaussianSpec(), sigma, normalize=normalize_columns)
+        (kernels.l2 if normalize_columns else kernels.point)(GaussianSpec(), sigma)
     )
 
 
 def biweight_state(sigma, *, normalize_columns=False):
+    if type(normalize_columns) is not bool:
+        raise TypeError("normalize_columns must be a bool")
     return ProfileState(
-        presets.fixed_profile(BiweightSpec(), sigma, normalize=normalize_columns)
+        (kernels.l2 if normalize_columns else kernels.point)(BiweightSpec(), sigma)
     )
 
 
 def triangle_state(sigma, *, normalize_columns=False):
+    if type(normalize_columns) is not bool:
+        raise TypeError("normalize_columns must be a bool")
     return ProfileState(
-        presets.fixed_profile(TriangleSpec(), sigma, normalize=normalize_columns)
+        (kernels.l2 if normalize_columns else kernels.point)(TriangleSpec(), sigma)
     )
 
 
 def triweight_state(sigma, *, normalize_columns=True):
+    if type(normalize_columns) is not bool:
+        raise TypeError("normalize_columns must be a bool")
     return ProfileState(
-        presets.fixed_profile(TriweightSpec(), sigma, normalize=normalize_columns)
+        (kernels.l2 if normalize_columns else kernels.point)(TriweightSpec(), sigma)
     )
 
 
 def wendland_state(sigma, *, normalize_columns=True):
+    if type(normalize_columns) is not bool:
+        raise TypeError("normalize_columns must be a bool")
     return ProfileState(
-        presets.fixed_profile(WendlandC2Spec(), sigma, normalize=normalize_columns)
+        (kernels.l2 if normalize_columns else kernels.point)(WendlandC2Spec(), sigma)
     )
 
 
 def separable_state(*, output_profile, input_profile):
     return KernelState(
-        presets.separable(
-            output_profile=output_profile.declaration(),
-            input_profile=input_profile.declaration(),
+        kernels.product(
+            output_factor=output_profile.declaration(),
+            input_factor=input_profile.declaration(),
         )
     )
 
 
 def amplitude_state(kernel):
-    return KernelState(presets.amplitude(kernel.declaration()))
+    return KernelState(kernels.amplitude(kernel.declaration()))
 
 
 def amp_width_state(*, sigma_min, sigma_max, profile=None, **settings):
     return KernelState(
-        presets.amplitude_width(
+        kernels.amplitude_width(
             sigma_min=sigma_min,
             sigma_max=sigma_max,
-            profile=replace(profile.declaration(), parameterization=None)
+            factor=replace(profile.declaration(), parameterization=None)
             if profile
             else None,
             **settings,
@@ -79,14 +89,17 @@ def direct_state(
     **settings,
 ):
     return KernelState(
-        presets.direct_activity(
-            input_bounds=input_bounds,
-            output_bounds=output_bounds,
-            profile=replace(profile.declaration(), parameterization=None)
+        (kernels.product if composition == "separable" else kernels.radial)(
+            replace(profile.declaration(), parameterization=None)
             if profile
-            else None,
-            composition=composition,
-            **settings,
+            else (
+                kernels.l2(GaussianSpec())
+                if composition == "separable"
+                else kernels.point(GaussianSpec())
+            ),
+            coordinates=kernels.direct(
+                input_bounds=input_bounds, output_bounds=output_bounds, **settings
+            ),
         ),
         options=options,
     )
@@ -94,12 +107,12 @@ def direct_state(
 
 def polar_state(*, input_bounds, output_bounds=None, profile=None, **settings):
     return KernelState(
-        presets.polar_activity(
-            input_bounds=input_bounds,
-            output_bounds=output_bounds,
-            profile=replace(profile.declaration(), parameterization=None)
+        kernels.product(
+            replace(profile.declaration(), parameterization=None)
             if profile
-            else None,
-            **settings,
+            else kernels.l2(GaussianSpec()),
+            coordinates=kernels.polar(
+                input_bounds=input_bounds, output_bounds=output_bounds, **settings
+            ),
         )
     )

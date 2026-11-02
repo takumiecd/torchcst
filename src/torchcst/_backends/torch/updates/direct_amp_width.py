@@ -62,7 +62,7 @@ def apply_parameter_update(
         state.profiles[0], output_chart, output_p, output_d
     )
     updated_input = _profile.apply_parameter_update(
-        state.profiles[1], input_chart, input_p, input_d
+        state.profiles[-1], input_chart, input_p, input_d
     )
     updated_direct = torch.stack((accepted_w, regularized_q), dim=-1)
     return torch.cat((updated_direct, updated_output, updated_input), dim=-1)
@@ -108,7 +108,9 @@ def project_parameter_gradient(
             _profile.project_gradient(
                 state.profiles[0], output_chart, output_p, output_g
             ),
-            _profile.project_gradient(state.profiles[1], input_chart, input_p, input_g),
+            _profile.project_gradient(
+                state.profiles[-1], input_chart, input_p, input_g
+            ),
         ),
         dim=-1,
     )
@@ -128,7 +130,9 @@ def transport_parameter_state(
         _, old_center = _parameterizations._single_split(
             kernel_state, output_chart, input_chart
         )
-        _, new_center = _parameterizations._single_split(kernel_state, output_chart, old)
+        _, new_center = _parameterizations._single_split(
+            kernel_state, output_chart, old
+        )
         direct_state, center_state = _parameterizations._single_split(
             kernel_state, output_chart, new
         )
@@ -161,7 +165,7 @@ def transport_parameter_state(
                 kernel_state.profiles[0], output_chart, old_o, new_o, state_o
             ),
             _profile.transport_state(
-                kernel_state.profiles[1], input_chart, old_i, new_i, state_i
+                kernel_state.profiles[-1], input_chart, old_i, new_i, state_i
             ),
         ),
         dim=-1,

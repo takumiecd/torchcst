@@ -58,9 +58,9 @@ Parameterに持たせます。Moduleの状態所有、微分計算、optimizer�
 
 ```bash
 python -m tools.kernel_dev prepare \
-  --plans benchmarks/cuda/linear/plans-local-contraction.json \
-  --case benchmarks/cuda/linear/cases/local-contraction-64-sigma3.json \
-  --candidate persistent-supportprep-band \
+  --plans benchmarks/cuda/linear/plans.json \
+  --case benchmarks/cuda/linear/cases/normalized-1024-broad.json \
+  --candidate window512 \
   --output output/kernel-comparison
 python -m tools.kernel_dev check \
   --plans output/kernel-comparison/plans.json \

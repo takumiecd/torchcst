@@ -76,7 +76,7 @@ from torchcst._backends.dispatch import load_selector
 
 selector = load_selector(Path("dispatch.json").read_bytes(), registry=REGISTRY)
 layer = CSTLinear(
-    chart=chart, atoms=p, kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT, selector=selector
+    chart=chart, atoms=p, kernel=kernels.NORMALIZED_RADIAL_TRIWEIGHT, selector=selector
 )
 ```
 

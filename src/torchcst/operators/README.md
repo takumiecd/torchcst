@@ -66,7 +66,7 @@ Registry / SelectorからTorch・CUDAのAlgorithmを選択する。
 
 ## normalized radial の共通 dispatch
 
-`CSTLinear` の `chart` と `kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT` が、
+`CSTLinear` の `chart` と `kernel=kernels.NORMALIZED_RADIAL_TRIWEIGHT` が、
 一枚の regular 3D Euclidean Chart 上で Triweight を演算子全体の点で L2 正規化する
 radial 演算を宣言する。signed amplitude / clamped log width / center の座標であり、
 DirectAmpWidth の activity 座標や Chart ごとの正規化とは別の意味である。

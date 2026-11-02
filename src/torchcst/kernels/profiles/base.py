@@ -7,7 +7,7 @@ from dataclasses import dataclass
 class ProfileSpec:
     """Identity fixes a function and its argument contract.
 
-    Scalar profiles use dimensionless squared distance q, while ChebyshevRadiusSpec
+    Scalar profiles use dimensionless squared distance q, while ChebyshevSpec
     declares a periodic Fourier density over a physical support radius.
 
     Bandwidth, center coordinates and normalization belong to separate

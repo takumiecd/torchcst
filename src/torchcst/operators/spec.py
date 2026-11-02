@@ -70,7 +70,7 @@ class OperatorSpec:
         kernel = self.kernel
         while kernel.composition == "amplitude":
             kernel = kernel.inner
-        allowed = ("radial",) if len(self.charts) == 1 else ("separable",)
+        allowed = ("radial",) if len(self.charts) == 1 else ("separable", "radial")
         if kernel.composition not in allowed:
             raise ValueError("kernel composition differs from the chart layout")
 

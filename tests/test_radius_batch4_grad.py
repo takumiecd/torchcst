@@ -19,7 +19,6 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plans import (
     BLOCK_LOCAL_BATCHED_CACHED_PARALLEL,
 )
 
-
 # N128/M8 start=0 retains 510*17 doubles (>48 KiB). Start=1 still
 # exercises compact low-level banks while fitting the real native budgets.
 POLAR_STARTS = (1, 2, 8)

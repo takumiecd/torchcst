@@ -90,7 +90,7 @@ def family(state):
             name, policies = contracts[type(spec.parameterization)]
         except KeyError:
             raise ValueError("unsupported kernel parameterization") from None
-        if name in ("amp_width", "polar_amp_width") and spec.composition != "separable":
+        if name == "amp_width" and spec.composition != "separable":
             raise ValueError("parameterization requires separable composition")
         if name == "log_width" and spec.composition != "radial":
             raise ValueError("log width requires radial composition")
@@ -143,7 +143,9 @@ def validate_layout(state, charts):
     expected = 1 if state.spec.composition == "radial" else 2
     if state.spec.composition == "amplitude":
         return validate_layout(state.inner, charts)
-    if len(charts) != expected:
+    if len(charts) != expected and not (
+        state.spec.composition == "radial" and len(charts) == 2
+    ):
         raise ValueError("kernel composition differs from chart layout")
     name = family(state)
     if name in ("radius_cell_mass", "polar_radius_cell_mass"):
@@ -174,12 +176,20 @@ def validate_layout(state, charts):
         if signature is not None:
             state.__dict__["_radius_layout_signature"] = signature
         return
+    if name == "polar_amp_width" and len(charts) != 2:
+        raise ValueError("Polar coordinates require output and input Charts")
+    if name == "log_width" and len(charts) != 1:
+        raise ValueError("log width requires a single operator chart")
     if (
         name == "log_width"
         and type(charts[0].geometry.spec) is not EuclideanGeometrySpec
     ):
         raise ValueError("log-width Euclidean updates require Euclidean geometry")
-    if state.spec.composition == "radial" and name == "direct_amp_width":
+    if (
+        state.spec.composition == "radial"
+        and len(charts) == 1
+        and name == "direct_amp_width"
+    ):
         check_radial_activity(state, charts[0])
 
 
@@ -236,6 +246,10 @@ def initialize(state, *charts_and_atoms, mode="balanced"):
 
 
 def materialize_atoms(state, *charts_and_p):
+    if state.spec.composition == "radial" and len(charts_and_p) == 3:
+        from .joint_radial import materialize_atoms as joint_atoms
+
+        return joint_atoms(state, *charts_and_p)
     return _operation(state, "materialize_atoms")(state, *charts_and_p)
 
 

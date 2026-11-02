@@ -1,107 +1,75 @@
 # Kernel の宣言と状態
 
-利用者は `KernelSpec` を `CSTLinear` / `CSTConv2d` に渡す。preset は Spec を組み立てる
-関数で、演算するクラスではない。個別の Kernel / Profile Module、ABC、互換 alias、
-旧 checkpoint の読み替えは削除した。
+`KernelSpec` は atom 関数の数学的な意味を宣言する。Tensor や backend の選択は持たない。
+公開 API の正本は [README](../../../README.md)。旧 `presets` の互換 alias は置かない。
 
-`QuadraticBSplineSpec()`は中心曲率幅sigma、支持半幅`√6*sigma`の2次B-splineを宣言し、
-既存のprofile-product presetで使える。[定義とTorch参照](../../../docs/quadratic-bspline-profile.ja.md)を参照。
-累積moment／CUDA最適化は別のAlgorithmとして扱う。
+## 三つの部品と結合
 
-## 配置と責務
+1. **Profile** は関数の形。`GaussianSpec()`、`TriweightSpec()`、`ChebyshevSpec(modes=8)` など。
+2. **Factor** は評価と正規化。`point` は点評価、`l2` は点評価＋離散 L2、
+   `cell_mass` はセル積分＋全質量 1 の正規化。
+3. **CoordinateSpec** は atom の座標・初期化・更新の宣言。`polar`、`direct`、`physical` で構築する。
+
+```python
+from torchcst import BandwidthBounds, RadiusBounds, TriweightSpec, kernels
+
+bounds = BandwidthBounds(minimum=0.1, birth=2.0, maximum=2.0, upper_floor=0.1)
+coordinates = kernels.polar(amplitude_max=1.0, w_c=0.1, bounds=bounds)
+product = kernels.product(kernels.l2(TriweightSpec(), floor=1e-6), coordinates=coordinates)
+radial = kernels.radial(kernels.l2(TriweightSpec()), coordinates=coordinates)
+
+cells = kernels.product(
+    kernels.cell_mass(base_tile_sites=1, merge_factor=2),
+    coordinates=kernels.polar(
+        amplitude_max=1.0, w_c=0.3,
+        bounds=RadiusBounds(minimum=0.5, birth=4.0, maximum=50.0, upper_floor=1.0),
+    ),
+)
+physical = kernels.product(kernels.cell_mass(), coordinates=kernels.physical(radius_init=(0.5, 1.0)))
+```
+
+`product(output_factor, input_factor, coordinates=...)` は Chart ごとに距離・評価・正規化し、
+その結果の積をとる。Factor を一つだけ渡すと両 Chart で共用する。多次元 Chart 内では
+全次元の距離から一つの Factor を作り、全サイトで正規化する。座標軸ごとの積ではない。
+
+`radial(factor, coordinates=...)` は各 Chart の無次元距離の二乗を加算してから一度だけ
+Profile を評価し、L2 は Weight 全サイトで正規化する。同じ `(output_chart, input_chart)`
+を使える。現状は Torch materialized 参照経路。単一 `chart=` の radial も維持する。
+`cell_mass` は二つの 1D FlatTorus RegularGrid と半径座標の product に限定し、radial は拒否する。
+
+`bounds=` は共有境界、`input_bounds` / `output_bounds` は Chart ごとの境界。点評価の
+`BandwidthBounds` は sigma、セル積分の `RadiusBounds` は物理支持半径で、意味を混ぜない。
+動的幅は CoordinateSpec が所有し、Factor の `sigma=` との二重宣言を拒否する。
+固定幅は `product(l2(..., sigma=...))` と宣言し、必要なら `amplitude(...)` で振幅を加える。
+
+コンパクト Profile の `l2(..., floor=...)` は正のノルム床を持つ。Gaussian の L2 は
+log-softmax による安定した正規化で床を持たない。`cell_mass` の質量正規化は評価定義に
+含まれ、`NormalizationSpec` に独立した continuous-mass 規則を宣言しない。
+
+## 配置と所有
 
 | 配置 | 責務 |
 | --- | --- |
-| `profiles/` | Gaussian、Triweight など関数の形の不変な宣言。幅・正規化・演算を持たない。 |
-| `parameterizations/` | atom 座標の解釈。固定幅、振幅依存幅、Direct / Polar activity、log width。 |
-| `normalization.py` | 正規化の規則、対象領域、ノルム床。 |
-| `spec.py` | ProfileBinding、radial / separable / amplitude / profile_product の合成、初期化・更新方針。 |
-| `presets.py` | 宣言を組み合わせる利用者向けの関数。 |
-| `options.py` | site / atom chunk と checkpoint の実行設定。数学的な Spec と分離。 |
-| `state.py` | 共通 KernelState / ProfileState。固定 Tensor、device / dtype、checkpoint を管理。 |
-| `../_backends/torch/profiles/` | 関数の評価と解析微分。 |
-| `../_backends/torch/parameterizations/` | 振幅・activity・幅の計算。 |
-| `../_backends/torch/kernels/` | atom の合成、重み生成、初期化、factor 微分。 |
-| `../_backends/torch/updates/` | 勾配射影、座標更新、optimizer 状態輸送。 |
-| `../_backends/cuda/algorithms/` | 数学的な契約に対応する CUDA の計算方式。 |
+| `profiles/` | 関数の形の不変な宣言 |
+| `parameterizations/` | 振幅・幅・activity の座標解釈 |
+| `normalization.py` | 点評価の正規化規則・領域・床 |
+| `spec.py` | ProfileBinding、CoordinateSpec、KernelSpec、初期化・更新方針 |
+| `factories.py` | 利用者向けの純粋な宣言構築 |
+| `options.py` | site / atom chunk、checkpoint など実行設定 |
+| `state.py` | 共通 KernelState / ProfileState、固定 Tensor と checkpoint |
+| `../_backends/torch/` | 評価・微分・初期化・更新・geometry の参照計算 |
+| `../_backends/cuda/algorithms/` | 対応する意味を実行する CUDA Algorithm |
 
-`KernelSpec` は Tensor を持たない。`KernelState` は演算メソッドを持たない。
-学習する `p` は `Atoms` が所有する。Layer が Spec から共通 State を作り、
-Operator / backend が State と現在の Chart / p を使って計算する。
+`KernelState` に演算メソッドを置かず、学習する `atoms.p` は Module が所有する。
+`declaration()` は設定境界の snapshot であり、forward / backward / CUDA Graph capture では
+呼ばない。更新時は既存の座標法則と geometry の射影・retraction・vector transport を維持する。
+`KernelOptions`、実行 Plan、CUDA launch の選択は数学的な宣言から分離する。
 
-## 宣言の作り方
+model / optimizer の checkpoint は数学的な宣言を検証し、`torch.load(weights_only=True)`
+で復元できる。旧形式・異なる Profile / 正規化 / 座標法則を読み替えない。
+未対応の形・revision・状態方針を拒否し、組み込み ID を継承しただけの subclass を実行しない。
 
-```python
-from torchcst import GaussianSpec, TriweightSpec, BandwidthBounds, presets
-
-# 固定幅：入力・出力それぞれの形、幅、正規化を宣言する。
-fixed = presets.amplitude(
-    presets.separable(
-        input_profile=presets.fixed_profile(GaussianSpec(), 0.4),
-        output_profile=presets.fixed_profile(TriweightSpec(), 0.7),
-    )
-)
-
-# 動的幅：ProfileBinding に幅を入れず、parameterization が幅を定める。
-activity = presets.polar_activity(
-    amplitude_max=1.0,
-    input_bounds=BandwidthBounds(minimum=0.1, birth=2.0, maximum=2.0, upper_floor=0.1),
-    w_c=0.1,
-    profile=presets.profile(TriweightSpec()),
-    radial_regularization=0.2,
-)
-
-# 単一 Chartのradial：Direct activity は非正規化 profile を使う。
-radial = presets.direct_activity(
-    amplitude_max=1.0,
-    input_bounds=BandwidthBounds(minimum=0.2, birth=0.5, maximum=0.8, upper_floor=0.2),
-    w_c=0.05,
-    profile=presets.profile(TriweightSpec(), normalize=False),
-)
-```
-
-`direct_activity` の既定は radial。入力・出力を分ける場合は
-`composition="separable"` とし、必要なら `output_bounds` を指定する。
-`polar_activity` と `amplitude_width` は separable。固定幅 radial は
-`presets.radial(presets.fixed_profile(...))` とする。amplitude は両方に合成できる。
-
-幅を二重に宣言すると拒否する。`profile()` は形と正規化、`fixed_profile()` は
-それに固定幅を追加する。profile の入力側と出力側を別々に宣言した場合、
-backend はそれぞれの形を使う。`couple_bandwidth` も微分の契約で、実行設定ではない。
-
-```python
-from torchcst import CSTLinear, KernelOptions
-
-layer = CSTLinear(
-    chart=chart,
-    atoms=128,
-    kernel=radial,
-    kernel_options=KernelOptions(site_chunk=2048, atom_chunk=64),
-)
-spec = layer.declaration()  # 現在の固定 Tensor 設定を明示的に snapshot
-```
-
-単一Chart上のPolar共有幅と各軸profileの積は `presets.polar_profile_product` で宣言する。
-Torusの円周・断面fibreのchord積は `presets.polar_torus_profile_product` で宣言する。
-このrevision 2はprofileを円周、S²断面の順に二つ持ち、中心の結合微分を保持する。
-`KernelSpec.normalization` は積全体のoperator-sites L2正規化で、各軸のProfileBindingはraw。
-座標軸との対応、floor、微分、利用例は [profile productの契約](../../../docs/profile-product.ja.md)を参照。
-
-## 実行と checkpoint
-
-`Layer -> Operator -> backend` が演算の入口。State の固定 Tensor は `.to()` と
-checkpoint に従う。`declaration()` は設定境界の snapshot で、forward / backward /
-CUDA Graph capture では呼ばない。初期化・更新・状態輸送も backend が実行する。
-CSTOptimizer の checkpoint は、共通 State のクラス名だけでなく数学的な Spec を
-記録する。model / optimizer の state_dict は `torch.load(weights_only=True)` で読める。
-
-backend が未対応の形、版、parameterization、初期化・更新方針は拒否する。
-custom subclass が組み込み ID を引き継ぐ旧拡張方法は廃止した。新しい意味は宣言と
-対応する backend 実装を追加する。旧 API の利用例は Git revision `c21ea97` を参照する。
-
-`NORMALIZED_RADIAL_TRIWEIGHT` は operator 全体での離散 L2 正規化と log width の
-固定契約。`CSTLinear` の共通 dispatch が対応する CPU / CUDA full / window 実行を選ぶ。
-`provided_atoms` の宣言には `atoms=Tensor | nn.Parameter | Atoms` で既存座標を渡す。
-LogWidthSpec の幅端点は FP64 buffer として保存し、dtype 往復でも宣言値を維持する。
-任意の宣言が CUDA Registry に自動登録されるわけではなく、対応・検証・承認・
-既定 dispatch への採用は別の段階である。
+`NORMALIZED_RADIAL_TRIWEIGHT` は単一 operator Chart 上の全体 L2 と log-width の別契約。
+`provided_atoms` のため `atoms=Tensor | nn.Parameter | Atoms` で既存座標を渡す。
+LogWidthSpec の端点は FP64 buffer で保持する。任意の宣言が CUDA Registry に自動登録される
+わけではなく、対応・検証・承認・既定 dispatch への採用は別の段階である。

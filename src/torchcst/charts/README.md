@@ -3,50 +3,33 @@
 Chart は、Geometry 上で観測する点の配置を宣言する。Geometry、Pattern、Chart は
 `torchcst/geometry/`・`torchcst/patterns/`・`torchcst/charts/` の同じ階層に置く。
 
-```text
-charts/
-  base.py       ChartSpec / ChartState の ABC、共通 metadata と所有の契約
-  explicit.py   ExplicitChartSpec / ExplicitChartState
-  product.py    ProductChartSpec / ProductChartState
-  periodic_grid.py PeriodicGridChartSpec / PeriodicGridChartState
-  regular_grid.py RegularGridChartSpec / RegularGridChartState
-  strip.py      StripChartSpec / StripChartState
-  presets.py    純粋な宣言の組み立て
-  __init__.py   公開型、compile_chart
-_backends/torch/charts/
-  execution.py  具体的な State と Spec の型から計算を選ぶ
-  explicit.py   明示点の選択・距離・中心の初期化
-  product.py    直積の部分展開
-  strip.py      Strip の座標・tile・支持域の計算
-  lazy.py       Product / Strip が共用する演算
-```
+## 型と配置
 
-## フィールド
+| 型 | 宣言する配置 |
+| --- | --- |
+| ExplicitChartSpec | 明示座標、学習の有無、任意の spacing metadata |
+| ProductChartSpec | Pattern ごとの軸配置と論理 shape |
+| RegularGridChartSpec | 単一階層の grid_shape、origin、spacing |
 
-| 型 | フィールド | 意味 |
-| --- | --- | --- |
-| ChartSpec（ABC） | geometry, shape, revision | 空間、論理 shape、意味の版 |
-| ExplicitChartSpec | coordinates, trainable, spacing | ambient 座標表、学習の有無、任意の間隔 metadata |
-| ProductChartSpec | axes | 各論理軸の Pattern。最後の軸を最速にして平坦化 |
-| PeriodicGridChartSpec | grid_shape, output_dims, origin | FlatTorus上の等間隔D次元格子を単一[out,in]へ割当 |
-| RegularGridChartSpec | grid_shape, spacing, origin | weight各軸に対応する格子を宣言しshapeを導出。Euclidean/FlatTorus |
-| StripChartSpec | axes, tile_shape, axis, tile_pitch | Pattern、tile の論理 shape、Strip 軸、物理 pitch |
+各 Chart は `ncs` / `num_sites`（`features` と同じサイト総数）を持つ。
+`charts=(output_chart, input_chart)` の Weight 形状は `[out.ncs, in.ncs]`。
+多次元の RegularGrid も一つの階層であり、`grid_shape=(16,16)` の `ncs` は 256。
+Factor 内部では Chart の全次元の距離を使い、サイト全体で正規化する。
 
-kind は各具体型の固定 ID で、constructor には渡さない。Product / Strip の点配置は固定。
-Product には tile 設定や coordinates がなく、Explicit には axes / tile 設定がない。
-共通基底には演算メソッドを定義しない。距離・座標展開・微分・更新は backend に置く。
+`base.py` が共通契約、`explicit.py` / `product.py` / `regular_grid.py` が具体型、
+`presets.py` が純粋な構築、`compile_chart` が対応する State を作る。
+距離・点展開・支持域・初期化は `_backends/torch/charts/` に置く。
 
-State も具体型に分かれる。ExplicitChartState は座標 Tensor と任意の spacing を所有し、
-trainable のときだけ座標を Parameter にする。ProductChartState は小さな PatternState
-だけを所有する。StripChartState は PatternState と tile_pitch を所有し、tile_grid /
-tile_count は Strip にだけ存在する。共通 ChartState は geometry と形、device/dtype の
-参照、declaration / checkpoint の契約だけを持つ。
+ExplicitChartState は座標 Tensor を持ち、trainable のときだけ Parameter にする。
+ProductChartState は PatternState を所有する。RegularGrid は全サイト表を持たず、
+インデックスから座標を生成する。現時点では origin / spacing と幾何の固定値を
+buffer に保存し、Module.to() と checkpoint に追従する。
 
 ## 構築と利用
 
 ```python
 import torch
-from torchcst import CSTLinear, TriweightSpec, presets
+from torchcst import CSTLinear, TriweightSpec, kernels
 from torchcst import (
     chart_presets as charts,
     geometry_presets as geometry,
@@ -61,7 +44,7 @@ chart = charts.product(
 layer = CSTLinear(
     chart=chart,
     atoms=3,
-    kernel=presets.radial(presets.fixed_profile(TriweightSpec(), sigma=2.0)),
+    kernel=kernels.radial(kernels.point(TriweightSpec(), sigma=2.0)),
 )
 y = layer(torch.randn(4, 6))
 assert y.shape == (4, 5)
@@ -71,24 +54,6 @@ assert type(layer.chart).__name__ == "ProductChartState"
 Layer は Spec から対応する State を構築する。既存 State を渡せば共有する。
 単一 Chart と入力・出力 Chart の組の両方に対応する。
 State を直接構築する場合も具体型を使うか、compile_chart を呼ぶ。
-
-```python
-from torchcst import compile_chart, StripChartState
-from torchcst._backends.torch.charts import execution
-
-spec = charts.strip(
-    shape=(5, 3),
-    tile_shape=(2, 3),
-    axis=0,
-    tile_pitch=0.8,
-    axes=(patterns.line(5, spacing=0.2), patterns.line(3, spacing=0.3)),
-)
-state = compile_chart(spec)
-assert isinstance(state, StripChartState)
-indices, local = execution.tile_indices(state, 2)
-positions = execution.positions(state, indices)
-assert positions.shape == (3, 2)
-```
 
 Explicit は PointPattern で包まず座標表を直接宣言する。shape は座標表の長さと一致する
 論理 shape で、明示した行列配置にも対応する。presets.points / grid / linspace は
@@ -119,17 +84,9 @@ closed な compile_chart と backend は、具体 Spec / State の組と revisio
 未登録の subclass が kind を引き継いでも組み込みとして実行しない。拡張は宣言型と
 対応 backend を明示的に追加する。
 
-Strip の tile_pitch は実際の点配置であり、GPU block/window/warp 設定ではない。
-部分端 tile、disjoint な物理 interval、Torus の一周未満の配置制約を維持する。
-Sphere / Torus の metric と representation は Geometry の宣言に従う。
+Sphere / FlatTorus の metric と representation は Geometry の宣言に従う。
 
-PeriodicGridChartStateは各軸の原点とGeometryの周期だけを持ち、spacingはperiod/countから
-導出する。全site表やPatternStateを持たない。[API・数学・計算方式](../../../docs/periodic-grid.ja.md)。
-
-RegularGridChartStateは座標軸ごとのorigin/spacingを持ち、geometryは独立して所有する。
-`presets.regular_grid(((16,16),(128,)), spacing=0.1)`はshape `(256,128)`、
-座標3次元を宣言する。各tupleがweightの一軸に対応し、各tuple内とweight軸間は
-最後の軸が最速。scalarのspacing/originは全座標軸へbroadcastする。
-宣言型にはcanonicalなtupleを保存し、shapeはgrid_shapeから導出する。
-全site表・PatternState・全siteのindex表を持たない。
-[API・geometry・checkpoint契約](../../../docs/regular-grid.ja.md)。
+`charts.regular_grid((16,16), spacing=0.1)` は一つの 2D Chart、shape `(256,)` を宣言する。
+最後の座標軸を最速にして平坦化する。scalar の spacing / origin は各座標へ broadcast し、
+宣言型には canonical な tuple を保存する。全サイト表・全サイトの index 表は保存しない。
+`geometry="flat_torus"` は各周期を `grid_shape * spacing` から導出する。

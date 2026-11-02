@@ -19,8 +19,8 @@ from torchcst import (
     chart_presets,
     compile_chart,
     geometry_presets,
+    kernels,
     pattern_presets,
-    presets,
 )
 from torchcst._backends.torch.charts import execution
 
@@ -150,7 +150,7 @@ def test_explicit_operator_layout_does_not_need_axis_pattern_wrapping():
     model = CSTLinear(
         chart=declaration,
         atoms=2,
-        kernel=presets.radial(presets.fixed_profile(TriweightSpec(), 2.0)),
+        kernel=kernels.radial(kernels.l2(TriweightSpec(), 2.0)),
     )
     x = torch.randn(4, 3, requires_grad=True)
     actual = model(x)

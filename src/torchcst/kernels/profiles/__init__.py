@@ -2,12 +2,12 @@
 
 from .base import ProfileSpec
 from .compact import BiweightSpec, TriangleSpec, TriweightSpec, WendlandC2Spec
-from .fourier import ChebyshevRadiusSpec
+from .fourier import ChebyshevSpec
 from .gaussian import GaussianSpec
 
 __all__ = [
     "BiweightSpec",
-    "ChebyshevRadiusSpec",
+    "ChebyshevSpec",
     "GaussianSpec",
     "ProfileSpec",
     "TriangleSpec",

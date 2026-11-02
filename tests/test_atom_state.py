@@ -301,7 +301,7 @@ def test_preexisting_torch_moments_are_adopted_without_a_copy():
 def test_cuda_relayout_registry_state_and_independent_gradients(plan_name):
     from benchmarks.cuda.linear.fixtures import normalized_chart
     from benchmarks.cuda.linear.reference import mixed, oracle
-    from torchcst import CSTLinear, presets
+    from torchcst import CSTLinear, kernels
     from torchcst._backends.catalog import REGISTRY
     from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip import (
         plans,
@@ -315,7 +315,7 @@ def test_cuda_relayout_registry_state_and_independent_gradients(plan_name):
         model = CSTLinear(
             chart=normalized_chart(sizes, dtype=torch.float32, device="cuda"),
             atoms=mixed(torch.float32, "cuda"),
-            kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT,
+            kernel=kernels.NORMALIZED_RADIAL_TRIWEIGHT,
             selector=FixedSelector(getattr(plans, plan_name), registry=REGISTRY),
         )
         optimizer = CSTOptimizer(

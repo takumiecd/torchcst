@@ -107,7 +107,7 @@ def apply_parameter_update(
         state.profiles[0], output_chart, output_p, output_d
     )
     updated_input = _profile.apply_parameter_update(
-        state.profiles[1], input_chart, input_p, input_d
+        state.profiles[-1], input_chart, input_p, input_d
     )
     return torch.cat((regularized_polar, updated_output, updated_input), dim=-1)
 
@@ -126,7 +126,7 @@ def project_parameter_gradient(
         state.profiles[0], output_chart, output_p, output_g
     )
     projected_input = _profile.project_gradient(
-        state.profiles[1], input_chart, input_p, input_g
+        state.profiles[-1], input_chart, input_p, input_g
     )
     # Geometry callbacks still run their validation. Euclidean/FlatTorus
     # callbacks return the original views, so no reassembly is needed.
@@ -155,7 +155,7 @@ def transport_parameter_state(
         kernel_state.profiles[0], output_chart, old_o, new_o, state_o
     )
     transported_input = _profile.transport_state(
-        kernel_state.profiles[1], input_chart, old_i, new_i, state_i
+        kernel_state.profiles[-1], input_chart, old_i, new_i, state_i
     )
     if transported_output is state_o and transported_input is state_i:
         return state

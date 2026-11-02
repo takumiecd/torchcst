@@ -18,7 +18,7 @@ AtomInit = Literal["balanced", "uniform"]
 
 @dataclass(frozen=True, kw_only=True)
 class ProfileBinding:
-    """A profile shape, default bandwidth and explicit normalization."""
+    """A sampled profile shape, default bandwidth and explicit normalization."""
 
     profile: ProfileSpec
     parameterization: FixedWidthSpec | None = None
@@ -35,45 +35,28 @@ class ProfileBinding:
         ):
             raise TypeError("invalid profile binding")
 
-        # Existing bindings evaluate profiles at points. They cannot silently
-        # interpret the new integral rule as sampled L2 normalization.
-        if self.normalization.kind == "continuous_mass":
-            raise ValueError(
-                "continuous mass normalization requires a compatible cell-integrated "
-                "profile contract; existing ProfileBinding does not support it"
-            )
-
 
 @dataclass(frozen=True, kw_only=True)
 class RadiusIntegratedProfileBinding(ProfileBinding):
     """Whole-cell masses with physical support radius and integer hierarchy.
 
-    Local full periods are P=(ceil(2R/T)+1)*T. Base tiles and merge factor
-    change the mathematical approximation and belong to this declaration.
+    The density is divided by its total mass, so no extra normalization is
+    declared. Local full periods are P=(ceil(2R/T)+1)*T. Base tiles and merge
+    factor change the mathematical approximation and belong to this declaration.
     """
 
     base_tile_sites: int = 1
     merge_factor: int = 2
-    normalization: NormalizationSpec = field(
-        default_factory=lambda: NormalizationSpec(
-            kind="continuous_mass", domain="profile_support"
-        )
-    )
 
     def __post_init__(self):
-        from .profiles.fourier import ChebyshevRadiusSpec
+        from .profiles.fourier import ChebyshevSpec
 
-        if (
-            type(self.profile) is not ChebyshevRadiusSpec
-            or self.parameterization is not None
-        ):
+        if type(self.profile) is not ChebyshevSpec or self.parameterization is not None:
             raise ValueError(
-                "radius cell integration requires ChebyshevRadius and shared physical radius"
+                "radius cell integration requires a Chebyshev profile and shared physical radius"
             )
-        if self.normalization != NormalizationSpec(
-            kind="continuous_mass", domain="profile_support"
-        ):
-            raise ValueError("radius cell integration requires continuous profile mass")
+        if self.normalization != NormalizationSpec():
+            raise ValueError("cell mass is normalized by definition")
         if type(self.base_tile_sites) is not int or self.base_tile_sites < 1:
             raise ValueError("base_tile_sites must be a positive integer")
         if type(self.merge_factor) is not int or self.merge_factor < 2:
@@ -111,6 +94,27 @@ class StatePolicySpec:
 
 
 @dataclass(frozen=True, kw_only=True)
+class CoordinateSpec:
+    """Atom coordinate, initialization and update rules, without a profile.
+
+    Composition supplies the factor(s); this declaration owns dynamic widths.
+    It contains no Tensor state or backend execution settings.
+    """
+
+    parameterization: ParameterizationSpec
+    initialization: StatePolicySpec
+    update: StatePolicySpec
+
+    def __post_init__(self):
+        if not isinstance(self.parameterization, ParameterizationSpec):
+            raise TypeError("invalid coordinate parameterization")
+        if not isinstance(self.initialization, StatePolicySpec) or not isinstance(
+            self.update, StatePolicySpec
+        ):
+            raise TypeError("invalid coordinate state policy")
+
+
+@dataclass(frozen=True, kw_only=True)
 class KernelSpec:
     """An atom function and its coordinate/derivative contract.
 
@@ -138,7 +142,7 @@ class KernelSpec:
             isinstance(p, ProfileBinding) for p in self.profiles
         ):
             raise TypeError("profiles must be an immutable tuple of bindings")
-        from .profiles.fourier import ChebyshevRadiusSpec
+        from .profiles.fourier import ChebyshevSpec
 
         radius_bindings = tuple(
             type(p) is RadiusIntegratedProfileBinding for p in self.profiles
@@ -148,7 +152,7 @@ class KernelSpec:
             PolarAmpRadiusSpec,
         )
         radius_profile = any(
-            isinstance(p.profile, ChebyshevRadiusSpec) for p in self.profiles
+            isinstance(p.profile, ChebyshevSpec) for p in self.profiles
         )
         if (
             radius_coordinates

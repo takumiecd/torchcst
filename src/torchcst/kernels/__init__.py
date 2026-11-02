@@ -1,6 +1,18 @@
-"""Pure kernel declarations and compositional presets."""
+"""Pure kernel declarations and the ``profile / factor / coordinates`` builders."""
 
-from . import presets
+from .factories import (
+    NORMALIZED_RADIAL_TRIWEIGHT,
+    amplitude,
+    amplitude_width,
+    cell_mass,
+    direct,
+    l2,
+    physical,
+    point,
+    polar,
+    product,
+    radial,
+)
 from .normalization import NormalizationSpec
 from .options import KernelOptions
 from .parameterizations import (
@@ -23,9 +35,10 @@ from .profiles import (
     TriweightSpec,
     WendlandC2Spec,
 )
-from .profiles.fourier import ChebyshevRadiusSpec
+from .profiles.fourier import ChebyshevSpec
 from .spec import (
     AtomInit,
+    CoordinateSpec,
     KernelSpec,
     ProfileBinding,
     RadiusIntegratedProfileBinding,
@@ -33,11 +46,13 @@ from .spec import (
 )
 
 __all__ = [
+    "NORMALIZED_RADIAL_TRIWEIGHT",
     "AmpWidthSpec",
     "AtomInit",
     "BandwidthBounds",
     "BiweightSpec",
-    "ChebyshevRadiusSpec",
+    "ChebyshevSpec",
+    "CoordinateSpec",
     "DirectAmpWidthSpec",
     "FixedWidthSpec",
     "GaussianSpec",
@@ -57,5 +72,14 @@ __all__ = [
     "TriangleSpec",
     "TriweightSpec",
     "WendlandC2Spec",
-    "presets",
+    "amplitude",
+    "amplitude_width",
+    "cell_mass",
+    "direct",
+    "l2",
+    "physical",
+    "point",
+    "polar",
+    "product",
+    "radial",
 ]

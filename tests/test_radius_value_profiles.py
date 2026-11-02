@@ -4,7 +4,7 @@ import pytest
 import torch
 from test_radius_cell_mass_cuda import GPU
 
-from torchcst import ChebyshevRadiusSpec
+from torchcst import ChebyshevSpec
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass import executor as ex
 from torchcst._backends.torch.profiles.radius_fourier import density_coefficients
 
@@ -31,7 +31,7 @@ def test_gpu_value_only_coefficients_match_full_bytes_and_public_reference(modes
         if radius == 0:  # the formula has a finite limit; public radii are positive
             continue
         expected = density_coefficients(
-            ChebyshevRadiusSpec(modes=modes),
+            ChebyshevSpec(modes=modes),
             torch.tensor([radius], dtype=torch.float64),
             period,
         )[0, modes:]

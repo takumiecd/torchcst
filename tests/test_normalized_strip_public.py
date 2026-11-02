@@ -16,13 +16,13 @@ from torchcst._backends.dispatch import FixedSelector
 
 
 def public_class():
-    from torchcst import CSTLinear, presets
+    from torchcst import CSTLinear, kernels
 
     def build(chart, p, *, selector=None):
         return CSTLinear(
             chart=chart,
             atoms=p,
-            kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT,
+            kernel=kernels.NORMALIZED_RADIAL_TRIWEIGHT,
             selector=selector,
         )
 

@@ -22,16 +22,16 @@ import torch
 from torch import nn
 
 from torchcst import (
-    ChebyshevRadiusSpec,
+    ChebyshevSpec,
     CSTAdamW,
     CSTLinear,
     CSTOptimizer,
     FixedSelector,
     RadiusBounds,
     chart_presets,
+    kernels,
     make_algorithm_registry,
 )
-from torchcst.kernels import presets
 
 RADIUS_COHORT = "polar_radius_native_128_v1"
 RADIUS_LARGE_COHORT = "polar_radius_global_response4_1024_v1"
@@ -173,7 +173,7 @@ def _validate_radius_execution_width(
 
 def radius_settings():
     return {
-        "profile": "ChebyshevRadiusSpec",
+        "profile": "ChebyshevSpec",
         "spacing": 1.0,
         "modes": 8,
         "base_tile_sites": 1,
@@ -217,14 +217,15 @@ def make_radius_cst(
         width, radius_execution, radius_direct_levels, execution_plan
     )
     chart = chart_presets.regular_grid(width, spacing=1.0, geometry="flat_torus")
-    kernel = presets.polar_radius_cell_mass(
-        amplitude_max=1.0,
-        w_c=0.3,
-        input_radius_bounds=RadiusBounds(
-            minimum=0.5, birth=4.0, maximum=50.0, upper_floor=1.0
+    kernel = kernels.product(
+        kernels.cell_mass(ChebyshevSpec(modes=8), merge_factor=2),
+        coordinates=kernels.polar(
+            amplitude_max=1.0,
+            w_c=0.3,
+            input_bounds=RadiusBounds(
+                minimum=0.5, birth=4.0, maximum=50.0, upper_floor=1.0
+            ),
         ),
-        profile=ChebyshevRadiusSpec(modes=8),
-        merge_factor=2,
     )
     return CSTLinear(
         chart,

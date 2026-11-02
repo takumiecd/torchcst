@@ -36,13 +36,12 @@ jobs:
           python -m tools.kernel_dev check \
             --plans output/window-comparison/plans.json \
             --case output/window-comparison/case.json
-      - name: Check local contraction declarations
+      - name: Check radius cell-mass declarations
         run: >-
           python -m tools.kernel_dev check
-          --plans benchmarks/cuda/linear/plans-local-contraction.json
-          --case benchmarks/cuda/linear/cases/local-contraction-64-sigma3.json
-          --case benchmarks/cuda/linear/cases/local-contraction-64-middle.json
-          --case benchmarks/cuda/linear/cases/local-contraction-128-early.json
+          --plans benchmarks/cuda/linear/plans-radius-cell-mass.json
+          --case benchmarks/cuda/linear/cases/radius-cell-mass-128-initial.json
+          --case benchmarks/cuda/linear/cases/radius-cell-mass-1024-owner-compact-keyed-initial.json
       - name: Run CPU tests
         run: python -m tools.kernel_dev test --suite cpu
       - name: Build wheel and source distribution

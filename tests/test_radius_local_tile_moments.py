@@ -404,31 +404,33 @@ def test_local_tile_support_rejects_other_operator_families(
     sites, modes, polar, base, merge
 ):
     from torchcst import (
-        ChebyshevRadiusSpec,
+        ChebyshevSpec,
         CSTLinear,
         RadiusBounds,
         chart_presets,
-        presets,
+        kernels,
     )
 
     chart = chart_presets.regular_grid(sites, geometry="flat_torus")
-    options = {
-        "profile": ChebyshevRadiusSpec(modes=modes),
-        "input_base_tile_sites": base,
-        "output_base_tile_sites": base,
-        "merge_factor": merge,
-    }
+    factor = kernels.cell_mass(
+        ChebyshevSpec(modes=modes), base_tile_sites=base, merge_factor=merge
+    )
     kernel = (
-        presets.polar_radius_cell_mass(
-            amplitude_max=1.0,
-            w_c=0.3,
-            input_radius_bounds=RadiusBounds(
-                minimum=0.5, birth=4.0, maximum=min(50.0, sites / 2), upper_floor=1.0
+        kernels.product(
+            factor,
+            coordinates=kernels.polar(
+                amplitude_max=1.0,
+                w_c=0.3,
+                input_bounds=RadiusBounds(
+                    minimum=0.5,
+                    birth=4.0,
+                    maximum=min(50.0, sites / 2),
+                    upper_floor=1.0,
+                ),
             ),
-            **options,
         )
         if polar
-        else presets.radius_cell_mass(**options)
+        else kernels.product(factor, coordinates=kernels.physical())
     )
     layer = CSTLinear(chart, chart, atoms=11, kernel=kernel)
     context = replace(

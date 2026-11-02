@@ -8,7 +8,7 @@ import math
 
 import torch
 
-from torchcst.kernels.profiles.fourier import ChebyshevRadiusSpec
+from torchcst.kernels.profiles.fourier import ChebyshevSpec
 
 
 def density_coefficients(profile, radius, period):
@@ -18,8 +18,8 @@ def density_coefficients(profile, radius, period):
     dividing two overflowing Chebyshev polynomials. Squaring the sampled real
     polynomial gives a density of degree M even when M is odd.
     """
-    if type(profile) is not ChebyshevRadiusSpec:
-        raise TypeError("expected ChebyshevRadiusSpec")
+    if type(profile) is not ChebyshevSpec:
+        raise TypeError("expected ChebyshevSpec")
     if radius.device.type != "cpu":
         raise ValueError("radius cell-mass reference currently requires CPU tensors")
     if radius.ndim != 1 or radius.dtype not in (torch.float32, torch.float64):

@@ -38,7 +38,7 @@ def evaluate_with_precision(
     if state.binding.normalization.kind == "none":
         return raw
     with cst_span("cst.profile.normalize"):
-        values, _ = _l2_column_scale(raw)
+        values, _ = _l2_column_scale(raw, state.binding.normalization.floor)
     return values
 
 
@@ -87,13 +87,15 @@ def tangent_with_precision(state, chart: ChartState, p: Tensor, precision: Tenso
     # profiles vanish at r=1, so du/u ~ 1/gap diverges while
     # (u/||u||)(du/u) = du/||u|| stays finite. Empty columns stay
     # exactly zero; barely-supported ones use a floor so GH is finite.
-    values, scale = _l2_column_scale(raw)
+    values, scale = _l2_column_scale(raw, state.binding.normalization.floor)
     scale = scale.reshape(1, -1)
     dpsi_dc = raw_centers * scale.unsqueeze(-1)
     dpsi_dprec = raw_widths * scale
     # clamp_min has zero denominator derivative below the norm floor,
     # and its ordinary derivative at equality. Keep that forward contract.
-    live_norm = (torch.linalg.vector_norm(raw, dim=0) >= _L2_FLOOR).reshape(1, -1)
+    live_norm = (
+        torch.linalg.vector_norm(raw, dim=0) >= state.binding.normalization.floor
+    ).reshape(1, -1)
     center_mean = (values.unsqueeze(-1) * dpsi_dc).sum(0, keepdim=True)
     center_mean = center_mean * live_norm.unsqueeze(-1)
     centers = dpsi_dc - values.unsqueeze(-1) * center_mean
@@ -259,7 +261,7 @@ def _radial_from_squared(squared: Tensor, precision: Tensor) -> Tensor:
 _L2_FLOOR = 1e-6
 
 
-def _l2_column_scale(values: Tensor) -> tuple[Tensor, Tensor]:
+def _l2_column_scale(values: Tensor, floor: float = _L2_FLOOR) -> tuple[Tensor, Tensor]:
     """L2-normalize live columns; empty columns stay zero.
 
     The floor keeps ``1/||u||`` inside float32 when a compact atom is
@@ -267,7 +269,7 @@ def _l2_column_scale(values: Tensor) -> tuple[Tensor, Tensor]:
     Exact zeros remain exact because ``0 / floor = 0``.
     """
 
-    scale = torch.linalg.vector_norm(values, dim=0).clamp_min(_L2_FLOOR).reciprocal()
+    scale = torch.linalg.vector_norm(values, dim=0).clamp_min(floor).reciprocal()
     return values * scale, scale
 
 

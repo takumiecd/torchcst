@@ -33,7 +33,7 @@ chart = layout.product(
 )
 p = torch.nn.Parameter(torch.tensor([[0.2, 0.0, 1.0, 0.2, 0.3]]))
 optimizer = torch.optim.AdamW([p], lr=1e-3)
-layer = CSTLinear(chart=chart, atoms=p, kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT)
+layer = CSTLinear(chart=chart, atoms=p, kernel=kernels.NORMALIZED_RADIAL_TRIWEIGHT)
 assert layer.atoms.p is p
 optimizer.zero_grad(set_to_none=True)
 layer(torch.randn(2, 4)).square().mean().backward()

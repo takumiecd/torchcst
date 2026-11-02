@@ -26,7 +26,7 @@ import torch
 
 from benchmarks.cuda.linear.fixtures import normalized_chart
 from benchmarks.cuda.linear.reference import mixed, oracle
-from torchcst import CSTLinear, presets
+from torchcst import CSTLinear, kernels
 from torchcst._backends.catalog import REGISTRY
 from torchcst._backends.dispatch import FixedSelector
 
@@ -65,7 +65,7 @@ def small_gate(*, selector_factory=None):
         model = CSTLinear(
             chart=normalized_chart(sizes, dtype=torch.float32, device="cuda"),
             atoms=p,
-            kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT,
+            kernel=kernels.NORMALIZED_RADIAL_TRIWEIGHT,
             selector=algorithm_selector(algorithm_id),
         )
         if selector_factory is not None:
@@ -120,7 +120,7 @@ def small_gate(*, selector_factory=None):
         eager = CSTLinear(
             chart=normalized_chart(sizes, dtype=torch.float32, device="cuda"),
             atoms=model.atoms.p.detach(),
-            kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT,
+            kernel=kernels.NORMALIZED_RADIAL_TRIWEIGHT,
             selector=algorithm_selector(algorithm_id),
         )
         if selector_factory is not None:
@@ -197,7 +197,7 @@ def benchmark(n, profile, algorithm_id, dense=False, *, selector_factory=None):
         model = CSTLinear(
             chart=normalized_chart(sizes, origin, dtype=torch.float32, device="cuda"),
             atoms=p,
-            kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT,
+            kernel=kernels.NORMALIZED_RADIAL_TRIWEIGHT,
             selector=algorithm_selector(algorithm_id),
         )
         if selector_factory is not None:

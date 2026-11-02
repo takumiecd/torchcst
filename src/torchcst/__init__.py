@@ -1,5 +1,6 @@
 """Fixed-shape continuous operators for PyTorch."""
 
+from . import kernels
 from ._backends.algorithm import Algorithm
 from ._backends.catalog import make_registry as make_algorithm_registry
 from ._backends.dispatch import (
@@ -37,7 +38,8 @@ from .kernels import (
     AmpWidthSpec,
     BandwidthBounds,
     BiweightSpec,
-    ChebyshevRadiusSpec,
+    ChebyshevSpec,
+    CoordinateSpec,
     DirectAmpWidthSpec,
     FixedWidthSpec,
     GaussianSpec,
@@ -54,7 +56,6 @@ from .kernels import (
     TriangleSpec,
     TriweightSpec,
     WendlandC2Spec,
-    presets,
 )
 from .nn import CSTConv2d, CSTLinear, CSTModule
 from .operators import ChartPairSpec, Operator, OperatorSpec, SingleChartSpec
@@ -89,7 +90,8 @@ __all__ = [
     "ChartPairSpec",
     "ChartSpec",
     "ChartState",
-    "ChebyshevRadiusSpec",
+    "ChebyshevSpec",
+    "CoordinateSpec",
     "DefaultRecipe",
     "DirectAmpWidthSpec",
     "Dispatcher",
@@ -141,7 +143,7 @@ __all__ = [
     "chart_presets",
     "compile_chart",
     "geometry_presets",
+    "kernels",
     "make_algorithm_registry",
     "pattern_presets",
-    "presets",
 ]

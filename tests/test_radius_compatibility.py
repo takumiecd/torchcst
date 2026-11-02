@@ -9,13 +9,13 @@ import torch
 
 from torchcst import (
     BandwidthBounds,
-    ChebyshevRadiusSpec,
+    ChebyshevSpec,
     CSTLinear,
     CSTOptimizer,
     GaussianSpec,
     RadiusBounds,
     chart_presets,
-    presets,
+    kernels,
 )
 from torchcst._backends.schema import DefaultRecipe, DeviceInfo
 from torchcst._backends.torch.algorithms.atom_update.algorithm import (
@@ -53,12 +53,13 @@ def polar_kernel(*, radius, activity_mode="finite_chord"):
         "dormant_expansion_rate": 0.2,
     }
     if radius:
-        return presets.polar_radius_cell_mass(
-            input_radius_bounds=bounds(RadiusBounds), **settings
+        return kernels.product(
+            kernels.cell_mass(),
+            coordinates=kernels.polar(input_bounds=bounds(RadiusBounds), **settings),
         )
-    return presets.polar_activity(
-        input_bounds=bounds(BandwidthBounds),
-        **settings,
+    return kernels.product(
+        kernels.l2(GaussianSpec()),
+        coordinates=kernels.polar(input_bounds=bounds(BandwidthBounds), **settings),
     )
 
 
@@ -190,38 +191,38 @@ def test_state_snapshot_preserves_distinct_bounds_and_legacy_buffer_names(radius
 def test_radius_and_sigma_bounds_and_keyword_names_cannot_alias():
     assert not isinstance(bounds(RadiusBounds), BandwidthBounds)
     assert not isinstance(bounds(BandwidthBounds), RadiusBounds)
-    with pytest.raises(TypeError, match="bandwidth bounds"):
-        presets.polar_activity(
-            amplitude_max=3.0, w_c=0.7, input_bounds=bounds(RadiusBounds)
-        )
-    with pytest.raises(TypeError, match="radius bounds"):
-        presets.polar_radius_cell_mass(
-            amplitude_max=3.0, w_c=0.7, input_radius_bounds=bounds(BandwidthBounds)
-        )
-    with pytest.raises(TypeError, match="input_bounds"):
-        presets.polar_radius_cell_mass(
-            amplitude_max=3.0, w_c=0.7, input_bounds=bounds(RadiusBounds)
-        )
-    with pytest.raises(TypeError, match="radius bounds"):
-        presets.polar_radius_cell_mass(
+    radius_rule = kernels.polar(amplitude_max=3.0, w_c=0.7, bounds=bounds(RadiusBounds))
+    sigma_rule = kernels.polar(
+        amplitude_max=3.0, w_c=0.7, bounds=bounds(BandwidthBounds)
+    )
+    with pytest.raises(ValueError, match="radius cell masses"):
+        kernels.product(kernels.l2(GaussianSpec()), coordinates=radius_rule)
+    with pytest.raises(ValueError, match="radius cell masses"):
+        kernels.product(kernels.cell_mass(), coordinates=sigma_rule)
+    for input_kind, output_kind in [
+        (RadiusBounds, BandwidthBounds),
+        (BandwidthBounds, RadiusBounds),
+    ]:
+        with pytest.raises(TypeError, match="bounds"):
+            kernels.polar(
+                amplitude_max=3.0,
+                w_c=0.7,
+                input_bounds=bounds(input_kind),
+                output_bounds=bounds(output_kind),
+            )
+    with pytest.raises(ValueError, match="shared bounds"):
+        kernels.polar(
             amplitude_max=3.0,
             w_c=0.7,
-            input_radius_bounds=bounds(RadiusBounds),
-            output_radius_bounds=bounds(BandwidthBounds),
-        )
-    with pytest.raises(TypeError, match="bandwidth bounds"):
-        presets.polar_activity(
-            amplitude_max=3.0,
-            w_c=0.7,
-            input_bounds=bounds(BandwidthBounds),
-            output_bounds=bounds(RadiusBounds),
+            bounds=bounds(RadiusBounds),
+            input_bounds=bounds(RadiusBounds),
         )
     with pytest.raises(TypeError, match="input_radius_bounds"):
-        presets.polar_activity(
-            amplitude_max=3.0, w_c=0.7, input_radius_bounds=bounds(BandwidthBounds)
+        kernels.polar(
+            amplitude_max=3.0, w_c=0.7, input_radius_bounds=bounds(RadiusBounds)
         )
     with pytest.raises(TypeError, match="sigma_init"):
-        presets.radius_cell_mass(sigma_init=(0.3, 1.0))
+        kernels.physical(sigma_init=(0.3, 1.0))
 
 
 @pytest.mark.parametrize("activity_mode", ["finite_chord", "time_energy"])
@@ -266,14 +267,16 @@ def test_linear_algorithms_reject_radius_cuda_metadata_including_amplitude_wrapp
     polar_coordinates,
 ):
     layer = model(
-        polar_kernel(radius=True) if polar_coordinates else presets.radius_cell_mass()
+        polar_kernel(radius=True)
+        if polar_coordinates
+        else kernels.product(kernels.cell_mass(), coordinates=kernels.physical())
     )
     context = layer.build_context(LinearInputs(torch.ones(2, 16, dtype=torch.float64)))
     if wrapped:
         context = replace(
             context,
             operator=replace(
-                context.operator, kernel=presets.amplitude(context.operator.kernel)
+                context.operator, kernel=kernels.amplitude(context.operator.kernel)
             ),
             parameter_dim=5,
         )
@@ -290,7 +293,9 @@ def test_linear_algorithms_reject_radius_cuda_metadata_including_amplitude_wrapp
 @pytest.mark.parametrize("polar_coordinates", [False, True])
 def test_atom_update_algorithms_reject_radius_cuda_metadata(polar_coordinates):
     layer = model(
-        polar_kernel(radius=True) if polar_coordinates else presets.radius_cell_mass()
+        polar_kernel(radius=True)
+        if polar_coordinates
+        else kernels.product(kernels.cell_mass(), coordinates=kernels.physical())
     )
     binding = AtomUpdateBinding(layer.operator)
     context = binding.build_context(
@@ -308,7 +313,7 @@ def test_atom_update_algorithms_reject_radius_cuda_metadata(polar_coordinates):
             replace(context, device=DeviceInfo("cuda", 0)), recipe
         ).supported
     wrapped = replace(
-        context, kernel=presets.amplitude(context.kernel), parameter_shape=(5, 5)
+        context, kernel=kernels.amplitude(context.kernel), parameter_shape=(5, 5)
     )
     assert (
         not AtomUpdateAlgorithm()
@@ -324,14 +329,16 @@ def test_radius_linear_support_rejects_cpu_low_precision_metadata(
     dtype, wrapped, polar_coordinates
 ):
     layer = model(
-        polar_kernel(radius=True) if polar_coordinates else presets.radius_cell_mass()
+        polar_kernel(radius=True)
+        if polar_coordinates
+        else kernels.product(kernels.cell_mass(), coordinates=kernels.physical())
     )
     context = layer.build_context(LinearInputs(torch.ones(2, 16, dtype=torch.float64)))
     if wrapped:
         context = replace(
             context,
             operator=replace(
-                context.operator, kernel=presets.amplitude(context.operator.kernel)
+                context.operator, kernel=kernels.amplitude(context.operator.kernel)
             ),
             parameter_dim=5,
         )
@@ -348,7 +355,9 @@ def test_radius_update_support_rejects_cpu_low_precision_metadata(
     dtype, polar_coordinates
 ):
     layer = model(
-        polar_kernel(radius=True) if polar_coordinates else presets.radius_cell_mass()
+        polar_kernel(radius=True)
+        if polar_coordinates
+        else kernels.product(kernels.cell_mass(), coordinates=kernels.physical())
     )
     context = AtomUpdateBinding(layer.operator).build_context(
         AtomUpdateInputs(layer.atoms.p.detach().clone(), 0.01)
@@ -365,7 +374,7 @@ def test_radius_update_support_rejects_cpu_low_precision_metadata(
         assert "float32 or float64" in " ".join(result.reasons)
     wrapped = replace(
         unsupported,
-        kernel=presets.amplitude(unsupported.kernel),
+        kernel=kernels.amplitude(unsupported.kernel),
         parameter_shape=(5, 5),
     )
     assert not AtomUpdateAlgorithm().supports(wrapped, DefaultRecipe()).supported
@@ -385,7 +394,7 @@ def test_legacy_sigma_support_keeps_all_four_floating_point_dtypes(dtype):
             replace(
                 linear,
                 operator=replace(
-                    linear.operator, kernel=presets.amplitude(linear.operator.kernel)
+                    linear.operator, kernel=kernels.amplitude(linear.operator.kernel)
                 ),
                 parameter_dim=5,
             )
@@ -405,20 +414,27 @@ def test_legacy_sigma_support_keeps_all_four_floating_point_dtypes(dtype):
 
 
 @pytest.mark.parametrize("polar_coordinates", [False, True])
-def test_gaussian_cannot_enter_radius_integrated_presets(polar_coordinates):
-    kwargs = (
-        {"amplitude_max": 3.0, "w_c": 0.7, "input_radius_bounds": bounds(RadiusBounds)}
-        if polar_coordinates
-        else {}
+def test_gaussian_cannot_enter_radius_integrated_factors(polar_coordinates):
+    with pytest.raises(ValueError, match="Chebyshev profile"):
+        kernels.cell_mass(GaussianSpec())
+    with pytest.raises(ValueError, match="Chebyshev profile"):
+        kernels.product(
+            kernels.cell_mass(GaussianSpec()), coordinates=kernels.physical()
+        )
+    if polar_coordinates:
+        with pytest.raises(ValueError, match="Chebyshev profile"):
+            kernels.product(
+                kernels.cell_mass(GaussianSpec()),
+                coordinates=kernels.polar(
+                    amplitude_max=3.0, w_c=0.7, input_bounds=bounds(RadiusBounds)
+                ),
+            )
+    assert (
+        kernels.product(
+            kernels.cell_mass(ChebyshevSpec(modes=3)), coordinates=kernels.physical()
+        ).revision
+        == 7
     )
-    factory = (
-        presets.polar_radius_cell_mass
-        if polar_coordinates
-        else presets.radius_cell_mass
-    )
-    with pytest.raises(ValueError, match="ChebyshevRadius"):
-        factory(profile=GaussianSpec(), **kwargs)
-    assert presets.radius_cell_mass(profile=ChebyshevRadiusSpec(modes=3)).revision == 7
 
 
 @pytest.mark.parametrize("polar_coordinates", [False, True])
@@ -428,7 +444,9 @@ def test_radius_dense_export_uses_chunked_weight_without_atom_operator_tensor(
     from torchcst._backends.torch.kernels import execution
 
     kernel = (
-        polar_kernel(radius=True) if polar_coordinates else presets.radius_cell_mass()
+        polar_kernel(radius=True)
+        if polar_coordinates
+        else kernels.product(kernels.cell_mass(), coordinates=kernels.physical())
     )
     layer = model(kernel, atom_count=131, backend="materialized")
     if not polar_coordinates:
