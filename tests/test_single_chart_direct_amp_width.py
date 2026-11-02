@@ -15,7 +15,6 @@ from kernel_cases import (
 
 from torchcst import BandwidthBounds, CSTLinear, CSTOptimizer
 from torchcst._backends.torch.charts import construction as _construction
-from torchcst._backends.torch.charts import execution as _charts
 from torchcst._backends.torch.kernels import execution as _kernel
 from torchcst._backends.torch.kernels.execution import KernelOptions
 from torchcst._backends.torch.profiles import execution as _profile
@@ -118,24 +117,3 @@ def test_one_chart_direct_kernel_updates_activity_and_rejects_normalized_profile
     ).step()
     assert torch.isfinite(model.atoms.p).all()
 
-
-def test_one_chart_direct_kernel_packs_strip_without_site_table():
-    chart = _construction.strip(
-        shape=(3, 5),
-        axes=(
-            _construction.line_pattern(3, spacing=0.2),
-            _construction.line_pattern(5, spacing=0.2),
-        ),
-        tile_shape=(2, 5),
-        axis=0,
-        tile_pitch=2.0,
-    )
-    model = CSTLinear(
-        chart=chart, atoms=3, kernel=make_kernel(triweight_state).declaration()
-    )
-    packed = model.packed_weight()
-    dense = model.dense_weight().flatten()
-    assert packed.is_contiguous()
-    for station in range(chart.tile_count):
-        logical, local = _charts.tile_indices(chart, station)
-        torch.testing.assert_close(packed[station].flatten()[local], dense[logical])

@@ -27,13 +27,9 @@ from torchcst._backends.torch.algorithms.linear.factored.algorithm import (
 from torchcst._backends.torch.algorithms.linear.materialized.algorithm import (
     MaterializedAlgorithm,
 )
-from torchcst._backends.torch.algorithms.linear.torus_profile_product.executor import (
-    _Scalars,
-)
 from torchcst._backends.torch.algorithms.polar_update.algorithm import (
     PolarUpdateAlgorithm,
 )
-from torchcst._backends.torch.parameterizations import polar_amp_width as polar
 from torchcst.kernels.state import KernelState
 from torchcst.operators.atom_update import AtomUpdateBinding, AtomUpdateInputs
 from torchcst.operators.execution import LinearInputs
@@ -60,16 +56,14 @@ def polar_kernel(*, radius, activity_mode="finite_chord"):
         return presets.polar_radius_cell_mass(
             input_radius_bounds=bounds(RadiusBounds), **settings
         )
-    return presets.polar_cell_mass(
-        input_min_tile_sites=1,
-        output_min_tile_sites=1,
+    return presets.polar_activity(
         input_bounds=bounds(BandwidthBounds),
         **settings,
     )
 
 
 def model(kernel, *, atom_count=5, backend="factored"):
-    chart = chart_presets.regular_grid(((16,),), spacing=1.0, geometry="flat_torus")
+    chart = chart_presets.regular_grid(16, spacing=1.0, geometry="flat_torus")
     angle = torch.linspace(0.3, 2.7, atom_count, dtype=torch.float64)
     magnitude = torch.linspace(1.0, 2.0, atom_count, dtype=torch.float64)
     atoms = torch.stack(
@@ -84,18 +78,6 @@ def model(kernel, *, atom_count=5, backend="factored"):
     return CSTLinear(
         chart, chart, atoms=atoms, kernel=kernel, backend=backend, dtype=torch.float64
     )
-
-
-def test_legacy_scalar_only_adapter_keeps_sigma_helper_contract():
-    state = KernelState(polar_kernel(radius=False)).double()
-    rows = torch.tensor([[1.0, 0.4], [-0.5, 1.5]], dtype=torch.float64)
-    adapter = _Scalars(state, rows)
-    assert not hasattr(adapter, "spec")
-    amplitude, alpha = polar._amplitude_and_alpha(adapter, rows)
-    actual = polar._sigma_bounds(adapter, amplitude, alpha, side="input")
-    expected = polar._sigma_bounds(state, amplitude, alpha, side="input")
-    for left, right in zip(actual, expected):
-        torch.testing.assert_close(left, right, rtol=0, atol=0)
 
 
 @pytest.mark.parametrize("radius", [False, True])
@@ -189,50 +171,20 @@ def test_state_snapshot_preserves_distinct_bounds_and_legacy_buffer_names(radius
         assert state.profiles[0].get_extra_state() == {
             "version": 1,
             "profile": {
-                "id": "chebyshev_square",
+                "id": "gaussian",
                 "revision": 1,
-                "modes": 8,
-                "tail_bound": 1e-3,
             },
             "normalization": {
-                "kind": "continuous_mass",
-                "domain": "profile_support",
+                "kind": "discrete_l2",
+                "domain": "chart_sites",
                 "floor": None,
             },
             "fixed_width": False,
-            "cell_mass_min_tile_sites": 1,
         }
     state.scalar("w_c").fill_(0.9)
     restored = KernelState(declaration).double()
     restored.load_state_dict(state.state_dict())
     assert asdict(restored.declaration()) == asdict(state.declaration())
-
-
-def test_physical_sigma_and_radius_checkpoints_remain_distinct():
-    old = KernelState(
-        presets.cell_mass(input_min_tile_sites=1, output_min_tile_sites=1)
-    ).double()
-    new = KernelState(presets.radius_cell_mass()).double()
-    assert set(old._buffers) == {
-        "sigma_init_min",
-        "sigma_init_max",
-        "amplitude_std",
-        "sigma_floor",
-    }
-    assert set(new._buffers) == {
-        "radius_init_min",
-        "radius_init_max",
-        "amplitude_std",
-        "radius_floor",
-    }
-    for state in (old, new):
-        saved = copy.deepcopy(state.state_dict())
-        restored = KernelState(state.declaration()).double()
-        restored.load_state_dict(saved)
-        assert asdict(restored.declaration()) == asdict(state.declaration())
-    for target, source in ((old, new), (new, old)):
-        with pytest.raises(RuntimeError, match="checkpoint contract differs"):
-            target.load_state_dict(copy.deepcopy(source.state_dict()))
 
 
 def test_radius_and_sigma_bounds_and_keyword_names_cannot_alias():
@@ -270,10 +222,6 @@ def test_radius_and_sigma_bounds_and_keyword_names_cannot_alias():
         )
     with pytest.raises(TypeError, match="sigma_init"):
         presets.radius_cell_mass(sigma_init=(0.3, 1.0))
-    with pytest.raises(TypeError, match="radius_init"):
-        presets.cell_mass(
-            input_min_tile_sites=1, output_min_tile_sites=1, radius_init=(0.3, 1.0)
-        )
 
 
 @pytest.mark.parametrize("activity_mode", ["finite_chord", "time_energy"])

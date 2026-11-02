@@ -13,7 +13,6 @@ from .spec import (
     FlatTorusGeometrySpec,
     GeometrySpec,
     SphereGeometrySpec,
-    TorusGeometrySpec,
 )
 
 
@@ -28,7 +27,6 @@ class GeometryState(nn.Module):
                 EuclideanGeometrySpec,
                 FlatTorusGeometrySpec,
                 SphereGeometrySpec,
-                TorusGeometrySpec,
             )
             or spec.revision != 1
         ):
@@ -40,12 +38,8 @@ class GeometryState(nn.Module):
         self.embedding_dim = spec.embedding_dim
         self.center_parameter_dim = spec.center_parameter_dim
         self.representation = getattr(spec, "representation", "ambient")
-        self.circle_axis = getattr(spec, "circle_axis", None)
-        self.max_arc_step = getattr(spec, "max_arc_step", None)
         for name in (
             "radius",
-            "major_radius",
-            "minor_radius",
             "chart_margin",
             "periods",
         ):

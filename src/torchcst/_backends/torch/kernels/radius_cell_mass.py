@@ -123,30 +123,30 @@ def axis_masses(axis, radius, centers):
     return result
 
 
-def initialize(state, input_chart, output_chart, atoms, *, mode):
-    if input_chart.reference.device.type != "cpu":
+def initialize(state, output_chart, input_chart, atoms, *, mode):
+    if output_chart.reference.device.type != "cpu":
         raise ValueError("radius cell-mass reference currently requires CPU tensors")
     axes = radius_cell_mass_axes(
-        (input_chart.declaration(), output_chart.declaration()), state.declaration()
+        (output_chart.declaration(), input_chart.declaration()), state.declaration()
     )
     if atoms == 0:
-        return input_chart.reference.new_empty((0, 4))
+        return output_chart.reference.new_empty((0, 4))
     if type(state.spec.parameterization) is not PhysicalAmpRadiusSpec:
         from .polar_amp_width import initialize as initialize_polar
 
-        return initialize_polar(state, input_chart, output_chart, atoms, mode=mode)
+        return initialize_polar(state, output_chart, input_chart, atoms, mode=mode)
     low, high = (
         float(state.scalar(name)) for name in ("radius_init_min", "radius_init_max")
     )
-    p = input_chart.reference.new_empty((atoms, 4))
+    p = output_chart.reference.new_empty((atoms, 4))
     p[:, 0].normal_(0, float(state.scalar("amplitude_std")))
     p[:, 1].uniform_(low, high)
-    p[:, 2].uniform_(axes[1].origin, axes[1].origin + axes[1].period)
-    p[:, 3].uniform_(axes[0].origin, axes[0].origin + axes[0].period)
+    p[:, 2].uniform_(axes[0].origin, axes[0].origin + axes[0].period)
+    p[:, 3].uniform_(axes[1].origin, axes[1].origin + axes[1].period)
     return p
 
 
-def factors(state, input_chart, output_chart, p):
+def factors(state, output_chart, input_chart, p):
     if p.device.type != "cpu":
         raise ValueError("radius cell-mass reference currently requires CPU tensors")
     if p.ndim != 2 or p.shape[1] != 4 or p.dtype not in (torch.float32, torch.float64):
@@ -154,34 +154,33 @@ def factors(state, input_chart, output_chart, p):
     if not bool(torch.isfinite(p).all()):
         raise ValueError("atom parameters must be finite")
     axes = radius_cell_mass_axes(
-        (input_chart.declaration(), output_chart.declaration()), state.declaration()
+        (output_chart.declaration(), input_chart.declaration()), state.declaration()
     )
     if type(state.spec.parameterization) is PhysicalAmpRadiusSpec:
         amplitude = p[:, 0].double()
         input_radius = output_radius = p[:, 1]
-        input_center, output_center = p[:, 3], p[:, 2]
     else:
         from ..parameterizations.radius_cell_mass import decoded_values
 
         amplitude, input_radius, output_radius = decoded_values(state, p)
         input_radius, output_radius = input_radius.detach(), output_radius.detach()
-        input_center, output_center = p[:, 2], p[:, 3]
-    input_mass = axis_masses(axes[0], input_radius, input_center)
-    output_mass = axis_masses(axes[1], output_radius, output_center)
+    output_center, input_center = p[:, 2], p[:, 3]
+    output_mass = axis_masses(axes[0], output_radius, output_center)
+    input_mass = axis_masses(axes[1], input_radius, input_center)
     return input_mass.T.to(p.dtype), (output_mass.T * amplitude).to(p.dtype)
 
 
-def materialize_atoms(state, input_chart, output_chart, p):
-    inputs, outputs = factors(state, input_chart, output_chart, p)
+def materialize_atoms(state, output_chart, input_chart, p):
+    inputs, outputs = factors(state, output_chart, input_chart, p)
     return torch.einsum("oa,ia->aoi", outputs, inputs)
 
 
-def weight(state, input_chart, output_chart, p):
+def weight(state, output_chart, input_chart, p):
     """Dense export in chunks; forward uses complete H through Torch factored."""
     result = p.new_zeros((output_chart.features, input_chart.features))
     for start in range(0, len(p), 128):
         inputs, outputs = factors(
-            state, input_chart, output_chart, p[start : start + 128]
+            state, output_chart, input_chart, p[start : start + 128]
         )
         result = result + outputs @ inputs.T
     return result

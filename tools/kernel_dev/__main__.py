@@ -24,33 +24,11 @@ from benchmarks.cuda.linear.manifest import (
 
 ROOT = Path(__file__).resolve().parents[2]
 GPU_SUITES = {
-    "sphere-polar": (
-        "tests/test_sphere_polar_blocked.py",
-        "tests/test_sphere_baseline.py",
-    ),
-    "profile-product-global": ("tests/test_global_profile_product_cuda.py",),
-    "profile-product-strip": ("tests/test_strip_profile_product_cuda.py",),
-    "profile-product": ("tests/test_profile_product_cuda.py",),
     "atom-update": (
         "tests/test_atom_update_dispatch.py",
         "tests/test_local_polar_update.py",
         "tests/test_cst_optimizer.py",
         "tests/test_geometry.py",
-    ),
-    "local-product": (
-        "tests/test_atom_update_dispatch.py",
-        "tests/test_local_product_research.py",
-        "tests/test_local_polar_update.py",
-        "tests/test_local_persistent_layout.py",
-        "tests/test_local_contraction.py",
-        "tests/test_local_launch.py",
-        "tests/test_local_owner_index.py",
-        "tests/test_local_owner_index_refine.py",
-        "tests/test_local_ordered_owner.py",
-        "tests/test_local_owner_reuse.py",
-        "tests/test_local_parameter_atom_tile.py",
-        "tests/test_local_order_cache.py",
-        "tests/test_local_compact_order_cache.py",
     ),
     "normalized-strip": (
         "tests/test_normalized_strip_public.py",

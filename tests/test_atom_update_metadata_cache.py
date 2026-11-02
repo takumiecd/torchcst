@@ -210,7 +210,7 @@ def test_geometry_period_buffer_placement_refreshes_metadata(change):
     )
     second = binding.build_context(inputs(model))
     assert second.scalar_metadata is not first.scalar_metadata
-    assert scalar(second, "geometry.0.periods") == (
+    assert scalar(second, "geometry.1.periods") == (
         geometry.periods.dtype,
         DeviceInfo("cpu"),
         1,

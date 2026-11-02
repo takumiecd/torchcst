@@ -197,7 +197,7 @@ def test_hybrid_empty_shapes(variant, batch, count):
 @GPU
 @pytest.mark.parametrize("variant", VARIANTS)
 def test_hybrid_public_polar_distinct_bounds(variant):
-    chart = chart_presets.regular_grid(((16,),), spacing=1.0, geometry="flat_torus")
+    chart = chart_presets.regular_grid(16, spacing=1.0, geometry="flat_torus")
     kernel = presets.polar_radius_cell_mass(
         amplitude_max=1.3,
         w_c=0.3,

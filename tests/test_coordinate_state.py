@@ -34,15 +34,12 @@ def radial():
     return kernels.radial(kernels.fixed_profile(TriweightSpec(), sigma=2))
 
 
-def matrix(kind="product", **settings):
-    args = dict(
+def matrix(**settings):
+    return layout.product(
         shape=(5, 3),
         axes=(site_presets.line(5, spacing=0.2), site_presets.line(3, spacing=0.3)),
         **settings,
     )
-    if kind == "strip":
-        return layout.strip(tile_shape=(2, 3), axis=0, tile_pitch=0.8, **args)
-    return layout.product(**args)
 
 
 def test_legacy_classes_and_declaration_adapters_are_removed():
@@ -72,16 +69,15 @@ def test_legacy_classes_and_declaration_adapters_are_removed():
             assert not hasattr(cls, method)
 
 
-@pytest.mark.parametrize("kind", ["product", "strip"])
-def test_single_chart_declaration_constructs_an_operator(kind):
-    layer = CSTLinear(chart=matrix(kind), atoms=2, kernel=radial(), dtype=torch.float64)
+def test_single_chart_declaration_constructs_an_operator():
+    layer = CSTLinear(chart=matrix(), atoms=2, kernel=radial(), dtype=torch.float64)
     inputs = torch.randn(4, 3, dtype=torch.float64, requires_grad=True)
     expected = torch.nn.functional.linear(inputs, layer.dense_weight())
     torch.testing.assert_close(layer(inputs), expected)
     layer(inputs).square().sum().backward()
     assert inputs.grad is not None and layer.atoms.p.grad is not None
     assert layer.chart.dtype == torch.float64
-    assert layer.declaration().layout.chart.kind == kind
+    assert layer.declaration().layout.chart.kind == "product"
 
 
 def test_pair_declarations_construct_a_conv_and_linear_with_lazy_axes():
@@ -91,9 +87,9 @@ def test_pair_declarations_construct_a_conv_and_linear_with_lazy_axes():
         input_profile=kernels.fixed_profile(TriweightSpec(), sigma=2),
         output_profile=kernels.fixed_profile(TriweightSpec(), sigma=2),
     )
-    linear = CSTLinear(inp, out, atoms=2, kernel=kernel)
+    linear = CSTLinear(out, inp, atoms=2, kernel=kernel)
     conv = CSTConv2d(
-        inp, out, in_channels=1, out_channels=3, kernel_size=2, atoms=2, kernel=kernel
+        out, inp, in_channels=1, out_channels=3, kernel_size=2, atoms=2, kernel=kernel
     )
     x = torch.randn(2, 4)
     torch.testing.assert_close(
@@ -112,7 +108,7 @@ def test_trainable_explicit_coordinates_are_owned_and_visible_to_autograd():
         input_profile=kernels.fixed_profile(TriweightSpec(), sigma=2),
         output_profile=kernels.fixed_profile(TriweightSpec(), sigma=2),
     )
-    layer = CSTLinear(spec, frozen, atoms=2, kernel=kernel)
+    layer = CSTLinear(frozen, spec, atoms=2, kernel=kernel)
     assert isinstance(layer.input_chart.coordinates, torch.nn.Parameter)
     layer(torch.randn(2, 3)).square().sum().backward()
     assert torch.isfinite(layer.input_chart.coordinates.grad).all()
@@ -125,11 +121,10 @@ def test_trainable_explicit_coordinates_are_owned_and_visible_to_autograd():
     )
 
 
-@pytest.mark.parametrize("kind", ["product", "strip"])
-def test_coordinate_checkpoint_is_weights_only_and_restores_live_buffers(kind):
-    source = compile_chart(matrix(kind), dtype=torch.float64)
+def test_coordinate_checkpoint_is_weights_only_and_restores_live_buffers():
+    source = compile_chart(matrix(), dtype=torch.float64)
     source.axes[0].start.add_(0.25)
-    target = compile_chart(matrix(kind), dtype=torch.float64)
+    target = compile_chart(matrix(), dtype=torch.float64)
     stream = io.BytesIO()
     torch.save(source.state_dict(), stream)
     stream.seek(0)
@@ -155,36 +150,26 @@ def test_unsupported_revisions_reject_at_compilation(spec, state_type):
 
 
 @pytest.mark.parametrize("representation", ["ambient", "intrinsic"])
-def test_sphere_and_torus_chord_distances_match_independent_ambient_oracle(
+def test_sphere_chord_distances_match_independent_ambient_oracle(
     representation,
 ):
-    for spec in (
-        space_presets.sphere(2, radius=2, representation=representation),
-        space_presets.torus(
-            2, major_radius=5, minor_radius=1, representation=representation
-        ),
-    ):
-        state = GeometryState(spec, dtype=torch.float64)
-        sites = geometry.lift_chart_coordinates(
-            state, torch.tensor([[0.1, 0.2], [0.4, -0.1]], dtype=torch.float64)
-        )
-        centers = geometry.encode_centers(state, sites[:1]).requires_grad_()
-        decoded = geometry.decode_centers(state, centers)
-        expected = (sites[:, None] - decoded[None, :]).square().sum(-1)
-        actual = geometry.squared_distance(state, sites, centers)
-        torch.testing.assert_close(actual, expected)
-        torch.testing.assert_close(
-            torch.autograd.grad(actual.sum(), centers, retain_graph=True)[0],
-            torch.autograd.grad(expected.sum(), centers)[0],
-        )
+    spec = space_presets.sphere(2, radius=2, representation=representation)
+    state = GeometryState(spec, dtype=torch.float64)
+    sites = geometry.lift_chart_coordinates(
+        state, torch.tensor([[0.1, 0.2], [0.4, -0.1]], dtype=torch.float64)
+    )
+    centers = geometry.encode_centers(state, sites[:1]).requires_grad_()
+    decoded = geometry.decode_centers(state, centers)
+    expected = (sites[:, None] - decoded[None, :]).square().sum(-1)
+    actual = geometry.squared_distance(state, sites, centers)
+    torch.testing.assert_close(actual, expected)
+    torch.testing.assert_close(
+        torch.autograd.grad(actual.sum(), centers, retain_graph=True)[0],
+        torch.autograd.grad(expected.sum(), centers)[0],
+    )
 
 
 def test_checkpoint_rejects_invalid_loaded_scalars_and_point_tables():
-    chart = compile_chart(matrix("strip"))
-    checkpoint = copy.deepcopy(chart.state_dict())
-    checkpoint["tile_pitch"].fill_(0.01)
-    with pytest.raises(RuntimeError, match="invalid coordinate"):
-        chart.load_state_dict(checkpoint)
     chart = compile_chart(
         layout.points(((1.0, 0.0, 0.0),), geometry=space_presets.sphere(2))
     )
@@ -212,7 +197,7 @@ def test_huge_product_chart_owns_only_axis_state_and_executes_bounded_selection(
 
 
 def test_execution_reads_live_tensor_state_without_snapshots(monkeypatch):
-    state = compile_chart(matrix("strip"))
+    state = compile_chart(matrix())
 
     def forbidden(*args, **kwargs):
         raise AssertionError("configuration snapshots must stay outside execution")
@@ -225,9 +210,8 @@ def test_execution_reads_live_tensor_state_without_snapshots(monkeypatch):
     assert patterns.positions(state.axes[0], torch.arange(3)).shape == (3, 1)
 
 
-@pytest.mark.parametrize("kind", ["product", "strip"])
-def test_chart_compilation_checks_nested_pattern_revision(kind):
-    spec = matrix(kind)
+def test_chart_compilation_checks_nested_pattern_revision():
+    spec = matrix()
     future = replace(spec, axes=(replace(spec.axes[0], revision=2), *spec.axes[1:]))
     with pytest.raises(ValueError, match="unsupported chart pattern"):
         compile_chart(future)

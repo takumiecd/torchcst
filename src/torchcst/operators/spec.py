@@ -29,22 +29,22 @@ class SingleChartSpec:
 
 @dataclass(frozen=True, kw_only=True)
 class ChartPairSpec:
-    """Independent input/output observation charts; retained for current kernels."""
+    """Independent output/input observation charts; weight shape is [out_chart.ncs, in_chart.ncs]."""
 
-    input_chart: ChartSpec
     output_chart: ChartSpec
+    input_chart: ChartSpec
 
     def __post_init__(self):
         if not all(isinstance(c, ChartSpec) for c in self.charts):
-            raise TypeError("input_chart and output_chart must be ChartSpec instances")
+            raise TypeError("output_chart and input_chart must be ChartSpec instances")
 
     @property
     def charts(self):
-        return (self.input_chart, self.output_chart)
+        return (self.output_chart, self.input_chart)
 
     @property
     def shape(self):
-        return (self.output_chart.features, self.input_chart.features)
+        return (self.output_chart.ncs, self.input_chart.ncs)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -70,13 +70,9 @@ class OperatorSpec:
         kernel = self.kernel
         while kernel.composition == "amplitude":
             kernel = kernel.inner
-        allowed = (
-            ("radial", "profile_product") if len(self.charts) == 1 else ("separable",)
-        )
+        allowed = ("radial",) if len(self.charts) == 1 else ("separable",)
         if kernel.composition not in allowed:
             raise ValueError("kernel composition differs from the chart layout")
-        if kernel.composition == "profile_product":
-            validate_profile_product_layout(self.charts[0], kernel)
 
     @property
     def charts(self):
@@ -102,87 +98,6 @@ class OperatorSpec:
         if operator.declaration() != self:
             raise ValueError("live operator settings differ from the declaration")
         return operator
-
-
-def validate_profile_product_layout(chart, kernel):
-    """Validate coordinate/fibre products using declarations only."""
-    from torchcst.charts import (
-        PeriodicGridChartSpec,
-        ProductChartSpec,
-        RegularGridChartSpec,
-        StripChartSpec,
-    )
-    from torchcst.geometry.spec import (
-        EuclideanGeometrySpec,
-        FlatTorusGeometrySpec,
-        TorusGeometrySpec,
-    )
-    from torchcst.patterns.spec import GridPatternSpec, LinePatternSpec
-
-    if kernel.revision == 6:
-        from torchcst.kernels.matern_layout import matern_layout
-
-        matern_layout(chart, kernel)
-        return
-
-    if kernel.revision == 4:
-        from torchcst.kernels.fourier_layout import fourier_tile_layout
-
-        fourier_tile_layout(chart, kernel)
-        return
-
-    if type(chart) is RegularGridChartSpec:
-        expected_revision = 3 if type(chart.geometry) is FlatTorusGeometrySpec else 1
-        if (
-            len(chart.shape) != 2
-            or chart.revision != 1
-            or chart.geometry.revision != 1
-            or kernel.revision != expected_revision
-            or len(kernel.profiles) != chart.geometry.intrinsic_dim
-        ):
-            raise ValueError(
-                "regular_grid requires two weight axes and matching geometry/profile revision"
-            )
-        return
-    if kernel.revision == 3:
-        if (
-            type(chart) is not PeriodicGridChartSpec
-            or chart.revision != 1
-            or chart.geometry.revision != 1
-            or len(kernel.profiles) != chart.geometry.intrinsic_dim
-        ):
-            raise ValueError(
-                "revision 3 requires a PeriodicGrid chart and one profile per coordinate"
-            )
-        return
-    if (
-        type(chart) not in (ProductChartSpec, StripChartSpec)
-        or chart.revision != 1
-        or len(chart.shape) != 2
-        or chart.geometry.revision != 1
-        or any(
-            type(a) not in (GridPatternSpec, LinePatternSpec) or a.revision != 1
-            for a in chart.axes
-        )
-    ):
-        raise ValueError("profile_product requires a Product/Strip grid chart")
-    if kernel.revision == 2:
-        from torchcst.charts.base import _circle_axis
-
-        if (
-            type(chart.geometry) is not TorusGeometrySpec
-            or chart.geometry.intrinsic_dim != 3
-            or len(kernel.profiles) != 2
-        ):
-            raise ValueError("revision 2 requires the S1 x S2 Torus fibre product")
-        circle = _circle_axis(chart)
-        if chart.axes[1 - circle].dim != 2:
-            raise ValueError("Torus section must be a two-dimensional grid")
-        return
-    if kernel.revision != 1 or type(chart.geometry) is not EuclideanGeometrySpec:
-        raise ValueError("revision 1 requires a Euclidean Product/Strip grid chart")
-    if len(kernel.profiles) != chart.geometry.intrinsic_dim:
-        raise ValueError("profile count must match the chart coordinate dimension")
 
 
 from torchcst._builtin_callbacks import seal_functions as _seal_functions

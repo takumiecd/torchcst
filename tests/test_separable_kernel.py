@@ -31,10 +31,10 @@ def base_kernel() -> separable_state:
 def test_separable_kernel_is_the_amplitude_free_profile_product() -> None:
     input_chart, output_chart = charts()
     kernel = base_kernel()
-    p = _kernel.initialize(kernel, input_chart, output_chart, 2, mode="balanced")
-    phi_input, phi_output = _kernel.factors(kernel, input_chart, output_chart, p)
-    represented = _kernel.materialize_atoms(kernel, input_chart, output_chart, p)
-    assert _kernel.parameter_dim(kernel, input_chart, output_chart) == 3
+    p = _kernel.initialize(kernel, output_chart, input_chart, 2, mode="balanced")
+    phi_input, phi_output = _kernel.factors(kernel, output_chart, input_chart, p)
+    represented = _kernel.materialize_atoms(kernel, output_chart, input_chart, p)
+    assert _kernel.parameter_dim(kernel, output_chart, input_chart) == 3
     assert p.shape == (2, 3)
     assert phi_input.shape == (3, 2)
     assert phi_output.shape == (4, 2)
@@ -51,13 +51,13 @@ def test_amplitude_wrapper_adds_one_signed_coordinate_to_any_kernel() -> None:
     input_chart, output_chart = charts()
     base = base_kernel()
     kernel = amplitude_state(base)
-    p = _kernel.initialize(kernel, input_chart, output_chart, 2, mode="balanced")
-    represented = _kernel.materialize_atoms(kernel, input_chart, output_chart, p)
+    p = _kernel.initialize(kernel, output_chart, input_chart, 2, mode="balanced")
+    represented = _kernel.materialize_atoms(kernel, output_chart, input_chart, p)
     expected = p[:, 0, None, None] * _kernel.materialize_atoms(
-        base, input_chart, output_chart, p[:, 1:]
+        base, output_chart, input_chart, p[:, 1:]
     )
-    phi_input, phi_output = _kernel.factors(kernel, input_chart, output_chart, p)
-    assert _kernel.parameter_dim(kernel, input_chart, output_chart) == 4
+    phi_input, phi_output = _kernel.factors(kernel, output_chart, input_chart, p)
+    assert _kernel.parameter_dim(kernel, output_chart, input_chart) == 4
     assert p.shape == (2, 4)
     torch.testing.assert_close(represented, expected)
     torch.testing.assert_close(
@@ -120,17 +120,17 @@ def test_weak_atom_uses_the_same_finite_broad_width_on_both_sides() -> None:
     input_chart = _construction.linspace(3, low=-1.0, high=1.0)
     output_chart = _construction.linspace(4, low=-1.0, high=1.0)
     kernel = make_bandwidth_kernel()
-    p = torch.tensor([[1e-10, 0.1, -0.2]], dtype=torch.float64)
-    phi_input, phi_output = _kernel.factors(kernel, input_chart, output_chart, p)
+    p = torch.tensor([[1e-10, -0.2, 0.1]], dtype=torch.float64)
+    phi_input, phi_output = _kernel.factors(kernel, output_chart, input_chart, p)
     precision = _kernel.coordinate(
-        kernel, "bandwidth_precision", input_chart, output_chart, p
+        kernel, "bandwidth_precision", output_chart, input_chart, p
     )
     broad = torch.tensor(1.0 / 0.8**2, dtype=p.dtype)
     torch.testing.assert_close(precision[0], broad)
     torch.testing.assert_close(
         phi_input,
         _profile.evaluate_with_precision(
-            kernel.profiles[0], input_chart, p[:, 1:2], broad
+            kernel.profiles[0], input_chart, p[:, 2:], broad
         ),
         atol=1e-12,
         rtol=0,
@@ -138,7 +138,7 @@ def test_weak_atom_uses_the_same_finite_broad_width_on_both_sides() -> None:
     torch.testing.assert_close(
         phi_output / p[0, 0],
         _profile.evaluate_with_precision(
-            kernel.profiles[0], output_chart, p[:, 2:], broad
+            kernel.profiles[0], output_chart, p[:, 1:2], broad
         ),
         atol=1e-12,
         rtol=0,

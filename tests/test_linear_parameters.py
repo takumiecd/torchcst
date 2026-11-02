@@ -84,14 +84,14 @@ def test_existing_atoms_can_be_used_by_ordinary_chart_pair_kernel():
         output_profile=presets.fixed_profile(presets.GaussianSpec(), 1.0),
     )
     source = CSTLinear(
-        chart_presets.linspace(4, spacing=1.0),
         chart_presets.linspace(3, spacing=1.0),
+        chart_presets.linspace(4, spacing=1.0),
         atoms=2,
         kernel=kernel,
     )
     target = CSTLinear(
-        chart_presets.linspace(4, spacing=1.0),
         chart_presets.linspace(3, spacing=1.0),
+        chart_presets.linspace(4, spacing=1.0),
         atoms=source.atoms,
         kernel=kernel,
     )

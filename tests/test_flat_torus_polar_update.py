@@ -5,9 +5,17 @@ from dataclasses import replace
 
 import pytest
 import torch
-from test_cell_mass_polar import layer
 
-from torchcst import AtomUpdateBinding, AtomUpdateInputs, CSTOptimizer, Dispatcher
+from torchcst import (
+    AtomUpdateBinding,
+    AtomUpdateInputs,
+    BandwidthBounds,
+    CSTLinear,
+    CSTOptimizer,
+    Dispatcher,
+    chart_presets,
+    presets,
+)
 from torchcst._backends.catalog import get_registry
 from torchcst._backends.cuda.algorithms.polar_update.plans import (
     FLAT_TORUS_FUSED,
@@ -16,6 +24,53 @@ from torchcst._backends.cuda.algorithms.polar_update.plans import (
 from torchcst._backends.dispatch import FixedSelector
 from torchcst._backends.schema import DeviceInfo
 from torchcst._backends.torch.kernels import execution
+
+
+def layer(
+    n=128,
+    count=37,
+    *,
+    dtype=torch.float64,
+    device="cpu",
+    site_scaled=False,
+):
+    spacing = 128 / n
+    chart = chart_presets.regular_grid(n, spacing=spacing, geometry="flat_torus")
+    if site_scaled:
+        maximum = min(100 * spacing, 128 / 3)
+        rounded = torch.tensor(maximum, dtype=torch.float32)
+        if float(rounded) > maximum:
+            rounded = torch.nextafter(rounded, torch.zeros_like(rounded))
+        bounds = BandwidthBounds(
+            minimum=spacing,
+            birth=8 * spacing,
+            maximum=float(rounded),
+            upper_floor=2 * spacing,
+        )
+    else:
+        bounds = BandwidthBounds(
+            minimum=2.0, birth=16.0, maximum=40.0, upper_floor=4.0
+        )
+    kernel = presets.polar_activity(
+        amplitude_max=8.0,
+        w_c=2.4,
+        input_bounds=bounds,
+        alpha_init=0.5,
+    )
+    rng = torch.Generator().manual_seed(120)
+    p = torch.randn(count, 4, generator=rng).to(dtype)
+    p[:, :2] *= torch.linspace(1.0, 2.0, count, dtype=dtype)[:, None] / p[:, :2].norm(
+        dim=1, keepdim=True
+    )
+    p[:, 2:] *= 150
+    return CSTLinear(
+        chart,
+        chart,
+        atoms=p.to(device),
+        kernel=kernel,
+        dtype=dtype,
+        device=device,
+    )
 
 
 def selector():

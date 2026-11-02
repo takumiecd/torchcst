@@ -8,97 +8,12 @@ import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from benchmarks.cuda.linear.local_product import SEMANTICS as LOCAL_SEMANTICS
-from benchmarks.cuda.linear.local_product import LocalAlgorithm
-from torchcst._backends.cuda.algorithms.linear.cell_mass_hierarchical.algorithm import (
-    HierarchicalCellMassAlgorithm,
-)
-from torchcst._backends.cuda.algorithms.linear.fourier_tiles.algorithm import (
-    FourierTilesAlgorithm,
-)
 from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip import (
     NormalizedFullAlgorithm,
     NormalizedWindowAlgorithm,
 )
-from torchcst._backends.cuda.algorithms.linear.periodic_product.algorithm import (
-    PeriodicFactorAlgorithm,
-    PeriodicMatrixAlgorithm,
-)
-from torchcst._backends.cuda.algorithms.linear.profile_product.algorithm import (
-    ProductAlgorithm,
-)
-from torchcst._backends.cuda.algorithms.linear.profile_product_global import (
-    GlobalProductAlgorithm,
-)
-from torchcst._backends.cuda.algorithms.linear.profile_product_global.algorithm_v2 import (
-    GroupedProductAlgorithm,
-    GroupedStripAlgorithm,
-)
-from torchcst._backends.cuda.algorithms.linear.profile_product_global.algorithm_v3 import (
-    PreparationProductAlgorithm,
-    PreparationStripAlgorithm,
-)
-from torchcst._backends.cuda.algorithms.linear.profile_product_matrix.algorithm import (
-    MatrixProductAlgorithm,
-    MatrixStripAlgorithm,
-)
-from torchcst._backends.cuda.algorithms.linear.profile_product_matrix.algorithm_v2 import (
-    ContractionProductAlgorithm,
-    ContractionStripAlgorithm,
-)
-from torchcst._backends.cuda.algorithms.linear.profile_product_matrix.algorithm_v3 import (
-    GroupedMatrixProductAlgorithm,
-    GroupedMatrixStripAlgorithm,
-)
-from torchcst._backends.cuda.algorithms.linear.profile_product_matrix.algorithm_v4 import (
-    LargeSplitMatrixProductAlgorithm,
-    LargeSplitMatrixStripAlgorithm,
-    SplitMatrixProductAlgorithm,
-    SplitMatrixStripAlgorithm,
-)
-from torchcst._backends.cuda.algorithms.linear.profile_product_matrix.large_algorithm import (
-    LargeMatrixProductAlgorithm,
-    LargeMatrixStripAlgorithm,
-    LargePreparationProductAlgorithm,
-    LargePreparationStripAlgorithm,
-)
-from torchcst._backends.cuda.algorithms.linear.profile_product_matrix.square_strip_algorithm import (
-    SquareStripMatrixAlgorithm,
-    SquareStripPreparationAlgorithm,
-    SquareStripSplitAlgorithm,
-)
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.algorithm import (
     RadiusCellMassAlgorithm,
-)
-from torchcst._backends.cuda.algorithms.linear.sphere_polar.algorithm import (
-    SphereAlgorithm,
-)
-from torchcst._backends.cuda.algorithms.linear.sphere_polar.compact_algorithm import (
-    SphereGroupedCompactAlgorithm,
-)
-from torchcst._backends.cuda.algorithms.linear.sphere_polar.fused_algorithm import (
-    SphereFusedWeightAlgorithm,
-)
-from torchcst._backends.cuda.algorithms.linear.sphere_polar.grouped_algorithm import (
-    SphereGroupedWeightAlgorithm,
-)
-from torchcst._backends.cuda.algorithms.linear.sphere_polar.support_algorithm import (
-    SphereSupportAlgorithm,
-)
-from torchcst._backends.cuda.algorithms.linear.sphere_polar.weight_algorithm import (
-    SphereWeightAlgorithm,
-)
-from torchcst._backends.cuda.algorithms.linear.strip_profile_product import (
-    StripProductAlgorithm,
-)
-from torchcst._backends.cuda.algorithms.linear.torus_profile_product.compact_ids.algorithm import (
-    TorusCompactIdsAlgorithm,
-)
-from torchcst._backends.cuda.algorithms.linear.torus_profile_product.onchip.algorithm import (
-    TorusOnchipAlgorithm,
-)
-from torchcst._backends.cuda.algorithms.linear.torus_profile_product.sparse_weight.algorithm import (
-    TorusSparseWeightAlgorithm,
 )
 from torchcst._backends.registry import Registry
 from torchcst._backends.schema import ExecutionPlan
@@ -108,79 +23,13 @@ from torchcst._backends.torch.algorithms.linear.normalized_radial.layout import 
     OPERATION,
     SEMANTICS,
 )
-from torchcst._backends.torch.algorithms.linear.torus_profile_product.algorithm import (
-    TorusChunkAlgorithm,
-)
-
-
-class BenchmarkRegistry(Registry):
-    """Local recipes have immutable boundary tuples, represented as JSON arrays."""
-
-    def dump_plan(self, plan):
-        if plan.algorithm_id not in (
-            "research_local_product",
-            "research_profile_product",
-        ):
-            return super().dump_plan(plan)
-        self.validate_plan(plan)
-        recipe = asdict(plan.recipe)
-        recipe["rho_upper"] = list(recipe["rho_upper"])
-        value = {
-            "schema_version": plan.schema_version,
-            "algorithm_id": plan.algorithm_id,
-            "algorithm_revision": plan.algorithm_revision,
-            "recipe": recipe,
-        }
-        if self.load_plan(value) != plan:
-            raise ValueError("local recipe does not round-trip losslessly")
-        return value
-
 
 # This catalog is benchmark-local. Production registration/selection is unchanged.
-REGISTRY = BenchmarkRegistry()
+REGISTRY = Registry()
 REGISTRY.register(RadiusCellMassAlgorithm())
-REGISTRY.register(HierarchicalCellMassAlgorithm())
-REGISTRY.register(SphereAlgorithm())
-REGISTRY.register(SphereSupportAlgorithm())
-REGISTRY.register(SphereWeightAlgorithm())
-REGISTRY.register(SphereFusedWeightAlgorithm())
-REGISTRY.register(SphereGroupedWeightAlgorithm())
-REGISTRY.register(SphereGroupedCompactAlgorithm())
 REGISTRY.register(FactoredAlgorithm())
-REGISTRY.register(TorusChunkAlgorithm())
-REGISTRY.register(TorusOnchipAlgorithm())
-REGISTRY.register(TorusSparseWeightAlgorithm())
-REGISTRY.register(TorusCompactIdsAlgorithm())
 REGISTRY.register(NormalizedFullAlgorithm())
 REGISTRY.register(NormalizedWindowAlgorithm())
-REGISTRY.register(LocalAlgorithm())
-REGISTRY.register(PeriodicMatrixAlgorithm())
-REGISTRY.register(PeriodicFactorAlgorithm())
-REGISTRY.register(FourierTilesAlgorithm())
-REGISTRY.register(ProductAlgorithm())
-REGISTRY.register(StripProductAlgorithm())
-REGISTRY.register(GlobalProductAlgorithm())
-REGISTRY.register(GroupedProductAlgorithm())
-REGISTRY.register(GroupedStripAlgorithm())
-REGISTRY.register(PreparationProductAlgorithm())
-REGISTRY.register(PreparationStripAlgorithm())
-REGISTRY.register(MatrixProductAlgorithm())
-REGISTRY.register(MatrixStripAlgorithm())
-REGISTRY.register(ContractionProductAlgorithm())
-REGISTRY.register(ContractionStripAlgorithm())
-REGISTRY.register(GroupedMatrixProductAlgorithm())
-REGISTRY.register(GroupedMatrixStripAlgorithm())
-REGISTRY.register(LargeMatrixProductAlgorithm())
-REGISTRY.register(LargeMatrixStripAlgorithm())
-REGISTRY.register(LargePreparationProductAlgorithm())
-REGISTRY.register(LargePreparationStripAlgorithm())
-REGISTRY.register(SplitMatrixProductAlgorithm())
-REGISTRY.register(SplitMatrixStripAlgorithm())
-REGISTRY.register(LargeSplitMatrixProductAlgorithm())
-REGISTRY.register(LargeSplitMatrixStripAlgorithm())
-REGISTRY.register(SquareStripPreparationAlgorithm())
-REGISTRY.register(SquareStripMatrixAlgorithm())
-REGISTRY.register(SquareStripSplitAlgorithm())
 
 DEFAULT_PLANS = Path(__file__).with_name("plans.json")
 
@@ -273,7 +122,6 @@ class WidthFixture:
             raise ValueError("invalid width mixture fractions")
         if not math.isclose(sum(self.fractions), 1.0, abs_tol=1e-9):
             raise ValueError("width mixture fractions must sum to one")
-        # This benchmark's domain spacing is one. Initialize within its shared bounds.
         if any(not self.birth <= x <= self.maximum for x in self.rho):
             raise ValueError("initial rho must be within birth..maximum")
         if self.center_jitter is not None and (
@@ -303,14 +151,7 @@ class BenchmarkCase:
         _id(self.id, "case id")
         if self.fixture not in (
             "normalized_euclidean_strip",
-            "polar_sphere_separable",
             "polar_radius_cell_mass",
-            "local_polar_product",
-            "polar_profile_product",
-            "polar_profile_product_strip",
-            "polar_profile_product_square_strip",
-            "polar_profile_product_global",
-            "polar_torus_profile_product_strip",
         ):
             raise ValueError("unknown benchmark fixture")
         if type(self.optimizer) is not OptimizerSpec:
@@ -324,54 +165,16 @@ class BenchmarkCase:
                 raise ValueError(
                     "radius requires eager optimizer and public initial fixture"
                 )
-        elif self.fixture == "polar_sphere_separable":
-            if (
-                self.optimizer.capturable
-                or self.profile not in ("rho3", "rho8")
-                or self.widths is not None
-            ):
-                raise ValueError(
-                    "Sphere requires eager optimizer and rho3/rho8 without custom widths"
-                )
         elif not self.optimizer.capturable:
             raise ValueError("existing fixtures require capturable AdamW")
         sizes = (
             (128, 1024)
             if self.fixture == "polar_radius_cell_mass"
-            else (64, 1024, 2048)
-            if self.fixture == "polar_sphere_separable"
-            else (1024, 2048)
-            if self.fixture == "polar_torus_profile_product_strip"
-            else (256, 512, 1024, 2048, 8192)
-            if self.fixture
-            in (
-                "polar_profile_product_strip",
-                "polar_profile_product_square_strip",
-                "polar_profile_product_global",
-            )
-            else (16, 32, 64, 128)
-            if self.fixture
-            in (
-                "local_polar_product",
-                "polar_profile_product",
-                "polar_profile_product_strip",
-                "polar_profile_product_square_strip",
-                "polar_profile_product_global",
-            )
             else (1024, 8192)
         )
         if type(self.size) is not int or self.size not in sizes:
             raise ValueError(f"fixture size must be one of {sizes}")
-        if self.fixture in (
-            "local_polar_product",
-            "polar_profile_product",
-            "polar_profile_product_strip",
-            "polar_profile_product_square_strip",
-            "polar_profile_product_global",
-            "polar_torus_profile_product_strip",
-            "polar_sphere_separable",
-            "polar_radius_cell_mass",
-        ) and (
+        if self.fixture == "polar_radius_cell_mass" and (
             type(self.rows) is not int or not 1 <= self.rows <= 64 or self.atoms < 4
         ):
             raise ValueError(
@@ -387,50 +190,11 @@ class BenchmarkCase:
         profiles = (
             ("initial",)
             if self.fixture == "polar_radius_cell_mass"
-            else ("rho3", "rho8")
-            if self.fixture == "polar_sphere_separable"
-            else (
-                "broad",
-                "sharp",
-                "few",
-                "wide",
-                "mixed",
-                "rho1",
-                "rho1_5",
-                "rho2",
-                "rho3",
-                "rho4",
-                "rho8",
-                "rho16",
-            )
-            if self.fixture
-            in (
-                "local_polar_product",
-                "polar_profile_product",
-                "polar_profile_product_strip",
-                "polar_profile_product_square_strip",
-                "polar_profile_product_global",
-                "polar_torus_profile_product_strip",
-            )
             else ("broad", "sharp")
         )
         if self.profile not in profiles or self.dtype != "float32":
             raise ValueError("fixture requires broad/sharp profile and float32")
-        if type(self.optimizer) is not OptimizerSpec:
-            raise TypeError("case needs an OptimizerSpec")
-        if self.widths is not None and (
-            type(self.widths) is not WidthFixture
-            or self.fixture
-            not in (
-                "local_polar_product",
-                "polar_profile_product",
-                "polar_profile_product_strip",
-                "polar_profile_product_square_strip",
-                "polar_profile_product_global",
-                "polar_torus_profile_product_strip",
-            )
-            or self.profile != "mixed"
-        ):
+        if self.widths is not None:
             raise ValueError("custom widths require the local mixed fixture")
 
 
@@ -453,18 +217,7 @@ class BenchmarkRun:
             algorithm = REGISTRY.validate_plan(entry.plan)
             if algorithm.operation_id != OPERATION or algorithm.semantics_id != (
                 "kernel-atom-sum-v1"
-                if self.case.fixture
-                in (
-                    "polar_profile_product",
-                    "polar_profile_product_strip",
-                    "polar_profile_product_square_strip",
-                    "polar_profile_product_global",
-                    "polar_torus_profile_product_strip",
-                    "polar_sphere_separable",
-                    "polar_radius_cell_mass",
-                )
-                else LOCAL_SEMANTICS
-                if self.case.fixture == "local_polar_product"
+                if self.case.fixture == "polar_radius_cell_mass"
                 else SEMANTICS
             ):
                 raise ValueError("plan mathematical contract differs from fixture")
@@ -476,7 +229,7 @@ class BenchmarkRun:
             raise ValueError(f"plan is not selected in this run: {id}") from None
 
     def snapshot(self):
-        return {
+        result = {
             "schema_version": 1,
             "case": asdict(self.case),
             "plans": [
@@ -486,6 +239,7 @@ class BenchmarkRun:
             "dense": self.dense,
             "input_hashes": self.input_hashes,
         }
+        return result
 
 
 def _version(value):
@@ -597,17 +351,3 @@ def decode_snapshot(value):
         value["dense"],
         value["input_hashes"],
     )
-
-
-from torchcst._backends.cuda.algorithms.linear.matern_mixture.algorithm import (
-    MaternMixtureAlgorithm,
-)
-
-REGISTRY.register(MaternMixtureAlgorithm())
-
-
-from torchcst._backends.cuda.algorithms.linear.matern_streaming.algorithm import (
-    MaternStreamingAlgorithm,
-)
-
-REGISTRY.register(MaternStreamingAlgorithm())

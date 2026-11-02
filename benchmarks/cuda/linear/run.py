@@ -54,65 +54,6 @@ class PlanLinear(nn.Module):
         self.local_state = None
         self.persistent_layout = None
         self.update_binding = None
-        if plan.algorithm_id in (
-            "research_profile_product",
-            "research_torch_torus_profile_product_chunked",
-            "research_cuda_torus_profile_product_onchip",
-            "research_cuda_torus_profile_product_sparse_weight",
-            "research_cuda_torus_profile_product_compact_ids",
-            "research_strip_profile_product",
-            "research_profile_product_global",
-            "research_profile_product_matrix",
-            "research_strip_profile_product_matrix",
-            "research_profile_product_large_matrix",
-            "research_strip_profile_product_large_matrix",
-            "research_profile_product_large_prepared",
-            "research_strip_profile_product_large_prepared",
-            "research_square_strip_profile_product_prepared",
-            "research_square_strip_profile_product_matrix",
-        ):
-            from torchcst import AtomUpdateBinding, CSTLinear
-
-            self.product_site = CSTLinear(
-                chart=operator.charts[0],
-                atoms=self.p,
-                kernel=operator.kernel,
-                backend="factored",
-                device=self.p.device,
-                dtype=self.p.dtype,
-            )
-            self.live_operator = self.product_site.operator
-            self.local_state = self.product_site.kernel
-            self.update_binding = AtomUpdateBinding(self.live_operator)
-        if plan.algorithm_id == "research_local_product":
-            from benchmarks.cuda.linear.local_product import runtime
-
-            self.local_state, domain = runtime(operator, self.p.device)
-            from torchcst import Atoms, AtomUpdateBinding, Operator
-
-            self.update_binding = AtomUpdateBinding(
-                Operator(
-                    charts=domain.charts(device=self.p.device, dtype=self.p.dtype),
-                    kernel=self.local_state,
-                    atoms=Atoms(self.p),
-                )
-            )
-            if plan.recipe.cached_order:
-                from torchcst._backends.cuda.algorithms.linear.local_product.order_cache import (
-                    OrderKeyCache,
-                )
-
-                self.persistent_layout = OrderKeyCache(
-                    self.p, self.local_state, domain, plan.recipe
-                )
-            elif plan.recipe.execution_route == "hybrid_persistent":
-                from torchcst._backends.cuda.algorithms.linear.local_product.persistent import (
-                    PersistentLayout,
-                )
-
-                self.persistent_layout = PersistentLayout(
-                    self.p, self.local_state, domain, plan.recipe
-                )
 
     input_type = LinearInputs
 
@@ -137,19 +78,8 @@ class PlanLinear(nn.Module):
 
     def forward(self, x):
         flat = x.reshape(-1, self.operator.in_features).contiguous()
-        binding = (
-            self.product_site
-            if self.plan.algorithm_id
-            in (
-                "research_torch_torus_profile_product_chunked",
-                "research_cuda_torus_profile_product_onchip",
-                "research_cuda_torus_profile_product_sparse_weight",
-                "research_cuda_torus_profile_product_compact_ids",
-            )
-            else self
-        )
         y = Dispatcher(registry=REGISTRY).run(
-            binding, LinearInputs(flat), plan=self.plan
+            self, LinearInputs(flat), plan=self.plan
         )
         return y.reshape(*x.shape[:-1], self.operator.out_features)
 
@@ -171,12 +101,6 @@ def _metadata(args, run):
         Path(__file__).with_name("fixtures.py"),
         Path(__file__).with_name("check_normalized.py"),
         Path(__file__).with_name("manifest.py"),
-        Path(__file__).with_name("local_product.py"),
-        Path(__file__).with_name("profile_product.py"),
-        Path(__file__).with_name("strip_profile_product.py"),
-        Path(__file__).with_name("global_profile_product.py"),
-        Path(__file__).with_name("torus_profile_product.py"),
-        Path(__file__).with_name("sphere_baseline.py"),
         Path(__file__).with_name("radius_cell_mass.py"),
         Path(__file__).parent.parent / "polar_update.py",
     ]
@@ -221,45 +145,6 @@ def correctness(args, run):
         from .radius_cell_mass import correctness as radius_correctness
 
         return radius_correctness(args, run)
-    if run.case.fixture == "polar_sphere_separable":
-        from torchcst._backends.dispatch import FixedSelector
-
-        from .sphere_baseline import correctness as check_sphere
-        from .sphere_baseline import fixture
-
-        model, x, _, dy = fixture(
-            64, float(run.case.profile[3:]), batch=3, atoms=273, seed=run.case.seed
-        )
-        model = model.cuda()
-        model.selector = FixedSelector(run.entry(args.plan_id).plan, registry=REGISTRY)
-        return check_sphere(model, x.cuda().requires_grad_(), dy.cuda(), "planned")
-    if run.case.fixture == "polar_torus_profile_product_strip":
-        from .torus_profile_product import correctness as torus_correctness
-
-        return torus_correctness(args, run, PlanLinear)
-    if run.case.fixture in (
-        "polar_profile_product_strip",
-        "polar_profile_product_square_strip",
-    ):
-        from benchmarks.cuda.linear.strip_profile_product import (
-            correctness as strip_check,
-        )
-
-        return strip_check(args, run, PlanLinear)
-    if run.case.fixture == "polar_profile_product_global":
-        from benchmarks.cuda.linear.global_profile_product import (
-            correctness as global_check,
-        )
-
-        return global_check(args, run, PlanLinear)
-    if run.case.fixture == "polar_profile_product":
-        from benchmarks.cuda.linear.profile_product import correctness as product_check
-
-        return product_check(args, run, PlanLinear)
-    if run.case.fixture == "local_polar_product":
-        from benchmarks.cuda.linear.local_product import correctness as local_check
-
-        return local_check(args, run, PlanLinear)
     from benchmarks.cuda.linear.check_normalized import check
 
     sizes = (1024, 4, 4)
@@ -301,97 +186,26 @@ def measure(args, run):
         from .radius_cell_mass import measure_case
 
         return measure_case(args, run)
-    if run.case.fixture == "polar_sphere_separable":
-        from .sphere_baseline import measure_case
-
-        return measure_case(args, run)
     case = run.case
     n, m = case.size, case.rows
-    strip = case.fixture in (
-        "polar_profile_product_strip",
-        "polar_profile_product_square_strip",
-    )
-    torus = case.fixture == "polar_torus_profile_product_strip"
-    global_product = case.fixture == "polar_profile_product_global"
-    product = case.fixture in (
-        "polar_profile_product",
-        "polar_profile_product_strip",
-        "polar_profile_product_square_strip",
-        "polar_profile_product_global",
-        "polar_torus_profile_product_strip",
-    )
-    local = product or case.fixture == "local_polar_product"
-    out = 64 if case.fixture == "polar_profile_product_strip" else n
-    support_report = None
-    if local:
-        from benchmarks.cuda.linear.local_product import (
-            fixture_operator,
-            fixture_state,
-            initialize,
-        )
-        from torchcst._backends.cuda.algorithms.linear.local_product.contract import (
-            Domain,
-        )
-        from torchcst._backends.cuda.algorithms.linear.local_product.preparation import (
-            decode,
-        )
-        from torchcst._backends.cuda.algorithms.linear.local_product.support import (
-            summarize,
-        )
-
-        if product:
-            from benchmarks.cuda.linear.profile_product import (
-                decode,
-                fixture_operator,
-                fixture_state,
-                initialize,
-                summarize,
-            )
-        if strip:
-            from benchmarks.cuda.linear.strip_profile_product import (
-                fixture_operator,
-                fixture_state,
-                initialize,
-                summarize,
-            )
-        if global_product:
-            from benchmarks.cuda.linear.global_profile_product import (
-                fixture_operator,
-                fixture_state,
-                initialize,
-                summarize,
-            )
-        if torus:
-            from benchmarks.cuda.linear.torus_profile_product import (
-                decode,
-                fixture_operator,
-                fixture_state,
-                initialize,
-                summarize,
-            )
-        op, p = fixture_operator(case), initialize(case)
-        support_domain = (
-            op.charts[0] if strip or global_product or torus else Domain(n, n)
-        )
-        support_report = summarize(decode(fixture_state(case), p), support_domain)
-    else:
-        h, j = (32, 32) if n == 1024 else (64, 128)
-        sizes = (n, h, j)
-        origin = (-(n - 1) / 2, -(h - 1) / 4, -(j - 1) / 4)
-        op = operator_spec(sizes=sizes, origin=origin, spacing=(1.0, 0.5, 0.5))
-        sites = geometry(op)
-        gen = torch.Generator(device="cpu").manual_seed(run.case.seed)
-        p = torch.empty(case.atoms, 5)
-        p[:, 0] = torch.rand(len(p), generator=gen) - 0.5
-        p[:, 1] = math.log(3.0 if case.profile == "broad" else 0.199)
-        p[:, 2:] = torch.rand(len(p), 3, generator=gen) * torch.tensor(
-            [(count - 1) * spacing for count, spacing in zip(sizes, sites.spacing)]
-        ) + torch.tensor(origin)
-        if case.profile == "sharp":
-            for axis, (spacing, o) in enumerate(zip(sites.spacing, sites.origin)):
-                u = (p[:, axis + 2] - o) / spacing
-                near = torch.floor(u + 0.5)
-                p[:, axis + 2] = o + near * spacing + (u - near) * 0.04
+    out = n
+    h, j = (32, 32) if n == 1024 else (64, 128)
+    sizes = (n, h, j)
+    origin = (-(n - 1) / 2, -(h - 1) / 4, -(j - 1) / 4)
+    op = operator_spec(sizes=sizes, origin=origin, spacing=(1.0, 0.5, 0.5))
+    sites = geometry(op)
+    gen = torch.Generator(device="cpu").manual_seed(run.case.seed)
+    p = torch.empty(case.atoms, 5)
+    p[:, 0] = torch.rand(len(p), generator=gen) - 0.5
+    p[:, 1] = math.log(3.0 if case.profile == "broad" else 0.199)
+    p[:, 2:] = torch.rand(len(p), 3, generator=gen) * torch.tensor(
+        [(count - 1) * spacing for count, spacing in zip(sizes, sites.spacing)]
+    ) + torch.tensor(origin)
+    if case.profile == "sharp":
+        for axis, (spacing, o) in enumerate(zip(sites.spacing, sites.origin)):
+            u = (p[:, axis + 2] - o) / spacing
+            near = torch.floor(u + 0.5)
+            p[:, axis + 2] = o + near * spacing + (u - near) * 0.04
     initial_p_hash = hashlib.sha256(p.numpy().tobytes()).hexdigest()
     torch.manual_seed(run.case.seed)
     cpu_x, cpu_target = generate_inputs(run.case.seed, m, n, output_features=out)
@@ -411,19 +225,6 @@ def measure(args, run):
     else:
         model = PlanLinear(p.cuda(), op, run.entry(args.plan_id).plan)
     del p
-    initial_sigma = None
-    initial_precision = None
-    if local and args.worker != "dense":
-        from torchcst._backends.cuda.algorithms.linear.local_product.preparation import (
-            decode,
-        )
-
-        if torus:
-            from benchmarks.cuda.linear.torus_profile_product import decode
-        elif product:
-            from benchmarks.cuda.linear.profile_product import decode
-        initial_precision = decode(model.local_state, model.p).detach()[:, 1].cpu()
-        initial_sigma = initial_precision.rsqrt()
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=case.optimizer.lr,
@@ -432,7 +233,7 @@ def measure(args, run):
         capturable=case.optimizer.capturable,
     )
 
-    def step(events=None, update_events=None):
+    def step(events=None):
         if events is not None:
             events[0].record()
         optimizer.zero_grad(set_to_none=True)
@@ -443,18 +244,7 @@ def measure(args, run):
         loss.backward()
         if events is not None:
             events[2].record()
-        if local and args.worker != "dense":
-            from benchmarks.cuda.polar_update import optimizer_step
-
-            optimizer_step(
-                model.update_binding,
-                optimizer,
-                step_size=case.optimizer.lr,
-                polar_update=args.polar_update,
-                events=update_events,
-            )
-        else:
-            optimizer.step()
+        optimizer.step()
         if events is not None:
             events[3].record()
 
@@ -485,188 +275,29 @@ def measure(args, run):
         step()
     graph_times = timed(graph.replay)
     torch.cuda.synchronize()
-    # Save the measured peaks before post-run diagnostics allocate buffers.
     peak_allocated = torch.cuda.max_memory_allocated()
     peak_reserved = torch.cuda.max_memory_reserved()
-    sigma_updates = None
-    hybrid_routing = None
-    if initial_sigma is not None:
-        final_precision = decode(model.local_state, model.p).detach()[:, 1].cpu()
-        final_sigma = final_precision.rsqrt()
-        change = final_sigma - initial_sigma
-        sigma_updates = {
-            "fixed": False,
-            "source": "current polar activity every forward/replay",
-            "initial": initial_sigma.tolist(),
-            "final": final_sigma.tolist(),
-            "changed_atoms": int((change != 0).sum()),
-            "max_abs_change": float(change.abs().max()),
-        }
-        if not sigma_updates["changed_atoms"]:
-            raise AssertionError("dynamic-width fixture did not update sigma")
-        recipe = run.entry(args.plan_id).plan.recipe
-        if getattr(recipe, "execution_route", None) in (
-            "hybrid",
-            "hybrid_support",
-            "hybrid_three",
-            "hybrid_singletons",
-            "hybrid_packed",
-            "hybrid_persistent",
-        ):
-            inclusive = recipe.execution_route in (
-                "hybrid_three",
-                "hybrid_singletons",
-                "hybrid_packed",
-                "hybrid_persistent",
-            )
-            limit = recipe.rho_upper[1 if inclusive else 0]
-            initial_wide = (
-                initial_precision <= limit**-2
-                if inclusive
-                else initial_precision < limit**-2
-            )
-            final_wide = (
-                final_precision <= limit**-2
-                if inclusive
-                else final_precision < limit**-2
-            )
-            hybrid_routing = {
-                "rho_limit": limit,
-                "diagnostic_basis": "production Torch decode outside timing; exact boundary comparisons can differ by FP32 rounding",
-                "initial_local_atoms": int((~initial_wide).sum()),
-                "initial_saved_atoms": int(initial_wide.sum()),
-                "final_local_atoms": int((~final_wide).sum()),
-                "final_saved_atoms": int(final_wide.sum()),
-                "changed_routes": int((initial_wide != final_wide).sum()),
-                "scratch_capacity_elements": 0
-                if recipe.recompute_h
-                else m * case.atoms,
-                "capacity_policy": "H recomputed within output owners and parameter VJP; no saved H"
-                if recipe.recompute_h
-                else "fixed B*A; only wide H lanes written/read; not compacted",
-            }
-            if inclusive:
-                for label, precision in (
-                    ("initial", initial_precision),
-                    ("final", final_precision),
-                ):
-                    rho = precision.rsqrt()
-                    hybrid_routing[label + "_three_band_atoms"] = [
-                        int((rho < 1).sum()),
-                        int(((rho >= 1) & (rho < limit)).sum()),
-                        int((rho >= limit).sum()),
-                    ]
-                hybrid_routing["band_boundaries"] = [1, limit]
-                hybrid_routing["kernel_saved_comparison"] = (
-                    "rho >= mid; CPU diagnostics may differ at FP32 boundaries"
-                )
-        final_support = summarize(
-            decode(model.local_state, model.p).detach().cpu(), support_domain
-        )
-        if getattr(recipe, "execution_route", None) in (
-            "hybrid_singletons",
-            "hybrid_packed",
-            "hybrid_persistent",
-        ):
-            hybrid_routing["singleton_direct_initial_atoms"] = support_report[
-                "onehot_both_live_atoms"
-            ]
-            hybrid_routing["singleton_direct_final_atoms"] = final_support[
-                "onehot_both_live_atoms"
-            ]
-            hybrid_routing["saved_scope"] = (
-                "none; H recomputed"
-                if recipe.recompute_h
-                else (
-                    "rho>=mid excluding full-domain live singletons; width-only saved counts above are pre-exclusion"
-                )
-            )
-    else:
-        final_support = None
-    if local:
-        assert all(torch.isfinite(p).all() for p in model.parameters())
-        if args.worker != "dense":
-            radius = model.p.detach()[:, :2].square().sum(1)
-            assert ((radius >= 1 - 1e-5) & (radius <= 4 + 1e-5)).all()
-    layout_report = None
-    if args.worker != "dense" and model.persistent_layout is not None:
-        layout_report = model.persistent_layout.report()
     phases = None
     if args.phase_diagnostics or args.kernel_diagnostics:
-        # A separate instrumented training graph after the primary timing/memory
-        # measurement. External event nodes add overhead; these are diagnostics,
-        # not replacements for uninstrumented complete-step graph timings.
         events = [torch.cuda.Event(enable_timing=True, external=True) for _ in range(4)]
-        update_events = (
-            [torch.cuda.Event(enable_timing=True, external=True) for _ in range(4)]
-            if local and args.worker != "dense"
-            else None
-        )
         diagnostic = torch.cuda.CUDAGraph()
-        backend_events = None
-        if args.kernel_diagnostics and local and args.worker != "dense":
-            from torchcst._backends.cuda.algorithms.linear.local_product import executor
-
-            backward_components = (
-                ("dx_source_vjp", "source_partial_reduce")
-                if run.entry(args.plan_id).plan.recipe.fused_backward
-                else ("dx", "parameters")
-            )
-            backend_events = {
-                name: [
-                    torch.cuda.Event(enable_timing=True, external=True)
-                    for _ in range(2)
-                ]
-                for name in ("prepare", "layout", "h", "output", *backward_components)
-            }
-            executor.DIAGNOSTIC_EVENTS = backend_events
-        try:
-            with torch.cuda.graph(diagnostic, stream=stream):
-                step(events, update_events)
-        finally:
-            if backend_events is not None:
-                executor.DIAGNOSTIC_EVENTS = None
+        with torch.cuda.graph(diagnostic, stream=stream):
+            step(events)
         samples = {name: [] for name in ("forward_loss", "backward", "optimizer")}
-        update_samples = {name: [] for name in ("old_snapshot", "adamw", "polar")}
-        backend_samples = {name: [] for name in backend_events or {}}
         for _ in range(case.rounds):
             diagnostic.replay()
             torch.cuda.synchronize()
             for index, values in enumerate(samples.values()):
                 values.append(events[index].elapsed_time(events[index + 1]))
-            if update_events is not None:
-                for index, values in enumerate(update_samples.values()):
-                    values.append(
-                        update_events[index].elapsed_time(update_events[index + 1])
-                    )
-            for name, values in backend_samples.items():
-                pair = backend_events[name]
-                values.append(pair[0].elapsed_time(pair[1]))
         phases = {
-            "scope": "separate graph with external CUDA events; sigma continues updating; after primary timing/memory measurement",
+            "scope": "separate graph with external CUDA events; after primary timing/memory measurement",
             "phases": {
                 name: {"median_ms": statistics.median(values), "samples_ms": values}
                 for name, values in samples.items()
             },
-            "optimizer_components": None
-            if update_events is None
-            else {
-                name: {"median_ms": statistics.median(values), "samples_ms": values}
-                for name, values in update_samples.items()
-            },
-            "backend_components": {
-                name: {"median_ms": statistics.median(values), "samples_ms": values}
-                for name, values in backend_samples.items()
-            },
+            "optimizer_components": None,
+            "backend_components": {},
         }
-    core = None
-    if args.core_diagnostics:
-        from benchmarks.cuda.linear.local_product import measure_prepared_forward
-
-        core = measure_prepared_forward(
-            case,
-            None if args.worker == "dense" else run.entry(args.plan_id).plan.recipe,
-        )
     return {
         "status": "PASS",
         "reference": "dense_linear" if args.worker == "dense" else args.plan_id,
@@ -679,7 +310,7 @@ def measure(args, run):
         "eager": eager,
         "graph": graph_times,
         "phase_diagnostics": phases,
-        "prepared_forward_diagnostics": core,
+        "prepared_forward_diagnostics": None,
         "allocated_before_capture_bytes": before,
         "peak_allocated_capture_replay_bytes": peak_allocated,
         "peak_reserved_capture_replay_bytes": peak_reserved,
@@ -687,50 +318,15 @@ def measure(args, run):
         "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
         "optimizer": asdict(case.optimizer),
         "scope": "complete-step performance; no independent full-shape all-atom gradient oracle",
-        "optimizer_policy": "intrinsic torus polar finite_chord; AdamW proposal + activity/radial update + retraction"
-        if torus and args.worker != "dense"
-        else "euclidean polar finite_chord; AdamW proposal + activity/radial update"
-        if local and args.worker != "dense"
-        else "ordinary AdamW",
-        "initial_support": support_report if args.worker != "dense" else None,
-        "final_support": final_support,
-        "sigma_updates": sigma_updates,
-        "persistent_layout": layout_report,
-        "hybrid_routing": hybrid_routing,
-        "h_policy": _torus_h_policy(run.entry(args.plan_id).plan)
-        if torus and args.worker != "dense"
-        else getattr(run.entry(args.plan_id).plan.recipe, "execution_route", None)
-        if local and args.worker != "dense"
-        else None,
-        "compiler_reports": __import__(
-            "torchcst._backends.cuda.algorithms.linear.local_product.executor",
-            fromlist=["COMPILER_REPORTS"],
-        ).COMPILER_REPORTS
-        if local and args.worker != "dense"
-        else None,
+        "optimizer_policy": "ordinary AdamW",
+        "initial_support": None,
+        "final_support": None,
+        "sigma_updates": None,
+        "persistent_layout": None,
+        "hybrid_routing": None,
+        "h_policy": None,
+        "compiler_reports": None,
     }
-
-
-def _torus_h_policy(plan):
-    """Report storage without assuming CUDA recipes have Torch recipe fields."""
-    recipe = plan.recipe
-    if plan.algorithm_id == "research_cuda_torus_profile_product_compact_ids":
-        return "sparse_w_gemm_int16_ids"
-    if plan.algorithm_id == "research_cuda_torus_profile_product_sparse_weight":
-        return "sparse_w_gemm"
-    if plan.algorithm_id == "research_cuda_torus_profile_product_onchip":
-        return {
-            "recompute": "h_recompute",
-            "h": "h_saved",
-            "vjp": "input_vjp_saved",
-        }[recipe.save]
-    return (
-        "w_gemm"
-        if recipe.contraction == "w"
-        else "h_saved"
-        if recipe.save_h
-        else "h_recompute"
-    )
 
 
 def generate_inputs(seed, rows, features, *, output_features=None):
@@ -763,7 +359,7 @@ def main():
     ap.add_argument("--kernel-diagnostics", action="store_true")
     ap.add_argument(
         "--polar-update",
-        choices=("torch", "fused", "torus", "radius"),
+        choices=("torch", "fused", "radius"),
         default="torch",
         help="explicit research Polar update route; AdamW is unchanged",
     )
@@ -817,27 +413,12 @@ def main():
         ap.error(
             "the radius fixture requires --polar-update radius, and other fixtures reject it"
         )
-    if (run.case.fixture == "polar_torus_profile_product_strip") != (
-        args.polar_update == "torus"
-    ):
-        ap.error(
-            "the Torus fixture requires --polar-update torus, and other fixtures reject it"
-        )
-    if args.core_diagnostics and run.case.fixture != "local_polar_product":
-        ap.error("--core-diagnostics requires the local product fixture")
-    if args.polar_update == "fused" and run.case.fixture not in (
-        "local_polar_product",
-        "polar_profile_product",
-        "polar_profile_product_strip",
-        "polar_profile_product_square_strip",
-        "polar_profile_product_global",
-    ):
-        ap.error("--polar-update fused requires the local product fixture")
-    if args.kernel_diagnostics and (
-        run.case.fixture != "local_polar_product"
-        or any(entry.plan.recipe.execution_route == "torch" for entry in run.plans)
-    ):
-        ap.error("--kernel-diagnostics requires CUDA local product routes")
+    if args.core_diagnostics:
+        ap.error("--core-diagnostics is unsupported for this fixture")
+    if args.polar_update == "fused":
+        ap.error("--polar-update fused is unsupported for this fixture")
+    if args.kernel_diagnostics:
+        ap.error("--kernel-diagnostics is unsupported for this fixture")
     if not args.output:
         ap.error("--output is required for GPU execution")
     args.output = args.output.resolve()
@@ -928,19 +509,6 @@ def main():
                 "metadata": {"worker": kind, "plan_id": plan_id},
                 "result": {"status": "FAIL", "error": repr(error)},
             }
-        if (
-            run.case.fixture
-            in (
-                "polar_profile_product_global",
-                "polar_profile_product_strip",
-                "polar_profile_product_square_strip",
-                "polar_torus_profile_product_strip",
-            )
-            and kind == "measure"
-        ):
-            from .global_profile_product import compact_width_record
-
-            record = compact_width_record(record)
         combined["records"].append(record)
         if returncode != 0 or record["result"]["status"] != "PASS":
             combined["status"] = "FAIL"

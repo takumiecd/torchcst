@@ -110,7 +110,7 @@ def test_large_tile_local_budget_matches_actual_128_thread_layout():
 
 
 def test_support_rejects_tile_local_budget_overflow_from_live_declaration():
-    chart = chart_presets.regular_grid(((1024,),), geometry="flat_torus")
+    chart = chart_presets.regular_grid(1024, geometry="flat_torus")
     model = CSTLinear(
         chart,
         chart,

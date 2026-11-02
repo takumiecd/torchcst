@@ -257,7 +257,7 @@ def test_fused_skewed_owner_chunks_public_reference(dtype, modes, start, output_
     assert 8 * (len(p) + a.active_nodes(start) * a.basis_count) <= 48 * 1024
     assert a.banks[-1].period > a.period
     # The public physical-radius CPU path is separate from native scheduling.
-    chart = chart_presets.regular_grid(((32,),), spacing=1.0, geometry="flat_torus")
+    chart = chart_presets.regular_grid(32, spacing=1.0, geometry="flat_torus")
     cpu = CSTLinear(
         chart,
         chart,

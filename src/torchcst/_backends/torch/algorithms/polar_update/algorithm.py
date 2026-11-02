@@ -35,11 +35,10 @@ class PolarUpdateAlgorithm(Algorithm[DefaultRecipe]):
         if (
             type(context.kernel.parameterization)
             not in (PolarAmpWidthSpec, PolarAmpRadiusSpec)
-            or context.kernel.composition not in ("separable", "profile_product")
+            or context.kernel.composition != "separable"
             or context.kernel.update.id
             != ("polar_activity_radius" if radius else "polar_activity_width")
-            or len(context.geometries)
-            != (1 if context.kernel.composition == "profile_product" else 2)
+            or len(context.geometries) != 2
             or context.parameter_shape[1]
             != 2 + sum(g.center_parameter_dim for g in context.geometries)
         ):
@@ -77,10 +76,6 @@ class PolarUpdateAlgorithm(Algorithm[DefaultRecipe]):
                 binding.kernel, previous, displacement, step_size=inputs.step_size
             )
         else:
-            if state.context.kernel.composition == "profile_product":
-                from torchcst._backends.torch.updates.profile_product import (
-                    apply_parameter_update,
-                )
             updated = apply_parameter_update(
                 binding.kernel,
                 *binding.cst_charts(),

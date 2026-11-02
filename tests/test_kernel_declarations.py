@@ -129,20 +129,6 @@ def test_sampled_profiles_cannot_silently_use_continuous_mass(shape):
         ProfileBinding(profile=shape(), normalization=normalization)
 
 
-def test_legacy_product_cannot_silently_use_continuous_mass():
-    normalization = NormalizationSpec(kind="continuous_mass", domain="profile_support")
-    bounds = BandwidthBounds(minimum=0.2, birth=0.4, maximum=1.0, upper_floor=0.2)
-
-    with pytest.raises(ValueError, match="operator L2 normalization"):
-        presets.polar_profile_product(
-            profiles=(TriweightSpec(), TriweightSpec()),
-            amplitude_max=1.0,
-            bounds=bounds,
-            w_c=0.1,
-            normalization=normalization,
-        )
-
-
 def test_width_is_declared_once():
     with pytest.raises(ValueError, match="bandwidth declaration"):
         KernelSpec(
@@ -367,19 +353,19 @@ def test_output_profile_has_its_own_declared_shape(preset):
             state, "bandwidth_precision", chart, chart, p
         )
         amplitude = p[:, 0]
-        source, target = p[:, 1:2], p[:, 2:]
+        target, source = p[:, 1:2], p[:, 2:]
         pin, pout = precision, precision
     else:
         amplitude = kernel_execution.coordinate(state, "amplitude", chart, chart, p)
         sigmas = kernel_execution.coordinate(state, "bandwidth_sigmas", chart, chart, p)
         pin, pout = (s.reciprocal().square().detach() for s in sigmas)
-        source, target = p[:, 2:3], p[:, 3:]
+        target, source = p[:, 2:3], p[:, 3:]
     expected_input = profile_execution.evaluate_with_precision(
-        state.profiles[0], chart, source, pin
+        state.profiles[1], chart, source, pin
     )
     expected_output = (
         profile_execution.evaluate_with_precision(
-            state.profiles[1], chart, target, pout
+            state.profiles[0], chart, target, pout
         )
         * amplitude[None]
     )

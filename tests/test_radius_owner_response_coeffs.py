@@ -41,7 +41,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def model(dtype=torch.float64, skew=False):
-    chart = chart_presets.regular_grid(((1024,),), origin=-1.2, geometry="flat_torus")
+    chart = chart_presets.regular_grid(1024, origin=-1.2, geometry="flat_torus")
     result = CSTLinear(
         chart,
         chart,

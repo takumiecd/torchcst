@@ -18,8 +18,8 @@ def make_kernel() -> amplitude_state:
 
 def make_model(*, backend: str = "factored") -> CSTLinear:
     return CSTLinear(
-        _construction.linspace(5, low=-1.0, high=1.0),
         _construction.grid((2, 2), low=-1.0, high=1.0),
+        _construction.linspace(5, low=-1.0, high=1.0),
         atoms=3,
         kernel=make_kernel().declaration(),
         backend=backend,
@@ -100,8 +100,8 @@ def test_factored_backend_rejects_a_kernel_without_that_capability() -> None:
 
 def test_constructor_dtype_covers_charts_kernel_and_atoms() -> None:
     model = CSTLinear(
-        _construction.linspace(3, low=-1.0, high=1.0),
         _construction.linspace(2, low=-1.0, high=1.0),
+        _construction.linspace(3, low=-1.0, high=1.0),
         atoms=2,
         kernel=make_kernel().declaration(),
         dtype=torch.float64,
@@ -120,3 +120,16 @@ def test_forward_rejects_the_wrong_feature_count() -> None:
     model = make_model()
     with pytest.raises(ValueError, match="expected input shape"):
         model(torch.randn(2, model.in_features + 1))
+
+
+def test_charts_keyword_accepts_output_input_pair_and_exposes_ncs() -> None:
+    out_chart = _construction.grid((2, 2), low=-1.0, high=1.0)
+    in_chart = _construction.linspace(5, low=-1.0, high=1.0)
+    model = CSTLinear(
+        charts=(out_chart, in_chart),
+        atoms=3,
+        kernel=make_kernel().declaration(),
+    )
+    assert model.charts == (model.output_chart, model.input_chart)
+    assert (model.output_chart.ncs, model.input_chart.ncs) == (4, 5)
+    assert model.dense_weight().shape == (model.output_chart.ncs, model.input_chart.ncs)

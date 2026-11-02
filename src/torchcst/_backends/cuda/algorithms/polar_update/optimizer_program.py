@@ -474,8 +474,8 @@ def _native_guard(
             no_overrides(node, site, ("cst_charts", "atoms"))
             for name, value in (
                 ("kernel", binding.kernel),
-                ("input_chart", binding.operator.charts[0]),
-                ("output_chart", binding.operator.charts[1]),
+                ("output_chart", binding.operator.charts[0]),
+                ("input_chart", binding.operator.charts[1]),
             ):
                 same(registered(node, site, name), value)
             state_node = registered(node, site, "atom_state")

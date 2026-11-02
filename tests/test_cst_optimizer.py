@@ -21,13 +21,13 @@ from torchcst._backends.torch.geometry import execution as _geometry
 def site(backend="materialized", *, sphere=False, kernel=None):
     charts = (
         (
-            _construction.sphere_chart(5, intrinsic_dim=2),
             _construction.sphere_chart(4, intrinsic_dim=2),
+            _construction.sphere_chart(5, intrinsic_dim=2),
         )
         if sphere
         else (
-            _construction.linspace(5, spacing=0.3),
             _construction.linspace(4, spacing=0.4),
+            _construction.linspace(5, spacing=0.3),
         )
     )
     return CSTLinear(
@@ -136,8 +136,8 @@ def test_sphere_centers_and_vector_state_remain_tangent(kind, vector_key):
         point = model.atoms.p
         vector = optimizer.state[point][vector_key]
         for chart, center, tangent in (
-            (model.input_chart, point[:, 1:4], vector[:, 1:4]),
-            (model.output_chart, point[:, 4:7], vector[:, 4:7]),
+            (model.output_chart, point[:, 1:4], vector[:, 1:4]),
+            (model.input_chart, point[:, 4:7], vector[:, 4:7]),
         ):
             _geometry.validate_centers(chart.geometry, center)
             torch.testing.assert_close(
@@ -319,8 +319,8 @@ def test_replaced_atom_parameter_requires_rebinding():
 
 def test_trainable_euclidean_chart_and_parameter_subset_pass_through():
     model = CSTLinear(
-        _construction.linspace(5, spacing=0.3, trainable=True),
         _construction.linspace(4, spacing=0.4, trainable=True),
+        _construction.linspace(5, spacing=0.3, trainable=True),
         atoms=3,
         kernel=amplitude_state(
             separable_state(

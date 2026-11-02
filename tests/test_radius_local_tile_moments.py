@@ -411,7 +411,7 @@ def test_local_tile_support_rejects_other_operator_families(
         presets,
     )
 
-    chart = chart_presets.regular_grid(((sites,),), geometry="flat_torus")
+    chart = chart_presets.regular_grid(sites, geometry="flat_torus")
     options = {
         "profile": ChebyshevRadiusSpec(modes=modes),
         "input_base_tile_sites": base,
@@ -563,7 +563,7 @@ template<class T> void check(int batch) {
         if(!side) local_tile_atom<T,0>(p,signal,z,local.data(),h.data(),nullptr,nullptr,nullptr,a,A,batch,axis,false);
         else {
             local_tile_atom<T,1>(p,signal,z,local.data(),g.data(),h.data(),nullptr,gradient,a,A,batch,axis,true);
-            for(int f=0;f<3;++f) assert(gradient[4*a+f]==T(999));
+            assert(gradient[4*a]==T(999) && gradient[4*a+1]==T(999) && gradient[4*a+3]==T(999));
         }
         if(!side) continue;
         Membership input=classify(radius(p,a,axis),center(p,a,axis,false),axis);
@@ -574,9 +574,9 @@ template<class T> void check(int batch) {
             for(int b=0;b<batch;++b) for(int part=0;part<ib.count;++part) for(int f=0;f<F;++f)
                 local[(b*ib.count+part)*F+f]=local_tile_dot(x.data(),b,owner,part,f,axis,ib,phi.data(),filters.data());
         }
-        T output_column=gradient[4*a+3];
+        T output_column=gradient[4*a+2];
         local_tile_atom<T,2>(p,x.data(),zx.data(),local.data(),nullptr,h.data(),g.data(),gradient,a,A,batch,axis,false);
-        assert(memcmp(&output_column,gradient+4*a+3,sizeof(T))==0);
+        assert(memcmp(&output_column,gradient+4*a+2,sizeof(T))==0);
         double da=0,di=0,dout=0,amp=amplitude(p,a,axis);
         for(int b=0;b<batch;++b) {
             close(h[b*A+a],oldh[b*A+a],2e-11); close(g[b*A+a],oldg[b*A+a],2e-11);

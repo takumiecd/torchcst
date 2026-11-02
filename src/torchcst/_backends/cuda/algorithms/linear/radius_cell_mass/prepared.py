@@ -70,7 +70,7 @@ def _callbacks():
         (prepared, ("placement_signature",)),
         (OperatorSpec, ("in_features", "out_features", "shape", "charts")),
         (ChartPairSpec, ("shape", "charts")),
-        (ChartSpec, ("features",)),
+        (ChartSpec, ("features", "ncs", "num_sites", "coordinate_shape")),
     )
 
 
@@ -274,8 +274,8 @@ def _guard(dispatcher, cached, inputs, callbacks, functions, factory, metadata):
             tensor(item(fields, name, value), value, owned=True)
         for name, value in (
             ("kernel", binding.kernel),
-            ("input_chart", binding.input_chart),
             ("output_chart", binding.output_chart),
+            ("input_chart", binding.input_chart),
         ):
             registered(bm, binding, name)
         namespace = attr(bm, "__dict__", binding.__dict__)

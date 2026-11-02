@@ -51,8 +51,8 @@ def make_single():
 
 def make_pair(*, trainable=False, backend="materialized"):
     return CSTLinear(
-        _construction.linspace(4, low=-1, high=1, trainable=trainable),
         _construction.linspace(3, low=-0.8, high=0.8, trainable=trainable),
+        _construction.linspace(4, low=-1, high=1, trainable=trainable),
         atoms=2,
         kernel=amplitude_state(
             separable_state(
@@ -89,7 +89,7 @@ def test_chart_pair_preserves_input_output_roles():
     assert spec.kernel.composition == "amplitude"
     assert spec.kernel.inner.composition == "separable"
     reversed_layout = ChartPairSpec(
-        input_chart=spec.charts[1], output_chart=spec.charts[0]
+        output_chart=spec.charts[1], input_chart=spec.charts[0]
     )
     assert reversed_layout.shape == (4, 3)
 
@@ -157,8 +157,8 @@ def test_pair_execution_matches_independent_oracle_with_live_chart_gradients(bac
     p = model.atoms.p.detach().clone().requires_grad_()
     ci = model.input_chart.coordinates.detach().clone().requires_grad_()
     co = model.output_chart.coordinates.detach().clone().requires_grad_()
-    u = torch.exp(-0.5 * (ci[:, None, 0] - p[None, :, 1]).square() / 1.4**2)
-    v = torch.exp(-0.5 * (co[:, None, 0] - p[None, :, 2]).square() / 1.2**2)
+    v = torch.exp(-0.5 * (co[:, None, 0] - p[None, :, 1]).square() / 1.2**2)
+    u = torch.exp(-0.5 * (ci[:, None, 0] - p[None, :, 2]).square() / 1.4**2)
     u = u / torch.linalg.vector_norm(u, dim=0)
     v = v / torch.linalg.vector_norm(v, dim=0)
     w = v * p[:, 0] @ u.T
@@ -224,11 +224,8 @@ def test_normalized_strip_is_a_distinct_single_chart_contract():
         NormalizedStripGeometry,
     )
 
-    chart = _construction.strip(
+    chart = _construction.product(
         shape=(5, 6),
-        tile_shape=(2, 6),
-        axis=0,
-        tile_pitch=2.0,
         axes=(
             _construction.line_pattern(5, spacing=1.0),
             _construction.grid_pattern((2, 3), spacing=0.5),
@@ -249,11 +246,6 @@ def test_normalized_strip_is_a_distinct_single_chart_contract():
     assert model.operator.declaration() == spec
     physical = replace(spec, layout=SingleChartSpec(chart=chart.declaration()))
     assert NormalizedStripGeometry.from_declaration(physical) == adapted
-    discontinuous = replace(physical.layout.chart, tile_pitch=3.0)
-    with pytest.raises(ValueError, match="contiguous"):
-        NormalizedStripGeometry.from_declaration(
-            replace(physical, layout=SingleChartSpec(chart=discontinuous))
-        )
     before = spec
     with torch.no_grad():
         model.chart.axes[0].start.add_(0.25)

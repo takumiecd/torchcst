@@ -183,13 +183,13 @@ def test_polar_update_retracts_both_center_blocks_to_their_spheres() -> None:
             minimum=1.0, maximum=2.0, birth=2.0, upper_floor=1.0
         ),
     ).double()
-    point = _kernel.initialize(kernel, input_chart, output_chart, 4, mode="uniform")
+    point = _kernel.initialize(kernel, output_chart, input_chart, 4, mode="uniform")
     displacement = torch.randn_like(point)
     updated = _kernel.apply_parameter_update(
-        kernel, input_chart, output_chart, point, displacement, step_size=0.1
+        kernel, output_chart, input_chart, point, displacement, step_size=0.1
     )
-    _, input_centers, output_centers = _kernel.coordinate(
-        kernel, "_split", input_chart, output_chart, updated
+    _, output_centers, input_centers = _kernel.coordinate(
+        kernel, "_split", output_chart, input_chart, updated
     )
     torch.testing.assert_close(
         torch.linalg.vector_norm(input_centers, dim=-1),
@@ -209,8 +209,8 @@ def test_parameter_adam_retracts_spherical_centers() -> None:
         input_profile=gaussian_state(1.0), output_profile=gaussian_state(1.0)
     ).double()
     model = CSTLinear(
-        input_chart,
         output_chart,
+        input_chart,
         atoms=3,
         kernel=kernel.declaration(),
         backend="factored",
@@ -231,9 +231,9 @@ def test_parameter_adam_retracts_spherical_centers() -> None:
     loss = model(inputs).square().mean()
     loss.backward()
     optimizer.step()
-    input_dim = input_chart.embedding_dim
-    input_centers = model.atoms.p[:, :input_dim]
-    output_centers = model.atoms.p[:, input_dim:]
+    output_dim = output_chart.embedding_dim
+    output_centers = model.atoms.p[:, :output_dim]
+    input_centers = model.atoms.p[:, output_dim:]
     torch.testing.assert_close(
         torch.linalg.vector_norm(input_centers, dim=-1),
         torch.ones(model.atom_count, dtype=torch.float64),
@@ -243,8 +243,8 @@ def test_parameter_adam_retracts_spherical_centers() -> None:
         torch.ones(model.atom_count, dtype=torch.float64),
     )
     first_moment = optimizer.state[model.atoms.p]["exp_avg"]
-    input_moment = first_moment[:, :input_dim]
-    output_moment = first_moment[:, input_dim:]
+    output_moment = first_moment[:, :output_dim]
+    input_moment = first_moment[:, output_dim:]
     torch.testing.assert_close(
         (input_centers * input_moment).sum(dim=-1),
         torch.zeros(model.atom_count, dtype=torch.float64),
@@ -278,8 +278,8 @@ def test_parameter_adam_uses_d_coordinate_spherical_centers() -> None:
         ),
     ).double()
     model = CSTLinear(
-        input_chart,
         output_chart,
+        input_chart,
         atoms=3,
         kernel=kernel.declaration(),
         backend="factored",
@@ -300,8 +300,8 @@ def test_parameter_adam_uses_d_coordinate_spherical_centers() -> None:
     model(inputs).square().mean().backward()
     optimizer.step()
     assert model.atoms.p.shape == (3, 6)
-    input_centers = model.atoms.p[:, 2:4]
-    output_centers = model.atoms.p[:, 4:]
+    output_centers = model.atoms.p[:, 2:4]
+    input_centers = model.atoms.p[:, 4:]
     assert torch.all(
         torch.linalg.vector_norm(input_centers, dim=-1)
         <= _geometry.max_parameter_radius(input_chart.geometry)

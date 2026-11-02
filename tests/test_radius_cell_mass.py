@@ -161,7 +161,7 @@ def test_public_decimal_boundary_y_dx_and_all_atom_gradients_against_quadrature(
 ):
     grid = axis(16, spacing=0.37, origin=-1.2, modes=modes)
     chart = chart_presets.regular_grid(
-        ((16,),), spacing=grid.spacing, origin=grid.origin, geometry="flat_torus"
+        16, spacing=grid.spacing, origin=grid.origin, geometry="flat_torus"
     )
     boundary = torch.tensor(grid.spacing, dtype=dtype)
     radii = torch.stack(
@@ -314,7 +314,7 @@ def test_support_eps_is_derived_for_each_m_not_a_fixed_requirement():
 
 
 def physical_layer(*, backend="factored", dtype=torch.float64):
-    chart = chart_presets.regular_grid(((16,),), spacing=1.0, geometry="flat_torus")
+    chart = chart_presets.regular_grid(16, spacing=1.0, geometry="flat_torus")
     p = torch.tensor([[0.3, 0.63, 2.17, 3.31], [-0.2, 1.3, 15.77, 0.23]], dtype=dtype)
     kernel = presets.radius_cell_mass(profile=ChebyshevRadiusSpec(modes=5))
     return CSTLinear(chart, chart, atoms=p, kernel=kernel, dtype=dtype, backend=backend)
@@ -380,7 +380,7 @@ def test_factored_dense_and_retained_backward_agree():
 
 
 def test_polar_task_radius_is_detached_but_radius_query_is_live():
-    chart = chart_presets.regular_grid(((16,),), spacing=1.0, geometry="flat_torus")
+    chart = chart_presets.regular_grid(16, spacing=1.0, geometry="flat_torus")
     bounds = RadiusBounds(minimum=0.5, birth=1.0, maximum=4.0, upper_floor=1.0)
     kernel = presets.polar_radius_cell_mass(
         amplitude_max=1.0,
@@ -404,7 +404,7 @@ def test_polar_task_radius_is_detached_but_radius_query_is_live():
 
 @pytest.mark.parametrize("polar", [False, True])
 def test_empty_atoms_and_batch(polar):
-    chart = chart_presets.regular_grid(((16,),), spacing=1.0, geometry="flat_torus")
+    chart = chart_presets.regular_grid(16, spacing=1.0, geometry="flat_torus")
     kernel = (
         presets.polar_radius_cell_mass(
             amplitude_max=1.0,
@@ -438,7 +438,7 @@ def test_invalid_runtime_values_and_hierarchy_are_rejected():
     for r in [0.0, -1.0, float("nan"), float("inf"), 8.1]:
         with pytest.raises(ValueError):
             axis_masses(grid, torch.tensor([r]), torch.tensor([0.0]))
-    chart = chart_presets.regular_grid(((16,),), spacing=1.0, geometry="flat_torus")
+    chart = chart_presets.regular_grid(16, spacing=1.0, geometry="flat_torus")
     with pytest.raises(ValueError, match="power of merge_factor"):
         CSTLinear(
             chart, chart, atoms=1, kernel=presets.radius_cell_mass(merge_factor=3)

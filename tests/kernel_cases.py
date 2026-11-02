@@ -43,11 +43,11 @@ def wendland_state(sigma, *, normalize_columns=True):
     )
 
 
-def separable_state(*, input_profile, output_profile):
+def separable_state(*, output_profile, input_profile):
     return KernelState(
         presets.separable(
-            input_profile=input_profile.declaration(),
             output_profile=output_profile.declaration(),
+            input_profile=input_profile.declaration(),
         )
     )
 

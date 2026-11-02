@@ -37,7 +37,6 @@ def radius_cell_mass_axes(charts, kernel):
         if (
             type(chart) is not RegularGridChartSpec
             or len(chart.grid_shape) != 1
-            or len(chart.grid_shape[0]) != 1
             or chart.trainable
             or type(chart.geometry) is not FlatTorusGeometrySpec
             or chart.geometry.intrinsic_dim != 1
@@ -62,8 +61,8 @@ def radius_cell_mass_axes(charts, kernel):
         for axis, bounds in zip(
             axes,
             (
-                kernel.parameterization.input_bounds,
                 kernel.parameterization.output_bounds,
+                kernel.parameterization.input_bounds,
             ),
         ):
             if bounds.maximum > axis.period / 2:

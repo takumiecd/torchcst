@@ -142,8 +142,8 @@ def test_parameter_adam_moments_are_direct_w_moments() -> None:
     input_chart, output_chart = charts()
     value = kernel(radial_regularization=0.0)
     model = CSTLinear(
-        input_chart,
         output_chart,
+        input_chart,
         atoms=1,
         kernel=value.declaration(),
         backend="factored",

@@ -2,9 +2,7 @@
 
 from importlib import import_module
 
-from torchcst._backends.torch.charts import execution as _charts
 from torchcst._builtin_callbacks import seal_functions as _seal_functions
-from torchcst.charts import StripChartState
 from torchcst.geometry.spec import EuclideanGeometrySpec
 from torchcst.kernels.options import KernelOptions
 
@@ -15,7 +13,6 @@ def family(state):
         DirectAmpWidthSpec,
         LogWidthSpec,
         PhysicalAmpRadiusSpec,
-        PhysicalAmpWidthSpec,
         PolarAmpRadiusSpec,
         PolarAmpWidthSpec,
     )
@@ -25,13 +22,7 @@ def family(state):
         PhysicalAmpRadiusSpec,
         PolarAmpRadiusSpec,
     )
-    if (
-        spec.revision != 1
-        and not radius_contract
-        and not (
-            spec.revision in (2, 3, 4, 6) and spec.composition == "profile_product"
-        )
-    ):
+    if spec.revision != 1 and not radius_contract:
         raise ValueError("unsupported kernel revision")
     if spec.composition == "amplitude":
         name, policies = (
@@ -71,15 +62,6 @@ def family(state):
                 ),
             ),
             LogWidthSpec: ("log_width", ("provided_atoms", "euclidean", (), ())),
-            PhysicalAmpWidthSpec: (
-                "hierarchical_cell_mass",
-                (
-                    "cell_mass_centers",
-                    "cell_mass_physical",
-                    ("sigma_init_min", "sigma_init_max", "amplitude_std"),
-                    ("sigma_floor",),
-                ),
-            ),
             PhysicalAmpRadiusSpec: (
                 "radius_cell_mass",
                 (
@@ -108,13 +90,6 @@ def family(state):
             name, policies = contracts[type(spec.parameterization)]
         except KeyError:
             raise ValueError("unsupported kernel parameterization") from None
-        if name == "polar_amp_width" and spec.composition == "profile_product":
-            name = "profile_product"
-        elif name == "polar_amp_width":
-            from torchcst.kernels.spec import CellIntegratedProfileBinding
-
-            if any(type(p) is CellIntegratedProfileBinding for p in spec.profiles):
-                name = "polar_cell_mass"
         if name in ("amp_width", "polar_amp_width") and spec.composition != "separable":
             raise ValueError("parameterization requires separable composition")
         if name == "log_width" and spec.composition != "radial":
@@ -140,8 +115,6 @@ def family(state):
             raise ValueError(f"{key} must be nonnegative")
     if name in (
         "polar_amp_width",
-        "profile_product",
-        "polar_cell_mass",
         "polar_radius_cell_mass",
     ) and (
         type(settings["activity_gain"]) not in (int, float)
@@ -157,12 +130,9 @@ def _operation(state, operation, area="kernels"):
     polar_radius = name == "polar_radius_cell_mass"
     if name in ("radius_cell_mass", "polar_radius_cell_mass"):
         name = "radius_cell_mass"
-    if name == "polar_cell_mass" and area == "parameterizations":
-        name = "polar_amp_width"
     path = (
         "algorithms.polar_update.executor"
-        if area == "updates"
-        and (name in ("polar_amp_width", "polar_cell_mass") or polar_radius)
+        if area == "updates" and (name == "polar_amp_width" or polar_radius)
         else area + "." + name
     )
     module = import_module("torchcst._backends.torch." + path)
@@ -170,7 +140,7 @@ def _operation(state, operation, area="kernels"):
 
 
 def validate_layout(state, charts):
-    expected = 1 if state.spec.composition in ("radial", "profile_product") else 2
+    expected = 1 if state.spec.composition == "radial" else 2
     if state.spec.composition == "amplitude":
         return validate_layout(state.inner, charts)
     if len(charts) != expected:
@@ -204,35 +174,6 @@ def validate_layout(state, charts):
         if signature is not None:
             state.__dict__["_radius_layout_signature"] = signature
         return
-    if name in ("hierarchical_cell_mass", "polar_cell_mass"):
-        import torch
-
-        from torchcst.kernels.cell_mass_layout import cell_mass_axes
-        from torchcst.operators.metadata import fixed_state_signature
-
-        # _split asks for parameter_dim repeatedly during one Polar update.
-        # Validate the live mathematical configuration once, then check only
-        # identities/versions. Atom updates do not change this configuration.
-        signature = fixed_state_signature((*charts, state))
-        certified = state.__dict__.get("_cell_mass_layout_signature")
-        if signature is not None and (certified is signature or certified == signature):
-            return
-        if (
-            any(t.is_cuda for t in state.buffers())
-            and torch.cuda.is_current_stream_capturing()
-        ):
-            raise RuntimeError(
-                "cell-mass configuration must be validated outside CUDA graph capture"
-            )
-        cell_mass_axes(tuple(c.declaration() for c in charts), state.declaration())
-        # Never certify a failed validation, or reuse unversioned inference data.
-        if signature is not None:
-            state.__dict__["_cell_mass_layout_signature"] = signature
-        return
-    if state.spec.composition == "profile_product":
-        from torchcst.operators.spec import validate_profile_product_layout
-
-        validate_profile_product_layout(charts[0].spec, state.spec)
     if (
         name == "log_width"
         and type(charts[0].geometry.spec) is not EuclideanGeometrySpec
@@ -250,8 +191,6 @@ def check_radial_activity(state, chart):
     parameterization = state.spec.parameterization
     if parameterization.input_bounds != parameterization.output_bounds:
         raise ValueError("radial kernel requires one set of bandwidth bounds")
-    if isinstance(chart, StripChartState):
-        _charts.validate_support(chart, float(state.scalar("sigma_max_input")))
 
 
 def parameter_dim(state, *charts):
@@ -262,10 +201,7 @@ def parameter_dim(state, *charts):
         "amp_width": 1,
         "direct_amp_width": 2,
         "polar_amp_width": 2,
-        "profile_product": 2,
         "log_width": 2,
-        "hierarchical_cell_mass": 2,
-        "polar_cell_mass": 2,
         "radius_cell_mass": 2,
         "polar_radius_cell_mass": 2,
     }.get(family(state), 0)
@@ -280,10 +216,7 @@ def parameter_dof(state, *charts):
         "amp_width": 1,
         "direct_amp_width": 2,
         "polar_amp_width": 2,
-        "profile_product": 2,
         "log_width": 2,
-        "hierarchical_cell_mass": 2,
-        "polar_cell_mass": 2,
         "radius_cell_mass": 2,
         "polar_radius_cell_mass": 2,
     }.get(family(state), 0)
@@ -293,7 +226,7 @@ def parameter_dof(state, *charts):
 def supports_factorization(state):
     if state.spec.composition == "amplitude":
         return supports_factorization(state.inner)
-    return state.spec.composition in ("separable", "profile_product")
+    return state.spec.composition == "separable"
 
 
 def initialize(state, *charts_and_atoms, mode="balanced"):
@@ -316,14 +249,6 @@ def weight(state, *charts_and_p):
     return _operation(state, "weight")(state, *charts_and_p)
 
 
-def weight_tile(state, chart, p, rows, columns):
-    return _operation(state, "weight_tile")(state, chart, p, rows, columns)
-
-
-def packed_weight(state, chart, p):
-    return _operation(state, "packed_weight")(state, chart, p)
-
-
 def project_parameter_gradient(state, *charts_p_gradient):
     return _operation(state, "project_parameter_gradient", "updates")(
         state, *charts_p_gradient
@@ -342,10 +267,10 @@ def transport_parameter_state(state, *charts_old_new_state):
     )
 
 
-def tangent_backend(state, input_chart, output_chart):
+def tangent_backend(state, output_chart, input_chart):
     if family(state) not in ("amplitude", "separable", "amp_width"):
         return None
-    return _operation(state, "tangent_backend")(state, input_chart, output_chart)
+    return _operation(state, "tangent_backend")(state, output_chart, input_chart)
 
 
 def options(state):

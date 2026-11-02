@@ -13,53 +13,53 @@ from torchcst.charts import ChartState
 
 def amplitude_gate(
     state,
-    input_chart: ChartState,
     output_chart: ChartState,
+    input_chart: ChartState,
     p: Tensor,
 ) -> Tensor:
     """Return the interpolating commitment gate for diagnostic use."""
 
-    amplitude, _, _ = _split(state, input_chart, output_chart, p)
+    amplitude, _, _ = _split(state, output_chart, input_chart, p)
     return _interpolating_gate(state, amplitude)
 
 
 def bandwidth_precision(
     state,
-    input_chart: ChartState,
     output_chart: ChartState,
+    input_chart: ChartState,
     p: Tensor,
 ) -> Tensor:
     """Return the shared input/output precision for each atom."""
 
-    amplitude, _, _ = _split(state, input_chart, output_chart, p)
+    amplitude, _, _ = _split(state, output_chart, input_chart, p)
     precision, _ = _precision_and_jacobian(state, amplitude)
     return precision
 
 
 def bandwidth_sigma(
     state,
-    input_chart: ChartState,
     output_chart: ChartState,
+    input_chart: ChartState,
     p: Tensor,
 ) -> Tensor:
     """Return the shared effective input/output sigma for diagnostics."""
 
-    precision = bandwidth_precision(state, input_chart, output_chart, p)
+    precision = bandwidth_precision(state, output_chart, input_chart, p)
     return precision.clamp_min(torch.finfo(precision.dtype).tiny).rsqrt()
 
 
 def _split(
     state,
-    input_chart: ChartState,
     output_chart: ChartState,
+    input_chart: ChartState,
     p: Tensor,
 ) -> tuple[Tensor, Tensor, Tensor]:
-    expected_dim = _kernel.parameter_dim(state, input_chart, output_chart)
+    expected_dim = _kernel.parameter_dim(state, output_chart, input_chart)
     if p.ndim != 2 or p.shape[1] != expected_dim:
         raise ValueError(f"p must have shape [atoms, {expected_dim}]")
-    input_dim = _profile.parameter_dim(state.profiles[0], input_chart)
-    input_end = 1 + input_dim
-    return p[:, :1], p[:, 1:input_end], p[:, input_end:]
+    output_dim = _profile.parameter_dim(state.profiles[0], output_chart)
+    output_end = 1 + output_dim
+    return p[:, :1], p[:, 1:output_end], p[:, output_end:]
 
 
 def _precision_and_jacobian(state, amplitude: Tensor) -> tuple[Tensor, Tensor]:

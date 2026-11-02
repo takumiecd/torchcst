@@ -1,6 +1,7 @@
 """Eager radius fixture for the existing Linear runner (no standalone runner)."""
 
 import copy
+import hashlib
 import math
 import statistics
 import time
@@ -18,13 +19,26 @@ from torchcst import (
     presets,
 )
 
-from .sphere_baseline import error, tensor_hash
+
+def error(actual, expected):
+    delta = actual.detach().double() - expected.detach().double()
+    return {
+        "max_abs": float(delta.abs().max()),
+        "relative_l2": float(
+            delta.norm() / expected.detach().double().norm().clamp_min(1e-30)
+        ),
+    }
+
+
+def tensor_hash(tensor):
+    cpu = tensor.detach().cpu().contiguous().reshape(-1)
+    return hashlib.sha256(bytes(cpu.view(torch.uint8).tolist())).hexdigest()
 
 
 def fixture(case):
     torch.manual_seed(case.seed)
     chart = chart_presets.regular_grid(
-        ((case.size,),), spacing=1.0, geometry="flat_torus"
+        case.size, spacing=1.0, geometry="flat_torus"
     )
     kernel = presets.polar_radius_cell_mass(
         amplitude_max=1.0,
@@ -90,7 +104,7 @@ def oracle_factors(model, p):
             )
             rows.append(row)
         factors.append(torch.stack(rows).T)
-    return factors[0], factors[1] * amplitude[None]
+    return factors[1], factors[0] * amplitude[None]
 
 
 def oracle(model, x, p=None):

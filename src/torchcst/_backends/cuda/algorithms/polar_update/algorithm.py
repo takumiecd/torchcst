@@ -40,15 +40,9 @@ class FusedPolarUpdateAlgorithm(Algorithm[DefaultRecipe]):
                 for g in context.geometries
             )
         )
-        product = (
-            context.kernel.composition == "profile_product"
-            and len(context.geometries) == 1
-            and type(context.geometries[0]) is EuclideanGeometrySpec
-            and context.geometries[0].intrinsic_dim == 2
-        )
         if (
             type(context.kernel.parameterization) is not PolarAmpWidthSpec
-            or not (pair or product)
+            or not pair
             or context.kernel.update.id != "polar_activity_width"
             or context.parameter_shape[1] != 4
         ):

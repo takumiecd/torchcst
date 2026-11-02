@@ -217,7 +217,7 @@ def test_geometry_identity_is_not_certified_by_custom_equality(monkeypatch):
     monkeypatch.setattr(model.input_chart.geometry, "spec", replacement)
     second = binding.build_context(inputs(model))
     assert second is not first
-    assert second.geometries[0] is replacement
+    assert second.geometries[1] is replacement
     assert binding.build_context(inputs(model)) is second
 
 

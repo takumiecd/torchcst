@@ -25,7 +25,7 @@ def hierarchy_from_operator(operator):
     def polar_axis(side):
         if type(parameterization) is not PolarAmpRadiusSpec:
             return None
-        bounds = (parameterization.input_bounds, parameterization.output_bounds)[side]
+        bounds = (parameterization.output_bounds, parameterization.input_bounds)[side]
         return (
             parameterization.amplitude_max,
             parameterization.w_c,
@@ -50,7 +50,7 @@ def hierarchy_from_operator(operator):
         )
         for side, a in enumerate(axes)
     ]
-    return HierarchyPlan(input=values[0], output=values[1])
+    return HierarchyPlan(output=values[0], input=values[1])
 
 
 @dataclass(frozen=True)

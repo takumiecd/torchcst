@@ -14,32 +14,32 @@ from torchcst.charts import ChartState
 
 
 def amplitude(
-    state, input_chart: ChartState, output_chart: ChartState, p: Tensor
+    state, output_chart: ChartState, input_chart: ChartState, p: Tensor
 ) -> Tensor:
     """Return the bounded signed amplitude represented by each atom."""
 
-    polar, _, _ = _split(state, input_chart, output_chart, p)
+    polar, _, _ = _split(state, output_chart, input_chart, p)
     amplitude, _ = _amplitude_and_alpha(state, polar)
     return amplitude
 
 
 def bandwidth_alpha(
-    state, input_chart: ChartState, output_chart: ChartState, p: Tensor
+    state, output_chart: ChartState, input_chart: ChartState, p: Tensor
 ) -> Tensor:
     """Return the radial interpolation coordinate in ``[0, 1]``."""
 
-    polar, _, _ = _split(state, input_chart, output_chart, p)
+    polar, _, _ = _split(state, output_chart, input_chart, p)
     _, alpha = _amplitude_and_alpha(state, polar)
     return alpha
 
 
 def bandwidth_bounds(
-    state, input_chart: ChartState, output_chart: ChartState, p: Tensor
+    state, output_chart: ChartState, input_chart: ChartState, p: Tensor
 ) -> tuple[Tensor, Tensor]:
     """Return ``(L(w), U(w))`` for diagnostic use."""
 
     (input_bounds, output_bounds) = bandwidth_bounds_by_side(
-        state, input_chart, output_chart, p
+        state, output_chart, input_chart, p
     )
     _require_shared_bandwidths(state)
     del output_bounds
@@ -47,11 +47,11 @@ def bandwidth_bounds(
 
 
 def bandwidth_bounds_by_side(
-    state, input_chart: ChartState, output_chart: ChartState, p: Tensor
+    state, output_chart: ChartState, input_chart: ChartState, p: Tensor
 ) -> tuple[tuple[Tensor, Tensor], tuple[Tensor, Tensor]]:
     """Return ``((L_in, U_in), (L_out, U_out))``."""
 
-    polar, _, _ = _split(state, input_chart, output_chart, p)
+    polar, _, _ = _split(state, output_chart, input_chart, p)
     amplitude, _ = _amplitude_and_alpha(state, polar)
     _, lower_input, upper_input = _sigma_bounds(state, amplitude, side="input")
     _, lower_output, upper_output = _sigma_bounds(state, amplitude, side="output")
@@ -59,53 +59,53 @@ def bandwidth_bounds_by_side(
 
 
 def bandwidth_sigma(
-    state, input_chart: ChartState, output_chart: ChartState, p: Tensor
+    state, output_chart: ChartState, input_chart: ChartState, p: Tensor
 ) -> Tensor:
     """Return the shared effective input/output sigma for each atom."""
 
-    sigma_input, _ = bandwidth_sigmas(state, input_chart, output_chart, p)
+    sigma_input, _ = bandwidth_sigmas(state, output_chart, input_chart, p)
     _require_shared_bandwidths(state)
     return sigma_input
 
 
 def bandwidth_sigmas(
-    state, input_chart: ChartState, output_chart: ChartState, p: Tensor
+    state, output_chart: ChartState, input_chart: ChartState, p: Tensor
 ) -> tuple[Tensor, Tensor]:
     """Return effective ``(sigma_input, sigma_output)`` for each atom."""
 
-    polar, _, _ = _split(state, input_chart, output_chart, p)
+    polar, _, _ = _split(state, output_chart, input_chart, p)
     amplitude, alpha = _amplitude_and_alpha(state, polar)
     return _bandwidth_sigmas(state, amplitude, alpha)
 
 
 def bandwidth_precision(
-    state, input_chart: ChartState, output_chart: ChartState, p: Tensor
+    state, output_chart: ChartState, input_chart: ChartState, p: Tensor
 ) -> Tensor:
     """Return the shared input/output precision for each atom."""
 
-    sigma = bandwidth_sigma(state, input_chart, output_chart, p)
+    sigma = bandwidth_sigma(state, output_chart, input_chart, p)
     return sigma.reciprocal().square()
 
 
 def bandwidth_precisions(
-    state, input_chart: ChartState, output_chart: ChartState, p: Tensor
+    state, output_chart: ChartState, input_chart: ChartState, p: Tensor
 ) -> tuple[Tensor, Tensor]:
     """Return input and output precisions for split bandwidths."""
 
-    sigma_input, sigma_output = bandwidth_sigmas(state, input_chart, output_chart, p)
+    sigma_input, sigma_output = bandwidth_sigmas(state, output_chart, input_chart, p)
     return sigma_input.reciprocal().square(), sigma_output.reciprocal().square()
 
 
 def _split(
     state,
-    input_chart: ChartState,
     output_chart: ChartState,
+    input_chart: ChartState,
     p: Tensor,
 ) -> tuple[Tensor, Tensor, Tensor]:
-    return _split_many(state, input_chart, output_chart, p)[0]
+    return _split_many(state, output_chart, input_chart, p)[0]
 
 
-def _split_many(state, input_chart, output_chart, *tables):
+def _split_many(state, output_chart, input_chart, *tables):
     """Validate one live layout and split related tables without copying.
 
     Projection and vector transport use several tables in the same coordinate
@@ -113,14 +113,14 @@ def _split_many(state, input_chart, output_chart, *tables):
     chart/profile metadata for each table adds no validation between those
     adjacent operations. No declaration or numerical values are cached here.
     """
-    expected_dim = _kernel.parameter_dim(state, input_chart, output_chart)
-    input_dim = _profile.parameter_dim(state.profiles[0], input_chart)
-    input_end = 2 + input_dim
+    expected_dim = _kernel.parameter_dim(state, output_chart, input_chart)
+    output_dim = _profile.parameter_dim(state.profiles[0], output_chart)
+    output_end = 2 + output_dim
     result = []
     for p in tables:
         if p.ndim != 2 or p.shape[1] != expected_dim:
             raise ValueError(f"p must have shape [atoms, {expected_dim}]")
-        result.append((p[:, :2], p[:, 2:input_end], p[:, input_end:]))
+        result.append((p[:, :2], p[:, 2:output_end], p[:, output_end:]))
     return tuple(result)
 
 

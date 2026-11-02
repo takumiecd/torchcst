@@ -14,20 +14,17 @@ from .base import ChartSpec, ChartState
 
 @dataclass(frozen=True, kw_only=True)
 class RegularGridChartSpec(ChartSpec):
-    grid_shape: tuple[tuple[int, ...], ...]
+    grid_shape: tuple[int, ...]
     spacing: tuple[float, ...]
     origin: tuple[float, ...]
     shape: tuple[int, ...] = field(init=False)
     kind: str = field(default="regular_grid", init=False)
 
     def __post_init__(self):
-        if not isinstance(self.grid_shape, tuple) or not self.grid_shape:
-            raise ValueError("grid_shape needs a nonempty tuple per logical axis")
-        for shape in self.grid_shape:
-            _shape(shape)
-        object.__setattr__(self, "shape", tuple(map(math.prod, self.grid_shape)))
+        _shape(self.grid_shape)
+        object.__setattr__(self, "shape", self.grid_shape)
         super().__post_init__()
-        dim = len(self.coordinate_shape)
+        dim = len(self.grid_shape)
         if (
             type(self.geometry) not in (EuclideanGeometrySpec, FlatTorusGeometrySpec)
             or self.geometry.intrinsic_dim != dim
@@ -51,7 +48,7 @@ class RegularGridChartSpec(ChartSpec):
 
     @property
     def coordinate_shape(self):
-        return tuple(n for group in self.grid_shape for n in group)
+        return self.grid_shape
 
 
 class RegularGridChartState(ChartState):

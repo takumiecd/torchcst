@@ -9,14 +9,9 @@ from .parameterizations import (
     FixedWidthSpec,
     ParameterizationSpec,
     PhysicalAmpRadiusSpec,
-    PhysicalAmpWidthSpec,
     PolarAmpRadiusSpec,
-    PolarAmpWidthSpec,
 )
 from .profiles import ProfileSpec
-from .profiles.fourier import PeriodicFourierSpec
-from .profiles.matern import MaternMixtureSpec
-from .support import FourierTileSupportSpec
 
 AtomInit = Literal["balanced", "uniform"]
 
@@ -47,41 +42,6 @@ class ProfileBinding:
                 "continuous mass normalization requires a compatible cell-integrated "
                 "profile contract; existing ProfileBinding does not support it"
             )
-
-
-@dataclass(frozen=True, kw_only=True)
-class CellIntegratedProfileBinding(ProfileBinding):
-    """Whole-cell Fourier masses with a declared dyadic minimum tile.
-
-    The minimum tile changes the approximation and its sigma boundaries; it
-    belongs to the mathematical declaration, not a CUDA Recipe. Each selected
-    local period spans three tiles. A full-chart bank is the final fallback.
-    """
-
-    min_tile_sites: int
-    normalization: NormalizationSpec = field(
-        default_factory=lambda: NormalizationSpec(
-            kind="continuous_mass", domain="profile_support"
-        )
-    )
-
-    def __post_init__(self):
-        from .profiles.fourier import ChebyshevSquareSpec
-
-        if (
-            type(self.profile) is not ChebyshevSquareSpec
-            or self.parameterization is not None
-        ):
-            raise ValueError(
-                "cell integration requires ChebyshevSquare and shared physical sigma"
-            )
-        if self.normalization != NormalizationSpec(
-            kind="continuous_mass", domain="profile_support"
-        ):
-            raise ValueError("cell integration requires continuous profile mass")
-        n = self.min_tile_sites
-        if type(n) is not int or n < 1 or n & (n - 1):
-            raise ValueError("min_tile_sites must be a positive power of two")
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -159,7 +119,7 @@ class KernelSpec:
     Parameter tensors, chunk sizes, checkpointing and CUDA tuning are absent.
     """
 
-    composition: Literal["radial", "separable", "amplitude", "profile_product"]
+    composition: Literal["radial", "separable", "amplitude"]
     profiles: tuple[ProfileBinding, ...] = ()
     parameterization: ParameterizationSpec | None = None
     inner: "KernelSpec | None" = None
@@ -170,7 +130,6 @@ class KernelSpec:
         default_factory=lambda: StatePolicySpec(id="geometry")
     )
     revision: int = 1
-    normalization: NormalizationSpec | None = None
 
     def __post_init__(self):
         if type(self.revision) is not int or self.revision < 1:
@@ -207,47 +166,6 @@ class KernelSpec:
                 "radius cell masses require revision 7, two radius-integrated factors "
                 "and physical or Polar radius coordinates"
             )
-        integrated = tuple(
-            type(p) is CellIntegratedProfileBinding for p in self.profiles
-        )
-        physical = type(self.parameterization) is PhysicalAmpWidthSpec
-        if (physical or any(integrated)) and (
-            type(self.parameterization) not in (PhysicalAmpWidthSpec, PolarAmpWidthSpec)
-            or self.composition != "separable"
-            or self.revision != 1
-            or len(integrated) != 2
-            or not all(integrated)
-        ):
-            raise ValueError(
-                "cell masses require two integrated factors and physical or Polar coordinates"
-            )
-        mixture = any(isinstance(p.profile, MaternMixtureSpec) for p in self.profiles)
-        if (mixture or self.revision == 6) and (
-            self.revision != 6
-            or self.composition != "profile_product"
-            or not self.profiles
-            or not all(type(p.profile) is MaternMixtureSpec for p in self.profiles)
-        ):
-            raise ValueError("mixture profiles require revision6 profile_product")
-        periodic = any(
-            isinstance(p.profile, PeriodicFourierSpec)
-            and type(p) is not CellIntegratedProfileBinding
-            for p in self.profiles
-        )
-        support = getattr(self, "tile_support", None)
-        if (support is not None or periodic or self.revision == 4) and (
-            self.composition != "profile_product"
-            or self.revision != 4
-            or not isinstance(support, FourierTileSupportSpec)
-            or not self.profiles
-            or not all(
-                isinstance(p.profile, PeriodicFourierSpec) for p in self.profiles
-            )
-            or len(support.tile_widths) != len(self.profiles)
-        ):
-            raise ValueError(
-                "periodic Fourier profiles require revision 4 and matching tile support"
-            )
         if self.parameterization is not None and not isinstance(
             self.parameterization, ParameterizationSpec
         ):
@@ -256,10 +174,6 @@ class KernelSpec:
             self.update, StatePolicySpec
         ):
             raise TypeError("invalid state policy")
-        if self.composition != "profile_product" and self.normalization is not None:
-            raise ValueError(
-                "product normalization requires profile_product composition"
-            )
         if self.composition == "amplitude":
             if (
                 not isinstance(self.inner, KernelSpec)
@@ -267,34 +181,6 @@ class KernelSpec:
                 or self.parameterization is not None
             ):
                 raise ValueError("amplitude composition needs only an inner kernel")
-        elif self.composition == "profile_product":
-            if self.inner is not None or not self.profiles:
-                raise ValueError("profile_product needs a nonempty tuple of profiles")
-            if self.revision == 2 and len(self.profiles) != 2:
-                raise ValueError("Torus centre-fibre product requires two profiles")
-            if type(self.parameterization) is not PolarAmpWidthSpec:
-                raise ValueError("profile_product requires Polar parameterization")
-            if (
-                self.parameterization.input_bounds
-                != self.parameterization.output_bounds
-            ):
-                raise ValueError("profile_product requires shared bandwidth bounds")
-            if any(
-                p.parameterization is not None or p.normalization.kind != "none"
-                for p in self.profiles
-            ):
-                raise ValueError(
-                    "profile_product factors must be raw and share bandwidth"
-                )
-            if (
-                not isinstance(self.normalization, NormalizationSpec)
-                or self.normalization.kind != "discrete_l2"
-                or self.normalization.domain != "operator_sites"
-                or self.normalization.floor is None
-            ):
-                raise ValueError(
-                    "profile_product needs operator L2 normalization with a floor"
-                )
         elif self.composition in ("radial", "separable"):
             count = 1 if self.composition == "radial" else 2
             if self.inner is not None or len(self.profiles) != count:
@@ -315,10 +201,3 @@ class KernelSpec:
                 raise ValueError("separable profiles normalize over chart_sites")
         else:
             raise ValueError("unknown kernel composition")
-
-
-@dataclass(frozen=True, kw_only=True)
-class FourierProductKernelSpec(KernelSpec):
-    """Revision-4 extension without changing older serialized KernelSpec fields."""
-
-    tile_support: FourierTileSupportSpec

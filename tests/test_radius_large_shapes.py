@@ -39,7 +39,7 @@ from torchcst.operators.execution import LinearInputs
 
 
 def metadata_context(sites=1024, count=52428):
-    chart = chart_presets.regular_grid(((sites,),), geometry="flat_torus")
+    chart = chart_presets.regular_grid(sites, geometry="flat_torus")
     model = CSTLinear(chart, chart, atoms=8, kernel=presets.radius_cell_mass())
     context = model.build_context(LinearInputs(torch.zeros(4, sites)))
     # Support is pure metadata: no CUDA query, allocation or execution is made.

@@ -11,7 +11,6 @@ from .options import KernelOptions
 from .parameterizations import FixedWidthSpec, LogWidthSpec
 from .parameterizations.activity_width import ActivityWidthSpec
 from .spec import (
-    CellIntegratedProfileBinding,
     KernelSpec,
     ProfileBinding,
     RadiusIntegratedProfileBinding,
@@ -43,8 +42,6 @@ class ProfileState(nn.Module):
             "normalization": asdict(self.binding.normalization),
             "fixed_width": self.binding.parameterization is not None,
         }
-        if type(self.binding) is CellIntegratedProfileBinding:
-            result["cell_mass_min_tile_sites"] = self.binding.min_tile_sites
         if type(self.binding) is RadiusIntegratedProfileBinding:
             result["radius_cell_mass_base_tile_sites"] = self.binding.base_tile_sites
             result["radius_cell_mass_merge_factor"] = self.binding.merge_factor
@@ -224,10 +221,6 @@ class KernelState(nn.Module):
                 ),
             ),
         }
-        if self.spec.composition == "profile_product":
-            result["normalization"] = asdict(self.spec.normalization)
-        if getattr(self.spec, "tile_support", None) is not None:
-            result["tile_support"] = asdict(self.spec.tile_support)
         return result
 
     def set_extra_state(self, state):

@@ -166,16 +166,16 @@ def test_update_context_round_trips_through_the_common_exact_selector():
     Dispatcher(selector=restored).run(binding, inputs)
 
 
-def test_torus_uses_general_torch_update_and_keeps_centers_on_geometry():
+def test_sphere_uses_general_torch_update_and_keeps_centers_on_geometry():
     from torchcst import CSTLinear
     from torchcst._backends.torch.algorithms.atom_update.plans import REFERENCE
     from torchcst._backends.torch.charts import construction
     from torchcst._backends.torch.geometry import execution as geometry
 
-    space = construction.torus(2, major_radius=3, minor_radius=1).double()
+    space = construction.sphere(2, radius=3).double()
     angle = torch.linspace(0, 1.5, 5, dtype=torch.float64)
     sites = torch.stack(
-        ((3 + angle.cos()) * angle.cos(), (3 + angle.cos()) * angle.sin(), angle.sin()),
+        (3 * angle.cos(), 3 * angle.sin(), torch.zeros_like(angle)),
         -1,
     )
     charts = (

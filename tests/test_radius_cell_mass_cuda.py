@@ -233,7 +233,7 @@ def test_low_level_empty_shapes(batch, count):
 @GPU
 @pytest.mark.parametrize("polar", [False, True])
 def test_public_cpu_initialization_explicit_cuda_plan_and_polar_task_gradient(polar):
-    chart = chart_presets.regular_grid(((16,),), spacing=1.0, geometry="flat_torus")
+    chart = chart_presets.regular_grid(16, spacing=1.0, geometry="flat_torus")
     if polar:
         kernel = presets.polar_radius_cell_mass(
             amplitude_max=1.3,
@@ -363,7 +363,7 @@ def test_reference_helper_shape_and_autograd_on_cpu():
 def test_public_integer_initialization_then_cuda_fixed_selector():
     from torchcst._backends.dispatch.select import FixedSelector
 
-    chart = chart_presets.regular_grid(((16,),), spacing=1.0, geometry="flat_torus")
+    chart = chart_presets.regular_grid(16, spacing=1.0, geometry="flat_torus")
     cpu = CSTLinear(
         chart,
         chart,

@@ -189,7 +189,7 @@ def test_original_boundary_fixture_all_vjps_against_stable_public_reference():
     # The encoded center/origin pair above occurs at atom 79 in this skewed
     # real Linear fixture. Keep the legacy native Plan: this regression does
     # not depend on an experimental owner-fusion implementation.
-    chart = chart_presets.regular_grid(((1024,),), origin=-1.2, geometry="flat_torus")
+    chart = chart_presets.regular_grid(1024, origin=-1.2, geometry="flat_torus")
     reference = CSTLinear(
         chart,
         chart,

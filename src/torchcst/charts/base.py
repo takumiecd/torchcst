@@ -46,6 +46,14 @@ class ChartSpec(ABC):
     def features(self):
         return math.prod(self.shape)
 
+    @property
+    def num_sites(self):
+        return self.features
+
+    @property
+    def ncs(self):
+        return self.features
+
 
 def _validate_axes(spec):
     if (
@@ -60,20 +68,6 @@ def _validate_axes(spec):
         raise ValueError("pattern dimensions differ from geometry")
 
 
-def _circle_axis(spec):
-    offset = 0
-    for index, pattern in enumerate(spec.axes):
-        if offset == spec.geometry.circle_axis and isinstance(pattern, LinePatternSpec):
-            return index
-        offset += pattern.dim
-    raise ValueError("torus circle_axis must select the chart line axis")
-
-
-def _validate_torus_span(spec, span):
-    if span >= 2 * math.pi * spec.geometry.major_radius:
-        raise ValueError("torus chart must span less than one turn")
-
-
 class ChartState(nn.Module, ABC):
     """Common geometry, logical shape and checkpoint contract of live charts."""
 
@@ -86,6 +80,7 @@ class ChartState(nn.Module, ABC):
         self.spec = spec
         self.geometry = GeometryState(spec.geometry, device=device, dtype=dtype)
         self.shape, self.features = spec.shape, spec.features
+        self.num_sites = self.ncs = self.features
 
     @property
     @abstractmethod

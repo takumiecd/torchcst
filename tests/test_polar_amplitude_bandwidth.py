@@ -554,8 +554,8 @@ def test_parameter_adam_uses_kernel_update_geometry() -> None:
     input_chart, output_chart = charts()
     value = kernel()
     model = CSTLinear(
-        input_chart,
         output_chart,
+        input_chart,
         atoms=1,
         kernel=value.declaration(),
         backend="factored",
@@ -575,7 +575,7 @@ def test_parameter_adam_uses_kernel_update_geometry() -> None:
     with torch.no_grad():
         model.atoms.p[0, :2] = torch.tensor([0.6, 0.8]) * 2.5**0.5
     before = _kernel.coordinate(
-        value, "amplitude", input_chart, output_chart, model.atoms.p
+        value, "amplitude", output_chart, input_chart, model.atoms.p
     ).detach()
     before_q = model.atoms.p[:, :2].square().sum(dim=-1).detach()
     optimizer.zero_grad(set_to_none=True)
@@ -583,7 +583,7 @@ def test_parameter_adam_uses_kernel_update_geometry() -> None:
     loss.backward()
     optimizer.step()
     after = _kernel.coordinate(
-        value, "amplitude", input_chart, output_chart, model.atoms.p
+        value, "amplitude", output_chart, input_chart, model.atoms.p
     ).detach()
     after_q = model.atoms.p[:, :2].square().sum(dim=-1).detach()
     torch.testing.assert_close(after, before)
