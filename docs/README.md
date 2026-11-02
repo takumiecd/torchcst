@@ -12,7 +12,9 @@ READMEs describe the current declaration, state and execution boundaries.
 - [Regular grids, weight axes and fixed metadata](regular-grid.ja.md)
 - [Pattern declarations](../src/torchcst/patterns/README.md)
 - [Operator declarations and live state](../src/torchcst/operators/README.md)
-- [CSTOptimizer](cst-optimizer.ja.md)
+- [CSTAdamW and CSTOptimizer: training, decay and checkpoints](cst-optimizer.ja.md)
+- [Radius cell masses: CPU example, hierarchy and CUDA Plans](radius-cell-mass.ja.md)
+- [Execution, Plan selection and dispatch boundaries](algorithm-dispatch-boundaries.ja.md)
 - [Atom and Algorithm state ownership](atom-state.ja.md)
 
 ## Development and measurements
@@ -35,6 +37,9 @@ An old GPU result does not establish performance or dispatch policy for a new so
 - [Direct amplitude and bandwidth coordinates](direct-amplitude-bandwidth.ja.md)
 - [Kernel cleanup and validation](kernel-cleanup.ja.md)
 - [Chart and Geometry cleanup and validation](chart-geometry-cleanup.ja.md)
+- [Optimizer replacement and recorded validation](cst-optimizer-migration.ja.md)
+- [Radius cell-mass design and measured CUDA scopes](cell-mass-kernel-flow.ja.md)
+- [Normalized Strip design and recorded CUDA scopes](normalized-strip.ja.md)
 - [CUDA backend migration](cuda-backend-migration.ja.md)
 - [CUDA backend and dispatch history](backend-history/README.md)
 - [Historical CUDA Linear research and decisions](research-history/cuda-linear/README.md)

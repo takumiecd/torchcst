@@ -25,6 +25,17 @@ checkpoint post-hookはcst manifestと再接続済みのatom-owned stateを観�
 新しいmodelへmodel checkpointを読み込んでnative optimizerを作り、
 `load_legacy_state_dict`を明示的に呼ぶ。すでに別optimizerがbindしたmodelは共用しない。
 
+### checkpoint の保存と復元
+
+model の最終 device / dtype を決めてから optimizer を構築する。
+model と optimizer の state dict を一緒に保存し、同じ宣言で model を再構築して、
+model、optimizer の順に復元する。scheduler を使う場合は標準 PyTorch の手順で
+作成・復元する。atom Parameter の置換後は optimizer を作り直す。
+固定 grid / geometry の値は model の extra state に保存し、再構築した宣言との一致を
+検証する。Algorithm workspace は再構築する。
+atom 行順と学習状態の所有は [Atom state の checkpoint 契約](atom-state.ja.md#checkpoint)、
+旧 optimizer family の削除と当時の検証は [移行の記録](cst-optimizer-migration.ja.md) を参照する。
+
 ## CSTOptimizer: 任意optimizerの互換wrapper
 
 `CSTOptimizer(base_optimizer, model=model, state_adapter=None)` は既存の
@@ -189,7 +200,8 @@ optimizer = CSTOptimizer(
 持つ連続FP32 `[atom_count, 4]`が対象で、ほかのgeometryやdtypeにはこのPlanを
 指定しない。既定は引き続きTorch参照経路。Adamのproposal・moments・step、
 勾配射影とstate adapter、異常値検査は共通wrapperが担当する。
-周期とPolar scalarはlive bufferから読み、設定変更時の宣言検証も維持する。
+固定周期は geometry の Python metadata から実行用 Tensor cache を準備し、
+Polar scalar は live buffer を使う。設定・placement・version 変更時には再検証・再準備する。
 既存のEuclidean用`FUSED`とは別Planで、周期版もeager実行を要求する。
 
 Linear / Conv2d の forward backend に依存しない。Euclidean trainable Chart は

@@ -46,6 +46,14 @@ Profile を評価し、L2 は Weight 全サイトで正規化する。同じ `(o
 log-softmax による安定した正規化で床を持たない。`cell_mass` の質量正規化は評価定義に
 含まれ、`NormalizationSpec` に独立した continuous-mass 規則を宣言しない。
 
+`polar` は角度方向の task motion、上限付き radial activity、activity に依存する幅と
+radial regularization を使う。`direct` は上限付きの符号付き振幅と、採用された振幅の
+移動量で進む独立した activity を使う。どちらも導出幅を通る task 勾配は detach する。
+Sphere / FlatTorus の atom 中心には Geometry の勾配射影・retraction・vector transport を
+適用する。学習する非 Euclidean 観測 Chart は別の更新 policy を必要とするため、
+現状の CST optimizer では拒否する。セル質量の半径・階層・CUDA Plan は
+[半径セル質量ガイド](../../../docs/radius-cell-mass.ja.md) を参照する。
+
 ## 配置と所有
 
 | 配置 | 責務 |
