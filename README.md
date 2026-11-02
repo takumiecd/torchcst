@@ -3,9 +3,9 @@
 Continuous operators for PyTorch. Instead of storing every weight, a CST layer
 represents its weight operator as a sum of atom kernels:
 
-$$
-W = \sum_a \operatorname{Kernel}(p_a), \qquad Y = XW^\mathsf{T}.
-$$
+```math
+W = \sum_a K(p_a), \qquad Y = XW^\mathsf{T}.
+```
 
 Atom count and parameter shapes stay fixed during training. Kernel declarations
 define the mathematics; charts define observation sites and geometry; backend
@@ -106,7 +106,7 @@ for multidimensional Charts.
 `radial(factor, ...)` sums squared scaled Chart distances before applying one
 profile. Its L2 normalization covers the full operator. For atom $a$:
 
-$$
+```math
 \begin{aligned}
 W_{oi}^{\mathrm{product}}
   &= \sum_a A_a F_{\mathrm{out},a}(o)F_{\mathrm{in},a}(i), \\
@@ -116,7 +116,7 @@ q_{oi,a}
 W_{oi}^{\mathrm{radial}}
   &= \sum_a A_a\,\mathcal{N}_{oi}[\phi(q_{oi,a})].
 \end{aligned}
-$$
+```
 
 Here $\mathcal{N}$ is identity for `point` or discrete L2 normalization for `l2`.
 Compact profiles use a positive norm floor (`floor=1e-6` by default); Gaussian

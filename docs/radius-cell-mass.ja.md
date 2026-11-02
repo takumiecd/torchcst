@@ -46,9 +46,9 @@ assert y.shape == (4, n)
 Chart のサイト数と `base_tile_sites` の比は `merge_factor` の冪でなければならない。
 各 atom は半径 R 以上の最小のタイル幅 T を選び、局所周期を次で定める。
 
-$$
+```math
 P = \left(\left\lceil \frac{2R}{T}\right\rceil + 1\right)T = 2L.
-$$
+```
 
 最も近いタイル境界に整列した一周期分の窓を保持する。セルを Chart 周期で折り返して
 加算し、P が Chart 周長を超える場合の重複像も含め、質量の総和を 1 とする。
