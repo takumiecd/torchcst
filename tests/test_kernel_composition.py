@@ -10,6 +10,7 @@ import torch
 from torchcst import (
     BandwidthBounds,
     CoordinateSpec,
+    CSTAdamW,
     CSTLinear,
     CSTOptimizer,
     GaussianSpec,
@@ -242,3 +243,27 @@ def test_empty_radial_atom_table_is_a_differentiable_zero_operator():
     y.sum().backward()
     assert torch.equal(y, torch.zeros_like(y))
     assert m.atoms.p.grad.shape == (0, 2)
+
+
+@pytest.mark.parametrize("native", [False, True])
+def test_pre_unification_center_order_checkpoints_are_rejected(native):
+    # Old center columns had identical shapes, so shape checks are insufficient.
+    chart = charts.regular_grid(3)
+    model = CSTLinear(
+        charts=(chart, chart),
+        atoms=2,
+        kernel=kernels.product(kernels.l2(GaussianSpec()), coordinates=rule("polar")),
+    )
+    opt = (
+        CSTAdamW(model.parameters(), model=model)
+        if native
+        else CSTOptimizer(torch.optim.Adam(model.parameters()), model=model)
+    )
+    saved = copy.deepcopy(model.state_dict())
+    del saved["kernel._extra_state"]["center_order"]
+    with pytest.raises(RuntimeError, match="checkpoint contract"):
+        model.load_state_dict(saved)
+    saved_opt = copy.deepcopy(opt.state_dict())
+    del saved_opt["cst"]["sites"][0][1]["center_order"]
+    with pytest.raises(ValueError, match="checkpoint contract"):
+        opt.load_state_dict(saved_opt)

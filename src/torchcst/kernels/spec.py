@@ -124,6 +124,7 @@ class KernelSpec:
     """
 
     composition: Literal["radial", "separable", "amplitude"]
+    center_order: Literal["charts"] = "charts"
     profiles: tuple[ProfileBinding, ...] = ()
     parameterization: ParameterizationSpec | None = None
     inner: "KernelSpec | None" = None
@@ -136,6 +137,8 @@ class KernelSpec:
     revision: int = 1
 
     def __post_init__(self):
+        if self.center_order != "charts":
+            raise ValueError("atom centers must follow chart tuple order")
         if type(self.revision) is not int or self.revision < 1:
             raise ValueError("kernel revision must be a positive integer")
         if not isinstance(self.profiles, tuple) or not all(

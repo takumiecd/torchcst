@@ -198,6 +198,7 @@ class KernelState(nn.Module):
         result = {
             "version": 1,
             "composition": self.spec.composition,
+            "center_order": self.spec.center_order,
             "revision": self.spec.revision,
             "parameterization_type": type(parameterization).__name__
             if parameterization

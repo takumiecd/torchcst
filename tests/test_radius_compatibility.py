@@ -155,6 +155,7 @@ def test_state_snapshot_preserves_distinct_bounds_and_legacy_buffer_names(radius
         assert state.get_extra_state() == {
             "version": 1,
             "composition": "separable",
+            "center_order": "charts",
             "revision": 1,
             "parameterization_type": "PolarAmpWidthSpec",
             "parameterization_flags": (("id", "polar_activity_width"),),
