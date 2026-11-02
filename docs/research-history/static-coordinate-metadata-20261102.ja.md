@@ -26,8 +26,8 @@ Step 3 の計算ソースは `cfcd9524`。共有 L4 で **433 passed / 1 skipped
 
 ## 検証と再現
 
-- CPU: `python -m tools.kernel_dev test --suite cpu` — **1,698 passed / 1,853 skipped**。
-  最後に追加した getter 認証を含む対象検証は **9 passed**。
+- CPU: `python -m tools.kernel_dev test --suite cpu` — **1,699 passed / 1,853 skipped**。
+  getter 認証を含む対象検証は **9 passed**。
 - runtime ruff、wheel / sdist build、README と Geometry の独立した実行例を確認。
 - 固定 Tensor ゼロ、dtype 往復の metadata 精度、異なる constructor dtype のまま FP64 atom
   中心を渡す距離と勾配、weights-only reload、宣言の不正変更後の cache 検査を確認。
@@ -36,3 +36,52 @@ Step 3 の計算ソースは `cfcd9524`。共有 L4 で **433 passed / 1 skipped
 
 ローカルログ: ignored `output/handoff-step4-*.log`。新しい速度や完全 step のピークメモリの
 測定は行わない。固定状態の Tensor 数と学習全体の memory は区別する。
+
+
+## 最終結果
+
+計算ソース `9bb0557d`、job `l4job-af704f1b6a084250a1cffcb0faa52057` は
+**716 passed / 3 skipped / 0 failed**。この件数には GPU 数値検査と CPU metadata 検査の両方を含む。
+3 skip は L4 環境の host C++ compiler 検査（wrap / local-tile syntax / host local-mode compile）。
+主要 CUDA 数値検査・非対称周期更新・native / prepared Linear・optimizer 検査は通過した。
+
+NVIDIA L4 / driver 580.82.07 / Python 3.13.16 / Torch 2.11.0+cu130 / CUDA 13.0 /
+Triton 3.6.0。ローカル全 CPU **1,699 passed / 1,853 skipped**、ruff、build、実行例、
+radius catalog の宣言検査も通過。`9bb0557d` の GitHub CPU validation も通過した。
+
+- source archive SHA256: `e3c976673a84ba86ee8b299a7f0678c4609645d17852b5bb979eaf65c9d5b519`
+- result archive SHA256: `07fd4c1f60bbc423f2e8c89239eede719c07e88450672c54fc584925d6b02965`
+- raw artifacts: `~/.local/state/colab-l4-pool/jobs/l4job-af704f1b6a084250a1cffcb0faa52057/results/`
+- driver: ignored `output/handoff_step4_gpu_driver.py`（pool source archive に凍結コピーを含む）
+- source / result archive の hash は pool の受信検証後、手元でも再照合した。
+- pool supervisor の終了と slot の `stopped` を確認済み。他セッションは停止していない。
+
+GPU 側の再現テスト一覧（同じ source と対応 runtime 上で実行）:
+
+```bash
+python -m pytest -q \
+  tests/test_radius_cell_mass_cuda.py \
+  tests/test_radius_cell_mass_fused_backward.py \
+  tests/test_radius_global_native.py \
+  tests/test_flat_torus_polar_update.py \
+  tests/test_radius_center_canonicalization.py \
+  tests/test_kernel_composition.py \
+  tests/test_radius_prepared_callbacks.py \
+  tests/test_radius_prepared_entry.py \
+  tests/test_prepared_optimizer_update.py \
+  tests/test_static_coordinate_metadata.py \
+  tests/test_radius_polar_cuda_update.py \
+  tests/test_regular_grid.py \
+  tests/test_geometry.py \
+  tests/test_coordinate_state.py \
+  tests/test_linear_parameters.py \
+  tests/test_normalized_strip_public.py \
+  tests/test_atom_update_context_cache.py \
+  tests/test_atom_update_metadata_cache.py \
+  tests/test_linear_context_cache.py \
+  tests/test_radius_local_tile_moments.py
+```
+
+この後の証拠追記 commit は文書のみであり、上記の計算ソースを変更しない。
+完全 step 時間・allocated / reserved ピーク・新規 CUDA Graph 資格付け・DB / dispatch 採用は
+この回帰検証の結果から主張しない。
