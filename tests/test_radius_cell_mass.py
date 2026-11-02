@@ -9,12 +9,12 @@ import pytest
 import torch
 
 from torchcst import (
-    ChebyshevRadiusSpec,
+    ChebyshevSpec,
     CSTLinear,
     RadiusBounds,
     RadiusIntegratedProfileBinding,
     chart_presets,
-    presets,
+    kernels,
 )
 from torchcst._backends.torch.kernels.radius_cell_mass import axis_masses
 from torchcst._backends.torch.profiles.radius_fourier import (
@@ -30,7 +30,7 @@ def axis(n=16, *, spacing=1.0, origin=0.0, modes=8, merge=2):
         spacing,
         origin,
         RadiusIntegratedProfileBinding(
-            profile=ChebyshevRadiusSpec(modes=modes), merge_factor=merge
+            profile=ChebyshevSpec(modes=modes), merge_factor=merge
         ),
     )
 
@@ -161,7 +161,7 @@ def test_public_decimal_boundary_y_dx_and_all_atom_gradients_against_quadrature(
 ):
     grid = axis(16, spacing=0.37, origin=-1.2, modes=modes)
     chart = chart_presets.regular_grid(
-        ((16,),), spacing=grid.spacing, origin=grid.origin, geometry="flat_torus"
+        16, spacing=grid.spacing, origin=grid.origin, geometry="flat_torus"
     )
     boundary = torch.tensor(grid.spacing, dtype=dtype)
     radii = torch.stack(
@@ -180,7 +180,10 @@ def test_public_decimal_boundary_y_dx_and_all_atom_gradients_against_quadrature(
         chart,
         chart,
         atoms=p,
-        kernel=presets.radius_cell_mass(profile=ChebyshevRadiusSpec(modes=modes)),
+        kernel=kernels.product(
+            kernels.cell_mass(ChebyshevSpec(modes=modes)),
+            coordinates=kernels.physical(),
+        ),
         dtype=dtype,
         backend="factored",
     )
@@ -301,7 +304,7 @@ def test_center_and_radius_gradients_in_smooth_routing_branch(modes):
 def test_support_eps_is_derived_for_each_m_not_a_fixed_requirement():
     leaks = []
     for modes in [3, 5, 8, 10]:
-        profile = ChebyshevRadiusSpec(modes=modes)
+        profile = ChebyshevSpec(modes=modes)
         radius = torch.tensor([0.5], dtype=torch.float64)
         # User's corrected rule gives P=(ceil(1)+1)*1=2, not 1 or 3.
         actual = support_eps(profile, radius, 2.0)[0]
@@ -314,9 +317,11 @@ def test_support_eps_is_derived_for_each_m_not_a_fixed_requirement():
 
 
 def physical_layer(*, backend="factored", dtype=torch.float64):
-    chart = chart_presets.regular_grid(((16,),), spacing=1.0, geometry="flat_torus")
+    chart = chart_presets.regular_grid(16, spacing=1.0, geometry="flat_torus")
     p = torch.tensor([[0.3, 0.63, 2.17, 3.31], [-0.2, 1.3, 15.77, 0.23]], dtype=dtype)
-    kernel = presets.radius_cell_mass(profile=ChebyshevRadiusSpec(modes=5))
+    kernel = kernels.product(
+        kernels.cell_mass(ChebyshevSpec(modes=5)), coordinates=kernels.physical()
+    )
     return CSTLinear(chart, chart, atoms=p, kernel=kernel, dtype=dtype, backend=backend)
 
 
@@ -380,13 +385,11 @@ def test_factored_dense_and_retained_backward_agree():
 
 
 def test_polar_task_radius_is_detached_but_radius_query_is_live():
-    chart = chart_presets.regular_grid(((16,),), spacing=1.0, geometry="flat_torus")
+    chart = chart_presets.regular_grid(16, spacing=1.0, geometry="flat_torus")
     bounds = RadiusBounds(minimum=0.5, birth=1.0, maximum=4.0, upper_floor=1.0)
-    kernel = presets.polar_radius_cell_mass(
-        amplitude_max=1.0,
-        input_radius_bounds=bounds,
-        w_c=0.3,
-        profile=ChebyshevRadiusSpec(modes=5),
+    kernel = kernels.product(
+        kernels.cell_mass(ChebyshevSpec(modes=5)),
+        coordinates=kernels.polar(amplitude_max=1.0, input_bounds=bounds, w_c=0.3),
     )
     p = torch.tensor(
         [[1.0, 0.5, 2.17, 3.31], [0.5, 1.0, 15.77, 0.23]], dtype=torch.float64
@@ -404,17 +407,20 @@ def test_polar_task_radius_is_detached_but_radius_query_is_live():
 
 @pytest.mark.parametrize("polar", [False, True])
 def test_empty_atoms_and_batch(polar):
-    chart = chart_presets.regular_grid(((16,),), spacing=1.0, geometry="flat_torus")
+    chart = chart_presets.regular_grid(16, spacing=1.0, geometry="flat_torus")
     kernel = (
-        presets.polar_radius_cell_mass(
-            amplitude_max=1.0,
-            input_radius_bounds=RadiusBounds(
-                minimum=0.5, birth=1.0, maximum=4.0, upper_floor=1.0
+        kernels.product(
+            kernels.cell_mass(),
+            coordinates=kernels.polar(
+                amplitude_max=1.0,
+                input_bounds=RadiusBounds(
+                    minimum=0.5, birth=1.0, maximum=4.0, upper_floor=1.0
+                ),
+                w_c=0.3,
             ),
-            w_c=0.3,
         )
         if polar
-        else presets.radius_cell_mass()
+        else kernels.product(kernels.cell_mass(), coordinates=kernels.physical())
     )
     # The public CSTLinear contract requires a positive atom count.
     model = CSTLinear(
@@ -438,29 +444,38 @@ def test_invalid_runtime_values_and_hierarchy_are_rejected():
     for r in [0.0, -1.0, float("nan"), float("inf"), 8.1]:
         with pytest.raises(ValueError):
             axis_masses(grid, torch.tensor([r]), torch.tensor([0.0]))
-    chart = chart_presets.regular_grid(((16,),), spacing=1.0, geometry="flat_torus")
+    chart = chart_presets.regular_grid(16, spacing=1.0, geometry="flat_torus")
     with pytest.raises(ValueError, match="power of merge_factor"):
         CSTLinear(
-            chart, chart, atoms=1, kernel=presets.radius_cell_mass(merge_factor=3)
+            chart,
+            chart,
+            atoms=1,
+            kernel=kernels.product(
+                kernels.cell_mass(merge_factor=3), coordinates=kernels.physical()
+            ),
         )
     with pytest.raises(ValueError, match="base_tile_sites must divide"):
         CSTLinear(
             chart,
             chart,
             atoms=1,
-            kernel=presets.radius_cell_mass(input_base_tile_sites=3),
+            kernel=kernels.product(
+                kernels.cell_mass(),
+                kernels.cell_mass(base_tile_sites=3),
+                coordinates=kernels.physical(),
+            ),
         )
 
 
 def test_empty_density_and_high_or_odd_modes_are_finite():
     empty = torch.empty(0, dtype=torch.float64, requires_grad=True)
-    assert density_coefficients(ChebyshevRadiusSpec(modes=3), empty, 2.0).shape == (
+    assert density_coefficients(ChebyshevSpec(modes=3), empty, 2.0).shape == (
         0,
         7,
     )
     for modes in [1, 7, 64, 512]:
         value = density_coefficients(
-            ChebyshevRadiusSpec(modes=modes),
+            ChebyshevSpec(modes=modes),
             torch.tensor([0.5], dtype=torch.float64),
             2.0,
         )

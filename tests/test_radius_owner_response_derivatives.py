@@ -212,7 +212,7 @@ template<class T> void check(int B,bool reverse) {
         double da=0,dmi=0,dmo=0;
         for(int b=0;b<B;++b) {int i=b*A+atom;da+=h[i]*g[i];dmi+=amplitude(p.data(),atom,a)*g[i]*dh[i];dmo+=amplitude(p.data(),atom,a)*h[i]*dg[i];}
         double s=p[4*atom],t=p[4*atom+1],safe=s*s+t*t;
-        T expected[4]={T(da/sqrt(safe)*(1-s*s/safe)),T(-da/sqrt(safe)*s*t/safe),T(dmi),T(dmo)};
+        T expected[4]={T(da/sqrt(safe)*(1-s*s/safe)),T(-da/sqrt(safe)*s*t/safe),T(dmo),T(dmi)};
         for(int k=0;k<4;++k)assert(fabs(double(gradient[4*atom+k])-expected[k])<1e-6*fmax(1.,fabs(expected[k])));
     }
     // Instantiate the real cooperative kernel without pretending to emulate
@@ -321,11 +321,11 @@ def test_project_derivative_is_independent_of_amplitude_and_matches_cpu_cells(
     signal = torch.randn(batch, 1024, dtype=dtype)
     p = m.atoms.p.detach().double()
     _, _, radius = decoded_values(m.kernel, m.atoms.p.detach())
-    center = p[:, 3].clone().requires_grad_()
+    center = p[:, 2].clone().requires_grad_()
     axis = radius_cell_mass_axes(
-        (m.input_chart.declaration(), m.output_chart.declaration()),
+        (m.output_chart.declaration(), m.input_chart.declaration()),
         m.kernel.declaration(),
-    )[1]
+    )[0]
     expected = signal.double() @ axis_masses(axis, radius.detach(), center).T
     # Each atom response depends only on its own center. Differentiating the
     # row sum extracts all per-atom center derivatives, including amplitude0.

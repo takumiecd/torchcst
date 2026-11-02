@@ -15,14 +15,12 @@ from torchcst import (
     ExplicitChartState,
     ProductChartSpec,
     ProductChartState,
-    StripChartSpec,
-    StripChartState,
     TriweightSpec,
     chart_presets,
     compile_chart,
     geometry_presets,
+    kernels,
     pattern_presets,
-    presets,
 )
 from torchcst._backends.torch.charts import execution
 
@@ -34,9 +32,7 @@ def axes():
 def spec(kind):
     if kind == "explicit":
         return chart_presets.points(((0.0, 0.0), (1.0, 0.0)))
-    if kind == "product":
-        return chart_presets.product((4, 3), axes())
-    return chart_presets.strip((4, 3), (2, 3), axes=axes(), axis=0, tile_pitch=0.8)
+    return chart_presets.product((4, 3), axes())
 
 
 def test_common_contracts_are_abstract_and_have_only_common_fields():
@@ -55,7 +51,6 @@ def test_common_contracts_are_abstract_and_have_only_common_fields():
     [
         ("explicit", ExplicitChartSpec, ExplicitChartState),
         ("product", ProductChartSpec, ProductChartState),
-        ("strip", StripChartSpec, StripChartState),
     ],
 )
 def test_compilation_and_snapshots_preserve_concrete_type(kind, spec_type, state_type):
@@ -75,7 +70,7 @@ def test_compilation_and_snapshots_preserve_concrete_type(kind, spec_type, state
 
 
 def test_each_family_has_its_own_fields_and_tensors():
-    explicit, product, strip = (spec(kind) for kind in ("explicit", "product", "strip"))
+    explicit, product = (spec(kind) for kind in ("explicit", "product"))
     for name in ("axes", "tile_shape", "axis", "tile_pitch"):
         assert not hasattr(explicit, name)
         assert not hasattr(compile_chart(explicit), name)
@@ -83,9 +78,6 @@ def test_each_family_has_its_own_fields_and_tensors():
         assert not hasattr(product, name)
         assert not hasattr(compile_chart(product), name)
     assert "trainable" not in {f.name for f in fields(ProductChartSpec)}
-    assert "trainable" not in {f.name for f in fields(StripChartSpec)}
-    assert not hasattr(strip, "coordinates") and not hasattr(strip, "spacing")
-    assert "tile_pitch" in dict(compile_chart(strip).named_buffers())
     assert "coordinates" in dict(compile_chart(explicit).named_buffers())
     with pytest.raises(TypeError, match="tile_pitch"):
         ProductChartSpec(
@@ -120,15 +112,15 @@ def test_custom_types_cannot_impersonate_registered_declarations_or_states():
     with pytest.raises(ValueError, match="unsupported chart"):
         execution.positions(CustomState(product), torch.tensor([0]))
     state = compile_chart(product)
-    state.spec = spec("strip")
+    state.spec = spec("explicit")
     with pytest.raises(ValueError, match="unsupported chart"):
         execution.positions(state, torch.tensor([0]))
 
 
 def test_checkpoint_rejects_other_family_and_old_tagged_format():
-    product, strip = compile_chart(spec("product")), compile_chart(spec("strip"))
+    product, explicit = compile_chart(spec("product")), compile_chart(spec("explicit"))
     with pytest.raises(RuntimeError, match="checkpoint contract"):
-        product.load_state_dict(strip.state_dict())
+        product.load_state_dict(explicit.state_dict())
     checkpoint = copy.deepcopy(product.state_dict())
     checkpoint["_extra_state"] = {"format_version": 1, "kind": "product"}
     with pytest.raises(RuntimeError, match="checkpoint contract"):
@@ -158,7 +150,7 @@ def test_explicit_operator_layout_does_not_need_axis_pattern_wrapping():
     model = CSTLinear(
         chart=declaration,
         atoms=2,
-        kernel=presets.radial(presets.fixed_profile(TriweightSpec(), 2.0)),
+        kernel=kernels.radial(kernels.l2(TriweightSpec(), 2.0)),
     )
     x = torch.randn(4, 3, requires_grad=True)
     actual = model(x)

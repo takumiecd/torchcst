@@ -30,10 +30,6 @@ def sphere(intrinsic_dim, **settings):
     return GeometryState(geometry_presets.sphere(intrinsic_dim, **settings))
 
 
-def torus(intrinsic_dim, **settings):
-    return GeometryState(geometry_presets.torus(intrinsic_dim, **settings))
-
-
 def line_pattern(size, **settings):
     return PatternState(pattern_presets.line(size, **settings))
 
@@ -106,20 +102,3 @@ def product(shape, axes, *, geometry=None):
         dtype=None if reference is None else reference.dtype,
     )
 
-
-def strip(shape, tile_shape, *, axes, axis, tile_pitch, geometry=None):
-    axes = tuple(axes)
-    spec = chart_presets.strip(
-        shape,
-        tile_shape,
-        axes=tuple(_spec(a) for a in axes),
-        axis=axis,
-        tile_pitch=tile_pitch,
-        geometry=_spec(geometry),
-    )
-    reference = axes[0].reference if isinstance(axes[0], PatternState) else None
-    return compile_chart(
-        spec,
-        device=None if reference is None else reference.device,
-        dtype=None if reference is None else reference.dtype,
-    )

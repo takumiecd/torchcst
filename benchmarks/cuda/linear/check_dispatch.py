@@ -18,7 +18,7 @@ from benchmarks.cuda.linear.check_normalized import benchmark, check, small_gate
 from benchmarks.cuda.linear.fixtures import normalized_chart
 from benchmarks.cuda.linear.manifest import DEFAULT_PLANS, decode_catalog, read_json
 from benchmarks.cuda.linear.reference import mixed, oracle
-from torchcst import CSTLinear, presets
+from torchcst import CSTLinear, kernels
 from torchcst._backends.catalog import REGISTRY
 from torchcst._backends.dispatch import ExactSelector, load_selector
 from torchcst._backends.dispatch.conditions import dump_condition
@@ -138,7 +138,7 @@ def correctness(directory, catalog):
     model = CSTLinear(
         chart=normalized_chart((1024, 4, 4), dtype=torch.float32, device="cuda"),
         atoms=mixed(torch.float32, "cuda"),
-        kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT,
+        kernel=kernels.NORMALIZED_RADIAL_TRIWEIGHT,
         selector=loaded,
     )
     x = torch.randn(7, 16, device="cuda", requires_grad=True)

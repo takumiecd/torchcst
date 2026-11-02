@@ -18,7 +18,7 @@ from torchcst._backends.schema import DefaultRecipe, ExecutionPlan
 from torchcst._builtin_callbacks import seal_functions as _seal_functions
 from torchcst._derivatives import AtomDerivatives, AutogradFrameGeometry
 from torchcst.atoms import Atoms
-from torchcst.charts import ChartSpec, ChartState, StripChartState, compile_chart
+from torchcst.charts import ChartSpec, ChartState, compile_chart
 from torchcst.kernels import AtomInit, KernelSpec
 from torchcst.kernels.options import KernelOptions
 from torchcst.kernels.state import KernelState
@@ -28,16 +28,14 @@ from torchcst.operators.execution import LinearInputs, validate_linear_inputs
 
 from .module import CSTModule, RepulsionKind
 
-Backend = Literal["auto", "factored", "materialized", "tiled", "triton"]
-ResolvedBackend = Literal["factored", "materialized", "tiled", "triton", "normalized"]
+Backend = Literal["auto", "factored", "materialized"]
+ResolvedBackend = Literal["factored", "materialized", "normalized"]
 
 _PLANS = {
     name: ExecutionPlan(algorithm_id, "v1", DefaultRecipe())
     for name, algorithm_id in (
         ("materialized", "torch_materialized"),
         ("factored", "torch_factored"),
-        ("tiled", "torch_tiled"),
-        ("triton", "cuda_strip_torus_fused"),
         ("normalized", "torch_normalized_radial"),
     )
 }
@@ -61,9 +59,16 @@ class CSTLinear(CSTModule):
 
     def __init__(
         self,
+        output_chart: ChartSpec
+        | ChartState
+        | tuple[ChartSpec | ChartState, ...]
+        | None = None,
         input_chart: ChartSpec | ChartState | None = None,
-        output_chart: ChartSpec | ChartState | None = None,
         *,
+        charts: tuple[ChartSpec | ChartState, ...]
+        | ChartSpec
+        | ChartState
+        | None = None,
         chart: ChartSpec | ChartState | None = None,
         atoms: int | Tensor | Atoms,
         kernel: KernelSpec,
@@ -77,23 +82,51 @@ class CSTLinear(CSTModule):
         from torchcst._backends.torch.kernels import execution as _kernel
 
         super().__init__()
-        if chart is not None:
-            if input_chart is not None or output_chart is not None:
+        if charts is not None:
+            if (
+                output_chart is not None
+                or input_chart is not None
+                or chart is not None
+            ):
                 raise ValueError(
-                    "chart cannot be combined with input_chart or output_chart"
+                    "charts cannot be combined with output_chart, input_chart, or chart"
                 )
-            input_chart = chart
-        if isinstance(input_chart, ChartSpec):
-            input_chart = compile_chart(input_chart, device=device, dtype=dtype)
-        if isinstance(output_chart, ChartSpec):
-            output_chart = compile_chart(output_chart, device=device, dtype=dtype)
-        if not isinstance(input_chart, ChartState) or (
-            output_chart is not None and not isinstance(output_chart, ChartState)
+            raw_charts = (
+                (charts,) if isinstance(charts, (ChartSpec, ChartState)) else charts
+            )
+        elif chart is not None:
+            if output_chart is not None or input_chart is not None:
+                raise ValueError(
+                    "chart cannot be combined with output_chart or input_chart"
+                )
+            raw_charts = (chart,)
+        elif isinstance(output_chart, tuple):
+            if input_chart is not None:
+                raise ValueError(
+                    "charts tuple cannot be combined with input_chart"
+                )
+            raw_charts = output_chart
+        elif output_chart is not None and input_chart is None:
+            raw_charts = (output_chart,)
+        elif output_chart is not None and input_chart is not None:
+            raw_charts = (output_chart, input_chart)
+        else:
+            raise TypeError("charts must be ChartSpec or ChartState instances")
+        if (
+            not isinstance(raw_charts, tuple)
+            or len(raw_charts) not in (1, 2)
+            or not all(isinstance(c, (ChartSpec, ChartState)) for c in raw_charts)
         ):
             raise TypeError("charts must be ChartSpec or ChartState instances")
-        single_chart = output_chart is None
+        compiled = tuple(
+            compile_chart(c, device=device, dtype=dtype)
+            if isinstance(c, ChartSpec)
+            else c
+            for c in raw_charts
+        )
+        single_chart = len(compiled) == 1
         if single_chart and (
-            not hasattr(input_chart, "shape") or len(input_chart.shape) != 2
+            not hasattr(compiled[0], "shape") or len(compiled[0].shape) != 2
         ):
             raise ValueError("a single chart must describe an [out, in] operator")
         if isinstance(atoms, bool) or not isinstance(atoms, (int, Tensor, Atoms)):
@@ -108,10 +141,10 @@ class CSTLinear(CSTModule):
         if atom_init not in ("balanced", "uniform"):
             raise ValueError("atom_init must be 'balanced' or 'uniform'")
         if single_chart:
-            self.chart = input_chart
+            self.chart = compiled[0]
         else:
-            self.input_chart = input_chart
-            self.output_chart = output_chart
+            self.output_chart = compiled[0]
+            self.input_chart = compiled[1]
         self.kernel = KernelState(kernel, options=kernel_options)
         kernel = self.kernel
         self.atom_init = atom_init
@@ -120,7 +153,7 @@ class CSTLinear(CSTModule):
         reference = (
             atoms.p
             if isinstance(atoms, Atoms)
-            else (atoms if isinstance(atoms, Tensor) else input_chart.reference)
+            else (atoms if isinstance(atoms, Tensor) else compiled[0].reference)
         )
         target_device = device or reference.device
         target_dtype = dtype or reference.dtype
@@ -191,9 +224,9 @@ class CSTLinear(CSTModule):
     @backend.setter
     def backend(self, value: Backend) -> None:
         if value != "auto":
-            if value not in ("factored", "materialized", "tiled", "triton"):
+            if value not in ("factored", "materialized"):
                 raise ValueError(
-                    "backend must be one of 'auto', 'factored', 'materialized', 'tiled', 'triton'"
+                    "backend must be one of 'auto', 'factored', 'materialized'"
                 )
             plan = _PLANS[value]
             get_registry().validate_plan(plan).validate_configuration(self)
@@ -269,27 +302,25 @@ class CSTLinear(CSTModule):
 
         return (self.atoms.p,)
 
+    @property
+    def charts(self) -> tuple[ChartState, ...]:
+        """Return the tuple of charts observed by this linear operator."""
+
+        return self.cst_charts()
+
     def cst_charts(self) -> tuple[ChartState, ...]:
         """Return the chart or chart pair observed by this site."""
 
         return (
             (self.chart,)
             if hasattr(self, "chart")
-            else (self.input_chart, self.output_chart)
+            else (self.output_chart, self.input_chart)
         )
 
     def dense_weight(self) -> Tensor:
         """Materialize the canonical sum of complete kernel atoms."""
 
         return self.operator.weight()
-
-    def packed_weight(self) -> Tensor:
-        """Return tile-major storage for a single StripChart operator."""
-        from torchcst._backends.torch.kernels import execution as _kernel
-
-        if not hasattr(self, "chart") or not (isinstance(self.chart, StripChartState)):
-            raise TypeError("packed_weight requires a single StripChart")
-        return _kernel.packed_weight(self.kernel, self.chart, self.atoms.p)
 
     def repulsion_terms(
         self, *, kind: RepulsionKind = "cosine"

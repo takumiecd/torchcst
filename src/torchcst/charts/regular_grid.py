@@ -3,9 +3,7 @@
 import math
 from dataclasses import dataclass, field, replace
 
-import torch
-
-from torchcst._coordinate_state import _floating_dtype
+from torchcst._coordinate_state import Placement
 from torchcst._validation import _shape
 from torchcst.geometry.spec import EuclideanGeometrySpec, FlatTorusGeometrySpec
 
@@ -14,20 +12,17 @@ from .base import ChartSpec, ChartState
 
 @dataclass(frozen=True, kw_only=True)
 class RegularGridChartSpec(ChartSpec):
-    grid_shape: tuple[tuple[int, ...], ...]
+    grid_shape: tuple[int, ...]
     spacing: tuple[float, ...]
     origin: tuple[float, ...]
     shape: tuple[int, ...] = field(init=False)
     kind: str = field(default="regular_grid", init=False)
 
     def __post_init__(self):
-        if not isinstance(self.grid_shape, tuple) or not self.grid_shape:
-            raise ValueError("grid_shape needs a nonempty tuple per logical axis")
-        for shape in self.grid_shape:
-            _shape(shape)
-        object.__setattr__(self, "shape", tuple(map(math.prod, self.grid_shape)))
+        _shape(self.grid_shape)
+        object.__setattr__(self, "shape", self.grid_shape)
         super().__post_init__()
-        dim = len(self.coordinate_shape)
+        dim = len(self.grid_shape)
         if (
             type(self.geometry) not in (EuclideanGeometrySpec, FlatTorusGeometrySpec)
             or self.geometry.intrinsic_dim != dim
@@ -51,39 +46,50 @@ class RegularGridChartSpec(ChartSpec):
 
     @property
     def coordinate_shape(self):
-        return tuple(n for group in self.grid_shape for n in group)
+        return self.grid_shape
 
 
 class RegularGridChartState(ChartState):
-    """Own O(D) origins/spacings, with no site coordinate or index table."""
+    """Own O(D) immutable grid metadata, without Tensor buffers or site tables."""
 
     spec_type = RegularGridChartSpec
 
     def __init__(self, spec, *, device=None, dtype=None):
-        dtype = _floating_dtype(dtype)
-        super().__init__(spec, device=device, dtype=dtype)
+        self._placement = Placement(device=device, dtype=dtype)
+        super().__init__(spec, device=device, dtype=self._placement.dtype)
         self.grid_shape = spec.grid_shape
         self.coordinate_shape = spec.coordinate_shape
-        self.register_buffer(
-            "origin", torch.tensor(spec.origin, device=device, dtype=dtype)
-        )
-        self.register_buffer(
-            "spacing",
-            torch.tensor(spec.spacing, device=device, dtype=self.origin.dtype),
-        )
-        self.declaration()
+
+    @property
+    def origin(self):
+        return self.spec.origin
+
+    @property
+    def spacing(self):
+        return self.spec.spacing
 
     @property
     def reference(self):
-        return self.origin
+        return self._placement
+
+    def _apply(self, fn, recurse=True):
+        result = super()._apply(fn, recurse=recurse)
+        self._placement = self._placement.converted(fn)
+        return result
 
     def declaration(self):
-        return replace(
-            self.spec,
-            geometry=self.geometry.declaration(),
-            origin=tuple(self.origin.detach().cpu().tolist()),
-            spacing=tuple(self.spacing.detach().cpu().tolist()),
-        )
+        return replace(self.spec, geometry=self.geometry.declaration())
 
     def get_extra_state(self):
-        return {**super().get_extra_state(), "grid_shape": self.grid_shape}
+        return {
+            **super().get_extra_state(),
+            "format_version": 3,
+            "grid_shape": self.grid_shape,
+            "origin": self.spec.origin,
+            "spacing": self.spec.spacing,
+        }
+
+
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
+
+_seal_functions(globals())

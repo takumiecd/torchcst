@@ -3,20 +3,17 @@
 import torch
 
 
-def project_parameter_gradient(state, input_chart, output_chart, p, gradient):
+def project_parameter_gradient(state, output_chart, input_chart, p, gradient):
     return gradient
 
 
 def apply_parameter_update(
-    state, input_chart, output_chart, p, displacement, *, step_size
+    state, output_chart, input_chart, p, displacement, *, step_size
 ):
     proposal = p + displacement
-    exact = (
-        torch.minimum(
-            input_chart.geometry.periods[0].double(),
-            output_chart.geometry.periods[0].double(),
-        )
-        / 2
+    exact = p.new_tensor(
+        min(output_chart.geometry.periods[0], input_chart.geometry.periods[0]) / 2,
+        dtype=torch.float64,
     )
     rounded = exact.to(p)
     ceiling = torch.where(
@@ -30,5 +27,5 @@ def apply_parameter_update(
     return torch.stack((proposal[:, 0], radius, proposal[:, 2], proposal[:, 3]), dim=1)
 
 
-def transport_parameter_state(state, input_chart, output_chart, old, new, vector):
+def transport_parameter_state(state, output_chart, input_chart, old, new, vector):
     return vector

@@ -91,7 +91,8 @@ __device__ inline double radius(const T *atoms, int atom, const Axis &axis) {
 }
 template<class T>
 __device__ inline double center(const T *atoms, int atom, const Axis &axis, bool output) {
-    return atoms[4 * atom + (axis.polar ? (output ? 3 : 2) : (output ? 2 : 3))];
+    (void)axis;
+    return atoms[4 * atom + (output ? 2 : 3)];
 }
 __device__ inline double wrapped_center(double center, const Axis &axis) {
     double value = fmod(fmod(center, axis.period) - fmod(axis.origin, axis.period), axis.period);
@@ -208,7 +209,7 @@ __device__ inline void store_gradient(const T *atoms, T *gradient, int atom,
         double dt = q >= tiny ? -input.amplitude_max * inverse * s * t / safe : 0;
         // Derived Polar radii are detached from task gradients.
         gradient[4 * atom] = T(da * ds); gradient[4 * atom + 1] = T(da * dt);
-        gradient[4 * atom + 2] = T(dmu_input); gradient[4 * atom + 3] = T(dmu_output);
+        gradient[4 * atom + 2] = T(dmu_output); gradient[4 * atom + 3] = T(dmu_input);
     } else {
         gradient[4 * atom] = T(da); gradient[4 * atom + 1] = T(dR);
         gradient[4 * atom + 2] = T(dmu_output); gradient[4 * atom + 3] = T(dmu_input);

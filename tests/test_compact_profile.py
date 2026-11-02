@@ -214,17 +214,17 @@ def test_triweight_factor_hessian_is_finite_for_empty_atoms() -> None:
     )
     input_chart = _construction.grid((28, 28), low=-1.0, high=1.0)
     output_chart = _construction.linspace(64, low=-1.0, high=1.0)
-    p = _kernel.initialize(kernel, input_chart, output_chart, 3, mode="uniform")
+    p = _kernel.initialize(kernel, output_chart, input_chart, 3, mode="uniform")
     p = p.clone()
     p[:, 0] = 1.0
-    p[1, 1:3] = 8.0
-    p[2, 1:3] = input_chart.coordinates[0]
+    p[1, 2:4] = 8.0
+    p[2, 2:4] = input_chart.coordinates[0]
     inputs = torch.randn(8, 784)
     output_gradient = torch.randn(8, 64)
 
     def scalar(atom):
         phi_in, phi_out = _kernel.factors(
-            kernel, input_chart, output_chart, atom.unsqueeze(0)
+            kernel, output_chart, input_chart, atom.unsqueeze(0)
         )
         return (inputs @ phi_in * (output_gradient @ phi_out)).sum()
 
@@ -287,8 +287,8 @@ def test_amplitude_bandwidth_accepts_compact_profiles(factory) -> None:
     p[:, 0] = torch.tensor([0.4, -0.3], dtype=torch.float64)
     p[:, 1] = torch.tensor([0.0, 0.2], dtype=torch.float64)
     p[:, 2] = torch.tensor([0.0, -0.1], dtype=torch.float64)
-    represented = _kernel.materialize_atoms(kernel, input_chart, output_chart, p)
-    phi_input, phi_output = _kernel.factors(kernel, input_chart, output_chart, p)
+    represented = _kernel.materialize_atoms(kernel, output_chart, input_chart, p)
+    phi_input, phi_output = _kernel.factors(kernel, output_chart, input_chart, p)
     torch.testing.assert_close(
         represented, torch.einsum("oa,ia->aoi", phi_output, phi_input)
     )
@@ -298,7 +298,7 @@ def test_amplitude_bandwidth_accepts_compact_profiles(factory) -> None:
         )
     hessian = torch.func.hessian(
         lambda atom: _kernel.materialize_atoms(
-            kernel, input_chart, output_chart, atom.unsqueeze(0)
+            kernel, output_chart, input_chart, atom.unsqueeze(0)
         ).sum()
     )(p[0])
     assert torch.isfinite(hessian).all()
@@ -310,11 +310,11 @@ def test_separable_accepts_compact_profiles() -> None:
     )
     input_chart = _construction.linspace(4, low=-1.0, high=1.0)
     output_chart = _construction.linspace(3, low=-1.0, high=1.0)
-    p = _kernel.initialize(kernel, input_chart, output_chart, 2, mode="balanced")
-    phi_input, phi_output = _kernel.factors(kernel, input_chart, output_chart, p)
+    p = _kernel.initialize(kernel, output_chart, input_chart, 2, mode="balanced")
+    phi_input, phi_output = _kernel.factors(kernel, output_chart, input_chart, p)
     assert phi_input.shape == (4, 2)
     assert phi_output.shape == (3, 2)
-    assert _kernel.tangent_backend(kernel, input_chart, output_chart) is not None
+    assert _kernel.tangent_backend(kernel, output_chart, input_chart) is not None
 
 
 @pytest.mark.parametrize("dtype", [torch.float64, torch.float32])

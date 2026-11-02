@@ -94,7 +94,14 @@ def fixed_state_signature(roots):
     for module in modules:
         spec, binding = getattr(module, "spec", None), getattr(module, "binding", None)
         children = _children(module)
-        markers.append((id(module), children, id(spec), spec, id(binding), binding))
+        # Keep scalar/tuple fields by value as well as declaration identity.
+        # Fixed geometry/grid values no longer have Tensor version counters.
+        static = (
+            tuple(vars(spec).items()) if hasattr(spec, "__dataclass_fields__") else ()
+        )
+        markers.append(
+            (id(module), children, id(spec), spec, static, id(binding), binding)
+        )
         # Configuration declarations are metadata. A custom Tensor-valued
         # attribute must not be retained by this metadata cache.
         cacheable = (

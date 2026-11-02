@@ -6,7 +6,6 @@ from .spec import (
     FlatTorusGeometrySpec,
     GeometrySpec,
     SphereGeometrySpec,
-    TorusGeometrySpec,
 )
 from .state import GeometryState
 
@@ -16,6 +15,5 @@ __all__ = [
     "GeometrySpec",
     "GeometryState",
     "SphereGeometrySpec",
-    "TorusGeometrySpec",
     "presets",
 ]

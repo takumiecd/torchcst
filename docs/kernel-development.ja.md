@@ -1,6 +1,7 @@
 # カーネル追加と改善の手順
 
-2026-10-05時点。小さいCST線形変換の研究は既存のLinear runner、PostgreSQL保存、
+現行の公開 API は [README](../README.md) を参照する。旧 local-product 試作は削除済み。
+2026-10-05の開発方針を基礎に、以下の実行例を現存する Plan / Case へ更新した。小さいCST線形変換の研究は既存のLinear runner、PostgreSQL保存、
 ディスパッチ生成を使う。main統合はGitHub PRで行う。
 
 開発の入口・PR手順は [CONTRIBUTING.md](../CONTRIBUTING.md)、
@@ -148,10 +149,9 @@ correctnessが失敗したら修正してから測定へ進む。測定runner自
 ```bash
 python -m pip install -e '.[dev]'
 python -m tools.kernel_dev check \
-  --plans benchmarks/cuda/linear/plans-local-contraction.json \
-  --case benchmarks/cuda/linear/cases/local-contraction-64-sigma3.json \
-  --case benchmarks/cuda/linear/cases/local-contraction-64-middle.json \
-  --case benchmarks/cuda/linear/cases/local-contraction-128-early.json
+  --plans benchmarks/cuda/linear/plans-radius-cell-mass.json \
+  --case benchmarks/cuda/linear/cases/radius-cell-mass-128-initial.json \
+  --case benchmarks/cuda/linear/cases/radius-cell-mass-1024-owner-compact-keyed-initial.json
 python -m tools.kernel_dev test --suite cpu
 ```
 
@@ -166,7 +166,7 @@ python -m tools.kernel_dev test --suite cpu
 GPU・実DBのテストは条件に応じてskipされるので、pytestのskip件数も記録する。
 
 GPU開発環境では`python -m pip install -e '.[dev,cuda]'`を実行し、対象に応じて
-`python -m tools.kernel_dev test --suite local-product`または
+`python -m tools.kernel_dev test --suite atom-update`または
 `python -m tools.kernel_dev test --suite normalized-strip`を使う。
 Atom更新は`python -m tools.kernel_dev test --suite atom-update`で確認する。
 これらはCUDA / Tritonがない環境では失敗し、GPU検証をskipだけで通さない。
@@ -206,9 +206,9 @@ L4は[共有プール](../tools/colab-l4-pool/SKILL.md)へ提出する。提出�
 
 ```bash
 python -m benchmarks.cuda.linear.run \
-  --plans benchmarks/cuda/linear/plans-local-contraction.json \
-  --case benchmarks/cuda/linear/cases/local-contraction-64-middle.json \
-  --polar-update fused --phase-diagnostics --kernel-diagnostics \
+  --plans benchmarks/cuda/linear/plans-radius-cell-mass.json \
+  --case benchmarks/cuda/linear/cases/radius-cell-mass-1024-owner-compact-keyed-initial.json \
+  --phase-diagnostics --kernel-diagnostics \
   --output benchmarks/cuda/linear/evidence/comparison.json
 ```
 

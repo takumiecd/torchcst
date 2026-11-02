@@ -39,10 +39,10 @@ def factors(state, *charts_and_p):
     return phi_input, phi_output * amplitude.T
 
 
-def tangent_backend(state, input_chart, output_chart):
-    inner = _kernel.tangent_backend(state.inner, input_chart, output_chart)
+def tangent_backend(state, output_chart, input_chart):
+    inner = _kernel.tangent_backend(state.inner, output_chart, input_chart)
     if inner is None:
         return None
     from .tangent import amplitude
 
-    return lambda p: amplitude(state, inner, input_chart, output_chart, p)
+    return lambda p: amplitude(state, inner, output_chart, input_chart, p)

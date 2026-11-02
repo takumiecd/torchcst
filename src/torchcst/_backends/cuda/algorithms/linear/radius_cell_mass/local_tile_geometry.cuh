@@ -134,17 +134,17 @@ __device__ inline void local_tile_atom(const T *p, const T *signal,
             dm += amp * g[index] * centers.value[b];
         }
     }
-    if constexpr (Stage == 1) gradient[4 * atom + 3] = T(dm);
+    if constexpr (Stage == 1) gradient[4 * atom + 2] = T(dm);
     if constexpr (Stage == 2) {
         // Same detached-radius Polar pullback as store_gradient. This stage
-        // owns cols0/1/2 only; the output-owner stage already finished col3.
+        // owns cols0/1/3 only; the output-owner stage already finished col2.
         double s = p[4 * atom], t = p[4 * atom + 1], q = s * s + t * t;
         double tiny = std::is_same<T, float>::value ? FLT_MIN : DBL_MIN;
         double safe = fmax(q, tiny), inverse = 1 / sqrt(safe);
         double ds = axis.amplitude_max * inverse * (q >= tiny ? 1 - s * s / safe : 1);
         double dt = q >= tiny ? -axis.amplitude_max * inverse * s * t / safe : 0;
         gradient[4 * atom] = T(da * ds); gradient[4 * atom + 1] = T(da * dt);
-        gradient[4 * atom + 2] = T(dm);
+        gradient[4 * atom + 3] = T(dm);
     }
 }
 } // namespace radius_cell_mass

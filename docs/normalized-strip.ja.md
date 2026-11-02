@@ -4,7 +4,7 @@
 # 正規化 Strip 線形層
 
 `CSTLinear` に通常の3次元 Euclidean の regular Product / 連続 Strip chart と
-`presets.NORMALIZED_RADIAL_TRIWEIGHT` を渡す。各 atom の離散 L2 ノルムを
+`kernels.NORMALIZED_RADIAL_TRIWEIGHT` を渡す。各 atom の離散 L2 ノルムを
 演算子全体から計算する。公開 Linear は共通入口へ統一し、旧専用クラスは削除した。
 
 ## インストール
@@ -76,7 +76,7 @@ p[:, 2] = torch.rand(128, device='cuda') * (rows - 1)
 p[:, 3] = torch.rand(128, device='cuda') * (h - 1) * 0.5
 p[:, 4] = torch.rand(128, device='cuda') * (j - 1) * 0.5
 
-layer = CSTLinear(chart=chart, atoms=p, kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT)
+layer = CSTLinear(chart=chart, atoms=p, kernel=kernels.NORMALIZED_RADIAL_TRIWEIGHT)
 optimizer = torch.optim.AdamW(layer.parameters(), lr=1e-3)
 x = torch.randn(128, h * j, device='cuda')
 optimizer.zero_grad(set_to_none=True)
@@ -95,7 +95,7 @@ optimizer.step()
 shared_p = torch.nn.Parameter(p)
 base_optimizer = torch.optim.AdamW([shared_p], lr=1e-3)
 shared_layer = CSTLinear(chart=chart, atoms=shared_p,
-                         kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT)
+                         kernel=kernels.NORMALIZED_RADIAL_TRIWEIGHT)
 assert shared_layer.atoms.p is shared_p
 ```
 

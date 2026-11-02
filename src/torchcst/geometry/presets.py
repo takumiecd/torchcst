@@ -4,7 +4,6 @@ from .spec import (
     EuclideanGeometrySpec,
     FlatTorusGeometrySpec,
     SphereGeometrySpec,
-    TorusGeometrySpec,
 )
 
 
@@ -14,10 +13,6 @@ def euclidean(dim):
 
 def sphere(intrinsic_dim, **settings):
     return SphereGeometrySpec(intrinsic_dim=intrinsic_dim, **settings)
-
-
-def torus(intrinsic_dim, **settings):
-    return TorusGeometrySpec(intrinsic_dim=intrinsic_dim, **settings)
 
 
 def flat_torus(periods):

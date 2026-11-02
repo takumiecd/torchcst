@@ -108,6 +108,7 @@ def fused_update_(
             HAS_AMPLITUDE_DECAY=amplitude_weight_decay != 0,
             **(
                 {
+                    # Historical launch names; pointers follow center columns (out, in).
                     "INPUT_PERIOD": periods[0],
                     "OUTPUT_PERIOD": periods[1],
                     "PERIODIC": True,

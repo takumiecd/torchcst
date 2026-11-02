@@ -21,3 +21,19 @@ def _validate_loaded_state(state, incompatible_keys):
         state.declaration()
     except (ValueError, TypeError) as error:
         raise RuntimeError("invalid coordinate checkpoint configuration") from error
+
+
+class Placement:
+    """Device/dtype hints for tensor-free declarations before atoms are bound."""
+
+    def __init__(self, *, device=None, dtype=None):
+        self.device = torch.device("cpu" if device is None else device)
+        if self.device.type == "cuda" and self.device.index is None:
+            self.device = torch.device("cuda", torch.cuda.current_device())
+        self.dtype = _floating_dtype(dtype)
+
+    def converted(self, fn):
+        # Module.to() supplies a Tensor conversion callback. Probe placement with
+        # an empty temporary; retain neither Tensor nor allocator storage.
+        value = fn(torch.empty(0, device=self.device, dtype=self.dtype))
+        return Placement(device=value.device, dtype=value.dtype)

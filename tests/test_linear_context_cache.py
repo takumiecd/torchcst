@@ -111,7 +111,7 @@ def test_warm_context_keeps_full_configuration_change_validation(kind, change):
     elif change == "invalid_kernel":
         model.kernel.scalar("radius_min_input").fill_(-1)
     else:
-        model.input_chart.geometry.periods.fill_(0)
+        object.__setattr__(model.input_chart.geometry.spec, "periods", (0.0,))
     if change.startswith("invalid"):
         with pytest.raises(ValueError):
             binding.build_context(inputs)

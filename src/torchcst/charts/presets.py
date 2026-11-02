@@ -1,6 +1,5 @@
 """Pure constructors of concrete Chart declarations."""
 
-import math
 from itertools import product as cartesian_product
 
 from torchcst._validation import _points
@@ -8,10 +7,8 @@ from torchcst.geometry import presets as geometry_presets
 from torchcst.patterns import presets as pattern_presets
 
 from .explicit import ExplicitChartSpec
-from .periodic_grid import PeriodicGridChartSpec
 from .product import ProductChartSpec
 from .regular_grid import RegularGridChartSpec
-from .strip import StripChartSpec
 
 
 def points(coordinates, *, geometry=None, trainable=False, spacing=None):
@@ -51,39 +48,6 @@ def product(shape, axes, *, geometry=None):
     )
 
 
-def strip(shape, tile_shape, *, axes, axis, tile_pitch, geometry=None):
-    axes = tuple(axes)
-    return StripChartSpec(
-        shape=tuple(shape),
-        axes=axes,
-        geometry=geometry or geometry_presets.euclidean(sum(a.dim for a in axes)),
-        tile_shape=tuple(tile_shape),
-        axis=axis,
-        tile_pitch=tile_pitch,
-    )
-
-
-def periodic_grid(grid_shape, *, periods, output_dims=1, origin=None):
-    """Single [out, in] chart on a flat periodic Cartesian lattice.
-
-    Coordinates before output_dims flatten into output rows; the rest flatten
-    into input columns. Each side is row-major. No endpoint is duplicated.
-    """
-    grid_shape = tuple(grid_shape)
-    if type(output_dims) is not int or not 0 < output_dims < len(grid_shape):
-        raise ValueError("output_dims must split nonempty output and input coordinates")
-    return PeriodicGridChartSpec(
-        geometry=geometry_presets.flat_torus(periods),
-        grid_shape=grid_shape,
-        output_dims=output_dims,
-        origin=tuple(origin) if origin is not None else (0.0,) * len(grid_shape),
-        shape=(
-            math.prod(grid_shape[:output_dims]),
-            math.prod(grid_shape[output_dims:]),
-        ),
-    )
-
-
 def _coordinate_values(value, dim, name):
     if type(value) in (int, float):
         return (value,) * dim
@@ -97,33 +61,33 @@ def _coordinate_values(value, dim, name):
 
 
 def regular_grid(grid_shape, *, spacing=1.0, origin=0.0, geometry=None):
-    """Implicit grid per weight axis; scalar spacing/origin broadcast to coordinates.
+    """Implicit grid for one chart; scalar spacing/origin broadcast to coordinates.
 
     Geometry defaults to Euclidean. ``geometry='flat_torus'`` derives each
     period as count * spacing. A concrete geometry retains its own metric.
-    The last coordinate within each weight axis varies fastest.
+    The last coordinate varies fastest.
     """
-    try:
-        grid_shape = tuple(tuple(group) for group in grid_shape)
-    except TypeError:
-        raise ValueError(
-            "grid_shape needs a tuple of coordinate counts per logical axis"
-        ) from None
-    counts = tuple(n for group in grid_shape for n in group)
-    spacing = _coordinate_values(spacing, len(counts), "spacing")
-    origin = _coordinate_values(origin, len(counts), "origin")
-    if geometry is None or geometry == "euclidean":
-        geometry = geometry_presets.euclidean(len(counts))
-    elif geometry == "flat_torus":
-        # Validate counts/spacings before multiplication, without coercing bools.
-        from torchcst._validation import _positive, _shape
+    from torchcst._validation import _positive, _shape
 
-        for group in grid_shape:
-            _shape(group)
+    if type(grid_shape) is int:
+        grid_shape = (grid_shape,)
+    else:
+        try:
+            grid_shape = tuple(grid_shape)
+        except TypeError:
+            raise ValueError(
+                "grid_shape needs an int or a tuple of coordinate counts"
+            ) from None
+    _shape(grid_shape)
+    spacing = _coordinate_values(spacing, len(grid_shape), "spacing")
+    origin = _coordinate_values(origin, len(grid_shape), "origin")
+    if geometry is None or geometry == "euclidean":
+        geometry = geometry_presets.euclidean(len(grid_shape))
+    elif geometry == "flat_torus":
         for value in spacing:
             _positive(value, "spacing")
         geometry = geometry_presets.flat_torus(
-            tuple(n * h for n, h in zip(counts, spacing))
+            tuple(n * h for n, h in zip(grid_shape, spacing))
         )
     return RegularGridChartSpec(
         grid_shape=grid_shape, geometry=geometry, spacing=spacing, origin=origin

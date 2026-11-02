@@ -24,18 +24,20 @@ def lower_half_amplitude(state) -> Tensor:
 
 def initialize(
     state,
-    input_chart: ChartState,
     output_chart: ChartState,
+    input_chart: ChartState,
     atoms: int,
     *,
     mode: AtomInit,
 ) -> Tensor:
     if mode not in ("balanced", "uniform"):
         raise ValueError("mode must be 'balanced' or 'uniform'")
-    input_p = _profile.initialize(state.profiles[0], input_chart, atoms, mode="uniform")
-    output_p = _profile.initialize(state.profiles[1], output_chart, atoms, mode=mode)
+    output_p = _profile.initialize(state.profiles[0], output_chart, atoms, mode=mode)
+    input_p = _profile.initialize(
+        state.profiles[-1], input_chart, atoms, mode="uniform"
+    )
 
-    amplitude = input_p.new_empty(atoms)
+    amplitude = output_p.new_empty(atoms)
     amplitude.normal_(mean=0.0, std=0.1 / math.sqrt(atoms))
     maximum = state.scalar("amplitude_max").to(amplitude)
     # Keep initialization away from the angular critical points w = +/- W.
@@ -45,27 +47,27 @@ def initialize(
     # bandwidth clock an optional, regularized exploration reserve.
     initial_radius = (1.0 + 3.0 * state.scalar("alpha_init").to(polar)).sqrt()
     polar = polar * initial_radius
-    return torch.cat((polar, input_p, output_p), dim=-1)
+    return torch.cat((polar, output_p, input_p), dim=-1)
 
 
 def materialize_atoms(
     state,
-    input_chart: ChartState,
     output_chart: ChartState,
+    input_chart: ChartState,
     p: Tensor,
 ) -> Tensor:
-    phi_input, phi_output = _kernel.factors(state, input_chart, output_chart, p)
+    phi_input, phi_output = _kernel.factors(state, output_chart, input_chart, p)
     return torch.einsum("oa,ia->aoi", phi_output, phi_input)
 
 
 def factors(
     state,
-    input_chart: ChartState,
     output_chart: ChartState,
+    input_chart: ChartState,
     p: Tensor,
 ) -> tuple[Tensor, Tensor]:
-    polar, input_p, output_p = _parameterizations._split(
-        state, input_chart, output_chart, p
+    polar, output_p, input_p = _parameterizations._split(
+        state, output_chart, input_chart, p
     )
     amplitude, alpha = _parameterizations._amplitude_and_alpha(state, polar)
     sigma_input, sigma_output = _parameterizations._bandwidth_sigmas(
@@ -75,10 +77,10 @@ def factors(
     # of freedom. Only the explicit radial regularizer may decrease alpha.
     precision_input = sigma_input.reciprocal().square().detach()
     precision_output = sigma_output.reciprocal().square().detach()
-    phi_input = _profile.evaluate_with_precision(
-        state.profiles[0], input_chart, input_p, precision_input
-    )
     phi_output = _profile.evaluate_with_precision(
-        state.profiles[1], output_chart, output_p, precision_output
+        state.profiles[0], output_chart, output_p, precision_output
+    )
+    phi_input = _profile.evaluate_with_precision(
+        state.profiles[-1], input_chart, input_p, precision_input
     )
     return phi_input, phi_output * amplitude.unsqueeze(0)

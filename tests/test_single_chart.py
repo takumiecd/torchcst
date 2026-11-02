@@ -158,102 +158,6 @@ def test_large_product_retains_only_axis_state():
     assert sum(value.numel() for value in chart.buffers()) < 20
 
 
-def test_strip_line_axis_tiles_without_extra_dimension_or_site_table():
-    axes = (
-        _construction.line_pattern(5, spacing=0.5),
-        _construction.grid_pattern((2, 3), spacing=0.2),
-        _construction.line_pattern(3, spacing=0.1),
-    )
-    chart = _construction.strip(
-        shape=(5, 6, 3), axes=axes, tile_shape=(2, 6, 3), axis=0, tile_pitch=2.0
-    )
-    assert chart.embedding_dim == 4
-    assert chart.tile_grid == (3, 1, 1)
-    sites = _charts.positions(chart, torch.tensor([0, 36, 72]))
-    torch.testing.assert_close(sites[:, 0], torch.tensor([-1.0, 1.0, 3.0]))
-    torch.testing.assert_close(sites[:, 1:], sites[0, 1:].expand(3, -1))
-    logical = torch.cat(
-        [_charts.tile_indices(chart, s)[0] for s in range(chart.tile_count)]
-    )
-    torch.testing.assert_close(torch.sort(logical).values, torch.arange(chart.features))
-    _charts.validate_support(chart, 1.7)
-    with pytest.raises(ValueError, match="more than two"):
-        _charts.validate_support(chart, 1.75)
-
-
-def test_strip_rejects_multidimensional_extension_axis_and_second_tiled_axis():
-    with pytest.raises(ValueError, match="line pattern"):
-        _construction.strip(
-            shape=(6, 3),
-            axes=(
-                _construction.grid_pattern((2, 3), spacing=1),
-                _construction.line_pattern(3, spacing=1),
-            ),
-            tile_shape=(2, 3),
-            axis=0,
-            tile_pitch=3,
-        )
-    with pytest.raises(ValueError, match="only the strip axis"):
-        _construction.strip(
-            shape=(6, 3),
-            axes=(
-                _construction.line_pattern(6, spacing=1),
-                _construction.line_pattern(3, spacing=1),
-            ),
-            tile_shape=(2, 2),
-            axis=0,
-            tile_pitch=3,
-        )
-    with pytest.raises(TypeError):
-        _construction.strip(shape=(6, 3), tile_shape=(2, 3), tile_pitch=3)
-
-
-def test_spherical_strip_lifts_sites_and_checks_compact_support():
-    chart = _construction.strip(
-        shape=(6, 3),
-        tile_shape=(2, 3),
-        axes=(
-            _construction.line_pattern(6, spacing=0.2),
-            _construction.line_pattern(3, spacing=0.1),
-        ),
-        axis=0,
-        tile_pitch=3.0,
-        geometry=_construction.sphere(2, radius=32.0),
-    )
-    _geometry.validate_points(
-        chart.geometry, _charts.positions(chart, torch.arange(chart.features))
-    )
-    _charts.validate_support(chart, 2.0)
-    with pytest.raises(ValueError, match="more than two"):
-        _charts.validate_support(chart, 3.0)
-
-
-def test_new_strip_packed_weight_matches_dense_and_zero_pads_edge():
-    chart = _construction.strip(
-        shape=(5, 3),
-        tile_shape=(2, 3),
-        axes=(
-            _construction.line_pattern(5, spacing=0.2),
-            _construction.line_pattern(3, spacing=0.3),
-        ),
-        axis=0,
-        tile_pitch=2.0,
-    )
-    model = CSTLinear(chart=chart, atoms=3, kernel=direct_kernel(1.0).declaration())
-    packed = model.packed_weight()
-    dense = model.dense_weight().flatten()
-    assert packed.is_contiguous()
-    assert packed.shape == (3, 2, 3)
-    for station in range(chart.tile_count):
-        logical, local = _charts.tile_indices(chart, station)
-        torch.testing.assert_close(packed[station].flatten()[local], dense[logical])
-        assert (
-            torch.count_nonzero(packed[station].flatten().index_fill(0, local, 0)) == 0
-        )
-    packed.sum().backward()
-    assert torch.isfinite(model.atoms.p.grad).all()
-
-
 def test_single_chart_weight_gradient_matches_dense_oracle():
     chart = _construction.product(
         shape=(3, 4),
@@ -336,23 +240,6 @@ def test_bandwidth_activity_and_strip_support_maximum():
     ).step()
     assert bool((model.atoms.p[:, 1] >= 1).all())
     assert bool((model.atoms.p[:, 1] <= 4).all())
-    strip = _construction.strip(
-        shape=(6, 3),
-        tile_shape=(2, 3),
-        axes=(
-            _construction.line_pattern(6, spacing=0.1),
-            _construction.line_pattern(3, spacing=0.1),
-        ),
-        axis=0,
-        tile_pitch=1.0,
-    )
-    with pytest.raises(ValueError, match="more than two"):
-        CSTLinear(
-            chart=strip,
-            atoms=2,
-            kernel=kernel.declaration(),
-            kernel_options=kernel.options,
-        )
 
 
 def test_single_chart_requests_bounded_site_slices(monkeypatch):
@@ -387,18 +274,15 @@ def test_single_chart_requests_bounded_site_slices(monkeypatch):
     assert len(selections) >= 9
 
 
-def test_strip_optimizer_and_checkpoint_round_trip():
+def test_product_optimizer_and_checkpoint_round_trip():
 
     def make():
-        chart = _construction.strip(
+        chart = _construction.product(
             shape=(5, 4),
-            tile_shape=(2, 4),
             axes=(
                 _construction.line_pattern(5, spacing=0.2),
                 _construction.line_pattern(4, spacing=0.3),
             ),
-            axis=0,
-            tile_pitch=2.0,
         )
         return CSTLinear(
             chart=chart,

@@ -19,7 +19,7 @@ Inputs・Context・Registry・Dispatcherの境界は
 torchcst/
   geometry/
     spec.py / presets.py       空間・metric の不変な宣言と構築
-    state.py                   GeometryState の scalar/vector と checkpoint
+    state.py                   GeometryState の固定 metadata と checkpoint
   patterns/
     spec.py / presets.py       軸の Line / Grid / Points 宣言と構築
     state.py                   PatternState の bounded な Tensor 状態
@@ -27,16 +27,14 @@ torchcst/
     base.py                    ChartSpec / ChartState の ABC
     explicit.py                ExplicitChartSpec / ExplicitChartState
     product.py                 ProductChartSpec / ProductChartState
-    periodic_grid.py           PeriodicGridChartSpec / PeriodicGridChartState
     regular_grid.py            RegularGridChartSpec / RegularGridChartState
-    strip.py                   StripChartSpec / StripChartState
     presets.py / __init__.py    純粋な宣言構築・compile_chart
   kernels/
     profiles/                  Triweight / Gaussian など関数の形の宣言
     parameterizations/         振幅・幅・activity の座標解釈の宣言
     normalization.py           正規化の規則・領域・床
-    spec.py                    ProfileBinding / KernelSpec / 状態方針
-    presets.py                 利用者向けの Spec 合成
+    spec.py                    ProfileBinding / CoordinateSpec / KernelSpec / 状態方針
+    factories.py               Profile / Factor / CoordinateSpec の純粋な合成
     options.py                 数学的な Spec と分離した実行設定
     state.py                   共通の固定 Tensor 状態・checkpoint
   operators/
@@ -61,12 +59,11 @@ torchcst/
             _shared/           full / window が実際に共用する計算
             full/              algorithm / recipe / executor / kernels
             window/            algorithm / recipe / executor / provider / kernels
-          strip_torus/fused/   現行の融合計算・準備・autograd・schedule
-          local_product/      小さい積演算・支持・tile配置・autograd
+          radius_cell_mass/   半径セル積分の native 計算・準備・autograd
         polar_update/         Atom更新のCUDA最適化候補・executor・kernel
     torch/
       algorithms/
-        linear/               materialized / factored / tiled / normalized_radial
+        linear/               materialized / factored / normalized_radial
         atom_update/          全Kernel・Geometryの座標更新の参照Algorithm
         polar_update/         Polar更新のAlgorithm・座標法則・Graph対応経路
       geometry/                埋め込み・距離・射影・更新・輸送
@@ -98,7 +95,7 @@ NVIDIA 向け Triton の最適化をここへ混ぜない。
 | Kernel | radial / separable / amplitude の合成 | materialize / full / window / fused の方式 |
 | 初期化・更新方針 | 初期分布や座標更新の意味 | sampler、射影・retraction・状態輸送の計算 |
 
-Sphere / Torus は現行の chord metric を維持する。正規化領域や amplitude-width の
+Sphere / FlatTorus は現行の chord metric を維持する。正規化領域や amplitude-width の
 結合微分を Recipe によって変えない。数値的な契約を変える場合は別の意味の版を
 付け、既存 checkpoint や同じ演算の fallback と混ぜない。
 
@@ -114,7 +111,7 @@ Algorithm が実際に共用するものは、演算グループ内の `_shared/
 
 CSTLinear / CSTConv2d は ChartSpec / KernelSpec から具体的な ChartState / 共通 KernelState を作る。
 Geometry / Pattern / Kernel / Profile は共通の State を使い、Chart の State は
-Explicit / Product / Strip に分ける。互換メソッドや旧 checkpoint loader はない。Operator は Module が所有する ChartState / KernelState / Atoms を参照する。単一 Chart と入出力 Chart の組は
+Explicit / Product / RegularGrid に分ける。互換メソッドや旧 checkpoint loader はない。Operator は Module が所有する ChartState / KernelState / Atoms を参照する。単一 Chart と入出力 Chart の組は
 layout の型で区別する。Torch の評価・更新は backend の関数で実行する。
 宣言 snapshot を forward ごとに作らず、現在の Tensor / buffer を使う。
 詳細は [Operator](../operators/README.md)を参照。
@@ -150,17 +147,14 @@ CUDA FULL/WINDOWもその純粋metadata処理を再利用する。具体的な�
 区別し、Triton というだけの理由で複数の計算方式を一つのファイルへ集めない。
 未実装のディレクトリや空の雛形は作らない。
 
-有限Fourier profileは `kernels/profiles/fourier.py`、重みを変える3tile支持は
-`kernels/support.py` / `FourierProductKernelSpec` に宣言する。Torchでの係数生成と
-native評価は `_backends/torch/profiles/fourier.py`、直接productは
-`_backends/torch/kernels/fourier_product.py`、共有tile momentによる別の計算方式は
-`_backends/torch/algorithms/linear/fourier_tiles/` に置く。
-[意味と検証範囲](../../../docs/fourier-profile-product.ja.md)を参照。
-
-RegularGridのprofile-product Linearでは
-[Hの生成・再利用・寿命の設計方針](../../../docs/h-lifecycle-kernel-design.ja.md)を使い、
-具体的な分割・融合・routing・保存／再計算はAlgorithm/Recipeの実行方式として扱う。
-この実行方針をChartSpecやKernelSpecの数学的な意味へ混ぜない。
+半径セル積分の Profile は `kernels/profiles/fourier.py` の ChebyshevSpec、
+Factor は `RadiusIntegratedProfileBinding` に宣言する。初期化・更新法則は
+`CoordinateSpec` で独立して宣言し、`factories.product` が既存の KernelSpec に合成する。
+Torch の係数生成は `_backends/torch/profiles/radius_fourier.py`、CUDA の実装は
+`_backends/cuda/algorithms/linear/radius_cell_mass/` に置く。
+`product` は Chart ごとの因子積、`radial` は Chart 距離の合算後の単一評価。
+二つの Chart を使う radial の Torch 参照は `kernels/joint_radial.py` に置き、
+Factor ごとの正規化と operator 全体の正規化を区別する。
 
 検証は `tests/`、継続する正しさ・時間・メモリ測定は `benchmarks/` に置く。
 未採用方式は独立した研究 branch で扱い、本体ツリーへ試作ディレクトリを残さない。
@@ -209,3 +203,15 @@ JSON text はキーをソートして決定的に出力する。
 [Selector の契約と完全一致 artifact](dispatch/README.md)を参照。
 full / window の専用選択 API は廃止し、両者を通常の Algorithm 候補にする。
 選択器は `CSTLinear(selector=...)` に渡し、数学的宣言・checkpoint から分離する。
+
+
+## 固定グリッド・幾何 metadata
+
+RegularGrid と Geometry の固定値は Tensor buffer にせず immutable な Spec に置く。
+初期化前の placement hints は Tensor を保持せず、学習開始後の実行 placement は atom / 入力が
+定める。metadata の値は dtype 変換で量子化しない。checkpoint は全固定値を保存・照合する。
+
+CUDA Polar 更新が必要な周期 Tensor は AlgorithmState.buffers の一時キャッシュに置く。
+period tuple・Parameter device/dtype・定数の version が変われば再構築する。
+compiled launch は定数 version も確認し、変更された定数を使い続けない。
+固定状態の署名と native guard は Spec の値・辞書の変更も検出する。

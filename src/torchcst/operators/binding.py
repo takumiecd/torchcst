@@ -49,7 +49,7 @@ class Operator:
     def shape(self):
         if len(self.charts) == 1:
             return self.charts[0].shape
-        return (self.charts[1].features, self.charts[0].features)
+        return (self.charts[0].ncs, self.charts[1].ncs)
 
     @property
     def in_features(self):
@@ -69,7 +69,7 @@ class Operator:
         layout = (
             SingleChartSpec(chart=charts[0])
             if len(charts) == 1
-            else ChartPairSpec(input_chart=charts[0], output_chart=charts[1])
+            else ChartPairSpec(output_chart=charts[0], input_chart=charts[1])
         )
         return OperatorSpec(layout=layout, kernel=self.kernel.declaration())
 

@@ -18,7 +18,9 @@ def wrap_delta(delta, periods):
 def center_offsets(self, sites, centers):
     _validate_structure(self, sites, name="sites")
     _validate_center_structure(self, centers, name="centers")
-    return wrap_delta(sites[:, None, :] - centers[None, :, :], self.periods)
+    return wrap_delta(
+        sites[:, None, :] - centers[None, :, :], sites.new_tensor(self.periods)
+    )
 
 
 def squared_distance(self, sites, centers):
@@ -30,7 +32,7 @@ def retract(self, points, displacement):
     validate_points(self, displacement, name="displacement")
     if points.shape != displacement.shape:
         raise ValueError("points and displacement must have matching shapes")
-    return torch.remainder(points + displacement, self.periods)
+    return torch.remainder(points + displacement, points.new_tensor(self.periods))
 
 
 def initialize_centers(self, sites, atoms, *, mode):
@@ -43,7 +45,6 @@ def initialize_centers(self, sites, atoms, *, mode):
         return euclidean_centers(self, sites, atoms, mode=mode)
     if mode != "uniform":
         raise ValueError("mode must be 'balanced' or 'uniform'")
-    return (
-        torch.rand(atoms, self.intrinsic_dim, device=sites.device, dtype=sites.dtype)
-        * self.periods
-    )
+    return torch.rand(
+        atoms, self.intrinsic_dim, device=sites.device, dtype=sites.dtype
+    ) * sites.new_tensor(self.periods)

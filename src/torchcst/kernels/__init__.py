@@ -1,6 +1,18 @@
-"""Pure kernel declarations and compositional presets."""
+"""Pure kernel declarations and the ``profile / factor / coordinates`` builders."""
 
-from . import presets
+from .factories import (
+    NORMALIZED_RADIAL_TRIWEIGHT,
+    amplitude,
+    amplitude_width,
+    cell_mass,
+    direct,
+    l2,
+    physical,
+    point,
+    polar,
+    product,
+    radial,
+)
 from .normalization import NormalizationSpec
 from .options import KernelOptions
 from .parameterizations import (
@@ -11,7 +23,6 @@ from .parameterizations import (
     LogWidthSpec,
     ParameterizationSpec,
     PhysicalAmpRadiusSpec,
-    PhysicalAmpWidthSpec,
     PolarAmpRadiusSpec,
     PolarAmpWidthSpec,
     RadiusBounds,
@@ -20,62 +31,55 @@ from .profiles import (
     BiweightSpec,
     GaussianSpec,
     ProfileSpec,
-    QuadraticBSplineSpec,
     TriangleSpec,
     TriweightSpec,
     WendlandC2Spec,
 )
-from .profiles.fourier import (
-    ChebyshevRadiusSpec,
-    ChebyshevSquareSpec,
-    DPSSSquareSpec,
-    KaiserSquareSpec,
-)
-from .profiles.matern import MaternMixtureSpec
+from .profiles.fourier import ChebyshevSpec
 from .spec import (
     AtomInit,
-    CellIntegratedProfileBinding,
-    FourierProductKernelSpec,
+    CoordinateSpec,
     KernelSpec,
     ProfileBinding,
     RadiusIntegratedProfileBinding,
     StatePolicySpec,
 )
-from .support import FourierTileSupportSpec
 
 __all__ = [
+    "NORMALIZED_RADIAL_TRIWEIGHT",
     "AmpWidthSpec",
     "AtomInit",
     "BandwidthBounds",
     "BiweightSpec",
-    "CellIntegratedProfileBinding",
-    "ChebyshevRadiusSpec",
-    "ChebyshevSquareSpec",
-    "DPSSSquareSpec",
+    "ChebyshevSpec",
+    "CoordinateSpec",
     "DirectAmpWidthSpec",
     "FixedWidthSpec",
-    "FourierProductKernelSpec",
-    "FourierTileSupportSpec",
     "GaussianSpec",
-    "KaiserSquareSpec",
     "KernelOptions",
     "KernelSpec",
     "LogWidthSpec",
-    "MaternMixtureSpec",
     "NormalizationSpec",
     "ParameterizationSpec",
     "PhysicalAmpRadiusSpec",
-    "PhysicalAmpWidthSpec",
     "PolarAmpRadiusSpec",
     "PolarAmpWidthSpec",
     "ProfileBinding",
     "ProfileSpec",
-    "QuadraticBSplineSpec",
     "RadiusBounds",
     "RadiusIntegratedProfileBinding",
     "StatePolicySpec",
     "TriangleSpec",
     "TriweightSpec",
     "WendlandC2Spec",
-    "presets",
+    "amplitude",
+    "amplitude_width",
+    "cell_mass",
+    "direct",
+    "l2",
+    "physical",
+    "point",
+    "polar",
+    "product",
+    "radial",
 ]

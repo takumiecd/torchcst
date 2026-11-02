@@ -142,11 +142,9 @@ def test_builtin_torch_and_cuda_share_the_same_registry_contract():
     for name in (
         "torch_materialized",
         "torch_factored",
-        "torch_tiled",
         "torch_normalized_radial",
         "normalized_full",
         "normalized_window",
-        "cuda_strip_torus_fused",
     ):
         algorithm = REGISTRY.get(name, revision="v1")
         assert isinstance(algorithm, Algorithm)

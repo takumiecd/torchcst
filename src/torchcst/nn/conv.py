@@ -52,9 +52,10 @@ class CSTConv2d(CSTModule):
 
     def __init__(
         self,
-        input_chart: ChartSpec | ChartState,
-        output_chart: ChartSpec | ChartState,
+        output_chart: ChartSpec | ChartState | tuple[ChartSpec | ChartState, ...] | None = None,
+        input_chart: ChartSpec | ChartState | None = None,
         *,
+        charts: tuple[ChartSpec | ChartState, ...] | None = None,
         in_channels: int,
         out_channels: int,
         kernel_size: int | Sequence[int],
@@ -73,15 +74,25 @@ class CSTConv2d(CSTModule):
         from torchcst._backends.torch.kernels import execution as _kernel
 
         super().__init__()
-        if isinstance(input_chart, ChartSpec):
-            input_chart = compile_chart(input_chart, device=device, dtype=dtype)
+        if charts is not None:
+            if output_chart is not None or input_chart is not None:
+                raise ValueError("charts cannot be combined with output_chart or input_chart")
+            if not isinstance(charts, tuple) or len(charts) != 2:
+                raise TypeError("output_chart and input_chart must be ChartSpec or ChartState instances")
+            output_chart, input_chart = charts
+        elif isinstance(output_chart, tuple):
+            if input_chart is not None or len(output_chart) != 2:
+                raise TypeError("output_chart and input_chart must be ChartSpec or ChartState instances")
+            output_chart, input_chart = output_chart
         if isinstance(output_chart, ChartSpec):
             output_chart = compile_chart(output_chart, device=device, dtype=dtype)
-        if not isinstance(input_chart, ChartState) or not isinstance(
-            output_chart, ChartState
+        if isinstance(input_chart, ChartSpec):
+            input_chart = compile_chart(input_chart, device=device, dtype=dtype)
+        if not isinstance(output_chart, ChartState) or not isinstance(
+            input_chart, ChartState
         ):
             raise TypeError(
-                "input_chart and output_chart must be ChartSpec or ChartState instances"
+                "output_chart and input_chart must be ChartSpec or ChartState instances"
             )
         for name, value in (
             ("in_channels", in_channels),
@@ -126,8 +137,8 @@ class CSTConv2d(CSTModule):
                 f"got {output_chart.features}"
             )
 
-        self.input_chart = input_chart
         self.output_chart = output_chart
+        self.input_chart = input_chart
         self.kernel = KernelState(kernel, options=kernel_options)
         kernel = self.kernel
         if backend == "factored" and not _kernel.supports_factorization(kernel):
@@ -137,19 +148,19 @@ class CSTConv2d(CSTModule):
         self.atom_init = atom_init
         self.backend = backend
 
-        target_device = device or input_chart.reference.device
-        target_dtype = dtype or input_chart.reference.dtype
+        target_device = device or output_chart.reference.device
+        target_dtype = dtype or output_chart.reference.dtype
         if not target_dtype.is_floating_point:
             raise TypeError("CSTConv2d requires a floating-point dtype")
         self.to(device=target_device, dtype=target_dtype)
 
-        parameter_dim = _kernel.parameter_dim(kernel, input_chart, output_chart)
+        parameter_dim = _kernel.parameter_dim(kernel, output_chart, input_chart)
         if parameter_dim < 1:
             raise ValueError("kernel.parameter_dim must be positive")
         p = _kernel.initialize(
             kernel,
-            input_chart,
             output_chart,
+            input_chart,
             atoms,
             mode=atom_init,
         )
@@ -158,7 +169,7 @@ class CSTConv2d(CSTModule):
             raise ValueError(
                 f"kernel.initialize must return shape {list(expected_shape)}"
             )
-        if p.device != input_chart.reference.device or p.dtype != target_dtype:
+        if p.device != output_chart.reference.device or p.dtype != target_dtype:
             raise ValueError("kernel.initialize must match the module device and dtype")
         self._bind_atoms(Atoms(p))
 
@@ -185,7 +196,7 @@ class CSTConv2d(CSTModule):
         from torchcst._backends.torch.kernels import execution as _kernel
 
         represented = _kernel.materialize_atoms(
-            self.kernel, self.input_chart, self.output_chart, p
+            self.kernel, self.output_chart, self.input_chart, p
         )
         if p.ndim != 2 or p.shape[1] != self.atoms.parameter_dim:
             raise ValueError(f"p must have shape [atoms, {self.atoms.parameter_dim}]")
@@ -217,7 +228,7 @@ class CSTConv2d(CSTModule):
     def _factor_atoms(self, p: Tensor) -> tuple[Tensor, Tensor]:
         from torchcst._backends.torch.kernels import execution as _kernel
 
-        return _kernel.factors(self.kernel, self.input_chart, self.output_chart, p)
+        return _kernel.factors(self.kernel, self.output_chart, self.input_chart, p)
 
     def cst_derivatives(self) -> AtomDerivatives:
         """Build derivatives of the flattened local CST operator."""
@@ -241,8 +252,12 @@ class CSTConv2d(CSTModule):
     def cst_parameters(self) -> tuple[nn.Parameter, ...]:
         return (self.atoms.p,)
 
+    @property
+    def charts(self) -> tuple[ChartState, ...]:
+        return self.cst_charts()
+
     def cst_charts(self) -> tuple[ChartState, ...]:
-        return (self.input_chart, self.output_chart)
+        return (self.output_chart, self.input_chart)
 
     def repulsion_terms(
         self, *, kind: RepulsionKind = "cosine"
@@ -292,7 +307,7 @@ class CSTConv2d(CSTModule):
             )
 
         phi_input, phi_output = _kernel.factors(
-            self.kernel, self.input_chart, self.output_chart, p
+            self.kernel, self.output_chart, self.input_chart, p
         )
         filters = phi_input.transpose(0, 1).reshape(
             p.shape[0], self.in_channels, *self.kernel_size

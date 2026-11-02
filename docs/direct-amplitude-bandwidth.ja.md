@@ -31,7 +31,7 @@ time-energy の除算、dormant expansion は Direct の規則には含まれな
 
 ## 使用方法
 
-KernelSpec は `presets.direct_activity(...)` または `presets.polar_activity(...)` で
+KernelSpec は `kernels.direct(...)` または `kernels.polar(...)` で
 作り、Layer に渡す。関数の形は ProfileSpec、幅の範囲は BandwidthBounds で指定する。
 [Kernel の例](../src/torchcst/kernels/README.md)を参照。
 

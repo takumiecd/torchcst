@@ -179,33 +179,32 @@ int main() {
 @GPU
 def test_original_boundary_fixture_all_vjps_against_stable_public_reference():
     from torchcst import (
-        ChebyshevRadiusSpec,
+        ChebyshevSpec,
         CSTLinear,
         RadiusBounds,
         chart_presets,
-        presets,
+        kernels,
     )
 
     # The encoded center/origin pair above occurs at atom 79 in this skewed
     # real Linear fixture. Keep the legacy native Plan: this regression does
     # not depend on an experimental owner-fusion implementation.
-    chart = chart_presets.regular_grid(((1024,),), origin=-1.2, geometry="flat_torus")
+    chart = chart_presets.regular_grid(1024, origin=-1.2, geometry="flat_torus")
     reference = CSTLinear(
         chart,
         chart,
         atoms=129,
         dtype=torch.float64,
         backend="factored",
-        kernel=presets.polar_radius_cell_mass(
-            amplitude_max=1.0,
-            w_c=0.3,
-            input_radius_bounds=RadiusBounds(
-                minimum=0.1,
-                birth=4.0,
-                maximum=512.0,
-                upper_floor=1.0,
+        kernel=kernels.product(
+            kernels.cell_mass(ChebyshevSpec(modes=8)),
+            coordinates=kernels.polar(
+                amplitude_max=1.0,
+                w_c=0.3,
+                input_bounds=RadiusBounds(
+                    minimum=0.1, birth=4.0, maximum=512.0, upper_floor=1.0
+                ),
             ),
-            profile=ChebyshevRadiusSpec(modes=8),
         ),
     )
     with torch.no_grad():

@@ -1,6 +1,7 @@
 """Eager radius fixture for the existing Linear runner (no standalone runner)."""
 
 import copy
+import hashlib
 import math
 import statistics
 import time
@@ -9,31 +10,43 @@ from dataclasses import asdict, replace
 import torch
 
 from torchcst import (
-    ChebyshevRadiusSpec,
+    ChebyshevSpec,
     CSTAdamW,
     CSTLinear,
     CSTOptimizer,
     RadiusBounds,
     chart_presets,
-    presets,
+    kernels,
 )
 
-from .sphere_baseline import error, tensor_hash
+
+def error(actual, expected):
+    delta = actual.detach().double() - expected.detach().double()
+    return {
+        "max_abs": float(delta.abs().max()),
+        "relative_l2": float(
+            delta.norm() / expected.detach().double().norm().clamp_min(1e-30)
+        ),
+    }
+
+
+def tensor_hash(tensor):
+    cpu = tensor.detach().cpu().contiguous().reshape(-1)
+    return hashlib.sha256(bytes(cpu.view(torch.uint8).tolist())).hexdigest()
 
 
 def fixture(case):
     torch.manual_seed(case.seed)
-    chart = chart_presets.regular_grid(
-        ((case.size,),), spacing=1.0, geometry="flat_torus"
-    )
-    kernel = presets.polar_radius_cell_mass(
-        amplitude_max=1.0,
-        w_c=0.3,
-        input_radius_bounds=RadiusBounds(
-            minimum=0.5, birth=4.0, maximum=50.0, upper_floor=1.0
+    chart = chart_presets.regular_grid(case.size, spacing=1.0, geometry="flat_torus")
+    kernel = kernels.product(
+        kernels.cell_mass(ChebyshevSpec(modes=8), merge_factor=2),
+        coordinates=kernels.polar(
+            amplitude_max=1.0,
+            w_c=0.3,
+            input_bounds=RadiusBounds(
+                minimum=0.5, birth=4.0, maximum=50.0, upper_floor=1.0
+            ),
         ),
-        profile=ChebyshevRadiusSpec(modes=8),
-        merge_factor=2,
     )
     model = CSTLinear(chart, chart, atoms=case.atoms, kernel=kernel, backend="factored")
     # Public initialization, including its decoded radius distribution, is retained.
@@ -90,7 +103,7 @@ def oracle_factors(model, p):
             )
             rows.append(row)
         factors.append(torch.stack(rows).T)
-    return factors[0], factors[1] * amplitude[None]
+    return factors[1], factors[0] * amplitude[None]
 
 
 def oracle(model, x, p=None):

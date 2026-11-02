@@ -6,18 +6,12 @@ from .registry import Registry
 
 
 def make_registry():
-    from .cuda.algorithms.linear.cell_mass_hierarchical.algorithm import (
-        HierarchicalCellMassAlgorithm,
-    )
     from .cuda.algorithms.linear.normalized_euclidean_strip import (
         NormalizedFullAlgorithm,
         NormalizedWindowAlgorithm,
     )
     from .cuda.algorithms.linear.radius_cell_mass.algorithm import (
         RadiusCellMassAlgorithm,
-    )
-    from .cuda.algorithms.linear.strip_torus.fused.algorithm import (
-        FusedStripTorusAlgorithm,
     )
     from .cuda.algorithms.polar_update import FusedPolarUpdateAlgorithm
     from .cuda.algorithms.polar_update.algorithm import (
@@ -26,24 +20,18 @@ def make_registry():
     )
     from .torch.algorithms.atom_update import AtomUpdateAlgorithm
     from .torch.algorithms.linear.factored import FactoredAlgorithm
-    from .torch.algorithms.linear.fourier_tiles import FourierTilesAlgorithm
     from .torch.algorithms.linear.materialized import MaterializedAlgorithm
     from .torch.algorithms.linear.normalized_radial import NormalizedRadialAlgorithm
-    from .torch.algorithms.linear.tiled import TiledAlgorithm
     from .torch.algorithms.polar_update import PolarUpdateAlgorithm
 
     registry = Registry()
     for algorithm in (
-        HierarchicalCellMassAlgorithm(),
         RadiusCellMassAlgorithm(),
         MaterializedAlgorithm(),
         FactoredAlgorithm(),
-        FourierTilesAlgorithm(),
-        TiledAlgorithm(),
         NormalizedRadialAlgorithm(),
         NormalizedFullAlgorithm(),
         NormalizedWindowAlgorithm(),
-        FusedStripTorusAlgorithm(),
         AtomUpdateAlgorithm(),
         PolarUpdateAlgorithm(),
         FusedPolarUpdateAlgorithm(),

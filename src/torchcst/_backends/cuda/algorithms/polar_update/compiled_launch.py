@@ -92,7 +92,7 @@ _ARGUMENTS = (
 
 
 class CompiledPolarLaunch:
-    def __init__(self, binding, record, knobs, device):
+    def __init__(self, binding, state, record, knobs, device):
         kernel, self.jit, self.count, self.step, self.time_energy, self.amount = record
         self.kernel = kernel
         self.key = self.jit.cache_key
@@ -105,7 +105,10 @@ class CompiledPolarLaunch:
             knobs.compilation.instrumentation_mode,
         )
         self.scalars = tuple(binding.kernel.scalar(name) for name in _SCALARS)
-        self.periods = tuple(chart.geometry.periods for chart in binding.cst_charts())
+        from .algorithm import _period_tensors
+
+        self.periods = _period_tensors(state, binding.execution_parameters())
+        self.period_versions = tuple(p._version for p in self.periods)
         self.runner = kernel[((self.count + 127) // 128, 1, 1)]
         module = sys.modules[self.jit.fn.__module__]
         # Dictionary guards also preserve JIT's used-global checks and explicit
@@ -137,7 +140,9 @@ class CompiledPolarLaunch:
         hooks = self.jit.pre_run_hooks
         mode = self.knobs.compilation.instrumentation_mode
         return (
-            type(hooks) is list
+            all(type(p) is torch.Tensor for p in self.periods)
+            and tuple(p._version for p in self.periods) == self.period_versions
+            and type(hooks) is list
             and len(hooks) == 0
             and self.jit.cache_key == self.key
             and type(runtime.debug) is bool
@@ -228,7 +233,7 @@ def prepare_launch(binding, state):
         ):
             return None
         result = CompiledPolarLaunch(
-            binding, record, knobs, torch.cuda.current_device()
+            binding, state, record, knobs, torch.cuda.current_device()
         )
         return result if result.enabled() else None
     except (ImportError, AttributeError, TypeError, ValueError, KeyError, RuntimeError):

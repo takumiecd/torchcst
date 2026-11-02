@@ -6,6 +6,23 @@
 atom IDはAtomState内の固定集合`[0, count)`で、物理行とは独立する。
 別のAtomState間でIDは比較しない。
 
+## atom table の初期化と共有
+
+`CSTLinear(atoms=...)` は次の所有契約を使う。
+
+| `atoms=` | 動作 |
+| --- | --- |
+| 正の整数 | kernel の初期化方針で新しい Atoms を作る |
+| Tensor | detach・複製し、新しい Atoms を所有する。指定 device / dtype へ変換可能 |
+| `nn.Parameter` | 同じ Parameter を登録し、identity・gradient・既存 optimizer の参照を保つ |
+| `Atoms` | owner と Parameter をそのまま共有する |
+
+座標列数は kernel の契約と一致させる。明示的な空表はゼロ演算子として扱う。
+共有 Parameter / Atoms の device / dtype が指定と異なる場合、constructor 内で
+暗黙に置き換えず拒否する。model の最終 placement を決めてから optimizer を作り、
+atom Parameter を置き換えた場合は optimizer を作り直す。Parameter は
+`layer.atoms.p` から取得できる。
+
 ## 配置と学習状態
 
 | クラス | 配置 | 所有するもの |

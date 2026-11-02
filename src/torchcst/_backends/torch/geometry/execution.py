@@ -7,7 +7,6 @@ from torchcst.geometry.spec import (
     EuclideanGeometrySpec,
     FlatTorusGeometrySpec,
     SphereGeometrySpec,
-    TorusGeometrySpec,
 )
 from torchcst.geometry.state import GeometryState
 
@@ -19,7 +18,6 @@ def _evaluate(state, operation, *args, **kwargs):
         EuclideanGeometrySpec: "euclidean",
         FlatTorusGeometrySpec: "flat_torus",
         SphereGeometrySpec: "sphere",
-        TorusGeometrySpec: "torus",
     }.get(type(state.spec))
     if family is None:
         raise ValueError("unsupported geometry declaration")

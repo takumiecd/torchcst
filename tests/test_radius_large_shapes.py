@@ -13,7 +13,7 @@ from test_radius_cell_mass import axis, oracle_mass
 from test_radius_cell_mass_cuda import GPU, atoms, axis_plan
 from test_radius_cell_mass_hybrid import check_vjp
 
-from torchcst import CSTLinear, chart_presets, presets
+from torchcst import CSTLinear, chart_presets, kernels
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass import executor as ex
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.algorithm import (
     RadiusCellMassAlgorithm,
@@ -39,8 +39,13 @@ from torchcst.operators.execution import LinearInputs
 
 
 def metadata_context(sites=1024, count=52428):
-    chart = chart_presets.regular_grid(((sites,),), geometry="flat_torus")
-    model = CSTLinear(chart, chart, atoms=8, kernel=presets.radius_cell_mass())
+    chart = chart_presets.regular_grid(sites, geometry="flat_torus")
+    model = CSTLinear(
+        chart,
+        chart,
+        atoms=8,
+        kernel=kernels.product(kernels.cell_mass(), coordinates=kernels.physical()),
+    )
     context = model.build_context(LinearInputs(torch.zeros(4, sites)))
     # Support is pure metadata: no CUDA query, allocation or execution is made.
     return replace(

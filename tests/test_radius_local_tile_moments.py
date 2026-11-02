@@ -404,31 +404,33 @@ def test_local_tile_support_rejects_other_operator_families(
     sites, modes, polar, base, merge
 ):
     from torchcst import (
-        ChebyshevRadiusSpec,
+        ChebyshevSpec,
         CSTLinear,
         RadiusBounds,
         chart_presets,
-        presets,
+        kernels,
     )
 
-    chart = chart_presets.regular_grid(((sites,),), geometry="flat_torus")
-    options = {
-        "profile": ChebyshevRadiusSpec(modes=modes),
-        "input_base_tile_sites": base,
-        "output_base_tile_sites": base,
-        "merge_factor": merge,
-    }
+    chart = chart_presets.regular_grid(sites, geometry="flat_torus")
+    factor = kernels.cell_mass(
+        ChebyshevSpec(modes=modes), base_tile_sites=base, merge_factor=merge
+    )
     kernel = (
-        presets.polar_radius_cell_mass(
-            amplitude_max=1.0,
-            w_c=0.3,
-            input_radius_bounds=RadiusBounds(
-                minimum=0.5, birth=4.0, maximum=min(50.0, sites / 2), upper_floor=1.0
+        kernels.product(
+            factor,
+            coordinates=kernels.polar(
+                amplitude_max=1.0,
+                w_c=0.3,
+                input_bounds=RadiusBounds(
+                    minimum=0.5,
+                    birth=4.0,
+                    maximum=min(50.0, sites / 2),
+                    upper_floor=1.0,
+                ),
             ),
-            **options,
         )
         if polar
-        else presets.radius_cell_mass(**options)
+        else kernels.product(factor, coordinates=kernels.physical())
     )
     layer = CSTLinear(chart, chart, atoms=11, kernel=kernel)
     context = replace(
@@ -563,7 +565,7 @@ template<class T> void check(int batch) {
         if(!side) local_tile_atom<T,0>(p,signal,z,local.data(),h.data(),nullptr,nullptr,nullptr,a,A,batch,axis,false);
         else {
             local_tile_atom<T,1>(p,signal,z,local.data(),g.data(),h.data(),nullptr,gradient,a,A,batch,axis,true);
-            for(int f=0;f<3;++f) assert(gradient[4*a+f]==T(999));
+            assert(gradient[4*a]==T(999) && gradient[4*a+1]==T(999) && gradient[4*a+3]==T(999));
         }
         if(!side) continue;
         Membership input=classify(radius(p,a,axis),center(p,a,axis,false),axis);
@@ -574,9 +576,9 @@ template<class T> void check(int batch) {
             for(int b=0;b<batch;++b) for(int part=0;part<ib.count;++part) for(int f=0;f<F;++f)
                 local[(b*ib.count+part)*F+f]=local_tile_dot(x.data(),b,owner,part,f,axis,ib,phi.data(),filters.data());
         }
-        T output_column=gradient[4*a+3];
+        T output_column=gradient[4*a+2];
         local_tile_atom<T,2>(p,x.data(),zx.data(),local.data(),nullptr,h.data(),g.data(),gradient,a,A,batch,axis,false);
-        assert(memcmp(&output_column,gradient+4*a+3,sizeof(T))==0);
+        assert(memcmp(&output_column,gradient+4*a+2,sizeof(T))==0);
         double da=0,di=0,dout=0,amp=amplitude(p,a,axis);
         for(int b=0;b<batch;++b) {
             close(h[b*A+a],oldh[b*A+a],2e-11); close(g[b*A+a],oldg[b*A+a],2e-11);

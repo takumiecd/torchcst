@@ -16,13 +16,13 @@ from test_radius_cell_mass_cuda import (
 )
 
 from torchcst import (
-    ChebyshevRadiusSpec,
+    ChebyshevSpec,
     CSTLinear,
     Dispatcher,
     LinearInputs,
     RadiusBounds,
     chart_presets,
-    presets,
+    kernels,
 )
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plan import (
     HierarchyPlan,
@@ -197,17 +197,19 @@ def test_hybrid_empty_shapes(variant, batch, count):
 @GPU
 @pytest.mark.parametrize("variant", VARIANTS)
 def test_hybrid_public_polar_distinct_bounds(variant):
-    chart = chart_presets.regular_grid(((16,),), spacing=1.0, geometry="flat_torus")
-    kernel = presets.polar_radius_cell_mass(
-        amplitude_max=1.3,
-        w_c=0.3,
-        input_radius_bounds=RadiusBounds(
-            minimum=0.5, birth=1.0, maximum=4.0, upper_floor=1.0
+    chart = chart_presets.regular_grid(16, spacing=1.0, geometry="flat_torus")
+    kernel = kernels.product(
+        kernels.cell_mass(ChebyshevSpec(modes=3)),
+        coordinates=kernels.polar(
+            amplitude_max=1.3,
+            w_c=0.3,
+            input_bounds=RadiusBounds(
+                minimum=0.5, birth=1.0, maximum=4.0, upper_floor=1.0
+            ),
+            output_bounds=RadiusBounds(
+                minimum=0.6, birth=1.3, maximum=6.0, upper_floor=1.5
+            ),
         ),
-        output_radius_bounds=RadiusBounds(
-            minimum=0.6, birth=1.3, maximum=6.0, upper_floor=1.5
-        ),
-        profile=ChebyshevRadiusSpec(modes=3),
     )
     p = torch.tensor(
         [[1.0, 0.5, 2.17, 3.31], [0.1, 0.1, 15.77, 0.23]], dtype=torch.float64

@@ -23,6 +23,8 @@ def _callbacks():
     from torchcst.atoms.optimizer_state import AtomOptimizerState
     from torchcst.atoms.state import AtomState
     from torchcst.charts.base import ChartSpec
+    from torchcst.charts.regular_grid import RegularGridChartSpec, RegularGridChartState
+    from torchcst.geometry.state import GeometryState
     from torchcst.nn.linear import CSTLinear
     from torchcst.nn.module import CSTModule
     from torchcst.operators import context, execution, metadata
@@ -70,7 +72,10 @@ def _callbacks():
         (prepared, ("placement_signature",)),
         (OperatorSpec, ("in_features", "out_features", "shape", "charts")),
         (ChartPairSpec, ("shape", "charts")),
-        (ChartSpec, ("features",)),
+        (ChartSpec, ("features", "ncs", "num_sites")),
+        (RegularGridChartSpec, ("coordinate_shape",)),
+        (RegularGridChartState, ("origin", "spacing", "reference", "declaration")),
+        (GeometryState, ("periods", "radius", "chart_margin", "declaration")),
     )
 
 
@@ -80,7 +85,7 @@ def _definitions(callbacks):
         for name in names:
             if not original_attribute(owner, name):
                 return None
-            fn = inspect.getattr_static(owner, name)
+            fn = inspect.getattr_static(owner, name, None)
             if isinstance(fn, property):
                 fn = fn.fget
             records = original_functions(fn)
@@ -274,8 +279,8 @@ def _guard(dispatcher, cached, inputs, callbacks, functions, factory, metadata):
             tensor(item(fields, name, value), value, owned=True)
         for name, value in (
             ("kernel", binding.kernel),
-            ("input_chart", binding.input_chart),
             ("output_chart", binding.output_chart),
+            ("input_chart", binding.input_chart),
         ):
             registered(bm, binding, name)
         namespace = attr(bm, "__dict__", binding.__dict__)

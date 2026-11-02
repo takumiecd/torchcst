@@ -6,6 +6,34 @@ DispatcherとExecutionBindingはbackend共通、LinearInputsとLinearBindingは
 演算側のinterfaceである。LinearとAtom座標更新はそれぞれ別のInputs/Contextを持ち、
 同じRegistryとDispatcherを使う。
 
+## Plan を選ぶ・直接実行する
+
+[README の学習例](../README.md#training-with-a-standard-optimizer)で作った `model` と
+`x` を使う。次は数学的な宣言を変えず、Torch materialized Plan を指定する例である。
+
+```python
+from torchcst import (
+    DefaultRecipe, Dispatcher, ExecutionPlan, FixedSelector,
+    LinearBinding, LinearInputs, make_algorithm_registry,
+)
+
+registry = make_algorithm_registry()
+plan = ExecutionPlan("torch_materialized", "v1", DefaultRecipe())
+model.selector = FixedSelector(plan, registry=registry)
+y = model(x)
+
+# 同じ live Operator を参照する。Parameter はコピーしない。
+binding = LinearBinding(model.operator)
+flat = x.reshape(-1, model.in_features).contiguous()
+y_direct = Dispatcher(registry=registry).run(binding, LinearInputs(flat), plan=plan)
+torch.testing.assert_close(y, y_direct)
+```
+
+`backend=` は組込み Plan の別名で、明示した `selector=` が優先する。
+selector の registry は Torch / CUDA の両方に使う。既定の順序は対応する FULL、
+CPU normalized 参照、factored / materialized のサイズ方針を保つ。
+明示 Plan でも入力・精度・workspace の対応判定は省略しない。
+
 ## 責務
 
 | 要素 | 担当するもの |

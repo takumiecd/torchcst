@@ -199,37 +199,30 @@ def test_warm_metadata_does_not_certify_invalid_configuration_before_step():
 
 
 @pytest.mark.parametrize("change", ["replacement", "dtype"])
-def test_geometry_period_buffer_placement_refreshes_metadata(change):
+def test_geometry_metadata_is_independent_of_device_constants(change):
     model, binding = setup()
     first = binding.build_context(inputs(model))
     geometry = model.input_chart.geometry
-    geometry.periods = (
-        geometry.periods.clone()
-        if change == "replacement"
-        else geometry.periods.double()
-    )
+    assert not tuple(geometry.buffers())
+    if change == "replacement":
+        geometry.spec = replace(geometry.spec)
+    else:
+        geometry.double()
     second = binding.build_context(inputs(model))
-    assert second.scalar_metadata is not first.scalar_metadata
-    assert scalar(second, "geometry.0.periods") == (
-        geometry.periods.dtype,
-        DeviceInfo("cpu"),
-        1,
-    )
-    assert (
-        binding.build_context(inputs(model)).scalar_metadata is second.scalar_metadata
-    )
+    assert not any(name.startswith("geometry.") for name, *_ in second.scalar_metadata)
+    if change == "replacement":
+        assert second is not first
+    else:
+        assert second is first  # Atom placement is authoritative.
+    assert binding.build_context(inputs(model)) is second
 
 
 @pytest.mark.parametrize("change", ["numel", "device"])
 def test_invalid_geometry_declaration_cannot_use_warm_metadata(change):
     model, binding = setup()
     binding.build_context(inputs(model))
-    if change == "numel":
-        model.input_chart.geometry.periods = model.input_chart.geometry.periods.repeat(
-            2
-        )
-    else:
-        model.input_chart.geometry.periods = torch.ones(1, device="meta")
+    bad = (16.0, 16.0) if change == "numel" else torch.ones(1, device="meta")
+    object.__setattr__(model.input_chart.geometry.spec, "periods", bad)
     with pytest.raises((ValueError, RuntimeError)):
         binding.build_context(inputs(model))
 

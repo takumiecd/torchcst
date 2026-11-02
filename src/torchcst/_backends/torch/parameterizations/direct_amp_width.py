@@ -14,57 +14,57 @@ from torchcst.charts import ChartState
 
 def amplitude(
     state,
-    input_chart: ChartState,
-    output_chart: ChartState | Tensor,
+    output_chart: ChartState,
+    input_chart: ChartState | Tensor,
     p: Tensor | None = None,
 ) -> Tensor:
     """Return the bounded signed amplitude represented by each atom."""
 
     if p is None:
-        if not isinstance(output_chart, Tensor):
+        if not isinstance(input_chart, Tensor):
             raise TypeError("single-chart amplitude requires atom parameters")
-        direct, _ = _single_split(state, input_chart, output_chart)
+        direct, _ = _single_split(state, output_chart, input_chart)
     else:
-        direct, _, _ = _split(state, input_chart, output_chart, p)
+        direct, _, _ = _split(state, output_chart, input_chart, p)
     amplitude, _ = _amplitude_and_alpha(state, direct)
     return amplitude
 
 
 def bandwidth_alpha(
     state,
-    input_chart: ChartState,
-    output_chart: ChartState | Tensor,
+    output_chart: ChartState,
+    input_chart: ChartState | Tensor,
     p: Tensor | None = None,
 ) -> Tensor:
     """Return the activity interpolation coordinate in ``[0, 1]``."""
 
     if p is None:
-        if not isinstance(output_chart, Tensor):
+        if not isinstance(input_chart, Tensor):
             raise TypeError("single-chart bandwidth requires atom parameters")
-        direct, _ = _single_split(state, input_chart, output_chart)
+        direct, _ = _single_split(state, output_chart, input_chart)
     else:
-        direct, _, _ = _split(state, input_chart, output_chart, p)
+        direct, _, _ = _split(state, output_chart, input_chart, p)
     _, alpha = _amplitude_and_alpha(state, direct)
     return alpha
 
 
 def bandwidth_bounds(
     state,
-    input_chart: ChartState,
-    output_chart: ChartState | Tensor,
+    output_chart: ChartState,
+    input_chart: ChartState | Tensor,
     p: Tensor | None = None,
 ) -> tuple[Tensor, Tensor]:
     """Return ``(L(w), U(w))`` for diagnostic use."""
 
     if p is None:
-        if not isinstance(output_chart, Tensor):
+        if not isinstance(input_chart, Tensor):
             raise TypeError("single-chart bandwidth requires atom parameters")
-        direct, _ = _single_split(state, input_chart, output_chart)
+        direct, _ = _single_split(state, output_chart, input_chart)
         amplitude, _ = _amplitude_and_alpha(state, direct)
         _, lower, upper = _sigma_bounds(state, amplitude)
         return lower, upper
     (input_bounds, output_bounds) = bandwidth_bounds_by_side(
-        state, input_chart, output_chart, p
+        state, output_chart, input_chart, p
     )
     _require_shared_bandwidths(state)
     del output_bounds
@@ -72,11 +72,11 @@ def bandwidth_bounds(
 
 
 def bandwidth_bounds_by_side(
-    state, input_chart: ChartState, output_chart: ChartState, p: Tensor
+    state, output_chart: ChartState, input_chart: ChartState, p: Tensor
 ) -> tuple[tuple[Tensor, Tensor], tuple[Tensor, Tensor]]:
     """Return ``((L_in, U_in), (L_out, U_out))``."""
 
-    direct, _, _ = _split(state, input_chart, output_chart, p)
+    direct, _, _ = _split(state, output_chart, input_chart, p)
     amplitude, _ = _amplitude_and_alpha(state, direct)
     _, lower_input, upper_input = _sigma_bounds(state, amplitude, side="input")
     _, lower_output, upper_output = _sigma_bounds(state, amplitude, side="output")
@@ -85,52 +85,52 @@ def bandwidth_bounds_by_side(
 
 def bandwidth_sigma(
     state,
-    input_chart: ChartState,
-    output_chart: ChartState | Tensor,
+    output_chart: ChartState,
+    input_chart: ChartState | Tensor,
     p: Tensor | None = None,
 ) -> Tensor:
     """Return the shared effective input/output sigma for each atom."""
 
     if p is None:
-        if not isinstance(output_chart, Tensor):
+        if not isinstance(input_chart, Tensor):
             raise TypeError("single-chart bandwidth requires atom parameters")
-        direct, _ = _single_split(state, input_chart, output_chart)
+        direct, _ = _single_split(state, output_chart, input_chart)
         amplitude, alpha = _amplitude_and_alpha(state, direct)
         sigma, _, _ = _sigma_bounds(state, amplitude, alpha)
         return sigma
-    sigma_input, _ = bandwidth_sigmas(state, input_chart, output_chart, p)
+    sigma_input, _ = bandwidth_sigmas(state, output_chart, input_chart, p)
     _require_shared_bandwidths(state)
     return sigma_input
 
 
 def bandwidth_sigmas(
-    state, input_chart: ChartState, output_chart: ChartState, p: Tensor
+    state, output_chart: ChartState, input_chart: ChartState, p: Tensor
 ) -> tuple[Tensor, Tensor]:
     """Return effective ``(sigma_input, sigma_output)`` for each atom."""
 
-    direct, _, _ = _split(state, input_chart, output_chart, p)
+    direct, _, _ = _split(state, output_chart, input_chart, p)
     amplitude, alpha = _amplitude_and_alpha(state, direct)
     return _bandwidth_sigmas(state, amplitude, alpha)
 
 
 def bandwidth_precision(
     state,
-    input_chart: ChartState,
-    output_chart: ChartState | Tensor,
+    output_chart: ChartState,
+    input_chart: ChartState | Tensor,
     p: Tensor | None = None,
 ) -> Tensor:
     """Return the shared input/output precision for each atom."""
 
-    sigma = bandwidth_sigma(state, input_chart, output_chart, p)
+    sigma = bandwidth_sigma(state, output_chart, input_chart, p)
     return sigma.reciprocal().square()
 
 
 def bandwidth_precisions(
-    state, input_chart: ChartState, output_chart: ChartState, p: Tensor
+    state, output_chart: ChartState, input_chart: ChartState, p: Tensor
 ) -> tuple[Tensor, Tensor]:
     """Return input and output precisions for split bandwidths."""
 
-    sigma_input, sigma_output = bandwidth_sigmas(state, input_chart, output_chart, p)
+    sigma_input, sigma_output = bandwidth_sigmas(state, output_chart, input_chart, p)
     return sigma_input.reciprocal().square(), sigma_output.reciprocal().square()
 
 
@@ -165,16 +165,16 @@ def _tile_parameters(state, p: Tensor) -> tuple[Tensor, Tensor, Tensor]:
 
 def _split(
     state,
-    input_chart: ChartState,
     output_chart: ChartState,
+    input_chart: ChartState,
     p: Tensor,
 ) -> tuple[Tensor, Tensor, Tensor]:
-    expected_dim = _kernel.parameter_dim(state, input_chart, output_chart)
+    expected_dim = _kernel.parameter_dim(state, output_chart, input_chart)
     if p.ndim != 2 or p.shape[1] != expected_dim:
         raise ValueError(f"p must have shape [atoms, {expected_dim}]")
-    input_dim = _profile.parameter_dim(state.profiles[0], input_chart)
-    input_end = 2 + input_dim
-    return p[:, :2], p[:, 2:input_end], p[:, input_end:]
+    output_dim = _profile.parameter_dim(state.profiles[0], output_chart)
+    output_end = 2 + output_dim
+    return p[:, :2], p[:, 2:output_end], p[:, output_end:]
 
 
 def _amplitude_and_alpha(state, direct: Tensor) -> tuple[Tensor, Tensor]:

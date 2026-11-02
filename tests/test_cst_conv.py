@@ -34,8 +34,8 @@ def make_model(
 ) -> CSTConv2d:
     patch_features = in_channels // groups * math.prod(kernel_size)
     return CSTConv2d(
-        _construction.linspace(patch_features, low=-1.0, high=1.0),
         _construction.linspace(out_channels, low=-1.0, high=1.0),
+        _construction.linspace(patch_features, low=-1.0, high=1.0),
         in_channels=in_channels,
         out_channels=out_channels,
         kernel_size=kernel_size,
@@ -53,7 +53,7 @@ def make_model(
 def test_atoms_are_flattened_locally_and_exposed_as_conv_weights() -> None:
     model = make_model()
     flat = _kernel.materialize_atoms(
-        model.kernel, model.input_chart, model.output_chart, model.atoms.p
+        model.kernel, model.output_chart, model.input_chart, model.atoms.p
     )
     assert flat.shape == (3, 4, 12)
     assert model.materialized_atoms().shape == (3, 4, 2, 2, 3)
@@ -145,8 +145,8 @@ def test_auto_uses_materialized_execution_for_groups() -> None:
 def test_constructor_and_forward_validate_flat_patch_shape() -> None:
     with pytest.raises(ValueError, match="flattened local patch"):
         CSTConv2d(
-            _construction.linspace(17, low=-1.0, high=1.0),
             _construction.linspace(4, low=-1.0, high=1.0),
+            _construction.linspace(17, low=-1.0, high=1.0),
             in_channels=2,
             out_channels=4,
             kernel_size=3,
@@ -204,3 +204,19 @@ def test_repulsion_energy_is_shape_invariant() -> None:
     ).clamp_min(torch.finfo(atoms.dtype).tiny)
     expected = normalized.sum(dim=0).square().sum() - normalized.square().sum()
     torch.testing.assert_close(model.repulsion_energy(), expected)
+
+
+def test_charts_keyword_accepts_output_input_pair() -> None:
+    out_chart = _construction.linspace(4, low=-1.0, high=1.0)
+    in_chart = _construction.linspace(12, low=-1.0, high=1.0)
+    model = CSTConv2d(
+        charts=(out_chart, in_chart),
+        in_channels=2,
+        out_channels=4,
+        kernel_size=(2, 3),
+        atoms=3,
+        kernel=make_kernel().declaration(),
+    )
+    assert model.charts == (model.output_chart, model.input_chart)
+    assert (model.output_chart.ncs, model.input_chart.ncs) == (4, 12)
+    assert model.dense_weight().shape == (4, 2, 2, 3)

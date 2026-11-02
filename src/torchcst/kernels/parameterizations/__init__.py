@@ -7,7 +7,6 @@ from .base import (
     FixedWidthSpec,
     ParameterizationSpec,
     PhysicalAmpRadiusSpec,
-    PhysicalAmpWidthSpec,
     RadiusBounds,
 )
 from .log_width import LogWidthSpec
@@ -20,7 +19,6 @@ __all__ = [
     "LogWidthSpec",
     "ParameterizationSpec",
     "PhysicalAmpRadiusSpec",
-    "PhysicalAmpWidthSpec",
     "PolarAmpRadiusSpec",
     "PolarAmpWidthSpec",
     "RadiusBounds",

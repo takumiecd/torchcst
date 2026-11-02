@@ -6,7 +6,6 @@ from torchcst._builtin_callbacks import seal_functions as _seal_functions
 from torchcst.kernels.profiles import (
     BiweightSpec,
     GaussianSpec,
-    QuadraticBSplineSpec,
     TriangleSpec,
     TriweightSpec,
     WendlandC2Spec,
@@ -18,30 +17,30 @@ _TYPES = (
     BiweightSpec,
     TriangleSpec,
     WendlandC2Spec,
-    QuadraticBSplineSpec,
 )
 
 
 def _module(state):
-    from torchcst.kernels.spec import (
-        CellIntegratedProfileBinding,
-        RadiusIntegratedProfileBinding,
-    )
+    from torchcst.kernels.spec import RadiusIntegratedProfileBinding
 
-    if type(state.binding) in (
-        CellIntegratedProfileBinding,
-        RadiusIntegratedProfileBinding,
-    ):
+    if type(state.binding) is RadiusIntegratedProfileBinding:
         return import_module("torchcst._backends.torch.profiles.cell_integrated")
     if type(state.binding.profile) not in _TYPES:
         raise ValueError("unsupported profile shape or revision")
     if state.binding.profile.revision != 1:
         raise ValueError("unsupported profile shape revision")
     normalization = state.binding.normalization
-    if normalization.kind == "discrete_l2":
-        expected = None if type(state.binding.profile) is GaussianSpec else 1e-6
-        if normalization.floor != expected:
-            raise ValueError("unsupported profile normalization floor")
+    if normalization.kind == "discrete_l2" and (
+        (
+            type(state.binding.profile) is GaussianSpec
+            and normalization.floor is not None
+        )
+        or (
+            type(state.binding.profile) is not GaussianSpec
+            and normalization.floor is None
+        )
+    ):
+        raise ValueError("unsupported profile normalization floor")
     return import_module(
         "torchcst._backends.torch.profiles."
         + ("gaussian" if type(state.binding.profile) is GaussianSpec else "compact")

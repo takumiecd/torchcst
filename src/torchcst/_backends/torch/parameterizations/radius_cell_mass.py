@@ -23,19 +23,19 @@ def decoded_values(state, p):
     return amplitude, input_radius, output_radius
 
 
-def support_radii(state, input_chart, output_chart, p):
-    _split(state, input_chart, output_chart, p)
+def support_radii(state, output_chart, input_chart, p):
+    _split(state, output_chart, input_chart, p)
     _, inputs, outputs = decoded_values(state, p)
     return inputs, outputs
 
 
-def support_radius(state, input_chart, output_chart, p):
-    inputs, outputs = support_radii(state, input_chart, output_chart, p)
+def support_radius(state, output_chart, input_chart, p):
+    inputs, outputs = support_radii(state, output_chart, input_chart, p)
     if not torch.equal(inputs, outputs):
         raise ValueError("input/output support radii differ; use support_radii")
     return inputs
 
 
-def amplitude(state, input_chart, output_chart, p):
-    _split(state, input_chart, output_chart, p)
+def amplitude(state, output_chart, input_chart, p):
+    _split(state, output_chart, input_chart, p)
     return decoded_values(state, p)[0]

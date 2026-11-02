@@ -14,7 +14,7 @@ from test_radius_large_shapes import metadata_context
 
 from benchmarks.cuda.linear.manifest import decode_snapshot, load_run
 from benchmarks.cuda.linear.radius_cell_mass import configure, fixture
-from torchcst import ChebyshevRadiusSpec, CSTLinear, chart_presets, presets
+from torchcst import ChebyshevSpec, CSTLinear, chart_presets, kernels
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass import executor as ex
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.algorithm import (
     RadiusCellMassAlgorithm,
@@ -110,12 +110,14 @@ def test_large_tile_local_budget_matches_actual_128_thread_layout():
 
 
 def test_support_rejects_tile_local_budget_overflow_from_live_declaration():
-    chart = chart_presets.regular_grid(((1024,),), geometry="flat_torus")
+    chart = chart_presets.regular_grid(1024, geometry="flat_torus")
     model = CSTLinear(
         chart,
         chart,
         atoms=8,
-        kernel=presets.radius_cell_mass(profile=ChebyshevRadiusSpec(modes=16)),
+        kernel=kernels.product(
+            kernels.cell_mass(ChebyshevSpec(modes=16)), coordinates=kernels.physical()
+        ),
     )
     context = replace(
         model.build_context(LinearInputs(torch.zeros(4, 1024))),

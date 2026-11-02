@@ -111,7 +111,8 @@ def test_fused_launches_and_saved_projections(
         calls = [
             call
             for call in native.calls
-            if call[0] not in {"classify_atoms", "classify_atoms_async", "layout_ranges"}
+            if call[0]
+            not in {"classify_atoms", "classify_atoms_async", "layout_ranges"}
         ]
         names = [call[0] for call in calls]
         assert names == (
@@ -242,7 +243,7 @@ def _skewed_physical_atoms(plan, count, dtype):
 @pytest.mark.parametrize("output_tile", [32, 64])
 def test_fused_skewed_owner_chunks_public_reference(dtype, modes, start, output_tile):
     """97 atoms in a range crosses 32/64 chunks with a one-atom final tail."""
-    from torchcst import ChebyshevRadiusSpec, CSTLinear, chart_presets, presets
+    from torchcst import ChebyshevSpec, CSTLinear, chart_presets, kernels
 
     a = axis_plan(32, modes=modes)
     plan = HierarchyPlan(input=a, output=a)
@@ -257,14 +258,17 @@ def test_fused_skewed_owner_chunks_public_reference(dtype, modes, start, output_
     assert 8 * (len(p) + a.active_nodes(start) * a.basis_count) <= 48 * 1024
     assert a.banks[-1].period > a.period
     # The public physical-radius CPU path is separate from native scheduling.
-    chart = chart_presets.regular_grid(((32,),), spacing=1.0, geometry="flat_torus")
+    chart = chart_presets.regular_grid(32, spacing=1.0, geometry="flat_torus")
     cpu = CSTLinear(
         chart,
         chart,
         atoms=p.double(),
         dtype=torch.float64,
         backend="factored",
-        kernel=presets.radius_cell_mass(profile=ChebyshevRadiusSpec(modes=modes)),
+        kernel=kernels.product(
+            kernels.cell_mass(ChebyshevSpec(modes=modes)),
+            coordinates=kernels.physical(),
+        ),
     )
     rng = torch.Generator().manual_seed(812)
     x = torch.randn(3, 32, dtype=dtype, generator=rng)

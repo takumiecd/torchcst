@@ -5,11 +5,46 @@ import json
 
 import pytest
 import torch
-from test_cell_mass_polar import layer
 
-from torchcst import CSTOptimizer
+from torchcst import (
+    BandwidthBounds,
+    CSTLinear,
+    CSTOptimizer,
+    GaussianSpec,
+    chart_presets,
+    kernels,
+)
 from torchcst._backends.torch import finite
 from torchcst._backends.torch.geometry.base import validate_points
+
+
+def layer(n=128, count=37, *, dtype=torch.float64, device="cpu"):
+    chart = chart_presets.regular_grid(n, spacing=128 / n, geometry="flat_torus")
+    kernel = kernels.product(
+        kernels.l2(GaussianSpec()),
+        coordinates=kernels.polar(
+            amplitude_max=8.0,
+            w_c=2.4,
+            input_bounds=BandwidthBounds(
+                minimum=2.0, birth=16.0, maximum=40.0, upper_floor=4.0
+            ),
+            alpha_init=0.5,
+        ),
+    )
+    rng = torch.Generator().manual_seed(120)
+    p = torch.randn(count, 4, generator=rng).to(dtype)
+    p[:, :2] *= torch.linspace(1.0, 2.0, count, dtype=dtype)[:, None] / p[:, :2].norm(
+        dim=1, keepdim=True
+    )
+    p[:, 2:] *= 150
+    return CSTLinear(
+        chart,
+        chart,
+        atoms=p.to(device),
+        kernel=kernel,
+        dtype=dtype,
+        device=device,
+    )
 
 
 def optimizer(model, *, check_finite):

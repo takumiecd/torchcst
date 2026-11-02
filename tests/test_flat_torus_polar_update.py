@@ -5,9 +5,18 @@ from dataclasses import replace
 
 import pytest
 import torch
-from test_cell_mass_polar import layer
 
-from torchcst import AtomUpdateBinding, AtomUpdateInputs, CSTOptimizer, Dispatcher
+from torchcst import (
+    AtomUpdateBinding,
+    AtomUpdateInputs,
+    BandwidthBounds,
+    CSTLinear,
+    CSTOptimizer,
+    Dispatcher,
+    GaussianSpec,
+    chart_presets,
+    kernels,
+)
 from torchcst._backends.catalog import get_registry
 from torchcst._backends.cuda.algorithms.polar_update.plans import (
     FLAT_TORUS_FUSED,
@@ -16,6 +25,51 @@ from torchcst._backends.cuda.algorithms.polar_update.plans import (
 from torchcst._backends.dispatch import FixedSelector
 from torchcst._backends.schema import DeviceInfo
 from torchcst._backends.torch.kernels import execution
+
+
+def layer(
+    n=128,
+    count=37,
+    *,
+    dtype=torch.float64,
+    device="cpu",
+    site_scaled=False,
+):
+    spacing = 128 / n
+    chart = chart_presets.regular_grid(n, spacing=spacing, geometry="flat_torus")
+    if site_scaled:
+        maximum = min(100 * spacing, 128 / 3)
+        rounded = torch.tensor(maximum, dtype=torch.float32)
+        if float(rounded) > maximum:
+            rounded = torch.nextafter(rounded, torch.zeros_like(rounded))
+        bounds = BandwidthBounds(
+            minimum=spacing,
+            birth=8 * spacing,
+            maximum=float(rounded),
+            upper_floor=2 * spacing,
+        )
+    else:
+        bounds = BandwidthBounds(minimum=2.0, birth=16.0, maximum=40.0, upper_floor=4.0)
+    kernel = kernels.product(
+        kernels.l2(GaussianSpec()),
+        coordinates=kernels.polar(
+            amplitude_max=8.0, w_c=2.4, input_bounds=bounds, alpha_init=0.5
+        ),
+    )
+    rng = torch.Generator().manual_seed(120)
+    p = torch.randn(count, 4, generator=rng).to(dtype)
+    p[:, :2] *= torch.linspace(1.0, 2.0, count, dtype=dtype)[:, None] / p[:, :2].norm(
+        dim=1, keepdim=True
+    )
+    p[:, 2:] *= 150
+    return CSTLinear(
+        chart,
+        chart,
+        atoms=p.to(device),
+        kernel=kernel,
+        dtype=dtype,
+        device=device,
+    )
 
 
 def selector():
@@ -131,8 +185,16 @@ def test_fused_periodic_update_matches_reference_and_live_periods(mode, rate):
             # Revalidate changed metadata, and read the current device scalars.
             model.kernel.scalar("radial_regularization").mul_(1.1)
             for chart in model.cst_charts():
-                chart.geometry.periods.mul_(2.0)
-                chart.spacing.mul_(2.0)
+                geometry = replace(
+                    chart.geometry.spec,
+                    periods=tuple(v * 2 for v in chart.geometry.periods),
+                )
+                chart.geometry.spec = geometry
+                chart.spec = replace(
+                    chart.spec,
+                    geometry=geometry,
+                    spacing=tuple(v * 2 for v in chart.spacing),
+                )
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
@@ -173,9 +235,7 @@ def test_optimizer_matches_reference_parameters_moments_and_step(n):
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
-@pytest.mark.parametrize(
-    "fault", ["gradient", "sigma", "period", "period_dtype", "period_device"]
-)
+@pytest.mark.parametrize("fault", ["gradient", "sigma", "period"])
 def test_invalid_changes_reject_before_base_optimizer_mutation(fault):
     model = layer(count=7, dtype=torch.float32, device="cuda")
     opt = CSTOptimizer(
@@ -191,14 +251,57 @@ def test_invalid_changes_reject_before_base_optimizer_mutation(fault):
         model.atoms.p.grad[0, 0] = float("nan")
     elif fault == "sigma":
         model.kernel.scalar("sigma_min_input").fill_(-1)
-    elif fault == "period_dtype":
-        model.input_chart.geometry.periods = model.input_chart.geometry.periods.double()
-    elif fault == "period_device":
-        model.input_chart.geometry.periods = model.input_chart.geometry.periods.cpu()
     else:
-        model.input_chart.geometry.periods.fill_(0)
+        object.__setattr__(model.input_chart.geometry.spec, "periods", (0.0,))
     with pytest.raises((ValueError, FloatingPointError)):
         opt.step()
     torch.testing.assert_close(model.atoms.p, previous, rtol=0, atol=0)
     for key, value in state.items():
         torch.testing.assert_close(opt.state[model.atoms.p][key], value, rtol=0, atol=0)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+def test_asymmetric_period_metadata_rebuilds_constants_for_actual_atoms():
+    bounds = BandwidthBounds(minimum=0.5, birth=1.0, maximum=2.0, upper_floor=0.5)
+    spec = kernels.product(
+        kernels.l2(GaussianSpec()),
+        coordinates=kernels.polar(
+            amplitude_max=1.0,
+            w_c=0.3,
+            bounds=bounds,
+        ),
+    )
+    model = CSTLinear(
+        charts=(
+            chart_presets.regular_grid(16, geometry="flat_torus"),
+            chart_presets.regular_grid(16, spacing=0.5, geometry="flat_torus"),
+        ),
+        atoms=torch.tensor([[0.3, 1.2, -16.2, 16.8]], dtype=torch.float32),
+        kernel=spec,
+    ).cuda()
+    binding = AtomUpdateBinding(model.operator)
+    dispatch = Dispatcher(registry=get_registry())
+    for phase in range(2):
+        old = model.atoms.p.detach().clone()
+        proposal = old + old.new_tensor([[0.02, -0.03, -0.7, 0.6]])
+        expected = execution.apply_parameter_update(
+            model.kernel, *model.cst_charts(), old, proposal - old, step_size=0.01
+        )
+        with torch.no_grad():
+            model.atoms.p.copy_(proposal)
+        dispatch.run(binding, AtomUpdateInputs(old, 0.01), plan=FLAT_TORUS_FUSED)
+        torch.testing.assert_close(model.atoms.p, expected, rtol=2e-6, atol=2e-6)
+        if phase == 0:
+            for chart, scale in zip(model.cst_charts(), (2.0, 0.5)):
+                geometry = replace(
+                    chart.geometry.spec,
+                    periods=tuple(v * scale for v in chart.geometry.periods),
+                )
+                chart.geometry.spec = geometry
+                chart.spec = replace(
+                    chart.spec,
+                    geometry=geometry,
+                    spacing=tuple(v * scale for v in chart.spacing),
+                )
+            # Geometry placement does not supply device/dtype to the update.
+            model.input_chart.geometry.cpu().double()

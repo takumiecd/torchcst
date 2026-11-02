@@ -12,8 +12,8 @@ import torch
 from tools.kernel_dev import __main__ as dev
 
 LINEAR = Path(__file__).resolve().parents[1] / "benchmarks/cuda/linear"
-PLANS = LINEAR / "plans-local-contraction.json"
-CASE = LINEAR / "cases/local-contraction-64-sigma3.json"
+PLANS = LINEAR / "plans-radius-cell-mass.json"
+CASE = LINEAR / "cases/radius-cell-mass-128-initial.json"
 
 
 def test_preflight_validates_multiple_cases_without_gpu_imports():
@@ -23,7 +23,7 @@ from tools.kernel_dev.__main__ import main
 assert main(['check', '--plans', {str(PLANS)!r},
     '--case', {str(CASE)!r}, '--case', {str(CASE)!r}]) == 0
 assert 'triton' not in sys.modules
-assert 'torchcst._backends.cuda.algorithms.linear.local_product.executor' not in sys.modules
+assert 'torchcst._backends.cuda.algorithms.linear.radius_cell_mass.executor' not in sys.modules
 """
     result = subprocess.run(
         [sys.executable, "-c", code], check=True, capture_output=True, text=True
@@ -77,7 +77,7 @@ def test_gpu_suite_rejects_missing_triton(monkeypatch):
     monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
     monkeypatch.setattr(dev.importlib.util, "find_spec", lambda name: None)
     with pytest.raises(ValueError, match="requires NVIDIA CUDA and Triton"):
-        dev.test_suite("local-product")
+        dev.test_suite("atom-update")
 
 
 def test_cpu_suite_rejects_visible_cuda(monkeypatch):
@@ -89,7 +89,7 @@ def test_cpu_suite_rejects_visible_cuda(monkeypatch):
 @pytest.mark.parametrize(
     "plans,case,candidate",
     [
-        (PLANS, CASE, "persistent-supportprep-band"),
+        (PLANS, CASE, "radius-block-local"),
         (
             LINEAR / "plans.json",
             LINEAR / "cases/normalized-1024-broad.json",
@@ -116,7 +116,7 @@ def test_prepared_comparison_runs_through_existing_manifest(
 
 @pytest.mark.parametrize(
     "candidates",
-    [["unknown"], ["persistent-band", "persistent-band"], ["hybrid-persistent-mid4"]],
+    [["unknown"], ["radius-block-local", "radius-block-local"], ["radius-reference"]],
 )
 def test_prepare_rejects_invalid_candidates_before_writing(tmp_path, candidates):
     output = tmp_path / "comparison"
@@ -129,7 +129,7 @@ def test_prepare_does_not_overwrite_existing_experiment(tmp_path):
     path = tmp_path / "case.json"
     path.write_text("existing evidence")
     with pytest.raises(FileExistsError):
-        dev.prepare(PLANS, CASE, ["persistent-band"], tmp_path)
+        dev.prepare(PLANS, CASE, ["radius-block-local"], tmp_path)
     assert path.read_text() == "existing evidence"
 
 
@@ -152,11 +152,11 @@ def test_prepare_selects_new_catalog_candidate_and_requires_dense(tmp_path):
     case = tmp_path / "source-case.json"
     case.write_text(json.dumps(value))
     output = tmp_path / "comparison"
-    report = dev.prepare(PLANS, case, ["persistent-band"], output)
-    assert report["cases"][0]["plans"] == [value["baseline"], "persistent-band"]
+    report = dev.prepare(PLANS, case, ["radius-block-local"], output)
+    assert report["cases"][0]["plans"] == [value["baseline"], "radius-block-local"]
     value["dense"] = False
     case.write_text(json.dumps(value))
     rejected = tmp_path / "without-dense"
     with pytest.raises(ValueError, match="dense reference"):
-        dev.prepare(PLANS, case, ["persistent-band"], rejected)
+        dev.prepare(PLANS, case, ["radius-block-local"], rejected)
     assert not rejected.exists()
