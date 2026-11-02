@@ -49,7 +49,8 @@ def original_attribute(owner, name):
             return False
     expected = attributes.get(name, _MISSING)
     return (
-        expected is not _UNSUPPORTED
+        expected is not _MISSING
+        and expected is not _UNSUPPORTED
         and inspect.getattr_static(owner, name, _MISSING) is expected
     )
 

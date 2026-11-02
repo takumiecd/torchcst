@@ -84,3 +84,8 @@ class RegularGridChartState(ChartState):
 
     def get_extra_state(self):
         return {**super().get_extra_state(), "grid_shape": self.grid_shape}
+
+
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
+
+_seal_functions(globals())
