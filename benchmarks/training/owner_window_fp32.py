@@ -150,16 +150,26 @@ def optimizer_check(model, actual, reference):
         "eps_band_sign_changes": int(((g.sign() != r.sign()) & eps_band).sum()),
         "zeroed_nonzero_gradients": int(((g == 0) & (r != 0)).sum()),
     }
+    from benchmarks.training.cell_mass_mnist import radius_optimizer_contract
+
+    contract = radius_optimizer_contract()
+    result["optimizer_contract"] = contract
     states = []
     for grad in (g, r, r):
         m = copy.deepcopy(model).cuda()
         opt = CSTAdamW(
             m.parameters(),
             model=m,
-            lr=1e-3,
-            weight_decay=0,
-            fused=True,
-            check_finite=False,
+            lr=contract["lr"],
+            weight_decay=contract["atom_raw_weight_decay"],
+            amplitude_weight_decay=contract["amplitude_weight_decay"],
+            fused=contract["fused"],
+            capturable=contract["capturable"],
+            betas=contract["betas"],
+            eps=contract["eps"],
+            amsgrad=contract["amsgrad"],
+            maximize=contract["maximize"],
+            check_finite=contract["check_finite"],
             update_selector=FixedSelector(
                 RADIUS_FLAT_TORUS_FUSED, registry=make_algorithm_registry()
             ),
@@ -304,6 +314,7 @@ def run_case(ext, name, model, x, dy, out, *, independent=True):
     record["pass"] = (
         all(record["candidate_fp32"][key]["pass"] for key in ("Y", "dX", "dP"))
         and record["optimizer"]["pass"]
+        and record["optimizer"]["full_fixture_admissible"]
     )
     record["baseline_vjp_pass"] = all(
         record["baseline_fp64"][key]["pass"] for key in ("Y", "dX", "dP")
