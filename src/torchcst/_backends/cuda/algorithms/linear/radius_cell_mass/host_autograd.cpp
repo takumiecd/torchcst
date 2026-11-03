@@ -166,3 +166,5 @@ void bind_host_autograd(pybind11::module_ &module) {
 #include "host_compact_keyed.cuh"
 
 #include "host_local_tile.cuh"
+
+#include "host_owner_window.cuh"

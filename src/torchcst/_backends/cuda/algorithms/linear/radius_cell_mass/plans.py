@@ -206,3 +206,52 @@ LOCAL_TILE_MOMENTS = ExecutionPlan(
         native_entry=True,
     ),
 )
+
+
+GLOBAL_OWNER_COMPACT_FUSED = ExecutionPlan(
+    "cuda_radius_cell_mass",
+    "v1",
+    RadiusCellMassRecipe(
+        input_direct_levels=2,
+        output_direct_levels=2,
+        schedule="global_owner_compact_fused",
+        native_autograd=True,
+        native_entry=True,
+    ),
+)
+
+GLOBAL_OWNER_WINDOW17 = ExecutionPlan(
+    "cuda_radius_cell_mass",
+    "v1",
+    RadiusCellMassRecipe(
+        input_direct_levels=2,
+        output_direct_levels=2,
+        schedule="global_owner_window17",
+        native_autograd=True,
+        native_entry=True,
+    ),
+)
+
+GLOBAL_OWNER_WINDOW_FOLD = ExecutionPlan(
+    "cuda_radius_cell_mass",
+    "v1",
+    RadiusCellMassRecipe(
+        input_direct_levels=2,
+        output_direct_levels=2,
+        schedule="global_owner_window_fold",
+        native_autograd=True,
+        native_entry=True,
+    ),
+)
+
+GLOBAL_OWNER_WINDOW_RECOMPUTE = ExecutionPlan(
+    "cuda_radius_cell_mass",
+    "v1",
+    RadiusCellMassRecipe(
+        input_direct_levels=2,
+        output_direct_levels=2,
+        schedule="global_owner_window_recompute",
+        native_autograd=True,
+        native_entry=True,
+    ),
+)

@@ -363,7 +363,7 @@ def test_new_cta_instantiates_actual_header_without_emulating_barriers(
     compact = (DIRECTORY / "owner_compact_partials.cuh").read_text()
     kernel = compact[
         compact.index(
-            "template<class T>\n__global__ void owner_compact_partials_kernel"
+            "template<class T, bool FuseGradient = false>\n__global__ void owner_compact_partials_kernel"
         ) : compact.index("// Sum the K coefficient contributions")
     ]
     insertion = (

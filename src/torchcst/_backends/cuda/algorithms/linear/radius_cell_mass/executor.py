@@ -572,7 +572,13 @@ class _RadiusLinear(torch.autograd.Function):
 def checked_owner_compact_keyed_linear(plan, x, atoms, *, recipe):
     """Explicit mode10: compact mode9 kernels with qualified key masks."""
     RadiusCellMassAlgorithm().validate_recipe(recipe)
-    if recipe.schedule != "global_owner_compact_keyed":
+    if recipe.schedule not in (
+        "global_owner_compact_keyed",
+        "global_owner_compact_fused",
+        "global_owner_window17",
+        "global_owner_window_fold",
+        "global_owner_window_recompute",
+    ):
         raise ValueError("expected the explicit compact keyed-owner recipe")
     if (
         type(plan) is not HierarchyPlan
@@ -598,7 +604,26 @@ def checked_owner_compact_keyed_linear(plan, x, atoms, *, recipe):
                 native_entry=False,
             ),
         )
-    return _extension().checked_autograd_linear_compact_keyed(
+    native = _extension()
+    window_modes = {
+        "global_owner_window17": 0,
+        "global_owner_window_fold": 1,
+        "global_owner_window_recompute": 2,
+    }
+    if recipe.schedule in window_modes:
+        return native.checked_autograd_linear_owner_window(
+            x.contiguous(),
+            atoms.contiguous(),
+            plan.input.native_config(),
+            plan.output.native_config(),
+            window_modes[recipe.schedule],
+        )
+    entry = (
+        native.checked_autograd_linear_compact_fused
+        if recipe.schedule == "global_owner_compact_fused"
+        else native.checked_autograd_linear_compact_keyed
+    )
+    return entry(
         x.contiguous(),
         atoms.contiguous(),
         plan.input.native_config(),
@@ -693,7 +718,13 @@ def checked_radius_linear(plan, x, atoms, *, recipe):
     Tensor/function transforms retain the original Python Function entrance.
     """
     RadiusCellMassAlgorithm().validate_recipe(recipe)
-    if recipe.schedule == "global_owner_compact_keyed":
+    if recipe.schedule in (
+        "global_owner_compact_keyed",
+        "global_owner_compact_fused",
+        "global_owner_window17",
+        "global_owner_window_fold",
+        "global_owner_window_recompute",
+    ):
         return checked_owner_compact_keyed_linear(plan, x, atoms, recipe=recipe)
     if recipe.schedule == "block_local_tile_moments":
         return checked_local_tile_linear(plan, x, atoms, recipe=recipe)
@@ -768,7 +799,13 @@ def radius_linear(plan, x, atoms, *, recipe=None):
     if recipe is None:
         recipe = RadiusCellMassRecipe()
     RadiusCellMassAlgorithm().validate_recipe(recipe)
-    if recipe.schedule == "global_owner_compact_keyed":
+    if recipe.schedule in (
+        "global_owner_compact_keyed",
+        "global_owner_compact_fused",
+        "global_owner_window17",
+        "global_owner_window_fold",
+        "global_owner_window_recompute",
+    ):
         return checked_owner_compact_keyed_linear(plan, x, atoms, recipe=recipe)
     if recipe.schedule == "block_local_tile_moments":
         return checked_local_tile_linear(plan, x, atoms, recipe=recipe)
