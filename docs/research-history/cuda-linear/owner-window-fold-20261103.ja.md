@@ -5,7 +5,7 @@
 （`6ae8ac4a-79b0-83ec-9bf3-a32bfde47123`）。
 研究 branch は `kernel/owner-window-fold`、worktree は
 `/Users/ware10sai/.codex/worktrees/owner-window-fold/torchcst`。
-公開の既定選択と `main` は変更しない。
+検証済みの明示的 Plan を PR で統合する。公開 auto と既存 Plan の既定選択は維持する。
 
 ## 数学的契約
 
@@ -171,7 +171,8 @@ peak allocated **43.97%減**、reserved 28→8MiB。
 G/DG融合だけの時間差は0.24–0.70%と小さく、単独の強い速度改善とは扱わない。
 
 数学的な fold と現在の radius 実装への接続は成立し、この限定条件では時間とメモリの両方が改善した。
-研究 branch 上の明示的候補として残す。公開 auto、既存 Plan の既定、main へは採用しない。
+2026-11-03 の所有者の指示を受け、検証済みの明示的 Plan と比較経路を PR から main へ統合する。
+公開 auto と既存 Plan の既定への適用は今回の統合範囲に含めない。
 今回の問いを超える追加最適化や長期学習は実施していない。
 B300 の一時W/GEMM、N128、小規模/広幅/集中分布の性能、長期MNIST学習、Graph は未検証。
 B>4 と N!=1024 はこの新 Plan の適合条件外で、未対応を高速化済みとはしない。
