@@ -28,6 +28,27 @@ raw maskはまずL>16のconsumer bankを選び、その後に下位依存bankを
 同じ `compact_moment_element` で計算する。9 levelの合計gridはB4で4887→546 CTA。
 raw配列と18回/完全stepのlevel launch自体は残る。配列やlaunchを消したとは主張しない。
 
+### 演算を変えない範囲
+
+L12の実基底を $B_0(j)=1$、$B_{2k-1}(j)=\cos(2\pi kj/12)$、
+$B_{2k}(j)=\sin(2\pi kj/12)$ とする。$k=6$ はcosineだけを保持する。
+owner窓のmomentと出力展開は、それぞれ
+
+\[
+Z_{bof}=\sum_{j=0}^{11}X_{b,(4o+j)\bmod N}B_f(j),\qquad
+Y_{b,(4o+j)\bmod N}\mathrel{+}=\sum_f C_{bof}B_f(j).
+\]
+
+固定tableはこの $B$ の値をFP64で一度丸めて保持する。逆DFTによる復元ではなく
+既存の基底和なので、追加の $1/12$ は掛けない。任意中心・半径から得る係数 $q$
+は従来どおり毎回計算し、cell integrationのsincも一度だけ掛ける。
+中心微分にはalias後の番号でなく元の $\omega_k=2\pi k/P$ を使う。
+
+C縮約は $C_{bof}=\sum_{a\in\mathcal A_o}q_{af}(A_aH_{ba})$。
+各 $(b,f)$ のatom/chunk順を同じに保って担当threadだけを変える。
+raw側はwide consumer集合から必要な下位bankを展開した和集合を計算する。
+短窓bankを一律に取り除く方法では、wide consumerの子momentを欠落させる。
+
 ## 検証の境界
 
 - N1024、同一Polar/M8/base1/merge2軸、B<=4。公開の対応範囲は拡張しない。
@@ -80,3 +101,53 @@ OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 PYTHONPATH=src \
 
 ignored driver・ログ・保全先は `output/owner-window-followup/`。pool job原本も保持する。
 GPU結果、job/source/result hash、採否、長期学習結果は完了後に追記する。
+
+## L4 初回比較
+
+source commit `bf52fb933dd387d815395d312fd9c0c5dfbd7cfa`。
+`l4job-9a4503d3113b48139b0272bb654e4c0c` は成功し、結果をhash照合して回収した。
+NVIDIA L4、Torch 2.11.0+cu130、CUDA 13.0、Triton 3.6.0、CPU 12論理core、
+Torch/OMP/MKL/OpenBLASのthread数1。TF32 off、FP32入出力・Parameter、内部FP64。
+N1024/A52428/真B4、native CSTAdamW、dX込み、Graphなし。
+
+C専用testは106件、followup+旧window testは449件、計555件が全て通過。
+全6 Planが既存Linear runnerの全atom Y/dX/dP、独立quadrature、3 stepの
+matched optimizer状態検証と、初期・更新後の全atom検証を通過した。
+全atomの初期max_abs誤差はY `1.145e-10`、dX `1.162e-10`、dP `1.189e-7` 以下。
+配置変更のbyte gateと固定DFTを含む一般の数値gateは区別する。
+
+未計装の完全step、warmup10回、計測101回の中央値。別に同期したphase計測は
+原因の参考に留め、完全stepから差し引いたり足し合わせたりしない。
+
+| Plan | 完全step ms | 基準からの短縮 | peak allocated MiB | peak reserved MiB |
+| --- | ---: | ---: | ---: | ---: |
+| recompute | 2.434310 | — | 7.111328 | 8 |
+| c-batch | 2.318125 | 4.77% | 7.111328 | 8 |
+| fixed-dft | 2.254450 | 7.39% | 7.111328 | 8 |
+| tight-raw | 2.405737 | 1.17% | 7.111328 | 8 |
+| combined | 2.103889 | 13.57% | 7.111328 | 8 |
+| dft-raw | 2.220495 | 8.78% | 7.111328 | 8 |
+| dense | 0.704136 | 別model/更新 | 32.329590 | 42 |
+
+先に実行したCだけの比較でもrecompute `2.451361 ms`、c-batch `2.328365 ms`
+（5.02%短縮）で、allocated/reservedは同じだった。同一VM内の別process比較であり、
+独立VMの再現2回とは数えない。combinedはdenseの約2.99倍で、denseに並んだとは言えない。
+
+`cuobjdump`で固定DFT展開のregisterは42→37、C forwardは106→108、backwardは125で同じ。
+Cのstack frameはforward1056→1024 byte、backward1088→1056 byte。
+これだけでspillやoccupancyの改善を断定しない。dynamic sharedは22,048 byteで同じ。
+
+このfixtureは研究専用で、既存submission/database adapterが明示的に受付対象外とする。
+ローカルsubmission検査のrejectはこの既知の境界であり、GPU演算検証の失敗ではない。
+今回DBやIssueへの投稿は行っていない。
+
+- source archive SHA256: `3a9396209ec51561d323434f16a9c7291873fad592d789f85b7f18cb5cb57648`
+- result archive SHA256: `a537ab99a5a458b5ae5b482daa02e987c7ecbeb3a75d7d3bdb81b22303ee95eb`
+- native binary SHA256: `42f0329ef1bcbb5012372e9b081ad9cb187e720ad4bd238f683e24bf6ceefb10`
+- local保全: `output/owner-window-followup/initial-results/`、`initial-spec.json`、`initial-receipt.json`
+- pool原本: `/Users/ware10sai/.local/state/colab-l4-pool/jobs/l4job-9a4503d3113b48139b0272bb654e4c0c/`
+
+初回最速のcombinedを選び、順番を反転したfresh processの再測定と、同一初期値・データ順序の
+baseline/candidate/denseのMNIST各3 epochを次のjobで実行する。1 seedであり、
+学習一般化の証明ではない。resident dataを含むMLP全体のmemoryを改めて測り、
+単層の44%削減率をそのままモデル全体へ転用しない。
