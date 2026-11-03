@@ -8,6 +8,7 @@ Python hooks/settings/storage changes invalidate replay before any launch.
 from __future__ import annotations
 
 import argparse
+import gc
 import json
 from pathlib import Path
 
@@ -94,6 +95,39 @@ def metadata(t):
     )
 
 
+@torch.no_grad()
+def dense_proposal(optimizer):
+    """Same PyTorch fused AdamW call, without eager-only health-check logic."""
+    from torch.optim.adamw import adamw
+
+    for group in optimizer.param_groups:
+        params, grads, means, squares, maxima, clocks = [], [], [], [], [], []
+        has_complex = optimizer._init_group(
+            group, params, grads, means, squares, maxima, clocks
+        )
+        beta1, beta2 = group["betas"]
+        adamw(
+            params,
+            grads,
+            means,
+            squares,
+            maxima,
+            clocks,
+            foreach=group["foreach"],
+            capturable=group["capturable"],
+            differentiable=group["differentiable"],
+            fused=group["fused"],
+            amsgrad=group["amsgrad"],
+            beta1=beta1,
+            beta2=beta2,
+            lr=group["lr"],
+            weight_decay=group["weight_decay"],
+            eps=group["eps"],
+            maximize=group["maximize"],
+            has_complex=has_complex,
+        )
+
+
 class PreparedStep:
     """Own an exclusive complete forward/backward/update invocation.
 
@@ -116,7 +150,20 @@ class PreparedStep:
             torch.zeros((), dtype=torch.int64, device=tx.device),
         )
         self.graph = None
+        self.owner_stream = torch.cuda.current_stream().cuda_stream
+        if self.owner_stream == 0:
+            raise ValueError(
+                "construct and first-use the cohort on an explicit non-default stream"
+            )
         self.invalidated = False
+        if type(model) is not nn.Sequential or [type(m) for m in model] != [
+            nn.Linear,
+            nn.ReLU,
+            type(model[2]),
+            nn.ReLU,
+            nn.Linear,
+        ]:
+            raise ValueError("only the canonical five-element model is supported")
         self.params = tuple(model.parameters())
         self.site = model[2] if kind == "cst" else None
         self.middle = tx.new_empty((4, 1024), requires_grad=True)
@@ -147,6 +194,33 @@ class PreparedStep:
         # Tensor values of learned parameters may change. Constant buffers and
         # all storage identities/layouts must remain unchanged.
         return (
+            (
+                torch.backends.cuda.matmul.allow_tf32,
+                torch.backends.cudnn.allow_tf32,
+                torch.get_float32_matmul_precision(),
+            ),
+            tuple(
+                (fn, getattr(fn, "__code__", None))
+                for fn in (
+                    nn.functional.relu,
+                    nn.functional.cross_entropy,
+                    type(self.optimizer).step,
+                    self.optimizer._adamw_proposal,
+                )
+                if fn is not None
+            )
+            if self.site is not None
+            else tuple(
+                (fn, getattr(fn, "__code__", None))
+                for fn in (
+                    nn.functional.relu,
+                    nn.functional.cross_entropy,
+                    type(self.optimizer).step,
+                )
+            ),
+            tuple(metadata(p.grad) if p.grad is not None else None for p in self.params)
+            if self.graph is not None
+            else (),
             tuple((name, metadata(p)) for name, p in self.model.named_parameters()),
             tuple(
                 (name, metadata(b), b._version)
@@ -177,7 +251,13 @@ class PreparedStep:
         )
 
     def eligible(self):
-        if self.invalidated or torch.cuda.is_current_stream_capturing():
+        if (
+            self.invalidated
+            or torch.cuda.current_stream().cuda_stream != self.owner_stream
+            or torch.cuda.is_current_stream_capturing()
+            or not torch.is_grad_enabled()
+            or torch.is_inference_mode_enabled()
+        ):
             return False
         if (
             torch._C._is_torch_function_mode_enabled()
@@ -188,6 +268,11 @@ class PreparedStep:
             or torch.is_autocast_enabled("cuda")
             or torch.are_deterministic_algorithms_enabled()
         ):
+            return False
+        saved_hooks = getattr(
+            torch._C._autograd, "_top_saved_tensors_default_hooks", None
+        )
+        if saved_hooks is None or saved_hooks(False) is not None:
             return False
         from torch.nn.modules import module as module_globals
         from torch.optim import optimizer as optimizer_globals
@@ -286,18 +371,16 @@ class PreparedStep:
                     periods=self.periods,
                 )
         else:
-            opt.step()
+            dense_proposal(opt)
         self.totals[0].add_(self.loss.detach() * 4)
         self.totals[1].add_((self.logits.detach().argmax(1) == target).sum())
 
     def capture(self):
         saved = snapshot(self.model, self.optimizer)
-        stream = torch.cuda.Stream()
-        stream.wait_stream(torch.cuda.current_stream())
+        stream = torch.cuda.current_stream()
         with torch.cuda.stream(stream):
             for _ in range(3):
                 self.body()
-        torch.cuda.current_stream().wait_stream(stream)
         torch.cuda.synchronize()
         self.graph = torch.cuda.CUDAGraph()
         with torch.cuda.graph(self.graph, stream=stream):
@@ -377,6 +460,8 @@ def run_probe(inputs, output):
                     },
                 }
             )
+        del y, loss
+        gc.collect()
         reports[kind] = {}
         for mode in ("prepared", "graph"):
             restore(model, opt, start)
@@ -400,7 +485,8 @@ def run_probe(inputs, output):
             reports[kind][mode] = rows
             (output / "probe.json").write_text(json.dumps(reports, indent=2))
             assert all(r["all_byte_equal"] for r in rows), (kind, mode, rows)
-            del program
+            del program, y, loss
+            gc.collect()
         print(kind, "capture and byte state PASS", flush=True)
     return reports
 
@@ -410,7 +496,9 @@ def main():
     parser.add_argument("--inputs", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    run_probe(args.inputs, args.output)
+    stream = torch.cuda.Stream()
+    with torch.cuda.stream(stream):
+        run_probe(args.inputs, args.output)
 
 
 if __name__ == "__main__":
