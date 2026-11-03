@@ -270,3 +270,93 @@ Graph部分だけを `l4job-71f276106b15410fb32b3050324d6b8f` で再測定する
 - 学習job source archive SHA256: `5f0300bd2e1ee689be7ccc9baf2b820ed962dc6105378ad9437c8879b79a1c93`
 - 学習job result archive SHA256: `04af3ecec268d9a71aa5b44705c8e50c5593c8e23b9f37e07f96b9b3d05a3b80`
 - 回収manifestの34ファイルを再hash照合。`output/owner-window-fp32/phase2-learning-results/`に保全。
+
+### FP32とGraphの併用で大幅な短縮を確認
+
+再測定 `l4job-71f276106b15410fb32b3050324d6b8f` は正常終了した。
+source `63aa8079972ee14bedd80743f0964728799c0a57`、L4
+`GPU-4a2c5f13-35c7-09db-aea8-a56883d034ac`、driver580.82.07、
+Torch2.11.0+cu130/CUDA13/Triton3.6、CPU math threads1。
+学習jobとは別allocationだが、**以下の全比較はこの1台・同じallocation内**で行った。
+
+初期/既存baseline学習後の2状態、256 step、6 balanced-order fresh process、全72 cellが完了。
+CSTの全精度条件で開始P/Adam状態はbyte一致。同じ精度・モデル・状態の各12 cellは、
+開始/終了Tensor状態、最終全Parameter勾配、loss/正解数集計、data/order/input hashが一致した。
+最初に候補の両状態について4-step eager/Graphも照合した。
+これは全256 stepの全中間Tensor比較や、45,000 stepのGraph学習ではない。
+
+| 状態 | CST FP64 eager | CST FP32 eager | CST FP64 Graph | CST FP32 Graph | dense eager | dense Graph |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 初期共通8更新後 | 2.595192 | 2.606781 | 2.134053 | **.864602** | 1.325697 | .203586 |
+| baseline学習後 | 2.691627 | 2.712309 | 2.302282 | **.876375** | 1.303198 | .205140 |
+
+単位は未計装完全stepのmean ms、gather/loss/dX/全dP/optimizer/metricsとGraph guard・入力index供給・
+host version通知を含む。評価/データ配置/準備はstep時間外で、準備時間は別記した。
+
+**同じGraph実行同士のFP64→FP32短縮は初期59.485%、学習後61.935%（約2.47/2.63倍）。**
+両状態で6/6 paired反復が短縮した。#128と同じpaired log-time比・df5片側Student-t法による
+探索的95%下限は59.443%/61.879%。独立性・log比の分布を仮定した同一allocation内の指標で、
+独立GPUや別モデルへの保証ではない。
+
+同じFP32経路のeager→Graph短縮は初期66.833%/学習後67.689%。一方eagerだけでは
+候補は名目.447%/.768%遅く、各状態3/6勝、探索的下限は負で、安定した改善/回帰とは断定しない。
+先の3 epochでの約.36%の差と合わせ、**FP32化だけではeagerの全モデル速度は改善せず、
+今回の実行方式との併用で大きな利益が出た**と判断する。
+この観測だけで律速CPU関数やGPU kernel別の費用まで確定はしない。
+
+同等Graph条件のCST/dense時間比は、FP64で10.482/11.223から、FP32で4.247/4.272へ改善した。
+denseもGraphで約84%短縮する条件なので、CSTだけGraphにしてdense eagerへ勝ったとは主張しない。
+
+### Capture込みメモリ・準備費用
+
+6反復で各条件のpeak値は一致した。共通FP64 warmup、optimizer生成/load、workspace、
+capture/復元・live開始状態再照合も含み、capture後のpeak resetは行わない。
+
+| 状態 | 条件 | allocated MiB | reserved MiB | mean setup秒 |
+| --- | --- | ---: | ---: | ---: |
+| 初期 | CST FP64 eager | 245.402344 | 418 | 3.017804 |
+| 初期 | CST FP32 eager | 245.402344 | 418 | 3.015636 |
+| 初期 | CST FP64 Graph | 251.534180 | 442 | 3.120873 |
+| 初期 | CST FP32 Graph | 251.534180 | 440 | 3.138187 |
+| 学習後 | CST FP64 eager | 250.714844 | 418 | 3.156142 |
+| 学習後 | CST FP32 eager | 250.714844 | 418 | 3.169238 |
+| 学習後 | CST FP64 Graph | 251.534180 | 442 | 3.273043 |
+| 学習後 | CST FP32 Graph | 251.534180 | 440 | 3.276027 |
+
+Graph同士でallocated減少はなく、reservedは2 MiB減。FP32 eager→Graphでは
+allocatedが初期6.131836/学習後.819336 MiB、reservedが22 MiB増える。
+全モデルのメモリ半減を示すものではない。プロセス全体のGPU使用量は未測定。
+dense Graphはallocated264.597656/265.160156 MiB、reserved432 MiB。
+このmemory scopeは前述3 epochのmemory scopeと異なるので、表を混ぜない。
+
+setupにはデータ/model配置やprocess初回compileを含まず、共通準備後のoptimizer/warmup/capture等を含む。
+GPUジョブ全体のcompile/preflight/起動・回収費用は別途pool logs/phase logsに保全している。
+複数seed、別GPU・別モデル、45,000 stepのGraph学習は未実施。
+
+### 保全と現在の判断
+
+FP32主体版はseed41のeager実学習で精度を保ち、限定した全step Graphと組み合わせて
+大きな速度利益を確認できた。**FP32を使えないという結論ではなく、継続・レビューに値する成果**。
+通常APIの既定Graph対応ではなく、モデル・状態を専有する既存研究用PreparedStepとの併用である。
+ユーザーの追加指示なく既定dispatcherへの採用・main merge・別の最適化候補追加は行わない。
+[#129](https://github.com/takumiecd/torchcst/pull/129) は#128上に積んだDraftとして保全する。
+
+- Graph比較source archive SHA256: `3fc488b8f2d30b61fe935978756cca0d797a212f8afd0149c6279d82df888824`
+- Graph比較result archive SHA256: `7b11a69268f831169b99dc666cbebecdca47bdf7941268c4c6f8d25abde55e3a`
+- 回収manifestの **176 files** を再hash照合。`output/owner-window-fp32/phase2-matched-results/`に保全。
+- 集計は `output/owner-window-fp32/phase2-summary.json`、生成script/driver/中間失敗も同directoryで保全。
+- 共有pool全slotのstoppedとsupervisor正常終了を確認し、`final-pool-status.json`へ記録した。
+- [公開用集計JSON](owner-window-fp32-results-20261103.json) はraw tensor/logではなく、上記結果からの集計。
+
+Graph比較の再現は、#128同様の7 inputファイル（初期値、baseline/dense最終checkpoint、MNIST gzip4つ）を
+hash照合して用意し、以下のprecision/mode/stateを上記条件で組み合わせる。
+
+```bash
+PYTHONPATH=src python -m benchmarks.training.full_step_graph_comparison \
+  --inputs /absolute/frozen-inputs --output output/precision-cell.json \
+  --kind cst --precision fp32 --mode graph --state final --repeat 0 --steps 256
+```
+
+実学習は `benchmarks.training.cell_mass_mnist` に `--radius-plan benchmarks/training/owner-window-fp32-plan.json`
+を指定する。FP64対照は同directoryのfp64-plan、dense対照は`--radius-execution global-response4`。
+初期値・data directory・batch4・epochs3・`--allow-radius-1024`は全条件で同じにする。

@@ -1,0 +1,377 @@
+{
+  "quality": {
+    "baseline": {
+      "loss": 0.08285561949014664,
+      "accuracy": 0.9736999869346619
+    },
+    "candidate": {
+      "loss": 0.08367239683866501,
+      "accuracy": 0.9736999869346619
+    },
+    "accuracy_delta": 0.0,
+    "loss_delta": 0.0008167773485183716,
+    "all_final_model_optimizer_and_gradients_finite": true,
+    "all_data_orders_and_initial_hashes_match": true,
+    "pass": true,
+    "scope": "one seed; prespecified continuation gate, not adoption or multi-seed proof"
+  },
+  "learning": {
+    "fp64": {
+      "mean_step_ms": 2.506986892244446,
+      "epoch_ms": [
+        2.5895211411333396,
+        2.4584371183333285,
+        2.473002417266669
+      ],
+      "test": [
+        {
+          "loss": 0.16852526366710663,
+          "accuracy": 0.948699951171875
+        },
+        {
+          "loss": 0.10939306020736694,
+          "accuracy": 0.9646999835968018
+        },
+        {
+          "loss": 0.08285561949014664,
+          "accuracy": 0.9736999869346619
+        }
+      ],
+      "peak_allocated_mib": 246.08984375,
+      "peak_reserved_mib": 392.0,
+      "final_gradient_finite": {
+        "0.weight": true,
+        "0.bias": true,
+        "2.atom_state.atoms.p": true,
+        "4.weight": true,
+        "4.bias": true
+      }
+    },
+    "fp32": {
+      "mean_step_ms": 2.498064879488892,
+      "epoch_ms": [
+        2.5590745735333336,
+        2.4376701938666656,
+        2.497449871066677
+      ],
+      "test": [
+        {
+          "loss": 0.16726753115653992,
+          "accuracy": 0.9487999677658081
+        },
+        {
+          "loss": 0.10934087634086609,
+          "accuracy": 0.9642999768257141
+        },
+        {
+          "loss": 0.08367239683866501,
+          "accuracy": 0.9736999869346619
+        }
+      ],
+      "peak_allocated_mib": 246.08984375,
+      "peak_reserved_mib": 390.0,
+      "final_gradient_finite": {
+        "0.weight": true,
+        "0.bias": true,
+        "2.atom_state.atoms.p": true,
+        "4.weight": true,
+        "4.bias": true
+      }
+    },
+    "dense": {
+      "mean_step_ms": 1.31723836708889,
+      "epoch_ms": [
+        1.2973538971333256,
+        1.3790170414666743,
+        1.2753441626666702
+      ],
+      "test": [
+        {
+          "loss": 0.10997212678194046,
+          "accuracy": 0.9641000032424927
+        },
+        {
+          "loss": 0.09457432478666306,
+          "accuracy": 0.9693999886512756
+        },
+        {
+          "loss": 0.07001751661300659,
+          "accuracy": 0.9786999821662903
+        }
+      ],
+      "peak_allocated_mib": 257.861328125,
+      "peak_reserved_mib": 384.0,
+      "final_gradient_finite": {
+        "0.weight": true,
+        "0.bias": true,
+        "2.weight": true,
+        "4.weight": true,
+        "4.bias": true
+      }
+    }
+  },
+  "matched": {
+    "initial": {
+      "fp64_eager": {
+        "mean_step_ms": 2.595191639322906,
+        "peak_allocated_mib": 245.40234375,
+        "peak_reserved_mib": 418.0,
+        "setup_seconds": 3.0178040901666727,
+        "repeats": 6
+      },
+      "fp64_graph": {
+        "mean_step_ms": 2.1340531503906135,
+        "peak_allocated_mib": 251.5341796875,
+        "peak_reserved_mib": 442.0,
+        "setup_seconds": 3.1208731605000253,
+        "repeats": 6
+      },
+      "fp32_eager": {
+        "mean_step_ms": 2.6067805279947898,
+        "peak_allocated_mib": 245.40234375,
+        "peak_reserved_mib": 418.0,
+        "setup_seconds": 3.015636410500027,
+        "repeats": 6
+      },
+      "fp32_graph": {
+        "mean_step_ms": 0.8646017330729746,
+        "peak_allocated_mib": 251.5341796875,
+        "peak_reserved_mib": 440.0,
+        "setup_seconds": 3.1381865944999845,
+        "repeats": 6
+      },
+      "dense_fp32_eager": {
+        "mean_step_ms": 1.3256969570312933,
+        "peak_allocated_mib": 256.60693359375,
+        "peak_reserved_mib": 410.0,
+        "setup_seconds": 1.4799839744999872,
+        "repeats": 6
+      },
+      "dense_fp32_graph": {
+        "mean_step_ms": 0.20358598632815492,
+        "peak_allocated_mib": 264.59765625,
+        "peak_reserved_mib": 432.0,
+        "setup_seconds": 1.5197404751666757,
+        "repeats": 6
+      },
+      "cst_dense_graph_ratio": {
+        "fp64": 10.482318497849795,
+        "fp32": 4.246862707334609
+      }
+    },
+    "final": {
+      "fp64_eager": {
+        "mean_step_ms": 2.6916273964845416,
+        "peak_allocated_mib": 250.71484375,
+        "peak_reserved_mib": 418.0,
+        "setup_seconds": 3.1561420779999594,
+        "repeats": 6
+      },
+      "fp64_graph": {
+        "mean_step_ms": 2.3022823502603096,
+        "peak_allocated_mib": 251.5341796875,
+        "peak_reserved_mib": 442.0,
+        "setup_seconds": 3.2730434734999485,
+        "repeats": 6
+      },
+      "fp32_eager": {
+        "mean_step_ms": 2.712309202474191,
+        "peak_allocated_mib": 250.71484375,
+        "peak_reserved_mib": 418.0,
+        "setup_seconds": 3.1692382855000196,
+        "repeats": 6
+      },
+      "fp32_graph": {
+        "mean_step_ms": 0.8763752871095617,
+        "peak_allocated_mib": 251.5341796875,
+        "peak_reserved_mib": 440.0,
+        "setup_seconds": 3.276026960833368,
+        "repeats": 6
+      },
+      "dense_fp32_eager": {
+        "mean_step_ms": 1.3031984967445769,
+        "peak_allocated_mib": 264.57861328125,
+        "peak_reserved_mib": 410.0,
+        "setup_seconds": 1.553250583166611,
+        "repeats": 6
+      },
+      "dense_fp32_graph": {
+        "mean_step_ms": 0.20514045377624987,
+        "peak_allocated_mib": 265.16015625,
+        "peak_reserved_mib": 432.0,
+        "setup_seconds": 1.587522449000062,
+        "repeats": 6
+      },
+      "cst_dense_graph_ratio": {
+        "fp64": 11.222956310564895,
+        "fp32": 4.272074429870565
+      }
+    }
+  },
+  "paired": {
+    "initial": {
+      "fp32_eager_vs_fp64_eager": {
+        "reduction": -0.00446552327631089,
+        "wins": 3,
+        "exploratory_one_sided_95_lower_reduction": -0.023378966402034074
+      },
+      "fp32_graph_vs_fp64_graph": {
+        "reduction": 0.5948546394382355,
+        "wins": 6,
+        "exploratory_one_sided_95_lower_reduction": 0.594430935038648
+      },
+      "fp32_graph_vs_fp32_eager": {
+        "reduction": 0.6683258433965474,
+        "wins": 6,
+        "exploratory_one_sided_95_lower_reduction": 0.655383132085726
+      },
+      "fp64_graph_vs_fp64_eager": {
+        "reduction": 0.17768957095307425,
+        "wins": 6,
+        "exploratory_one_sided_95_lower_reduction": 0.1479696942760068
+      },
+      "dense_fp32_graph_vs_dense_fp32_eager": {
+        "reduction": 0.8464309771185895,
+        "wins": 6,
+        "exploratory_one_sided_95_lower_reduction": 0.8413140413764831
+      }
+    },
+    "final": {
+      "fp32_eager_vs_fp64_eager": {
+        "reduction": -0.007683755194593855,
+        "wins": 3,
+        "exploratory_one_sided_95_lower_reduction": -0.0325706950485245
+      },
+      "fp32_graph_vs_fp64_graph": {
+        "reduction": 0.6193450004034156,
+        "wins": 6,
+        "exploratory_one_sided_95_lower_reduction": 0.6187889821993651
+      },
+      "fp32_graph_vs_fp32_eager": {
+        "reduction": 0.6768896089317085,
+        "wins": 6,
+        "exploratory_one_sided_95_lower_reduction": 0.6665441746891074
+      },
+      "fp64_graph_vs_fp64_eager": {
+        "reduction": 0.14465042477006462,
+        "wins": 6,
+        "exploratory_one_sided_95_lower_reduction": 0.13647988130207034
+      },
+      "dense_fp32_graph_vs_dense_fp32_eager": {
+        "reduction": 0.8425869472005255,
+        "wins": 6,
+        "exploratory_one_sided_95_lower_reduction": 0.8408315996724456
+      }
+    }
+  },
+  "matched_rows": 72,
+  "provenance": {
+    "learning_job": "l4job-a8a266a00bcd4946bab40d3b9af0e345",
+    "learning_source": "440b5696385b45b70c047b095a7fa0a3dbbe43cc",
+    "matched_job": "l4job-71f276106b15410fb32b3050324d6b8f",
+    "matched_source": "63aa8079972ee14bedd80743f0964728799c0a57",
+    "scope": "One MNIST model/seed41; learning and matched timing on separate L4 allocations; each comparison within one allocation."
+  },
+  "paired_samples_ms": {
+    "initial": {
+      "fp64_eager": [
+        2.5569068632811387,
+        2.5442841914062875,
+        2.5203777773437075,
+        2.5141582226564374,
+        2.6339777890624916,
+        2.801444992187374
+      ],
+      "fp64_graph": [
+        2.1363486992189706,
+        2.135517535156062,
+        2.1362027148437157,
+        2.1353884062498274,
+        2.1290498593748985,
+        2.131811687500207
+      ],
+      "fp32_eager": [
+        2.648400171874954,
+        2.5284590820313646,
+        2.4474860312500013,
+        2.562880867187811,
+        2.669367207031037,
+        2.7840898085935706
+      ],
+      "fp32_graph": [
+        0.8647788476561225,
+        0.8644286210937047,
+        0.8647436953124199,
+        0.8646512109375948,
+        0.8643553945315574,
+        0.8646526289064482
+      ],
+      "dense_fp32_eager": [
+        1.2811264414058776,
+        1.3024583007812396,
+        1.3207122578124952,
+        1.298690230469024,
+        1.3340403710939697,
+        1.4171541406251542
+      ],
+      "dense_fp32_graph": [
+        0.20186369921892933,
+        0.20480358984364955,
+        0.2026370781251785,
+        0.199331359374888,
+        0.2110205703123036,
+        0.20185962109398048
+      ]
+    },
+    "final": {
+      "fp64_eager": [
+        2.73375621484373,
+        2.714064835937613,
+        2.6702117695309724,
+        2.669318097656692,
+        2.706536816406313,
+        2.6558766445319293
+      ],
+      "fp64_graph": [
+        2.3048586875002997,
+        2.2979933476561243,
+        2.2966678945310903,
+        2.3075864335933005,
+        2.3039694101560926,
+        2.30261832812495
+      ],
+      "fp32_eager": [
+        2.7647303945310675,
+        2.7030806640624405,
+        2.7027163476569527,
+        2.645599117188091,
+        2.8765357421880466,
+        2.581192949218547
+      ],
+      "fp32_graph": [
+        0.8764795273439319,
+        0.8760207773441664,
+        0.8756234531253071,
+        0.876061246093407,
+        0.8762504023440698,
+        0.8778163164064878
+      ],
+      "dense_fp32_eager": [
+        1.3310008359370684,
+        1.2742362851563271,
+        1.3266163085932092,
+        1.3007170273429125,
+        1.3099391796878024,
+        1.2766813437501412
+      ],
+      "dense_fp32_graph": [
+        0.20798123046894545,
+        0.2035258632808734,
+        0.20458136328116439,
+        0.20614812500063806,
+        0.20528472265635145,
+        0.2033214179695264
+      ]
+    }
+  }
+}
