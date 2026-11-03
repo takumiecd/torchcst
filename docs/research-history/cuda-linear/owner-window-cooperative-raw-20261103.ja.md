@@ -77,7 +77,9 @@ Y/dX/dP/有効window/keys、全層grad、更新後の全model/optimizer Tensor�
 | 旧併用版の学習後 | 2.485434 | 2.456698 | 1.16% | 4/6 |
 
 全比較でpeak allocated257,324,032 byte、reserved436,207,616 byteは同じ。
-同じ初期状態からの別process比較であり、個々のstepを独立標本とは扱わない。
+同一process内でmodel/optimizerを再構築・状態復元し、条件順を反転した比較である。
+pool driverはtiming stage全体を1つのsubprocessで呼び、その中の各条件は別processではない。
+個々のstepやpaired反復を、独立したGPU割り当て・seedの標本とは扱わない。
 
 ### 既存runnerによる完全stepと全MNIST
 
@@ -160,3 +162,24 @@ repeatの両最終checkpointも全atomのY/dX/dP参照と層化8 atomの独立qu
 - job間比較: `output/owner-window-cooperative/cross-job-state-comparison.json`。
 - 初回・repeatとも回収済み。pool supervisorによる終了処理後、全slotの`stopped`を確認した。
   確認記録は `output/owner-window-cooperative/final-pool-status.json`。
+
+## 外部レビュー後の整理
+
+公開コード・研究記録に対する外部レビューを受け、保存済みdriverと`performance()`を照合した。
+短区間比較の旧記述「別process」は誤りであり、上記のとおり訂正した。
+全MNISTの基準/候補/denseはdriverがそれぞれ別subprocessで実行しており、主結果は変わらない。
+
+数値検証の範囲も区別する。確認したL6/L12 checkpointではraw maskの有効levelは2だけで、
+cooperative kernel内部の複数level間barrierの根拠にはならない。複数levelの正しさは、
+別のwide fixtureを使った独立VJPと3-step exact-state検査で確認した。
+wide分布の速度や、45,000 stepの全途中Tensorの一致を検証したという主張はしない。
+
+逆順repeatは実行順序とGPU割り当てを同時に変更しており、両者の影響を分離した実験ではない。
+また、cooperative化はlaunch数だけでなくgrid制限・grid-stride・同期構造も変え、
+capability/occupancy queryの費用も含む。host発行/pipelineの説明とは整合するが、
+raw launchが主律速であることや短縮のCPU費用内訳を確定する結果ではない。
+
+今回の単一候補の仮説検証は完了とする。0.312〜1.846%の短縮という観測は残しつつ、
+安定した利益と追加メモリ削減がないため採用を見送り、追加GPU探索は行わない。
+PR #126/#127はDraftのままコード・結果・checkpoint・hashを保全する。
+この結論は当該候補と測定構成についてのもので、他の設計の改善可能性を否定しない。
