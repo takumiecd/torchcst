@@ -236,3 +236,41 @@ python -m benchmarks.training.cell_mass_mnist \
 
 CPU math libraryのthreadは全て1に固定する。pool用driver原本は各jobのsnapshot、
 ローカル準備版は `output/owner-window-followup/mnist_driver.py` に保持する。
+
+## Proレビュー後の保存済み分布の確認
+
+ChatGPT会話 `6ae93fb6-724c-83e8-b191-32a7fbe64536` のPR #126レビューを受け、
+追加学習をせず、上記MNIST jobの `radius-initial.json` と `epochs.json` を調べた。
+レビューの提案は、同一状態の局所演算・更新比較、同期方式の交差比較、両学習後checkpointを
+両Planで動かす交差評価の3つ。新しいkernel最適化を加える前に、原因を分離する方針を採る。
+
+以下は入力側のbank分類。今回の同一軸・共有半径では出力側も同じatom数だった。
+全体52,428 atom。L6はT2/K3、L12はT4/K3。他のbankは保存された全時点で0 atom。
+
+| 状態 | 現行 L12 / L6 | 併用 L12 / L6 |
+| --- | ---: | ---: |
+| 初期 | 52,428 / 0 | 52,428 / 0 |
+| epoch1後 | 52,428 / 0 | 52,428 / 0 |
+| epoch2後 | 52,427 / 1 | 52,427 / 1 |
+| epoch3後 | 52,423 / 5 | 52,421 / 7 |
+
+最終L12割合は現行99.9905%、併用99.9866%。wide bankへの移行は保存時点では見られず、
+固定DFTの適用atomが大きく減ったという説明を支持しない。epoch間の一時的なbank移動は
+記録していないため、全45,000 stepの経路が常に同じだったとは断定しない。
+
+owner当たり最大atom数は、両Planとも入力205→205、出力255→258（初期→epoch3後）。
+全bankの非空owner数は入力が現行256→261／併用256→263、出力が現行256→261／併用256→262。
+この記録からは大きなowner集中も認められない。active ownerごとの実行時間やGPU timelineは
+未取得であり、分布だけからCPU律速を確定しない。
+
+今後の短い診断では、P/x/dYと全optimizer stateをそろえ、同一Plan同士の再実行を対照に
+置いてから、C/raw/DFTによる一回の演算・更新差を分離する。その後、同じ短区間・平均stepで
+毎step同期と区間同期を比較する。自由走行した異なる終点同士だけで性能を判断しない。
+
+`checked_owner_compact_keyed_linear` はTorchDispatchMode、Tensor subclass、tracing等で
+別scheduleへfallbackする分岐を持つ。計装する際は実際のkernelとmode 2/6を確認し、
+目的の経路を変えていないことを記録する。今回の通常MNISTでfallbackしたという証拠ではない。
+
+集計JSONは `output/owner-window-followup/distribution-summary.json` に保全。
+この追記は既存ログの分析のみで、新しいGPU確保・性能測定・再学習は行っていない。
+PR #126はDraftのまま、mainへの採用も引き続き保留する。
