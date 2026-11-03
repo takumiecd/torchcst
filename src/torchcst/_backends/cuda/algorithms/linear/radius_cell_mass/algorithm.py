@@ -94,6 +94,10 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "global_owner_window_fold",
             "global_owner_window_recompute",
             "global_owner_window_c_batch",
+            "global_owner_window_fixed_dft",
+            "global_owner_window_tight_raw",
+            "global_owner_window_combined",
+            "global_owner_window_dft_raw",
             "block_local",
             "block_local_parallel",
             "block_local_cached_parallel",
@@ -122,6 +126,10 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
                     "global_owner_window_fold",
                     "global_owner_window_recompute",
                     "global_owner_window_c_batch",
+                    "global_owner_window_fixed_dft",
+                    "global_owner_window_tight_raw",
+                    "global_owner_window_combined",
+                    "global_owner_window_dft_raw",
                 )
             )
         ):
@@ -142,6 +150,10 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "global_owner_window_fold",
             "global_owner_window_recompute",
             "global_owner_window_c_batch",
+            "global_owner_window_fixed_dft",
+            "global_owner_window_tight_raw",
+            "global_owner_window_combined",
+            "global_owner_window_dft_raw",
         ) and (
             recipe.moment_method != "merge"
             or recipe.input_direct_levels != 2
@@ -196,6 +208,10 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "global_owner_window_fold",
             "global_owner_window_recompute",
             "global_owner_window_c_batch",
+            "global_owner_window_fixed_dft",
+            "global_owner_window_tight_raw",
+            "global_owner_window_combined",
+            "global_owner_window_dft_raw",
         ) and (
             context.m > 4
             or plan.input != plan.output

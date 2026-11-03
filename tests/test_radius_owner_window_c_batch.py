@@ -81,9 +81,17 @@ def test_c_batch_exact_optimizer_state(dtype, batch, needs_x, needs_p, skew):
         m.atoms.p.requires_grad_(needs_p)
         m.selector = FixedSelector(selected, registry=make_algorithm_registry())
         x = host_x.cuda().requires_grad_(needs_x)
-        # The native radius update is FP32-only. FP64 retains the existing
-        # CSTOptimizer/Torch update contract, comparing the two Linear Plans.
-        opt = optimizer(m, case, gpu=dtype == torch.float32) if needs_p else None
+        # Radius CUDA updates are FP32-only; the FP64 CST reference update
+        # runs on CPU, while both compared Linear Plans continue to run on GPU.
+        cpu_reference = (
+            copy.deepcopy(initial) if needs_p and dtype == torch.float64 else None
+        )
+        update_model = cpu_reference if cpu_reference is not None else m
+        opt = (
+            optimizer(update_model, case, gpu=cpu_reference is None)
+            if needs_p
+            else None
+        )
         records = []
         for step in range(3):
             m.zero_grad(set_to_none=True)
@@ -99,10 +107,15 @@ def test_c_batch_exact_optimizer_state(dtype, batch, needs_x, needs_p, skew):
                 )
             )
             if opt:
+                if cpu_reference is not None:
+                    cpu_reference.atoms.p.grad = m.atoms.p.grad.detach().cpu().clone()
                 opt.step()
+                if cpu_reference is not None:
+                    with torch.no_grad():
+                        m.atoms.p.copy_(cpu_reference.atoms.p)
                 records.append(m.atoms.p.detach().cpu().clone())
                 records.extend(
-                    opt.state[m.atoms.p][name].detach().cpu().clone()
+                    opt.state[update_model.atoms.p][name].detach().cpu().clone()
                     for name in ("step", "exp_avg", "exp_avg_sq")
                 )
         results.append(records)

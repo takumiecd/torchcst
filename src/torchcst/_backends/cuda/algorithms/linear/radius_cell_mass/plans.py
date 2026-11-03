@@ -268,3 +268,51 @@ GLOBAL_OWNER_WINDOW_C_BATCH = ExecutionPlan(
         native_entry=True,
     ),
 )
+
+GLOBAL_OWNER_WINDOW_FIXED_DFT = ExecutionPlan(
+    "cuda_radius_cell_mass",
+    "v1",
+    RadiusCellMassRecipe(
+        input_direct_levels=2,
+        output_direct_levels=2,
+        schedule="global_owner_window_fixed_dft",
+        native_autograd=True,
+        native_entry=True,
+    ),
+)
+
+GLOBAL_OWNER_WINDOW_TIGHT_RAW = ExecutionPlan(
+    "cuda_radius_cell_mass",
+    "v1",
+    RadiusCellMassRecipe(
+        input_direct_levels=2,
+        output_direct_levels=2,
+        schedule="global_owner_window_tight_raw",
+        native_autograd=True,
+        native_entry=True,
+    ),
+)
+
+GLOBAL_OWNER_WINDOW_COMBINED = ExecutionPlan(
+    "cuda_radius_cell_mass",
+    "v1",
+    RadiusCellMassRecipe(
+        input_direct_levels=2,
+        output_direct_levels=2,
+        schedule="global_owner_window_combined",
+        native_autograd=True,
+        native_entry=True,
+    ),
+)
+
+GLOBAL_OWNER_WINDOW_DFT_RAW = ExecutionPlan(
+    "cuda_radius_cell_mass",
+    "v1",
+    RadiusCellMassRecipe(
+        input_direct_levels=2,
+        output_direct_levels=2,
+        schedule="global_owner_window_dft_raw",
+        native_autograd=True,
+        native_entry=True,
+    ),
+)

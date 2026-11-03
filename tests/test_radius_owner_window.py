@@ -41,7 +41,7 @@ def test_actual_window_coefficients_all_banks_and_original_frequency_derivatives
     ]
     window = (directory / "owner_window.cuh").read_text()
     helpers = window[
-        window.index("struct OwnerWindowLayout") : window.index("template <class T>")
+        window.index("struct OwnerWindowLayout") : window.index("template <class T")
     ]
     source = (
         r"""

@@ -2,6 +2,28 @@
 #include "owner_compact_fused.cuh"
 
 namespace radius_cell_mass {
+// Exact roots-of-unity symmetry, rounded once to FP64; fixed geometry only.
+__device__ __constant__ double owner_dft12[12][12] = {
+    {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
+    {1, 0.8660254037844386, 0.5, 0, -0.5, -0.8660254037844386, -1, -0.8660254037844386, -0.5, 0,
+     0.5, 0.8660254037844386},
+    {0, 0.5, 0.8660254037844386, 1, 0.8660254037844386, 0.5, 0, -0.5, -0.8660254037844386, -1,
+     -0.8660254037844386, -0.5},
+    {1, 0.5, -0.5, -1, -0.5, 0.5, 1, 0.5, -0.5, -1, -0.5, 0.5},
+    {0, 0.8660254037844386, 0.8660254037844386, 0, -0.8660254037844386, -0.8660254037844386, 0,
+     0.8660254037844386, 0.8660254037844386, 0, -0.8660254037844386, -0.8660254037844386},
+    {1, 0, -1, 0, 1, 0, -1, 0, 1, 0, -1, 0},
+    {0, 1, 0, -1, 0, 1, 0, -1, 0, 1, 0, -1},
+    {1, -0.5, -0.5, 1, -0.5, -0.5, 1, -0.5, -0.5, 1, -0.5, -0.5},
+    {0, 0.8660254037844386, -0.8660254037844386, 0, 0.8660254037844386, -0.8660254037844386, 0,
+     0.8660254037844386, -0.8660254037844386, 0, 0.8660254037844386, -0.8660254037844386},
+    {1, -0.8660254037844386, 0.5, 0, -0.5, 0.8660254037844386, -1, 0.8660254037844386, -0.5, 0, 0.5,
+     -0.8660254037844386},
+    {0, 0.5, -0.8660254037844386, 1, -0.8660254037844386, 0.5, 0, -0.5, 0.8660254037844386, -1,
+     0.8660254037844386, -0.5},
+    {1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1},
+};
+
 struct OwnerWindowLayout {
     int offsets[32] = {}, ranks[32] = {}, total_fields = 0;
 };
@@ -55,7 +77,7 @@ __device__ inline void owner_window_coefficients(const double *c, double mu, int
     }
 }
 
-template <class T>
+template <class T, bool FixedDFT = false>
 __global__ void owner_window_moments_kernel(const T *signal, const double *z,
                                             const uint32_t *required, double *windows, int batch,
                                             Axis axis, OwnerWindowLayout layout) {
@@ -74,11 +96,23 @@ __global__ void owner_window_moments_kernel(const T *signal, const double *z,
         double value = 0;
         if (L <= 16) {
             for (int j = 0; j < L; ++j) {
-                double cp, sp;
-                sincos(2 * PI * k * j / L, &sp, &cp);
+                double basis;
+                if constexpr (FixedDFT) {
+                    if (L == 12)
+                        basis = owner_dft12[f][j];
+                    else {
+                        double cp, sp;
+                        sincos(2 * PI * k * j / L, &sp, &cp);
+                        basis = sine ? sp : cp;
+                    }
+                } else {
+                    double cp, sp;
+                    sincos(2 * PI * k * j / L, &sp, &cp);
+                    basis = sine ? sp : cp;
+                }
                 value += double(signal[int64_t(b) * axis.sites +
                                        positive_mod(tile * bank.tile_sites + j, axis.sites)]) *
-                         (sine ? sp : cp);
+                         basis;
             }
         } else {
             double argument = PI * k / L;
@@ -101,23 +135,101 @@ __global__ void owner_window_moments_kernel(const T *signal, const double *z,
         windows[owner_window_index(b, bi, owner, f, axis, layout)] = value;
     }
 }
+// Select wide consumers FIRST, then retain every raw dependency they need.
+__global__ void window_raw_banks_kernel(const int64_t *keys, uint32_t *required, int atoms,
+                                        Axis input, Axis output, bool output_side) {
+    int atom = blockIdx.x * blockDim.x + threadIdx.x;
+    uint32_t bits = 0;
+    if (atom < atoms) {
+        bool valid;
+        bits = key_moment_dependencies(keys[atom], input, output, output_side, 0, false, valid);
+        CUDA_KERNEL_ASSERT_MSG(valid, "invalid radius owner key range");
+        if (valid) {
+            int bi = __ffs(bits) - 1;
+            const Axis &axis = output_side ? output : input;
+            const Bank &bank = axis.banks[bi];
+            bits = bank.count * bank.tile_sites > 16 ? moment_bank_dependencies(bi, 2, true) : 0;
+        }
+    }
+    for (int distance = 16; distance; distance /= 2)
+        bits |= __shfl_down_sync(0xffffffffu, bits, distance);
+    if ((threadIdx.x & 31) == 0 && bits)
+        atomicOr(required, bits);
+}
+template <class T>
+__global__ void window_raw_level_kernel(const T *signal, double *z, const uint32_t *required,
+                                        int batch, Axis axis, int first_node, int level_nodes) {
+    int index = blockIdx.x * blockDim.x + threadIdx.x, F = axis.basis_count();
+    int work = level_nodes * F;
+    if (index >= batch * work)
+        return;
+    int b = index / work, node = first_node + (index % work) / F, f = index % F;
+    int bi = bank_for_node(node, axis);
+    if (!(*required & (uint32_t(1) << bi)))
+        return;
+    int prefix = prefix_nodes(axis, 2), nodes = axis.node_count - prefix;
+    z[(int64_t(b) * nodes + node - prefix) * F + f] =
+        compact_moment_element(signal, z, b, node, f, axis, 2, true);
+}
+inline Tensor build_window_raw_moments(Tensor signal, Tensor p, Tensor keys, Config input_config,
+                                       Config output_config, bool output_side) {
+    Axis input = parse_axis(input_config), output = parse_axis(output_config);
+    Axis axis = output_side ? output : input;
+    check_layout_keys(keys, input.node_count, output.node_count);
+    TORCH_CHECK(keys.device() == p.device() && keys.numel() == p.size(0),
+                "owner keys differ from atoms");
+    auto required = torch::zeros({1}, keys.options().dtype(torch::kUInt32));
+    if (p.size(0))
+        window_raw_banks_kernel<<<(p.size(0) + THREADS - 1) / THREADS, THREADS, 0,
+                                  at::cuda::getCurrentCUDAStream()>>>(
+            keys.data_ptr<int64_t>(), required.data_ptr<uint32_t>(), p.size(0), input, output,
+            output_side);
+    auto z =
+        torch::empty({signal.size(0), axis.node_count - prefix_nodes(axis, 2), axis.basis_count()},
+                     signal.options().dtype(torch::kDouble));
+    if (signal.size(0)) {
+        AT_DISPATCH_FLOATING_TYPES(p.scalar_type(), "radius_window_raw_levels", [&] {
+            for (int level = 2; level < axis.bank_count / 2; ++level) {
+                int first = prefix_nodes(axis, level),
+                    count = prefix_nodes(axis, level + 1) - first;
+                int work = signal.size(0) * count * axis.basis_count();
+                window_raw_level_kernel<scalar_t><<<(work + THREADS - 1) / THREADS, THREADS, 0,
+                                                    at::cuda::getCurrentCUDAStream()>>>(
+                    signal.data_ptr<scalar_t>(), z.data_ptr<double>(),
+                    required.data_ptr<uint32_t>(), signal.size(0), axis, first, count);
+            }
+        });
+    }
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+    return z;
+}
+
 inline Tensor build_owner_windows(Tensor signal, Tensor p, Tensor keys, Config input_config,
-                                  Config output_config, bool reverse, bool fold) {
+                                  Config output_config, bool reverse, bool fold, bool fixed_dft,
+                                  bool tight_raw) {
     Axis axis = parse_axis(reverse ? output_config : input_config);
     auto layout = owner_window_layout(axis, fold);
     auto required =
         active_moment_banks_from_keys(keys, input_config, output_config, reverse, false, 0);
-    auto z = build_compact_moments_from_keys(signal, p, keys, input_config, output_config, reverse,
-                                             true, 2);
+    auto z = tight_raw
+                 ? build_window_raw_moments(signal, p, keys, input_config, output_config, reverse)
+                 : build_compact_moments_from_keys(signal, p, keys, input_config, output_config,
+                                                   reverse, true, 2);
     auto windows =
         torch::empty({signal.size(0), layout.total_fields}, signal.options().dtype(torch::kDouble));
     if (signal.size(0)) {
         AT_DISPATCH_FLOATING_TYPES(p.scalar_type(), "radius_window_moments", [&] {
-            owner_window_moments_kernel<scalar_t>
-                <<<axis.node_count, THREADS, 0, at::cuda::getCurrentCUDAStream()>>>(
-                    signal.data_ptr<scalar_t>(), z.data_ptr<double>(),
-                    required.data_ptr<uint32_t>(), windows.data_ptr<double>(), signal.size(0), axis,
-                    layout);
+            auto launch = [&](auto dft) {
+                owner_window_moments_kernel<scalar_t, decltype(dft)::value>
+                    <<<axis.node_count, THREADS, 0, at::cuda::getCurrentCUDAStream()>>>(
+                        signal.data_ptr<scalar_t>(), z.data_ptr<double>(),
+                        required.data_ptr<uint32_t>(), windows.data_ptr<double>(), signal.size(0),
+                        axis, layout);
+            };
+            if (fixed_dft)
+                launch(std::true_type{});
+            else
+                launch(std::false_type{});
         });
         C10_CUDA_KERNEL_LAUNCH_CHECK();
     }
@@ -128,7 +240,7 @@ constexpr int WINDOW_CACHE_STRIDE = OWNER_FEATURES + OWNER_BATCH;
 constexpr int WINDOW_SHARED_BYTES =
     sizeof(double) * (OWNER_CAPACITY * WINDOW_CACHE_STRIDE + OWNER_BATCH * OWNER_FEATURES);
 // One CTA owns a destination window; atoms remain in original parameter rows.
-// No per-atom Fourier table, H/G atomics, or dense effective W is allocated.
+// No global per-atom Fourier table, H/G atomics, or dense effective W is allocated.
 template <class T, bool Reverse, bool Recompute, bool FlatC = false>
 __global__ void owner_window_contract_kernel(
     const T *p, const double *windows, const double *input_windows, const double *h,
@@ -246,7 +358,7 @@ __global__ void owner_window_contract_kernel(
     }
 }
 
-template <class T>
+template <class T, bool FixedDFT = false>
 __global__ void owner_window_expand_kernel(const double *partials, const int64_t *offsets, T *y,
                                            int batch, Axis axis, OwnerWindowLayout layout) {
     int index = blockIdx.x * blockDim.x + threadIdx.x;
@@ -265,6 +377,18 @@ __global__ void owner_window_expand_kernel(const double *partials, const int64_t
                 continue;
             const double *v = partials + owner_window_index(b, bi, owner, 0, axis, layout);
             double entry = v[0];
+            if constexpr (FixedDFT) {
+                if (bank.count * bank.tile_sites == 12) {
+                    int j = part * bank.tile_sites + local;
+                    for (int k = 1; 2 * k - 1 < layout.ranks[bi]; ++k) {
+                        entry += v[2 * k - 1] * owner_dft12[2 * k - 1][j];
+                        if (2 * k < layout.ranks[bi])
+                            entry += v[2 * k] * owner_dft12[2 * k][j];
+                    }
+                    value += entry;
+                    continue;
+                }
+            }
             HarmonicPhase phase(2 * PI * (part * bank.tile_sites + local) /
                                 (bank.count * bank.tile_sites));
             for (int k = 1; 2 * k - 1 < layout.ranks[bi]; ++k) {
@@ -283,7 +407,10 @@ std::vector<Tensor> owner_window_transform(Tensor signal, Tensor p, Tensor keys,
                                            Tensor offsets, Config input_config,
                                            Config output_config, bool reverse, bool need_derivative,
                                            bool fold, bool recompute, bool emit_x, Tensor h,
-                                           Tensor dh, Tensor saved_windows, bool flat_c) {
+                                           Tensor dh, Tensor saved_windows, int variant) {
+    bool flat_c = variant == 3 || variant == 6;
+    bool fixed_dft = variant == 4 || variant == 6 || variant == 7;
+    bool tight_raw = variant == 5 || variant == 6 || variant == 7;
     Axis source = parse_axis(reverse ? output_config : input_config);
     Axis destination = parse_axis(reverse ? input_config : output_config);
     check_atoms(p);
@@ -293,7 +420,8 @@ std::vector<Tensor> owner_window_transform(Tensor signal, Tensor p, Tensor keys,
     c10::cuda::CUDAGuard guard(p.device());
     TORCH_CHECK(!flat_c || (fold && recompute), "batch-feature C requires folded recomputation");
     auto layout = owner_window_layout(destination, fold);
-    auto windows = build_owner_windows(signal, p, keys, input_config, output_config, reverse, fold);
+    auto windows = build_owner_windows(signal, p, keys, input_config, output_config, reverse, fold,
+                                       fixed_dft, tight_raw);
     auto response = !reverse && !recompute ? torch::empty({signal.size(0), p.size(0)},
                                                           signal.options().dtype(torch::kDouble))
                                            : Tensor();
@@ -341,11 +469,19 @@ std::vector<Tensor> owner_window_transform(Tensor signal, Tensor p, Tensor keys,
                 else
                     launch(std::false_type{}, std::false_type{}, std::false_type{});
             }
-            if (emit_x)
-                owner_window_expand_kernel<scalar_t><<<(y.numel() + THREADS - 1) / THREADS, THREADS,
-                                                       0, at::cuda::getCurrentCUDAStream()>>>(
-                    partials.data_ptr<double>(), offsets.data_ptr<int64_t>(),
-                    y.data_ptr<scalar_t>(), signal.size(0), destination, layout);
+            if (emit_x) {
+                auto expand = [&](auto dft) {
+                    owner_window_expand_kernel<scalar_t, decltype(dft)::value>
+                        <<<(y.numel() + THREADS - 1) / THREADS, THREADS, 0,
+                           at::cuda::getCurrentCUDAStream()>>>(
+                            partials.data_ptr<double>(), offsets.data_ptr<int64_t>(),
+                            y.data_ptr<scalar_t>(), signal.size(0), destination, layout);
+                };
+                if (fixed_dft)
+                    expand(std::true_type{});
+                else
+                    expand(std::false_type{});
+            }
         });
         C10_CUDA_KERNEL_LAUNCH_CHECK();
     }

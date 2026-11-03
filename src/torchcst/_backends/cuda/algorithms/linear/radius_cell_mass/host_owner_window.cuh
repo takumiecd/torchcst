@@ -2,9 +2,10 @@
 namespace radius_cell_mass {
 std::vector<Tensor> owner_window_transform(Tensor, Tensor, Tensor, Tensor, Tensor, Config, Config,
                                            bool, bool, bool, bool, bool, Tensor, Tensor, Tensor,
-                                           bool);
+                                           int);
 // mode 0: shared 17; 1: folded/saved H; 2: folded/saved windows;
-// mode 3: mode 2 with one C-reduction thread per (batch, feature).
+// 3: batch-feature C; 4: fixed DFT; 5: wide-only raw and tight grids;
+// 6: all three; 7: fixed DFT plus tight raw. Modes >=2 save windows.
 void check_owner_window_saved(Tensor, Tensor, Tensor, Tensor, Tensor, Config, Config);
 class OwnerWindow : public torch::autograd::Function<OwnerWindow> {
   public:
@@ -14,7 +15,7 @@ class OwnerWindow : public torch::autograd::Function<OwnerWindow> {
         auto ranges = autograd_ranges(keys, input, output, false);
         auto values = owner_window_transform(x, atoms, keys, ranges[0], ranges[1], input, output,
                                              false, need_derivative, mode != 0, mode >= 2, true,
-                                             Tensor(), Tensor(), Tensor(), mode == 3);
+                                             Tensor(), Tensor(), Tensor(), mode);
         ctx->saved_data["input"] = input;
         ctx->saved_data["output"] = output;
         ctx->saved_data["mode"] = mode;
@@ -45,7 +46,7 @@ class OwnerWindow : public torch::autograd::Function<OwnerWindow> {
             auto values = owner_window_transform(
                 dy, atoms, saved[4], ranges[0], ranges[1], input, output, true, needs_p, mode != 0,
                 mode >= 2, needs_x, mode >= 2 ? Tensor() : saved[2],
-                mode >= 2 ? Tensor() : saved[3], mode >= 2 ? saved[2] : Tensor(), mode == 3);
+                mode >= 2 ? Tensor() : saved[3], mode >= 2 ? saved[2] : Tensor(), mode);
             if (needs_x)
                 result[0] = values[0];
             if (needs_p)
@@ -69,7 +70,7 @@ void bind_owner_window_autograd(pybind11::module_ &module) {
     module.def(
         "checked_autograd_linear_owner_window",
         [](Tensor x, Tensor p, Config input, Config output, int mode) {
-            TORCH_CHECK(mode >= 0 && mode <= 3, "invalid owner window mode");
+            TORCH_CHECK(mode >= 0 && mode <= 7, "invalid owner window mode");
             check_autograd_entry(x, p, input, output, 2, 2, 32, 6);
             bool need_derivative = torch::GradMode::is_enabled() && p.requires_grad();
             return OwnerWindow::apply(x, p, input, output, mode, need_derivative);
