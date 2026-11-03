@@ -67,7 +67,7 @@ def test_c_batch_saved_payload(monkeypatch):
     "needs_x,needs_p", [(True, True), (False, True), (True, False)]
 )
 @pytest.mark.parametrize("skew", [False, True])
-def test_c_batch_exact_cstadamw_state(dtype, batch, needs_x, needs_p, skew):
+def test_c_batch_exact_optimizer_state(dtype, batch, needs_x, needs_p, skew):
     initial = model(dtype, skew)
     gen = torch.Generator().manual_seed(9041)
     host_x = torch.randn(batch, 1024, dtype=dtype, generator=gen)
@@ -81,7 +81,9 @@ def test_c_batch_exact_cstadamw_state(dtype, batch, needs_x, needs_p, skew):
         m.atoms.p.requires_grad_(needs_p)
         m.selector = FixedSelector(selected, registry=make_algorithm_registry())
         x = host_x.cuda().requires_grad_(needs_x)
-        opt = optimizer(m, case) if needs_p else None
+        # The native radius update is FP32-only. FP64 retains the existing
+        # CSTOptimizer/Torch update contract, comparing the two Linear Plans.
+        opt = optimizer(m, case, gpu=dtype == torch.float32) if needs_p else None
         records = []
         for step in range(3):
             m.zero_grad(set_to_none=True)
