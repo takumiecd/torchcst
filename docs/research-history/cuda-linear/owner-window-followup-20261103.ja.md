@@ -5,6 +5,11 @@
 worktree は `/Users/ware10sai/.codex/worktrees/owner-window-followup/torchcst`。
 既存 Plan の既定、自動選択、main を変更せず検証する。
 
+**結論:** 3案併用は単層の完全stepを2回のjobで13.4〜13.6%短縮し、ピークmemoryも維持した。
+一方、matched MNIST 3 epochのモデル全体では基準2.496301→候補2.515619 ms/stepで、
+短縮を観測しなかった。数値契約は通過したが最終学習状態はbyte一致しない。
+追加のmain統合は保留し、実装・比較・checkpointを研究branchとignored evidenceへ保持する。
+
 | mode | Plan suffix | C の batch×feature 配置 | 固定12点DFT | wide raw mask + level別grid |
 | ---: | --- | --- | --- | --- |
 | 2 | recompute | 既存 | 既存 | 既存 |
@@ -138,8 +143,9 @@ Cのstack frameはforward1056→1024 byte、backward1088→1056 byte。
 これだけでspillやoccupancyの改善を断定しない。dynamic sharedは22,048 byteで同じ。
 
 このfixtureは研究専用で、既存submission/database adapterが明示的に受付対象外とする。
-ローカルsubmission検査のrejectはこの既知の境界であり、GPU演算検証の失敗ではない。
-今回DBやIssueへの投稿は行っていない。
+さらに今回の全候補JSONは49,852,422 byteで、submission CLIの5 MiB上限も超える。
+ローカルsubmission検査はrejectされた。これはGPU演算検証とは別の提出条件であり、
+adapterの対象範囲を今回拡張しない。DBやIssueへの投稿は行っていない。
 
 - source archive SHA256: `3a9396209ec51561d323434f16a9c7291873fad592d789f85b7f18cb5cb57648`
 - result archive SHA256: `a537ab99a5a458b5ae5b482daa02e987c7ecbeb3a75d7d3bdb81b22303ee95eb`
@@ -151,3 +157,80 @@ Cのstack frameはforward1056→1024 byte、backward1088→1056 byte。
 baseline/candidate/denseのMNIST各3 epochを次のjobで実行する。1 seedであり、
 学習一般化の証明ではない。resident dataを含むMLP全体のmemoryを改めて測り、
 単層の44%削減率をそのままモデル全体へ転用しない。
+
+## 再測定とMNIST全モデルの結果
+
+`l4job-8fb5b173d7104d1aa75e1eec9d540d4e` は正常終了し、全結果をhash照合して回収した。
+同じL4 VMを再利用した別jobで、全workerと学習はそれぞれfresh process。
+source commitは両jobとも `bf52fb933dd387d815395d312fd9c0c5dfbd7cfa`。
+前節の結果を追記した文書commitは実行snapshotに含まれない。
+
+Plan順を反転した再測定も全gateがPASSし、単層recompute `2.443231 ms` →
+combined `2.115821 ms`（13.40%短縮）。両方allocated `7,456,768 byte`、reserved
+`8,388,608 byte`。denseは `0.698996 ms`。単層の改善は再現した。
+
+MNISTは既存 `benchmarks.training.cell_mass_mnist` を変更せず使用した。
+`Linear(784,1024) → ReLU → CST/dense(1024,1024) → ReLU → Linear(1024,10)`、
+重み付き層は3つでCSTは中央の1層だけ。全train60,000/test10,000、seed41、真B4、
+各3 epoch/45,000 step。同一初期effective W・入力/出力層・データ順序・optimizer係数。
+常駐データ、loss、全層のbackward、実optimizer更新を含み、Graphなし、TF32 off。
+時間はepochごとの同期を挟む学習loopのwall timeであり、評価・checkpoint保存を除く。
+epoch1にはoptimizer cold startを含める。単層の毎step同期プロトコルと区別する。
+
+| 全モデル | 3 epoch平均 ms/step | epoch2–3平均 ms/step | 最終test accuracy | 最終test loss | peak allocated MiB | peak reserved MiB |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| recompute | 2.496301 | 2.468442 | 97.37% | 0.082856 | 246.089844 | 392 |
+| combined | 2.515619 | 2.484412 | 97.39% | 0.083560 | 246.089844 | 392 |
+| dense | 1.343577 | 1.352646 | 97.87% | 0.070018 | 257.861328 | 384 |
+
+候補の全学習時間は基準112.333532秒に対して113.202859秒、0.77%長かった。
+1回のpaired学習結果であり、この小さい差から有意な遅延を断定しないが、全モデルでの
+高速化を主張する証拠はない。allocated/reservedも追加で減っていない。
+全モデルのCST/dense比は基準約1.86、候補約1.87で、候補だけが新しく達成した値ではない。
+同一精度のモデルになったとは言わず、上記の1 seedのloss/accuracyをそのまま残す。
+
+42 Tensorの最終model/optimizer状態は全てfiniteで、うち17 Tensorが基準とbyte不一致。
+atom Parameterのmax_abs差は0.0594482421875、入力層weightは0.06515115150250494。
+固定DFTを含む候補の45,000 stepをbitwise同一軌跡とは扱わない。
+初期状態での丸め差の長期蓄積や各演算の非決定性をこの比較だけで切り分けていない。
+これはC単独/raw単独の3 step byte gateが失敗したという意味ではない。
+
+学習後checkpointを読み戻し、基準/候補それぞれの全52,428 atomについてCPU FP64
+Fourier参照とY/dX/dPを検査してPASS。候補max_absはY `1.489e-8`、dX `2.840e-8`、
+dP `1.188e-7` 以下。各checkpointから半径で層化した8 atomは独立48点quadratureもPASS。
+入力・半径・中心が動いた後も数学・微分の検証を通過した。
+
+単層と全モデルで差が消える原因は未診断。各step同期の有無、CPUの発行費用、overlap、
+学習後の支持分布などを分離したprofileは取得していない。原因を決め打ちして
+追加の最適化を重ねず、今回の結果では採用保留とする。mainはPR #125の状態を維持。
+
+- initialization SHA256: `b49e95e722dab4e42d935a9ac2b239212e93660af55bf6d6a9f12f437a9f2ed6`
+- source archive SHA256: `e319198d32178d9664011c5ebe90c3e2c4e3c55178c0e2661e1d9b2ea325ee66`
+- result archive SHA256: `2fa0da8ca94b21e06d167831cfccbd6ccabb7f8f7f8281645e066377ab167e15`
+- local保全: `output/owner-window-followup/mnist-results/`、`mnist-spec.json`、`mnist-receipt.json`
+- pool原本: `/Users/ware10sai/.local/state/colab-l4-pool/jobs/l4job-8fb5b173d7104d1aa75e1eec9d540d4e/`
+
+各epochのdata order hash、dataset MD5/SHA256、Plan snapshot、初期値、最終checkpoint、
+全学習metrics・状態差・最終oracle検査は上記raw evidenceに保持した。
+pool supervisorは両jobの回収後に正常終了し、所有slotは全てstoppedを確認した。
+GPUを確保したままにしない。追加PR/mergeは行っていない。
+
+再現は同一sourceからregistryの `GLOBAL_OWNER_WINDOW_RECOMPUTE` と
+`GLOBAL_OWNER_WINDOW_COMBINED` を `make_algorithm_registry().dumps_plan(...)` で
+別JSONへ保存し、次の既存CLIをそれぞれfresh processで実行する。
+
+```bash
+python -m benchmarks.training.cell_mass_mnist \
+  --create-radius-initialization output/init.pt --radius-width 1024 --seed 41
+python -m benchmarks.training.cell_mass_mnist \
+  --initialization output/init.pt --kind cst --data-directory output/mnist-data \
+  --radius-plan output/selected-plan.json --allow-radius-1024 \
+  --epochs 3 --batch-size 4 --output output/selected-mnist
+python -m benchmarks.training.cell_mass_mnist \
+  --initialization output/init.pt --kind dense --data-directory output/mnist-data \
+  --radius-execution global-response4 --allow-radius-1024 \
+  --epochs 3 --batch-size 4 --output output/dense-mnist
+```
+
+CPU math libraryのthreadは全て1に固定する。pool用driver原本は各jobのsnapshot、
+ローカル準備版は `output/owner-window-followup/mnist_driver.py` に保持する。
