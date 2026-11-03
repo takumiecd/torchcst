@@ -28,7 +28,8 @@ auto first_order_error(int outputs) {
 // Defined in pipeline.cu so this C++ translation unit never includes CUDA
 // kernel syntax or device headers. This also keeps NVCC out of autograd.h.
 Tensor classify_atoms_async(Tensor, Config, Config);
-void check_autograd_entry(Tensor, Tensor, Config, Config, int, int, int, int);
+void check_autograd_entry(Tensor, Tensor, Config, Config, int, int, int, int,
+    bool research_graph = false);
 std::vector<Tensor> autograd_ranges(Tensor, Config, Config, bool);
 std::vector<Tensor> autograd_transform(Tensor, Tensor, Tensor, Tensor,
     Config, Config, int, int, bool, int, int, bool);

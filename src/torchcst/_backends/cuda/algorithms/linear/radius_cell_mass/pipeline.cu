@@ -402,7 +402,7 @@ void autograd_check_owner_saved(Tensor x, Tensor p, Tensor zx, Tensor h, Tensor 
 // value, error word, or CUDA event is read back to the host here.
 void check_autograd_entry(Tensor x, Tensor p, Config input_config,
     Config output_config, int input_start, int output_start,
-    int tile_sites, int schedule) {
+    int tile_sites, int schedule, bool research_graph) {
     check_matrix(x); check_atoms(p);
     Axis input = parse_axis(input_config), output = parse_axis(output_config);
     const bool global = schedule == 5 || schedule == 6;
@@ -443,7 +443,10 @@ void check_autograd_entry(Tensor x, Tensor p, Config input_config,
     c10::cuda::CUDAGuard guard(x.device());
     cudaStreamCaptureStatus status;
     C10_CUDA_CHECK(cudaStreamIsCapturing(at::cuda::getCurrentCUDAStream(), &status));
-    TORCH_CHECK(status == cudaStreamCaptureStatusNone,
+    TORCH_CHECK(!research_graph || (schedule == 6 && x.size(0) == 4 &&
+        p.size(0) == 52428 && input.sites == 1024 && output.sites == 1024),
+        "graph research entry requires the fixed N1024/A52428/B4 cohort");
+    TORCH_CHECK(research_graph || status == cudaStreamCaptureStatusNone,
         "radius baseline uses eager preparation, not CUDA Graphs");
 }
 
