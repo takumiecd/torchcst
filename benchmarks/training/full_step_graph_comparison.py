@@ -92,6 +92,17 @@ def run(args):
     if checkpoint is not None:
         restore(model, optimizer, wanted)
     start = snapshot(model, optimizer)
+    # All precision conditions start after the SAME eight FP64 updates. Prepare
+    # the candidate's guarded public entrance without changing P or Adam state.
+    if args.kind == "cst" and args.precision == "fp32":
+        from torchcst import FixedSelector, make_algorithm_registry
+
+        model[2].selector = FixedSelector(
+            plans.GLOBAL_OWNER_WINDOW_FP32, registry=make_algorithm_registry()
+        )
+        optimizer.zero_grad(set_to_none=True)
+        model(tx[order[:4]]).sum().backward()
+        optimizer.zero_grad(set_to_none=True)
     program = None
     if args.mode != "eager":
         program = PreparedStep(model, optimizer, tx, ty, args.kind)
@@ -134,6 +145,7 @@ def run(args):
     }
     row = {
         "kind": args.kind,
+        "precision": args.precision if args.kind == "cst" else "dense_fp32",
         "mode": args.mode,
         "state": args.state,
         "repeat": args.repeat,
@@ -197,6 +209,7 @@ def main():
     parser.add_argument("--kind", choices=("cst", "dense"), required=True)
     parser.add_argument("--mode", choices=("eager", "prepared", "graph"), required=True)
     parser.add_argument("--state", choices=("initial", "final"), required=True)
+    parser.add_argument("--precision", choices=("fp64", "fp32"), default="fp64")
     parser.add_argument("--repeat", type=int, default=0)
     parser.add_argument("--steps", type=int, default=256)
     args = parser.parse_args()

@@ -181,6 +181,10 @@ class PreparedStep:
                     "canonical native execution certificates not prepared"
                 )
             plan = self.linear_program.cached.state.layout
+            self.fp32_body = (
+                self.linear_program.cached.state.recipe.schedule
+                == "global_owner_window_fp32"
+            )
             self.configs = plan.input.native_config(), plan.output.native_config()
             self.previous = torch.empty_like(self.site.atoms.p)
             self.periods = _period_tensors(self.polar_program.state, self.site.atoms.p)
@@ -368,9 +372,14 @@ class PreparedStep:
             if self.observe:
                 x.retain_grad()
             self.middle = x
-            x = self.extension.research_graph_owner_window(
-                x, self.site.atoms.p, *self.configs
-            )
+            if self.fp32_body:
+                x = self.extension.research_owner_window_fp32(
+                    x, self.site.atoms.p, *self.configs, True
+                )
+            else:
+                x = self.extension.research_graph_owner_window(
+                    x, self.site.atoms.p, *self.configs
+                )
         else:
             x = model[2](x)
         self.logits = model[4](nn.functional.relu(x))

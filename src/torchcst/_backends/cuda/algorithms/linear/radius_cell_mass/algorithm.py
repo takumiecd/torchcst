@@ -93,6 +93,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "global_owner_window17",
             "global_owner_window_fold",
             "global_owner_window_recompute",
+            "global_owner_window_fp32",
             "block_local",
             "block_local_parallel",
             "block_local_cached_parallel",
@@ -120,6 +121,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
                     "global_owner_window17",
                     "global_owner_window_fold",
                     "global_owner_window_recompute",
+                    "global_owner_window_fp32",
                 )
             )
         ):
@@ -139,6 +141,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "global_owner_window17",
             "global_owner_window_fold",
             "global_owner_window_recompute",
+            "global_owner_window_fp32",
         ) and (
             recipe.moment_method != "merge"
             or recipe.input_direct_levels != 2
@@ -192,6 +195,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "global_owner_window17",
             "global_owner_window_fold",
             "global_owner_window_recompute",
+            "global_owner_window_fp32",
         ) and (
             context.m > 4
             or plan.input != plan.output
@@ -206,6 +210,20 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
         ):
             reasons.append(
                 "owner response coefficients require identical N1024 Polar M8 base1 merge2 axes and B<=4"
+            )
+        if recipe.schedule == "global_owner_window_fp32" and (
+            context.dtype != torch.float32
+            or any(
+                axis.spacing != 1
+                or axis.polar is None
+                or axis.polar[0] > 1
+                or axis.polar[5] < 0.5
+                or axis.polar[7] > 50
+                for axis in (plan.input, plan.output)
+            )
+        ):
+            reasons.append(
+                "FP32 body requires FP32, spacing1, amplitude<=1 and radius bounds[.5,50]"
             )
         if context.device.type != "cuda":
             reasons.append("requires a CUDA device")

@@ -255,3 +255,16 @@ GLOBAL_OWNER_WINDOW_RECOMPUTE = ExecutionPlan(
         native_entry=True,
     ),
 )
+
+# Opt-in FP32 body; geometry and Polar pullback remain FP64.
+GLOBAL_OWNER_WINDOW_FP32 = ExecutionPlan(
+    "cuda_radius_cell_mass",
+    "v1",
+    RadiusCellMassRecipe(
+        input_direct_levels=2,
+        output_direct_levels=2,
+        schedule="global_owner_window_fp32",
+        native_autograd=True,
+        native_entry=True,
+    ),
+)

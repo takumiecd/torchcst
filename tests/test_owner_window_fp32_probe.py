@@ -41,3 +41,28 @@ def test_restore_reinstates_negative_zero_and_skips_identical_bytes():
     version = model.weight._version
     restore(model, optimizer, saved)
     assert version == model.weight._version
+
+
+def test_fp32_plan_case_roundtrip_and_original_default():
+    from pathlib import Path
+
+    from benchmarks.cuda.linear.manifest import load_run
+    from torchcst import make_algorithm_registry
+    from torchcst._backends.cuda.algorithms.linear.radius_cell_mass import plans
+
+    root = Path(__file__).resolve().parents[1]
+    run = load_run(
+        root
+        / "benchmarks/cuda/linear/cases/radius-cell-mass-1024-owner-window-fp32-initial.json",
+        root / "benchmarks/cuda/linear/plans-radius-cell-mass.json",
+    )
+    assert (
+        run.entry("radius-global-owner-window-fp32").plan
+        == plans.GLOBAL_OWNER_WINDOW_FP32
+    )
+    assert run.entry(run.baseline).plan == plans.GLOBAL_OWNER_WINDOW_RECOMPUTE
+    registry = make_algorithm_registry()
+    assert (
+        registry.load_plan(registry.dump_plan(plans.GLOBAL_OWNER_WINDOW_FP32))
+        == plans.GLOBAL_OWNER_WINDOW_FP32
+    )

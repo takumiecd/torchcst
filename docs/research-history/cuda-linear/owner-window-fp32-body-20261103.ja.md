@@ -113,3 +113,123 @@ CSTのdPとdenseのdWは座標・スケール・要素数が異なるため、ma
 これは通常データと分け、都合の良い順序だけを選ばず全結果を残す。
 今回のgateがdenseにも厳しすぎる可能性を調べる対照で、過去の不合格を合格へ変更するものではない。
 学習精度悪化・不安定化やFP32使用不能は、この局所gateだけでは立証されない。
+
+## 最終CST数値検査
+
+`l4job-b61d61c266a74d7494026eb346c089d2` は完了。測定sourceは `9efb89bd16ed7f7082c27453389eefc1944d1580`。
+L4 `GPU-3c84e6bf-2edd-ff9f-cd44-5688ed0c7540`、driver580.82.07、
+Torch2.11.0+cu130、CUDA13、Triton3.6、Xeon2.20GHz/12 logical cores、CPU math threads1。
+
+13条件すべてで、候補・FP64基準ともY/dX/全dPの各要素が事前の混合許容差内、finiteだった。
+小集合11条件は独立48点quadrature、全52,428 atomの2状態はpublic CPU FP64 Fourier参照。
+学習後の状態は、既存FP64経路で学習したcheckpointのPを評価したもので、
+FP32候補を45,000 step学習したという意味ではない。
+
+| 全atom状態 | Y max abs / relative L2 | dX max abs / relative L2 | dP max abs / relative L2 | cold Adam max delta-u | .01を超えた成分 |
+| --- | --- | --- | --- | ---: | ---: |
+| 初期 | 2.138e-9 / 4.132e-7 | 1.373e-9 / 4.154e-7 | 1.426e-6 / 3.424e-7 | .020336628 | 1 / 209,712 |
+| 学習後 | 2.056e-7 / 3.762e-7 | 2.592e-7 / 3.897e-7 | 1.484e-6 / 3.524e-7 | .010854959 | 1 / 209,712 |
+
+列別direction RMS最大は初期9.504e-5、学習後5.475e-5で、RMS基準.001は満たした。
+最大値gateだけが通常2状態で超過した。初期の最悪はatom16327の入力中心勾配で、
+参照 -2.4097635e-9、候補 -2.1042841e-9、差約3.055e-10。
+学習後の最悪はatom4603のt勾配で、参照 -9.4994974e-8、候補 -8.4252790e-8。
+
+constant/alternatingではmax delta-u=.944368124/.958893418。
+一定入力の最悪中心勾配は参照1.388e-16、候補1.698e-7。
+正しい学習率でのpost-Pの中心周期距離maxはconstantで1.221e-4、alternatingで9.584e-5。
+通常norm部分集合だけでもこの失敗を再確認した。same-gradient対照はPおよび全3 optimizer
+Tensor（step/exp_avg/exp_avg_sq）がbyte一致した。
+
+これらは厳しい局所互換性gateに不合格という結果であり、実用の学習精度低下や
+「FP32では使えない」の証明ではない。全勾配の通常の相対L2誤差は約3.4～3.5e-7であり、
+微小勾配へのAdamの感度と分けて扱う。学習品質の判断には別途事前に定めた学習比較が必要。
+今回の候補は既定へ採用せず、速度・capture memory測定・長期学習には進めていない。
+
+GPU環境の回帰検査は **191 passed**（既存window/whole-step検査188＋新CPU参照検査3）。
+FP32候補の公開Plan登録や、FP32全stepのhooks/live setting/capture契約を認証したという意味ではない。
+最終code sourceのCPU標準suiteも再実行し **1,707 passed / 2,133 skipped**。
+既存Plan/Case宣言検査、対象lint、diff checkもPASS。
+GitHub CPU validation run687は `9efb89bd` で成功した。
+
+- source archive SHA256: `7278f57649b2006d5db3dbf566bad190c789f3247a7d760beeec5b5cf9b634db`
+- result archive SHA256: `60bfc68730819dcea2a24d9ee425a686496aaef4d87f32eaece38b4b18b0e56f`
+- 回収manifestの35ファイルを再hash照合。`output/owner-window-fp32/final-results/` に保全。
+- その他の部分結果は `attempt1/`、`attempt2/`、`matched-adam/` とdefault pool job原本に保全。
+- 入力init SHA256: `b49e95e722dab4e42d935a9ac2b239212e93660af55bf6d6a9f12f437a9f2ed6`
+- 基準学習後checkpoint SHA256: `ca52f8e5c7982de2ca26e6cf6f9528c1d4d81f8ec54f5dd0d503f0609f3d079b`
+
+再現: 上記hashの2つのptをinputsに置き、以下を同じ依存関係のL4環境で実行する。
+
+```bash
+PYTHONPATH=src python -m benchmarks.training.owner_window_fp32 \
+  --inputs /absolute/frozen-inputs --output output/fp32-numerical
+CST_GRAPH_INPUTS=/absolute/frozen-inputs PYTHONPATH=src python -m pytest -q \
+  tests/test_owner_window_fp32_probe.py tests/test_radius_owner_window.py tests/test_full_step_graph.py
+```
+
+main/既定dispatcherは変更せず、#128上の研究Draft [#129](https://github.com/takumiecd/torchcst/pull/129) に保全する。
+
+## Dense対照の結果と判断の範囲
+
+`l4job-c14b257d85b4482cbe3e176f73666133` は完了（source `2486e5810f69afc3ac4554ded257819cff5aa45e`）。
+同じ型・runtimeの**別allocation**のL4 `GPU-66891846-9da7-9834-559f-3fccf3d4f82f`。
+N1024/B4、同じrandom X/dY、凍結初期effective W（FP32に保存されたdenseのParameter）を使用。
+各表現自身の独立CPU FP64参照と比較した。CSTのFP64実効WをdenseにFP64保存して
+全演算を完全に同じ関数へ揃えた比較ではない。CSTのatom座標dPとdenseのdWも異なる。
+
+| random入力、初期状態 | CST FP32 body | dense FP32、TF32 off |
+| --- | ---: | ---: |
+| Y relative L2 error | 4.132e-7 | 1.749e-7 |
+| dX relative L2 error | 4.154e-7 | 2.058e-7 |
+| cold Adam max delta-u | .020336628 | 1.454e-5 |
+
+この通常入力では出力・dXの誤差は同じ10^-7の桁で、CSTだけが桁違いに壊れる結果ではなかった。
+denseの通常6条件はY/dX/dW許容差と更新方向gateを通った。
+constantではdenseのdWは4で誤差0なのに対し、CSTには数学上0の中心勾配があり、
+そこでwindow位相の打ち消し残差がAdamへ入る。CSTにはこの不変量を安定に扱う余地がある。
+
+一方、意図的に打ち消しを作ったK4の全24順序のうち16順序で、標準denseも
+FP64参照のdW約1e-8がFP32では0となった。max delta-u=.5、RMS=.015625、
+同じ学習率でのpost-W差max=5e-5となり、CSTに適用したgateに不合格だった。
+全30条件でsame-gradientのP/全Adam状態対照はbyte一致。
+これはdense通常学習の失敗率でも、CSTの方が優れる証拠でもない。
+**最大更新差gateはFP32の実用性そのものを判定する基準としては不十分**と判断する。
+当初gateの不合格という事実は変えず、FP32候補の研究全体を使用不能と結論しない。
+
+次の研究をするなら、座標/spacingの全面変更より、証拠のあるwindow表現・縮約を先に狙う。
+例えば定数成分を分離して非DC成分を差分から生成し、解析上ゼロの位相を整数情報で扱う。
+局所座標は大きい絶対位置からの引き算を避けるが、今回すでにその減算はFP64だった。
+spacingを一様に変え、中心/半径/周期を同じ倍率で変えるだけでは、無次元位相と
+浮動小数点の相対的な精度は改善しない。optimizerの単位・eps・学習率まで含む契約にも注意が要る。
+これらの別候補は未実装・未測定で、学習精度・速度改善をまだ主張しない。
+
+- Dense source archive SHA256: `3c6bb756af0b6cdd909ff40a9e11440f590190cc3f5da774e3378e3ee24a3b7c`
+- Dense result archive SHA256: `a4759a2d099f1d580aa379a19e203bfe847eead62d1f8fe8457be877b56258a2`
+- 回収manifestの7ファイルを再hash照合。`output/owner-window-fp32/dense-results/`に保全。
+
+## Phase II: ユーザー指定による実用評価への継続
+
+ユーザーはdenseでも起こる程度のFP32丸め誤差を許容し、FP32という理由だけで
+却下しない方針を明示した。Phase Iの厳しい互換性gateの結果は変更しない。
+以降は同一候補をopt-in Plan/Caseへ登録し、全モデルの実学習と時間・メモリで評価する。
+既定dispatcherとmainは変更しない。座標表現・spacing・CST数学・optimizer則の変更は行わない。
+
+測定前にPhase II条件を固定する:
+- 同じ凍結seed41初期値・初期effective W・MNIST全train/test・データ順序。
+- N1024/A52428/真B4、3 weighted layersの中央だけCST、3 epochs/45,000 updates。
+- baseline FP64 body / candidate FP32 body / denseのfresh processを同じL4 allocationで順次実行。
+- TF32 off、CPU math threads1、native CSTAdamWの凍結係数、gather/loss/dX/全dP/全層更新込み。
+- epoch境界同期の未計装throughput、初期評価/warmup込みのallocated/reserved peak。
+- 全epochのloss/精度、最終P/全optimizer Tensorのfiniteを確認。
+  これは全stepの全中間Tensorを検査するものではない。
+- 継続目安: candidateの最終test精度がbaselineより.2 percentage points以上悪化せず、
+  loss悪化が.005以下。これは事前の研究目安で、単一seedを本採用の一般化証明にしない。
+- この学習比較に問題がなければ、同じGPUで初期/既存baseline学習後Pの2状態、
+  256 step×6 balanced-order fresh processをeager/Graph、CST両精度とdenseに実施する。
+  速度対照の初期状態は両精度とも同じFP64の8更新を経たP/Adam状態から開始し、
+  candidateのnative certificate準備には更新を伴わないforward/backwardのみを使う。
+- 同じ精度のeager/Graphは状態/最終勾配/集計がbyte一致することを要求する。
+  異精度の長期状態byte一致は要求しない。guard/入力供給とcapture込みpeakを含める。
+
+現在のスコープはMNISTの一つのモデル・seed41。別モデル・別seedの改善を主張しない。

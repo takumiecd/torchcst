@@ -875,6 +875,11 @@ def run_training(
         "kernel_settings": initialization.get("kernel_settings"),
         "kind": kind,
         "initial_test": initial_test,
+        "final_gradient_finite": {
+            name: p.grad is not None and bool(torch.isfinite(p.grad).all())
+            for name, p in model.named_parameters()
+        },
+        "final_gradient_check_scope": "after all timed epochs/evaluation; not per-step instrumentation",
         "width": initialization["width"],
         "atom_count": len(initialization["atoms"]),
         "epochs": rows,
