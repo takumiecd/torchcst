@@ -136,7 +136,7 @@ class PreparedStep:
     No external autograd output is exposed by the captured invocation.
     """
 
-    def __init__(self, model, optimizer, tx, ty, kind):
+    def __init__(self, model, optimizer, tx, ty, kind, *, observe=False):
         self.model, self.optimizer, self.tx, self.ty, self.kind = (
             model,
             optimizer,
@@ -149,6 +149,7 @@ class PreparedStep:
             tx.new_zeros(()),
             torch.zeros((), dtype=torch.int64, device=tx.device),
         )
+        self.observe = observe
         self.graph = None
         self.owner_stream = torch.cuda.current_stream().cuda_stream
         if self.owner_stream == 0:
@@ -348,7 +349,8 @@ class PreparedStep:
         target = self.ty[self.indices]
         x = nn.functional.relu(model[0](self.tx[self.indices]))
         if self.site is not None:
-            x.retain_grad()
+            if self.observe:
+                x.retain_grad()
             self.middle = x
             x = self.extension.research_graph_owner_window(
                 x, self.site.atoms.p, *self.configs
@@ -434,6 +436,7 @@ def run_probe(inputs, output):
         model = make_model(
             init,
             kind,
+            radius_execution="global-response4",
             execution_plan=plans.GLOBAL_OWNER_WINDOW_RECOMPUTE
             if kind == "cst"
             else None,
