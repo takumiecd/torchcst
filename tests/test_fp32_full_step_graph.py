@@ -50,3 +50,22 @@ def test_capture_restores_counted_metrics_and_numerical_state(request):
     assert float(program.totals[0]) == 12.5
     assert int(program.totals[1]) == 7
     assert exact(wanted, snapshot(model, opt))["all_byte_equal"]
+
+
+def test_evaluation_roundtrip_renews_both_certificates_without_update(request):
+    from benchmarks.training.full_step_graph import PreparedStep, exact, snapshot
+    from benchmarks.training.full_step_graph_learning import renew_certificates
+
+    model, opt, tx, ty, _, program, _ = request.getfixturevalue("cohort")
+    wanted = snapshot(model, opt)
+    model.eval()
+    with torch.no_grad():
+        model(tx[:4])
+    model.train()
+    assert not program.eligible()
+    renew_certificates(model, opt, tx[:4], "cst")
+    assert exact(wanted, snapshot(model, opt))["all_byte_equal"]
+    renewed = PreparedStep(model, opt, tx, ty, "cst")
+    renewed.capture(preserve_totals=True)
+    assert renewed.eligible()
+    assert exact(wanted, snapshot(model, opt))["all_byte_equal"]

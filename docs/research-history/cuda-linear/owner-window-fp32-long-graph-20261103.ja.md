@@ -54,3 +54,18 @@ Proレビューの提案は外部の助言として扱い、以下を今回の�
 `benchmarks.training.full_step_graph_learning_diagnostics` は、学習後のP/m/v/stepを公開load経路で読み、
 実中間X/dYによるVJPと、同じ実状態からの次の更新を計時外に検査する。
 新FP32公開入口そのもののcapture拒否も直接テストする。
+
+## 短いlifecycle検証で見つかった再準備の不足
+
+初回source `215a31a9` / job `l4job-a409292a8c4d4bc99fc58b3a578d1ecf` は
+212件の検証とeagerの3×16更新を完了したが、Graphはepoch1の評価後、
+epoch2の再準備で `initial whole-step guard refused the cohort` となり停止した。
+45,000更新には進んでいない。失敗job/source/log/checkpointは保全する。
+
+評価は共有のfixed metadata証明を更新し得る。training forward/backwardだけでは、
+Linearの証明は作り直されても、Polar更新の証明は作り直されない。
+再準備は無更新のforward/backwardに加え、通常Dispatcherの`prepare`でlive bindingを検証し、
+`prepare_optimizer_update`でoptional Polar programを再構築する。guardの書換え・無効化はしない。
+P/Adamは変えず、45,000回の実更新数と初回8更新の数え方も変えない。
+再準備費用は採用用時間へ、追加workspace/captureは同じ連続memory scopeへ含める。
+評価→train→両証明の再準備→captureでP/Adamを変更しないことを直接GPUテストする。

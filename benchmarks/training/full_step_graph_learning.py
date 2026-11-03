@@ -24,6 +24,8 @@ from benchmarks.training.cell_mass_mnist import (
 from benchmarks.training.full_step_graph import PreparedStep, ordinary_step, snapshot
 from benchmarks.training.full_step_graph_comparison import hashes
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass import plans
+from torchcst._backends.torch import finite
+from torchcst.operators.atom_update import AtomUpdateInputs
 
 
 def loop_ranges(epoch, steps):
@@ -43,6 +45,38 @@ def gradient_snapshot(model):
 
 def persist(path, value):
     path.write_text(json.dumps(value, indent=2, allow_nan=False) + "\n")
+
+
+def renew_certificates(model, optimizer, inputs, kind):
+    """Revalidate live execution after eval, without a numerical update.
+
+    Evaluation can replace the shared fixed-metadata certificate. A training
+    forward renews Linear's certificate, but does not renew Polar's certificate.
+    Ask the ordinary Dispatcher preparation entrance to validate that binding,
+    then build its optional prepared program, just as the optimizer does.
+    """
+    optimizer.zero_grad(set_to_none=True)
+    model(inputs).sum().backward()
+    if kind == "cst":
+        site = model[2]
+        point = site.atoms.p
+        group = next(
+            g for g in optimizer.param_groups if any(p is point for p in g["params"])
+        )
+        binding = optimizer._update_bindings[site]
+        dispatcher = optimizer._update_dispatcher
+        with finite.checking(False):
+            dispatcher.prepare(
+                binding,
+                AtomUpdateInputs(
+                    point.detach().clone(), group["lr"], group["amplitude_weight_decay"]
+                ),
+            )
+            program = dispatcher.prepare_optimizer_update(
+                binding, optimizer.state_adapter, site
+            )
+        assert program is not None, "Polar revalidation refused the live cohort"
+        binding.__dict__["_optimizer_program"] = program
 
 
 def run(args):
@@ -97,8 +131,12 @@ def run(args):
         if reason != "bootstrap":
             # Renew public execution certificates after an evaluation boundary,
             # without adding an optimizer update or losing counted metrics.
-            optimizer.zero_grad(set_to_none=True)
-            model(tx[order[4 * next_step : 4 * next_step + 4]]).sum().backward()
+            renew_certificates(
+                model,
+                optimizer,
+                tx[order[4 * next_step : 4 * next_step + 4]],
+                args.kind,
+            )
         candidate = PreparedStep(model, optimizer, tx, ty, args.kind)
         for dest, source in zip(candidate.totals, totals):
             dest.copy_(source)
