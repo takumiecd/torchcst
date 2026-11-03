@@ -44,3 +44,23 @@ fresh processでFP64/FP32のeager/Graphと同等条件のdenseを比較する。
 #128 harnessのrestoreは符号付きzeroも含むbyte比較に修正し、capture後の
 実際のlive開始状態を計時直前に再取得して元の開始状態と照合する。
 過去#128の原本・測定結果は変更しない。
+
+## なぜ出力だけでは判定しないか
+
+正規化された各atomの入力因子を $v_a$、出力因子を $u_a$ とすると、
+$H_a=\sum_i X_i v_{ia}$、$G_a=\sum_j dY_j u_{ja}$。
+一定入力・一定dYでは、各因子のcell mass総和が1なので $H_a=G_a=1$、
+$\partial_{\mu_i}H_a=\partial_{\mu_o}G_a=0$ が数学上の基準となる。
+このzero近傍ではFP32の三角関数・加算の残差が、Yの許容差内でも中心勾配を変えうる。
+
+cold Adamの最初の更新方向は $u(g)=g/(|g|+\epsilon)$。
+例えば $\epsilon=10^{-8}$、参照 $g=0$ に対して残差 $g=10^{-6}$ があれば、
+勾配の絶対差は小さくても方向は0から約0.9901へ変わる。
+これは感度の説明例であり、この候補で観測した値ではない。
+実検査では参照勾配をFP32へ一度丸め、同じcold状態と実CSTAdamWにも入力して比較する。
+
+CPUの事前確認: 独立48点Gauss-Legendre積分とpublic CPU FP64 Fourierの
+小集合Y/dX/dP一致、eps近傍の符号差を更新方向gateが検出すること、
+restoreが負のzeroを復元し同一byteの定数Tensorを再変更しないことを確認した。
+標準CPU suiteは `d6b46df0` で **1,707 passed / 2,133 skipped**。
+skipはCUDA/外部環境等の未実行であり、GPUでの合格を意味しない。

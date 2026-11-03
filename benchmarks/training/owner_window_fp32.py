@@ -20,6 +20,9 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.algorithm import
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.executor import (
     _extension,
 )
+from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plans import (
+    GLOBAL_OWNER_WINDOW_RECOMPUTE,
+)
 from torchcst._backends.cuda.algorithms.polar_update.plans import (
     RADIUS_FLAT_TORUS_FUSED,
 )
@@ -171,8 +174,19 @@ def optimizer_check(model, actual, reference):
     tolerance = 1e-6 + 2 * ulp
     distance = (a - b).abs()
     distance[:, 2:] = ((a[:, 2:] - b[:, 2:] + 512).remainder(1024) - 512).abs()
-    result["post_p_max_abs_by_column"] = distance.max(0).values.tolist()
-    result["post_p_gate"] = bool((distance <= tolerance).all())
+    finite_control = torch.isfinite(b).all(1)
+    result["baseline_post_p_nonfinite_rows"] = (
+        (~finite_control).nonzero().flatten().tolist()
+    )
+    result["candidate_post_p_nonfinite_rows"] = (
+        (~torch.isfinite(a).all(1)).nonzero().flatten().tolist()
+    )
+    result["post_p_compared_rows"] = int(finite_control.sum())
+    result["post_p_max_abs_by_column"] = distance[finite_control].max(0).values.tolist()
+    result["post_p_gate"] = bool(
+        (distance[finite_control] <= tolerance[finite_control]).all()
+    )
+    result["full_fixture_admissible"] = bool(finite_control.all())
     result["same_gradient_parameter_bytes"] = bool(
         torch.equal(b.view(torch.uint8), control.view(torch.uint8))
     )
@@ -383,6 +397,29 @@ def run(args):
             centers, torch.full_like(centers, -float("inf"))
         )
     add("adjacent_centers", boundary, x, dy)
+    for name, polar in [("zero_norm", [0.0, 0.0]), ("tiny_norm", [1e-20, 1e-20])]:
+        special, *_ = fixture(SimpleNamespace(size=1024, atoms=1, rows=4, seed=41))
+        with torch.no_grad():
+            special.atoms.p.copy_(torch.tensor([[*polar, 32.0, 64.0]]))
+        add(name, special, x, dy * 1e-10)
+    radii = copy.deepcopy(model)
+    target = torch.tensor([4.0, 8.0, 16.0, 32.0, 50.0], dtype=torch.float64)
+    t = (
+        (1 + 3 * (target.log() - math.log(4)) / (math.log(50) - math.log(4)))
+        .clamp(1, 4)
+        .sqrt()
+        .float()
+    )
+    with torch.no_grad():
+        radii.atoms.p[:, 0] = 0
+        radii.atoms.p[:, 1] = torch.stack(
+            [
+                torch.nextafter(t, torch.zeros_like(t)),
+                torch.nextafter(t, torch.full_like(t, float("inf"))),
+            ],
+            1,
+        ).flatten()
+    add("radius_boundary_neighbors", radii, x, dy)
     if args.inputs:
         from benchmarks.training.cell_mass_mnist import make_model
 
@@ -390,7 +427,7 @@ def run(args):
             args.inputs / "initialization.pt", map_location="cpu", weights_only=True
         )
         for state in ("initial", "final"):
-            net = make_model(init, "cst")
+            net = make_model(init, "cst", execution_plan=GLOBAL_OWNER_WINDOW_RECOMPUTE)
             if state == "final":
                 net.load_state_dict(
                     torch.load(
