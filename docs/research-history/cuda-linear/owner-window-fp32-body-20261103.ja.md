@@ -233,3 +233,40 @@ spacingを一様に変え、中心/半径/周期を同じ倍率で変えるだ�
   異精度の長期状態byte一致は要求しない。guard/入力供給とcapture込みpeakを含める。
 
 現在のスコープはMNISTの一つのモデル・seed41。別モデル・別seedの改善を主張しない。
+
+### Phase II実学習の結果
+
+`l4job-a8a266a00bcd4946bab40d3b9af0e345` / source `440b5696385b45b70c047b095a7fa0a3dbbe43cc`。
+L4 `GPU-39e86ded-86de-361e-b9e9-7d1b8996f84d`、同じTorch2.11/CUDA13/Triton3.6環境。
+公開Planを使う契約検査は **208 passed**。FP32 Planのsame-precision eager/Graph、
+hooks/live settings/storage/callback/finite-check変更時のfallbackを含む。
+CPU標準suiteは **1,708 passed / 2,149 skipped**、GitHub CPU CI run688も成功。
+
+同じallocation内でbaseline→candidate→denseの順に、各fresh processで3 epochs/45,000更新を完了。
+
+| 完全学習、seed41 | 平均ms/step | 最終test精度 | 最終test loss | peak allocated MiB | peak reserved MiB |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| CST FP64 body | 2.506987 | 97.37% | .082855619 | 246.089844 | 392 |
+| CST FP32 body | 2.498065 | 97.37% | .083672397 | 246.089844 | 390 |
+| dense FP32 | 1.317238 | 97.87% | .070017517 | 257.861328 | 384 |
+
+全epochのloss/評価がfinite、最後の全Parameter勾配・保存したmodel/optimizer Tensorもfinite。
+初期hashと全epochのdata order hashは一致した。
+FP32のaccuracy差は0、loss差+.000816777で、事前のPhase II継続目安を満たした。
+これは1モデル・1 seedの結果で、FP32全般の保証ではないが、Phase Iの局所gate不合格を
+「FP32で学習できない」と解釈しないことを実験で裏付けた。
+
+eagerでの名目短縮は約.36%で、大きな速度改善は観測していない。
+allocatedの全モデルpeakも同じで、reservedのみ2 MiB差だった。
+1つの長区間・固定順序の比較から、この小差を確実な高速化と断定しない。
+
+このjobはその後のFP32 Graph比較の準備で停止した。candidate側の無更新preflightの後に
+`zero_grad(set_to_none=True)` を呼び、PreparedStepが要求するcurrent gradient metadataを
+自分で消したため、guardが正しく拒否した。学習3条件の結果は完了・保全済み。
+`63aa8079972ee14bedd80743f0964728799c0a57` で準備勾配を保持するよう測定器だけを修正した。
+PとAdam状態は変えず、次のbodyの冒頭で通常通りzero_gradする。
+Graph部分だけを `l4job-71f276106b15410fb32b3050324d6b8f` で再測定する。
+
+- 学習job source archive SHA256: `5f0300bd2e1ee689be7ccc9baf2b820ed962dc6105378ad9437c8879b79a1c93`
+- 学習job result archive SHA256: `04af3ecec268d9a71aa5b44705c8e50c5593c8e23b9f37e07f96b9b3d05a3b80`
+- 回収manifestの34ファイルを再hash照合。`output/owner-window-fp32/phase2-learning-results/`に保全。
