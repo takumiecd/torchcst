@@ -617,6 +617,7 @@ def radius_statistics(layer):
     quantiles = torch.tensor([0.0, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0], dtype=torch.float64)
     result = {
         "parameterization": "polar_radius",
+        "center_columns": {"output": 2, "input": 3},
         "units": "physical support radius",
         "valid": bool(torch.isfinite(point).all()),
         "amplitude_quantiles": torch.quantile(amplitude, quantiles).tolist(),
@@ -624,7 +625,7 @@ def radius_statistics(layer):
             ((point.double()[:, :2].square().sum(1) - 1) / 3).clamp(0, 1), quantiles
         ).tolist(),
     }
-    for side, radii, column in (("input", ri, 2), ("output", ro, 3)):
+    for side, radii, column in (("input", ri, 3), ("output", ro, 2)):
         axis = getattr(plan, side)
         centers = (point[:, column].double() - axis.origin).remainder(axis.period)
         remaining = torch.ones(len(point), dtype=torch.bool)

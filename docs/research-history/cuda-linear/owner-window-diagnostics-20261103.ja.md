@@ -40,3 +40,27 @@ CPU上で初期値・両checkpointをbaseline/combinedの各modelへ復元し、
 含める。通常のsource snapshotへ非ignoredの生データを混ぜず、pool以外の直接uploadはしない。
 driverとraw resultsは `output/owner-window-diagnostics/` とdefault pool job原本へ保持する。
 結果・job/source/result hash・判断は実行後に追記する。
+
+## 初回診断と検査側の修正
+
+`l4job-5c7fc7f0698647c09bdbaa65085632e0` は正常終了し、数値比較は全条件を通過。
+初期のDFT/combinedでは入力windowのmax_abs差4.663e-15、dP差2.776e-17が入り、
+step1でAdam momentsが分岐した。初回Parameterは同じだった。同一gradientを使う更新、
+同一Planの再実行、C/raw単独は全3状態でbyte一致。matched-stateの独立参照検査もPASS。
+最初のstate差は直前の共通状態からbyte単位で再現できた。
+
+初回の照合とメモリ値を点検し、次の検査側の問題を修正して再実行する。
+
+- 既存 `radius_statistics` が入力/出力中心列を逆に読んでいた。正本READMEの列順は
+  output→inputであり、1次元Polarでは出力列2、入力列3。CPU側owner keysの再構築にも
+  同じ逆順を使ってしまっていた。演算本体や半径/bank数の診断は変更不要。
+  4つの出力ownerと1つの入力ownerを持つ独立fixtureのCPU回帰検査を追加した。
+- 多数のmodel/optimizerを作り直す診断の反復間で、循環参照の回収が一定でなかった。
+  初回のallocated peakが約257〜438MBで変動したため、これを採用用memory値にしない。
+  反復前後にgc.collectを行い、未計装の計測区間だけGCを固定して再測定する。
+- 最初のAdam-state差と最初のParameter差を別々に追う。baseline自由走行の複製も置き、
+  各stepで対照の一致を確認する。
+
+初回profile全6条件でTorch dispatch stack深さ0、native owner-window kernelを確認した。
+初回の数値結果とtraceは削除せず `output/owner-window-diagnostics/initial-results/` へ保全。
+改善率とmemoryの確定表には修正後の比較を使う。

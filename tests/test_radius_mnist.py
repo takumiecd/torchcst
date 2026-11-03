@@ -129,6 +129,29 @@ def test_radius_diagnostics_cover_all_atoms_without_sigma_fields(initialization)
         )
 
 
+def test_radius_owner_statistics_follow_output_then_input_center_columns():
+    layer = mnist.make_radius_cst(128, 4)
+    with torch.no_grad():
+        layer.atoms.p[:, 0] = 0
+        layer.atoms.p[:, 1] = 1
+        # README's atom layout is [polar, output center, input center].
+        # Radius4: these output centers occupy four disjoint tile owners,
+        # while the common input center occupies just one.
+        layer.atoms.p[:, 2] = torch.tensor([0, 16, 32, 48])
+        layer.atoms.p[:, 3] = 8
+    stats = mnist.radius_statistics(layer)
+    assert stats["center_columns"] == {"output": 2, "input": 3}
+    assert max(stats["input"]["owner_counts"]) == 4
+    assert sum(c > 0 for c in stats["input"]["owner_counts"]) == 1
+    assert max(stats["output"]["owner_counts"]) == 1
+    assert sum(c > 0 for c in stats["output"]["owner_counts"]) == 4
+    with torch.no_grad():
+        layer.atoms.p[:, [2, 3]] = layer.atoms.p[:, [3, 2]]
+    reversed_stats = mnist.radius_statistics(layer)
+    assert reversed_stats["input"]["owner_counts"] == stats["output"]["owner_counts"]
+    assert reversed_stats["output"]["owner_counts"] == stats["input"]["owner_counts"]
+
+
 @pytest.mark.parametrize(
     "change", ["atoms", "weight", "input", "settings", "buffers", "optimizer", "plan"]
 )

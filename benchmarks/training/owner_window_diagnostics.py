@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import gc
 import gzip
 import hashlib
 import json
@@ -183,11 +184,11 @@ def bank_diagnostic(layer, keys):
     sides = {}
     native = keys.cpu()
     for side, radius, column, native_owner in (
-        ("input", ri, 2, native.remainder(hierarchy.input.node_count)),
+        ("input", ri, 3, native.remainder(hierarchy.input.node_count)),
         (
             "output",
             ro,
-            3,
+            2,
             native.div(hierarchy.input.node_count, rounding_mode="floor"),
         ),
     ):
@@ -402,20 +403,26 @@ def numerical(initialization, checkpoints, tx, ty, order, output):
 
 
 def first_divergence(initialization, tx, ty, order, output):
-    """Inspect each updated state, rather than binary-search only the endpoint."""
+    """Track first Adam-state and first Parameter differences separately."""
     pairs = [
-        build(initialization, None, selected) for selected in ("baseline", "combined")
+        build(initialization, None, selected)
+        for selected in ("baseline", "combined", "baseline")
     ]
-    previous = None
+    previous = [None, None, None]
+    result = {
+        "first_updated_state_difference_step": None,
+        "first_parameter_difference_step": None,
+    }
     for index in range(len(order) // 4):
-        records = []
-        gradients = []
+        records, gradients = [], []
+        indices = order[4 * index : 4 * index + 4]
+        cpu_rng, cuda_rng = torch.get_rng_state(), torch.cuda.get_rng_state()
         for model, optimizer in pairs:
+            torch.set_rng_state(cpu_rng)
+            torch.cuda.set_rng_state(cuda_rng)
             optimizer.zero_grad(set_to_none=True)
-            logits = model(tx[order[4 * index : 4 * index + 4]])
-            loss = nn.functional.cross_entropy(
-                logits, ty[order[4 * index : 4 * index + 4]]
-            )
+            logits = model(tx[indices])
+            loss = nn.functional.cross_entropy(logits, ty[indices])
             loss.backward()
             gradients.append(
                 cpu_tensors(
@@ -428,52 +435,93 @@ def first_divergence(initialization, tx, ty, order, output):
             )
             optimizer.step()
             records.append(snapshot(model, optimizer))
+        if not (
+            compare(gradients[0], gradients[2])["all_byte_equal"]
+            and compare(cpu_tensors(records[0]), cpu_tensors(records[2]))[
+                "all_byte_equal"
+            ]
+        ):
+            raise AssertionError("baseline free-run repeat differed")
+        result["baseline_repeat_control_steps"] = index + 1
         after = compare(cpu_tensors(records[0]), cpu_tensors(records[1]))
-        if not after["all_byte_equal"]:
-            indices = order[4 * index : 4 * index + 4]
-            repeats = [
-                full_step_record(initialization, previous, selected, tx, ty, indices)
+        if (
+            result["first_updated_state_difference_step"] is None
+            and not after["all_byte_equal"]
+        ):
+            replay = [
+                full_step_record(initialization, previous[0], selected, tx, ty, indices)
                 for selected in ("baseline", "combined")
             ]
-            result = {
-                "first_updated_state_difference_step": index + 1,
-                "before_update": compare(*gradients),
-                "after_update": after,
-                "shared_previous_state_replay": compare(repeats[0][3], repeats[1][3]),
-                "replay_matches_observed": [
-                    compare(cpu_tensors(records[i]), repeats[i][3])["all_byte_equal"]
+            result.update(
+                first_updated_state_difference_step=index + 1,
+                first_state_before_update=compare(gradients[0], gradients[1]),
+                first_state_after_update=after,
+                shared_previous_state_replay=compare(replay[0][3], replay[1][3]),
+                first_state_replay_matches_observed=[
+                    compare(cpu_tensors(records[i]), replay[i][3])["all_byte_equal"]
                     for i in range(2)
                 ],
-                "batch_indices": indices.cpu().tolist(),
-            }
+            )
             torch.save(
                 {
-                    "previous_checkpoint": previous,
+                    "previous_checkpoint": previous[0],
                     "indices": indices.cpu(),
-                    "cpu_rng": torch.get_rng_state(),
-                    "cuda_rng": torch.cuda.get_rng_state(),
+                    "cpu_rng": cpu_rng,
+                    "cuda_rng": cuda_rng,
                 },
-                output / "first-divergence-replay.pt",
+                output / "first-state-difference-replay.pt",
+            )
+            del replay
+        names = [n for n, _ in pairs[0][0].named_parameters()]
+        parameters = compare(
+            {n: records[0]["model"][n] for n in names},
+            {n: records[1]["model"][n] for n in names},
+        )
+        if not parameters["all_byte_equal"]:
+            replay = [
+                full_step_record(initialization, previous[i], selected, tx, ty, indices)
+                for i, selected in enumerate(("baseline", "combined"))
+            ]
+            result.update(
+                first_parameter_difference_step=index + 1,
+                parameter_difference=parameters,
+                first_parameter_before_update=compare(gradients[0], gradients[1]),
+                own_previous_state_replay_matches_observed=[
+                    compare(cpu_tensors(records[i]), replay[i][3])["all_byte_equal"]
+                    for i in range(2)
+                ],
+                parameter_difference_batch_indices=indices.cpu().tolist(),
+            )
+            torch.save(
+                {
+                    "previous_checkpoints": previous[:2],
+                    "indices": indices.cpu(),
+                    "cpu_rng": cpu_rng,
+                    "cuda_rng": cuda_rng,
+                },
+                output / "first-parameter-difference-replay.pt",
             )
             write(output / "first-divergence.json", result)
             return
-        previous = records[0]
-    write(
-        output / "first-divergence.json",
-        {"first_updated_state_difference_step": None, "checked_steps": len(order) // 4},
-    )
+        previous = records
+        write(output / "first-divergence.json", result)
+    result["checked_steps"] = len(order) // 4
+    write(output / "first-divergence.json", result)
 
 
 def timed_block(model, optimizer, tx, ty, order, synchronization):
     totals = [tx.new_zeros(()), torch.zeros((), device="cuda", dtype=torch.int64)]
     torch.cuda.synchronize()
     torch.cuda.empty_cache()
+    baseline_allocated = torch.cuda.memory_allocated()
     torch.cuda.reset_peak_memory_stats()
     begin, end = (
         torch.cuda.Event(enable_timing=True),
         torch.cuda.Event(enable_timing=True),
     )
     begin.record()
+    gc_was_enabled = gc.isenabled()
+    gc.disable()
     start = time.perf_counter()
     for offset in range(0, len(order), 4):
         if synchronization == "step":
@@ -485,6 +533,8 @@ def timed_block(model, optimizer, tx, ty, order, synchronization):
     end.record()
     torch.cuda.synchronize()
     seconds = time.perf_counter() - start
+    if gc_was_enabled:
+        gc.enable()
     count = len(order) // 4
     return {
         "steps": count,
@@ -492,7 +542,9 @@ def timed_block(model, optimizer, tx, ty, order, synchronization):
         "host_loop_ms": enqueue_seconds * 1000 / count,
         "event_interval_ms": begin.elapsed_time(end) / count,
         "peak_allocated_bytes": torch.cuda.max_memory_allocated(),
+        "baseline_allocated_bytes": baseline_allocated,
         "peak_reserved_bytes": torch.cuda.max_memory_reserved(),
+        "gc_disabled_during_timing": True,
         "scope": "block mean; event interval can include CPU supply gaps; data/model resident; eager/no Graph",
     }
 
@@ -524,6 +576,7 @@ def performance(initialization, checkpoints, tx, ty, order, output, repeats):
             if repeat % 2:
                 conditions.reverse()
             for selected, synchronization in conditions:
+                gc.collect()
                 print(
                     "TIMING " + str((state_name, repeat, selected, synchronization)),
                     flush=True,
@@ -554,10 +607,12 @@ def performance(initialization, checkpoints, tx, ty, order, output, repeats):
                 rows.append(row)
                 write(output / "timing.json", rows)
                 del model, optimizer, saved
+                gc.collect()
         del checkpoint
     # Contextual dense complete-step baseline on this actual GPU. Dense has
     # the same initial effective W/coefficient contract, not atom Adam states.
     for synchronization in ("step", "block"):
+        gc.collect()
         model, optimizer = build(initialization, None, "baseline", kind="dense")
         totals = [tx.new_zeros(()), torch.zeros((), device="cuda", dtype=torch.int64)]
         for index in range(8):
@@ -573,6 +628,7 @@ def performance(initialization, checkpoints, tx, ty, order, output, repeats):
         rows.append(row)
         write(output / "timing.json", rows)
         del model, optimizer, saved
+        gc.collect()
     return warmed
 
 

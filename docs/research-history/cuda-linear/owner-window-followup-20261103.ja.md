@@ -260,8 +260,9 @@ owner keyとのbyte照合は行っていない。特に半径のbank境界付近
 固定DFTの適用atomが大きく減ったという説明を支持しない。epoch間の一時的なbank移動は
 記録していないため、全45,000 stepの経路が常に同じだったとは断定しない。
 
-owner当たり最大atom数は、両Planとも入力205→205、出力255→258（初期→epoch3後）。
-全bankの非空owner数は入力が現行256→261／併用256→263、出力が現行256→261／併用256→262。
+owner当たり最大atom数は、両Planとも入力255→258、出力205→205（初期→epoch3後）。
+全bankの非空owner数は入力が現行256→261／併用256→262、出力が現行256→261／併用256→263。
+元のCPU診断の中心列が逆だったため、この入力/出力ラベルを訂正した。旧raw logsはそのまま保全。
 この記録からは大きなowner集中も認められない。active ownerごとの実行時間やGPU timelineは
 未取得であり、分布だけからCPU律速を確定しない。
 
@@ -276,3 +277,6 @@ owner当たり最大atom数は、両Planとも入力205→205、出力255→258�
 集計JSONは `output/owner-window-followup/distribution-summary.json` に保全。
 この追記は既存ログの分析のみで、新しいGPU確保・性能測定・再学習は行っていない。
 PR #126はDraftのまま、mainへの採用も引き続き保留する。
+
+その後の同一状態・同期方式・native key照合は
+[追加診断記録](owner-window-diagnostics-20261103.ja.md)へ続く。
