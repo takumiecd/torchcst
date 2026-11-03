@@ -331,7 +331,10 @@ dense Graphはallocated264.597656/265.160156 MiB、reserved432 MiB。
 
 setupにはデータ/model配置やprocess初回compileを含まず、共通準備後のoptimizer/warmup/capture等を含む。
 GPUジョブ全体のcompile/preflight/起動・回収費用は別途pool logs/phase logsに保全している。
-複数seed、別GPU・別モデル、45,000 stepのGraph学習は未実施。
+このPhase 2終了時点では、複数seed、別GPU・別モデル、45,000 stepのGraph学習は未実施。
+その後の[FP32自身の45,000更新eager/Graph比較](owner-window-fp32-long-graph-20261103.ja.md)で、
+評価・保存・train復帰と実moment診断を含めて完了した。準備込み61.64–62.08%短縮、
+各epochの数値状態・勾配・指標のbyte一致を確認。独立した実験なので、以下の短区間の表とは分けて読む。
 
 ### 保全と現在の判断
 

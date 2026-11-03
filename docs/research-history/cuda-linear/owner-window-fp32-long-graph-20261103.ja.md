@@ -107,3 +107,131 @@ source/spec/transport/lifecycleを保全し、通常の`recover`で中断状態�
 supervisorを使ったまま、downloadだけlocal timeoutを900秒に延ばすwrapperを使用する。
 共有queue、account確認、排他、所有権、manifest検証、停止処理、自動retryなしは変更しない。
 mainやインストール済みskillを変更せず、wrapperもignored evidenceに保全する。
+
+## 完了結果: FP32自身の45,000更新
+
+**両実行順で準備込み61.64–62.08%短縮し、各epochの数値状態・勾配・指標がbyte一致した。**
+評価後の再準備と再captureも含め、今回の速度・品質・メモリ継続目安を通過した。
+この限定したGraph prototypeとの併用を継続してレビューする根拠になる。
+通常APIの汎用Graph対応や既定dispatcherへの採用は、この結果とは別の判断である。
+
+成功jobは `l4job-b077b97a10a340feb1e85e0f83f2e4af`、sourceは
+`cd37de6af0697e6924f9b628cb62307c3a043527`。
+`a49a907c` からの変更は研究文書だけで、CUDA・benchmark・testの実行コードは同じ。
+NVIDIA L4 UUID `bae0762b-d9e6-a033-d049-15d081a22de5`、driver580.82.07、
+Torch2.11.0+cu130、CUDA13.0、Triton3.6.0、Python3.13.16。
+CPUはIntel Xeon2.20GHz/12 logical cores、math threads1。
+全セルをこの一つのallocationで、fresh processで順次実行した。
+
+### 時間・品質
+
+| 実行順 | FP32 eager 学習ms/step | FP32 Graph 学習ms/step | eager 準備込みms/step | Graph 準備込みms/step | 準備込み短縮率 |
+|---|---:|---:|---:|---:|---:|
+| eager→Graph | 2.452393 | .898471 | 2.472740 | .937774 | 62.08% |
+| Graph→eager | 2.423019 | .898020 | 2.443449 | .937333 | 61.64% |
+
+各45,000実更新。学習総時間はeager110.357666/109.035854秒、Graph40.431216/40.410920秒。
+optimizer生成・capture/復元・再準備を加えた総時間は
+eager111.273311/109.955209秒、Graph42.199842/42.179963秒。
+Graphはupdate8でcaptureし、評価後のupdate15,000/30,000で再準備・再captureした。
+各回のcapture/再準備は約.28–.30秒。総準備費用はeager約.916/.919秒、Graph約1.769秒。
+最初の8実更新を含む全45,000回を数え、Graph replayは44,992回、想定外fallbackは0。
+
+FP32 eager/Graphの4セルすべてで、最終test精度 **97.37%**、loss **.083672396839**。
+epoch1/2の精度も94.88%/96.43%、loss .167267531157/.109340876341で同じ。
+既存FP64 eager基準の97.37%/.082855619490に対し、精度差0pp、loss増分.000816777349。
+FP64基準は前研究の品質参照であり、今回の同時測定によるFP64/FP32速度比較ではない。
+
+同じ全step Graphで測ったdense45,000更新は、学習 **.198231ms/step**、
+準備込み **.223139ms/step**、最終97.87%/.070017516613。
+両者Graph同士のCST/dense時間比は、学習4.530–4.532倍、準備込み4.201–4.203倍。
+今回のCSTの改善後もdenseの方が速い。CPUの特定関数やFP64 ALUを原因と断定するprofileは実施していない。
+
+### epoch状態と評価・保存・train復帰
+
+- 3 epochとも、4セル間でmodel/Adam/clockの **42 Tensor**、全Parameter勾配の **5 Tensor**、
+  loss/正解数、test値、初期値/data orderのhashが一致。保存状態と勾配はすべてfinite。
+- 回収後、各epochの実checkpointをCPUへloadし、基準eager対残り3セルの計9比較を実行。
+  各 **47 Tensor** がbyte一致した。全stepの全中間Tensorを比較したという意味ではない。
+- 前研究の別L4で得たFP32 eager最終checkpointとも、modelの27 Tensorとoptimizerの15 Tensorがbyte一致。
+  これは最終数値状態の一致であり、別GPUで長期Graph速度を再現したという主張ではない。
+- Graphは各epoch評価後にguard資格を失った。両実行証明を通常の準備入口で再構築し、
+  capture/復元時のP/Adamと既に数えた指標の一致を確認してtrainへ復帰した。
+- 各epochのcheckpoint保存を通した。最終診断では別processへloadした実状態から次のnative更新も確認した。
+  任意のcheckpointからprocessを再起動し、全モデル学習を長期間再開する一般APIの検証ではない。
+
+### captureと再準備を含むメモリ
+
+| 条件 | peak allocated MiB | peak reserved MiB | epoch1/2/3末 allocated MiB | epoch1/2/3末 reserved MiB |
+|---|---:|---:|---|---|
+| FP32 eager（両セル共通） | 247.037109 | 418 | 244.588379 / 244.588379 / 244.588379 | 416 / 418 / 418 |
+| FP32 Graph（両セル共通） | 251.992188 | 442 | 245.407227 / 245.407227 / 245.407227 | 442 / 442 / 442 |
+| dense Graph | 264.597656 | 432 | 256.595703 / 256.595215 / 256.595215 | 432 / 432 / 432 |
+
+FP32 eager→Graphのpeak増分はallocated **4.955078MiB**、reserved **24MiB**。
+事前目安の8/32MiB以内。Graphは再captureを挟んでもepoch末の両使用量が一定で、
+今回3 epochの範囲で継続的な増加を観測しなかった。プロセス全体のGPU使用量は未測定。
+このscopeは初期評価・cold optimizer・全学習・capture/復元/再準備・epoch評価を含む。
+前研究の短区間比較やoptimizer/lifecycleの異なるmemory値と混ぜない。
+
+### FP32自身の最終Pと実X/dY、学習済みmomentの診断
+
+事前に選んだtrain最初のminibatchとtest先頭4件を使い、学習済み前後層からX/dYを生成した。
+全52,428 atomの独立CPU FP64 Fourier VJPを、従来の各要素
+`3e-5 + 3e-4*abs(reference)` で照合した。
+
+| 実minibatch | Y 最大絶対差 | dX 最大絶対差 | 全dP 最大絶対差 | Y 相対L2 | dP 相対L2 |
+|---|---:|---:|---:|---:|---:|
+| train | 6.6134e-7 | 1.3419e-10 | 8.0213e-10 | 2.4489e-7 | 2.4469e-7 |
+| test | 8.4076e-7 | 6.7940e-11 | 8.1639e-10 | 2.5706e-7 | 2.5827e-7 |
+
+両minibatchのY/dX/全209,712 dP要素で超過0。
+半径で層化した8 atomの独立48点quadratureにもGPU候補のY/dX/dPが通過した。
+
+保存された実m/v/step45,000を共通にした方向差は、両minibatchとも最大 **1.1921e-7**。
+列別RMS最大はtrain6.8667e-9、test4.5415e-9。
+同じ学習済み状態から実native CSTAdamWを1回実行したPの最大差は、
+両minibatchとも列別 **[3.7253e-9, 0, 0, 0]**。中心2列のperiodic差は0。
+moment最大差はtrain exp_avg1.8626e-9 / exp_avg_sq1.1369e-13、
+test exp_avg4.6566e-10 / exp_avg_sq0。両clockは45,001で同じ。
+参照勾配を2回与える対照では、Pとmoment/clockがbyte一致した。
+既知のcold最大方向差gateの負結果はそのまま保持し、今回の実moment診断と区別する。
+
+### 検証・保全・再現
+
+- L4環境で **213件通過**。新FP32公開入口のcapture拒否、指標込みcapture復元、
+  評価後の無更新再準備を含む。短い3×16更新のeager/Graph比較と実moment診断も通過。
+- ローカルCPU suiteは1,710 passed / 2,151 skipped（追加lifecycle GPUテスト前）。
+  [測定sourceのCPU CI](https://github.com/takumiecd/torchcst/actions/runs/41668291751)も
+  1,709 passed / 2,153 skippedで成功し、宣言検査とwheel/sdist buildも通過。
+  CUDA算術とoptimizer則は本追加研究では変更していない。
+- source archive SHA256: `de4d46353f31f2b6d088f2fe2c3e96009ac7088dc9e2a15bc172551d220deff2`
+- result archive SHA256: `a779556ffda8bdf0c5bcb0a85662c5fd7c938b32349a70e28f74cd5bf0056f2c`
+- driver SHA256: `d64cf819c3357289cd6fa1baf66f79328c5bfba4e70bf61b58d6d01f896729b4`
+- 回収manifest **61 files** とarchiveを再hash照合し、
+  `output/owner-window-fp32/long-graph-results/` にログ・全epoch checkpoint・独立診断を保全。
+  ローカル直接Tensor比較は`local-checkpoint-verification.json`へ保存。
+- wrapperとそのtimeout検査、全driver、失敗試行metadataは`output/owner-window-fp32/`で保全。
+  pool supervisor正常終了・所有全slot停止を確認し、`final-pool-status.json`へ保存。
+- [公開用の集計・状態hash・診断JSON](owner-window-fp32-long-graph-results-20261103.json) は
+  raw tensor/logではなく、回収済み結果からの集計。
+
+凍結初期値 `initialization.pt` とMNIST gzip4ファイルを入力directoryへhash照合して用意する。
+初期値SHA256は `b49e95e722dab4e42d935a9ac2b239212e93660af55bf6d6a9f12f437a9f2ed6`。
+前研究のbaseline/dense最終checkpointは今回の学習入力には不要。
+同じGPU allocationで下記をfresh processでeager→Graph、Graph→eagerの順に実行し、
+dense Graphも1回実行する。出力directoryは毎回新規にする。
+
+```bash
+PYTHONPATH=src python -m benchmarks.training.full_step_graph_learning \
+  --inputs FROZEN_INPUTS --output output/fp32-eager --kind cst --mode eager
+PYTHONPATH=src python -m benchmarks.training.full_step_graph_learning \
+  --inputs FROZEN_INPUTS --output output/fp32-graph --kind cst --mode graph
+PYTHONPATH=src python -m benchmarks.training.full_step_graph_learning_diagnostics \
+  --inputs FROZEN_INPUTS --checkpoint output/fp32-graph/epoch-3.pt \
+  --output output/fp32-final-diagnostics
+```
+
+一つのmodel・seed・成功した一つのL4 allocationでの結果である。
+追加seed/別model/別GPUでの長期Graph学習、汎用Graph入口、process全体メモリは未検証。
+[#129](https://github.com/takumiecd/torchcst/pull/129) はDraftを維持し、merge/既定採用はしていない。
