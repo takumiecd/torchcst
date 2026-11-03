@@ -206,6 +206,9 @@ class PreparedStep:
                     nn.functional.relu,
                     nn.functional.cross_entropy,
                     type(self.optimizer).step,
+                    self.optimizer.step,
+                    self.optimizer.zero_grad,
+                    self.optimizer._init_group,
                     self.optimizer._adamw_proposal,
                 )
                 if fn is not None
@@ -217,6 +220,9 @@ class PreparedStep:
                     nn.functional.relu,
                     nn.functional.cross_entropy,
                     type(self.optimizer).step,
+                    self.optimizer.step,
+                    self.optimizer.zero_grad,
+                    self.optimizer._init_group,
                 )
             ),
             tuple(metadata(p.grad) if p.grad is not None else None for p in self.params)
@@ -239,14 +245,21 @@ class PreparedStep:
                 for point, state in self.optimizer.state.items()
             ),
             tuple(
-                tuple((k, repr(v)) for k, v in g.items() if k != "params")
+                (
+                    tuple(id(p) for p in g["params"]),
+                    tuple((k, repr(v)) for k, v in g.items() if k != "params"),
+                )
                 for g in self.optimizer.param_groups
             ),
             tuple(
                 (id(m), type(m), m.training, m.__dict__.get("forward"), type(m).forward)
                 for m in self.model.modules()
             ),
-            tuple(metadata(v) for v in (self.tx, self.ty, *self.periods))
+            (
+                metadata(self.tx),
+                metadata(self.ty),
+                tuple((metadata(v), v._version) for v in self.periods),
+            )
             if self.periods
             else (metadata(self.tx), metadata(self.ty)),
         )

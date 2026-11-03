@@ -71,6 +71,9 @@ def cohort():
         "retained_reader",
         "finite_checks",
         "grad_storage",
+        "group_params",
+        "optimizer_callback",
+        "zero_grad_callback",
     ],
 )
 def test_replay_invalidates_before_changed_contract(cohort, change):
@@ -97,6 +100,24 @@ def test_replay_invalidates_before_changed_contract(cohort, change):
 
         context = torch.autograd.graph.saved_tensors_hooks(pack, lambda value: value)
         context.__enter__()
+    elif change == "group_params":
+        opt.param_groups[0]["params"].reverse()
+    elif change == "optimizer_callback":
+        previous = opt.step
+
+        def replacement():
+            called.append("step")
+            return previous()
+
+        opt.step = replacement
+    elif change == "zero_grad_callback":
+        previous = opt.zero_grad
+
+        def replacement(*args, **kwargs):
+            called.append("zero_grad")
+            return previous(*args, **kwargs)
+
+        opt.zero_grad = replacement
     elif change == "lr":
         opt.param_groups[0]["lr"] *= 0.5
     elif change == "setting":
@@ -120,10 +141,10 @@ def test_replay_invalidates_before_changed_contract(cohort, change):
             torch.equal(state["step"], clock + 1)
             for state, clock in zip(opt.state.values(), clocks)
         )
-        if "hook" in change:
+        if "hook" in change or "callback" in change:
             assert called, change
         if retained is not None:
-            with pytest.raises(RuntimeError, match="modified by an inplace operation"):
+            with pytest.raises(RuntimeError, match="modified.*inplace"):
                 retained.sum().backward()
     finally:
         if handle is not None:
