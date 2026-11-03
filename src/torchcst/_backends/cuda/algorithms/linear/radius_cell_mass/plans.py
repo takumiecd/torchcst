@@ -316,3 +316,16 @@ GLOBAL_OWNER_WINDOW_DFT_RAW = ExecutionPlan(
         native_entry=True,
     ),
 )
+
+
+GLOBAL_OWNER_WINDOW_COOPERATIVE_RAW = ExecutionPlan(
+    "cuda_radius_cell_mass",
+    "v1",
+    RadiusCellMassRecipe(
+        input_direct_levels=2,
+        output_direct_levels=2,
+        schedule="global_owner_window_cooperative_raw",
+        native_autograd=True,
+        native_entry=True,
+    ),
+)

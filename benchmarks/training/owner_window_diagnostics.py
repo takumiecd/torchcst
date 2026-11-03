@@ -12,6 +12,8 @@ import gc
 import gzip
 import hashlib
 import json
+import os
+import platform
 import time
 from collections import Counter
 from pathlib import Path
@@ -39,6 +41,7 @@ PLANS = {
     "dft": plans.GLOBAL_OWNER_WINDOW_FIXED_DFT,
     "combined": plans.GLOBAL_OWNER_WINDOW_COMBINED,
 }
+EXACT_CANDIDATE = False
 
 
 def write(path, value):
@@ -382,7 +385,7 @@ def numerical(initialization, checkpoints, tx, ty, order, output):
                 "same_gradient_update": optimizer_equal,
                 "full_repeat_before": before_repeat,
             }
-            if selected in ("baseline", "c", "raw") and not all(
+            if (selected in ("baseline", "c", "raw") or EXACT_CANDIDATE) and not all(
                 value["all_byte_equal"]
                 for value in (
                     local_difference,
@@ -444,6 +447,9 @@ def first_divergence(initialization, tx, ty, order, output):
             raise AssertionError("baseline free-run repeat differed")
         result["baseline_repeat_control_steps"] = index + 1
         after = compare(cpu_tensors(records[0]), cpu_tensors(records[1]))
+        if EXACT_CANDIDATE and not after["all_byte_equal"]:
+            write(output / "exact-candidate-failure.json", after)
+            raise AssertionError("candidate's short trajectory changed state bytes")
         if (
             result["first_updated_state_difference_step"] is None
             and not after["all_byte_equal"]
@@ -645,7 +651,7 @@ def timeline_summary(path):
     native_names = {
         name: count
         for name, count in names.items()
-        if "owner_window" in name or "window_raw_level" in name
+        if "owner_window" in name or "window_raw_" in name
     }
     span = max(right for _, right in intervals) - intervals[0][0] if intervals else 0.0
     apis = [
@@ -676,7 +682,7 @@ def timeline_summary(path):
     }
 
 
-def profiles(initialization, warmed, tx, ty, order, output):
+def profiles(initialization, warmed, tx, ty, order, output, mode="full"):
     reports = {}
     for state_name, checkpoint in warmed.items():
         for selected in ("baseline", "combined"):
@@ -688,13 +694,12 @@ def profiles(initialization, warmed, tx, ty, order, output):
             ]
             step(model, optimizer, tx, ty, order[:4], totals)
             torch.cuda.synchronize()
-            with torch.profiler.profile(
-                activities=[
-                    torch.profiler.ProfilerActivity.CPU,
-                    torch.profiler.ProfilerActivity.CUDA,
-                ]
-            ) as prof:
+            activities = [torch.profiler.ProfilerActivity.CUDA]
+            if mode == "full":
+                activities.append(torch.profiler.ProfilerActivity.CPU)
+            with torch.profiler.profile(activities=activities) as prof:
                 dispatch_depth = torch._C._len_torch_dispatch_stack()
+                started = time.perf_counter()
                 for index in range(16):
                     step(
                         model,
@@ -703,14 +708,17 @@ def profiles(initialization, warmed, tx, ty, order, output):
                         ty,
                         order[index * 4 : index * 4 + 4],
                         totals,
-                        instrument=True,
+                        instrument=mode == "full",
                     )
                 torch.cuda.synchronize()
+                profile_wall_ms = (time.perf_counter() - started) * 1000 / 16
             path = output / (state_name + "-" + selected + ".json")
             prof.export_chrome_trace(str(path))
             summary = timeline_summary(path)
             summary["torch_dispatch_depth"] = dispatch_depth
             summary["instrumented_diagnostic_only"] = True
+            summary["profile_mode"] = mode
+            summary["profile_wall_ms_per_step"] = profile_wall_ms
             summary["expected_native_path_observed"] = any(
                 "owner_window_contract_kernel" in name
                 for name in summary["native_kernel_names"]
@@ -719,9 +727,13 @@ def profiles(initialization, warmed, tx, ty, order, output):
                 raise AssertionError(
                     "profile did not observe the owner-window native path"
                 )
+            expected_raw = (
+                "window_raw_cooperative_kernel"
+                if EXACT_CANDIDATE
+                else "window_raw_level_kernel"
+            )
             if selected == "combined" and not any(
-                "window_raw_level_kernel" in name
-                for name in summary["native_kernel_names"]
+                expected_raw in name for name in summary["native_kernel_names"]
             ):
                 raise AssertionError(
                     "combined profile did not observe the bounded raw path"
@@ -743,7 +755,16 @@ def main():
     )
     parser.add_argument("--steps", type=int, default=256)
     parser.add_argument("--repeats", type=int, default=4)
+    parser.add_argument("--candidate", choices=("GLOBAL_OWNER_WINDOW_COOPERATIVE_RAW",))
+    parser.add_argument("--profile-mode", choices=("full", "cuda"), default="full")
     args = parser.parse_args()
+    global PLANS, EXACT_CANDIDATE
+    if args.candidate:
+        PLANS = {
+            "baseline": plans.GLOBAL_OWNER_WINDOW_RECOMPUTE,
+            "combined": getattr(plans, args.candidate),
+        }
+        EXACT_CANDIDATE = True
     args.output.mkdir(parents=True, exist_ok=True)
     torch.set_num_threads(1)
     initialization = torch.load(
@@ -798,6 +819,20 @@ def main():
         "cuda": torch.version.cuda,
         "gpu": torch.cuda.get_device_name(),
         "cpu_threads": torch.get_num_threads(),
+        "cpu_count": os.cpu_count(),
+        "cpu_brand": next(
+            (
+                line.split(":", 1)[1].strip()
+                for line in Path("/proc/cpuinfo").read_text().splitlines()
+                if line.startswith("model name")
+            ),
+            platform.processor(),
+        )
+        if Path("/proc/cpuinfo").exists()
+        else platform.processor(),
+        "cpu_quota": Path("/sys/fs/cgroup/cpu.max").read_text().strip()
+        if Path("/sys/fs/cgroup/cpu.max").exists()
+        else None,
         "steps": args.steps,
         "repeats": args.repeats,
         "order_sha256": hashlib.sha256(order.numpy().tobytes()).hexdigest(),
@@ -824,7 +859,7 @@ def main():
         warmed = performance(
             initialization, checkpoints, tx, ty, order, args.output, args.repeats
         )
-        profiles(initialization, warmed, tx, ty, order, args.output)
+        profiles(initialization, warmed, tx, ty, order, args.output, args.profile_mode)
 
 
 if __name__ == "__main__":

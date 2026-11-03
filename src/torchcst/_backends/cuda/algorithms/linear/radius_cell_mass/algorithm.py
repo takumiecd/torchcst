@@ -98,6 +98,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "global_owner_window_tight_raw",
             "global_owner_window_combined",
             "global_owner_window_dft_raw",
+            "global_owner_window_cooperative_raw",
             "block_local",
             "block_local_parallel",
             "block_local_cached_parallel",
@@ -130,6 +131,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
                     "global_owner_window_tight_raw",
                     "global_owner_window_combined",
                     "global_owner_window_dft_raw",
+                    "global_owner_window_cooperative_raw",
                 )
             )
         ):
@@ -154,6 +156,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "global_owner_window_tight_raw",
             "global_owner_window_combined",
             "global_owner_window_dft_raw",
+            "global_owner_window_cooperative_raw",
         ) and (
             recipe.moment_method != "merge"
             or recipe.input_direct_levels != 2
@@ -198,6 +201,12 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
         except (ValueError, TypeError) as error:
             return SupportResult((str(error),))
         reasons = []
+        if (
+            recipe.schedule == "global_owner_window_cooperative_raw"
+            and context.device.compute_capability is not None
+            and context.device.compute_capability < (6, 0)
+        ):
+            reasons.append("cooperative raw hierarchy requires compute capability >= 6.0")
         if recipe.schedule in (
             "global_owner_response_coefficients",
             "global_owner_response_derivatives",
@@ -212,6 +221,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "global_owner_window_tight_raw",
             "global_owner_window_combined",
             "global_owner_window_dft_raw",
+            "global_owner_window_cooperative_raw",
         ) and (
             context.m > 4
             or plan.input != plan.output

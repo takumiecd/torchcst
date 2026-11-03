@@ -5,7 +5,8 @@ std::vector<Tensor> owner_window_transform(Tensor, Tensor, Tensor, Tensor, Tenso
                                            int);
 // mode 0: shared 17; 1: folded/saved H; 2: folded/saved windows;
 // 3: batch-feature C; 4: fixed DFT; 5: wide-only raw and tight grids;
-// 6: all three; 7: fixed DFT plus tight raw. Modes >=2 save windows.
+// 6: all three; 7: fixed DFT plus tight raw; 8: cooperative raw hierarchy.
+// Modes >=2 save windows.
 void check_owner_window_saved(Tensor, Tensor, Tensor, Tensor, Tensor, Config, Config);
 class OwnerWindow : public torch::autograd::Function<OwnerWindow> {
   public:
@@ -70,7 +71,7 @@ void bind_owner_window_autograd(pybind11::module_ &module) {
     module.def(
         "checked_autograd_linear_owner_window",
         [](Tensor x, Tensor p, Config input, Config output, int mode) {
-            TORCH_CHECK(mode >= 0 && mode <= 7, "invalid owner window mode");
+            TORCH_CHECK(mode >= 0 && mode <= 8, "invalid owner window mode");
             check_autograd_entry(x, p, input, output, 2, 2, 32, 6);
             bool need_derivative = torch::GradMode::is_enabled() && p.requires_grad();
             return OwnerWindow::apply(x, p, input, output, mode, need_derivative);

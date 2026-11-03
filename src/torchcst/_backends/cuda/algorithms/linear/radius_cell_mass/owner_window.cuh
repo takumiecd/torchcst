@@ -1,5 +1,6 @@
 #pragma once
 #include "owner_compact_fused.cuh"
+#include <cooperative_groups.h>
 
 namespace radius_cell_mass {
 // Exact roots-of-unity symmetry, rounded once to FP64; fixed geometry only.
@@ -204,14 +205,88 @@ inline Tensor build_window_raw_moments(Tensor signal, Tensor p, Tensor keys, Con
     return z;
 }
 
+// The same raw moment element and level order, with grid barriers replacing
+// separate kernel completion boundaries. No batch/feature/atom reduction
+// changes.
+template <class T>
+__global__ void window_raw_cooperative_kernel(const T *signal, double *z, int batch, Axis axis,
+                                              int start, bool merge, const uint32_t *required) {
+    auto grid = cooperative_groups::this_grid();
+    uint32_t mask = *required;
+    if (!mask)
+        return; // Uniform for the whole grid; no participant is left at a barrier.
+    int prefix = prefix_nodes(axis, start), nodes = axis.node_count - prefix;
+    int features = axis.basis_count(), work = batch * nodes * features;
+    for (int level = start; level < axis.bank_count / 2; ++level) {
+        if (!(mask & (3u << (2 * level))))
+            continue;
+        for (int index = blockIdx.x * blockDim.x + threadIdx.x; index < work;
+             index += blockDim.x * gridDim.x) {
+            int node = prefix + (index / features) % nodes;
+            int bi = bank_for_node(node, axis);
+            if (axis.banks[bi].level == level && (mask & (uint32_t(1) << bi)))
+                z[index] = compact_moment_element(signal, z, index / (nodes * features), node,
+                                                  index % features, axis, start, merge);
+        }
+        // All threads participate. A later active level can read this level;
+        // the final active level is followed by ordinary stream completion.
+        if (mask >> (2 * (level + 1)))
+            grid.sync();
+    }
+}
+inline Tensor build_window_raw_cooperative(Tensor signal, Tensor p, Tensor keys,
+                                           Config input_config, Config output_config,
+                                           bool output_side) {
+    check_atoms(p);
+    Axis input = parse_axis(input_config), output = parse_axis(output_config);
+    Axis axis = output_side ? output : input;
+    check_hybrid_signal(signal, p, axis);
+    check_layout_keys(keys, input.node_count, output.node_count);
+    TORCH_CHECK(keys.device() == p.device() && keys.numel() == p.size(0),
+                "owner keys differ from atoms");
+    int start = 2, nodes = axis.node_count - checked_start(axis, start);
+    TORCH_CHECK(!nodes || signal.size(0) <= (INT_MAX - THREADS) / (nodes * axis.basis_count()),
+                "moment work exceeds native index limit");
+    bool merge = true;
+    auto required =
+        active_moment_banks_from_keys(keys, input_config, output_config, output_side, merge, start);
+    auto z = torch::empty({signal.size(0), nodes, axis.basis_count()},
+                          signal.options().dtype(torch::kDouble));
+    if (signal.size(0)) {
+        int device = p.get_device(), supported = 0;
+        C10_CUDA_CHECK(cudaDeviceGetAttribute(&supported, cudaDevAttrCooperativeLaunch, device));
+        TORCH_CHECK(supported, "cooperative raw moments require cooperative-launch support");
+        AT_DISPATCH_FLOATING_TYPES(p.scalar_type(), "radius_window_raw_cooperative", [&] {
+            auto kernel = window_raw_cooperative_kernel<scalar_t>;
+            int resident = 0;
+            C10_CUDA_CHECK(
+                cudaOccupancyMaxActiveBlocksPerMultiprocessor(&resident, kernel, THREADS, 0));
+            int batch = signal.size(0), work = batch * nodes * axis.basis_count();
+            int capacity = resident * at::cuda::getDeviceProperties(device)->multiProcessorCount;
+            int blocks = std::min((work + THREADS - 1) / THREADS, capacity);
+            TORCH_CHECK(blocks > 0, "cooperative raw grid has no resident capacity");
+            const scalar_t *x_ptr = signal.data_ptr<scalar_t>();
+            double *z_ptr = z.data_ptr<double>();
+            const uint32_t *mask_ptr = required.data_ptr<uint32_t>();
+            void *arguments[] = {&x_ptr, &z_ptr, &batch, &axis, &start, &merge, &mask_ptr};
+            C10_CUDA_CHECK(cudaLaunchCooperativeKernel(reinterpret_cast<const void *>(kernel),
+                                                       dim3(blocks), dim3(THREADS), arguments, 0,
+                                                       at::cuda::getCurrentCUDAStream()));
+        });
+        C10_CUDA_KERNEL_LAUNCH_CHECK();
+    }
+    return z;
+}
 inline Tensor build_owner_windows(Tensor signal, Tensor p, Tensor keys, Config input_config,
                                   Config output_config, bool reverse, bool fold, bool fixed_dft,
-                                  bool tight_raw) {
+                                  bool tight_raw, bool cooperative_raw) {
     Axis axis = parse_axis(reverse ? output_config : input_config);
     auto layout = owner_window_layout(axis, fold);
     auto required =
         active_moment_banks_from_keys(keys, input_config, output_config, reverse, false, 0);
-    auto z = tight_raw
+    auto z = cooperative_raw
+                 ? build_window_raw_cooperative(signal, p, keys, input_config, output_config, reverse)
+                 : tight_raw
                  ? build_window_raw_moments(signal, p, keys, input_config, output_config, reverse)
                  : build_compact_moments_from_keys(signal, p, keys, input_config, output_config,
                                                    reverse, true, 2);
@@ -411,6 +486,7 @@ std::vector<Tensor> owner_window_transform(Tensor signal, Tensor p, Tensor keys,
     bool flat_c = variant == 3 || variant == 6;
     bool fixed_dft = variant == 4 || variant == 6 || variant == 7;
     bool tight_raw = variant == 5 || variant == 6 || variant == 7;
+    bool cooperative_raw = variant == 8;
     Axis source = parse_axis(reverse ? output_config : input_config);
     Axis destination = parse_axis(reverse ? input_config : output_config);
     check_atoms(p);
@@ -421,7 +497,7 @@ std::vector<Tensor> owner_window_transform(Tensor signal, Tensor p, Tensor keys,
     TORCH_CHECK(!flat_c || (fold && recompute), "batch-feature C requires folded recomputation");
     auto layout = owner_window_layout(destination, fold);
     auto windows = build_owner_windows(signal, p, keys, input_config, output_config, reverse, fold,
-                                       fixed_dft, tight_raw);
+                                       fixed_dft, tight_raw, cooperative_raw);
     auto response = !reverse && !recompute ? torch::empty({signal.size(0), p.size(0)},
                                                           signal.options().dtype(torch::kDouble))
                                            : Tensor();
