@@ -402,7 +402,14 @@ class PreparedStep:
         self.totals[0].add_(self.loss.detach() * 4)
         self.totals[1].add_((self.logits.detach().argmax(1) == target).sum())
 
-    def capture(self):
+    def capture(self, *, preserve_totals=False):
+        # Long learning counts its first eight real updates. Capture's virtual
+        # updates must restore those metrics along with P and Adam state.
+        saved_totals = (
+            tuple(t.detach().cpu().clone() for t in self.totals)
+            if preserve_totals
+            else None
+        )
         saved = snapshot(self.model, self.optimizer)
         stream = torch.cuda.current_stream()
         with torch.cuda.stream(stream):
@@ -414,8 +421,11 @@ class PreparedStep:
             self.body()
         torch.cuda.synchronize()
         restore(self.model, self.optimizer, saved)
-        for t in self.totals:
-            t.zero_()
+        for i, t in enumerate(self.totals):
+            if saved_totals is None:
+                t.zero_()
+            else:
+                t.copy_(saved_totals[i].to(t.device))
         self.signature = self._signature()
         assert self.eligible(), "capture invalidated replay guard"
 

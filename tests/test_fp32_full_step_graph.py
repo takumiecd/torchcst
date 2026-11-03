@@ -24,3 +24,29 @@ def choose_fp32_plan(monkeypatch):
     monkeypatch.setattr(
         plans, "GLOBAL_OWNER_WINDOW_RECOMPUTE", plans.GLOBAL_OWNER_WINDOW_FP32
     )
+
+
+def test_public_fp32_entrance_itself_rejects_capture(request):
+    model, _, tx, _, _, program, _ = request.getfixturevalue("cohort")
+    graph = torch.cuda.CUDAGraph()
+    with (
+        torch.cuda.graph(graph, stream=torch.cuda.current_stream()),
+        pytest.raises(RuntimeError, match="not CUDA Graphs"),
+    ):
+        program.extension.research_owner_window_fp32(
+            tx.new_zeros((4, 1024)), model[2].atoms.p, *program.configs, False
+        )
+
+
+def test_capture_restores_counted_metrics_and_numerical_state(request):
+    from benchmarks.training.full_step_graph import exact, snapshot
+
+    model, opt, _, _, indices, program, _ = request.getfixturevalue("cohort")
+    program.totals[0].fill_(12.5)
+    program.totals[1].fill_(7)
+    wanted = snapshot(model, opt)
+    program.indices.copy_(indices)
+    program.capture(preserve_totals=True)
+    assert float(program.totals[0]) == 12.5
+    assert int(program.totals[1]) == 7
+    assert exact(wanted, snapshot(model, opt))["all_byte_equal"]
