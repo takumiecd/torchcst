@@ -5,11 +5,12 @@
 namespace radius_cell_mass {
 // Explicit mode9: literal mode7 floating expressions/order; only temporary
 // destination partial addresses differ. Every response remains complete FP64.
-template<class T>
+template<class T, bool FuseGradient = false>
 __global__ void owner_compact_partials_kernel(const T *p, const T *signal,
     const double *z, double *response, double *derivative, double *partials, const int64_t *rows,
     const int64_t *offsets, int atoms, int batch, Axis source, Axis destination,
-    int start, bool source_output_side, bool need_derivative, OwnerPartialLayout layout) {
+    int start, bool source_output_side, bool need_derivative, OwnerPartialLayout layout,
+    const double *h = nullptr, const double *dh = nullptr, T *gradient = nullptr) {
     int owner = blockIdx.x;
     int begin = int(offsets[owner]), end = int(offsets[owner + 1]);
     if (begin == end) return; // uniform, before every CTA barrier
@@ -43,10 +44,22 @@ __global__ void owner_compact_partials_kernel(const T *p, const T *signal,
             #pragma unroll
             for (int b = 0; b < OWNER_BATCH; ++b) {
                 if (b < batch) {
-                    response[int64_t(b) * atoms + atom] = values[b];
-                    if (need_derivative) derivative[int64_t(b) * atoms + atom] = derivatives[b];
+                    if constexpr (!FuseGradient) {
+                        response[int64_t(b) * atoms + atom] = values[b];
+                        if (need_derivative) derivative[int64_t(b) * atoms + atom] = derivatives[b];
+                    }
                 }
                 saved[destination.modes + 2 + b] = b < batch ? amp * values[b] : 0;
+            }
+            if constexpr (FuseGradient) {
+                double da = 0, dmi = 0, dmo = 0;
+                for (int b = 0; b < batch; ++b) {
+                    int64_t index = int64_t(b) * atoms + atom;
+                    da += h[index] * values[b];
+                    dmi += amp * values[b] * dh[index];
+                    dmo += amp * h[index] * derivatives[b];
+                }
+                store_gradient(p, gradient, atom, destination, da, 0, dmi, dmo);
             }
         }
         __syncthreads();

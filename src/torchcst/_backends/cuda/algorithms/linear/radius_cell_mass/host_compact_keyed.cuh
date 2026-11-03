@@ -3,7 +3,10 @@
 namespace radius_cell_mass {
 std::vector<Tensor> owner_compact_keyed_transform(Tensor, Tensor, Tensor, Tensor, Tensor,
     Config, Config, bool, bool);
-class OwnerCompactKeyed : public torch::autograd::Function<OwnerCompactKeyed> {
+std::vector<Tensor> owner_compact_fused_reverse(Tensor, Tensor, Tensor, Tensor, Tensor,
+    Config, Config, Tensor, Tensor);
+template<bool Fused = false>
+class OwnerCompactKeyed : public torch::autograd::Function<OwnerCompactKeyed<Fused>> {
 public:
     static Tensor forward(torch::autograd::AutogradContext *ctx, Tensor x,
         Tensor atoms, Config input, Config output, bool need_derivative) {
@@ -39,10 +42,16 @@ public:
             Tensor g, dg;
             if (needs_x) {
                 auto ranges = autograd_ranges(saved[4], input, output, true);
-                auto reverse = owner_compact_keyed_transform(dy, atoms, saved[4], ranges[0], ranges[1],
-                    input, output, true, needs_p);
-                result[0] = reverse[0];
-                g = reverse[1]; dg = reverse[2];
+                if (Fused && needs_p) {
+                    auto reverse = owner_compact_fused_reverse(dy, atoms, saved[4], ranges[0], ranges[1],
+                        input, output, saved[2], saved[3]);
+                    result[0] = reverse[0]; result[1] = reverse[1];
+                } else {
+                    auto reverse = owner_compact_keyed_transform(dy, atoms, saved[4], ranges[0], ranges[1],
+                        input, output, true, needs_p);
+                    result[0] = reverse[0];
+                    g = reverse[1]; dg = reverse[2];
+                }
             } else if (needs_p) {
                 // Atom-only scope deliberately retains mode9's P-derived mask:
                 // no new keys save, reverse sorting, compact C or dX allocation.
@@ -51,7 +60,7 @@ public:
             }
             // The reverse transform completed full dX and G/D_G first. No
             // projection, phase work, atomics or radius task derivative here.
-            if (needs_p) result[1] = owner_derivative_parameter_grad(atoms,
+            if (needs_p && !result[1].defined()) result[1] = owner_derivative_parameter_grad(atoms,
                 saved[2], g, saved[3], dg, input, output);
         }
         if (delayed_error) {
@@ -70,11 +79,17 @@ public:
 
 
 void bind_owner_compact_keyed_autograd(pybind11::module_ &module) {
+    module.def("checked_autograd_linear_compact_fused", [](Tensor x, Tensor p,
+        Config input, Config output) {
+        check_autograd_entry(x, p, input, output, 2, 2, 32, 6);
+        bool need_derivative = torch::GradMode::is_enabled() && p.requires_grad();
+        return OwnerCompactKeyed<true>::apply(x, p, input, output, need_derivative);
+    }, pybind11::call_guard<pybind11::gil_scoped_release>());
     module.def("checked_autograd_linear_compact_keyed", [](Tensor x, Tensor p,
         Config input, Config output) {
         check_autograd_entry(x, p, input, output, 2, 2, 32, 6);
         bool need_derivative = torch::GradMode::is_enabled() && p.requires_grad();
-        return OwnerCompactKeyed::apply(x, p, input, output, need_derivative);
+        return OwnerCompactKeyed<false>::apply(x, p, input, output, need_derivative);
     }, pybind11::call_guard<pybind11::gil_scoped_release>());
 }
 } // namespace radius_cell_mass
