@@ -102,7 +102,9 @@ def run(args):
         )
         optimizer.zero_grad(set_to_none=True)
         model(tx[order[:4]]).sum().backward()
-        optimizer.zero_grad(set_to_none=True)
+        # PreparedStep checks the current gradient metadata before its first
+        # body clears gradients. Keep these preparation gradients alive, just
+        # as the FP64 common warmup does; P and Adam state remain unchanged.
     program = None
     if args.mode != "eager":
         program = PreparedStep(model, optimizer, tx, ty, args.kind)
