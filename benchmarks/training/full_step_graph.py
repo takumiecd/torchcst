@@ -49,7 +49,10 @@ def restore(model, optimizer, saved):
     with torch.no_grad():
         for key, value in current.items():
             target = saved[key].to(value.device)
-            if not torch.equal(value, target):
+            if not torch.equal(
+                value.contiguous().reshape(-1).view(torch.uint8),
+                target.contiguous().reshape(-1).view(torch.uint8),
+            ):
                 value.copy_(target)
 
 

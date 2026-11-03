@@ -102,6 +102,11 @@ def run(args):
         total.zero_()
     gc.collect()
     torch.cuda.synchronize()
+    actual_start = snapshot(model, optimizer)
+    assert hashes(actual_start) == hashes(start), (
+        "capture/restore changed live start state"
+    )
+    start = actual_start
     setup_seconds = time.perf_counter() - setup_start
     started = time.perf_counter()
     gc_enabled = gc.isenabled()
