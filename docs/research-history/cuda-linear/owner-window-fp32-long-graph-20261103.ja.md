@@ -69,3 +69,41 @@ Linearの証明は作り直されても、Polar更新の証明は作り直され
 P/Adamは変えず、45,000回の実更新数と初回8更新の数え方も変えない。
 再準備費用は採用用時間へ、追加workspace/captureは同じ連続memory scopeへ含める。
 評価→train→両証明の再準備→captureでP/Adamを変更しないことを直接GPUテストする。
+
+## 記録する量
+
+学習時間を \(T_{\rm train}\)、optimizer生成・capture・復元・必要再準備の和を
+\(T_{\rm prep}\) として、採用用時間を
+\(T_{\rm adoption}=T_{\rm train}+T_{\rm prep}\) とする。
+各実行順序での短縮率は
+\(1-T_{\rm adoption,Graph}/T_{\rm adoption,eager}\)。
+評価・保存・入力転送と共有初回compileは別の費用として残す。
+
+最終checkpointの実際のmoment \(m_t,v_t\) とclock \(t\) を固定し、
+候補勾配 \(g\) と一度FP32へ丸めた独立参照勾配 \(g_{\rm ref}\) を使って
+
+\[
+m^+=\beta_1m_t+(1-\beta_1)g,\quad
+v^+=\beta_2v_t+(1-\beta_2)g^2,\qquad
+u^+(g)=\frac{m^+/(1-\beta_1^{t+1})}
+{\sqrt{v^+/(1-\beta_2^{t+1})}+\epsilon}
+\]
+
+の差を診断する。これはcold momentの最大方向差gateの再判定ではない。
+別に同一checkpointから実native CSTAdamWを1回実行し、P・moment・clockの差を残す。
+中心の差はperiod1024で最短距離を取り、差分はFP64へ変換してから計算する。
+参照勾配を2回与える同勾配対照は更新の再現性の検査であり、
+候補勾配と参照勾配で更新が一致したという意味にはしない。
+
+## 結果転送上限による中断
+
+source `a49a907c` / job `l4job-013d1eb581294028b9a7926d623d7039` は
+`POOL_RESULT_READY` まで到達したが、checkpointを含む結果archiveのdownloadが
+pool既定の180秒で中断された。poolは所有VMを停止し、serverにassignmentがないことも確認した。
+終了したVMの結果は回収できず、数値・性能の結果として使わない。
+source/spec/transport/lifecycleを保全し、通常の`recover`で中断状態を解消する。
+
+再試行は明示的に新jobとして提出する。計算・測定・入力は同じに保ち、共有poolの
+supervisorを使ったまま、downloadだけlocal timeoutを900秒に延ばすwrapperを使用する。
+共有queue、account確認、排他、所有権、manifest検証、停止処理、自動retryなしは変更しない。
+mainやインストール済みskillを変更せず、wrapperもignored evidenceに保全する。
