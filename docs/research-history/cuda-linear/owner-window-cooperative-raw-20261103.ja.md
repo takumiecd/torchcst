@@ -47,3 +47,71 @@ mainへの採用は測定後の判断で、ここではまだ行わない。
 
 宣言検査は31 Plan/本CaseでPASS。windowと本候補のCPU側検査は5 passed/273 skipped。
 GPUでのcooperative launch成功、正しさ、速度、メモリは未確認。実行後にjob/hash/結果を追記する。
+
+## 初回L4実測
+
+`l4job-49bb39c1ef7546088396e730fd3025e3` は正常終了し、結果をhash照合して回収した。
+測定sourceは `73488edf98e97b378256c768f594f6d0e5967a53`。
+NVIDIA L4、driver580.82.07、Torch2.11.0+cu130、CUDA13.0、Triton3.6.0、Python3.13.16。
+CPUはIntel Xeon @2.20GHz、12論理core、cgroup `max 100000`、math threads1。
+
+GPU環境のunit検査278件が全て通過した。独立FP64参照、広い半径・周期境界・owner集中、
+retained/offload/hook、3 stepのexact optimizer状態、全52,428 atomの更新を含む。
+旧window3 Planも同じsourceで検査した。初期・両学習後checkpointの同一状態比較では、
+Y/dX/dP/有効window/keys、全層grad、更新後の全model/optimizer Tensorがbyte一致。
+256 stepの自由走行もParameter・Adam stateとも一致し、同一Plan対照も一致した。
+
+### 連続発行する全モデルの短区間
+
+同じ256 minibatch、各6反復で順番を釣り合わせた平均wall time。
+
+| 固定checkpoint | 基準 ms/step | 候補 ms/step | 短縮 | paired反復の勝ち数 |
+| --- | ---: | ---: | ---: | ---: |
+| 初期＋共通8更新 | 2.488580 | 2.442404 | 1.86% | 5/6 |
+| 現行の学習後 | 2.457750 | 2.394728 | 2.56% | 6/6 |
+| 旧併用版の学習後 | 2.485434 | 2.456698 | 1.16% | 4/6 |
+
+全比較でpeak allocated257,324,032 byte、reserved436,207,616 byteは同じ。
+同じ初期状態からの別process比較であり、個々のstepを独立標本とは扱わない。
+
+### 既存runnerによる完全stepと全MNIST
+
+単層の毎step同期101標本の中央値は2.435501→2.402412 ms（約1.36%短縮）。
+allocated7,456,768 byte／reserved8,388,608 byteは両方で同じ。
+denseは0.712906 ms。単層だけの改善から全モデルの効果を推定しない。
+
+既存MNIST runnerをそのまま使い、同一の初期値・effective W・データ順序、真B4、
+各3 epoch/45,000 stepで基準→候補→denseの順に実行した。モデルは3つの重み付き層で、
+CSTは中央の1024²層だけ。未計装の学習loop全体をepochごとに同期し、cold optimizerを含む。
+
+| 全モデル | 平均 ms/step | 学習合計秒 | 最終test精度 | 最終test loss | allocated MiB | reserved MiB |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| recompute | 2.487813 | 111.951564 | 97.37% | 0.082856 | 246.089844 | 392 |
+| cooperative raw | 2.441883 | 109.884751 | 97.37% | 0.082856 | 246.089844 | 392 |
+| dense | 1.266473 | 56.991270 | 97.87% | 0.070018 | 257.861328 | 384 |
+
+候補は全モデルの3 epoch平均で1.846%短縮、epoch2–3だけでは2.417%短縮だった。
+最終42 Tensorのmodel/optimizer状態が全てbyte一致し、全epochの学習・test指標も一致。
+同じcheckpointを読み戻した全atomのY/dX/dP参照と層化8 atomの独立quadratureも両PlanでPASS。
+データhash、正規化統計、初期値hash、各epochの順序hashも全runで一致した。
+
+### profileの確認と限界
+
+全6条件でnative window経路を確認し、dispatch stackは0。
+実kernel数は90→74/step、16 stepのCUDA API記録数は2,338→2,146だった。
+cooperative属性・occupancy queryが増えるため、API回数の減少はkernel数の差とは同じでない。
+
+CUDA activityだけのprofileでもwall timeは約3.14〜3.57 ms/stepで、未計装値より長かった。
+CPU eventを外しても計装費用は残り、その時間を性能値へ混ぜない。kernel実行unionは初期が
+2.086909→2.095891 ms、現行終点が2.332209→2.318275 ms、旧併用終点が
+2.337007→2.308529 msで、GPU演算そのものの大幅な短縮はなかった。
+launchを減らす変更がhost発行側へ効く説明と整合するが、CPU関数ごとの未計装費用は未分離。
+
+効果は小さいため、同じ候補を変更せず、別jobで候補→基準の逆順3 epoch比較を行う。
+独立repeatのsourceも `73488edf…` で、ここまでの文書追記はそのsnapshotに含まれない。
+
+- source archive SHA256: `2b75bdf028e5f1f67b04582570715de43f7f29d86f5e0e29b051af91af9a0f51`
+- result archive SHA256: `de9974b4cdb16d15a7747eb166f7aad441552337c7246ec91cfdc8b447054619`
+- 保全先: `output/owner-window-cooperative/first-results/` と `first-spec.json`、`first-receipt.json`。
+- 原本: default pool job directory。raw inputsはdriverのhash付きpayloadにも含む。
+- CPU標準suiteは `1712 passed, 2599 skipped`。宣言・lint・checkpoint復元もPASS。
