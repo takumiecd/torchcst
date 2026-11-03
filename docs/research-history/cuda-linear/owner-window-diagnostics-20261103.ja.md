@@ -183,6 +183,8 @@ combinedから推定して既定化しない。PR #126のDraft・採用保留は
   pool driverにも同じ入力をhash付きで含めてあり、source archiveだけでも再構成できる。
 - 最初のstate差の再現情報は結果内 `numerical/first-state-difference-replay.pt`。
   初回差の直前は初期状態なのでcheckpoint欄はNoneで、同じinitialization.ptと組み合わせる。
+- 両診断jobは回収・hash照合に成功し、supervisorは正常終了。所有slotは全てstoppedを確認。
+  確認記録は `output/owner-window-diagnostics/final-pool-status.json` に保持。
 
 再現用の短区間コマンド:
 
