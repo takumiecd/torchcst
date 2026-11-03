@@ -466,8 +466,65 @@ def run(args):
     print(json.dumps({k: v for k, v in result.items() if k != "cases"}), flush=True)
 
 
+def recheck_optimizer_saved(args):
+    """Re-evaluate saved gradients with the exact frozen training coefficients.
+
+    This does not run or compile the radius extension and does not alter the
+    candidate gradients. The normal subset separates existing extreme-norm
+    optimizer nonfinites from sensitivity caused by the precision change.
+    """
+    args.output.mkdir(parents=True, exist_ok=True)
+    torch.set_num_threads(1)
+    rows = []
+    for path in sorted(args.inputs.glob("*-vjp.pt")):
+        saved = torch.load(path, map_location="cpu", weights_only=True)
+        p = saved["p"]
+        normal = p[:, :2].double().square().sum(1).le(4.000001)
+        for label, mask in [
+            ("all_rows", torch.ones(len(p), dtype=torch.bool)),
+            ("normal_rows", normal),
+        ]:
+            m, *_ = fixture(
+                SimpleNamespace(size=1024, atoms=int(mask.sum()), rows=4, seed=41)
+            )
+            with torch.no_grad():
+                m.atoms.p.copy_(p[mask])
+            result = optimizer_check(
+                m, saved["candidate"][2][mask], saved["expected"][2][mask]
+            )
+            rows.append(
+                {
+                    "case": path.stem,
+                    "subset": label,
+                    "row_indices": mask.nonzero().flatten().tolist(),
+                    **result,
+                }
+            )
+    (args.output / "optimizer-recheck.json").write_text(
+        json.dumps(rows, indent=2) + "\n"
+    )
+    print(
+        json.dumps(
+            {
+                "optimizer_rechecks": len(rows),
+                "any_failed_normal_gate": any(
+                    not r["pass"] for r in rows if r["subset"] == "normal_rows"
+                ),
+            }
+        ),
+        flush=True,
+    )
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--inputs", type=Path)
-    run(parser.parse_args())
+    parser.add_argument("--optimizer-only", action="store_true")
+    args = parser.parse_args()
+    if args.optimizer_only:
+        if args.inputs is None:
+            parser.error("--optimizer-only requires --inputs")
+        recheck_optimizer_saved(args)
+    else:
+        run(args)
