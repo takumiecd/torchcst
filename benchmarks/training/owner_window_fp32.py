@@ -12,7 +12,11 @@ from types import SimpleNamespace
 
 import torch
 
-from benchmarks.cuda.linear.radius_cell_mass import chunked_reference, fixture
+from benchmarks.cuda.linear.radius_cell_mass import (
+    _reference_model,
+    chunked_reference,
+    fixture,
+)
 from torchcst import CSTAdamW, FixedSelector, make_algorithm_registry
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.algorithm import (
     hierarchy_from_operator,
@@ -156,7 +160,7 @@ def optimizer_check(model, actual, reference):
     result["optimizer_contract"] = contract
     states = []
     for grad in (g, r, r):
-        m = copy.deepcopy(model).cuda()
+        m = _reference_model(model, model.atoms.p).float().cuda()
         opt = CSTAdamW(
             m.parameters(),
             model=m,
@@ -182,8 +186,10 @@ def optimizer_check(model, actual, reference):
     a, b, control = [s[0] for s in states]
     ulp = (torch.nextafter(b, torch.full_like(b, float("inf"))) - b).abs()
     tolerance = 1e-6 + 2 * ulp
-    distance = (a - b).abs()
-    distance[:, 2:] = ((a[:, 2:] - b[:, 2:] + 512).remainder(1024) - 512).abs()
+    distance = (a.double() - b.double()).abs()
+    distance[:, 2:] = (
+        (a[:, 2:].double() - b[:, 2:].double() + 512).remainder(1024) - 512
+    ).abs()
     finite_control = torch.isfinite(b).all(1)
     result["baseline_post_p_nonfinite_rows"] = (
         (~finite_control).nonzero().flatten().tolist()
@@ -295,6 +301,18 @@ def run_case(ext, name, model, x, dy, out, *, independent=True):
                 *[v.cpu() for v in torch.autograd.grad(y, (xx, p), dy.cuda())],
             )
         )
+    # Preserve expensive all-atom values before any optimizer/later-stage failure.
+    torch.save(
+        {
+            "expected": expected,
+            "baseline": actual[0],
+            "candidate": actual[1],
+            "p": model.atoms.p.detach().cpu(),
+            "x": x,
+            "dy": dy,
+        },
+        out / (name + "-vjp.pt"),
+    )
     record = {
         "name": name,
         "atoms": len(model.atoms.p),
