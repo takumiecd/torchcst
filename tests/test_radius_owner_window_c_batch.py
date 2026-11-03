@@ -113,3 +113,19 @@ def test_c_batch_exact_optimizer_state(dtype, batch, needs_x, needs_p, skew):
             old.contiguous().reshape(-1).view(torch.uint8),
             new.contiguous().reshape(-1).view(torch.uint8),
         )
+
+
+@GPU
+def test_c_batch_full_fixture_exact_state(monkeypatch):
+    """All 52,428 atoms, public optimizer and three moving-parameter steps."""
+    import sys
+
+    from benchmarks.cuda.linear.radius_cell_mass import fixture
+
+    initial, _, _, _ = fixture(SimpleNamespace(seed=41, size=1024, atoms=52428, rows=4))
+    monkeypatch.setattr(
+        sys.modules[__name__],
+        "model",
+        lambda dtype, skew: copy.deepcopy(initial).to(dtype),
+    )
+    test_c_batch_exact_optimizer_state(torch.float32, 4, True, True, False)
