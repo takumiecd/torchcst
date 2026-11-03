@@ -4,6 +4,11 @@ PR #126後の診断で、GPU演算削減が連続発行する全モデルの短�
 両Planとも90 kernel/stepのままだった。今回は改善候補を1つだけ比較する。
 作業branchは `kernel/owner-window-cooperative-raw`、親は `b9d53e71`。
 
+最終判定は採用保留。実起動数90→74/stepと数値状態の完全一致を確認したが、
+全MNISTの短縮は初回1.846%、逆順repeat0.312%と小さく変動した。
+この単一seed・2 jobから安定した実用上の改善や他モデルへの効果は確定できない。
+コードと証拠はPR #126上に積んだDraft PR #127として保全し、既定選択は変更しない。
+
 ## 候補と契約
 
 基準 `GLOBAL_OWNER_WINDOW_RECOMPUTE` に対して、raw momentの9回/方向の起動を
@@ -43,10 +48,10 @@ raw inputsは親branchの診断と同じhash付き初期値・checkpoint・datas
 生ログ・driver・結果はignored `output/owner-window-cooperative/` とdefault poolに保全する。
 mainへの採用は測定後の判断で、ここではまだ行わない。
 
-## 準備時点
+## 準備時点の記録
 
 宣言検査は31 Plan/本CaseでPASS。windowと本候補のCPU側検査は5 passed/273 skipped。
-GPUでのcooperative launch成功、正しさ、速度、メモリは未確認。実行後にjob/hash/結果を追記する。
+この時点ではGPUでの成功・正しさ・速度・メモリは未確認だった。以下に実測結果を記す。
 
 ## 初回L4実測
 
@@ -107,7 +112,7 @@ CPU eventを外しても計装費用は残り、その時間を性能値へ混�
 2.337007→2.308529 msで、GPU演算そのものの大幅な短縮はなかった。
 launchを減らす変更がhost発行側へ効く説明と整合するが、CPU関数ごとの未計装費用は未分離。
 
-効果は小さいため、同じ候補を変更せず、別jobで候補→基準の逆順3 epoch比較を行う。
+効果は小さいため、同じ候補を変更せず、別jobで候補→基準の逆順3 epoch比較を行った。
 独立repeatのsourceも `73488edf…` で、ここまでの文書追記はそのsnapshotに含まれない。
 
 - source archive SHA256: `2b75bdf028e5f1f67b04582570715de43f7f29d86f5e0e29b051af91af9a0f51`
@@ -115,3 +120,43 @@ launchを減らす変更がhost発行側へ効く説明と整合するが、CPU�
 - 保全先: `output/owner-window-cooperative/first-results/` と `first-spec.json`、`first-receipt.json`。
 - 原本: default pool job directory。raw inputsはdriverのhash付きpayloadにも含む。
 - CPU標準suiteは `1712 passed, 2599 skipped`。宣言・lint・checkpoint復元もPASS。
+
+## 逆順repeatと最終判定
+
+`l4job-5c39834490534ce39b4cffe4f5612124` も正常終了した。sourceは初回と同じ
+`73488edf98e97b378256c768f594f6d0e5967a53`。同じdriver/Torch/CUDA/Python、
+CPU brand/12論理core/quotaで、別のL4割り当てを使った。GPU UUIDは初回
+`e4ce616e-f04e-2012-6798-2246133064d8`、repeat
+`a068e092-6cec-a7ca-8311-7c1e1aa95fa5`。fresh GPUで全52,428 atomのexact-state検査を
+先に通し、候補→基準→denseの順で同じ3 epochを測った。
+
+| 全モデル | 平均 ms/step | 学習合計秒 | 最終test精度 | 最終test loss | allocated MiB | reserved MiB |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| recompute | 2.506486 | 112.791852 | 97.37% | 0.082856 | 246.089844 | 392 |
+| cooperative raw | 2.498666 | 112.439957 | 97.37% | 0.082856 | 246.089844 | 392 |
+| dense | 1.333500 | 60.007500 | 97.87% | 0.070018 | 257.861328 | 384 |
+
+repeatの短縮は3 epoch平均で0.312%。epoch別の基準→候補 ms/stepは
+`2.544290→2.583275`、`2.505354→2.475364`、`2.469813→2.437358`。
+初epochは候補が遅く、後半は速かった。主判定にはcold optimizerを含む全3 epochを使い、
+後半だけで改善幅を代表させない。初回1.846%と合わせ、2回とも平均は短縮したものの、
+差の大きさは安定していない。独立seedの反復や有意差検定の結果とは扱わない。
+
+repeatも全42 Tensorの最終model/optimizer状態がbyte一致した。さらに初回とrepeatの
+基準最終checkpointをローカルで比較し、同じ42 Tensor全てのbyte一致を確認した。
+従って両jobの基準/候補、計4本のCST学習は同じ最終Tensor状態に到達している。
+初期値・データ・正規化・epoch順序と全epoch学習/test指標も一致。
+repeatの両最終checkpointも全atomのY/dX/dP参照と層化8 atomの独立quadratureにPASS。
+全モデルのallocated/reserved peakは両Plan・両jobで同じで、追加のメモリ削減はない。
+
+単一候補としてはlaunch削減と数値互換性の成立を確認できた。一方、全モデルでの速度効果は
+小幅であり、cooperative launchというhardware条件と実装複雑性に見合う安定した改善は
+まだ確認できない。Draftのまま採用保留とし、この依頼では別候補や追加GPU反復へ進まない。
+評価はこのMNIST構成に限定され、複数モデル・他GPU・複数seedの普遍的な改善を意味しない。
+
+- source archive SHA256: `2cd1d35c551976b1fed9bf8d5febf9db98ccfff10fb439ce559e70989fbe6955`
+- result archive SHA256: `36c1efeb69b85ee8dd08e82cbddca0af464122fb29b40587db96c46fedd9a009`
+- 保全先: `output/owner-window-cooperative/repeat-results/`、`repeat-spec.json`、`repeat-receipt.json`。
+- job間比較: `output/owner-window-cooperative/cross-job-state-comparison.json`。
+- 初回・repeatとも回収済み。pool supervisorによる終了処理後、全slotの`stopped`を確認した。
+  確認記録は `output/owner-window-cooperative/final-pool-status.json`。
