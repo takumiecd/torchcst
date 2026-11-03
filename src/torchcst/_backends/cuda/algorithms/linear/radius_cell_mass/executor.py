@@ -578,6 +578,7 @@ def checked_owner_compact_keyed_linear(plan, x, atoms, *, recipe):
         "global_owner_window17",
         "global_owner_window_fold",
         "global_owner_window_recompute",
+        "global_owner_window_c_batch",
     ):
         raise ValueError("expected the explicit compact keyed-owner recipe")
     if (
@@ -609,6 +610,7 @@ def checked_owner_compact_keyed_linear(plan, x, atoms, *, recipe):
         "global_owner_window17": 0,
         "global_owner_window_fold": 1,
         "global_owner_window_recompute": 2,
+        "global_owner_window_c_batch": 3,
     }
     if recipe.schedule in window_modes:
         return native.checked_autograd_linear_owner_window(
@@ -724,6 +726,7 @@ def checked_radius_linear(plan, x, atoms, *, recipe):
         "global_owner_window17",
         "global_owner_window_fold",
         "global_owner_window_recompute",
+        "global_owner_window_c_batch",
     ):
         return checked_owner_compact_keyed_linear(plan, x, atoms, recipe=recipe)
     if recipe.schedule == "block_local_tile_moments":
@@ -805,6 +808,7 @@ def radius_linear(plan, x, atoms, *, recipe=None):
         "global_owner_window17",
         "global_owner_window_fold",
         "global_owner_window_recompute",
+        "global_owner_window_c_batch",
     ):
         return checked_owner_compact_keyed_linear(plan, x, atoms, recipe=recipe)
     if recipe.schedule == "block_local_tile_moments":

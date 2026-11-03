@@ -255,3 +255,16 @@ GLOBAL_OWNER_WINDOW_RECOMPUTE = ExecutionPlan(
         native_entry=True,
     ),
 )
+
+
+GLOBAL_OWNER_WINDOW_C_BATCH = ExecutionPlan(
+    "cuda_radius_cell_mass",
+    "v1",
+    RadiusCellMassRecipe(
+        input_direct_levels=2,
+        output_direct_levels=2,
+        schedule="global_owner_window_c_batch",
+        native_autograd=True,
+        native_entry=True,
+    ),
+)

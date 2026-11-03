@@ -129,7 +129,7 @@ constexpr int WINDOW_SHARED_BYTES =
     sizeof(double) * (OWNER_CAPACITY * WINDOW_CACHE_STRIDE + OWNER_BATCH * OWNER_FEATURES);
 // One CTA owns a destination window; atoms remain in original parameter rows.
 // No per-atom Fourier table, H/G atomics, or dense effective W is allocated.
-template <class T, bool Reverse, bool Recompute>
+template <class T, bool Reverse, bool Recompute, bool FlatC = false>
 __global__ void owner_window_contract_kernel(
     const T *p, const double *windows, const double *input_windows, const double *h,
     const double *dh, double *response, double *derivative, T *gradient, double *partials,
@@ -149,7 +149,7 @@ __global__ void owner_window_contract_kernel(
         }
         __syncthreads();
     }
-    double sums[OWNER_BATCH] = {};
+    double sums[FlatC ? 1 : OWNER_BATCH] = {};
     for (int chunk = begin; chunk < end; chunk += OWNER_CAPACITY) {
         int retained = min(OWNER_CAPACITY, end - chunk);
         if (threadIdx.x < retained) {
@@ -213,18 +213,37 @@ __global__ void owner_window_contract_kernel(
                 window_cache[threadIdx.x * WINDOW_CACHE_STRIDE + f] = q[f];
         }
         __syncthreads();
-        if (emit_x && threadIdx.x < rank) {
-            for (int a = 0; a < retained; ++a) {
-                const double *v = window_cache + a * WINDOW_CACHE_STRIDE;
-                for (int b = 0; b < batch; ++b)
-                    sums[b] += v[threadIdx.x] * v[OWNER_FEATURES + b];
+        if constexpr (FlatC) {
+            // One thread per (batch, feature), preserving the atom/chunk order
+            // of every individual output. At B4/r12 this uses 48 lanes.
+            if (emit_x && threadIdx.x < batch * rank) {
+                int b = threadIdx.x / rank, f = threadIdx.x % rank;
+                for (int a = 0; a < retained; ++a) {
+                    const double *v = window_cache + a * WINDOW_CACHE_STRIDE;
+                    sums[0] += v[f] * v[OWNER_FEATURES + b];
+                }
+            }
+        } else {
+            if (emit_x && threadIdx.x < rank) {
+                for (int a = 0; a < retained; ++a) {
+                    const double *v = window_cache + a * WINDOW_CACHE_STRIDE;
+                    for (int b = 0; b < batch; ++b)
+                        sums[b] += v[threadIdx.x] * v[OWNER_FEATURES + b];
+                }
             }
         }
         __syncthreads();
     }
-    if (emit_x && threadIdx.x < rank)
-        for (int b = 0; b < batch; ++b)
-            partials[owner_window_index(b, bi, owner, threadIdx.x, destination, layout)] = sums[b];
+    if constexpr (FlatC) {
+        if (emit_x && threadIdx.x < batch * rank)
+            partials[owner_window_index(threadIdx.x / rank, bi, owner, threadIdx.x % rank,
+                                        destination, layout)] = sums[0];
+    } else {
+        if (emit_x && threadIdx.x < rank)
+            for (int b = 0; b < batch; ++b)
+                partials[owner_window_index(b, bi, owner, threadIdx.x, destination, layout)] =
+                    sums[b];
+    }
 }
 
 template <class T>
@@ -264,7 +283,7 @@ std::vector<Tensor> owner_window_transform(Tensor signal, Tensor p, Tensor keys,
                                            Tensor offsets, Config input_config,
                                            Config output_config, bool reverse, bool need_derivative,
                                            bool fold, bool recompute, bool emit_x, Tensor h,
-                                           Tensor dh, Tensor saved_windows) {
+                                           Tensor dh, Tensor saved_windows, bool flat_c) {
     Axis source = parse_axis(reverse ? output_config : input_config);
     Axis destination = parse_axis(reverse ? input_config : output_config);
     check_atoms(p);
@@ -272,6 +291,7 @@ std::vector<Tensor> owner_window_transform(Tensor signal, Tensor p, Tensor keys,
     check_ranges(rows, offsets, p, destination);
     check_owner_axes(source, destination, signal.size(0), 2, 2, true, 32);
     c10::cuda::CUDAGuard guard(p.device());
+    TORCH_CHECK(!flat_c || (fold && recompute), "batch-feature C requires folded recomputation");
     auto layout = owner_window_layout(destination, fold);
     auto windows = build_owner_windows(signal, p, keys, input_config, output_config, reverse, fold);
     auto response = !reverse && !recompute ? torch::empty({signal.size(0), p.size(0)},
@@ -289,9 +309,9 @@ std::vector<Tensor> owner_window_transform(Tensor signal, Tensor p, Tensor keys,
         emit_x ? torch::empty({signal.size(0), destination.sites}, signal.options()) : Tensor();
     if (signal.size(0)) {
         AT_DISPATCH_FLOATING_TYPES(p.scalar_type(), "radius_window_contract", [&] {
-            auto launch = [&](auto rev, auto recomp) {
+            auto launch = [&](auto rev, auto recomp, auto flat) {
                 owner_window_contract_kernel<scalar_t, decltype(rev)::value,
-                                             decltype(recomp)::value>
+                                             decltype(recomp)::value, decltype(flat)::value>
                     <<<destination.node_count, THREADS, WINDOW_SHARED_BYTES,
                        at::cuda::getCurrentCUDAStream()>>>(
                         p.data_ptr<scalar_t>(), windows.data_ptr<double>(),
@@ -305,16 +325,21 @@ std::vector<Tensor> owner_window_transform(Tensor signal, Tensor p, Tensor keys,
                         rows.data_ptr<int64_t>(), offsets.data_ptr<int64_t>(), p.size(0),
                         signal.size(0), source, destination, layout, fold, need_derivative, emit_x);
             };
-            if (reverse) {
-                if (recompute)
-                    launch(std::true_type{}, std::true_type{});
+            if (flat_c) {
+                if (reverse)
+                    launch(std::true_type{}, std::true_type{}, std::true_type{});
                 else
-                    launch(std::true_type{}, std::false_type{});
+                    launch(std::false_type{}, std::true_type{}, std::true_type{});
+            } else if (reverse) {
+                if (recompute)
+                    launch(std::true_type{}, std::true_type{}, std::false_type{});
+                else
+                    launch(std::true_type{}, std::false_type{}, std::false_type{});
             } else {
                 if (recompute)
-                    launch(std::false_type{}, std::true_type{});
+                    launch(std::false_type{}, std::true_type{}, std::false_type{});
                 else
-                    launch(std::false_type{}, std::false_type{});
+                    launch(std::false_type{}, std::false_type{}, std::false_type{});
             }
             if (emit_x)
                 owner_window_expand_kernel<scalar_t><<<(y.numel() + THREADS - 1) / THREADS, THREADS,

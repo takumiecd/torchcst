@@ -93,6 +93,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "global_owner_window17",
             "global_owner_window_fold",
             "global_owner_window_recompute",
+            "global_owner_window_c_batch",
             "block_local",
             "block_local_parallel",
             "block_local_cached_parallel",
@@ -120,6 +121,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
                     "global_owner_window17",
                     "global_owner_window_fold",
                     "global_owner_window_recompute",
+                    "global_owner_window_c_batch",
                 )
             )
         ):
@@ -139,6 +141,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "global_owner_window17",
             "global_owner_window_fold",
             "global_owner_window_recompute",
+            "global_owner_window_c_batch",
         ) and (
             recipe.moment_method != "merge"
             or recipe.input_direct_levels != 2
@@ -192,6 +195,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "global_owner_window17",
             "global_owner_window_fold",
             "global_owner_window_recompute",
+            "global_owner_window_c_batch",
         ) and (
             context.m > 4
             or plan.input != plan.output
