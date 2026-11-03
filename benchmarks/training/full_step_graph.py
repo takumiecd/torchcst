@@ -72,9 +72,9 @@ def exact(a, b):
 
 
 def ordinary_step(model, optimizer, tx, ty, indices, totals):
+    inputs, target = tx[indices], ty[indices]
     optimizer.zero_grad(set_to_none=True)
-    target = ty[indices]
-    logits = model(tx[indices])
+    logits = model(inputs)
     loss = nn.functional.cross_entropy(logits, target)
     loss.backward()
     optimizer.step()
@@ -436,7 +436,7 @@ def run_probe(inputs, output):
         model = make_model(
             init,
             kind,
-            radius_execution="global-response4",
+            radius_execution="cached" if kind == "cst" else "global-response4",
             execution_plan=plans.GLOBAL_OWNER_WINDOW_RECOMPUTE
             if kind == "cst"
             else None,

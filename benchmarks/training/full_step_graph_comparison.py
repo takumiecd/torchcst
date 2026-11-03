@@ -63,7 +63,7 @@ def run(args):
     model = make_model(
         init,
         args.kind,
-        radius_execution="global-response4",
+        radius_execution="cached" if args.kind == "cst" else "global-response4",
         execution_plan=plans.GLOBAL_OWNER_WINDOW_RECOMPUTE
         if args.kind == "cst"
         else None,
