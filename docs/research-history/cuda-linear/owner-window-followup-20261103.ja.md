@@ -213,7 +213,9 @@ dP `1.188e-7` 以下。各checkpointから半径で層化した8 atomは独立48
 各epochのdata order hash、dataset MD5/SHA256、Plan snapshot、初期値、最終checkpoint、
 全学習metrics・状態差・最終oracle検査は上記raw evidenceに保持した。
 pool supervisorは両jobの回収後に正常終了し、所有slotは全てstoppedを確認した。
-GPUを確保したままにしない。追加PR/mergeは行っていない。
+GPUを確保したままにしない。実験完了時点では追加PR/mergeを行っていない。
+その後、ユーザーの依頼によりコードと検証結果をレビュー用Draft PRとして公開する。
+mainへの採用・mergeは引き続き保留し、全モデルの高速化を主張しない。
 
 再現は同一sourceからregistryの `GLOBAL_OWNER_WINDOW_RECOMPUTE` と
 `GLOBAL_OWNER_WINDOW_COMBINED` を `make_algorithm_registry().dumps_plan(...)` で
