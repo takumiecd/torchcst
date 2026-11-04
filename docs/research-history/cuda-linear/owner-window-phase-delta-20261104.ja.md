@@ -142,3 +142,10 @@ precisionは`fp32_geometry_sort32_flat_c`対`fp32_phase_delta`。life probeは
 
 ローカルhost C++ syntax、Ruff pass。対象pytestは4 passed / 117 skipped
 （新しい3拒否テストを含むCUDA検証は次の限定診断jobで行う）。
+
+その後、同じ補強sourceでL4環境の12検証がpassした。
+既存2 Planの生成コード・counter診断は、集計器のbool表記不備を訂正して計4セルを収集したが、
+2 allocationとSM frequency counter差が残ったため部分診断として停止した。
+register/STACK/local sector件数の増加説は支持されず、原因は未特定。
+known-bank候補のCUDA実装・短期採用試験・45,000更新は未実施。
+詳細と元raw verdictの保全境界は[限定診断記録](owner-window-contract-diagnostics-20261104.ja.md)に残した。
