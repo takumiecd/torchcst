@@ -29,6 +29,32 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass import executor,
 
 ENTRY = "research_owner_window_fp32_geometry_sort32_flat_c"
 SCHEDULE = "global_owner_window_fp32_geometry_sort32_flat_c"
+READ_LEASE = "torch::autograd::CppNode<(anonymous namespace)::ReadLease>"
+
+
+def native_read_lease_path(output, parameter):
+    """Inspect only the fixed output/native/P lease route, before backward.
+
+    ReadLease has two Tensor inputs. Its non-differentiable lifetime marker
+    still contributes a (None, 0) edge; it is not a unary autograd node.
+    The caller separately matches the native name to the direct entry result.
+    """
+
+    def borrowed_input(node):
+        assert node is not None and node.name() == READ_LEASE
+        edges = node.next_functions
+        assert len(edges) == 2 and edges[0][0] is not None
+        assert edges[0][1] == 0 and edges[1] == (None, 0)
+        return edges[0][0]
+
+    outer = output.grad_fn
+    native = borrowed_input(outer)
+    edges = native.next_functions
+    assert len(edges) == 2 and all(edge[1] == 0 for edge in edges)
+    accumulator = borrowed_input(edges[1][0])
+    assert accumulator.name() == "torch::autograd::AccumulateGrad"
+    assert accumulator.variable is parameter
+    return [outer.name(), native.name()], [READ_LEASE, accumulator.name()]
 
 
 def file_hash(path):
@@ -65,17 +91,10 @@ def sample_vjp(model, optimizer, inputs, targets):
 
     def forward_hook(module, args, output):
         keep("Y", output)
-        # Ordinary execution can wrap the native result in the read-lease
-        # identity. Inspect only that bounded unary chain, not its whole graph.
-        node, names = output.grad_fn, []
-        for _ in range(8):
-            names.append(node.name())
-            if "OwnerWindowFloat" in names[-1]:
-                break
-            assert len(node.next_functions) == 1, names
-            node = node.next_functions[0][0]
+        names, parameter_names = native_read_lease_path(output, site.atoms.p)
         assert "OwnerWindowFloat" in names[-1], names
         saved["ordinary_grad_fn_path"] = names
+        saved["ordinary_parameter_grad_fn_path"] = parameter_names
         handles.append(output.register_hook(lambda g: keep("dY", g)))
 
     keep("P", site.atoms.p)
@@ -107,6 +126,7 @@ def sample_vjp(model, optimizer, inputs, targets):
     p = saved["P"].cuda().requires_grad_()
     dy = saved["dY"].cuda()
     output = getattr(executor._extension(), ENTRY)(x, p, *configs, True)
+    assert output.grad_fn.name() == saved["ordinary_grad_fn_path"][-1]
     dx, dp = torch.autograd.grad(output, (x, p), dy)
     direct = {
         name: value.detach().cpu().clone()
