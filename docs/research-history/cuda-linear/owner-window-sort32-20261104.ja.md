@@ -39,6 +39,55 @@ epoch末メモリが増え続けないことも確認する。profileは別の16
 最終破棄込みの時間で5%以上短縮を要求する。同じメモリ増分基準とepoch末の安定性を確認する。
 denseも同等のGraph条件で測る。短期基準を満たさなければ負結果を保存し、長期比較は実施しない。
 
+## keyと比較式
+
+入力ownerを `i`、出力ownerを `o`、owner数を `Ni/No` とすると、
+`k=o Ni+i`、逆方向は `k'=(k mod Ni) No+floor(k/Ni)`。
+offset境界は方向に応じた `owner × stride` のlower boundである。
+cast前の値と積、逆方向の計算、境界はint64を維持する。
+
+短期対 `j` の基準時間を `b_j`、候補時間を `c_j` とすると、採否に使う短縮率は
+`1−exp(mean_j(log(c_j/b_j)))`。表の平均ms/stepから計算した比率とは区別する。
+長期は `1−候補のadoption_seconds/基準のadoption_seconds` で順序対ごとに判断する。
+
+## 再実行の入口
+
+入力は#130と同じhash固定の初期値、MNIST、FP32自身とdenseの学習後checkpoint。
+raw driverとpayloadはignored `output/sort32/driver.py` と共有poolのsource archiveに保全する。
+driverは整数/Graph契約、48更新lifecycle、36短期cell、4 profile cell、全短期gateの判定、
+条件付き長期比較の順に実行する。各cellはfresh processである。
+
+```bash
+PYTHONPATH=src:. python -m tools.kernel_dev check \
+  --plans benchmarks/cuda/linear/plans-radius-cell-mass.json \
+  --case benchmarks/cuda/linear/cases/radius-cell-mass-1024-owner-window-fp32-geometry-sort32-initial.json
+PYTHONPATH=src:. python -m tools.kernel_dev test --suite cpu
+
+# INPUTSはmanifestで固定した7入力を含むdirectory。REPEATは0..5。
+PYTHONPATH=src:. python -m benchmarks.training.full_step_graph_comparison \
+  --inputs "$INPUTS" --output "$OUTPUT" --kind cst --mode graph \
+  --state initial --precision fp32_geometry_sort32 --repeat "$REPEAT" \
+  --steps 256 --bootstrap-fp32 --geometry-baseline
+# 基準は--precision fp32_geometry。学習後状態は--state final。
+# 全短期gateを満たした場合だけ実行。基準は--sort32を省略。
+PYTHONPATH=src:. python -m benchmarks.training.full_step_graph_learning \
+  --inputs "$INPUTS" --output "$LONG_OUTPUT" --kind cst --mode graph \
+  --geometry-shared --sort32
+```
+
 ## 実測結果
 
-未実測。結果取得後にsource/result hash、環境、数値・時間・メモリ、採否を追記する。
+初回job `l4job-63a1bb3e7ed9405ba528615695ee5801` は333 GPU検証を通過した。
+初期/学習後の短期完全stepは各9.3398%/9.3787%短縮、各6/6勝、状態・全勾配・集計は
+byte一致、両peakの増分0。ところがdriverのlifecycle判定が「全3epoch末のreservedが
+完全に同じ」という、事前の「継続増加なし」より強い条件になっており、長期へ進まず終了した。
+基準reservedは444/444/444MiB、候補は442/444/444MiB、allocatedは両者とも一定。
+両者の最終peakは同じ444MiBで、数値も全epoch一致している。
+
+この初回decisionは保全し、合格へ上書きしない。追加の独立jobで同じCUDA実装を使い、
+各16更新×8epochのeval/save/train/reprepare/recaptureを対照・候補の順に実行する。
+初期2epochを含む全体peakの既存2/8MiB増分予算は維持し、最後6epochのallocatedと
+reservedがすべて同じ、全8epochの42状態+5勾配・集計がbyte一致、fallback=0の場合だけ
+長期へ進む。速度・数値・peak予算は一切緩めない。前回同様3epochが長期の既定であり、
+`--epochs 8 --steps-per-epoch 16` はlifecycleの継続増加を識別する追加診断にだけ使う。
+追加jobの結果と採否は以下に追記する。

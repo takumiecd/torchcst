@@ -173,7 +173,7 @@ def run(args):
         )
         return candidate
 
-    for epoch in range(3):
+    for epoch in range(args.epochs):
         model.train()
         order_cpu = torch.randperm(
             len(tx), generator=torch.Generator().manual_seed(init["seed"] + 100 + epoch)
@@ -363,7 +363,7 @@ def run(args):
         "precision": "FP32 body; FP64 decode/classify/local subtraction/Polar pullback"
         if args.kind == "cst"
         else "FP32 dense",
-        "timing_scope": "epoch training segments include all 45000 real updates, cold optimizer, gather/loss/backward/update/metrics and Graph guard/index/version notifications; preparation/capture/restoration/Graph retirement and GC added to adoption_seconds; evaluation/checkpoint excluded",
+        "timing_scope": f"epoch training segments include all {total_updates} real updates, cold optimizer, gather/loss/backward/update/metrics and Graph guard/index/version notifications; preparation/capture/restoration/Graph retirement and GC added to adoption_seconds; evaluation/checkpoint excluded",
         "memory_scope": "before optimizer creation; includes initial evaluation, all actual FP32 updates, capture/restoration/repreparation and epoch evaluations; no peak reset after capture; untimed final VJP diagnostics run separately",
         "optimizer_contract": init["optimizer_contract"],
     }
@@ -382,9 +382,12 @@ def main():
         default=0,
         help="smoke only; full experiment uses all15000",
     )
+    parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--geometry-shared", action="store_true")
     parser.add_argument("--sort32", action="store_true")
     args = parser.parse_args()
+    if args.epochs < 1:
+        parser.error("--epochs must be positive")
     stream = torch.cuda.Stream()
     with torch.cuda.stream(stream):
         run(args)
