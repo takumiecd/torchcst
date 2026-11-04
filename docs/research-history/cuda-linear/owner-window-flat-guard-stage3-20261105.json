@@ -1,0 +1,48 @@
+{
+  "status": "incomplete_formal_harness_clock_schema_failure",
+  "job": "l4job-cf65034272e04e7dae022df1f47566a9",
+  "source_commit": "c51a0cc5864a8288f0c3a853206ca0d7631e5327",
+  "source_archive_sha256": "58506474773c1c7070590f03468c08fb5b3c5f36f5759b7ed551a5d582eacf45",
+  "result_archive_sha256": "b9634ffbb53e1c3739eae1715a3af8f350d0173909b22e4522747b54943e4fea",
+  "driver_sha256": "70e399d6129c5d045607e4283ee50aa6ed55fa04222ebb7050ae2b4df4c2184d",
+  "started_cells": 1,
+  "completed_processes": 1,
+  "driver_validated_cells": 0,
+  "candidate_cells": 0,
+  "completed_pairs": 0,
+  "first_performance_loss": null,
+  "baseline_unpaired_mean_ms": 0.7531079218749959,
+  "baseline_clock_start": 8,
+  "baseline_clock_end": 264,
+  "baseline_optimizer_clocks_before": [
+    8,
+    8,
+    8,
+    8,
+    8
+  ],
+  "baseline_optimizer_clocks_after": [
+    264,
+    264,
+    264,
+    264,
+    264
+  ],
+  "serialized_clock_paths": [
+    "/model/2.atom_state.optimizer_state._extra_state/fields/step",
+    "/optimizer/state/0/step",
+    "/optimizer/state/1/step",
+    "/optimizer/state/2/step",
+    "/optimizer/state/3/step",
+    "/optimizer/state/4/step"
+  ],
+  "failure": "driver required five serialized /step paths, but CST42-state schema also serializes one model-side alias, so six paths are expected",
+  "CPU_inspection": "g1-stage3-clock-failure-inspection.json: all six path values8->264; all external frozen start/end/gradients/totals/order/init/data match;91evidence Tensor finite;legacy42state matchesend",
+  "scientific_result": "no paired speed verdict; no actual clock corruption observed",
+  "Stage3_pass": false,
+  "long_run_executed": false,
+  "adopted": false,
+  "owned_VM_stopped": true,
+  "retry_executed": false,
+  "next": "preserve no-retry stop; seek Pro review of one bounded prospective formal amendment versus ending fixed G1 indeterminate"
+}

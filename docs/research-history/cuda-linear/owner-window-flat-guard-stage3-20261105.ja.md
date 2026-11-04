@@ -48,3 +48,24 @@ denseの正誤/memoryは同じく必須で、速度差は共通の実行基盤�
 主時計は区間境界同期の未計装全model step（gather/loss/backward/全optimizer/metrics/guard/index/version通知）。
 kernel時間やeligible費用をmodel時間へ換算しない。資格補強済G0からの改善を、元#132より速い証拠とも呼ばない。
 全条件を通過した場合だけ、既定の二順序45,000更新へ進む。Stage3単体で採用/mergeはしない。
+
+## 最初の正式実行: 保存clock schemaの誤assertで未完了
+
+job `l4job-cf65034272e04e7dae022df1f47566a9`、source `c51a0cc5`、
+driver SHA256 `70e399d6129c5d045607e4283ee50aa6ed55fa04222ebb7050ae2b4df4c2184d`。
+最初のCST qualifiedセルは256更新を完了したが、その後driverが保存状態の`/step`終端pathを
+5本と固定してassertし、停止した。candidateセル0、完成pair0、性能の勝敗は未判定。
+
+この本数の固定は検証driverの誤りだった。CST42状態の保存schemaは、optimizer/state/0–4/stepの
+5本に加え、model/2.atom_state.optimizer_state._extra_state/fields/stepにもclockのaliasを保存する。
+末尾pathは計6本で、初期/自身45kの凍結参照も全て同じschemaである。
+今回の実optimizer clockは5本とも8→264、保存6pathも全て8→264であり、
+学習clockの不正は観測していない。CPUで全start42/end42/5勾配・totals/order/init/dataが外部凍結参照と一致し、
+91項目のevidenceもfinite、旧形式PTの終端42状態とのbyte一致を確認した。
+
+unpaired基準セルの時間は0.753108ms/update。これをG1との比較や有効な負けとは扱わない。
+元のdriver・失敗ログ・PT・停止理由を保持し、事前のno-retryどおりGPU再投入はしていない。
+必要なら保存schemaへ忠実なCPU修正を検討するが、同じ候補の追加正式試行を行うかは、
+既に一つの基準時間を観測したことと予算例外を明示して、追加結果の取得前にレビューする。
+初回をなかったことにしたり、旧基準と別allocationの候補をpaired比較として接合したりしない。
+状態・原本hashは同名JSON、詳しいclock監査はignored outputへ保存した。所有VM停止も確認済み。
