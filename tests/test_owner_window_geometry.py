@@ -138,7 +138,7 @@ def test_payload_offload_multiple_forwards_retained_and_current_P():
     y = m(xx)
     with torch.no_grad():
         m.atoms.p.add_(0.001)
-    with pytest.raises(RuntimeError, match="modified by an inplace operation"):
+    with pytest.raises(RuntimeError, match="inplace"):
         y.sum().backward()
 
 

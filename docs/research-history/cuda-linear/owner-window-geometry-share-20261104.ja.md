@@ -42,3 +42,13 @@ byte不一致なら保存R/amplitude・keysから原因を追い、途中で許�
 全基準を通った場合だけ、45,000更新の順序反転比較へ進む。
 長期も各epoch47 Tensor・指標一致、退役GCを含む準備込み5%以上短縮、メモリ予算内を要求する。
 未達なら結果を保全して候補探索を終了する。既定採用・mergeは別判断。
+
+## 初回GPU検証の停止と修正
+
+source `b26c1b86` / job `l4job-739c9a71eb684716959be5ea9bf746a9` は
+11件通過後、Parameterのinplace変更を拒否する例外の文言がテストの正規表現と異なり停止した。
+実際にはReadLeaseによるview/inplace保護が意図どおりRuntimeErrorを返していた。
+検査は拒否を要求したまま`inplace`へ文言一致を修正し、CUDA算術は変更しない。
+通常/constant/alternating/小振幅/境界wide/owner集中のY/dX/全dP byte比較と独立参照、
+保存geometryのdtype/shape/stride/device拒否は通過済み。性能測定には到達していない。
+source/spec/log/result/manifestは`output/geometry-share/attempt-1/`とpool jobに保全する。
