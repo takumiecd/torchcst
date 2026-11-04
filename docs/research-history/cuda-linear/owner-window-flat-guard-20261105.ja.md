@@ -157,3 +157,16 @@ source archive SHA256は`9caadf168f3a17039ed8cae5485b971036f3abecb18bf14d8a6ccd2
 result archiveは`f52290c899ddd806ec87a6f0c3614994c2fc9420c635a75f4be28f360205b1d6`。
 原本と`g1-stage1-retrieval-verification.json`をignored outputへ保全し、pool所有VMの停止を確認した。
 簡潔な機械可読記録は同名JSONへ保存した。
+
+## 未実施のrunner修正案
+
+`native_read_lease_path`は固定native経路に限定し、出力ReadLeaseの2 edge、marker側の
+`(None,0)`、第一入力のnative本体を確認する。そのnativeの第二入力もP側ReadLeaseであり、
+第一入力の`AccumulateGrad.variable is site.atoms.p`まで確認する。native本体名は、同じextensionの
+直接entry出力の`grad_fn.name()`と完全一致させる。未知wrapper/Python fallbackは受理しない。
+汎用的なautograd graph探索や、検査を消して実験を通す変更にはしない。
+
+実C++ ReadLeaseをCPU上で使う検証は4 passed（Torch2.13/macOS）。正しい二入力の接続、
+微分、余分なwrapper/leaseなし/異なるParameterの拒否を確認した。これは対象L4での新runner
+実行を示さない。数値body、guard候補、runtime src、workload、採用/停止閾値は変更していない。
+改訂された限定実験に研究費用を払うか、G1を未判定で保全してKへ移るかをProへ相談する。
