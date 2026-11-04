@@ -91,3 +91,65 @@ reservedがすべて同じ、全8epochの42状態+5勾配・集計がbyte一致�
 長期へ進む。速度・数値・peak予算は一切緩めない。前回同様3epochが長期の既定であり、
 `--epochs 8 --steps-per-epoch 16` はlifecycleの継続増加を識別する追加診断にだけ使う。
 追加jobの結果と採否は以下に追記する。
+
+### 初回短期比較（未計装）
+
+| 開始状態 | #130平均ms/step | int32平均ms/step | paired幾何平均短縮 | 勝数 | dense Graph平均ms/step |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| #130 FP32で8実更新後 | 0.713087829 | 0.646487014 | 9.3397787% | 6/6 | 0.206735482 |
+| FP32自身の45,000更新後 | 0.725764667 | 0.657697164 | 9.3786981% | 6/6 | 0.208835405 |
+
+各状態のCST全12cellで開始/終了42状態、全5勾配、loss/正解数、入力・データ順序hashが一致。
+各状態のdense 6cellも同じ状態・勾配・集計である。fallbackは全cellで0。
+全CST cellのcapture込みpeak allocatedは251.5341797MiB、reservedは442MiBで同じ。
+
+### 別processの16更新profile
+
+| 開始状態 | #130 Radix µs/step | int32 Radix µs/step | #130 reverse µs/step | int32 forward+reverse cast µs/step |
+| --- | ---: | ---: | ---: | ---: |
+| 初期 | 119.584500 | 61.450375 | 1.450063 | 2.828000 |
+| 学習後 | 119.470000 | 61.428000 | 1.456062 | 2.824000 |
+
+両状態でkernel-category eventは111→96/step、Radix/radixを名前に含むeventは20→12/step。
+castは両方向合わせて2回/stepであり、従来reverseの1回を置換し、forwardの1回を追加する。
+offset生成は約6.85→6.55–6.57µs/step。分類・浮動小数点contractの演算は変更していない。
+Radix群の約58µs減と、その他のsort関連kernel数・時間の減少は、未計装の約67–68µs短縮と
+整合する。ただしprofileを採用throughputへ換算せず、host CPU律速やDRAM/L2量、
+正確なradix pass数、register/occupancyは未測定とする。
+
+### 初回の環境と保全
+
+source `ee675f29cb44b94bc9ce8b522313fbe71bd0adbb`、L4 UUID
+`5c19e97a-9ece-ac64-ebb3-bde118f79b42`、driver580.82.07、
+Torch2.11.0+cu130/CUDA13/Triton3.6/Python3.13.16。
+source archive SHA256 `db4a56c380d86570462da4da66964021b72dbf11977185ae2c30f4d732ceb9cb`、
+driver SHA256 `ac10aad6b801ca4b3fbb8dc452f8782ad88613484b1d1703b12825f8b2cbd929`、
+result archive SHA256 `2570e259e3a06bf7b9255379eaacedb062bf7034447f289db954ef993b3f9799`。
+122 manifest fileとarchive hashをローカルで再検証した。
+GPU333検証、ローカルCPU1712 pass/2270 skip、Linux CI1711 pass/2271 skipと
+宣言検査・wheel/sdist buildが通過。初回の3epoch smoke実checkpointも各47 Tensorをbyte比較した。
+
+結果回収後のremote cleanupが180秒timeoutになりsupervisorは非0終了したが、
+job自体はreturncode0/timed_out=falseで検証済み結果を回収済み。poolはそのVMを停止し、
+serverから消えたことを確認した。停止状態を確認しrecoverを完了してから追加jobを投入した。
+結果成功、remote cleanup失敗、VM停止確認を別の事実として保全する。
+
+raw evidenceはworktreeの `output/sort32/results` とpoolの当該job directoryに保存する。
+新しいjobは別directoryへ保存し、初回decision・ログ・checkpointを上書きしない。
+
+### 追加jobの転送障害と再実行
+
+`l4job-5915513af2f94fc595254a22ac54c89f` はremoteの `POOL_RESULT_READY` まで進んだが、
+結果downloadが25分以上応答せず、ローカルに結果byteを取得できなかった。
+当該jobのdownload CLI processだけを中断し、poolに停止・回復を任せた。
+停止APIはendpoint Not Foundを返し、recoverがserverに当該assignmentがないことを確認した。
+raw結果・checkpointは未回収のため、このjobの長期成績を成功・失敗いずれにも数えない。
+source/spec/driver/transport・中断理由・lifecycleはローカルに保全している。
+
+同じruntimeと長期条件で明示的に再実行する。今度は計測・数値比較・checkpoint保存が
+すべて終わった後に、checkpoint ZIP memberのpayloadとmetadata断片をSHA256で重複排除し、
+gzip圧縮する。各元ファイルを全byte復元してSHA256一致を確認した後だけ、その元ファイルを
+転送archive内の復元manifestと圧縮blobへ置換する。学習・計時・数値状態は変更しない。
+ローカルの実checkpoint6個で104,367,930→31,270,879 bytesへの梱包と、元ファイル全6個の
+完全復元を検証した。受信後も元の47 Tensorに加えて元ファイルのbyte/hashを再検証する。
+ローカルの実行・転送中だけidle sleepを抑制し、終了時に解除する。
