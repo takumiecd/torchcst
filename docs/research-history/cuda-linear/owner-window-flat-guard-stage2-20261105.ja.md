@@ -57,3 +57,23 @@ source/input/Plan/entry/actual module/backend不一致、byte/finite/clock/復�
 両CSTの公式gateとdenseの対称継続条件が通った場合だけ、既定の正式first pairを開始する。
 別のtrial256は追加しない。両状態各6 pair・最大48セル、最初の有効CST負けで停止、両状態5%以上かつ6/6勝利、
 byte一致/fallback0とcapture込みmemory予算を維持し、全て通過時だけ二順序45kへ進む。採用/mergeはこのStage2の結果で決めない。
+
+## 観測: Stage2通過、正式性能は未実施
+
+job `l4job-2bcc5ab92d02417ea71963385e73ecb4`、source
+`a45a2f13d52fc5ef8c5dd45c830bd5d9046c3498`で4セルを完了した。
+CSTのprospective memory-v2.1、denseの20状態の手動継続条件がともに通過。
+peak allocated/reservedのcandidate増分は両モデルとも0 bytes、cycles3–8の終端値も一定だった。
+CSTは予定8capture/退役、denseは自然なGraph継続を行い、qualified/flatのevent列は一致した。
+
+ローカルでは1,039 rawファイルと32 PTの元bytesを照合し、各epochのCST47項目×8＋dense25項目×8、
+計576 Tensorを直接byte比較した。metrics/order/clock/capture条件も一致し、missing/unverified/errorsは0。
+初版のCPU verifierは保存workerのTorch2.11を読取環境2.13と比較して停止したため、元の失敗資料を保存し、
+比較先を保存済worker情報へ適合したv2で再検証した。workerが2.11/cu13/L4である条件は維持し、
+ローカルTorchのversionは偽装せず、GPU実験や判定閾値も変更していない。
+
+source archive SHA256は`f30512c0e216eac1e48f3033985367c39a47acd32ddd359d55ccb477c7bac7e4`、
+result archiveは`69d5145e983a5ebf565ea2136dad211dadcaa3d572be4d7985abc5f8cc0bd75e`。
+driverは`548899bf3715d130d5a2343e92895b569c313a4cb4372a090e257cb722029060`。
+raw/復元PT/初版エラーとv2 verifierをignored outputに保持し、pool所有VM停止を確認済み。
+詳細は同名JSON。正式256更新・45k・採用はまだ未実施である。

@@ -23,7 +23,7 @@ from benchmarks.training.full_step_graph import (
     restore,
     snapshot,
 )
-from torchcst._backends.cuda.algorithms.linear.radius_cell_mass import plans
+from torchcst._backends.cuda.algorithms.linear.radius_cell_mass import executor, plans
 
 
 def hashes(values):
@@ -37,7 +37,45 @@ def hashes(values):
     }
 
 
+def execution_metadata(model, program, kind, bootstrap_plan):
+    """Detached scalar provenance only; do not retain another cohort owner."""
+    row = {
+        "qualification_backend": None
+        if program is None
+        else str(program._qualification.native_backend),
+        "flat_signature_active": None
+        if program is None
+        else bool(getattr(program, "_use_flat", False)),
+        "bootstrap_plan": None,
+        "timed_selected_plan": None,
+        "plan_schedule": None,
+        "entry": None,
+        "extension": None,
+        "is_executor_extension": None,
+    }
+    if kind == "cst":
+        selector = model[2].selector
+        row["bootstrap_plan"] = selector._registry.dump_plan(bootstrap_plan)
+        row["timed_selected_plan"] = selector._registry.dump_plan(selector._plan)
+        if program is not None:
+            cached = program.linear_program.cached
+            assert cached.algorithm.id == selector._plan.algorithm_id
+            assert cached.algorithm.revision == selector._plan.algorithm_revision
+            assert cached.state.recipe == selector._plan.recipe
+            row["plan_schedule"] = cached.state.recipe.schedule
+            row["entry"] = program.fp32_entry
+            row["is_executor_extension"] = program.extension is executor._extension()
+            assert row["is_executor_extension"]
+            path = Path(program.extension.__file__)
+            row["extension"] = {
+                "path": str(path),
+                "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            }
+    return row
+
+
 def run(args):
+    args.output.parent.mkdir(parents=True, exist_ok=True)
     guard = getattr(args, "guard", "qualified")
     program_class = {"qualified": PreparedStep, "flat": FlatPreparedStep}[guard]
     qualification_backend = "not_applicable_eager"
@@ -81,15 +119,19 @@ def run(args):
         if args.kind == "cst"
         else None,
     ).cuda()
+    # Keep only the immutable CPU declaration before the existing post-warmup
+    # selector switch. No Module/Tensor example is added to provenance storage.
+    bootstrap_plan = model[2].selector._plan if args.kind == "cst" else None
     checkpoint = None
+    checkpoint_path = None
     if args.state == "final":
+        checkpoint_path = args.inputs / (
+            ("fp32_final.pt" if args.bootstrap_fp32 else "baseline_final.pt")
+            if args.kind == "cst"
+            else "dense_final.pt"
+        )
         checkpoint = torch.load(
-            args.inputs
-            / (
-                ("fp32_final.pt" if args.bootstrap_fp32 else "baseline_final.pt")
-                if args.kind == "cst"
-                else "dense_final.pt"
-            ),
+            checkpoint_path,
             map_location="cpu",
             weights_only=True,
         )
@@ -155,6 +197,46 @@ def run(args):
     )
     start = actual_start
     setup_seconds = time.perf_counter() - setup_start
+    # The existing algorithm/setup interval ends above. File hashing and these
+    # detached diagnostics are outside setup, formal throughput and retirement.
+    execution_before = execution_metadata(model, program, args.kind, bootstrap_plan)
+    clock_start = 8 if args.state == "initial" else 45000
+    clocks_before = [int(state["step"].item()) for state in optimizer.state.values()]
+    assert clocks_before and all(clock == clock_start for clock in clocks_before)
+    if program is not None:
+        assert execution_before["qualification_backend"] in ("native", "python")
+        assert execution_before["flat_signature_active"] is (guard == "flat")
+        assert program.eligible() and not program.invalidated
+    checkpoint_sha256 = (
+        hashlib.sha256(checkpoint_path.read_bytes()).hexdigest()
+        if checkpoint_path is not None
+        else None
+    )
+    initialization_sha256 = hashlib.sha256(
+        (args.inputs / "initialization.pt").read_bytes()
+    ).hexdigest()
+    preflight_path = args.output.with_suffix(".preflight.json")
+    preflight_path.write_text(
+        json.dumps(
+            {
+                "phase": "before_formal_timer",
+                "kind": args.kind,
+                "state": args.state,
+                "mode": args.mode,
+                "guard": guard,
+                "steps": args.steps,
+                "clock_start": clock_start,
+                "clocks_before": clocks_before,
+                "initialization_sha256": initialization_sha256,
+                "checkpoint_sha256": checkpoint_sha256,
+                "order_sha256": hashlib.sha256(order_cpu.numpy().tobytes()).hexdigest(),
+                **execution_before,
+            },
+            indent=2,
+            allow_nan=False,
+        )
+        + "\n"
+    )
     profiler = None
     python_profile = None
     if args.profile:
@@ -206,6 +288,20 @@ def run(args):
     gradients = {
         name: p.grad.detach().cpu().clone() for name, p in model.named_parameters()
     }
+    execution_after = execution_metadata(model, program, args.kind, bootstrap_plan)
+    assert execution_after == execution_before, (
+        "execution provenance changed in formal block"
+    )
+    clock_end = clock_start + args.steps
+    clocks_after = [int(state["step"].item()) for state in optimizer.state.values()]
+    assert clocks_after and all(clock == clock_end for clock in clocks_after)
+    totals_cpu = {
+        str(i): value.detach().cpu().clone() for i, value in enumerate(totals)
+    }
+    torch.save(
+        {"start": start, "end": end, "gradients": gradients, "totals": totals_cpu},
+        args.output.with_suffix(".evidence.pt"),
+    )
     owners = None
     if args.profile and args.kind == "cst":
         from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.algorithm import (
@@ -253,6 +349,21 @@ def run(args):
         "mode": args.mode,
         "guard": guard,
         "qualification_backend": qualification_backend,
+        "backend_before": execution_before["qualification_backend"],
+        "backend_after": execution_after["qualification_backend"],
+        **{
+            name: value
+            for name, value in execution_before.items()
+            if name != "qualification_backend"
+        },
+        "clock_start": clock_start,
+        "clock_end": clock_end,
+        "clocks_before": clocks_before,
+        "clocks_after": clocks_after,
+        "checkpoint_sha256": checkpoint_sha256,
+        "preflight_file": preflight_path.name,
+        "evidence_file": args.output.with_suffix(".evidence.pt").name,
+        "provenance_scope": "scalar metadata, file hashing and evidence serialization outside existing setup/formal-step/retirement timers; no extra learning updates",
         "state": args.state,
         "repeat": args.repeat,
         "steps": args.steps,
@@ -291,9 +402,7 @@ def run(args):
             bool(torch.isfinite(v).all()) for v in [*end.values(), *gradients.values()]
         ),
         "order_sha256": hashlib.sha256(order_cpu.numpy().tobytes()).hexdigest(),
-        "initialization_sha256": hashlib.sha256(
-            (args.inputs / "initialization.pt").read_bytes()
-        ).hexdigest(),
+        "initialization_sha256": initialization_sha256,
         "data": info,
         "resident_validation_shapes": [list(vx.shape), list(vy.shape)],
         "torch": torch.__version__,
