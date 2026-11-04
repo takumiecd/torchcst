@@ -69,6 +69,7 @@ mutation前の実資格backendをJUnitへ保存する。比較と同じbackend�
 CSTの開始42状態は初期/自身45kそれぞれの凍結referenceとも照合する。
 guard-onlyはstate/grad/version/settings/clock不変、fallback 0、全5 block配列を保存する。
 継続screenは既定どおり**CSTの全5 blockでflatが短いこと**。denseは同条件で記録するが、CSTを救済しない。
+CST費用screenが未達ならそこで停止し、まだ未実施のdense費用processは起動しない。
 二cohort同居の費用セルpeakはdiagnosticで、variant別memoryやmemory-v2.1には流用しない。
 
 source/input/Plan/entry/backend/loaded binary不一致、必要testの失敗/skip、未知wrapper、flat無効、
