@@ -75,3 +75,12 @@ unpaired基準セルの時間は0.753108ms/update。これをG1との比較や�
 `integrity_passed=true`だが`verification_complete=false`、`stage3_pass=false`を維持する。
 未実施47セルを補完した扱いにはしない。回収verifierのv1にはconstant名の参照誤りもあり、
 旧版を保全してv2へ訂正した。GPU driver・測定データ・判定条件は変更していない。
+
+CPU側には`benchmarks.training.graph_clock_schema.validate_clock_schema`を追加した。
+固定workloadのstep path集合をCST6/Dense5として厳密照合し、optimizer entry5本を別途報告する。
+各値はdetached CPU FP32 scalar、期待するclock値とbytesが一致しなければ拒否する。
+CSTのmodel aliasとoptimizer/state/4/stepも値/bytesを確認する。
+path別cloneから物理storage identityを推定したとは扱わない。
+欠落・余分・誤値・非scalar・非finite等の回帰、実Stage3保存PT、過去56 snapshotのschema/hashを含め
+49 CPU testsが通過した（private原本を持たない環境では対応2件をskip）。
+この修正の追加だけで旧driverの失敗判定を通過へ書き換えず、GPUへの再投入も行っていない。
