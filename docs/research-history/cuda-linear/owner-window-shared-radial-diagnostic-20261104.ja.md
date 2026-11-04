@@ -163,3 +163,18 @@ binaryのdump/圧縮は性能cellの間に挟まず、全比較完了または�
 短期peakはretirement前まで、lifecycleは最終退役までとscopeを区別する。45k償却推計は参考のみ。
 このjobは正式短期比較だけで終わり、B/配置variant/新45kを自動実行しない。全gateを通れば、
 二順序45kへ進む条件を満たしたことだけを記録する。
+
+### 初回formal試行の通信中断と一回の明示的再提出
+
+job `l4job-2521037625734ba195a3dc801506131e`はColab CLI/Jupyterの
+`TimeoutError: Timeout waiting for output`で、result archiveの取得前に中断した。
+source archive SHA256は`42fb8ec29e1c7d8159b39b2a9bc4d69312d3cd871ebeeb98254d24cc44b80d23`。
+source/spec/transport logを保全し、owned VM停止とpool recoverを確認した。
+検証できる結果がなく、性能・数値・メモリの成功/失敗はいずれも不明である。
+driverやarchive作成の遅延、runtime消失、通信障害のどれが原因かはローカルログから確定していない。
+
+一回だけ明示的に再提出する。A・入力・順序・速度/数値/メモリgateを変更せず、両方式の
+MAX_JOBSを1に抑える。これはcompile時の同時実行数であり、生成コードの算術設定や性能セルを
+変えるものではない。driverの実行上限1200秒は維持し、private supervisor wrapperで長いexecの
+通信・archive作成の猶予だけ600秒追加する。共有queue・所有権・cleanup規則は変えない。
+再び結果取得ができなければ、その状態を保全して停止し、未検証の時間から採用判定しない。

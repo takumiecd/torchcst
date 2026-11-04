@@ -660,5 +660,17 @@
     "total_passed": 45,
     "gpu_contract_cases": 44,
     "cpu_declaration_cases": 1
+  },
+  "formal_first_attempt": {
+    "job": "l4job-2521037625734ba195a3dc801506131e",
+    "source_archive_sha256": "42fb8ec29e1c7d8159b39b2a9bc4d69312d3cd871ebeeb98254d24cc44b80d23",
+    "driver_sha256": "eeee9dc89b485531e94c875cd9ddd624548668226e4b3b098b9ae21c2cb03030",
+    "execution_status": "interrupted before result retrieval",
+    "transport_error": "Colab CLI jupyter_kernel_client TimeoutError: Timeout waiting for output",
+    "verified_results_available": false,
+    "performance_verdict": "unknown",
+    "underlying_root_cause": "unconfirmed; cannot distinguish driver/packaging delay, runtime loss or connection failure from recovered local logs",
+    "owned_slot_status": "stopped",
+    "retry_policy": "one explicit transport retry; same A, order, numeric/speed/memory gates; MAX_JOBS1 compilation cap on both sides, not a kernel variant; no further automatic retries"
   }
 }
