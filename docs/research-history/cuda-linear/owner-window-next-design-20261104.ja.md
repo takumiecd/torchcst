@@ -42,15 +42,19 @@ m_{out}=\left\lfloor\frac{2^s m+1}{3}\right\rfloor,\quad E_{out}=E-n-s.
 CPU toyのeager logitsは[-1,1]→[0,1]へ変化しても、旧signatureは同一になった。
 None edge追加も旧node走査に現れず、eager側のTypeErrorをsignatureが捉えなかった。
 
-各unique moduleの`_modules`からordered key/value identityもsignatureへ追加する。
-Module/Tensor値を追加保持せず、登録edgeの変更を次回検査で拒否できるようにする。
+Proレビュー後、canonical root Sequentialのraw `_modules`について、登録数・順序付きkey・
+各childへのweak参照を記録する最小案へ絞った。live childを`ref() is child`で比較し、aliasを
+含むedge変更をeligibleの先頭で拒否する。外されたModuleやTensorの寿命を延ばさない。
+既存のsignature全体は#132へ戻し、全moduleのedge追加走査は採用しない。
 これはflat certificateの実装ではなく、速度最適化前の共通baseline補強である。
 既存CST/Polarのguard、hooks/TLS、optimizer・Tensor metadataの検査は残す。
 
-ローカルCPUでは修正前に対象2件がfailし、修正後は学習Parameter値の更新を許す検査を含め3件pass。
-memory判定器と合わせ25 passed/1 GPU skipped。Torch2.13/Python3.11でのCPU検証であり、
+ローカルCPUでは修正前に対象2件がfailした。最小weak root案ではalias/None edge、削除・順序変更・
+再binding・rename、weak lifetime、学習Parameter値の更新を検証し、memory判定器と合わせ
+30 passed/2 GPU skipped。Torch2.13/Python3.11でのCPU検証であり、
 対象GPUのTorch2.11/Python3.13でのeligible/replay検査は未実施。
-GPU用には、alias追加後にGraph launchへ到達せず元のeagerへfallbackする回帰検査を用意した。
+GPU用には、alias拒否時の状態・grad・metrics・version不変性と、Graph launchせず変更後の
+eagerとbyte一致するfallbackを分けた回帰検査を用意した。
 
 このCPU反例から、過去の固定5要素・構造不変の数値/性能結果を無効とはしない。
 また旧`eligible()`全体が実CUDA上で受理することまで確認済みとは主張しない。
@@ -63,8 +67,8 @@ weak lifetime/capture後再準備を保つ場合だけ検討する。
 
 ## 現状と証拠
 
-新CUDA/optimizer variant、Plan、GPU測定はまだない。三候補と反証をProへ照会し、最初の診断一つを
-選ぶ段階。採用guide（両状態5%以上/各6勝、byte/全状態、capture込みmemory-v2.1）は緩めない。
+新CUDA/optimizer variant、Plan、GPU測定はまだない。Proレビューは完了し、最初はGのguard費用診断を
+選んだ。flat certificateは未実装。別のprospective screening記録に固定手順と停止基準を残す。採用guide（両状態5%以上/各6勝、byte/全状態、capture込みmemory-v2.1）は緩めない。
 
 元CPU検算・反例・source/profile hashはこのworktreeのignored `output/design-search-20261104/`に保持。
 公開source確認には以下の一次資料を用いた。

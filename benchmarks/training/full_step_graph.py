@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import gc
 import json
+import weakref
 from pathlib import Path
 
 import torch
@@ -131,6 +132,34 @@ def dense_proposal(optimizer):
         )
 
 
+class RootTopology:
+    """Observe ordered root edges without extending removed Modules' lives."""
+
+    def __init__(self, model):
+        children = model._modules
+        if type(children) is not dict or any(
+            type(name) is not str or not isinstance(child, nn.Module)
+            for name, child in children.items()
+        ):
+            raise ValueError("canonical root module registration required")
+        self._root = weakref.ref(model)
+        self._edges = tuple(
+            (name, weakref.ref(child)) for name, child in children.items()
+        )
+
+    def unchanged(self):
+        root = self._root()
+        if root is None:
+            return False
+        children = root._modules
+        if type(children) is not dict or len(children) != len(self._edges):
+            return False
+        return all(
+            type(name) is str and name == expected and ref() is child
+            for (name, child), (expected, ref) in zip(children.items(), self._edges)
+        )
+
+
 class PreparedStep:
     """Own an exclusive complete forward/backward/update invocation.
 
@@ -168,6 +197,7 @@ class PreparedStep:
             nn.Linear,
         ]:
             raise ValueError("only the canonical five-element model is supported")
+        self._root_topology = RootTopology(model)
         self.params = tuple(model.parameters())
         self.site = model[2] if kind == "cst" else None
         self.middle = tx.new_empty((4, 1024), requires_grad=True)
@@ -267,16 +297,7 @@ class PreparedStep:
                 for g in self.optimizer.param_groups
             ),
             tuple(
-                (
-                    id(m),
-                    type(m),
-                    m.training,
-                    m.__dict__.get("forward"),
-                    type(m).forward,
-                    # Traversal deduplicates nodes, while Sequential executes
-                    # every registered edge, including aliases and None.
-                    tuple((name, id(child)) for name, child in m._modules.items()),
-                )
+                (id(m), type(m), m.training, m.__dict__.get("forward"), type(m).forward)
                 for m in self.model.modules()
             ),
             (
@@ -289,9 +310,10 @@ class PreparedStep:
         )
 
     def eligible(self):
+        if self.invalidated or not self._root_topology.unchanged():
+            return False
         if (
-            self.invalidated
-            or torch.cuda.current_stream().cuda_stream != self.owner_stream
+            torch.cuda.current_stream().cuda_stream != self.owner_stream
             or torch.cuda.is_current_stream_capturing()
             or not torch.is_grad_enabled()
             or torch.is_inference_mode_enabled()
