@@ -170,3 +170,8 @@ result archiveは`f52290c899ddd806ec87a6f0c3614994c2fc9420c635a75f4be28f360205b1
 微分、余分なwrapper/leaseなし/異なるParameterの拒否を確認した。これは対象L4での新runner
 実行を示さない。数値body、guard候補、runtime src、workload、採用/停止閾値は変更していない。
 改訂された限定実験に研究費用を払うか、G1を未判定で保全してKへ移るかをProへ相談する。
+
+Proの完了レビューは、一回だけの追加Stage1を支持した。初回失敗を消さず、合計最大2試行・
+第三試行なしとする例外、backend条件、6 tests/8数値セル/2費用processの上限を、追加GPU確保前の
+[amendment仕様](owner-window-flat-guard-stage1-amendment-20261105.ja.md)へ分離した。
+この判断自体を追加試行の完了や採用とは扱わない。

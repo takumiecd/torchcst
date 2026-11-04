@@ -5,6 +5,7 @@ import gc
 import hashlib
 import json
 import platform
+from dataclasses import asdict
 from pathlib import Path
 
 import torch
@@ -142,6 +143,22 @@ def sample_vjp(model, optimizer, inputs, targets):
 
 
 def run(args):
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    source_root = Path(__file__).resolve().parents[2]
+    source_names = (
+        "benchmarks/training/graph_guard_gate.py",
+        "benchmarks/training/full_step_graph.py",
+        "benchmarks/training/flat_step_graph.py",
+        "benchmarks/training/graph_signature_leaves.py",
+        "benchmarks/training/graph_stock_qualification.py",
+        "src/torchcst/atoms/_native_read_lease.cpp",
+        "src/torchcst/operators/_native_metadata_guard.py",
+        "src/torchcst/_backends/cuda/_host_function_metadata.cpp",
+        "src/torchcst/_backends/cuda/algorithms/linear/radius_cell_mass/executor.py",
+        "src/torchcst/_backends/cuda/algorithms/linear/radius_cell_mass/owner_window_fp32.cuh",
+        "src/torchcst/_backends/cuda/algorithms/linear/radius_cell_mass/host_owner_window_fp32.cuh",
+    )
+    source_hashes = {name: file_hash(source_root / name) for name in source_names}
     torch.set_num_threads(1)
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
@@ -189,6 +206,88 @@ def run(args):
     if checkpoint is not None:
         restore(model, optimizer, wanted)
     clock_start = 8 if args.state == "initial" else 45000
+    numerical_module, extension, public_plan, recipe, algorithm_id = (
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    if args.kind == "cst":
+        numerical_module = executor._extension()
+        path = Path(numerical_module.__file__)
+        extension = {"path": str(path), "sha256": file_hash(path)}
+        public_plan = model[2].selector._plan
+        linear = model[2].__dict__.get("_execution_program")
+        if linear is not None:
+            recipe = linear.cached.state.recipe
+            algorithm_id = linear.cached.algorithm.id
+    properties = torch.cuda.get_device_properties(torch.cuda.current_device())
+    preflight = {
+        "phase": "bootstrap_completed_before_vjp",
+        "kind": args.kind,
+        "state": args.state,
+        "guard": args.guard,
+        "qualification_backend": None,
+        "flat_signature_active": None,
+        "qualification_status": "pending_PreparedStep_construction",
+        "entry": ENTRY if recipe is not None and recipe.schedule == SCHEDULE else None,
+        "plan_schedule": recipe.schedule if recipe is not None else None,
+        "selected_plan": asdict(public_plan) if public_plan is not None else None,
+        "native_recipe": asdict(recipe) if recipe is not None else None,
+        "algorithm_id": algorithm_id,
+        "extension": extension,
+        "initialization_sha256": file_hash(init_path),
+        "checkpoint_sha256": file_hash(checkpoint_path) if checkpoint_path else None,
+        "order_sha256": hashlib.sha256(order_cpu.numpy().tobytes()).hexdigest(),
+        "clock_start": clock_start,
+        "bootstrap_actual_updates": 8,
+        "bootstrap_restored": checkpoint is not None,
+        "args": {
+            name: str(value) if isinstance(value, Path) else value
+            for name, value in vars(args).items()
+        },
+        "source_identity": "cold file hashes; pool records source archive/commit separately",
+        "source_files_sha256": source_hashes,
+        "torch": torch.__version__,
+        "torch_git": torch.version.git_version,
+        "cuda": torch.version.cuda,
+        "gpu": torch.cuda.get_device_name(),
+        "gpu_uuid": str(getattr(properties, "uuid", "unavailable_via_torch")),
+        "driver_version": "recorded separately by the driver environment preflight",
+        "python": platform.python_version(),
+        "platform": platform.platform(),
+        "cpu_math_threads": torch.get_num_threads(),
+        "TF32": False,
+        "stream": torch.cuda.current_stream().cuda_stream,
+        "events": [],
+    }
+    preflight_path = args.output.with_suffix(".preflight.json")
+
+    def persist_preflight(phase, backend=None, flat=None):
+        preflight.update(
+            phase=phase, qualification_backend=backend, flat_signature_active=flat
+        )
+        preflight["events"].append(
+            {
+                "phase": phase,
+                "qualification_backend": backend,
+                "flat_signature_active": flat,
+            }
+        )
+        preflight_path.write_text(
+            json.dumps(preflight, indent=2, allow_nan=False) + "\n"
+        )
+
+    persist_preflight("bootstrap_completed_before_vjp")
+    if args.kind == "cst":
+        assert public_plan == plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32_FLAT_C
+        assert algorithm_id == "cuda_radius_cell_mass" and recipe is not None
+        assert (
+            recipe.native_entry
+            and recipe.native_autograd
+            and recipe.schedule == SCHEDULE
+        )
     clocks(optimizer, clock_start)
     wanted = snapshot(model, optimizer)
     vjp, vjp_check = None, None
@@ -198,19 +297,36 @@ def run(args):
     assert exact(wanted, snapshot(model, optimizer))["all_byte_equal"]
     step_type = PreparedStep if args.guard == "qualified" else FlatPreparedStep
     program = step_type(model, optimizer, tx, ty, args.kind)
+    backend = (
+        str(program._qualification.native_backend) if program._qualification else None
+    )
+    flat_active = bool(getattr(program, "_use_flat", False))
+    preflight["qualification_status"] = "PreparedStep_constructed"
+    persist_preflight("prepared_before_capture", backend, flat_active)
+    assert backend in ("native", "python")
+    assert flat_active is (args.guard == "flat")
     assert program.eligible() and not program.invalidated, program.qualification_error
-    extension = None
+
+    def check_backend(phase):
+        current = str(program._qualification.native_backend)
+        flat = bool(getattr(program, "_use_flat", False))
+        persist_preflight(phase, current, flat)
+        assert current == backend and flat is flat_active, (
+            "qualification backend/flat changed"
+        )
+
     if args.kind == "cst":
         assert program.linear_program.cached.algorithm.id == "cuda_radius_cell_mass"
         recipe = program.linear_program.cached.state.recipe
         assert recipe.native_entry and recipe.native_autograd
         assert recipe.schedule == SCHEDULE and program.fp32_entry == ENTRY
-        assert program.extension is executor._extension()
-        path = Path(program.extension.__file__)
-        extension = {"path": str(path), "sha256": file_hash(path)}
+        assert program.extension is numerical_module is executor._extension()
     program.indices.copy_(order[:4])
-    assert program.capture() is True
+    capture_ok = program.capture()
+    check_backend("capture_returned")
+    assert capture_ok is True
     assert program.graph is not None and program.eligible() and not program.invalidated
+    check_backend("capture_completed")
     assert exact(wanted, snapshot(model, optimizer))["all_byte_equal"]
     clocks(optimizer, clock_start)
     checkpoints = {"start": evidence(model, optimizer, program.totals)}
@@ -219,18 +335,21 @@ def run(args):
     for i in range(16):
         assert program.eligible() and not program.invalidated
         program.step(order[4 * i : 4 * i + 4])
+        if i in (0, 15):
+            check_backend(f"step{i + 1}_returned")
         assert not program.invalidated, "unexpected eager fallback"
         if i in (0, 15):
             torch.cuda.synchronize()
             clocks(optimizer, clock_start + i + 1)
             checkpoints[f"step{i + 1}"] = evidence(model, optimizer, program.totals)
+            check_backend(f"step{i + 1}")
     torch.cuda.synchronize()
     peak = {
         "allocated": torch.cuda.max_memory_allocated(),
         "reserved": torch.cuda.max_memory_reserved(),
     }
-    args.output.parent.mkdir(parents=True, exist_ok=True)
     torch.save({"checkpoints": checkpoints, "vjp": vjp}, args.output.with_suffix(".pt"))
+    check_backend("completed")
     row = {
         "purpose": "Stage-1 numerical qualification only; no performance claim",
         "kind": args.kind,
@@ -238,6 +357,10 @@ def run(args):
         "guard": args.guard,
         "qualification_backend": str(program._qualification.native_backend),
         "flat_signature_active": bool(getattr(program, "_use_flat", False)),
+        "backend_before": backend,
+        "backend_after": str(program._qualification.native_backend),
+        "preflight_file": preflight_path.name,
+        "source_files_sha256": source_hashes,
         "actual_updates": 16,
         "clock_start": clock_start,
         "clock_end": clock_start + 16,

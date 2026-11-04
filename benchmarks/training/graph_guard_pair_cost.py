@@ -34,7 +34,38 @@ from benchmarks.training.graph_guard_cost import (
     memory,
     state_evidence,
 )
-from torchcst._backends.cuda.algorithms.linear.radius_cell_mass import plans
+from torchcst._backends.cuda.algorithms.linear.radius_cell_mass import executor, plans
+
+ENTRY = "research_owner_window_fp32_geometry_sort32_flat_c"
+SCHEDULE = "global_owner_window_fp32_geometry_sort32_flat_c"
+
+
+def save_preflight(output, kind, phase, setup, events, backends, *, cohort=None):
+    """Persist only JSON scalars, never a cohort or a Tensor example."""
+    event = {"phase": phase, "qualification_backends": dict(backends)}
+    if cohort is not None:
+        event["cohort"] = cohort
+    if phase == "retired":
+        event["backend_source"] = "cached after_probe values; live cohorts retired"
+    events.append(event)
+    receipt = {
+        "phase": phase,
+        "kind": kind,
+        "state": "initial8",
+        "cohorts": setup,
+        "qualification_backends": dict(backends),
+        "events": events,
+    }
+    output.with_suffix(".preflight.json").write_text(
+        json.dumps(receipt, indent=2, allow_nan=False) + "\n"
+    )
+
+
+def qualification_backends(cohorts):
+    return {
+        name: str(cohort[2]._qualification.native_backend)
+        for name, cohort in cohorts.items()
+    }
 
 
 def build_cohort(init, kind, tx, ty, order, program_class):
@@ -68,17 +99,45 @@ def build_cohort(init, kind, tx, ty, order, program_class):
     assert exact(initial8, snapshot(model, optimizer))["all_byte_equal"], (
         "capture changed initial8 P/Adam/clock"
     )
-    extension = None
+    extension, selected_plan, schedule, entry = None, None, None, None
     if kind == "cst":
-        assert program.fp32_entry == "research_owner_window_fp32_geometry_sort32_flat_c"
+        cached = program.linear_program.cached
+        actual_plan = cached.decision.plan
+        expected_plan = plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32_FLAT_C
+        assert actual_plan is expected_plan, "paired cohort selected a different Plan"
+        assert cached.algorithm.id == "cuda_radius_cell_mass"
+        recipe = cached.state.recipe
+        assert recipe.native_entry and recipe.native_autograd
+        assert recipe.schedule == SCHEDULE and program.fp32_entry == ENTRY
+        actual_extension = executor._extension()
+        assert program.extension is actual_extension, (
+            "paired cohort extension identity differs"
+        )
         path = Path(program.extension.__file__)
         extension = {
             "path": str(path),
             "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            "object_identity": id(program.extension),
+            "executor_object_identity": id(actual_extension),
+            "is_executor_extension": True,
         }
+        selected_plan = {
+            "catalog_name": "GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32_FLAT_C",
+            "algorithm_id": actual_plan.algorithm_id,
+            "algorithm_revision": actual_plan.algorithm_revision,
+            "schema_version": actual_plan.schema_version,
+            "object_identity": id(actual_plan),
+            "is_expected_plan": True,
+        }
+        schedule, entry = recipe.schedule, program.fp32_entry
     qualification = program._qualification
     metadata = {
+        "guard": "flat" if program_class is FlatPreparedStep else "qualified",
+        "flat_signature_active": bool(getattr(program, "_use_flat", False)),
         "qualification_backend": str(qualification.native_backend),
+        "selected_plan": selected_plan,
+        "plan_schedule": schedule,
+        "entry": entry,
         "qualification_native_factory_seconds": float(
             qualification.native_factory_seconds
         ),
@@ -164,6 +223,9 @@ def evidence_summary(before, after):
 
 
 def run(args):
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    setup, preflight_events = {}, []
+    save_preflight(args.output, args.kind, "starting", setup, preflight_events, {})
     torch.set_num_threads(1)
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
@@ -194,13 +256,22 @@ def run(args):
     loading_seconds = time.perf_counter() - loading_begin
     resident = memory()
     setup_begin = time.perf_counter()
-    cohorts, setup = {}, {}
+    cohorts = {}
     for name, program_class in (
         ("qualified", PreparedStep),
         ("flat", FlatPreparedStep),
     ):
         cohorts[name], setup[name] = build_cohort(
             init, args.kind, tx, ty, order, program_class
+        )
+        save_preflight(
+            args.output,
+            args.kind,
+            "cohort_created",
+            setup,
+            preflight_events,
+            qualification_backends(cohorts),
+            cohort=name,
         )
     gc.collect()
     before = {name: state_evidence(*cohorts[name], tx, ty, order) for name in cohorts}
@@ -217,6 +288,29 @@ def run(args):
         )
         assert cohorts[name][2].eligible() and not cohorts[name][2].invalidated
     assert setup["qualified"]["extension"] == setup["flat"]["extension"]
+    assert setup["qualified"]["selected_plan"] == setup["flat"]["selected_plan"]
+    assert setup["qualified"]["plan_schedule"] == setup["flat"]["plan_schedule"]
+    assert setup["qualified"]["entry"] == setup["flat"]["entry"]
+    backends_before = qualification_backends(cohorts)
+    flat_before = {
+        name: bool(getattr(cohort[2], "_use_flat", False))
+        for name, cohort in cohorts.items()
+    }
+    save_preflight(
+        args.output, args.kind, "before_probe", setup, preflight_events, backends_before
+    )
+    assert backends_before["qualified"] == backends_before["flat"]
+    assert backends_before["qualified"] in ("native", "python")
+    assert all(
+        setup[name]["qualification_backend"] == backends_before[name]
+        for name in cohorts
+    )
+    assert (
+        setup["qualified"]["guard"] == "qualified" and setup["flat"]["guard"] == "flat"
+    )
+    assert setup["qualified"]["flat_signature_active"] is False
+    assert setup["flat"]["flat_signature_active"] is True
+    assert flat_before == {"qualified": False, "flat": True}
     torch.cuda.synchronize()
     before_memory = memory()
     setup_seconds = time.perf_counter() - setup_begin
@@ -224,6 +318,18 @@ def run(args):
     # Sample before evidence's CPU copies/synchronization; guards should allocate
     # no GPU memory. Equal counters alone are not proof of zero CUDA launches.
     after_memory = memory()
+    backends_after = qualification_backends(cohorts)
+    flat_after = {
+        name: bool(getattr(cohort[2], "_use_flat", False))
+        for name, cohort in cohorts.items()
+    }
+    save_preflight(
+        args.output, args.kind, "after_probe", setup, preflight_events, backends_after
+    )
+    assert backends_after == backends_before, (
+        "qualification backend changed during probe"
+    )
+    assert flat_after == flat_before, "flat activation changed during probe"
     assert before_memory == after_memory, "guard calls changed GPU allocator counters"
     torch.cuda.synchronize()
     after = {name: state_evidence(*cohorts[name], tx, ty, order) for name in cohorts}
@@ -246,6 +352,9 @@ def run(args):
     torch.cuda.synchronize()
     retirement_seconds = time.perf_counter() - retirement_begin
     retired = memory()
+    save_preflight(
+        args.output, args.kind, "retired", setup, preflight_events, backends_after
+    )
     result = {
         "kind": args.kind,
         "purpose": "Stage1 paired eligible-cost diagnostic only",
@@ -265,6 +374,14 @@ def run(args):
         "evidence": evidence,
         "loading_seconds": loading_seconds,
         "cohort_setup": setup,
+        "qualification_backends_before_probe": backends_before,
+        "qualification_backends_after_probe": backends_after,
+        "qualification_backends_retired_cached": dict(backends_after),
+        "flat_signature_active": {
+            name: row["flat_signature_active"] for name, row in setup.items()
+        },
+        "flat_signature_active_before_probe": flat_before,
+        "flat_signature_active_after_probe": flat_after,
         "setup_seconds": setup_seconds,
         "retirement_seconds": retirement_seconds,
         "resident_dataset_bytes": resident,
@@ -291,7 +408,6 @@ def run(args):
         "cpu_math_threads": torch.get_num_threads(),
         "interpretation": "all-five flag is a prospective research-cost screen, not full-step speed, GPU critical-path, adoption or memory-v2.1 evidence; allocator invariance does not establish absence of CUDA work",
     }
-    args.output.parent.mkdir(parents=True, exist_ok=True)
     torch.save({"before": before, "after": after}, args.output.with_suffix(".pt"))
     args.output.write_text(json.dumps(result, indent=2, allow_nan=False) + "\n")
     print(

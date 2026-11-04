@@ -115,9 +115,16 @@ def test_cold_traversal_override_rejected_before_traversal(monkeypatch, name):
     "change",
     ["class", "code", "defaults", "dependency", "native", "compiled", "inplace"],
 )
-def test_known_live_callable_and_configuration_holes_are_rejected(monkeypatch, change):
+def test_known_live_callable_and_configuration_holes_are_rejected(
+    monkeypatch, change, record_property
+):
     model, optimizer = cohort()
     qualified = stock.StockQualification(model, optimizer, "dense")
+    assert qualified.check()
+    # Observe the actual backend before the intentional mutation invalidates
+    # and retires its native certificate. The Stage1 driver compares this with
+    # the backend used by both normal cohorts, rather than forcing one later.
+    record_property("qualification_backend", qualified.native_backend)
     if change == "class":
         monkeypatch.setattr(nn.ReLU, "forward", lambda self, value: value)
     elif change == "code":
