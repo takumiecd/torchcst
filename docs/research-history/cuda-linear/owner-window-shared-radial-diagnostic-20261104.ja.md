@@ -83,7 +83,7 @@ Torch2.11.0+cu130/CUDA13/Triton3.6/Python3.13.16。N1024/A52428/真B4/seed41/TF3
 - 各状態16実Graph更新で42状態・5勾配・metrics/order一致、fallback0、capture復元pass。
   保存Tensorのstepを取得後に直接読み、24と45016を確認した。
 - 代表rank6/12/17、K2、wide/周期境界/相殺、部分勾配、saved hooks/offload/retained/current-P、
-  不正metadata拒否、合法nonzero offset、Graph guard等45 GPU tests pass。
+  不正metadata拒否、合法nonzero offset、Graph guard等の対象suiteがL4上で45件pass（44件GPU契約＋1件宣言検査）。
   FP64 Fourier参照による小fixture検証を含む。新たな全52k quadrature検証ではない。
 - 8cycle×16実更新（128実更新/120 replay）の各47状態・勾配とmetrics/orderが一致。
   24個のPTを原file bytesと同一に復元し、全642 Tensor比較がbyte一致した。

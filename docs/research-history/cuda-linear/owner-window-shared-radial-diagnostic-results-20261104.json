@@ -122,7 +122,6 @@
       "unexpected_fallbacks": 0
     }
   ],
-  "gpu_representative_tests": 45,
   "direct_tensor_checks": {
     "pairs": [
       {
@@ -644,5 +643,10 @@
   "review": {
     "design_pro_turn": "875aac7d-82ed-44ca-89ca-a94dac171109",
     "post_feasibility_pro_review": "pending"
+  },
+  "representative_tests": {
+    "total_passed": 45,
+    "gpu_contract_cases": 44,
+    "cpu_declaration_cases": 1
   }
 }
