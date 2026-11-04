@@ -677,5 +677,10 @@ void check_scope(Tensor p, Config input, Config output) {
                     "FP32 body research scope: N1024/M8/spacing1/Polar/radius[.5,50]/amplitude<=1");
     }
 }
+void check_phase_scope(Tensor p, Config input, Config output) {
+    check_scope(p, input, output);
+    // Shared-radius classification requires the same live axes as execution.
+    check_owner_axes(parse_axis(input), parse_axis(output), 0, 2, 2, true, 32);
+}
 } // namespace fp32_body
 } // namespace radius_cell_mass

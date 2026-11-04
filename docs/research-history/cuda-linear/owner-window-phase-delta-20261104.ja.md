@@ -130,3 +130,15 @@ precisionは`fp32_geometry_sort32_flat_c`対`fp32_phase_delta`。life probeは
 候補のみ`--phase-delta`を加える。全command/順序はdriverとphase logsに残した。
 
 [processed結果・判定・hash](owner-window-phase-delta-results-20261104.json)に保存した。
+
+## Proレビュー後：診断入口の前提検査
+
+`research_owner_window_phase_classify`に、通常経路と同じ`check_owner_axes`を追加した。
+共有radiusを使う前にinput/outputのlive axes一致、base1/merge2等を検証する。
+各軸個別のFP32 scopeだけでは、異なるorigin・w_c・lower_kappaを排除できなかった。
+これら3条件の拒否テストを追加した。今回の実測は同一軸であり、負結果の判定には影響しない。
+前節までの測定source/hashとraw結果は変更しない。この追記以降のsource変更は
+診断専用host検査とテストであり、contract/classifierのdevice算術は変更していない。
+
+ローカルhost C++ syntax、Ruff pass。対象pytestは4 passed / 117 skipped
+（新しい3拒否テストを含むCUDA検証は次の限定診断jobで行う）。

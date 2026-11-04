@@ -2,6 +2,7 @@
 
 import copy
 import math
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -215,3 +216,22 @@ def test_saved_phase_is_validated_before_reverse_sort(bad):
     assert seen
     with pytest.raises(RuntimeError, match="phase saved payload"):
         y.backward(dy.cuda())
+
+
+@GPU
+@pytest.mark.parametrize("setting", ["origin", "w_c", "lower_kappa"])
+def test_diagnostic_classifier_rejects_different_live_axes(setting):
+    cpu, _, _ = geometry.make_site()
+    model = cpu.cuda()
+    layout = hierarchy_from_operator(model.declaration())
+    axis = layout.output
+    if setting == "origin":
+        different = replace(axis, origin=axis.origin + 1.25)
+    else:
+        polar = list(axis.polar)
+        polar[{"w_c": 1, "lower_kappa": 3}[setting]] *= 1.1
+        different = replace(axis, polar=tuple(polar))
+    native = _extension().research_owner_window_phase_classify
+    native(model.atoms.p, layout.input.native_config(), axis.native_config())
+    with pytest.raises(RuntimeError, match="identical live axes"):
+        native(model.atoms.p, layout.input.native_config(), different.native_config())

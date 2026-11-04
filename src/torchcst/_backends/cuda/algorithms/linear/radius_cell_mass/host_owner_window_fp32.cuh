@@ -7,6 +7,7 @@ std::vector<Tensor> owner_window_transform_flat_c(Tensor, Tensor, Tensor, Tensor
                                            bool, bool, bool, bool, bool, Tensor, Tensor, Tensor, Tensor);
 void check_owner_window_saved(Tensor, Tensor, Tensor, Tensor, Tensor, Config, Config);
 void check_scope(Tensor, Config, Config);
+void check_phase_scope(Tensor, Config, Config);
 void check_geometry_saved(Tensor, Tensor);
 void check_phase_saved(Tensor, Tensor);
 std::vector<Tensor> owner_window_transform_phase(Tensor, Tensor, Tensor, Tensor, Tensor, Config, Config,
@@ -112,7 +113,7 @@ class OwnerWindowFloat : public torch::autograd::Function<OwnerWindowFloat<Geome
 void bind_owner_window_fp32_autograd(pybind11::module_ &module) {
     module.def("research_owner_window_phase_classify",
         [](Tensor p, Config input, Config output) {
-            fp32_body::check_scope(p, input, output);
+            fp32_body::check_phase_scope(p, input, output);
             return classify_atoms_phase_async(p, input, output);
         }, pybind11::call_guard<pybind11::gil_scoped_release>());
     module.def(
