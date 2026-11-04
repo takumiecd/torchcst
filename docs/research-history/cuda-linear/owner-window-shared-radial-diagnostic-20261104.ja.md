@@ -116,5 +116,50 @@ Linux CPU1738 passed/2441 skipped、宣言・wheel/sdist buildを含めsuccess�
 ローカルmacOSとplatform skipの内訳は異なる。host syntax最終検査もpass。
 
 正式36短期cell・二順序45kは未実施。16更新の時間や計装付きlifecycle時間を性能判定に使わない。
-限定診断結果をProへ戻し、正式短期比較へ費用を払う価値を再レビュー中。#132 baseline、#133/#134の
-負結果、Draft/未マージ、公開dispatcher未変更を維持する。
+限定診断結果をProへ戻した。#132 baseline、#133/#134の負結果、Draft/未マージ、公開dispatcher未変更を維持する。
+
+## Pro再レビューと固定Aの正式短期比較（事前仕様）
+
+Proはturn `20e64c39-67a4-49e3-8692-8082a1f0c0c8`（answer `16860010-c879-59ae-a121-dd29afb808df`）で、
+限定診断成立・一回の正式短期比較へ進む価値を支持した。必須のCUDA runtime修正はなく、
+allocator同値の原因を追う別jobや動的traceの総再取得も不要とした。
+代表suiteの一部は`torch.equal`であり、45件すべてが正負ゼロまでのbyte比較という意味ではない。
+全atom VJP・保存状態の直接byte照合とは証拠を分ける。
+
+runtimeの`src/`は測定source `5429f527`から変更しない。benchmarkだけに、capture後・計時外の
+実recipe/native entry、Graph/eligible/GradMode、実middle/Pのrequires_grad、loaded extensionのpath/hashを
+assert・記録するopt-inを追加する。文字列とboolだけを保持し、追加Tensor/Graph参照を残さない。
+metadata/hash取得はsetup/throughput/retirementの全時計外。各cellの全47状態・勾配も計時後に保存する。
+
+新しい一回のL4 allocationで、まず追加phase計装なしの8×16 lifecycleを各方式一回実行する。
+元の計装付きpassは保存し、同期追加のない実行でもprospective memory-v2.1を通ることを要求する。
+compileはここで両方式に等しく済ませる。失敗ならそこで停止する。
+
+通過後のformal cellはfresh process、両状態×6組×(#132/A/dense)の最大36、各256実更新。
+CSTには`--bootstrap-fp32 --flat-c-baseline`を両方指定し、finalには#132自身の`fp32_final.pt`を用いる。
+denseは同じFP32/TF32off/Graph条件で自身の対応状態を使う。入力・初期値・data orderは従来と同じ。
+順序は測定前に以下へ固定し、各方式の各位置が2回、base→A/A→baseが3組ずつになる。
+
+| repeat | 順序 |
+| --- | --- |
+| 0 | #132 → A → dense |
+| 1 | dense → A → #132 |
+| 2 | A → dense → #132 |
+| 3 | #132 → dense → A |
+| 4 | A → #132 → dense |
+| 5 | dense → #132 → A |
+
+状態ごとに$q_i=t_A/t_{132}$、$R=1-\exp(\sum_{i=1}^{6}\log(q_i)/6)$。
+両状態で$R\ge0.05$かつ全$q_i<1$を要求する。各pairが5%以上という追加gateにはしない。
+42状態・5勾配・metrics/order/finite/fallback0、capture復元を維持し、取得したPTも直接比較する。
+capture込みallocated差<=2MiB/reserved差<=8MiB、計装なしmemory-v2.1を要求する。
+
+byte/guard/finite/fallback/memory不合格は即停止。有効pairでAが勝たなければ6/6は満たせないため
+そこで停止し、残りcellを実行しない。全6勝でも状態のRが5%未満なら、次状態へ進まず停止する。
+予定36・実施N・未実施条件と停止理由を残し、有効な負けを捨てて再測定しない。
+binaryのdump/圧縮は性能cellの間に挟まず、全比較完了または停止後に行う。
+
+短期throughput、setup、retirement、setup+retirementを分け、最後の合計を二重加算しない。
+短期peakはretirement前まで、lifecycleは最終退役までとscopeを区別する。45k償却推計は参考のみ。
+このjobは正式短期比較だけで終わり、B/配置variant/新45kを自動実行しない。全gateを通れば、
+二順序45kへ進む条件を満たしたことだけを記録する。

@@ -36,6 +36,32 @@ def hashes(values):
     }
 
 
+def execution_record(program):
+    """Record scalar metadata only, outside all adoption/preparation clocks."""
+    assert program is not None and program.graph is not None
+    result = {
+        "graph_present": program.graph is not None,
+        "eligible": program.eligible(),
+        "grad_enabled": torch.is_grad_enabled(),
+        "parameters_require_grad": all(p.requires_grad for p in program.params),
+    }
+    assert all(result.values())
+    if program.site is not None:
+        loaded = Path(program.extension.__file__)
+        result.update(
+            schedule=program.linear_program.cached.state.recipe.schedule,
+            native_entry=program.fp32_entry
+            if program.fp32_body
+            else "research_graph_owner_window",
+            middle_requires_grad=program.middle.requires_grad,
+            atom_requires_grad=program.site.atoms.p.requires_grad,
+            extension_path=str(loaded),
+            extension_sha256=hashlib.sha256(loaded.read_bytes()).hexdigest(),
+        )
+        assert result["middle_requires_grad"] and result["atom_requires_grad"]
+    return result
+
+
 def run(args):
     torch.set_num_threads(1)
     torch.backends.cuda.matmul.allow_tf32 = False
@@ -154,6 +180,7 @@ def run(args):
     )
     start = actual_start
     setup_seconds = time.perf_counter() - setup_start
+    route = execution_record(program) if args.record_route else None
     profiler = None
     python_profile = None
     if args.profile:
@@ -260,6 +287,8 @@ def run(args):
         "retirement_seconds": retirement_seconds,
         "setup_and_retirement_seconds": setup_seconds + retirement_seconds,
         "profiled_diagnostic_only": args.profile,
+        "execution_record": route,
+        "execution_record_scope": "outside setup, throughput and retirement clocks; strings/bools only",
         "unexpected_fallbacks": 0,
         "owner_distribution_diagnostic": owners,
         "geometry_shared": args.kind == "cst"
@@ -313,9 +342,12 @@ def run(args):
     assert row["finite"]
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(row, indent=2, allow_nan=False) + "\n")
-    if args.repeat == 0:
+    if args.repeat == 0 or args.save_state:
+        saved = {"model": model.state_dict(), "optimizer": optimizer.state_dict()}
+        if args.save_state:
+            saved["gradients"] = gradients
         torch.save(
-            {"model": model.state_dict(), "optimizer": optimizer.state_dict()},
+            saved,
             args.output.with_suffix(".pt"),
         )
     print(
@@ -360,6 +392,8 @@ def main():
     parser.add_argument("--sort32-baseline", action="store_true")
     parser.add_argument("--flat-c-baseline", action="store_true")
     parser.add_argument("--profile", action="store_true")
+    parser.add_argument("--record-route", action="store_true")
+    parser.add_argument("--save-state", action="store_true")
     args = parser.parse_args()
     stream = torch.cuda.Stream()
     with torch.cuda.stream(stream):
