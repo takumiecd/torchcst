@@ -1,0 +1,51 @@
+{
+  "status": "prospective_Stage3_verified_pass_CPU_driver_audit_required",
+  "Stage3_job": "l4job-3521d6199951454abde693cab96138d1",
+  "Stage3_verification_sha256": "15f797e1c7776f1c0e8a8dae273b26fb265d087439f605c49fe30eb8f9efc699",
+  "workload": "FP32 Graph N1024 A52428 trueB4 MNIST full train/test, seed41, FlatC from step0",
+  "schedule_A": [
+    "cst-qualified",
+    "cst-flat",
+    "dense-flat",
+    "dense-qualified"
+  ],
+  "schedule_B": [
+    "dense-qualified",
+    "dense-flat",
+    "cst-flat",
+    "cst-qualified"
+  ],
+  "maximum_fresh_cells": 8,
+  "actual_updates_per_cell": 45000,
+  "ordinary_updates_per_cell": 8,
+  "replay_updates_per_cell": 44992,
+  "epochs_per_cell": 3,
+  "hard_job_seconds": 1200,
+  "preservation_reserve_seconds": 90,
+  "first_process_cap_seconds": 500,
+  "later_process_cap_seconds": 180,
+  "maximum_jobs": 1,
+  "retry_allowed": false,
+  "extra_trial_allowed": false,
+  "shared_job_extension_Triton_cache": true,
+  "cold_compile_separate_time": null,
+  "cold_compile_note": "unseparated in existing initial evaluation; process wall/build evidence separate; no residual attribution",
+  "CST_gate_each_order": {
+    "training_shortening_min": 0.05,
+    "adoption_shortening_min": 0.05,
+    "byte_equal_all_epochs_state_grad_metrics_order": true,
+    "allocated_delta_budget_bytes": 2097152,
+    "reserved_delta_budget_bytes": 8388608,
+    "fallbacks": 0
+  },
+  "first_CST_failed_pair_stops_all_future_cells": true,
+  "dense_speed_is_diagnostic_only": true,
+  "external_frozen_132_references_sha256": "281b1a6c8e828a8ebb6c48cf00f6bdabd6e292bbac9c03d2c01a930e1dcb019c",
+  "input_budget_audit_sha256": "599787750034eb42338b5e5c76c790d03d27c2cf03b386b1f08bbf7040a27851",
+  "budget_feasibility": "conditional, existing wall+90reserve proxy628s, sensitivity1094s fits1200, heavier1251s does not; stop incomplete without retry",
+  "guard_core4_runtime242_runner_changed": false,
+  "new_job": null,
+  "GPU_executed": false,
+  "adopted": false,
+  "comparison": "qualified safety baseline G0 versus G1, not pure speedup over unmodified #132"
+}

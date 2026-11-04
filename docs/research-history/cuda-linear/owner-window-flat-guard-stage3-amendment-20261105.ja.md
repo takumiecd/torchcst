@@ -50,3 +50,32 @@ bootstrap Sort32→測定FlatCのrouting、7入力、計時・capture peak scope
 capture込みpeak増分allocated≤2MiB/reserved≤8MiBを要求する。denseの速度差でCST未達を救済しない。
 hard timeout900秒、保存用45秒reserve、初回process最大500秒・以後最大150秒も維持する。
 全短期条件を満たした場合だけ既定の二順序45,000更新へ進む。追加結果を得る前にこの改訂をcommitする。
+
+## 追加試行の観測と原本のCPU再検証
+
+上の改訂は`ae216d69`でcommitしてから提出した。
+CPU52回帰、CI `41901811575`、実追加driverのmain全体を使った20 synthetic制御シナリオ、
+保存済み旧実セルの全検査通過を確認した。synthetic結果はGPU正しさ・性能には数えない。
+既存wallログによる保存量も考慮した見積りは約707–735秒で、900秒への完走保証とはしなかった。
+
+job `l4job-3521d6199951454abde693cab96138d1`はL4上の48セルを全て完了・driver検証した。
+旧1セルを含むformal累計は開始49、process完了49、driver検証済み48。旧0.753108msは新pairに含めない。
+新jobは一つのGPU allocation内のfresh process比較であり、6台の独立GPU再現ではない。
+
+| 状態 | CST qualified幾何平均 ms/update | G1幾何平均 ms/update | paired幾何平均短縮 | 勝利 |
+| --- | ---: | ---: | ---: | ---: |
+| initial8 | 0.739377 | 0.647790 | 12.387% | 6/6 |
+| own45000 | 0.737348 | 0.641140 | 13.048% | 6/6 |
+
+denseもinitial7.466%/own45k7.850%短縮した。これは共通のhost検査変更の効果を含む対照であり、
+CSTとの差分の百分率を引いて「CST固有の効果」とは扱わない。
+全24pairでcapture込みallocated/reserved peak増分は0/0 bytes。
+driverはstate/勾配/metrics/orderの直接byteと凍結参照、clock、native来歴を検証し全短期Gate通過と判定した。
+driver全体は保存込み608.8秒、所有VM停止・回収済み。source/result/driver SHAは同名JSONへ記録した。
+CPU回収検証も完了した。raw4334/4334、元SHA/sizeへ復元した56 PT、303 source/242 runtime/核心4ファイル、
+凍結7入力・全48cell/24pairの状態/勾配/clock/metrics/orderと性能・memory判定を再検証した。
+`integrity_passed`/`verification_complete`/`stage3_pass`は全てtrue、欠落・未検証・errorは0。
+回収verifierのv1はfull40桁commitを要求したが、実driverのmarkerは許容されたshort8桁だったため停止した。
+旧版を保全しv2で固定markerに訂正した。source303のexact hash照合は維持し、別途Gitのfull commitの
+全303 blob bytesとの一致も確認した。GPUを再実行したものではない。
+長期比較の前提は満たしたが、45,000更新の実施・採用判断はまだ行っていない。
