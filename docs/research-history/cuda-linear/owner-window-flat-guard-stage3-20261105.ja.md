@@ -69,3 +69,9 @@ unpaired基準セルの時間は0.753108ms/update。これをG1との比較や�
 既に一つの基準時間を観測したことと予算例外を明示して、追加結果の取得前にレビューする。
 初回をなかったことにしたり、旧基準と別allocationの候補をpaired比較として接合したりしない。
 状態・原本hashは同名JSON、詳しいclock監査はignored outputへ保存した。所有VM停止も確認済み。
+
+回収のCPU再検証ではraw224ファイル、復元した2 PTの元SHA/size、source301/runtime242/core4、
+凍結7入力とStage2 receiptを照合し、元driverの同じassertを再現した。
+`integrity_passed=true`だが`verification_complete=false`、`stage3_pass=false`を維持する。
+未実施47セルを補完した扱いにはしない。回収verifierのv1にはconstant名の参照誤りもあり、
+旧版を保全してv2へ訂正した。GPU driver・測定データ・判定条件は変更していない。

@@ -44,5 +44,15 @@
   "adopted": false,
   "owned_VM_stopped": true,
   "retry_executed": false,
-  "next": "preserve no-retry stop; seek Pro review of one bounded prospective formal amendment versus ending fixed G1 indeterminate"
+  "next": "preserve no-retry stop; seek Pro review of one bounded prospective formal amendment versus ending fixed G1 indeterminate",
+  "local_retrieval_verification": {
+    "raw_files_verified": 224,
+    "original_PT_files_restored": 2,
+    "integrity_passed": true,
+    "verification_complete": false,
+    "stage3_pass": false,
+    "report_sha256": "bfed8ca23a1ee22396d8d82f48ba83615d6f27289bfae88e8d6533af749b8d95",
+    "script_sha256": "8e1c674906037a8f808ddecd808aedbf74ea2135fef9336ca540cce55fc6c0e2",
+    "note": "original driver clock-schema assertion reproduced; 47 cells not run; CPU-only v2 reader corrected a CORE_HASHES lookup error in preserved v1, without changing the GPU driver"
+  }
 }
