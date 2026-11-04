@@ -284,6 +284,8 @@ _MODULE_TYPES = (
 _MODULE_NAMES = (
     "__getattribute__",
     "__getattr__",
+    "__hash__",
+    "__eq__",
     "__dict__",
     "__call__",
     "_wrapped_call_impl",
@@ -315,12 +317,29 @@ _OPTIMIZER_NAMES = (
     "profile_hook_step",
 )
 _OPTIMIZER_TYPES = (Optimizer, Adam, AdamW, CSTAdamW)
-_MROS = tuple((cls, cls.__mro__) for cls in (*_MODULE_TYPES, *_OPTIMIZER_TYPES))
+_TENSOR_TYPES = (torch.Tensor, nn.Parameter)
+_TENSOR_NAMES = (
+    "__getattribute__",
+    "__dict__",
+    "data_ptr",
+    "stride",
+    "__hash__",
+    "shape",
+    "dtype",
+    "device",
+    "requires_grad",
+    "grad",
+    "_version",
+)
+_MROS = tuple(
+    (cls, cls.__mro__) for cls in (*_MODULE_TYPES, *_OPTIMIZER_TYPES, *_TENSOR_TYPES)
+)
 _SLOTS = tuple(
     _Slot(cls, name)
     for cls, names in (
         *((cls, _MODULE_NAMES) for cls in _MODULE_TYPES),
         *((cls, _OPTIMIZER_NAMES) for cls in _OPTIMIZER_TYPES),
+        *((cls, _TENSOR_NAMES) for cls in _TENSOR_TYPES),
         (nn.Sequential, ("__iter__", "__getitem__", "_get_item_by_idx")),
         (nn.ModuleList, ("__iter__", "__getitem__", "_get_abs_string_index")),
         (operator, ("index",)),
@@ -343,6 +362,15 @@ _SLOTS = tuple(
         (torch._C._nn, ("linear", "cross_entropy_loss")),
     )
     for name in names
+)
+_TENSOR_SLOTS = tuple(slot for slot in _SLOTS if slot.owner in _TENSOR_TYPES)
+_TENSOR_MROS = tuple((cls, cls.__mro__) for cls in _TENSOR_TYPES)
+_TENSOR_FUNCTIONS = tuple(
+    _FUNCTIONS[fn]
+    for fn in dict.fromkeys(
+        _GET_STATIC(slot.owner, slot.name, _MISSING) for slot in _TENSOR_SLOTS
+    )
+    if type(fn) is FunctionType
 )
 
 # A function-only template: no Optimizer or Tensor examples, class mutation,
@@ -414,11 +442,13 @@ def _module_check(node):
         and type(data.get("_parameters")) is dict
         and type(data.get("_buffers")) is dict
         and all(
-            type(key) is str and (value is None or type(value) is nn.Parameter)
+            type(key) is str
+            and (value is None or _tensor_provider(value, nn.Parameter))
             for key, value in data["_parameters"].items()
         )
         and all(
-            type(key) is str and (value is None or type(value) is torch.Tensor)
+            type(key) is str
+            and (value is None or _tensor_provider(value, torch.Tensor))
             for key, value in data["_buffers"].items()
         )
         and not any(
@@ -436,6 +466,46 @@ def _module_check(node):
         and data.get("_compiled_call_impl") is None
         and (type(node) is not nn.ReLU or data.get("inplace") is False)
     )
+
+
+def _tensor_provider(value, expected_type):
+    # The catalog has already authenticated class accessors/descriptors/MROs.
+    # Read only the raw instance dictionary; never call a prospective data_ptr
+    # or stride just to qualify it. Such a shadow can mutate P while preserving
+    # every field of the legacy metadata tuple.
+    if type(value) is not expected_type:
+        return False
+    namespace = _GET_DICT(value, "__dict__")
+    return (
+        type(namespace) is dict
+        and "data_ptr" not in namespace
+        and "stride" not in namespace
+    )
+
+
+def metadata_provider_supported(value):
+    """Read-only provider check after the caller checked stock class metadata.
+
+    Suitable for registered tensors, current grads, optimizer state, inputs and
+    periods. Reads no Tensor values and invokes neither data_ptr nor stride.
+    This does not independently authenticate class descriptors on the hot path.
+    """
+    try:
+        return type(value) in _TENSOR_TYPES and _tensor_provider(value, type(value))
+    except (AttributeError, RuntimeError, TypeError, ValueError):
+        return False
+
+
+def tensor_metadata_declarations_current():
+    """Bounded cold/rollback check, independent of the whole stock catalog."""
+    try:
+        return (
+            all(cls.__mro__ == mro for cls, mro in _TENSOR_MROS)
+            and all(slot.check() for slot in _TENSOR_SLOTS)
+            and all(record.check() for record in _TENSOR_FUNCTIONS)
+        )
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError):
+        return False
 
 
 def _prepare_native_catalog():

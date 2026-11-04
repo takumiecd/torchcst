@@ -20,6 +20,8 @@ from benchmarks.training.cell_mass_mnist import make_model, make_optimizer
 from benchmarks.training.graph_stock_qualification import (
     QualificationError,
     StockQualification,
+    metadata_provider_supported,
+    tensor_metadata_declarations_current,
 )
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass import executor, plans
 from torchcst._backends.cuda.algorithms.polar_update.algorithm import _period_tensors
@@ -91,6 +93,10 @@ def capture_state(parameters, optimizer):
 
 
 def restore_capture_state(saved):
+    if not tensor_metadata_declarations_current():
+        raise RuntimeError(
+            "Tensor metadata declarations changed; rollback cannot be certified"
+        )
     optimizer, state_layout, records = saved
     current = tuple(
         (
@@ -162,6 +168,11 @@ def ordinary_step(model, optimizer, tx, ty, indices, totals):
 
 
 def metadata(t):
+    # Class declarations are qualified before signature evaluation. Cover all
+    # remaining caller-owned tensors too (grad/state/input/period), not only
+    # registered model leaves. Never invoke an instance's prospective provider.
+    if not metadata_provider_supported(t):
+        raise QualificationError("unqualified Tensor metadata provider")
     return (
         id(t),
         t.data_ptr(),
@@ -321,7 +332,12 @@ class PreparedStep:
                 if any(p is self.site.atoms.p for p in g["params"])
             )
             self.extension = executor._extension()
-        self.signature = self._signature()
+        try:
+            self.signature = self._signature()
+        except QualificationError as error:
+            self.invalidated = True
+            self.qualification_error = str(error)
+            return
         if not self.eligible():
             self.invalidated = True
             self.qualification_error = "initial whole-step guard refused the cohort"
@@ -491,7 +507,13 @@ class PreparedStep:
             # Capture alone may replace gradients. Replay/step never take this
             # branch; every other eligibility condition remains mandatory.
             wanted = wanted[:2] + ((),) + wanted[3:]
-        if self._signature(include_grad=False if _capture_refresh else None) != wanted:
+        try:
+            actual_signature = self._signature(
+                include_grad=False if _capture_refresh else None
+            )
+        except QualificationError:
+            return False
+        if actual_signature != wanted:
             return False
         if self.site is not None:
             if self.optimizer.check_finite:
@@ -598,6 +620,9 @@ class PreparedStep:
                 and self._signature(include_grad=False) == non_grad
                 and self.eligible(_capture_refresh=True)
             )
+        except QualificationError:
+            self._retire_failed_capture()
+            return False
         except Exception:
             self._retire_failed_capture()
             raise

@@ -358,3 +358,168 @@ def test_native_closure_drift_rejected_without_reanchoring(monkeypatch):
     assert not qualified._check_python()
     assert not qualified.check()
     assert qualified._native is None
+
+
+@pytest.mark.parametrize("phase", ["cold", "live"])
+@pytest.mark.parametrize("kind", ["parameter", "buffer"])
+@pytest.mark.parametrize("name", ["data_ptr", "stride"])
+def test_tensor_instance_metadata_shadow_is_rejected_read_only(phase, kind, name):
+    model, optimizer = cohort()
+    if kind == "buffer":
+        model[0].register_buffer("constant", torch.ones(2))
+        value = model[0].constant
+    else:
+        value = next(model.parameters())
+    qualified = (
+        stock.StockQualification(model, optimizer, "dense") if phase == "live" else None
+    )
+    before = value.detach().clone()
+    version = value._version
+    calls = []
+
+    def shadow(*args, **kwargs):
+        calls.append(True)
+        with torch.no_grad():
+            value.add_(1)
+        raise AssertionError("unqualified Tensor metadata accessor ran")
+
+    value.__dict__[name] = shadow
+    if phase == "cold":
+        with pytest.raises(stock.QualificationError):
+            stock.StockQualification(model, optimizer, "dense")
+    else:
+        assert not qualified.check()
+        assert not qualified._check_python()
+    assert not calls
+    assert torch.equal(value, before) and value._version == version
+    del value.__dict__[name]
+
+
+@pytest.mark.parametrize("phase", ["cold", "live"])
+@pytest.mark.parametrize("owner", [torch.Tensor, nn.Parameter])
+@pytest.mark.parametrize("name", ["data_ptr", "stride", "__hash__"])
+def test_tensor_provider_class_changes_rejected_without_calling_it(
+    monkeypatch, phase, owner, name
+):
+    model, optimizer = cohort()
+    value = next(model.parameters())
+    qualified = (
+        stock.StockQualification(model, optimizer, "dense") if phase == "live" else None
+    )
+    before = value.detach().clone()
+    version = value._version
+    calls = []
+
+    def custom(*args, **kwargs):
+        calls.append(True)
+        raise AssertionError("custom Tensor provider ran")
+
+    monkeypatch.setattr(owner, name, custom)
+    if phase == "cold":
+        with pytest.raises(stock.QualificationError):
+            stock.StockQualification(model, optimizer, "dense")
+    else:
+        assert not qualified.check()
+        assert not qualified._check_python()
+    assert not calls
+    assert torch.equal(value, before) and value._version == version
+
+
+@pytest.mark.parametrize("phase", ["cold", "live"])
+def test_tensor_hash_same_function_code_change_is_rejected(monkeypatch, phase):
+    model, optimizer = cohort()
+    qualified = (
+        stock.StockQualification(model, optimizer, "dense") if phase == "live" else None
+    )
+    original = torch.Tensor.__hash__
+
+    def custom(self):
+        raise AssertionError("modified Tensor hash code ran")
+
+    monkeypatch.setattr(original, "__code__", custom.__code__)
+    if phase == "cold":
+        with pytest.raises(stock.QualificationError):
+            stock.StockQualification(model, optimizer, "dense")
+    else:
+        assert not qualified.check()
+        assert not qualified._check_python()
+
+
+@pytest.mark.parametrize("name", ["__hash__", "__eq__"])
+def test_cold_module_hash_eq_override_never_runs_during_raw_discovery(
+    monkeypatch, name
+):
+    model, optimizer = cohort()
+    calls = []
+
+    def custom(*args, **kwargs):
+        calls.append(True)
+        raise AssertionError("custom Module identity callback ran")
+
+    monkeypatch.setattr(nn.Module, name, custom)
+    with pytest.raises(stock.QualificationError):
+        stock.StockQualification(model, optimizer, "dense")
+    assert not calls
+
+
+@pytest.mark.parametrize("role", ["grad", "input", "state", "period"])
+@pytest.mark.parametrize("accessor", ["data_ptr", "stride"])
+def test_public_metadata_provider_rejects_remaining_shadowed_tensors_read_only(
+    role, accessor
+):
+    parameter = nn.Parameter(torch.ones(2))
+    if role == "grad":
+        parameter.grad = torch.ones_like(parameter)
+        value = parameter.grad
+    elif role == "state":
+        state = {"exp_avg": torch.zeros_like(parameter)}
+        value = state["exp_avg"]
+    else:
+        value = torch.ones(2)
+    before = value.detach().clone()
+    version = value._version
+    calls = []
+
+    def custom(*args, **kwargs):
+        calls.append(True)
+        raise AssertionError("shadowed metadata provider ran")
+
+    assert stock.metadata_provider_supported(value)
+    value.__dict__[accessor] = custom
+    assert not stock.metadata_provider_supported(value)
+    assert not calls
+    assert torch.equal(value, before) and value._version == version
+    del value.__dict__[accessor]
+
+
+def test_public_metadata_provider_exact_types_and_declarations_scope(monkeypatch):
+    class Subclass(torch.Tensor):
+        pass
+
+    assert stock.metadata_provider_supported(nn.Parameter(torch.ones(1)))
+    assert not stock.metadata_provider_supported(torch.ones(1).as_subclass(Subclass))
+    assert not stock.metadata_provider_supported(object())
+    assert stock.tensor_metadata_declarations_current()
+    monkeypatch.setattr(nn.ReLU, "forward", lambda self, value: value)
+    assert not stock._catalog_check()
+    assert stock.tensor_metadata_declarations_current()  # Not a full-catalog walk.
+
+
+def test_tensor_declarations_detect_grad_descriptor_without_invocation(monkeypatch):
+    calls = []
+
+    def custom(self):
+        calls.append(True)
+        raise AssertionError("custom grad descriptor ran")
+
+    monkeypatch.setattr(torch.Tensor, "grad", property(custom))
+    assert not stock.tensor_metadata_declarations_current()
+    assert not calls
+
+
+def test_tensor_declarations_detect_same_hash_function_code_change(monkeypatch):
+    def custom(self):
+        raise AssertionError("custom hash ran")
+
+    monkeypatch.setattr(torch.Tensor.__hash__, "__code__", custom.__code__)
+    assert not stock.tensor_metadata_declarations_current()

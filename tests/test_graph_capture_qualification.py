@@ -486,3 +486,27 @@ def test_postflight_exception_also_retires_captured_temporaries(
     assert_numeric_restored(inputs, program, before)
     assert program.invalidated and program.graph is None
     assert all(reference() is None for reference in temporary_refs)
+
+
+def test_changed_metadata_declaration_cannot_run_during_rollback(
+    monkeypatch, cpu_cuda_api
+):
+    inputs = dense_cpu_inputs()
+    program = construct(inputs)
+    calls = []
+
+    def forbidden_stride(*args):
+        calls.append(True)
+        raise AssertionError("changed metadata declaration was invoked")
+
+    def mutate(call):
+        if call == 2:
+            monkeypatch.setattr(torch.Tensor, "stride", forbidden_stride)
+
+    install_virtual_body(monkeypatch, inputs, program, mutate=mutate)
+    with pytest.raises(RuntimeError, match="metadata declarations changed"):
+        program.capture()
+    assert calls == []
+    assert program.restoration_failed and program.graph is None
+    with pytest.raises(RuntimeError, match="cohort updates are disabled"):
+        program.step(torch.arange(4))
