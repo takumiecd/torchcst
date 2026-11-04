@@ -88,3 +88,29 @@ allocated＋2MiB/reserved＋8MiBは変更しない。qualified G0の補強費用
 CPU CI `41880041977`も同headでsuccess。追加6ケースのローカルCPU確認も6 passedで、
 code/defaultsの両caseはnative backendを報告した。いずれも対象L4でのamendment実行結果ではない。
 Pro回答とprivate driver・raw証拠はignored outputへ保全する。公開結果JSONの初回未完了statusは書き換えない。
+
+## 追加試行の観測: Stage1だけ通過
+
+job `l4job-b48fffb7e8894db7805dce763fc161fc`、source
+`920561b4d74724706b23d47bb8a9c28daafd631c`。計画した11 process、6回帰case/skip0、
+8数値セル、2費用processを完了した。資格backendは反例case・全cohort・capture/更新終端でnative、
+G1のflat証明も有効だった。CSTの実entryは`research_owner_window_fp32_geometry_sort32_flat_c`。
+
+initial8/自身45k、CST/denseそれぞれのqualified/flatについて、保存PTの468 Tensor項目が直接byte一致。
+CSTの全52,428 atomのVJP入力/出力・dX/dP、開始/第1/第16更新の全状態/5勾配/totals、
+clock8→24/45000→45016、frozen開始42状態、capture復元、通常fallback0を確認した。
+10 PTの復元file SHAと1,641 raw manifestファイルをローカルでも照合し、missing/unverified/errorsは0。
+
+eligible-only 1,024 calls×5 blockの中央値は、CSTが631.318→521.870µs、denseが236.223→204.658µs。
+両モデルとも全5 blockでflatが短かった。guard-onlyのstate/grad/version/settings/clockとGPU allocator
+countersは不変。**これは確認処理の費用screenであり、学習stepの時間、GPU時間、CPU律速の証明ではない。**
+qualification補強費用の回収を、元#132より速い証拠とも扱わない。
+
+source archive SHA256は`195966d898081a781023820bbe56f20c6b71b8a30c6167eee2fafab90851ea8d`、
+result archiveは`4883f41ab7e39cd01754bfc8d80365a1cdd7e318eadb0be7947849ccd22b707e`、
+driverは`45dd33152e0453b3ff7b2b2af68053273502a43703d65db01ab7d34aa8b5fbe0`。
+詳細な全5 block配列・機械可読結果は同名JSON、raw原本と再照合はignored outputに保存した。
+所有VM停止も確認済み。初回の未完了記録は維持し、Stage1の第三試行は行わない。
+
+現時点ではmemory-v2.1/正式throughput/45k/採用は未実施。
+次は[prospective Stage2](owner-window-flat-guard-stage2-20261105.ja.md)だけを検証する。

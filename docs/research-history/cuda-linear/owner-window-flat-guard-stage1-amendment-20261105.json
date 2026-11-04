@@ -1,0 +1,179 @@
+{
+  "status": "Stage1_pass_only",
+  "amendment_id": "G1-stage1-one-additional-run-20261105",
+  "job": "l4job-b48fffb7e8894db7805dce763fc161fc",
+  "attempt_number": 2,
+  "max_Stage1_attempts": 2,
+  "prior_job_preserved": "l4job-6ee82518b27947cb94f8d5b7058875e6",
+  "source_commit": "920561b4d74724706b23d47bb8a9c28daafd631c",
+  "source_archive_sha256": "195966d898081a781023820bbe56f20c6b71b8a30c6167eee2fafab90851ea8d",
+  "result_archive_sha256": "4883f41ab7e39cd01754bfc8d80365a1cdd7e318eadb0be7947849ccd22b707e",
+  "driver_sha256": "45dd33152e0453b3ff7b2b2af68053273502a43703d65db01ab7d34aa8b5fbe0",
+  "runtime_src_unchanged_from132": 242,
+  "source_files_verified": 301,
+  "new_regression_cases": {
+    "executed_new_cases": 6,
+    "skipped": 0,
+    "backend_records": {
+      "code": "native",
+      "defaults": "native"
+    },
+    "qualification_backend": "native"
+  },
+  "completed_numerical_cells": 8,
+  "updates_per_numerical_cell": 16,
+  "states": [
+    "initial8",
+    "own45000"
+  ],
+  "clock_ranges": [
+    [
+      8,
+      24
+    ],
+    [
+      45000,
+      45016
+    ]
+  ],
+  "cross_guard_direct_checks": [
+    {
+      "state": "initial",
+      "kind": "cst",
+      "all_byte_equal": true,
+      "fields": 153,
+      "different": []
+    },
+    {
+      "state": "initial",
+      "kind": "dense",
+      "all_byte_equal": true,
+      "fields": 81,
+      "different": []
+    },
+    {
+      "state": "final",
+      "kind": "cst",
+      "all_byte_equal": true,
+      "fields": 153,
+      "different": []
+    },
+    {
+      "state": "final",
+      "kind": "dense",
+      "all_byte_equal": true,
+      "fields": 81,
+      "different": []
+    }
+  ],
+  "direct_compared_tensor_fields": 468,
+  "VJP": "same actual X/P/dY; native entry Y/dX/all52428dP byte-equal; crossprocess saved inputs/outputs byte-equal",
+  "qualification_backend": "native across tests/allcells/probes/capture/update endpoints",
+  "selected_entry": "research_owner_window_fp32_geometry_sort32_flat_c",
+  "Plan": "GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32_FLAT_C",
+  "guard_cost": {
+    "cst": {
+      "ns_per_call": {
+        "qualified": [
+          631204.4228515625,
+          631317.958984375,
+          628589.44921875,
+          641903.5087890625,
+          631698.041015625
+        ],
+        "flat": [
+          521870.3056640625,
+          518607.0634765625,
+          525777.6962890625,
+          538818.396484375,
+          519755.0498046875
+        ]
+      },
+      "median_ns_per_call": {
+        "qualified": 631317.958984375,
+        "flat": 521870.3056640625
+      },
+      "all_five_flat_shorter": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "state_grad_metrics_versions_clocks_settings_unchanged": true,
+      "unexpected_fallbacks": 0,
+      "scope": "complete eligible-only; not training throughput or GPU time; two resident cohorts, no memory admission"
+    },
+    "dense": {
+      "ns_per_call": {
+        "qualified": [
+          236222.8720703125,
+          236156.63671875,
+          238133.1240234375,
+          235663.501953125,
+          239925.37109375
+        ],
+        "flat": [
+          204397.859375,
+          203634.8544921875,
+          204657.58203125,
+          208472.2109375,
+          207123.2666015625
+        ]
+      },
+      "median_ns_per_call": {
+        "qualified": 236222.8720703125,
+        "flat": 204657.58203125
+      },
+      "all_five_flat_shorter": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "state_grad_metrics_versions_clocks_settings_unchanged": true,
+      "unexpected_fallbacks": 0,
+      "scope": "complete eligible-only; not training throughput or GPU time; two resident cohorts, no memory admission"
+    }
+  },
+  "source_core4_and_oldtest2_unchanged": {
+    "benchmarks/training/full_step_graph.py": "e39b277956f128e7e69edaefba7c6cfd976e224ebe922abffea5cb773d54d0ce",
+    "benchmarks/training/flat_step_graph.py": "07d659c7dfe5841e6078309f45c12ab6c0b7d15c1da2795a211cd7b46acae839",
+    "benchmarks/training/graph_signature_leaves.py": "401517442f2d644986814daf446c37a31b8596c457061299d3a7a5043772d1b4",
+    "benchmarks/training/graph_stock_qualification.py": "078a2fe877e07f5e513748f58c26b5a2be9c36bc43864f0cced1292409c26a55",
+    "tests/test_full_step_graph.py": "5d4121cceff29e31b6868ec92656fbfb71a8b69d2f98b7e6b4be91dd88044ae7",
+    "tests/test_graph_topology_guard.py": "c8256aaf562ee926094e778f63d3dc081499a0f5c186048a5fb1ecc36056642a"
+  },
+  "raw_manifest_files_verified": 1641,
+  "restored_PT_files_verified": 10,
+  "preflight_files": 10,
+  "measurement_processes_started": 11,
+  "integrity_errors": [],
+  "environment": {
+    "python": "3.13.16 (main, Oct  1 2026, 15:40:24) [GCC 13.3.0]",
+    "torch": "2.11.0+cu130",
+    "torch_git": "70d99e998b4955e0049d13a98d77ae1b14db1f45",
+    "cuda": "13.0",
+    "gpu": "NVIDIA L4",
+    "nvidia_smi": "name, uuid, driver_version\nNVIDIA L4, GPU-7f0a8baa-76c1-895f-4d61-c1f098fab8ea, 580.82.07\n",
+    "logical_cores": 12,
+    "math_threads": 1,
+    "max_jobs": 2
+  },
+  "owned_pool_sessions_stopped": true,
+  "training_throughput_measured": false,
+  "memory_v2_1_admitted": false,
+  "formal_performance_cells": 0,
+  "long_run_executed": false,
+  "adopted": false,
+  "next": "one prospective Stage2 lifecycle; no additional Stage1",
+  "actual_numerical_libraries": [
+    {
+      "path": "/content/l4job-b48fffb7e8894db7805dce763fc161fc/source/output/g1-stage1-extension-builds/torchcst_radius_cell_mass_0266a8c9f7b8/torchcst_radius_cell_mass_0266a8c9f7b8.so",
+      "sha256": "601adf45dd01941856f83724eb52142b80b8a2f3e34efcde6a69d7cd532b6364",
+      "reported_loaded_by_numerical_cell": true,
+      "reported_loaded_by_preflight": true
+    }
+  ]
+}

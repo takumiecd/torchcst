@@ -25,7 +25,7 @@ from benchmarks.training.flat_step_graph import FlatPreparedStep
 from benchmarks.training.full_step_graph import PreparedStep, ordinary_step, snapshot
 from benchmarks.training.full_step_graph_comparison import hashes
 from benchmarks.training.full_step_graph_memory import ENDPOINT_PHASE
-from torchcst._backends.cuda.algorithms.linear.radius_cell_mass import plans
+from torchcst._backends.cuda.algorithms.linear.radius_cell_mass import executor, plans
 from torchcst._backends.torch import finite
 from torchcst.operators.atom_update import AtomUpdateInputs
 
@@ -172,18 +172,71 @@ def run(args):
         torch.cuda.synchronize()
         seconds = time.perf_counter() - begin
         preparation_seconds += seconds
+        # Preparation above still includes all algorithm/certificate/capture
+        # work. Scalar provenance and extension-file hashing below are untimed
+        # diagnostics; never add this I/O to preparation/adoption_seconds.
+        diagnostic_begin = time.perf_counter()
+        assert qualification_backend in ("native", "python")
+        assert (
+            not captures
+            or qualification_backend == captures[0]["qualification_backend"]
+        ), "qualification backend changed across captures"
+        flat_active = bool(getattr(candidate, "_use_flat", False))
+        assert flat_active is (guard == "flat"), "unexpected signature guard"
+        selected_plan, schedule, entry, extension, is_executor_extension = (
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        if args.kind == "cst":
+            selector = model[2].selector
+            selected_plan = selector._registry.dump_plan(selector._plan)
+            cached = candidate.linear_program.cached
+            recipe = cached.state.recipe
+            assert cached.algorithm.id == selector._plan.algorithm_id
+            assert cached.algorithm.revision == selector._plan.algorithm_revision
+            assert selector._plan.recipe == recipe
+            schedule, entry = recipe.schedule, candidate.fp32_entry
+            is_executor_extension = candidate.extension is executor._extension()
+            assert is_executor_extension, "unexpected loaded numerical extension"
+            if args.flat_c:
+                assert (
+                    selector._plan
+                    == plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32_FLAT_C
+                )
+                assert schedule == "global_owner_window_fp32_geometry_sort32_flat_c"
+                assert entry == "research_owner_window_fp32_geometry_sort32_flat_c"
+                assert recipe.native_entry and recipe.native_autograd
+            path = Path(candidate.extension.__file__)
+            extension = {
+                "path": str(path),
+                "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            }
+        diagnostic_seconds = time.perf_counter() - diagnostic_begin
         captures.append(
             {
                 "at_update": total_updates,
                 "reason": reason,
                 "guard": guard,
                 "qualification_backend": qualification_backend,
+                "flat_signature_active": flat_active,
+                "selected_plan": selected_plan,
+                "plan_schedule": schedule,
+                "entry": entry,
+                "extension": extension,
+                "is_executor_extension": is_executor_extension,
+                "provenance_diagnostic_seconds": diagnostic_seconds,
                 "seconds": seconds,
                 "state_fields": len(after),
                 "restoration_byte_equal": True,
                 "counted_metrics_preserved": True,
             }
         )
+        # Preserve completed capture provenance even if a later cycle fails.
+        # Like checkpoint output, this diagnostic write is outside adoption time.
+        persist(args.output / "captures.json", captures)
         return candidate
 
     for epoch in range(args.epochs):
@@ -360,6 +413,7 @@ def run(args):
         "data": info,
         "epochs": epochs,
         "captures": captures,
+        "capture_provenance_scope": "scalar diagnostics after each existing preparation timer; extension-file hashing and provenance assertions excluded from preparation/adoption_seconds",
         "retirements": retirements,
         "geometry_shared": args.geometry_shared or args.sort32 or args.flat_c,
         "sort32": args.sort32 or args.flat_c,
