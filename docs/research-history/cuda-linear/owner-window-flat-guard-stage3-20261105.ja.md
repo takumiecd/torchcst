@@ -84,3 +84,7 @@ path別cloneから物理storage identityを推定したとは扱わない。
 欠落・余分・誤値・非scalar・非finite等の回帰、実Stage3保存PT、過去56 snapshotのschema/hashを含め
 49 CPU testsが通過した（private原本を持たない環境では対応2件をskip）。
 この修正の追加だけで旧driverの失敗判定を通過へ書き換えず、GPUへの再投入も行っていない。
+
+その後のProレビューを受けた最後の予算例外とGPU前の条件は、
+[Stage3追加試行の事前改訂](owner-window-flat-guard-stage3-amendment-20261105.ja.md)へ分離した。
+この旧jobの結果・未完了flagは維持する。

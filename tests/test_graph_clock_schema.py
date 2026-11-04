@@ -105,6 +105,27 @@ def test_negative_zero_does_not_match_frozen_positive_zero_bytes():
         validate_clock_schema(state, expected_clock=0, kind="cst")
 
 
+def test_fractional_clock_cannot_pass_by_integer_truncation():
+    state = clocks(value=8.5)
+    with pytest.raises(ClockSchemaError):
+        validate_clock_schema(state, expected_clock=8, kind="cst")
+
+
+def test_same_count_wrong_clock_path_is_rejected():
+    state = clocks()
+    state["/optimizer/state/5/step"] = state.pop(OPTIMIZER_CLOCK_PATHS[0])
+    assert len(state) == 6
+    with pytest.raises(ClockSchemaError):
+        validate_clock_schema(state, expected_clock=8, kind="cst")
+
+
+def test_missing_cst_model_alias_path_is_rejected():
+    state = clocks()
+    del state[CST_MODEL_CLOCK_PATH]
+    with pytest.raises(ClockSchemaError):
+        validate_clock_schema(state, expected_clock=8, kind="cst")
+
+
 def test_recorded_stage3_actual_evidence_clock_schema():
     path = Path(__file__).resolve().parents[1] / (
         "output/design-search-20261104/stage3-clock-schema-audit/"
