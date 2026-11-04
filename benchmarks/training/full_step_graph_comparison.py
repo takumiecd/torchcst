@@ -66,7 +66,9 @@ def run(args):
         args.kind,
         radius_execution="cached" if args.kind == "cst" else "global-response4",
         execution_plan=(
-            plans.GLOBAL_OWNER_WINDOW_FP32
+            plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY
+            if args.geometry_baseline
+            else plans.GLOBAL_OWNER_WINDOW_FP32
             if args.bootstrap_fp32
             else plans.GLOBAL_OWNER_WINDOW_RECOMPUTE
         )
@@ -104,12 +106,18 @@ def run(args):
     # Historical mode uses eight common FP64 updates; --bootstrap-fp32 uses
     # eight actual FP32 baseline updates. Prepare
     # the candidate's guarded public entrance without changing P or Adam state.
-    if args.kind == "cst" and args.precision in ("fp32", "fp32_geometry"):
+    if args.kind == "cst" and args.precision in (
+        "fp32",
+        "fp32_geometry",
+        "fp32_geometry_sort32",
+    ):
         from torchcst import FixedSelector, make_algorithm_registry
 
         model[2].selector = FixedSelector(
             (
-                plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY
+                plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32
+                if args.precision == "fp32_geometry_sort32"
+                else plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY
                 if args.precision == "fp32_geometry"
                 else plans.GLOBAL_OWNER_WINDOW_FP32
             ),
@@ -242,8 +250,12 @@ def run(args):
         "retirement_seconds": retirement_seconds,
         "setup_and_retirement_seconds": setup_seconds + retirement_seconds,
         "profiled_diagnostic_only": args.profile,
+        "unexpected_fallbacks": 0,
         "owner_distribution_diagnostic": owners,
-        "geometry_shared": args.kind == "cst" and args.precision == "fp32_geometry",
+        "geometry_shared": args.kind == "cst"
+        and args.precision in ("fp32_geometry", "fp32_geometry_sort32"),
+        "sort32": args.precision == "fp32_geometry_sort32",
+        "geometry_baseline": args.geometry_baseline,
         "bootstrap_precision": "fp32" if args.bootstrap_fp32 else "fp64",
         "adoption_45000_estimate_seconds": 45000 * seconds / args.steps
         + setup_seconds
@@ -304,11 +316,14 @@ def main():
     parser.add_argument("--mode", choices=("eager", "prepared", "graph"), required=True)
     parser.add_argument("--state", choices=("initial", "final"), required=True)
     parser.add_argument(
-        "--precision", choices=("fp64", "fp32", "fp32_geometry"), default="fp64"
+        "--precision",
+        choices=("fp64", "fp32", "fp32_geometry", "fp32_geometry_sort32"),
+        default="fp64",
     )
     parser.add_argument("--repeat", type=int, default=0)
     parser.add_argument("--steps", type=int, default=256)
     parser.add_argument("--bootstrap-fp32", action="store_true")
+    parser.add_argument("--geometry-baseline", action="store_true")
     parser.add_argument("--profile", action="store_true")
     args = parser.parse_args()
     stream = torch.cuda.Stream()

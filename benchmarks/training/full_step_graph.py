@@ -184,10 +184,13 @@ class PreparedStep:
             self.fp32_body = self.linear_program.cached.state.recipe.schedule in (
                 "global_owner_window_fp32",
                 "global_owner_window_fp32_geometry",
+                "global_owner_window_fp32_geometry_sort32",
             )
-            self.geometry_shared = (
-                self.linear_program.cached.state.recipe.schedule.endswith("_geometry")
-            )
+            self.fp32_entry = {
+                "global_owner_window_fp32": "research_owner_window_fp32",
+                "global_owner_window_fp32_geometry": "research_owner_window_fp32_geometry",
+                "global_owner_window_fp32_geometry_sort32": "research_owner_window_fp32_geometry_sort32",
+            }.get(self.linear_program.cached.state.recipe.schedule)
             self.configs = plan.input.native_config(), plan.output.native_config()
             self.previous = torch.empty_like(self.site.atoms.p)
             self.periods = _period_tensors(self.polar_program.state, self.site.atoms.p)
@@ -376,11 +379,7 @@ class PreparedStep:
                 x.retain_grad()
             self.middle = x
             if self.fp32_body:
-                entry = (
-                    self.extension.research_owner_window_fp32_geometry
-                    if self.geometry_shared
-                    else self.extension.research_owner_window_fp32
-                )
+                entry = getattr(self.extension, self.fp32_entry)
                 x = entry(x, self.site.atoms.p, *self.configs, True)
             else:
                 x = self.extension.research_graph_owner_window(

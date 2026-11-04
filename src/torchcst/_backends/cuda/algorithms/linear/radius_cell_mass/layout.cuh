@@ -17,7 +17,8 @@ __global__ void reverse_owner_keys(const int64_t *keys, int64_t *reversed,
 // All owners, including empty ones, receive a lower-bound offset. Generate
 // each boundary in a register instead of allocating an arange Tensor and
 // entering searchsorted through Python. Stable ATen sorting is unchanged.
-__global__ void owner_range_offsets(const int64_t *sorted_keys, int64_t *offsets,
+template <typename Key>
+__global__ void owner_range_offsets(const Key *sorted_keys, int64_t *offsets,
     int atoms, int owners, int stride) {
     int owner = blockIdx.x * blockDim.x + threadIdx.x;
     if (owner > owners) return;
@@ -61,6 +62,52 @@ inline std::vector<Tensor> layout_ranges_aten(Tensor keys, int input_nodes,
     auto offsets = torch::empty({owners + 1}, keys.options());
     owner_range_offsets<<<(owners + 1 + THREADS - 1) / THREADS, THREADS, 0,
         at::cuda::getCurrentCUDAStream()>>>(sorted_keys.data_ptr<int64_t>(),
+        offsets.data_ptr<int64_t>(), atoms, owners, stride);
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+    return {rows, offsets};
+}
+
+// Only temporary composite keys narrow. Validate the original int64 value
+// before casting; saved-tensor hooks can return altered values with valid metadata.
+__global__ void orient_owner_keys32(const int64_t *keys, int32_t *work,
+    int atoms, int input_nodes, int output_nodes, bool reverse) {
+    int atom = blockIdx.x * blockDim.x + threadIdx.x;
+    if (atom >= atoms) return;
+    int64_t key = keys[atom];
+    int64_t count = int64_t(input_nodes) * output_nodes;
+    bool valid = key >= 0 && key < count;
+    CUDA_KERNEL_ASSERT_MSG(valid, "invalid validated radius owner key");
+    if (valid) {
+        int64_t oriented = reverse ?
+            (key % input_nodes) * output_nodes + key / input_nodes : key;
+        work[atom] = int32_t(oriented);
+    }
+}
+
+inline std::vector<Tensor> layout_ranges_aten32(Tensor keys, int input_nodes,
+    int output_nodes, bool reverse) {
+    check_layout_keys(keys, input_nodes, output_nodes);
+    // The endpoint boundary stays int64 even when all valid keys fit int32.
+    int64_t count = int64_t(input_nodes) * output_nodes;
+    if (count - 1 > INT32_MAX)
+        return layout_ranges_aten(keys, input_nodes, output_nodes, reverse);
+    c10::cuda::CUDAGuard guard(keys.device());
+    int atoms = keys.numel();
+    auto work = torch::empty({atoms}, keys.options().dtype(torch::kInt32));
+    if (atoms) {
+        orient_owner_keys32<<<(atoms + THREADS - 1) / THREADS, THREADS, 0,
+            at::cuda::getCurrentCUDAStream()>>>(keys.data_ptr<int64_t>(),
+            work.data_ptr<int32_t>(), atoms, input_nodes, output_nodes, reverse);
+        C10_CUDA_KERNEL_LAUNCH_CHECK();
+    }
+    // Full composite-key stable order, including the source owner and row ties.
+    auto sorted = at::sort(work, true, -1, false);
+    Tensor sorted_keys = std::get<0>(sorted), rows = std::get<1>(sorted);
+    int owners = reverse ? input_nodes : output_nodes;
+    int stride = reverse ? output_nodes : input_nodes;
+    auto offsets = torch::empty({owners + 1}, keys.options().dtype(torch::kLong));
+    owner_range_offsets<<<(owners + 1 + THREADS - 1) / THREADS, THREADS, 0,
+        at::cuda::getCurrentCUDAStream()>>>(sorted_keys.data_ptr<int32_t>(),
         offsets.data_ptr<int64_t>(), atoms, owners, stride);
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return {rows, offsets};

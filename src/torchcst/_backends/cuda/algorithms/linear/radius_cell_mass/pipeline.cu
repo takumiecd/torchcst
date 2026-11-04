@@ -476,6 +476,11 @@ void check_autograd_entry(Tensor x, Tensor p, Config input_config,
 
 // Host autograd links to these wrappers without crossing Python per stage.
 // Modes0..3/5 retain their CUDA stages; mode6 opts into owner response/C.
+std::vector<Tensor> autograd_ranges32(Tensor keys, Config input, Config output, bool reverse) {
+    return layout_ranges_aten32(keys, parse_axis(input).node_count,
+        parse_axis(output).node_count, reverse);
+}
+
 std::vector<Tensor> autograd_ranges(Tensor keys, Config input, Config output, bool reverse) {
     return layout_ranges(keys, parse_axis(input).node_count,
         parse_axis(output).node_count, reverse);
@@ -558,6 +563,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("expansion_probe_resources", &radius_cell_mass::expansion_probe_resources);
     m.def("layout_ranges", &radius_cell_mass::layout_ranges);
     m.def("layout_ranges_aten", &radius_cell_mass::layout_ranges_aten);
+    m.def("layout_ranges_aten32", &radius_cell_mass::layout_ranges_aten32);
     m.def("classify_atoms", &radius_cell_mass::classify_atoms);
     m.def("classify_atoms_async", &radius_cell_mass::classify_atoms_async);
     m.def("build_moments", &radius_cell_mass::build_moments);

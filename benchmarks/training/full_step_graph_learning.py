@@ -105,7 +105,9 @@ def run(args):
         args.kind,
         radius_execution="cached" if args.kind == "cst" else "global-response4",
         execution_plan=(
-            plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY
+            plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32
+            if args.sort32
+            else plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY
             if args.geometry_shared
             else plans.GLOBAL_OWNER_WINDOW_FP32
         )
@@ -344,7 +346,8 @@ def run(args):
         "epochs": epochs,
         "captures": captures,
         "retirements": retirements,
-        "geometry_shared": args.geometry_shared,
+        "geometry_shared": args.geometry_shared or args.sort32,
+        "sort32": args.sort32,
         "preparation_seconds": preparation_seconds,
         "training_seconds": sum(e["training_seconds"] for e in epochs),
         "adoption_seconds": preparation_seconds
@@ -380,6 +383,7 @@ def main():
         help="smoke only; full experiment uses all15000",
     )
     parser.add_argument("--geometry-shared", action="store_true")
+    parser.add_argument("--sort32", action="store_true")
     args = parser.parse_args()
     stream = torch.cuda.Stream()
     with torch.cuda.stream(stream):
