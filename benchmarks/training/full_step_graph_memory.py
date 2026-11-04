@@ -6,7 +6,7 @@ requires exactly eight cycles; it never searches for a convenient flat suffix.
 
 from collections.abc import Mapping
 
-GATE_VERSION = "graph-lifecycle-memory-v2"
+GATE_VERSION = "graph-lifecycle-memory-v2.1"
 ENDPOINT_PHASE = "after_eval_train_sync_before_checkpoint_and_graph_retirement"
 ALLOCATED_BUDGET = 2 * 1024**2
 RESERVED_BUDGET = 8 * 1024**2
@@ -51,6 +51,11 @@ def evaluate_lifecycle(
         result["reasons"] = ["endpoint phase is not the versioned measurement phase"]
         return result
     try:
+        if evidence_scope == "prospective" and any(
+            "memory_endpoint_phase" not in r for r in (baseline, candidate)
+        ):
+            result["reasons"] = ["prospective reports must record their endpoint phase"]
+            return result
         groups = [baseline["epochs"], candidate["epochs"]]
         if any(len(rows) < 8 for rows in groups):
             result["reasons"] = ["eight complete cycles are required"]
@@ -112,7 +117,7 @@ def evaluate_lifecycle(
             peak = f"peak_{kind}_bytes"
             endpoint = f"end_{kind}_bytes"
             values = [r[peak] for r in (baseline, candidate)] + [
-                e[endpoint] for rows in groups for e in rows
+                e[k] for rows in groups for e in rows for k in (endpoint, peak)
             ]
             if any(type(v) is not int or v < 0 for v in values):
                 raise ValueError("invalid byte count")
@@ -121,6 +126,11 @@ def evaluate_lifecycle(
             checks[f"{kind}_peak_budget"] = delta <= budget
             checks[f"{kind}_peak_covers_endpoints"] = all(
                 r[peak] >= max(e[endpoint] for e in r["epochs"])
+                for r in (baseline, candidate)
+            )
+            checks[f"{kind}_peak_covers_epoch_peaks"] = all(
+                r[peak] >= max(e[peak] for e in r["epochs"])
+                and all(e[peak] >= e[endpoint] for e in r["epochs"])
                 for r in (baseline, candidate)
             )
             for label, rows in zip(("baseline", "candidate"), groups):

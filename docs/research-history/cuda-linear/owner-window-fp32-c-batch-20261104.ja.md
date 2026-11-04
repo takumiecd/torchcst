@@ -163,3 +163,13 @@ raw source/spec/driver/archive/manifest/trace/checkpointはpoolの当該jobとwo
 へ保存。GPU停止をfresh pool statusで確認し、supervisorと一時的なsleep抑制も正常終了した。
 
 今回の実装・事前判定整備・短期・条件付き45,000更新は完了。この候補へ別の最適化は追加しない。
+# 判定器の補強（memory-v2.1）
+
+Proレビュー後、prospective report自身の`memory_endpoint_phase`を必須とし、
+summary peakが全epoch peakとendpointを覆うこと、epoch peakがendpointを覆うことを
+検査する。旧reportへの明示的なphase補完はretrospective supplementalに限る。
+負数・bool・非整数のepoch byte countもindeterminateとする。
+旧raw verdictと結果JSONは変更していない。保存済み#132の8 cycle両reportは
+v2.1でもpass（CPUで再評価）、追加GPU実験はしていない。
+`tests/test_full_step_graph_memory.py`: 22 passed。
+

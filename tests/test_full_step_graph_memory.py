@@ -25,6 +25,7 @@ def report(reserved):
         "optimizer_contract": {"lr": 1e-4},
         "data": "fixed",
         "unexpected_fallbacks": 0,
+        "memory_endpoint_phase": ENDPOINT_PHASE,
         "peak_allocated_bytes": 252 * MIB,
         "peak_reserved_bytes": max(reserved) * MIB,
         "epochs": [
@@ -40,6 +41,8 @@ def report(reserved):
                 "data_order_sha256": f"order-{i}",
                 "end_allocated_bytes": 245 * MIB,
                 "end_reserved_bytes": value * MIB,
+                "peak_allocated_bytes": 252 * MIB,
+                "peak_reserved_bytes": max(reserved) * MIB,
             }
             for i, value in enumerate(reserved, 1)
         ],
@@ -119,6 +122,46 @@ def test_missing_phase_or_values_never_pass():
     assert evaluate(a, b, endpoint_phase="unknown")["status"] == "indeterminate"
     del b["peak_reserved_bytes"]
     assert evaluate(a, b)["status"] == "indeterminate"
+
+
+def test_prospective_phase_cannot_be_supplied_by_caller():
+    a, b = report([444] * 8), report([444] * 8)
+    del b["memory_endpoint_phase"]
+    assert evaluate(a, b)["status"] == "indeterminate"
+    result = evaluate_lifecycle(
+        a,
+        b,
+        evidence_scope="retrospective_supplemental",
+        baseline_run="baseline",
+        candidate_run="legacy",
+        endpoint_phase=ENDPOINT_PHASE,
+    )
+    assert result["passed"] is True
+
+
+@pytest.mark.parametrize("kind", ["allocated", "reserved"])
+def test_transient_epoch_peak_cannot_hide_behind_flat_endpoints(kind):
+    a, b = report([444] * 8), report([444] * 8)
+    b["epochs"][1][f"peak_{kind}_bytes"] = b[f"peak_{kind}_bytes"] + 1
+    result = evaluate(a, b)
+    assert result["passed"] is False
+    assert f"{kind}_peak_covers_epoch_peaks" in result["reasons"]
+
+
+@pytest.mark.parametrize("value", [-1, True, 1.5])
+def test_invalid_epoch_peak_bytes_are_indeterminate(value):
+    a, b = report([444] * 8), report([444] * 8)
+    b["epochs"][0]["peak_allocated_bytes"] = value
+    assert evaluate(a, b)["status"] == "indeterminate"
+
+
+def test_existing_flat_c_evidence_passes_strengthened_prospective_gate():
+    path = Path(__file__).resolve().parents[1] / (
+        "docs/research-history/cuda-linear/owner-window-fp32-c-batch-results-20261104.json"
+    )
+    data = json.loads(path.read_text())
+    life = data["lifecycle_reports"]
+    assert evaluate(life["base"], life["flat_c"])["passed"] is True
 
 
 def test_existing_sort32_supplement_passes_without_mutating_legacy_false():
