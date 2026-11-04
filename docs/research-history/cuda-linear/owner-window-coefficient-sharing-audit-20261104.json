@@ -1,0 +1,244 @@
+{
+  "scope": "CPU-only audit of preserved #133 diagnostic binary, PhaseShared=false baseline; not a pristine PR132/PR134 measured binary",
+  "runtime_source_commit": "ff4ae86a7d62b930de9de2d0f9b58322a4829075",
+  "shared_profile_scalar_source_sha256_by_revision": {
+    "fba2e72d733325fbd7be5aac334a0a7463d96b27": "4d1e572264931c603d419aaec73de46b12428f85d1d4301f61c71885da6bacd9",
+    "ff4ae86a7d62b930de9de2d0f9b58322a4829075": "4d1e572264931c603d419aaec73de46b12428f85d1d4301f61c71885da6bacd9"
+  },
+  "coefficient_wrapper_source_identical": false,
+  "sass_sha256": "9b41ad5d2cdb8ad86f8041a1a25b638e512904cca36e50b9f77d2c65cf96f75e",
+  "loaded_so_sha256": "b12ac3094e29ba1aca9de80d1c362afc31f86db57667b45e527fa1eef19a1194",
+  "rows": [
+    {
+      "direction": "forward",
+      "static_call_sites_to_profile_candidate": [
+        {
+          "offset": "0x3c80",
+          "instruction": "CALL.REL.NOINC 0x16a80"
+        }
+      ],
+      "inferred_profile_span": [
+        "0x16a80",
+        "0x186f0"
+      ],
+      "inferred_common_profile_path_from": "0x17000",
+      "span_static_instructions": 455,
+      "opcode_counts": {
+        "MUFU.RCP": 18,
+        "BSSY": 19,
+        "FCHK": 17,
+        "FFMA": 140,
+        "IADD3": 11,
+        "BRA": 23,
+        "IMAD.MOV.U32": 54,
+        "MOV": 18,
+        "CALL.REL.NOINC": 18,
+        "BSYNC": 19,
+        "FMUL": 48,
+        "FSETP.GE.AND": 1,
+        "F2I.NTZ": 1,
+        "I2FP.F32.S32": 1,
+        "FSETP.NEU.AND": 1,
+        "SHF.R.U32.HI": 5,
+        "IMAD.SHL.U32": 2,
+        "UMOV": 2,
+        "LOP3.LUT": 10,
+        "ULDC.64": 2,
+        "IMAD.U32": 3,
+        "LDG.E.CONSTANT": 1,
+        "UIADD3": 1,
+        "ISETP.NE.AND": 3,
+        "UIADD3.X": 1,
+        "IMAD.WIDE.U32": 1,
+        "IADD3.X": 1,
+        "STL": 11,
+        "IMAD": 2,
+        "LDL": 3,
+        "SHF.L.U32": 2,
+        "IMAD.IADD": 2,
+        "SHF.L.U32.HI": 1,
+        "I2F.F64.S64": 1,
+        "DMUL": 1,
+        "LEA.HI": 1,
+        "F2F.F32.F64": 1,
+        "IMAD.MOV": 1,
+        "FSEL": 4,
+        "FADD": 1,
+        "ISETP.GT.U32.AND": 1,
+        "FADD.FTZ": 1,
+        "RET.REL.NODEC": 1
+      },
+      "common_path_local_stores": [
+        {
+          "offset": "0x17470",
+          "instruction": "STL [R63], R30"
+        },
+        {
+          "offset": "0x17700",
+          "instruction": "STL [R63+0x4], R22"
+        },
+        {
+          "offset": "0x179a0",
+          "instruction": "STL [R63+0x8], R22"
+        },
+        {
+          "offset": "0x17c20",
+          "instruction": "STL [R63+0xc], R22"
+        },
+        {
+          "offset": "0x17e80",
+          "instruction": "STL [R63+0x10], R22"
+        },
+        {
+          "offset": "0x180b0",
+          "instruction": "STL [R63+0x14], R22"
+        },
+        {
+          "offset": "0x182d0",
+          "instruction": "STL [R63+0x18], R22"
+        },
+        {
+          "offset": "0x184d0",
+          "instruction": "STL [R63+0x1c], R22"
+        },
+        {
+          "offset": "0x186c0",
+          "instruction": "STL [R63+0x20], R22"
+        }
+      ],
+      "common_path_local_loads": [],
+      "mapping_limit": "No lineinfo or symbol-labelled internal callee; mapping uses call argument R/P, PI scaling, cosine/powers/polynomial and 9 coefficient outputs. End is after first RET."
+    },
+    {
+      "direction": "reverse",
+      "static_call_sites_to_profile_candidate": [
+        {
+          "offset": "0x4080",
+          "instruction": "CALL.REL.NOINC 0x19300"
+        }
+      ],
+      "inferred_profile_span": [
+        "0x19300",
+        "0x1af50"
+      ],
+      "inferred_common_profile_path_from": "0x19870",
+      "span_static_instructions": 453,
+      "opcode_counts": {
+        "MUFU.RCP": 18,
+        "BSSY": 19,
+        "IADD3": 11,
+        "FCHK": 17,
+        "FFMA": 140,
+        "BRA": 23,
+        "IMAD.MOV.U32": 52,
+        "MOV": 18,
+        "CALL.REL.NOINC": 18,
+        "BSYNC": 19,
+        "FMUL": 48,
+        "FSETP.GE.AND": 1,
+        "F2I.NTZ": 1,
+        "I2FP.F32.S32": 1,
+        "FSETP.NEU.AND": 1,
+        "SHF.R.U32.HI": 5,
+        "IMAD.SHL.U32": 2,
+        "UMOV": 2,
+        "LOP3.LUT": 10,
+        "ULDC.64": 2,
+        "IMAD.U32": 3,
+        "LDG.E.CONSTANT": 1,
+        "UIADD3": 1,
+        "ISETP.NE.AND": 3,
+        "UIADD3.X": 1,
+        "IMAD.WIDE.U32": 1,
+        "IADD3.X": 1,
+        "STL": 11,
+        "IMAD": 2,
+        "LDL": 3,
+        "SHF.L.U32": 2,
+        "IMAD.IADD": 2,
+        "SHF.L.U32.HI": 1,
+        "LEA.HI": 1,
+        "IMAD.MOV": 1,
+        "I2F.F64.S64": 1,
+        "DMUL": 1,
+        "F2F.F32.F64": 1,
+        "FSEL": 4,
+        "FADD": 1,
+        "ISETP.GT.U32.AND": 1,
+        "FADD.FTZ": 1,
+        "RET.REL.NODEC": 1
+      },
+      "common_path_local_stores": [
+        {
+          "offset": "0x19ca0",
+          "instruction": "STL [R63], R28"
+        },
+        {
+          "offset": "0x19f80",
+          "instruction": "STL [R63+0x4], R24"
+        },
+        {
+          "offset": "0x1a200",
+          "instruction": "STL [R63+0x8], R24"
+        },
+        {
+          "offset": "0x1a480",
+          "instruction": "STL [R63+0xc], R24"
+        },
+        {
+          "offset": "0x1a6e0",
+          "instruction": "STL [R63+0x10], R24"
+        },
+        {
+          "offset": "0x1a910",
+          "instruction": "STL [R63+0x14], R24"
+        },
+        {
+          "offset": "0x1ab30",
+          "instruction": "STL [R63+0x18], R24"
+        },
+        {
+          "offset": "0x1ad30",
+          "instruction": "STL [R63+0x1c], R24"
+        },
+        {
+          "offset": "0x1af20",
+          "instruction": "STL [R63+0x20], R24"
+        }
+      ],
+      "common_path_local_loads": [],
+      "mapping_limit": "No lineinfo or symbol-labelled internal callee; mapping uses call argument R/P, PI scaling, cosine/powers/polynomial and 9 coefficient outputs. End is after first RET."
+    }
+  ],
+  "conclusions": {
+    "one_profile_call_per_atom_per_direction_supported_in_old_build": true,
+    "common_profile_path_powers_not_locally_loaded": true,
+    "all_contract_local_transactions_removable": false,
+    "same_contract_cell_weight_CSE_resolved": false,
+    "w_rounding_export_boundary_proven": false,
+    "net_full_step_speed_or_peak_proven": false,
+    "current_baseline_binary_equivalence_proven": false
+  },
+  "disposition": "No runtime prototype or GPU study; audit confirms structural profile repetition but leaves cell-weight CSE, exact w round-point and time/memory trade unresolved. Do not treat static sites as dynamic counters or convert them to microseconds.",
+  "binary_provenance": {
+    "loaded_extension": "/root/.cache/torch_extensions/py313_cu130/torchcst_radius_cell_mass_a3d4ecd2e2db/torchcst_radius_cell_mass_a3d4ecd2e2db.so",
+    "extension_sha256": "b12ac3094e29ba1aca9de80d1c362afc31f86db57667b45e527fa1eef19a1194",
+    "torch": "2.11.0+cu130",
+    "cuda": "13.0",
+    "compute_capability": [
+      8,
+      9
+    ],
+    "unexpected_fallbacks": 0,
+    "build_ninja_sha256": "b27976063e8ef8ee975573718badb85e1c38126c216255746836e72605093cd0"
+  },
+  "memory_models": {
+    "extra_eight_float_coefficients_bytes_per_lifetime": 1677696,
+    "extra_eight_float_coefficients_two_lifetimes_bytes": 3355392,
+    "allocated_guide_bytes": 2097152,
+    "replacement_nine_float_vs_two_double_extra_bytes_per_lifetime": 1048560,
+    "replacement_two_lifetimes_logical_extra_bytes": 2097120,
+    "replacement_two_lifetimes_rounded512_extra_bytes": 2097152,
+    "caveat": "Logical/rounding models only, not measured peak, lifetime multiplicity, allocator-pool or reserved outcomes. Replacement requires a different producer and known-bank consumer proof."
+  }
+}
