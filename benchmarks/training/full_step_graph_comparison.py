@@ -214,7 +214,7 @@ def run(args):
                 "max_atoms": int(counts.max()),
                 "banks": [
                     {
-                        "rank": min(b.count * b.tile_sites, 17),
+                        "rank": min(b.window_tiles * b.tile_sites, 17),
                         "atoms": int(
                             counts[b.node_offset : b.node_offset + b.tile_count].sum()
                         ),
