@@ -9,7 +9,7 @@ import torch
 from test_radius_cell_mass_cuda import GPU
 
 from benchmarks.cuda.linear.manifest import load_run
-from benchmarks.cuda.linear.radius_cell_mass import fixture
+from benchmarks.cuda.linear.radius_cell_mass import _reference_model, fixture
 from benchmarks.training.owner_window_fp32 import errors, vjp_reference
 from torchcst import FixedSelector, make_algorithm_registry
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass import plans
@@ -153,7 +153,11 @@ def test_payload_offload_multiple_forwards_retained_and_current_P():
     ],
 )
 def test_empty_and_gradient_subsets(atoms, batch, needs_x, needs_p):
-    m, x, _, dy = fixture(SimpleNamespace(size=1024, atoms=atoms, rows=batch, seed=41))
+    m, x, _, dy = fixture(
+        SimpleNamespace(size=1024, atoms=max(1, atoms), rows=batch, seed=41)
+    )
+    if atoms == 0:
+        m = _reference_model(m, m.atoms.p[:0])
     got = []
     for plan in [BASE, NEW]:
         n = copy.deepcopy(m).cuda()

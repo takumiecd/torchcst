@@ -52,3 +52,9 @@ source `b26c1b86` / job `l4job-739c9a71eb684716959be5ea9bf746a9` は
 通常/constant/alternating/小振幅/境界wide/owner集中のY/dX/全dP byte比較と独立参照、
 保存geometryのdtype/shape/stride/device拒否は通過済み。性能測定には到達していない。
 source/spec/log/result/manifestは`output/geometry-share/attempt-1/`とpool jobに保全する。
+
+次のsource `88eb0957` / job `l4job-a7bc0730cc8b44119701b903e2e4dee3` は
+12件通過後、空atom fixtureが整数`atoms=0`を渡し、公開APIの正しい拒否で停止した。
+空Parameterを渡す既存`_reference_model`経路にfixtureを修正し、全4境界fixtureの構築と
+metadata supportをCPUで確認した。CUDA算術は変更していない。
+原本は`output/geometry-share/attempt-2/`とpool jobに保全する。
