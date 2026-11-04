@@ -153,3 +153,84 @@ gzip圧縮する。各元ファイルを全byte復元してSHA256一致を確認
 ローカルの実checkpoint6個で104,367,930→31,270,879 bytesへの梱包と、元ファイル全6個の
 完全復元を検証した。受信後も元の47 Tensorに加えて元ファイルのbyte/hashを再検証する。
 ローカルの実行・転送中だけidle sleepを抑制し、終了時に解除する。
+
+### 回収できた追加8 lifecycleと45,000更新の結果
+
+再実行 `l4job-9829fe58160946658cd40c87b3fdf6f5` は正常終了・結果回収・remote cleanup・VM停止を完了した。
+全runtime 242ファイルとtestsのhashは初回成功sourceと同じ。
+`--epochs` の導入と文書・private driverだけが変わり、長期の既定は3epochのままである。
+
+16更新×8epochのlifecycleは全8epochで42状態+5勾配・集計が一致した。
+基準のepoch末reservedは8回とも444MiB、候補は442/444/444/444/444/444/444/444MiB。
+allocatedは両者とも245.4072266MiBで8回一定。peakの増分も0で、事前に追加した後半6回の
+一定条件を満たしたため、45,000更新へ進んだ。
+
+| 実行順序 | #130学習ms/step | int32学習ms/step | #130準備・退役込みms/step | int32準備・退役込みms/step | 準備・退役込み短縮 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| #130 → int32 | 0.745009972 | 0.675453250 | 0.794161642 | 0.724684450 | 8.7484950% |
+| int32 → #130 | 0.744782231 | 0.675552930 | 0.793863962 | 0.724819701 | 8.6972410% |
+
+各cellは全train60,000/test10,000、3epoch、45,000**実更新**、44,992 replay。
+初期8更新も計時・学習集計へ含む。captureは8/15,000/30,000更新後で、復元時の42状態と
+計数済みmetricsが一致。全層backward・全atom勾配・dX・実optimizer・gather/loss/集計・
+replay guard/index/version通知を含む。準備・退役費用は2.2087–2.2170秒で、
+うち旧Graph解放・GCと最終退役は0.3705–0.3774秒。両者を対称に加算した。
+評価・checkpoint保存・data/model配置とepoch順序の生成/転送は別計時で、process全体wall timeではない。
+転送用梱包もcheckpoint保存後の処理であり、adoption_secondsには含めない。
+
+4cell全3epochの42数値状態・全5Parameter勾配・loss/正解数・data orderが一致し、fallbackは0。
+回収・復元した実checkpointも、9個のepoch間比較と#130旧最終checkpointとの比較を含め、
+すべて47 Tensorでbyte一致した。最終精度97.3699987%、test loss0.08367239683866501。
+全saved値はfinite。独立のFP64参照基準は緩めていない。
+
+同条件dense Graphは学習0.199588680ms/step、準備・退役込み0.227641692ms/step。
+int32 CST/dense比は学習3.3842–3.3847、準備・退役込み3.1834–3.1840。
+一つのMNIST構成・seed41における結果であり、一般のモデル・hardware・batchには外挿しない。
+
+### メモリ判定を分離する
+
+長期のcapture込みpeak allocatedは両者251.9921875MiB、reservedも両者444MiBで、増分は0。
+epoch末allocatedは全cellで245.4072266MiB一定。基準reservedは両順序で444/444/444MiB、
+候補は両順序で442/444/444MiBだった。8 lifecycleの追加確認も初回増加後は一定で、
+この観測範囲では継続的な増加は見られない。allocatorの物理的原因をcounterで特定したとはしない。
+
+**長期の速度・数値・peak予算は通過したが、raw driverの `long_gates_pass` はfalseのまま残す。**
+理由は候補の「全3epoch末reservedが完全同値」という追加の厳格な条件だけがfalseだからである。
+これは速度/数値の不合格やpeak予算超過ではない。事前の「継続増加なし」と、より強い
+「初回epochから完全同値」を混同しないよう、初回停止・追加8回の合格・長期の各flagを
+processed JSONにすべて保存する。結果を合格表示にするための再warmupやpeak resetは行わない。
+
+今回の依頼である実装・短期比較・条件付き45,000更新は完了。研究用Draftとして成果を保全し、
+このboundedなreserved推移を正式採用時にどう判定するかは明示してレビューに残す。
+公開dispatcherの変更やmergeは行わない。この候補のGPU再探索はここで終了する。
+
+### 最終checkpointの独立診断
+
+候補自身の45,000更新後で、固定train/test minibatch各1個の実際の学習済みX/dYを使い、
+全52,428 atomの独立CPU FP64 Fourier Y/dX/dPと、stratified8 atomの48点quadratureを検査した。
+既存 `3e-5 + 3e-4 abs(ref)` ですべて通過。最大絶対差はY8.4077e-7、dX1.3420e-10、dP8.1639e-10。
+実際のm/v/clock45,000を使ったAdam方向差は最大1.1921e-7、次のnative更新のP差は
+振幅列3.7253e-9以下・他列0、clock45,001。同じ勾配を渡すcontrolはP/optimizer状態ともbyte一致。
+以前のcold-Adam direction gateの負結果を合格へ読み替えてはいない。
+
+### 最終provenanceと復元
+
+長期source `b9deb0843062581ce283c07e3dcc867f745a0e5a`、L4 UUID
+`d39a769f-16ec-34a4-f0dc-697635b6ad13`。runtimeは初回と同じTorch/CUDA/Triton、
+CPUはXeon2.20GHz/12logical、math threads1。
+source archive SHA256 `13da633b244d8d14832bd8b3cbdd2501560296dea0220aff174faa502527a656`、
+driver SHA256 `73a44fdde94620eb3a1e2b15736edaad1d2a03e36022243b98df7d5d1f01ef34`、
+result archive SHA256 `940d9d2f754bce57560fbd0454df634af401ecd55c5de640b4aa8a724e62fd8a`。
+archiveと1,029 manifest fileをローカルで再検証し、checkpoint/診断Tensorの33個の元PTファイルを
+全byte/hash一致で復元した。最終ローカル検証は計21比較×47 Tensorでbyte一致。
+
+raw archive/manifestはpoolのjob directoryに原形で保存し、復元先は
+`output/sort32/compact-results/artifacts`。初回結果は `output/sort32/results` に別保存。
+復元manifestは `checkpoint-packing.json`、元PTのSHA256はprocessed JSONにも収録した。
+`output/sort32/checkpoint_pack.py unpack <artifacts>` で、未展開のcopyへ全ファイルを復元できる。
+梱包blobのSHA256と元ファイルのSHA256を検査してから保存する。
+
+短期source CI、epoch数指定導入後CI、長期source CIはすべて宣言・CPU・wheel/sdistを通過した。
+raw数値・各gate・個別sample・profile・hashは
+[`owner-window-sort32-results-20261104.json`](owner-window-sort32-results-20261104.json) に保存する。
+回収後のfresh pool statusで全slot stopped、supervisorと一時的なsleep抑制も正常終了を確認した。
