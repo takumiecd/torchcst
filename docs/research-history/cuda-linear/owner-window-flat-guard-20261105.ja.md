@@ -130,3 +130,30 @@ GPU/checkpointの消失ではなく、旧配列を後から再測定して原本
 Stage 1は新しいfresh processの同一sourceで実施予定。未知callbackのcold拒否と
 ordinary eager fallback、live変更後のno replay、正常capture復元を両guardで確認し、
 状態byteと実eligible費用を通過するまでlifecycle/正式throughput/45,000更新へ進まない。
+
+## Stage 1の最初の実行: 検証runnerの仮定により未完了
+
+job `l4job-6ee82518b27947cb94f8d5b7058875e6`、source `852403bf`。L4上の各guardのsuiteは
+28件ずつ、合計56 passed / skip 0。この内40実行がGPU依存、16実行がCPUのtopology検証である。
+正常capture、全atom/境界、変更検知、cold/live未知forwardのno-replayとordinary fallbackの
+状態・全勾配・totals byte比較を両guardで実行した。
+
+その後の最初の`numerical-initial-cst-qualified`は`sample_vjp`内の検証assertで停止した。
+公開出力のgrad_fnは`torch::autograd::CppNode<(anonymous namespace)::ReadLease>`だったが、
+runnerが`len(next_functions)==1`と仮定していた。実装の`ReadLease::apply(input,marker)`には
+Tensor入力が二つあり、後者はrequires_gradなしのCPU lifetime markerである。
+forwardはinputを返し、backwardは第一入力へgradient、第二入力へundefinedを返す。
+従って、出力保護をunary nodeとしたrunner側の仮定がsourceと合わなかった。
+
+完成した数値セル0、eligible費用セル0、正式性能セル0。G1の性能や数値比較の合否、
+memory-v2.1、長期更新の成立を示さない。共通資格のnative backendも数値セルの完成記録で
+確認する前に停止したので、56件のsuite通過だけからその経路を認定しない。
+事前規則どおりこのjobを終了し、自動再投入はしていない。別のboundedなrunner修正実験を
+許すかどうかは、測定ゼロであることを明示してレビューし、改訂protocolを先に記録する。
+
+rawの21ファイル・tar size・SHA、source/spec/driver、7入力、JUnit、保存された3つのbuild済
+共有libraryをローカルで再照合した。数値セルによる実loaded libraryの報告は未完成。
+source archive SHA256は`9caadf168f3a17039ed8cae5485b971036f3abecb18bf14d8a6ccd21d9f0b056`、
+result archiveは`f52290c899ddd806ec87a6f0c3614994c2fc9420c635a75f4be28f360205b1d6`。
+原本と`g1-stage1-retrieval-verification.json`をignored outputへ保全し、pool所有VMの停止を確認した。
+簡潔な機械可読記録は同名JSONへ保存した。
