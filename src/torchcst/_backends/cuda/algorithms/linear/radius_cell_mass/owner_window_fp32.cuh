@@ -253,12 +253,20 @@ inline Tensor build_owner_windows(Tensor signal, Tensor p, Tensor keys, Config i
     return windows;
 }
 
+// Identical live axes and latest-key owner ranges establish this bank.
+// Keep the exact wrapped-center/first-tile expression and signed tile origin.
+__device__ inline int first_tile_known_bank(double mu, const Axis &axis, const Bank &bank) {
+    double T = bank.tile_sites * axis.spacing;
+    int K = bank.count;
+    return int(floor((wrapped_center(mu, axis) + axis.spacing / 2) / T - (K - 1) / 2.));
+}
+
 constexpr int WINDOW_CACHE_STRIDE = OWNER_FEATURES + OWNER_BATCH;
 constexpr int WINDOW_SHARED_BYTES =
     sizeof(float) * (OWNER_CAPACITY * WINDOW_CACHE_STRIDE + OWNER_BATCH * OWNER_FEATURES);
 // One CTA owns a destination window; atoms remain in original parameter rows.
 // No per-atom Fourier table, H/G atomics, or dense effective W is allocated.
-template <class T, bool Reverse, bool Recompute, bool GeometryShared, bool FlatC = false>
+template <class T, bool Reverse, bool Recompute, bool GeometryShared, bool FlatC = false, bool KnownBank = false>
 __global__ void owner_window_contract_kernel(
     const T *p, const float *windows, const float *input_windows, const float *h, const float *dh,
     float *response, float *derivative, T *gradient, float *partials, const int64_t *rows,
@@ -291,7 +299,10 @@ __global__ void owner_window_contract_kernel(
             else R = radius(p, atom, source);
             float c[17], q[17], dq[17];
             double mu = center(p, atom, source, Reverse);
-            Membership sm = classify(R, mu, source);
+            Membership sm;
+            if constexpr (KnownBank)
+                sm = {bi, first_tile_known_bank(mu, source, source.banks[bi])};
+            else sm = classify(R, mu, source);
             Bank sb = source.banks[sm.bank];
             profile_values_m8(float(R), float(sb.period), c);
             owner_window_coefficients(c, wrapped_center(mu, source), sm.first_tile, source, sb,
@@ -308,7 +319,10 @@ __global__ void owner_window_contract_kernel(
                 }
             }
             double dest_mu = center(p, atom, destination, !Reverse);
-            Membership dm = classify(R, dest_mu, destination);
+            Membership dm;
+            if constexpr (KnownBank)
+                dm = {bi, first_tile_known_bank(dest_mu, destination, destination.banks[bi])};
+            else dm = classify(R, dest_mu, destination);
             owner_window_coefficients(c, wrapped_center(dest_mu, destination), dm.first_tile,
                                       destination, destination.banks[dm.bank], fold, q, dq);
             float amp;
@@ -412,7 +426,7 @@ __global__ void owner_window_expand_kernel(const float *partials, const int64_t 
     }
     y[index] = T(value);
 }
-template <bool FlatC>
+template <bool FlatC, bool KnownBank = false>
 std::vector<Tensor> owner_window_transform_impl(Tensor signal, Tensor p, Tensor keys, Tensor rows,
                                            Tensor offsets, Config input_config,
                                            Config output_config, bool reverse, bool need_derivative,
@@ -445,7 +459,7 @@ std::vector<Tensor> owner_window_transform_impl(Tensor signal, Tensor p, Tensor 
         AT_DISPATCH_FLOATING_TYPES(p.scalar_type(), "radius_window_contract", [&] {
             auto launch = [&](auto rev, auto recomp, auto geom) {
                 owner_window_contract_kernel<scalar_t, decltype(rev)::value,
-                                             decltype(recomp)::value, decltype(geom)::value, FlatC>
+                                             decltype(recomp)::value, decltype(geom)::value, FlatC, KnownBank>
                     <<<destination.node_count, THREADS, WINDOW_SHARED_BYTES,
                        at::cuda::getCurrentCUDAStream()>>>(
                         p.data_ptr<scalar_t>(), windows.data_ptr<float>(),
@@ -505,6 +519,64 @@ std::vector<Tensor> owner_window_transform_flat_c(Tensor signal, Tensor p, Tenso
     Tensor geometry) {
     return owner_window_transform_impl<true>(signal, p, keys, rows, offsets, input, output,
         reverse, need_derivative, fold, recompute, emit_x, h, dh, saved_windows, geometry);
+}
+
+std::vector<Tensor> owner_window_transform_known_bank(Tensor signal, Tensor p, Tensor keys, Tensor rows,
+    Tensor offsets, Config input, Config output, bool reverse, bool need_derivative,
+    bool fold, bool recompute, bool emit_x, Tensor h, Tensor dh, Tensor saved_windows,
+    Tensor geometry) {
+    return owner_window_transform_impl<true, true>(signal, p, keys, rows, offsets, input, output,
+        reverse, need_derivative, fold, recompute, emit_x, h, dh, saved_windows, geometry);
+}
+
+// Direct FP64-radius boundary probe, independent of FP32 Parameter reachability.
+__global__ void known_bank_probe_kernel(const double *radii, const double *centers, int count,
+    Axis input, Axis output, int64_t *old_meta, int64_t *new_meta, float *old_delta, float *new_delta) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= count) return;
+    double R = radii[i];
+    bool valid = isfinite(R) && R >= .5 && R <= 50 &&
+                 isfinite(centers[2 * i]) && isfinite(centers[2 * i + 1]);
+    CUDA_KERNEL_ASSERT_MSG(valid, "invalid known-bank probe radius or center");
+    if (!valid) return;
+    int bi = classify(R, centers[2 * i + 1], output).bank;
+    for (int side = 0; side < 2; ++side) {
+        const Axis &axis = side == 0 ? input : output;
+        double mu = centers[2 * i + side];
+        Membership old = classify(R, mu, axis);
+        Bank bank = axis.banks[bi];
+        int first = first_tile_known_bank(mu, axis, bank);
+        int64_t at = int64_t(i) * 6 + side * 3;
+        old_meta[at] = old.bank; old_meta[at + 1] = old.first_tile;
+        old_meta[at + 2] = axis.banks[old.bank].node_offset + positive_mod(old.first_tile, axis.banks[old.bank].tile_count);
+        new_meta[at] = bi; new_meta[at + 1] = first;
+        new_meta[at + 2] = bank.node_offset + positive_mod(first, bank.tile_count);
+        old_delta[2 * i + side] = float(wrapped_center(mu, axis) - old.first_tile * axis.banks[old.bank].tile_sites * axis.spacing);
+        new_delta[2 * i + side] = float(wrapped_center(mu, axis) - first * bank.tile_sites * axis.spacing);
+    }
+}
+std::vector<Tensor> known_bank_probe(Tensor radii, Tensor centers, Config input_config, Config output_config) {
+    TORCH_CHECK(radii.is_cuda() && centers.is_cuda() && radii.device() == centers.device() &&
+        radii.scalar_type() == torch::kDouble && centers.scalar_type() == torch::kDouble &&
+        radii.dim() == 1 && centers.dim() == 2 && centers.size(0) == radii.size(0) &&
+        centers.size(1) == 2 && radii.is_contiguous() && centers.is_contiguous() &&
+        !radii.requires_grad() && !centers.requires_grad() && radii.size(0) <= MAX_ATOMS,
+        "known-bank probe requires contiguous CUDA FP64 radii[N]/centers[N,2] without gradients");
+    Axis input = parse_axis(input_config), output = parse_axis(output_config);
+    check_owner_axes(input, output, 0, 2, 2, true, 32);
+    TORCH_CHECK(input.spacing == 1 && input.radius_min >= .5 && input.radius_max <= 50 &&
+                input.amplitude_max <= 1, "known-bank probe scope differs");
+    c10::cuda::CUDAGuard guard(radii.device());
+    auto old_meta = torch::empty({radii.size(0), 6}, radii.options().dtype(torch::kLong));
+    auto new_meta = torch::empty_like(old_meta);
+    auto old_delta = torch::empty({radii.size(0), 2}, radii.options().dtype(torch::kFloat));
+    auto new_delta = torch::empty_like(old_delta);
+    if (radii.size(0)) known_bank_probe_kernel<<<(radii.size(0) + THREADS - 1) / THREADS,
+        THREADS, 0, at::cuda::getCurrentCUDAStream()>>>(radii.data_ptr<double>(), centers.data_ptr<double>(),
+        radii.size(0), input, output, old_meta.data_ptr<int64_t>(), new_meta.data_ptr<int64_t>(),
+        old_delta.data_ptr<float>(), new_delta.data_ptr<float>());
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+    return {old_meta, new_meta, old_delta, new_delta};
 }
 
 void check_geometry_saved(Tensor atoms, Tensor geometry) {

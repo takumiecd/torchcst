@@ -307,3 +307,16 @@ GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32_FLAT_C = ExecutionPlan(
         native_entry=True,
     ),
 )
+
+# Reuse the CTA bank under identical live axes; recompute signed first tiles.
+GLOBAL_OWNER_WINDOW_FP32_KNOWN_BANK = ExecutionPlan(
+    "cuda_radius_cell_mass",
+    "v1",
+    RadiusCellMassRecipe(
+        input_direct_levels=2,
+        output_direct_levels=2,
+        schedule="global_owner_window_fp32_known_bank",
+        native_autograd=True,
+        native_entry=True,
+    ),
+)

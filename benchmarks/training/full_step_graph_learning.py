@@ -106,7 +106,9 @@ def run(args):
         args.kind,
         radius_execution="cached" if args.kind == "cst" else "global-response4",
         execution_plan=(
-            plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32_FLAT_C
+            plans.GLOBAL_OWNER_WINDOW_FP32_KNOWN_BANK
+            if args.known_bank
+            else plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32_FLAT_C
             if args.flat_c
             else plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32
             if args.sort32
@@ -349,9 +351,13 @@ def run(args):
         "epochs": epochs,
         "captures": captures,
         "retirements": retirements,
-        "geometry_shared": args.geometry_shared or args.sort32 or args.flat_c,
-        "sort32": args.sort32 or args.flat_c,
-        "flat_c": args.flat_c,
+        "geometry_shared": args.geometry_shared
+        or args.sort32
+        or args.flat_c
+        or args.known_bank,
+        "sort32": args.sort32 or args.flat_c or args.known_bank,
+        "flat_c": args.flat_c or args.known_bank,
+        "known_bank": args.known_bank,
         "preparation_seconds": preparation_seconds,
         "training_seconds": sum(e["training_seconds"] for e in epochs),
         "adoption_seconds": preparation_seconds
@@ -391,6 +397,7 @@ def main():
     parser.add_argument("--geometry-shared", action="store_true")
     parser.add_argument("--sort32", action="store_true")
     parser.add_argument("--flat-c", action="store_true")
+    parser.add_argument("--known-bank", action="store_true")
     args = parser.parse_args()
     if args.epochs < 1:
         parser.error("--epochs must be positive")

@@ -20,12 +20,21 @@ from torchcst import FixedSelector, make_algorithm_registry
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass import plans
 
 
-def load_cohort(init, checkpoint, geometry_shared=False, sort32=False, flat_c=False):
+def load_cohort(
+    init,
+    checkpoint,
+    geometry_shared=False,
+    sort32=False,
+    flat_c=False,
+    known_bank=False,
+):
     model = make_model(
         init,
         "cst",
         execution_plan=(
-            plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32_FLAT_C
+            plans.GLOBAL_OWNER_WINDOW_FP32_KNOWN_BANK
+            if known_bank
+            else plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32_FLAT_C
             if flat_c
             else plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32
             if sort32
@@ -41,11 +50,19 @@ def load_cohort(init, checkpoint, geometry_shared=False, sort32=False, flat_c=Fa
 
 
 def next_update(
-    init, checkpoint, gradient, geometry_shared=False, sort32=False, flat_c=False
+    init,
+    checkpoint,
+    gradient,
+    geometry_shared=False,
+    sort32=False,
+    flat_c=False,
+    known_bank=False,
 ):
     # Build and load through the public optimizer lifecycle; deepcopy of a
     # trained site's opaque CPU optimizer state is not a valid cold control.
-    model, opt = load_cohort(init, checkpoint, geometry_shared, sort32, flat_c)
+    model, opt = load_cohort(
+        init, checkpoint, geometry_shared, sort32, flat_c, known_bank
+    )
     p = model[2].atoms.p
     assert opt.state[p]["step"].device == p.device
     p.grad = gradient.to(p.device).clone()
@@ -82,7 +99,12 @@ def run(args):
     )
     checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=True)
     model, opt = load_cohort(
-        init, checkpoint, args.geometry_shared, args.sort32, args.flat_c
+        init,
+        checkpoint,
+        args.geometry_shared,
+        args.sort32,
+        args.flat_c,
+        args.known_bank,
     )
     cpu_net = make_model(init, "cst", execution_plan=plans.GLOBAL_OWNER_WINDOW_FP32)
     cpu_net.load_state_dict(checkpoint["model"])
@@ -153,7 +175,9 @@ def run(args):
         sub_gpu = copy.deepcopy(subset).cuda()
         sub_gpu.selector = FixedSelector(
             (
-                plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32_FLAT_C
+                plans.GLOBAL_OWNER_WINDOW_FP32_KNOWN_BANK
+                if args.known_bank
+                else plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32_FLAT_C
                 if args.flat_c
                 else plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32
                 if args.sort32
@@ -182,7 +206,13 @@ def run(args):
         }
         updates = [
             next_update(
-                init, checkpoint, grad, args.geometry_shared, args.sort32, args.flat_c
+                init,
+                checkpoint,
+                grad,
+                args.geometry_shared,
+                args.sort32,
+                args.flat_c,
+                args.known_bank,
             )
             for grad in (g, r, r)
         ]
@@ -248,4 +278,5 @@ if __name__ == "__main__":
     parser.add_argument("--geometry-shared", action="store_true")
     parser.add_argument("--sort32", action="store_true")
     parser.add_argument("--flat-c", action="store_true")
+    parser.add_argument("--known-bank", action="store_true")
     run(parser.parse_args())
