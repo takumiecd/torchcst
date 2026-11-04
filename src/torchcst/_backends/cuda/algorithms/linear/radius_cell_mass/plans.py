@@ -307,3 +307,16 @@ GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32_FLAT_C = ExecutionPlan(
         native_entry=True,
     ),
 )
+
+# Diagnostic-only shared radial coefficients; no throughput adoption.
+GLOBAL_OWNER_WINDOW_FP32_SHARED_RADIAL = ExecutionPlan(
+    "cuda_radius_cell_mass",
+    "v1",
+    RadiusCellMassRecipe(
+        input_direct_levels=2,
+        output_direct_levels=2,
+        schedule="global_owner_window_fp32_shared_radial",
+        native_autograd=True,
+        native_entry=True,
+    ),
+)

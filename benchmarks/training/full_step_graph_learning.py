@@ -106,7 +106,9 @@ def run(args):
         args.kind,
         radius_execution="cached" if args.kind == "cst" else "global-response4",
         execution_plan=(
-            plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32_FLAT_C
+            plans.GLOBAL_OWNER_WINDOW_FP32_SHARED_RADIAL
+            if args.shared_radial
+            else plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32_FLAT_C
             if args.flat_c
             else plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32
             if args.sort32
@@ -134,6 +136,23 @@ def run(args):
     program = None
     total_updates, replay_updates = 0, 0
     captures, epochs, retirements = [], [], []
+    diagnostic_phases = []
+
+    def phase(name, reason=None):
+        if not args.diagnostic_phases:
+            return
+        torch.cuda.synchronize()
+        diagnostic_phases.append(
+            {
+                "phase": name,
+                "reason": reason,
+                "at_update": total_updates,
+                "allocated_bytes": torch.cuda.memory_allocated(),
+                "reserved_bytes": torch.cuda.memory_reserved(),
+                "peak_allocated_bytes": torch.cuda.max_memory_allocated(),
+                "peak_reserved_bytes": torch.cuda.max_memory_reserved(),
+            }
+        )
 
     def prepare_graph(order, next_step, totals, reason):
         nonlocal preparation_seconds
@@ -148,6 +167,7 @@ def run(args):
                 tx[order[4 * next_step : 4 * next_step + 4]],
                 args.kind,
             )
+            phase("certificates_renewed", reason)
         candidate = PreparedStep(model, optimizer, tx, ty, args.kind)
         for dest, source in zip(candidate.totals, totals):
             dest.copy_(source)
@@ -161,6 +181,7 @@ def run(args):
             "capture changed counted metrics"
         )
         assert candidate.eligible()
+        phase("capture_restored", reason)
         torch.cuda.synchronize()
         seconds = time.perf_counter() - begin
         preparation_seconds += seconds
@@ -207,6 +228,7 @@ def run(args):
                     "reason": "evaluation_boundary",
                 }
             )
+            phase("old_graph_retired", "evaluation_boundary")
             program = prepare_graph(order, 0, totals, "evaluation_boundary")
             totals = program.totals
         torch.cuda.synchronize()
@@ -244,6 +266,7 @@ def run(args):
         validation = evaluate(model, vx, vy, 4)
         torch.cuda.synchronize()
         evaluation_seconds = time.perf_counter() - evaluation_begin
+        phase("evaluation_with_graph", "epoch_end")
         model.train()
         assert hashes(snapshot(model, optimizer)) == hashes(end), (
             "evaluation changed numerical training state"
@@ -334,7 +357,10 @@ def run(args):
             "reason": "final_retirement",
         }
     )
+    phase("final_retired", "final_retirement")
     report = {
+        "diagnostic_phases": diagnostic_phases,
+        "diagnostic_timing_not_adoption": args.diagnostic_phases,
         "kind": args.kind,
         "mode": args.mode,
         "seed": init["seed"],
@@ -349,9 +375,13 @@ def run(args):
         "epochs": epochs,
         "captures": captures,
         "retirements": retirements,
-        "geometry_shared": args.geometry_shared or args.sort32 or args.flat_c,
-        "sort32": args.sort32 or args.flat_c,
-        "flat_c": args.flat_c,
+        "geometry_shared": args.geometry_shared
+        or args.sort32
+        or args.flat_c
+        or args.shared_radial,
+        "sort32": args.sort32 or args.flat_c or args.shared_radial,
+        "flat_c": args.flat_c or args.shared_radial,
+        "shared_radial": args.shared_radial,
         "preparation_seconds": preparation_seconds,
         "training_seconds": sum(e["training_seconds"] for e in epochs),
         "adoption_seconds": preparation_seconds
@@ -391,6 +421,8 @@ def main():
     parser.add_argument("--geometry-shared", action="store_true")
     parser.add_argument("--sort32", action="store_true")
     parser.add_argument("--flat-c", action="store_true")
+    parser.add_argument("--shared-radial", action="store_true")
+    parser.add_argument("--diagnostic-phases", action="store_true")
     args = parser.parse_args()
     if args.epochs < 1:
         parser.error("--epochs must be positive")

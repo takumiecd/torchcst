@@ -186,12 +186,14 @@ class PreparedStep:
                 "global_owner_window_fp32_geometry",
                 "global_owner_window_fp32_geometry_sort32",
                 "global_owner_window_fp32_geometry_sort32_flat_c",
+                "global_owner_window_fp32_shared_radial",
             )
             self.fp32_entry = {
                 "global_owner_window_fp32": "research_owner_window_fp32",
                 "global_owner_window_fp32_geometry": "research_owner_window_fp32_geometry",
                 "global_owner_window_fp32_geometry_sort32": "research_owner_window_fp32_geometry_sort32",
                 "global_owner_window_fp32_geometry_sort32_flat_c": "research_owner_window_fp32_geometry_sort32_flat_c",
+                "global_owner_window_fp32_shared_radial": "research_owner_window_fp32_shared_radial",
             }.get(self.linear_program.cached.state.recipe.schedule)
             self.configs = plan.input.native_config(), plan.output.native_config()
             self.previous = torch.empty_like(self.site.atoms.p)

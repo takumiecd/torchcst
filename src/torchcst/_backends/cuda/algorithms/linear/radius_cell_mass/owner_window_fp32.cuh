@@ -94,6 +94,43 @@ __device__ inline void owner_window_coefficients(const float *c, double mu, int 
     }
 }
 
+// Diagnostic A: retain c0 and replace c[1..8] with the original rounded w.
+// No constant folding into c*scale or change to the cell-phase recurrence.
+__device__ inline void prepare_radial_weights(float *c, Axis axis, Bank bank) {
+    HarmonicPhase cell_phase(PI32 * float(axis.spacing) / float(bank.period));
+    for (int k = 1; k <= axis.modes; ++k) {
+        float cc, ss;
+        cell_phase.next(cc, ss);
+        c[k] = 2 * c[k] * float(axis.spacing) * ss /
+               (PI32 * k * float(axis.spacing) / float(bank.period));
+    }
+}
+__device__ inline void owner_window_coefficients_preweighted(const float *c, double mu,
+    int first_tile, Axis axis, Bank bank, bool fold, float *q, float *dq) {
+    int L = bank.count * bank.tile_sites;
+    int rank = fold ? min(L, axis.basis_count()) : axis.basis_count();
+    for (int f = 0; f < rank; ++f) q[f] = dq[f] = 0;
+    q[0] = float(axis.spacing) * c[0];
+    HarmonicPhase phase(2 * PI32 / float(bank.period) *
+                        float(mu - first_tile * bank.tile_sites * axis.spacing));
+    for (int k = 1; k <= axis.modes; ++k) {
+        float cp, sp;
+        phase.next(cp, sp);
+        float w = c[k];
+        float omega = 2 * PI32 * k / float(bank.period);
+        int alias = fold ? k % L : k;
+        float sign = 1;
+        if (fold && alias > L / 2) { alias = L - alias; sign = -1; }
+        int cosine = alias == 0 ? 0 : 2 * alias - 1;
+        q[cosine] += w * cp;
+        dq[cosine] -= w * omega * sp;
+        if (alias != 0 && (!fold || 2 * alias != L)) {
+            q[2 * alias] += sign * w * sp;
+            dq[2 * alias] += sign * w * omega * cp;
+        }
+    }
+}
+
 template <class T>
 __device__ inline float compact_moment_element(const T *signal, const float *z, int b, int node,
                                                int basis, Axis axis, int start, bool merge) {
@@ -258,13 +295,13 @@ constexpr int WINDOW_SHARED_BYTES =
     sizeof(float) * (OWNER_CAPACITY * WINDOW_CACHE_STRIDE + OWNER_BATCH * OWNER_FEATURES);
 // One CTA owns a destination window; atoms remain in original parameter rows.
 // No per-atom Fourier table, H/G atomics, or dense effective W is allocated.
-template <class T, bool Reverse, bool Recompute, bool GeometryShared, bool FlatC = false>
+template <class T, bool Reverse, bool Recompute, bool GeometryShared, bool FlatC = false, bool SharedRadial = false>
 __global__ void owner_window_contract_kernel(
     const T *p, const float *windows, const float *input_windows, const float *h, const float *dh,
     float *response, float *derivative, T *gradient, float *partials, const int64_t *rows,
     const int64_t *offsets, int atoms, int batch, Axis source, Axis destination,
     OwnerWindowLayout layout, bool fold, bool need_derivative, bool emit_x,
-    const double *geometry) {
+    const double *geometry, float *radial_weights) {
     int owner = blockIdx.x, begin = int(offsets[owner]), end = int(offsets[owner + 1]);
     if (begin == end)
         return;
@@ -293,9 +330,24 @@ __global__ void owner_window_contract_kernel(
             double mu = center(p, atom, source, Reverse);
             Membership sm = classify(R, mu, source);
             Bank sb = source.banks[sm.bank];
-            profile_values_m8(float(R), float(sb.period), c);
-            owner_window_coefficients(c, wrapped_center(mu, source), sm.first_tile, source, sb,
-                                      fold, q, dq);
+            if constexpr (SharedRadial && Reverse) {
+                c[0] = 1 / float(sb.period);
+                for (int k = 1; k <= 8; ++k)
+                    c[k] = radial_weights[int64_t(k - 1) * atoms + atom];
+            } else {
+                profile_values_m8(float(R), float(sb.period), c);
+                if constexpr (SharedRadial) {
+                    prepare_radial_weights(c, source, sb);
+                    for (int k = 1; k <= 8; ++k)
+                        radial_weights[int64_t(k - 1) * atoms + atom] = c[k];
+                }
+            }
+            if constexpr (SharedRadial)
+                owner_window_coefficients_preweighted(c, wrapped_center(mu, source), sm.first_tile,
+                                                       source, sb, fold, q, dq);
+            else
+                owner_window_coefficients(c, wrapped_center(mu, source), sm.first_tile, source, sb,
+                                          fold, q, dq);
             int source_owner = sb.node_offset + positive_mod(sm.first_tile, sb.tile_count);
             float values[OWNER_BATCH] = {}, slopes[OWNER_BATCH] = {};
             for (int f = 0; f < layout.ranks[sm.bank]; ++f) {
@@ -309,8 +361,12 @@ __global__ void owner_window_contract_kernel(
             }
             double dest_mu = center(p, atom, destination, !Reverse);
             Membership dm = classify(R, dest_mu, destination);
-            owner_window_coefficients(c, wrapped_center(dest_mu, destination), dm.first_tile,
-                                      destination, destination.banks[dm.bank], fold, q, dq);
+            if constexpr (SharedRadial)
+                owner_window_coefficients_preweighted(c, wrapped_center(dest_mu, destination), dm.first_tile,
+                                                       destination, destination.banks[dm.bank], fold, q, dq);
+            else
+                owner_window_coefficients(c, wrapped_center(dest_mu, destination), dm.first_tile,
+                                          destination, destination.banks[dm.bank], fold, q, dq);
             float amp;
             if constexpr (GeometryShared) amp = float(geometry[atoms + atom]);
             else amp = float(amplitude(p, atom, source));
@@ -412,12 +468,13 @@ __global__ void owner_window_expand_kernel(const float *partials, const int64_t 
     }
     y[index] = T(value);
 }
-template <bool FlatC>
+template <bool FlatC, bool SharedRadial = false>
 std::vector<Tensor> owner_window_transform_impl(Tensor signal, Tensor p, Tensor keys, Tensor rows,
                                            Tensor offsets, Config input_config,
                                            Config output_config, bool reverse, bool need_derivative,
                                            bool fold, bool recompute, bool emit_x, Tensor h,
-                                           Tensor dh, Tensor saved_windows, Tensor geometry) {
+                                           Tensor dh, Tensor saved_windows, Tensor geometry,
+                                           Tensor radial_weights = Tensor()) {
     Axis source = parse_axis(reverse ? output_config : input_config);
     Axis destination = parse_axis(reverse ? input_config : output_config);
     check_atoms(p);
@@ -428,6 +485,10 @@ std::vector<Tensor> owner_window_transform_impl(Tensor signal, Tensor p, Tensor 
     auto layout = owner_window_layout(destination, fold);
     auto windows =
         fp32_body::build_owner_windows(signal, p, keys, input_config, output_config, reverse, fold);
+    if constexpr (SharedRadial) {
+        TORCH_CHECK(FlatC && recompute && geometry.defined(), "shared radial diagnostic requires flat C geometry");
+        if (!reverse) radial_weights = torch::empty({8, p.size(0)}, p.options().dtype(torch::kFloat));
+    }
     auto response = !reverse && !recompute ? torch::empty({signal.size(0), p.size(0)},
                                                           signal.options().dtype(torch::kFloat))
                                            : Tensor();
@@ -445,7 +506,7 @@ std::vector<Tensor> owner_window_transform_impl(Tensor signal, Tensor p, Tensor 
         AT_DISPATCH_FLOATING_TYPES(p.scalar_type(), "radius_window_contract", [&] {
             auto launch = [&](auto rev, auto recomp, auto geom) {
                 owner_window_contract_kernel<scalar_t, decltype(rev)::value,
-                                             decltype(recomp)::value, decltype(geom)::value, FlatC>
+                                             decltype(recomp)::value, decltype(geom)::value, FlatC, SharedRadial>
                     <<<destination.node_count, THREADS, WINDOW_SHARED_BYTES,
                        at::cuda::getCurrentCUDAStream()>>>(
                         p.data_ptr<scalar_t>(), windows.data_ptr<float>(),
@@ -458,7 +519,8 @@ std::vector<Tensor> owner_window_transform_impl(Tensor signal, Tensor p, Tensor 
                         partials.defined() ? partials.data_ptr<float>() : nullptr,
                         rows.data_ptr<int64_t>(), offsets.data_ptr<int64_t>(), p.size(0),
                         signal.size(0), source, destination, layout, fold, need_derivative, emit_x,
-                        geometry.defined() ? geometry.data_ptr<double>() : nullptr);
+                        geometry.defined() ? geometry.data_ptr<double>() : nullptr,
+                        radial_weights.defined() ? radial_weights.data_ptr<float>() : nullptr);
             };
             auto dispatch = [&](auto geom) {
             if (reverse) {
@@ -489,6 +551,7 @@ std::vector<Tensor> owner_window_transform_impl(Tensor signal, Tensor p, Tensor 
         });
         C10_CUDA_KERNEL_LAUNCH_CHECK();
     }
+    if constexpr (SharedRadial) return {y, response, derivative, gradient, windows, radial_weights};
     return {y, response, derivative, gradient, windows};
 }
 std::vector<Tensor> owner_window_transform(Tensor signal, Tensor p, Tensor keys, Tensor rows,
@@ -505,6 +568,19 @@ std::vector<Tensor> owner_window_transform_flat_c(Tensor signal, Tensor p, Tenso
     Tensor geometry) {
     return owner_window_transform_impl<true>(signal, p, keys, rows, offsets, input, output,
         reverse, need_derivative, fold, recompute, emit_x, h, dh, saved_windows, geometry);
+}
+
+std::vector<Tensor> owner_window_transform_shared_radial(Tensor signal, Tensor p, Tensor keys, Tensor rows,
+    Tensor offsets, Config input, Config output, bool reverse, bool need_derivative,
+    bool fold, bool recompute, bool emit_x, Tensor h, Tensor dh, Tensor saved_windows,
+    Tensor geometry, Tensor radial_weights) {
+    return owner_window_transform_impl<true, true>(signal, p, keys, rows, offsets, input, output,
+        reverse, need_derivative, fold, recompute, emit_x, h, dh, saved_windows, geometry, radial_weights);
+}
+void check_radial_saved(Tensor atoms, Tensor weights) {
+    TORCH_CHECK(weights.defined() && weights.is_cuda() && weights.device() == atoms.device() &&
+        weights.scalar_type() == torch::kFloat && weights.dim() == 2 && weights.size(0) == 8 &&
+        weights.size(1) == atoms.size(0) && weights.is_contiguous(), "owner radial saved payload differs");
 }
 
 void check_geometry_saved(Tensor atoms, Tensor geometry) {
