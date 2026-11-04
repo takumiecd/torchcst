@@ -1,0 +1,475 @@
+{
+  "scope": "CPU analysis of preserved PR134 evidence; no new runtime implementation or GPU run",
+  "measured_source_commit": "4261aad3eaa6beb346def04b7a1c5edb986b1877",
+  "published_result_head": "c5d8f2488147426318a48d08e7a6862b8739a8dc",
+  "source_job": "l4job-129d2f19c6594832a2c1933ff4a22b3f",
+  "result_archive_sha256": "788c6b94c96c3633163b5c6ba0fcbd8d5a58925e2319dd88da80b00fa088ff37",
+  "raw_window_split": [
+    {
+      "state": "initial",
+      "precision": "fp32_geometry_sort32_flat_c",
+      "updates": 16,
+      "us_per_update": {
+        "raw": 27.754374999999413,
+        "window": 17.318062499999655
+      },
+      "kernel_names_us_per_update": {
+        "void radius_cell_mass::fp32_body::compact_moments_kernel<float>(float const*, float*, int, radius_cell_mass::Axis, int, int, bool, unsigned int const*)": 27.754374999999413,
+        "void radius_cell_mass::fp32_body::owner_window_moments_kernel<float>(float const*, float const*, unsigned int const*, float*, int, radius_cell_mass::Axis, radius_cell_mass::OwnerWindowLayout)": 17.318062499999655
+      },
+      "adoption_timing": false
+    },
+    {
+      "state": "initial",
+      "precision": "fp32_known_bank",
+      "updates": 16,
+      "us_per_update": {
+        "raw": 27.753749999999513,
+        "window": 17.35187499999995
+      },
+      "kernel_names_us_per_update": {
+        "void radius_cell_mass::fp32_body::compact_moments_kernel<float>(float const*, float*, int, radius_cell_mass::Axis, int, int, bool, unsigned int const*)": 27.753749999999513,
+        "void radius_cell_mass::fp32_body::owner_window_moments_kernel<float>(float const*, float const*, unsigned int const*, float*, int, radius_cell_mass::Axis, radius_cell_mass::OwnerWindowLayout)": 17.35187499999995
+      },
+      "adoption_timing": false
+    },
+    {
+      "state": "final",
+      "precision": "fp32_geometry_sort32_flat_c",
+      "updates": 16,
+      "us_per_update": {
+        "raw": 27.69824999999969,
+        "window": 20.08006250000119
+      },
+      "kernel_names_us_per_update": {
+        "void radius_cell_mass::fp32_body::compact_moments_kernel<float>(float const*, float*, int, radius_cell_mass::Axis, int, int, bool, unsigned int const*)": 27.69824999999969,
+        "void radius_cell_mass::fp32_body::owner_window_moments_kernel<float>(float const*, float const*, unsigned int const*, float*, int, radius_cell_mass::Axis, radius_cell_mass::OwnerWindowLayout)": 20.08006250000119
+      },
+      "adoption_timing": false
+    },
+    {
+      "state": "final",
+      "precision": "fp32_known_bank",
+      "updates": 16,
+      "us_per_update": {
+        "raw": 27.681937499999776,
+        "window": 20.10187500000012
+      },
+      "kernel_names_us_per_update": {
+        "void radius_cell_mass::fp32_body::compact_moments_kernel<float>(float const*, float*, int, radius_cell_mass::Axis, int, int, bool, unsigned int const*)": 27.681937499999776,
+        "void radius_cell_mass::fp32_body::owner_window_moments_kernel<float>(float const*, float const*, unsigned int const*, float*, int, radius_cell_mass::Axis, radius_cell_mass::OwnerWindowLayout)": 20.10187500000012
+      },
+      "adoption_timing": false
+    }
+  ],
+  "raw_launch_breakdown": [
+    {
+      "state": "initial",
+      "raw_kernel_events": 288,
+      "raw_events_per_update": 18,
+      "mean_raw_total_us_per_update": 27.75437499999992,
+      "per_launch_position": [
+        {
+          "direction": "forward",
+          "level_by_fixed_launch_order": 2,
+          "calls": 16,
+          "mean_duration_us": 3.54,
+          "grid_examples": [
+            "[543, 1, 1]"
+          ]
+        },
+        {
+          "direction": "forward",
+          "level_by_fixed_launch_order": 3,
+          "calls": 16,
+          "mean_duration_us": 1.2840625,
+          "grid_examples": [
+            "[543, 1, 1]"
+          ]
+        },
+        {
+          "direction": "forward",
+          "level_by_fixed_launch_order": 4,
+          "calls": 16,
+          "mean_duration_us": 1.2879375,
+          "grid_examples": [
+            "[543, 1, 1]"
+          ]
+        },
+        {
+          "direction": "forward",
+          "level_by_fixed_launch_order": 5,
+          "calls": 16,
+          "mean_duration_us": 1.2840625,
+          "grid_examples": [
+            "[543, 1, 1]"
+          ]
+        },
+        {
+          "direction": "forward",
+          "level_by_fixed_launch_order": 6,
+          "calls": 16,
+          "mean_duration_us": 1.2900625000000001,
+          "grid_examples": [
+            "[543, 1, 1]"
+          ]
+        },
+        {
+          "direction": "forward",
+          "level_by_fixed_launch_order": 7,
+          "calls": 16,
+          "mean_duration_us": 1.2940625000000001,
+          "grid_examples": [
+            "[543, 1, 1]"
+          ]
+        },
+        {
+          "direction": "forward",
+          "level_by_fixed_launch_order": 8,
+          "calls": 16,
+          "mean_duration_us": 1.284,
+          "grid_examples": [
+            "[543, 1, 1]"
+          ]
+        },
+        {
+          "direction": "forward",
+          "level_by_fixed_launch_order": 9,
+          "calls": 16,
+          "mean_duration_us": 1.2900625000000001,
+          "grid_examples": [
+            "[543, 1, 1]"
+          ]
+        },
+        {
+          "direction": "forward",
+          "level_by_fixed_launch_order": 10,
+          "calls": 16,
+          "mean_duration_us": 1.314125,
+          "grid_examples": [
+            "[543, 1, 1]"
+          ]
+        },
+        {
+          "direction": "reverse",
+          "level_by_fixed_launch_order": 2,
+          "calls": 16,
+          "mean_duration_us": 3.5200625,
+          "grid_examples": [
+            "[543, 1, 1]"
+          ]
+        },
+        {
+          "direction": "reverse",
+          "level_by_fixed_launch_order": 3,
+          "calls": 16,
+          "mean_duration_us": 1.286,
+          "grid_examples": [
+            "[543, 1, 1]"
+          ]
+        },
+        {
+          "direction": "reverse",
+          "level_by_fixed_launch_order": 4,
+          "calls": 16,
+          "mean_duration_us": 1.2919375,
+          "grid_examples": [
+            "[543, 1, 1]"
+          ]
+        },
+        {
+          "direction": "reverse",
+          "level_by_fixed_launch_order": 5,
+          "calls": 16,
+          "mean_duration_us": 1.295875,
+          "grid_examples": [
+            "[543, 1, 1]"
+          ]
+        },
+        {
+          "direction": "reverse",
+          "level_by_fixed_launch_order": 6,
+          "calls": 16,
+          "mean_duration_us": 1.298,
+          "grid_examples": [
+            "[543, 1, 1]"
+          ]
+        },
+        {
+          "direction": "reverse",
+          "level_by_fixed_launch_order": 7,
+          "calls": 16,
+          "mean_duration_us": 1.3020625000000001,
+          "grid_examples": [
+            "[543, 1, 1]"
+          ]
+        },
+        {
+          "direction": "reverse",
+          "level_by_fixed_launch_order": 8,
+          "calls": 16,
+          "mean_duration_us": 1.288,
+          "grid_examples": [
+            "[543, 1, 1]"
+          ]
+        },
+        {
+          "direction": "reverse",
+          "level_by_fixed_launch_order": 9,
+          "calls": 16,
+          "mean_duration_us": 1.296,
+          "grid_examples": [
+            "[543, 1, 1]"
+          ]
+        },
+        {
+          "direction": "reverse",
+          "level_by_fixed_launch_order": 10,
+          "calls": 16,
+          "mean_duration_us": 1.3080625000000001,
+          "grid_examples": [
+            "[543, 1, 1]"
+          ]
+        }
+      ],
+      "adoption_timing": false,
+      "level_label_basis": "fixed host launch order: nine forward then nine reverse per actual update; labels are sequence inference, not profiler kernel metadata",
+      "distribution_keys": [
+        "input",
+        "output"
+      ]
+    },
+    {
+      "state": "final",
+      "raw_kernel_events": 288,
+      "raw_events_per_update": 18,
+      "mean_raw_total_us_per_update": 27.69824999999989,
+      "per_launch_position": [
+        {
+          "direction": "forward",
+          "level_by_fixed_launch_order": 2,
+          "calls": 16,
+          "mean_duration_us": 3.5401875,
+          "grid_examples": [
+            "[543, 1, 1]"
+          ]
+        },
+        {
+          "direction": "forward",
+          "level_by_fixed_launch_order": 3,
+          "calls": 16,
+          "mean_duration_us": 1.291875,
+          "grid_examples": [
+            "[543, 1, 1]"
+          ]
+        },
+        {
+          "direction": "forward",
+          "level_by_fixed_launch_order": 4,
+          "calls": 16,
+          "mean_duration_us": 1.2978125,
+          "grid_examples": [
+            "[543, 1, 1]"
+          ]
+        },
+        {
+          "direction": "forward",
+          "level_by_fixed_launch_order": 5,
+          "calls": 16,
+          "mean_duration_us": 1.298,
+          "grid_examples": [
+            "[543, 1, 1]"
+          ]
+        },
+        {
+          "direction": "forward",
+          "level_by_fixed_launch_order": 6,
+          "calls": 16,
+          "mean_duration_us": 1.3019375,
+          "grid_examples": [
+            "[543, 1, 1]"
+          ]
+        },
+        {
+          "direction": "forward",
+          "level_by_fixed_launch_order": 7,
+          "calls": 16,
+          "mean_duration_us": 1.302125,
+          "grid_examples": [
+            "[543, 1, 1]"
+          ]
+        },
+        {
+          "direction": "forward",
+          "level_by_fixed_launch_order": 8,
+          "calls": 16,
+          "mean_duration_us": 1.2860625,
+          "grid_examples": [
+            "[543, 1, 1]"
+          ]
+        },
+        {
+          "direction": "forward",
+          "level_by_fixed_launch_order": 9,
+          "calls": 16,
+          "mean_duration_us": 1.2940625000000001,
+          "grid_examples": [
+            "[543, 1, 1]"
+          ]
+        },
+        {
+          "direction": "forward",
+          "level_by_fixed_launch_order": 10,
+          "calls": 16,
+          "mean_duration_us": 1.320125,
+          "grid_examples": [
+            "[543, 1, 1]"
+          ]
+        },
+        {
+          "direction": "reverse",
+          "level_by_fixed_launch_order": 2,
+          "calls": 16,
+          "mean_duration_us": 3.520125,
+          "grid_examples": [
+            "[543, 1, 1]"
+          ]
+        },
+        {
+          "direction": "reverse",
+          "level_by_fixed_launch_order": 3,
+          "calls": 16,
+          "mean_duration_us": 1.282,
+          "grid_examples": [
+            "[543, 1, 1]"
+          ]
+        },
+        {
+          "direction": "reverse",
+          "level_by_fixed_launch_order": 4,
+          "calls": 16,
+          "mean_duration_us": 1.2820625,
+          "grid_examples": [
+            "[543, 1, 1]"
+          ]
+        },
+        {
+          "direction": "reverse",
+          "level_by_fixed_launch_order": 5,
+          "calls": 16,
+          "mean_duration_us": 1.285875,
+          "grid_examples": [
+            "[543, 1, 1]"
+          ]
+        },
+        {
+          "direction": "reverse",
+          "level_by_fixed_launch_order": 6,
+          "calls": 16,
+          "mean_duration_us": 1.28,
+          "grid_examples": [
+            "[543, 1, 1]"
+          ]
+        },
+        {
+          "direction": "reverse",
+          "level_by_fixed_launch_order": 7,
+          "calls": 16,
+          "mean_duration_us": 1.284,
+          "grid_examples": [
+            "[543, 1, 1]"
+          ]
+        },
+        {
+          "direction": "reverse",
+          "level_by_fixed_launch_order": 8,
+          "calls": 16,
+          "mean_duration_us": 1.2759375,
+          "grid_examples": [
+            "[543, 1, 1]"
+          ]
+        },
+        {
+          "direction": "reverse",
+          "level_by_fixed_launch_order": 9,
+          "calls": 16,
+          "mean_duration_us": 1.2820625,
+          "grid_examples": [
+            "[543, 1, 1]"
+          ]
+        },
+        {
+          "direction": "reverse",
+          "level_by_fixed_launch_order": 10,
+          "calls": 16,
+          "mean_duration_us": 1.274,
+          "grid_examples": [
+            "[543, 1, 1]"
+          ]
+        }
+      ],
+      "adoption_timing": false,
+      "level_label_basis": "fixed host launch order: nine forward then nine reverse per actual update; labels are sequence inference, not profiler kernel metadata",
+      "distribution_keys": [
+        "input",
+        "output"
+      ]
+    }
+  ],
+  "owner_pair_cost": [
+    {
+      "state": "initial",
+      "scope": "existing frozen PR132 +256-update checkpoint, CPU-derived keys; no GPU classification run",
+      "numeric_limitation": "CPU decode is not a replay of CUDA FP64 transcendental arithmetic; no full GPU key array was saved",
+      "rank12_atoms": 52428,
+      "rank12_nonempty_owner_pairs": 36276,
+      "mean_atoms_per_pair": 1.445253059874297,
+      "max_atoms_per_pair": 6,
+      "singleton_pairs": 23812,
+      "forward_r12_B4_idealized_term_counts": {
+        "direct_two_contractions": 5033088,
+        "build_full_pair_matrices": 7549632,
+        "apply_pair_matrices": 20894976,
+        "pair_build_plus_apply": 28444608,
+        "pair_to_direct_ratio": 5.651522087434196
+      },
+      "forward_arithmetic_crossover_denominator_2A_minus_rG": -330456,
+      "caveat": "Term counts omit profiles, transforms, amp placement, packing, synchronization and full backward; not FLOP timing or an adoption verdict. Different hardware throughput can offset operation counts.",
+      "rank12_pair_matrices_fp32_bytes": 20894976
+    },
+    {
+      "state": "final",
+      "scope": "existing frozen PR132 +256-update checkpoint, CPU-derived keys; no GPU classification run",
+      "numeric_limitation": "CPU decode is not a replay of CUDA FP64 transcendental arithmetic; no full GPU key array was saved",
+      "rank12_atoms": 52423,
+      "rank12_nonempty_owner_pairs": 36261,
+      "mean_atoms_per_pair": 1.4457130250130994,
+      "max_atoms_per_pair": 6,
+      "singleton_pairs": 23790,
+      "forward_r12_B4_idealized_term_counts": {
+        "direct_two_contractions": 5032608,
+        "build_full_pair_matrices": 7548912,
+        "apply_pair_matrices": 20886336,
+        "pair_build_plus_apply": 28435248,
+        "pair_to_direct_ratio": 5.650201247544017
+      },
+      "forward_arithmetic_crossover_denominator_2A_minus_rG": -330286,
+      "caveat": "Term counts omit profiles, transforms, amp placement, packing, synchronization and full backward; not FLOP timing or an adoption verdict. Different hardware throughput can offset operation counts.",
+      "rank12_pair_matrices_fp32_bytes": 20886336
+    }
+  ],
+  "numeric_contract": "Existing byte-equal adoption guides unchanged; algebraic regrouping requires a separate prospective numerical contract, not retroactive relaxation",
+  "cpu_pair_analysis_script_sha256": "bddb5a35806c8eced5f53ac6618b064ddeec433b833768c8d83a3ba4a4cda14b",
+  "checkpoint_provenance": [
+    {
+      "path": "cells/final-0-cst-fp32_geometry_sort32_flat_c.pt",
+      "size": 13299918,
+      "sha256": "9d02abbb0c746b2884d93515aac232f55f43b41c66b2ab17dc426d426416fe26"
+    },
+    {
+      "path": "cells/initial-0-cst-fp32_geometry_sort32_flat_c.pt",
+      "size": 13299944,
+      "sha256": "1f51c8757fed2338b9567f931684b4676ea00c6d393623202cab3496c488ec97"
+    }
+  ]
+}
