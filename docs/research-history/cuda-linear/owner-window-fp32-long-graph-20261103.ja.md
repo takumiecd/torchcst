@@ -235,3 +235,12 @@ PYTHONPATH=src python -m benchmarks.training.full_step_graph_learning_diagnostic
 一つのmodel・seed・成功した一つのL4 allocationでの結果である。
 追加seed/別model/別GPUでの長期Graph学習、汎用Graph入口、process全体メモリは未検証。
 [#129](https://github.com/takumiecd/torchcst/pull/129) はDraftを維持し、merge/既定採用はしていない。
+
+## Proレビュー後の計時範囲の明確化（2026-11-04）
+
+評価後の `program = None; gc.collect()` は `prepare_graph()` のtimer開始前にあり、
+上記の「準備込み」には古いGraphの退役・GCを含めていない。epochのorder生成・転送も計時外。
+報告値と62.08%/61.64%はこの限定したscopeでの結果であり、process全体の壁時計時間ではない。
+退役・GCを含めた短縮率は未測定で、後付けの推定値で補正しない。
+次の候補比較では退役・GCも明示的に計時し、準備・退役費用を対称に比較する。
+今回の数値状態・勾配の一致や独立VJP診断の結果は変わらない。

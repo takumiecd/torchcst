@@ -6068,7 +6068,7 @@
     "seed": 41,
     "model": "Linear(784,1024) -> ReLU -> CST/dense(1024,1024) -> ReLU -> Linear(1024,10), three weighted layers; middle only CST",
     "full_step_timing": "gather/loss/all backward/actual optimizer/metrics/guard/index supply/version notifications; first cold updates included; epoch boundaries synchronized",
-    "adoption_time": "training plus optimizer construction, capture/restoration and both evaluation-boundary repreparations; data/model placement, common compile, evaluation/checkpoint serialization excluded and separately recorded",
+    "adoption_time": "training plus optimizer construction, capture/restoration and both evaluation-boundary repreparations; data/model placement, common compile, evaluation/checkpoint serialization excluded and separately recorded; old Graph retirement and gc.collect are also excluded in this measured runner; retirement-inclusive time is unmeasured",
     "memory": "before optimizer construction through all initial/epoch evaluations, actual updates, captures/restoration/repreparation; no reset after capture; diagnostics separate process",
     "precision": "FP32 body; FP64 geometry decode, wrap/classify, local subtraction and Polar pullback; TF32 off; unchanged optimizer laws",
     "numerical_equality": "42 numerical model/Adam/clock fields plus five Parameter gradients at each epoch, metrics and initialization/order hashes; not every intermediate Tensor at every step",
