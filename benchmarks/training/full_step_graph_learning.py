@@ -21,6 +21,7 @@ from benchmarks.training.cell_mass_mnist import (
     make_optimizer,
     normalize_images,
 )
+from benchmarks.training.flat_step_graph import FlatPreparedStep
 from benchmarks.training.full_step_graph import PreparedStep, ordinary_step, snapshot
 from benchmarks.training.full_step_graph_comparison import hashes
 from benchmarks.training.full_step_graph_memory import ENDPOINT_PHASE
@@ -81,6 +82,9 @@ def renew_certificates(model, optimizer, inputs, kind):
 
 
 def run(args):
+    guard = getattr(args, "guard", "qualified")
+    program_class = {"qualified": PreparedStep, "flat": FlatPreparedStep}[guard]
+    qualification_backend = "not_applicable_eager"
     args.output.mkdir(parents=True, exist_ok=False)
     torch.set_num_threads(1)
     torch.backends.cuda.matmul.allow_tf32 = False
@@ -136,7 +140,7 @@ def run(args):
     captures, epochs, retirements = [], [], []
 
     def prepare_graph(order, next_step, totals, reason):
-        nonlocal preparation_seconds
+        nonlocal preparation_seconds, qualification_backend
         torch.cuda.synchronize()
         begin = time.perf_counter()
         if reason != "bootstrap":
@@ -148,19 +152,23 @@ def run(args):
                 tx[order[4 * next_step : 4 * next_step + 4]],
                 args.kind,
             )
-        candidate = PreparedStep(model, optimizer, tx, ty, args.kind)
+        candidate = program_class(model, optimizer, tx, ty, args.kind)
+        assert not candidate.invalidated, "normal cohort preparation refused"
         for dest, source in zip(candidate.totals, totals):
             dest.copy_(source)
         candidate.indices.copy_(order[4 * next_step : 4 * next_step + 4])
         before = snapshot(model, optimizer)
         wanted_totals = metrics(totals)
-        candidate.capture(preserve_totals=True)
+        assert candidate.capture(preserve_totals=True) is True, (
+            "normal cohort capture refused"
+        )
         after = snapshot(model, optimizer)
         assert hashes(before) == hashes(after), "capture changed live P/Adam state"
         assert metrics(candidate.totals) == wanted_totals, (
             "capture changed counted metrics"
         )
         assert candidate.eligible()
+        qualification_backend = str(candidate._qualification.native_backend)
         torch.cuda.synchronize()
         seconds = time.perf_counter() - begin
         preparation_seconds += seconds
@@ -168,6 +176,8 @@ def run(args):
             {
                 "at_update": total_updates,
                 "reason": reason,
+                "guard": guard,
+                "qualification_backend": qualification_backend,
                 "seconds": seconds,
                 "state_fields": len(after),
                 "restoration_byte_equal": True,
@@ -337,6 +347,8 @@ def run(args):
     report = {
         "kind": args.kind,
         "mode": args.mode,
+        "guard": guard,
+        "qualification_backend": qualification_backend,
         "seed": init["seed"],
         "batch_size": 4,
         "total_updates": total_updates,
@@ -381,6 +393,12 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--kind", choices=("cst", "dense"), default="cst")
     parser.add_argument("--mode", choices=("eager", "graph"), required=True)
+    parser.add_argument(
+        "--guard",
+        choices=("qualified", "flat"),
+        default="qualified",
+        help="common qualified safety baseline or flat signature candidate",
+    )
     parser.add_argument(
         "--steps-per-epoch",
         type=int,

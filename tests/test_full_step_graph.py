@@ -42,15 +42,26 @@ def cohort():
             torch.arange(64, device="cuda") % 10,
         )
         model = make_model(
-            init, "cst", execution_plan=plans.GLOBAL_OWNER_WINDOW_RECOMPUTE
+            init,
+            "cst",
+            execution_plan=(
+                plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32_FLAT_C
+                if os.environ.get("CST_GRAPH_FP32") == "1"
+                else plans.GLOBAL_OWNER_WINDOW_RECOMPUTE
+            ),
         ).cuda()
         opt = make_optimizer(model, init, "cst")
         indices = torch.arange(4, device="cuda")
         totals = (tx.new_zeros(()), torch.zeros((), dtype=torch.int64, device="cuda"))
         for _ in range(8):
             ordinary_step(model, opt, tx, ty, indices, totals)
-        program = PreparedStep(model, opt, tx, ty, "cst", observe=True)
-        program.capture()
+        step_type = PreparedStep
+        if os.environ.get("CST_GRAPH_GUARD") == "flat":
+            from benchmarks.training.flat_step_graph import FlatPreparedStep
+
+            step_type = FlatPreparedStep
+        program = step_type(model, opt, tx, ty, "cst", observe=True)
+        assert program.capture() is True
         yield model, opt, tx, ty, indices, program, init
         del program, opt, model
         gc.collect()
@@ -172,7 +183,13 @@ def test_current_boundary_wide_atoms_gradients_and_version(cohort):
         )
     start = snapshot(model, opt)
     reference = make_model(
-        init, "cst", execution_plan=plans.GLOBAL_OWNER_WINDOW_RECOMPUTE
+        init,
+        "cst",
+        execution_plan=(
+            plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32_FLAT_C
+            if os.environ.get("CST_GRAPH_FP32") == "1"
+            else plans.GLOBAL_OWNER_WINDOW_RECOMPUTE
+        ),
     ).cuda()
     ropt = make_optimizer(reference, init, "cst")
     totals = (tx.new_zeros(()), torch.zeros((), dtype=torch.int64, device="cuda"))

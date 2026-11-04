@@ -16,6 +16,7 @@ from benchmarks.training.cell_mass_mnist import (
     make_optimizer,
     normalize_images,
 )
+from benchmarks.training.flat_step_graph import FlatPreparedStep
 from benchmarks.training.full_step_graph import (
     PreparedStep,
     ordinary_step,
@@ -37,6 +38,9 @@ def hashes(values):
 
 
 def run(args):
+    guard = getattr(args, "guard", "qualified")
+    program_class = {"qualified": PreparedStep, "flat": FlatPreparedStep}[guard]
+    qualification_backend = "not_applicable_eager"
     torch.set_num_threads(1)
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
@@ -135,9 +139,11 @@ def run(args):
         # as the FP64 common warmup does; P and Adam state remain unchanged.
     program = None
     if args.mode != "eager":
-        program = PreparedStep(model, optimizer, tx, ty, args.kind)
+        program = program_class(model, optimizer, tx, ty, args.kind)
+        assert not program.invalidated, "normal cohort preparation refused"
         if args.mode == "graph":
-            program.capture()
+            assert program.capture() is True, "normal cohort capture refused"
+        qualification_backend = str(program._qualification.native_backend)
         totals = program.totals
     for total in totals:
         total.zero_()
@@ -245,6 +251,8 @@ def run(args):
         "kind": args.kind,
         "precision": args.precision if args.kind == "cst" else "dense_fp32",
         "mode": args.mode,
+        "guard": guard,
+        "qualification_backend": qualification_backend,
         "state": args.state,
         "repeat": args.repeat,
         "steps": args.steps,
@@ -323,6 +331,12 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--kind", choices=("cst", "dense"), required=True)
     parser.add_argument("--mode", choices=("eager", "prepared", "graph"), required=True)
+    parser.add_argument(
+        "--guard",
+        choices=("qualified", "flat"),
+        default="qualified",
+        help="common qualified safety baseline or flat signature candidate",
+    )
     parser.add_argument("--state", choices=("initial", "final"), required=True)
     parser.add_argument(
         "--precision",

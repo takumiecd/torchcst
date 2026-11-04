@@ -98,3 +98,35 @@ denseにも対照/G1の二条件を与えるため、**最大48セル**。有効
 bootstrap/build、証明構築、capture/復元、更新、再prepare、退役/GCの時間を重複加算しない。
 
 Pro回答原本・source/CPU診断はignored `output/design-search-20261104/`へ保全する。
+
+## Stage 0の観測（GPU未実施）
+
+共通安全補強は`e695af9a` / `21a96b2c`、三列だけの性能変更は`53ac91f6`へ分離した。
+CPUのfocused検証は153 passed / 2 GPU skipped、CPU suiteは1990 passed / 2299 skipped。
+skipをGPU検証とは数えない。Torch2.13.0 / Python3.11.15 / macOS arm64であり、
+対象L4のTorch2.11 / Python3.13の結果ではない。
+
+有限資格には、Tensor/Parameterのmetadata providerも加えた。instanceの`data_ptr`や`stride`を
+shadowして値を変更するcallbackは、結果のmetadata tupleだけを比較すると見逃せたため、
+providerを実行する前に拒否する。登録Tensor以外のgrad/state/input/periodにも同じ拒否を適用する。
+capture rollbackではTensor宣言が変わっていれば復元済みと認定せず、以後の更新を止める。
+
+追加の共通資格とroot edge確認を含む**全signature部分**を1024回×5 blockで測った。
+CSTの対照は89.194–91.161µs（中央値90.314）、G1は61.840–62.894µs（62.305）。
+denseは42.227–43.333µs（42.803）から34.938–36.330µs（35.447）。
+両モデルとも全5 blockでG1が短く、CPU試作の研究費用screenは通過した。
+ただし、同じまま残したTLS/hooks/CST nativeのeligible検査はこのCPU時計に含まず、
+全CUDA eligible、GPUの律速、完全step短縮や採用を示さない。CPUのAdam状態はclock8の合成値で、
+学習更新はしていない。対照とG1のstate byte・version不変を確認した。
+
+最終JSONは`g1-stage0-whole-signature-cost-provider-final.json`、固定測定scriptのSHA256は
+`eaa1f93dcd47834946630048aca89e6d16727a9a5cfeb9e44fa046dc7f5b50f6`。
+四つの実装fileのSHAをJSONに含め、保存済scriptと照合した。
+初期の安全補強前の予備測定JSONは、改訂source測定時の上書きによりblock別配列を失った。
+stdoutの中央値だけが残り、その原配列は復元できない。`g1-stage0-preliminary-evidence-limit.json`に
+この限界を記録し、Stage 0判定には上の最終sourceの完全な5 block記録だけを使う。
+GPU/checkpointの消失ではなく、旧配列を後から再測定して原本扱いもしない。
+
+Stage 1は新しいfresh processの同一sourceで実施予定。未知callbackのcold拒否と
+ordinary eager fallback、live変更後のno replay、正常capture復元を両guardで確認し、
+状態byteと実eligible費用を通過するまでlifecycle/正式throughput/45,000更新へ進まない。
