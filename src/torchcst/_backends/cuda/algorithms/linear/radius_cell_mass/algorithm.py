@@ -96,6 +96,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "global_owner_window_fp32",
             "global_owner_window_fp32_geometry",
             "global_owner_window_fp32_geometry_sort32",
+            "global_owner_window_fp32_geometry_sort32_flat_c",
             "block_local",
             "block_local_parallel",
             "block_local_cached_parallel",
@@ -126,6 +127,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
                     "global_owner_window_fp32",
                     "global_owner_window_fp32_geometry",
                     "global_owner_window_fp32_geometry_sort32",
+                    "global_owner_window_fp32_geometry_sort32_flat_c",
                 )
             )
         ):
@@ -148,6 +150,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "global_owner_window_fp32",
             "global_owner_window_fp32_geometry",
             "global_owner_window_fp32_geometry_sort32",
+            "global_owner_window_fp32_geometry_sort32_flat_c",
         ) and (
             recipe.moment_method != "merge"
             or recipe.input_direct_levels != 2
@@ -204,6 +207,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "global_owner_window_fp32",
             "global_owner_window_fp32_geometry",
             "global_owner_window_fp32_geometry_sort32",
+            "global_owner_window_fp32_geometry_sort32_flat_c",
         ) and (
             context.m > 4
             or plan.input != plan.output
@@ -223,6 +227,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "global_owner_window_fp32",
             "global_owner_window_fp32_geometry",
             "global_owner_window_fp32_geometry_sort32",
+            "global_owner_window_fp32_geometry_sort32_flat_c",
         ) and (
             context.dtype != torch.float32
             or any(

@@ -258,7 +258,7 @@ constexpr int WINDOW_SHARED_BYTES =
     sizeof(float) * (OWNER_CAPACITY * WINDOW_CACHE_STRIDE + OWNER_BATCH * OWNER_FEATURES);
 // One CTA owns a destination window; atoms remain in original parameter rows.
 // No per-atom Fourier table, H/G atomics, or dense effective W is allocated.
-template <class T, bool Reverse, bool Recompute, bool GeometryShared>
+template <class T, bool Reverse, bool Recompute, bool GeometryShared, bool FlatC = false>
 __global__ void owner_window_contract_kernel(
     const T *p, const float *windows, const float *input_windows, const float *h, const float *dh,
     float *response, float *derivative, T *gradient, float *partials, const int64_t *rows,
@@ -279,7 +279,9 @@ __global__ void owner_window_contract_kernel(
         }
         __syncthreads();
     }
-    float sums[OWNER_BATCH] = {};
+    float sums[FlatC ? 1 : OWNER_BATCH] = {};
+    const int c_feature = FlatC ? int(threadIdx.x) % rank : int(threadIdx.x);
+    const int c_batch = FlatC ? int(threadIdx.x) / rank : 0;
     for (int chunk = begin; chunk < end; chunk += OWNER_CAPACITY) {
         int retained = min(OWNER_CAPACITY, end - chunk);
         if (threadIdx.x < retained) {
@@ -349,18 +351,32 @@ __global__ void owner_window_contract_kernel(
                 window_cache[threadIdx.x * WINDOW_CACHE_STRIDE + f] = q[f];
         }
         __syncthreads();
-        if (emit_x && threadIdx.x < rank) {
-            for (int a = 0; a < retained; ++a) {
-                const float *v = window_cache + a * WINDOW_CACHE_STRIDE;
-                for (int b = 0; b < batch; ++b)
-                    sums[b] += v[threadIdx.x] * v[OWNER_FEATURES + b];
+        if constexpr (FlatC) {
+            if (emit_x && threadIdx.x < batch * rank) {
+                for (int a = 0; a < retained; ++a) {
+                    const float *v = window_cache + a * WINDOW_CACHE_STRIDE;
+                    sums[0] += v[c_feature] * v[OWNER_FEATURES + c_batch];
+                }
+            }
+        } else {
+            if (emit_x && threadIdx.x < rank) {
+                for (int a = 0; a < retained; ++a) {
+                    const float *v = window_cache + a * WINDOW_CACHE_STRIDE;
+                    for (int b = 0; b < batch; ++b)
+                        sums[b] += v[threadIdx.x] * v[OWNER_FEATURES + b];
+                }
             }
         }
         __syncthreads();
     }
-    if (emit_x && threadIdx.x < rank)
-        for (int b = 0; b < batch; ++b)
-            partials[owner_window_index(b, bi, owner, threadIdx.x, destination, layout)] = sums[b];
+    if constexpr (FlatC) {
+        if (emit_x && threadIdx.x < batch * rank)
+            partials[owner_window_index(c_batch, bi, owner, c_feature, destination, layout)] = sums[0];
+    } else {
+        if (emit_x && threadIdx.x < rank)
+            for (int b = 0; b < batch; ++b)
+                partials[owner_window_index(b, bi, owner, threadIdx.x, destination, layout)] = sums[b];
+    }
 }
 
 template <class T>
@@ -396,7 +412,8 @@ __global__ void owner_window_expand_kernel(const float *partials, const int64_t 
     }
     y[index] = T(value);
 }
-std::vector<Tensor> owner_window_transform(Tensor signal, Tensor p, Tensor keys, Tensor rows,
+template <bool FlatC>
+std::vector<Tensor> owner_window_transform_impl(Tensor signal, Tensor p, Tensor keys, Tensor rows,
                                            Tensor offsets, Config input_config,
                                            Config output_config, bool reverse, bool need_derivative,
                                            bool fold, bool recompute, bool emit_x, Tensor h,
@@ -428,7 +445,7 @@ std::vector<Tensor> owner_window_transform(Tensor signal, Tensor p, Tensor keys,
         AT_DISPATCH_FLOATING_TYPES(p.scalar_type(), "radius_window_contract", [&] {
             auto launch = [&](auto rev, auto recomp, auto geom) {
                 owner_window_contract_kernel<scalar_t, decltype(rev)::value,
-                                             decltype(recomp)::value, decltype(geom)::value>
+                                             decltype(recomp)::value, decltype(geom)::value, FlatC>
                     <<<destination.node_count, THREADS, WINDOW_SHARED_BYTES,
                        at::cuda::getCurrentCUDAStream()>>>(
                         p.data_ptr<scalar_t>(), windows.data_ptr<float>(),
@@ -456,8 +473,14 @@ std::vector<Tensor> owner_window_transform(Tensor signal, Tensor p, Tensor keys,
                     launch(std::false_type{}, std::false_type{}, geom);
             }
             };
-            if (geometry.defined()) dispatch(std::true_type{});
-            else dispatch(std::false_type{});
+            if constexpr (FlatC) {
+                TORCH_CHECK(geometry.defined() && recompute, "flat C requires shared geometry and recomputation");
+                if (reverse) launch(std::true_type{}, std::true_type{}, std::true_type{});
+                else launch(std::false_type{}, std::true_type{}, std::true_type{});
+            } else {
+                if (geometry.defined()) dispatch(std::true_type{});
+                else dispatch(std::false_type{});
+            }
             if (emit_x)
                 owner_window_expand_kernel<scalar_t><<<(y.numel() + THREADS - 1) / THREADS, THREADS,
                                                        0, at::cuda::getCurrentCUDAStream()>>>(
@@ -468,6 +491,22 @@ std::vector<Tensor> owner_window_transform(Tensor signal, Tensor p, Tensor keys,
     }
     return {y, response, derivative, gradient, windows};
 }
+std::vector<Tensor> owner_window_transform(Tensor signal, Tensor p, Tensor keys, Tensor rows,
+    Tensor offsets, Config input, Config output, bool reverse, bool need_derivative,
+    bool fold, bool recompute, bool emit_x, Tensor h, Tensor dh, Tensor saved_windows,
+    Tensor geometry) {
+    return owner_window_transform_impl<false>(signal, p, keys, rows, offsets, input, output,
+        reverse, need_derivative, fold, recompute, emit_x, h, dh, saved_windows, geometry);
+}
+
+std::vector<Tensor> owner_window_transform_flat_c(Tensor signal, Tensor p, Tensor keys, Tensor rows,
+    Tensor offsets, Config input, Config output, bool reverse, bool need_derivative,
+    bool fold, bool recompute, bool emit_x, Tensor h, Tensor dh, Tensor saved_windows,
+    Tensor geometry) {
+    return owner_window_transform_impl<true>(signal, p, keys, rows, offsets, input, output,
+        reverse, need_derivative, fold, recompute, emit_x, h, dh, saved_windows, geometry);
+}
+
 void check_geometry_saved(Tensor atoms, Tensor geometry) {
     TORCH_CHECK(geometry.defined() && geometry.is_cuda() &&
         geometry.device() == atoms.device() && geometry.scalar_type() == torch::kDouble &&

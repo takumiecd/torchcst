@@ -3,6 +3,8 @@ namespace radius_cell_mass {
 namespace fp32_body {
 std::vector<Tensor> owner_window_transform(Tensor, Tensor, Tensor, Tensor, Tensor, Config, Config,
                                            bool, bool, bool, bool, bool, Tensor, Tensor, Tensor, Tensor);
+std::vector<Tensor> owner_window_transform_flat_c(Tensor, Tensor, Tensor, Tensor, Tensor, Config, Config,
+                                           bool, bool, bool, bool, bool, Tensor, Tensor, Tensor, Tensor);
 void check_owner_window_saved(Tensor, Tensor, Tensor, Tensor, Tensor, Config, Config);
 void check_scope(Tensor, Config, Config);
 void check_geometry_saved(Tensor, Tensor);
@@ -10,8 +12,8 @@ std::vector<Tensor> diagnose(Tensor, Tensor, Tensor, Config, Config);
 } // namespace fp32_body
 std::vector<Tensor> classify_atoms_geometry_async(Tensor, Config, Config);
 std::vector<Tensor> autograd_ranges32(Tensor, Config, Config, bool);
-template<bool GeometryShared = false, bool Sort32 = false>
-class OwnerWindowFloat : public torch::autograd::Function<OwnerWindowFloat<GeometryShared, Sort32>> {
+template<bool GeometryShared = false, bool Sort32 = false, bool FlatC = false>
+class OwnerWindowFloat : public torch::autograd::Function<OwnerWindowFloat<GeometryShared, Sort32, FlatC>> {
   public:
     static Tensor forward(torch::autograd::AutogradContext *ctx, Tensor x, Tensor atoms,
                           Config input, Config output, int mode, bool need_derivative) {
@@ -21,7 +23,7 @@ class OwnerWindowFloat : public torch::autograd::Function<OwnerWindowFloat<Geome
             keys = classified[0]; geometry = classified[1];
         } else keys = classify_atoms_async(atoms, input, output);
         auto ranges = (Sort32 ? autograd_ranges32 : autograd_ranges)(keys, input, output, false);
-        auto values = fp32_body::owner_window_transform(
+        auto values = (FlatC ? fp32_body::owner_window_transform_flat_c : fp32_body::owner_window_transform)(
             x, atoms, keys, ranges[0], ranges[1], input, output, false, need_derivative, mode != 0,
             mode == 2, true, Tensor(), Tensor(), Tensor(), geometry);
         ctx->saved_data["input"] = input;
@@ -60,7 +62,7 @@ class OwnerWindowFloat : public torch::autograd::Function<OwnerWindowFloat<Geome
                                                     output);
             }
             auto ranges = (Sort32 ? autograd_ranges32 : autograd_ranges)(saved[4], input, output, true);
-            auto values = fp32_body::owner_window_transform(
+            auto values = (FlatC ? fp32_body::owner_window_transform_flat_c : fp32_body::owner_window_transform)(
                 dy, atoms, saved[4], ranges[0], ranges[1], input, output, true, needs_p, mode != 0,
                 mode == 2, needs_x, mode == 2 ? Tensor() : saved[2],
                 mode == 2 ? Tensor() : saved[3], mode == 2 ? saved[2] : Tensor(), geometry);
@@ -119,6 +121,15 @@ void bind_owner_window_fp32_autograd(pybind11::module_ &module) {
             fp32_body::check_scope(p, input, output);
             bool derivative = torch::GradMode::is_enabled() && p.requires_grad();
             return OwnerWindowFloat<true, true>::apply(x, p, input, output, 2, derivative);
+        },
+        pybind11::call_guard<pybind11::gil_scoped_release>());
+    module.def(
+        "research_owner_window_fp32_geometry_sort32_flat_c",
+        [](Tensor x, Tensor p, Config input, Config output, bool graph) {
+            check_autograd_entry(x, p, input, output, 2, 2, 32, 6, graph);
+            fp32_body::check_scope(p, input, output);
+            bool derivative = torch::GradMode::is_enabled() && p.requires_grad();
+            return OwnerWindowFloat<true, true, true>::apply(x, p, input, output, 2, derivative);
         },
         pybind11::call_guard<pybind11::gil_scoped_release>());
 

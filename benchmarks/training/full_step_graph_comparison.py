@@ -66,7 +66,9 @@ def run(args):
         args.kind,
         radius_execution="cached" if args.kind == "cst" else "global-response4",
         execution_plan=(
-            plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY
+            plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32
+            if args.sort32_baseline
+            else plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY
             if args.geometry_baseline
             else plans.GLOBAL_OWNER_WINDOW_FP32
             if args.bootstrap_fp32
@@ -110,12 +112,15 @@ def run(args):
         "fp32",
         "fp32_geometry",
         "fp32_geometry_sort32",
+        "fp32_geometry_sort32_flat_c",
     ):
         from torchcst import FixedSelector, make_algorithm_registry
 
         model[2].selector = FixedSelector(
             (
-                plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32
+                plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32_FLAT_C
+                if args.precision == "fp32_geometry_sort32_flat_c"
+                else plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32
                 if args.precision == "fp32_geometry_sort32"
                 else plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY
                 if args.precision == "fp32_geometry"
@@ -253,8 +258,12 @@ def run(args):
         "unexpected_fallbacks": 0,
         "owner_distribution_diagnostic": owners,
         "geometry_shared": args.kind == "cst"
-        and args.precision in ("fp32_geometry", "fp32_geometry_sort32"),
-        "sort32": args.precision == "fp32_geometry_sort32",
+        and args.precision
+        in ("fp32_geometry", "fp32_geometry_sort32", "fp32_geometry_sort32_flat_c"),
+        "sort32": args.precision
+        in ("fp32_geometry_sort32", "fp32_geometry_sort32_flat_c"),
+        "flat_c": args.precision == "fp32_geometry_sort32_flat_c",
+        "sort32_baseline": args.sort32_baseline,
         "geometry_baseline": args.geometry_baseline,
         "bootstrap_precision": "fp32" if args.bootstrap_fp32 else "fp64",
         "adoption_45000_estimate_seconds": 45000 * seconds / args.steps
@@ -317,13 +326,20 @@ def main():
     parser.add_argument("--state", choices=("initial", "final"), required=True)
     parser.add_argument(
         "--precision",
-        choices=("fp64", "fp32", "fp32_geometry", "fp32_geometry_sort32"),
+        choices=(
+            "fp64",
+            "fp32",
+            "fp32_geometry",
+            "fp32_geometry_sort32",
+            "fp32_geometry_sort32_flat_c",
+        ),
         default="fp64",
     )
     parser.add_argument("--repeat", type=int, default=0)
     parser.add_argument("--steps", type=int, default=256)
     parser.add_argument("--bootstrap-fp32", action="store_true")
     parser.add_argument("--geometry-baseline", action="store_true")
+    parser.add_argument("--sort32-baseline", action="store_true")
     parser.add_argument("--profile", action="store_true")
     args = parser.parse_args()
     stream = torch.cuda.Stream()
