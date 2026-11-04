@@ -72,3 +72,36 @@ Stage2のCST公式memory-v2.1/dense手動継続条件は継承し、3epochを8cy
 
 最終GPU driverはCPUで実mainの8セル全経路と、性能未達・schema/clock/backend/memory不正・timeout/保存失敗時の
 停止/保存を予行してから投入する。synthetic fixtureは数値・性能の証拠には数えない。
+
+## 実施結果と回収検証
+
+source `02881f03bbc5557e23d09d8a2fd2308d966ad3ee`、job `l4job-85f5659c0a384c16b4205d804efdfaea`。
+L4/Torch2.11.0+cu130/CUDA13/Triton3.6、native backendで最大8セルを全て完了した。
+各45,000実更新、合計360,000実更新。driverの保存込みwallは549.0秒。所有VMは停止・回収済み。
+これは一allocation内の8 fresh processであり、8台の独立GPU再現ではない。
+
+| 順序 | CST学習 qualified→G1 秒 | 短縮 | preparation込み qualified→G1 秒 | 短縮 |
+| --- | ---: | ---: | ---: | ---: |
+| A | 37.339295→29.977973 | 19.715% | 38.423431→31.071188 | 19.135% |
+| B（全逆順） | 34.478560→29.931161 | 13.189% | 35.554074→31.008194 | 12.786% |
+
+両順序でtraining/adoptionの5%基準を通過した。順序差を隠す平均や再測定は使わず、両値を残す。
+denseも同じguard変更によりtraining7.677%/7.032%、adoption7.290%/6.617%短縮した。
+共通基盤の改善であり、差分の百分率をCST固有の効果やCUDA演算量削減とは扱わない。
+
+全4pairのcapture込みallocated/reserved増分は0/0 bytes。
+CSTのpeakは261,020,160/465,567,744 bytes、denseは273,735,168/452,984,832 bytes。
+allocated/reservedの順であり、GPU process全usageの計測ではない。
+CSTは8/15000/30000、denseは8/15000の自然captureで、qualified/flat・A/B間のeventsも一致した。
+denseをCSTに合わせて強制再captureしたものではない。
+
+全3epochのCST42状態＋5勾配、dense20状態＋5勾配、totals/metrics/orderは、pair間・順序間・凍結済み#132参照と一致した。
+最終testはCST loss0.083672397/accuracy97.37%、dense loss0.070017517/accuracy97.87%で、同kindの全条件で同じ。
+clockは各epoch末15000/30000/45000、native資格・実Plan/entry/.so・capture復元・fallback0も全て通過した。
+これは保存したepoch末の直接検査であり、全45,000時点のPTを保存したという意味ではない。
+
+回収CPU検証はraw441/441、元SHA/sizeへ復元した24 PT、source303/runtime242/核心4、7入力・先行Gate receipt、
+全8cell・4pair・歴史参照との24epoch直接比較を通過した。`integrity_passed`/`verification_complete`/`stage4_pass`は
+全てtrue、欠落・未検証・errorは0。source/result/driver/検証receiptのSHAと全8セルの二時計は同名JSONへ記録した。
+数値body・runtime・learning loopは変更していない。最終的な研究opt-inとしての採否をProへ提示し、
+公開dispatcherや未変更#132に対する純高速化と混同せず判断する。
