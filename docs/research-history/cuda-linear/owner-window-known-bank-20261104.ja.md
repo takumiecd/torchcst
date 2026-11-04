@@ -5,7 +5,7 @@
 ユーザーは候補や診断の停止を研究全体の終了とせず、Proへの結果相談と次の実装・実験を
 継続することを依頼した。#133の負結果・部分診断・raw判定は保持し、過去の条件を救済しない。
 本件は#132 `fba2e72d`を基準とする新しい前向き比較で、#133の採用再審査ではない。
-Proに部分診断の結果と次の研究方針を送信済み。回答確認まではCPU検証の準備を進める。
+Proは#132から独立した既知bank再利用の短期研究を支持した。事前に固定した基準で比較した。
 
 ## 一つだけ試す変更
 
@@ -72,4 +72,62 @@ fresh-process pairsと同等条件dense Graphを測る。gather/loss/全backward
 
 CPU suite: 1746 passed / 2535 skipped。対象fixture/probe構築テストは8 passed / 120 skipped。
 host C++ syntax、Ruff、Plan/Case宣言、git diff --checkはpass。
-GPU correctness・未計装短期・条件付き長期は未実施。
+GPU検証・短期比較の結果は以下。条件付き長期は短期速度基準未達のため実行しなかった。
+
+
+## 独立したL4 allocationでの結果
+
+測定sourceは`4261aad3eaa6beb346def04b7a1c5edb986b1877`。
+GPUはNVIDIA L4、UUID `9d5c0c4b-b4e9-3248-fb29-2e54ea0624fd`、driver580.82.07。
+Torch2.11.0+cu130/CUDA13/Triton3.6、Python3.13.16、CPU math threads1。
+同一allocationで全検証・36短期cell・4計装診断を完了し、GPU環境の632件が通過した。
+
+| 凍結状態 | #132 baseline ms/update | known-bank ms/update | paired geometric短縮率 | 勝利数 | 同等dense Graph ms/update |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 初期8更新後 | 0.580366850 | 0.565393696 | 2.580545% | 6/6 | 0.204510816 |
+| #132自身の45,000更新後 | 0.589550924 | 0.575424524 | 2.396177% | 6/6 | 0.210274626 |
+
+ms/updateは各256実更新の未計装区間境界同期を6 fresh processesで測った算術平均。
+短縮率は各対応pairの比の幾何平均であり、上の平均値の比とは定義が異なる。
+全モデルは重み付き3層中、中央の1層だけがCST。別モデル・seed・shapeの結果ではない。
+学習後状態は#132の保存checkpointであり、候補自身の45k学習結果ではない。
+短期の45k償却推定は初期1.52–2.58%、学習後2.06–2.25%で、長期実測と区別する。
+
+両状態12 CST cellsずつの開始・終了42状態＋5勾配、metrics/data/orderはbyte一致し、
+既存#132 numeric controlとも一致。finite、unexpected fallback0。
+短期capture込みpeak allocated251.5341797MiB/reserved442MiBで各pairの増分0。
+別途8cycle/128実更新/120replayのprospective memory-v2.1も全項目pass。
+両Planのlifecycle peakは251.9921875MiB/444MiB、cycles3–8のendpointは
+allocated245.4072266MiB/reserved444MiBでplateauとなり、増分0だった。
+
+**両状態で5%以上という事前速度基準を満たさなかった。既知bank再利用は単独では採用せず、
+45,000更新を実行しない。#132を研究baselineとして維持する。**
+2%以上の短期改善は今回の限定条件での観測として保全し、基準を事後に緩めない。
+候補の見送りを研究全体の終了とはせず、この結果をProへ相談して次の単独候補を選ぶ。
+
+## 計装診断と機構の限界
+
+別processのtorch.profiler16更新/条件では96 kernel events/updateで変化なし。
+forward contractは初期88.951563→80.983625us、学習後90.395625→83.609688us、
+reverse contractは初期98.263625→89.751438us、学習後103.561688→96.983625us。
+classifier、sort、raw moments等は今回の変更対象ではない。
+contract短縮と未計装の全モデル改善は整合するが、演算・register・dependency等の因果分解は
+未実施。計装時間を採用判定へ混ぜず、旧#133のNCU結果をこのbinaryの証拠として扱わない。
+
+## 証拠の同定と再確認
+
+- pool job: `l4job-129d2f19c6594832a2c1933ff4a22b3f`
+- source archive SHA256: `6e5f489b5e196bd2be98f4fe8aad9587f8a59b4f100100439059cf959d67af98`
+- driver SHA256: `baf97143e9e4a0c1ee2466f88701170f602e19fe6632ee26b0c79fd4a475c5af`
+- result archive SHA256: `788c6b94c96c3633163b5c6ba0fcbd8d5a58925e2319dd88da80b00fa088ff37`
+- driver returncode0/timed_out=false、source照合、archiveとraw manifest1024ファイルを再hash。
+- lossless CASから22 PT原本を元SHA一致で復元。8cycleの各47 Tensorと短期2状態の各42 Tensor、
+  合計460件を直接loadしてbyte一致を確認。短期の5勾配は全cellのraw hashも比較した。
+
+[処理済み結果](owner-window-known-bank-results-20261104.json)に全pair、memory判定、
+各診断と証拠同定を残した。raw log/trace/checkpoint/driverはignored
+`output/bank-reuse/results/`と共有pool job directoryに保管する。
+実行は共有L4 poolの`submit --source <this-checkout> --script output/bank-reuse/driver.py --timeout 2400`
+と同一キューの`serve --workers 1 --idle-seconds 0`。driverの7入力原本とhashはinput manifestで追跡する。
+GPUは回収後停止を確認し、source CIは[41799959845](https://github.com/takumiecd/torchcst/actions/runs/41799959845)でpass。
+main/dispatcher/mergeは変更しない。
