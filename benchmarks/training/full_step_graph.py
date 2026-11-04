@@ -267,7 +267,16 @@ class PreparedStep:
                 for g in self.optimizer.param_groups
             ),
             tuple(
-                (id(m), type(m), m.training, m.__dict__.get("forward"), type(m).forward)
+                (
+                    id(m),
+                    type(m),
+                    m.training,
+                    m.__dict__.get("forward"),
+                    type(m).forward,
+                    # Traversal deduplicates nodes, while Sequential executes
+                    # every registered edge, including aliases and None.
+                    tuple((name, id(child)) for name, child in m._modules.items()),
+                )
                 for m in self.model.modules()
             ),
             (
