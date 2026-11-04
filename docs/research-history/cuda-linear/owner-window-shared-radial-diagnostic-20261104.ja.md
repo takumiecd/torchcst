@@ -65,3 +65,56 @@ byte不一致、guard迂回、想定外fallback、memory判定失敗、削除機
 
 本記録の初版時点ではGPU診断は未実施。ローカルCPU検証は1739 passed/2439 skipped。
 対象CPUは23 passed/44 skippedで、CUDA検証の代替ではない。host C++ syntax、Ruff、宣言検査はpass。
+
+## 限定診断の結果
+
+**Aの数値・生成コード・実メモリに関する限定診断は成立した。速度採用は未判定。**
+[Draft PR #135](https://github.com/takumiecd/torchcst/pull/135)の測定sourceは
+`5429f527f5817072a15e505998ac963ee19d7ba0`。詳細と証拠のhashは
+[処理済みJSON](owner-window-shared-radial-diagnostic-results-20261104.json)に記録した。
+
+一回のL4 job `l4job-c6b39d81429a4b16a0301322bc6ae7e5`で、未変更#132 runtime archiveと
+候補を別build dirから実行した。controlのsrc全242ファイルを元hashと照合し、benchmarkの
+計装だけ対称に揃えた。GPU UUIDは`d2c9ed43-aa0d-7aa0-0c17-f2bf469ebede`、driver580.82.07、
+Torch2.11.0+cu130/CUDA13/Triton3.6/Python3.13.16。N1024/A52428/真B4/seed41/TF32off/CPU threads1。
+
+- #132の8更新状態と自身の45k checkpointで、同じ実モデルX/dYから得るkeys/geometry/Y/dX/全dPがbyte一致。
+  同じP/m/v/clockからsite-only native更新を1回実行し、42状態一致（8→9 / 45000→45001）。
+- 各状態16実Graph更新で42状態・5勾配・metrics/order一致、fallback0、capture復元pass。
+  保存Tensorのstepを取得後に直接読み、24と45016を確認した。
+- 代表rank6/12/17、K2、wide/周期境界/相殺、部分勾配、saved hooks/offload/retained/current-P、
+  不正metadata拒否、合法nonzero offset、Graph guard等45 GPU tests pass。
+  FP64 Fourier参照による小fixture検証を含む。新たな全52k quadrature検証ではない。
+- 8cycle×16実更新（128実更新/120 replay）の各47状態・勾配とmetrics/orderが一致。
+  24個のPTを原file bytesと同一に復元し、全642 Tensor比較がbyte一致した。
+
+実際にloadした通常buildの.soとPTX/SASS/resourceを保存した。対応するPTX entryのprofile呼出しは
+controlがforward/reverse各1、Aはforward1/reverse0。reverseのregisterは86→72、stackは304→272 bytes。
+forwardは79 registers/288 bytesのまま。これは削除機構の証拠であり、時間短縮率ではない。
+最適化は元のO2/ftz=false、NVCC --keepは生成物保存用。fast-math/fmad=false/lineinfo/register capなし。
+
+| capture・評価・再準備を含むメモリ | #132 | A | 差 |
+| --- | ---: | ---: | ---: |
+| peak allocated | 251.9921875 MiB | 251.9921875 MiB | 0 |
+| peak reserved | 444 MiB | 444 MiB | 0 |
+| 評価後endpoint allocated（全8cycle） | 257,328,128 bytes | 同左 | 0 |
+| endpoint reserved（cycle1 / cycle2以降） | 463,470,592 / 465,567,744 bytes | 同左 | 0 |
+
+prospective memory-v2.1の全項目がpass。各31phaseのcurrent/peak allocated/reservedも全て一致した。
+追加wの論理保存量・読み書きは存在する。equal peakだけから「無コスト」「allocator再利用を証明」とは
+言わない。現在の実測範囲では既存のピークを増やさなかった、という観測である。
+Graphの新Plan→recipe→native entryのsource routeは確認したが、このjobでdynamic kernel traceは取っていない。
+
+source archive SHA256は`e781045fe4e9845445333c7dd8e8bb457735ffc027995c9685a10c570bf0a543`、
+result archiveは`aa2e7e427c46fcc5e4d35059ba0f73f46f18862c49c1a958a0c268868f61b919`。
+raw manifest全1318ファイルを取得後に再hash照合、driver return0/timeoutfalse、owned VM停止を確認した。
+原本は共有poolのjob directory、作業用コピーはこのworktreeの`output/shared-radial/results/`に保持。
+raw logs/PT/実binary/中間生成物はcommitしていない。
+
+source CI [41818495957](https://github.com/takumiecd/torchcst/actions/runs/41818495957)は
+Linux CPU1738 passed/2441 skipped、宣言・wheel/sdist buildを含めsuccess。
+ローカルmacOSとplatform skipの内訳は異なる。host syntax最終検査もpass。
+
+正式36短期cell・二順序45kは未実施。16更新の時間や計装付きlifecycle時間を性能判定に使わない。
+限定診断結果をProへ戻し、正式短期比較へ費用を払う価値を再レビュー中。#132 baseline、#133/#134の
+負結果、Draft/未マージ、公開dispatcher未変更を維持する。

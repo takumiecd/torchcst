@@ -1,0 +1,648 @@
+{
+  "scope": "A limited feasibility only; not a performance adoption result",
+  "source_commit": "5429f527f5817072a15e505998ac963ee19d7ba0",
+  "baseline_commit": "fba2e72d733325fbd7be5aac334a0a7463d96b27",
+  "pr": 135,
+  "result": {
+    "id": "l4job-c6b39d81429a4b16a0301322bc6ae7e5",
+    "source_sha256": "e781045fe4e9845445333c7dd8e8bb457735ffc027995c9685a10c570bf0a543",
+    "gpu": "NVIDIA L4, GPU-d2c9ed43-aa0d-7aa0-0c17-f2bf469ebede, 580.82.07, 23034 MiB",
+    "requested_accelerator": "L4",
+    "versions": {
+      "python": "3.13.16 (main, Oct  1 2026, 15:40:24) [GCC 13.3.0]",
+      "torch": "2.11.0+cu130",
+      "cuda": "13.0",
+      "triton": "3.6.0"
+    },
+    "returncode": 0,
+    "timed_out": false,
+    "started": 1793790368.3961248,
+    "finished": 1793791038.1805973,
+    "timeout_scope": "driver process, including any setup inside driver"
+  },
+  "retrieval": {
+    "job": "l4job-c6b39d81429a4b16a0301322bc6ae7e5",
+    "archive_sha256": "aa2e7e427c46fcc5e4d35059ba0f73f46f18862c49c1a958a0c268868f61b919",
+    "source_sha256": "e781045fe4e9845445333c7dd8e8bb457735ffc027995c9685a10c570bf0a543",
+    "raw_manifest_verified_files": 1318,
+    "returncode": 0,
+    "timed_out": false,
+    "restored_checkpoints": 24
+  },
+  "decision": {
+    "scope": "A feasibility only, no speed adoption",
+    "runtime_baseline": "fba2e72d733325fbd7be5aac334a0a7463d96b27",
+    "runtime_candidate": "5429f527f5817072a15e505998ac963ee19d7ba0",
+    "control_src_files_verified": 242,
+    "control_benchmark_instrumentation": [
+      "full_step_graph.py",
+      "full_step_graph_comparison.py",
+      "full_step_graph_learning.py",
+      "full_step_graph_learning_diagnostics.py",
+      "shared_radial_feasibility.py"
+    ],
+    "long_run_executed": false,
+    "formal_short_study_executed": false,
+    "diagnostic_established": true,
+    "all_atom_vjp_update_byte_equal": true,
+    "matched_graph16_byte_equal": true,
+    "representative_contracts_passed": true,
+    "profile_deletion_established": true,
+    "lifecycle_pass": true,
+    "disposition": "review feasibility results before any formal short study"
+  },
+  "source_control": {
+    "src_files_verified": 242,
+    "archive_sha256": "a42a3a2829241fab62a3caf8797e9f9fdb345fbe9ac258d48cdff2368086b614",
+    "benchmark_instrumentation_files": [
+      "full_step_graph.py",
+      "full_step_graph_comparison.py",
+      "full_step_graph_learning.py",
+      "full_step_graph_learning_diagnostics.py",
+      "shared_radial_feasibility.py"
+    ]
+  },
+  "all_atom_vjp": [
+    {
+      "state": "initial",
+      "atoms": 52428,
+      "fields": [
+        "x",
+        "dy",
+        "y",
+        "dx",
+        "dp",
+        "keys",
+        "geometry"
+      ],
+      "byte_equal": true,
+      "native_update_clocks": [
+        8,
+        9
+      ]
+    },
+    {
+      "state": "final",
+      "atoms": 52428,
+      "fields": [
+        "x",
+        "dy",
+        "y",
+        "dx",
+        "dp",
+        "keys",
+        "geometry"
+      ],
+      "byte_equal": true,
+      "native_update_clocks": [
+        45000,
+        45001
+      ]
+    }
+  ],
+  "graph16": [
+    {
+      "state": "initial",
+      "state_fields": 42,
+      "gradient_fields": 5,
+      "clock_start": 8,
+      "clock_end": 24,
+      "byte_equal": true,
+      "metrics_order_equal": true,
+      "unexpected_fallbacks": 0
+    },
+    {
+      "state": "final",
+      "state_fields": 42,
+      "gradient_fields": 5,
+      "clock_start": 45000,
+      "clock_end": 45016,
+      "byte_equal": true,
+      "metrics_order_equal": true,
+      "unexpected_fallbacks": 0
+    }
+  ],
+  "gpu_representative_tests": 45,
+  "direct_tensor_checks": {
+    "pairs": [
+      {
+        "baseline": "cells/final-base.pt",
+        "candidate": "cells/final-shared.pt",
+        "all_byte_equal": true,
+        "fields": 42,
+        "different": []
+      },
+      {
+        "baseline": "cells/initial-base.pt",
+        "candidate": "cells/initial-shared.pt",
+        "all_byte_equal": true,
+        "fields": 42,
+        "different": []
+      },
+      {
+        "baseline": "vjp-final-base.pt",
+        "candidate": "vjp-final-shared.pt",
+        "all_byte_equal": true,
+        "fields": 91,
+        "different": []
+      },
+      {
+        "baseline": "vjp-initial-base.pt",
+        "candidate": "vjp-initial-shared.pt",
+        "all_byte_equal": true,
+        "fields": 91,
+        "different": []
+      },
+      {
+        "epoch": 1,
+        "all_byte_equal": true,
+        "fields": 47,
+        "different": []
+      },
+      {
+        "epoch": 2,
+        "all_byte_equal": true,
+        "fields": 47,
+        "different": []
+      },
+      {
+        "epoch": 3,
+        "all_byte_equal": true,
+        "fields": 47,
+        "different": []
+      },
+      {
+        "epoch": 4,
+        "all_byte_equal": true,
+        "fields": 47,
+        "different": []
+      },
+      {
+        "epoch": 5,
+        "all_byte_equal": true,
+        "fields": 47,
+        "different": []
+      },
+      {
+        "epoch": 6,
+        "all_byte_equal": true,
+        "fields": 47,
+        "different": []
+      },
+      {
+        "epoch": 7,
+        "all_byte_equal": true,
+        "fields": 47,
+        "different": []
+      },
+      {
+        "epoch": 8,
+        "all_byte_equal": true,
+        "fields": 47,
+        "different": []
+      }
+    ],
+    "total_tensor_comparisons": 642,
+    "all_byte_equal": true
+  },
+  "codegen": {
+    "base": {
+      "extension_sha256": "de3c6ba7005e0cbba399631cb427cc2efe6c1b7e9de5302b84d42d3cb7c416a3",
+      "ptx_sha256": "6d582a7ccbc77aba178a27b251a20193e3b347d3e97d4b50d8ec9f65d56ed7b9",
+      "entries": {
+        "forward": {
+          "symbol": "_ZN16radius_cell_mass9fp32_body28owner_window_contract_kernelIfLb0ELb1ELb1ELb1EEEvPKT_PKfS6_S6_S6_PfS7_PS2_S7_PKlSA_iiNS_4AxisESB_NS_17OwnerWindowLayoutEbbbPKd",
+          "body_sha256": "39ffb4361056d241c810ff801fc457e42915daae952da65563cf71d26f74588e",
+          "profile_symbol_occurrences": 1,
+          "resources": "REG:79 STACK:288 SHARED:0 LOCAL:0 CONSTANT[2]:32 CONSTANT[0]:3024 TEXTURE:0 SURFACE:0 SAMPLER:0"
+        },
+        "reverse": {
+          "symbol": "_ZN16radius_cell_mass9fp32_body28owner_window_contract_kernelIfLb1ELb1ELb1ELb1EEEvPKT_PKfS6_S6_S6_PfS7_PS2_S7_PKlSA_iiNS_4AxisESB_NS_17OwnerWindowLayoutEbbbPKd",
+          "body_sha256": "9c6504cb44aa98d4beb5664c6ac04f55e9d9fa6ed9d068e266219d4429f4b81d",
+          "profile_symbol_occurrences": 1,
+          "resources": "REG:86 STACK:304 SHARED:0 LOCAL:0 CONSTANT[2]:32 CONSTANT[0]:3024 TEXTURE:0 SURFACE:0 SAMPLER:0"
+        }
+      },
+      "codegen_flags": "same O2/ftz=false optimization; NVCC --keep artifact retention; no fast-math/register/lineinfo changes"
+    },
+    "shared": {
+      "extension_sha256": "4c865bca0569cd960b99111dcc30ef4617c70638f3e75a935e59f72f729e8a77",
+      "ptx_sha256": "e9a4e6a51330dcb543d4d4eaf3e51b8d846df4ca780f031e4a2baaf5750f553f",
+      "entries": {
+        "forward": {
+          "symbol": "_ZN16radius_cell_mass9fp32_body28owner_window_contract_kernelIfLb0ELb1ELb1ELb1ELb1EEEvPKT_PKfS6_S6_S6_PfS7_PS2_S7_PKlSA_iiNS_4AxisESB_NS_17OwnerWindowLayoutEbbbPKdS7_",
+          "body_sha256": "cda27333deda58407d8227fff484efdd911c6a09678b6a3bd1dfd79c35f579cf",
+          "profile_symbol_occurrences": 1,
+          "resources": "REG:79 STACK:288 SHARED:0 LOCAL:0 CONSTANT[2]:32 CONSTANT[0]:3032 TEXTURE:0 SURFACE:0 SAMPLER:0"
+        },
+        "reverse": {
+          "symbol": "_ZN16radius_cell_mass9fp32_body28owner_window_contract_kernelIfLb1ELb1ELb1ELb1ELb1EEEvPKT_PKfS6_S6_S6_PfS7_PS2_S7_PKlSA_iiNS_4AxisESB_NS_17OwnerWindowLayoutEbbbPKdS7_",
+          "body_sha256": "c8e608831beb245837f909cf5416fdd387fd5b47a7a5163d51d1d7550c93932c",
+          "profile_symbol_occurrences": 0,
+          "resources": "REG:72 STACK:272 SHARED:0 LOCAL:0 CONSTANT[2]:32 CONSTANT[0]:3032 TEXTURE:0 SURFACE:0 SAMPLER:0"
+        }
+      },
+      "codegen_flags": "same O2/ftz=false optimization; NVCC --keep artifact retention; no fast-math/register/lineinfo changes"
+    }
+  },
+  "memory_gate": {
+    "gate_version": "graph-lifecycle-memory-v2.1",
+    "evidence_scope": "prospective",
+    "baseline_run": "lifecycle-base",
+    "candidate_run": "lifecycle-shared",
+    "endpoint_phase": "after_eval_train_sync_before_checkpoint_and_graph_retirement",
+    "numerical_evidence": "recorded Tensor hashes/dtypes/shapes and metrics; no Tensor loading",
+    "cycles": 8,
+    "stable_cycles": [
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "allocated_budget_bytes": 2097152,
+    "reserved_budget_bytes": 8388608,
+    "status": "pass",
+    "passed": true,
+    "checks": {
+      "fixed_cycles_and_updates": true,
+      "recorded_phase_matches": true,
+      "same_start_and_workload": true,
+      "recorded_states_gradients_metrics_equal": true,
+      "no_unexpected_fallback": true,
+      "allocated_peak_budget": true,
+      "allocated_peak_covers_endpoints": true,
+      "allocated_peak_covers_epoch_peaks": true,
+      "baseline_allocated_cycles_3_to_8_constant": true,
+      "candidate_allocated_cycles_3_to_8_constant": true,
+      "reserved_peak_budget": true,
+      "reserved_peak_covers_endpoints": true,
+      "reserved_peak_covers_epoch_peaks": true,
+      "baseline_reserved_cycles_3_to_8_constant": true,
+      "candidate_reserved_cycles_3_to_8_constant": true
+    },
+    "reasons": [],
+    "allocated_peak_delta_bytes": 0,
+    "baseline_allocated_endpoints_bytes": [
+      257328128,
+      257328128,
+      257328128,
+      257328128,
+      257328128,
+      257328128,
+      257328128,
+      257328128
+    ],
+    "candidate_allocated_endpoints_bytes": [
+      257328128,
+      257328128,
+      257328128,
+      257328128,
+      257328128,
+      257328128,
+      257328128,
+      257328128
+    ],
+    "reserved_peak_delta_bytes": 0,
+    "baseline_reserved_endpoints_bytes": [
+      463470592,
+      465567744,
+      465567744,
+      465567744,
+      465567744,
+      465567744,
+      465567744,
+      465567744
+    ],
+    "candidate_reserved_endpoints_bytes": [
+      463470592,
+      465567744,
+      465567744,
+      465567744,
+      465567744,
+      465567744,
+      465567744,
+      465567744
+    ]
+  },
+  "memory": {
+    "base_peak_allocated_bytes": 264232960,
+    "candidate_peak_allocated_bytes": 264232960,
+    "base_peak_reserved_bytes": 465567744,
+    "candidate_peak_reserved_bytes": 465567744,
+    "phases_all_recorded_memory_fields_equal": true,
+    "recorded_phase_count_per_variant": 31,
+    "same_memory_phases": [
+      {
+        "phase": "capture_restored",
+        "reason": "bootstrap",
+        "at_update": 8,
+        "allocated_bytes": 257328640,
+        "reserved_bytes": 463470592,
+        "peak_allocated_bytes": 263752704,
+        "peak_reserved_bytes": 463470592
+      },
+      {
+        "phase": "evaluation_with_graph",
+        "reason": "epoch_end",
+        "at_update": 16,
+        "allocated_bytes": 257328128,
+        "reserved_bytes": 463470592,
+        "peak_allocated_bytes": 263752704,
+        "peak_reserved_bytes": 463470592
+      },
+      {
+        "phase": "old_graph_retired",
+        "reason": "evaluation_boundary",
+        "at_update": 16,
+        "allocated_bytes": 256949760,
+        "reserved_bytes": 463470592,
+        "peak_allocated_bytes": 263752704,
+        "peak_reserved_bytes": 463470592
+      },
+      {
+        "phase": "certificates_renewed",
+        "reason": "evaluation_boundary",
+        "at_update": 16,
+        "allocated_bytes": 256949760,
+        "reserved_bytes": 465567744,
+        "peak_allocated_bytes": 263752704,
+        "peak_reserved_bytes": 465567744
+      },
+      {
+        "phase": "capture_restored",
+        "reason": "evaluation_boundary",
+        "at_update": 16,
+        "allocated_bytes": 257808896,
+        "reserved_bytes": 465567744,
+        "peak_allocated_bytes": 264232960,
+        "peak_reserved_bytes": 465567744
+      },
+      {
+        "phase": "evaluation_with_graph",
+        "reason": "epoch_end",
+        "at_update": 32,
+        "allocated_bytes": 257328128,
+        "reserved_bytes": 465567744,
+        "peak_allocated_bytes": 264232960,
+        "peak_reserved_bytes": 465567744
+      },
+      {
+        "phase": "old_graph_retired",
+        "reason": "evaluation_boundary",
+        "at_update": 32,
+        "allocated_bytes": 256949760,
+        "reserved_bytes": 465567744,
+        "peak_allocated_bytes": 264232960,
+        "peak_reserved_bytes": 465567744
+      },
+      {
+        "phase": "certificates_renewed",
+        "reason": "evaluation_boundary",
+        "at_update": 32,
+        "allocated_bytes": 256949760,
+        "reserved_bytes": 465567744,
+        "peak_allocated_bytes": 264232960,
+        "peak_reserved_bytes": 465567744
+      },
+      {
+        "phase": "capture_restored",
+        "reason": "evaluation_boundary",
+        "at_update": 32,
+        "allocated_bytes": 257808896,
+        "reserved_bytes": 465567744,
+        "peak_allocated_bytes": 264232960,
+        "peak_reserved_bytes": 465567744
+      },
+      {
+        "phase": "evaluation_with_graph",
+        "reason": "epoch_end",
+        "at_update": 48,
+        "allocated_bytes": 257328128,
+        "reserved_bytes": 465567744,
+        "peak_allocated_bytes": 264232960,
+        "peak_reserved_bytes": 465567744
+      },
+      {
+        "phase": "old_graph_retired",
+        "reason": "evaluation_boundary",
+        "at_update": 48,
+        "allocated_bytes": 256949760,
+        "reserved_bytes": 465567744,
+        "peak_allocated_bytes": 264232960,
+        "peak_reserved_bytes": 465567744
+      },
+      {
+        "phase": "certificates_renewed",
+        "reason": "evaluation_boundary",
+        "at_update": 48,
+        "allocated_bytes": 256949760,
+        "reserved_bytes": 465567744,
+        "peak_allocated_bytes": 264232960,
+        "peak_reserved_bytes": 465567744
+      },
+      {
+        "phase": "capture_restored",
+        "reason": "evaluation_boundary",
+        "at_update": 48,
+        "allocated_bytes": 257808896,
+        "reserved_bytes": 465567744,
+        "peak_allocated_bytes": 264232960,
+        "peak_reserved_bytes": 465567744
+      },
+      {
+        "phase": "evaluation_with_graph",
+        "reason": "epoch_end",
+        "at_update": 64,
+        "allocated_bytes": 257328128,
+        "reserved_bytes": 465567744,
+        "peak_allocated_bytes": 264232960,
+        "peak_reserved_bytes": 465567744
+      },
+      {
+        "phase": "old_graph_retired",
+        "reason": "evaluation_boundary",
+        "at_update": 64,
+        "allocated_bytes": 256949760,
+        "reserved_bytes": 465567744,
+        "peak_allocated_bytes": 264232960,
+        "peak_reserved_bytes": 465567744
+      },
+      {
+        "phase": "certificates_renewed",
+        "reason": "evaluation_boundary",
+        "at_update": 64,
+        "allocated_bytes": 256949760,
+        "reserved_bytes": 465567744,
+        "peak_allocated_bytes": 264232960,
+        "peak_reserved_bytes": 465567744
+      },
+      {
+        "phase": "capture_restored",
+        "reason": "evaluation_boundary",
+        "at_update": 64,
+        "allocated_bytes": 257808896,
+        "reserved_bytes": 465567744,
+        "peak_allocated_bytes": 264232960,
+        "peak_reserved_bytes": 465567744
+      },
+      {
+        "phase": "evaluation_with_graph",
+        "reason": "epoch_end",
+        "at_update": 80,
+        "allocated_bytes": 257328128,
+        "reserved_bytes": 465567744,
+        "peak_allocated_bytes": 264232960,
+        "peak_reserved_bytes": 465567744
+      },
+      {
+        "phase": "old_graph_retired",
+        "reason": "evaluation_boundary",
+        "at_update": 80,
+        "allocated_bytes": 256949760,
+        "reserved_bytes": 465567744,
+        "peak_allocated_bytes": 264232960,
+        "peak_reserved_bytes": 465567744
+      },
+      {
+        "phase": "certificates_renewed",
+        "reason": "evaluation_boundary",
+        "at_update": 80,
+        "allocated_bytes": 256949760,
+        "reserved_bytes": 465567744,
+        "peak_allocated_bytes": 264232960,
+        "peak_reserved_bytes": 465567744
+      },
+      {
+        "phase": "capture_restored",
+        "reason": "evaluation_boundary",
+        "at_update": 80,
+        "allocated_bytes": 257808896,
+        "reserved_bytes": 465567744,
+        "peak_allocated_bytes": 264232960,
+        "peak_reserved_bytes": 465567744
+      },
+      {
+        "phase": "evaluation_with_graph",
+        "reason": "epoch_end",
+        "at_update": 96,
+        "allocated_bytes": 257328128,
+        "reserved_bytes": 465567744,
+        "peak_allocated_bytes": 264232960,
+        "peak_reserved_bytes": 465567744
+      },
+      {
+        "phase": "old_graph_retired",
+        "reason": "evaluation_boundary",
+        "at_update": 96,
+        "allocated_bytes": 256949760,
+        "reserved_bytes": 465567744,
+        "peak_allocated_bytes": 264232960,
+        "peak_reserved_bytes": 465567744
+      },
+      {
+        "phase": "certificates_renewed",
+        "reason": "evaluation_boundary",
+        "at_update": 96,
+        "allocated_bytes": 256949760,
+        "reserved_bytes": 465567744,
+        "peak_allocated_bytes": 264232960,
+        "peak_reserved_bytes": 465567744
+      },
+      {
+        "phase": "capture_restored",
+        "reason": "evaluation_boundary",
+        "at_update": 96,
+        "allocated_bytes": 257808896,
+        "reserved_bytes": 465567744,
+        "peak_allocated_bytes": 264232960,
+        "peak_reserved_bytes": 465567744
+      },
+      {
+        "phase": "evaluation_with_graph",
+        "reason": "epoch_end",
+        "at_update": 112,
+        "allocated_bytes": 257328128,
+        "reserved_bytes": 465567744,
+        "peak_allocated_bytes": 264232960,
+        "peak_reserved_bytes": 465567744
+      },
+      {
+        "phase": "old_graph_retired",
+        "reason": "evaluation_boundary",
+        "at_update": 112,
+        "allocated_bytes": 256949760,
+        "reserved_bytes": 465567744,
+        "peak_allocated_bytes": 264232960,
+        "peak_reserved_bytes": 465567744
+      },
+      {
+        "phase": "certificates_renewed",
+        "reason": "evaluation_boundary",
+        "at_update": 112,
+        "allocated_bytes": 256949760,
+        "reserved_bytes": 465567744,
+        "peak_allocated_bytes": 264232960,
+        "peak_reserved_bytes": 465567744
+      },
+      {
+        "phase": "capture_restored",
+        "reason": "evaluation_boundary",
+        "at_update": 112,
+        "allocated_bytes": 257808896,
+        "reserved_bytes": 465567744,
+        "peak_allocated_bytes": 264232960,
+        "peak_reserved_bytes": 465567744
+      },
+      {
+        "phase": "evaluation_with_graph",
+        "reason": "epoch_end",
+        "at_update": 128,
+        "allocated_bytes": 257328128,
+        "reserved_bytes": 465567744,
+        "peak_allocated_bytes": 264232960,
+        "peak_reserved_bytes": 465567744
+      },
+      {
+        "phase": "final_retired",
+        "reason": "final_retirement",
+        "at_update": 128,
+        "allocated_bytes": 252374016,
+        "reserved_bytes": 465567744,
+        "peak_allocated_bytes": 264232960,
+        "peak_reserved_bytes": 465567744
+      }
+    ],
+    "interpretation": "Additional w exists logically. Equal measured allocator peaks do not prove absence of storage/read/write costs or establish allocator reuse causally."
+  },
+  "ci": {
+    "source_run": 41818495957,
+    "status": "success",
+    "linux_cpu": {
+      "passed": 1738,
+      "skipped": 2441
+    },
+    "local_cpu_before_last_gpu_only_case": {
+      "passed": 1739,
+      "skipped": 2439
+    },
+    "local_target_cpu": {
+      "passed": 23,
+      "skipped": 44
+    },
+    "host_syntax": "pass; two upstream Torch C++20-extension warnings"
+  },
+  "limits": [
+    "One L4 allocation",
+    "No formal 36-cell performance study or new 45000 updates",
+    "No timing-adoption claim from 16 updates or instrumented lifecycle",
+    "No dynamic kernel trace in this allocation; source route reviewed",
+    "Independent FP64 Fourier fixture oracle, not new all-atom quadrature",
+    "General dispatcher unchanged; Draft unmerged"
+  ],
+  "review": {
+    "design_pro_turn": "875aac7d-82ed-44ca-89ca-a94dac171109",
+    "post_feasibility_pro_review": "pending"
+  }
+}
