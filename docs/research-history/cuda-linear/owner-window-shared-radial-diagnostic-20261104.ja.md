@@ -178,3 +178,53 @@ MAX_JOBSを1に抑える。これはcompile時の同時実行数であり、生�
 変えるものではない。driverの実行上限1200秒は維持し、private supervisor wrapperで長いexecの
 通信・archive作成の猶予だけ600秒追加する。共有queue・所有権・cleanup規則は変えない。
 再び結果取得ができなければ、その状態を保全して停止し、未検証の時間から採用判定しない。
+
+## 正式短期比較の結果：最初の有効pairで停止
+
+**固定Aは現行の採用guideを通らず、採用しない。** 限定診断成立は維持するが、
+全体速度の6/6勝利条件は、初期状態の最初の有効pairで満たせなくなった。
+[正式比較の処理済みJSON](owner-window-shared-radial-short-results-20261104.json)に詳細を残した。
+
+再提出job `l4job-bd50dc8ab66940c0a6f22e0946901242`はreturn0/timeoutfalseで取得できた。
+NVIDIA L4 UUID `19e16bfa-4cca-6304-d11f-180e07a7420c`、driver580.82.07、
+Torch2.11.0+cu130/CUDA13/Triton3.6/Python3.13.16。提出sourceは`0332eb04836ce83dd9a9b36c7c352da92a7a71d7`、
+CUDA runtimeは限定診断の`5429f527`から未変更。MAX_JOBS1はcompileだけの設定で、
+性能cellは従来どおりCPU math threads1/真B4/TF32off/Graph、未計装の256実更新。
+
+| 初期8更新後・repeat0 | 完全step ms/更新 | peak allocated | peak reserved |
+| --- | ---: | ---: | ---: |
+| #132 | 0.5780784023 | 251.5341797 MiB | 442 MiB |
+| A | 0.6173719297 | 251.5341797 MiB | 442 MiB |
+
+候補/基準は`1.0679726611210163`、このpairでは候補の所要時間が約6.80%長かった。
+6pairの幾何平均を求めた結果ではなく、統計的な一般回帰を確定した意味でもない。
+「有効な負けpairを捨てず、その時点で停止する」という事前規則を適用した結果である。
+予定最大36に対して実施2。残りの初期CST10・dense6、finalのCST12・dense6、二順序45kは未実施。
+denseを測っていないため、このjobからCST/dense速度比を作らない。
+
+両cellで実recipe/native entry、Graph存在・eligible・GradMode・実middle/Pのrequires_gradを
+計時外にassert・記録し、基準と候補の入口が正しいことを確認した。loadした実.soを原hashと照合して保存。
+dump/圧縮は性能cell後であり、cell間に挟んでいない。両cellは同じ#132凍結start/end/全5勾配・
+metrics/order/finite/fallback0を満たし、保存PTの47 Tensorも直接byte一致した。
+全Parameterとnative側stepを取得後に読み、共に8→264であることを確認した。
+
+先に行った追加phase同期なしの8×16 lifecycleも、prospective memory-v2.1の全項目pass。
+128実更新/120 replay、各47状態・勾配とmetrics/orderが一致し、peakは両者251.9921875/444 MiB。
+各8endpoint、cycles3–8 plateau、summary>=epoch peak>=endpoint、予算も成立した。
+formal取得分の18 PTをlossless復元し、47×(1 pair+8 epochs)=423 Tensorを直接byte照合した。
+これにより、前の計装付きメモリpassだけへ依存していないことも確認できた。
+
+取得した実.so/PTXの内容hashと通常O2/ftz=falseも再確認した。対応PTX entryのbody hashは
+限定診断と同じであり、reverseのprofile呼出し削除とREG86→72/STACK304→272は維持されていた。
+**削除機構・数値互換・実メモリは成立したが、それだけでは完全stepの利益を保証しなかった。**
+追加store/readや依存待ちが相殺した可能性はあるが、この未計装比較だけから原因は確定しない。
+原因解明のGPU探索や、B/配置変更による救済へは自動移行しない。
+
+source archive SHA256は`853bd8567fd1d09af52c9a2c6ac16840565bf8c29b867edfd8b9cbe02b02cc6b`、
+result archiveは`df359f8db9cd041c102f23a7ed31937e6ff99ffd37bfe4080704287f430abed4`。
+raw manifest全764ファイル、候補src全242ファイル、展開した実.so/PTXのhashを再照合した。
+原本はpool job directory、作業コピーは`output/shared-radial/formal-results/`に保持し、owned VM停止を確認。
+最初の通信中断のsource/logも保持し、その未取得データから成否を推測しない。
+再提出の成功は、MAX_JOBSや通信猶予の変更が中断原因を解決したという証明ではない。
+
+#132をbaselineとし、PR #135は負結果を含むDraft・未マージの研究記録として保全する。

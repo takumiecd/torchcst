@@ -1,0 +1,393 @@
+{
+  "scope": "prespecified early stopping of fixed A; one valid initial paired comparison, not a six-pair estimate or general regression proof",
+  "decision": {
+    "scope": "fixed A formal short study only",
+    "runtime_baseline": "fba2e72d733325fbd7be5aac334a0a7463d96b27",
+    "runtime_candidate": "5429f527f5817072a15e505998ac963ee19d7ba0",
+    "submitted_source": "0332eb04836ce83dd9a9b36c7c352da92a7a71d7",
+    "control_src_files_verified": 242,
+    "formal_short_study_executed": true,
+    "formal_short_gates_pass": false,
+    "long_run_executed": false,
+    "planned_maximum_cells": 36,
+    "performed_cells": 2,
+    "profiled_adoption_cells": false,
+    "lifecycle_pass": true,
+    "disposition": "stop fixed A at prespecified formal guide",
+    "reason": "valid paired loss: six-of-six speed condition is no longer satisfiable"
+  },
+  "result": {
+    "id": "l4job-bd50dc8ab66940c0a6f22e0946901242",
+    "source_sha256": "853bd8567fd1d09af52c9a2c6ac16840565bf8c29b867edfd8b9cbe02b02cc6b",
+    "gpu": "NVIDIA L4, GPU-19e16bfa-4cca-6304-d11f-180e07a7420c, 580.82.07, 23034 MiB",
+    "requested_accelerator": "L4",
+    "versions": {
+      "python": "3.13.16 (main, Oct  1 2026, 15:40:24) [GCC 13.3.0]",
+      "torch": "2.11.0+cu130",
+      "cuda": "13.0",
+      "triton": "3.6.0"
+    },
+    "returncode": 0,
+    "timed_out": false,
+    "started": 1793794717.9931812,
+    "finished": 1793795398.9827347,
+    "timeout_scope": "driver process, including any setup inside driver"
+  },
+  "retrieval": {
+    "job": "l4job-bd50dc8ab66940c0a6f22e0946901242",
+    "archive_sha256": "df359f8db9cd041c102f23a7ed31937e6ff99ffd37bfe4080704287f430abed4",
+    "source_sha256": "853bd8567fd1d09af52c9a2c6ac16840565bf8c29b867edfd8b9cbe02b02cc6b",
+    "raw_manifest_verified_files": 764,
+    "returncode": 0,
+    "timed_out": false,
+    "restored_checkpoints": 18
+  },
+  "runtime_source": "5429f527f5817072a15e505998ac963ee19d7ba0",
+  "submitted_source": "0332eb04836ce83dd9a9b36c7c352da92a7a71d7",
+  "baseline_source": "fba2e72d733325fbd7be5aac334a0a7463d96b27",
+  "driver_sha256": "2523c7e366bdd5a1eaf460e565d8acd6b4d61e08c11c0c52878a2746bedc02c7",
+  "cells": [
+    {
+      "state": "initial",
+      "repeat": 0,
+      "kind": "cst",
+      "precision": "fp32_geometry_sort32_flat_c",
+      "study_variant": "base",
+      "mode": "graph",
+      "steps": 256,
+      "seconds": 0.14798807099998612,
+      "mean_step_ms": 0.5780784023436958,
+      "examples_per_second": 6919.476638087242,
+      "setup_seconds": 3.057211233999965,
+      "retirement_seconds": 0.1102411240000265,
+      "setup_and_retirement_seconds": 3.1674523579999914,
+      "profiled_diagnostic_only": false,
+      "unexpected_fallbacks": 0,
+      "finite": true,
+      "peak_allocated_bytes": 263752704,
+      "peak_reserved_bytes": 463470592,
+      "memory_scope": "before optimizer construction/loading, warmup, workspace/capture/restoration through replay; no peak reset after capture",
+      "timing_scope": "256-step block, gather/loss/all backward/optimizer/metrics plus replay guard/index copy/version notification, boundary synchronization only",
+      "bootstrap_precision": "fp32",
+      "flat_c_baseline": true,
+      "initialization_sha256": "b49e95e722dab4e42d935a9ac2b239212e93660af55bf6d6a9f12f437a9f2ed6",
+      "order_sha256": "2cae6bd5d804452470ff9597e0c7143b9be9e4a853fa3b40578ca524892f1afa",
+      "execution_record": {
+        "graph_present": true,
+        "eligible": true,
+        "grad_enabled": true,
+        "parameters_require_grad": true,
+        "schedule": "global_owner_window_fp32_geometry_sort32_flat_c",
+        "native_entry": "research_owner_window_fp32_geometry_sort32_flat_c",
+        "middle_requires_grad": true,
+        "atom_requires_grad": true,
+        "extension_path": "/content/l4job-bd50dc8ab66940c0a6f22e0946901242/source/output/extension-builds/base/torchcst_radius_cell_mass_0266a8c9f7b8/torchcst_radius_cell_mass_0266a8c9f7b8.so",
+        "extension_sha256": "097e3bf7af30ec468d0c51d8d9a764e2c6d3e5f38ce9e83300cccc1bf74e5550"
+      },
+      "execution_record_scope": "outside setup, throughput and retirement clocks; strings/bools only"
+    },
+    {
+      "state": "initial",
+      "repeat": 0,
+      "kind": "cst",
+      "precision": "fp32_shared_radial",
+      "study_variant": "shared",
+      "mode": "graph",
+      "steps": 256,
+      "seconds": 0.15804721400002109,
+      "mean_step_ms": 0.6173719296875824,
+      "examples_per_second": 6479.076562525572,
+      "setup_seconds": 3.022200597000051,
+      "retirement_seconds": 0.11505398199994943,
+      "setup_and_retirement_seconds": 3.1372545790000004,
+      "profiled_diagnostic_only": false,
+      "unexpected_fallbacks": 0,
+      "finite": true,
+      "peak_allocated_bytes": 263752704,
+      "peak_reserved_bytes": 463470592,
+      "memory_scope": "before optimizer construction/loading, warmup, workspace/capture/restoration through replay; no peak reset after capture",
+      "timing_scope": "256-step block, gather/loss/all backward/optimizer/metrics plus replay guard/index copy/version notification, boundary synchronization only",
+      "bootstrap_precision": "fp32",
+      "flat_c_baseline": true,
+      "initialization_sha256": "b49e95e722dab4e42d935a9ac2b239212e93660af55bf6d6a9f12f437a9f2ed6",
+      "order_sha256": "2cae6bd5d804452470ff9597e0c7143b9be9e4a853fa3b40578ca524892f1afa",
+      "execution_record": {
+        "graph_present": true,
+        "eligible": true,
+        "grad_enabled": true,
+        "parameters_require_grad": true,
+        "schedule": "global_owner_window_fp32_shared_radial",
+        "native_entry": "research_owner_window_fp32_shared_radial",
+        "middle_requires_grad": true,
+        "atom_requires_grad": true,
+        "extension_path": "/content/l4job-bd50dc8ab66940c0a6f22e0946901242/source/output/extension-builds/shared/torchcst_radius_cell_mass_791313b158bb/torchcst_radius_cell_mass_791313b158bb.so",
+        "extension_sha256": "effbff4fb89318777bdb070bbd1430d1c107866f3504de1699bc07445879aa14"
+      },
+      "execution_record_scope": "outside setup, throughput and retirement clocks; strings/bools only"
+    }
+  ],
+  "paired_checks": [
+    {
+      "state": "initial",
+      "repeat": 0,
+      "candidate_base_time_ratio": 1.0679726611210163,
+      "faster": false,
+      "allocated_delta_bytes": 0,
+      "reserved_delta_bytes": 0,
+      "memory_pass": true,
+      "tensor_comparison": {
+        "all_byte_equal": true,
+        "fields": 47,
+        "different": []
+      }
+    }
+  ],
+  "all_runtime_entry_metadata_expected": true,
+  "direct_tensor_checks": {
+    "pairs": [
+      {
+        "baseline": "initial-0-base.pt",
+        "candidate": "initial-0-shared.pt",
+        "clocks": {
+          "/model/2.atom_state.optimizer_state._extra_state/fields/step": 264.0,
+          "/optimizer/state/0/step": 264.0,
+          "/optimizer/state/1/step": 264.0,
+          "/optimizer/state/2/step": 264.0,
+          "/optimizer/state/3/step": 264.0,
+          "/optimizer/state/4/step": 264.0
+        },
+        "all_byte_equal": true,
+        "fields": 47,
+        "different": []
+      },
+      {
+        "epoch": 1,
+        "all_byte_equal": true,
+        "fields": 47,
+        "different": []
+      },
+      {
+        "epoch": 2,
+        "all_byte_equal": true,
+        "fields": 47,
+        "different": []
+      },
+      {
+        "epoch": 3,
+        "all_byte_equal": true,
+        "fields": 47,
+        "different": []
+      },
+      {
+        "epoch": 4,
+        "all_byte_equal": true,
+        "fields": 47,
+        "different": []
+      },
+      {
+        "epoch": 5,
+        "all_byte_equal": true,
+        "fields": 47,
+        "different": []
+      },
+      {
+        "epoch": 6,
+        "all_byte_equal": true,
+        "fields": 47,
+        "different": []
+      },
+      {
+        "epoch": 7,
+        "all_byte_equal": true,
+        "fields": 47,
+        "different": []
+      },
+      {
+        "epoch": 8,
+        "all_byte_equal": true,
+        "fields": 47,
+        "different": []
+      }
+    ],
+    "tensor_comparisons": 423,
+    "all_byte_equal": true
+  },
+  "binary_verification": {
+    "base": {
+      "actual_loaded_so_sha256_verified": "097e3bf7af30ec468d0c51d8d9a764e2c6d3e5f38ce9e83300cccc1bf74e5550",
+      "kept_ptx_sha256_verified": "bc9b8bb7098d952ee5d0eac295eefa341b1351f59bdb9e8450ac4201ddab5c3f",
+      "O2_ftz_false_verified": true,
+      "entries": {
+        "forward": {
+          "symbol": "_ZN16radius_cell_mass9fp32_body28owner_window_contract_kernelIfLb0ELb1ELb1ELb1EEEvPKT_PKfS6_S6_S6_PfS7_PS2_S7_PKlSA_iiNS_4AxisESB_NS_17OwnerWindowLayoutEbbbPKd",
+          "body_sha256": "39ffb4361056d241c810ff801fc457e42915daae952da65563cf71d26f74588e",
+          "profile_symbol_occurrences": 1,
+          "resources": "REG:79 STACK:288 SHARED:0 LOCAL:0 CONSTANT[2]:32 CONSTANT[0]:3024 TEXTURE:0 SURFACE:0 SAMPLER:0"
+        },
+        "reverse": {
+          "symbol": "_ZN16radius_cell_mass9fp32_body28owner_window_contract_kernelIfLb1ELb1ELb1ELb1EEEvPKT_PKfS6_S6_S6_PfS7_PS2_S7_PKlSA_iiNS_4AxisESB_NS_17OwnerWindowLayoutEbbbPKd",
+          "body_sha256": "9c6504cb44aa98d4beb5664c6ac04f55e9d9fa6ed9d068e266219d4429f4b81d",
+          "profile_symbol_occurrences": 1,
+          "resources": "REG:86 STACK:304 SHARED:0 LOCAL:0 CONSTANT[2]:32 CONSTANT[0]:3024 TEXTURE:0 SURFACE:0 SAMPLER:0"
+        }
+      }
+    },
+    "shared": {
+      "actual_loaded_so_sha256_verified": "effbff4fb89318777bdb070bbd1430d1c107866f3504de1699bc07445879aa14",
+      "kept_ptx_sha256_verified": "e1a8ab1027bf242cfb023594c3ba4d6f7e0095bb0e5b1852cbeebdf800ec0c7f",
+      "O2_ftz_false_verified": true,
+      "entries": {
+        "forward": {
+          "symbol": "_ZN16radius_cell_mass9fp32_body28owner_window_contract_kernelIfLb0ELb1ELb1ELb1ELb1EEEvPKT_PKfS6_S6_S6_PfS7_PS2_S7_PKlSA_iiNS_4AxisESB_NS_17OwnerWindowLayoutEbbbPKdS7_",
+          "body_sha256": "cda27333deda58407d8227fff484efdd911c6a09678b6a3bd1dfd79c35f579cf",
+          "profile_symbol_occurrences": 1,
+          "resources": "REG:79 STACK:288 SHARED:0 LOCAL:0 CONSTANT[2]:32 CONSTANT[0]:3032 TEXTURE:0 SURFACE:0 SAMPLER:0"
+        },
+        "reverse": {
+          "symbol": "_ZN16radius_cell_mass9fp32_body28owner_window_contract_kernelIfLb1ELb1ELb1ELb1ELb1EEEvPKT_PKfS6_S6_S6_PfS7_PS2_S7_PKlSA_iiNS_4AxisESB_NS_17OwnerWindowLayoutEbbbPKdS7_",
+          "body_sha256": "c8e608831beb245837f909cf5416fdd387fd5b47a7a5163d51d1d7550c93932c",
+          "profile_symbol_occurrences": 0,
+          "resources": "REG:72 STACK:272 SHARED:0 LOCAL:0 CONSTANT[2]:32 CONSTANT[0]:3032 TEXTURE:0 SURFACE:0 SAMPLER:0"
+        }
+      }
+    },
+    "candidate_source_files_verified": 242
+  },
+  "memory_without_additional_phase_instrumentation": {
+    "gate": {
+      "gate_version": "graph-lifecycle-memory-v2.1",
+      "evidence_scope": "prospective",
+      "baseline_run": "lifecycle-base",
+      "candidate_run": "lifecycle-shared",
+      "endpoint_phase": "after_eval_train_sync_before_checkpoint_and_graph_retirement",
+      "numerical_evidence": "recorded Tensor hashes/dtypes/shapes and metrics; no Tensor loading",
+      "cycles": 8,
+      "stable_cycles": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "allocated_budget_bytes": 2097152,
+      "reserved_budget_bytes": 8388608,
+      "status": "pass",
+      "passed": true,
+      "checks": {
+        "fixed_cycles_and_updates": true,
+        "recorded_phase_matches": true,
+        "same_start_and_workload": true,
+        "recorded_states_gradients_metrics_equal": true,
+        "no_unexpected_fallback": true,
+        "allocated_peak_budget": true,
+        "allocated_peak_covers_endpoints": true,
+        "allocated_peak_covers_epoch_peaks": true,
+        "baseline_allocated_cycles_3_to_8_constant": true,
+        "candidate_allocated_cycles_3_to_8_constant": true,
+        "reserved_peak_budget": true,
+        "reserved_peak_covers_endpoints": true,
+        "reserved_peak_covers_epoch_peaks": true,
+        "baseline_reserved_cycles_3_to_8_constant": true,
+        "candidate_reserved_cycles_3_to_8_constant": true
+      },
+      "reasons": [],
+      "allocated_peak_delta_bytes": 0,
+      "baseline_allocated_endpoints_bytes": [
+        257328128,
+        257328128,
+        257328128,
+        257328128,
+        257328128,
+        257328128,
+        257328128,
+        257328128
+      ],
+      "candidate_allocated_endpoints_bytes": [
+        257328128,
+        257328128,
+        257328128,
+        257328128,
+        257328128,
+        257328128,
+        257328128,
+        257328128
+      ],
+      "reserved_peak_delta_bytes": 0,
+      "baseline_reserved_endpoints_bytes": [
+        463470592,
+        465567744,
+        465567744,
+        465567744,
+        465567744,
+        465567744,
+        465567744,
+        465567744
+      ],
+      "candidate_reserved_endpoints_bytes": [
+        463470592,
+        465567744,
+        465567744,
+        465567744,
+        465567744,
+        465567744,
+        465567744,
+        465567744
+      ]
+    },
+    "runs": {
+      "base": {
+        "total_updates": 128,
+        "replay_updates": 120,
+        "unexpected_fallbacks": 0,
+        "peak_allocated_bytes": 264232960,
+        "peak_reserved_bytes": 465567744,
+        "memory_scope": "before optimizer creation; includes initial evaluation, all actual FP32 updates, capture/restoration/repreparation and epoch evaluations; no peak reset after capture; untimed final VJP diagnostics run separately",
+        "memory_endpoint_phase": "after_eval_train_sync_before_checkpoint_and_graph_retirement",
+        "diagnostic_phases": [],
+        "diagnostic_timing_not_adoption": false
+      },
+      "shared": {
+        "total_updates": 128,
+        "replay_updates": 120,
+        "unexpected_fallbacks": 0,
+        "peak_allocated_bytes": 264232960,
+        "peak_reserved_bytes": 465567744,
+        "memory_scope": "before optimizer creation; includes initial evaluation, all actual FP32 updates, capture/restoration/repreparation and epoch evaluations; no peak reset after capture; untimed final VJP diagnostics run separately",
+        "memory_endpoint_phase": "after_eval_train_sync_before_checkpoint_and_graph_retirement",
+        "diagnostic_phases": [],
+        "diagnostic_timing_not_adoption": false
+      }
+    }
+  },
+  "planned_cells": 36,
+  "performed_cells": 2,
+  "unperformed": {
+    "initial_remaining_cst_cells": 10,
+    "initial_dense_cells": 6,
+    "final_cst_cells": 12,
+    "final_dense_cells": 6,
+    "new_45000_updates": true
+  },
+  "scientific_interpretation": "One valid pair had ratio1.0679726611210163, so six-of-six wins is unsatisfiable under fixed admission guide. Stop A without resampling; cannot estimate six-pair average, statistical regression or final-state/dense performance. Additional cache traffic/dependencies may offset removed computation; causality not measured.",
+  "no_default_dispatcher_change": true,
+  "draft_unmerged": true,
+  "owned_vm_stopped": true,
+  "formal_first_attempt_interruption": {
+    "job": "l4job-2521037625734ba195a3dc801506131e",
+    "source_archive_sha256": "42fb8ec29e1c7d8159b39b2a9bc4d69312d3cd871ebeeb98254d24cc44b80d23",
+    "driver_sha256": "eeee9dc89b485531e94c875cd9ddd624548668226e4b3b098b9ae21c2cb03030",
+    "execution_status": "interrupted before result retrieval",
+    "transport_error": "Colab CLI jupyter_kernel_client TimeoutError: Timeout waiting for output",
+    "verified_results_available": false,
+    "performance_verdict": "unknown",
+    "underlying_root_cause": "unconfirmed; cannot distinguish driver/packaging delay, runtime loss or connection failure from recovered local logs",
+    "owned_slot_status": "stopped",
+    "retry_policy": "one explicit transport retry; same A, order, numeric/speed/memory gates; MAX_JOBS1 compilation cap on both sides, not a kernel variant; no further automatic retries"
+  },
+  "source_ci": {
+    "run": 41827946429,
+    "status": "success"
+  },
+  "raw_evidence_private": "output/shared-radial/formal-results; pool jobs retained; source/spec/transport of interrupted attempt retained"
+}
