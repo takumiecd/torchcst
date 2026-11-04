@@ -23,6 +23,7 @@ from benchmarks.training.cell_mass_mnist import (
 )
 from benchmarks.training.full_step_graph import PreparedStep, ordinary_step, snapshot
 from benchmarks.training.full_step_graph_comparison import hashes
+from benchmarks.training.full_step_graph_memory import ENDPOINT_PHASE
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass import plans
 from torchcst._backends.torch import finite
 from torchcst.operators.atom_update import AtomUpdateInputs
@@ -364,6 +365,7 @@ def run(args):
         if args.kind == "cst"
         else "FP32 dense",
         "timing_scope": f"epoch training segments include all {total_updates} real updates, cold optimizer, gather/loss/backward/update/metrics and Graph guard/index/version notifications; preparation/capture/restoration/Graph retirement and GC added to adoption_seconds; evaluation/checkpoint excluded",
+        "memory_endpoint_phase": ENDPOINT_PHASE,
         "memory_scope": "before optimizer creation; includes initial evaluation, all actual FP32 updates, capture/restoration/repreparation and epoch evaluations; no peak reset after capture; untimed final VJP diagnostics run separately",
         "optimizer_contract": init["optimizer_contract"],
     }

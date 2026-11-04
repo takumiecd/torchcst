@@ -234,3 +234,28 @@ raw archive/manifestはpoolのjob directoryに原形で保存し、復元先は
 raw数値・各gate・個別sample・profile・hashは
 [`owner-window-sort32-results-20261104.json`](owner-window-sort32-results-20261104.json) に保存する。
 回収後のfresh pool statusで全slot stopped、supervisorと一時的なsleep抑制も正常終了を確認した。
+
+## 公開判定v2と限定採用（追加GPU実験なし）
+
+レビュー後、#131をN1024/A52428/真B4の次の研究基準と明示opt-inとして採用する。
+根拠は速度・状態一致・対照以下のendpoint・等しいpeakと、追加8回のplateauである。
+2MiB増加の物理的原因を特定したとはしない。mergeの依存整理と公開既定化は別の判断である。
+
+公開判定は `benchmarks.training.full_step_graph_memory.evaluate_lifecycle`、
+versionは `graph-lifecycle-memory-v2`。8回ちょうど・各16実更新、同じ測定位相、
+cycle3–8のallocated/reserved各byte一定、全cycleの42状態/5勾配の記録hashと集計/順序一致、
+fallback0、全scope peak増分allocated≤2MiB/reserved≤8MiBを固定する。
+8回未満は判定不能、8回超から都合のよいsuffixを選ぶことは拒否する。
+endpointは評価→train復帰→同期後、checkpoint保存・旧Graph退役前であり、
+最終退役後の全pool解放やPyTorch外の割当を証明するものではない。
+
+旧raw結果JSONとfalse判定を変更せず、
+[`owner-window-sort32-memory-v2-20261104.json`](owner-window-sort32-memory-v2-20261104.json)
+へ元JSONのSHA256、run ID、`evidence_scope=retrospective_supplemental` と新判定を別保存した。
+定性的な条件を初回結果後・追加run前に具体化した履歴も保持する。
+判定関数は記録hash/metadataの比較であり、元Tensorをloadした検証とは区別する。
+
+CPUテストはplateau/一定を合格、後半reserved/allocated増加、途中peak超過、
+状態/勾配/順序/start差、fallback、測定位相不一致、更新数不一致を不合格として確認する。
+情報欠落は判定不能とし、旧結果のfalseと元file hashを変更しないことも検証する。
+#131のreservedだけを理由とした追加45,000更新は行わない。

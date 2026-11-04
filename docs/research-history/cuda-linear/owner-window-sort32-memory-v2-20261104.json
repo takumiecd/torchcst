@@ -1,0 +1,91 @@
+{
+  "source_results": "owner-window-sort32-results-20261104.json",
+  "source_results_sha256": "3b817e38d0f9eb25b3b27c164e7f66123b72d7895bd0c3af6fcb04cd9ee2f2ce",
+  "legacy_long_gates_pass": false,
+  "supplemental_gate": {
+    "gate_version": "graph-lifecycle-memory-v2",
+    "evidence_scope": "retrospective_supplemental",
+    "baseline_run": "l4job-9829fe58160946658cd40c87b3fdf6f5/lifecycle-base",
+    "candidate_run": "l4job-9829fe58160946658cd40c87b3fdf6f5/lifecycle-sort32",
+    "endpoint_phase": "after_eval_train_sync_before_checkpoint_and_graph_retirement",
+    "numerical_evidence": "recorded Tensor hashes/dtypes/shapes and metrics; no Tensor loading",
+    "cycles": 8,
+    "stable_cycles": [
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "allocated_budget_bytes": 2097152,
+    "reserved_budget_bytes": 8388608,
+    "status": "pass",
+    "passed": true,
+    "checks": {
+      "fixed_cycles_and_updates": true,
+      "recorded_phase_matches": true,
+      "same_start_and_workload": true,
+      "recorded_states_gradients_metrics_equal": true,
+      "no_unexpected_fallback": true,
+      "allocated_peak_budget": true,
+      "allocated_peak_covers_endpoints": true,
+      "baseline_allocated_cycles_3_to_8_constant": true,
+      "candidate_allocated_cycles_3_to_8_constant": true,
+      "reserved_peak_budget": true,
+      "reserved_peak_covers_endpoints": true,
+      "baseline_reserved_cycles_3_to_8_constant": true,
+      "candidate_reserved_cycles_3_to_8_constant": true
+    },
+    "reasons": [],
+    "allocated_peak_delta_bytes": 0,
+    "baseline_allocated_endpoints_bytes": [
+      257328128,
+      257328128,
+      257328128,
+      257328128,
+      257328128,
+      257328128,
+      257328128,
+      257328128
+    ],
+    "candidate_allocated_endpoints_bytes": [
+      257328128,
+      257328128,
+      257328128,
+      257328128,
+      257328128,
+      257328128,
+      257328128,
+      257328128
+    ],
+    "reserved_peak_delta_bytes": 0,
+    "baseline_reserved_endpoints_bytes": [
+      465567744,
+      465567744,
+      465567744,
+      465567744,
+      465567744,
+      465567744,
+      465567744,
+      465567744
+    ],
+    "candidate_reserved_endpoints_bytes": [
+      463470592,
+      465567744,
+      465567744,
+      465567744,
+      465567744,
+      465567744,
+      465567744,
+      465567744
+    ]
+  },
+  "adoption": {
+    "research_baseline": "accepted for N1024/A52428/trueB4",
+    "explicit_opt_in": "accepted within documented FP32/Graph constraints",
+    "merge": "dependency integration remains separate",
+    "default_dispatcher": "not promoted"
+  },
+  "history": "The qualitative no-continuing-growth condition was quantified after the first result and before the independent eight-cycle run. The legacy false flags remain unchanged. No new GPU experiment."
+}
