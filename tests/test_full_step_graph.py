@@ -3,6 +3,7 @@
 import gc
 import os
 from pathlib import Path
+from types import MethodType
 
 import pytest
 import torch
@@ -227,6 +228,87 @@ def test_current_boundary_wide_atoms_gradients_and_version(cohort):
             assert exact(a, b)["all_byte_equal"]
     finally:
         hook.remove()
+
+
+@pytest.mark.parametrize("when", ["cold", "live"])
+def test_unknown_forward_fallback_matches_current_ordinary_update(cohort, when):
+    """A rejected cohort must execute current callbacks and update exactly once."""
+    model, opt, tx, ty, indices, captured, init = cohort
+    start = snapshot(model, opt)
+    reference = make_model(
+        init,
+        "cst",
+        execution_plan=(
+            plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32_FLAT_C
+            if os.environ.get("CST_GRAPH_FP32") == "1"
+            else plans.GLOBAL_OWNER_WINDOW_RECOMPUTE
+        ),
+    ).cuda()
+    ropt = make_optimizer(reference, init, "cst")
+    reference_totals = (
+        tx.new_zeros(()),
+        torch.zeros((), dtype=torch.int64, device="cuda"),
+    )
+    # Allocate the reference's ordinary optimizer state before restoring the
+    # exact captured cohort state. No preparation callback is used as an anchor.
+    for _ in range(8):
+        ordinary_step(reference, ropt, tx, ty, indices, reference_totals)
+    restore(reference, ropt, start)
+    called, reference_called = [], []
+
+    def install(module, calls):
+        def changed_forward(self, value):
+            calls.append(True)
+            return torch.nn.functional.linear(value, self.weight, self.bias) * 0.875
+
+        module.forward = MethodType(changed_forward, module)
+
+    install(model[0], called)
+    install(reference[0], reference_called)
+    if when == "cold":
+        program = type(captured)(model, opt, tx, ty, "cst")
+        assert program.invalidated and not called
+        assert exact(start, snapshot(model, opt))["all_byte_equal"]
+    else:
+        program = captured
+    assert not program.eligible() and not called
+    with torch.no_grad():
+        for value, wanted in zip(reference_totals, program.totals):
+            value.copy_(wanted)
+
+    class NeverReplay:
+        def replay(self):
+            raise AssertionError("rejected cohort attempted Graph replay")
+
+    # Keep the real Graph alive while the sentinel proves the rejected step
+    # does not enqueue it. Eligibility has already failed for the live callback.
+    original_graph = program.graph
+    program.graph = NeverReplay()
+    try:
+        ordinary_step(reference, ropt, tx, ty, indices, reference_totals)
+        program.step(indices)
+        assert program.invalidated and called == reference_called == [True]
+
+        def result(current_model, optimizer, totals):
+            return {
+                **snapshot(current_model, optimizer),
+                **{
+                    "grad/" + name: point.grad.detach().cpu().clone()
+                    for name, point in current_model.named_parameters()
+                },
+                **{
+                    "total/" + str(i): value.detach().cpu().clone()
+                    for i, value in enumerate(totals)
+                },
+            }
+
+        assert exact(
+            result(reference, ropt, reference_totals),
+            result(model, opt, program.totals),
+        )["all_byte_equal"]
+        assert all(int(state["step"].item()) == 9 for state in opt.state.values())
+    finally:
+        program.graph = original_graph
 
 
 def test_public_radius_entrance_still_rejects_capture(cohort):

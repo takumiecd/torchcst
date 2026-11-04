@@ -158,7 +158,14 @@ def test_alias_guard_rejection_does_not_change_numeric_state(monkeypatch, reques
     model.add_module("aliased_relu", model[1])
     assert not program.eligible()
     assert not program.invalidated  # Eligibility is a read-only probe.
-    assert program._signature() == signature
+    if getattr(program, "_use_flat", False):
+        # G1 also certifies the complete ordered edge set in its model leaves.
+        # It deliberately invalidates these columns on the added alias.
+        assert program._signature() != signature
+    else:
+        # The recursive columns deduplicate aliases; the common root guard is
+        # what catches this case in qualified G0.
+        assert program._signature() == signature
     assert exact(before, state_and_gradients(model, opt))["all_byte_equal"]
     assert all(torch.equal(t.cpu(), saved) for t, saved in zip(program.totals, metrics))
     assert versions == version_signature(model, opt, program)
