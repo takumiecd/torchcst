@@ -17,6 +17,10 @@ import torch
 from torch import nn
 
 from benchmarks.training.cell_mass_mnist import make_model, make_optimizer
+from benchmarks.training.graph_stock_qualification import (
+    QualificationError,
+    StockQualification,
+)
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass import executor, plans
 from torchcst._backends.cuda.algorithms.polar_update.algorithm import _period_tensors
 from torchcst._backends.cuda.algorithms.polar_update.executor import fused_update_
@@ -55,6 +59,76 @@ def restore(model, optimizer, saved):
                 target.contiguous().reshape(-1).view(torch.uint8),
             ):
                 value.copy_(target)
+
+
+def capture_state(parameters, optimizer):
+    """Rollback only P/Adam values, never external constant/live settings.
+
+    Direct unique Tensor records avoid serialization callbacks and ambiguous
+    optimizer state_dict indices if a group changes. Strong examples live only
+    in this cold transaction; gradients and registration dictionaries are not
+    retained. Capture does not introduce new optimizer state after bootstrap.
+    """
+    state_layout = tuple(
+        (
+            point,
+            tuple(
+                (key, value)
+                for key, value in state.items()
+                if isinstance(value, torch.Tensor)
+            ),
+        )
+        for point, state in optimizer.state.items()
+    )
+    values = [*parameters, *(v for _, fields in state_layout for _, v in fields)]
+    records, seen = [], set()
+    for value in values:
+        if id(value) in seen:
+            continue
+        seen.add(id(value))
+        records.append((value, metadata(value), value.detach().cpu().clone()))
+    return optimizer, state_layout, tuple(records)
+
+
+def restore_capture_state(saved):
+    optimizer, state_layout, records = saved
+    current = tuple(
+        (
+            point,
+            tuple(
+                (key, value)
+                for key, value in state.items()
+                if isinstance(value, torch.Tensor)
+            ),
+        )
+        for point, state in optimizer.state.items()
+    )
+    same_layout = len(current) == len(state_layout) and all(
+        point is wanted
+        and len(fields) == len(expected)
+        and all(
+            type(key) is str and type(name) is str and key == name and value is original
+            for (key, value), (name, original) in zip(fields, expected)
+        )
+        for (point, fields), (wanted, expected) in zip(current, state_layout)
+    )
+    with torch.no_grad():
+        for value, expected_metadata, target in records:
+            if metadata(value) != expected_metadata:
+                raise RuntimeError(
+                    "capture changed numeric Tensor layout; rollback cannot be certified"
+                )
+            value.copy_(target.to(value.device))
+            actual = value.detach().cpu()
+            if not torch.equal(
+                actual.contiguous().reshape(-1).view(torch.uint8),
+                target.contiguous().reshape(-1).view(torch.uint8),
+            ):
+                raise RuntimeError("capture numeric rollback was not byte exact")
+    if not same_layout:
+        raise RuntimeError(
+            "capture changed Adam state bindings; rollback cannot be certified"
+        )
 
 
 def exact(a, b):
@@ -176,6 +250,17 @@ class PreparedStep:
             ty,
             kind,
         )
+        # Qualify before invoking a possibly overridden iterator/traversal or
+        # using a cold callback as an anchor. Unsupported cohorts only use eager.
+        self.invalidated = False
+        self.restoration_failed = False
+        self.qualification_error = None
+        self._qualification = None
+        try:
+            self._qualification = StockQualification(model, optimizer, kind)
+        except QualificationError as error:
+            self.invalidated = True
+            self.qualification_error = str(error)
         self.indices = torch.zeros(4, dtype=torch.long, device=tx.device)
         self.totals = (
             tx.new_zeros(()),
@@ -184,11 +269,13 @@ class PreparedStep:
         self.observe = observe
         self.graph = None
         self.owner_stream = torch.cuda.current_stream().cuda_stream
+        self.params, self.site, self.periods = (), None, None
+        if self.invalidated:
+            return
         if self.owner_stream == 0:
             raise ValueError(
                 "construct and first-use the cohort on an explicit non-default stream"
             )
-        self.invalidated = False
         if type(model) is not nn.Sequential or [type(m) for m in model] != [
             nn.Linear,
             nn.ReLU,
@@ -207,9 +294,11 @@ class PreparedStep:
             binding = optimizer._update_bindings[self.site]
             self.polar_program = binding.__dict__.get("_optimizer_program")
             if self.linear_program is None or self.polar_program is None:
-                raise RuntimeError(
+                self.invalidated = True
+                self.qualification_error = (
                     "canonical native execution certificates not prepared"
                 )
+                return
             plan = self.linear_program.cached.state.layout
             self.fp32_body = self.linear_program.cached.state.recipe.schedule in (
                 "global_owner_window_fp32",
@@ -234,11 +323,35 @@ class PreparedStep:
             self.extension = executor._extension()
         self.signature = self._signature()
         if not self.eligible():
-            raise RuntimeError("initial whole-step guard refused the cohort")
+            self.invalidated = True
+            self.qualification_error = "initial whole-step guard refused the cohort"
 
-    def _signature(self):
+    def _model_signature(self):
+        """The only three recursive columns replaced by the flat candidate."""
+        return (
+            tuple((name, metadata(p)) for name, p in self.model.named_parameters()),
+            tuple(
+                (name, metadata(b), b._version)
+                for name, b in self.model.named_buffers()
+                if ".optimizer_state." not in name
+            ),
+            tuple(
+                (id(m), type(m), m.training, m.__dict__.get("forward"), type(m).forward)
+                for m in self.model.modules()
+            ),
+        )
+
+    def _grad_signature(self):
+        return tuple(
+            metadata(p.grad) if p.grad is not None else None for p in self.params
+        )
+
+    def _signature(self, *, include_grad=None):
         # Tensor values of learned parameters may change. Constant buffers and
         # all storage identities/layouts must remain unchanged.
+        params, buffers, modules = self._model_signature()
+        if include_grad is None:
+            include_grad = self.graph is not None
         return (
             (
                 torch.backends.cuda.matmul.allow_tf32,
@@ -270,15 +383,9 @@ class PreparedStep:
                     self.optimizer._init_group,
                 )
             ),
-            tuple(metadata(p.grad) if p.grad is not None else None for p in self.params)
-            if self.graph is not None
-            else (),
-            tuple((name, metadata(p)) for name, p in self.model.named_parameters()),
-            tuple(
-                (name, metadata(b), b._version)
-                for name, b in self.model.named_buffers()
-                if ".optimizer_state." not in name
-            ),
+            self._grad_signature() if include_grad else (),
+            params,
+            buffers,
             tuple(
                 (
                     id(point),
@@ -296,10 +403,7 @@ class PreparedStep:
                 )
                 for g in self.optimizer.param_groups
             ),
-            tuple(
-                (id(m), type(m), m.training, m.__dict__.get("forward"), type(m).forward)
-                for m in self.model.modules()
-            ),
+            modules,
             (
                 metadata(self.tx),
                 metadata(self.ty),
@@ -309,8 +413,15 @@ class PreparedStep:
             else (metadata(self.tx), metadata(self.ty)),
         )
 
-    def eligible(self):
-        if self.invalidated or not self._root_topology.unchanged():
+    def eligible(self, *, _capture_refresh=False):
+        if self.invalidated:
+            return False
+        if (
+            self._qualification.model_ref() is not self.model
+            or self._qualification.optimizer_ref() is not self.optimizer
+            or not self._qualification.check()
+            or not self._root_topology.unchanged()
+        ):
             return False
         if (
             torch.cuda.current_stream().cuda_stream != self.owner_stream
@@ -375,7 +486,12 @@ class PreparedStep:
             for p in self.params
         ):
             return False
-        if self._signature() != self.signature:
+        wanted = self.signature
+        if _capture_refresh:
+            # Capture alone may replace gradients. Replay/step never take this
+            # branch; every other eligibility condition remains mandatory.
+            wanted = wanted[:2] + ((),) + wanted[3:]
+        if self._signature(include_grad=False if _capture_refresh else None) != wanted:
             return False
         if self.site is not None:
             if self.optimizer.check_finite:
@@ -441,33 +557,87 @@ class PreparedStep:
         self.totals[1].add_((self.logits.detach().argmax(1) == target).sum())
 
     def capture(self, *, preserve_totals=False):
-        # Long learning counts its first eight real updates. Capture's virtual
-        # updates must restore those metrics along with P and Adam state.
-        saved_totals = (
-            tuple(t.detach().cpu().clone() for t in self.totals)
-            if preserve_totals
-            else None
-        )
-        saved = snapshot(self.model, self.optimizer)
-        stream = torch.cuda.current_stream()
-        with torch.cuda.stream(stream):
-            for _ in range(3):
+        # Preflight precedes the first virtual update. Only the grad proof may
+        # be refreshed after capture; changed code/settings never become anchors.
+        if not self.eligible():
+            self._retire_failed_capture()
+            return False
+        non_grad = self._signature(include_grad=False)
+        saved = capture_state(self.params, self.optimizer)
+        saved_totals = tuple(t.detach().cpu().clone() for t in self.totals)
+        model, optimizer = self.model, self.optimizer
+        error = None
+        try:
+            stream = torch.cuda.current_stream()
+            with torch.cuda.stream(stream):
+                for _ in range(3):
+                    self.body()
+            torch.cuda.synchronize()
+            self.graph = torch.cuda.CUDAGraph()
+            with torch.cuda.graph(self.graph, stream=stream):
                 self.body()
-        torch.cuda.synchronize()
-        self.graph = torch.cuda.CUDAGraph()
-        with torch.cuda.graph(self.graph, stream=stream):
-            self.body()
-        torch.cuda.synchronize()
-        restore(self.model, self.optimizer, saved)
-        for i, t in enumerate(self.totals):
-            if saved_totals is None:
-                t.zero_()
-            else:
-                t.copy_(saved_totals[i].to(t.device))
-        self.signature = self._signature()
-        assert self.eligible(), "capture invalidated replay guard"
+            torch.cuda.synchronize()
+        except Exception as caught:  # noqa: BLE001 - rollback precedes propagating body failures
+            error = caught
+        try:
+            restore_capture_state(saved)
+            for total, previous in zip(self.totals, saved_totals):
+                total.copy_(previous.to(total.device))
+            torch.cuda.synchronize()
+        except Exception:
+            self.restoration_failed = True
+            self._retire_failed_capture()
+            raise
+        try:
+            valid = (
+                error is None
+                and self.model is model
+                and self.optimizer is optimizer
+                and self._qualification.check()
+                and self._root_topology.unchanged()
+                and self._signature(include_grad=False) == non_grad
+                and self.eligible(_capture_refresh=True)
+            )
+        except Exception:
+            self._retire_failed_capture()
+            raise
+        if not valid:
+            self._retire_failed_capture()
+            if self.model is not model or self.optimizer is not optimizer:
+                self.restoration_failed = True
+                raise RuntimeError(
+                    "capture changed cohort owner; restoration is unproven"
+                )
+            if error is not None:
+                raise error
+            return False
+        if not preserve_totals:
+            for total in self.totals:
+                total.zero_()
+        # Keep every pre-capture non-grad expected value, replacing column 2 only.
+        self.signature = (
+            self.signature[:2] + (self._grad_signature(),) + self.signature[3:]
+        )
+        try:
+            if not self.eligible():
+                self._retire_failed_capture()
+                return False
+        except Exception:
+            self._retire_failed_capture()
+            raise
+        return True
+
+    def _retire_failed_capture(self):
+        self.invalidated = True
+        self.graph = None
+        for name in ("logits", "loss", "middle"):
+            self.__dict__.pop(name, None)
 
     def step(self, indices):
+        if self.restoration_failed:
+            raise RuntimeError(
+                "capture rollback is unverified; cohort updates are disabled"
+            )
         if not self.eligible():
             self.invalidated = True
             return ordinary_step(
