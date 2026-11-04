@@ -99,6 +99,14 @@ __device__ inline double wrapped_center(double center, const Axis &axis) {
     return value < 0 ? value + axis.period : value;
 }
 struct Membership { int bank, first_tile; };
+__device__ inline Membership classify_wrapped(double R, double mu, const Axis &axis) {
+    int bank = 0;
+    while (bank + 2 < axis.bank_count && R > axis.banks[bank].tile_sites * axis.spacing) bank += 2;
+    double T = axis.banks[bank].tile_sites * axis.spacing;
+    int K = int(ceil(2 * R / T)) + 1;
+    bank += K - 2;
+    return {bank, int(floor((mu + axis.spacing / 2) / T - (K - 1) / 2.))};
+}
 __device__ inline Membership classify(double R, double mu, const Axis &axis) {
     int bank = 0;
     while (bank + 2 < axis.bank_count && R > axis.banks[bank].tile_sites * axis.spacing) bank += 2;

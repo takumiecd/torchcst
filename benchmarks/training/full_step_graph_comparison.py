@@ -66,7 +66,9 @@ def run(args):
         args.kind,
         radius_execution="cached" if args.kind == "cst" else "global-response4",
         execution_plan=(
-            plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32
+            plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32_FLAT_C
+            if args.flat_c_baseline
+            else plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32
             if args.sort32_baseline
             else plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY
             if args.geometry_baseline
@@ -113,12 +115,15 @@ def run(args):
         "fp32_geometry",
         "fp32_geometry_sort32",
         "fp32_geometry_sort32_flat_c",
+        "fp32_phase_delta",
     ):
         from torchcst import FixedSelector, make_algorithm_registry
 
         model[2].selector = FixedSelector(
             (
-                plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32_FLAT_C
+                plans.GLOBAL_OWNER_WINDOW_FP32_PHASE_DELTA
+                if args.precision == "fp32_phase_delta"
+                else plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32_FLAT_C
                 if args.precision == "fp32_geometry_sort32_flat_c"
                 else plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32
                 if args.precision == "fp32_geometry_sort32"
@@ -259,10 +264,17 @@ def run(args):
         "owner_distribution_diagnostic": owners,
         "geometry_shared": args.kind == "cst"
         and args.precision
-        in ("fp32_geometry", "fp32_geometry_sort32", "fp32_geometry_sort32_flat_c"),
+        in (
+            "fp32_geometry",
+            "fp32_geometry_sort32",
+            "fp32_geometry_sort32_flat_c",
+            "fp32_phase_delta",
+        ),
         "sort32": args.precision
-        in ("fp32_geometry_sort32", "fp32_geometry_sort32_flat_c"),
-        "flat_c": args.precision == "fp32_geometry_sort32_flat_c",
+        in ("fp32_geometry_sort32", "fp32_geometry_sort32_flat_c", "fp32_phase_delta"),
+        "flat_c": args.precision in ("fp32_geometry_sort32_flat_c", "fp32_phase_delta"),
+        "phase_delta": args.precision == "fp32_phase_delta",
+        "flat_c_baseline": args.flat_c_baseline,
         "sort32_baseline": args.sort32_baseline,
         "geometry_baseline": args.geometry_baseline,
         "bootstrap_precision": "fp32" if args.bootstrap_fp32 else "fp64",
@@ -332,6 +344,7 @@ def main():
             "fp32_geometry",
             "fp32_geometry_sort32",
             "fp32_geometry_sort32_flat_c",
+            "fp32_phase_delta",
         ),
         default="fp64",
     )
@@ -340,6 +353,7 @@ def main():
     parser.add_argument("--bootstrap-fp32", action="store_true")
     parser.add_argument("--geometry-baseline", action="store_true")
     parser.add_argument("--sort32-baseline", action="store_true")
+    parser.add_argument("--flat-c-baseline", action="store_true")
     parser.add_argument("--profile", action="store_true")
     args = parser.parse_args()
     stream = torch.cuda.Stream()

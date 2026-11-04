@@ -307,3 +307,16 @@ GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32_FLAT_C = ExecutionPlan(
         native_entry=True,
     ),
 )
+
+# Per-forward FP32 local displacement after the original FP64 subtraction.
+GLOBAL_OWNER_WINDOW_FP32_PHASE_DELTA = ExecutionPlan(
+    "cuda_radius_cell_mass",
+    "v1",
+    RadiusCellMassRecipe(
+        input_direct_levels=2,
+        output_direct_levels=2,
+        schedule="global_owner_window_fp32_phase_delta",
+        native_autograd=True,
+        native_entry=True,
+    ),
+)

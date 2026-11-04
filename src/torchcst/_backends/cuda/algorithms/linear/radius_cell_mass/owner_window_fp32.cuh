@@ -60,7 +60,7 @@ __device__ __noinline__ void profile_values_m8(float R, float P, float *c) {
     c[8] = (0.25f / zero) / P;
 }
 
-__device__ inline void owner_window_coefficients(const float *c, double mu, int first_tile,
+__device__ inline void owner_window_coefficients_delta(const float *c, float delta,
                                                  Axis axis, Bank bank, bool fold, float *q,
                                                  float *dq) {
     int L = bank.count * bank.tile_sites;
@@ -68,8 +68,7 @@ __device__ inline void owner_window_coefficients(const float *c, double mu, int 
     for (int f = 0; f < rank; ++f)
         q[f] = dq[f] = 0;
     q[0] = float(axis.spacing) * c[0];
-    HarmonicPhase phase(2 * PI32 / float(bank.period) *
-                        float(mu - first_tile * bank.tile_sites * axis.spacing));
+    HarmonicPhase phase(2 * PI32 / float(bank.period) * delta);
     HarmonicPhase cell_phase(PI32 * float(axis.spacing) / float(bank.period));
     for (int k = 1; k <= axis.modes; ++k) {
         float cp, sp, cc, ss;
@@ -92,6 +91,12 @@ __device__ inline void owner_window_coefficients(const float *c, double mu, int 
             dq[2 * alias] += sign * w * omega * cp;
         }
     }
+}
+
+__device__ inline void owner_window_coefficients(const float *c, double mu, int first_tile,
+    Axis axis, Bank bank, bool fold, float *q, float *dq) {
+    owner_window_coefficients_delta(c,
+        float(mu - first_tile * bank.tile_sites * axis.spacing), axis, bank, fold, q, dq);
 }
 
 template <class T>
@@ -258,13 +263,13 @@ constexpr int WINDOW_SHARED_BYTES =
     sizeof(float) * (OWNER_CAPACITY * WINDOW_CACHE_STRIDE + OWNER_BATCH * OWNER_FEATURES);
 // One CTA owns a destination window; atoms remain in original parameter rows.
 // No per-atom Fourier table, H/G atomics, or dense effective W is allocated.
-template <class T, bool Reverse, bool Recompute, bool GeometryShared, bool FlatC = false>
+template <class T, bool Reverse, bool Recompute, bool GeometryShared, bool FlatC = false, bool PhaseShared = false>
 __global__ void owner_window_contract_kernel(
     const T *p, const float *windows, const float *input_windows, const float *h, const float *dh,
     float *response, float *derivative, T *gradient, float *partials, const int64_t *rows,
     const int64_t *offsets, int atoms, int batch, Axis source, Axis destination,
     OwnerWindowLayout layout, bool fold, bool need_derivative, bool emit_x,
-    const double *geometry) {
+    const double *geometry, const int64_t *keys, const float *phase_delta) {
     int owner = blockIdx.x, begin = int(offsets[owner]), end = int(offsets[owner + 1]);
     if (begin == end)
         return;
@@ -290,27 +295,44 @@ __global__ void owner_window_contract_kernel(
             if constexpr (GeometryShared) R = geometry[atom];
             else R = radius(p, atom, source);
             float c[17], q[17], dq[17];
-            double mu = center(p, atom, source, Reverse);
-            Membership sm = classify(R, mu, source);
-            Bank sb = source.banks[sm.bank];
-            profile_values_m8(float(R), float(sb.period), c);
-            owner_window_coefficients(c, wrapped_center(mu, source), sm.first_tile, source, sb,
-                                      fold, q, dq);
-            int source_owner = sb.node_offset + positive_mod(sm.first_tile, sb.tile_count);
+            int source_owner, source_bank;
+            if constexpr (PhaseShared) {
+                source_owner = Reverse ? int(keys[atom] / destination.node_count)
+                                       : int(keys[atom] % source.node_count);
+                source_bank = bank_for_node(source_owner, source);
+                Bank sb = source.banks[source_bank];
+                profile_values_m8(float(R), float(sb.period), c);
+                owner_window_coefficients_delta(c, phase_delta[(Reverse ? atoms : 0) + atom],
+                                                source, sb, fold, q, dq);
+            } else {
+                double mu = center(p, atom, source, Reverse);
+                Membership sm = classify(R, mu, source);
+                source_bank = sm.bank;
+                Bank sb = source.banks[sm.bank];
+                profile_values_m8(float(R), float(sb.period), c);
+                owner_window_coefficients(c, wrapped_center(mu, source), sm.first_tile, source, sb,
+                                          fold, q, dq);
+                source_owner = sb.node_offset + positive_mod(sm.first_tile, sb.tile_count);
+            }
             float values[OWNER_BATCH] = {}, slopes[OWNER_BATCH] = {};
-            for (int f = 0; f < layout.ranks[sm.bank]; ++f) {
+            for (int f = 0; f < layout.ranks[source_bank]; ++f) {
                 for (int b = 0; b < batch; ++b) {
                     float z =
-                        windows[owner_window_index(b, sm.bank, source_owner, f, source, layout)];
+                        windows[owner_window_index(b, source_bank, source_owner, f, source, layout)];
                     values[b] += z * q[f];
                     if (need_derivative && (Reverse || !Recompute))
                         slopes[b] += z * dq[f];
                 }
             }
-            double dest_mu = center(p, atom, destination, !Reverse);
-            Membership dm = classify(R, dest_mu, destination);
-            owner_window_coefficients(c, wrapped_center(dest_mu, destination), dm.first_tile,
-                                      destination, destination.banks[dm.bank], fold, q, dq);
+            if constexpr (PhaseShared) {
+                owner_window_coefficients_delta(c, phase_delta[(Reverse ? 0 : atoms) + atom],
+                                                destination, destination.banks[bi], fold, q, dq);
+            } else {
+                double dest_mu = center(p, atom, destination, !Reverse);
+                Membership dm = classify(R, dest_mu, destination);
+                owner_window_coefficients(c, wrapped_center(dest_mu, destination), dm.first_tile,
+                                          destination, destination.banks[dm.bank], fold, q, dq);
+            }
             float amp;
             if constexpr (GeometryShared) amp = float(geometry[atoms + atom]);
             else amp = float(amplitude(p, atom, source));
@@ -412,12 +434,12 @@ __global__ void owner_window_expand_kernel(const float *partials, const int64_t 
     }
     y[index] = T(value);
 }
-template <bool FlatC>
+template <bool FlatC, bool PhaseShared = false>
 std::vector<Tensor> owner_window_transform_impl(Tensor signal, Tensor p, Tensor keys, Tensor rows,
                                            Tensor offsets, Config input_config,
                                            Config output_config, bool reverse, bool need_derivative,
                                            bool fold, bool recompute, bool emit_x, Tensor h,
-                                           Tensor dh, Tensor saved_windows, Tensor geometry) {
+                                           Tensor dh, Tensor saved_windows, Tensor geometry, Tensor phase_delta = Tensor()) {
     Axis source = parse_axis(reverse ? output_config : input_config);
     Axis destination = parse_axis(reverse ? input_config : output_config);
     check_atoms(p);
@@ -445,7 +467,7 @@ std::vector<Tensor> owner_window_transform_impl(Tensor signal, Tensor p, Tensor 
         AT_DISPATCH_FLOATING_TYPES(p.scalar_type(), "radius_window_contract", [&] {
             auto launch = [&](auto rev, auto recomp, auto geom) {
                 owner_window_contract_kernel<scalar_t, decltype(rev)::value,
-                                             decltype(recomp)::value, decltype(geom)::value, FlatC>
+                                             decltype(recomp)::value, decltype(geom)::value, FlatC, PhaseShared>
                     <<<destination.node_count, THREADS, WINDOW_SHARED_BYTES,
                        at::cuda::getCurrentCUDAStream()>>>(
                         p.data_ptr<scalar_t>(), windows.data_ptr<float>(),
@@ -458,7 +480,8 @@ std::vector<Tensor> owner_window_transform_impl(Tensor signal, Tensor p, Tensor 
                         partials.defined() ? partials.data_ptr<float>() : nullptr,
                         rows.data_ptr<int64_t>(), offsets.data_ptr<int64_t>(), p.size(0),
                         signal.size(0), source, destination, layout, fold, need_derivative, emit_x,
-                        geometry.defined() ? geometry.data_ptr<double>() : nullptr);
+                        geometry.defined() ? geometry.data_ptr<double>() : nullptr,
+                        keys.data_ptr<int64_t>(), PhaseShared ? phase_delta.data_ptr<float>() : nullptr);
             };
             auto dispatch = [&](auto geom) {
             if (reverse) {
@@ -505,6 +528,19 @@ std::vector<Tensor> owner_window_transform_flat_c(Tensor signal, Tensor p, Tenso
     Tensor geometry) {
     return owner_window_transform_impl<true>(signal, p, keys, rows, offsets, input, output,
         reverse, need_derivative, fold, recompute, emit_x, h, dh, saved_windows, geometry);
+}
+
+std::vector<Tensor> owner_window_transform_phase(Tensor signal, Tensor p, Tensor keys, Tensor rows,
+    Tensor offsets, Config input, Config output, bool reverse, bool need_derivative,
+    bool fold, bool recompute, bool emit_x, Tensor h, Tensor dh, Tensor saved_windows,
+    Tensor geometry, Tensor phase_delta) {
+    return owner_window_transform_impl<true, true>(signal, p, keys, rows, offsets, input, output,
+        reverse, need_derivative, fold, recompute, emit_x, h, dh, saved_windows, geometry, phase_delta);
+}
+void check_phase_saved(Tensor atoms, Tensor delta) {
+    TORCH_CHECK(delta.defined() && delta.is_cuda() && delta.device() == atoms.device() &&
+        delta.scalar_type() == torch::kFloat && delta.dim() == 2 && delta.size(0) == 2 &&
+        delta.size(1) == atoms.size(0) && delta.is_contiguous(), "owner phase saved payload differs");
 }
 
 void check_geometry_saved(Tensor atoms, Tensor geometry) {

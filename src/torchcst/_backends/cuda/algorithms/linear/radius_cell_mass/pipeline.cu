@@ -39,9 +39,10 @@ __device__ inline int bank_for_node(int node, const Axis &axis) {
 }
 
 // Temporary sortable keys refer to original Parameter rows; no packed atoms.
-template<class T, bool Async = false, bool GeometryShared = false>
+template<class T, bool Async = false, bool GeometryShared = false, bool PhaseShared = false>
 __global__ void classify_kernel(const T *p, int64_t *keys, int *error, int atoms,
-                               Axis input, Axis output, double *geometry = nullptr) {
+                               Axis input, Axis output, double *geometry = nullptr,
+                               float *phase_delta = nullptr) {
     int atom = blockIdx.x * blockDim.x + threadIdx.x;
     if (atom >= atoms) return;
     bool valid = true;
@@ -72,8 +73,20 @@ __global__ void classify_kernel(const T *p, int64_t *keys, int *error, int atoms
         geometry[atom] = ri;
         geometry[atoms + atom] = amplitude(p, atom, input);
     }
-    Membership mi = classify(ri, center(p, atom, input, false), input);
-    Membership mo = classify(ro, center(p, atom, output, true), output);
+    Membership mi, mo;
+    if constexpr (PhaseShared) {
+        double mui = wrapped_center(center(p, atom, input, false), input);
+        double muo = wrapped_center(center(p, atom, output, true), output);
+        mi = classify_wrapped(ri, mui, input);
+        mo = classify_wrapped(ro, muo, output);
+        // Preserve the original FP64 subtraction and FP32 cast. Signed first
+        // tiles must precede positive_mod: a wrapped owner is not this origin.
+        phase_delta[atom] = float(mui - mi.first_tile * input.banks[mi.bank].tile_sites * input.spacing);
+        phase_delta[atoms + atom] = float(muo - mo.first_tile * output.banks[mo.bank].tile_sites * output.spacing);
+    } else {
+        mi = classify(ri, center(p, atom, input, false), input);
+        mo = classify(ro, center(p, atom, output, true), output);
+    }
     Bank bi = input.banks[mi.bank], bo = output.banks[mo.bank];
     int ni = bi.node_offset + positive_mod(mi.first_tile, bi.tile_count);
     int no = bo.node_offset + positive_mod(mo.first_tile, bo.tile_count);
@@ -290,20 +303,30 @@ Tensor classify_atoms_async(Tensor p, Config input_config, Config output_config)
     return keys;
 }
 // Caller has checked identical live owner axes; one invocation owns this payload.
-std::vector<Tensor> classify_atoms_geometry_async(Tensor p, Config input_config, Config output_config) {
+template<bool PhaseShared = false>
+std::vector<Tensor> classify_atoms_geometry_impl(Tensor p, Config input_config, Config output_config) {
     check_atoms(p);
     Axis input = parse_axis(input_config), output = parse_axis(output_config);
     c10::cuda::CUDAGuard guard(p.device());
     auto keys = torch::empty({p.size(0)}, p.options().dtype(torch::kLong));
     auto geometry = torch::empty({2, p.size(0)}, p.options().dtype(torch::kDouble));
+    auto delta = PhaseShared ? torch::empty({2, p.size(0)}, p.options().dtype(torch::kFloat)) : Tensor();
     if (p.size(0)) AT_DISPATCH_FLOATING_TYPES(p.scalar_type(), "radius_classify_geometry_async", [&] {
-        classify_kernel<scalar_t, true, true><<<(p.size(0) + THREADS - 1) / THREADS,
+        classify_kernel<scalar_t, true, true, PhaseShared><<<(p.size(0) + THREADS - 1) / THREADS,
             THREADS, 0, at::cuda::getCurrentCUDAStream()>>>(
             p.data_ptr<scalar_t>(), keys.data_ptr<int64_t>(), nullptr,
-            p.size(0), input, output, geometry.data_ptr<double>());
+            p.size(0), input, output, geometry.data_ptr<double>(),
+            PhaseShared ? delta.data_ptr<float>() : nullptr);
     });
     C10_CUDA_KERNEL_LAUNCH_CHECK();
-    return {keys, geometry};
+    if constexpr (PhaseShared) return {keys, geometry, delta};
+    else return {keys, geometry};
+}
+std::vector<Tensor> classify_atoms_geometry_async(Tensor p, Config input, Config output) {
+    return classify_atoms_geometry_impl<false>(p, input, output);
+}
+std::vector<Tensor> classify_atoms_phase_async(Tensor p, Config input, Config output) {
+    return classify_atoms_geometry_impl<true>(p, input, output);
 }
 Tensor build_moments(Tensor signal, Config config, bool merge) {
     check_matrix(signal);
