@@ -268,3 +268,16 @@ GLOBAL_OWNER_WINDOW_FP32 = ExecutionPlan(
         native_entry=True,
     ),
 )
+
+# Per-forward FP64 radius/amplitude payload, shared through backward.
+GLOBAL_OWNER_WINDOW_FP32_GEOMETRY = ExecutionPlan(
+    "cuda_radius_cell_mass",
+    "v1",
+    RadiusCellMassRecipe(
+        input_direct_levels=2,
+        output_direct_levels=2,
+        schedule="global_owner_window_fp32_geometry",
+        native_autograd=True,
+        native_entry=True,
+    ),
+)

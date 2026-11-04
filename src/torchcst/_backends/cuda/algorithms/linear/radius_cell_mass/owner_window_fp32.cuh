@@ -258,12 +258,13 @@ constexpr int WINDOW_SHARED_BYTES =
     sizeof(float) * (OWNER_CAPACITY * WINDOW_CACHE_STRIDE + OWNER_BATCH * OWNER_FEATURES);
 // One CTA owns a destination window; atoms remain in original parameter rows.
 // No per-atom Fourier table, H/G atomics, or dense effective W is allocated.
-template <class T, bool Reverse, bool Recompute>
+template <class T, bool Reverse, bool Recompute, bool GeometryShared>
 __global__ void owner_window_contract_kernel(
     const T *p, const float *windows, const float *input_windows, const float *h, const float *dh,
     float *response, float *derivative, T *gradient, float *partials, const int64_t *rows,
     const int64_t *offsets, int atoms, int batch, Axis source, Axis destination,
-    OwnerWindowLayout layout, bool fold, bool need_derivative, bool emit_x) {
+    OwnerWindowLayout layout, bool fold, bool need_derivative, bool emit_x,
+    const double *geometry) {
     int owner = blockIdx.x, begin = int(offsets[owner]), end = int(offsets[owner + 1]);
     if (begin == end)
         return;
@@ -283,7 +284,9 @@ __global__ void owner_window_contract_kernel(
         int retained = min(OWNER_CAPACITY, end - chunk);
         if (threadIdx.x < retained) {
             int atom = int(rows[chunk + threadIdx.x]);
-            double R = radius(p, atom, source);
+            double R;
+            if constexpr (GeometryShared) R = geometry[atom];
+            else R = radius(p, atom, source);
             float c[17], q[17], dq[17];
             double mu = center(p, atom, source, Reverse);
             Membership sm = classify(R, mu, source);
@@ -306,7 +309,10 @@ __global__ void owner_window_contract_kernel(
             Membership dm = classify(R, dest_mu, destination);
             owner_window_coefficients(c, wrapped_center(dest_mu, destination), dm.first_tile,
                                       destination, destination.banks[dm.bank], fold, q, dq);
-            float amp = float(amplitude(p, atom, source)), da = 0, dmi = 0, dmo = 0;
+            float amp;
+            if constexpr (GeometryShared) amp = float(geometry[atoms + atom]);
+            else amp = float(amplitude(p, atom, source));
+            float da = 0, dmi = 0, dmo = 0;
             for (int b = 0; b < batch; ++b) {
                 int64_t index = int64_t(b) * atoms + atom;
                 if constexpr (Reverse) {
@@ -394,7 +400,7 @@ std::vector<Tensor> owner_window_transform(Tensor signal, Tensor p, Tensor keys,
                                            Tensor offsets, Config input_config,
                                            Config output_config, bool reverse, bool need_derivative,
                                            bool fold, bool recompute, bool emit_x, Tensor h,
-                                           Tensor dh, Tensor saved_windows) {
+                                           Tensor dh, Tensor saved_windows, Tensor geometry) {
     Axis source = parse_axis(reverse ? output_config : input_config);
     Axis destination = parse_axis(reverse ? input_config : output_config);
     check_atoms(p);
@@ -420,9 +426,9 @@ std::vector<Tensor> owner_window_transform(Tensor signal, Tensor p, Tensor keys,
         emit_x ? torch::empty({signal.size(0), destination.sites}, signal.options()) : Tensor();
     if (signal.size(0)) {
         AT_DISPATCH_FLOATING_TYPES(p.scalar_type(), "radius_window_contract", [&] {
-            auto launch = [&](auto rev, auto recomp) {
+            auto launch = [&](auto rev, auto recomp, auto geom) {
                 owner_window_contract_kernel<scalar_t, decltype(rev)::value,
-                                             decltype(recomp)::value>
+                                             decltype(recomp)::value, decltype(geom)::value>
                     <<<destination.node_count, THREADS, WINDOW_SHARED_BYTES,
                        at::cuda::getCurrentCUDAStream()>>>(
                         p.data_ptr<scalar_t>(), windows.data_ptr<float>(),
@@ -434,19 +440,24 @@ std::vector<Tensor> owner_window_transform(Tensor signal, Tensor p, Tensor keys,
                         gradient.defined() ? gradient.data_ptr<scalar_t>() : nullptr,
                         partials.defined() ? partials.data_ptr<float>() : nullptr,
                         rows.data_ptr<int64_t>(), offsets.data_ptr<int64_t>(), p.size(0),
-                        signal.size(0), source, destination, layout, fold, need_derivative, emit_x);
+                        signal.size(0), source, destination, layout, fold, need_derivative, emit_x,
+                        geometry.defined() ? geometry.data_ptr<double>() : nullptr);
             };
+            auto dispatch = [&](auto geom) {
             if (reverse) {
                 if (recompute)
-                    launch(std::true_type{}, std::true_type{});
+                    launch(std::true_type{}, std::true_type{}, geom);
                 else
-                    launch(std::true_type{}, std::false_type{});
+                    launch(std::true_type{}, std::false_type{}, geom);
             } else {
                 if (recompute)
-                    launch(std::false_type{}, std::true_type{});
+                    launch(std::false_type{}, std::true_type{}, geom);
                 else
-                    launch(std::false_type{}, std::false_type{});
+                    launch(std::false_type{}, std::false_type{}, geom);
             }
+            };
+            if (geometry.defined()) dispatch(std::true_type{});
+            else dispatch(std::false_type{});
             if (emit_x)
                 owner_window_expand_kernel<scalar_t><<<(y.numel() + THREADS - 1) / THREADS, THREADS,
                                                        0, at::cuda::getCurrentCUDAStream()>>>(
@@ -456,6 +467,12 @@ std::vector<Tensor> owner_window_transform(Tensor signal, Tensor p, Tensor keys,
         C10_CUDA_KERNEL_LAUNCH_CHECK();
     }
     return {y, response, derivative, gradient, windows};
+}
+void check_geometry_saved(Tensor atoms, Tensor geometry) {
+    TORCH_CHECK(geometry.defined() && geometry.is_cuda() &&
+        geometry.device() == atoms.device() && geometry.scalar_type() == torch::kDouble &&
+        geometry.dim() == 2 && geometry.size(0) == 2 && geometry.size(1) == atoms.size(0) &&
+        geometry.is_contiguous(), "owner geometry saved payload differs");
 }
 void check_owner_window_saved(Tensor x, Tensor atoms, Tensor window, Tensor keys, Tensor dy,
                               Config input, Config output) {

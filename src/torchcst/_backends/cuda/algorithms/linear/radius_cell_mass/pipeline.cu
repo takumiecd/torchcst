@@ -39,14 +39,17 @@ __device__ inline int bank_for_node(int node, const Axis &axis) {
 }
 
 // Temporary sortable keys refer to original Parameter rows; no packed atoms.
-template<class T, bool Async = false>
+template<class T, bool Async = false, bool GeometryShared = false>
 __global__ void classify_kernel(const T *p, int64_t *keys, int *error, int atoms,
-                               Axis input, Axis output) {
+                               Axis input, Axis output, double *geometry = nullptr) {
     int atom = blockIdx.x * blockDim.x + threadIdx.x;
     if (atom >= atoms) return;
     bool valid = true;
     for (int c = 0; c < 4; ++c) valid &= isfinite(double(p[4 * atom + c]));
-    double ri = radius(p, atom, input), ro = radius(p, atom, output);
+    double ri = radius(p, atom, input);
+    double ro;
+    if constexpr (GeometryShared) ro = ri;
+    else ro = radius(p, atom, output);
     valid &= isfinite(ri) && isfinite(ro) && ri > 0 && ro > 0 &&
              ri <= input.period / 2 && ro <= output.period / 2;
     // A positive mathematical ratio must have ceil >= 1. Reject scales that
@@ -64,6 +67,10 @@ __global__ void classify_kernel(const T *p, int64_t *keys, int *error, int atoms
             atomicExch(error, 1);
         }
         return;
+    }
+    if constexpr (GeometryShared) {
+        geometry[atom] = ri;
+        geometry[atoms + atom] = amplitude(p, atom, input);
     }
     Membership mi = classify(ri, center(p, atom, input, false), input);
     Membership mo = classify(ro, center(p, atom, output, true), output);
@@ -281,6 +288,22 @@ Tensor classify_atoms_async(Tensor p, Config input_config, Config output_config)
     });
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return keys;
+}
+// Caller has checked identical live owner axes; one invocation owns this payload.
+std::vector<Tensor> classify_atoms_geometry_async(Tensor p, Config input_config, Config output_config) {
+    check_atoms(p);
+    Axis input = parse_axis(input_config), output = parse_axis(output_config);
+    c10::cuda::CUDAGuard guard(p.device());
+    auto keys = torch::empty({p.size(0)}, p.options().dtype(torch::kLong));
+    auto geometry = torch::empty({2, p.size(0)}, p.options().dtype(torch::kDouble));
+    if (p.size(0)) AT_DISPATCH_FLOATING_TYPES(p.scalar_type(), "radius_classify_geometry_async", [&] {
+        classify_kernel<scalar_t, true, true><<<(p.size(0) + THREADS - 1) / THREADS,
+            THREADS, 0, at::cuda::getCurrentCUDAStream()>>>(
+            p.data_ptr<scalar_t>(), keys.data_ptr<int64_t>(), nullptr,
+            p.size(0), input, output, geometry.data_ptr<double>());
+    });
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+    return {keys, geometry};
 }
 Tensor build_moments(Tensor signal, Config config, bool merge) {
     check_matrix(signal);

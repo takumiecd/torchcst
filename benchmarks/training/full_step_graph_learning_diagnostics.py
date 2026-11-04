@@ -20,9 +20,15 @@ from torchcst import FixedSelector, make_algorithm_registry
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass import plans
 
 
-def load_cohort(init, checkpoint):
+def load_cohort(init, checkpoint, geometry_shared=False):
     model = make_model(
-        init, "cst", execution_plan=plans.GLOBAL_OWNER_WINDOW_FP32
+        init,
+        "cst",
+        execution_plan=(
+            plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY
+            if geometry_shared
+            else plans.GLOBAL_OWNER_WINDOW_FP32
+        ),
     ).cuda()
     model.load_state_dict(checkpoint["model"])
     opt = make_optimizer(model, init, "cst")
@@ -30,10 +36,10 @@ def load_cohort(init, checkpoint):
     return model, opt
 
 
-def next_update(init, checkpoint, gradient):
+def next_update(init, checkpoint, gradient, geometry_shared=False):
     # Build and load through the public optimizer lifecycle; deepcopy of a
     # trained site's opaque CPU optimizer state is not a valid cold control.
-    model, opt = load_cohort(init, checkpoint)
+    model, opt = load_cohort(init, checkpoint, geometry_shared)
     p = model[2].atoms.p
     assert opt.state[p]["step"].device == p.device
     p.grad = gradient.to(p.device).clone()
@@ -69,7 +75,7 @@ def run(args):
         args.inputs / "initialization.pt", map_location="cpu", weights_only=True
     )
     checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=True)
-    model, opt = load_cohort(init, checkpoint)
+    model, opt = load_cohort(init, checkpoint, args.geometry_shared)
     cpu_net = make_model(init, "cst", execution_plan=plans.GLOBAL_OWNER_WINDOW_FP32)
     cpu_net.load_state_dict(checkpoint["model"])
     cpu_layer = cpu_net[2]
@@ -138,7 +144,12 @@ def run(args):
         )
         sub_gpu = copy.deepcopy(subset).cuda()
         sub_gpu.selector = FixedSelector(
-            plans.GLOBAL_OWNER_WINDOW_FP32, registry=make_algorithm_registry()
+            (
+                plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY
+                if args.geometry_shared
+                else plans.GLOBAL_OWNER_WINDOW_FP32
+            ),
+            registry=make_algorithm_registry(),
         )
         sx = x.detach().clone().requires_grad_()
         sy = sub_gpu(sx)
@@ -157,7 +168,10 @@ def run(args):
             "rms_by_column": delta.double().square().mean(0).sqrt().tolist(),
             "scope": "same actual m/v/step, reference dP rounded once to FP32; diagnostic, no retroactive cold-gate pass",
         }
-        updates = [next_update(init, checkpoint, grad) for grad in (g, r, r)]
+        updates = [
+            next_update(init, checkpoint, grad, args.geometry_shared)
+            for grad in (g, r, r)
+        ]
         a, b, c = [entry[0] for entry in updates]
         distance = (a.double() - b.double()).abs()
         distance[:, 2:] = (
@@ -217,4 +231,5 @@ if __name__ == "__main__":
     parser.add_argument("--inputs", type=Path, required=True)
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--geometry-shared", action="store_true")
     run(parser.parse_args())

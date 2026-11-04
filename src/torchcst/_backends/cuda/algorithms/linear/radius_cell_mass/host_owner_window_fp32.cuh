@@ -2,25 +2,34 @@
 namespace radius_cell_mass {
 namespace fp32_body {
 std::vector<Tensor> owner_window_transform(Tensor, Tensor, Tensor, Tensor, Tensor, Config, Config,
-                                           bool, bool, bool, bool, bool, Tensor, Tensor, Tensor);
+                                           bool, bool, bool, bool, bool, Tensor, Tensor, Tensor, Tensor);
 void check_owner_window_saved(Tensor, Tensor, Tensor, Tensor, Tensor, Config, Config);
 void check_scope(Tensor, Config, Config);
+void check_geometry_saved(Tensor, Tensor);
 std::vector<Tensor> diagnose(Tensor, Tensor, Tensor, Config, Config);
 } // namespace fp32_body
-class OwnerWindowFloat : public torch::autograd::Function<OwnerWindowFloat> {
+std::vector<Tensor> classify_atoms_geometry_async(Tensor, Config, Config);
+template<bool GeometryShared = false>
+class OwnerWindowFloat : public torch::autograd::Function<OwnerWindowFloat<GeometryShared>> {
   public:
     static Tensor forward(torch::autograd::AutogradContext *ctx, Tensor x, Tensor atoms,
                           Config input, Config output, int mode, bool need_derivative) {
-        auto keys = classify_atoms_async(atoms, input, output);
+        Tensor keys, geometry;
+        if constexpr (GeometryShared) {
+            auto classified = classify_atoms_geometry_async(atoms, input, output);
+            keys = classified[0]; geometry = classified[1];
+        } else keys = classify_atoms_async(atoms, input, output);
         auto ranges = autograd_ranges(keys, input, output, false);
         auto values = fp32_body::owner_window_transform(
             x, atoms, keys, ranges[0], ranges[1], input, output, false, need_derivative, mode != 0,
-            mode == 2, true, Tensor(), Tensor(), Tensor());
+            mode == 2, true, Tensor(), Tensor(), Tensor(), geometry);
         ctx->saved_data["input"] = input;
         ctx->saved_data["output"] = output;
         ctx->saved_data["mode"] = mode;
-        ctx->save_for_backward(
-            {x, atoms, mode == 2 ? values[4] : values[1], mode == 2 ? Tensor() : values[2], keys});
+        torch::autograd::variable_list retained =
+            {x, atoms, mode == 2 ? values[4] : values[1], mode == 2 ? Tensor() : values[2], keys};
+        if constexpr (GeometryShared) retained.push_back(geometry);
+        ctx->save_for_backward(retained);
         return values[0];
     }
     static torch::autograd::variable_list backward(torch::autograd::AutogradContext *ctx,
@@ -31,7 +40,13 @@ class OwnerWindowFloat : public torch::autograd::Function<OwnerWindowFloat> {
         {
             torch::NoGradGuard no_grad;
             auto saved = ctx->get_saved_variables();
-            auto x = saved[0], atoms = saved[1], dy = gradients[0].contiguous();
+            auto x = saved[0], atoms = saved[1];
+            Tensor geometry;
+            if constexpr (GeometryShared) {
+                geometry = saved[5];
+                fp32_body::check_geometry_saved(atoms, geometry);
+            }
+            auto dy = gradients[0].contiguous();
             auto input = ctx->saved_data["input"].toDoubleVector();
             auto output = ctx->saved_data["output"].toDoubleVector();
             int mode = ctx->saved_data["mode"].toInt();
@@ -47,7 +62,7 @@ class OwnerWindowFloat : public torch::autograd::Function<OwnerWindowFloat> {
             auto values = fp32_body::owner_window_transform(
                 dy, atoms, saved[4], ranges[0], ranges[1], input, output, true, needs_p, mode != 0,
                 mode == 2, needs_x, mode == 2 ? Tensor() : saved[2],
-                mode == 2 ? Tensor() : saved[3], mode == 2 ? saved[2] : Tensor());
+                mode == 2 ? Tensor() : saved[3], mode == 2 ? saved[2] : Tensor(), geometry);
             if (needs_x)
                 result[0] = values[0];
             if (needs_p)
@@ -84,8 +99,18 @@ void bind_owner_window_fp32_autograd(pybind11::module_ &module) {
             check_autograd_entry(x, p, input, output, 2, 2, 32, 6, graph);
             fp32_body::check_scope(p, input, output);
             bool derivative = torch::GradMode::is_enabled() && p.requires_grad();
-            return OwnerWindowFloat::apply(x, p, input, output, 2, derivative);
+            return OwnerWindowFloat<>::apply(x, p, input, output, 2, derivative);
         },
         pybind11::call_guard<pybind11::gil_scoped_release>());
+    module.def(
+        "research_owner_window_fp32_geometry",
+        [](Tensor x, Tensor p, Config input, Config output, bool graph) {
+            check_autograd_entry(x, p, input, output, 2, 2, 32, 6, graph);
+            fp32_body::check_scope(p, input, output);
+            bool derivative = torch::GradMode::is_enabled() && p.requires_grad();
+            return OwnerWindowFloat<true>::apply(x, p, input, output, 2, derivative);
+        },
+        pybind11::call_guard<pybind11::gil_scoped_release>());
+
 }
 } // namespace radius_cell_mass

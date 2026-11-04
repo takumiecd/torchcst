@@ -1,6 +1,7 @@
 """One fresh-process cell of the bounded full-step Graph comparison."""
 
 import argparse
+import cProfile
 import gc
 import hashlib
 import json
@@ -64,7 +65,11 @@ def run(args):
         init,
         args.kind,
         radius_execution="cached" if args.kind == "cst" else "global-response4",
-        execution_plan=plans.GLOBAL_OWNER_WINDOW_RECOMPUTE
+        execution_plan=(
+            plans.GLOBAL_OWNER_WINDOW_FP32
+            if args.bootstrap_fp32
+            else plans.GLOBAL_OWNER_WINDOW_RECOMPUTE
+        )
         if args.kind == "cst"
         else None,
     ).cuda()
@@ -72,7 +77,11 @@ def run(args):
     if args.state == "final":
         checkpoint = torch.load(
             args.inputs
-            / ("baseline_final.pt" if args.kind == "cst" else "dense_final.pt"),
+            / (
+                ("fp32_final.pt" if args.bootstrap_fp32 else "baseline_final.pt")
+                if args.kind == "cst"
+                else "dense_final.pt"
+            ),
             map_location="cpu",
             weights_only=True,
         )
@@ -92,13 +101,19 @@ def run(args):
     if checkpoint is not None:
         restore(model, optimizer, wanted)
     start = snapshot(model, optimizer)
-    # All precision conditions start after the SAME eight FP64 updates. Prepare
+    # Historical mode uses eight common FP64 updates; --bootstrap-fp32 uses
+    # eight actual FP32 baseline updates. Prepare
     # the candidate's guarded public entrance without changing P or Adam state.
-    if args.kind == "cst" and args.precision == "fp32":
+    if args.kind == "cst" and args.precision in ("fp32", "fp32_geometry"):
         from torchcst import FixedSelector, make_algorithm_registry
 
         model[2].selector = FixedSelector(
-            plans.GLOBAL_OWNER_WINDOW_FP32, registry=make_algorithm_registry()
+            (
+                plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY
+                if args.precision == "fp32_geometry"
+                else plans.GLOBAL_OWNER_WINDOW_FP32
+            ),
+            registry=make_algorithm_registry(),
         )
         optimizer.zero_grad(set_to_none=True)
         model(tx[order[:4]]).sum().backward()
@@ -121,6 +136,18 @@ def run(args):
     )
     start = actual_start
     setup_seconds = time.perf_counter() - setup_start
+    profiler = None
+    python_profile = None
+    if args.profile:
+        profiler = torch.profiler.profile(
+            activities=[
+                torch.profiler.ProfilerActivity.CPU,
+                torch.profiler.ProfilerActivity.CUDA,
+            ]
+        )
+        profiler.__enter__()
+        python_profile = cProfile.Profile()
+        python_profile.enable()
     started = time.perf_counter()
     gc_enabled = gc.isenabled()
     gc.disable()
@@ -136,6 +163,21 @@ def run(args):
         if gc_enabled:
             gc.enable()
     seconds = time.perf_counter() - started
+    if profiler is not None:
+        python_profile.disable()
+        profiler.__exit__(None, None, None)
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        profiler.export_chrome_trace(str(args.output.with_suffix(".trace.json")))
+        python_profile.dump_stats(str(args.output.with_suffix(".prof")))
+        events = {}
+        for event in profiler.events():
+            if event.device_type == torch.autograd.DeviceType.CUDA:
+                events[event.name] = (
+                    events.get(event.name, 0.0) + event.device_time_total
+                )
+        args.output.with_suffix(".kernels.json").write_text(
+            json.dumps(events, indent=2) + "\n"
+        )
     peak_allocated, peak_reserved = (
         torch.cuda.max_memory_allocated(),
         torch.cuda.max_memory_reserved(),
@@ -145,6 +187,47 @@ def run(args):
     gradients = {
         name: p.grad.detach().cpu().clone() for name, p in model.named_parameters()
     }
+    owners = None
+    if args.profile and args.kind == "cst":
+        from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.algorithm import (
+            hierarchy_from_operator,
+        )
+        from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.executor import (
+            _extension,
+        )
+
+        layout = hierarchy_from_operator(model[2].declaration())
+        keys = _extension().classify_atoms_async(
+            model[2].atoms.p,
+            *[v.native_config() for v in (layout.input, layout.output)],
+        )
+        owners = {}
+        for side, nodes in (
+            ("input", keys.remainder(layout.input.node_count)),
+            ("output", keys.div(layout.input.node_count, rounding_mode="floor")),
+        ):
+            axis = getattr(layout, side)
+            counts = torch.bincount(nodes, minlength=axis.node_count).cpu()
+            owners[side] = {
+                "counts": counts.tolist(),
+                "nonempty": int((counts > 0).sum()),
+                "max_atoms": int(counts.max()),
+                "banks": [
+                    {
+                        "rank": min(b.count * b.tile_sites, 17),
+                        "atoms": int(
+                            counts[b.node_offset : b.node_offset + b.tile_count].sum()
+                        ),
+                    }
+                    for b in axis.banks
+                ],
+            }
+    retirement_begin = time.perf_counter()
+    program = None
+    optimizer.zero_grad(set_to_none=True)
+    gc.collect()
+    torch.cuda.synchronize()
+    retirement_seconds = time.perf_counter() - retirement_begin
     row = {
         "kind": args.kind,
         "precision": args.precision if args.kind == "cst" else "dense_fp32",
@@ -156,6 +239,15 @@ def run(args):
         "mean_step_ms": seconds * 1000 / args.steps,
         "examples_per_second": 4 * args.steps / seconds,
         "setup_seconds": setup_seconds,
+        "retirement_seconds": retirement_seconds,
+        "setup_and_retirement_seconds": setup_seconds + retirement_seconds,
+        "profiled_diagnostic_only": args.profile,
+        "owner_distribution_diagnostic": owners,
+        "geometry_shared": args.kind == "cst" and args.precision == "fp32_geometry",
+        "bootstrap_precision": "fp32" if args.bootstrap_fp32 else "fp64",
+        "adoption_45000_estimate_seconds": 45000 * seconds / args.steps
+        + setup_seconds
+        + retirement_seconds,
         "resident_allocated_bytes": resident,
         "peak_allocated_bytes": peak_allocated,
         "peak_reserved_bytes": peak_reserved,
@@ -211,9 +303,13 @@ def main():
     parser.add_argument("--kind", choices=("cst", "dense"), required=True)
     parser.add_argument("--mode", choices=("eager", "prepared", "graph"), required=True)
     parser.add_argument("--state", choices=("initial", "final"), required=True)
-    parser.add_argument("--precision", choices=("fp64", "fp32"), default="fp64")
+    parser.add_argument(
+        "--precision", choices=("fp64", "fp32", "fp32_geometry"), default="fp64"
+    )
     parser.add_argument("--repeat", type=int, default=0)
     parser.add_argument("--steps", type=int, default=256)
+    parser.add_argument("--bootstrap-fp32", action="store_true")
+    parser.add_argument("--profile", action="store_true")
     args = parser.parse_args()
     stream = torch.cuda.Stream()
     with torch.cuda.stream(stream):

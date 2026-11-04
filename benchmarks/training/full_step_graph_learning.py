@@ -104,7 +104,13 @@ def run(args):
         init,
         args.kind,
         radius_execution="cached" if args.kind == "cst" else "global-response4",
-        execution_plan=plans.GLOBAL_OWNER_WINDOW_FP32 if args.kind == "cst" else None,
+        execution_plan=(
+            plans.GLOBAL_OWNER_WINDOW_FP32_GEOMETRY
+            if args.geometry_shared
+            else plans.GLOBAL_OWNER_WINDOW_FP32
+        )
+        if args.kind == "cst"
+        else None,
     ).cuda()
     assert torch.get_num_threads() == 1
     torch.cuda.empty_cache()
@@ -122,7 +128,7 @@ def run(args):
     del initial
     program = None
     total_updates, replay_updates = 0, 0
-    captures, epochs = [], []
+    captures, epochs, retirements = [], [], []
 
     def prepare_graph(order, next_step, totals, reason):
         nonlocal preparation_seconds
@@ -183,8 +189,19 @@ def run(args):
         # No guard refresh or signature bypass: reprepare only if normal public
         # evaluation changed eligibility, and account for that complete cost.
         if program is not None and not program.eligible():
+            retire_begin = time.perf_counter()
             program = None
             gc.collect()
+            torch.cuda.synchronize()
+            retire_seconds = time.perf_counter() - retire_begin
+            preparation_seconds += retire_seconds
+            retirements.append(
+                {
+                    "at_update": total_updates,
+                    "seconds": retire_seconds,
+                    "reason": "evaluation_boundary",
+                }
+            )
             program = prepare_graph(order, 0, totals, "evaluation_boundary")
             totals = program.totals
         torch.cuda.synchronize()
@@ -298,6 +315,20 @@ def run(args):
         )
         del end, grads
     torch.cuda.synchronize()
+    retire_begin = time.perf_counter()
+    program = None
+    optimizer.zero_grad(set_to_none=True)
+    gc.collect()
+    torch.cuda.synchronize()
+    retire_seconds = time.perf_counter() - retire_begin
+    preparation_seconds += retire_seconds
+    retirements.append(
+        {
+            "at_update": total_updates,
+            "seconds": retire_seconds,
+            "reason": "final_retirement",
+        }
+    )
     report = {
         "kind": args.kind,
         "mode": args.mode,
@@ -312,6 +343,8 @@ def run(args):
         "data": info,
         "epochs": epochs,
         "captures": captures,
+        "retirements": retirements,
+        "geometry_shared": args.geometry_shared,
         "preparation_seconds": preparation_seconds,
         "training_seconds": sum(e["training_seconds"] for e in epochs),
         "adoption_seconds": preparation_seconds
@@ -327,7 +360,7 @@ def run(args):
         "precision": "FP32 body; FP64 decode/classify/local subtraction/Polar pullback"
         if args.kind == "cst"
         else "FP32 dense",
-        "timing_scope": "epoch training segments include all 45000 real updates, cold optimizer, gather/loss/backward/update/metrics and Graph guard/index/version notifications; preparation/capture/restoration added to adoption_seconds; evaluation/checkpoint excluded",
+        "timing_scope": "epoch training segments include all 45000 real updates, cold optimizer, gather/loss/backward/update/metrics and Graph guard/index/version notifications; preparation/capture/restoration/Graph retirement and GC added to adoption_seconds; evaluation/checkpoint excluded",
         "memory_scope": "before optimizer creation; includes initial evaluation, all actual FP32 updates, capture/restoration/repreparation and epoch evaluations; no peak reset after capture; untimed final VJP diagnostics run separately",
         "optimizer_contract": init["optimizer_contract"],
     }
@@ -346,6 +379,7 @@ def main():
         default=0,
         help="smoke only; full experiment uses all15000",
     )
+    parser.add_argument("--geometry-shared", action="store_true")
     args = parser.parse_args()
     stream = torch.cuda.Stream()
     with torch.cuda.stream(stream):

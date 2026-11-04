@@ -94,6 +94,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "global_owner_window_fold",
             "global_owner_window_recompute",
             "global_owner_window_fp32",
+            "global_owner_window_fp32_geometry",
             "block_local",
             "block_local_parallel",
             "block_local_cached_parallel",
@@ -122,6 +123,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
                     "global_owner_window_fold",
                     "global_owner_window_recompute",
                     "global_owner_window_fp32",
+                    "global_owner_window_fp32_geometry",
                 )
             )
         ):
@@ -142,6 +144,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "global_owner_window_fold",
             "global_owner_window_recompute",
             "global_owner_window_fp32",
+            "global_owner_window_fp32_geometry",
         ) and (
             recipe.moment_method != "merge"
             or recipe.input_direct_levels != 2
@@ -196,6 +199,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "global_owner_window_fold",
             "global_owner_window_recompute",
             "global_owner_window_fp32",
+            "global_owner_window_fp32_geometry",
         ) and (
             context.m > 4
             or plan.input != plan.output
@@ -211,7 +215,10 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             reasons.append(
                 "owner response coefficients require identical N1024 Polar M8 base1 merge2 axes and B<=4"
             )
-        if recipe.schedule == "global_owner_window_fp32" and (
+        if recipe.schedule in (
+            "global_owner_window_fp32",
+            "global_owner_window_fp32_geometry",
+        ) and (
             context.dtype != torch.float32
             or any(
                 axis.spacing != 1

@@ -181,9 +181,12 @@ class PreparedStep:
                     "canonical native execution certificates not prepared"
                 )
             plan = self.linear_program.cached.state.layout
-            self.fp32_body = (
-                self.linear_program.cached.state.recipe.schedule
-                == "global_owner_window_fp32"
+            self.fp32_body = self.linear_program.cached.state.recipe.schedule in (
+                "global_owner_window_fp32",
+                "global_owner_window_fp32_geometry",
+            )
+            self.geometry_shared = (
+                self.linear_program.cached.state.recipe.schedule.endswith("_geometry")
             )
             self.configs = plan.input.native_config(), plan.output.native_config()
             self.previous = torch.empty_like(self.site.atoms.p)
@@ -373,9 +376,12 @@ class PreparedStep:
                 x.retain_grad()
             self.middle = x
             if self.fp32_body:
-                x = self.extension.research_owner_window_fp32(
-                    x, self.site.atoms.p, *self.configs, True
+                entry = (
+                    self.extension.research_owner_window_fp32_geometry
+                    if self.geometry_shared
+                    else self.extension.research_owner_window_fp32
                 )
+                x = entry(x, self.site.atoms.p, *self.configs, True)
             else:
                 x = self.extension.research_graph_owner_window(
                     x, self.site.atoms.p, *self.configs

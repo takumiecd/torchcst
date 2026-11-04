@@ -579,6 +579,7 @@ def checked_owner_compact_keyed_linear(plan, x, atoms, *, recipe):
         "global_owner_window_fold",
         "global_owner_window_recompute",
         "global_owner_window_fp32",
+        "global_owner_window_fp32_geometry",
     ):
         raise ValueError("expected the explicit compact keyed-owner recipe")
     if (
@@ -606,8 +607,16 @@ def checked_owner_compact_keyed_linear(plan, x, atoms, *, recipe):
             ),
         )
     native = _extension()
-    if recipe.schedule == "global_owner_window_fp32":
-        return native.research_owner_window_fp32(
+    if recipe.schedule in (
+        "global_owner_window_fp32",
+        "global_owner_window_fp32_geometry",
+    ):
+        entry = (
+            native.research_owner_window_fp32_geometry
+            if recipe.schedule.endswith("_geometry")
+            else native.research_owner_window_fp32
+        )
+        return entry(
             x.contiguous(),
             atoms.contiguous(),
             plan.input.native_config(),
@@ -734,6 +743,7 @@ def checked_radius_linear(plan, x, atoms, *, recipe):
         "global_owner_window_fold",
         "global_owner_window_recompute",
         "global_owner_window_fp32",
+        "global_owner_window_fp32_geometry",
     ):
         return checked_owner_compact_keyed_linear(plan, x, atoms, recipe=recipe)
     if recipe.schedule == "block_local_tile_moments":
@@ -816,6 +826,7 @@ def radius_linear(plan, x, atoms, *, recipe=None):
         "global_owner_window_fold",
         "global_owner_window_recompute",
         "global_owner_window_fp32",
+        "global_owner_window_fp32_geometry",
     ):
         return checked_owner_compact_keyed_linear(plan, x, atoms, recipe=recipe)
     if recipe.schedule == "block_local_tile_moments":
