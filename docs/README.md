@@ -25,6 +25,17 @@ Development starts at [CONTRIBUTING](../CONTRIBUTING.md).
 - [Owner research resources and operating rules](research-operations.ja.md)
 - [CUDA Linear benchmarks and measurements](../benchmarks/cuda/linear/README.md)
 
+## Model-level CST research
+
+[cst-research](https://github.com/takumiecd/cst-research) organizes research
+questions, study protocols, dense/DST comparisons, learning curves and result
+indexes. Studies pin the torchcst revision they use and distinguish exploratory
+results from confirmation. Current experiment sources and older evidence remain
+at their recorded locations while the research tooling is migrated.
+
+Operator/kernel development and correctness validation stay in torchcst.
+Research-specific private execution paths are not public API guarantees.
+
 ## Validation and revision-specific design notes
 
 These notes retain their recorded design, API and measurement scope. Older API

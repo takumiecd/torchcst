@@ -203,6 +203,20 @@ This package is a research API. Historical measurements describe their recorded
 source, workload and hardware; they do not establish performance of a different
 revision or implementation.
 
+## CST research
+
+Follow [cst-research](https://github.com/takumiecd/cst-research) for the research
+program, model-level study protocols and result indexes: atom-density and
+width/depth scaling, comparisons with dense and dynamic sparse training, and
+learning curves against optimization steps and elapsed time.
+
+`torchcst` owns the operator API, mathematical contracts, implementations and
+their correctness/performance validation. The research repository consumes
+revision-pinned implementations; each study records its source and evidence.
+Historical experiments and kernel validation records remain linked from the
+[documentation index](docs/README.md). A study's experimental execution path does
+not extend this package's supported public API.
+
 ## Documentation
 
 - [Documentation index: current contracts, guides and research history](docs/README.md)
