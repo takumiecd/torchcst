@@ -19,7 +19,7 @@ inline void check_matrix(const Tensor &x) {
 }
 inline void check_atoms(const Tensor &p) {
     check_matrix(p);
-    TORCH_CHECK(p.size(1) == 4 && p.size(0) <= MAX_ATOMS, "expected at most 65536 four-column atoms");
+    TORCH_CHECK(p.size(1) == 4 && p.size(0) <= MAX_ATOMS, "expected at most ", MAX_ATOMS, " four-column atoms");
 }
 inline void check_shared_shape(const Tensor &p, const Axis &input, const Axis &output) {
     TORCH_CHECK(input.sites <= SHARED_MAX_SITES && output.sites <= SHARED_MAX_SITES &&
@@ -468,8 +468,9 @@ void check_autograd_entry(Tensor x, Tensor p, Config input_config,
     cudaStreamCaptureStatus status;
     C10_CUDA_CHECK(cudaStreamIsCapturing(at::cuda::getCurrentCUDAStream(), &status));
     TORCH_CHECK(!research_graph || (schedule == 6 && x.size(0) == 4 &&
-        p.size(0) == 52428 && input.sites == 1024 && output.sites == 1024),
-        "graph research entry requires the fixed N1024/A52428/B4 cohort");
+        owner_window_sites(input.sites) && input.sites == output.sites &&
+        p.size(0) == owner_window_cohort_atoms(input.sites)),
+        "graph research entry requires a fixed N1024..16384 power-of-two/5%-atoms/B4 cohort");
     TORCH_CHECK(research_graph || status == cudaStreamCaptureStatusNone,
         "radius baseline uses eager preparation, not CUDA Graphs");
 }

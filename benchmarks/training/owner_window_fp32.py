@@ -79,7 +79,7 @@ def quadrature(model, x, p):
     nodes, weights = np.polynomial.legendre.leggauss(48)
     nodes, weights = p.new_tensor(nodes), p.new_tensor(weights)
     factors = []
-    for column in (3, 2):
+    for column, sites_count in ((3, model.in_features), (2, model.out_features)):
         rows = []
         for r, mu in zip(radius, p[:, column]):
             tile = 1
@@ -87,7 +87,7 @@ def quadrature(model, x, p):
                 tile *= 2
             count = math.ceil(2 * float(r) / tile) + 1
             period = count * tile
-            c = mu.remainder(1024)
+            c = mu.remainder(sites_count)
             first = (
                 math.floor((float(c.detach()) + 0.5) / tile - (count - 1) / 2) * tile
             )
@@ -110,7 +110,9 @@ def quadrature(model, x, p):
                 p.new_tensor(-period / 2), p.new_tensor(period / 2)
             )
             rows.append(
-                p.new_zeros(1024).scatter_add(0, sites.long().remainder(1024), mass)
+                p.new_zeros(sites_count).scatter_add(
+                    0, sites.long().remainder(sites_count), mass
+                )
             )
         factors.append(torch.stack(rows).T)
     return (x @ factors[0]) @ (factors[1] * amp).T
@@ -187,9 +189,13 @@ def optimizer_check(model, actual, reference):
     ulp = (torch.nextafter(b, torch.full_like(b, float("inf"))) - b).abs()
     tolerance = 1e-6 + 2 * ulp
     distance = (a.double() - b.double()).abs()
-    distance[:, 2:] = (
-        (a[:, 2:].double() - b[:, 2:].double() + 512).remainder(1024) - 512
-    ).abs()
+    for column, period in ((2, model.out_features), (3, model.in_features)):
+        distance[:, column] = (
+            (a[:, column].double() - b[:, column].double() + period / 2).remainder(
+                period
+            )
+            - period / 2
+        ).abs()
     finite_control = torch.isfinite(b).all(1)
     result["baseline_post_p_nonfinite_rows"] = (
         (~finite_control).nonzero().flatten().tolist()

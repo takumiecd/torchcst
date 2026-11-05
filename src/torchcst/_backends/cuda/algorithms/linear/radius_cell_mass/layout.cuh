@@ -35,7 +35,7 @@ __global__ void owner_range_offsets(const Key *sorted_keys, int64_t *offsets,
 inline void check_layout_keys(const Tensor &keys, int input_nodes, int output_nodes) {
     TORCH_CHECK(keys.is_cuda() && keys.scalar_type() == torch::kLong &&
         keys.dim() == 1 && keys.is_contiguous() && keys.numel() <= MAX_ATOMS,
-        "expected at most 65536 contiguous CUDA int64 owner keys");
+        "expected at most ", MAX_ATOMS, " contiguous CUDA int64 owner keys");
     TORCH_CHECK(input_nodes > 0 && input_nodes <= MAX_OWNER_NODES &&
         output_nodes > 0 && output_nodes <= MAX_OWNER_NODES, "invalid owner node counts");
 }

@@ -186,8 +186,8 @@ def test_radius_other_batches_reject_without_data_or_output(
 def test_radius_unknown_width_and_lr_override_remain_explicitly_unsupported(
     initialization,
 ):
-    with pytest.raises(ValueError, match="widths 128 and 1024"):
-        mnist.make_radius_initialization(2048)
+    with pytest.raises(ValueError, match="permit widths"):
+        mnist.make_radius_initialization(32768)
     cst = mnist.make_model(initialization, "cst")
     with pytest.raises(ValueError, match="frozen initialization contract"):
         mnist.make_optimizer(cst, initialization, "cst", lr=0.001)

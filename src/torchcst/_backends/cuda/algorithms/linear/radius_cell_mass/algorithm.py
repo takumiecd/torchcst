@@ -195,6 +195,15 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
         except (ValueError, TypeError) as error:
             return SupportResult((str(error),))
         reasons = []
+        scalable = recipe.schedule in (
+            "global_owner_window_fp32_geometry_sort32",
+            "global_owner_window_fp32_geometry_sort32_flat_c",
+        )
+        if (
+            max(plan.input.site_count, plan.output.site_count) > 1024
+            or context.atom_count > 65536
+        ) and not scalable:
+            reasons.append("large radius cohorts require the FP32 geometry sort32 routes")
         if recipe.schedule in (
             "global_owner_response_coefficients",
             "global_owner_response_derivatives",
@@ -212,7 +221,9 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             context.m > 4
             or plan.input != plan.output
             or any(
-                axis.site_count != 1024
+                axis.site_count not in (
+                    (1024, 2048, 4096, 8192, 16384) if scalable else (1024,)
+                )
                 or axis.polar is None
                 or axis.modes != 8
                 or axis.base_tile_sites != 1
@@ -221,7 +232,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             )
         ):
             reasons.append(
-                "owner response coefficients require identical N1024 Polar M8 base1 merge2 axes and B<=4"
+                "owner response coefficients require identical power-of-two N1024..16384 Polar M8 base1 merge2 axes and B<=4"
             )
         if recipe.schedule in (
             "global_owner_window_fp32",

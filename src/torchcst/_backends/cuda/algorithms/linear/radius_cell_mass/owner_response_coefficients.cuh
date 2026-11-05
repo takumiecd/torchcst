@@ -245,10 +245,10 @@ inline void check_owner_axes(const Axis &input, const Axis &output, int batch,
     TORCH_CHECK(batch <= OWNER_BATCH && input_start == 2 && output_start == 2 &&
         merge && tile_sites == 32, "owner response coefficients require B<=4, merge, cutoffs2 and tile32");
     for (const Axis *a : {&input, &output})
-        TORCH_CHECK(a->sites == 1024 && a->polar && a->modes == 8 &&
+        TORCH_CHECK(owner_window_sites(a->sites) && a->polar && a->modes == 8 &&
             a->base_tile_sites == 1 && a->merge_factor == 2,
-            "owner response coefficients require N1024 Polar M8 base1 merge2");
-    TORCH_CHECK(input.spacing == output.spacing && input.origin == output.origin &&
+            "owner response coefficients require power-of-two N1024..16384 Polar M8 base1 merge2");
+    TORCH_CHECK(input.sites == output.sites && input.spacing == output.spacing && input.origin == output.origin &&
         input.amplitude_max == output.amplitude_max && input.w_c == output.w_c &&
         input.kappa == output.kappa && input.lower_kappa == output.lower_kappa &&
         input.upper_decay_power == output.upper_decay_power && input.radius_min == output.radius_min &&

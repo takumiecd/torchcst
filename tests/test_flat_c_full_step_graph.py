@@ -39,5 +39,5 @@ def test_flat_c_public_capture_rejected(request):
         pytest.raises(RuntimeError, match="not CUDA Graphs"),
     ):
         p.extension.research_owner_window_fp32_geometry_sort32_flat_c(
-            tx.new_zeros((4, 1024)), m[2].atoms.p, *p.configs, False
+            tx.new_zeros((4, m[2].in_features)), m[2].atoms.p, *p.configs, False
         )

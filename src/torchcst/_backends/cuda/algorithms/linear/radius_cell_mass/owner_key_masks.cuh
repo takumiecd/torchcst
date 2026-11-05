@@ -10,10 +10,12 @@ __device__ inline uint32_t key_moment_dependencies(int64_t key, const Axis &inpu
     valid = key >= 0 && key < int64_t(input.node_count) * output.node_count;
     if (!valid) return 0;
     const Axis &axis = output_side ? output : input;
-    static_assert(int64_t(MAX_OWNER_NODES) * MAX_OWNER_NODES <= INT_MAX,
-        "validated owner keys fit32-bit division");
-    int encoded = int(key);
-    int node = output_side ? encoded / input.node_count : encoded % input.node_count;
+    static_assert(uint64_t(MAX_OWNER_NODES) * MAX_OWNER_NODES <= UINT32_MAX,
+        "validated owner keys fit unsigned32-bit division");
+    // At N16384 valid keys exceed INT_MAX, but still fit uint32 exactly.
+    // Validate in int64 before narrowing; each decoded node fits signed int.
+    uint32_t encoded = uint32_t(key), stride = uint32_t(input.node_count);
+    int node = output_side ? int(encoded / stride) : int(encoded % stride);
     return moment_bank_dependencies(bank_for_node(node, axis), start, merge);
 }
 

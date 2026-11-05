@@ -815,7 +815,7 @@ def radius_linear(plan, x, atoms, *, recipe=None):
     """Execute a bounded first-order research route through an explicit Plan.
 
     Initialize CSTLinear with the CPU reference and then move it to CUDA.
-    General stages support N<=1024 and A<=65536 with global hierarchical
+    General stages support N<=16384 and A<=2**24 with global hierarchical
     moments/responses. global_batched_cached keeps C local to a bounded tile;
     global_owner_response_coefficients uses temporary owner/part C instead.
     sequential/overlap retain global C. Shared projection stays N<=128/A<=4096. All

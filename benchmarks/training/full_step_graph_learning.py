@@ -105,6 +105,10 @@ def run(args):
         data["t10k_x"], "cuda", info["mean"], info["std"], data_normalization="original"
     )
     ty, vy = data["train_y"].cuda(), data["t10k_y"].cuda()
+    evaluation_limit = getattr(args, "evaluation_limit", 0)
+    checkpoint_policy = getattr(args, "checkpoint_policy", "full")
+    if evaluation_limit:
+        vx, vy = vx[:evaluation_limit], vy[:evaluation_limit]
     model = make_model(
         init,
         args.kind,
@@ -349,19 +353,20 @@ def run(args):
             for v in [*train_metrics.values(), *validation.values()]
         )
         save_begin = time.perf_counter()
-        torch.save(
-            {
-                "model": model.state_dict(),
-                "optimizer": optimizer.state_dict(),
-                "gradients": {name: p.grad for name, p in model.named_parameters()},
-                "epoch": epoch + 1,
-                "updates": total_updates,
-                "totals": values,
-                "kind": args.kind,
-                "precision": "fp32_body" if args.kind == "cst" else "dense_fp32",
-            },
-            args.output / f"epoch-{epoch + 1}.pt",
-        )
+        if checkpoint_policy == "full":
+            torch.save(
+                {
+                    "model": model.state_dict(),
+                    "optimizer": optimizer.state_dict(),
+                    "gradients": {name: p.grad for name, p in model.named_parameters()},
+                    "epoch": epoch + 1,
+                    "updates": total_updates,
+                    "totals": values,
+                    "kind": args.kind,
+                    "precision": "fp32_body" if args.kind == "cst" else "dense_fp32",
+                },
+                args.output / f"epoch-{epoch + 1}.pt",
+            )
         row["checkpoint_seconds"] = time.perf_counter() - save_begin
         epochs.append(row)
         persist(args.output / "epochs.json", epochs)
@@ -399,6 +404,10 @@ def run(args):
     )
     report = {
         "kind": args.kind,
+        "width": init["width"],
+        "atom_count": len(init["atoms"]),
+        "evaluation_examples": len(vy),
+        "checkpoint_policy": checkpoint_policy,
         "mode": args.mode,
         "guard": guard,
         "qualification_backend": qualification_backend,
@@ -460,12 +469,26 @@ def main():
         help="smoke only; full experiment uses all15000",
     )
     parser.add_argument("--epochs", type=int, default=3)
+    parser.add_argument(
+        "--evaluation-limit",
+        type=int,
+        default=0,
+        help="scale study only: evaluate this many test examples; 0 keeps all",
+    )
+    parser.add_argument(
+        "--checkpoint-policy",
+        choices=("full", "hashes"),
+        default="full",
+        help="hashes records every state/gradient digest without exporting large PT files",
+    )
     parser.add_argument("--geometry-shared", action="store_true")
     parser.add_argument("--sort32", action="store_true")
     parser.add_argument("--flat-c", action="store_true")
     args = parser.parse_args()
     if args.epochs < 1:
         parser.error("--epochs must be positive")
+    if args.evaluation_limit < 0:
+        parser.error("--evaluation-limit must be nonnegative")
     stream = torch.cuda.Stream()
     with torch.cuda.stream(stream):
         run(args)

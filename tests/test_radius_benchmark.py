@@ -111,9 +111,9 @@ def test_large_radius_case_explicit_general_plan_and_schema():
     assert decode_snapshot(run.snapshot()) == run
     assert measurement_operator(asdict(run.case)).kernel.revision == 7
     with pytest.raises(ValueError, match="size"):
-        replace(run.case, size=2048)
-    with pytest.raises(ValueError, match="65536"):
-        replace(run.case, atoms=65537)
+        replace(run.case, size=32768)
+    with pytest.raises(ValueError, match="16777216"):
+        replace(run.case, atoms=(1 << 24) + 1)
     # The measured N128 native fixture and its defaults remain separate.
     native = load_run(
         ROOT / "benchmarks/cuda/linear/cases/radius-cell-mass-128-native-initial.json",

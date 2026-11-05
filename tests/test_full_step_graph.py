@@ -167,14 +167,15 @@ def test_replay_invalidates_before_changed_contract(cohort, change):
 
 def test_current_boundary_wide_atoms_gradients_and_version(cohort):
     model, opt, tx, ty, indices, program, init = cohort
+    n = model[2].in_features
     with torch.no_grad():
         model[2].atoms.p[:7].copy_(
             torch.tensor(
                 [
-                    [1, 0, -1.2, 1022.8],
-                    [0.3, 0.9539392014169457, -1025.2, -1.2001],
-                    [0.15, 0.9886859966642595, 1022.79, 1022.81],
-                    [0.15, 1.33, 4096, -4096],
+                    [1, 0, -1.2, n - 1.2],
+                    [0.3, 0.9539392014169457, -n - 1.2, -1.2001],
+                    [0.15, 0.9886859966642595, n - 1.21, n - 1.19],
+                    [0.15, 1.33, 4 * n, -4 * n],
                     [0.15, 1.6, 7.3, 8.2],
                     [0, 2, 32, 64],
                     [0.3, 1.977371993328519, 128, 256],
@@ -321,5 +322,5 @@ def test_public_radius_entrance_still_rejects_capture(cohort):
         pytest.raises(RuntimeError, match="not CUDA Graphs"),
     ):
         program.extension.checked_autograd_linear_owner_window(
-            tx.new_zeros((4, 1024)), model[2].atoms.p, *program.configs, 2
+            tx.new_zeros((4, model[2].in_features)), model[2].atoms.p, *program.configs, 2
         )

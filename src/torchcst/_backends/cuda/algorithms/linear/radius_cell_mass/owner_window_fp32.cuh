@@ -636,9 +636,9 @@ void check_scope(Tensor p, Config input, Config output) {
     TORCH_CHECK(p.scalar_type() == torch::kFloat, "FP32 body requires FP32 public tensors");
     for (const auto &config : {input, output}) {
         Axis a = parse_axis(config);
-        TORCH_CHECK(a.sites == 1024 && a.modes == 8 && a.spacing == 1 && a.polar &&
+        TORCH_CHECK(owner_window_sites(a.sites) && a.modes == 8 && a.spacing == 1 && a.polar &&
                         a.radius_min >= .5 && a.radius_max <= 50 && a.amplitude_max <= 1,
-                    "FP32 body research scope: N1024/M8/spacing1/Polar/radius[.5,50]/amplitude<=1");
+                    "FP32 body research scope: N1024..16384 powers-of-two/M8/spacing1/Polar/radius[.5,50]/amplitude<=1");
     }
 }
 } // namespace fp32_body

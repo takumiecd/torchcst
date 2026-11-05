@@ -1,4 +1,4 @@
-"""Bounded N1024/B4 whole-step Graph experiment, not a public execution API.
+"""Bounded B4 whole-step Graph experiment, not a public execution API.
 
 Use unchanged owner-window arithmetic and PyTorch fused AdamW. All capture
 permissions are confined to a separate native entry on this research branch.
@@ -298,7 +298,7 @@ class PreparedStep:
         self._root_topology = RootTopology(model)
         self.params = tuple(model.parameters())
         self.site = model[2] if kind == "cst" else None
-        self.middle = tx.new_empty((4, 1024), requires_grad=True)
+        self.middle = tx.new_empty((4, model[0].out_features), requires_grad=True)
         self.periods = None
         if self.site is not None:
             self.linear_program = self.site.__dict__.get("_execution_program")

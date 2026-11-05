@@ -35,6 +35,7 @@ from torchcst import (
 
 RADIUS_COHORT = "polar_radius_native_128_v1"
 RADIUS_LARGE_COHORT = "polar_radius_global_response4_1024_v1"
+RADIUS_SCALE_WIDTHS = (2048, 4096, 8192, 16384)
 
 
 def radius_cohort(width):
@@ -44,7 +45,11 @@ def radius_cohort(width):
         return RADIUS_COHORT
     if width == 1024:
         return RADIUS_LARGE_COHORT
-    raise ValueError("radius MNIST cohorts permit only widths 128 and 1024")
+    if width in RADIUS_SCALE_WIDTHS:
+        return f"polar_radius_global_response4_{width}_scale_v1"
+    raise ValueError(
+        "radius MNIST cohorts permit widths 128, 1024, 2048, 4096, 8192 and 16384"
+    )
 
 
 def radius_optimizer_contract():
@@ -159,11 +164,11 @@ def _validate_radius_execution_width(
     # the ordinary first CUDA dispatch. No execution settings are bypassed here.
     if execution_plan is not None:
         return
-    if width == 1024 and (
+    if width >= 1024 and (
         radius_execution != "global-response4" or radius_direct_levels != 2
     ):
         raise ValueError(
-            "N1024 requires explicit global-response4 execution at direct levels 2"
+            f"N{width} requires explicit global-response4 execution at direct levels 2"
         )
     if width == 128 and radius_execution == "global-response4":
         raise ValueError(
@@ -269,12 +274,16 @@ def make_radius_initialization(width=128, seed=41):
     with torch.no_grad():
         if width == 128:
             weight = reference.dense_weight().detach().clone()
-        else:
+        elif width == 1024:
             from benchmarks.cuda.linear.radius_cell_mass import chunked_reference
 
             weight = chunked_reference(
                 reference, torch.eye(width, dtype=torch.float32)
             ).T.contiguous()
+        else:
+            from benchmarks.training.radius_local_reference import local_dense_weight
+
+            weight = local_dense_weight(reference)
     torch.manual_seed(seed + 1)
     shared_in, shared_out = nn.Linear(784, width), nn.Linear(width, 10)
     initialization = {
@@ -303,6 +312,10 @@ def make_radius_initialization(width=128, seed=41):
             "dtype": "float32",
             "graph_scope": "at most one atom chunk; no backward graph during export",
         }
+    elif width in RADIUS_SCALE_WIDTHS:
+        from benchmarks.training.radius_local_reference import LOCAL_EXPORT_POLICY
+
+        initialization["reference_export"] = copy.deepcopy(LOCAL_EXPORT_POLICY)
     initialization["initial_hashes"] = {
         "atoms": tensor_sha256(atoms),
         "weight": tensor_sha256(weight),
@@ -371,6 +384,13 @@ def validate_radius_initialization(initialization):
         raise ValueError(
             "radius initialization requires the bounded N1024 reference export"
         )
+    if width in RADIUS_SCALE_WIDTHS:
+        from benchmarks.training.radius_local_reference import LOCAL_EXPORT_POLICY
+
+        if initialization.get("reference_export") != LOCAL_EXPORT_POLICY:
+            raise ValueError(
+                "radius initialization requires the bounded local scale export"
+            )
     for name in ("atoms", "weight"):
         if (
             tensor_sha256(initialization[name])
@@ -701,6 +721,7 @@ def run_training(
     radius_execution="cached",
     radius_direct_levels=2,
     allow_radius_1024=False,
+    allow_radius_large_scale=False,
     execution_plan=None,
     execution_plan_source_sha256=None,
 ):
@@ -731,6 +752,15 @@ def run_training(
             raise ValueError("N1024 learning requires explicit allow_radius_1024")
         if batch_size != 4:
             raise ValueError("N1024 learning currently permits true batch 4 only")
+    if initialization["width"] in RADIUS_SCALE_WIDTHS:
+        if not allow_radius_large_scale:
+            raise ValueError(
+                "large-scale radius learning requires explicit allow_radius_large_scale"
+            )
+        if batch_size != 4:
+            raise ValueError(
+                "large-scale radius learning currently permits true batch 4 only"
+            )
     _validate_radius_execution_width(
         initialization["width"],
         radius_execution,
@@ -892,8 +922,12 @@ def run_training(
         "optimizer_contract": initialization.get("optimizer_contract"),
         "kernel_buffers_fp32": initialization.get("kernel_buffers_fp32"),
         "reference_export": initialization.get("reference_export"),
-        "large_radius_separately_opted_in": initialization["width"] == 1024
-        and allow_radius_1024,
+        "large_radius_separately_opted_in": (
+            initialization["width"] == 1024 and allow_radius_1024
+        )
+        or (
+            initialization["width"] in RADIUS_SCALE_WIDTHS and allow_radius_large_scale
+        ),
         "optimizer_implementation": f"{type(optimizer).__module__}.{type(optimizer).__qualname__}",
         "optimizer_effective_groups": [
             {
@@ -934,7 +968,7 @@ def main():
     parser.add_argument(
         "--radius-width",
         type=int,
-        choices=[128, 1024],
+        choices=[128, 1024, *RADIUS_SCALE_WIDTHS],
         default=128,
         help="width of a new, separately identified radius initialization",
     )
@@ -942,6 +976,11 @@ def main():
         "--allow-radius-1024",
         action="store_true",
         help="explicit N1024/A52428 true-B4 learning qualification",
+    )
+    parser.add_argument(
+        "--allow-radius-large-scale",
+        action="store_true",
+        help="explicit N2048..16384 fixed-density true-B4 scale study",
     )
     parser.add_argument(
         "--seed", type=int, default=41, help="seed for a new radius initialization"
@@ -1044,6 +1083,7 @@ def main():
         radius_execution=args.radius_execution,
         radius_direct_levels=args.radius_direct_levels,
         allow_radius_1024=args.allow_radius_1024,
+        allow_radius_large_scale=args.allow_radius_large_scale,
         execution_plan=execution_plan,
         execution_plan_source_sha256=execution_plan_source_sha256,
     )
