@@ -25,7 +25,9 @@ The existing supervisor remains responsible for normal status/lifecycle changes.
 Downloads have a 900-second process ceiling, with bounded HTTP requests, and
 become the result archive only after successful transfer. Existing archive,
 source and file-manifest verification still precedes the normal receipt and job
-status update. Cleanup additionally requires that receipt's archive hash. It
+status update. Before any cleanup network access, the helper independently
+checks the receipt's slot, session and archive hash, the retained result
+manifest's complete inventory and hashes, and the result/source identities. It
 executes only the pool-generated removal of this job's remote tree and archives,
 using existing kernel/session IDs, without persistence callbacks. A missing
 acknowledgment or uncertain cleanup stops dispatch and retains verified local

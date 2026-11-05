@@ -17,6 +17,7 @@ JOB = "l4job-" + "a" * 32
 SPEC = {
     "id": JOB,
     "accelerator": "L4",
+    "source_sha256": "b" * 64,
     "remote_archive": f"/content/{JOB}.tar.gz",
     "remote_result": f"/content/{JOB}-results.tar.gz",
 }
@@ -196,10 +197,13 @@ def install_fake_sdk(
         ("spec", SPEC),
         ("oauth", {"secret": "NOT-USED"}),
     ]:
-        path = tmp_path / (name + ".json")
+        path = (
+            tmp_path / ("1/" if name in ("slot", "sessions") else "") / (name + ".json")
+        )
+        path.parent.mkdir(exist_ok=True)
         path.write_text(json.dumps(data))
         paths[name] = path
-    before = {p.name: p.read_bytes() for p in tmp_path.iterdir()}
+    before = {p.name: p.read_bytes() for p in paths.values()}
     events = []
 
     class Authorized:
@@ -256,6 +260,7 @@ def install_fake_sdk(
         monkeypatch.setitem(sys.modules, name, module)
     request = {
         "operation": "download",
+        "slot": 1,
         "slot_file": str(paths["slot"]),
         "session_file": str(paths["sessions"]),
         "spec_file": str(paths["spec"]),
@@ -290,7 +295,9 @@ def test_sdk_orchestration_identity_ownership_and_no_cache_writes(
         transport.sdk_operation(request)
         assert events == ["authorize-in-memory", "list", "download"]
         assert {p.name: p.read_bytes() for p in paths.values()} == before
-        assert {p.name for p in tmp_path.iterdir()} == set(before) | {"results.tar.gz"}
+        assert {p.name for p in tmp_path.rglob("*") if p.is_file()} == set(before) | {
+            "results.tar.gz"
+        }
 
 
 def test_child_error_never_prints_sdk_secrets(monkeypatch, capsys):
@@ -386,4 +393,82 @@ def test_retrieval_cannot_overwrite_session_cache(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError):
         transport.sdk_operation(request)
     assert events == []
+    assert {p.name: p.read_bytes() for p in paths.values()} == before
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    [
+        "none",
+        "missing-receipt",
+        "archive-hash",
+        "receipt-slot",
+        "receipt-session",
+        "missing-manifest",
+        "result-inventory",
+        "result-bytes",
+        "result-identity",
+    ],
+)
+def test_cleanup_requires_verified_receipt_before_auth_or_network(
+    tmp_path, monkeypatch, tamper
+):
+    request, before, paths, events = install_fake_sdk(monkeypatch, tmp_path)
+    request["operation"] = "cleanup"
+    archive = Path(request["destination"])
+    archive.write_bytes(b"retained result archive")
+    receipt = {
+        "slot": 1,
+        "session": request["session"],
+        "archive_sha256": transport.file_hash(archive),
+    }
+    receipt_file = tmp_path / "receipt.json"
+    receipt_file.write_text(json.dumps(receipt))
+    results = tmp_path / "results"
+    results.mkdir()
+    result_file = results / "result.json"
+    result_file.write_text(
+        json.dumps({"id": JOB, "source_sha256": SPEC["source_sha256"]})
+    )
+    payload = results / "stdout.log"
+    payload.write_text("retained stdout")
+    manifest_file = results / "manifest.json"
+
+    def write_manifest():
+        manifest_file.write_text(
+            json.dumps({p.name: transport.file_hash(p) for p in (result_file, payload)})
+        )
+
+    write_manifest()
+    if tamper == "missing-receipt":
+        receipt_file.unlink()
+    elif tamper == "archive-hash":
+        archive.write_bytes(b"tampered archive")
+    elif tamper == "receipt-slot":
+        receipt["slot"] = 2
+        receipt_file.write_text(json.dumps(receipt))
+    elif tamper == "receipt-session":
+        receipt["session"] = "not-owned"
+        receipt_file.write_text(json.dumps(receipt))
+    elif tamper == "missing-manifest":
+        manifest_file.unlink()
+    elif tamper == "result-inventory":
+        (results / "unmanifested").write_text("extra")
+    elif tamper == "result-bytes":
+        payload.write_text("tampered stdout")
+    elif tamper == "result-identity":
+        result_file.write_text(
+            json.dumps(
+                {"id": "l4job-" + "c" * 32, "source_sha256": SPEC["source_sha256"]}
+            )
+        )
+        write_manifest()
+    monkeypatch.setattr(transport, "cleanup", lambda *args: events.append("cleanup"))
+    if tamper == "none":
+        transport.sdk_operation(request)
+        assert events == ["authorize-in-memory", "list", "cleanup"]
+    else:
+        with pytest.raises((RuntimeError, FileNotFoundError)):
+            transport.sdk_operation(request)
+        assert events == []
     assert {p.name: p.read_bytes() for p in paths.values()} == before

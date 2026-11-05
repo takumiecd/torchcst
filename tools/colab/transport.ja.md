@@ -20,7 +20,9 @@ StateStoreを開かず、資格情報の保存、session同期、VM確保、slot
 
 downloadはprocess全体で900秒を上限とし、HTTP requestにも上限を設け、転送完了後に
 結果archiveへ確定する。既存のarchive、source、file manifest検証を終えてから、通常の
-receiptとjob状態を記録する。cleanupにはさらにreceiptのarchive hash一致が必要である。
+receiptとjob状態を記録する。cleanupのネットワーク接続前に、helper自身がreceiptの
+slot・session・archive hash、保持済みresult manifestの全inventoryとhash、
+result/source identityを独立に確認する。
 このjobのremote treeとarchiveを削除するpool生成codeだけを、既存kernel/session IDを
 使って実行する。永続化callbackは使わない。完了確認が得られない、またはcleanupが
 不確かな場合はdispatchを停止し、検証済みlocal成果物を保持する。不確かなcodeを

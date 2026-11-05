@@ -354,6 +354,7 @@ class Pool:
                 raise RuntimeError("Cleanup requires a verified result receipt")
         request = {
             "operation": operation,
+            "slot": slot,
             "slot_file": str(self.slotdir(slot) / "state.json"),
             "session_file": str(self.slotdir(slot) / "sessions.json"),
             "spec_file": str(directory / "spec.json"),

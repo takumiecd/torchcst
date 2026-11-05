@@ -6,6 +6,7 @@ StateStore: even its read helpers can create lock files or prune sessions.
 
 import argparse
 import contextlib
+import hashlib
 import json
 import logging
 import os
@@ -32,6 +33,46 @@ def cleanup_code(spec):
         + f"Path({spec['remote_archive']!r}).unlink()\n"
         + f"Path({spec['remote_result']!r}).unlink()\n"
         + f'print("POOL_CLEANED {job}")\n'
+    )
+
+
+def file_hash(path):
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def verify_cleanup_receipt(request, slot, spec):
+    """Independently require the normal verified-result boundary before networking."""
+    directory = Path(request["spec_file"]).parent
+    archive = directory / "results.tar.gz"
+    receipt_file = directory / "receipt.json"
+    require(archive.is_file() and not archive.is_symlink())
+    require(receipt_file.is_file() and not receipt_file.is_symlink())
+    receipt = json.loads(receipt_file.read_text())
+    require(
+        type(receipt.get("slot")) is int
+        and receipt["slot"] == request["slot"]
+        and receipt.get("session") == slot["session"] == request["session"]
+        and receipt.get("archive_sha256") == file_hash(archive)
+    )
+    results = directory / "results"
+    require(results.is_dir() and not results.is_symlink())
+    paths = list(results.rglob("*"))
+    require(not any(path.is_symlink() for path in paths))
+    inventory = {
+        path.relative_to(results).as_posix(): path for path in paths if path.is_file()
+    }
+    manifest_file = inventory.pop("manifest.json", None)
+    require(manifest_file is not None)
+    manifest = json.loads(manifest_file.read_text())
+    require(isinstance(manifest, dict) and set(manifest) == set(inventory))
+    require(all(file_hash(path) == manifest[name] for name, path in inventory.items()))
+    result = json.loads(inventory["result.json"].read_text())
+    require(
+        result["id"] == spec["id"] and result["source_sha256"] == spec["source_sha256"]
     )
 
 
@@ -137,6 +178,8 @@ def sdk_operation(request):
     from google.oauth2.credentials import Credentials
 
     require(request["operation"] in ("download", "cleanup"))
+    require(type(request["slot"]) is int and request["slot"] > 0)
+    require(Path(request["slot_file"]).parent.name == str(request["slot"]))
     require(
         Path(request["destination"])
         == Path(request["spec_file"]).parent / "results.tar.gz"
@@ -151,6 +194,8 @@ def sdk_operation(request):
         and spec["accelerator"] == request["accelerator"]
     )
     cleanup_code(spec)  # Validate all remote paths before any network access.
+    if request["operation"] == "cleanup":
+        verify_cleanup_receipt(request, slot, spec)
     records = json.loads(Path(request["session_file"]).read_text())
     cached = SessionState(**records[request["session"]])
     require(
