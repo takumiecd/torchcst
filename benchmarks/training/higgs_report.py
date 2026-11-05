@@ -376,7 +376,18 @@ def plot_summary(summary, output):
         # Cross-width absolute costs expose comparisons that matched-width
         # ratios cannot, including a smaller dense model versus a wider CST.
         # Plot observations only: no inferred frontier or uncertainty estimates.
-        fig, axes = plt.subplots(1, 2, figsize=(13, 6))
+        annotated_cells = {row["cell"] for row in rows if row["kind"] == "dense"}
+        for width in widths:
+            candidates = [
+                row for row in rows if row["width"] == width and row["kind"] == "cst"
+            ]
+            if candidates:
+                best = min(
+                    candidates,
+                    key=lambda row: (row["validation_loss"], row["alpha_requested"]),
+                )
+                annotated_cells.add(best["cell"])
+        fig, axes = plt.subplots(1, 2, figsize=(13, 6.5))
         plotted = []
         for ax, cost, label in (
             (axes[0], "peak_allocated_mib", "Peak allocated memory (MiB)"),
@@ -386,7 +397,7 @@ def plot_summary(summary, output):
                 "Training time (seconds; preparation excluded)",
             ),
         ):
-            points = []
+            points, all_points = [], []
             for row in rows:
                 color = colors(widths.index(row["width"]))
                 dense = row["kind"] == "dense"
@@ -405,12 +416,15 @@ def plot_summary(summary, output):
                     if dense
                     else f"N={row['width']:,}\nalpha={100 * row['alpha_requested']:g}%"
                 )
-                points.append((row[cost], row["validation_roc_auc"], configuration))
-            ax.set_xlabel(label)
+                all_points.append((row[cost], row["validation_roc_auc"]))
+                if row["cell"] in annotated_cells:
+                    points.append((row[cost], row["validation_roc_auc"], configuration))
+            ax.set_xscale("log")
+            ax.set_xlabel(label + "; log scale")
             ax.set_ylabel("Validation ROC-AUC (higher is better)")
             ax.grid(True, alpha=0.2)
             ax.margins(x=0.16, y=0.22)
-            plotted.append((ax, points))
+            plotted.append((ax, points, all_points))
         handles = [
             Line2D(
                 [], [], color=colors(i), marker="o", linestyle="none", label=f"N={n:,}"
@@ -423,21 +437,33 @@ def plot_summary(summary, output):
             Line2D([], [], color="black", marker="X", linestyle="none", label="Dense"),
         ]
         fig.legend(
-            handles=handles, loc="lower center", ncol=len(handles), frameon=False
+            handles=handles,
+            loc="lower center",
+            bbox_to_anchor=(0.5, 0.04),
+            ncol=len(handles),
+            frameon=False,
         )
         fig.suptitle(
             summary["plot_label"]
-            + "\nFixed training budget; absolute costs across all widths"
+            + "\nFixed training budget; all configurations shown across all widths"
         )
-        fig.tight_layout(rect=(0, 0.07, 1, 0.9))
+        fig.text(
+            0.5,
+            0.012,
+            "Labels: dense + lowest-validation-loss CST at each N "
+            "(exploratory selection; not a Pareto frontier).",
+            ha="center",
+            fontsize=8,
+        )
+        fig.tight_layout(rect=(0, 0.12, 1, 0.9))
         fig.canvas.draw()
         renderer = fig.canvas.get_renderer()
-        for ax, points in plotted:
+        for ax, points, all_points in plotted:
             used = []
             bounds = ax.get_window_extent(renderer)
             markers = [
                 Bbox.from_bounds(px - 5, py - 5, 10, 10)
-                for px, py in ax.transData.transform([(x, y) for x, y, _ in points])
+                for px, py in ax.transData.transform(all_points)
             ]
             for x, y, label in sorted(points):
                 trial = ax.annotate(

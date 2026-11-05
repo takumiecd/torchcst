@@ -23,3 +23,9 @@
 
 このディレクトリの GPU コードは CUDA/Triton を要する。GPU のない環境では
 関連テストが skip されるため、GPU 上の正確性・速度を別途確認する。
+
+2026-11-05のradius研究:
+
+- [2048の正しさと16384までの速度・メモリ](radius-large-scale-20261105.ja.md)
+- [HIGGS中間層のatom密度・幅の初回探索](higgs-density-scale-20261105.ja.md)
+  （1seed/1epochの探索であり、最小密度や非劣性の確定ではない）
