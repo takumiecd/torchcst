@@ -139,7 +139,9 @@ def test_replay_invalidates_before_changed_contract(cohort, change):
         with torch.no_grad():
             model[0].weight.set_(model[0].weight.detach().clone())
     elif change == "retained_reader":
-        retained = model[2](tx.new_zeros((4, 1024), requires_grad=True))
+        retained = model[2](
+            tx.new_zeros((4, model[2].in_features), requires_grad=True)
+        )
     elif change == "finite_checks":
         opt.check_finite = True
     elif change == "grad_storage":
