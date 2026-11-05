@@ -136,6 +136,23 @@ GPUメモリ比はこの比率と同一ではなく、実測allocated/reserved�
 8192は実装の大規模検証・メモリ評価として有用だったが、同じ課題でさらに幅を増やすより
 密度境界と収束を確認する方を優先する。新しい追加GPU探索はこの初回結果には含めない。
 
+### 再実行
+
+計測ソースcommitへcheckoutし、記録したTorch/CUDA環境と依存を用意する。
+自前L4上での直接実行例は次。所有者の共有L4では同じcampaignコマンドを
+共有poolへ提出するdriver内から呼び、直接CLI実行でleaseを迂回しない。
+各outputは新しいパスを使う。
+
+```bash
+PYTHONPATH=src python -m benchmarks.training.higgs_data \
+  --csv-path /path/to/HIGGS.csv.gz --output-directory output/higgs-data-replay
+PYTHONPATH=src python -m benchmarks.training.higgs_campaign \
+  --data output/higgs-data-replay/screen.npz --output output/higgs-campaign-replay
+```
+
+公式圧縮CSVのSHA256は結果JSONに記録したものと照合する。
+学習側はnative B4を使い、testファイルはcampaignに渡さない。
+
 ### 正しさと証拠
 
 - L4実機テスト161 passed / 2 skipped。
