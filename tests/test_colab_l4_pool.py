@@ -360,6 +360,84 @@ def test_real_child_process_success_failure_timeout(
         assert (directory / "results/artifacts/answer.txt").read_text() == "ok"
 
 
+@pytest.mark.parametrize("transfer_seconds", [240, 901])
+def test_slow_result_transfer_retains_verification_and_bounded_ownership(
+    source, tmp_path, monkeypatch, transfer_seconds
+):
+    class SlowResultPool(FakePool):
+        execute = pool_module.Pool.execute
+
+        def __init__(self, root):
+            super().__init__(root)
+            self.cleaned = False
+
+        def call(self, slot, *args, timeout=180, log=None):
+            job = self.slotstate(slot).get("job")
+            if args[0] == "upload":
+                return ""
+            if args[0] == "exec":
+                script = Path(args[args.index("-f") + 1])
+                if script.name == "remote.py":
+                    spec = json.loads((self.jobdir(job) / "spec.json").read_text())
+                    spec["remote_archive"] = str(self.jobdir(job) / "source.tar.gz")
+                    spec["remote_result"] = str(tmp_path / "remote-results.tar.gz")
+                    remote.main(spec, tmp_path / "remote")
+                    return "POOL_RESULT_READY " + job
+                # Remote cleanup must happen only after the real archive and
+                # manifest verifier has produced a matching local receipt.
+                directory = self.jobdir(job)
+                receipt = json.loads((directory / "receipt.json").read_text())
+                assert receipt["archive_sha256"] == pool_module.file_hash(
+                    directory / "results.tar.gz"
+                )
+                assert (directory / "results/artifacts/answer.txt").read_text() == "ok"
+                self.cleaned = True
+                return "POOL_CLEANED " + job
+            if args[0] == "download":
+                # Model a transfer duration without sleeping or contacting Colab.
+                if transfer_seconds > timeout:
+                    raise subprocess.TimeoutExpired("download", timeout)
+                Path(args[-1]).write_bytes(
+                    (tmp_path / "remote-results.tar.gz").read_bytes()
+                )
+                return ""
+            return super().call(slot, *args, timeout=timeout, log=log)
+
+    pool = SlowResultPool(tmp_path / "state")
+    job = submit(
+        pool,
+        source,
+        "import os; from pathlib import Path; "
+        "Path(os.environ['CST_JOB_OUTPUT'], 'answer.txt').write_text('ok')",
+    )
+    following = submit(pool, source) if transfer_seconds > 900 else None
+    monkeypatch.setattr(
+        remote.subprocess,
+        "check_output",
+        lambda command, **kwargs: (
+            "NVIDIA L4, UUID, driver, 23034 MiB"
+            if command[0] == "nvidia-smi"
+            else '{"torch":"test","cuda":"test","triton":"test"}'
+        ),
+    )
+    if following:
+        with pytest.raises(RuntimeError, match="timed out"):
+            pool.serve(1, 0)
+        assert pool.get(job)["status"] == "interrupted"
+        assert pool.get(following)["status"] == "queued"
+        assert not (pool.jobdir(job) / "receipt.json").exists()
+        assert not pool.cleaned
+        # Execution uncertainty still requires recovery before any dispatch.
+        with pytest.raises(RuntimeError, match="recover"):
+            pool.serve(1, 0)
+    else:
+        pool.serve(1, 0)
+        assert pool.get(job)["status"] == "succeeded"
+        assert pool.cleaned
+    assert not pool.active
+    assert all(pool.slotstate(i)["status"] == "stopped" for i in range(1, 4))
+
+
 def test_snapshot_symlink_rejected(source, tmp_path):
     (source / "link").symlink_to(source.parent / "driver.py")
     pool = pool_module.Pool(tmp_path / "state")

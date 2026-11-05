@@ -401,6 +401,7 @@ class Pool:
             session,
             spec["remote_result"],
             directory / "results.tar.gz",
+            timeout=900,
             log=log,
         )
         self.verify_results(directory, spec)
