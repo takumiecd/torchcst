@@ -1,5 +1,7 @@
 # Algorithm実行の境界
 
+[English](algorithm-dispatch-boundaries.md) | **日本語**
+
 2026-10-05の境界方針を実装した契約。公開APIは[README](../README.md)、
 所有関係は[AtomとAlgorithmの状態所有](atom-state.ja.md)を参照する。
 DispatcherとExecutionBindingはbackend共通、LinearInputsとLinearBindingは

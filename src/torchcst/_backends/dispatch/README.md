@@ -1,72 +1,85 @@
-# Plan の選択器
+# Plan selectors
 
-入力条件から Plan を返す境界を `Selector.select(context) -> DispatchDecision` に統一する。
-full / window を特別な分岐にせず、Registry の Algorithm ID / revision / Recipe で表す。
-`LinearOptions` と `memory="full" | "window"` は削除した。互換 loader は用意しない。
+**English** | [日本語](README.ja.md)
 
-## データから実行まで
+The common boundary for choosing a Plan from input conditions is
+`Selector.select(context) -> DispatchDecision`. Represent full/window through
+Registry Algorithm IDs, revisions and Recipes rather than special branches.
+`LinearOptions` and `memory="full" | "window"` were removed, without a
+compatibility loader.
+
+## From data to execution
 
 ```text
-追記された観測データ
-  → 評価関数で候補を順位付け
-  → 各条件の候補と証拠を得る
-  → 選択器を生成・検証し artifact を保存
-  → 読み込み時に Selector を構築
-  → Inputs/binding → Context → select(context) → Algorithm適合性検証 → State準備 → 実行
+Appended observations
+  → Rank candidates with a scoring function
+  → Obtain candidates and evidence for each condition
+  → Generate/validate the selector and save its artifact
+  → Construct the Selector when loading
+  → Inputs/binding → Context → select(context) → Algorithm support validation → State preparation → execution
 ```
 
-評価関数は速度・メモリ等の任意の指標を使う。実行時には評価関数を呼ばない。
-`score_policy` はその関数の ID / revision / parameters を記録する metadata。
-関数本体を JSON に埋め込んだり、forward で任意コードを評価したりしない。
-DBからの固定snapshot抽出・評価関数・leaderboard・exact artifact生成は
-[生成ツール](../../../../benchmarks/dispatch/README.md)に用意する。
-評価関数は生成ツール側で実行する。DB内のPython実行や既定policyへの自動採用は含めない。
+The scoring function may use speed, memory or other metrics. It is not called at
+runtime. `score_policy` records its ID, revision and parameters as metadata; do
+not embed the function in JSON or evaluate arbitrary code during forward.
+[Generation tools](../../../../benchmarks/dispatch/README.md) provide fixed DB
+snapshot extraction, scoring functions, leaderboards and exact-artifact
+generation. Scoring functions run in those tools, not as Python execution inside
+the DB, and do not automatically become the default policy.
 
-| 選択器 | 現在の状態 | 選択方法 |
+| Selector | Current status | Selection method |
 | --- | --- | --- |
-| FixedSelector | 実装済み | 明示した一つの Plan。bootstrap・直接比較用 |
-| ExactSelector | 実装済み | 観測された条件の完全一致表 |
-| OrderedSelector | 実装済み | 明示したPlan順でAlgorithmのrouting条件を確認 |
-| ルール / 決定木 | 将来の候補 | 同じ `_match(context)` 境界から Plan または未選択を返す |
-| MLP 等 | 将来の候補 | 同じ境界から Plan または未選択を返す |
+| FixedSelector | Implemented | One explicit Plan for bootstrap/direct comparison |
+| ExactSelector | Implemented | Exact-match table for observed conditions |
+| OrderedSelector | Implemented | Check Algorithm routing conditions in explicit Plan order |
+| Rules / decision trees | Future candidates | Return a Plan or no selection through the same `_match(context)` boundary |
+| MLP and similar methods | Future candidates | Return a Plan or no selection through the same boundary |
 
-`Selector` ABCの`_match`は候補を返し、metadataだけの`select`は共通runtimeへ委譲する。
-Dispatcherも同じ候補検証/fallback処理を使う。Algorithmのsupportとworkspace上限を
-確認し、未選択・非対応時だけ明示されたfallback Planを判定する。不正Planや実装例外を
-fallbackで隠さない。Algorithm名による特別扱いはしない。
+The Selector ABC's `_match` proposes a candidate, and metadata-only `select`
+delegates to the shared runtime. Dispatcher uses the same candidate
+validation/fallback procedure. Check Algorithm support and workspace limits, and
+consider the explicit fallback Plan only when unselected or unsupported. Do not
+hide invalid Plans or implementation exceptions with fallback. No special
+handling is based on Algorithm names.
 
-公開実行はDispatcher.run(binding, inputs, plan=...)。bindingが実入力を検証してContextを
-生成し、対応するStateを取得する。Contextを手入力した直接実行は受け付けない。
-強制Planでは選択とfallbackを省略するが、実入力・対応条件・Stateの検証は省略しない。
-Registryは登録とPlan宣言検証/codecだけを持つ。backwardはforwardのAlgorithmと保存状態を
-使い再選択しない。詳細は[実行の境界](../../../../docs/algorithm-dispatch-boundaries.ja.md)を参照。
+Public execution uses Dispatcher.run(binding, inputs, plan=...). The binding
+validates actual inputs, builds a Context and retrieves the corresponding State.
+Direct execution with a manually constructed Context is not accepted. A forced
+Plan bypasses selection and fallback, but not actual-input, support or State
+validation. Registry owns only registration, Plan declaration validation and the
+codec. Backward uses forward's Algorithm and saved state without reselection.
+See [execution boundaries](../../../../docs/algorithm-dispatch-boundaries.md).
 
 ## Artifact v1
 
-| フィールド | 意味 |
+| Field | Meaning |
 | --- | --- |
-| schema_version | 外側の形式と完全一致条件の版。現在は 1 |
-| selector.kind / revision | 現在は `exact_table`。選択方針の版 |
-| score_policy | 評価関数の `id`, `revision`, `parameters` |
-| dataset_snapshot | 順位付けに使った固定データ集合の識別子 |
-| runtime_versions | PyTorch の完全な版、任意で Triton の版。読み込み時に照合 |
-| plans | ID → Registry が復元・検証できる Plan |
-| entries | `condition`, `plan_id`, `evidence_ids` の一覧 |
-| fallback_plan_id | 未観測・非対応時に検証する Plan |
+| schema_version | Version of the outer format and exact-match conditions; currently 1 |
+| selector.kind / revision | Currently `exact_table`; selection-policy version |
+| score_policy | Scoring function `id`, `revision` and `parameters` |
+| dataset_snapshot | Identifier of the fixed dataset used for ranking |
+| runtime_versions | Full PyTorch version and optional Triton version; checked at load time |
+| plans | ID → Plan reconstructible and validatable by Registry |
+| entries | List of `condition`, `plan_id` and `evidence_ids` |
+| fallback_plan_id | Plan to validate for unobserved/unsupported conditions |
 
-条件は Operator の型付き宣言を丸ごと保存する。Kernel / Chart / Geometry / Pattern と
-入出力 layout の型・設定・revision を含む。shape / stride / dtype / atom 数 / 座標幅、
-GPU の種類・名前・compute capability・SM 数、必要勾配、eager / Graph、精度・決定性、
-workspace 上限も区別する。GPU のローカル index は条件に含めない。
-atom の Tensor 値、初期幅の broad / sharp ラベル、optimizer 状態は読み取らない。
+A condition stores the complete typed Operator declaration, including
+Kernel/Chart/Geometry/Pattern and input/output layout types, settings and
+revisions. It also distinguishes shape, stride, dtype, atom count, coordinate
+width, GPU type/name/compute capability/SM count, required gradients, eager/Graph,
+precision, determinism and workspace limit. Local GPU index is excluded. It does
+not read atom Tensor values, broad/sharp initial-bandwidth labels or optimizer
+state.
 
-宣言の型名は比較する文字列であり、JSON から型を import・構築しない。
-重複条件・未知の Plan / revision・不正 recipe・型の違う flags・非有限値・重複 JSON key は拒否する。
-未知の kind や schema は明示的に拒否し、MLP を読み込めると見せかけない。
-条件の網羅性、証拠の信頼性、GPU driver 等の測定条件の比較可能性は生成・承認側の責任。
-読み込み成功は性能の認証を意味しない。
+Declaration type names are strings to compare, not types to import or construct
+from JSON. Reject duplicate conditions, unknown Plans/revisions, invalid recipes,
+flags of the wrong type, nonfinite values and duplicate JSON keys. Explicitly
+reject unknown kinds/schemas rather than implying that an MLP can be loaded.
+Condition coverage, evidence trust and comparability of measurement conditions
+such as GPU drivers are the responsibility of generation and approval. Loading
+successfully does not certify performance.
 
-## 利用方法
+## Usage
 
 ```python
 from pathlib import Path
@@ -80,20 +93,24 @@ layer = CSTLinear(
 )
 ```
 
-`selector`はすべてのCSTLinear経路に適用する。CPUのTorch参照、CUDA、
-Strip/Torus fusedも同じRegistry/Plan/Algorithmを使う。実行にはselector自身のRegistryを使い、
-custom Registryも渡せる。selectorは数学的宣言やstate_dictに含めず、別artifactとして保持する。
-未指定時はModuleに明示したOrderedSelectorを使う。FULL、Torch normalized、
-factored、materializedの順で各Algorithmのrouting条件を確認する。性能による自動採用ではない。
+The selector applies to all CSTLinear paths. CPU Torch references, CUDA and
+Strip/Torus fused paths use the same Registry/Plan/Algorithm. Execution uses the
+selector's own Registry; custom Registries are also supported. Keep the selector
+as a separate artifact, outside mathematical declarations and state_dict. When
+unspecified, the Module uses an explicit OrderedSelector. It checks routing
+conditions for FULL, Torch normalized, factored and materialized in that order.
+This is not automatic performance-based adoption.
 
-FixedSelectorとOrderedSelectorはoperation固有のContextを受け取る。ExactSelectorも
-Linear以外のContextを扱える。その場合、frozen dataclassのContextを型名とscalar/tuple/
-不変なdataclassのfieldとして保存する。conditionは`{"context": typed_declaration}`になり、
-Tensorや可変な値は拒否する。Linearの既存artifact v1条件形式は維持する。
-汎用Contextでは全fieldを比較し、GPU indexを無視する既存Linear条件の規則を暗黙に適用しない。
-型名は比較に使う文字列であり、読み込み時にimportや任意コードの実行を行わない。
+FixedSelector and OrderedSelector accept operation-specific Contexts.
+ExactSelector can also handle non-Linear Contexts. These serialize a frozen
+dataclass Context as its type name and scalar/tuple/immutable-dataclass fields;
+the condition is `{"context": typed_declaration}`. Tensors and mutable values are
+rejected. The existing Linear artifact v1 condition format is preserved. Generic
+Contexts compare every field; they do not implicitly inherit Linear's rule that
+ignores GPU index. Type names remain comparison strings: loading performs no
+imports or arbitrary code execution.
 
-生成側は、順位付け済みの条件と Plan から artifact を構築できる。
+Generation can construct an artifact from ranked conditions and Plans:
 
 ```python
 from torchcst._backends.dispatch import ExactEntry, ExactSelector
@@ -113,35 +130,42 @@ assert (
 )
 ```
 
-JSON の解析と辞書の構築は読み込み時だけ。forward は metadata の key で辞書を引く。
-固定 Operator の key は最大128宣言までキャッシュする。Tensor や勾配状態を保持しない。
-entry 数に比例した走査、DB / network / file I/O は実行時に行わない。
-辞書検索は平均 O(1) だが、metadata key と適合性検証のコストは別途存在する。
-選択器を差し替えた後は CUDA Graph を再 capture する。既存 Graph の replay は保存された実行を使う。
+JSON parsing and dictionary construction happen only at load time. Forward looks
+up a dictionary using a metadata key. Fixed Operator keys are cached for up to
+128 declarations, without retaining Tensors or gradient state. Runtime performs
+neither scans proportional to the entry count nor DB/network/file I/O.
+Dictionary lookup is average O(1); metadata-key generation and support validation
+have separate costs. Recapture CUDA Graphs after replacing a selector. Existing
+Graph replay uses the saved execution.
 
-## 将来の切り替え
+## Future selector changes
 
-観測点が増えて表が大きくなったら、まず領域分割・ルールを生成する。
-複数の山という理由だけで自動的に MLP へ移行せず、未知 shape / 別 session を使った
-検証で実際の速度損失、メモリ、推論時間、artifact サイズを比較して採否を決める。
-ルールで必要な性能を保てなければ MLP 等を検討する。
+As observations and table size grow, first generate region partitions/rules.
+Multiple performance modes alone are not a reason to switch automatically to an
+MLP. Evaluate unseen shapes and separate sessions, comparing actual speed loss,
+memory, inference time and artifact size before adoption. Consider an MLP or
+similar model if rules cannot preserve the required performance.
 
-変更するのは選択器の本体と kind ごとの loader。Context / Plan / Registry / 実行の境界を維持する。
-完全一致表や raw 観測を捨てず、近似の参照と未対応領域の判断に利用する。
-近似器にも未選択を返せるようにし、外挿で数学契約や workspace 検証を回避しない。
-メモリの測定 peak と Algorithm の workspace 上界は区別する。
+Change the selector implementation and per-kind loaders while preserving
+Context, Plan, Registry and execution boundaries. Retain exact-match tables and
+raw observations as approximation references and evidence for unsupported
+regions. Approximate selectors must also be able to return no selection;
+extrapolation must not bypass mathematical contracts or workspace validation.
+Distinguish measured memory peaks from Algorithm workspace upper bounds.
 
-## 検証
+## Validation
 
 ```bash
 python -m pytest -q tests/test_dispatch_selectors.py tests/test_cuda_dispatch.py tests/test_linear_parameters.py
 python -m pytest -q
 ```
 
-2026-10-02 のローカル CPU suite は 602 passed / 133 skipped。
-JSON 往復、条件の全フィールド、未観測条件、明示的 fallback、workspace 制限、
-別 Algorithm ID、custom rule、二回の forward と autograd、選択器を替えた checkpoint を検証する。
-CUDA と PostgreSQL の専用テストは環境未接続のため skip。
-L4 上で実ファイルからの公開経路、独立 oracle、Graph replay と完全 step の時間・peak を確認した。
-対象4ファイルは108 passed / 0 failed / 0 skipped。
-[実機検証記録](../../../../docs/dispatch-json-verification.ja.md)を参照。
+The local CPU suite on 2026-10-02 recorded 602 passed / 133 skipped. Checks cover
+JSON round trips, every condition field, unobserved conditions, explicit fallback,
+workspace limits, different Algorithm IDs, custom rules, two forwards with
+autograd, and checkpoints used with a replaced selector. CUDA and PostgreSQL
+tests were skipped because those environments were not connected. L4 validation
+covered the public path loading an actual file, independent oracles, Graph
+replay, and complete-step time/peaks. The four target files recorded
+108 passed / 0 failed / 0 skipped. See the
+[GPU validation record](../../../../docs/dispatch-json-verification.ja.md).

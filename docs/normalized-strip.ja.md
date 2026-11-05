@@ -3,6 +3,8 @@
 
 # 正規化 Strip 線形層
 
+[English](normalized-strip.md) | **日本語**
+
 `CSTLinear` に通常の3次元 Euclidean の regular Product / 連続 Strip chart と
 `kernels.NORMALIZED_RADIAL_TRIWEIGHT` を渡す。各 atom の離散 L2 ノルムを
 演算子全体から計算する。公開 Linear は共通入口へ統一し、旧専用クラスは削除した。
@@ -37,7 +39,40 @@ y = x @ W.T
 空の支持はゼロで、床に達していない単一サイトの atom は符号付き振幅だけを
 そのサイトへ与えます。ノルム床が有効な極小支持は床の規則に従います。
 
-## 使用例
+## 現行APIの例
+
+現行のProduct Chart構築を使い、5列のatom座標を明示的に渡す。この固定kernelは整数atom数からの自動初期化ではなく、与えられたatom Parameterを使う。以下はCPUで実行できる完全な例。
+
+```python
+import math
+import torch
+from torchcst import (
+    CSTLinear, kernels, chart_presets as charts,
+    pattern_presets as patterns, geometry_presets as geometry,
+)
+
+chart = charts.product(
+    shape=(64, 64),
+    axes=(patterns.line(64, spacing=1.0), patterns.grid((8, 8), spacing=0.5)),
+    geometry=geometry.euclidean(3),
+)
+p = torch.zeros(12, 5)
+p[:, 0].uniform_(-0.5, 0.5)
+p[:, 1] = math.log(3.0)
+p[:, 2] = torch.linspace(-31.5, 31.5, 12)
+layer = CSTLinear(chart=chart, atoms=p, kernel=kernels.NORMALIZED_RADIAL_TRIWEIGHT)
+optimizer = torch.optim.AdamW(layer.parameters(), lr=1e-3)
+x = torch.randn(4, 64)
+optimizer.zero_grad(set_to_none=True)
+y = layer(x)
+y.square().mean().backward()
+optimizer.step()
+assert y.shape == (4, 64)
+```
+
+## 過去の使用例
+
+以下の記録例はlayout.stripなど旧Chart構築APIを使うため、現行APIへそのまま適用する例ではない。新規コードは上の例かroot READMEを使う。測定記録は元のsource・範囲を保持する。
 
 次の chart はベンチマークと同じ行間隔1、列の2軸の間隔0.5です。列は最後の
 軸を最速で平坦化します。例のサイズは小さくしてあります。

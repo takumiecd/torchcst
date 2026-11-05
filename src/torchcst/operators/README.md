@@ -1,95 +1,111 @@
-# Operator の宣言と実状態
+# Operator declarations and live state
 
-単一 Chart を基本の形とし、現行の Kernel に必要な入出力 Chart の組も扱う。
-二つの大きな実行系を作らず、観測点の配置だけを区別する。
+English (canonical) | [日本語](README.ja.md)
 
-| 型 / field | 意味 |
+A single Chart is the basic layout. The pair of input/output Charts required by
+current kernels is also supported. These distinguish observation layouts without
+creating two large execution systems.
+
+| Type / field | Meaning |
 | --- | --- |
-| `SingleChartSpec.chart` | logical shape が `[out, in]` の一枚の Chart |
-| `ChartPairSpec.input_chart / output_chart` | 独立した入力・出力の観測点。matrix shape は `[output.features, input.features]` |
-| `OperatorSpec.layout` | 上記どちらか一つ。入力・出力 Tensor と Chart の枚数は別の概念 |
-| `OperatorSpec.kernel` | atom の Profile・振幅・幅・正規化・更新の宣言 |
-| `OperatorSpec.operation_id / revision` | この段階では `linear` / `1` |
-| `Operator.charts / kernel / atoms` | 既存 Module が持つ実状態への参照 |
-| `Operator.p` | `atoms.p` の現在の Tensor。コピーや独自 Parameter は作らない |
+| `SingleChartSpec.chart` | One Chart with logical shape `[out, in]` |
+| `ChartPairSpec.input_chart / output_chart` | Independent input/output observations; matrix shape is `[output.features, input.features]` |
+| `OperatorSpec.layout` | Exactly one of these layouts; input/output Tensors and the number of Charts are separate concepts |
+| `OperatorSpec.kernel` | Atom Profile, amplitude, bandwidth, normalization and update declarations |
+| `OperatorSpec.operation_id / revision` | Currently `linear` / `1` |
+| `Operator.charts / kernel / atoms` | References to live state owned by existing Modules |
+| `Operator.p` | The current `atoms.p` Tensor; no copy or independent Parameter |
 
-単一 Chart の Kernel は radial または profile_product、Chart の組は separable とする。amplitude の
-wrapper は inner Kernel に同じ判定を適用する。片方の配置をもう片方として
-解釈したり、Chart を複製して枚数を合わせたりしない。
+A single-Chart kernel is radial or profile_product; a Chart-pair kernel is
+separable. An amplitude wrapper applies the same classification to its inner
+kernel. Do not reinterpret one layout as the other or duplicate Charts to make
+their counts match.
 
-profile_productは一枚のEuclidean Product/Strip gridで各座標profileを掛け合わせる。
-revision 2の `polar_torus_profile_product` は一枚のS¹×S² Torus Chart上で、
-atom中心に固定した各fibreのchord距離profileを掛け合わせる。
-入力・出力の因子はbackend内部で分け、単一Chartの `operator.factors()` と
-Torch factored実行に接続する。[数学的な契約](../../../docs/profile-product.ja.md)を参照。
+profile_product multiplies coordinate profiles on one Euclidean Product/Strip
+grid. Revision 2 `polar_torus_profile_product` multiplies chord-distance profiles
+for fibres fixed at the atom center on a single S¹×S² Torus Chart. The backend
+separates input/output factors and connects them to single-Chart
+`operator.factors()` and Torch factored execution. See the
+[mathematical contract](../../../docs/profile-product.md).
 
 ```python
 from torchcst import CSTLinear
 
 # chart.shape == (out_features, in_features)
 single = CSTLinear(chart=chart, atoms=8, kernel=direct_kernel)
-single_spec = single.declaration()  # 設定時の不変な snapshot
-operator = single.operator  # 計算用の live view
-y = operator.apply(x)  # Torch の materialized 参照実装
+single_spec = single.declaration()  # Immutable configuration-time snapshot.
+operator = single.operator  # Live view for execution.
+y = operator.apply(x)  # Torch materialized reference.
 
 pair = CSTLinear(input_chart, output_chart, atoms=8, kernel=separable_kernel)
 y = pair.operator.apply(x, algorithm="factored")
 
-# Spec と既存の状態の整合を、設定時に確認して結びつける。
+# Check and bind the Spec to existing state at configuration time.
 bound = single_spec.bind(
     charts=single.cst_charts(), kernel=single.kernel, atoms=single.atoms
 )
 ```
 
-`CSTLinear` の Torch materialized / factored 実装、dense weight、atom の評価も
-この入口を使う。計算本体は `_backends/torch/operators/linear.py` に置く。
-Torch の autograd は入力、全 atom、学習可能な Chart の Tensor を追跡する。
-`p` を明示すれば、derivative engine の候補点や atom 部分集合も評価できる。
-`Operator.apply()` uses ordinary autograd. CSTOptimizer consumes the resulting
-Parameter gradients without installing an optimizer-specific backward route.
+CSTLinear's Torch materialized/factored implementations, dense weights and atom
+evaluation use this entrypoint. Computation lives in
+`_backends/torch/operators/linear.py`. Torch autograd tracks inputs, every atom and
+trainable Chart Tensors. Passing `p` explicitly also allows derivative-engine
+candidate points or atom subsets to be evaluated. `Operator.apply()` uses ordinary
+autograd. CSTOptimizer consumes the resulting Parameter gradients without
+installing an optimizer-specific backward route.
 
-`Operator` は nn.Module ではない。所有権、checkpoint の key、optimizer の
-Parameter 参照は既存 Module のまま。`atoms.p` の更新や置き換え、dtype / device
-変換後も live view は現在の値を使う。Module 自体を差し替えたときは CSTLinear
-が view を再構成する。Chart と Kernel は具体的な ChartState / 共通 KernelState を参照する。
-利用者は Layer に ChartSpec / KernelSpec を渡し、新しい意味には対応する backend 実装を用意する。
+`Operator` is not an nn.Module. Ownership, checkpoint keys and optimizer Parameter
+references remain with the existing Modules. The live view reads current values
+after `atoms.p` updates/replacement and dtype/device conversion. CSTLinear
+reconstructs the view when a Module itself is replaced. Charts and kernels refer
+to concrete ChartState and common KernelState objects. Users provide ChartSpec /
+KernelSpec to a layer; new mathematical meanings need corresponding backend
+implementations.
 
-`declaration()` と `spec.bind()` は設定境界の処理。scalar の読み戻しや明示点の
-snapshot は forward / backward / CUDA Graph capture 中に行わない。trainable な
-座標の snapshot は固定の現在値であり、実行時の Tensor や勾配を置き換えない。
-view は live な設定を使うので、設定変更後に宣言を利用する場合は改めて取得する。
+`declaration()` and `spec.bind()` operate at configuration boundaries. Do not read
+back scalars or snapshot explicit points during forward, backward or CUDA Graph
+capture. A trainable-coordinate snapshot fixes the current values; it does not
+replace execution Tensors or their gradients. Views use live configuration, so
+retrieve a declaration again when using it after a configuration change.
 
-CSTLinear / CSTConv2d は宣言から State を構築する。CSTLinear はbackend共通の
-Registry / SelectorからTorch・CUDAのAlgorithmを選択する。
-汎用宣言を受け入れる Algorithm は、その数学的・数値的契約に適合するものだけを
-登録する。入出力 Chart の組を将来なくす場合も、正規化領域と勾配を照合して移行する。
+CSTLinear / CSTConv2d construct State from declarations. CSTLinear selects Torch
+and CUDA Algorithms through the common Registry / Selector. Register only
+Algorithms whose mathematical and numerical contracts match a general
+declaration. If Chart pairs are removed in the future, validate normalization
+domains and gradients during the migration.
 
-## normalized radial の共通 dispatch
+## Common normalized-radial dispatch
 
-`CSTLinear` の `chart` と `kernel=kernels.NORMALIZED_RADIAL_TRIWEIGHT` が、
-一枚の regular 3D Euclidean Chart 上で Triweight を演算子全体の点で L2 正規化する
-radial 演算を宣言する。signed amplitude / clamped log width / center の座標であり、
-DirectAmpWidth の activity 座標や Chart ごとの正規化とは別の意味である。
+`CSTLinear` with `chart` and `kernel=kernels.NORMALIZED_RADIAL_TRIWEIGHT` declares a
+radial operator on one regular 3D Euclidean Chart. Triweight is L2-normalized over
+all operator sites. Its coordinates are signed amplitude, clamped log width and
+center, distinct from DirectAmpWidth activity coordinates or per-Chart
+normalization.
 
-`atoms=` は整数、Tensor、nn.Parameter、Atoms を受け取る。Tensor は detach して
-複製、Parameter は同一オブジェクトを登録、Atoms は owner ごと再利用する。
-正規化用にも同じ live Operator / KernelState / ChartState / Atoms を使う。
-公開 Linear は CSTLinear に統一し、旧専用クラスと checkpoint adapter は削除した。
+`atoms=` accepts an integer, Tensor, nn.Parameter or Atoms. A Tensor is detached
+and copied; a Parameter registers the same object; Atoms reuses its owner.
+Normalization uses the same live Operator / KernelState / ChartState / Atoms.
+The public Linear is unified as CSTLinear; old dedicated classes and checkpoint
+adapters have been removed.
 
-共通RegistryがAlgorithmを登録し、SelectorがPlan候補を選ぶ。DispatcherがInputsの検証、
-Context構築、対応判定、State取得とAlgorithm実行を接続する。
-Operatorは共通Chart/Geometry/Kernelへの入口を保ち、normalized専用のOperator型や
-adapterは追加しない。regular siteの配置情報はnormalized Algorithm内で既存宣言から得る。
-regular Product と連続 Strip は同じ点配置で実行できる。
-固定 kernel・正規化・幅・Euclidean site の意味が一致しない場合は、この専用
-algorithm に流さず一般の Torch 参照経路を使う。
+The common Registry registers Algorithms; a Selector chooses candidate Plans.
+The Dispatcher connects Inputs validation, Context construction, support checks,
+State retrieval and Algorithm execution. Operator remains the entrypoint to
+common Chart/Geometry/Kernel objects; no normalized-specific Operator type or
+adapter is added. Normalized Algorithms derive regular-site metadata from
+existing declarations. A regular Product and continuous Strip can execute on
+the same sites. If the fixed kernel, normalization, bandwidth or Euclidean-site
+semantics do not match, use the general Torch reference rather than this
+specialized Algorithm.
 
-`CSTLinear(selector=...)` の選択器は実行方針で、OperatorSpec と checkpoint には入らない。
-full / window も通常の登録済み Algorithm として Plan に記述する。
-launch 設定は各 Algorithm の Recipe に置く。対応する固定 metadata は設定境界で
-snapshot し、buffer の置換・version・dtype/device が変わったら再構成する。
-atom の値は毎回現在の Tensor を使う。通常 forward / backward / Graph capture では
-snapshot しない。metadata を変えた後は capture の外で一度 forward する。
+`CSTLinear(selector=...)` is an execution policy, excluded from OperatorSpec and
+checkpoints. Full/window are ordinary registered Algorithms described by Plans.
+Launch settings belong in each Algorithm's Recipe. Snapshot the corresponding
+fixed metadata at configuration boundaries and reconstruct it after buffer
+replacement, version or dtype/device changes. Atom values always use the current
+Tensor; do not snapshot them in ordinary forward, backward or Graph capture.
+After changing metadata, run one forward outside capture.
 
-ChartSpec / ChartState は ABC。具体型は charts/ に置き、Layer は compile_chart で対応する
-State を構築する。Geometry と Pattern はそれぞれ geometry/ と patterns/ に置く。
+ChartSpec / ChartState are ABCs. Their concrete types live in charts/, and layers
+construct State with compile_chart. Geometry and Pattern live in geometry/ and
+patterns/ respectively.

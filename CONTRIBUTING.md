@@ -10,7 +10,7 @@ connection credentials.
 ## Adding code or kernels
 
 Start development with this guide. For CUDA kernel implementation, registration
-and measurement details, see the [kernel development guide](docs/kernel-development.ja.md).
+and measurement details, see the [kernel development guide](docs/kernel-development.md).
 
 Choose branch names by the purpose of the change, rather than the author's or
 tool's name. Use `kernel/<purpose>` for new kernels, kernel optimizations,
@@ -50,7 +50,7 @@ Distinguish the mathematical KernelSpec from a CUDA Algorithm/Recipe. When
 changing how an existing operation is computed, put the implementation in
 `_backends/cuda/algorithms/`. The changes required for recipe tuning, new
 Algorithms and new mathematical operations are listed in
-[types of additions and files to change](docs/kernel-development.ja.md#追加する種類と変更箇所).
+[types of additions and files to change](docs/kernel-development.md#types-of-additions-and-files-to-change).
 The runtime package in `src/torchcst/` must not depend on `benchmarks/` or `tests/`.
 
 The authoritative public API contract is [README.md](README.md); the current
@@ -92,9 +92,9 @@ measure the complete training step without instrumentation. Compare time and
 peak allocated/reserved memory, including capture/replay, under matching
 conditions.
 
-The [minimal runnable example](docs/kernel-development.ja.md#登録済みalgorithmで手順を試す)
+The [minimal runnable example](docs/kernel-development.md#try-the-workflow-with-a-registered-algorithm)
 provides commands for CPU checks, GPU correctness, complete-step measurements
-and checks before submission. The [research operating rules](docs/research-operations.ja.md)
+and checks before submission. The [research operating rules](docs/research-operations.md)
 also apply when using the owner's shared GPUs. External contributors measuring
 on their own GPUs do not need the owner's GPU accounts or database credentials.
 

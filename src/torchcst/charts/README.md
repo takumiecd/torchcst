@@ -1,33 +1,39 @@
-# Chart の宣言と State
+# Chart declarations and state
 
-Chart は、Geometry 上で観測する点の配置を宣言する。Geometry、Pattern、Chart は
-`torchcst/geometry/`・`torchcst/patterns/`・`torchcst/charts/` の同じ階層に置く。
+**English** | [日本語](README.ja.md)
 
-## 型と配置
+A Chart declares the layout of observation points on a Geometry. Geometry,
+Pattern and Chart live at the same level in `torchcst/geometry/`,
+`torchcst/patterns/` and `torchcst/charts/`.
 
-| 型 | 宣言する配置 |
+## Types and layouts
+
+| Type | Declared layout |
 | --- | --- |
-| ExplicitChartSpec | 明示座標、学習の有無、任意の spacing metadata |
-| ProductChartSpec | Pattern ごとの軸配置と論理 shape |
-| RegularGridChartSpec | 単一階層の grid_shape、origin、spacing |
+| ExplicitChartSpec | Explicit coordinates, trainability and optional spacing metadata |
+| ProductChartSpec | Per-Pattern axis layouts and logical shape |
+| RegularGridChartSpec | Single-hierarchy grid_shape, origin and spacing |
 
-各 Chart は `ncs` / `num_sites`（`features` と同じサイト総数）を持つ。
-`charts=(output_chart, input_chart)` の Weight 形状は `[out.ncs, in.ncs]`。
-多次元の RegularGrid も一つの階層であり、`grid_shape=(16,16)` の `ncs` は 256。
-Factor 内部では Chart の全次元の距離を使い、サイト全体で正規化する。
+Each Chart has `ncs` / `num_sites`, the same total site count as `features`.
+With `charts=(output_chart, input_chart)`, Weight has shape `[out.ncs, in.ncs]`.
+A multidimensional RegularGrid is still one hierarchy: `grid_shape=(16,16)` has
+`ncs` equal to 256. Factors use distances across all dimensions of the Chart and
+normalize over all its sites.
 
-`base.py` が共通契約、`explicit.py` / `product.py` / `regular_grid.py` が具体型、
-`presets.py` が純粋な構築、`compile_chart` が対応する State を作る。
-距離・点展開・支持域・初期化は `_backends/torch/charts/` に置く。
+`base.py` defines the common contract; `explicit.py` / `product.py` /
+`regular_grid.py` define concrete types. `presets.py` provides pure construction,
+and `compile_chart` builds the corresponding State. Distance, point expansion,
+support and initialization implementations live in `_backends/torch/charts/`.
 
-ExplicitChartState は座標 Tensor を持ち、trainable のときだけ Parameter にする。
-ProductChartState は PatternState を所有する。RegularGrid は全サイト表を持たず、
-インデックスから座標を生成する。origin / spacing と幾何の固定値は Python metadata として
-保持し、Tensor buffer を持たない。Module.to() は初期化用 device / dtype hints を移すが、
-固定値は丸めない。実行時の距離は atom の中心 Tensor の placement に従う。
-checkpoint は固定 metadata の一致を検証し、異なる配置へ読み替えない。
+ExplicitChartState owns coordinate Tensors, making them Parameters only when
+trainable. ProductChartState owns PatternStates. RegularGrid generates
+coordinates from indices without storing a full site table. origin / spacing
+and fixed geometry values are Python metadata, with no Tensor buffers.
+Module.to() moves initialization device/dtype hints without rounding fixed
+values. Runtime distances follow atom-center Tensor placement. Checkpoints
+validate fixed metadata and do not reinterpret it as a different layout.
 
-## 構築と利用
+## Construction and use
 
 ```python
 import torch
@@ -53,16 +59,18 @@ assert y.shape == (4, 5)
 assert type(layer.chart).__name__ == "ProductChartState"
 ```
 
-Layer は Spec から対応する State を構築する。既存 State を渡せば共有する。
-単一 Chart と入力・出力 Chart の組の両方に対応する。
-State を直接構築する場合も具体型を使うか、compile_chart を呼ぶ。
+Layers build the corresponding State from a Spec, or share an existing State
+when supplied. Both a single Chart and input/output Chart pairs are supported.
+To construct States directly, use concrete types or call compile_chart.
 
-Explicit は PointPattern で包まず座標表を直接宣言する。shape は座標表の長さと一致する
-論理 shape で、明示した行列配置にも対応する。presets.points / grid / linspace は
-一次元の点列を作る。大きい直積には presets.product を使い、全点表を作らない。
+Explicit Charts declare coordinate tables directly, without a PointPattern
+wrapper. shape is a logical shape matching the coordinate-table length and can
+represent an explicit matrix layout. presets.points / grid / linspace construct
+one-dimensional point sequences. Use presets.product for large Cartesian
+products without constructing a full point table.
 
 ```python
-from torchcst import ExplicitChartSpec, ExplicitChartState
+from torchcst import ExplicitChartSpec, ExplicitChartState, compile_chart
 
 explicit = ExplicitChartSpec(
     geometry=geometry.euclidean(2),
@@ -75,20 +83,23 @@ assert isinstance(state, ExplicitChartState)
 assert isinstance(state.coordinates, torch.nn.Parameter)
 ```
 
-## 境界と検証
+## Boundaries and validation
 
-declaration は現在の Tensor の設定 snapshot。forward / backward / Graph capture では
-呼ばない。演算は live な Tensor を使う。checkpoint は具体型、shape、版、trainable、
-その型の構造を検証し、weights_only でロードできる。別種類の Chart や旧 tagged ChartSpec /
-ChartState の形式を読み替える loader はない。ChartSpec / ChartState の直接構築も廃止した。
+Declarations are configuration snapshots of current Tensors, not called during
+forward / backward / Graph capture. Computation uses live Tensors. Checkpoints
+validate concrete type, shape, revision, trainability and type-specific
+structure, and load with weights_only. No loader reinterprets other Chart types
+or the old tagged ChartSpec / ChartState format. Direct ChartSpec / ChartState
+construction has also been removed.
 
-closed な compile_chart と backend は、具体 Spec / State の組と revision を照合する。
-未登録の subclass が kind を引き継いでも組み込みとして実行しない。拡張は宣言型と
-対応 backend を明示的に追加する。
+The closed compile_chart and backend match concrete Spec / State pairs and
+revisions. An unregistered subclass inheriting a kind is not executed as a
+builtin. Extensions explicitly add declaration types and corresponding backends.
 
-Sphere / FlatTorus の metric と representation は Geometry の宣言に従う。
+Sphere / FlatTorus metrics and representations follow Geometry declarations.
 
-`charts.regular_grid((16,16), spacing=0.1)` は一つの 2D Chart、shape `(256,)` を宣言する。
-最後の座標軸を最速にして平坦化する。scalar の spacing / origin は各座標へ broadcast し、
-宣言型には canonical な tuple を保存する。全サイト表・全サイトの index 表は保存しない。
-`geometry="flat_torus"` は各周期を `grid_shape * spacing` から導出する。
+`charts.regular_grid((16,16), spacing=0.1)` declares one 2D Chart with shape
+`(256,)`. Flattening makes the last coordinate vary fastest. Scalar spacing /
+origin broadcast to each coordinate, and declarations store canonical tuples.
+No full site table or full site-index table is stored. `geometry="flat_torus"`
+derives each period from `grid_shape * spacing`.

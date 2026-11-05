@@ -1,5 +1,7 @@
 # Hの生成・再利用・寿命を軸にしたkernel設計
 
+[English](h-lifecycle-kernel-design.md) | **日本語**
+
 2026-10-10に合意した、RegularGrid上のprofile-product Linearと今後の対応kernelの設計方針。
 **XからHをどう作り、Hを出力への寄与にどう使い、いつまでどこに保持するかを設計の軸にする。**
 入力の読み取りと出力の集約が重なる範囲を束ね、そのまとまりの中でHを生成・再利用する。

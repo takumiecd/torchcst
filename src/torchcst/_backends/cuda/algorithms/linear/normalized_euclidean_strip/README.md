@@ -1,5 +1,7 @@
 # Globally normalized Strip execution
 
+English (canonical) | [日本語](README.ja.md)
+
 `torchcst.nn.CSTLinear` owns an `Atoms` table of signed amplitude, log bandwidth and
 three continuous center coordinates. Both implementations evaluate joint 3D
 Triweight support and its discrete L2 norm over the whole finite operator,
@@ -27,7 +29,7 @@ in `tests/test_normalized_strip_public.py` and
 `benchmarks/cuda/linear/check_normalized_strip_public.py`. Historical
 measurements and their limits are recorded in
 `benchmarks/cuda/linear/results/normalized-strip-history-20261001.json`.
-See `docs/normalized-strip.ja.md` for usage and measured tradeoffs. CPU imports
+See the [usage and measured tradeoffs](../../../../../../../docs/normalized-strip.md). CPU imports
 need no Triton; all CUDA modules are loaded lazily and included in the wheel.
 
 `full/algorithm.py` and `window/algorithm.py` contain metadata-only Algorithm

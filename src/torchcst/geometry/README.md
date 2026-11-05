@@ -1,29 +1,33 @@
-# Geometry の宣言と State
+# Geometry declarations and state
 
-GeometrySpec は Euclidean / Sphere / FlatTorus の immutable な数学的宣言。
-GeometryState はその metadata を所有し、固定 Tensor buffer を持たない。
-点列の Pattern は [patterns/](../patterns/README.md)、観測配置の Chart は
-[charts/](../charts/README.md) に分ける。計算は backend の関数で実行する。
+**English** | [日本語](README.ja.md)
 
-| 配置 | 責務 |
+GeometrySpec is an immutable mathematical declaration of Euclidean / Sphere /
+FlatTorus geometry. GeometryState owns its metadata, with no fixed Tensor
+buffers. Point-sequence Patterns live in [patterns/](../patterns/README.md),
+and observation-layout Charts in [charts/](../charts/README.md). Backend
+functions perform computation.
+
+| Location | Responsibility |
 | --- | --- |
-| `spec.py` | 具体的な GeometrySpec、次元・metric・固定値の検証 |
-| `presets.py` | euclidean / sphere / flat_torus の純粋な構築 |
-| `state.py` | 固定 metadata、checkpoint、初期化時の placement hints |
-| `../_backends/torch/geometry/` | 距離、埋め込み、射影、retraction、vector transport |
+| `spec.py` | Concrete GeometrySpec types; validation of dimensions, metrics and fixed values |
+| `presets.py` | Pure euclidean / sphere / flat_torus construction |
+| `state.py` | Fixed metadata, checkpoints and initialization placement hints |
+| `../_backends/torch/geometry/` | Distances, embeddings, projection, retraction and vector transport |
 
-| 宣言 | 意味 |
+| Declaration | Meaning |
 | --- | --- |
-| EuclideanGeometrySpec | intrinsic_dim と通常の Euclidean metric |
-| FlatTorusGeometrySpec | intrinsic_dim、periods。独立周期座標の最短距離 |
-| SphereGeometrySpec | intrinsic_dim、radius、representation、chart_margin |
+| EuclideanGeometrySpec | intrinsic_dim and the ordinary Euclidean metric |
+| FlatTorusGeometrySpec | intrinsic_dim and periods; shortest distances over independent periodic coordinates |
+| SphereGeometrySpec | intrinsic_dim, radius, representation and chart_margin |
 
-embedding_dim / center_parameter_dim / metric は具体型から決まる。
-Sphere の距離は ambient chord。ambient / intrinsic の中心表現を維持する。
-`radius` / `chart_margin` は Python scalar、`periods` は tuple。Module.to() によって
-これらの値を丸めない。Torch の計算では引数の Tensor、CUDA の実行では atom Parameter が
-実際の device / dtype を定める。必要な device 定数は AlgorithmState の一時キャッシュに置き、
-Geometry の学習状態や checkpoint buffer にはしない。
+embedding_dim / center_parameter_dim / metric follow from the concrete type.
+Sphere uses ambient chord distance and retains ambient / intrinsic center
+representations. `radius` / `chart_margin` are Python scalars; `periods` is a
+tuple. Module.to() does not round these values. Tensor arguments determine the
+actual device/dtype for Torch computation; atom Parameters determine them for
+CUDA execution. Required device constants live in AlgorithmState temporary
+caches, not Geometry training state or checkpoint buffers.
 
 ```python
 import torch
@@ -40,10 +44,12 @@ execution.squared_distance(state, sites.detach(), centers).sum().backward()
 assert torch.isfinite(centers.grad).all()
 ```
 
-`declaration()` は設定境界で metadata を検証し、forward / backward で host scalar を
-読み戻さない。固定値を変更する場合は検証済みの新しい Spec に置き換える。
-RegularGrid の周期を変えるときは Chart の spacing と geometry の宣言も整合させる。
+`declaration()` validates metadata at configuration boundaries, without reading
+host scalars back during forward/backward. Replace fixed values with a newly
+validated Spec when changing them. When changing RegularGrid periods, also keep
+Chart spacing and the geometry declaration consistent.
 
-checkpoint の extra state は固定値を含む全宣言を保存し、復元先との一致を検証する。
-異なる固定値のモデルや旧 Tensor-buffer 形式へ読み替える loader は置かない。
-観測点の Parameter は ExplicitChartState、atom の中心は Atoms が所有する。
+Checkpoint extra state stores the full declaration, including fixed values, and
+validates it against the destination. There is no loader reinterpreting it as a
+model with different fixed values or the old Tensor-buffer format.
+ExplicitChartState owns observation-point Parameters; Atoms owns atom centers.

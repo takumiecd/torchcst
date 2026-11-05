@@ -1,5 +1,7 @@
 # 単一ChartのPolar profile product
 
+[English](profile-product.md) | **日本語**
+
 `CSTLinear(chart=..., kernel=presets.polar_profile_product(...))` は、一枚の
 Euclidean Product/Strip Chart上で各座標軸のprofileを掛け合わせる演算を宣言する。
 Chartの論理shapeは既存どおり `(out_features, in_features)`。

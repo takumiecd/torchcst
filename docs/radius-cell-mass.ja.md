@@ -1,8 +1,12 @@
 # 半径によるセル質量カーネル
 
-現在の公開 API は [README](../README.md#compose-a-kernel) を正本とする。
+[English](radius-cell-mass.md) | **日本語**
+
+現在の公開 API は [README](../README.ja.md#kernel-を組み立てる) を正本とする。
 このガイドは `cell_mass` の利用、階層の数式、明示的な CUDA Plan 選択を扱う。
 測定・実装の経緯は [研究記録](cell-mass-kernel-flow.ja.md) に残す。
+現在の最適化された公開 eager 構成は
+[推奨 CUDA 構成](../README.ja.md#公開-api-で推奨する-cuda-構成)を参照する。
 
 ## CPU で動かす
 

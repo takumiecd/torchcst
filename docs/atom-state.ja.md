@@ -1,5 +1,7 @@
 # AtomとAlgorithmの状態所有
 
+[English](atom-state.md) | **日本語**
+
 `CSTModule`は`atom_state: AtomState`を所有する。`layer.atoms`はその中の既存
 `Atoms`への参照であり、`atoms.py`の固定shape・不透明なParameter契約は維持する。
 共有Atoms、または同じParameterから作るModuleは同じAtomStateを使う。

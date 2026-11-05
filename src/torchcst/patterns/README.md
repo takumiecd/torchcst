@@ -1,22 +1,29 @@
-# Pattern の宣言と State
+# Pattern declarations and state
 
-Pattern は一つの軸・部分空間の点列を宣言する。空間の metric を定める Geometry と、
-点列を組み合わせる Chart は同じ階層の別ディレクトリに置く。
+**English** | [日本語](README.ja.md)
+
+A Pattern declares a sequence of points along one axis or subspace. Geometry,
+which defines the space's metric, and Chart, which combines point sequences,
+live in separate directories at the same level.
 
 ```text
 patterns/
   spec.py       PatternSpec / LinePatternSpec / GridPatternSpec / PointsPatternSpec
-  presets.py    line / grid / points の純粋な宣言構築
-  state.py      PatternState の小さな Tensor と checkpoint
+  presets.py    pure line / grid / points declaration construction
+  state.py      PatternState's small Tensors and checkpoints
 _backends/torch/patterns/
-  execution.py  宣言型と版から実装を選ぶ
-  grid.py       必要な格子点の生成
-  points.py     明示した点列の選択
+  execution.py  implementation selection by declaration type and revision
+  grid.py       generation of needed grid points
+  points.py     selection of explicit point sequences
 ```
 
-Line / Grid は shape、start、spacing を持つ。Points は座標表を持つ。
-PatternState は axis の scalar・座標表だけを所有し、全 Cartesian product を保持しない。
-positions / bounds の計算は backend の関数に置く。
+Line / Grid hold shape, start and spacing; Points holds a coordinate table.
+PatternState owns only axis scalars and coordinate tables, not the full
+Cartesian product. Backend functions compute positions / bounds. In the layout
+above, presets.py constructs pure declarations; state.py owns small Tensors and
+checkpoints. execution.py selects implementations by declaration type and
+revision; grid.py generates needed grid points, and points.py selects explicit
+points.
 
 ```python
 import torch
@@ -29,5 +36,6 @@ selected = execution.positions(state, torch.tensor([0, 5]))
 assert selected.shape == (2, 2)
 ```
 
-spacing と low/high は排他的。暗黙の範囲はない。low/high の singleton axis は
-spacing=0 を持てる。declaration は設定時だけ snapshot し、演算は live Tensor を使う。
+spacing and low/high are mutually exclusive, with no implicit range. A singleton
+axis specified through low/high can have spacing=0. Declarations are snapshots
+taken only at configuration boundaries; computation uses live Tensors.
