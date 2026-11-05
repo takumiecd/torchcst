@@ -9,6 +9,7 @@ the historical spherical-kernel/B128 experiment.
 from __future__ import annotations
 
 import argparse
+import copy
 import gc
 import hashlib
 import json
@@ -53,6 +54,15 @@ def atom_count(width, divisor):
     if type(divisor) is not int or divisor not in HIGGS_ATOM_DIVISORS:
         raise ValueError("choose an explicit HIGGS atom divisor")
     return width * width // divisor
+
+
+def save_initialization(model, configuration, path):
+    """Preserve tensor and extra-state metadata before moving the model to CUDA."""
+    if any(p.device.type != "cpu" for p in model.parameters()):
+        raise ValueError("initialization must be frozen on CPU before CUDA setup")
+    torch.save(
+        {"model": copy.deepcopy(model.state_dict()), "args": configuration}, path
+    )
 
 
 def make_model(width, divisor, seed, kind):
@@ -194,23 +204,16 @@ def run(args):
         raise ValueError("requested validation rows unavailable")
     if x_train.dtype != torch.float32 or y_train.dtype != torch.int64:
         raise ValueError("prepared data dtype mismatch")
+    model = make_model(args.width, args.divisor, args.seed, args.kind)
+    save_initialization(
+        model,
+        vars(args) | {"data": str(args.data), "output": str(args.output)},
+        args.output / "initialization.pt",
+    )
     stream = torch.cuda.Stream()
     with torch.cuda.stream(stream):
         tx, ty, vx, vy = x_train.cuda(), y_train.cuda(), x_val.cuda(), y_val.cuda()
-        model = make_model(args.width, args.divisor, args.seed, args.kind).cuda()
-        initial_state = {
-            name: value.detach().cpu().clone()
-            for name, value in model.state_dict().items()
-        }
-        torch.save(
-            {
-                "model": initial_state,
-                "args": vars(args)
-                | {"data": str(args.data), "output": str(args.output)},
-            },
-            args.output / "initialization.pt",
-        )
-        del initial_state
+        model = model.cuda()
         activation = initial_activations(model, tx)
         initial_validation = evaluate(model, vx, vy)
         torch.cuda.synchronize()

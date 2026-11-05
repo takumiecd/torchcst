@@ -10,6 +10,7 @@ from benchmarks.training.higgs_density import (
     binary_auc,
     make_model,
     make_optimizer,
+    save_initialization,
 )
 
 
@@ -72,6 +73,21 @@ def test_initializer_preserves_callers_cpu_random_state():
     before = torch.random.get_rng_state().clone()
     make_model(1024, 200, 17, "cst")
     assert torch.equal(before, torch.random.get_rng_state())
+
+
+@pytest.mark.parametrize("kind", ("cst", "dense"))
+def test_initialization_checkpoint_round_trip_preserves_extra_state(tmp_path, kind):
+    network = make_model(1024, 200, 17, kind)
+    path = tmp_path / "initialization.pt"
+    save_initialization(network, {"kind": kind, "seed": 17}, path)
+    saved = torch.load(path, map_location="cpu", weights_only=True)
+    assert saved["args"] == {"kind": kind, "seed": 17}
+    if kind == "cst":
+        assert any(isinstance(value, dict) for value in saved["model"].values())
+    restored = make_model(1024, 200, 29, kind)
+    restored.load_state_dict(saved["model"])
+    for name, parameter in network.named_parameters():
+        assert torch.equal(parameter, dict(restored.named_parameters())[name])
 
 
 @pytest.mark.parametrize("width", (1024, 2048, 4096, 8192))
