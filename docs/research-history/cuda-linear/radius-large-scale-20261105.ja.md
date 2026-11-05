@@ -55,6 +55,9 @@ evaluation/checkpoint/import/data配置は従来の時計外。cold compile時�
 大きい幅では全state/gradのdtype/shape/SHA256を各epochで保存し、同kindの順序間で一致を要求する。
 巨大なdense optimizer PTを全epochで出力することはせず、raw全状態の直接比較は2048で行う。
 大規模のSHA比較と小規模PTの直接byte比較は区別する。初期値・source・driverと実loaded binaryは保全する。
+大規模の初期値は、実際のatom・通常層・buffer・生成policyを保存する。派生するdense Wは
+content SHAを記録し、元のexporterで再構成してSHAを照合する。巨大な派生Wの全ファイルを
+archiveへ重複保存せず、異なるTorch/CPUでのbyte再構成は保証しない。
 
 capture前から評価・replay・再captureを含む累積peak allocated/reservedを測る。
 GPU process全使用量と混同しない。速度・メモリ比は記述的に報告し、dense勝利や5%短縮を合格条件にしない。
@@ -63,3 +66,12 @@ GPU process全使用量と混同しない。速度・メモリ比は記述的に
 
 L4 qualificationは1200秒、G4の固定batchは2400秒を上限とし、結果回収後に所有runtimeを停止する。
 この文書作成時点は準備段階であり、GPU結果ではない。
+
+## 入口検証の途中記録
+
+最初のL4 job `l4job-def6a53dbfb940d499fd23cac05768b2`（source`5e021e00`）では
+139件中138件がpassし、retained-readerテストの入力が1024固定であったため1件が停止した。
+runtimeの形状検査が2048モデルへの1024入力を正しく拒否している。全atom参照や短期学習には未到達。
+失敗原本を保全し、fixtureの幅だけを修正した`33b840ef`で、その1件と未到達の数値・更新検証を続行する。
+先に通過した16384の高位キー・VJP等の結果と、修正後の追加結果は実行単位を区別して記録する。
+runtimeとbenchmarkの数値処理はこのfixture修正では変えていない。
