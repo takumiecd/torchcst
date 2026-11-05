@@ -94,6 +94,14 @@ y.square().sum().backward()
 | `GLOBAL_OWNER_COMPACT_PARTIALS` | 入出力が同じ N1024 Polar、B<=4、A<=65536、M8、base1/merge2。完全 response・中心 Jacobian と小さい係数 partial を再利用 |
 | `GLOBAL_OWNER_COMPACT_KEYED` | 同じ N1024 条件。forward owner key から必要な moment bank を選ぶ |
 
+研究用の`GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32`と
+`GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32_FLAT_C`は、同一軸のN1024/2048/4096/8192/16384、
+FP32・B<=4・A<=2^24、Polar M8/base1/merge2/spacing1・radius[.5,50]に対応する。
+他の旧owner Planやshared経路の対応範囲は拡張していない。公開入口は引き続きeager-onlyで、
+研究用whole-step Graphは固定5%atom/B4 cohortに限定する。
+大規模の正しさと時間・capture込みメモリの検証範囲は
+[大規模研究記録](research-history/cuda-linear/radius-large-scale-20261105.ja.md)を参照する。
+
 N1024 Plan は上の N128 例には指定できない。対応する Chart・atom 構成を作ってから
 `FixedSelector` へ渡す。各 Plan の性能とメモリは対象 workload ごとの検証であり、
 モデル全体で得た比率を単独 layer に転用しない。例えば `LOCAL_TILE_MOMENTS` は保存量を
