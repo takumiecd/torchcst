@@ -21,6 +21,15 @@ constexpr int64_t owner_window_cohort_atoms(int sites) {
     return int64_t(sites) * sites / 20;
 }
 
+// Separate finite HIGGS density study. Existing MNIST/private 5% entrances
+// retain owner_window_cohort_atoms; public execution still rejects capture.
+constexpr bool higgs_owner_window_cohort(int sites, int64_t atoms) {
+    if (!owner_window_sites(sites) || sites > 8192) return false;
+    const int64_t area = int64_t(sites) * sites;
+    return atoms == area / 200 || atoms == area / 100 || atoms == area / 50 ||
+        atoms == area / 20 || atoms == area / 10;
+}
+
 // The final owner boundary is key_count << OWNER_ROW_BITS. It must also fit:
 // UINT_MAX is reserved for padding, never a wrapped valid owner/row key.
 constexpr bool can_use_block_layout(int64_t atoms, int input_nodes, int output_nodes) {

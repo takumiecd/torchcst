@@ -17,6 +17,7 @@ import torch
 from torch import nn
 
 from benchmarks.training.cell_mass_mnist import make_model, make_optimizer
+from benchmarks.training.graph_higgs_cohort import higgs_graph_signature
 from benchmarks.training.graph_stock_qualification import (
     QualificationError,
     StockQualification,
@@ -295,6 +296,12 @@ class PreparedStep:
             nn.Linear,
         ]:
             raise ValueError("only the canonical five-element model is supported")
+        try:
+            self.research_cohort = higgs_graph_signature(model, tx, ty, kind)
+        except QualificationError as error:
+            self.invalidated = True
+            self.qualification_error = str(error)
+            return
         self._root_topology = RootTopology(model)
         self.params = tuple(model.parameters())
         self.site = model[2] if kind == "cst" else None
@@ -323,6 +330,19 @@ class PreparedStep:
                 "global_owner_window_fp32_geometry_sort32": "research_owner_window_fp32_geometry_sort32",
                 "global_owner_window_fp32_geometry_sort32_flat_c": "research_owner_window_fp32_geometry_sort32_flat_c",
             }.get(self.linear_program.cached.state.recipe.schedule)
+            if self.research_cohort is not None:
+                if (
+                    self.fp32_entry
+                    != "research_owner_window_fp32_geometry_sort32_flat_c"
+                ):
+                    self.invalidated = True
+                    self.qualification_error = (
+                        "HIGGS density Graph requires FP32 geometry/sort32/flat-C"
+                    )
+                    return
+                self.fp32_entry = (
+                    "research_higgs_owner_window_fp32_geometry_sort32_flat_c"
+                )
             self.configs = plan.input.native_config(), plan.output.native_config()
             self.previous = torch.empty_like(self.site.atoms.p)
             self.periods = _period_tensors(self.polar_program.state, self.site.atoms.p)
@@ -427,6 +447,7 @@ class PreparedStep:
             )
             if self.periods
             else (metadata(self.tx), metadata(self.ty)),
+            higgs_graph_signature(self.model, self.tx, self.ty, self.kind),
         )
 
     def eligible(self, *, _capture_refresh=False):

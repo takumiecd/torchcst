@@ -34,6 +34,7 @@ def cpu_signature_cohort():
         model[4].weight.copy_(torch.tensor([[-1.0], [1.0]]))
     program = PreparedStep.__new__(PreparedStep)
     program.model = model
+    program.kind = "dense"
     program.optimizer = torch.optim.AdamW(model.parameters())
     program.params = tuple(model.parameters())
     program.graph = None
