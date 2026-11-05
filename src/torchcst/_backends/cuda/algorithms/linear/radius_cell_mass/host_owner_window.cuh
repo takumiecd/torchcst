@@ -64,6 +64,15 @@ class OwnerWindow : public torch::autograd::Function<OwnerWindow> {
     }
 };
 void bind_owner_window_autograd(pybind11::module_ &module) {
+    // Research-only whole-step caller owns replay guards and host lifetimes.
+    // The public dispatcher continues to use the eager-only entry below.
+    module.def(
+        "research_graph_owner_window",
+        [](Tensor x, Tensor p, Config input, Config output) {
+            check_autograd_entry(x, p, input, output, 2, 2, 32, 6, true);
+            return OwnerWindow::apply(x, p, input, output, 2, true);
+        },
+        pybind11::call_guard<pybind11::gil_scoped_release>());
     module.def(
         "checked_autograd_linear_owner_window",
         [](Tensor x, Tensor p, Config input, Config output, int mode) {

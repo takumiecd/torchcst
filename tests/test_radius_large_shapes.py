@@ -61,8 +61,8 @@ def test_large_axis_has_safe_bank_count_and_uncapped_local_periods():
     assert plan.active_nodes(2) == 1022
     assert plan.banks[-1].period == 3072 > plan.period
     assert plan.native_config()[0] == 1024
-    with pytest.raises(ValueError, match="1024"):
-        replace(plan, site_count=2048)
+    with pytest.raises(ValueError, match=str(MAX_SITES)):
+        replace(plan, site_count=2 * MAX_SITES)
 
 
 @pytest.mark.parametrize("selected", [HYBRID_SERIAL, HYBRID_OVERLAP])
@@ -132,14 +132,18 @@ static_assert(MAX_SITES == {MAX_SITES});
 static_assert(MAX_ATOMS == {MAX_ATOMS});
 static_assert(SHARED_MAX_SITES == {SHARED_MAX_SITES});
 static_assert(SHARED_MAX_ATOMS == {SHARED_MAX_ATOMS});
-static_assert(MAX_OWNER_NODES == 4094);
+static_assert(MAX_OWNER_NODES == 4 * MAX_SITES - 2);
 static_assert(can_use_block_layout(819, 510, 510));
 static_assert(can_use_block_layout(1024, 1023, 1025));
 static_assert(!can_use_block_layout(1025, 510, 510));
 static_assert(!can_use_block_layout(1, 1024, 1024));
 static_assert(!can_use_block_layout(8, 4094, 4094));
 static_assert(!can_use_block_layout(52428, 4094, 4094));
-static_assert(uint64_t(MAX_OWNER_NODES) * MAX_OWNER_NODES < 2147483647);
+static_assert(uint64_t(MAX_OWNER_NODES) * MAX_OWNER_NODES > 2147483647);
+static_assert(uint64_t(MAX_OWNER_NODES) * MAX_OWNER_NODES < 4294967295ULL);
+static_assert(owner_window_sites(2048) && owner_window_sites(16384));
+static_assert(!owner_window_sites(128) && !owner_window_sites(32768));
+static_assert(owner_window_cohort_atoms(16384) == 13421772);
 static_assert(4 * MAX_ATOMS < 2147483647 - 128);
 """
     subprocess.run(

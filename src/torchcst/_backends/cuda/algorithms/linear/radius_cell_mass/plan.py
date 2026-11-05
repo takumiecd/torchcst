@@ -4,8 +4,8 @@ import math
 from dataclasses import dataclass
 from functools import cached_property
 
-MAX_SITES = 1024
-MAX_ATOMS = 65536
+MAX_SITES = 16384
+MAX_ATOMS = 1 << 24
 SHARED_MAX_SITES = 128
 SHARED_MAX_ATOMS = 4096
 

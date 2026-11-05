@@ -19,7 +19,7 @@ inline void check_matrix(const Tensor &x) {
 }
 inline void check_atoms(const Tensor &p) {
     check_matrix(p);
-    TORCH_CHECK(p.size(1) == 4 && p.size(0) <= MAX_ATOMS, "expected at most 65536 four-column atoms");
+    TORCH_CHECK(p.size(1) == 4 && p.size(0) <= MAX_ATOMS, "expected at most ", MAX_ATOMS, " four-column atoms");
 }
 inline void check_shared_shape(const Tensor &p, const Axis &input, const Axis &output) {
     TORCH_CHECK(input.sites <= SHARED_MAX_SITES && output.sites <= SHARED_MAX_SITES &&
@@ -39,14 +39,17 @@ __device__ inline int bank_for_node(int node, const Axis &axis) {
 }
 
 // Temporary sortable keys refer to original Parameter rows; no packed atoms.
-template<class T, bool Async = false>
+template<class T, bool Async = false, bool GeometryShared = false>
 __global__ void classify_kernel(const T *p, int64_t *keys, int *error, int atoms,
-                               Axis input, Axis output) {
+                               Axis input, Axis output, double *geometry = nullptr) {
     int atom = blockIdx.x * blockDim.x + threadIdx.x;
     if (atom >= atoms) return;
     bool valid = true;
     for (int c = 0; c < 4; ++c) valid &= isfinite(double(p[4 * atom + c]));
-    double ri = radius(p, atom, input), ro = radius(p, atom, output);
+    double ri = radius(p, atom, input);
+    double ro;
+    if constexpr (GeometryShared) ro = ri;
+    else ro = radius(p, atom, output);
     valid &= isfinite(ri) && isfinite(ro) && ri > 0 && ro > 0 &&
              ri <= input.period / 2 && ro <= output.period / 2;
     // A positive mathematical ratio must have ceil >= 1. Reject scales that
@@ -64,6 +67,10 @@ __global__ void classify_kernel(const T *p, int64_t *keys, int *error, int atoms
             atomicExch(error, 1);
         }
         return;
+    }
+    if constexpr (GeometryShared) {
+        geometry[atom] = ri;
+        geometry[atoms + atom] = amplitude(p, atom, input);
     }
     Membership mi = classify(ri, center(p, atom, input, false), input);
     Membership mo = classify(ro, center(p, atom, output, true), output);
@@ -282,6 +289,22 @@ Tensor classify_atoms_async(Tensor p, Config input_config, Config output_config)
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return keys;
 }
+// Caller has checked identical live owner axes; one invocation owns this payload.
+std::vector<Tensor> classify_atoms_geometry_async(Tensor p, Config input_config, Config output_config) {
+    check_atoms(p);
+    Axis input = parse_axis(input_config), output = parse_axis(output_config);
+    c10::cuda::CUDAGuard guard(p.device());
+    auto keys = torch::empty({p.size(0)}, p.options().dtype(torch::kLong));
+    auto geometry = torch::empty({2, p.size(0)}, p.options().dtype(torch::kDouble));
+    if (p.size(0)) AT_DISPATCH_FLOATING_TYPES(p.scalar_type(), "radius_classify_geometry_async", [&] {
+        classify_kernel<scalar_t, true, true><<<(p.size(0) + THREADS - 1) / THREADS,
+            THREADS, 0, at::cuda::getCurrentCUDAStream()>>>(
+            p.data_ptr<scalar_t>(), keys.data_ptr<int64_t>(), nullptr,
+            p.size(0), input, output, geometry.data_ptr<double>());
+    });
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+    return {keys, geometry};
+}
 Tensor build_moments(Tensor signal, Config config, bool merge) {
     check_matrix(signal);
     Axis axis = parse_axis(config);
@@ -388,6 +411,7 @@ Tensor parameter_grad(Tensor p, Tensor zx, Tensor zy, Tensor h, Tensor g, Config
 #include "owner_compact_keyed.cuh"
 #include "owner_compact_fused.cuh"
 #include "owner_window.cuh"
+#include "owner_window_fp32.cuh"
 #include "local_tile_entry.cuh"
 
 namespace radius_cell_mass {
@@ -402,7 +426,7 @@ void autograd_check_owner_saved(Tensor x, Tensor p, Tensor zx, Tensor h, Tensor 
 // value, error word, or CUDA event is read back to the host here.
 void check_autograd_entry(Tensor x, Tensor p, Config input_config,
     Config output_config, int input_start, int output_start,
-    int tile_sites, int schedule) {
+    int tile_sites, int schedule, bool research_graph, bool higgs_density) {
     check_matrix(x); check_atoms(p);
     Axis input = parse_axis(input_config), output = parse_axis(output_config);
     const bool global = schedule == 5 || schedule == 6;
@@ -443,12 +467,22 @@ void check_autograd_entry(Tensor x, Tensor p, Config input_config,
     c10::cuda::CUDAGuard guard(x.device());
     cudaStreamCaptureStatus status;
     C10_CUDA_CHECK(cudaStreamIsCapturing(at::cuda::getCurrentCUDAStream(), &status));
-    TORCH_CHECK(status == cudaStreamCaptureStatusNone,
+    TORCH_CHECK(!research_graph || (schedule == 6 && x.size(0) == 4 &&
+        owner_window_sites(input.sites) && input.sites == output.sites &&
+        (higgs_density ? higgs_owner_window_cohort(input.sites, p.size(0)) :
+            p.size(0) == owner_window_cohort_atoms(input.sites))),
+        "graph research entry requires its fixed power-of-two/atom-density/B4 cohort");
+    TORCH_CHECK(research_graph || status == cudaStreamCaptureStatusNone,
         "radius baseline uses eager preparation, not CUDA Graphs");
 }
 
 // Host autograd links to these wrappers without crossing Python per stage.
 // Modes0..3/5 retain their CUDA stages; mode6 opts into owner response/C.
+std::vector<Tensor> autograd_ranges32(Tensor keys, Config input, Config output, bool reverse) {
+    return layout_ranges_aten32(keys, parse_axis(input).node_count,
+        parse_axis(output).node_count, reverse);
+}
+
 std::vector<Tensor> autograd_ranges(Tensor keys, Config input, Config output, bool reverse) {
     return layout_ranges(keys, parse_axis(input).node_count,
         parse_axis(output).node_count, reverse);
@@ -502,7 +536,8 @@ Tensor autograd_parameter_grad(Tensor p, Tensor x, Tensor dy, Tensor zx, Tensor 
 namespace radius_cell_mass { void bind_owner_compact_autograd(pybind11::module_ &); }
 
 namespace radius_cell_mass { void bind_owner_compact_keyed_autograd(pybind11::module_ &);
-void bind_owner_window_autograd(pybind11::module_ &); }
+void bind_owner_window_autograd(pybind11::module_ &);
+void bind_owner_window_fp32_autograd(pybind11::module_ &); }
 
 namespace radius_cell_mass { void bind_local_tile_autograd(pybind11::module_ &); }
 
@@ -510,6 +545,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     radius_cell_mass::bind_local_tile_autograd(m);
     radius_cell_mass::bind_owner_compact_keyed_autograd(m);
     radius_cell_mass::bind_owner_window_autograd(m);
+    radius_cell_mass::bind_owner_window_fp32_autograd(m);
     m.def("active_moment_banks_from_keys", &radius_cell_mass::active_moment_banks_from_keys);
     radius_cell_mass::bind_owner_compact_autograd(m);
     m.def("owner_derivative_project", &radius_cell_mass::owner_derivative_project);
@@ -529,6 +565,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("expansion_probe_resources", &radius_cell_mass::expansion_probe_resources);
     m.def("layout_ranges", &radius_cell_mass::layout_ranges);
     m.def("layout_ranges_aten", &radius_cell_mass::layout_ranges_aten);
+    m.def("layout_ranges_aten32", &radius_cell_mass::layout_ranges_aten32);
     m.def("classify_atoms", &radius_cell_mass::classify_atoms);
     m.def("classify_atoms_async", &radius_cell_mass::classify_atoms_async);
     m.def("build_moments", &radius_cell_mass::build_moments);

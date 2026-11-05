@@ -1,0 +1,24 @@
+{
+  "decision": "accept_for_fixed_benchmark_local_explicit_opt_in",
+  "goal_research_work": "complete",
+  "scope": "stock MNIST N1024 A52428 trueB4 FP32 Graph L4 Torch2.11.0+cu130, qualified safety G0 vs G1",
+  "reviewed_head": "8d70e8e29755773da2c9ce25a057799cd4ca627c",
+  "Pro_turn": "6ceee6c2-d823-45fc-99d1-9e9c35167e37",
+  "Pro_answer_sha256": "0098aad7f9022950d379303d29de396e125bdf2787140b11ded8616a160a5bcb",
+  "Pro_raw_PT_GPU_verification": false,
+  "Stage3_verification_sha256": "15f797e1c7776f1c0e8a8dae273b26fb265d087439f605c49fe30eb8f9efc699",
+  "Stage4_verification_sha256": "099b68b86dbe9090905a032dad132f4757139284220e253744f441ba9f9e9d61",
+  "all_prospective_gates_passed": true,
+  "all_owned_L4_stopped": true,
+  "PRs_preserved_Draft": [
+    136,
+    137
+  ],
+  "merge_performed": false,
+  "public_default_changed": false,
+  "unmodified_132_pure_speedup_measured": false,
+  "K_O": "deferred, no GPU helper/implementation started",
+  "worktree_snapshots": 12,
+  "active_checkouts": 4,
+  "payload_deleted": 0
+}
