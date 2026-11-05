@@ -1,32 +1,37 @@
-# torchcstへの参加
+# Contributing to torchcst
 
-コードの改善と、GPUでのベンチマーク結果の提供を受け付けています。
-コードはPull Request、計測結果はこのリポジトリのIssueから提出します。
-計測結果の提出には、fork・提出用ブランチ・PR・Neonの接続情報は不要です。
+**English** | [日本語](CONTRIBUTING.ja.md)
 
-## コード・kernelを追加する
+We welcome code improvements and GPU benchmark results. Submit code through pull
+requests and measurement results through this repository's issues. Submitting
+measurement results does not require a fork, a submission branch, a PR or Neon
+connection credentials.
 
-開発の入口はこの文書です。CUDA kernelの具体的な実装・登録・測定は
-[カーネル開発ガイド](docs/kernel-development.ja.md)を参照してください。
+## Adding code or kernels
 
-ブランチ名は、作成者やツール名ではなく変更の目的で選びます。
-kernelの新規実装・高速化・recipe/launch調整と、それに伴う検証・計測には
-`kernel/<目的>` を使います。その他は用途に応じて `feat/<目的>`、`fix/<目的>`、
-`refactor/<目的>`、`docs/<目的>`、`test/<目的>`、`chore/<目的>` などを使います。
-いずれもGitHub PRから統合します。
+Start development with this guide. For CUDA kernel implementation, registration
+and measurement details, see the [kernel development guide](docs/kernel-development.ja.md).
+
+Choose branch names by the purpose of the change, rather than the author's or
+tool's name. Use `kernel/<purpose>` for new kernels, kernel optimizations,
+recipe/launch tuning and the associated validation and measurements. For other
+changes, use an appropriate prefix such as `feat/<purpose>`, `fix/<purpose>`,
+`refactor/<purpose>`, `docs/<purpose>`, `test/<purpose>` or `chore/<purpose>`.
+Integrate all changes through GitHub PRs.
 
 ```text
-変更の数学的な契約を決める
-    → kernel/ ブランチで実装・Algorithm/Recipeを登録
-    → Plan/Caseを用意し、宣言・独立oracle・回帰テストを確認
-    → 同じ条件のbaseline・candidate・denseを実GPUで測定
-    → 正しさ・完全step時間・ピークメモリ・証拠を記録
-    → PRでレビュー・必要な検証を通してGitHubでmerge
+Define the mathematical contract of the change
+    → Implement on a kernel/ branch and register the Algorithm/Recipe
+    → Prepare a Plan/Case; check declarations, an independent oracle and regression tests
+    → Measure baseline, candidate and dense on a real GPU under matching conditions
+    → Record correctness, complete-step time, peak memory and evidence
+    → Review the PR, pass the required validation and merge on GitHub
 ```
 
-### 1. 開発環境を用意する
+### 1. Set up the development environment
 
-repoルートで実行します。外部参加者はforkからPRを作成できます。
+Run these commands from the repository root. External contributors can open PRs
+from a fork.
 
 ```bash
 python -m pip install -e '.[dev]'
@@ -34,27 +39,32 @@ git switch -c kernel/my-kernel
 python -m tools.kernel_dev test --suite cpu
 ```
 
-GPUホストでは `python -m pip install -e '.[dev,cuda]'` を使います。
-CUDAが見える環境でCPU検証を行うときは `CUDA_VISIBLE_DEVICES=''` を付けます。
-GPU・実DBが必要なテストのskipは、GPU・DB検証を完了したことにはなりません。
+On GPU hosts, use `python -m pip install -e '.[dev,cuda]'`. When running CPU
+validation in an environment where CUDA is visible, set `CUDA_VISIBLE_DEVICES=''`.
+Skipping tests that require a GPU or a live database does not complete GPU or
+database validation.
 
-### 2. 実装と比較条件を登録する
+### 2. Register the implementation and comparison conditions
 
-数学的なKernelSpecとCUDAのAlgorithm/Recipeは区別します。同じ演算の計算方式を
-変える場合は `_backends/cuda/algorithms/` に実装を置きます。
-既存のrecipe調整、新Algorithm、新しい数学的な演算で必要な変更は
-[追加する種類と変更箇所](docs/kernel-development.ja.md#追加する種類と変更箇所)に整理しています。
-本体の `src/torchcst/` から `benchmarks/` や `tests/` に依存しないでください。
+Distinguish the mathematical KernelSpec from a CUDA Algorithm/Recipe. When
+changing how an existing operation is computed, put the implementation in
+`_backends/cuda/algorithms/`. The changes required for recipe tuning, new
+Algorithms and new mathematical operations are listed in
+[types of additions and files to change](docs/kernel-development.ja.md#追加する種類と変更箇所).
+The runtime package in `src/torchcst/` must not depend on `benchmarks/` or `tests/`.
 
-公開APIの契約は [README.md](README.md)、現在のpackage境界は
-[backendの配置規約](src/torchcst/_backends/README.md)を正本とします。
-演算の定義はatomごとのkernelの和であり、行列への因数分解は計算方式の一つです。
-atom数・Parameterのshapeは学習中固定し、振幅・幅・中心などの学習可能な値はatomの
-Parameterに持たせます。Moduleの状態所有、微分計算、optimizerの更新を分離してください。
-旧store・birth/death/merge・slot remapping・Pullback Adamなどの互換surfaceを復活させません。
+The authoritative public API contract is [README.md](README.md); the current
+package boundaries are defined in the [backend layout](src/torchcst/_backends/README.md).
+An operation is defined as the sum of kernels over atoms; matrix factorization is
+one way to compute it. Keep atom counts and Parameter shapes fixed during
+training, and store trainable values such as amplitude, bandwidth and center in
+the atoms' Parameters. Separate Module state ownership, differentiation and
+optimizer updates. Do not restore compatibility interfaces for the old store,
+birth/death/merge, slot remapping or Pullback Adam.
 
-比較用のPlan catalogとCaseは既存Linear runnerで読み込める形式にします。
-登録済みの候補で手順を試す例は、GPUなしで実行できます。
+Use a Plan catalog and Case format that the existing Linear runner can read.
+The following example uses an already registered candidate and can run without a
+GPU.
 
 ```bash
 python -m tools.kernel_dev prepare \
@@ -67,59 +77,69 @@ python -m tools.kernel_dev check \
   --case output/kernel-comparison/case.json
 ```
 
-`prepare`はbaseline・指定candidate・denseを含む比較用JSONと、元ファイルのhashを
-新しいディレクトリへ保存します。候補は `--candidate` を繰り返して指定できます。
-既存の出力先は上書きしません。新しい実装を自動生成・登録するコマンドではありません。
-新候補を登録した後は、そのcatalogとCaseを入力にして同じ手順を使います。
+`prepare` saves comparison JSON containing the baseline, the specified candidate
+and dense, together with hashes of the source files, in a new directory. Repeat
+`--candidate` to include multiple candidates. It does not overwrite existing
+output or automatically generate or register a new implementation. After
+registering a new candidate, use the same procedure with its catalog and Case.
 
-### 3. 正しさ・性能・メモリを確認する
+### 3. Validate correctness, performance and memory
 
-独立oracleでY・dX・全atom勾配、境界、支持、正規化を検証します。
-optimizerを変える場合はParameter・moments・stepも比較します。
-GPUでGraph replayと可変幅を確認し、未計装の完全学習stepを測定します。
-時間とcapture/replay込みのallocated / reservedピークを同じ条件で比較してください。
+Use an independent oracle to validate Y, dX, all atom gradients, boundaries,
+support and normalization. When changing an optimizer, also compare Parameters,
+moments and step counters. Check Graph replay and variable widths on a GPU, and
+measure the complete training step without instrumentation. Compare time and
+peak allocated/reserved memory, including capture/replay, under matching
+conditions.
 
-[実行できる最小例](docs/kernel-development.ja.md#登録済みalgorithmで手順を試す)に
-CPU確認からGPU correctness、完全step測定、提出前検査までのコマンドを載せています。
-所有者の共有GPUを使う場合は、[研究環境の運用規則](docs/research-operations.ja.md)も適用します。
-自分のGPUで測定する外部参加者に、所有者のGPUアカウントやDBの資格情報は必要ありません。
+The [minimal runnable example](docs/kernel-development.ja.md#登録済みalgorithmで手順を試す)
+provides commands for CPU checks, GPU correctness, complete-step measurements
+and checks before submission. The [research operating rules](docs/research-operations.ja.md)
+also apply when using the owner's shared GPUs. External contributors measuring
+on their own GPUs do not need the owner's GPU accounts or database credentials.
 
-### 4. 記録してPRを作成する
+### 4. Record the work and open a PR
 
-コード・テスト・簡潔な研究ノートをcommitし、raw logs・trace・tensor・source copiesは
-ignored `output/` または `benchmarks/**/evidence/` に保存します。
-計測結果はこの文書のIssue経路から提出し、PRから提出Issueや観測IDを参照できます。
-新しいPlanや結果形式は中央registry / adapterが対応してから受け付けられるため、
-コード側の対応を先にレビューします。
+Commit code, tests and concise research notes. Keep raw logs, traces, tensors and
+source copies in ignored `output/` or `benchmarks/**/evidence/` directories.
+Submit measurement results through the issue process in this guide; PRs can
+reference submission issues or observation IDs. New Plans and result formats
+are accepted only after the central registry/adapter supports them, so the code
+support is reviewed first.
 
-PRテンプレートに、変更の目的・契約、実行した検証、未実施の検証、hardware/runtime、
-完全step時間・ピークメモリ、独立run数、source/result hashと再現コマンドを記載します。
-PRの **CPU validation** Actionsは宣言検査・CPUテスト・wheel/sdist buildを実行します。
-GPUの正しさ・性能や実DBは別途確認します。公開dispatcherへの採用も別の判断です。
+Use the PR template to describe the purpose and contract of the change,
+validation performed and not yet performed, hardware/runtime, complete-step
+time and peak memory, the number of independent runs, source/result hashes and
+reproduction commands. The PR's **CPU validation** Actions run declaration
+checks, CPU tests and wheel/sdist builds. GPU correctness and performance, and
+live database behavior, require separate validation. Adoption by the public
+dispatcher is also a separate decision.
 
-mainへ直接pushせず、名前付きブランチをpushしてGitHub PRから統合します。
-GitHubでmergeされた後に、ローカルmainを `origin/main` へfast-forwardします。
+Push a named branch and integrate through a GitHub PR; never push directly to
+main. After GitHub merges the PR, fast-forward local main to `origin/main`.
 
-## ベンチマーク結果を提供する
+## Contributing benchmark results
 
 ```text
-自分のGPU / Colab / レンタルGPUで計測
-    → output/ に完成した結果JSONを出力
-    → 提出前にローカルで形式を確認
-    → torchcstのIssueにJSONを添付して投稿
-    → 中央GitHub Actionsが形式・内部整合性・投稿者を確認
-    → Neonで重複と提出上限を確認し、原本と観測を追記
-    → Issueに観測ID・提出者・区分・ポイントを返信して閉じる
+Measure on your own GPU / Colab / a rented GPU
+    → Write complete result JSON to output/
+    → Check the format locally before submission
+    → Attach the JSON to a torchcst issue and submit it
+    → Central GitHub Actions check the format, internal consistency and submitter
+    → Neon checks for duplicates and submission limits, then appends the original and observation
+    → The issue receives the observation ID, submitter, category and points, and is closed
 ```
 
-### 1. 用意されたCaseで計測する
+### 1. Measure a provided Case
 
-現在受け付けるのは、CUDA GPU向けの `benchmarks.cuda.linear.run` が生成する
-完成したschema v1 JSONです。GPUごとのAlgorithmの対応条件を満たす環境で実行してください。
-Caseは入力・モデル・計測条件、Planは実行するAlgorithmとその設定を表します。
-CaseやPlanの選び方は [CUDAベンチマークガイド](benchmarks/cuda/linear/README.md)を参照してください。
+Currently, submissions must be complete schema v1 JSON generated by
+`benchmarks.cuda.linear.run` for CUDA GPUs. Run in an environment that satisfies
+the Algorithm's requirements for the GPU. A Case describes inputs, the model and
+measurement conditions; a Plan describes the Algorithm to execute and its
+settings. See the [CUDA benchmark guide](benchmarks/cuda/linear/README.md) for
+choosing a Case or Plan.
 
-リポジトリのルートで実行する例：
+Example commands from the repository root:
 
 ```bash
 python -m pip install -e '.[cuda,benchmark-db]'
@@ -128,98 +148,117 @@ python -m benchmarks.cuda.linear.run \
   --output output/normalized-step.json
 ```
 
-runnerは実行UUID・UTC開始時刻、Plan・Case、GPU・CUDA・Torch・Tritonの情報、
-時間サンプル、誤差、CUDA Graph capture/replayを含むallocated / reserved peakなどを記録します。
-allocatedとreservedは別の指標です。この形式ではGPUプロセス全体のメモリ使用量を測定していません。
-正しさの検査に使う小さい独立oracleと、大きい入力での性能測定は異なる検証範囲です。
+The runner records a run UUID, UTC start time, Plan, Case, GPU/CUDA/Torch/Triton
+information, timing samples, errors and peak allocated/reserved memory including
+CUDA Graph capture/replay. Allocated and reserved memory are different metrics.
+This format does not measure total memory usage of the GPU process. A small
+independent oracle for correctness and performance measurements on large inputs
+cover different validation scopes.
 
-`output/` はGit管理対象外です。結果JSON・ログ・trace・tensor・source snapshotを
-コミットせず、手元に保管してください。完成したFAIL結果も診断用の観測として提出できます。
+`output/` is ignored by Git. Keep result JSON, logs, traces, tensors and source
+snapshots locally without committing them. Complete FAIL results can also be
+submitted as diagnostic observations.
 
-### 2. 提出前にJSONを確認する
+### 2. Check the JSON before submission
 
 ```bash
 python -m benchmarks.submissions check output/normalized-step.json
 ```
 
-この検査にGPU・GitHubログイン・DB接続は不要です。
-未完成の結果や対応していない形式は提出できません。
+This check requires no GPU, GitHub login or database connection. Incomplete
+results and unsupported formats cannot be submitted.
 
-### 3. Issueに添付して提出する
+### 3. Attach the result to an issue and submit it
 
-1. このリポジトリの **Issues → New issue → Submit benchmark result** を選びます。
-2. `Benchmark JSON` 欄へ完成したJSONを1つドラッグして添付します。
-3. **Submit new issue** を押します。添付しただけでは受付は開始されません。
-4. **Submit benchmark observation** Actionsの処理と、Issueへの返信を確認します。
+1. In this repository, select **Issues → New issue → Submit benchmark result**.
+2. Drag one complete JSON file into the `Benchmark JSON` field to attach it.
+3. Click **Submit new issue**. Attaching the file alone does not start processing.
+4. Check the **Submit benchmark observation** Actions run and the reply on the issue.
 
-一般・認定とも同じフォームを使います。本文には添付JSONのリンクを1つだけ置いてください。
-1 Issueにつき1実行分のJSON、最大5 MiBです。複数Planや時間サンプルを含んでも1件です。
-添付ファイルと計測情報は公開されるため、認証情報を含めないでください。
+General and certified contributors use the same form. Include only one link to
+the attached JSON in the issue body. Each issue accepts one run's JSON, up to
+5 MiB. Multiple Plans or timing samples still count as one submission. The
+attachment and measurement information are public; do not include credentials.
 
-### 4. 受付結果を確認する
+### 4. Check the submission outcome
 
-中央ActionsはGitHub APIからIssue作者の数値ID・ユーザー名を取得します。
-JSONに記載したユーザー名・区分・ポイントは、権限の判定に使いません。
-形式、選択したPlan・Caseとの整合性、snapshot hash、PASS結果のworker構成、
-時間サンプルと中央値、メモリ値の整合性などをCPUで確認します。
+Central Actions retrieve the issue author's numeric ID and username through the
+GitHub API. Usernames, categories and points written in the JSON are not used to
+determine authorization. CPU checks validate the format, consistency with the
+selected Plan/Case, snapshot hashes, the worker configuration of PASS results,
+timing samples and medians, and memory consistency.
 
-保存するstepだけにNeonの接続Secretを渡します。参加者のコードは中央で実行しません。
-DBでは提出上限の確認と、原本・観測・提出者の保存を1つのtransactionで行います。
-同時提出でも上限を超えて保存されないようにしています。
+Only the storage step receives the Neon connection Secret. Contributors' code
+is not executed centrally. The database checks submission limits and appends
+the original result, observation and submitter in a single transaction, so
+concurrent submissions cannot exceed the limit.
 
-| 結果 | 次にすること |
+| Outcome | What happens next |
 | --- | --- |
-| 保存成功 | 観測ID・提出者・区分・ポイントが返信され、Issueが閉じます。 |
-| 同じ結果の再送 | 既存の観測が案内され、追加登録・追加の件数消費はありません。 |
-| 形式などの不備 | Issueは開いたままです。登録前なら本人が本文を修正すると再検査されます。 |
-| 一般の提出上限に到達 | UTCの日付が変わってから、本文編集または管理者による再実行で再度受け付けます。 |
+| Saved successfully | The issue receives the observation ID, submitter, category and points, and is closed. |
+| Duplicate result | The existing observation is returned; no new observation is created and no additional submission allowance is used. |
+| Invalid format or other problems | The issue remains open. Before registration, the author can edit its body to trigger another check. |
+| General submission limit reached | Processing can resume after the UTC date changes, through a body edit or an administrator's rerun. |
 
-別の計測は新しいIssueで提出してください。登録済みIssueの観測は差し替えません。
-管理者がActionsを再実行しても、提出者は元のIssue作者です。
+Submit a new issue for a different measurement. Observations already registered
+from an issue are not replaced. If an administrator reruns Actions, the original
+issue author remains the submitter.
 
-## 提出上限と認定
+## Submission limits and certification
 
-| 区分 | 新しい実行の提出上限 | 信頼ポイント |
+| Category | Limit on new runs | Trust points |
 | --- | --- | --- |
-| 一般 | GitHubユーザーIDごとにUTCで1日10件 | 1 |
-| 認定 | 件数上限なし | 既定10、管理者が個別変更可能 |
+| General | 10 per UTC day per GitHub numeric user ID | 1 |
+| Certified | No submission count limit | Default 10; administrators can set an individual value |
 
-一般ユーザーは事前登録不要です。認定は管理者が
-[公開設定](.github/benchmark-submissions.json)に数値GitHub ID・表示名・理由を登録します。
-表示名を変更しても数値IDで判定します。認定でも形式・容量の検査は共通です。
-認定の追加・変更方法は [管理者向けの説明](docs/benchmark-contributions.ja.md#管理者による認定)を参照してください。
+General contributors need no advance registration. To certify a contributor, an
+administrator records their numeric GitHub ID, display name and reason in the
+[public configuration](.github/benchmark-submissions.json). Identity is checked
+by numeric ID even if the display name changes. Certified submissions use the
+same format and size checks. See the [administrator instructions](docs/benchmark-contributions.ja.md#管理者による認定)
+for adding or changing certification.
 
-件数は測定日時ではなくDBの受付UTC日付で数えます。完成したFAIL結果も1件です。
-同じJSONの再送は別Issue・別アカウントからでも重複を増やさず、最初の提出者の帰属を維持します。
-JSONの空白・キー順だけの変更も同じ観測です。独立した再計測は別の実行UUIDで追記し、
-同じUUIDに異なる結果を付けると拒否します。
+Counts use the UTC date of database receipt, rather than the measurement date.
+A complete FAIL result also counts as one submission. Resubmitting identical
+JSON, even through another issue or account, creates no duplicate observation
+and preserves attribution to the first submitter. Differences only in JSON
+whitespace or key order still represent the same observation. Independent
+measurements are appended with different run UUIDs; conflicting results with
+the same UUID are rejected.
 
-信頼ポイントは受付時点の設定から各提出に記録する値です。
-提出回数に応じた自動加点や、ランキングへの重み付けは現在行いません。
-認定や設定を変更しても、過去の観測・区分・付与記録は書き換えません。
+Trust points are recorded for each submission using the settings in effect at
+receipt. There are currently no automatic point increments based on submission
+count and no ranking weights based on points. Certification or configuration
+changes do not rewrite past observation, category or point records.
 
-## Colabと計測用Actions
+## Colab and measurement Actions
 
-自分のColabで測定する場合は [公開Colabツール](tools/colab/README.md)を利用できます。
-Colab認証を設定済みの環境では、**Benchmark measurement** Actionsも利用できます。
-こちらはコミット済みの計測依頼JSONでCase・GPU・回数などを指定し、結果を
-`benchmark-results` Artifactに保存する計測補助workflowです。
+For measurements on your own Colab, use the [public Colab tool](tools/colab/README.md).
+If Colab authentication has been configured, **Benchmark measurement** Actions
+are also available. This measurement workflow reads a committed request JSON
+specifying the Case, GPU and number of runs, then saves results in the
+`benchmark-results` Artifact.
 
-Artifact内の各実行の `artifacts/benchmark.json` を取り出し、同じIssueフォームから提出します。
-このworkflowはNeonへ自動登録しません。計測依頼の形式は
-[requestsガイド](benchmarks/requests/README.md)を参照してください。
-自分のGPUやColabで直接計測する参加者は、GitHubへのColab認証設定なしで結果だけ提出できます。
+Extract `artifacts/benchmark.json` for each run from the Artifact and submit it
+through the same issue form. This workflow does not register results in Neon
+automatically. See the [requests guide](benchmarks/requests/README.md) for the
+measurement request format. Contributors measuring directly on their own GPUs
+or Colab can submit results without configuring Colab authentication on GitHub.
 
-## 観測の保存と採用
+## Storing observations and adopting implementations
 
-DBには結果原本、Plan・Case、観測・指標、提出者ID・ユーザー名、Issue情報、受付日時、
-区分・ポイント、受付時点の設定を保存します。独立した計測は追記して蓄積します。
-受付結果は `consistency_checked` / `self_reported` と記録します。
-この受付はGPUでの再計測を行わないため、測定値の真正性を保証するものではありません。
+The database stores the original result, Plan, Case, observations, metrics,
+submitter ID/username, issue information, receipt time, category, points and the
+settings in effect at receipt. Independent measurements are appended as
+additional observations. Submission outcomes are recorded as
+`consistency_checked` / `self_reported`. This process does not rerun measurements
+on a GPU and therefore does not guarantee that the measurements are authentic.
 
-DBへの保存、kernel / Algorithmの承認、leaderboardの生成、dispatcherへの採用は別の処理です。
-蓄積した観測を使う集計・ランキング・dispatch生成は
-[別の生成ツール・Actions](benchmarks/dispatch/README.md)で行います。
+Database registration, kernel/Algorithm approval, leaderboard generation and
+dispatcher adoption are separate processes. Aggregation, ranking and dispatch
+generation from accumulated observations use [separate generation tools and
+Actions](benchmarks/dispatch/README.md).
 
-中央Actions・Neonの設定、DB移行、管理者の再実行と観測照会については
-[詳しい参加・運用ガイド](docs/benchmark-contributions.ja.md)を参照してください。
+For central Actions/Neon configuration, database migrations, administrator
+reruns and observation queries, see the [detailed contribution and operations
+guide](docs/benchmark-contributions.ja.md).

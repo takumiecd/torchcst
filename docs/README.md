@@ -19,7 +19,8 @@ READMEs describe the current declaration, state and execution boundaries.
 
 ## Development and measurements
 
-Development starts at [CONTRIBUTING](../CONTRIBUTING.md).
+Development starts at [CONTRIBUTING](../CONTRIBUTING.md), the canonical English
+guide ([日本語](../CONTRIBUTING.ja.md)).
 
 - [CUDA kernel development workflow and examples](kernel-development.ja.md)
 - [Owner research resources and operating rules](research-operations.ja.md)
