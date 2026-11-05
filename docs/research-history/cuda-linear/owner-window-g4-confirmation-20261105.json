@@ -1,0 +1,225 @@
+{
+  "status": "G4_confirmation_complete_no_material_G1_speed_gain_established",
+  "source_commit": "9ee4642cad1beda9646101aa94e2bf88ca9bdc75",
+  "session": "cst-g4-g1-20261105",
+  "owned_session_stopped": true,
+  "active_sessions_after_cleanup": 0,
+  "scope": "one G4 allocation, two reversed process orders; no cross-GPU speed attribution or cross-GPU byte guarantee",
+  "workload": {
+    "width": 1024,
+    "atoms": 52428,
+    "batch": 4,
+    "epochs": 3,
+    "actual_updates_per_cell": 45000,
+    "weighted_layers": 3,
+    "CST_layers": 1,
+    "guard": "qualified and flat",
+    "FP32_body": true,
+    "FP64_geometry_Polar": true,
+    "TF32": false,
+    "math_threads": 1,
+    "fresh_processes": 8,
+    "independent_GPU_allocations": 1
+  },
+  "hardware": {
+    "python": "3.13.16 (main, Oct  1 2026, 15:40:24) [GCC 13.3.0]",
+    "torch": "2.11.0+cu130",
+    "torch_git": "70d99e998b4955e0049d13a98d77ae1b14db1f45",
+    "cuda": "13.0",
+    "triton": "3.6.0",
+    "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+    "capability": [
+      12,
+      0
+    ],
+    "memory": 101974081536,
+    "platform": "Linux-6.6.159+-x86_64-with-glibc2.39",
+    "nvidia_smi": "name, uuid, driver_version\nNVIDIA RTX PRO 6000 Blackwell Server Edition, GPU-8742b828-dff1-e5b0-73fb-3f8a49be238d, 580.82.07\n"
+  },
+  "comparisons": [
+    {
+      "order": "A",
+      "CST_G1": {
+        "training_seconds": 20.184048033000067,
+        "preparation_seconds": 0.4735328460000119,
+        "adoption_seconds": 20.65758087900008,
+        "peak_allocated_bytes": 261020160,
+        "peak_reserved_bytes": 465567744,
+        "final_test": {
+          "loss": 0.08452606201171875,
+          "accuracy": 0.9732999801635742
+        }
+      },
+      "dense_G1": {
+        "training_seconds": 6.420216752999977,
+        "preparation_seconds": 0.35847701600016535,
+        "adoption_seconds": 6.778693769000142,
+        "peak_allocated_bytes": 273735168,
+        "peak_reserved_bytes": 452984832,
+        "final_test": {
+          "loss": 0.06721064448356628,
+          "accuracy": 0.977899968624115
+        }
+      },
+      "CST_over_dense_training": 3.1438265730777175,
+      "CST_over_dense_with_preparation": 3.047427953372066
+    },
+    {
+      "order": "B",
+      "CST_G1": {
+        "training_seconds": 20.180699692000076,
+        "preparation_seconds": 0.49099024300005567,
+        "adoption_seconds": 20.67168993500013,
+        "peak_allocated_bytes": 261020160,
+        "peak_reserved_bytes": 465567744,
+        "final_test": {
+          "loss": 0.08452606201171875,
+          "accuracy": 0.9732999801635742
+        }
+      },
+      "dense_G1": {
+        "training_seconds": 6.4053111880000415,
+        "preparation_seconds": 0.35662326600004235,
+        "adoption_seconds": 6.761934454000084,
+        "peak_allocated_bytes": 273735168,
+        "peak_reserved_bytes": 452984832,
+        "final_test": {
+          "loss": 0.06721064448356628,
+          "accuracy": 0.977899968624115
+        }
+      },
+      "CST_over_dense_training": 3.1506197122487007,
+      "CST_over_dense_with_preparation": 3.057067482038606
+    }
+  ],
+  "guard_comparisons": [
+    {
+      "order": "A",
+      "kind": "cst",
+      "correctness_valid": true,
+      "training_seconds": {
+        "qualified": 20.187231015999828,
+        "flat": 20.184048033000067,
+        "shortening": 0.00015767308538938707
+      },
+      "adoption_seconds": {
+        "qualified": 20.67536019199997,
+        "flat": 20.65758087900008,
+        "shortening": 0.000859927606328803
+      },
+      "allocated_delta_bytes": 0,
+      "allocated_within_budget": true,
+      "reserved_delta_bytes": 0,
+      "reserved_within_budget": true
+    },
+    {
+      "order": "A",
+      "kind": "dense",
+      "correctness_valid": true,
+      "training_seconds": {
+        "qualified": 6.406029980999961,
+        "flat": 6.420216752999977,
+        "shortening": -0.0022145965663746825
+      },
+      "adoption_seconds": {
+        "qualified": 6.75818062899998,
+        "flat": 6.778693769000142,
+        "shortening": -0.003035305080799189
+      },
+      "allocated_delta_bytes": 0,
+      "allocated_within_budget": true,
+      "reserved_delta_bytes": 0,
+      "reserved_within_budget": true
+    },
+    {
+      "order": "B",
+      "kind": "dense",
+      "correctness_valid": true,
+      "training_seconds": {
+        "qualified": 6.40529043700019,
+        "flat": 6.4053111880000415,
+        "shortening": -3.239665719467766e-06
+      },
+      "adoption_seconds": {
+        "qualified": 6.754491616000109,
+        "flat": 6.761934454000084,
+        "shortening": -0.0011019094290298792
+      },
+      "allocated_delta_bytes": 0,
+      "allocated_within_budget": true,
+      "reserved_delta_bytes": 0,
+      "reserved_within_budget": true
+    },
+    {
+      "order": "B",
+      "kind": "cst",
+      "correctness_valid": true,
+      "training_seconds": {
+        "qualified": 20.182020027999783,
+        "flat": 20.180699692000076,
+        "shortening": 6.542139973486627e-05
+      },
+      "adoption_seconds": {
+        "qualified": 20.65951476999976,
+        "flat": 20.67168993500013,
+        "shortening": -0.0005893248285797625
+      },
+      "allocated_delta_bytes": 0,
+      "allocated_within_budget": true,
+      "reserved_delta_bytes": 0,
+      "reserved_within_budget": true
+    }
+  ],
+  "validation": {
+    "integrity_passed": true,
+    "verification_complete": true,
+    "G4_confirmation_pass": true,
+    "raw_files_verified": 448,
+    "restored_checkpoints": 24,
+    "GPU_tests_passed": 126,
+    "CPU_tests_passed": 4,
+    "targeted_tests_passed": 130,
+    "source_files_verified": 303,
+    "libraries_verified": 3
+  },
+  "direct_epoch_comparisons": 18,
+  "direct_tensor_fields": 648,
+  "source_artifacts": {
+    "source.tar.gz": {
+      "size": 3591062,
+      "sha256": "ea7e430fb746d54e6bdd04ec8ce699dc29c0584f0f5c2feb217463f2c7d91c0e"
+    },
+    "inputs.zip": {
+      "size": 48529961,
+      "sha256": "3bb366dfa1f20bc99dd0fe798a93eb0b4cbd536ce801f3688c1276858062685e"
+    },
+    "g4-driver.py": {
+      "size": 141708,
+      "sha256": "c1eeadee77406e44dbad3e09ded6b316dbf6666bacadecf3d610d8c4ef6eef6d"
+    },
+    "g4-oracle.py": {
+      "size": 1626,
+      "sha256": "409057d230b26b82359d6b4563db1accf0e6c617f08d055cc75635be1a433fdc"
+    }
+  },
+  "result": {
+    "started": 1793836409.273393,
+    "status": "completed",
+    "returncode": 0,
+    "finished": 1793836682.3245244,
+    "archive_size": 93567480,
+    "archive_sha256": "4b5254e04c0852b96cb76c9e824a8bc60a56b809d7206555f4ba5df2f6d19e89"
+  },
+  "retrieval_verifier_sha256": "48e2ede715d9fb51d083ba825f3b71f5ba35b0d91c4091c333316f09129c5c00",
+  "retrieval_verification_sha256": "c9ca835e8b7508f71b4ab9640b8f3e545539728e8c65fe3b94570b8a8b2c22bc",
+  "limitations": [
+    "No large-width scaling claim",
+    "No cross-GPU byte-identity guarantee",
+    "One allocation and same seed; two orders are not confidence intervals",
+    "No additional profiling or bottleneck proof",
+    "Capture-inclusive allocator peaks, not total process usage",
+    "G4 memory-v2.1 eight-cycle study not run",
+    "GPU and CPU-host changes are not isolated",
+    "Cold compile is not independently timed; training/adoption are not process wall"
+  ]
+}
