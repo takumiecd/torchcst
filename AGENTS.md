@@ -19,3 +19,6 @@ For CUDA changes, read [the kernel development guide](docs/kernel-development.ja
 - `README.md` defines the public API. Respect the declaration/execution boundaries
   in [the backend layout](src/torchcst/_backends/README.md); keep benchmark
   tooling outside the runtime package and validate mathematical contracts.
+- Use English as the canonical language for current documentation, with
+  corresponding Japanese versions. Keep both versions equivalent when updating
+  either one. Preserve historical research notes in their recorded form.
