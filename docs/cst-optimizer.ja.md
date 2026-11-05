@@ -1,5 +1,7 @@
 # CSTのoptimizer
 
+[English](cst-optimizer.md) | **日本語**
+
 ## CSTAdamW: 単一のPyTorch lifecycle
 
 `CSTAdamW(params, model=model, ...)`（PyTorch 2.6+）はAdamWを継承し、

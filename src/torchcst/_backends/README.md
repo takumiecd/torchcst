@@ -1,178 +1,201 @@
-# 宣言と実行の配置規約
+# Declaration and execution layout
 
-数学的な意味を宣言する型と、それを Tensor 上で計算する実装を分ける。
-宣言には backend の選択、forward / backward、GPU の launch 設定を入れない。
-backend は宣言の意味を変えず、対応する Algorithm と Recipe で実行する。
+**English** | [日本語](README.ja.md)
 
-共通Algorithmの処理/state lifecycleは`_backends/algorithm.py`と`state.py`に置く。
-`atoms/state.py`のAtomStateはModule所有の学習状態の正本で、optimizer状態の
-保持と配置への追従宣言は`atoms/optimizer_state.py`、Torchとの接続は`optim/binding.py`。
-具体的な計算・配置・bufferは各Algorithm内に置く。
-[状態所有と配置変更の契約](../../../docs/atom-state.ja.md)を参照。
-Inputs・Context・Registry・Dispatcherの境界は
-[Algorithm実行の設計契約](../../../docs/algorithm-dispatch-boundaries.ja.md)に記録する。
-下記は現在の実装を示す。
+Separate types that declare mathematical meaning from implementations that
+compute it on Tensors. Declarations contain no backend selection,
+forward/backward implementation or GPU launch configuration. Backends preserve
+the declared semantics and execute through supported Algorithms and Recipes.
 
-## 現在の配置
+The shared Algorithm execution/state lifecycle lives in `_backends/algorithm.py`
+and `state.py`. AtomState in `atoms/state.py` is the authoritative Module-owned
+training state. `atoms/optimizer_state.py` holds optimizer state and declarations
+for following layout changes; `optim/binding.py` connects it to Torch. Concrete
+computation, layouts and buffers belong inside each Algorithm. See the
+[state ownership and relayout contract](../../../docs/atom-state.md) and the
+[Algorithm execution contract](../../../docs/algorithm-dispatch-boundaries.md)
+for Inputs, Context, Registry and Dispatcher boundaries. The layout below
+describes the current implementation.
+
+## Current layout
 
 ```text
 torchcst/
   geometry/
-    spec.py / presets.py       空間・metric の不変な宣言と構築
-    state.py                   GeometryState の固定 metadata と checkpoint
+    spec.py / presets.py       Immutable space/metric declarations and construction
+    state.py                   GeometryState fixed metadata and checkpoints
   patterns/
-    spec.py / presets.py       軸の Line / Grid / Points 宣言と構築
-    state.py                   PatternState の bounded な Tensor 状態
+    spec.py / presets.py       Line / Grid / Points axis declarations and construction
+    state.py                   PatternState bounded Tensor state
   charts/
-    base.py                    ChartSpec / ChartState の ABC
+    base.py                    ChartSpec / ChartState ABCs
     explicit.py                ExplicitChartSpec / ExplicitChartState
     product.py                 ProductChartSpec / ProductChartState
     regular_grid.py            RegularGridChartSpec / RegularGridChartState
-    presets.py / __init__.py    純粋な宣言構築・compile_chart
+    presets.py / __init__.py    Pure declaration construction / compile_chart
   kernels/
-    profiles/                  Triweight / Gaussian など関数の形の宣言
-    parameterizations/         振幅・幅・activity の座標解釈の宣言
-    normalization.py           正規化の規則・領域・床
-    spec.py                    ProfileBinding / CoordinateSpec / KernelSpec / 状態方針
-    factories.py               Profile / Factor / CoordinateSpec の純粋な合成
-    options.py                 数学的な Spec と分離した実行設定
-    state.py                   共通の固定 Tensor 状態・checkpoint
+    profiles/                  Function-shape declarations such as Triweight / Gaussian
+    parameterizations/         Amplitude / bandwidth / activity coordinate interpretation
+    normalization.py           Normalization rules, domains and floors
+    spec.py                    ProfileBinding / CoordinateSpec / KernelSpec / state policy
+    factories.py               Pure composition of Profile / Factor / CoordinateSpec
+    options.py                 Execution settings separate from mathematical Specs
+    state.py                   Shared fixed Tensor state and checkpoints
   operators/
-    spec.py                    単一 Chart / Chart の組 / linear Operator の宣言
-    binding.py                 Module の live state を参照する Operator
-    context.py / execution.py  Linear metadata・typed Inputs・直接実行のbinding
-    atom_update.py            全Atom共通の更新Inputs・Context・live binding
-    metadata.py               演算bindingで共有する宣言cache
+    spec.py                    Single Chart / Chart pair / linear Operator declarations
+    binding.py                 Operator referencing Module live state
+    context.py / execution.py  Linear metadata / typed Inputs / direct-execution binding
+    atom_update.py             Shared atom-update Inputs / Context / live binding
+    metadata.py                Declaration cache shared by operation bindings
   _backends/
-    algorithm.py / state.py    backend・演算共通のAlgorithmと所有者ごとの実行状態
+    algorithm.py / state.py    Backend/operation-wide Algorithm and per-owner execution state
     schema.py                  Context protocol / Plan / support / decision
-    registry.py                共通登録とPlan宣言/JSON検証
-    dispatch/                  runtime・候補検証・差し替え可能な選択器
-    serialization.py           宣言metadataの厳密なJSON codec
-    catalog.py                 組込みTorch/CUDA Algorithmの遅延登録
+    registry.py                Shared registration and Plan declaration/JSON validation
+    dispatch/                  Runtime / candidate validation / replaceable selectors
+    serialization.py           Strict JSON codec for declaration metadata
+    catalog.py                 Lazy registration of built-in Torch/CUDA Algorithms
     cuda/
       _host_function_metadata.py / .cpp
-                              Linear・Polarで共有するCPU callback/storage guard
+                              CPU callback/storage guard shared by Linear / Polar
       algorithms/
         linear/
           normalized_euclidean_strip/
-            _shared/           full / window が実際に共用する計算
+            _shared/           Computation actually shared by full / window
             full/              algorithm / recipe / executor / kernels
             window/            algorithm / recipe / executor / provider / kernels
-          radius_cell_mass/   半径セル積分の native 計算・準備・autograd
-        polar_update/         Atom更新のCUDA最適化候補・executor・kernel
+          radius_cell_mass/   Native radius-cell integration / preparation / autograd
+        polar_update/         CUDA atom-update optimization candidate / executor / kernel
     torch/
       algorithms/
         linear/               materialized / factored / normalized_radial
-        atom_update/          全Kernel・Geometryの座標更新の参照Algorithm
-        polar_update/         Polar更新のAlgorithm・座標法則・Graph対応経路
-      geometry/                埋め込み・距離・射影・更新・輸送
-      patterns/                格子展開・点選択・bounds
-      charts/                  Chart の座標生成・部分領域・支持域
-      profiles/                Profile の評価・微分
-      parameterizations/       振幅・幅・activity の実際の解釈
-      kernels/                 atom 合成・重み生成・初期化・factor 微分
-      updates/                 Kernel 座標の更新と optimizer 状態輸送
-                               Polarの法則はpolar_update/executor.pyに置く
-      operators/               Operator を受け取る Torch linear 実行
+        atom_update/          Reference coordinate-update Algorithm for all Kernels/Geometries
+        polar_update/         Polar-update Algorithm / coordinate law / Graph execution path
+      geometry/                Embedding / distance / projection / update / transport
+      patterns/                Grid expansion / point selection / bounds
+      charts/                  Chart coordinates / subregions / support
+      profiles/                Profile evaluation / derivatives
+      parameterizations/       Actual amplitude / bandwidth / activity interpretation
+      kernels/                 Atom composition / weights / initialization / factor derivatives
+      updates/                 Kernel-coordinate updates and optimizer-state transport
+                               Polar laws live in polar_update/executor.py
+      operators/               Torch linear execution receiving an Operator
   nn/
-    公開 Module                Parameter / buffer / checkpoint の所有
+    Public Modules             Parameter / buffer / checkpoint ownership
 ```
 
-本体から `benchmarks/`、`tests/` へ依存しない。Torch backend は
-CPU 専用という意味ではなく、Torch Tensor の対応 device 上で計算する参照経路。
-NVIDIA 向け Triton の最適化をここへ混ぜない。
+The runtime must not depend on `benchmarks/` or `tests/`. The Torch backend is a
+reference path using Torch Tensor operations on supported devices, not a CPU-only
+backend. Do not mix NVIDIA-specific Triton optimizations into it.
 
-## 宣言の区分
+## Declaration categories
 
-| 宣言 | 固定する意味 | 実行設定に移すもの |
+| Declaration | Fixed semantics | Execution settings and implementation |
 | --- | --- | --- |
-| Geometry | 空間、次元、metric、半径、center の保存表現 | 座標変換・距離・射影・更新の計算手順 |
-| Chart / Pattern | shape、点配置、flatten 順序、原点、間隔、Strip の物理 pitch | 座標展開、GPU 上の配置・routing の手順 |
-| Profile | 無次元距離に対する関数の形 | 関数評価・微分の実装 |
-| Parameterization | atom 座標から振幅・幅・中心を解釈する規則と微分契約 | 解釈の計算・Tensor の pack |
-| Normalization | 対象領域と L2 等の規則、ノルム床 | reduction、保存・再計算、作業領域 |
-| Kernel | radial / separable / amplitude の合成 | materialize / full / window / fused の方式 |
-| 初期化・更新方針 | 初期分布や座標更新の意味 | sampler、射影・retraction・状態輸送の計算 |
+| Geometry | Space, dimension, metric, radius and stored center representation | Coordinate conversion, distance, projection and update procedures |
+| Chart / Pattern | Shape, point placement, flatten order, origin, spacing and physical Strip pitch | Coordinate expansion and GPU layout/routing procedures |
+| Profile | Function shape over dimensionless distance | Evaluation and derivative implementation |
+| Parameterization | Rules and derivative contract interpreting atom coordinates as amplitude, bandwidth and center | Interpretation computation and Tensor packing |
+| Normalization | Domain, rules such as L2, and norm floors | Reductions, saving/recomputation and workspace |
+| Kernel | Composition of radial / separable / amplitude factors | materialize / full / window / fused methods |
+| Initialization/update policy | Meaning of initial distributions and coordinate updates | Sampling, projection, retraction and state-transport computation |
 
-Sphere / FlatTorus は現行の chord metric を維持する。正規化領域や amplitude-width の
-結合微分を Recipe によって変えない。数値的な契約を変える場合は別の意味の版を
-付け、既存 checkpoint や同じ演算の fallback と混ぜない。
+Sphere / FlatTorus retain the current chord metric. Recipes must not change
+normalization domains or coupled amplitude-bandwidth derivatives. A change to
+the numerical contract requires a distinct semantics revision and must not be
+mixed with existing checkpoints or fallback for the same operation.
 
-## 共有処理の配置
+## Where shared computation belongs
 
-一つの Algorithm で使う準備・計算は、その Algorithm 内に置く。同じ演算の複数
-Algorithm が実際に共用するものは、演算グループ内の `_shared/` に置く。
-別演算でも使う CUDA 専用処理は、必要性を確認して CUDA の中に共通化する。
-将来の MPS / Radeon との共有を理由に、先回りして backend 共通の `shared/` を
-作らない。共通の数学的意味は宣言で共有し、計算実装の共有とは区別する。
+Preparation/computation used by one Algorithm belongs inside that Algorithm.
+Code actually shared by multiple Algorithms for the same operation belongs in
+that operation group's `_shared/`. Share CUDA-specific code across operations
+inside CUDA only when there is a demonstrated need. Do not preemptively create a
+backend-wide `shared/` for possible future MPS/Radeon reuse. Shared mathematical
+meaning belongs in declarations and is distinct from sharing implementations.
 
-## 現在の接続
+## Current connections
 
-CSTLinear / CSTConv2d は ChartSpec / KernelSpec から具体的な ChartState / 共通 KernelState を作る。
-Geometry / Pattern / Kernel / Profile は共通の State を使い、Chart の State は
-Explicit / Product / RegularGrid に分ける。互換メソッドや旧 checkpoint loader はない。Operator は Module が所有する ChartState / KernelState / Atoms を参照する。単一 Chart と入出力 Chart の組は
-layout の型で区別する。Torch の評価・更新は backend の関数で実行する。
-宣言 snapshot を forward ごとに作らず、現在の Tensor / buffer を使う。
-詳細は [Operator](../operators/README.md)を参照。
+CSTLinear / CSTConv2d construct concrete ChartState and shared KernelState from
+ChartSpec / KernelSpec. Geometry, Pattern, Kernel and Profile use shared State
+types; Chart State is split into Explicit / Product / RegularGrid. There are no
+compatibility methods or old checkpoint loaders. Operator references the
+ChartState / KernelState / Atoms owned by the Module. Layout types distinguish a
+single Chart from an input/output Chart pair. Torch evaluation and updates run in
+backend functions, using current Tensors/buffers rather than rebuilding
+declaration snapshots on every forward. See [Operator](../operators/README.md).
 
-Registryはbackend・演算のどちらにも依存せず、登録・取得・Planの宣言検証だけを扱う。
-共通Dispatcher.run(binding, inputs, plan=...)が入力検証、Context構築、選択/対応判定、
-State取得、Algorithm.runを接続する。強制Planも同じ経路を使う。Context protocolは
-operation_idとworkspace_limit_bytesだけで、Tensor検証や学習状態を持たない。
-Selector.selectのmetadata検証もdispatch/validation.pyとruntime.pyの同じ処理を使う。
-Registry.validate/executeは削除し、実行の互換wrapperを置かない。
+Registry depends on neither a backend nor an operation. It handles only
+registration, retrieval and Plan declaration validation. The shared
+Dispatcher.run(binding, inputs, plan=...) connects input validation, Context
+construction, selection/support checks, State retrieval and Algorithm.run. Forced
+Plans use the same path. The Context protocol contains only operation_id and
+workspace_limit_bytes, without Tensor validation or training state.
+Selector.select's metadata validation uses the same procedures in
+dispatch/validation.py and runtime.py. Registry.validate/execute were removed;
+there are no execution compatibility wrappers.
 
-CSTLinearはLinearInputs(x)とbinding interfaceを提供し、AlgorithmStateを引き続き所有する。
-LinearBindingはModule外で既存Operator、または宣言とParameterを結び付ける。具体的な
-演算入力はAlgorithm.input_typeで宣言し、PolarやoptimizerにLinearの入力を要求しない。
-Algorithmはbinding/RecipeからStateを作り、execute(state, inputs)で演算する。
-Atomsを使わない演算のStateも同じ経路に乗る。CSTLinearのbackend名は既存Planへのaliasで、
-実行にはselector自身のRegistryを使う。登録はcompute codeを読み込まない。
+CSTLinear provides LinearInputs(x) and the binding interface and continues to own
+AlgorithmState. LinearBinding connects an existing Operator, or declarations and
+Parameters, outside a Module. Algorithm.input_type declares concrete operation
+inputs; Polar and optimizers do not require Linear inputs. Algorithm creates
+State from a binding/Recipe and computes through execute(state, inputs). State
+for operations without Atoms uses the same path. CSTLinear backend names are
+aliases for existing Plans; execution uses the selector's own Registry.
+Registration does not load computation code.
 
-CSTOptimizerは全siteにAtomUpdateBindingを作り、AtomUpdateInputs(previous, step_size)を
-共通Dispatcherへ渡す。operation_idは全候補でatom_update。optimizerにPolarの型判定や
-専用dispatcherを置かない。既定はtorch_atom_updateで、Kernelの座標法則とGeometryの
-retractionを通す。update_selectorはLinearのselectorと独立して差し替えられる。
-torch_polar_updateとcuda_polar_update_fusedは同じ演算の候補で、対応条件はAlgorithmに置く。
-勾配射影とOptimizerStateAdapterのベクトル輸送は既存Torch参照処理を維持する。
-AdamW等の提案・moment更新・step計数はbase optimizer、状態の所有はAtomStateが担当する。
+CSTOptimizer creates an AtomUpdateBinding for every site and sends
+AtomUpdateInputs(previous, step_size) to the shared Dispatcher. All candidates
+use operation_id atom_update. The optimizer contains no Polar type branch or
+dedicated dispatcher. The default, torch_atom_update, applies Kernel coordinate
+laws and Geometry retraction. update_selector is replaceable independently of
+the Linear selector. torch_polar_update and cuda_polar_update_fused are candidates
+for the same operation; support conditions belong to the Algorithm. Existing
+Torch reference gradient projection and OptimizerStateAdapter vector transport
+are preserved. The base optimizer computes AdamW and other proposals, moment
+updates and step counts; AtomState owns the state.
 
-Chart/Geometry/Kernelを取得する入口は既存Operatorだけにする。normalized専用Operatorは
-追加しない。regular siteの配置抽出と対応判定はTorch normalized Algorithmの`layout.py`にあり、
-CUDA FULL/WINDOWもその純粋metadata処理を再利用する。具体的な実行・準備・kernelは各方式内に
-維持する。Moduleはbuffer versionで宣言を更新し、数値的なatom準備は毎回現在値を使う。
+The existing Operator is the sole entrypoint for obtaining Chart/Geometry/Kernel;
+there is no normalized-only Operator. Extraction and support checks for regular
+site layouts live in the Torch normalized Algorithm's `layout.py`. CUDA
+FULL/WINDOW reuse this pure metadata processing while retaining their own
+execution, preparation and kernels. Modules refresh declarations using buffer
+versions; numerical atom preparation uses current values on every call.
 
-演算の契約は backend の外に置く。Algorithm / Recipe の設定と kernel 技術の名前を
-区別し、Triton というだけの理由で複数の計算方式を一つのファイルへ集めない。
-未実装のディレクトリや空の雛形は作らない。
+Operation contracts live outside backends. Distinguish Algorithm/Recipe settings
+from kernel technologies; do not collect different computation methods in one
+file simply because they use Triton. Do not create unimplemented directories or
+empty templates.
 
-半径セル積分の Profile は `kernels/profiles/fourier.py` の ChebyshevSpec、
-Factor は `RadiusIntegratedProfileBinding` に宣言する。初期化・更新法則は
-`CoordinateSpec` で独立して宣言し、`factories.product` が既存の KernelSpec に合成する。
-Torch の係数生成は `_backends/torch/profiles/radius_fourier.py`、CUDA の実装は
-`_backends/cuda/algorithms/linear/radius_cell_mass/` に置く。
-`product` は Chart ごとの因子積、`radial` は Chart 距離の合算後の単一評価。
-二つの Chart を使う radial の Torch 参照は `kernels/joint_radial.py` に置き、
-Factor ごとの正規化と operator 全体の正規化を区別する。
+The radius-cell-integral Profile is declared as ChebyshevSpec in
+`kernels/profiles/fourier.py`, and its Factor as RadiusIntegratedProfileBinding.
+CoordinateSpec independently declares initialization/update laws;
+`factories.product` composes them into the existing KernelSpec. Torch coefficient
+generation lives in `_backends/torch/profiles/radius_fourier.py`; CUDA
+implementation lives in `_backends/cuda/algorithms/linear/radius_cell_mass/`.
+`product` multiplies factors per Chart; `radial` evaluates once after summing
+Chart distances. The Torch radial reference for two Charts lives in
+`kernels/joint_radial.py`. Distinguish per-Factor normalization from normalization
+of the complete operator.
 
-検証は `tests/`、継続する正しさ・時間・メモリ測定は `benchmarks/` に置く。
-未採用方式は独立した研究 branch で扱い、本体ツリーへ試作ディレクトリを残さない。
-過去の採否は `docs/research-history/` に保存する。登録、対応判定、承認、既定 dispatch への採用は別の段階とする。
+Tests belong in `tests/`; ongoing correctness, time and memory measurements
+belong in `benchmarks/`. Keep unadopted methods on separate research branches,
+without prototype directories in the runtime tree. Preserve past decisions in
+`docs/research-history/`. Registration, support checks, approval and adoption by
+default dispatch are separate stages.
 
-詳細は [Kernel](../kernels/README.md)、[Geometry](../geometry/README.md)、
-[Pattern](../patterns/README.md)、[Chart](../charts/README.md) を参照。
+See [Kernel](../kernels/README.md), [Geometry](../geometry/README.md),
+[Pattern](../patterns/README.md) and [Chart](../charts/README.md) for details.
 
+## Plan JSON export/import
 
-## Plan の JSON export / import
+ExecutionPlan declares execution settings. The registry reconstructs Plans using
+the registered Algorithm's recipe type and validates the schema, ID, revision,
+all recipe fields and their values.
 
-`ExecutionPlan` は実行設定の宣言。registry は登録済み Algorithm の recipe 型を使って
-復元し、schema・ID・revision・全 recipe フィールドとその値を検証する。
-
-| Registry API | 変換 |
+| Registry API | Conversion |
 | --- | --- |
 | `dump_plan(plan)` / `load_plan(data)` | Plan ↔ JSON-compatible dict |
-| `dumps_plan(plan)` / `loads_plan(text)` | Plan ↔ JSON text（UTF-8 bytes の読み込みも可） |
+| `dumps_plan(plan)` / `loads_plan(text)` | Plan ↔ JSON text; UTF-8 bytes can also be loaded |
 
 ```python
 from pathlib import Path
@@ -185,33 +208,36 @@ restored = REGISTRY.loads_plan(path.read_text(encoding="utf-8"))
 assert restored == WINDOW
 ```
 
-dispatcher の `decision.plan` も同じ API で保存できる。復元したPlanは
-`Dispatcher(registry=REGISTRY).run(binding, inputs, plan=restored)`へ渡す。
-Linearでは`LinearBinding(operator, p)`と`LinearInputs(x)`を使える。
-実機・tensor・数学契約の適合性は実行時に検証する。
+The dispatcher's `decision.plan` can be saved with the same API. Pass a restored
+Plan to `Dispatcher(registry=REGISTRY).run(binding, inputs, plan=restored)`.
+Linear can use `LinearBinding(operator, p)` and `LinearInputs(x)`. Compatibility
+with the actual device, Tensors and mathematical contract is checked at runtime.
 
-保存対象は `schema_version`、`algorithm_id`、`algorithm_revision`、`recipe`。
-export/import は GPU 不要。recipe は JSON-native な scalar / list / string-keyed dict を
-使い、非有限数、重複 JSON key、型の暗黙変換、未登録・未検証の設定は拒否する。
-export は元の recipe と独立した辞書を返し、往復で元の Plan と一致することを確認する。
-JSON text はキーをソートして決定的に出力する。
-`algorithm_revision` は実装契約の版。再現実験では benchmark と同様に source commit / hash
-と実行条件も記録する。
+Saved fields are `schema_version`, `algorithm_id`, `algorithm_revision` and
+`recipe`. Export/import requires no GPU. Recipes use JSON-native scalars, lists
+and string-keyed dictionaries. Reject nonfinite numbers, duplicate JSON keys,
+implicit type conversions and unregistered/unvalidated settings. Export returns
+a dictionary independent of the original recipe and verifies that the round trip
+matches the original Plan. JSON text is deterministic, with sorted keys.
+`algorithm_revision` versions the implementation contract. Reproduction also
+requires source commits/hashes and execution conditions, as in benchmarks.
 
-## 選択器
+## Selectors
 
-[Selector の契約と完全一致 artifact](dispatch/README.md)を参照。
-full / window の専用選択 API は廃止し、両者を通常の Algorithm 候補にする。
-選択器は `CSTLinear(selector=...)` に渡し、数学的宣言・checkpoint から分離する。
+See the [selector contract and exact-match artifacts](dispatch/README.md).
+Dedicated full/window selection APIs were removed; both are ordinary Algorithm
+candidates. Pass a selector to `CSTLinear(selector=...)`, separately from
+mathematical declarations and checkpoints.
 
+## Fixed grid and geometry metadata
 
-## 固定グリッド・幾何 metadata
+RegularGrid and Geometry fixed values live in immutable Specs rather than Tensor
+buffers. Placement hints before initialization retain no Tensors; after training
+starts, atoms/inputs determine execution placement. Dtype conversion does not
+quantize metadata values. Checkpoints save and validate all fixed values.
 
-RegularGrid と Geometry の固定値は Tensor buffer にせず immutable な Spec に置く。
-初期化前の placement hints は Tensor を保持せず、学習開始後の実行 placement は atom / 入力が
-定める。metadata の値は dtype 変換で量子化しない。checkpoint は全固定値を保存・照合する。
-
-CUDA Polar 更新が必要な周期 Tensor は AlgorithmState.buffers の一時キャッシュに置く。
-period tuple・Parameter device/dtype・定数の version が変われば再構築する。
-compiled launch は定数 version も確認し、変更された定数を使い続けない。
-固定状態の署名と native guard は Spec の値・辞書の変更も検出する。
+Period Tensors needed for CUDA Polar updates live in a temporary cache in
+AlgorithmState.buffers. Rebuild them when the period tuple, Parameter device/dtype
+or constant version changes. Compiled launches also check the constant version
+and must not continue using changed constants. Fixed-state signatures and native
+guards detect changes to Spec values and dictionaries as well.

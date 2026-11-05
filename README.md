@@ -74,7 +74,7 @@ the native default is `False`.
 
 For another optimizer, use `CSTOptimizer(base_optimizer, model=model)` and step
 the wrapper once. Built-in adapters cover SGD, Adam, AdamW, RMSprop, Adamax,
-Adagrad, Adadelta and Rprop. See the [optimizer guide](docs/cst-optimizer.ja.md)
+Adagrad, Adadelta and Rprop. See the [optimizer guide](docs/cst-optimizer.md)
 for parameter groups, update rules, custom state and checkpoint migration.
 
 ## Recommended CUDA configuration for the public API
@@ -176,7 +176,7 @@ See the [FP32 numerical qualification](docs/research-history/cuda-linear/owner-w
 and [larger-width limits and short scaling study](docs/research-history/cuda-linear/radius-large-scale-20261105.ja.md).
 `GLOBAL_OWNER_WINDOW_RECOMPUTE` remains an FP64-internal comparison Plan for its
 original N1024 scope; its [earlier eager measurements](docs/research-history/cuda-linear/owner-window-fold-20261103.ja.md)
-and the [radius cell-mass guide](docs/radius-cell-mass.ja.md) provide context.
+and the [radius cell-mass guide](docs/radius-cell-mass.md) provide context.
 
 ## Compose a kernel
 
@@ -233,7 +233,7 @@ L2 uses stable log normalization without a floor.
   composition in `kernels.amplitude(...)` to add signed amplitude.
 - `cell_mass(ChebyshevSpec(modes=M), ...)` supports M=1..512 and requires product
   composition with Polar radius or physical coordinates on two fixed 1D FlatTorus
-  regular grids. See the [radius cell-mass guide](docs/radius-cell-mass.ja.md)
+  regular grids. See the [radius cell-mass guide](docs/radius-cell-mass.md)
   for a complete example, hierarchy equations and CUDA Plans.
 
 See the [kernel reference](src/torchcst/kernels/README.md) for coordinate laws,
@@ -251,7 +251,7 @@ Regular grids generate sites from indices. Grid origins/spacings and geometry
 radii/periods are fixed Python metadata, with no Tensor buffers; casting preserves
 their declared precision. Explicit points and Product charts provide other
 layouts. See [Charts](src/torchcst/charts/README.md) and the
-[regular-grid guide](docs/regular-grid.ja.md).
+[regular-grid guide](docs/regular-grid.md).
 
 The separate `chart=` layout describes one operator Chart with logical shape
 `[out, in]`. For example, `kernels.NORMALIZED_RADIAL_TRIWEIGHT` uses a single
@@ -261,7 +261,7 @@ center coordinates. This is a separate contract from two axis Charts.
 `atoms=` accepts a positive integer to initialize a table, a Tensor to detach
 and copy, an `nn.Parameter` to reuse, or an `Atoms` owner to share. An explicitly
 empty table represents a zero operator. Shared parameters must already match the
-requested device/dtype. See [atom ownership and placement](docs/atom-state.ja.md).
+requested device/dtype. See [atom ownership and placement](docs/atom-state.md).
 
 ## Checkpoint
 
@@ -284,7 +284,7 @@ the model before the optimizer. Checkpoints validate kernel/coordinate contracts
 Chart order, fixed grid/geometry metadata and atom state. Older incompatible
 formats are rejected; they are not reinterpreted. Algorithm workspace is rebuilt.
 Rebuild the optimizer after replacing an atom Parameter. See the
-[checkpoint contract](docs/atom-state.ja.md#checkpoint) for state ownership.
+[checkpoint contract](docs/atom-state.md#checkpoint) for state ownership.
 
 ## Execution and constraints
 
@@ -299,8 +299,8 @@ limits. Radius cell-mass Plans are opt-in and eager-only. Selecting a Linear
 Plan does not select an optimizer update Plan. Managed CST optimizer steps do
 not support CUDA Graph capture or differentiable steps. Trainable non-Euclidean
 observation charts require a separate update policy and are currently rejected.
-See the [execution and selector guide](docs/algorithm-dispatch-boundaries.ja.md)
-and [optimizer guide](docs/cst-optimizer.ja.md) for the supported boundaries.
+See the [execution and selector guide](docs/algorithm-dispatch-boundaries.md)
+and [optimizer guide](docs/cst-optimizer.md) for the supported boundaries.
 
 This package is a research API. Historical measurements describe their recorded
 source, workload and hardware; they do not establish performance of a different
@@ -359,7 +359,7 @@ command is not available as a public `torchcst` API.
 
 - [Documentation index: current contracts, guides and research history](docs/README.md)
 - [Contributing: development, validation and GPU benchmark submissions](CONTRIBUTING.md)
-- [CUDA kernel development](docs/kernel-development.ja.md)
+- [CUDA kernel development](docs/kernel-development.md)
 - [Declaration and backend layout](src/torchcst/_backends/README.md)
 
 ## License

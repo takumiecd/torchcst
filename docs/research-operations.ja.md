@@ -1,5 +1,7 @@
 # 所有者の研究環境と運用規則
 
+[English](research-operations.md) | **日本語**
+
 以下は、このrepoの所有者のGPU・研究worktreeを使う人とエージェントに適用する規則です。
 外部参加者の自前GPUには、所有者の共有プール・GPU割当を要求しません。
 通常の開発・提出手順は [CONTRIBUTING.md](../CONTRIBUTING.md)、

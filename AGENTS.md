@@ -2,8 +2,8 @@
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before changing this repository.
 It is the canonical contributor workflow. When using the owner's GPUs or research
-worktrees, also read [the research operating rules](docs/research-operations.ja.md).
-For CUDA changes, read [the kernel development guide](docs/kernel-development.ja.md).
+worktrees, also read [the research operating rules](docs/research-operations.md).
+For CUDA changes, read [the kernel development guide](docs/kernel-development.md).
 
 - Follow the purpose-based branch naming policy in `CONTRIBUTING.md`: use
   `kernel/` for kernel development and prefixes such as `feat/`, `fix/`,
@@ -15,7 +15,7 @@ For CUDA changes, read [the kernel development guide](docs/kernel-development.ja
   remain in force; this file does not grant new resource authorization.
 - Preserve commits, uncommitted work and needed ignored evidence before worktree
   cleanup. Follow the evidence and recovery rules in
-  [the research operating rules](docs/research-operations.ja.md).
+  [the research operating rules](docs/research-operations.md).
 - `README.md` defines the public API. Respect the declaration/execution boundaries
   in [the backend layout](src/torchcst/_backends/README.md); keep benchmark
   tooling outside the runtime package and validate mathematical contracts.

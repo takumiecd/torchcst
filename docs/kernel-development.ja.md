@@ -1,5 +1,7 @@
 # カーネル追加と改善の手順
 
+[English](kernel-development.md) | **日本語**
+
 現行の公開 API は [README](../README.md) を参照する。旧 local-product 試作は削除済み。
 2026-10-05の開発方針を基礎に、以下の実行例を現存する Plan / Case へ更新した。小さいCST線形変換の研究は既存のLinear runner、PostgreSQL保存、
 ディスパッチ生成を使う。main統合はGitHub PRで行う。

@@ -1,5 +1,7 @@
 # 一つの階層を宣言する等間隔格子
 
+[English](regular-grid.md) | **日本語**
+
 `chart_presets.regular_grid` は、一つの Weight 軸に配置するサイトを宣言する。
 全サイトの座標表・index 表・固定 Tensor buffer は持たず、必要な座標だけを生成する。
 Geometry は Euclidean または FlatTorus、点の配置は grid_shape / origin / spacing で定める。
@@ -42,7 +44,7 @@ N=\prod_{d=0}^{D-1}n_d,\qquad x_d(i_d)=o_d+i_d h_d,\quad 0\le i_d<n_d
 `kernels.product` は各 Chart の全次元の距離から一つの Factor を作り、その積をとる。
 L2 は Chart 内の全サイトで正規化する。座標軸ごとの Profile 積ではない。
 `kernels.radial` は同じ Chart ペアの無次元距離の二乗を加算し、一度 Profile を評価する。
-その L2 は Weight 全サイトを対象とする。詳細は [Kernel API](../README.md#compose-a-kernel)。
+その L2 は Weight 全サイトを対象とする。詳細は [Kernel API](../README.ja.md#kernel-を組み立てる)。
 
 ## 間隔と幾何
 
