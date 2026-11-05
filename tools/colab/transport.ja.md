@@ -41,3 +41,21 @@ server assignmentからendpointが消えたことを確認してから、次のq
 確保する。停止確認に失敗した場合はslotを隔離し、後続jobはqueuedのままにする。
 worker数と共有queueは変更しない。この転送変更だけでは学習中のWebSocketが任意の
 長時間にわたり維持されることを証明しないため、長時間の実機gateは別途必要である。
+
+## 大きなsource archive
+
+source uploadは既存の所有session用CLIを使い、全体の期限を900秒とする。
+32 MiBを超えるarchiveは、最大32 MiBのchunkへ順序通り分割して送る。
+全upload requestのprocess上限は180秒と残りの全体期限の短い方とし、保持するlocal一時fileは
+一つのchunkだけとする。`source-upload.json`に転送方式とchunkのsize・path・hashを
+記録し、提出済みjob specと元archiveのhashは変更しない。
+
+最初のupload前に、hostは有効なjob IDと正確な`/content/<job-id>.tar.gz`だけを許可する。
+chunked source展開とdriver起動の前に、remote runnerも同じ所有targetを独立に確認し、
+そのjobが所有する正確な順序付き
+chunk pathから、排他的な新規作成でarchiveを復元する。各chunkのsizeとSHA256、
+復元archiveの元SHA256を確認した後、そのchunkだけを削除する。
+既存の出力先archive、symlink、想定外のpath、不正なdescriptorは拒否する。
+失敗時は既存の隔離・停止経路に渡すためremote証拠を保持し、uploadも実験も
+再試行しない。CLI requestごとのsizeを制限するものであり、認証方式、実験の学習期限、
+数値計算、checkpoint選択は変更しない。

@@ -47,3 +47,23 @@ is allocated for the next queued job. Failure to verify stopping quarantines the
 slot and leaves later jobs queued. The worker count and shared queue do not
 change. This transport change does not prove that an existing training WebSocket
 survives an arbitrarily long job; a live long-duration gate remains separate.
+
+## Large source archives
+
+Source upload uses the existing owned-session CLI with a 900-second total
+deadline. Archives larger than 32 MiB are sent in ordered chunks of at most
+32 MiB. Every upload request has a process ceiling of 180 seconds or the remaining total budget,
+whichever is smaller. Only one temporary local chunk is retained at a time.
+`source-upload.json` records the transfer mode and chunk sizes, paths and hashes;
+the submitted job spec and original archive hash remain unchanged.
+
+Before the first upload, the host requires the exact `/content/<job-id>.tar.gz`
+target and a valid job ID. Before extracting chunked source or starting its driver,
+the remote runner independently requires that same owned target and exclusively
+creates the archive from the exact ordered job-owned chunk paths. It checks
+every chunk's size and SHA256 and the assembled archive's original SHA256, then
+removes only those chunks. It refuses existing destination archives, symlinks,
+unexpected paths and malformed descriptors. Failure preserves remote evidence
+for the existing quarantine/stop path; uploads and experiments are not retried.
+This bounds the size of each CLI request without changing its authentication or
+the experiment's training timeout, arithmetic or checkpoint selection.

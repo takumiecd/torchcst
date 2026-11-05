@@ -41,13 +41,67 @@ def terminate_group(process):
     process.wait()
 
 
-def main(spec, content_root="/content"):
+def owned_archive(spec, content_root):
+    job = spec.get("id")
+    if (
+        not isinstance(job, str)
+        or not re.fullmatch(r"(?:l4job|colabjob)-[0-9a-f]{32}", job)
+        or spec.get("remote_archive") != str(Path(content_root) / f"{job}.tar.gz")
+    ):
+        raise ValueError("Source archive is not the exact job-owned path")
+    return Path(spec["remote_archive"])
+
+
+def assemble_source(spec, parts, content_root="/content"):
+    """Verify exact owned chunks and the original archive before extraction."""
+    archive = owned_archive(spec, content_root)
+    if not isinstance(parts, list) or not parts:
+        raise ValueError("Source chunks must be a nonempty list")
+    for index, part in enumerate(parts):
+        expected = f"{archive}.part-{index:05d}"
+        if (
+            not isinstance(part, dict)
+            or set(part) != {"path", "bytes", "sha256"}
+            or part["path"] != expected
+            or type(part["bytes"]) is not int
+            or not 0 < part["bytes"] <= 32 * 1024 * 1024
+            or not isinstance(part["sha256"], str)
+            or not re.fullmatch(r"[0-9a-f]{64}", part["sha256"])
+            or Path(expected).is_symlink()
+            or not Path(expected).is_file()
+            or Path(expected).stat().st_size != part["bytes"]
+        ):
+            raise ValueError("Invalid source chunk descriptor or file")
+    # Exclusive creation preserves any pre-existing archive. Failed assembly
+    # retains chunks/partial archive for the supervisor's quarantine path.
+    with archive.open("xb") as output:
+        for part in parts:
+            digest = hashlib.sha256()
+            with Path(part["path"]).open("rb") as handle:
+                for data in iter(lambda: handle.read(1024 * 1024), b""):
+                    digest.update(data)
+                    output.write(data)
+            if digest.hexdigest() != part["sha256"]:
+                raise ValueError("Uploaded source chunk SHA256 mismatch")
+    if file_hash(archive) != spec["source_sha256"]:
+        raise ValueError("Assembled source SHA256 mismatch")
+    for part in parts:
+        Path(part["path"]).unlink()
+
+
+def main(spec, content_root="/content", source_parts=None):
+    # Preserve historical single-upload callers; chunk assembly additionally
+    # requires the exact owned archive under the runner's content root.
+    if source_parts:
+        owned_archive(spec, content_root)
     base = Path(content_root) / spec["id"]
     source = base / "source"
     results = base / "results"
     artifacts = results / "artifacts"
     artifacts.mkdir(parents=True, exist_ok=False)
     archive = Path(spec["remote_archive"])
+    if source_parts:
+        assemble_source(spec, source_parts, content_root)
     if file_hash(archive) != spec["source_sha256"]:
         raise ValueError("Uploaded source SHA256 mismatch")
     unpack(archive, source)

@@ -35,6 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from tools.colab.profiles import ACCELERATORS
 from tools.colab.redaction import private_values, redact
 from tools.colab.scripts.fresh_proxy import cleanup_code
+from tools.colab.scripts.source_upload import upload_source
 
 
 def atomic_json(path, data):
@@ -447,20 +448,30 @@ class Pool:
         directory = self.jobdir(job)
         spec = json.loads((directory / "spec.json").read_text())
         log = directory / "transport.log"
-        self.call(
-            slot,
-            "upload",
-            "-s",
-            session,
-            directory / "source.tar.gz",
-            spec["remote_archive"],
-            log=log,
+        parts = upload_source(
+            self.call, slot, session, directory / "source.tar.gz", spec, log
+        )
+        atomic_json(
+            directory / "source-upload.json",
+            {
+                "source_sha256": spec["source_sha256"],
+                "mode": "chunked-cli" if parts else "single-cli",
+                "parts": parts,
+                "total_deadline_seconds": 900,
+            },
         )
         runner = Path(__file__).with_name("remote_runner.py").read_text()
         # Use an isolated namespace in the persistent notebook kernel.
         code = (
             "exec(compile("
-            + repr(runner + "\nmain(" + repr(spec) + ")\n")
+            + repr(
+                runner
+                + "\nmain("
+                + repr(spec)
+                + ", source_parts="
+                + repr(parts)
+                + ")\n"
+            )
             + ', "pool_remote_runner", "exec"), {"__name__": "pool_remote_runner"})\n'
         )
         (directory / "remote.py").write_text(code)
