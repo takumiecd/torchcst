@@ -426,7 +426,8 @@ void autograd_check_owner_saved(Tensor x, Tensor p, Tensor zx, Tensor h, Tensor 
 // value, error word, or CUDA event is read back to the host here.
 void check_autograd_entry(Tensor x, Tensor p, Config input_config,
     Config output_config, int input_start, int output_start,
-    int tile_sites, int schedule, bool research_graph, bool higgs_density) {
+    int tile_sites, int schedule, bool research_graph, bool higgs_density,
+    bool higgs_confirmation) {
     check_matrix(x); check_atoms(p);
     Axis input = parse_axis(input_config), output = parse_axis(output_config);
     const bool global = schedule == 5 || schedule == 6;
@@ -467,9 +468,12 @@ void check_autograd_entry(Tensor x, Tensor p, Config input_config,
     c10::cuda::CUDAGuard guard(x.device());
     cudaStreamCaptureStatus status;
     C10_CUDA_CHECK(cudaStreamIsCapturing(at::cuda::getCurrentCUDAStream(), &status));
+    TORCH_CHECK(!(higgs_density && higgs_confirmation),
+        "research capture cannot combine distinct HIGGS cohorts");
     TORCH_CHECK(!research_graph || (schedule == 6 && x.size(0) == 4 &&
         owner_window_sites(input.sites) && input.sites == output.sites &&
-        (higgs_density ? higgs_owner_window_cohort(input.sites, p.size(0)) :
+        (higgs_confirmation ? higgs_confirmation_owner_window_cohort(input.sites, p.size(0)) :
+         higgs_density ? higgs_owner_window_cohort(input.sites, p.size(0)) :
             p.size(0) == owner_window_cohort_atoms(input.sites))),
         "graph research entry requires its fixed power-of-two/atom-density/B4 cohort");
     TORCH_CHECK(research_graph || status == cudaStreamCaptureStatusNone,

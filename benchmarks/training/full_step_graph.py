@@ -17,7 +17,10 @@ import torch
 from torch import nn
 
 from benchmarks.training.cell_mass_mnist import make_model, make_optimizer
-from benchmarks.training.graph_higgs_cohort import higgs_graph_signature
+from benchmarks.training.graph_higgs_cohort import (
+    HIGGS_CONFIRMATION_COHORT,
+    higgs_graph_signature,
+)
 from benchmarks.training.graph_stock_qualification import (
     QualificationError,
     StockQualification,
@@ -341,7 +344,9 @@ class PreparedStep:
                     )
                     return
                 self.fp32_entry = (
-                    "research_higgs_owner_window_fp32_geometry_sort32_flat_c"
+                    "research_higgs_confirmation_owner_window_fp32_geometry_sort32_flat_c"
+                    if self.research_cohort[0] == HIGGS_CONFIRMATION_COHORT
+                    else "research_higgs_owner_window_fp32_geometry_sort32_flat_c"
                 )
             self.configs = plan.input.native_config(), plan.output.native_config()
             self.previous = torch.empty_like(self.site.atoms.p)

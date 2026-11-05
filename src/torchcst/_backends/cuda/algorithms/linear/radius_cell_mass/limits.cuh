@@ -30,6 +30,15 @@ constexpr bool higgs_owner_window_cohort(int sites, int64_t atoms) {
         atoms == area / 20 || atoms == area / 10;
 }
 
+// Low-density confirmation has its own finite permission; it does not widen
+// either the old HIGGS exploratory path or the MNIST five-percent entrance.
+constexpr bool higgs_confirmation_owner_window_cohort(int sites, int64_t atoms) {
+    if (sites != 1024 && sites != 2048) return false;
+    const int64_t area = int64_t(sites) * sites;
+    return atoms == area / 1000 || atoms == area / 500 ||
+        atoms == area / 200 || atoms == area / 100;
+}
+
 // The final owner boundary is key_count << OWNER_ROW_BITS. It must also fit:
 // UINT_MAX is reserved for padding, never a wrapped valid owner/row key.
 constexpr bool can_use_block_layout(int64_t atoms, int input_nodes, int output_nodes) {

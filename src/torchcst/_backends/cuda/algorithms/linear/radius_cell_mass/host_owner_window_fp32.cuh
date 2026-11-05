@@ -143,5 +143,16 @@ void bind_owner_window_fp32_autograd(pybind11::module_ &module) {
         },
         pybind11::call_guard<pybind11::gil_scoped_release>());
 
+    module.def(
+        "research_higgs_confirmation_owner_window_fp32_geometry_sort32_flat_c",
+        [](Tensor x, Tensor p, Config input, Config output, bool graph) {
+            TORCH_CHECK(graph, "HIGGS confirmation entry is reserved for the whole-step research Graph");
+            check_autograd_entry(x, p, input, output, 2, 2, 32, 6, true, false, true);
+            fp32_body::check_scope(p, input, output);
+            bool derivative = torch::GradMode::is_enabled() && p.requires_grad();
+            return OwnerWindowFloat<true, true, true>::apply(x, p, input, output, 2, derivative);
+        },
+        pybind11::call_guard<pybind11::gil_scoped_release>());
+
 }
 } // namespace radius_cell_mass
