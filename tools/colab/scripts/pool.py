@@ -34,6 +34,7 @@ TERMINAL = {"succeeded", "failed", "cancelled"}
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from tools.colab.profiles import ACCELERATORS
 from tools.colab.redaction import private_values, redact
+from tools.colab.scripts.fresh_proxy import cleanup_code
 
 
 def atomic_json(path, data):
@@ -74,6 +75,8 @@ class Pool:
         config = json.loads(settings.read_text()) if settings.exists() else {}
         self.expected_account = config.get("account")
         self.accelerator = "L4"
+        self.max_jobs_per_session = 0
+        self.fresh_proxy_transport = False
         self.interface = interface or (config.get("interface"))
         (self.root / "jobs").mkdir(exist_ok=True)
         (self.root / "slots").mkdir(exist_ok=True)
@@ -313,6 +316,88 @@ class Pool:
 
         return find(data)
 
+    def fresh_transport(self, slot, job, session, operation):
+        """Refresh retrieval credentials in a separate SDK process, never on disk."""
+        state = self.slotstate(slot)
+        if (
+            not self.expected_account
+            or state.get("status") != "ready"
+            or state.get("session") != session
+            or state.get("job") != job
+            or not state.get("endpoint")
+        ):
+            raise RuntimeError("Fresh-proxy transport ownership is not established")
+        # Use precisely the SDK environment belonging to the configured CLI;
+        # never install packages, use another Python, or fall back to allocation.
+        launcher = Path(self.cli).read_text()
+        shebang = launcher.splitlines()[0]
+        interpreter = Path(shebang[2:])
+        if (
+            not shebang.startswith("#!/")
+            or any(c.isspace() for c in str(interpreter))
+            or not interpreter.is_file()
+            or not os.access(interpreter, os.X_OK)
+            or "from colab_cli.cli import main" not in launcher
+        ):
+            raise RuntimeError("Installed Colab CLI SDK interpreter is unavailable")
+        directory = self.jobdir(job)
+        if operation not in ("download", "cleanup"):
+            raise ValueError("Unsupported fresh-proxy operation")
+        if operation == "cleanup":
+            receipt = json.loads((directory / "receipt.json").read_text())
+            if (
+                receipt.get("slot") != slot
+                or receipt.get("session") != session
+                or receipt.get("archive_sha256")
+                != file_hash(directory / "results.tar.gz")
+            ):
+                raise RuntimeError("Cleanup requires a verified result receipt")
+        request = {
+            "operation": operation,
+            "slot_file": str(self.slotdir(slot) / "state.json"),
+            "session_file": str(self.slotdir(slot) / "sessions.json"),
+            "spec_file": str(directory / "spec.json"),
+            "session": session,
+            "endpoint": state["endpoint"],
+            "account": self.expected_account,
+            "accelerator": self.accelerator,
+            "destination": str(directory / "results.tar.gz"),
+        }
+        environment = dict(os.environ)
+        environment["PYTHONDONTWRITEBYTECODE"] = "1"
+        if self.interface:
+            environment["COLAB_POOL_INTERFACE"] = self.interface
+            environment["PYTHONPATH"] = (
+                str(Path(__file__).with_name("network"))
+                + os.pathsep
+                + environment.get("PYTHONPATH", "")
+            )
+        try:
+            completed = subprocess.run(
+                [
+                    str(interpreter),
+                    str(Path(__file__).with_name("fresh_proxy.py")),
+                    "--request-stdin",
+                ],
+                input=json.dumps(request),
+                text=True,
+                capture_output=True,
+                env=environment,
+                check=False,
+                timeout=900 if operation == "download" else 120,
+            )
+            if completed.returncode or completed.stdout.strip() != "FRESH_PROXY_OK":
+                raise RuntimeError("Fresh-proxy transport failed")
+        except BaseException:  # noqa: BLE001 - Never expose credential-bearing errors.
+            # Never expose SDK exceptions, response bodies, or child output.
+            raise RuntimeError(
+                "Fresh-proxy transport failed or timed out; runtime must be quarantined"
+            ) from None
+        with (directory / "transport.log").open("a") as handle:
+            handle.write(
+                f"Fresh-proxy {operation} completed (credentials memory-only)\n"
+            )
+
     def start_slot(self, slot):
         name = "cst-pool-" + uuid.uuid4().hex[:12] + f"-{slot}"
         self.save_slot(slot, status="starting", session=name, endpoint=None)
@@ -394,16 +479,19 @@ class Pool:
             raise RuntimeError(
                 "Remote completion not acknowledged; runtime must be quarantined"
             )
-        self.call(
-            slot,
-            "download",
-            "-s",
-            session,
-            spec["remote_result"],
-            directory / "results.tar.gz",
-            timeout=900,
-            log=log,
-        )
+        if self.fresh_proxy_transport:
+            self.fresh_transport(slot, job, session, "download")
+        else:
+            self.call(
+                slot,
+                "download",
+                "-s",
+                session,
+                spec["remote_result"],
+                directory / "results.tar.gz",
+                timeout=900,
+                log=log,
+            )
         self.verify_results(directory, spec)
         result = json.loads((directory / "results/result.json").read_text())
         atomic_json(
@@ -426,18 +514,15 @@ class Pool:
         )
         # Remove remote source, artifacts and archives after verified download.
         cleanup = directory / "cleanup.py"
-        cleanup.write_text(
-            "import shutil\nfrom pathlib import Path\n"
-            + f"shutil.rmtree({str('/content/' + job)!r})\n"
-            + f"Path({spec['remote_archive']!r}).unlink()\n"
-            + f"Path({spec['remote_result']!r}).unlink()\n"
-            + f'print("POOL_CLEANED {job}")\n'
-        )
-        cleaned = self.call(
-            slot, "exec", "-s", session, "-f", cleanup, "--timeout", 30, log=log
-        )
-        if f"POOL_CLEANED {job}" not in cleaned:
-            raise RuntimeError("Remote cleanup not acknowledged")
+        cleanup.write_text(cleanup_code(spec))
+        if self.fresh_proxy_transport:
+            self.fresh_transport(slot, job, session, "cleanup")
+        else:
+            cleaned = self.call(
+                slot, "exec", "-s", session, "-f", cleanup, "--timeout", 30, log=log
+            )
+            if f"POOL_CLEANED {job}" not in cleaned:
+                raise RuntimeError("Remote cleanup not acknowledged")
 
     @staticmethod
     def verify_results(directory, spec):
@@ -480,6 +565,7 @@ class Pool:
 
     def worker(self, slot, idle_seconds, stopping):
         session = None
+        completed_jobs = 0
         idle_since = time.monotonic()
         try:
             while not stopping.is_set():
@@ -496,6 +582,14 @@ class Pool:
                     self.save_slot(slot, **{**self.slotstate(slot), "job": job})
                     self.execute(slot, job, session)
                     self.save_slot(slot, **{**self.slotstate(slot), "job": None})
+                    completed_jobs += 1
+                    if (
+                        self.max_jobs_per_session
+                        and completed_jobs >= self.max_jobs_per_session
+                    ):
+                        self.stop_slot(slot)
+                        session = None
+                        completed_jobs = 0
                 except BaseException as error:
                     # Never retry an experiment automatically; uncertain execution
                     # may already have changed its state or produced outputs.
@@ -530,10 +624,21 @@ class Pool:
                     (time.time(),),
                 )
 
-    def serve(self, workers, idle_seconds, accelerator="L4"):
+    def serve(
+        self,
+        workers,
+        idle_seconds,
+        accelerator="L4",
+        max_jobs_per_session=0,
+        fresh_proxy_transport=False,
+    ):
         if accelerator not in ACCELERATORS:
             raise ValueError("Unsupported Colab accelerator")
         self.accelerator = accelerator
+        if not isinstance(max_jobs_per_session, int) or max_jobs_per_session < 0:
+            raise ValueError("Session job limit must be a nonnegative integer")
+        self.max_jobs_per_session = max_jobs_per_session
+        self.fresh_proxy_transport = fresh_proxy_transport
         if not 1 <= workers <= 3 or not math.isfinite(idle_seconds) or idle_seconds < 0:
             raise ValueError("Use 1–3 workers and a nonnegative idle timeout")
         with exclusive(self.root / "supervisor.lock"):
@@ -654,6 +759,17 @@ def main(argv=None):
     serve.add_argument("--workers", type=int, default=1)
     serve.add_argument("--idle-seconds", type=float, default=60)
     serve.add_argument("--gpu", choices=ACCELERATORS, default="L4")
+    serve.add_argument(
+        "--fresh-proxy-transport",
+        action="store_true",
+        help="Opt in to memory-only SDK result download and verified cleanup",
+    )
+    serve.add_argument(
+        "--max-jobs-per-session",
+        type=int,
+        default=0,
+        help="Stop/verify owned VM after this many jobs (0: reuse)",
+    )
     wait = sub.add_parser("wait")
     wait.add_argument("job")
     wait.add_argument("--timeout", type=float, default=3600)
@@ -722,7 +838,13 @@ def main(argv=None):
                 print(json.dumps(row))
                 return 0 if row["status"] == "succeeded" else 1
         elif args.command == "serve":
-            pool.serve(args.workers, args.idle_seconds, args.gpu)
+            pool.serve(
+                args.workers,
+                args.idle_seconds,
+                args.gpu,
+                args.max_jobs_per_session,
+                args.fresh_proxy_transport,
+            )
         elif args.command == "recover":
             pool.recover()
         elif args.command == "wait":

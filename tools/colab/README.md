@@ -1,18 +1,21 @@
 # Colab execution tools
 
-リポジトリから使う公開ツール。Colab の **T4 / L4 / A100 / H100 / G4** を明示的に指定し、
-ソースを固定して転送、実行、hash 付きの結果回収、owned runtime の停止までを管理する。
-対応する指定名は [Google Colab CLI](https://github.com/googlecolab/google-colab-cli)と
-インストール済み CLI 0.6.0 の `colab new --help` で確認済み。
-利用できる GPU は Colab の契約・残量・空き状況に依存する。
-取得できなければ失敗し、別の GPU で代用しない。
+**English** | [日本語](README.ja.md)
 
-## 初回設定
+These public repository tools explicitly select a Colab **T4 / L4 / A100 / H100 /
+G4**, freeze and transfer source, execute it, retrieve results with hashes, and
+stop owned runtimes. Supported accelerator names were checked against the
+[Google Colab CLI](https://github.com/googlecolab/google-colab-cli) and the
+installed CLI 0.6.0's `colab new --help`. GPU availability depends on your Colab
+subscription, remaining quota and capacity. Unavailable allocations fail; another
+GPU is never substituted.
 
-macOS / Linux、Python 3.10+、Google の Colab CLI を使う。
-CLI の認証設定は Google の手順に従い、自分のアカウントで行う。
-動作確認済みの CLI は0.6.0。自動で更新・ログイン・課金しない。
-CLI のバージョンを変えた場合も、使用する command / flags を確認する。
+## Initial setup
+
+Use macOS or Linux, Python 3.10+, and Google's Colab CLI. Follow Google's
+authentication instructions with your own account. CLI 0.6.0 has been validated;
+the tools do not automatically update, log in or incur charges. Check the
+commands and flags again when changing CLI versions.
 
 ```bash
 uv tool install google-colab-cli==0.6.0
@@ -20,59 +23,72 @@ colab --auth oauth2 whoami
 python3 tools/colab/scripts/pool.py configure --account YOUR_ACCOUNT_EMAIL
 ```
 
-`whoami` の認証フローを完了し、想定するアカウントであることを確認する。
-CLI に必要な OAuth client 設定も Google の手順に従う。
-このツールは serve 時に認証済みアカウントと設定したメールアドレスを照合する。
-未設定・別アカウントなら GPU を割り当てない。メールや token を source に固定しない。
-設定は host-wide queue の `settings.json`、OAuth の認証情報は Colab CLI の端末設定に保存される。
-DB の接続情報をこの端末の測定ツールに渡す必要はない。
+Complete the `whoami` authentication flow and verify the expected account.
+Follow Google's instructions for any required OAuth client configuration. At
+`serve` startup, the tools compare the authenticated account with the configured
+email. They allocate no GPU if the account is missing or different. Do not embed
+emails or tokens in source. Settings are stored in the host-wide queue's
+`settings.json`; OAuth credentials remain in the Colab CLI's local configuration.
+These local measurement tools do not need database connection credentials.
 
-## 測定 JSON を実行
+## Execute measurement JSON
 
-[測定 JSON](../../benchmarks/requests/colab-linear.json)を commit し、repository root から実行する。
+Commit the [measurement JSON](../../benchmarks/requests/colab-linear.json) and
+run from the repository root:
 
 ```bash
 PYTHONPATH=src python -m benchmarks.automation run \
   --request benchmarks/requests/colab-linear.json --output output/colab-run
 ```
 
-GPU は JSON の `targets` に指定する。例えば `["A100"]`、`["L4", "G4"]`。
-Case / GPU /回数を別の選択画面で上書きしない。
-実行前に依頼を固定し、commit と全 source を検査する。利用者に source を手動転送させない。
-正しさ確認・時間・完全 step のメモリを既存 benchmark で測定する。
-取得した GPU の実名・compute capability・SM数・メモリ容量を結果に記録する。
-各 GPU の kernel 適合性と数値契約は実行時に確認し、未検証の機種の性能を保証しない。
+Specify GPUs in the JSON's `targets`, for example `["A100"]` or `["L4", "G4"]`.
+Do not override the Case, GPU or repetition count through a separate selection
+interface. Freeze the request and inspect the commit and all source before
+execution; users should not have to transfer source manually. Use the existing
+benchmark to check correctness and measure time and complete-step memory. Record
+the actual GPU name, compute capability, SM count and memory capacity. Check
+kernel compatibility and numerical contracts on each GPU at execution time;
+performance on unvalidated devices is not guaranteed.
 
-## 共有 queue と ownership
+## Shared queue and ownership
 
-キューは全 GPU・全ローカルチャットで1つ。
-既存の運用状態を保持するため、ディレクトリは `~/.local/state/colab-l4-pool` を継続使用する。
-GPU や agent ごとの live `--state-root` を作らない。
-同じ host の supervisor は1つだけ。別の computer から同じ VM を操作しない。
+All GPUs and local chats share one queue. Preserve existing operational state
+by continuing to use `~/.local/state/colab-l4-pool`. Do not create a live
+`--state-root` per GPU or agent. Only one supervisor may run on a host; another
+computer must not operate the same VM.
 
-`serve --gpu L4` は L4 の job だけ、`serve --gpu G4` は G4 の job だけを処理する。
-既存 L4 クライアントが、高価な別 GPU の job を意図せず割り当てることはない。
-通常の measurement CLI は request に書かれた GPU ごとに1台ずつ処理し、停止を確認する。
-既存 supervisor が動いていれば、その ownership を奪わず待つ。
+`serve --gpu L4` processes only L4 jobs; `serve --gpu G4` processes only G4 jobs.
+Existing L4 clients cannot accidentally allocate jobs for a more expensive GPU.
+The normal measurement CLI processes one device at a time for each requested
+GPU and verifies stopping. Wait for an existing supervisor without taking its
+ownership.
 
 ```bash
 python3 tools/colab/scripts/pool.py status
 python3 tools/colab/scripts/pool.py serve --gpu A100 --workers 1 --idle-seconds 0
 ```
 
-研究用の直接 submit も可能だが、公式測定の記録には request-bound automation を使う。
+Direct research submission is supported; use request-bound automation for
+formal measurement records.
 
 ```bash
 python3 tools/colab/scripts/pool.py submit --gpu H100 \
   --source /absolute/checkout --script /absolute/driver.py --timeout 600
 ```
 
-待機の中断はキャンセルや VM 解放ではない。自動再実行・自動 recovery はしない。
-実行・停止が不確かな slot は隔離し、後続の allocation を止める。
-既存 [pool の運用手順](../colab-l4-pool/references/operations.ja.md)の ownership / recovery に従う。
-旧 `tools/colab-l4-pool/scripts/pool.py` は同じ実装・同じ queue を呼ぶ既存クライアント用入口。
-Skills のインストールは、この公開ツールの利用条件ではない。
+Interrupting a wait does not cancel work or release a VM. Experiments and
+recovery are never automatically retried. Quarantine slots with uncertain
+execution or stopping and stop further allocations. Follow the ownership and
+recovery rules in the [pool operating guide](../colab-l4-pool/references/operations.ja.md).
+The legacy `tools/colab-l4-pool/scripts/pool.py` entry point calls the same
+implementation and queue. Installing a skill is not required to use these
+public tools.
 
-G4 などの消費が大きい GPU は、短い測定依頼で明示的に選択する。
-Colab に存在しない4090/5090などを、これらの指定名に読み替えない。
-他の provider は、別 adapter として measurement contract に接続する。
+Explicitly select GPUs with higher resource consumption, such as G4, through
+short measurement requests. Do not reinterpret these accelerator names as GPUs
+Colab does not offer, such as 4090 or 5090. Other providers connect to the
+measurement contract through separate adapters.
+
+For long-job proxy renewal and job limits per VM, see the
+[result transport guide](transport.md) ([日本語](transport.ja.md)). Default CLI
+transport is unchanged; SDK retrieval and cleanup require an explicit opt-in.

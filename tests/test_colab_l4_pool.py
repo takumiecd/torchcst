@@ -360,12 +360,27 @@ def test_real_child_process_success_failure_timeout(
         assert (directory / "results/artifacts/answer.txt").read_text() == "ok"
 
 
-@pytest.mark.parametrize("transfer_seconds", [240, 901])
+@pytest.mark.parametrize(
+    "transfer_seconds,cleanup_fails", [(240, False), (901, False), (240, True)]
+)
+@pytest.mark.parametrize("fresh_proxy_transport", [False, True])
 def test_slow_result_transfer_retains_verification_and_bounded_ownership(
-    source, tmp_path, monkeypatch, transfer_seconds
+    source,
+    tmp_path,
+    monkeypatch,
+    transfer_seconds,
+    cleanup_fails,
+    fresh_proxy_transport,
 ):
     class SlowResultPool(FakePool):
         execute = pool_module.Pool.execute
+
+        def fresh_transport(self, slot, job, session, operation):
+            if operation == "download":
+                return self.call(
+                    slot, "download", self.jobdir(job) / "results.tar.gz", timeout=900
+                )
+            return self.call(slot, "exec", "-f", self.jobdir(job) / "cleanup.py")
 
         def __init__(self, root):
             super().__init__(root)
@@ -391,6 +406,8 @@ def test_slow_result_transfer_retains_verification_and_bounded_ownership(
                     directory / "results.tar.gz"
                 )
                 assert (directory / "results/artifacts/answer.txt").read_text() == "ok"
+                if cleanup_fails:
+                    raise RuntimeError("cleanup acknowledgment lost")
                 self.cleaned = True
                 return "POOL_CLEANED " + job
             if args[0] == "download":
@@ -410,7 +427,9 @@ def test_slow_result_transfer_retains_verification_and_bounded_ownership(
         "import os; from pathlib import Path; "
         "Path(os.environ['CST_JOB_OUTPUT'], 'answer.txt').write_text('ok')",
     )
-    following = submit(pool, source) if transfer_seconds > 900 else None
+    following = (
+        submit(pool, source) if transfer_seconds > 900 or cleanup_fails else None
+    )
     monkeypatch.setattr(
         remote.subprocess,
         "check_output",
@@ -421,17 +440,24 @@ def test_slow_result_transfer_retains_verification_and_bounded_ownership(
         ),
     )
     if following:
-        with pytest.raises(RuntimeError, match="timed out"):
-            pool.serve(1, 0)
-        assert pool.get(job)["status"] == "interrupted"
+        with pytest.raises(
+            RuntimeError, match="cleanup" if cleanup_fails else "timed out"
+        ):
+            pool.serve(1, 0, fresh_proxy_transport=fresh_proxy_transport)
+        assert pool.get(job)["status"] == (
+            "succeeded" if cleanup_fails else "interrupted"
+        )
         assert pool.get(following)["status"] == "queued"
-        assert not (pool.jobdir(job) / "receipt.json").exists()
+        assert (pool.jobdir(job) / "receipt.json").exists() == cleanup_fails
         assert not pool.cleaned
-        # Execution uncertainty still requires recovery before any dispatch.
-        with pytest.raises(RuntimeError, match="recover"):
-            pool.serve(1, 0)
+        # An unverified download leaves the job interrupted and requires
+        # recovery. Cleanup failure after verified results stops this batch;
+        # if final VM stop is verified, a later explicit serve is safe.
+        if not cleanup_fails:
+            with pytest.raises(RuntimeError, match="recover"):
+                pool.serve(1, 0, fresh_proxy_transport=fresh_proxy_transport)
     else:
-        pool.serve(1, 0)
+        pool.serve(1, 0, fresh_proxy_transport=fresh_proxy_transport)
         assert pool.get(job)["status"] == "succeeded"
         assert pool.cleaned
     assert not pool.active
@@ -570,3 +596,53 @@ def test_idle_slot_stops_gpu_then_accepts_later_work_while_peer_runs(source, tmp
         serving.result(timeout=3)
     assert not pool.active
     assert all(pool.slotstate(i)["status"] == "stopped" for i in (1, 2, 3))
+
+
+@pytest.mark.parametrize("limit,allocations", [(0, 1), (1, 3), (2, 2)])
+def test_session_job_limit_stops_and_verifies_before_new_allocation(
+    source, tmp_path, limit, allocations
+):
+    class RotatingPool(FakePool):
+        def __init__(self, root):
+            super().__init__(root)
+            self.allocations = 0
+            self.awaiting_server_verification = False
+
+        def call(self, slot, *args, **kwargs):
+            if args[0] == "new":
+                assert not self.active
+                assert not self.awaiting_server_verification
+                self.allocations += 1
+            if args[0] == "stop":
+                self.awaiting_server_verification = True
+            response = super().call(slot, *args, **kwargs)
+            if args[0] == "sessions" and self.awaiting_server_verification:
+                assert not self.active
+                self.awaiting_server_verification = False
+            return response
+
+    pool = RotatingPool(tmp_path / "state")
+    jobs = [submit(pool, source) for _ in range(3)]
+    pool.serve(1, 0, max_jobs_per_session=limit)
+    assert pool.allocations == allocations
+    assert all(pool.get(job)["status"] == "succeeded" for job in jobs)
+    assert pool.slotstate(1)["status"] == "stopped" and not pool.active
+
+
+def test_rotation_refuses_reallocation_when_server_still_lists_endpoint(
+    source, tmp_path
+):
+    class UncertainStop(FakePool):
+        def call(self, slot, *args, **kwargs):
+            if args[0] == "stop":
+                return ""  # Stop returned but server ownership persists.
+            return super().call(slot, *args, **kwargs)
+
+    pool = UncertainStop(tmp_path / "state")
+    first, second = [submit(pool, source) for _ in range(2)]
+    with pytest.raises(RuntimeError):
+        pool.serve(1, 0, max_jobs_per_session=1)
+    assert pool.get(first)["status"] == "succeeded"
+    assert pool.get(second)["status"] == "queued"
+    assert pool.slotstate(1)["status"] == "quarantined"
+    assert len(pool.active) == 1
