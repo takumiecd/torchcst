@@ -1,0 +1,418 @@
+{
+  "status": "Stage2_pass_only",
+  "job": "l4job-2bcc5ab92d02417ea71963385e73ecb4",
+  "source_commit": "a45a2f13d52fc5ef8c5dd45c830bd5d9046c3498",
+  "driver_sha256": "548899bf3715d130d5a2343e92895b569c313a4cb4372a090e257cb722029060",
+  "source_archive_sha256": "f30512c0e216eac1e48f3033985367c39a47acd32ddd359d55ccb477c7bac7e4",
+  "result_archive_sha256": "69d5145e983a5ebf565ea2136dad211dadcaa3d572be4d7985abc5f8cc0bd75e",
+  "cells": {
+    "cst_qualified": {
+      "kind": "cst",
+      "guard": "qualified",
+      "qualification_backend": "native",
+      "total_updates": 128,
+      "replay_updates": 120,
+      "peak_allocated_bytes": 261020160,
+      "peak_reserved_bytes": 465567744,
+      "unexpected_fallbacks": 0,
+      "memory_endpoint_phase": "after_eval_train_sync_before_checkpoint_and_graph_retirement",
+      "capture_updates": [
+        8,
+        16,
+        32,
+        48,
+        64,
+        80,
+        96,
+        112
+      ],
+      "retirements": [
+        {
+          "at_update": 16,
+          "reason": "evaluation_boundary"
+        },
+        {
+          "at_update": 32,
+          "reason": "evaluation_boundary"
+        },
+        {
+          "at_update": 48,
+          "reason": "evaluation_boundary"
+        },
+        {
+          "at_update": 64,
+          "reason": "evaluation_boundary"
+        },
+        {
+          "at_update": 80,
+          "reason": "evaluation_boundary"
+        },
+        {
+          "at_update": 96,
+          "reason": "evaluation_boundary"
+        },
+        {
+          "at_update": 112,
+          "reason": "evaluation_boundary"
+        },
+        {
+          "at_update": 128,
+          "reason": "final_retirement"
+        }
+      ],
+      "end_allocated_bytes": [
+        257328128,
+        257328128,
+        257328128,
+        257328128,
+        257328128,
+        257328128,
+        257328128,
+        257328128
+      ],
+      "end_reserved_bytes": [
+        463470592,
+        463470592,
+        463470592,
+        463470592,
+        463470592,
+        463470592,
+        463470592,
+        463470592
+      ]
+    },
+    "cst_flat": {
+      "kind": "cst",
+      "guard": "flat",
+      "qualification_backend": "native",
+      "total_updates": 128,
+      "replay_updates": 120,
+      "peak_allocated_bytes": 261020160,
+      "peak_reserved_bytes": 465567744,
+      "unexpected_fallbacks": 0,
+      "memory_endpoint_phase": "after_eval_train_sync_before_checkpoint_and_graph_retirement",
+      "capture_updates": [
+        8,
+        16,
+        32,
+        48,
+        64,
+        80,
+        96,
+        112
+      ],
+      "retirements": [
+        {
+          "at_update": 16,
+          "reason": "evaluation_boundary"
+        },
+        {
+          "at_update": 32,
+          "reason": "evaluation_boundary"
+        },
+        {
+          "at_update": 48,
+          "reason": "evaluation_boundary"
+        },
+        {
+          "at_update": 64,
+          "reason": "evaluation_boundary"
+        },
+        {
+          "at_update": 80,
+          "reason": "evaluation_boundary"
+        },
+        {
+          "at_update": 96,
+          "reason": "evaluation_boundary"
+        },
+        {
+          "at_update": 112,
+          "reason": "evaluation_boundary"
+        },
+        {
+          "at_update": 128,
+          "reason": "final_retirement"
+        }
+      ],
+      "end_allocated_bytes": [
+        257328128,
+        257328128,
+        257328128,
+        257328128,
+        257328128,
+        257328128,
+        257328128,
+        257328128
+      ],
+      "end_reserved_bytes": [
+        463470592,
+        463470592,
+        463470592,
+        463470592,
+        463470592,
+        463470592,
+        463470592,
+        463470592
+      ]
+    },
+    "dense_qualified": {
+      "kind": "dense",
+      "guard": "qualified",
+      "qualification_backend": "native",
+      "total_updates": 128,
+      "replay_updates": 120,
+      "peak_allocated_bytes": 273735168,
+      "peak_reserved_bytes": 452984832,
+      "unexpected_fallbacks": 0,
+      "memory_endpoint_phase": "after_eval_train_sync_before_checkpoint_and_graph_retirement",
+      "capture_updates": [
+        8,
+        16
+      ],
+      "retirements": [
+        {
+          "at_update": 16,
+          "reason": "evaluation_boundary"
+        },
+        {
+          "at_update": 128,
+          "reason": "final_retirement"
+        }
+      ],
+      "end_allocated_bytes": [
+        269060096,
+        269060096,
+        269059584,
+        269059584,
+        269059584,
+        269059584,
+        269059584,
+        269059584
+      ],
+      "end_reserved_bytes": [
+        452984832,
+        452984832,
+        452984832,
+        452984832,
+        452984832,
+        452984832,
+        452984832,
+        452984832
+      ]
+    },
+    "dense_flat": {
+      "kind": "dense",
+      "guard": "flat",
+      "qualification_backend": "native",
+      "total_updates": 128,
+      "replay_updates": 120,
+      "peak_allocated_bytes": 273735168,
+      "peak_reserved_bytes": 452984832,
+      "unexpected_fallbacks": 0,
+      "memory_endpoint_phase": "after_eval_train_sync_before_checkpoint_and_graph_retirement",
+      "capture_updates": [
+        8,
+        16
+      ],
+      "retirements": [
+        {
+          "at_update": 16,
+          "reason": "evaluation_boundary"
+        },
+        {
+          "at_update": 128,
+          "reason": "final_retirement"
+        }
+      ],
+      "end_allocated_bytes": [
+        269060096,
+        269060096,
+        269059584,
+        269059584,
+        269059584,
+        269059584,
+        269059584,
+        269059584
+      ],
+      "end_reserved_bytes": [
+        452984832,
+        452984832,
+        452984832,
+        452984832,
+        452984832,
+        452984832,
+        452984832,
+        452984832
+      ]
+    }
+  },
+  "CST_official_memory_v2_1": {
+    "gate_version": "graph-lifecycle-memory-v2.1",
+    "evidence_scope": "prospective",
+    "baseline_run": "lifecycle-cst-qualified",
+    "candidate_run": "lifecycle-cst-flat",
+    "endpoint_phase": "after_eval_train_sync_before_checkpoint_and_graph_retirement",
+    "numerical_evidence": "recorded Tensor hashes/dtypes/shapes and metrics; no Tensor loading",
+    "cycles": 8,
+    "stable_cycles": [
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "allocated_budget_bytes": 2097152,
+    "reserved_budget_bytes": 8388608,
+    "status": "pass",
+    "passed": true,
+    "checks": {
+      "fixed_cycles_and_updates": true,
+      "recorded_phase_matches": true,
+      "same_start_and_workload": true,
+      "recorded_states_gradients_metrics_equal": true,
+      "no_unexpected_fallback": true,
+      "allocated_peak_budget": true,
+      "allocated_peak_covers_endpoints": true,
+      "allocated_peak_covers_epoch_peaks": true,
+      "baseline_allocated_cycles_3_to_8_constant": true,
+      "candidate_allocated_cycles_3_to_8_constant": true,
+      "reserved_peak_budget": true,
+      "reserved_peak_covers_endpoints": true,
+      "reserved_peak_covers_epoch_peaks": true,
+      "baseline_reserved_cycles_3_to_8_constant": true,
+      "candidate_reserved_cycles_3_to_8_constant": true
+    },
+    "reasons": [],
+    "allocated_peak_delta_bytes": 0,
+    "baseline_allocated_endpoints_bytes": [
+      257328128,
+      257328128,
+      257328128,
+      257328128,
+      257328128,
+      257328128,
+      257328128,
+      257328128
+    ],
+    "candidate_allocated_endpoints_bytes": [
+      257328128,
+      257328128,
+      257328128,
+      257328128,
+      257328128,
+      257328128,
+      257328128,
+      257328128
+    ],
+    "reserved_peak_delta_bytes": 0,
+    "baseline_reserved_endpoints_bytes": [
+      463470592,
+      463470592,
+      463470592,
+      463470592,
+      463470592,
+      463470592,
+      463470592,
+      463470592
+    ],
+    "candidate_reserved_endpoints_bytes": [
+      463470592,
+      463470592,
+      463470592,
+      463470592,
+      463470592,
+      463470592,
+      463470592,
+      463470592
+    ]
+  },
+  "Dense_manual_continuation": {
+    "scope": "Dense natural eight-cycle manual diagnostic and continuation check; not official memory-v2.1 admission",
+    "schema_state_fields": 20,
+    "schema_gradient_fields": 5,
+    "official_memory_v2_1_admitted": false,
+    "checks": {
+      "endpoint_phase": true,
+      "fixed_eight_cycles": true,
+      "dense20_grad5": true,
+      "same_start_and_workload": true,
+      "states_gradients_metrics_order": true,
+      "natural_lifecycle_events_equal": true,
+      "fallback_zero": true,
+      "allocated_budget": true,
+      "allocated_summary_covers_epoch_and_endpoint": true,
+      "qualified_allocated_cycles3_to8_plateau": true,
+      "flat_allocated_cycles3_to8_plateau": true,
+      "reserved_budget": true,
+      "reserved_summary_covers_epoch_and_endpoint": true,
+      "qualified_reserved_cycles3_to8_plateau": true,
+      "flat_reserved_cycles3_to8_plateau": true
+    },
+    "allocated_peak_delta_bytes": 0,
+    "qualified_allocated_endpoints": [
+      269060096,
+      269060096,
+      269059584,
+      269059584,
+      269059584,
+      269059584,
+      269059584,
+      269059584
+    ],
+    "flat_allocated_endpoints": [
+      269060096,
+      269060096,
+      269059584,
+      269059584,
+      269059584,
+      269059584,
+      269059584,
+      269059584
+    ],
+    "reserved_peak_delta_bytes": 0,
+    "qualified_reserved_endpoints": [
+      452984832,
+      452984832,
+      452984832,
+      452984832,
+      452984832,
+      452984832,
+      452984832,
+      452984832
+    ],
+    "flat_reserved_endpoints": [
+      452984832,
+      452984832,
+      452984832,
+      452984832,
+      452984832,
+      452984832,
+      452984832,
+      452984832
+    ],
+    "passed": true,
+    "status": "pass",
+    "reasons": []
+  },
+  "raw_manifest_files_verified": 1039,
+  "restored_PT_files_verified": 32,
+  "direct_Tensor_fields_compared": 576,
+  "metrics_order_events_clock_compared": true,
+  "owned_pool_VM_stopped": true,
+  "verification": {
+    "v2": "g1-stage2-retrieval-verification-v2.json",
+    "missing": [],
+    "unverified": [],
+    "errors": [],
+    "local_reader_torch": "2.13.0",
+    "worker_torch": "2.11.0+cu130",
+    "v1_context_error_preserved": true,
+    "fix": "compare archived report to recorded worker environment instead of local reader version; no local Torch spoof, no GPU rerun, no gate change"
+  },
+  "formal_performance_cells": 0,
+  "long_run45000_executed": false,
+  "adopted": false,
+  "next": "formal first pair directly; no extra trial256"
+}

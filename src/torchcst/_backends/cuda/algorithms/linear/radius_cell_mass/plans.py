@@ -255,3 +255,55 @@ GLOBAL_OWNER_WINDOW_RECOMPUTE = ExecutionPlan(
         native_entry=True,
     ),
 )
+
+# Opt-in FP32 body; geometry and Polar pullback remain FP64.
+GLOBAL_OWNER_WINDOW_FP32 = ExecutionPlan(
+    "cuda_radius_cell_mass",
+    "v1",
+    RadiusCellMassRecipe(
+        input_direct_levels=2,
+        output_direct_levels=2,
+        schedule="global_owner_window_fp32",
+        native_autograd=True,
+        native_entry=True,
+    ),
+)
+
+# Per-forward FP64 radius/amplitude payload, shared through backward.
+GLOBAL_OWNER_WINDOW_FP32_GEOMETRY = ExecutionPlan(
+    "cuda_radius_cell_mass",
+    "v1",
+    RadiusCellMassRecipe(
+        input_direct_levels=2,
+        output_direct_levels=2,
+        schedule="global_owner_window_fp32_geometry",
+        native_autograd=True,
+        native_entry=True,
+    ),
+)
+
+# Int32 temporary stable-sort keys; saved keys, rows and offsets stay int64.
+GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32 = ExecutionPlan(
+    "cuda_radius_cell_mass",
+    "v1",
+    RadiusCellMassRecipe(
+        input_direct_levels=2,
+        output_direct_levels=2,
+        schedule="global_owner_window_fp32_geometry_sort32",
+        native_autograd=True,
+        native_entry=True,
+    ),
+)
+
+# One independent (batch, feature) output per C-reduction thread.
+GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32_FLAT_C = ExecutionPlan(
+    "cuda_radius_cell_mass",
+    "v1",
+    RadiusCellMassRecipe(
+        input_direct_levels=2,
+        output_direct_levels=2,
+        schedule="global_owner_window_fp32_geometry_sort32_flat_c",
+        native_autograd=True,
+        native_entry=True,
+    ),
+)

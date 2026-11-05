@@ -168,7 +168,7 @@ class BenchmarkCase:
         elif not self.optimizer.capturable:
             raise ValueError("existing fixtures require capturable AdamW")
         sizes = (
-            (128, 1024)
+            (128, 1024, 2048, 4096, 8192, 16384)
             if self.fixture == "polar_radius_cell_mass"
             else (1024, 8192)
         )
@@ -182,8 +182,8 @@ class BenchmarkCase:
             )
         for name in ["rows", "atoms", "warmup", "rounds"]:
             _integer(getattr(self, name), name)
-        if self.fixture == "polar_radius_cell_mass" and self.atoms > 65536:
-            raise ValueError("radius fixture supports at most 65536 atoms")
+        if self.fixture == "polar_radius_cell_mass" and self.atoms > 1 << 24:
+            raise ValueError("radius fixture supports at most 16777216 atoms")
         _integer(self.seed, "seed", 0)
         if self.seed >= 2**63:
             raise ValueError("seed must be less than 2**63")

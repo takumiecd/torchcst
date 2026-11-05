@@ -578,6 +578,10 @@ def checked_owner_compact_keyed_linear(plan, x, atoms, *, recipe):
         "global_owner_window17",
         "global_owner_window_fold",
         "global_owner_window_recompute",
+        "global_owner_window_fp32",
+        "global_owner_window_fp32_geometry",
+        "global_owner_window_fp32_geometry_sort32",
+        "global_owner_window_fp32_geometry_sort32_flat_c",
     ):
         raise ValueError("expected the explicit compact keyed-owner recipe")
     if (
@@ -605,6 +609,25 @@ def checked_owner_compact_keyed_linear(plan, x, atoms, *, recipe):
             ),
         )
     native = _extension()
+    if recipe.schedule in (
+        "global_owner_window_fp32",
+        "global_owner_window_fp32_geometry",
+        "global_owner_window_fp32_geometry_sort32",
+        "global_owner_window_fp32_geometry_sort32_flat_c",
+    ):
+        entry = {
+            "global_owner_window_fp32": native.research_owner_window_fp32,
+            "global_owner_window_fp32_geometry": native.research_owner_window_fp32_geometry,
+            "global_owner_window_fp32_geometry_sort32": native.research_owner_window_fp32_geometry_sort32,
+            "global_owner_window_fp32_geometry_sort32_flat_c": native.research_owner_window_fp32_geometry_sort32_flat_c,
+        }[recipe.schedule]
+        return entry(
+            x.contiguous(),
+            atoms.contiguous(),
+            plan.input.native_config(),
+            plan.output.native_config(),
+            False,
+        )
     window_modes = {
         "global_owner_window17": 0,
         "global_owner_window_fold": 1,
@@ -724,6 +747,10 @@ def checked_radius_linear(plan, x, atoms, *, recipe):
         "global_owner_window17",
         "global_owner_window_fold",
         "global_owner_window_recompute",
+        "global_owner_window_fp32",
+        "global_owner_window_fp32_geometry",
+        "global_owner_window_fp32_geometry_sort32",
+        "global_owner_window_fp32_geometry_sort32_flat_c",
     ):
         return checked_owner_compact_keyed_linear(plan, x, atoms, recipe=recipe)
     if recipe.schedule == "block_local_tile_moments":
@@ -788,7 +815,7 @@ def radius_linear(plan, x, atoms, *, recipe=None):
     """Execute a bounded first-order research route through an explicit Plan.
 
     Initialize CSTLinear with the CPU reference and then move it to CUDA.
-    General stages support N<=1024 and A<=65536 with global hierarchical
+    General stages support N<=16384 and A<=2**24 with global hierarchical
     moments/responses. global_batched_cached keeps C local to a bounded tile;
     global_owner_response_coefficients uses temporary owner/part C instead.
     sequential/overlap retain global C. Shared projection stays N<=128/A<=4096. All
@@ -805,6 +832,10 @@ def radius_linear(plan, x, atoms, *, recipe=None):
         "global_owner_window17",
         "global_owner_window_fold",
         "global_owner_window_recompute",
+        "global_owner_window_fp32",
+        "global_owner_window_fp32_geometry",
+        "global_owner_window_fp32_geometry_sort32",
+        "global_owner_window_fp32_geometry_sort32_flat_c",
     ):
         return checked_owner_compact_keyed_linear(plan, x, atoms, recipe=recipe)
     if recipe.schedule == "block_local_tile_moments":

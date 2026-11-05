@@ -93,6 +93,10 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "global_owner_window17",
             "global_owner_window_fold",
             "global_owner_window_recompute",
+            "global_owner_window_fp32",
+            "global_owner_window_fp32_geometry",
+            "global_owner_window_fp32_geometry_sort32",
+            "global_owner_window_fp32_geometry_sort32_flat_c",
             "block_local",
             "block_local_parallel",
             "block_local_cached_parallel",
@@ -120,6 +124,10 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
                     "global_owner_window17",
                     "global_owner_window_fold",
                     "global_owner_window_recompute",
+                    "global_owner_window_fp32",
+                    "global_owner_window_fp32_geometry",
+                    "global_owner_window_fp32_geometry_sort32",
+                    "global_owner_window_fp32_geometry_sort32_flat_c",
                 )
             )
         ):
@@ -139,6 +147,10 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "global_owner_window17",
             "global_owner_window_fold",
             "global_owner_window_recompute",
+            "global_owner_window_fp32",
+            "global_owner_window_fp32_geometry",
+            "global_owner_window_fp32_geometry_sort32",
+            "global_owner_window_fp32_geometry_sort32_flat_c",
         ) and (
             recipe.moment_method != "merge"
             or recipe.input_direct_levels != 2
@@ -183,6 +195,15 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
         except (ValueError, TypeError) as error:
             return SupportResult((str(error),))
         reasons = []
+        scalable = recipe.schedule in (
+            "global_owner_window_fp32_geometry_sort32",
+            "global_owner_window_fp32_geometry_sort32_flat_c",
+        )
+        if (
+            max(plan.input.site_count, plan.output.site_count) > 1024
+            or context.atom_count > 65536
+        ) and not scalable:
+            reasons.append("large radius cohorts require the FP32 geometry sort32 routes")
         if recipe.schedule in (
             "global_owner_response_coefficients",
             "global_owner_response_derivatives",
@@ -192,11 +213,17 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "global_owner_window17",
             "global_owner_window_fold",
             "global_owner_window_recompute",
+            "global_owner_window_fp32",
+            "global_owner_window_fp32_geometry",
+            "global_owner_window_fp32_geometry_sort32",
+            "global_owner_window_fp32_geometry_sort32_flat_c",
         ) and (
             context.m > 4
             or plan.input != plan.output
             or any(
-                axis.site_count != 1024
+                axis.site_count not in (
+                    (1024, 2048, 4096, 8192, 16384) if scalable else (1024,)
+                )
                 or axis.polar is None
                 or axis.modes != 8
                 or axis.base_tile_sites != 1
@@ -205,7 +232,26 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             )
         ):
             reasons.append(
-                "owner response coefficients require identical N1024 Polar M8 base1 merge2 axes and B<=4"
+                "owner response coefficients require identical power-of-two N1024..16384 Polar M8 base1 merge2 axes and B<=4"
+            )
+        if recipe.schedule in (
+            "global_owner_window_fp32",
+            "global_owner_window_fp32_geometry",
+            "global_owner_window_fp32_geometry_sort32",
+            "global_owner_window_fp32_geometry_sort32_flat_c",
+        ) and (
+            context.dtype != torch.float32
+            or any(
+                axis.spacing != 1
+                or axis.polar is None
+                or axis.polar[0] > 1
+                or axis.polar[5] < 0.5
+                or axis.polar[7] > 50
+                for axis in (plan.input, plan.output)
+            )
+        ):
+            reasons.append(
+                "FP32 body requires FP32, spacing1, amplitude<=1 and radius bounds[.5,50]"
             )
         if context.device.type != "cuda":
             reasons.append("requires a CUDA device")

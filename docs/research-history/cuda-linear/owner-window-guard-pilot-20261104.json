@@ -1,0 +1,385 @@
+{
+  "scope": "G0 topology correctness + guard cost spending screen; not a flat candidate or adoption",
+  "source_commit": "72419a6db15e4c99d1fd3448b8fdadad303a07a8",
+  "runtime_baseline": "fba2e72d733325fbd7be5aac334a0a7463d96b27",
+  "numeric_src_files_unchanged": 242,
+  "job_id": "l4job-ca1928ca101640c4beb0462c5d16f20e",
+  "source_sha256": "f34f1274b92c79bd4ddfda5613c4c31b96ec4fa74bfebbc7b94573948a78f38a",
+  "archive_sha256": "488c69b19145d89d40e85e28fd96da4c6f4a64aac3add377c26ca1d51d4730b3",
+  "loaded_extension_sha256": "7b4968eb1643a0660bea2fc6b39480da629a7744beb7e2049239891113796476",
+  "gpu": "NVIDIA L4",
+  "gpu_uuid": "GPU-4ad46e5a-eddf-19b7-042c-726008bfe5d0",
+  "torch": "2.11.0+cu130",
+  "torch_git": "70d99e998b4955e0049d13a98d77ae1b14db1f45",
+  "python": "3.13.16",
+  "cpu": "Intel Xeon @2.20GHz,12logical,math1",
+  "GPU_topology_tests": "10 passed; both GPU cases executed, no skips",
+  "CPU_suite": "1746 passed,2398 skipped; explicit src PYTHONPATH, Torch2.13/Python3.11",
+  "direct_tensor_fields_checked_locally": 746,
+  "restored_checkpoint_files": 14,
+  "raw_manifest_files_verified": 1200,
+  "reference_cells": [
+    {
+      "reference": "R0",
+      "kind": "cst",
+      "repeat": 0,
+      "steps": 256,
+      "mean_step_ms": 0.5796024296875757,
+      "enqueue_seconds": 0.13529374800009464,
+      "final_sync_seconds": 0.01308447399992474,
+      "capture_inclusive_peak_bytes": {
+        "allocated": 263752704,
+        "reserved": 463470592
+      },
+      "retired_current_bytes": {
+        "allocated": 252373504,
+        "reserved": 463470592
+      },
+      "clock_start": 8,
+      "clock_end": 264,
+      "unexpected_fallbacks": 0
+    },
+    {
+      "reference": "G0",
+      "kind": "cst",
+      "repeat": 0,
+      "steps": 256,
+      "mean_step_ms": 0.5794230039057879,
+      "enqueue_seconds": 0.1403939829999672,
+      "final_sync_seconds": 0.007938305999914519,
+      "capture_inclusive_peak_bytes": {
+        "allocated": 263752704,
+        "reserved": 463470592
+      },
+      "retired_current_bytes": {
+        "allocated": 252373504,
+        "reserved": 463470592
+      },
+      "clock_start": 8,
+      "clock_end": 264,
+      "unexpected_fallbacks": 0
+    },
+    {
+      "reference": "R0",
+      "kind": "dense",
+      "repeat": 0,
+      "steps": 256,
+      "mean_step_ms": 0.2094542226567242,
+      "enqueue_seconds": 0.05346204000011312,
+      "final_sync_seconds": 0.00015824100000827457,
+      "capture_inclusive_peak_bytes": {
+        "allocated": 277450752,
+        "reserved": 452984832
+      },
+      "retired_current_bytes": {
+        "allocated": 261589504,
+        "reserved": 452984832
+      },
+      "clock_start": 8,
+      "clock_end": 264,
+      "unexpected_fallbacks": 0
+    },
+    {
+      "reference": "G0",
+      "kind": "dense",
+      "repeat": 0,
+      "steps": 256,
+      "mean_step_ms": 0.21290850781241488,
+      "enqueue_seconds": 0.05434748499988018,
+      "final_sync_seconds": 0.00015709300009802973,
+      "capture_inclusive_peak_bytes": {
+        "allocated": 277450752,
+        "reserved": 452984832
+      },
+      "retired_current_bytes": {
+        "allocated": 261589504,
+        "reserved": 452984832
+      },
+      "clock_start": 8,
+      "clock_end": 264,
+      "unexpected_fallbacks": 0
+    },
+    {
+      "reference": "G0",
+      "kind": "dense",
+      "repeat": 1,
+      "steps": 256,
+      "mean_step_ms": 0.21182814453091225,
+      "enqueue_seconds": 0.0540710399998261,
+      "final_sync_seconds": 0.00015696500008743897,
+      "capture_inclusive_peak_bytes": {
+        "allocated": 277450752,
+        "reserved": 452984832
+      },
+      "retired_current_bytes": {
+        "allocated": 261589504,
+        "reserved": 452984832
+      },
+      "clock_start": 8,
+      "clock_end": 264,
+      "unexpected_fallbacks": 0
+    },
+    {
+      "reference": "R0",
+      "kind": "dense",
+      "repeat": 1,
+      "steps": 256,
+      "mean_step_ms": 0.2087970039061915,
+      "enqueue_seconds": 0.0533076770000207,
+      "final_sync_seconds": 0.00014435599996431847,
+      "capture_inclusive_peak_bytes": {
+        "allocated": 277450752,
+        "reserved": 452984832
+      },
+      "retired_current_bytes": {
+        "allocated": 261589504,
+        "reserved": 452984832
+      },
+      "clock_start": 8,
+      "clock_end": 264,
+      "unexpected_fallbacks": 0
+    },
+    {
+      "reference": "G0",
+      "kind": "cst",
+      "repeat": 1,
+      "steps": 256,
+      "mean_step_ms": 0.5787457539057073,
+      "enqueue_seconds": 0.1392827560000569,
+      "final_sync_seconds": 0.008876156999804152,
+      "capture_inclusive_peak_bytes": {
+        "allocated": 263752704,
+        "reserved": 463470592
+      },
+      "retired_current_bytes": {
+        "allocated": 252373504,
+        "reserved": 463470592
+      },
+      "clock_start": 8,
+      "clock_end": 264,
+      "unexpected_fallbacks": 0
+    },
+    {
+      "reference": "R0",
+      "kind": "cst",
+      "repeat": 1,
+      "steps": 256,
+      "mean_step_ms": 0.5786616679692713,
+      "enqueue_seconds": 0.13582673100017928,
+      "final_sync_seconds": 0.012310655999954179,
+      "capture_inclusive_peak_bytes": {
+        "allocated": 263752704,
+        "reserved": 463470592
+      },
+      "retired_current_bytes": {
+        "allocated": 252373504,
+        "reserved": 463470592
+      },
+      "clock_start": 8,
+      "clock_end": 264,
+      "unexpected_fallbacks": 0
+    },
+    {
+      "reference": "R0",
+      "kind": "dense",
+      "repeat": 2,
+      "steps": 256,
+      "mean_step_ms": 0.20250203125016242,
+      "enqueue_seconds": 0.05168466400004945,
+      "final_sync_seconds": 0.00015585599999212718,
+      "capture_inclusive_peak_bytes": {
+        "allocated": 277450752,
+        "reserved": 452984832
+      },
+      "retired_current_bytes": {
+        "allocated": 261589504,
+        "reserved": 452984832
+      },
+      "clock_start": 8,
+      "clock_end": 264,
+      "unexpected_fallbacks": 0
+    },
+    {
+      "reference": "G0",
+      "kind": "dense",
+      "repeat": 2,
+      "steps": 256,
+      "mean_step_ms": 0.20668839062576438,
+      "enqueue_seconds": 0.05275554300010299,
+      "final_sync_seconds": 0.00015668500009269337,
+      "capture_inclusive_peak_bytes": {
+        "allocated": 277450752,
+        "reserved": 452984832
+      },
+      "retired_current_bytes": {
+        "allocated": 261589504,
+        "reserved": 452984832
+      },
+      "clock_start": 8,
+      "clock_end": 264,
+      "unexpected_fallbacks": 0
+    },
+    {
+      "reference": "R0",
+      "kind": "cst",
+      "repeat": 2,
+      "steps": 256,
+      "mean_step_ms": 0.5786678281252122,
+      "enqueue_seconds": 0.13385618500001328,
+      "final_sync_seconds": 0.014282779000041046,
+      "capture_inclusive_peak_bytes": {
+        "allocated": 263752704,
+        "reserved": 463470592
+      },
+      "retired_current_bytes": {
+        "allocated": 252373504,
+        "reserved": 463470592
+      },
+      "clock_start": 8,
+      "clock_end": 264,
+      "unexpected_fallbacks": 0
+    },
+    {
+      "reference": "G0",
+      "kind": "cst",
+      "repeat": 2,
+      "steps": 256,
+      "mean_step_ms": 0.579767625000116,
+      "enqueue_seconds": 0.14114043100016715,
+      "final_sync_seconds": 0.007280080999862548,
+      "capture_inclusive_peak_bytes": {
+        "allocated": 263752704,
+        "reserved": 463470592
+      },
+      "retired_current_bytes": {
+        "allocated": 252373504,
+        "reserved": 463470592
+      },
+      "clock_start": 8,
+      "clock_end": 264,
+      "unexpected_fallbacks": 0
+    }
+  ],
+  "guard_only": {
+    "cst": {
+      "eligible_ns_per_call": [
+        433575.732421875,
+        434921.08984375,
+        437795.6455078125,
+        436905.3740234375,
+        435121.03515625
+      ],
+      "signature_ns_per_call": [
+        155431.8193359375,
+        154177.2568359375,
+        155062.6103515625,
+        153962.1982421875,
+        154552.9990234375
+      ],
+      "clock_start": 8,
+      "clock_end": 8,
+      "state_fields": 42,
+      "gradient_fields": 5,
+      "before_current_bytes": {
+        "allocated": 257327616,
+        "reserved": 463470592,
+        "peak_allocated": 263752704,
+        "peak_reserved": 463470592
+      },
+      "after_current_bytes": {
+        "allocated": 257327616,
+        "reserved": 463470592,
+        "peak_allocated": 263752704,
+        "peak_reserved": 463470592
+      },
+      "retired_current_bytes": {
+        "allocated": 252372480,
+        "reserved": 463470592,
+        "peak_allocated": 263752704,
+        "peak_reserved": 463470592
+      },
+      "all_state_grad_totals_versions_live_signature_unchanged": true
+    },
+    "dense": {
+      "eligible_ns_per_call": [
+        124659.5341796875,
+        128190.224609375,
+        127535.095703125,
+        127195.8994140625,
+        126779.9658203125
+      ],
+      "signature_ns_per_call": [
+        71868.515625,
+        73952.05078125,
+        72713.4443359375,
+        72574.8017578125,
+        73021.3154296875
+      ],
+      "clock_start": 8,
+      "clock_end": 8,
+      "state_fields": 20,
+      "gradient_fields": 5,
+      "before_current_bytes": {
+        "allocated": 269059584,
+        "reserved": 452984832,
+        "peak_allocated": 277450752,
+        "peak_reserved": 452984832
+      },
+      "after_current_bytes": {
+        "allocated": 269059584,
+        "reserved": 452984832,
+        "peak_allocated": 277450752,
+        "peak_reserved": 452984832
+      },
+      "retired_current_bytes": {
+        "allocated": 261588480,
+        "reserved": 452984832,
+        "peak_allocated": 277450752,
+        "peak_reserved": 452984832
+      },
+      "all_state_grad_totals_versions_live_signature_unchanged": true
+    }
+  },
+  "screen": {
+    "status": "completed",
+    "scope": "G0 root-topology guard correction and guard-cost screen only",
+    "planned_reference_cells": 12,
+    "performed_reference_cells": 12,
+    "flat_implemented": false,
+    "new_cuda_variant": false,
+    "memory_v2_1_admitted": false,
+    "long_run_executed": false,
+    "r0_unsafe_topology_replay_executed": false,
+    "topology_gpu_checks_passed": true,
+    "reference_state_bytes_equal": true,
+    "all_reference_hashes_match": true,
+    "G0_CST_reference_median_seconds_per_update": 0.0005794230039057879,
+    "signature_ratios": [
+      0.26825275884491834,
+      0.26608756607289646,
+      0.2676155577295221,
+      0.26571640615639275,
+      0.2667360425485752
+    ],
+    "screen": "permit_one_flat_feasibility_prototype",
+    "reference_medians_ms": {
+      "cst": {
+        "R0": 0.5786678281252122,
+        "G0": 0.5794230039057879
+      },
+      "dense": {
+        "R0": 0.2087970039061915,
+        "G0": 0.21182814453091225
+      }
+    }
+  },
+  "memory_v2_1_admitted": false,
+  "performance_adopted": false,
+  "long_run_executed": false,
+  "pool_owned_sessions_stopped": true,
+  "previous_attempt": {
+    "id": "l4job-ffd37b0e88af48f0b84d7da05f662bed",
+    "valid_measurements": 0,
+    "reason": "embedded checkpoint helper standalone CLI entry executed before driver main; all logs kept; stripped helper entry and explicitly resubmitted once"
+  }
+}

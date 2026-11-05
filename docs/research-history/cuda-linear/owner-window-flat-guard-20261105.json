@@ -1,0 +1,51 @@
+{
+  "status": "incomplete_stage1_harness_failure",
+  "adopted": false,
+  "PR": 137,
+  "source_commit": "852403bf",
+  "job": "l4job-6ee82518b27947cb94f8d5b7058875e6",
+  "baseline": "fba2e72d733325fbd7be5aac334a0a7463d96b27",
+  "runtime_src_unchanged_files": 242,
+  "hardware": {
+    "gpu": "NVIDIA L4",
+    "uuid": "GPU-f4300b59-0642-1dff-a906-9431428833a3",
+    "CPU": "Intel Xeon2.20GHz/12logical/math1",
+    "Torch": "2.11.0+cu130",
+    "Torch_git": "70d99e998b4955e0049d13a98d77ae1b14db1f45",
+    "CUDA": "13.0",
+    "Python": "3.13.16"
+  },
+  "tests": {
+    "qualified": 28,
+    "flat": 28,
+    "total": 56,
+    "GPU_dependent_executions": 40,
+    "CPU_only_executions": 16,
+    "skipped": 0,
+    "common_qualification_native_backend": "not yet reported by completed numerical cell"
+  },
+  "complete_numerical_cells": 0,
+  "complete_cost_cells": 0,
+  "formal_cells": 0,
+  "long_run_executed": false,
+  "memory_v2_1_admitted": false,
+  "failure": {
+    "location": "benchmarks/training/graph_guard_gate.py:75 sample_vjp forward_hook",
+    "observed_node": "torch::autograd::CppNode<(anonymous namespace)::ReadLease>",
+    "failed_assumption": "len(node.next_functions)==1",
+    "source_contract": "ReadLease::apply(input,marker); backward returns {gradient0,undefined}; marker is a no-grad CPU Tensor",
+    "classification": "runner inspection assumption failed before VJP compare/Graph cells/guard costs; neither candidate correctness nor performance verdict"
+  },
+  "raw_verification": {
+    "source_archive_sha256": "9caadf168f3a17039ed8cae5485b971036f3abecb18bf14d8a6ccd21d9f0b056",
+    "result_archive_sha256": "f52290c899ddd806ec87a6f0c3614994c2fc9420c635a75f4be28f360205b1d6",
+    "driver_sha256": "e8261980fb39a140002a4752aed31612a1b432bab88789cd09aa916b42c6f471",
+    "raw_files_verified": 21,
+    "integrity_passed": true,
+    "fully_verified_Stage1": false,
+    "built_libraries_saved_gzip": 3,
+    "reported_loaded_numerical_library": false
+  },
+  "owned_pool_sessions_stopped": true,
+  "protocol": "on runtime failure stop without retry; no new allocation until prospective correction is reviewed; no measurements to discard or resample"
+}
