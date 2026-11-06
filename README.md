@@ -77,6 +77,24 @@ the wrapper once. Built-in adapters cover SGD, Adam, AdamW, RMSprop, Adamax,
 Adagrad, Adadelta and Rprop. See the [optimizer guide](docs/cst-optimizer.md)
 for parameter groups, update rules, custom state and checkpoint migration.
 
+## He and Xavier initialization
+
+For a CPU `CSTLinear` with a two-chart Polar radius cell-mass kernel, explicitly
+initialize before moving it to CUDA or creating its optimizer:
+
+```python
+from torchcst import init as cst_init
+
+report = cst_init.kaiming_normal_(layer, nonlinearity="relu", q=0.0)
+# Or: cst_init.xavier_normal_(layer, gain=1.0, q=0.25)
+```
+
+`q` selects the initial logarithmic position between amplitude-dependent radius
+bounds. The presets match Dense second-moment targets; they return a diagnostic
+report including clipping, rather than a Tensor/Module. Constructor defaults
+are unchanged. See [initialization and the Dense–CST bridge](docs/initialization.md)
+for support limits, formulas and `variance_scaling_` for new presets.
+
 ## Recommended CUDA configuration for the public API
 
 For the currently qualified **FP32, small-batch radius cell-mass** workload,

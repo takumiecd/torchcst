@@ -74,6 +74,23 @@ wrapper を1回 step する。SGD、Adam、AdamW、RMSprop、Adamax、Adagrad、
 組み込み adapter がある。group、更新則、独自 state、checkpoint 移行は
 [optimizer ガイド](docs/cst-optimizer.ja.md)を参照する。
 
+## He・Xavier 初期化
+
+2-chart Polar radius cell-mass kernelを持つCPUの`CSTLinear`を、CUDAへ移動したり
+optimizerを作成したりする前に、明示的に初期化できます。
+
+```python
+from torchcst import init as cst_init
+
+report = cst_init.kaiming_normal_(layer, nonlinearity="relu", q=0.0)
+# または cst_init.xavier_normal_(layer, gain=1.0, q=0.25)
+```
+
+`q`は振幅依存の半径上下限の間で初期の対数的な位置を選びます。
+Denseと二乗平均目標を揃え、Tensor/Moduleではなくクリップ数などの診断reportを返します。
+constructorの既定は保持します。対応範囲・数式・新preset用の`variance_scaling_`は
+[初期化とDense–CSTの橋渡し](docs/initialization.ja.md)を参照してください。
+
 ## 公開 API で推奨する CUDA 構成
 
 現在検証済みの **FP32・小バッチの半径セル質量** workload では、Linear の明示的 Plan
