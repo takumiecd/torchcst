@@ -1,6 +1,6 @@
 """Fixed-shape continuous operators for PyTorch."""
 
-from . import kernels
+from . import init, kernels
 from ._backends.algorithm import Algorithm
 from ._backends.catalog import make_registry as make_algorithm_registry
 from ._backends.dispatch import (
@@ -143,6 +143,7 @@ __all__ = [
     "chart_presets",
     "compile_chart",
     "geometry_presets",
+    "init",
     "kernels",
     "make_algorithm_registry",
     "pattern_presets",
