@@ -41,7 +41,7 @@ LR warmup内です。データ転送と4 microbatchを測り、
 別のprobe・評価は除外します。短い機能確認の観測で、独立反復やスケーリングの主測定では
 ありません。FFN Parameter数はCST272384、Dense8398848ですが、実測GPU peakはCSTの方が
 大きく、速度・メモリの実用上の優位は示していません。選択設定のheldout pilotは以下に記録し、
-3 seed確認は[研究側の検証](https://github.com/takumiecd/cst-research/pull/29)に残ります。
+保存したseed29の観察も以下と[研究側の検証](https://github.com/takumiecd/cst-research/pull/29)に記録します。
 
 ## 選択設定のheldout pilot（R10）
 
@@ -66,7 +66,9 @@ Atom group全体に適用します。上記と同じ固定R8 consumer・検証�
 3 seed確認・収束・精度の漸近則を示す結果ではありません。同期した時間sampleは最初の10 updateを
 除いた各966個です。reserved peakはN512でDense/CSTが1168/1492MiB、N128 expansion16で
 460/788MiBでした。この逐次eager FP32観測でも速度・GPUメモリの優位はありません。
-主幅の3 seed・各5M確認は別途実行中で、確認結果はまだありません。Attention置換は未着手です。
+所有者の指示で未開始のseed43/71を止め、短期のフィールド別LR実験へ切り替えました。
+主3幅のseed29は完了・監査・回収済みですが、予定した3seed確認は未完了です。
+Attention置換は未着手です。
 
 同じ研究証拠locator内のR10証拠 SHA256：
 
@@ -79,6 +81,30 @@ archive名は`width512-e4-lr16-r8-01-evidence.tar.gz`と
 `width128-e16-lr16-r8-01-evidence.tar.gz`です。固定bootstrapの厳密なargvとsource manifestも
 証拠locatorに保持し、再現では新しい出力先を使います。実タスクpilotを通っても、このoperatorの
 形状・Atom数・精度のadmissionは拡大しません。
+
+## 保存した幅512・seed29の観察（R11、所有者が停止した実験群）
+
+同じ選択設定と予定20M期間で、Dense・FFNなし・CSTを新規に各4882更新・
+4,999,168トークン学習しました。終端DEV CEは順に2.57642/2.83565/2.68898、
+確認用CEは2.48887/2.74543/2.60475でした。学習済みCST全8射影のY/dX/全Atom VJP、
+独立CE再計算、有限なoptimizer/counter、保存・復元後の次タスク更新の監査を通り、
+復元後のパラメータ最大差は3条件とも0でした。回収したraw11ファイルはmanifestと一致しました。
+
+Dense/CSTの更新中央値は18.57/822.90ms（最初の10回を除いた同期sample各4872個）、
+allocatedは952.66/1187.04MiB、reservedは1168/1492MiBでした。この長めの1seed観察は
+限定した経路の動作を裏づけますが、3seed再現性や速度・メモリ優位は示しません。
+元のR11管理プロセスは意図的に停止しており、元のrunning journalは古い状態です。
+最終owner-stop receiptを正とし、中止した条件を完了や数値的失敗とは扱いません。
+
+- Native検証 SHA256：`3b3a80bf3c7dabf6fe1a4088dddf3f7e4c027eabee39fdb0746f79dc0a3fc309`。
+- 学習済み監査 SHA256：`9764902e1b0acdee490f2a63f728a5369d6aeee2c17bf0a3604d08e324f78ec7`。
+- Archive `width512-e4-lr16-seed29-r8-confirm-01-evidence.tar.gz` SHA256：
+  `a1973aac3b176ba1e63a66373cd67a7305f9c9813335b7fbd09afb4709dbca74`。
+- 最終owner-stop receipt SHA256：
+  `59d7a4e28c60d84b8a92bdd1b442abbe74c81daeb8267fcaf8b51ff8674b7f27`。
+
+Consumer70e02d8/operator2b587は変更していません。全曲線と停止群専用の観察レポートは
+研究repoの`docs/ffn-feasibility-r11-seed29-20261107.md`と日本語版に記録しています。
 
 ## 来歴と再現
 

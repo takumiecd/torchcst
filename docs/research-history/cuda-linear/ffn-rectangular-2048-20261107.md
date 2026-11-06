@@ -47,8 +47,8 @@ four microbatches are timed; separate probes/evaluation are excluded. They are
 short functional observations, not independent repetitions or primary scaling
 measurements. CST has272384 FFN parameters versus8398848 for Dense, yet its
 measured GPU peak is larger. No practical speed or memory advantage is shown.
-Selected-recipe heldout pilots are recorded below; three-seed confirmation
-remains in the [research study](https://github.com/takumiecd/cst-research/pull/29).
+Selected-recipe heldout pilots and retained seed29 observations are recorded
+below and in the [research study](https://github.com/takumiecd/cst-research/pull/29).
 
 ## Selected-recipe heldout pilots (R10)
 
@@ -77,8 +77,9 @@ They do not establish three-seed confirmation, convergence or asymptotic quality
 The966 synchronized timing samples per arm exclude the first10 updates;
 reserved peaks are1168/1492MiB (Dense/CST at N512) and460/788MiB (N128 expansion16).
 These sequential eager FP32 observations still show no speed or GPU-memory win.
-The main-width three-seed5M confirmation is running separately; no confirmation
-results are available yet. Attention replacement has not started.
+The owner stopped the unstarted seed43/71 cases in favor of short field-LR
+experiments. Seed29 at all three main widths finished and was audited/retrieved;
+the planned three-seed confirmation is incomplete. Attention replacement has not started.
 
 R10 evidence SHA256, under the same research evidence locator:
 
@@ -91,6 +92,34 @@ Archives are `width512-e4-lr16-r8-01-evidence.tar.gz` and
 `width128-e16-lr16-r8-01-evidence.tar.gz`. Frozen bootstrap exact argv and source
 manifests remain in the evidence locator; use fresh output paths to reproduce.
 These task pilots do not widen this operator's shape/count/precision admission.
+
+## Retained width512 seed29 observation (R11, owner-stopped family)
+
+Each fresh Dense/no-FFN/CST arm completed4882 updates/4,999,168 tokens with the
+same selected recipe and planned20M horizon. Final DEV CE was2.57642/2.83565/
+2.68898, and confirmation CE was2.48887/2.74543/2.60475 respectively. All eight
+trained CST Y/dX/all-Atom VJPs, independent CE, finite optimizer/counters and
+serialized next-task-step audits passed; resume maximum parameter error was0
+for all three arms. Eleven raw files matched the retrieved manifest.
+
+Dense/CST median update times were18.57/822.90ms (4872 synchronized samples,
+first10 excluded), with allocated952.66/1187.04MiB and reserved1168/1492MiB.
+This longer one-seed task observation supports functionality of the bounded
+route; it establishes neither three-seed repeatability nor a speed/memory win.
+The original R11 supervisor was deliberately stopped and its old running journal
+is stale. The final owner-stop receipt is authoritative; cancelled cases must not
+be treated as completed or numerical failures.
+
+- Native qualification SHA256: `3b3a80bf3c7dabf6fe1a4088dddf3f7e4c027eabee39fdb0746f79dc0a3fc309`.
+- Trained audit SHA256: `9764902e1b0acdee490f2a63f728a5369d6aeee2c17bf0a3604d08e324f78ec7`.
+- Archive `width512-e4-lr16-seed29-r8-confirm-01-evidence.tar.gz` SHA256:
+  `a1973aac3b176ba1e63a66373cd67a7305f9c9813335b7fbd09afb4709dbca74`.
+- Final owner-stop receipt SHA256:
+  `59d7a4e28c60d84b8a92bdd1b442abbe74c81daeb8267fcaf8b51ff8674b7f27`.
+
+Consumer70e02d8/operator2b587 are unchanged. Full curves and the separate
+owner-stopped observation report are in the research repository at
+`docs/ffn-feasibility-r11-seed29-20261107.md` and its Japanese counterpart.
 
 ## Provenance and reproduction
 
