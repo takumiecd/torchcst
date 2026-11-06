@@ -85,6 +85,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "global_batched_cached_active_moments",
             "global_batched_cached_active_moments_grad4",
             "global_batched_cached_active_moments_grad4_native",
+            "global_batched_cached_active_moments_grad4_native_rectangular2048",
             "global_owner_response_coefficients",
             "global_owner_response_derivatives",
             "global_owner_compact_partials",
@@ -116,6 +117,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
                 or recipe.schedule
                 in (
                     "global_batched_cached_active_moments_grad4_native",
+                    "global_batched_cached_active_moments_grad4_native_rectangular2048",
                     "global_owner_response_coefficients",
                     "global_owner_response_derivatives",
                     "global_owner_compact_partials",
@@ -138,6 +140,21 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             recipe.native_entry and not recipe.native_autograd
         ):
             raise ValueError("native_entry requires native_autograd")
+        if (
+            recipe.schedule
+            == "global_batched_cached_active_moments_grad4_native_rectangular2048"
+            and (
+                not recipe.native_autograd
+                or not recipe.native_entry
+                or recipe.moment_method != "merge"
+                or recipe.input_direct_levels != 2
+                or recipe.output_direct_levels != 2
+                or recipe.output_tile_sites != 32
+            )
+        ):
+            raise ValueError(
+                "rectangular2048 requires checked global-native merge/direct2/tile32"
+            )
         if recipe.schedule in (
             "global_owner_response_coefficients",
             "global_owner_response_derivatives",
@@ -202,8 +219,43 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
         if (
             max(plan.input.site_count, plan.output.site_count) > 1024
             or context.atom_count > 65536
-        ) and not scalable:
-            reasons.append("large radius cohorts require the FP32 geometry sort32 routes")
+        ) and not (
+            scalable
+            or recipe.schedule
+            == "global_batched_cached_active_moments_grad4_native_rectangular2048"
+        ):
+            reasons.append(
+                "large radius cohorts require the FP32 geometry sort32 routes"
+            )
+        if (
+            recipe.schedule
+            == "global_batched_cached_active_moments_grad4_native_rectangular2048"
+            and (
+                context.atom_count
+                != {
+                    (512, 2048): 8192,
+                    (2048, 512): 8192,
+                    (128, 2048): 4096,
+                    (2048, 128): 4096,
+                }.get((plan.input.site_count, plan.output.site_count))
+                or context.m > 256
+                or context.dtype != torch.float32
+                or any(
+                    axis.polar is None
+                    or axis.modes != 8
+                    or axis.base_tile_sites != 1
+                    or axis.merge_factor != 2
+                    or axis.spacing != 1
+                    or axis.polar[0] > 1
+                    or axis.polar[5] < 0.5
+                    or axis.polar[7] > 50
+                    for axis in (plan.input, plan.output)
+                )
+            )
+        ):
+            reasons.append(
+                "rectangular2048 requires 512x2048/2048x512 A8192 or 128x2048/2048x128 A4096, M<=256, FP32, Polar M8/base1/merge2/spacing1 and radius[.5,50]"
+            )
         if recipe.schedule in (
             "global_owner_response_coefficients",
             "global_owner_response_derivatives",
@@ -221,9 +273,8 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             context.m > 4
             or plan.input != plan.output
             or any(
-                axis.site_count not in (
-                    (1024, 2048, 4096, 8192, 16384) if scalable else (1024,)
-                )
+                axis.site_count
+                not in ((1024, 2048, 4096, 8192, 16384) if scalable else (1024,))
                 or axis.polar is None
                 or axis.modes != 8
                 or axis.base_tile_sites != 1
@@ -310,6 +361,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             "global_batched_cached_active_moments",
             "global_batched_cached_active_moments_grad4",
             "global_batched_cached_active_moments_grad4_native",
+            "global_batched_cached_active_moments_grad4_native_rectangular2048",
         ):
             from .expansion_layout import batched_coefficient_layout
 

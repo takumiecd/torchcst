@@ -88,6 +88,13 @@ y.square().sum().backward()
 を選ばない。Plan 定数はすべて
 `torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plans` にある。
 
+明示的な候補`GLOBAL_ACTIVE_GRAD4_NATIVE_RECTANGULAR_2048`は、512→2048/2048→512で
+A8192、または128→2048/2048→128でA4096、入力最大256行、FP32、
+Polar M8/base1/merge2/spacing1・radius bounds[.5,50]だけを
+対象に、既存のgeneral native演算を再利用します。元の`GLOBAL_ACTIVE_GRAD4_NATIVE`の
+1024-site制約は維持します。独立検証を行うFFN実験に向けた準備であり、公開dispatcherの
+既定採用、汎用的な長方形サイズ拡張、実測の高速化を示すものではありません。
+
 | Plan | 対象・計算方法 |
 | --- | --- |
 | `REFERENCE` | 階層間で一致する周波数の moment を再利用 |

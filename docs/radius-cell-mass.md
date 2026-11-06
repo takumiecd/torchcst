@@ -95,6 +95,14 @@ ranges above. The automatic dispatcher does not select these research Plans.
 All Plan constants are in
 `torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plans`.
 
+The explicit candidate `GLOBAL_ACTIVE_GRAD4_NATIVE_RECTANGULAR_2048` reuses the
+general native arithmetic for only512→2048/2048→512 with A8192, or
+128→2048/2048→128 with A4096, at most256 input rows, FP32, and Polar
+M8/base1/merge2/spacing1 with radius bounds[.5,50]. The
+original `GLOBAL_ACTIVE_GRAD4_NATIVE` retains its1024-site limit. The candidate
+is preparation for independently qualified FFN experiments; it is not a public
+dispatcher default, general rectangular-size extension or measured speed claim.
+
 | Plan | Scope and method |
 | --- | --- |
 | `REFERENCE` | Reuse moments of frequencies shared between hierarchy levels |
