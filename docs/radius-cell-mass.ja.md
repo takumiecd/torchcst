@@ -92,8 +92,10 @@ y.square().sum().backward()
 A8192、または128→2048/2048→128でA4096、入力最大256行、FP32、
 Polar M8/base1/merge2/spacing1・radius bounds[.5,50]だけを
 対象に、既存のgeneral native演算を再利用します。元の`GLOBAL_ACTIVE_GRAD4_NATIVE`の
-1024-site制約は維持します。独立検証を行うFFN実験に向けた準備であり、公開dispatcherの
-既定採用、汎用的な長方形サイズ拡張、実測の高速化を示すものではありません。
+1024-site制約は維持します。限定したRTX4090の数値検証と幅512の実タスクsmokeを通りました。
+[検証記録](research-history/cuda-linear/ffn-rectangular-2048-20261107.ja.md)を参照してください。
+公開dispatcherの既定採用、汎用的な長方形サイズ拡張、速度・メモリ優位を示すものでは
+ありません。幅512のheldoutでの学習は別の実験です。
 
 | Plan | 対象・計算方法 |
 | --- | --- |

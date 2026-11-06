@@ -1,0 +1,78 @@
+# Scoped 2048-wide FFN validation
+
+English (canonical) | [日本語](ffn-rectangular-2048-20261107.ja.md)
+
+The explicit `GLOBAL_ACTIVE_GRAD4_NATIVE_RECTANGULAR_2048` route enables the
+previously unsupported fixed-coefficient FFN cohorts. It reuses existing native
+arithmetic and keeps the original Plan guards, recipe fields and dispatcher
+defaults. The supported shapes/counts remain exactly512↔2048/A8192 and
+128↔2048/A4096, FP32, at most256 token rows, Polar M8/base1/merge2/spacing1,
+radius bounds[.5,50]. This is eager-only scope.
+
+## Executed checks
+
+The expanded R3 qualification passed all12 native cases on RTX4090, including
+all four2048-site directions, noncontiguous B2T128, Y/dX/all Atom-coordinate
+VJPs against chunked CPU FP64 references, independent polynomial quadrature,
+and small controlled optimizer/model serialized-resume checks.
+
+The R8 recipe qualification separately checked512→2048 at target std.02 and
+2048→512 at std.02/sqrt(8), with8192 Atoms each and the actual q0/bound1/w_c.3/
+birth4 recipe. It passed both native directions, quadrature, mixed ordinary/
+Atom optimizer reference checks and small model resume. The actual four-block,
+width512 causal model then completed20 fixed-batch updates in Dense/CST arms:
+all eight FFN projections are CST in the latter; attention/embedding/output
+stay Dense. Microbatch2×context128, accumulation4, FP32, TF32off, seed17,
+AdamW baseLR3e-4, betas(.9,.95), decay0 and global clip1. Planned LR/data horizon
+is20M tokens. This repeats eight training windows; it is not heldout feasibility.
+
+A separate terminal audit verified checkpoint/curve/summary hashes, finite
+optimizer state/counters, exact model-load/cache-generation semantics, all eight
+trained CST projection VJPs at B1T8 and independently recomputed CE. Two task
+updates in disposable copies verified serialization and the next loss, parameters,
+moments and counters; maximum parameter difference was0 in both arms. The
+original saved runs were not resumed or overwritten.
+
+## Short complete-step observations
+
+| Width512 FFN | Median update ms | Peak allocated MiB | Peak reserved MiB |
+| --- | ---: | ---: | ---: |
+| Dense | 18.40 | 952.66 | 1168 |
+| CST reference | 726.25 | 1187.04 | 1492 |
+
+These are10 synchronized complete-update samples after excluding the first10
+updates from timing, in one Dense-then-CST job, without motion sampling. All20
+smoke updates are still inside the planned200-update LR warmup. Data transfer and
+four microbatches are timed; separate probes/evaluation are excluded. They are
+short functional observations, not independent repetitions or primary scaling
+measurements. CST has272384 FFN parameters versus8398848 for Dense, yet its
+measured GPU peak is larger. No practical speed or memory advantage is shown.
+Long heldout learning, selected-recipe width/aspect behavior and three-seed
+confirmation remain in the [research study](https://github.com/takumiecd/cst-research/pull/29).
+
+## Provenance and reproduction
+
+- Operator: `2b587e0f04ddf64e2bfb0c2e3db591e87a6f6440`.
+- Expanded R3 consumer: `036d0c5beb4a6f675ce1dbeafd4224e6c270f342`.
+- R3 native receipt SHA256: `419ab7750182bca2302d7152c6fc01c1a961efe69f19bf5bb22355f3aa299ce6`.
+- R8 consumer: `70e02d864e661d3a87cd8aea322b49ae3f4a1f8f`.
+- R8 native receipt SHA256: `b40ac9ffa47814408eb22d61f65c2a0313f0420632566609f168c269131785d6`.
+- R8 terminal receipt SHA256: `13e60f4b96786fb300c074891bbc02a1e6051c7fc2e934d4279c3f058b4348b0`.
+- R8 trained-state audit SHA256: `08080c751cf5c2c80d57663daa4031bcb7fd231a401187ace7d16161511a9593`.
+- Retrieved small-evidence archive SHA256: `932013048726fdc91c94f9c158ad39f96feee3884cb20511e0fad24327b21c37`.
+
+Actual runtime: NVIDIA GeForce RTX4090,24GB class, CC8.9, Torch2.11.0+cu126.
+Resolve the research evidence locator
+`$CST_RESEARCH_EVIDENCE_ROOT/ffn-feasibility-20261106` for
+`width512-reference-r8-01-evidence.tar.gz`, raw scripts and source manifests.
+All seven bundled raw files matched the retrieved manifest; bulk checkpoints
+remain on the GPU host with hashes. The earlier CPU suite at the tested operator
+reported2086 passed/2483 skipped; skipped GPU cases are not counted as validation.
+
+Use those frozen sources and fresh output paths. Run the research consumer's
+`ffn_qualification --cohort recipe --width 512 --expansion 4 --coefficient 8`,
+then `ffn_run --kind dense` and `--kind cst`, both with `--width 512 --tokens 20480
+--schedule-tokens 20000000 --repeat-fixed-batches`, passing the actual new
+qualification/data manifests and their SHA256 arguments. The recorded bootstrap
+and audit scripts retain environment setup, exact argv, PIDs and source checks.
+Reproduction does not qualify another consumer, scalar recipe, GPU or Atom count.

@@ -100,8 +100,10 @@ general native arithmetic for only512→2048/2048→512 with A8192, or
 128→2048/2048→128 with A4096, at most256 input rows, FP32, and Polar
 M8/base1/merge2/spacing1 with radius bounds[.5,50]. The
 original `GLOBAL_ACTIVE_GRAD4_NATIVE` retains its1024-site limit. The candidate
-is preparation for independently qualified FFN experiments; it is not a public
-dispatcher default, general rectangular-size extension or measured speed claim.
+has passed scoped RTX4090 numerical and width512 complete-task smoke checks;
+see the [validation record](research-history/cuda-linear/ffn-rectangular-2048-20261107.md).
+It is not a public dispatcher default, general rectangular-size extension or
+speed/memory advantage. Width512 heldout learning remains a separate experiment.
 
 | Plan | Scope and method |
 | --- | --- |
