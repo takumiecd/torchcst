@@ -47,8 +47,50 @@ four microbatches are timed; separate probes/evaluation are excluded. They are
 short functional observations, not independent repetitions or primary scaling
 measurements. CST has272384 FFN parameters versus8398848 for Dense, yet its
 measured GPU peak is larger. No practical speed or memory advantage is shown.
-Long heldout learning, selected-recipe width/aspect behavior and three-seed
-confirmation remain in the [research study](https://github.com/takumiecd/cst-research/pull/29).
+Selected-recipe heldout pilots are recorded below; three-seed confirmation
+remains in the [research study](https://github.com/takumiecd/cst-research/pull/29).
+
+## Selected-recipe heldout pilots (R10)
+
+Both supported 2048 cohorts also completed the separate selected Atom-LR16
+recipe at seed17, with fresh Dense/no-FFN/CST arms. Each arm completed976
+updates/999,424 tokens with a common planned20M LR/data horizon, not fixed-batch
+repetition. All eight FFN projections in four blocks are CST. Ordinary-parameter
+LR stays unchanged; the16 multiplier affects the whole Atom group, not only
+amplitude. This uses the same frozen R8 consumer and tested operator above.
+
+| Model width / expansion | Dense DEV CE | CST DEV CE | No-FFN DEV CE | Dense / CST update ms | Dense / CST allocated MiB |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 512 / 4 | 3.28466 | 3.40110 | 3.71174 | 18.48 / 792.80 | 952.66 / 1187.04 |
+| 128 / 16 | 3.91922 | 3.96799 | 4.35479 | 9.18 / 501.67 | 373.07 / 697.90 |
+
+Each cohort passed fresh exact-shape/count/recipe qualification at both actual
+target standard deviations, then full-model preflight and the independent
+terminal trained-checkpoint audit described above: all eight CST Y/dX/Atom VJPs,
+finite optimizer/counters, recomputed CE and serialized next-task-step checks.
+The four2048 directions are therefore covered in actual task learning, beyond
+the earlier20-update reference smoke. Both retrieved archives and all22 raw
+files matched their manifests.
+
+These single development-seed results improve on no-FFN while trailing Dense.
+They do not establish three-seed confirmation, convergence or asymptotic quality.
+The966 synchronized timing samples per arm exclude the first10 updates;
+reserved peaks are1168/1492MiB (Dense/CST at N512) and460/788MiB (N128 expansion16).
+These sequential eager FP32 observations still show no speed or GPU-memory win.
+The main-width three-seed5M confirmation is running separately; no confirmation
+results are available yet. Attention replacement has not started.
+
+R10 evidence SHA256, under the same research evidence locator:
+
+| Cohort | Native qualification | Trained checkpoint audit | Small-evidence archive |
+| --- | --- | --- | --- |
+| N512 expansion4 | `c45dc18eaa0dd074d3f38e7c8488037ac48ae4d60b265d4f04c8e12903b58cf0` | `74ceefd58caa2dac38c5eaa77cf270d4c1176ad85d5d41b8c6cd3996ae22348a` | `e59e990cd947d5c3ac538e0cac28cf20b3b9ad0c9df1811fabcab18f4559c5c9` |
+| N128 expansion16 | `78d37a661f5e01811c84f92fd2b76177f655d62f2595affa4502850906f7cc08` | `fbc172e1f38eef8d57efcee819391f5b4554d3f33cfda54165fb41feb1fa835f` | `0edb48531af793f9079d9911b9e9f3b06bbd24f321238f80b4f84c13a8bf732f` |
+
+Archives are `width512-e4-lr16-r8-01-evidence.tar.gz` and
+`width128-e16-lr16-r8-01-evidence.tar.gz`. Frozen bootstrap exact argv and source
+manifests remain in the evidence locator; use fresh output paths to reproduce.
+These task pilots do not widen this operator's shape/count/precision admission.
 
 ## Provenance and reproduction
 

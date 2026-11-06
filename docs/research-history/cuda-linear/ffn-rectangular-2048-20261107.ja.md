@@ -40,8 +40,45 @@ Dense→CSTの順に実行し、振幅サンプリングはありません。20 
 LR warmup内です。データ転送と4 microbatchを測り、
 別のprobe・評価は除外します。短い機能確認の観測で、独立反復やスケーリングの主測定では
 ありません。FFN Parameter数はCST272384、Dense8398848ですが、実測GPU peakはCSTの方が
-大きく、速度・メモリの実用上の優位は示していません。長いheldout学習、選択設定での幅・
-縦横比の挙動、3 seed確認は[研究側の検証](https://github.com/takumiecd/cst-research/pull/29)に残ります。
+大きく、速度・メモリの実用上の優位は示していません。選択設定のheldout pilotは以下に記録し、
+3 seed確認は[研究側の検証](https://github.com/takumiecd/cst-research/pull/29)に残ります。
+
+## 選択設定のheldout pilot（R10）
+
+対応する2048の両条件で、選択したAtom LR16を別途seed17で実行しました。
+Dense・FFNなし・CSTをそれぞれ新規学習し、各976 update・999424 tokenまで完了しました。
+共通の予定20M LR・データhorizonで、固定batchの繰り返しではありません。
+4 blockのFFN全8射影をCSTにしています。通常ParameterのLRは同じで、16倍は振幅だけでなく
+Atom group全体に適用します。上記と同じ固定R8 consumer・検証済みoperatorです。
+
+| モデル幅 / Expansion | Dense DEV CE | CST DEV CE | FFNなし DEV CE | Dense / CST update ms | Dense / CST allocated MiB |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 512 / 4 | 3.28466 | 3.40110 | 3.71174 | 18.48 / 792.80 | 952.66 / 1187.04 |
+| 128 / 16 | 3.91922 | 3.96799 | 4.35479 | 9.18 / 501.67 | 373.07 / 697.90 |
+
+各条件で形状・Atom数・設定を厳密に合わせ、実際の両方向の目標標準偏差でnative検証を行い、
+モデル全体のpreflightと上記の独立した終了checkpoint監査を通りました。
+学習済みCST全8射影のY/dX/Atom VJP、有限なoptimizer/counter、CE再計算、serialize後の
+次task stepを含みます。2048の4方向を、前の標準設定20-update smokeに加えて実タスク学習でも
+確認できました。回収した両archiveとraw全22ファイルをmanifestとhash照合しました。
+
+開発用1 seedでは両条件ともFFNなしより改善し、Denseとの差が残ります。
+3 seed確認・収束・精度の漸近則を示す結果ではありません。同期した時間sampleは最初の10 updateを
+除いた各966個です。reserved peakはN512でDense/CSTが1168/1492MiB、N128 expansion16で
+460/788MiBでした。この逐次eager FP32観測でも速度・GPUメモリの優位はありません。
+主幅の3 seed・各5M確認は別途実行中で、確認結果はまだありません。Attention置換は未着手です。
+
+同じ研究証拠locator内のR10証拠 SHA256：
+
+| 条件 | Native検証 | 学習済みcheckpoint監査 | 小証拠archive |
+| --- | --- | --- | --- |
+| N512 expansion4 | `c45dc18eaa0dd074d3f38e7c8488037ac48ae4d60b265d4f04c8e12903b58cf0` | `74ceefd58caa2dac38c5eaa77cf270d4c1176ad85d5d41b8c6cd3996ae22348a` | `e59e990cd947d5c3ac538e0cac28cf20b3b9ad0c9df1811fabcab18f4559c5c9` |
+| N128 expansion16 | `78d37a661f5e01811c84f92fd2b76177f655d62f2595affa4502850906f7cc08` | `fbc172e1f38eef8d57efcee819391f5b4554d3f33cfda54165fb41feb1fa835f` | `0edb48531af793f9079d9911b9e9f3b06bbd24f321238f80b4f84c13a8bf732f` |
+
+archive名は`width512-e4-lr16-r8-01-evidence.tar.gz`と
+`width128-e16-lr16-r8-01-evidence.tar.gz`です。固定bootstrapの厳密なargvとsource manifestも
+証拠locatorに保持し、再現では新しい出力先を使います。実タスクpilotを通っても、このoperatorの
+形状・Atom数・精度のadmissionは拡大しません。
 
 ## 来歴と再現
 
