@@ -156,6 +156,7 @@ def _complete_hybrid_response(signal, atoms, axis, start_level, recipe, output_s
         "global_batched_cached_active_moments",
         "global_batched_cached_active_moments_grad4",
         "global_batched_cached_active_moments_grad4_native",
+        "global_batched_cached_active_moments_grad4_native_rectangular2048",
     ):
         # The same global hierarchy is completed first. One launch then writes
         # all low/high atom responses, reusing geometry across four batch rows.
@@ -163,6 +164,7 @@ def _complete_hybrid_response(signal, atoms, axis, start_level, recipe, output_s
             "global_batched_cached_active_moments",
             "global_batched_cached_active_moments_grad4",
             "global_batched_cached_active_moments_grad4_native",
+            "global_batched_cached_active_moments_grad4_native_rectangular2048",
         ):
             # No readback or compacted layout: only bank work is masked. The
             # current P is reclassified every invocation, including backward.
@@ -372,6 +374,7 @@ class _HybridRadiusLinear(torch.autograd.Function):
             "global_batched_cached_active_moments",
             "global_batched_cached_active_moments_grad4",
             "global_batched_cached_active_moments_grad4_native",
+            "global_batched_cached_active_moments_grad4_native_rectangular2048",
         ):
             # Consume the same completed H. Only a destination bank/tile's C
             # exists in shared memory; no global coefficient Tensor is created.
@@ -438,6 +441,7 @@ class _HybridRadiusLinear(torch.autograd.Function):
                 "global_batched_cached_active_moments",
                 "global_batched_cached_active_moments_grad4",
                 "global_batched_cached_active_moments_grad4_native",
+                "global_batched_cached_active_moments_grad4_native_rectangular2048",
             ):
                 # Reverse expansion consumes final G once for each destination
                 # tile. Saved Zx/H and completed Zy/G still feed all dP below.
@@ -485,6 +489,7 @@ class _HybridRadiusLinear(torch.autograd.Function):
                     "global_batched_cached_response4_grad4",
                     "global_batched_cached_active_moments_grad4",
                     "global_batched_cached_active_moments_grad4_native",
+                    "global_batched_cached_active_moments_grad4_native_rectangular2048",
                 )
                 else native.hybrid_parameter_grad
             )
@@ -805,6 +810,7 @@ def checked_radius_linear(plan, x, atoms, *, recipe):
             "block_local_cached_parallel": 2,
             "block_local_batched_cached_parallel": 3,
             "global_batched_cached_active_moments_grad4_native": 5,
+            "global_batched_cached_active_moments_grad4_native_rectangular2048": 5,
             "global_owner_response_coefficients": 6,
             "global_owner_response_derivatives": 7,
         }[recipe.schedule],
@@ -901,6 +907,7 @@ def radius_linear(plan, x, atoms, *, recipe=None):
         "global_batched_cached_active_moments",
         "global_batched_cached_active_moments_grad4",
         "global_batched_cached_active_moments_grad4_native",
+        "global_batched_cached_active_moments_grad4_native_rectangular2048",
     ):
         from .expansion_layout import batched_coefficient_layout
 
@@ -920,7 +927,11 @@ def radius_linear(plan, x, atoms, *, recipe=None):
         if torch.cuda.is_current_stream_capturing():
             raise ValueError("radius baseline uses eager preparation, not CUDA Graphs")
         if (
-            recipe.schedule == "global_batched_cached_active_moments_grad4_native"
+            recipe.schedule
+            in (
+                "global_batched_cached_active_moments_grad4_native",
+                "global_batched_cached_active_moments_grad4_native_rectangular2048",
+            )
             and recipe.native_autograd
             and type(x) in (torch.Tensor, torch.nn.Parameter)
             and type(atoms) in (torch.Tensor, torch.nn.Parameter)
@@ -969,6 +980,7 @@ def radius_linear(plan, x, atoms, *, recipe=None):
                         "block_local_cached_parallel": 2,
                         "block_local_batched_cached_parallel": 3,
                         "global_batched_cached_active_moments_grad4_native": 5,
+                        "global_batched_cached_active_moments_grad4_native_rectangular2048": 5,
                     }[recipe.schedule],
                 )
             function = _BlockLocalRadiusLinear
@@ -984,6 +996,7 @@ def radius_linear(plan, x, atoms, *, recipe=None):
                 "global_batched_cached_active_moments",
                 "global_batched_cached_active_moments_grad4",
                 "global_batched_cached_active_moments_grad4_native",
+                "global_batched_cached_active_moments_grad4_native_rectangular2048",
             )
         ):
             function = _HybridRadiusLinear
