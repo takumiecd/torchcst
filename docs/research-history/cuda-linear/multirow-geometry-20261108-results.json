@@ -1,0 +1,333 @@
+{
+  "schema_version": 1,
+  "status": "completed_research_only",
+  "numeric_commit": "4f4a446124bd68fc2683ccac16e3131ae54aed9f",
+  "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+  "torch": "2.6.0+cu126",
+  "cuda": "12.6",
+  "comparison": {
+    "state": "passed",
+    "rows": {
+      "A-8192-saved": {
+        "width": 8192,
+        "rows": 256,
+        "atoms": 65536,
+        "order": "A",
+        "arm": "saved",
+        "median_ms": 50.75341649353504,
+        "peak_allocated_bytes": 498871808,
+        "peak_reserved_bytes": 536870912,
+        "setup_seconds_including_initial_proof": 24.02529652416706,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "cbb9260ad6cce9c09c9286ff284212a73226564d45523ccea6844008e5d96fa8"
+      },
+      "A-8192-geometry": {
+        "width": 8192,
+        "rows": 256,
+        "atoms": 65536,
+        "order": "A",
+        "arm": "geometry",
+        "median_ms": 46.03978060185909,
+        "peak_allocated_bytes": 498871808,
+        "peak_reserved_bytes": 557842432,
+        "setup_seconds_including_initial_proof": 23.818315282464027,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "6d298a6a12c959254a9a6a4e5e071bb569f3650d0addf92729edafb6eb599813"
+      },
+      "A-8192-stream64": {
+        "width": 8192,
+        "rows": 256,
+        "atoms": 65536,
+        "order": "A",
+        "arm": "stream64",
+        "median_ms": 58.59554558992386,
+        "peak_allocated_bytes": 184036864,
+        "peak_reserved_bytes": 216006656,
+        "setup_seconds_including_initial_proof": 25.01440294459462,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "ef6f1c05f0e75fb5b250975ad407022eca9d82d9103abbfca618f4e3355c4be2"
+      },
+      "A-8192-dense": {
+        "width": 8192,
+        "rows": 256,
+        "atoms": 65536,
+        "order": "A",
+        "arm": "dense",
+        "median_ms": 17.845263704657555,
+        "peak_allocated_bytes": 1132725760,
+        "peak_reserved_bytes": 1180696576,
+        "setup_seconds_including_initial_proof": 11.198690051212907,
+        "initial_dense_weight_sha256": "87ce78ed0db628aea0779a47df3798caf7a09f976a4c22d03327c2f35f488e0e",
+        "source_result_sha256": "6407e0876ae11a306f4a92f9195c20ad4f046b7259496791cfa5a494b7a93473"
+      },
+      "B-8192-saved": {
+        "width": 8192,
+        "rows": 256,
+        "atoms": 65536,
+        "order": "B",
+        "arm": "saved",
+        "median_ms": 50.75372755527496,
+        "peak_allocated_bytes": 498871808,
+        "peak_reserved_bytes": 536870912,
+        "setup_seconds_including_initial_proof": 24.05375356413424,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "edcada8a9fc973f3100edb1362522fff581830e7032631080732d2599c77f962"
+      },
+      "B-8192-geometry": {
+        "width": 8192,
+        "rows": 256,
+        "atoms": 65536,
+        "order": "B",
+        "arm": "geometry",
+        "median_ms": 46.064844354987144,
+        "peak_allocated_bytes": 498871808,
+        "peak_reserved_bytes": 557842432,
+        "setup_seconds_including_initial_proof": 23.731015054509044,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "2e0cd8f4221d37f375446d61a4ac085311a1b4c74b944ae9b869b948eeccbb19"
+      },
+      "B-8192-stream64": {
+        "width": 8192,
+        "rows": 256,
+        "atoms": 65536,
+        "order": "B",
+        "arm": "stream64",
+        "median_ms": 58.56638215482235,
+        "peak_allocated_bytes": 184036864,
+        "peak_reserved_bytes": 216006656,
+        "setup_seconds_including_initial_proof": 23.88537378795445,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "b692b575acdc7b4be0c207ca7ee369820e973b3353b9d52f848ce938904a89d6"
+      },
+      "B-8192-dense": {
+        "width": 8192,
+        "rows": 256,
+        "atoms": 65536,
+        "order": "B",
+        "arm": "dense",
+        "median_ms": 17.849283292889595,
+        "peak_allocated_bytes": 1132725760,
+        "peak_reserved_bytes": 1180696576,
+        "setup_seconds_including_initial_proof": 11.692904176190495,
+        "initial_dense_weight_sha256": "87ce78ed0db628aea0779a47df3798caf7a09f976a4c22d03327c2f35f488e0e",
+        "source_result_sha256": "52861ef51c0e3688973cfed93c76b07b71d8383a0b8ebd2f5c9f0b35d3735fee"
+      },
+      "A-16384-saved": {
+        "width": 16384,
+        "rows": 256,
+        "atoms": 131072,
+        "order": "A",
+        "arm": "saved",
+        "median_ms": 102.15169191360474,
+        "peak_allocated_bytes": 997731840,
+        "peak_reserved_bytes": 1090519040,
+        "setup_seconds_including_initial_proof": 89.94633722677827,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "c28d37fc7fb01f04f30b0d766da822afdab5fc044df0011dcbf7f76a222d262e"
+      },
+      "A-16384-geometry": {
+        "width": 16384,
+        "rows": 256,
+        "atoms": 131072,
+        "order": "A",
+        "arm": "geometry",
+        "median_ms": 93.5658048838377,
+        "peak_allocated_bytes": 997731840,
+        "peak_reserved_bytes": 1107296256,
+        "setup_seconds_including_initial_proof": 91.07100825943053,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "ae0655685aa65025c6410d25ffde9b9286e004f59a9dd9bb8649137c9acd98f9"
+      },
+      "A-16384-stream64": {
+        "width": 16384,
+        "rows": 256,
+        "atoms": 131072,
+        "order": "A",
+        "arm": "stream64",
+        "median_ms": 118.15551295876503,
+        "peak_allocated_bytes": 368061952,
+        "peak_reserved_bytes": 415236096,
+        "setup_seconds_including_initial_proof": 91.69020678848028,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "37545a92e43ed8c2b3b277a3812089380065d91438d90e3d72787212ced7a504"
+      },
+      "A-16384-dense": {
+        "width": 16384,
+        "rows": 256,
+        "atoms": 131072,
+        "order": "A",
+        "arm": "dense",
+        "median_ms": 68.27008910477161,
+        "peak_allocated_bytes": 4395894272,
+        "peak_reserved_bytes": 4452253696,
+        "setup_seconds_including_initial_proof": 24.296237409114838,
+        "initial_dense_weight_sha256": "a1bfc2bfd45a6ffb02603e5f1bd6bf0220667356bb442c5efbc9ebb20c02eb12",
+        "source_result_sha256": "f00a85bf7365dad6e2f4ad5afcd7ea471214a124f95b5df84e101a562d574181"
+      },
+      "B-16384-saved": {
+        "width": 16384,
+        "rows": 256,
+        "atoms": 131072,
+        "order": "B",
+        "arm": "saved",
+        "median_ms": 102.17359662055969,
+        "peak_allocated_bytes": 997731840,
+        "peak_reserved_bytes": 1090519040,
+        "setup_seconds_including_initial_proof": 87.93671160377562,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "5a528b528fe19204571c0a7dde8a92f2de38b0cd3b3aa36fca391e2d4aa41cdc"
+      },
+      "B-16384-geometry": {
+        "width": 16384,
+        "rows": 256,
+        "atoms": 131072,
+        "order": "B",
+        "arm": "geometry",
+        "median_ms": 93.50355342030525,
+        "peak_allocated_bytes": 997731840,
+        "peak_reserved_bytes": 1107296256,
+        "setup_seconds_including_initial_proof": 88.91608297266066,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "651bfdddc4764db461af07d59637171c2271ccf6caf58259ca906742958fc3bc"
+      },
+      "B-16384-stream64": {
+        "width": 16384,
+        "rows": 256,
+        "atoms": 131072,
+        "order": "B",
+        "arm": "stream64",
+        "median_ms": 118.01940016448498,
+        "peak_allocated_bytes": 368061952,
+        "peak_reserved_bytes": 415236096,
+        "setup_seconds_including_initial_proof": 90.16998169012368,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "a3f5ba1df2252dc657d5646c672531a9380af5b9183fd3a7b798352d4330fd1d"
+      },
+      "B-16384-dense": {
+        "width": 16384,
+        "rows": 256,
+        "atoms": 131072,
+        "order": "B",
+        "arm": "dense",
+        "median_ms": 68.27970966696739,
+        "peak_allocated_bytes": 4395894272,
+        "peak_reserved_bytes": 4452253696,
+        "setup_seconds_including_initial_proof": 24.10655551403761,
+        "initial_dense_weight_sha256": "a1bfc2bfd45a6ffb02603e5f1bd6bf0220667356bb442c5efbc9ebb20c02eb12",
+        "source_result_sha256": "7108d0230c3877d893f164055b6094b57a03574566f09ea0eb39b9f9aefa3946"
+      }
+    },
+    "candidate_over_saved": {
+      "8192": {
+        "A": {
+          "geometry": {
+            "median_ms": 0.9071267272760569,
+            "peak_allocated_bytes": 1.0,
+            "peak_reserved_bytes": 1.0390625
+          },
+          "stream64": {
+            "median_ms": 1.154514309344825,
+            "peak_allocated_bytes": 0.36890612187089156,
+            "peak_reserved_bytes": 0.40234375
+          }
+        },
+        "B": {
+          "geometry": {
+            "median_ms": 0.9076149984219141,
+            "peak_allocated_bytes": 1.0,
+            "peak_reserved_bytes": 1.0390625
+          },
+          "stream64": {
+            "median_ms": 1.153932626742317,
+            "peak_allocated_bytes": 0.36890612187089156,
+            "peak_reserved_bytes": 0.40234375
+          }
+        }
+      },
+      "16384": {
+        "A": {
+          "geometry": {
+            "median_ms": 0.9159496346176176,
+            "peak_allocated_bytes": 1.0,
+            "peak_reserved_bytes": 1.0153846153846153
+          },
+          "stream64": {
+            "median_ms": 1.1566672146624415,
+            "peak_allocated_bytes": 0.36889867321463854,
+            "peak_reserved_bytes": 0.38076923076923075
+          }
+        },
+        "B": {
+          "geometry": {
+            "median_ms": 0.9151439952490639,
+            "peak_allocated_bytes": 1.0,
+            "peak_reserved_bytes": 1.0153846153846153
+          },
+          "stream64": {
+            "median_ms": 1.1550870681666572,
+            "peak_allocated_bytes": 0.36889867321463854,
+            "peak_reserved_bytes": 0.38076923076923075
+          }
+        }
+      }
+    },
+    "same_kind_final_state_hashes_exact": {
+      "8192": {
+        "saved": true,
+        "geometry": true,
+        "stream64": true,
+        "dense": true
+      },
+      "16384": {
+        "saved": true,
+        "geometry": true,
+        "stream64": true,
+        "dense": true
+      }
+    },
+    "candidate_saved_final_state_hashes_exact": {
+      "8192": {
+        "A": {
+          "geometry": true,
+          "stream64": true
+        },
+        "B": {
+          "geometry": true,
+          "stream64": true
+        }
+      },
+      "16384": {
+        "A": {
+          "geometry": true,
+          "stream64": true
+        },
+        "B": {
+          "geometry": true,
+          "stream64": true
+        }
+      }
+    },
+    "scope": "Isolated Linear,R256,A8N,61 complete steps per process; no LM quality claim"
+  },
+  "evidence_verification": {
+    "state": "passed",
+    "archive_sha256": "4ff5c8d53caeebacb5e3e7a46dee7e9c341536f27bd4ddc11fc0cd3b72a24b57",
+    "verified_files": 52,
+    "all_owned_pids_inactive": true
+  },
+  "regression_tests_passed": 171,
+  "protocol": "multirow-geometry-20261108.md",
+  "limitations": [
+    "Isolated square Linear,R256,A8N,FP32 IEEE/TF32 off; not a whole LM or a convergence/quality result.",
+    "Two orders on one A100 MIG allocation; no hardware replication.",
+    "All61 steps enter allocator peaks,51 complete synchronized primary samples. Setup/CPU proofs/export/compilation are outside the step timer.",
+    "Allocator allocated/reserved, not total process GPU memory.",
+    "Actual initial tensor payloads restored in parent study; final state hashes only. No archived raw oracle tensors.",
+    "No public/default selector adoption, Graph, other GPU or dtype claim."
+  ],
+  "renderer_sha256": "609d87477b36605592e6389a9f47df0fff1065e662eab6141e9e8a7ffffa66d7",
+  "figures": {
+    "assets/multirow-geometry-20261108/performance.svg": "7fe9984fcbf79e0909af161e4bae643ce42c271e28ffd773e3fe476e7febd7dd",
+    "assets/multirow-geometry-20261108/performance.png": "e9559e3b75fcfbf3a9887562b990dbc63931bcba56b7c082ee08586ab7ae0260"
+  }
+}

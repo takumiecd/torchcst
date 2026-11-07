@@ -231,8 +231,9 @@
     "Actual initial tensor payloads restored in parent study; final state hashes only. No archived raw oracle tensors.",
     "No public/default selector adoption, Graph, other GPU or dtype claim."
   ],
+  "renderer_sha256": "609d87477b36605592e6389a9f47df0fff1065e662eab6141e9e8a7ffffa66d7",
   "figures": {
-    "assets/large-recompute-20261108/performance.svg": "1a6641d4bfa0eec843bef22a3c077865ad1a1bc2aee1bef2354283a498fabae2",
-    "assets/large-recompute-20261108/performance.png": "5aded9524387e3be943e71b7e85e6771cdf8a555a4a698e301729fee9e53eb38"
+    "assets/large-recompute-20261108/performance.svg": "e5efee01f2104146445d6c27e9000c403a3e848961df40975f289e88ce44b2e3",
+    "assets/large-recompute-20261108/performance.png": "5788dc0fc39af85bd659355f3db22a91d56ee04e7a1384a49354129e9507a073"
   }
 }
