@@ -80,6 +80,24 @@ class RadiusLargeGeometryAlgorithm(RadiusLargePackedAlgorithm):
         return True
 
 
+@dataclass(frozen=True)
+class RadiusLargeStream64Algorithm(RadiusLargeGeometryAlgorithm):
+    id: str = "cuda_radius_large_multirow_stream64"
+
+    @property
+    def recompute(self):
+        return True
+
+    @property
+    def stream_rows(self):
+        return 64
+
+
+LARGE_STREAM64 = ExecutionPlan(
+    RadiusLargeStream64Algorithm().id, "v1", PACKED_RECOMPUTE.recipe
+)
+
+
 LARGE_GEOMETRY = ExecutionPlan(
     RadiusLargeGeometryAlgorithm().id, "v1", GLOBAL_ACTIVE_GRAD4_NATIVE.recipe
 )

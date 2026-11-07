@@ -172,3 +172,5 @@ void bind_host_autograd(pybind11::module_ &module) {
 
 #include "host_owner_window_fp32.cuh"
 #include "host_packed_rows.cuh"
+
+#include "host_packed_stream.cuh"

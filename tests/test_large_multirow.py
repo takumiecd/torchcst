@@ -16,10 +16,12 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.algorithm import
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.large_multirow import (
     LARGE_PACKED,
     LARGE_GEOMETRY,
+    LARGE_STREAM64,
     LARGE_RECOMPUTE,
     LARGE_ROW8,
     RadiusLargePackedAlgorithm,
     RadiusLargeGeometryAlgorithm,
+    RadiusLargeStream64Algorithm,
     RadiusLargeRecomputeAlgorithm,
     RadiusLargeRow8Algorithm,
 )
@@ -32,6 +34,7 @@ CASES = [
     (RadiusLargeRow8Algorithm, LARGE_ROW8),
     (RadiusLargePackedAlgorithm, LARGE_PACKED),
     (RadiusLargeGeometryAlgorithm, LARGE_GEOMETRY),
+    (RadiusLargeStream64Algorithm, LARGE_STREAM64),
     (RadiusLargeRecomputeAlgorithm, LARGE_RECOMPUTE),
 ]
 
@@ -99,7 +102,7 @@ GPU = pytest.mark.skipif(not torch.cuda.is_available(), reason="actual CUDA requ
 
 @GPU
 @pytest.mark.parametrize("n", [2048, 8192, 16384])
-@pytest.mark.parametrize("rows", [1, 9, 256])
+@pytest.mark.parametrize("rows", [1, 9, 65, 256])
 def test_cuda_large_vjps_match_row8_and_high_keys(n, rows):
     # Small A is an indexing/geometry gate; full A=8N is independently checked by runner.
     from torchcst import ChebyshevSpec, RadiusBounds, chart_presets, kernels
@@ -169,7 +172,10 @@ def test_multirow_case_snapshot_and_linear_atom_count(n):
 
 @GPU
 @pytest.mark.parametrize("freeze", [None, "input", "atoms"])
-def test_cached_geometry_preserves_autograd_lifetime_and_gradient_branches(freeze):
+@pytest.mark.parametrize("candidate", [LARGE_GEOMETRY, LARGE_STREAM64])
+def test_cached_geometry_preserves_autograd_lifetime_and_gradient_branches(
+    freeze, candidate
+):
     from test_radius_packed import fixture
 
     torch.manual_seed(174)
@@ -177,7 +183,7 @@ def test_cached_geometry_preserves_autograd_lifetime_and_gradient_branches(freez
     x = torch.randn(2048, 9, device="cuda").T  # non-contiguous input
     dy = torch.randn(9, 2048, device="cuda")
     values = []
-    for plan in [LARGE_PACKED, LARGE_GEOMETRY]:
+    for plan in [LARGE_PACKED, candidate]:
         model = copy.deepcopy(base).cuda()
         model.atoms.p.requires_grad_(freeze != "atoms")
         model.selector = FixedSelector(plan, registry=REGISTRY)
@@ -195,9 +201,11 @@ def test_cached_geometry_preserves_autograd_lifetime_and_gradient_branches(freez
         again = torch.autograd.grad(y, targets, dy, retain_graph=True)
         for a, b in zip(gradients, again):
             torch.testing.assert_close(a, b, atol=0, rtol=0)
-        if plan == LARGE_GEOMETRY:
+        if plan == candidate:
             assert ((4096, 25), torch.float32) in saved
             assert all(dtype != torch.float64 for _, dtype in saved)
+            if candidate == LARGE_STREAM64:
+                assert not any(shape == (9, 4096) for shape, _ in saved)
         values.append((y, *gradients))
         y = model(xx)  # version checking without hooks
         with torch.no_grad():

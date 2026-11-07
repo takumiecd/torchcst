@@ -23,10 +23,23 @@ dense W/dWはない。追加forward保持は100A byte（N8192/16384で6.25/12.5M
 
 R256/N8192/16384/A8Nで幅比較の凍結初期値・データを使う。既存workerのwarmup10＋
 計測51の同期した完全step、allocatorピークは全61更新。fresh processで両順序：
-Aは8192→16384、保存→geometry→Dense、Bは16384→8192、Dense→geometry→保存。
+Aは8192→16384、保存→geometry→stream64→Dense、Bは16384→8192、Dense→stream64→geometry→保存。
 演算・勾配・Adam・Parameter基準と初期・更新後全VJPを維持。失敗を残し、基準違反・
 OOM・非有限・timeoutで停止。独立source/buildを使い、GPU実験は同時実行しない。
 同条件の両順序の最終hashを確認し、geometryと保存のbyte一致は、事前計算による
 コンパイラの丸め差もあり得るため仮定せず記録する。公開・既定採用は別の判断とする。
 
 これは計測前の仮説とprotocolであり、高速化の完了結果ではない。
+
+## 窓単位の再計算候補（GPU計測前に固定）
+
+`cuda_radius_large_multirow_stream64`はx/P・owner key・同じgeometry tableのみ保持する。
+forwardは64行ずつYへ出力し、backwardは64行ずつmomentと応答を再生成する。
+ceil(R/8)×A×3のFP32勾配partial全体を保持し、最後に従来と同じ8行group順で一度だけ
+reduceする。窓ごとにreduceしたdPを足す方式にはしない（加算順が変わるため）。
+両向きの処理・forward射影の再計算・Y/dXへの窓コピーは完全stepの計時に含む。
+R256ではZ/H/G作業領域が256行分から64行分になるが、全x/Y/dXとpartial tableは残る。
+Atom数・Parameter・更新状態・batch lossの尺度は変更しない。R1/9/256に加えてR65、
+両候補の片側勾配・retain backward・version検査を確認する。両候補をN2048で検証してから、
+大規模16観測を実施する。保存・geometry・streamの最終hash一致は仮定せず記録する。
+公開checkpoint APIや既定値の採用ではない。

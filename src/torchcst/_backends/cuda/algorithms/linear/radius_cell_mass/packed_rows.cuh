@@ -208,4 +208,36 @@ Tensor packed_parameter_grad(Tensor p, Tensor x, Tensor dy, Tensor zx, Tensor zy
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return grad;
 }
+
+void packed_gradient_partial_into(Tensor p, Tensor x, Tensor dy, Tensor zx, Tensor zy,
+    Tensor h, Tensor g, Tensor geometry, Tensor partial, int64_t first_group,
+    Config ci, Config co) {
+    c10::cuda::CUDAGuard guard(p.device());
+    Axis ai = parse_axis(ci), ao = parse_axis(co);
+    int groups = (x.size(0) + 7) / 8;
+    packed_check_tensor(zx, x, {x.size(0), ai.node_count - checked_start(ai, 2), ai.basis_count()});
+    packed_check_tensor(zy, x, {x.size(0), ao.node_count - checked_start(ao, 2), ao.basis_count()});
+    packed_check_tensor(h, x, {x.size(0), p.size(0)});
+    packed_check_tensor(g, x, {x.size(0), p.size(0)});
+    packed_check_tensor(geometry, x, {p.size(0), PACKED_GEOMETRY_FIELDS});
+    TORCH_CHECK(partial.defined() && partial.dim() == 3 && partial.size(0) >= first_group + groups && first_group >= 0,
+        "invalid streamed partial range");
+    packed_check_tensor(partial, x, {partial.size(0), p.size(0), 3});
+    dim3 grid((p.size(0) + 31) / 32, groups);
+    packed_gradient_groups<<<grid, 32, 0, at::cuda::getCurrentCUDAStream()>>>(
+        x.data_ptr<float>(), dy.data_ptr<float>(), zx.data_ptr<float>(), zy.data_ptr<float>(),
+        h.data_ptr<float>(), g.data_ptr<float>(), geometry.data_ptr<float>(),
+        partial.data_ptr<float>() + first_group * p.size(0) * 3, p.size(0), x.size(0), ai, ao);
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+}
+Tensor packed_finish_gradient(Tensor p, Tensor partial, Config ci) {
+    c10::cuda::CUDAGuard guard(p.device());
+    TORCH_CHECK(partial.defined() && partial.dim() == 3 && partial.size(0) >= 1 && partial.size(0) <= 32,
+        "invalid streamed partial groups");
+    packed_check_tensor(partial, p, {partial.size(0), p.size(0), 3});
+    auto gradient = torch::empty_like(p);
+    packed_gradient_reduce<<<(p.size(0) + 127) / 128, 128, 0, at::cuda::getCurrentCUDAStream()>>>(
+        p.data_ptr<float>(), partial.data_ptr<float>(), gradient.data_ptr<float>(), p.size(0), partial.size(0), parse_axis(ci));
+    C10_CUDA_KERNEL_LAUNCH_CHECK(); return gradient;
+}
 } // namespace radius_cell_mass

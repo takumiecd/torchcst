@@ -29,7 +29,7 @@ CPU FP64/independent quadrature and matched-state gates before performance.
 Use R256/N8192/16384/A8N and exactly the frozen width-study initialization and
 data. Existing worker loops:10 warmup+51 timed complete synchronized steps;
 allocator peaks include all61. Fresh processes, two reversed width/arm orders:
-A8192→16384, saved→geometry→Dense; B16384→8192, Dense→geometry→saved. Keep all
+A8192→16384, saved→geometry→stream64→Dense; B16384→8192, Dense→stream64→geometry→saved. Keep all
 operator/gradient/Adam/Parameter tolerances and initial/updated full VJP checks.
 Preserve failures; stop on any gate/OOM/nonfinite/timeout. Fresh source/build,
 no concurrent GPU experiments. Compare same-kind final hashes across orders;
@@ -37,3 +37,19 @@ geometry-vs-saved byte equality is recorded, not assumed, since precomputing
 can change compiler rounding. Public/default adoption remains a separate step.
 
 This is a premeasurement hypothesis and protocol, not a speedup result.
+
+## Windowed recomputation candidate (fixed before GPU measurement)
+
+`cuda_radius_large_multirow_stream64` retains only x/P, owner keys and the same
+geometry table. Forward emits64-row windows into Y; backward regenerates moments
+and responses in64-row windows. It retains all ceil(R/8)×A×3 FP32 gradient partials
+until one final reduction in exactly the original eight-row-group order. Thus
+it does not sum independently reduced per-window dP (which would change order).
+The unchanged two orientation passes and forward projection recomputation run
+inside the synchronized complete-step clock; Y/dX window copies also count.
+At R256 the Z/H/G scratch scales with64 rather than256 rows. Full x/Y/dX and the
+partial table remain. No change to Atom count, Parameters, update state or batch
+loss scaling. Check R65 as well as R1/9/256, and both gradient branches/retained
+backward/version checks for both new candidates. Qualify N2048 for both before
+all16 large observations. Record saved-vs-geometry-vs-stream final hash equality
+without assuming it. This is not a public checkpointing API or an adopted default.
