@@ -225,3 +225,24 @@ def test_cached_geometry_preserves_autograd_lifetime_and_gradient_branches(
             torch.autograd.grad(y, targets, dy)
     for a, b in zip(*values):
         torch.testing.assert_close(a, b, atol=3e-5, rtol=3e-4)
+
+
+@GPU
+@pytest.mark.parametrize(
+    "plan", [LARGE_GEOMETRY, LARGE_STREAM64, LARGE_LEVELS, LARGE_LEVELS_STREAM64]
+)
+def test_geometry_hook_bad_shape_is_rejected_before_native_use(plan):
+    from test_radius_packed import fixture
+
+    model = fixture(2048, 2048).cuda()
+    model.selector = FixedSelector(plan, registry=REGISTRY)
+    x = torch.randn(9, 2048, device="cuda", requires_grad=True)
+
+    def pack(t):
+        return t[:, :24].contiguous() if t.shape == (4096, 25) else t
+
+    with torch.autograd.graph.saved_tensors_hooks(pack, lambda t: t):
+        y = model(x)
+    with pytest.raises(RuntimeError, match="invalid packed saved tensor"):
+        torch.autograd.grad(y.sum(), (x, model.atoms.p))
+    torch.cuda.synchronize()

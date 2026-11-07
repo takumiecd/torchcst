@@ -35,6 +35,7 @@ public:
             auto x = saved[0], p = saved[1], dy = gradients[0].contiguous();
             auto ci = ctx->saved_data["input"].toDoubleVector(), co = ctx->saved_data["output"].toDoubleVector();
             packed_check_scope(x, p, ci, co);
+            if (saved[5].defined()) packed_check_tensor(saved[5], p, {p.size(0), 25});
             TORCH_CHECK(dy.device() == x.device() && dy.scalar_type() == x.scalar_type() &&
                 dy.dim() == 2 && dy.size(0) == x.size(0) && dy.size(1) == int(co[0]), "invalid packed dY");
             bool levels = ctx->saved_data["levels"].toBool();
