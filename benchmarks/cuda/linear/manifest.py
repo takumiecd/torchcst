@@ -15,6 +15,9 @@ from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip import
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.algorithm import (
     RadiusCellMassAlgorithm,
 )
+from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.row8 import (
+    RadiusRow8Algorithm,
+)
 from torchcst._backends.registry import Registry
 from torchcst._backends.schema import ExecutionPlan
 from torchcst._backends.serialization import decode_json
@@ -27,6 +30,7 @@ from torchcst._backends.torch.algorithms.linear.normalized_radial.layout import 
 # This catalog is benchmark-local. Production registration/selection is unchanged.
 REGISTRY = Registry()
 REGISTRY.register(RadiusCellMassAlgorithm())
+REGISTRY.register(RadiusRow8Algorithm())
 REGISTRY.register(FactoredAlgorithm())
 REGISTRY.register(NormalizedFullAlgorithm())
 REGISTRY.register(NormalizedWindowAlgorithm())

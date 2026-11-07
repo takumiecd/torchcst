@@ -1,7 +1,12 @@
 #pragma once
 // Included after hybrid.cuh's scalar projection helpers.
 namespace radius_cell_mass {
-constexpr int PARAMETER_BATCH = 4;
+#ifndef RADIUS_ROW_BATCH
+#define RADIUS_ROW_BATCH 4
+#endif
+static_assert(RADIUS_ROW_BATCH == 4 || RADIUS_ROW_BATCH == 8,
+    "only explicit row4 and row8 builds are qualified candidates");
+constexpr int PARAMETER_BATCH = RADIUS_ROW_BATCH;
 
 // Empty specializations ensure Polar allocates no radius-derivative scratch.
 template<bool LearnRadius> struct RadiusScalar {};
@@ -13,7 +18,8 @@ template<> struct RadiusRows<true> {
     double input[PARAMETER_BATCH] = {}, output[PARAMETER_BATCH] = {};
 };
 
-// Four independent contractions share each tile phase. For each individual
+// A row group shares each tile phase (four normally; eight in the opt-in build).
+// For each individual
 // row, part/harmonic order and the FP64 expressions match compact_project.
 template<bool LearnRadius>
 __device__ inline void compact_derivatives_batch4(

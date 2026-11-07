@@ -19,21 +19,25 @@ from .plan import MAX_ATOMS, SHARED_MAX_ATOMS, SHARED_MAX_SITES, HierarchyPlan
 from .recipe import RadiusCellMassRecipe
 
 
-@lru_cache(maxsize=1)
-def _extension():
+@lru_cache(maxsize=2)
+def _extension(row_batch=4):
     """Compile only this radius implementation; never load the sigma binary."""
     from torch.utils.cpp_extension import load
 
+    if type(row_batch) is not int or row_batch not in (4, 8):
+        raise ValueError("radius row batch must be 4 or 8")
     directory = Path(__file__).parent
     source = directory / "pipeline.cu"
     host = directory / "host_autograd.cpp"
     sources = [source, host, *sorted(directory.glob("*.cuh"))]
     digest = hashlib.sha256(b"".join(p.read_bytes() for p in sources)).hexdigest()[:12]
+    suffix = "" if row_batch == 4 else "_row8"
+    flags = [] if row_batch == 4 else ["-DRADIUS_ROW_BATCH=8"]
     return load(
-        name=f"torchcst_radius_cell_mass_{digest}",
+        name=f"torchcst_radius_cell_mass_{digest}{suffix}",
         sources=[str(source), str(host)],
         extra_cflags=["-O2"],
-        extra_cuda_cflags=["-O2", "--ftz=false"],
+        extra_cuda_cflags=["-O2", "--ftz=false", *flags],
         verbose=False,
     )
 
@@ -737,7 +741,7 @@ def checked_owner_compact_linear(plan, x, atoms, *, recipe):
     )
 
 
-def checked_radius_linear(plan, x, atoms, *, recipe):
+def checked_radius_linear(plan, x, atoms, *, recipe, _row_batch=4):
     """Internal native entrance with fresh C++ validation, never a trusted skip.
 
     Dispatcher/Algorithm input, recipe and live-setting checks still run. The
@@ -746,6 +750,15 @@ def checked_radius_linear(plan, x, atoms, *, recipe):
     Tensor/function transforms retain the original Python Function entrance.
     """
     RadiusCellMassAlgorithm().validate_recipe(recipe)
+    if type(_row_batch) is not int or _row_batch not in (4, 8):
+        raise ValueError("radius row batch must be 4 or 8")
+    if (
+        _row_batch == 8
+        and recipe.schedule != "global_batched_cached_active_moments_grad4_native"
+    ):
+        raise ValueError(
+            "row8 requires the explicit global-native active-moment schedule"
+        )
     if recipe.schedule in (
         "global_owner_compact_keyed",
         "global_owner_compact_fused",
@@ -795,7 +808,8 @@ def checked_radius_linear(plan, x, atoms, *, recipe):
                 native_autograd=False,
             )
         return radius_linear(plan, x, atoms, recipe=fallback)
-    return _extension().checked_autograd_linear(
+    extension = _extension() if _row_batch == 4 else _extension(8)
+    return extension.checked_autograd_linear(
         x.contiguous(),
         atoms.contiguous(),
         plan.input.native_config(),

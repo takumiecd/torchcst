@@ -2,7 +2,12 @@
 #include "cached_coefficients.cuh"
 
 namespace radius_cell_mass {
-constexpr int EXPANSION_BATCH = 4;
+#ifndef RADIUS_ROW_BATCH
+#define RADIUS_ROW_BATCH 4
+#endif
+static_assert(RADIUS_ROW_BATCH == 4 || RADIUS_ROW_BATCH == 8,
+    "only explicit row4 and row8 builds are qualified candidates");
+constexpr int EXPANSION_BATCH = RADIUS_ROW_BATCH;
 
 struct BatchedCoefficientLayout {
     int capacity, warps, destinations;
@@ -38,7 +43,7 @@ inline BatchedCoefficientLayout batched_coefficient_layout(Axis axis, int start,
 }
 
 // One warp owns one destination node. Generate its unscaled Fourier columns
-// once, then each feature lane contracts the same columns with four H rows.
+// once, then each feature lane contracts the same columns with a group of H rows.
 __device__ inline void batched_coefficient_tile(
     const double *cache, const int *first_tiles, const int64_t *offsets,
     double *out, double *columns, int64_t chunk, int retained, int node,
