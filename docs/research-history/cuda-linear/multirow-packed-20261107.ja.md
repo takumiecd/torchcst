@@ -158,3 +158,12 @@ oracleを再計算したとは主張しない。postflightで所有controller/ch
 source不変、build binary hashを確認した。binary hashはpostflightのbuild原本で、
 process別のloaded library採取記録ではない。4090・pool job・他serverは変更していない。
 GPU専用fixture変更前のlocal CPU一式は2163pass/2547skipで、GPU検証は上記と区別する。
+
+## 大きな幅での続報
+
+別の実験記録：[R256での幅比較](large-multirow-20261107.ja.md)、
+[行数だけを変えた対照比較](multirow-batch-20261108.ja.md)、
+[大きな幅での再計算](large-recompute-20261108.ja.md)、
+[geometry再利用・窓単位再計算](multirow-geometry-20261108.ja.md)。
+本記録は小型LM全体の更新を計時し、続報は正方Linear単独を計時する。
+時計と仕事の範囲を混同しない。

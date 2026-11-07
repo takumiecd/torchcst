@@ -186,3 +186,12 @@ Those binary hashes are postflight build records, not per-process loaded-library
 captures. No 4090, pool jobs or unrelated servers were changed. The local CPU
 suite before GPU-only fixture changes passed 2,163 tests with 2,547 skips; GPU
 qualification is recorded separately above.
+
+## Large-width follow-up
+
+See the separate [R256 width comparison](large-multirow-20261107.md),
+[controlled row-count comparison](multirow-batch-20261108.md),
+[large-width recomputation](large-recompute-20261108.md) and
+[geometry reuse/windowed recomputation](multirow-geometry-20261108.md).
+The first study here times whole small-LM updates; those follow-ups time an
+isolated square Linear. Their clocks and workload scopes must remain separate.
