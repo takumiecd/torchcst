@@ -167,3 +167,6 @@ GPU専用fixture変更前のlocal CPU一式は2163pass/2547skipで、GPU検証�
 [geometry再利用・窓単位再計算](multirow-geometry-20261108.ja.md)。
 本記録は小型LM全体の更新を計時し、続報は正方Linear単独を計時する。
 時計と仕事の範囲を混同しない。
+
+完了した[階層別moment・窓単位再計算の比較](multirow-levels-20261108.ja.md)に、
+両方の改善と最終sourceの検証を記録した。

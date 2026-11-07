@@ -195,3 +195,6 @@ See the separate [R256 width comparison](large-multirow-20261107.md),
 [geometry reuse/windowed recomputation](multirow-geometry-20261108.md).
 The first study here times whole small-LM updates; those follow-ups time an
 isolated square Linear. Their clocks and workload scopes must remain separate.
+
+The completed [level-local moment and windowed comparison](multirow-levels-20261108.md)
+combines both mechanisms and records final-source qualification.
