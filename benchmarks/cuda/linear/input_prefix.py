@@ -54,14 +54,14 @@ def main(argv=None):
 
     def metadata(args_, cohort):
         value = original_metadata(args_, cohort)
-        value["input_prefix_policy"] = dict(
-            driver_sha256=driver_hash,
-            input_payload_sha256=digest,
-            frozen_rows=fixed["rows"],
-            selected_rows=cohort.case.rows,
-            load_setup_seconds_before_worker=time.monotonic() - began,
-            semantics="same initialized P, matching leading rows of frozen x/target/dY",
-        )
+        value["input_prefix_policy"] = {
+            "driver_sha256": driver_hash,
+            "input_payload_sha256": digest,
+            "frozen_rows": fixed["rows"],
+            "selected_rows": cohort.case.rows,
+            "load_setup_seconds_before_worker": time.monotonic() - began,
+            "semantics": "same initialized P, matching leading rows of frozen x/target/dY",
+        }
         return value
 
     radius.fixture, run._metadata = fixture, metadata
