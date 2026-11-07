@@ -14,16 +14,16 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.algorithm import
     RadiusCellMassAlgorithm,
 )
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.large_multirow import (
-    LARGE_PACKED,
     LARGE_GEOMETRY,
-    LARGE_STREAM64,
+    LARGE_PACKED,
     LARGE_RECOMPUTE,
     LARGE_ROW8,
-    RadiusLargePackedAlgorithm,
+    LARGE_STREAM64,
     RadiusLargeGeometryAlgorithm,
-    RadiusLargeStream64Algorithm,
+    RadiusLargePackedAlgorithm,
     RadiusLargeRecomputeAlgorithm,
     RadiusLargeRow8Algorithm,
+    RadiusLargeStream64Algorithm,
 )
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plans import (
     GLOBAL_ACTIVE_GRAD4_NATIVE,
@@ -157,7 +157,8 @@ def test_cuda_large_vjps_match_row8_and_high_keys(n, rows):
 @pytest.mark.parametrize("n", [2048, 8192, 16384])
 def test_multirow_case_snapshot_and_linear_atom_count(n):
     from pathlib import Path
-    from benchmarks.cuda.linear.manifest import load_run, decode_snapshot
+
+    from benchmarks.cuda.linear.manifest import decode_snapshot, load_run
 
     root = Path(__file__).resolve().parents[1] / "benchmarks/cuda/linear"
     run = load_run(
@@ -191,7 +192,7 @@ def test_cached_geometry_preserves_autograd_lifetime_and_gradient_branches(
         targets = tuple(t for t in [xx, model.atoms.p] if t.requires_grad)
         saved = []
 
-        def pack(t):
+        def pack(t, saved=saved):
             saved.append((tuple(t.shape), t.dtype))
             return t
 

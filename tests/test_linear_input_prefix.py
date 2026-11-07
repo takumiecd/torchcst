@@ -29,14 +29,14 @@ def test_prefix_orchestration_preserves_p_and_nested_rows_and_restores(
     model = SimpleNamespace(atoms=SimpleNamespace(p=p), initialization_report=report)
     payload = tmp_path / "inputs.pt"
     torch.save(
-        dict(
-            p=p,
-            x=x,
-            target=-x,
-            dy=x + 1,
-            snapshot={"case": asdict(case)},
-            initialization_report=report,
-        ),
+        {
+            "p": p,
+            "x": x,
+            "target": -x,
+            "dy": x + 1,
+            "snapshot": {"case": asdict(case)},
+            "initialization_report": report,
+        },
         payload,
     )
     digest = hashlib.sha256(payload.read_bytes()).hexdigest()
