@@ -125,3 +125,5 @@ checkpoint payloadは含めない。localでoracleを再計算したとは主張
 postflightで所有controller/child16 PIDの終了を確認した。
 binary hashはpostflight.jsonのbuild原本で、各processの実loaded libraryを独立採取した
 記録ではない。4090・pool job・他serverは変更していない。
+
+続報：[多入力FP32化の時間・メモリ比較](multirow-packed-20261107.ja.md)。

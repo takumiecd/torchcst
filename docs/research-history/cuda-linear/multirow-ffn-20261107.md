@@ -140,3 +140,5 @@ claimed. The postflight verified all 16 owned controller/child PIDs inactive.
 Runtime binary hashes are in postflight.json; they describe postflight build
 artifacts, not independently captured per-process loaded-library identities.
 No RTX 4090/pool jobs or unrelated servers were changed.
+
+Follow-up: [FP32 multirow time/memory study](multirow-packed-20261107.md).
