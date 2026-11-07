@@ -8,7 +8,11 @@ from torchcst._backends.schema import ExecutionPlan, SupportResult
 from torchcst._builtin_callbacks import seal_functions as _seal_functions
 
 from .algorithm import RadiusCellMassAlgorithm, hierarchy_from_operator
-from .packed import RadiusPackedParallelAlgorithm
+from .packed import (
+    PACKED_RECOMPUTE,
+    RadiusPackedParallelAlgorithm,
+    RadiusPackedRecomputeAlgorithm,
+)
 from .plans import GLOBAL_ACTIVE_GRAD4_NATIVE
 from .row8 import RadiusRow8Algorithm
 
@@ -61,6 +65,15 @@ class RadiusLargeRow8Algorithm(_LargeSquareScope, RadiusRow8Algorithm):
 class RadiusLargePackedAlgorithm(_LargeSquareScope, RadiusPackedParallelAlgorithm):
     id: str = "cuda_radius_large_multirow_fp32"
 
+
+@dataclass(frozen=True)
+class RadiusLargeRecomputeAlgorithm(_LargeSquareScope, RadiusPackedRecomputeAlgorithm):
+    id: str = "cuda_radius_large_multirow_recompute"
+
+
+LARGE_RECOMPUTE = ExecutionPlan(
+    RadiusLargeRecomputeAlgorithm().id, "v1", PACKED_RECOMPUTE.recipe
+)
 
 LARGE_ROW8 = ExecutionPlan(
     RadiusLargeRow8Algorithm().id, "v1", GLOBAL_ACTIVE_GRAD4_NATIVE.recipe

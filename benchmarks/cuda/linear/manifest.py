@@ -17,6 +17,7 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.algorithm import
 )
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.large_multirow import (
     RadiusLargePackedAlgorithm,
+    RadiusLargeRecomputeAlgorithm,
     RadiusLargeRow8Algorithm,
 )
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.packed import (
@@ -42,6 +43,7 @@ REGISTRY.register(RadiusCellMassAlgorithm())
 REGISTRY.register(RadiusRow8Algorithm())
 REGISTRY.register(RadiusLargeRow8Algorithm())
 REGISTRY.register(RadiusLargePackedAlgorithm())
+REGISTRY.register(RadiusLargeRecomputeAlgorithm())
 REGISTRY.register(RadiusPackedAlgorithm())
 REGISTRY.register(RadiusPackedRecomputeAlgorithm())
 REGISTRY.register(RadiusPackedParallelAlgorithm())

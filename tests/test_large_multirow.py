@@ -15,8 +15,10 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.algorithm import
 )
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.large_multirow import (
     LARGE_PACKED,
+    LARGE_RECOMPUTE,
     LARGE_ROW8,
     RadiusLargePackedAlgorithm,
+    RadiusLargeRecomputeAlgorithm,
     RadiusLargeRow8Algorithm,
 )
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plans import (
@@ -27,6 +29,7 @@ from torchcst._backends.torch.kernels.radius_cell_mass import atom_energies, fac
 CASES = [
     (RadiusLargeRow8Algorithm, LARGE_ROW8),
     (RadiusLargePackedAlgorithm, LARGE_PACKED),
+    (RadiusLargeRecomputeAlgorithm, LARGE_RECOMPUTE),
 ]
 
 
@@ -138,8 +141,9 @@ def test_cuda_large_vjps_match_row8_and_high_keys(n, rows):
         with torch.autograd.graph.saved_tensors_hooks(pack, lambda t: t):
             y = m(xx)
         outputs.append((y, *torch.autograd.grad(y, (xx, m.atoms.p), dy)))
-    for a, b in zip(*outputs):
-        torch.testing.assert_close(a, b, atol=3e-5, rtol=3e-4)
+    for candidate in outputs[1:]:
+        for a, b in zip(outputs[0], candidate):
+            torch.testing.assert_close(a, b, atol=3e-5, rtol=3e-4)
     if n == 16384:
         assert any(int(k.max()) > 2**31 for k in saved_keys)
 
