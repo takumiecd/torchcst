@@ -675,6 +675,11 @@ class StockQualification:
             or type(optimizer) is not self._optimizer_type
         ):
             raise QualificationError("exact stock model/optimizer required")
+        groups = _raw_dict(optimizer).get("param_groups")
+        if type(groups) is not list or any(
+            type(group) is not dict or group.get("field_lrs") for group in groups
+        ):
+            raise QualificationError("stock Graph benchmark does not qualify field_lrs")
         self._optimizer = weakref.ref(optimizer)
         self.model_ref = weakref.ref(model)
         self.optimizer_ref = self._optimizer

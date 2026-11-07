@@ -74,6 +74,23 @@ wrapper を1回 step する。SGD、Adam、AdamW、RMSprop、Adamax、Adagrad、
 組み込み adapter がある。group、更新則、独自 state、checkpoint 移行は
 [optimizer ガイド](docs/cst-optimizer.ja.md)を参照する。
 
+Atomの宣言済みフィールドに絶対値の初期学習率を指定するには`field_lrs`を使う。
+
+```python
+optimizer = CSTAdamW(
+    model.parameters(), model=model, lr=4.8e-3,
+    field_lrs={"amplitude": 2.4e-3, "input_center": 4.8e-3,
+               "output_center": 4.8e-3},
+)
+```
+
+Polarの`amplitude`は`(s,t)`をまとめた提案更新量を調整する。
+未指定フィールドと通常Parameterはgroupの`lr`を使い、この`lr`は座標更新則の外部時間も決める。
+標準schedulerの共通係数はフィールドの学習率にも反映される。
+`optimizer.get_field_lrs()`で現在の有効な上書き値を確認できる。
+通常ParameterとAtomで基本学習率を分ける場合は別のparam groupを使う。
+[フィールド別学習率とcheckpointの契約](docs/cst-optimizer.ja.md#field-learning-rates)を参照する。
+
 ## He・Xavier 初期化
 
 2-chart Polar radius cell-mass kernelを持つCPUの`CSTLinear`を、CUDAへ移動したり

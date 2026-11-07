@@ -77,6 +77,23 @@ the wrapper once. Built-in adapters cover SGD, Adam, AdamW, RMSprop, Adamax,
 Adagrad, Adadelta and Rprop. See the [optimizer guide](docs/cst-optimizer.md)
 for parameter groups, update rules, custom state and checkpoint migration.
 
+Use `field_lrs` for absolute initial rates of declared Atom fields:
+
+```python
+optimizer = CSTAdamW(
+    model.parameters(), model=model, lr=4.8e-3,
+    field_lrs={"amplitude": 2.4e-3, "input_center": 4.8e-3,
+               "output_center": 4.8e-3},
+)
+```
+
+For Polar, `amplitude` adjusts the joint `(s,t)` proposal. Unspecified fields
+and ordinary Parameters use the group `lr`; that `lr` also sets the coordinate
+policy's outer time. A standard scheduler applies its common factor to the
+field rates. `optimizer.get_field_lrs()` reports the current effective overrides.
+Use separate parameter groups for different ordinary/Atom base rates. See
+[field-rate semantics and checkpoints](docs/cst-optimizer.md#field-learning-rates).
+
 ## He and Xavier initialization
 
 For a CPU `CSTLinear` with a two-chart Polar radius cell-mass kernel, explicitly

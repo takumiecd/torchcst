@@ -10,10 +10,11 @@ from torch import nn
 from torch.optim import LBFGS, Optimizer
 
 from torchcst.atoms import OptimizerFieldSpec
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
 from torchcst.geometry.spec import EuclideanGeometrySpec
 from torchcst.nn import CSTModule
 
-from . import _group_validation
+from . import _field_lrs, _group_validation
 from ._coordinate_step import finish_atom_steps, prepare_atom_steps
 from .binding import bind_atom_states, field_specs, validate_binding
 from .state import OptimizerStateAdapter, default_state_adapter
@@ -38,6 +39,7 @@ class CSTOptimizer(Optimizer):
         state_specs: dict[str, OptimizerFieldSpec] | None = None,
         update_selector=None,
         check_finite: bool = True,
+        field_lrs=None,
     ):
         if not isinstance(optimizer, Optimizer) or isinstance(optimizer, CSTOptimizer):
             raise TypeError("optimizer must be an unwrapped torch.optim.Optimizer")
@@ -61,6 +63,16 @@ class CSTOptimizer(Optimizer):
         self._sites = tuple(
             module for module in model.modules() if isinstance(module, CSTModule)
         )
+        self._default_field_lrs = _field_lrs.rates(field_lrs)
+        if self._default_field_lrs and not self._sites:
+            raise ValueError("field_lrs requires managed CST sites")
+        for group in optimizer.param_groups:
+            _field_lrs.configure_group(
+                self,
+                group,
+                default=self._default_field_lrs,
+                default_lr=optimizer.defaults["lr"],
+            )
         self.state_adapter = state_adapter or (
             default_state_adapter(optimizer) if self._sites else OptimizerStateAdapter()
         )
@@ -100,6 +112,7 @@ class CSTOptimizer(Optimizer):
         self.defaults = self.base_optimizer.defaults
 
     def _validate_groups(self, groups):
+        _field_lrs.validate_groups(self, groups)
         cached = self.__dict__.get("_group_validation")
         if cached is not None and cached.current(self, groups):
             return cached.mapping
@@ -176,6 +189,9 @@ class CSTOptimizer(Optimizer):
         group = dict(param_group)
         params = group["params"]
         group["params"] = [params] if isinstance(params, torch.Tensor) else list(params)
+        _field_lrs.configure_group(
+            self, group, default=self._default_field_lrs, default_lr=self.defaults["lr"]
+        )
         self._validate_groups([*self.param_groups, group])
         validate_binding(
             self.base_optimizer,
@@ -208,7 +224,10 @@ class CSTOptimizer(Optimizer):
     def _step_impl(self, loss, *, has_closure):
         from torchcst._backends.torch.kernels import execution as _kernel
 
-        if any("amplitude_weight_decay" in group for group in self.param_groups):
+        if any(
+            "amplitude_weight_decay" in group or group.get("field_lrs")
+            for group in self.param_groups
+        ):
             return self._step_with_amplitude_decay(loss, has_closure=has_closure)
         groups = self._validate_groups(self.param_groups)
         active = []
@@ -361,7 +380,14 @@ class CSTOptimizer(Optimizer):
     def state_dict(self):
         result = super().state_dict()
         result["cst"] = self._manifest()
+        fields = _field_lrs.manifest(self, self.param_groups)
+        if fields is not None:
+            result["cst_fields"] = fields
         return result
+
+    def get_field_lrs(self):
+        """Return current effective overrides for each group (unspecified fields use lr)."""
+        return _field_lrs.current_rates(self)
 
     def load_state_dict(self, state_dict):
         if state_dict.get("cst") != self._manifest():
@@ -372,7 +398,9 @@ class CSTOptimizer(Optimizer):
             for saved, current in zip(saved_groups, self.param_groups)
         ):
             raise ValueError("optimizer parameter groups differ from checkpoint")
+        prospective = []
         for saved, current in zip(saved_groups, self.param_groups):
+            prospective.append(dict(saved, params=current["params"]))
             for index, point in zip(saved["params"], current["params"]):
                 for key, value in state_dict["state"].get(index, {}).items():
                     if (
@@ -391,7 +419,13 @@ class CSTOptimizer(Optimizer):
                         and value.shape != point.shape
                     ):
                         raise ValueError(f"optimizer state {key!r} has the wrong shape")
-        payload = {key: value for key, value in state_dict.items() if key != "cst"}
+        self._validate_groups(prospective)
+        _field_lrs.validate_checkpoint(self, state_dict, prospective)
+        payload = {
+            key: value
+            for key, value in state_dict.items()
+            if key not in ("cst", "cst_fields")
+        }
         super().load_state_dict(payload)
         self.base_optimizer.state = self.state
         self.base_optimizer.param_groups = self.param_groups
@@ -402,6 +436,4 @@ class CSTOptimizer(Optimizer):
 
 
 # Prepared validation may specialize only the original wrapper callbacks.
-from torchcst._builtin_callbacks import seal_functions as _seal_functions
-
 _seal_functions(globals())

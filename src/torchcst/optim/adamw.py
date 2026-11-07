@@ -13,6 +13,7 @@ from torch.optim._functional import adamw
 
 from torchcst.nn import CSTModule
 
+from . import _field_lrs
 from ._coordinate_step import finish_atom_steps, prepare_atom_steps
 from .binding import bind_atom_states, field_specs, validate_binding
 from .state import OptimizerStateAdapter
@@ -34,6 +35,7 @@ class CSTAdamW(AdamW):
         *,
         model: nn.Module,
         amplitude_weight_decay: float = 0.0,
+        field_lrs=None,
         state_adapter: OptimizerStateAdapter | None = None,
         state_specs=None,
         update_selector=None,
@@ -60,6 +62,10 @@ class CSTAdamW(AdamW):
         self.check_finite = check_finite
         self._default_amplitude_decay = amplitude_weight_decay
         self._sites = tuple(m for m in model.modules() if isinstance(m, CSTModule))
+        self._default_field_lrs = _field_lrs.rates(field_lrs)
+        self._field_default_lr = adamw_options.get("lr", 1e-3)
+        if self._default_field_lrs and not self._sites:
+            raise ValueError("field_lrs requires managed CST sites")
         self._bound_parameters = {site: site.atoms.p for site in self._sites}
         self.state_adapter = state_adapter or OptimizerStateAdapter(("exp_avg",))
         self._coordinate_ready = False
@@ -127,10 +133,17 @@ class CSTAdamW(AdamW):
         if any(id(p) in atom_ids for p in points):
             group.setdefault("weight_decay", self._default_atom_raw_decay)
             group.setdefault("amplitude_weight_decay", self._default_amplitude_decay)
+        _field_lrs.configure_group(
+            self,
+            group,
+            default=self._default_field_lrs,
+            default_lr=self._field_default_lr,
+        )
 
     def _groups_for_step(self, groups=None):
         """Read current group scalars; never walk the whole model per step."""
         groups = self.param_groups if groups is None else groups
+        _field_lrs.validate_groups(self, groups)
         atom_ids = {id(p) for p in self._bound_parameters.values()}
         mapping = {}
         seen = set()
@@ -286,6 +299,13 @@ class CSTAdamW(AdamW):
 
     def _save_cst_metadata(self, optimizer, state_dict):
         state_dict["cst"] = self._manifest()
+        fields = _field_lrs.manifest(self, self.param_groups)
+        if fields is not None:
+            state_dict["cst_fields"] = fields
+
+    def get_field_lrs(self):
+        """Return current effective overrides for each group (unspecified fields use lr)."""
+        return _field_lrs.current_rates(self)
 
     def _validate_cst_checkpoint(self, optimizer, state_dict):
         if state_dict.get("cst") != self._manifest():
@@ -314,6 +334,7 @@ class CSTAdamW(AdamW):
                     ):
                         raise ValueError(f"optimizer state {key!r} has the wrong shape")
         self._groups_for_step(prospective)
+        _field_lrs.validate_checkpoint(self, state_dict, prospective)
 
     def _restore_cst_state(self, optimizer):
         self._refresh_structure(restored=True)

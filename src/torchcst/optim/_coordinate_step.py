@@ -22,6 +22,7 @@ class _PreparedAtomStep:
     plan: object
     program: object = None
     inputs: object = None
+    field_ratios: tuple = ()
 
 
 def prepare_atom_steps(optimizer, groups, *, param_groups, protected=()):
@@ -48,6 +49,9 @@ def prepare_atom_steps(optimizer, groups, *, param_groups, protected=()):
         group = groups.get(id(point))
         if group is None:
             continue
+        from ._field_lrs import proposal_ratios
+
+        field_ratios = proposal_ratios(site, group)
         raw_decay = group.get("weight_decay", 0)
         if id(point) in protected and (
             type(raw_decay) not in (int, float) or raw_decay != 0
@@ -94,6 +98,7 @@ def prepare_atom_steps(optimizer, groups, *, param_groups, protected=()):
                     program.plan,
                     program if use_program else None,
                     inputs,
+                    field_ratios,
                 )
             )
             continue
@@ -114,7 +119,11 @@ def prepare_atom_steps(optimizer, groups, *, param_groups, protected=()):
             ).plan
         if projected is not point.grad:
             point.grad.copy_(projected)
-        prepared.append(_PreparedAtomStep(site, point, previous, rate, decay, plan))
+        prepared.append(
+            _PreparedAtomStep(
+                site, point, previous, rate, decay, plan, field_ratios=field_ratios
+            )
+        )
     return prepared
 
 
@@ -125,6 +134,10 @@ def finish_atom_steps(optimizer, prepared):
     for step in prepared:
         if not step.step_size:
             continue
+        if step.field_ratios:
+            from ._field_lrs import apply
+
+            apply(step.point, step.previous, step.field_ratios)
         # Only the certified path reuses its private, frozen inputs. Generic
         # callbacks keep fresh input construction after Adam and user hooks.
         if step.program is not None:

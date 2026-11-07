@@ -6,6 +6,7 @@ from .base import (
     BandwidthBounds,
     FixedWidthSpec,
     ParameterizationSpec,
+    ParameterFieldSpec,
     PhysicalAmpRadiusSpec,
     RadiusBounds,
 )
@@ -18,6 +19,7 @@ __all__ = [
     "FixedWidthSpec",
     "LogWidthSpec",
     "ParameterizationSpec",
+    "ParameterFieldSpec",
     "PhysicalAmpRadiusSpec",
     "PolarAmpRadiusSpec",
     "PolarAmpWidthSpec",

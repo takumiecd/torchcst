@@ -46,6 +46,99 @@ order and training-state ownership, see the [Atom state checkpoint contract](ato
 Removal of the old optimizer family and validation at that time are documented
 in the [migration record](cst-optimizer-migration.ja.md).
 
+## Field learning rates
+
+Both `CSTAdamW(..., field_lrs=...)` and
+`CSTOptimizer(base, model=model, field_lrs=...)` accept absolute **initial**
+proposal rates. A group's `field_lrs` overrides the constructor mapping;
+`field_lrs={}` disables the constructor overrides for that group. Field mappings
+are copied at construction/add-group boundaries. Unknown field names and
+invalid rates are rejected before parameter or moment updates.
+
+```python
+optimizer = CSTAdamW(
+    cst_layer.parameters(), model=cst_layer, lr=4.8e-3,
+    field_lrs={"amplitude": 2.4e-3, "input_center": 4.8e-3,
+               "output_center": 4.8e-3},
+)
+scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9)
+```
+
+For each group, let `lr_ref` be its initial `lr`. The current effective rate is
+
+\[
+\eta_f(t)=\mathrm{field\_lrs}[f]\frac{\mathrm{lr}(t)}{\mathrm{lr}_{ref}}.
+\]
+
+Thus standard PyTorch schedulers supply a common factor without needing to
+modify nested dictionaries. Initial field values are rates, not multipliers.
+When updating an already configured group's mapping, values remain expressed
+at its saved initial-group anchor. The stored proposal-minus-old difference is
+scaled before the coordinate update, following that proposal's floating-point rounding.
+`get_field_lrs()` returns a list of current override dictionaries in group order;
+unspecified fields use the current group `lr`, and groups with no overrides
+return `{}`. The initial group anchor must be finite and positive; field rates
+may be zero. A later group `lr=0` still follows ordinary Adam moment/counter
+behavior and skips the coordinate policy. Distinct per-field schedules require
+explicit field-setting updates; a stock scheduler supplies the common factor.
+
+Ordinary Parameters retain their group `lr`. For a mixed model, give ordinary
+and Atom Parameters separate groups when they need different base rates:
+
+```python
+atom_ids = {id(m.atoms.p) for m in model.modules() if isinstance(m, CSTLinear)}
+atom_parameters = [p for p in model.parameters() if id(p) in atom_ids]
+ordinary_parameters = [p for p in model.parameters() if id(p) not in atom_ids]
+optimizer = CSTAdamW([
+    {"params": ordinary_parameters, "lr": 3e-4},
+    {"params": atom_parameters, "lr": 4.8e-3,
+     "field_lrs": {"amplitude": 2.4e-3, "input_center": 4.8e-3,
+                   "output_center": 4.8e-3}},
+], model=model, weight_decay=0.0)
+```
+
+Rates scale the base optimizer's proposal after Adam normalization when using
+Adam; they do not scale its input gradients or moment accumulators. There is
+one Parameter, moment table and counter per Atom table. Unit-ratio blocks are
+untouched. Group `lr` remains the coordinate update's outer time and the time
+used for `amplitude_weight_decay`; field overrides change task motion. Raw
+weight decay must be zero on Atom groups with field overrides. Polar activity
+still depends on amplitude/motion, so equal outer time does not freeze q/radii.
+A zero amplitude rate freezes its task direction, while the activity law can
+still change the `(s,t)` norm. `grad=None` skips both proposal and policy.
+
+Field names come from the parameterization, with center block widths taken
+from the Geometry's stored center representation:
+
+| Parameterization | Non-center fields |
+| --- | --- |
+| Fixed width | none |
+| Amplitude-dependent width | `amplitude` |
+| Log width | `amplitude`, `log_bandwidth` |
+| Physical amplitude/radius | `amplitude`, `radius` |
+| Direct activity width | `amplitude` (activity is policy-owned) |
+| Polar width/radius | `amplitude`, the joint `(s,t)` block |
+
+All built-in two-chart declarations additionally expose `output_center` and
+`input_center`, including multi-coordinate centers. `q`, `s` and `t` are not
+separate Polar learning-rate fields. An unsupported composition/layout rejects
+overrides instead of guessing columns. Extension authors can declare blocks
+through `ParameterizationSpec.optimizer_fields(center_dimensions)` returning
+immutable `ParameterFieldSpec(name, start, stop)` values from `torchcst.kernels`.
+The built-in `optimizer_prefix` declaration reserves unnamed policy coordinates
+when needed. The optimizer consumes declarations rather than branching on kernels.
+
+Checkpoint loading restores the saved field mappings and scheduler anchors,
+just as it restores group learning rates. Rebuild the same model and optimizer
+type, restore model followed by optimizer/scheduler, and resume the normal
+PyTorch lifecycle. Saved field-layout metadata is checked before mutation.
+A default constructor can load a field-rate checkpoint; loading an older
+default checkpoint disables constructor field overrides for its saved groups.
+Checkpoints without field overrides retain the earlier format. Field-rate
+qualification currently covers eager training; the stock complete-step Graph benchmark rejects these
+overrides and falls back to the full eager step. No Graph qualification or
+universal recommended rate follows from this API.
+
 ## CSTOptimizer: a compatibility wrapper for arbitrary optimizers
 
 `CSTOptimizer(base_optimizer, model=model, state_adapter=None)` wraps an existing
@@ -261,3 +354,5 @@ optimizers are separate execution settings.
 does not transactionally roll back all optimizer state on custom-policy failure
 after the base update. Custom policies must meet the shape and finiteness
 contracts.
+
+The [native/actual-LM validation record](research-history/optimizer-field-lrs-20261107.md) covers the tested eager field-rate scope.

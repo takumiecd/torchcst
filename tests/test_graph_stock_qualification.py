@@ -73,6 +73,23 @@ def test_actual_radius_cst_module_types_and_profiled_cstadamw():
     assert optimizer.step.__func__.__wrapped__ is stock._RAW_STEPS[CSTAdamW]
 
 
+def test_field_lr_optimizer_uses_eager_fallback_in_stock_graph_benchmark():
+    from benchmarks.training.cell_mass_mnist import make_radius_cst
+    from torchcst import CSTAdamW
+
+    middle = make_radius_cst(
+        1024, torch.tensor([[0.3, 0.2, 0.4, 4.0]]), radius_execution="global-response4"
+    )
+    model = nn.Sequential(
+        nn.Linear(784, 1024), nn.ReLU(), middle, nn.ReLU(), nn.Linear(1024, 10)
+    )
+    optimizer = CSTAdamW(
+        model.parameters(), model=model, field_lrs={"amplitude": 0.0005}
+    )
+    with pytest.raises(stock.QualificationError, match="field_lrs"):
+        stock.StockQualification(model, optimizer, "cst")
+
+
 @pytest.mark.parametrize("where", ["root", "relu", "linear", "optimizer"])
 def test_cold_instance_override_rejected_without_calling_it(where):
     model, optimizer = cohort()

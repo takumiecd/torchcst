@@ -38,6 +38,90 @@ model、optimizer の順に復元する。scheduler を使う場合は標準 PyT
 atom 行順と学習状態の所有は [Atom state の checkpoint 契約](atom-state.ja.md#checkpoint)、
 旧 optimizer family の削除と当時の検証は [移行の記録](cst-optimizer-migration.ja.md) を参照する。
 
+<a id="field-learning-rates"></a>
+
+## フィールド別学習率
+
+`CSTAdamW(..., field_lrs=...)`と
+`CSTOptimizer(base, model=model, field_lrs=...)`は、絶対値の**初期**提案学習率を受け取る。
+groupの`field_lrs`はconstructorの辞書を上書きし、`field_lrs={}`ならそのgroupの上書きを無効にする。
+辞書は構築・group追加時にコピーする。不明なフィールド名や不正な値はParameter・moment更新前に拒否する。
+
+```python
+optimizer = CSTAdamW(
+    cst_layer.parameters(), model=cst_layer, lr=4.8e-3,
+    field_lrs={"amplitude": 2.4e-3, "input_center": 4.8e-3,
+               "output_center": 4.8e-3},
+)
+scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9)
+```
+
+groupの初期`lr`を`lr_ref`とすると、現在の有効な学習率は
+
+\[
+\eta_f(t)=\mathrm{field\_lrs}[f]\frac{\mathrm{lr}(t)}{\mathrm{lr}_{ref}}.
+\]
+
+となる。標準PyTorch schedulerの共通係数が、入れ子の辞書を直接変更せずに反映される。
+初期値は倍率ではなく学習率である。設定済みgroupの辞書を変更する場合も、保存した初期group基準での値を指定する。
+保存された提案と旧座標の差を座標更新前に調整し、その提案の浮動小数点丸めに従う。`get_field_lrs()`はgroup順に現在の上書き辞書を返す。
+未指定フィールドは現在のgroup `lr`を使い、上書きのないgroupは`{}`となる。
+初期groupの基準値は有限な正数、フィールド学習率は0以上とする。
+後でgroup `lr=0`にすると通常のAdam moment・counter処理は残り、座標更新則はskipする。
+フィールドごとに異なるscheduleを使う場合は設定を明示的に更新する。
+標準schedulerが供給するのは共通の係数である。
+
+通常Parameterはgroupの`lr`を保つ。混在モデルで通常ParameterとAtomの基本学習率を分ける場合は、
+別groupに指定する。
+
+```python
+atom_ids = {id(m.atoms.p) for m in model.modules() if isinstance(m, CSTLinear)}
+atom_parameters = [p for p in model.parameters() if id(p) in atom_ids]
+ordinary_parameters = [p for p in model.parameters() if id(p) not in atom_ids]
+optimizer = CSTAdamW([
+    {"params": ordinary_parameters, "lr": 3e-4},
+    {"params": atom_parameters, "lr": 4.8e-3,
+     "field_lrs": {"amplitude": 2.4e-3, "input_center": 4.8e-3,
+                   "output_center": 4.8e-3}},
+], model=model, weight_decay=0.0)
+```
+
+学習率はbase optimizerの提案更新量に適用し、Adamでは正規化後に調整する。
+入力勾配やmoment蓄積の倍率は変えない。Atom表ごとのParameter・moment表・counterは各1つである。
+比率1のブロックは変更しない。groupの`lr`は座標更新則の外部時間と
+`amplitude_weight_decay`の時間に使い、フィールド上書きはタスク由来の動きを調整する。
+上書きを使うAtom groupのraw weight decayは0とする。Polarの活動度は振幅・動きにも依存するので、
+外部時間が同じでもq・半径は固定されない。振幅LR0はタスク由来の方向更新を止めるが、
+活動度の法則によって`(s,t)`のノルムは変わりうる。`grad=None`なら提案と更新則の両方をskipする。
+
+フィールド名はparameterizationが宣言し、中心ブロック幅はGeometryの保存表現の次元で決まる。
+
+| Parameterization | 中心以外のフィールド |
+| --- | --- |
+| 固定幅 | なし |
+| 振幅依存幅 | `amplitude` |
+| 対数幅 | `amplitude`, `log_bandwidth` |
+| 物理振幅・半径 | `amplitude`, `radius` |
+| Direct activity幅 | `amplitude`（活動度は更新則が管理） |
+| Polar幅・半径 | `amplitude`：`(s,t)`をまとめたブロック |
+
+組み込みの2 chart宣言はすべて`output_center`と`input_center`も公開し、多座標の中心もまとめて扱う。
+Polarの`q`・`s`・`t`を独立した学習率フィールドにはしない。
+未対応の合成・配置は列を推測せずに上書きを拒否する。
+拡張では`ParameterizationSpec.optimizer_fields(center_dimensions)`から
+`torchcst.kernels`の不変な`ParameterFieldSpec(name, start, stop)`を返してブロックを宣言できる。
+組み込みの`optimizer_prefix`は、必要に応じて名前のない更新則管理座標を確保する。
+optimizerはカーネル別の分岐ではなく、この宣言を利用する。
+
+checkpointをloadすると、group学習率と同様に保存したフィールド辞書とscheduler基準値を復元する。
+同じモデル・optimizer型を構築し、モデルからoptimizer・schedulerの順に通常のPyTorch lifecycleで
+復元する。保存したフィールド配置は状態変更前に検証する。
+既定constructorでもフィールド別LRのcheckpointをloadできる。
+以前の既定checkpointをloadした場合は、保存groupについてconstructorのフィールド上書きを無効にする。
+上書きのないcheckpointは従来の形式を保つ。現在のフィールド別LR検証はeager学習を対象とし、
+stockの更新全体Graph benchmarkはこの上書きを拒否してeager更新全体へfallbackする。
+このAPIだけでGraph検証や汎用の推奨学習率を示すものではない。
+
 ## CSTOptimizer: 任意optimizerの互換wrapper
 
 `CSTOptimizer(base_optimizer, model=model, state_adapter=None)` は既存の
@@ -224,3 +308,5 @@ foreach / fused base optimizer は別の実行設定である。
 `check_finite=True`ではraw gradientの非有限値をbase更新前に拒否する。base 更新後の custom policy
 failure まで全 optimizer state を rollback するトランザクションではない。
 custom policy は shape と有限性の契約を守る必要がある。
+
+[Native・実LMの検証記録](research-history/optimizer-field-lrs-20261107.ja.md)に、検証したeagerフィールド別LRの範囲を記録しています。
