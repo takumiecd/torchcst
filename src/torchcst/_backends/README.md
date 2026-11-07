@@ -94,7 +94,7 @@ backend. Do not mix NVIDIA-specific Triton optimizations into it.
 | Geometry | Space, dimension, metric, radius and stored center representation | Coordinate conversion, distance, projection and update procedures |
 | Chart / Pattern | Shape, point placement, flatten order, origin, spacing and physical Strip pitch | Coordinate expansion and GPU layout/routing procedures |
 | Profile | Function shape over dimensionless distance | Evaluation and derivative implementation |
-| Parameterization | Rules and derivative contract interpreting atom coordinates as amplitude, bandwidth and center | Interpretation computation and Tensor packing |
+| Parameterization | Rules/derivatives interpreting atom coordinates as amplitude, bandwidth and center; semantic optimizer-field blocks | Interpretation computation and Tensor packing |
 | Normalization | Domain, rules such as L2, and norm floors | Reductions, saving/recomputation and workspace |
 | Kernel | Composition of radial / separable / amplitude factors | materialize / full / window / fused methods |
 | Initialization/update policy | Meaning of initial distributions and coordinate updates | Sampling, projection, retraction and state-transport computation |

@@ -53,6 +53,7 @@ class DirectAmpWidthSpec(ActivityWidthSpec):
     """Coordinates (w, q, centers); q is persistent activity state."""
 
     id: str = field(default="direct_activity_width", init=False)
+    optimizer_prefix: ClassVar = (("amplitude", 1), (None, 1))
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -60,6 +61,7 @@ class PolarAmpWidthSpec(ActivityWidthSpec):
     """Coordinates (s, t, centers); angle sets amplitude, radius activity."""
 
     id: str = field(default="polar_activity_width", init=False)
+    optimizer_prefix: ClassVar = (("amplitude", 2),)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -76,3 +78,4 @@ class PolarAmpRadiusSpec(ActivityWidthSpec):
     input_bounds: RadiusBounds
     output_bounds: RadiusBounds
     id: str = field(default="polar_activity_radius", init=False)
+    optimizer_prefix: ClassVar = (("amplitude", 2),)

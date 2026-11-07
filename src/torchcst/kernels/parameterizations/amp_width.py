@@ -1,7 +1,7 @@
 """Amplitude-dependent shared bandwidth declaration."""
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import ClassVar, Literal
 
 from .base import ParameterizationSpec, positive
 
@@ -22,6 +22,7 @@ class AmpWidthSpec(ParameterizationSpec):
     law: Literal["interpolating", "inverse"] = "interpolating"
     couple_bandwidth: bool = True
     id: str = field(default="amplitude_dependent_width", init=False)
+    optimizer_prefix: ClassVar = (("amplitude", 1),)
 
     def __post_init__(self):
         super().__post_init__()

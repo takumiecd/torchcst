@@ -92,7 +92,7 @@ NVIDIA 向け Triton の最適化をここへ混ぜない。
 | Geometry | 空間、次元、metric、半径、center の保存表現 | 座標変換・距離・射影・更新の計算手順 |
 | Chart / Pattern | shape、点配置、flatten 順序、原点、間隔、Strip の物理 pitch | 座標展開、GPU 上の配置・routing の手順 |
 | Profile | 無次元距離に対する関数の形 | 関数評価・微分の実装 |
-| Parameterization | atom 座標から振幅・幅・中心を解釈する規則と微分契約 | 解釈の計算・Tensor の pack |
+| Parameterization | atom座標から振幅・幅・中心を解釈する規則・微分契約と、意味に基づくoptimizer fieldのブロック | 解釈の計算・Tensor の pack |
 | Normalization | 対象領域と L2 等の規則、ノルム床 | reduction、保存・再計算、作業領域 |
 | Kernel | radial / separable / amplitude の合成 | materialize / full / window / fused の方式 |
 | 初期化・更新方針 | 初期分布や座標更新の意味 | sampler、射影・retraction・状態輸送の計算 |
