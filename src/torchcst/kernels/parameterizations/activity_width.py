@@ -77,5 +77,24 @@ class PolarAmpRadiusSpec(ActivityWidthSpec):
     )
     input_bounds: RadiusBounds
     output_bounds: RadiusBounds
+    radius_envelope: str = "rational"
+    closed_lower_power: float = 4.0
+    closed_upper_power: float = 1.0
     id: str = field(default="polar_activity_radius", init=False)
     optimizer_prefix: ClassVar = (("amplitude", 2),)
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.radius_envelope not in ("rational", "closed_polynomial"):
+            raise ValueError("unknown radius_envelope")
+        positive(self.closed_lower_power, "closed_lower_power")
+        positive(self.closed_upper_power, "closed_upper_power")
+        if not 1 <= self.closed_upper_power <= self.closed_lower_power:
+            raise ValueError("closed powers require 1 <= upper <= lower")
+        if self.radius_envelope == "closed_polynomial" and any(
+            b.birth != b.maximum or b.upper_floor != b.minimum
+            for b in (self.input_bounds, self.output_bounds)
+        ):
+            raise ValueError(
+                "closed envelopes require birth=maximum and upper_floor=minimum"
+            )

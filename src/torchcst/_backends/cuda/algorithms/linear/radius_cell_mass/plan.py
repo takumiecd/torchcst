@@ -82,14 +82,14 @@ class AxisPlan:
         if self.polar is not None:
             if (
                 type(self.polar) is not tuple
-                or len(self.polar) != 9
+                or len(self.polar) not in (9, 11)
                 or any(
                     type(v) not in (int, float) or not math.isfinite(v) or v <= 0
                     for v in self.polar
                 )
             ):
                 raise ValueError("invalid Polar radius metadata")
-            _, _, kappa, _, power, minimum, birth, maximum, floor = self.polar
+            _, _, kappa, _, power, minimum, birth, maximum, floor = self.polar[:9]
             if (
                 kappa <= 1
                 or power > 1
@@ -97,6 +97,12 @@ class AxisPlan:
                 or not minimum <= floor <= maximum
             ):
                 raise ValueError("Polar radius bounds must fit the chart half-period")
+            if len(self.polar) == 11 and (
+                not 1 <= self.polar[10] <= self.polar[9]
+                or birth != maximum
+                or floor != minimum
+            ):
+                raise ValueError("invalid closed envelope powers or endpoints")
         if any(
             not math.isfinite(2 * math.pi * self.modes / bank.period)
             for bank in self.banks
@@ -174,7 +180,10 @@ class HierarchyPlan:
             raise TypeError("input/output must be radius AxisPlan instances")
         if (self.input.polar is None) != (self.output.polar is None) or (
             self.input.polar is not None
-            and self.input.polar[:5] != self.output.polar[:5]
+            and (
+                self.input.polar[:5] != self.output.polar[:5]
+                or self.input.polar[9:] != self.output.polar[9:]
+            )
         ):
             raise ValueError(
                 "input/output must share the Polar amplitude and activity law"

@@ -85,6 +85,12 @@ class KernelState(nn.Module):
                 bounds = getattr(parameterization, side + "_bounds")
                 for name, field in parameterization.width_scalar_names:
                     scalars[name + "_" + side] = getattr(bounds, field)
+            if (
+                getattr(parameterization, "radius_envelope", "rational")
+                == "closed_polynomial"
+            ):
+                for name in ("closed_lower_power", "closed_upper_power"):
+                    scalars[name] = getattr(parameterization, name)
         elif parameterization is not None:
             scalars.update(
                 {
@@ -163,6 +169,16 @@ class KernelState(nn.Module):
                         for name, field in parameterization.width_scalar_names
                     }
                 )
+            if (
+                getattr(parameterization, "radius_envelope", "rational")
+                == "closed_polynomial"
+            ):
+                replacements.update(
+                    {
+                        name: float(self.scalar(name))
+                        for name in ("closed_lower_power", "closed_upper_power")
+                    }
+                )
             parameterization = replace(parameterization, **replacements)
         elif parameterization is not None:
             parameterization = replace(
@@ -207,6 +223,10 @@ class KernelState(nn.Module):
                 (f.name, getattr(parameterization, f.name))
                 for f in fields(parameterization)
                 if type(getattr(parameterization, f.name)) in (str, bool)
+                and not (
+                    f.name == "radius_envelope"
+                    and getattr(parameterization, f.name) == "rational"
+                )
             )
             if parameterization
             else (),

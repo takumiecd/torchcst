@@ -112,6 +112,11 @@ report including clipping, rather than a Tensor/Module. Constructor defaults
 are unchanged. See [initialization and the Dense–CST bridge](docs/initialization.md)
 for support limits, formulas and `variance_scaling_` for new presets.
 
+For the experimental `radius_envelope="closed_polynomial"` option and its
+`closed_lower_power` / `closed_upper_power` controls, see
+[closed radius envelopes](docs/closed-radius-envelope.md). This research opt-in
+requires its own initialization and native-workload qualification.
+
 ## Recommended CUDA configuration for the public API
 
 For the currently qualified **FP32, small-batch radius cell-mass** workload,
