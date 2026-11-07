@@ -15,6 +15,11 @@ from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip import
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.algorithm import (
     RadiusCellMassAlgorithm,
 )
+from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.packed import (
+    RadiusPackedAlgorithm,
+    RadiusPackedParallelAlgorithm,
+    RadiusPackedRecomputeAlgorithm,
+)
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.row8 import (
     RadiusRow8Algorithm,
 )
@@ -31,6 +36,9 @@ from torchcst._backends.torch.algorithms.linear.normalized_radial.layout import 
 REGISTRY = Registry()
 REGISTRY.register(RadiusCellMassAlgorithm())
 REGISTRY.register(RadiusRow8Algorithm())
+REGISTRY.register(RadiusPackedAlgorithm())
+REGISTRY.register(RadiusPackedRecomputeAlgorithm())
+REGISTRY.register(RadiusPackedParallelAlgorithm())
 REGISTRY.register(FactoredAlgorithm())
 REGISTRY.register(NormalizedFullAlgorithm())
 REGISTRY.register(NormalizedWindowAlgorithm())

@@ -21,9 +21,9 @@ template<> struct RadiusRows<true> {
 // A row group shares each tile phase (four normally; eight in the opt-in build).
 // For each individual
 // row, part/harmonic order and the FP64 expressions match compact_project.
-template<bool LearnRadius>
+template<bool LearnRadius, class Storage = double>
 __device__ inline void compact_derivatives_batch4(
-    const double *z, int first_batch, int batch, const Axis &axis,
+    const Storage *z, int first_batch, int batch, const Axis &axis,
     Membership member, double mu, const double *c, const double *dr,
     int start, double *radius_gradient, double *center_gradient) {
     Bank bank = axis.banks[member.bank];
@@ -42,7 +42,7 @@ __device__ inline void compact_derivatives_batch4(
             for (int r = 0; r < PARAMETER_BATCH; ++r) {
                 int b = first_batch + r;
                 if (b < batch) {
-                    const double *tile = z + int64_t(b) * nodes * features + relative;
+                    const Storage *tile = z + int64_t(b) * nodes * features + relative;
                     if constexpr (LearnRadius) {
                         double moment = cp * tile[2 * k - 1] + sp * tile[2 * k];
                         radius_gradient[r] += 2 * dr[k] * moment;
@@ -96,10 +96,10 @@ __device__ inline void direct_derivatives_batch4(
 // One thread still owns the complete atom gradient. Only geometry evaluation
 // is shared across rows; final batch reduction remains b=0,1,... in FP64.
 // Saved Z/H/G, all side/amplitude conventions and output storage are unchanged.
-template<class T, bool LearnRadius>
+template<class T, bool LearnRadius, class Storage = double>
 __global__ void batched_parameter_kernel(
-    const T *p, const T *x, const T *dy, const double *zx, const double *zy,
-    const double *h, const double *g, T *gradient, int atoms, int batch,
+    const T *p, const T *x, const T *dy, const Storage *zx, const Storage *zy,
+    const Storage *h, const Storage *g, T *gradient, int atoms, int batch,
     Axis input, Axis output, int input_start, int output_start) {
     int atom = blockIdx.x * blockDim.x + threadIdx.x;
     if (atom >= atoms) return;

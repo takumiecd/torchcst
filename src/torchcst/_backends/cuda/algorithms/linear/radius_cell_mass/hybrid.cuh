@@ -41,8 +41,8 @@ inline void check_ranges(const Tensor &rows, const Tensor &offsets, const Tensor
         rows.is_contiguous() && offsets.is_contiguous() && rows.dim() == 1 && offsets.dim() == 1 &&
         rows.numel() == p.size(0) && offsets.numel() == a.node_count + 1, "invalid sorted ranges");
 }
-template<class T>
-__device__ inline double compact_moment_element(const T *signal, const double *z,
+template<class T, class Storage = double>
+__device__ inline double compact_moment_element(const T *signal, const Storage *z,
     int b, int node, int basis, Axis axis, int start, bool merge) {
     int features = axis.basis_count(), bank_index = bank_for_node(node, axis);
     Bank bank = axis.banks[bank_index];
@@ -87,8 +87,8 @@ __device__ inline double compact_moment_element(const T *signal, const double *z
     }
     return sum;
 }
-template<class T>
-__global__ void compact_moments_kernel(const T *signal, double *z, int batch,
+template<class T, class Storage = double>
+__global__ void compact_moments_kernel(const T *signal, Storage *z, int batch,
     Axis axis, int start, int level, bool merge, const uint32_t *required_banks = nullptr) {
     // The immutable mask includes all required lower child banks before launch.
     // Empty levels return uniformly; no barrier or global-layout change occurs.

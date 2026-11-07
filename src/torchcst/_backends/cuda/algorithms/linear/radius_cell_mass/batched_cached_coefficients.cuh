@@ -130,10 +130,10 @@ __device__ inline void batched_direct_site(
     }
 }
 
-template<class T, bool Count = false>
+template<class T, bool Count = false, class Storage = double>
 __global__ void batched_cached_expand_kernel(
     const T *p, const int64_t *rows, const int64_t *offsets,
-    const double *responses, T *y, int atoms, int batch, Axis axis, int start,
+    const Storage *responses, T *y, int atoms, int batch, Axis axis, int start,
     int tile_sites, int capacity, int warps, int max_destinations, bool output_side,
     int *counts = nullptr) {
     extern __shared__ double scratch[];
