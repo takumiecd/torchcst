@@ -128,6 +128,41 @@ def test_old_checkpoint_structure_and_native_config_unchanged():
     )
 
 
+@pytest.mark.parametrize("wrapper", [False, True])
+def test_rational_optimizer_retains_legacy_manifest_and_resume(wrapper):
+    import json
+    from pathlib import Path
+    from torchcst import CSTAdamW, CSTOptimizer
+
+    m = layer(envelope="rational")
+
+    def optimizer(model):
+        if wrapper:
+            return CSTOptimizer(
+                torch.optim.AdamW(model.parameters(), lr=0.001), model=model
+            )
+        return CSTAdamW(model.parameters(), model=model, lr=0.001)
+
+    opt = optimizer(m)
+    saved = opt.state_dict()
+    fixture = json.loads(
+        (
+            Path(__file__).parent / "fixtures/legacy-rational-optimizer-manifests.json"
+        ).read_text()
+    )
+    # Captured independently from pre-extension main c3b68dcf, not computed
+    # by the implementation being tested.
+    expected = fixture["manifests"]["wrapper" if wrapper else "adamw"]
+    assert json.loads(json.dumps(saved["cst"])) == expected
+    other = optimizer(copy.deepcopy(m))
+    other.load_state_dict(saved)
+    closed = optimizer(layer())
+    assert (
+        closed.state_dict()["cst"]["sites"][0][1]["parameterization"]["radius_envelope"]
+        == "closed_polynomial"
+    )
+
+
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="actual CUDA required")
 @pytest.mark.parametrize("q", [0.0, 1.0])
 def test_native_closed_endpoint_y_dx_and_all_atom_gradients(q):

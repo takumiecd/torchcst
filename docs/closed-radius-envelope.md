@@ -29,7 +29,8 @@ coordinates = kernels.polar(
 Use `RadiusBounds`, `birth=maximum`, and `upper_floor=minimum` on both axes.
 The closed law does not use the rational law's w_c/kappa/decay controls; they
 remain declared for the unchanged Polar representation/update. The default
-`radius_envelope="rational"` retains the prior radius formula and buffer layout.
+`radius_envelope="rational"` retains the prior radius formula, buffer layout
+and optimizer checkpoint manifest.
 Closed powers are fixed checkpoint buffers; the envelope kind is checkpoint
 contract metadata, and loading across envelope kinds is rejected.
 

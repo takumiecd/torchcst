@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import math
-from dataclasses import asdict
 
 import torch
 from torch import nn
@@ -15,6 +14,7 @@ from torchcst.geometry.spec import EuclideanGeometrySpec
 from torchcst.nn import CSTModule
 
 from . import _field_lrs, _group_validation
+from ._checkpoint import kernel_manifest
 from ._coordinate_step import finish_atom_steps, prepare_atom_steps
 from .binding import bind_atom_states, field_specs, validate_binding
 from .state import OptimizerStateAdapter, default_state_adapter
@@ -370,7 +370,7 @@ class CSTOptimizer(Optimizer):
             "sites": [
                 (
                     names[id(site.atoms.p)],
-                    asdict(site.kernel.declaration()),
+                    kernel_manifest(site.kernel.declaration()),
                     tuple(site.atom_state.row_to_id.cpu().tolist()),
                 )
                 for site in self._sites

@@ -28,7 +28,7 @@ coordinates = kernels.polar(
 両軸とも`RadiusBounds`で`birth=maximum`、`upper_floor=minimum`を指定します。
 新しい式では有理式のw_c/kappa/減衰設定は使いません。既存のPolar表現・更新用の
 宣言として残ります。既定の`radius_envelope="rational"`は従来の半径式とbuffer構成を
-保持します。新しい指数は固定checkpoint buffer、境界の種類はcheckpoint契約で、
+保持し、optimizerのcheckpoint契約も維持します。新しい指数は固定checkpoint buffer、境界の種類はcheckpoint契約で、
 種類をまたぐloadは拒否します。
 
 CUDAへ移す前にCPUで`init.variance_scaling_`を実行します。半径を変えたら振幅を

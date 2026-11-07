@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import math
 import re
-from dataclasses import asdict
 
 import torch
 from torch import nn
@@ -14,6 +13,7 @@ from torch.optim._functional import adamw
 from torchcst.nn import CSTModule
 
 from . import _field_lrs
+from ._checkpoint import kernel_manifest
 from ._coordinate_step import finish_atom_steps, prepare_atom_steps
 from .binding import bind_atom_states, field_specs, validate_binding
 from .state import OptimizerStateAdapter
@@ -290,7 +290,7 @@ class CSTAdamW(AdamW):
             "sites": [
                 (
                     names[id(site.atoms.p)],
-                    asdict(site.kernel.declaration()),
+                    kernel_manifest(site.kernel.declaration()),
                     tuple(site.atom_state.row_to_id.cpu().tolist()),
                 )
                 for site in self._sites
