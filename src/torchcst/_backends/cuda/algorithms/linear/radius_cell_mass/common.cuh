@@ -101,6 +101,10 @@ __device__ inline double radius(const T *atoms, int atom, const Axis &axis) {
         upper = axis.radius_min + (axis.radius_max - axis.radius_min) * pow(base, axis.closed_upper_power);
     }
     upper = fmax(lower, fmax(upper, axis.upper_floor));
+    if (axis.closed_envelope) {
+        double value = alpha >= 1 ? upper : lower + lower * expm1(alpha * log1p((upper - lower) / lower));
+        return fmin(upper, fmax(lower, value));
+    }
     return fmin(upper, fmax(lower, exp((1 - alpha) * log(lower) + alpha * log(upper))));
 }
 template<class T>

@@ -223,6 +223,13 @@ def _width_bounds(
     upper = torch.maximum(upper, lower)
     if alpha is None:
         sigma = lower
+    elif closed:
+        # Preserve a tiny displacement from L without subtracting/recombining
+        # log(L). One-ulp endpoint drift changes the discrete support bank.
+        sigma = lower + lower * torch.expm1(
+            alpha * torch.log1p((upper - lower) / lower)
+        )
+        sigma = torch.where(alpha >= 1, upper, sigma).clamp(min=lower, max=upper)
     else:
         # Width is a scale, so alpha advances a constant fraction of the
         # multiplicative range rather than a constant absolute distance.

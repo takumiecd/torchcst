@@ -70,6 +70,16 @@ def test_closed_bounds_endpoints_order_symmetry_and_q_independence():
         layer(envelope="rational").load_state_dict(m.state_dict())
 
 
+def test_tiny_activity_near_strong_endpoint_does_not_change_support_bank():
+    m = layer()
+    a = torch.tensor([0.9999989867205963], dtype=torch.float64)
+    q = torch.tensor([2.949492502087499e-13], dtype=torch.float64)
+    r, lo, hi = _width_bounds(
+        m.kernel, a, q, scalar_names=m.kernel.spec.parameterization.width_scalar_names
+    )
+    assert r.item() == lo.item() == 0.5
+
+
 @pytest.mark.parametrize("q", [0.0, 1.0])
 def test_closed_variance_initialization(q):
     m = layer(dtype=torch.float32, atoms=512)
