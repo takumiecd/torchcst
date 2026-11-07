@@ -82,7 +82,7 @@ class AxisPlan:
         if self.polar is not None:
             if (
                 type(self.polar) is not tuple
-                or len(self.polar) not in (9, 11)
+                or len(self.polar) not in (9, 10, 11)
                 or any(
                     type(v) not in (int, float) or not math.isfinite(v) or v <= 0
                     for v in self.polar

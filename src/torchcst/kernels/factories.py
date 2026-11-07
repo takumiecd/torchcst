@@ -251,6 +251,7 @@ def _activity(
     radius_envelope="rational",
     closed_lower_power=4.0,
     closed_upper_power=1.0,
+    zero_opening_scale=0.03,
 ):
     if type(alpha_init) not in (float, int) or not 0 <= alpha_init <= 1:
         raise ValueError("alpha_init must be in [0, 1]")
@@ -279,6 +280,7 @@ def _activity(
                 radius_envelope=radius_envelope,
                 closed_lower_power=closed_lower_power,
                 closed_upper_power=closed_upper_power,
+                zero_opening_scale=zero_opening_scale,
             )
             if coordinate == "polar_radius"
             else {}
@@ -366,6 +368,7 @@ def polar(
     radius_envelope="rational",
     closed_lower_power=4.0,
     closed_upper_power=1.0,
+    zero_opening_scale=0.03,
 ) -> CoordinateSpec:
     """Angular task motion with radial activity that sets the width.
 
@@ -377,6 +380,7 @@ def polar(
         radius_envelope != "rational"
         or closed_lower_power != 4
         or closed_upper_power != 1
+        or zero_opening_scale != 0.03
     ):
         raise ValueError("radius envelopes require RadiusBounds")
     return _activity(
@@ -398,6 +402,7 @@ def polar(
         radius_envelope=radius_envelope,
         closed_lower_power=closed_lower_power,
         closed_upper_power=closed_upper_power,
+        zero_opening_scale=zero_opening_scale,
     )
 
 

@@ -91,6 +91,11 @@ class KernelState(nn.Module):
             ):
                 for name in ("closed_lower_power", "closed_upper_power"):
                     scalars[name] = getattr(parameterization, name)
+            if (
+                getattr(parameterization, "radius_envelope", "rational")
+                == "rational_zero_opening"
+            ):
+                scalars["zero_opening_scale"] = parameterization.zero_opening_scale
         elif parameterization is not None:
             scalars.update(
                 {
@@ -178,6 +183,13 @@ class KernelState(nn.Module):
                         name: float(self.scalar(name))
                         for name in ("closed_lower_power", "closed_upper_power")
                     }
+                )
+            if (
+                getattr(parameterization, "radius_envelope", "rational")
+                == "rational_zero_opening"
+            ):
+                replacements["zero_opening_scale"] = float(
+                    self.scalar("zero_opening_scale")
                 )
             parameterization = replace(parameterization, **replacements)
         elif parameterization is not None:

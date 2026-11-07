@@ -10,6 +10,11 @@ def kernel_manifest(declaration):
     parameterization = result.get("parameterization")
     if (
         isinstance(parameterization, dict)
+        and parameterization.get("radius_envelope") != "rational_zero_opening"
+    ):
+        parameterization.pop("zero_opening_scale", None)
+    if (
+        isinstance(parameterization, dict)
         and parameterization.get("id") == "polar_activity_radius"
         and parameterization.get("radius_envelope") == "rational"
     ):

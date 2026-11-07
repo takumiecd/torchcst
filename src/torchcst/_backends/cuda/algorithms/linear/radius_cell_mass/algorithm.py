@@ -42,6 +42,8 @@ def hierarchy_from_operator(operator):
                 parameterization.closed_lower_power,
                 parameterization.closed_upper_power,
             )
+        if parameterization.radius_envelope == "rational_zero_opening":
+            values += (parameterization.zero_opening_scale,)
         return values
 
     values = [
@@ -220,7 +222,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
         reasons = []
         if (
             plan.input.polar is not None
-            and len(plan.input.polar) == 11
+            and len(plan.input.polar) != 9
             and recipe.schedule
             not in (
                 "global_batched_cached_active_moments_grad4_native",
@@ -228,7 +230,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
             )
         ):
             reasons.append(
-                "closed envelopes currently require native active-moment schedules"
+                "opt-in envelopes currently require native active-moment schedules"
             )
         scalable = recipe.schedule in (
             "global_owner_window_fp32_geometry_sort32",

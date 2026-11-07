@@ -185,14 +185,13 @@ def _width_bounds(
         floor = state.scalar(names["upper_floor"] + "_output")
     else:
         raise ValueError("side must be 'input' or 'output'")
-    closed = (
-        getattr(
-            getattr(getattr(state, "spec", None), "parameterization", None),
-            "radius_envelope",
-            "rational",
-        )
-        == "closed_polynomial"
+    envelope = getattr(
+        getattr(getattr(state, "spec", None), "parameterization", None),
+        "radius_envelope",
+        "rational",
     )
+    closed = envelope == "closed_polynomial"
+    zero_opening = envelope == "rational_zero_opening"
     if closed:
         base = (
             1 - (amplitude / state.scalar("amplitude_max").to(amplitude)).square()
@@ -221,9 +220,15 @@ def _width_bounds(
     # Independent lower decay and upper decay can otherwise cross. The
     # effective upper envelope must never narrow below the lower curve.
     upper = torch.maximum(upper, lower)
+    if zero_opening:
+        tau = state.scalar("zero_opening_scale").to(amplitude)
+        h = (tau / torch.hypot(amplitude, tau)).square()
+        lower = torch.where(amplitude == 0, upper, lower + h * (upper - lower)).clamp(
+            max=upper
+        )
     if alpha is None:
         sigma = lower
-    elif closed:
+    elif closed or zero_opening:
         # Preserve a tiny displacement from L without subtracting/recombining
         # log(L). One-ulp endpoint drift changes the discrete support bank.
         sigma = lower + lower * torch.expm1(

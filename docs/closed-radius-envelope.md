@@ -44,3 +44,20 @@ Native closed-envelope support is limited to the explicit
 schedules. Other native schedules reject this declaration. Qualify Y, dX, all
 Atom gradients and optimizer/checkpoint behavior for the actual workload before
 training. CPU mathematical checks are not GPU or learning evidence.
+
+## Gradual opening at zero
+
+A separate opt-in, `radius_envelope="rational_zero_opening"`, retains the
+existing rational upper envelope U0 and blends its lower envelope L0:
+
+$$g(a)=\frac{a^2}{a^2+\tau^2},\qquad L=U_0-g(a)(U_0-L_0),\qquad U=U_0.$$
+
+Pass `zero_opening_scale=tau` (positive, amplitude units). At zero L=U;
+at |a|=tau the relative gap is one half; farther away the original interval
+is recovered gradually. This law does not impose closure at amplitude_max.
+For example use the preceding declaration with `birth=4`, `upper_floor=1`,
+`radius_envelope="rational_zero_opening", zero_opening_scale=0.03`, omitting
+closed powers. Tau is a fixed saved scalar, not a trainable q coordinate.
+CPU/CUDA use a stable equivalent blend and endpoint interpolation. The same
+native schedule restrictions, variance calibration and qualification rules
+apply. Existing rational and closed-polynomial checkpoint manifests are preserved.

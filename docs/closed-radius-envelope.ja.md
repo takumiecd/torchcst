@@ -39,3 +39,19 @@ native対応は明示的な`GLOBAL_ACTIVE_GRAD4_NATIVE`と
 `GLOBAL_ACTIVE_GRAD4_NATIVE_RECTANGULAR_2048`に限定し、他のnative scheduleは
 この宣言を拒否します。学習前に実際の条件でY・dX・全Atom勾配とoptimizer・checkpointを
 検証します。CPUの数学的検証はGPU検証や学習結果を意味しません。
+
+## ゼロから徐々に開く境界
+
+別の明示的な研究用設定 `radius_envelope="rational_zero_opening"` は、
+従来の有理式の上限 U0 を保ち、下限 L0 を次のように補間します。
+
+$$g(a)=\frac{a^2}{a^2+\tau^2},\qquad L=U_0-g(a)(U_0-L_0),\qquad U=U_0.$$
+
+`zero_opening_scale=tau` に正の振幅単位の値を指定します。ゼロで L=U、
+|a|=tau で相対的な隙間が半分になり、離れるほど従来の区間へ徐々に戻ります。
+amplitude_max 側の合流は強制しません。上の宣言で `birth=4`, `upper_floor=1`,
+`radius_envelope="rational_zero_opening", zero_opening_scale=0.03` とし、
+closed powers を省く例です。tau は保存される固定スカラーで、学習する q とは別です。
+CPU/CUDA は数値的に安定な等価式と端点補間を使います。同じ native schedule 制限、
+分散校正、検証規則を適用します。既存の rational / closed-polynomial の
+optimizer checkpoint manifest は保持します。
