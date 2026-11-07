@@ -185,24 +185,56 @@ def _width_bounds(
         floor = state.scalar(names["upper_floor"] + "_output")
     else:
         raise ValueError("side must be 'input' or 'output'")
-    x = (amplitude / state.scalar("w_c").to(amplitude)).square()
-    lower_delta = birth.to(amplitude) - minimum.to(amplitude)
-    upper_delta = maximum.to(amplitude) - minimum.to(amplitude)
-    kappa = state.scalar("kappa").to(amplitude)
-    upper_x = x.pow(state.scalar("upper_decay_power").to(amplitude))
-    upper = minimum.to(amplitude) + upper_delta * kappa / (kappa + upper_x)
+    envelope = getattr(
+        getattr(getattr(state, "spec", None), "parameterization", None),
+        "radius_envelope",
+        "rational",
+    )
+    closed = envelope == "closed_polynomial"
+    zero_opening = envelope == "rational_zero_opening"
+    if closed:
+        base = (
+            1 - (amplitude / state.scalar("amplitude_max").to(amplitude)).square()
+        ).clamp(0, 1)
+        delta = maximum.to(amplitude) - minimum.to(amplitude)
+        lower = minimum.to(amplitude) + delta * base.pow(
+            state.scalar("closed_lower_power").to(amplitude)
+        )
+        upper = minimum.to(amplitude) + delta * base.pow(
+            state.scalar("closed_upper_power").to(amplitude)
+        )
+    else:
+        x = (amplitude / state.scalar("w_c").to(amplitude)).square()
+        lower_delta = birth.to(amplitude) - minimum.to(amplitude)
+        upper_delta = maximum.to(amplitude) - minimum.to(amplitude)
+        kappa = state.scalar("kappa").to(amplitude)
+        upper_x = x.pow(state.scalar("upper_decay_power").to(amplitude))
+        upper = minimum.to(amplitude) + upper_delta * kappa / (kappa + upper_x)
+        lower = minimum.to(amplitude) + lower_delta / (
+            1.0 + state.scalar("lower_kappa").to(amplitude) * x
+        )
     # Keep radial activity meaningful for high-amplitude atoms.  Without
     # this floor U(w) converges to sigma_min, so alpha loses all authority
     # precisely when a strong atom becomes trapped on a single site.
     upper = torch.maximum(upper, floor.to(amplitude))
-    lower = minimum.to(amplitude) + lower_delta / (
-        1.0 + state.scalar("lower_kappa").to(amplitude) * x
-    )
     # Independent lower decay and upper decay can otherwise cross. The
     # effective upper envelope must never narrow below the lower curve.
     upper = torch.maximum(upper, lower)
+    if zero_opening:
+        tau = state.scalar("zero_opening_scale").to(amplitude)
+        h = (tau / torch.hypot(amplitude, tau)).square()
+        lower = torch.where(amplitude == 0, upper, lower + h * (upper - lower)).clamp(
+            max=upper
+        )
     if alpha is None:
         sigma = lower
+    elif closed or zero_opening:
+        # Preserve a tiny displacement from L without subtracting/recombining
+        # log(L). One-ulp endpoint drift changes the discrete support bank.
+        sigma = lower + lower * torch.expm1(
+            alpha * torch.log1p((upper - lower) / lower)
+        )
+        sigma = torch.where(alpha >= 1, upper, sigma).clamp(min=lower, max=upper)
     else:
         # Width is a scale, so alpha advances a constant fraction of the
         # multiplicative range rather than a constant absolute distance.

@@ -108,6 +108,13 @@ Denseと二乗平均目標を揃え、Tensor/Moduleではなくクリップ数�
 constructorの既定は保持します。対応範囲・数式・新preset用の`variance_scaling_`は
 [初期化とDense–CSTの橋渡し](docs/initialization.ja.md)を参照してください。
 
+実験的な`radius_envelope="closed_polynomial"`と
+`closed_lower_power` / `closed_upper_power`の設定は
+[両端で合流する半径境界](docs/closed-radius-envelope.ja.md)を参照してください。
+この研究用opt-inは、それぞれの初期化とnative実行条件の検証が必要です。
+別の `radius_envelope="rational_zero_opening"` は正の `zero_opening_scale=tau`
+でゼロから徐々に境界を開き、従来の有理式上限を保持します。数式と保存契約は同じガイドを参照してください。
+
 ## 公開 API で推奨する CUDA 構成
 
 現在検証済みの **FP32・小バッチの半径セル質量** workload では、Linear の明示的 Plan

@@ -23,12 +23,15 @@ struct Axis {
     bool polar;
     double amplitude_max, w_c, kappa, lower_kappa, upper_decay_power;
     double radius_min, radius_birth, radius_max, upper_floor;
+    bool closed_envelope, zero_opening;
+    double zero_opening_scale;
+    double closed_lower_power, closed_upper_power;
     Bank banks[MAX_BANKS];
     __host__ __device__ int basis_count() const { return 2 * modes + 1; }
 };
 
 inline Axis parse_axis(const std::vector<double> &config) {
-    TORCH_CHECK(config.size() == 6 || config.size() == 15, "radius axis requires 6 or 15 scalars");
+    TORCH_CHECK(config.size() == 6 || config.size() == 15 || config.size() == 16 || config.size() == 17, "radius axis requires 6, 15, 16 or 17 scalars");
     for (double v : config) TORCH_CHECK(std::isfinite(v), "axis scalars must be finite");
     TORCH_CHECK(config[0] >= 1 && config[0] <= MAX_SITES && config[0] == floor(config[0]), "invalid sites");
     TORCH_CHECK(config[2] >= 1 && config[2] <= config[0] && config[2] == floor(config[2]), "invalid base tile");
@@ -55,7 +58,7 @@ inline Axis parse_axis(const std::vector<double> &config) {
         }
         if (tile == a.sites) break;
     }
-    a.polar = config.size() == 15;
+    a.polar = config.size() >= 15;
     if (a.polar) {
         a.amplitude_max = config[6]; a.w_c = config[7]; a.kappa = config[8];
         a.lower_kappa = config[9]; a.upper_decay_power = config[10];
@@ -65,6 +68,17 @@ inline Axis parse_axis(const std::vector<double> &config) {
         TORCH_CHECK(a.kappa > 1 && a.upper_decay_power <= 1 && a.radius_min <= a.radius_birth &&
             a.radius_birth <= a.radius_max && a.radius_max <= a.period / 2 &&
             a.upper_floor >= a.radius_min && a.upper_floor <= a.radius_max, "invalid Polar radius bounds");
+        a.zero_opening = config.size() == 16;
+        if (a.zero_opening) {
+            a.zero_opening_scale = config[15];
+            TORCH_CHECK(a.zero_opening_scale > 0, "zero opening scale must be positive");
+        }
+        a.closed_envelope = config.size() == 17;
+        if (a.closed_envelope) {
+            a.closed_lower_power = config[15]; a.closed_upper_power = config[16];
+            TORCH_CHECK(a.closed_lower_power >= a.closed_upper_power && a.closed_upper_power >= 1 &&
+                a.radius_birth == a.radius_max && a.upper_floor == a.radius_min, "invalid closed radius envelope");
+        }
     }
     return a;
 }
@@ -86,7 +100,22 @@ __device__ inline double radius(const T *atoms, int atom, const Axis &axis) {
     double lower = axis.radius_min + (axis.radius_birth - axis.radius_min) / (1 + axis.lower_kappa * x);
     double upper = axis.radius_min + (axis.radius_max - axis.radius_min) * axis.kappa /
         (axis.kappa + pow(x, axis.upper_decay_power));
+    if (axis.closed_envelope) {
+        double ratio_a = amplitude(atoms, atom, axis) / axis.amplitude_max;
+        double base = fmin(1., fmax(0., 1 - ratio_a * ratio_a));
+        lower = axis.radius_min + (axis.radius_max - axis.radius_min) * pow(base, axis.closed_lower_power);
+        upper = axis.radius_min + (axis.radius_max - axis.radius_min) * pow(base, axis.closed_upper_power);
+    }
     upper = fmax(lower, fmax(upper, axis.upper_floor));
+    if (axis.zero_opening) {
+        double a = amplitude(atoms, atom, axis);
+        double h = axis.zero_opening_scale / hypot(a, axis.zero_opening_scale);
+        lower = a == 0 ? upper : fmin(upper, lower + h * h * (upper - lower));
+    }
+    if (axis.closed_envelope || axis.zero_opening) {
+        double value = alpha >= 1 ? upper : lower + lower * expm1(alpha * log1p((upper - lower) / lower));
+        return fmin(upper, fmax(lower, value));
+    }
     return fmin(upper, fmax(lower, exp((1 - alpha) * log(lower) + alpha * log(upper))));
 }
 template<class T>

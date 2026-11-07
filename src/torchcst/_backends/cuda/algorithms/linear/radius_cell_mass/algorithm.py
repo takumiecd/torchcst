@@ -26,7 +26,7 @@ def hierarchy_from_operator(operator):
         if type(parameterization) is not PolarAmpRadiusSpec:
             return None
         bounds = (parameterization.output_bounds, parameterization.input_bounds)[side]
-        return (
+        values = (
             parameterization.amplitude_max,
             parameterization.w_c,
             parameterization.kappa,
@@ -37,6 +37,14 @@ def hierarchy_from_operator(operator):
             bounds.maximum,
             bounds.upper_floor,
         )
+        if parameterization.radius_envelope == "closed_polynomial":
+            values += (
+                parameterization.closed_lower_power,
+                parameterization.closed_upper_power,
+            )
+        if parameterization.radius_envelope == "rational_zero_opening":
+            values += (parameterization.zero_opening_scale,)
+        return values
 
     values = [
         AxisPlan(
@@ -212,6 +220,18 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
         except (ValueError, TypeError) as error:
             return SupportResult((str(error),))
         reasons = []
+        if (
+            plan.input.polar is not None
+            and len(plan.input.polar) != 9
+            and recipe.schedule
+            not in (
+                "global_batched_cached_active_moments_grad4_native",
+                "global_batched_cached_active_moments_grad4_native_rectangular2048",
+            )
+        ):
+            reasons.append(
+                "opt-in envelopes currently require native active-moment schedules"
+            )
         scalable = recipe.schedule in (
             "global_owner_window_fp32_geometry_sort32",
             "global_owner_window_fp32_geometry_sort32_flat_c",

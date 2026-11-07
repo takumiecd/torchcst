@@ -248,6 +248,10 @@ def _activity(
     activity_gain=1.0,
     activity_mode="finite_chord",
     dormant_expansion_rate=0.0,
+    radius_envelope="rational",
+    closed_lower_power=4.0,
+    closed_upper_power=1.0,
+    zero_opening_scale=0.03,
 ):
     if type(alpha_init) not in (float, int) or not 0 <= alpha_init <= 1:
         raise ValueError("alpha_init must be in [0, 1]")
@@ -271,6 +275,16 @@ def _activity(
         kappa=kappa,
         lower_kappa=kappa if lower_kappa is None else lower_kappa,
         upper_decay_power=upper_decay_power,
+        **(
+            dict(
+                radius_envelope=radius_envelope,
+                closed_lower_power=closed_lower_power,
+                closed_upper_power=closed_upper_power,
+                zero_opening_scale=zero_opening_scale,
+            )
+            if coordinate == "polar_radius"
+            else {}
+        ),
     )
     updates = [("radial_regularization", radial_regularization)]
     if is_polar:
@@ -351,6 +365,10 @@ def polar(
     activity_gain=1.0,
     activity_mode="finite_chord",
     dormant_expansion_rate=0.0,
+    radius_envelope="rational",
+    closed_lower_power=4.0,
+    closed_upper_power=1.0,
+    zero_opening_scale=0.03,
 ) -> CoordinateSpec:
     """Angular task motion with radial activity that sets the width.
 
@@ -358,6 +376,13 @@ def polar(
     physical radius for cell_mass. Widths stay detached from task gradients.
     """
     input_bounds, output_bounds = _bounds(bounds, input_bounds, output_bounds)
+    if not isinstance(input_bounds, RadiusBounds) and (
+        radius_envelope != "rational"
+        or closed_lower_power != 4
+        or closed_upper_power != 1
+        or zero_opening_scale != 0.03
+    ):
+        raise ValueError("radius envelopes require RadiusBounds")
     return _activity(
         coordinate="polar_radius"
         if isinstance(input_bounds, RadiusBounds)
@@ -374,6 +399,10 @@ def polar(
         activity_gain=activity_gain,
         activity_mode=activity_mode,
         dormant_expansion_rate=dormant_expansion_rate,
+        radius_envelope=radius_envelope,
+        closed_lower_power=closed_lower_power,
+        closed_upper_power=closed_upper_power,
+        zero_opening_scale=zero_opening_scale,
     )
 
 
