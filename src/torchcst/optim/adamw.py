@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import math
 import re
 
@@ -17,6 +18,9 @@ from ._checkpoint import kernel_manifest
 from ._coordinate_step import finish_atom_steps, prepare_atom_steps
 from .binding import bind_atom_states, field_specs, validate_binding
 from .state import OptimizerStateAdapter
+
+
+_INIT_GROUP_HAS_AMSGRAD = "amsgrad" in inspect.signature(AdamW._init_group).parameters
 
 
 class CSTAdamW(AdamW):
@@ -250,9 +254,23 @@ class CSTAdamW(AdamW):
         """
         for group in self.param_groups:
             params, grads, means, squares, maxima, clocks = [], [], [], [], [], []
-            has_complex = self._init_group(
-                group, params, grads, means, squares, maxima, clocks
-            )
+            if _INIT_GROUP_HAS_AMSGRAD:
+                # Torch 2.6 passes amsgrad explicitly; newer AdamW reads it
+                # from the group. Keep the functional proposal unchanged.
+                has_complex = self._init_group(
+                    group,
+                    params,
+                    grads,
+                    group["amsgrad"],
+                    means,
+                    squares,
+                    maxima,
+                    clocks,
+                )
+            else:
+                has_complex = self._init_group(
+                    group, params, grads, means, squares, maxima, clocks
+                )
             beta1, beta2 = group["betas"]
             adamw(
                 params,
