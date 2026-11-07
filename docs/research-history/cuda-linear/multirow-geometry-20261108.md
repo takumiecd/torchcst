@@ -53,3 +53,10 @@ loss scaling. Check R65 as well as R1/9/256, and both gradient branches/retained
 backward/version checks for both new candidates. Qualify N2048 for both before
 all16 large observations. Record saved-vs-geometry-vs-stream final hash equality
 without assuming it. This is not a public checkpointing API or an adopted default.
+
+For stream64 at R256/N16384/A131072, those two Z/H/G pairs use about199.983MiB
+in total, while the full partial table48MiB and geometry12.5MiB remain. The
+shape-derived core working set is260.483MiB instead of860.434MiB. Input/output,
+optimizer and owner metadata are additional; actual allocator peaks determine
+the realized saving. A full-R loss/dY is preserved, so windowing does not change
+batch-loss normalization or optimizer update frequency.

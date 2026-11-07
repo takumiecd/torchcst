@@ -43,3 +43,9 @@ Atom数・Parameter・更新状態・batch lossの尺度は変更しない。R1/
 両候補の片側勾配・retain backward・version検査を確認する。両候補をN2048で検証してから、
 大規模16観測を実施する。保存・geometry・streamの最終hash一致は仮定せず記録する。
 公開checkpoint APIや既定値の採用ではない。
+
+stream64のR256/N16384/A131072では両向きZ/H/Gが合計約199.983MiBになり、
+全partial table48MiBとgeometry12.5MiBは残る。shapeから求めた中心的な作業領域は
+860.434MiBから260.483MiBになる。入力・出力・optimizer・owner metadataは別で、
+実現した節約はallocatorピークで判定する。loss/dYは全Rで求めたものを維持するため、
+窓への分割でbatch lossの正規化やoptimizer更新頻度は変えない。

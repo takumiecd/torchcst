@@ -32,3 +32,15 @@ memory can therefore stay unchanged. This is a testable tradeoff, not an
 assumed saving. A multilayer LM's previous result does not establish this peak.
 
 This protocol precedes measurement; results will be appended after auditing.
+
+## Working-storage accounting
+
+For square charts, M=8 and direct levels2, one FP32 moment tensor uses
+`Z_bytes = 4 R (N-2) (2M+1)` and one response uses `H_bytes = 4 R A`.
+The gradient partials use `12 A ceil(R/8)` bytes and geometry uses `100 A`.
+At N16384/A131072/R256 this is271.967MiB per Z,128MiB per H/G,
+48MiB for partials and12.5MiB for geometry. Two orientations need about
+860.434MiB for these tensors together, before inputs, outputs, gradients,
+optimizer and owner metadata. Plain recomputation recreates the same working
+set at backward peak. These are shape-derived tensor payloads, not measured
+allocator peaks or total GPU process usage.

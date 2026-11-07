@@ -29,3 +29,14 @@ allocatedとreservedを別記し、プロセス全体のメモリとは呼ばな
 結果だけでは、このピークは決まらない。
 
 これは計測前のプロトコルであり、監査後に結果を追記する。
+
+## 作業領域の内訳
+
+正方chart・M=8・direct levels2では、FP32 moment一つが
+`Z_bytes = 4 R (N-2) (2M+1)`、応答一つが`H_bytes = 4 R A`。
+勾配partialは`12 A ceil(R/8)` byte、geometryは`100 A` byteである。
+N16384/A131072/R256ではZ一つ271.967MiB、H/G一つ128MiB、partial48MiB、
+geometry12.5MiB。両向き分を合わせて約860.434MiBになり、さらに入力・出力・勾配・
+optimizer・owner metadataが加わる。通常の再計算もbackwardピークでは同じ作業領域を
+再生成する。これはshapeから求めたTensor payloadで、allocatorピークの実測や
+GPUプロセス全使用量ではない。
