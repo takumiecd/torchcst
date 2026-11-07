@@ -30,3 +30,32 @@ Bは幅16384→8192・Dense→levels_stream64→levels→保存。既存worker�
 
 これは計測前protocolである。この比較後は追加の推測的な最適化を止め、実測した選択肢を保全して
 reviewできる状態に整理する。
+
+## 研究用の明示選択
+
+対応する大規模正方の`layer`に、既存selector APIで保存版か64行単位再計算を選ぶ。
+限定cohort用のprivate opt-inで、公開CSTLinearの新しいflagではない。
+厳密なPlan recipeは保存版で`save_response=True`、stream64で`False`とし、
+別Algorithmが実行・保持方式を識別する。optimizerやbatch lossは変えない。
+
+```python
+from torchcst import FixedSelector, make_algorithm_registry
+from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.large_multirow import (
+    LARGE_LEVELS,
+    LARGE_LEVELS_STREAM64,
+    RadiusLargeLevelsAlgorithm,
+    RadiusLargeLevelsStream64Algorithm,
+)
+
+registry = make_algorithm_registry()
+registry.register(RadiusLargeLevelsAlgorithm())
+registry.register(RadiusLargeLevelsStream64Algorithm())
+layer.selector = FixedSelector(LARGE_LEVELS_STREAM64, registry=registry)
+# Saved responses instead:
+# layer.selector = FixedSelector(LARGE_LEVELS, registry=registry)
+```
+
+許可範囲：FP32正方N2048/8192/16384、R1〜256、A4〜8N、origin0/spacing1、
+Polar M8/base1/merge2、radius[.5,50]。実測はA8N。他の範囲・Graph・dtypeは未検証/拒否。
+selectorは学習状態ではないためcheckpoint復元後に再指定する。厳密な再現には記録した
+コミットのsource・catalog・凍結Caseを使う。

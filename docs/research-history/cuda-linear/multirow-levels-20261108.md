@@ -37,3 +37,34 @@ with previous geometry/windowing observations as separate source studies.
 
 This is a premeasurement protocol. Stop further speculative optimization after
 this comparison and preserve the measured options for review.
+
+## Explicit research selection
+
+For an already compatible large-square `layer`, select the saved or64-row
+recomputation Plan using the existing selector API. This is a private cohort
+opt-in, not a new public CSTLinear flag. The strict Plan recipe declares
+`save_response=True` for saved and `False` for stream64; the distinct Algorithm
+identifies its execution/retention policy. No optimizer or batch-loss change.
+
+```python
+from torchcst import FixedSelector, make_algorithm_registry
+from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.large_multirow import (
+    LARGE_LEVELS,
+    LARGE_LEVELS_STREAM64,
+    RadiusLargeLevelsAlgorithm,
+    RadiusLargeLevelsStream64Algorithm,
+)
+
+registry = make_algorithm_registry()
+registry.register(RadiusLargeLevelsAlgorithm())
+registry.register(RadiusLargeLevelsStream64Algorithm())
+layer.selector = FixedSelector(LARGE_LEVELS_STREAM64, registry=registry)
+# Saved responses instead:
+# layer.selector = FixedSelector(LARGE_LEVELS, registry=registry)
+```
+
+Admitted scope: FP32 square N2048/8192/16384, R1..256, A4..8N, origin0/spacing1,
+Polar M8/base1/merge2 and radii[.5,50]. Measurements use A8N. Other scopes,
+Graphs and dtypes are unqualified/rejected. Reapply the selector after restoring
+a checkpoint; it is not model training state. Source, catalog and frozen Case
+must match the recorded commit for exact reproduction.
