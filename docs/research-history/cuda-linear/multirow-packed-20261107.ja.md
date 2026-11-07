@@ -6,17 +6,19 @@
 今回は演算の数学・初期化・支持・正規化・radiusをdetachするtask VJP・native Polar更新を
 維持する。production defaultや他GPUは変更しない。
 
-3つの明示的研究Algorithmでmoment/response保存をFP32化し、幾何・係数・位相計算・縮約はFP64で維持する。
+ユーザーの補足に従い、Linearのradius/center decode・routing判定・係数・位相・縮約・
+moment/response保存をFP32とする。FP64は比較参照であり、新Linearの要件ではない。
+共通host設定scalarや変更しないoptimizerは、このLinearの信号計算とは別である。
 
 | Algorithm末尾 | 逆伝播まで保存するもの | Atom勾配の実行 |
 | --- | --- | --- |
 | packed | FP32 Z/H | 従来の行順次縮約 |
-| packed_recompute | X/P/keyのみ。FP32 Z/Hを再計算 | 従来の行順次縮約 |
-| packed_parallel | X/P/keyのみ。FP32 Z/Hを再計算 | 8行groupと昇順のFP64部分縮約 |
+| packed_recompute | X/P/keyのみ。FP32 Z/Hを再計算 | 8行groupとFP32部分縮約 |
+| packed_parallel | FP32 Z/H | 8行groupとFP32部分縮約 |
 
 既存8行展開に加え、response projectionも8行共有とする。
-parallel版はAtom幾何を小さい一時FP64 tableへ一度計算して、行groupをCTAへ分散する。
-R256/A4096でFP64のgeometry/partial scratchは0.78125/3 MiB。保存activationではなく一時領域である。
+parallel版はAtom幾何を小さい一時FP32 tableへ一度計算して、行groupをCTAへ分散する。
+R256/A4096でFP32のgeometry/partial scratchは0.390625/1.5 MiB。保存activationではなく一時領域である。
 dense Wの構築、Atomの省略、tile別の再正規化はしない。
 再計算はforward時のSavedVariablesを使い、version検査・saved Tensor hook・一階微分制限を維持する。
 
@@ -41,11 +43,11 @@ LR/data horizon20M token固定。baseline4・row8・Dense・新3候補をfresh p
 既存の計時sampleは更新11〜20、メモリには20更新全部を含む。
 候補選択用であり、採用計測や収束の研究ではない。
 
-数値gate合格後、allocatedとreservedがともにDense以下の候補で最速を選ぶ。
-該当しなければ、baseline4より速い候補からallocated最小を選び、残るtradeoffを明示する。
-どれも該当しなければ負のscreenを保全して止める。
-選んだ候補・baseline4・row8・Denseをfresh100更新・反転2順序で確認する。
-Aはbaseline4→row8→Dense→候補、Bは候補→Dense→row8→baseline4。
+本命は再計算しないFP32並列版とし、再計算版は時間・メモリの選択肢として残す。
+数値gate合格後に全候補をscreenし、再計算しない候補の最速と再計算版を、
+baseline4・row8・Denseとfresh100更新・反転2順序で確認する。
+Aはbaseline4→row8→Dense→本命→再計算、Bは再計算→本命→Dense→row8→baseline4。
+数値gate不合格の候補は失敗を保全し、計時しない。
 既存learnerのmedianは更新11〜100、メモリは100更新全部を対象とする。
 準備・外部資格検証/cold compile・評価・checkpoint/probeは別枠。
 process全使用量やGraphの主張はしない。

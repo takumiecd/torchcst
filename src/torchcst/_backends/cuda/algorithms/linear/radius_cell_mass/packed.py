@@ -70,9 +70,13 @@ class RadiusPackedRecomputeAlgorithm(RadiusPackedAlgorithm):
     def recompute(self):
         return True
 
+    @property
+    def parallel(self):
+        return True
+
 
 @dataclass(frozen=True)
-class RadiusPackedParallelAlgorithm(RadiusPackedRecomputeAlgorithm):
+class RadiusPackedParallelAlgorithm(RadiusPackedAlgorithm):
     id: str = "cuda_radius_cell_mass_packed_parallel"
 
     @property
@@ -89,7 +93,7 @@ PACKED_RECOMPUTE = ExecutionPlan(
     replace(GLOBAL_ACTIVE_GRAD4_NATIVE.recipe, save_response=False),
 )
 PACKED_PARALLEL = ExecutionPlan(
-    "cuda_radius_cell_mass_packed_parallel", "v1", PACKED_RECOMPUTE.recipe
+    "cuda_radius_cell_mass_packed_parallel", "v1", GLOBAL_ACTIVE_GRAD4_NATIVE.recipe
 )
 
 _seal_functions(globals())

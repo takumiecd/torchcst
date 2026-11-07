@@ -1,6 +1,7 @@
 #pragma once
 namespace radius_cell_mass {
 void packed_check_scope(Tensor, Tensor, Config, Config);
+Tensor packed_classify(Tensor, Config, Config);
 void packed_check_tensor(Tensor, Tensor, std::vector<int64_t>);
 std::vector<Tensor> packed_project(Tensor, Tensor, Config, bool);
 std::vector<Tensor> packed_transform(Tensor, Tensor, Tensor, Tensor, Config, Config, bool);
@@ -10,7 +11,7 @@ class PackedRows : public torch::autograd::Function<PackedRows> {
 public:
     static Tensor forward(torch::autograd::AutogradContext *ctx, Tensor x, Tensor p,
         Config ci, Config co, bool recompute, bool parallel) {
-        auto keys = classify_atoms_async(p, ci, co);
+        auto keys = packed_classify(p, ci, co);
         auto ranges = autograd_ranges(keys, ci, co, false);
         auto values = packed_transform(x, p, ranges[0], ranges[1], ci, co, false);
         ctx->saved_data["input"] = ci; ctx->saved_data["output"] = co;

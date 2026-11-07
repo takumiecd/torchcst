@@ -7,19 +7,22 @@ This continuation preserves its mathematical operator, initialization, support,
 normalization, detached-radius task VJP and native Polar update. No production
 default or unrelated GPU is changed.
 
-Three explicit research Algorithms use FP32 moment/response storage while
-retaining FP64 geometry, profile coefficients, phase arithmetic and accumulation:
+Following the user's clarification, the primary candidates use FP32 for
+Linear radius/center decode, routing decisions, profile coefficients, phases,
+accumulation and moment/response storage. FP64 is the comparison oracle, not a
+requirement for the new Linear path. Common host configuration scalars and the
+unchanged optimizer are separate from these signal/Linear calculations:
 
 | Algorithm suffix | Retained through backward | Atom-gradient execution |
 | --- | --- | --- |
 | packed | FP32 Z/H | Original serial row reduction |
-| packed_recompute | X/P/keys only; regenerate FP32 Z/H | Original serial row reduction |
-| packed_parallel | X/P/keys only; regenerate FP32 Z/H | Eight-row groups plus ordered FP64 partial reduction |
+| packed_recompute | X/P/keys only; regenerate FP32 Z/H | Eight-row groups plus FP32 partial reduction |
+| packed_parallel | FP32 Z/H | Eight-row groups plus FP32 partial reduction |
 
 All use eight-row response projection in addition to the existing eight-row
-expansion. The parallel variant evaluates per-Atom geometry once into a small
-transient FP64 table, then distributes row groups across CTAs. At R256/A4096,
-its FP64 geometry/partial scratch is0.78125/3 MiB; these are temporary, not saved
+expansion. The parallel variants evaluate per-Atom geometry once into a small
+transient FP32 table, then distribute row groups across CTAs. At R256/A4096,
+their FP32 geometry/partial scratch is0.390625/1.5 MiB; these are temporary, not saved
 activation arrays. No dense effective W, atom omission or per-tile renormalization
 is introduced. Recompute reads forward-time SavedVariables and preserves version
 checks, saved-Tensor hooks and first-order differentiation limits.
@@ -48,12 +51,13 @@ variants in fresh20-update screens. Screen timings use existing updates11..20;
 all20 updates enter allocated/reserved peaks. These are candidate selection,
 not adoption measurements or convergence runs.
 
-After numerical gates, choose the fastest screened variant with allocated AND
-reserved peak at/below Dense. If none meets both, choose the lowest-allocated
-variant that is faster than baseline4 and label the remaining tradeoff. If none
-qualifies, stop and preserve the negative screen. Confirm the selected variant
-against baseline4, row8 and Dense in fresh100-update runs in two reversed orders
-(A: baseline4,row8,Dense,candidate; B: candidate,Dense,row8,baseline4). Existing
+The no-recompute FP32 parallel path is the primary candidate. Recompute remains
+an optional time/memory tradeoff, not an assumed requirement. After numerical
+gates, screen all variants and confirm the fastest no-recompute candidate AND
+the recompute option against baseline4, row8 and Dense in fresh100-update runs
+in two reversed orders (A: baseline4,row8,Dense,primary,recompute;
+B: recompute,primary,Dense,row8,baseline4). If a variant fails its numerical
+gate, preserve the failure and do not time it. Existing
 learner medians use updates11..100; all100 updates enter memory. Setup, external
 qualification/cold compilation, evaluation, checkpoint/probes remain separate.
 No process-memory or Graph claim. Use identical initial CST Parameters and

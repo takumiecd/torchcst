@@ -1,6 +1,27 @@
 #pragma once
-// FP32 Z/H/G; FP64 geometry, accumulation and transient gradient partials.
+// FP32 Linear arithmetic and Z/H/G, with optional recomputation.
+// Host configuration scalars retain the common metadata representation.
 namespace radius_cell_mass {
+__global__ void packed_classify_kernel(const float *p,int64_t *keys,int atoms,Axis ai,Axis ao) {
+    int a=blockIdx.x*blockDim.x+threadIdx.x;if(a>=atoms)return;
+    float ri=signal_radius<float>(p,a,ai),ro=signal_radius<float>(p,a,ao);
+    bool valid=isfinite(ri)&&isfinite(ro)&&ri>0&&ro>0;
+    for(int c=0;c<4;++c)valid &= isfinite(p[4*a+c]);
+    valid &= isfinite(p[4*a]*p[4*a]+p[4*a+1]*p[4*a+1]);
+    CUDA_KERNEL_ASSERT_MSG(valid,"invalid FP32 packed geometry");
+    if(!valid){keys[a]=0;return;}
+    auto mi=signal_classify<float>(ri,p[4*a+3],ai),mo=signal_classify<float>(ro,p[4*a+2],ao);
+    Bank bi=ai.banks[mi.bank],bo=ao.banks[mo.bank];
+    int ni=bi.node_offset+positive_mod(mi.first_tile,bi.tile_count),no=bo.node_offset+positive_mod(mo.first_tile,bo.tile_count);
+    keys[a]=int64_t(no)*ai.node_count+ni;
+}
+Tensor packed_classify(Tensor p,Config ci,Config co) {
+    c10::cuda::CUDAGuard guard(p.device());
+    auto keys=torch::empty({p.size(0)},p.options().dtype(torch::kLong));
+    packed_classify_kernel<<<(p.size(0)+THREADS-1)/THREADS,THREADS,0,at::cuda::getCurrentCUDAStream()>>>(
+        p.data_ptr<float>(),keys.data_ptr<int64_t>(),p.size(0),parse_axis(ci),parse_axis(co));
+    C10_CUDA_KERNEL_LAUNCH_CHECK();return keys;
+}
 void packed_check_scope(Tensor x, Tensor p, Config ci, Config co) {
     check_atoms(p); check_matrix(x);
     Axis ai = parse_axis(ci), ao = parse_axis(co);
@@ -21,7 +42,9 @@ Tensor packed_moments(Tensor x, Tensor p, Config config) {
     Axis a = parse_axis(config); check_hybrid_signal(x, p, a);
     int nodes = a.node_count - checked_start(a, 2), f = a.basis_count();
     auto z = torch::empty({x.size(0), nodes, f}, x.options());
-    auto mask = active_moment_banks(p, config, true, 2);
+    auto mask = torch::zeros({1}, p.options().dtype(torch::kUInt32));
+    active_moment_banks_kernel<float, float><<<(p.size(0)+THREADS-1)/THREADS,THREADS,0,
+        at::cuda::getCurrentCUDAStream()>>>(p.data_ptr<float>(),mask.data_ptr<uint32_t>(),p.size(0),a,2,true);
     for (int level = 2; level < a.bank_count / 2; ++level)
         compact_moments_kernel<float, float><<<(z.numel() + THREADS - 1) / THREADS,
             THREADS, 0, at::cuda::getCurrentCUDAStream()>>>(x.data_ptr<float>(),
@@ -50,7 +73,7 @@ std::vector<Tensor> packed_transform(Tensor x, Tensor p, Tensor rows, Tensor off
     auto projection = packed_project(x, p, source, output_side);
     Axis a = parse_axis(destination); check_ranges(rows, offsets, p, a);
     auto y = torch::empty({x.size(0), a.sites}, x.options());
-    auto layout = batched_coefficient_layout(a, 2, 32);
+    auto layout = batched_coefficient_layout<float>(a, 2, 32);
     dim3 grid((a.sites + 31) / 32, (x.size(0) + 7) / 8);
     batched_cached_expand_kernel<float, false, float><<<grid, THREADS, layout.bytes,
         at::cuda::getCurrentCUDAStream()>>>(p.data_ptr<float>(), rows.data_ptr<int64_t>(),
@@ -62,65 +85,65 @@ std::vector<Tensor> packed_transform(Tensor x, Tensor p, Tensor rows, Tensor off
 }
 
 // A small transient geometry table avoids repeating profile decode in each row
-// group. Signal-dependent Z/H/G and all retained tensors stay FP32.
+// group. Linear arithmetic, scratch and retained tensors are FP32.
 constexpr int PACKED_GEOMETRY_FIELDS = 25;
-__global__ void packed_gradient_geometry(const float *p, double *geometry, int atoms,
+__global__ void packed_gradient_geometry(const float *p, float *geometry, int atoms,
     Axis ai, Axis ao) {
     int atom = blockIdx.x * blockDim.x + threadIdx.x;
     if (atom >= atoms) return;
-    double *v = geometry + int64_t(atom) * PACKED_GEOMETRY_FIELDS;
-    double ri = radius(p, atom, ai), ro = radius(p, atom, ao);
-    Membership mi = classify(ri, center(p, atom, ai, false), ai);
-    Membership mo = classify(ro, center(p, atom, ao, true), ao);
-    profile_values(ri, ai.banks[mi.bank].period, 8, v);
-    profile_values(ro, ao.banks[mo.bank].period, 8, v + 9);
-    v[18] = wrapped_center(center(p, atom, ai, false), ai);
-    v[19] = wrapped_center(center(p, atom, ao, true), ao);
+    float *v = geometry + int64_t(atom) * PACKED_GEOMETRY_FIELDS;
+    float ri = signal_radius<float>(p, atom, ai), ro = signal_radius<float>(p, atom, ao);
+    Membership mi = signal_classify<float>(ri, float(center(p, atom, ai, false)), ai);
+    Membership mo = signal_classify<float>(ro, float(center(p, atom, ao, true)), ao);
+    profile_values(ri, float(ai.banks[mi.bank].period), 8, v);
+    profile_values(ro, float(ao.banks[mo.bank].period), 8, v + 9);
+    v[18] = signal_wrapped<float>(float(center(p, atom, ai, false)), ai);
+    v[19] = signal_wrapped<float>(float(center(p, atom, ao, true)), ao);
     v[20] = mi.bank; v[21] = mi.first_tile;
     v[22] = mo.bank; v[23] = mo.first_tile;
-    v[24] = amplitude(p, atom, ai);
+    v[24] = signal_amplitude<float>(p, atom, ai);
 }
 
 __global__ void packed_gradient_groups(const float *x, const float *dy,
     const float *zx, const float *zy, const float *h, const float *g,
-    const double *geometry, double *partial, int atoms, int batch, Axis ai, Axis ao) {
+    const float *geometry, float *partial, int atoms, int batch, Axis ai, Axis ao) {
     int atom = blockIdx.x * blockDim.x + threadIdx.x;
     if (atom >= atoms) return;
     int first = blockIdx.y * 8;
-    const double *v = geometry + int64_t(atom) * PACKED_GEOMETRY_FIELDS;
+    const float *v = geometry + int64_t(atom) * PACKED_GEOMETRY_FIELDS;
     Membership mi{int(v[20]), int(v[21])}, mo{int(v[22]), int(v[23])};
-    double dci[8] = {}, dco[8] = {};
+    float dci[8] = {}, dco[8] = {};
     if (ai.banks[mi.bank].level < 2)
-        direct_derivatives_batch4<float, false>(x, first, batch, ai, mi, v[18], v,
+        direct_derivatives_batch4<float, false, float>(x, first, batch, ai, mi, v[18], v,
             nullptr, nullptr, dci);
     else compact_derivatives_batch4<false, float>(zx, first, batch, ai, mi, v[18], v,
         nullptr, 2, nullptr, dci);
     if (ao.banks[mo.bank].level < 2)
-        direct_derivatives_batch4<float, false>(dy, first, batch, ao, mo, v[19], v + 9,
+        direct_derivatives_batch4<float, false, float>(dy, first, batch, ao, mo, v[19], v + 9,
             nullptr, nullptr, dco);
     else compact_derivatives_batch4<false, float>(zy, first, batch, ao, mo, v[19], v + 9,
         nullptr, 2, nullptr, dco);
-    double da = 0, dmi = 0, dmo = 0;
+    float da = 0, dmi = 0, dmo = 0;
     #pragma unroll
     for (int r = 0; r < 8; ++r) if (first + r < batch) {
         int64_t index = int64_t(first + r) * atoms + atom;
-        double H = h[index], G = g[index];
+        float H = h[index], G = g[index];
         da += H * G; dmi += v[24] * G * dci[r]; dmo += v[24] * H * dco[r];
     }
-    double *out = partial + (int64_t(blockIdx.y) * atoms + atom) * 3;
+    float *out = partial + (int64_t(blockIdx.y) * atoms + atom) * 3;
     out[0] = da; out[1] = dmi; out[2] = dmo;
 }
 
-__global__ void packed_gradient_reduce(const float *p, const double *partial,
+__global__ void packed_gradient_reduce(const float *p, const float *partial,
     float *gradient, int atoms, int groups, Axis ai) {
     int atom = blockIdx.x * blockDim.x + threadIdx.x;
     if (atom >= atoms) return;
-    double da = 0, dmi = 0, dmo = 0;
+    float da = 0, dmi = 0, dmo = 0;
     for (int group = 0; group < groups; ++group) {
-        const double *v = partial + (int64_t(group) * atoms + atom) * 3;
+        const float *v = partial + (int64_t(group) * atoms + atom) * 3;
         da += v[0]; dmi += v[1]; dmo += v[2];
     }
-    store_gradient(p, gradient, atom, ai, da, 0, dmi, dmo);
+    signal_store_gradient<float>(p, gradient, atom, ai, da, 0, dmi, dmo);
 }
 
 void packed_check_tensor(Tensor t, Tensor x, std::vector<int64_t> shape) {
@@ -138,18 +161,18 @@ Tensor packed_parameter_grad(Tensor p, Tensor x, Tensor dy, Tensor zx, Tensor zy
     packed_check_tensor(g, x, {x.size(0), p.size(0)});
     auto grad = torch::empty_like(p);
     if (parallel) {
-        auto geometry = torch::empty({p.size(0), PACKED_GEOMETRY_FIELDS}, p.options().dtype(torch::kDouble));
+        auto geometry = torch::empty({p.size(0), PACKED_GEOMETRY_FIELDS}, p.options().dtype(torch::kFloat));
         int groups = (x.size(0) + 7) / 8;
         auto partial = torch::empty({groups, p.size(0), 3}, geometry.options());
         packed_gradient_geometry<<<(p.size(0) + 127) / 128, 128, 0, at::cuda::getCurrentCUDAStream()>>>(
-            p.data_ptr<float>(), geometry.data_ptr<double>(), p.size(0), ai, ao);
+            p.data_ptr<float>(), geometry.data_ptr<float>(), p.size(0), ai, ao);
         dim3 grid((p.size(0) + 31) / 32, groups);
         packed_gradient_groups<<<grid, 32, 0, at::cuda::getCurrentCUDAStream()>>>(
             x.data_ptr<float>(), dy.data_ptr<float>(), zx.data_ptr<float>(), zy.data_ptr<float>(),
-            h.data_ptr<float>(), g.data_ptr<float>(), geometry.data_ptr<double>(), partial.data_ptr<double>(),
+            h.data_ptr<float>(), g.data_ptr<float>(), geometry.data_ptr<float>(), partial.data_ptr<float>(),
             p.size(0), x.size(0), ai, ao);
         packed_gradient_reduce<<<(p.size(0) + 127) / 128, 128, 0, at::cuda::getCurrentCUDAStream()>>>(
-            p.data_ptr<float>(), partial.data_ptr<double>(), grad.data_ptr<float>(), p.size(0), groups, ai);
+            p.data_ptr<float>(), partial.data_ptr<float>(), grad.data_ptr<float>(), p.size(0), groups, ai);
     } else {
         batched_parameter_kernel<float, false, float><<<(p.size(0) + 31) / 32, 32, 0,
             at::cuda::getCurrentCUDAStream()>>>(p.data_ptr<float>(), x.data_ptr<float>(), dy.data_ptr<float>(),

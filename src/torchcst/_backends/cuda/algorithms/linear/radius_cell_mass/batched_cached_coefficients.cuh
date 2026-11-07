@@ -16,6 +16,7 @@ struct BatchedCoefficientLayout {
 
 // C holds only the current bank's destination nodes, not the whole hierarchy.
 // Both the cache and C are reused after every thread has consumed this bank.
+template<class Storage = double>
 inline BatchedCoefficientLayout batched_coefficient_layout(Axis axis, int start, int tile_sites) {
     int destinations = 0;
     for (int bi = 0; bi < axis.bank_count; ++bi) {
@@ -27,11 +28,11 @@ inline BatchedCoefficientLayout batched_coefficient_layout(Axis axis, int start,
                 (end - 1) / bank.tile_sites - first / bank.tile_sites + 1);
         }
     }
-    size_t coefficients = size_t(destinations) * EXPANSION_BATCH * axis.basis_count() * sizeof(double);
-    size_t warp_bytes = size_t(axis.basis_count()) * BLOCK_LOCAL_C_STRIDE * sizeof(double);
+    size_t coefficients = size_t(destinations) * EXPANSION_BATCH * axis.basis_count() * sizeof(Storage);
+    size_t warp_bytes = size_t(axis.basis_count()) * BLOCK_LOCAL_C_STRIDE * sizeof(Storage);
     for (int capacity = THREADS; capacity >= 32; capacity /= 2) {
         size_t base = coefficients + size_t(capacity) *
-            ((axis.modes + 2 + EXPANSION_BATCH) * sizeof(double) + sizeof(int));
+            ((axis.modes + 2 + EXPANSION_BATCH) * sizeof(Storage) + sizeof(int));
         if (base > 48 * 1024) continue;
         int warps = destinations ? int(std::min(size_t(THREADS / 32),
             (48 * 1024 - base) / warp_bytes)) : 0;
@@ -44,13 +45,14 @@ inline BatchedCoefficientLayout batched_coefficient_layout(Axis axis, int start,
 
 // One warp owns one destination node. Generate its unscaled Fourier columns
 // once, then each feature lane contracts the same columns with a group of H rows.
+template<class Storage = double>
 __device__ inline void batched_coefficient_tile(
-    const double *cache, const int *first_tiles, const int64_t *offsets,
-    double *out, double *columns, int64_t chunk, int retained, int node,
+    const Storage *cache, const int *first_tiles, const int64_t *offsets,
+    Storage *out, Storage *columns, int64_t chunk, int retained, int node,
     Axis axis, Bank bank, int stride) {
     int lane = threadIdx.x % 32, features = axis.basis_count();
     int tile = node - bank.node_offset;
-    double sum[EXPANSION_BATCH] = {}, last[EXPANSION_BATCH] = {};
+    Storage sum[EXPANSION_BATCH] = {}, last[EXPANSION_BATCH] = {};
     for (int part = 0; part < bank.count; ++part) {
         int owner = bank.node_offset + positive_mod(tile - part, bank.tile_count);
         int64_t begin = offsets[owner] > chunk ? offsets[owner] : chunk;
@@ -59,13 +61,13 @@ __device__ inline void batched_coefficient_tile(
             int count = int(end - group < 32 ? end - group : 32);
             if (lane < count) {
                 int slot = int(group + lane - chunk);
-                const double *c = cache + slot * stride;
+                const Storage *c = cache + slot * stride;
                 int unwrapped = first_tiles[slot] + part;
-                double displacement = c[axis.modes + 1] - unwrapped * bank.tile_sites * axis.spacing;
+                Storage displacement = c[axis.modes + 1] - unwrapped * bank.tile_sites * Storage(axis.spacing);
                 columns[lane] = c[0];
-                HarmonicPhase phase(2 * PI * displacement / bank.period);
+                SignalPhase<Storage> phase(2 * Storage(PI) * displacement / Storage(bank.period));
                 for (int k = 1; k <= axis.modes; ++k) {
-                    double cp, sp; phase.next(cp, sp);
+                    Storage cp, sp; phase.next(cp, sp);
                     columns[(2 * k - 1) * BLOCK_LOCAL_C_STRIDE + lane] = 2 * c[k] * cp;
                     columns[2 * k * BLOCK_LOCAL_C_STRIDE + lane] = 2 * c[k] * sp;
                 }
@@ -73,8 +75,8 @@ __device__ inline void batched_coefficient_tile(
             __syncwarp();
             if (lane < features) {
                 for (int atom = 0; atom < count; ++atom) {
-                    const double *c = cache + int(group + atom - chunk) * stride;
-                    double coefficient = columns[lane * BLOCK_LOCAL_C_STRIDE + atom];
+                    const Storage *c = cache + int(group + atom - chunk) * stride;
+                    Storage coefficient = columns[lane * BLOCK_LOCAL_C_STRIDE + atom];
                     #pragma unroll
                     for (int r = 0; r < EXPANSION_BATCH; ++r)
                         sum[r] += c[axis.modes + 2 + r] * coefficient;
@@ -82,8 +84,8 @@ __device__ inline void batched_coefficient_tile(
             }
             if (lane == 0 && features > 32) {
                 for (int atom = 0; atom < count; ++atom) {
-                    const double *c = cache + int(group + atom - chunk) * stride;
-                    double coefficient = columns[32 * BLOCK_LOCAL_C_STRIDE + atom];
+                    const Storage *c = cache + int(group + atom - chunk) * stride;
+                    Storage coefficient = columns[32 * BLOCK_LOCAL_C_STRIDE + atom];
                     #pragma unroll
                     for (int r = 0; r < EXPANSION_BATCH; ++r)
                         last[r] += c[axis.modes + 2 + r] * coefficient;
@@ -101,9 +103,10 @@ __device__ inline void batched_coefficient_tile(
 
 // Same cell integral and repeated-image sum as cached_direct_site. The mass
 // does not depend on batch; multiply the four completed responses afterwards.
+template<class Storage = double>
 __device__ inline void batched_direct_site(
-    const double *cache, const int *first_tiles, const int64_t *offsets,
-    int64_t chunk, int retained, int site, Axis axis, Bank bank, int stride, double *result) {
+    const Storage *cache, const int *first_tiles, const int64_t *offsets,
+    int64_t chunk, int retained, int site, Axis axis, Bank bank, int stride, Storage *result) {
     int tile = site / bank.tile_sites, local = site % bank.tile_sites;
     for (int part = 0; part < bank.count; ++part) {
         int owner = bank.node_offset + positive_mod(tile - part, bank.tile_count);
@@ -111,17 +114,17 @@ __device__ inline void batched_direct_site(
         int64_t end = offsets[owner + 1] < chunk + retained ? offsets[owner + 1] : chunk + retained;
         for (int64_t row = begin; row < end; ++row) {
             int slot = int(row - chunk);
-            const double *c = cache + slot * stride;
+            const Storage *c = cache + slot * stride;
             int unwrapped_site = (first_tiles[slot] + part) * bank.tile_sites + local;
-            double mass = axis.spacing * c[0];
-            HarmonicPhase phase(2 * PI * (c[axis.modes + 1] - unwrapped_site * axis.spacing) / bank.period);
-            double half_cell = PI * axis.spacing / bank.period;
-            HarmonicPhase cell_phase(half_cell);
+            Storage mass = Storage(axis.spacing) * c[0];
+            SignalPhase<Storage> phase(2 * Storage(PI) * (c[axis.modes + 1] - unwrapped_site * Storage(axis.spacing)) / Storage(bank.period));
+            Storage half_cell = Storage(PI) * Storage(axis.spacing) / Storage(bank.period);
+            SignalPhase<Storage> cell_phase(half_cell);
             for (int k = 1; k <= axis.modes; ++k) {
-                double cp, sp, cell_cosine, cell_sine;
+                Storage cp, sp, cell_cosine, cell_sine;
                 phase.next(cp, sp); cell_phase.next(cell_cosine, cell_sine);
-                double argument = PI * k * axis.spacing / bank.period;
-                mass += 2 * c[k] * axis.spacing * cell_sine / argument * cp;
+                Storage argument = Storage(PI) * k * Storage(axis.spacing) / Storage(bank.period);
+                mass += 2 * c[k] * Storage(axis.spacing) * cell_sine / argument * cp;
             }
             #pragma unroll
             for (int r = 0; r < EXPANSION_BATCH; ++r)
@@ -137,15 +140,16 @@ __global__ void batched_cached_expand_kernel(
     int tile_sites, int capacity, int warps, int max_destinations, bool output_side,
     int *counts = nullptr) {
     extern __shared__ double scratch[];
+    Storage *work = reinterpret_cast<Storage *>(scratch);
     int b = blockIdx.y * EXPANSION_BATCH;
     int features = axis.basis_count(), stride = axis.modes + 2 + EXPANSION_BATCH;
-    double *columns = scratch + max_destinations * EXPANSION_BATCH * features;
-    double *cache = columns + warps * features * BLOCK_LOCAL_C_STRIDE;
+    Storage *columns = work + max_destinations * EXPANSION_BATCH * features;
+    Storage *cache = columns + warps * features * BLOCK_LOCAL_C_STRIDE;
     int *first_tiles = reinterpret_cast<int *>(cache + capacity * stride);
     int first_site = blockIdx.x * tile_sites;
     int end_site = min(first_site + tile_sites, axis.sites);
     int site = first_site + threadIdx.x;
-    double value[EXPANSION_BATCH] = {};
+    Storage value[EXPANSION_BATCH] = {};
     for (int bi = 0; bi < axis.bank_count; ++bi) {
         Bank bank = axis.banks[bi];
         // This branch and all subsequent CTA barriers are batch/site invariant.
@@ -171,14 +175,14 @@ __global__ void batched_cached_expand_kernel(
                 int retained = int(end - chunk < capacity ? end - chunk : capacity);
                 if (threadIdx.x < retained) {
                     int atom = rows[chunk + threadIdx.x];
-                    double R = radius(p, atom, axis), original = center(p, atom, axis, output_side);
-                    Membership member = classify(R, original, axis);
-                    double c[17];
-                    profile_values(R, bank.period, axis.modes, c);
-                    double *saved = cache + threadIdx.x * stride;
+                    Storage R = signal_radius<Storage>(p, atom, axis), original = center(p, atom, axis, output_side);
+                    Membership member = signal_classify<Storage>(R, original, axis);
+                    Storage c[17];
+                    profile_values(R, Storage(bank.period), axis.modes, c);
+                    Storage *saved = cache + threadIdx.x * stride;
                     for (int k = 0; k <= axis.modes; ++k) saved[k] = c[k];
-                    saved[axis.modes + 1] = wrapped_center(original, axis);
-                    double amp = amplitude(p, atom, axis);
+                    saved[axis.modes + 1] = signal_wrapped<Storage>(original, axis);
+                    Storage amp = signal_amplitude<Storage>(p, atom, axis);
                     #pragma unroll
                     for (int r = 0; r < EXPANSION_BATCH; ++r)
                         saved[axis.modes + 2 + r] = b + r < batch
@@ -204,18 +208,18 @@ __global__ void batched_cached_expand_kernel(
         }
         if (bank.level >= start && site < end_site) {
             int local = site % bank.tile_sites;
-            const double *node = scratch + (site / bank.tile_sites - first_tile) * EXPANSION_BATCH * features;
+            const Storage *node = scratch + (site / bank.tile_sites - first_tile) * EXPANSION_BATCH * features;
             #pragma unroll
-            for (int r = 0; r < EXPANSION_BATCH; ++r) value[r] += axis.spacing * node[r * features];
-            double half_cell = PI * axis.spacing / bank.period;
-            HarmonicPhase phase(2 * half_cell * local), cell_phase(half_cell);
+            for (int r = 0; r < EXPANSION_BATCH; ++r) value[r] += Storage(axis.spacing) * node[r * features];
+            Storage half_cell = Storage(PI) * Storage(axis.spacing) / Storage(bank.period);
+            SignalPhase<Storage> phase(2 * half_cell * local), cell_phase(half_cell);
             for (int k = 1; k <= axis.modes; ++k) {
-                double argument = PI * k * axis.spacing / bank.period;
-                double cp, sp, cell_cosine, cell_sine;
+                Storage argument = Storage(PI) * k * Storage(axis.spacing) / Storage(bank.period);
+                Storage cp, sp, cell_cosine, cell_sine;
                 phase.next(cp, sp); cell_phase.next(cell_cosine, cell_sine);
                 #pragma unroll
                 for (int r = 0; r < EXPANSION_BATCH; ++r)
-                    value[r] += axis.spacing * cell_sine / argument *
+                    value[r] += Storage(axis.spacing) * cell_sine / argument *
                         (node[r * features + 2 * k - 1] * cp + node[r * features + 2 * k] * sp);
             }
         }
