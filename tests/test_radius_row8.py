@@ -134,6 +134,8 @@ def test_cuda_tail_rows_periodic_geometry_retained_vjp_and_versions(ni, no, rows
         kernel=kernels.product(
             kernels.cell_mass(ChebyshevSpec(modes=8), merge_factor=2),
             coordinates=kernels.polar(
+                amplitude_max=1.0,
+                w_c=0.3,
                 input_bounds=RadiusBounds(
                     minimum=0.5, birth=4, maximum=50, upper_floor=1
                 )
