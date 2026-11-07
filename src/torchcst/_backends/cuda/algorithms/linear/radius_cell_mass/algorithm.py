@@ -200,6 +200,15 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
                 "local tile moments require merge, direct levels2, tiles32 and native checked entry"
             )
 
+    def _allows_large_cohort(self, context, recipe):
+        # Admission is Algorithm-specific; new research Algorithms must not
+        # broaden the old public/native recipe simply by reusing its kernels.
+        return recipe.schedule in (
+            "global_owner_window_fp32_geometry_sort32",
+            "global_owner_window_fp32_geometry_sort32_flat_c",
+            "global_batched_cached_active_moments_grad4_native_rectangular2048",
+        )
+
     def supports(self, context, recipe):
         try:
             self.validate_recipe(recipe)
@@ -239,11 +248,7 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
         if (
             max(plan.input.site_count, plan.output.site_count) > 1024
             or context.atom_count > 65536
-        ) and not (
-            scalable
-            or recipe.schedule
-            == "global_batched_cached_active_moments_grad4_native_rectangular2048"
-        ):
+        ) and not self._allows_large_cohort(context, recipe):
             reasons.append(
                 "large radius cohorts require the FP32 geometry sort32 routes"
             )

@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "case": {
+    "id": "radius-multirow-16384-r256-c8-xavier-q0",
+    "fixture": "polar_radius_cell_mass_multirow",
+    "size": 16384,
+    "rows": 256,
+    "atoms": 131072,
+    "profile": "initial",
+    "dtype": "float32",
+    "seed": 41,
+    "warmup": 10,
+    "rounds": 51,
+    "optimizer": {
+      "name": "AdamW",
+      "lr": 0.0001,
+      "weight_decay": 0.0,
+      "fused": true,
+      "capturable": false
+    }
+  },
+  "plans": [
+    "large-row8",
+    "large-fp32"
+  ],
+  "baseline": "large-row8",
+  "dense": true
+}

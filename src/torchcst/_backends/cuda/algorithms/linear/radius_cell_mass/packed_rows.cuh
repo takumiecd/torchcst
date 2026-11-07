@@ -27,11 +27,15 @@ void packed_check_scope(Tensor x, Tensor p, Config ci, Config co) {
     Axis ai = parse_axis(ci), ao = parse_axis(co);
     TORCH_CHECK(EXPANSION_BATCH == 8 && PARAMETER_BATCH == 8,
         "packed rows require the distinct row8 build");
+    bool ffn = p.size(0) == 4096 &&
+        ((ai.sites == 256 && ao.sites == 1024) || (ai.sites == 1024 && ao.sites == 256));
+    bool large = ai.sites == ao.sites &&
+        (ai.sites == 2048 || ai.sites == 8192 || ai.sites == 16384) &&
+        p.size(0) >= 4 && p.size(0) <= 8 * ai.sites && ai.origin == 0 && ao.origin == 0;
     TORCH_CHECK(x.device() == p.device() && x.size(1) == ai.sites &&
         x.scalar_type() == torch::kFloat && p.scalar_type() == torch::kFloat &&
-        p.size(0) == 4096 && x.size(0) >= 1 && x.size(0) <= 256 &&
-        ((ai.sites == 256 && ao.sites == 1024) || (ai.sites == 1024 && ao.sites == 256)),
-        "packed pilot requires FP32 FFN256x1024/A4096/1..256 rows");
+        x.size(0) >= 1 && x.size(0) <= 256 && (ffn || large),
+        "packed pilot requires admitted FP32 FFN or square large-multirow cohort");
     for (auto a : {ai, ao}) TORCH_CHECK(a.polar && a.modes == 8 &&
         a.base_tile_sites == 1 && a.merge_factor == 2 && a.spacing == 1 &&
         a.amplitude_max <= 1 && a.radius_min >= .5 && a.radius_max <= 50,

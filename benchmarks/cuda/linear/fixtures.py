@@ -1,4 +1,8 @@
-"""Pure regular-site fixtures shared by registry tests and benchmarks."""
+"""Pure regular-site fixtures shared by registry tests and benchmarks.
+
+Radius and its R256 multirow variant use protocol.measurement_operator and the
+existing radius_cell_mass fixture; they do not use this normalized operator.
+"""
 
 import math
 

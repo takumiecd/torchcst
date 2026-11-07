@@ -54,9 +54,23 @@ def match_variance(kernel, charts, original, *, variance, q, generator):
         p = original.detach().clone()
         p[:, :2] = torch.stack((ratio, (1 - ratio.square()).sqrt()), -1) * rho
         energy = 0.0
-        for start in range(0, len(p), 128):
-            x, y = execution.factors(reference, *axes, p[start : start + 128].double())
-            energy += float((x.square().sum(0) * y.square().sum(0)).sum())
+        if max(c.features for c in axes) > 1024:
+            # Preserve the sign-energy target while bounding large-width setup
+            # by the local Fourier support, rather than chart sites per Atom.
+            from .kernels.radius_cell_mass import atom_energies
+
+            for start in range(0, len(p), 4096):
+                energy += float(
+                    atom_energies(
+                        reference, *axes, p[start : start + 4096].double()
+                    ).sum()
+                )
+        else:
+            for start in range(0, len(p), 128):
+                x, y = execution.factors(
+                    reference, *axes, p[start : start + 128].double()
+                )
+                energy += float((x.square().sum(0) * y.square().sum(0)).sum())
         if not math.isfinite(energy) or energy < 0:
             raise ValueError("nonfinite initial Atom energy")
         error = abs(energy / target - 1)
