@@ -3,8 +3,11 @@
 The reference saves input moments; hybrid routes omit direct levels. Projection
 builds moments/response once, then output tiles reuse the completed global values
 and fuse C/site expansion in shared. These are numerical candidates, not complete
-training-step speed results. No weights, packed atoms or global atom Fourier
-tables are materialized.
+training-step speed results. No dense weights or packed atom Parameters are
+materialized. Opt-in FP32 packed candidates use a 25-float per-Atom geometry
+and profile-coefficient table: transient for the original parallel gradient,
+or retained by one autograd invocation for geometry reuse/windowed recompute.
+The table is not a dense operator or persistent Algorithm-owned training state.
 """
 
 import hashlib
