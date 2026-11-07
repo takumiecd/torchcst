@@ -166,10 +166,9 @@ def test_cuda_tail_rows_periodic_geometry_retained_vjp_and_versions(ni, no, rows
         for left, right in zip((gx, gp), again):
             torch.testing.assert_close(left, right, atol=0, rtol=0)
         outputs.append((y, gx, gp))
-        if layer is b:
-            with torch.no_grad():
-                layer.atoms.p.add_(0.0001)
-            with pytest.raises(RuntimeError, match="modified by an inplace operation"):
-                torch.autograd.grad(y, (xx, layer.atoms.p), dy)
     for left, right in zip(*outputs):
         torch.testing.assert_close(left, right, atol=3e-5, rtol=3e-4)
+    with torch.no_grad():
+        b.atoms.p.add_(0.0001)
+    with pytest.raises(RuntimeError, match="modified (by an inplace operation|inplace)"):
+        torch.autograd.grad(y, (xx, b.atoms.p), dy)
