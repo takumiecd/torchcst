@@ -308,3 +308,5 @@ foreach / fused base optimizer は別の実行設定である。
 `check_finite=True`ではraw gradientの非有限値をbase更新前に拒否する。base 更新後の custom policy
 failure まで全 optimizer state を rollback するトランザクションではない。
 custom policy は shape と有限性の契約を守る必要がある。
+
+[Native・実LMの検証記録](research-history/optimizer-field-lrs-20261107.ja.md)に、検証したeagerフィールド別LRの範囲を記録しています。

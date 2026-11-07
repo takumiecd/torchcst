@@ -354,3 +354,5 @@ optimizers are separate execution settings.
 does not transactionally roll back all optimizer state on custom-policy failure
 after the base update. Custom policies must meet the shape and finiteness
 contracts.
+
+The [native/actual-LM validation record](research-history/optimizer-field-lrs-20261107.md) covers the tested eager field-rate scope.
