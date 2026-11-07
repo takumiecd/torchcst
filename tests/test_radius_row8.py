@@ -1,5 +1,6 @@
 """Explicit row reuse candidate: declarations and unchanged native arithmetic."""
 
+import copy
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -7,7 +8,15 @@ import pytest
 import torch
 from test_ffn_rectangular_2048 import context
 
-from torchcst import make_algorithm_registry
+from torchcst import (
+    ChebyshevSpec,
+    CSTLinear,
+    FixedSelector,
+    RadiusBounds,
+    chart_presets,
+    kernels,
+    make_algorithm_registry,
+)
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass import executor as ex
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.algorithm import (
     hierarchy_from_operator,
@@ -110,3 +119,55 @@ def test_explicit_binary_selection(monkeypatch):
 def test_invalid_build_width_rejected_without_compilation(value):
     with pytest.raises(ValueError):
         ex._extension(value)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="actual CUDA required")
+@pytest.mark.parametrize("ni,no", [(256, 1024), (1024, 256)])
+@pytest.mark.parametrize("rows", [7, 8, 9, 255, 256])
+def test_cuda_tail_rows_periodic_geometry_retained_vjp_and_versions(ni, no, rows):
+    torch.manual_seed(1701)
+    m = CSTLinear(
+        chart_presets.regular_grid(no, spacing=1, geometry="flat_torus"),
+        chart_presets.regular_grid(ni, spacing=1, geometry="flat_torus"),
+        atoms=4096,
+        dtype=torch.float32,
+        kernel=kernels.product(
+            kernels.cell_mass(ChebyshevSpec(modes=8), merge_factor=2),
+            coordinates=kernels.polar(
+                input_bounds=RadiusBounds(
+                    minimum=0.5, birth=4, maximum=50, upper_floor=1
+                )
+            ),
+        ),
+    )
+    with torch.no_grad():
+        ratios = torch.linspace(-0.999, 0.999, 4096)
+        ratios[:4] = torch.tensor([0, 1e-7, -1e-7, 0.3])
+        rho = (1 + 3 * (torch.arange(4096) % 4) / 3).sqrt()
+        m.atoms.p[:, 0] = ratios * rho
+        m.atoms.p[:, 1] = (1 - ratios.square()).sqrt() * rho
+        m.atoms.p[:, 2] = torch.linspace(-0.5, no + 0.5, 4096)
+        m.atoms.p[:, 3] = torch.linspace(ni + 0.5, -0.5, 4096)
+    registry = make_algorithm_registry()
+    registry.register(RadiusRow8Algorithm())
+    a, b = copy.deepcopy(m).cuda(), copy.deepcopy(m).cuda()
+    a.selector = FixedSelector(GLOBAL_ACTIVE_GRAD4_NATIVE, registry=registry)
+    b.selector = FixedSelector(ROW8_NATIVE, registry=registry)
+    x = torch.randn(rows, ni, device="cuda")
+    dy = torch.randn(rows, no, device="cuda")
+    outputs = []
+    for layer in [a, b]:
+        xx = x.clone().requires_grad_()
+        y = layer(xx)
+        gx, gp = torch.autograd.grad(y, (xx, layer.atoms.p), dy, retain_graph=True)
+        again = torch.autograd.grad(y, (xx, layer.atoms.p), dy, retain_graph=True)
+        for left, right in zip((gx, gp), again):
+            torch.testing.assert_close(left, right, atol=0, rtol=0)
+        outputs.append((y, gx, gp))
+        if layer is b:
+            with torch.no_grad():
+                layer.atoms.p.add_(0.0001)
+            with pytest.raises(RuntimeError, match="modified by an inplace operation"):
+                torch.autograd.grad(y, (xx, layer.atoms.p), dy)
+    for left, right in zip(*outputs):
+        torch.testing.assert_close(left, right, atol=3e-5, rtol=3e-4)
