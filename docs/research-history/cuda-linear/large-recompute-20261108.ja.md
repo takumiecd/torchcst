@@ -28,7 +28,7 @@ allocatedとreservedを別記し、プロセス全体のメモリとは呼ばな
 変わらない可能性がある。節約を仮定せず交換条件を測る。多層LMでの以前の
 結果だけでは、このピークは決まらない。
 
-これは計測前のプロトコルであり、監査後に結果を追記する。
+上記の固定プロトコルに沿って実行した。監査済み結果を以下に記す。
 
 ## 作業領域の内訳
 
@@ -40,3 +40,32 @@ geometry12.5MiB。両向き分を合わせて約860.434MiBになり、さらに�
 optimizer・owner metadataが加わる。通常の再計算もbackwardピークでは同じ作業領域を
 再生成する。これはshapeから求めたTensor payloadで、allocatorピークの実測や
 GPUプロセス全使用量ではない。
+
+## 監査済み結果
+
+数値計算コミット`73e6a51cb0ec92bf26f254d25e71c2f1300febf3`。CPU/CUDA回帰156件に合格。
+N2048の検証と大規模各観測の初期・更新後全VJPも既存基準で合格した。両順序を保全する。
+
+| N | Arm | Step ms A / B | Allocated MiB A / B | Reserved MiB A / B |
+| ---: | --- | ---: | ---: | ---: |
+| 8192 | saved | 50.056 / 50.068 | 475.761 / 475.761 | 512 / 512 |
+| 8192 | recompute | 61.680 / 61.681 | 475.761 / 475.761 | 512 / 512 |
+| 8192 | dense | 17.858 / 17.853 | 1080.251 / 1080.251 | 1126 / 1126 |
+| 16384 | saved | 100.641 / 100.640 | 951.511 / 951.511 | 1040 / 1040 |
+| 16384 | recompute | 124.526 / 124.545 | 951.511 / 951.511 | 992 / 992 |
+| 16384 | dense | 68.284 / 68.275 | 4192.251 / 4192.251 | 4246 / 4246 |
+
+
+![両順序：時間とallocatorピーク](assets/large-recompute-20261108/performance.png)
+
+[機械可読集計](large-recompute-20261108-results.json)に元結果のhashと最終状態の一致判定を記録した。
+canonical証拠：`output/large-recompute-20261108-01`。archive SHA256：
+`a09708ca61cb0479cf09ca276681e6df5c01bd22d04c96a63c5457e0e4fcd078`。43原本を照合し、所有controller/worker
+PIDの終了、凍結source・binary・入力hashを確認。実初期Tensorは幅比較で独立復元済み。
+最終状態はParameter/勾配/Adam/clockのhashのみで、最終状態payloadや生oracle Tensorは
+archiveしていない。公開既定値・dispatcherへの採用は含まない。
+
+通常の再計算はN8192で23.2%、N16384で23.7〜23.8%遅い。allocated peakは両幅で
+保存版と同じ。reservedは8192で同じ、16384で1040→992MiB。保存・再計算の最終状態hashは
+両幅・両順序で完全一致した。単独Linearのピークメモリ節約としては選ばない。
+窓単位の再計算は別の候補として確認する。
