@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import sys
 import time
 from dataclasses import asdict, replace
 from pathlib import Path
@@ -65,9 +66,12 @@ def main(argv=None):
         return value
 
     radius.fixture, run._metadata = fixture, metadata
+    original_argv = sys.argv
+    sys.argv = [run.__file__, *rest]
     try:
-        run.main(rest)
+        run.main()
     finally:
+        sys.argv = original_argv
         radius.fixture, run._metadata = original_fixture, original_metadata
 
 

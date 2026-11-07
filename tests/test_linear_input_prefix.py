@@ -1,6 +1,8 @@
 """A batch comparison must preserve Parameters and matching input/target rows."""
 
 import hashlib
+import inspect
+import sys
 from dataclasses import asdict, replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -50,8 +52,11 @@ def test_prefix_orchestration_preserves_p_and_nested_rows_and_restores(
     monkeypatch.setattr(radius, "fixture", original)
     monkeypatch.setattr(run, "_metadata", metadata)
 
-    def invoke(argv):
-        assert argv == ["--forwarded"]
+    assert not inspect.signature(run.main).parameters
+    original_argv = sys.argv
+
+    def invoke():
+        assert sys.argv[1:] == ["--forwarded"]
         chosen = replace(case, id="prefix-test", rows=64)
         actual, xx, yy, dy = radius.fixture(chosen)
         assert actual is model and actual.atoms.p is p
@@ -78,6 +83,7 @@ def test_prefix_orchestration_preserves_p_and_nested_rows_and_restores(
         ]
     )
     assert calls == [256] and radius.fixture is original and run._metadata is metadata
+    assert sys.argv is original_argv
     with pytest.raises(ValueError, match="payload changed"):
         input_prefix.main(
             ["--input-payload", str(payload), "--input-payload-sha256", "0" * 64]
