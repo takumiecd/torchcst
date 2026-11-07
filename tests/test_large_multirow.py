@@ -15,9 +15,11 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.algorithm import
 )
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.large_multirow import (
     LARGE_PACKED,
+    LARGE_GEOMETRY,
     LARGE_RECOMPUTE,
     LARGE_ROW8,
     RadiusLargePackedAlgorithm,
+    RadiusLargeGeometryAlgorithm,
     RadiusLargeRecomputeAlgorithm,
     RadiusLargeRow8Algorithm,
 )
@@ -29,6 +31,7 @@ from torchcst._backends.torch.kernels.radius_cell_mass import atom_energies, fac
 CASES = [
     (RadiusLargeRow8Algorithm, LARGE_ROW8),
     (RadiusLargePackedAlgorithm, LARGE_PACKED),
+    (RadiusLargeGeometryAlgorithm, LARGE_GEOMETRY),
     (RadiusLargeRecomputeAlgorithm, LARGE_RECOMPUTE),
 ]
 
@@ -162,3 +165,46 @@ def test_multirow_case_snapshot_and_linear_atom_count(n):
     assert run.case.rows == 256 and run.case.atoms == 8 * n
     with pytest.raises(ValueError, match="A=8N"):
         replace(run.case, atoms=8 * n + 1)
+
+
+@GPU
+@pytest.mark.parametrize("freeze", [None, "input", "atoms"])
+def test_cached_geometry_preserves_autograd_lifetime_and_gradient_branches(freeze):
+    from test_radius_packed import fixture
+
+    torch.manual_seed(174)
+    base = fixture(2048, 2048)  # variable amplitude, radius and periodic centers
+    x = torch.randn(2048, 9, device="cuda").T  # non-contiguous input
+    dy = torch.randn(9, 2048, device="cuda")
+    values = []
+    for plan in [LARGE_PACKED, LARGE_GEOMETRY]:
+        model = copy.deepcopy(base).cuda()
+        model.atoms.p.requires_grad_(freeze != "atoms")
+        model.selector = FixedSelector(plan, registry=REGISTRY)
+        xx = x.detach().requires_grad_(freeze != "input")
+        targets = tuple(t for t in [xx, model.atoms.p] if t.requires_grad)
+        saved = []
+
+        def pack(t):
+            saved.append((tuple(t.shape), t.dtype))
+            return t
+
+        with torch.autograd.graph.saved_tensors_hooks(pack, lambda t: t):
+            y = model(xx)
+        gradients = torch.autograd.grad(y, targets, dy, retain_graph=True)
+        again = torch.autograd.grad(y, targets, dy, retain_graph=True)
+        for a, b in zip(gradients, again):
+            torch.testing.assert_close(a, b, atol=0, rtol=0)
+        if plan == LARGE_GEOMETRY:
+            assert ((4096, 25), torch.float32) in saved
+            assert all(dtype != torch.float64 for _, dtype in saved)
+        values.append((y, *gradients))
+        y = model(xx)  # version checking without hooks
+        with torch.no_grad():
+            model.atoms.p.add_(0.0001)
+        with pytest.raises(
+            RuntimeError, match="modified (by an inplace operation|inplace)"
+        ):
+            torch.autograd.grad(y, targets, dy)
+    for a, b in zip(*values):
+        torch.testing.assert_close(a, b, atol=3e-5, rtol=3e-4)

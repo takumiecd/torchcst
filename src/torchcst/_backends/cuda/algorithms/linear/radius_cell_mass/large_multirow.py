@@ -71,6 +71,20 @@ class RadiusLargeRecomputeAlgorithm(_LargeSquareScope, RadiusPackedRecomputeAlgo
     id: str = "cuda_radius_large_multirow_recompute"
 
 
+@dataclass(frozen=True)
+class RadiusLargeGeometryAlgorithm(RadiusLargePackedAlgorithm):
+    id: str = "cuda_radius_large_multirow_geometry"
+
+    @property
+    def cache_geometry(self):
+        return True
+
+
+LARGE_GEOMETRY = ExecutionPlan(
+    RadiusLargeGeometryAlgorithm().id, "v1", GLOBAL_ACTIVE_GRAD4_NATIVE.recipe
+)
+
+
 LARGE_RECOMPUTE = ExecutionPlan(
     RadiusLargeRecomputeAlgorithm().id, "v1", PACKED_RECOMPUTE.recipe
 )

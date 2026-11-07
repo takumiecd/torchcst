@@ -57,33 +57,48 @@ Tensor packed_moments(Tensor x, Tensor p, Config config) {
     return z;
 }
 
-std::vector<Tensor> packed_project(Tensor x, Tensor p, Config config, bool output_side) {
+std::vector<Tensor> packed_project(Tensor x, Tensor p, Config config, bool output_side, Tensor geometry) {
     c10::cuda::CUDAGuard guard(x.device());
     auto z = packed_moments(x, p, config);
     auto h = torch::empty({x.size(0), p.size(0)}, x.options());
     Axis a = parse_axis(config);
     dim3 grid((p.size(0) + PARALLEL_RESPONSE_THREADS - 1) / PARALLEL_RESPONSE_THREADS,
         (x.size(0) + 7) / 8);
+    if (geometry.defined()) {
+        parallel_response_kernel<float, float, 8, true><<<grid, PARALLEL_RESPONSE_THREADS, 0,
+            at::cuda::getCurrentCUDAStream()>>>(x.data_ptr<float>(), p.data_ptr<float>(),
+            z.data_ptr<float>(), h.data_ptr<float>(), p.size(0), x.size(0), a, 2, output_side,
+            geometry.data_ptr<float>());
+    } else {
     parallel_response_kernel<float, float, 8><<<grid, PARALLEL_RESPONSE_THREADS, 0,
         at::cuda::getCurrentCUDAStream()>>>(x.data_ptr<float>(), p.data_ptr<float>(),
         z.data_ptr<float>(), h.data_ptr<float>(), p.size(0), x.size(0), a, 2, output_side);
+    }
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return {z, h};
 }
 
 std::vector<Tensor> packed_transform(Tensor x, Tensor p, Tensor rows, Tensor offsets,
-    Config source, Config destination, bool output_side) {
+    Config source, Config destination, bool output_side, Tensor geometry) {
     c10::cuda::CUDAGuard guard(x.device());
-    auto projection = packed_project(x, p, source, output_side);
+    auto projection = packed_project(x, p, source, output_side, geometry);
     Axis a = parse_axis(destination); check_ranges(rows, offsets, p, a);
     auto y = torch::empty({x.size(0), a.sites}, x.options());
     auto layout = batched_coefficient_layout<float>(a, 2, 32);
     dim3 grid((a.sites + 31) / 32, (x.size(0) + 7) / 8);
+    if (geometry.defined()) {
+        batched_cached_expand_kernel<float, false, float, true><<<grid, THREADS, layout.bytes,
+            at::cuda::getCurrentCUDAStream()>>>(p.data_ptr<float>(), rows.data_ptr<int64_t>(),
+            offsets.data_ptr<int64_t>(), projection[1].data_ptr<float>(), y.data_ptr<float>(),
+            p.size(0), x.size(0), a, 2, 32, layout.capacity, layout.warps,
+            layout.destinations, !output_side, nullptr, geometry.data_ptr<float>());
+    } else {
     batched_cached_expand_kernel<float, false, float><<<grid, THREADS, layout.bytes,
         at::cuda::getCurrentCUDAStream()>>>(p.data_ptr<float>(), rows.data_ptr<int64_t>(),
         offsets.data_ptr<int64_t>(), projection[1].data_ptr<float>(), y.data_ptr<float>(),
         p.size(0), x.size(0), a, 2, 32, layout.capacity, layout.warps,
         layout.destinations, !output_side, nullptr);
+    }
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return {y, projection[0], projection[1]};
 }
@@ -106,6 +121,14 @@ __global__ void packed_gradient_geometry(const float *p, float *geometry, int at
     v[20] = mi.bank; v[21] = mi.first_tile;
     v[22] = mo.bank; v[23] = mo.first_tile;
     v[24] = signal_amplitude<float>(p, atom, ai);
+}
+
+Tensor packed_make_geometry(Tensor p, Config ci, Config co) {
+    c10::cuda::CUDAGuard guard(p.device());
+    auto geometry = torch::empty({p.size(0), PACKED_GEOMETRY_FIELDS}, p.options());
+    packed_gradient_geometry<<<(p.size(0) + 127) / 128, 128, 0, at::cuda::getCurrentCUDAStream()>>>(
+        p.data_ptr<float>(), geometry.data_ptr<float>(), p.size(0), parse_axis(ci), parse_axis(co));
+    C10_CUDA_KERNEL_LAUNCH_CHECK(); return geometry;
 }
 
 __global__ void packed_gradient_groups(const float *x, const float *dy,
@@ -156,7 +179,7 @@ void packed_check_tensor(Tensor t, Tensor x, std::vector<int64_t> shape) {
 }
 
 Tensor packed_parameter_grad(Tensor p, Tensor x, Tensor dy, Tensor zx, Tensor zy,
-    Tensor h, Tensor g, Config ci, Config co, bool parallel) {
+    Tensor h, Tensor g, Config ci, Config co, bool parallel, Tensor geometry) {
     c10::cuda::CUDAGuard guard(p.device());
     Axis ai = parse_axis(ci), ao = parse_axis(co);
     packed_check_tensor(zx, x, {x.size(0), ai.node_count - checked_start(ai, 2), ai.basis_count()});
@@ -165,11 +188,10 @@ Tensor packed_parameter_grad(Tensor p, Tensor x, Tensor dy, Tensor zx, Tensor zy
     packed_check_tensor(g, x, {x.size(0), p.size(0)});
     auto grad = torch::empty_like(p);
     if (parallel) {
-        auto geometry = torch::empty({p.size(0), PACKED_GEOMETRY_FIELDS}, p.options().dtype(torch::kFloat));
+        if (!geometry.defined()) geometry = packed_make_geometry(p, ci, co);
+        packed_check_tensor(geometry, x, {p.size(0), PACKED_GEOMETRY_FIELDS});
         int groups = (x.size(0) + 7) / 8;
         auto partial = torch::empty({groups, p.size(0), 3}, geometry.options());
-        packed_gradient_geometry<<<(p.size(0) + 127) / 128, 128, 0, at::cuda::getCurrentCUDAStream()>>>(
-            p.data_ptr<float>(), geometry.data_ptr<float>(), p.size(0), ai, ao);
         dim3 grid((p.size(0) + 31) / 32, groups);
         packed_gradient_groups<<<grid, 32, 0, at::cuda::getCurrentCUDAStream()>>>(
             x.data_ptr<float>(), dy.data_ptr<float>(), zx.data_ptr<float>(), zy.data_ptr<float>(),

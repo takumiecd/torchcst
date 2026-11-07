@@ -8,22 +8,32 @@ namespace radius_cell_mass {
 constexpr int PARALLEL_RESPONSE_THREADS = 32;
 constexpr int PARALLEL_RESPONSE_BATCH = 4;
 
-template<class T, class Storage = double, int RowBatch = PARALLEL_RESPONSE_BATCH>
+template<class T, class Storage = double, int RowBatch = PARALLEL_RESPONSE_BATCH, bool CachedGeometry = false>
 __global__ void parallel_response_kernel(
     const T *signal, const T *p, const Storage *moments, Storage *response,
-    int atoms, int batch, Axis axis, int start, bool output_side) {
+    int atoms, int batch, Axis axis, int start, bool output_side,
+    const Storage *geometry = nullptr) {
     int atom = blockIdx.x * blockDim.x + threadIdx.x;
     if (atom >= atoms) return;
     int first_batch = blockIdx.y * RowBatch;
     int features = axis.basis_count();
     int elements = (axis.node_count - prefix_nodes(axis, start)) * features;
-    Storage R = signal_radius<Storage>(p, atom, axis);
-    Storage original = center(p, atom, axis, output_side);
-    Membership member = signal_classify<Storage>(R, original, axis);
+    Membership member;
+    Storage c[17], mu;
+    if constexpr (CachedGeometry) {
+        const Storage *v = geometry + int64_t(atom) * 25;
+        int offset = output_side ? 9 : 0;
+        member = Membership{int(v[output_side ? 22 : 20]), int(v[output_side ? 23 : 21])};
+        for (int k = 0; k <= axis.modes; ++k) c[k] = v[offset + k];
+        mu = v[output_side ? 19 : 18];
+    } else {
+        Storage R = signal_radius<Storage>(p, atom, axis);
+        Storage original = center(p, atom, axis, output_side);
+        member = signal_classify<Storage>(R, original, axis);
+        profile_values(R, Storage(axis.banks[member.bank].period), axis.modes, c);
+        mu = signal_wrapped<Storage>(original, axis);
+    }
     Bank bank = axis.banks[member.bank];
-    Storage c[17];
-    profile_values(R, Storage(bank.period), axis.modes, c);
-    Storage mu = signal_wrapped<Storage>(original, axis);
     Storage values[RowBatch] = {};
 
     if (bank.level < start) {

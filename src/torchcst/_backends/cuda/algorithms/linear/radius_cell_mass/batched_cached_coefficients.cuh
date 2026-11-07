@@ -133,12 +133,12 @@ __device__ inline void batched_direct_site(
     }
 }
 
-template<class T, bool Count = false, class Storage = double>
+template<class T, bool Count = false, class Storage = double, bool CachedGeometry = false>
 __global__ void batched_cached_expand_kernel(
     const T *p, const int64_t *rows, const int64_t *offsets,
     const Storage *responses, T *y, int atoms, int batch, Axis axis, int start,
     int tile_sites, int capacity, int warps, int max_destinations, bool output_side,
-    int *counts = nullptr) {
+    int *counts = nullptr, const Storage *geometry = nullptr) {
     extern __shared__ double scratch[];
     Storage *work = reinterpret_cast<Storage *>(scratch);
     int b = blockIdx.y * EXPANSION_BATCH;
@@ -175,14 +175,24 @@ __global__ void batched_cached_expand_kernel(
                 int retained = int(end - chunk < capacity ? end - chunk : capacity);
                 if (threadIdx.x < retained) {
                     int atom = rows[chunk + threadIdx.x];
-                    Storage R = signal_radius<Storage>(p, atom, axis), original = center(p, atom, axis, output_side);
-                    Membership member = signal_classify<Storage>(R, original, axis);
-                    Storage c[17];
-                    profile_values(R, Storage(bank.period), axis.modes, c);
+                    Membership member;
+                    Storage c[17], mu, amp;
+                    if constexpr (CachedGeometry) {
+                        const Storage *v = geometry + int64_t(atom) * 25;
+                        int offset = output_side ? 9 : 0;
+                        member = Membership{int(v[output_side ? 22 : 20]), int(v[output_side ? 23 : 21])};
+                        for (int k = 0; k <= axis.modes; ++k) c[k] = v[offset + k];
+                        mu = v[output_side ? 19 : 18]; amp = v[24];
+                    } else {
+                        Storage R = signal_radius<Storage>(p, atom, axis), original = center(p, atom, axis, output_side);
+                        member = signal_classify<Storage>(R, original, axis);
+                        profile_values(R, Storage(bank.period), axis.modes, c);
+                        mu = signal_wrapped<Storage>(original, axis);
+                        amp = signal_amplitude<Storage>(p, atom, axis);
+                    }
                     Storage *saved = cache + threadIdx.x * stride;
                     for (int k = 0; k <= axis.modes; ++k) saved[k] = c[k];
-                    saved[axis.modes + 1] = signal_wrapped<Storage>(original, axis);
-                    Storage amp = signal_amplitude<Storage>(p, atom, axis);
+                    saved[axis.modes + 1] = mu;
                     #pragma unroll
                     for (int r = 0; r < EXPANSION_BATCH; ++r)
                         saved[axis.modes + 2 + r] = b + r < batch

@@ -18,6 +18,10 @@ class RadiusPackedAlgorithm(RadiusRow8Algorithm):
     id: str = "cuda_radius_cell_mass_packed"
 
     @property
+    def cache_geometry(self):
+        return False
+
+    @property
     def recompute(self):
         return False
 
@@ -52,7 +56,13 @@ class RadiusPackedAlgorithm(RadiusRow8Algorithm):
             return checked_radius_linear(
                 state.layout, x, parameters, recipe=GLOBAL_ACTIVE_GRAD4_NATIVE.recipe
             )
-        return _extension(8).packed_rows_linear(
+        extension = _extension(8)
+        entry = (
+            extension.packed_geometry_linear
+            if self.cache_geometry
+            else extension.packed_rows_linear
+        )
+        return entry(
             x.contiguous(),
             parameters.contiguous(),
             state.layout.input.native_config(),
