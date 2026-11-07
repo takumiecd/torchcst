@@ -44,7 +44,8 @@ coordinates reject it. Existing finite_chord/time_energy arithmetic/settings are
 retained. Fused CUDA/Graph routes reject the new mode; checkpoint contracts
 distinguish modes/gains. The new eager Torch Algorithm accepts CPU/CUDA
 float32/float64 radius Atoms and two scalar FlatTorus centers. It is not registered
-by default. Both control and candidate must use this same update implementation
+by default. The existing generic CPU reference can also execute the new declared
+law. Both control and candidate must use this same update implementation
 when attributing a difference to the activity source:
 
 ```python
@@ -68,3 +69,24 @@ Scalar-oracle, amplitude-only/stationary, periodic seam, all-Atom VJP,
 metadata/support, checkpoint and optimizer/resume checks accompany the code.
 CPU validation does not establish CUDA/full-task admission, model quality,
 Graph behavior or a new default; record those scopes separately.
+
+## Bounded A100 evidence
+
+Frozen operator `1cb4bec3ae2f1a859a077bf1c664888082ccc7ab` and consumer
+`ac64f6db4fdf616870c41fed779e1119ecc5e441` passed14 actual CPU/CUDA update
+tests on A10080GB PCIe MIG3g.40gb / Torch2.6.0+cu126. Four CST recipes passed
+independent quadrature, native rectangular Y/dX/all-Atom VJPs, mixed optimizer
+and actual four-block task/resume. All initial Parameters/eight calibration
+reports match across the CST arms. Five fresh learners completed400 updates;
+trained audits passed32 site VJPs and five exact DEV/next-update resume checks.
+All48 compact raw files were retrieved/hash-verified; original source/checkpoints
+remain intact and owned workers are finished.
+
+DEV CE: Dense4.135901; amplitude gain1 4.248089; center gain1/64/4096
+4.247539/4.250420/4.262914. Center activity changes p/radius but this one-seed
+short pilot establishes no quality improvement or default adoption. All CST
+arms use the same eager update implementation and fixed minimum-001 envelope.
+GPU learning/update parity here is FP32; CUDA FP64, Graph capture and other
+workloads are not qualified by this record. [Results and curves](https://github.com/takumiecd/cst-research/blob/8492b5e89aa50f5fcfd2a489ead90e7ec5e2a770/docs/ffn-center-activity-20261107-results.md)
+([research PR33](https://github.com/takumiecd/cst-research/pull/33)).
+Archive SHA256 `19ad6885fa0d2c5a989b03e2b322be8cfa32272e575c59dc56a345c3dff3769d`.

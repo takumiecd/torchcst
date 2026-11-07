@@ -39,6 +39,7 @@ RadiusBoundsのkernels.polarにactivity_mode="center_chord"を指定します。
 fused CUDA・Graphは新modeを拒否し、checkpointはmode/gainを区別します。
 新しいTorch eager AlgorithmはCPU/CUDAのfloat32/float64、radius Atom、
 2つの1次元FlatTorus中心を対象とし、デフォルト登録しません。
+既存の汎用CPU参照実装でも、新しく宣言した更新則を実行できます。
 活動源の差として比較する対照・候補では、同じ更新実装を使います。
 
 ```python
@@ -61,3 +62,21 @@ privateな実験用backend依存であり、安定した公開aliasではあり�
 独立scalar oracle、振幅のみ・静止・周期境界、全Atom VJP、metadata/support、
 checkpoint、optimizer/resumeを検査します。CPU検査だけでCUDA・完全taskのadmission、
 モデル品質、Graph動作、デフォルト採用を完了したとは扱わず、別途記録します。
+
+## 限定A100検証
+
+凍結演算子`1cb4bec3ae2f1a859a077bf1c664888082ccc7ab`、consumer
+`ac64f6db4fdf616870c41fed779e1119ecc5e441`で、A10080GB PCIe MIG3g.40gb・
+Torch2.6.0+cu126上のCPU/CUDA更新テスト14件を通過しました。CST4 recipeで独立quadrature、
+native長方形Y/dX/全Atom VJP、mixed optimizer、実4ブロックtask/resumeを確認しました。
+CST間の初期全Parameterと8射影の初期化reportは一致しています。fresh5条件が400更新を完了し、
+学習後32射影VJP、5条件のDEV完全再計算と次更新resume完全一致を通過しました。
+compact raw48個を回収・hash照合し、ソース・checkpointは元の場所にも保存、所有workerは終了済みです。
+
+DEV CEはDense4.135901、振幅gain1が4.248089、中心gain1/64/4096が
+4.247539/4.250420/4.262914です。p・半径は変わりますが、1 seedの短期比較で品質改善や
+デフォルト採用は示していません。全CSTの更新実装とminimum-001包絡は共通です。
+ここでGPU学習・更新一致を確認したdtypeはFP32であり、CUDA FP64、Graph capture、別タスクの
+admissionを完了したとは扱いません。[結果と曲線](https://github.com/takumiecd/cst-research/blob/8492b5e89aa50f5fcfd2a489ead90e7ec5e2a770/docs/ffn-center-activity-20261107-results.ja.md)
+（[研究PR33](https://github.com/takumiecd/cst-research/pull/33)）。
+archive SHA256 `19ad6885fa0d2c5a989b03e2b322be8cfa32272e575c59dc56a345c3dff3769d`。
