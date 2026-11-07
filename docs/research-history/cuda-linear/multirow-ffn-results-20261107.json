@@ -1,0 +1,331 @@
+{
+  "schema_version": 1,
+  "status": "completed_scoped_research_opt_in",
+  "source_commits": {
+    "torchcst": "a4ef6af7a94ead722c137ed16f52342715f55120",
+    "cst-research": "ac64f6db4fdf616870c41fed779e1119ecc5e441"
+  },
+  "numeric_runtime": "Immutable attempt02 source; byte-equal to attempt03 snapshot except corrected GPU test",
+  "source_archive_sha256": "318faff6143ca71fc2eb18a540448bd790a4e16963687011069af560d82b4e59",
+  "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+  "torch": "2.6.0+cu126",
+  "cuda": "12.6",
+  "python": "3.12.9",
+  "recipe": {
+    "rows": 256,
+    "width": 256,
+    "expansion": 4,
+    "blocks": 4,
+    "heads": 4,
+    "cst_ffn_sites": 8,
+    "atoms_per_map": 4096,
+    "modes": 8,
+    "q": 0,
+    "radius_envelope": "minimum-001",
+    "atom_lr_multiplier": 16,
+    "base_lr": 0.0003,
+    "batch": 2,
+    "context": 128,
+    "accumulation": 4,
+    "seed": 17,
+    "updates_per_run": 100,
+    "tokens_per_update": 1024,
+    "schedule_tokens": 20000000,
+    "update_backend": "native finite_chord",
+    "tf32": false
+  },
+  "measurements": {
+    "A-baseline": {
+      "arm": "baseline",
+      "order": "A",
+      "median_update_seconds": 0.424539471976459,
+      "timed_updates": "11..100 (existing learner policy); all100 updates executed, all100 in memory scope",
+      "peak_allocated_bytes": 719617536,
+      "peak_reserved_bytes": 748683264,
+      "total_elapsed_seconds": 73.92473533190787,
+      "setup_seconds": 26.63668216392398,
+      "latest_development": {
+        "ce": 7.624880239367485,
+        "perplexity": 2048.535116467565,
+        "tokens": 8192
+      },
+      "checkpoint_sha256": "a483c3dbc5fdfc53ca9df628d45514602bef007bc3ab886a2093449bd7ff7f7b",
+      "source_summary_sha256": "5fa53a3cf46ce13c8b23743d6bedf6445ce2cc42df192f46bd742b6840e264f9",
+      "total_parameters": 14092032
+    },
+    "A-dense": {
+      "arm": "dense",
+      "order": "A",
+      "median_update_seconds": 0.07989659905433655,
+      "timed_updates": "11..100 (existing learner policy); all100 updates executed, all100 in memory scope",
+      "peak_allocated_bytes": 504890880,
+      "peak_reserved_bytes": 511705088,
+      "total_elapsed_seconds": 13.203813260421157,
+      "setup_seconds": 1.5232424326241016,
+      "latest_development": {
+        "ce": 7.44457933306694,
+        "perplexity": 1710.5655624110464,
+        "tokens": 8192
+      },
+      "checkpoint_sha256": "23b1de30ac794592371d0470c7298dcfa8eea5d2fc419e7e5b920e5c29ac73c6",
+      "source_summary_sha256": "7b902027f4828a7d027121f414398bd1a32593c231720ef860cbd07824130174",
+      "total_parameters": 16058112
+    },
+    "A-row8": {
+      "arm": "row8",
+      "order": "A",
+      "median_update_seconds": 0.3283006502315402,
+      "timed_updates": "11..100 (existing learner policy); all100 updates executed, all100 in memory scope",
+      "peak_allocated_bytes": 719617536,
+      "peak_reserved_bytes": 748683264,
+      "total_elapsed_seconds": 64.00596092268825,
+      "setup_seconds": 25.995020549744368,
+      "latest_development": {
+        "ce": 7.624880239367485,
+        "perplexity": 2048.535116467565,
+        "tokens": 8192
+      },
+      "checkpoint_sha256": "910641656d8c502ee7c2dadcee957753dca53b4508762dc16e75d069afe2710f",
+      "source_summary_sha256": "52c420d423a7d3aaf1dc09785cbf7ac8683e05514a2b03d00ed043e692c82527",
+      "total_parameters": 14092032
+    },
+    "B-baseline": {
+      "arm": "baseline",
+      "order": "B",
+      "median_update_seconds": 0.42489582393318415,
+      "timed_updates": "11..100 (existing learner policy); all100 updates executed, all100 in memory scope",
+      "peak_allocated_bytes": 719617536,
+      "peak_reserved_bytes": 748683264,
+      "total_elapsed_seconds": 75.09998108446598,
+      "setup_seconds": 27.375333627685905,
+      "latest_development": {
+        "ce": 7.624880239367485,
+        "perplexity": 2048.535116467565,
+        "tokens": 8192
+      },
+      "checkpoint_sha256": "8fcc0f9586d35e81c6be0d11055e584150f75af0bacea225294db9c1c276e54e",
+      "source_summary_sha256": "2875a9cce82b3e5c39fd2f64039279aee7d0ee4d9b68f6ab5358c0a5827651f7",
+      "total_parameters": 14092032
+    },
+    "B-dense": {
+      "arm": "dense",
+      "order": "B",
+      "median_update_seconds": 0.0795312337577343,
+      "timed_updates": "11..100 (existing learner policy); all100 updates executed, all100 in memory scope",
+      "peak_allocated_bytes": 504890880,
+      "peak_reserved_bytes": 511705088,
+      "total_elapsed_seconds": 13.66453187726438,
+      "setup_seconds": 1.6280538588762283,
+      "latest_development": {
+        "ce": 7.44457933306694,
+        "perplexity": 1710.5655624110464,
+        "tokens": 8192
+      },
+      "checkpoint_sha256": "2d6bc1c5d7dc174e6cd55f4dbd6bf8d7a1cf8a9e43748e8b402f3b0d1b16ee6d",
+      "source_summary_sha256": "2094609ddb1e2c6b7fea287a968ff7aba5d164d045688fb021b246f939581c87",
+      "total_parameters": 16058112
+    },
+    "B-row8": {
+      "arm": "row8",
+      "order": "B",
+      "median_update_seconds": 0.32822821475565434,
+      "timed_updates": "11..100 (existing learner policy); all100 updates executed, all100 in memory scope",
+      "peak_allocated_bytes": 719617536,
+      "peak_reserved_bytes": 748683264,
+      "total_elapsed_seconds": 67.22723460942507,
+      "setup_seconds": 29.490027002990246,
+      "latest_development": {
+        "ce": 7.624880239367485,
+        "perplexity": 2048.535116467565,
+        "tokens": 8192
+      },
+      "checkpoint_sha256": "19d59bdf1f077160c2d43934b7d9bc93dd30d2300f068ff4dfc8b01e448abce1",
+      "source_summary_sha256": "4ca05e270780766aa932d90c40ae4b513a2fc168c05adc7c6896df39a564ade7",
+      "total_parameters": 14092032
+    }
+  },
+  "ratios": {
+    "A": {
+      "row8_over_baseline": 0.7733100733911137,
+      "row8_over_dense": 4.109069148340939
+    },
+    "B": {
+      "row8_over_baseline": 0.7724910349019316,
+      "row8_over_dense": 4.127035370223143
+    }
+  },
+  "same_kind_final_hashes_exact": {
+    "baseline": true,
+    "dense": true,
+    "row8": true
+  },
+  "correctness": {
+    "cpu_tests_before_final_fixture_fixes": 2160,
+    "cpu_gpu_database_skips": 2501,
+    "row8_target_tests_including_cuda": 39,
+    "full_shape_vjps": [
+      {
+        "in": 256,
+        "out": 1024,
+        "batch": 2,
+        "tokens": 128,
+        "atoms": 4096,
+        "coefficient": 8,
+        "q": 0.0,
+        "seed": 3186912557,
+        "std": 0.02,
+        "amplitude_max": 1.0,
+        "w_c": 0.3,
+        "radius_birth": 0.5,
+        "activity_mode": "finite_chord",
+        "activity_gain": 1.0,
+        "radius_envelope": "rational_zero_opening",
+        "closed_lower_power": 4.0,
+        "closed_upper_power": 1.0,
+        "zero_opening_scale": 0.001,
+        "input_noncontiguous": true,
+        "initialization": {
+          "scheme": "variance_scaling",
+          "q": 0.0,
+          "variance": 0.0004,
+          "target_energy": 104.8576,
+          "expected_energy": 104.37240065134687,
+          "relative_error": 0.004627221571475437,
+          "amplitude_scale": 0.17812500000000003,
+          "amplitude_rms": 0.17677280247529098,
+          "clipped_atoms": 0,
+          "atom_count": 4096,
+          "evaluations": 10
+        },
+        "checks": {
+          "y": {
+            "max_abs_error": 1.1519385312297459e-07,
+            "reference_rms": 0.3190828904314291,
+            "atol": 3e-05,
+            "rtol": 0.0003
+          },
+          "dx": {
+            "max_abs_error": 1.1812406874867065e-07,
+            "reference_rms": 0.6343854903828148,
+            "atol": 3e-05,
+            "rtol": 0.0003
+          },
+          "dp": {
+            "max_abs_error": 1.9039788625718757e-06,
+            "reference_rms": 7.558363842277738,
+            "atol": 3e-05,
+            "rtol": 0.0003
+          },
+          "flatten": {
+            "max_abs_error": 0.0,
+            "reference_rms": 0.31908289044872223,
+            "atol": 0,
+            "rtol": 0
+          }
+        },
+        "all_atoms_checked": true,
+        "peak_allocated_bytes": 64656384,
+        "peak_reserved_bytes": 81788928,
+        "elapsed_seconds": 141.33964381553233
+      },
+      {
+        "in": 1024,
+        "out": 256,
+        "batch": 2,
+        "tokens": 128,
+        "atoms": 4096,
+        "coefficient": 8,
+        "q": 0.0,
+        "seed": 4025962426,
+        "std": 0.0070710678118654745,
+        "amplitude_max": 1.0,
+        "w_c": 0.3,
+        "radius_birth": 0.5,
+        "activity_mode": "finite_chord",
+        "activity_gain": 1.0,
+        "radius_envelope": "rational_zero_opening",
+        "closed_lower_power": 4.0,
+        "closed_upper_power": 1.0,
+        "zero_opening_scale": 0.001,
+        "input_noncontiguous": true,
+        "initialization": {
+          "scheme": "variance_scaling",
+          "q": 0.0,
+          "variance": 4.999999999999999e-05,
+          "target_energy": 13.107199999999997,
+          "expected_energy": 13.049656819735574,
+          "relative_error": 0.00439019624820125,
+          "amplitude_scale": 0.0640625,
+          "amplitude_rms": 0.06248379796890628,
+          "clipped_atoms": 0,
+          "atom_count": 4096,
+          "evaluations": 9
+        },
+        "checks": {
+          "y": {
+            "max_abs_error": 5.882304199289479e-08,
+            "reference_rms": 0.22493736781906762,
+            "atol": 3e-05,
+            "rtol": 0.0003
+          },
+          "dx": {
+            "max_abs_error": 2.9777274535014442e-08,
+            "reference_rms": 0.11268061159355103,
+            "atol": 3e-05,
+            "rtol": 0.0003
+          },
+          "dp": {
+            "max_abs_error": 1.8455802432981727e-06,
+            "reference_rms": 6.92849015611378,
+            "atol": 3e-05,
+            "rtol": 0.0003
+          },
+          "flatten": {
+            "max_abs_error": 0.0,
+            "reference_rms": 0.22493736776891135,
+            "atol": 0,
+            "rtol": 0
+          }
+        },
+        "all_atoms_checked": true,
+        "peak_allocated_bytes": 66369536,
+        "peak_reserved_bytes": 81788928,
+        "elapsed_seconds": 3.895748518407345
+      }
+    ],
+    "independent_quadrature": {
+      "atoms_checked": 8,
+      "max_y_error": 5.204170427930421e-18,
+      "max_dp_error": 1.1657341758564144e-15
+    },
+    "matched_full_task_steps_exact": 3,
+    "final_model_optimizer_tensor_hashes_exact": true,
+    "final_tensors_per_order": 392,
+    "initial_cst_parameters_and_calibration_reports_exact": true,
+    "resume_max_parameter_error": 0.0
+  },
+  "evidence": {
+    "archive_sha256": "b045d4ef1989a724d2c88fda1b1dcbafd8a843291715e728abd2e2820d395e4e",
+    "verified_files": 56,
+    "all_owned_inactive": true,
+    "checkpoint_scope": "Original checkpoint files retained remotely;392 tensor hashes compared per order; no local independent recomputation of raw Y/dX/dP"
+  },
+  "limitations": [
+    "One A100 MIG allocation, two fresh process observations per arm, not confidence intervals.",
+    "Whole LM with FFN replacement; not isolated GEMM/Linear kernel timing.",
+    "Existing learner times updates 11\u2013100; all100 updates execute and enter memory peaks. zero_grad/LR assignment precede the timer.",
+    "Data transfer, four microsteps, forward/loss/backward, global clipping and optimizer update are timed. Setup/evaluation/checkpoint/probes are separate.",
+    "No CUDA Graph or total GPU process-memory measurement.",
+    "Dense has variance-compatible independent weights; task-quality equivalence and convergence are not established by100updates.",
+    "FP64 intermediate retention is unchanged; Dense memory objective remains unmet.",
+    "Selector is explicit orchestration, recorded in linear-selection.json; model checkpoint/config alone does not encode row8 selection.",
+    "Two initial attempts stopped on GPU fixture/API-error wording; kernel arithmetic was unchanged."
+  ],
+  "figures": {
+    "assets/multirow-ffn-20261107/loss.png": "cfb48f73cc74209198b3437f19757e9519326fb063c78adb0bfac2c525ea54be",
+    "assets/multirow-ffn-20261107/loss.svg": "97b339c065b0bb4381bb36a814a4570b4caa9642e790efd5e60f91ca89975f45",
+    "assets/multirow-ffn-20261107/performance.png": "3f9bfa5cbdfd10e84a8b6399b797424b5c1044828824e27146f60bafabbab6c7",
+    "assets/multirow-ffn-20261107/performance.svg": "b165ed5c45d1bd334c2a4627b36180fe6c2f48ffd6229c642ad6e14eae74d82d"
+  },
+  "renderer_sha256": "1bf9103a0a5d6584f0c0f3e6f3bc95ee705a2333c78ff30a590bdfbcbe6b7cba"
+}

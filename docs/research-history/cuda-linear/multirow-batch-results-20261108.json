@@ -1,0 +1,607 @@
+{
+  "schema_version": 1,
+  "status": "completed_research_only",
+  "numeric_commit": "3dd8115d09251146d9fbdc8876f9a7dc99b61f01",
+  "driver_commit": "5ae3d26452fd389da6e32c7c000a5e2e6ac4b494",
+  "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+  "comparison": {
+    "state": "passed",
+    "rows": {
+      "A-r8-fp32": {
+        "rows": 8,
+        "width": 16384,
+        "atoms": 131072,
+        "order": "A",
+        "arm": "fp32",
+        "median_ms": 4.837580025196075,
+        "mean_ms": 4.837243142081242,
+        "peak_allocated_bytes": 55060992,
+        "peak_reserved_bytes": 69206016,
+        "phase_ms_separate_instrumented_steps": {
+          "forward_loss": {
+            "median_ms": 2.2717416286468506,
+            "samples_ms": [
+              2.470230683684349,
+              2.3245103657245636,
+              2.2717416286468506,
+              2.2475793957710266,
+              2.2598057985305786
+            ]
+          },
+          "backward": {
+            "median_ms": 2.9655378311872482,
+            "samples_ms": [
+              3.2687820494174957,
+              2.9655378311872482,
+              2.923032268881798,
+              2.9049720615148544,
+              3.2253265380859375
+            ]
+          },
+          "optimizer": {
+            "median_ms": 1.7395615577697754,
+            "samples_ms": [
+              2.1628327667713165,
+              1.8354319036006927,
+              1.7395615577697754,
+              1.7261076718568802,
+              1.7100386321544647
+            ]
+          }
+        },
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "33ea1668d1d0da1017ca00dd48753c4affb75ceeea2bf96ee5aad7bf908f4c1e"
+      },
+      "A-r8-dense": {
+        "rows": 8,
+        "width": 16384,
+        "atoms": 131072,
+        "order": "A",
+        "arm": "dense",
+        "median_ms": 14.593241736292839,
+        "mean_ms": 14.596077522226409,
+        "peak_allocated_bytes": 4314629632,
+        "peak_reserved_bytes": 4322230272,
+        "phase_ms_separate_instrumented_steps": {
+          "forward_loss": {
+            "median_ms": 2.424277365207672,
+            "samples_ms": [
+              2.6152189821004868,
+              2.426592633128166,
+              2.4195127189159393,
+              2.424277365207672,
+              2.4129729717969894
+            ]
+          },
+          "backward": {
+            "median_ms": 3.4030750393867493,
+            "samples_ms": [
+              3.635598346590996,
+              3.4300126135349274,
+              3.3800937235355377,
+              3.38144414126873,
+              3.4030750393867493
+            ]
+          },
+          "optimizer": {
+            "median_ms": 9.450683370232582,
+            "samples_ms": [
+              9.654588997364044,
+              9.450683370232582,
+              9.46577824652195,
+              9.443195536732674,
+              9.447447955608368
+            ]
+          }
+        },
+        "initial_dense_weight_sha256": "a1bfc2bfd45a6ffb02603e5f1bd6bf0220667356bb442c5efbc9ebb20c02eb12",
+        "source_result_sha256": "cd26871dfc4ef2bd80280c9b3f402163564197d13eb07edce658817dcd15de3a"
+      },
+      "B-r8-fp32": {
+        "rows": 8,
+        "width": 16384,
+        "atoms": 131072,
+        "order": "B",
+        "arm": "fp32",
+        "median_ms": 4.769032821059227,
+        "mean_ms": 4.760655264059703,
+        "peak_allocated_bytes": 55060992,
+        "peak_reserved_bytes": 69206016,
+        "phase_ms_separate_instrumented_steps": {
+          "forward_loss": {
+            "median_ms": 2.1498948335647583,
+            "samples_ms": [
+              2.3596249520778656,
+              2.223202958703041,
+              2.1498948335647583,
+              2.1411124616861343,
+              2.1153390407562256
+            ]
+          },
+          "backward": {
+            "median_ms": 2.643277868628502,
+            "samples_ms": [
+              2.9445625841617584,
+              2.64759361743927,
+              2.631174400448799,
+              2.6346780359745026,
+              2.643277868628502
+            ]
+          },
+          "optimizer": {
+            "median_ms": 1.403549686074257,
+            "samples_ms": [
+              2.6186835020780563,
+              1.5265215188264847,
+              1.403549686074257,
+              1.3908054679632187,
+              1.3596154749393463
+            ]
+          }
+        },
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "9e657bd44cd0c67e35e486d3d2f2dc2b125b92946ebfe9b3b7a288430cbbb1fb"
+      },
+      "B-r8-dense": {
+        "rows": 8,
+        "width": 16384,
+        "atoms": 131072,
+        "order": "B",
+        "arm": "dense",
+        "median_ms": 14.600114896893501,
+        "mean_ms": 14.599139089970027,
+        "peak_allocated_bytes": 4314629632,
+        "peak_reserved_bytes": 4322230272,
+        "phase_ms_separate_instrumented_steps": {
+          "forward_loss": {
+            "median_ms": 2.4192724376916885,
+            "samples_ms": [
+              2.541135996580124,
+              2.423243597149849,
+              2.4192724376916885,
+              2.4164095520973206,
+              2.4123042821884155
+            ]
+          },
+          "backward": {
+            "median_ms": 3.3859070390462875,
+            "samples_ms": [
+              3.5735126584768295,
+              3.3802129328250885,
+              3.4108273684978485,
+              3.375941887497902,
+              3.3859070390462875
+            ]
+          },
+          "optimizer": {
+            "median_ms": 9.46505181491375,
+            "samples_ms": [
+              9.569887071847916,
+              9.471632540225983,
+              9.46505181491375,
+              9.452946484088898,
+              9.446289390325546
+            ]
+          }
+        },
+        "initial_dense_weight_sha256": "a1bfc2bfd45a6ffb02603e5f1bd6bf0220667356bb442c5efbc9ebb20c02eb12",
+        "source_result_sha256": "bcda7cd5c25f6fb31a097108183fbcc6dce4c04c5aa5adfc27a9dc1a07afafad"
+      },
+      "A-r64-fp32": {
+        "rows": 64,
+        "width": 16384,
+        "atoms": 131072,
+        "order": "A",
+        "arm": "fp32",
+        "median_ms": 26.469746604561806,
+        "mean_ms": 26.437680803093254,
+        "peak_allocated_bytes": 267922944,
+        "peak_reserved_bytes": 287309824,
+        "phase_ms_separate_instrumented_steps": {
+          "forward_loss": {
+            "median_ms": 11.012790724635124,
+            "samples_ms": [
+              11.17410883307457,
+              11.037783697247505,
+              10.991299524903297,
+              11.012790724635124,
+              11.00737415254116
+            ]
+          },
+          "backward": {
+            "median_ms": 16.076182946562767,
+            "samples_ms": [
+              16.15683175623417,
+              16.084088012576103,
+              16.076182946562767,
+              16.05185493826866,
+              16.031477600336075
+            ]
+          },
+          "optimizer": {
+            "median_ms": 1.3984143733978271,
+            "samples_ms": [
+              1.7864033579826355,
+              1.4982819557189941,
+              1.3984143733978271,
+              1.3983044773340225,
+              1.3720877468585968
+            ]
+          }
+        },
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "585b9f549685e296b3e3d588171c24445126f3b2d75e3510473d23651ce513f4"
+      },
+      "A-r64-dense": {
+        "rows": 64,
+        "width": 16384,
+        "atoms": 131072,
+        "order": "A",
+        "arm": "dense",
+        "median_ms": 25.02535469830036,
+        "mean_ms": 25.049767475209983,
+        "peak_allocated_bytes": 4332979712,
+        "peak_reserved_bytes": 4359979008,
+        "phase_ms_separate_instrumented_steps": {
+          "forward_loss": {
+            "median_ms": 5.507441237568855,
+            "samples_ms": [
+              5.716418847441673,
+              5.5154357105493546,
+              5.507441237568855,
+              5.4979585111141205,
+              5.493424832820892
+            ]
+          },
+          "backward": {
+            "median_ms": 10.7082799077034,
+            "samples_ms": [
+              11.225461959838867,
+              10.7082799077034,
+              10.70493645966053,
+              10.709252208471298,
+              10.690703988075256
+            ]
+          },
+          "optimizer": {
+            "median_ms": 9.45260375738144,
+            "samples_ms": [
+              9.670058265328407,
+              9.45260375738144,
+              9.458737447857857,
+              9.449217468500137,
+              9.445888921618462
+            ]
+          }
+        },
+        "initial_dense_weight_sha256": "a1bfc2bfd45a6ffb02603e5f1bd6bf0220667356bb442c5efbc9ebb20c02eb12",
+        "source_result_sha256": "35018fa648adcbc4e7a57c14be399ad30861b7e3e1fc9070d8aac4124a095592"
+      },
+      "B-r64-fp32": {
+        "rows": 64,
+        "width": 16384,
+        "atoms": 131072,
+        "order": "B",
+        "arm": "fp32",
+        "median_ms": 26.339633390307426,
+        "mean_ms": 26.349901386043605,
+        "peak_allocated_bytes": 267922944,
+        "peak_reserved_bytes": 287309824,
+        "phase_ms_separate_instrumented_steps": {
+          "forward_loss": {
+            "median_ms": 11.017786338925362,
+            "samples_ms": [
+              11.217562481760979,
+              11.07635349035263,
+              11.007828637957573,
+              11.013323441147804,
+              11.017786338925362
+            ]
+          },
+          "backward": {
+            "median_ms": 16.034668311476707,
+            "samples_ms": [
+              16.086140647530556,
+              16.01872779428959,
+              16.013048589229584,
+              16.034668311476707,
+              16.035256907343864
+            ]
+          },
+          "optimizer": {
+            "median_ms": 1.4370065182447433,
+            "samples_ms": [
+              2.1706465631723404,
+              1.4983601868152618,
+              1.4370065182447433,
+              1.414986327290535,
+              1.418083906173706
+            ]
+          }
+        },
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "6eb8da84d718f6919aae076fd921a4ab3d08d1b0e38c3481cd7be4ecf1e5572e"
+      },
+      "B-r64-dense": {
+        "rows": 64,
+        "width": 16384,
+        "atoms": 131072,
+        "order": "B",
+        "arm": "dense",
+        "median_ms": 25.03090724349022,
+        "mean_ms": 25.0339258973505,
+        "peak_allocated_bytes": 4332979712,
+        "peak_reserved_bytes": 4359979008,
+        "phase_ms_separate_instrumented_steps": {
+          "forward_loss": {
+            "median_ms": 5.514863878488541,
+            "samples_ms": [
+              5.739524960517883,
+              5.53273968398571,
+              5.510799586772919,
+              5.514863878488541,
+              5.511147901415825
+            ]
+          },
+          "backward": {
+            "median_ms": 10.455571115016937,
+            "samples_ms": [
+              10.994665324687958,
+              10.490145534276962,
+              10.455571115016937,
+              10.429330170154572,
+              10.444894433021545
+            ]
+          },
+          "optimizer": {
+            "median_ms": 9.46914590895176,
+            "samples_ms": [
+              9.742995724081993,
+              9.469328448176384,
+              9.44618135690689,
+              9.446259588003159,
+              9.46914590895176
+            ]
+          }
+        },
+        "initial_dense_weight_sha256": "a1bfc2bfd45a6ffb02603e5f1bd6bf0220667356bb442c5efbc9ebb20c02eb12",
+        "source_result_sha256": "36baf149370c33e7636b500bf791868302049a15b60a09b1344494d89452543a"
+      },
+      "A-r256-fp32": {
+        "rows": 256,
+        "width": 16384,
+        "atoms": 131072,
+        "order": "A",
+        "arm": "fp32",
+        "median_ms": 100.6537601351738,
+        "mean_ms": 100.6732157924596,
+        "peak_allocated_bytes": 997731840,
+        "peak_reserved_bytes": 1090519040,
+        "phase_ms_separate_instrumented_steps": {
+          "forward_loss": {
+            "median_ms": 41.58982262015343,
+            "samples_ms": [
+              41.7357012629509,
+              41.57240688800812,
+              41.57176613807678,
+              41.58982262015343,
+              41.631802916526794
+            ]
+          },
+          "backward": {
+            "median_ms": 59.911368414759636,
+            "samples_ms": [
+              59.911368414759636,
+              59.852298349142075,
+              59.95198339223862,
+              59.85699221491814,
+              59.97058376669884
+            ]
+          },
+          "optimizer": {
+            "median_ms": 1.4228001236915588,
+            "samples_ms": [
+              2.192378044128418,
+              1.7161592841148376,
+              1.4228001236915588,
+              1.4067329466342926,
+              1.3997722417116165
+            ]
+          }
+        },
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "3e742eea0336585f01ceaf90123a75cf4c0aaa3b262adaaad8c4cdf8788c7db7"
+      },
+      "A-r256-dense": {
+        "rows": 256,
+        "width": 16384,
+        "atoms": 131072,
+        "order": "A",
+        "arm": "dense",
+        "median_ms": 68.2664830237627,
+        "mean_ms": 68.27647596889851,
+        "peak_allocated_bytes": 4395894272,
+        "peak_reserved_bytes": 4452253696,
+        "phase_ms_separate_instrumented_steps": {
+          "forward_loss": {
+            "median_ms": 20.54554782807827,
+            "samples_ms": [
+              20.60890570282936,
+              20.542612299323082,
+              20.54554782807827,
+              20.55424265563488,
+              20.497500896453857
+            ]
+          },
+          "backward": {
+            "median_ms": 38.9545913785696,
+            "samples_ms": [
+              38.908010348677635,
+              39.05298002064228,
+              39.03635963797569,
+              38.701584562659264,
+              38.9545913785696
+            ]
+          },
+          "optimizer": {
+            "median_ms": 9.557979181408882,
+            "samples_ms": [
+              9.570879861712456,
+              9.557979181408882,
+              9.593814611434937,
+              9.469600394368172,
+              9.444987401366234
+            ]
+          }
+        },
+        "initial_dense_weight_sha256": "a1bfc2bfd45a6ffb02603e5f1bd6bf0220667356bb442c5efbc9ebb20c02eb12",
+        "source_result_sha256": "1d509f8b1807249a374d1b4ec2b29f118d6b8df43b5a0f27ab3c4f5a23fc7282"
+      },
+      "B-r256-fp32": {
+        "rows": 256,
+        "width": 16384,
+        "atoms": 131072,
+        "order": "B",
+        "arm": "fp32",
+        "median_ms": 100.63426569104195,
+        "mean_ms": 100.69447598767047,
+        "peak_allocated_bytes": 997731840,
+        "peak_reserved_bytes": 1090519040,
+        "phase_ms_separate_instrumented_steps": {
+          "forward_loss": {
+            "median_ms": 41.58010147511959,
+            "samples_ms": [
+              41.703587397933006,
+              41.56840033829212,
+              41.51522554457188,
+              41.58010147511959,
+              41.619673371315
+            ]
+          },
+          "backward": {
+            "median_ms": 59.905342757701874,
+            "samples_ms": [
+              59.45020541548729,
+              59.88611653447151,
+              59.905342757701874,
+              59.9592849612236,
+              59.975966811180115
+            ]
+          },
+          "optimizer": {
+            "median_ms": 1.4252867549657822,
+            "samples_ms": [
+              1.8472783267498016,
+              1.4971345663070679,
+              1.4252867549657822,
+              1.405268907546997,
+              1.4087408781051636
+            ]
+          }
+        },
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "b242a1929a76e4dc7ec87090131531d3e01d6c8d31c0d7af68b107597bbe7763"
+      },
+      "B-r256-dense": {
+        "rows": 256,
+        "width": 16384,
+        "atoms": 131072,
+        "order": "B",
+        "arm": "dense",
+        "median_ms": 68.27488169074059,
+        "mean_ms": 68.28705027845561,
+        "peak_allocated_bytes": 4395894272,
+        "peak_reserved_bytes": 4452253696,
+        "phase_ms_separate_instrumented_steps": {
+          "forward_loss": {
+            "median_ms": 20.509013906121254,
+            "samples_ms": [
+              20.617922767996788,
+              20.509013906121254,
+              20.49173414707184,
+              20.48802748322487,
+              20.51375061273575
+            ]
+          },
+          "backward": {
+            "median_ms": 38.81841525435448,
+            "samples_ms": [
+              38.75851444900036,
+              38.915591314435005,
+              38.93393836915493,
+              38.61243836581707,
+              38.81841525435448
+            ]
+          },
+          "optimizer": {
+            "median_ms": 9.476091712713242,
+            "samples_ms": [
+              9.552298113703728,
+              9.448053315281868,
+              9.449539706110954,
+              9.476091712713242,
+              9.528696537017822
+            ]
+          }
+        },
+        "initial_dense_weight_sha256": "a1bfc2bfd45a6ffb02603e5f1bd6bf0220667356bb442c5efbc9ebb20c02eb12",
+        "source_result_sha256": "d33c7afcbb80ba0e3af932b50e1c33a768bbe7bed4c1a122414bd3861d4a87ba"
+      }
+    },
+    "fp32_over_dense": {
+      "8": {
+        "A": 0.33149454470867823,
+        "B": 0.3266435130639927
+      },
+      "64": {
+        "A": 1.057717140223373,
+        "B": 1.0522844071965296
+      },
+      "256": {
+        "A": 1.4744242808017147,
+        "B": 1.4739573793313498
+      }
+    },
+    "same_kind_primary_final_state_hashes_exact": {
+      "8": {
+        "fp32": true,
+        "dense": true
+      },
+      "64": {
+        "fp32": true,
+        "dense": true
+      },
+      "256": {
+        "fp32": true,
+        "dense": true
+      }
+    },
+    "initial_parameters_and_nested_inputs_exact": true,
+    "scope": "N16384/A131072 fixed; same initial P and prefixes of x/target/dY; 61 primary steps plus5 separately instrumented diagnostic steps, primary peaks/hashes exclude diagnostics"
+  },
+  "evidence_verification": {
+    "state": "passed",
+    "archive_sha256": "270b61247703d8f0a48076cdc76b9c8af53ec0bff58e3cc082497e96ddbb8b62",
+    "verified_files": 40,
+    "all14_owned_pids_inactive": true,
+    "parent_initial_payload_independently_restored": "large-multirow-20261107-01/verification.json",
+    "raw_oracle_and_final_payloads_preserved": false
+  },
+  "protocol": "multirow-batch-20261108.md",
+  "failed_predecessor": "large-multirow-batch-20261108-01: input adapter called zero-argument main with argv; stopped before measurements. Fixed with CLI signature/restoration regression.",
+  "limitations": [
+    "Single square Linear, N16384,A131072, FP32 IEEE/TF32 off, random resident inputs and MSE.",
+    "Both orders on one A100 MIG allocation; not an accuracy or whole-LM result.",
+    "61 primary steps plus5 separate diagnostic steps per process. Diagnostic medians must not be summed/subtracted into primary step time.",
+    "Allocator peaks, not total process GPU memory.",
+    "Same Parameters/calibration and nested frozen x/target/dY prefixes; same Dense initial W across row counts.",
+    "Final Tensor hashes only; parent initial tensor payloads independently restored. No raw oracle tensor archive.",
+    "No public/default dispatcher adoption."
+  ],
+  "figures": {
+    "assets/multirow-batch-20261108/phases.svg": "fd523cd68bf3583a617efb2ec0c3fdb4a62e911a535d8fcec5e20f823e0e6f10",
+    "assets/multirow-batch-20261108/performance.svg": "4efaf51f1850a7b1fcc227afac28317e79b5066f6f52c266956434a79aaf62a8",
+    "assets/multirow-batch-20261108/performance.png": "8adff40614e1dc1dd3ee316985f59d9bf71e1d53550221b7f562db12daab9efc",
+    "assets/multirow-batch-20261108/phases.png": "62f0edb312384695a838e7e2a55fefe1a40d3f9b471fa3f58a71847dd1fd8915"
+  }
+}

@@ -24,6 +24,8 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.algorithm import
     RadiusCellMassAlgorithm,
 )
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plan import (
+    MAX_ATOMS,
+    MAX_SITES,
     HierarchyPlan,
 )
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plans import (
@@ -249,11 +251,13 @@ def test_global_native_forward_without_edges(mode, needs_x, needs_p):
 def test_global_native_metadata_rejected_before_any_device_kernel(wrong):
     axis = axis_plan(1024)
     config = axis.native_config()
-    p = torch.zeros(65537 if wrong == "atoms" else 8, 4, device="cuda")
+    # Raw native entry validates the general implementation bounds. The Plan
+    # selector has a narrower admitted cohort (1024 sites/65536 atoms).
+    p = torch.zeros(MAX_ATOMS + 1 if wrong == "atoms" else 8, 4, device="cuda")
     x = torch.zeros(65536 if wrong == "batch" else 4, 1024, device="cuda")
     start, tile, mode = 2, 32, 5
     if wrong == "sites":
-        config = [2048, *config[1:]]
+        config = [2 * MAX_SITES, *config[1:]]
     elif wrong == "level":
         start = -1
     elif wrong == "tile":

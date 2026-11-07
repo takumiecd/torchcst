@@ -11,7 +11,7 @@ import re
 import statistics
 from dataclasses import asdict
 
-from benchmarks.cuda.linear.manifest import REGISTRY, decode_snapshot
+from benchmarks.cuda.linear.manifest import RADIUS_FIXTURES, REGISTRY, decode_snapshot
 from benchmarks.cuda.linear.protocol import (
     GLOBAL_PRODUCT_ORACLE_SCOPE,
     LOCAL_OPTIMIZER_POLICY,
@@ -177,9 +177,9 @@ def project(value):
         raise ValueError("run must be completed with a record list")
     execution_identity(value)
     run = decode_snapshot(value["run"])
-    if run.case.fixture == "polar_radius_cell_mass":
+    if run.case.fixture in RADIUS_FIXTURES:
         raise ValueError(
-            "polar_radius_cell_mass is research-only; submission/database projection is unsupported"
+            f"{run.case.fixture} is research-only; submission/database projection is unsupported"
         )
     case = json.loads(json.dumps(asdict(run.case), allow_nan=False))
     strip = run.case.fixture in (

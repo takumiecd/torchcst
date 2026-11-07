@@ -16,6 +16,15 @@ struct HarmonicPhase {
         c = cosine; s = sine;
     }
 };
+struct FloatHarmonicPhase {
+    float step_sine,step_cosine,sine=0,cosine=1;
+    __device__ explicit FloatHarmonicPhase(float phase):step_sine(sinf(phase)),step_cosine(cosf(phase)){}
+    __device__ inline void next(float &c,float &s){
+        float next_cosine=cosine*step_cosine-sine*step_sine;
+        sine=sine*step_cosine+cosine*step_sine;cosine=next_cosine;c=cosine;s=sine;
+    }
+};
+template<class Calc> using SignalPhase=typename std::conditional<std::is_same<Calc,float>::value,FloatHarmonicPhase,HarmonicPhase>::type;
 __host__ __device__ inline int prefix_nodes(const Axis &a, int start) {
     return start == a.bank_count / 2 ? a.node_count : a.banks[2 * start].node_offset;
 }
@@ -41,15 +50,15 @@ inline void check_ranges(const Tensor &rows, const Tensor &offsets, const Tensor
         rows.is_contiguous() && offsets.is_contiguous() && rows.dim() == 1 && offsets.dim() == 1 &&
         rows.numel() == p.size(0) && offsets.numel() == a.node_count + 1, "invalid sorted ranges");
 }
-template<class T>
-__device__ inline double compact_moment_element(const T *signal, const double *z,
+template<class T, class Storage = double>
+__device__ inline Storage compact_moment_element(const T *signal, const Storage *z,
     int b, int node, int basis, Axis axis, int start, bool merge) {
     int features = axis.basis_count(), bank_index = bank_for_node(node, axis);
     Bank bank = axis.banks[bank_index];
     int tile = node - bank.node_offset;
     int harmonic = (basis + 1) / 2;
     bool sine = basis != 0 && basis % 2 == 0;
-    double sum = 0;
+    Storage sum = 0;
     if (merge && bank.level > start && harmonic % axis.merge_factor == 0) {
         Bank child = axis.banks[bank_index - 2];
         int child_harmonic = harmonic / axis.merge_factor;
@@ -57,38 +66,38 @@ __device__ inline double compact_moment_element(const T *signal, const double *z
             int child_node = child.node_offset + tile * axis.merge_factor + part;
             int64_t offset = (int64_t(b) * (axis.node_count - prefix_nodes(axis, start)) + child_node - prefix_nodes(axis, start)) * features;
             if (basis == 0) { sum += z[offset]; continue; }
-            double phase = 2 * PI * harmonic * part * child.tile_sites * axis.spacing / bank.period;
-            double c = z[offset + 2 * child_harmonic - 1];
-            double s = z[offset + 2 * child_harmonic];
-            sum += sine ? sin(phase) * c + cos(phase) * s : cos(phase) * c - sin(phase) * s;
+            Storage phase = 2 * Storage(PI) * harmonic * part * child.tile_sites * Storage(axis.spacing) / Storage(bank.period);
+            Storage c = z[offset + 2 * child_harmonic - 1];
+            Storage s = z[offset + 2 * child_harmonic];
+            sum += sine ? signal_sin(phase) * c + signal_cos(phase) * s : signal_cos(phase) * c - signal_sin(phase) * s;
         }
     } else {
-        double filter = axis.spacing;
+        Storage filter = Storage(axis.spacing);
         if (harmonic) {
-            double argument = PI * harmonic * axis.spacing / bank.period;
-            filter *= sin(argument) / argument;
+            Storage argument = Storage(PI) * harmonic * Storage(axis.spacing) / Storage(bank.period);
+            filter *= signal_sin(argument) / argument;
         }
         int first_site = tile * bank.tile_sites;
         if (basis == 0) {
             for (int local_site = 0; local_site < bank.tile_sites; ++local_site)
-                sum += double(signal[b * axis.sites + first_site + local_site]) * filter;
+                sum += Storage(signal[b * axis.sites + first_site + local_site]) * filter;
         } else if (bank.tile_sites == 1) {
             // Tile-relative phase is exactly zero at the only site.
-            sum += double(signal[b * axis.sites + first_site]) * filter * (sine ? 0 : 1);
+            sum += Storage(signal[b * axis.sites + first_site]) * filter * (sine ? 0 : 1);
         } else {
-            HarmonicPhase phase(2 * PI * harmonic * axis.spacing / bank.period);
+            SignalPhase<Storage> phase(2 * Storage(PI) * harmonic * Storage(axis.spacing) / Storage(bank.period));
             for (int local_site = 0; local_site < bank.tile_sites; ++local_site) {
-                double phi = sine ? phase.sine : phase.cosine;
-                sum += double(signal[b * axis.sites + first_site + local_site]) * filter * phi;
-                double unused_cosine, unused_sine;
+                Storage phi = sine ? phase.sine : phase.cosine;
+                sum += Storage(signal[b * axis.sites + first_site + local_site]) * filter * phi;
+                Storage unused_cosine, unused_sine;
                 phase.next(unused_cosine, unused_sine);
             }
         }
     }
     return sum;
 }
-template<class T>
-__global__ void compact_moments_kernel(const T *signal, double *z, int batch,
+template<class T, class Storage = double>
+__global__ void compact_moments_kernel(const T *signal, Storage *z, int batch,
     Axis axis, int start, int level, bool merge, const uint32_t *required_banks = nullptr) {
     // The immutable mask includes all required lower child banks before launch.
     // Empty levels return uniformly; no barrier or global-layout change occurs.

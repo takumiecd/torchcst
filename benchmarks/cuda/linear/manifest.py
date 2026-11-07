@@ -15,6 +15,23 @@ from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip import
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.algorithm import (
     RadiusCellMassAlgorithm,
 )
+from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.large_multirow import (
+    RadiusLargeGeometryAlgorithm,
+    RadiusLargeLevelsAlgorithm,
+    RadiusLargeLevelsStream64Algorithm,
+    RadiusLargePackedAlgorithm,
+    RadiusLargeRecomputeAlgorithm,
+    RadiusLargeRow8Algorithm,
+    RadiusLargeStream64Algorithm,
+)
+from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.packed import (
+    RadiusPackedAlgorithm,
+    RadiusPackedParallelAlgorithm,
+    RadiusPackedRecomputeAlgorithm,
+)
+from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.row8 import (
+    RadiusRow8Algorithm,
+)
 from torchcst._backends.registry import Registry
 from torchcst._backends.schema import ExecutionPlan
 from torchcst._backends.serialization import decode_json
@@ -27,9 +44,22 @@ from torchcst._backends.torch.algorithms.linear.normalized_radial.layout import 
 # This catalog is benchmark-local. Production registration/selection is unchanged.
 REGISTRY = Registry()
 REGISTRY.register(RadiusCellMassAlgorithm())
+REGISTRY.register(RadiusRow8Algorithm())
+REGISTRY.register(RadiusLargeRow8Algorithm())
+REGISTRY.register(RadiusLargePackedAlgorithm())
+REGISTRY.register(RadiusLargeGeometryAlgorithm())
+REGISTRY.register(RadiusLargeStream64Algorithm())
+REGISTRY.register(RadiusLargeLevelsAlgorithm())
+REGISTRY.register(RadiusLargeLevelsStream64Algorithm())
+REGISTRY.register(RadiusLargeRecomputeAlgorithm())
+REGISTRY.register(RadiusPackedAlgorithm())
+REGISTRY.register(RadiusPackedRecomputeAlgorithm())
+REGISTRY.register(RadiusPackedParallelAlgorithm())
 REGISTRY.register(FactoredAlgorithm())
 REGISTRY.register(NormalizedFullAlgorithm())
 REGISTRY.register(NormalizedWindowAlgorithm())
+
+RADIUS_FIXTURES = ("polar_radius_cell_mass", "polar_radius_cell_mass_multirow")
 
 DEFAULT_PLANS = Path(__file__).with_name("plans.json")
 
@@ -151,12 +181,12 @@ class BenchmarkCase:
         _id(self.id, "case id")
         if self.fixture not in (
             "normalized_euclidean_strip",
-            "polar_radius_cell_mass",
+            *RADIUS_FIXTURES,
         ):
             raise ValueError("unknown benchmark fixture")
         if type(self.optimizer) is not OptimizerSpec:
             raise TypeError("case needs an OptimizerSpec")
-        if self.fixture == "polar_radius_cell_mass":
+        if self.fixture in RADIUS_FIXTURES:
             if (
                 self.optimizer.capturable
                 or self.profile != "initial"
@@ -169,28 +199,32 @@ class BenchmarkCase:
             raise ValueError("existing fixtures require capturable AdamW")
         sizes = (
             (128, 1024, 2048, 4096, 8192, 16384)
-            if self.fixture == "polar_radius_cell_mass"
+            if self.fixture in RADIUS_FIXTURES
             else (1024, 8192)
         )
         if type(self.size) is not int or self.size not in sizes:
             raise ValueError(f"fixture size must be one of {sizes}")
-        if self.fixture == "polar_radius_cell_mass" and (
-            type(self.rows) is not int or not 1 <= self.rows <= 64 or self.atoms < 4
+        if self.fixture in RADIUS_FIXTURES and (
+            type(self.rows) is not int
+            or not 1 <= self.rows <= (256 if self.fixture.endswith("_multirow") else 64)
+            or self.atoms < 4
         ):
             raise ValueError(
                 "local fixture requires batch 1..64 and at least four atoms"
             )
+        if self.fixture == "polar_radius_cell_mass_multirow" and (
+            self.size not in (2048, 8192, 16384) or self.atoms != 8 * self.size
+        ):
+            raise ValueError("multirow fixture requires N2048/8192/16384 with A=8N")
         for name in ["rows", "atoms", "warmup", "rounds"]:
             _integer(getattr(self, name), name)
-        if self.fixture == "polar_radius_cell_mass" and self.atoms > 1 << 24:
+        if self.fixture in RADIUS_FIXTURES and self.atoms > 1 << 24:
             raise ValueError("radius fixture supports at most 16777216 atoms")
         _integer(self.seed, "seed", 0)
         if self.seed >= 2**63:
             raise ValueError("seed must be less than 2**63")
         profiles = (
-            ("initial",)
-            if self.fixture == "polar_radius_cell_mass"
-            else ("broad", "sharp")
+            ("initial",) if self.fixture in RADIUS_FIXTURES else ("broad", "sharp")
         )
         if self.profile not in profiles or self.dtype != "float32":
             raise ValueError("fixture requires broad/sharp profile and float32")
@@ -217,7 +251,7 @@ class BenchmarkRun:
             algorithm = REGISTRY.validate_plan(entry.plan)
             if algorithm.operation_id != OPERATION or algorithm.semantics_id != (
                 "kernel-atom-sum-v1"
-                if self.case.fixture == "polar_radius_cell_mass"
+                if self.case.fixture in RADIUS_FIXTURES
                 else SEMANTICS
             ):
                 raise ValueError("plan mathematical contract differs from fixture")

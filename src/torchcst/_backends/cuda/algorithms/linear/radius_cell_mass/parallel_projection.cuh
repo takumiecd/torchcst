@@ -8,23 +8,33 @@ namespace radius_cell_mass {
 constexpr int PARALLEL_RESPONSE_THREADS = 32;
 constexpr int PARALLEL_RESPONSE_BATCH = 4;
 
-template<class T>
+template<class T, class Storage = double, int RowBatch = PARALLEL_RESPONSE_BATCH, bool CachedGeometry = false>
 __global__ void parallel_response_kernel(
-    const T *signal, const T *p, const double *moments, double *response,
-    int atoms, int batch, Axis axis, int start, bool output_side) {
+    const T *signal, const T *p, const Storage *moments, Storage *response,
+    int atoms, int batch, Axis axis, int start, bool output_side,
+    const Storage *geometry = nullptr) {
     int atom = blockIdx.x * blockDim.x + threadIdx.x;
     if (atom >= atoms) return;
-    int first_batch = blockIdx.y * PARALLEL_RESPONSE_BATCH;
+    int first_batch = blockIdx.y * RowBatch;
     int features = axis.basis_count();
     int elements = (axis.node_count - prefix_nodes(axis, start)) * features;
-    double R = radius(p, atom, axis);
-    double original = center(p, atom, axis, output_side);
-    Membership member = classify(R, original, axis);
+    Membership member;
+    Storage c[17], mu;
+    if constexpr (CachedGeometry) {
+        const Storage *v = geometry + int64_t(atom) * 25;
+        int offset = output_side ? 9 : 0;
+        member = Membership{int(v[output_side ? 22 : 20]), int(v[output_side ? 23 : 21])};
+        for (int k = 0; k <= axis.modes; ++k) c[k] = v[offset + k];
+        mu = v[output_side ? 19 : 18];
+    } else {
+        Storage R = signal_radius<Storage>(p, atom, axis);
+        Storage original = center(p, atom, axis, output_side);
+        member = signal_classify<Storage>(R, original, axis);
+        profile_values(R, Storage(axis.banks[member.bank].period), axis.modes, c);
+        mu = signal_wrapped<Storage>(original, axis);
+    }
     Bank bank = axis.banks[member.bank];
-    double c[17];
-    profile_values(R, bank.period, axis.modes, c);
-    double mu = wrapped_center(original, axis);
-    double values[PARALLEL_RESPONSE_BATCH] = {};
+    Storage values[RowBatch] = {};
 
     if (bank.level < start) {
         // Preserve direct_project's site and harmonic summation order for each
@@ -32,23 +42,23 @@ __global__ void parallel_response_kernel(
         for (int part = 0; part < bank.count; ++part) {
             for (int local = 0; local < bank.tile_sites; ++local) {
                 int site = (member.first_tile + part) * bank.tile_sites + local;
-                double mass = axis.spacing * c[0];
-                HarmonicPhase phase(2 * PI / bank.period * (mu - site * axis.spacing));
-                double half_cell = PI * axis.spacing / bank.period;
-                HarmonicPhase cell_phase(half_cell);
+                Storage mass = Storage(axis.spacing) * c[0];
+                SignalPhase<Storage> phase(2 * Storage(PI) / Storage(bank.period) * (mu - site * Storage(axis.spacing)));
+                Storage half_cell = Storage(PI) * Storage(axis.spacing) / Storage(bank.period);
+                SignalPhase<Storage> cell_phase(half_cell);
                 for (int k = 1; k <= axis.modes; ++k) {
-                    double argument = PI * k * axis.spacing / bank.period;
-                    double cp, sp, cell_cosine, cell_sine;
+                    Storage argument = Storage(PI) * k * Storage(axis.spacing) / Storage(bank.period);
+                    Storage cp, sp, cell_cosine, cell_sine;
                     phase.next(cp, sp);
                     cell_phase.next(cell_cosine, cell_sine);
-                    double filter = axis.spacing * cell_sine / argument;
+                    Storage filter = Storage(axis.spacing) * cell_sine / argument;
                     mass += 2 * c[k] * filter * cp;
                 }
                 #pragma unroll
-                for (int local_batch = 0; local_batch < PARALLEL_RESPONSE_BATCH; ++local_batch) {
+                for (int local_batch = 0; local_batch < RowBatch; ++local_batch) {
                     int b = first_batch + local_batch;
                     if (b < batch) {
-                        double x = double(signal[int64_t(b) * axis.sites + positive_mod(site, axis.sites)]);
+                        Storage x = Storage(signal[int64_t(b) * axis.sites + positive_mod(site, axis.sites)]);
                         values[local_batch] += x * mass;
                     }
                 }
@@ -59,22 +69,22 @@ __global__ void parallel_response_kernel(
             int unwrapped_tile = member.first_tile + part;
             int node = bank.node_offset + positive_mod(unwrapped_tile, bank.tile_count);
             int relative = (node - prefix_nodes(axis, start)) * features;
-            double displacement = mu - unwrapped_tile * bank.tile_sites * axis.spacing;
+            Storage displacement = mu - unwrapped_tile * bank.tile_sites * Storage(axis.spacing);
             #pragma unroll
-            for (int local_batch = 0; local_batch < PARALLEL_RESPONSE_BATCH; ++local_batch) {
+            for (int local_batch = 0; local_batch < RowBatch; ++local_batch) {
                 int b = first_batch + local_batch;
                 if (b < batch) values[local_batch] += c[0] * moments[int64_t(b) * elements + relative];
             }
-            HarmonicPhase phase(2 * PI / bank.period * displacement);
+            SignalPhase<Storage> phase(2 * Storage(PI) / Storage(bank.period) * displacement);
             for (int k = 1; k <= axis.modes; ++k) {
-                double cp, sp;
+                Storage cp, sp;
                 phase.next(cp, sp);
                 #pragma unroll
-                for (int local_batch = 0; local_batch < PARALLEL_RESPONSE_BATCH; ++local_batch) {
+                for (int local_batch = 0; local_batch < RowBatch; ++local_batch) {
                     int b = first_batch + local_batch;
                     if (b < batch) {
-                        const double *tile = moments + int64_t(b) * elements + relative;
-                        double moment = cp * tile[2 * k - 1] + sp * tile[2 * k];
+                        const Storage *tile = moments + int64_t(b) * elements + relative;
+                        Storage moment = cp * tile[2 * k - 1] + sp * tile[2 * k];
                         values[local_batch] += 2 * c[k] * moment;
                     }
                 }
@@ -82,7 +92,7 @@ __global__ void parallel_response_kernel(
         }
     }
     #pragma unroll
-    for (int local_batch = 0; local_batch < PARALLEL_RESPONSE_BATCH; ++local_batch) {
+    for (int local_batch = 0; local_batch < RowBatch; ++local_batch) {
         int b = first_batch + local_batch;
         if (b < batch) response[int64_t(b) * atoms + atom] = values[local_batch];
     }
