@@ -12,7 +12,7 @@ from torchcst._backends.torch.kernels import execution
 from torchcst.kernels.parameterizations import FixedWidthSpec, ParameterFieldSpec
 
 
-def make(m, wrapped=False, field_lrs=None, **overrides):
+def make(m, wrapped=False, field_lrs=None, update_selector=None, **overrides):
     groups = [
         {"params": list(m["cst"].parameters()), "lr": 0.0048},
         {"params": list(m["ordinary"].parameters()), "lr": 0.0003},
@@ -23,9 +23,14 @@ def make(m, wrapped=False, field_lrs=None, **overrides):
     options.update(overrides)
     if wrapped:
         return CSTOptimizer(
-            torch.optim.AdamW(groups, **options), model=m, field_lrs=field_lrs
+            torch.optim.AdamW(groups, **options),
+            model=m,
+            field_lrs=field_lrs,
+            update_selector=update_selector,
         )
-    return CSTAdamW(groups, model=m, field_lrs=field_lrs, **options)
+    return CSTAdamW(
+        groups, model=m, field_lrs=field_lrs, update_selector=update_selector, **options
+    )
 
 
 @pytest.mark.parametrize("wrapped", [False, True])

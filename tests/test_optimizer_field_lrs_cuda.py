@@ -17,12 +17,15 @@ pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA requ
 
 
 def native(m, wrapped, fields):
-    opt = make(m, wrapped, fields)
     # Select the existing radius candidate explicitly, independently of Linear.
-    opt._update_dispatcher.selector = FixedSelector(
-        RADIUS_FLAT_TORUS_FUSED, registry=make_algorithm_registry()
+    return make(
+        m,
+        wrapped,
+        fields,
+        update_selector=FixedSelector(
+            RADIUS_FLAT_TORUS_FUSED, registry=make_algorithm_registry()
+        ),
     )
-    return opt
 
 
 @pytest.mark.parametrize("wrapped", [False, True])
