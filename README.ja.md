@@ -215,6 +215,11 @@ FP32 owner-window と Flat-C の研究は NVIDIA L4、PyTorch 2.11.0+cu130 / CUD
 
 ## Kernel を組み立てる
 
+実験用の[中心移動に基づくPolar活動](docs/center-polar-activity.ja.md)は、
+`(s,t)`とL/Uによる半径の読み出しを保ち、振幅側の活動を受理後の中心移動へ交換します。
+`activity_mode="center_chord"`をCUDAで使うにはradius eager研究用更新Planの明示指定が必要で、
+fused/Graph経路は拒否します。デフォルト変更や精度改善の主張は伴いません。
+
 Kernel の宣言には独立した三つの要素がある。
 
 | 要素 | コンストラクタ | 意味 |

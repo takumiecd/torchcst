@@ -276,12 +276,12 @@ def _activity(
         lower_kappa=kappa if lower_kappa is None else lower_kappa,
         upper_decay_power=upper_decay_power,
         **(
-            dict(
-                radius_envelope=radius_envelope,
-                closed_lower_power=closed_lower_power,
-                closed_upper_power=closed_upper_power,
-                zero_opening_scale=zero_opening_scale,
-            )
+            {
+                "radius_envelope": radius_envelope,
+                "closed_lower_power": closed_lower_power,
+                "closed_upper_power": closed_upper_power,
+                "zero_opening_scale": zero_opening_scale,
+            }
             if coordinate == "polar_radius"
             else {}
         ),
@@ -291,7 +291,8 @@ def _activity(
         if (
             activity_gain <= 0
             or dormant_expansion_rate < 0
-            or activity_mode not in ("finite_chord", "time_energy")
+            or activity_mode not in ("finite_chord", "time_energy", "center_chord")
+            or (activity_mode == "center_chord" and coordinate != "polar_radius")
         ):
             raise ValueError("invalid polar activity update settings")
         updates.extend(

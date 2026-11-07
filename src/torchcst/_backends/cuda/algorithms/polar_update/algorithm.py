@@ -33,6 +33,8 @@ class FusedPolarUpdateAlgorithm(Algorithm[DefaultRecipe]):
         if not isinstance(context, AtomUpdateContext):
             return SupportResult(("requires AtomUpdateContext",))
         reasons = []
+        if dict(context.kernel.update.settings).get("activity_mode") == "center_chord":
+            reasons.append("center_chord requires the explicit Torch radius eager Plan")
         pair = (
             context.kernel.composition == "separable"
             and len(context.geometries) == 2
@@ -177,6 +179,8 @@ class RadiusFlatTorusPolarUpdateAlgorithm(FlatTorusPolarUpdateAlgorithm):
         if not isinstance(context, AtomUpdateContext):
             return SupportResult(("requires AtomUpdateContext",))
         reasons = []
+        if dict(context.kernel.update.settings).get("activity_mode") == "center_chord":
+            reasons.append("center_chord requires the explicit Torch radius eager Plan")
         if (
             context.kernel.revision != 7
             or type(context.kernel.parameterization) is not PolarAmpRadiusSpec
