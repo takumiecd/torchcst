@@ -73,6 +73,11 @@ def apply_parameter_update(
     energy = tangent.square().sum(dim=-1, keepdim=True)
     if state.setting("activity_mode") == "time_energy":
         energy = energy / step_size
+    center_update = None
+    if state.setting("activity_mode") == "center_chord":
+        center_update, energy = _center_chord(
+            state, output_chart, input_chart, p, displacement
+        )
     proposed_amplitude, _ = _parameterizations._amplitude_and_alpha(state, direction)
     dormant_weight = 1.0 / (
         1.0 + (proposed_amplitude / state.scalar("w_c").to(p)).square()
@@ -97,19 +102,71 @@ def apply_parameter_update(
     regularized_q = 1.0 / (1.0 - activity * decay)
     regularized_polar = task_polar * (regularized_q / task_q).sqrt()
 
-    _, output_p, input_p = _parameterizations._split(
-        state, output_chart, input_chart, p
-    )
-    _, output_d, input_d = _parameterizations._split(
+    if center_update is None:
+        _, output_p, input_p = _parameterizations._split(
+            state, output_chart, input_chart, p
+        )
+        _, output_d, input_d = _parameterizations._split(
+            state, output_chart, input_chart, displacement
+        )
+        updated_output = _profile.apply_parameter_update(
+            state.profiles[0], output_chart, output_p, output_d
+        )
+        updated_input = _profile.apply_parameter_update(
+            state.profiles[-1], input_chart, input_p, input_d
+        )
+    else:
+        updated_output, updated_input = center_update
+    return torch.cat((regularized_polar, updated_output, updated_input), dim=-1)
+
+
+def _center_chord(state, output_chart, input_chart, p, displacement):
+    """Accepted shortest torus motion / old physical support, mean over axes.
+
+    Only center motion supplies activity. Amplitude keeps its original angular
+    proposal, and the existing radial decay and optional dormant term remain.
+    Old support is frozen before this update; no circular radius equation or
+    hidden optimizer state is introduced.
+    """
+    from torchcst.geometry.spec import FlatTorusGeometrySpec
+    from torchcst.kernels.parameterizations import PolarAmpRadiusSpec
+
+    if type(state.spec.parameterization) is not PolarAmpRadiusSpec or any(
+        type(chart.geometry.spec) is not FlatTorusGeometrySpec
+        or chart.geometry.spec.intrinsic_dim != 1
+        for chart in (output_chart, input_chart)
+    ):
+        raise ValueError(
+            "center_chord requires radius Polar and scalar FlatTorus centers"
+        )
+    polar, old_o, old_i = _parameterizations._split(state, output_chart, input_chart, p)
+    _, delta_o, delta_i = _parameterizations._split(
         state, output_chart, input_chart, displacement
     )
-    updated_output = _profile.apply_parameter_update(
-        state.profiles[0], output_chart, output_p, output_d
+    new_o = _profile.apply_parameter_update(
+        state.profiles[0], output_chart, old_o, delta_o
     )
-    updated_input = _profile.apply_parameter_update(
-        state.profiles[-1], input_chart, input_p, input_d
+    new_i = _profile.apply_parameter_update(
+        state.profiles[-1], input_chart, old_i, delta_i
     )
-    return torch.cat((regularized_polar, updated_output, updated_input), dim=-1)
+    a, alpha = _parameterizations._amplitude_and_alpha(state, _project_polar(polar))
+    names = state.spec.parameterization.width_scalar_names
+    ri, _, _ = _parameterizations._width_bounds(
+        state, a, alpha, side="input", scalar_names=names
+    )
+    ro, _, _ = _parameterizations._width_bounds(
+        state, a, alpha, side="output", scalar_names=names
+    )
+    energies = []
+    for old, new, radius, chart in (
+        (old_o, new_o, ro, output_chart),
+        (old_i, new_i, ri, input_chart),
+    ):
+        period = p.new_tensor(chart.geometry.spec.periods)
+        delta = new - old
+        delta = delta - period * torch.floor(delta / period + 0.5)
+        energies.append((delta / radius[:, None]).square().sum(-1, keepdim=True))
+    return (new_o, new_i), (energies[0] + energies[1]) * 0.5
 
 
 def project_parameter_gradient(
@@ -183,6 +240,8 @@ def graph_update(value, p, displacement, *, step_size):
     Tests compare against execution.apply_parameter_update; no width SGD.
     """
 
+    if value.setting("activity_mode") == "center_chord":
+        raise ValueError("center_chord requires eager scalar FlatTorus execution")
     polar = _project_polar(p[:, :2])
     q = polar.square().sum(-1, keepdim=True)
     raw = displacement[:, :2]

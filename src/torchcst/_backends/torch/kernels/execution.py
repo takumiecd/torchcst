@@ -119,7 +119,12 @@ def family(state):
     ) and (
         type(settings["activity_gain"]) not in (int, float)
         or settings["activity_gain"] <= 0
-        or settings["activity_mode"] not in ("finite_chord", "time_energy")
+        or settings["activity_mode"]
+        not in ("finite_chord", "time_energy", "center_chord")
+        or (
+            settings["activity_mode"] == "center_chord"
+            and name != "polar_radius_cell_mass"
+        )
     ):
         raise ValueError("invalid polar activity policy")
     return name

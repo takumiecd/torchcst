@@ -223,6 +223,12 @@ and the [radius cell-mass guide](docs/radius-cell-mass.md) provide context.
 
 ## Compose a kernel
 
+The experimental [center-driven Polar activity](docs/center-polar-activity.md)
+retains `(s,t)` and the L/U radius map, replacing amplitude-pair activity with
+accepted center motion. `activity_mode="center_chord"` requires the explicit
+radius eager research update Plan; fused/Graph paths reject it. No new default
+or quality advantage is claimed.
+
 Kernel declarations have three independent parts:
 
 | Part | Constructors | Meaning |
