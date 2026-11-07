@@ -93,6 +93,32 @@ class RadiusLargeStream64Algorithm(RadiusLargeGeometryAlgorithm):
         return 64
 
 
+@dataclass(frozen=True)
+class RadiusLargeLevelsAlgorithm(RadiusLargeGeometryAlgorithm):
+    id: str = "cuda_radius_large_multirow_levels"
+
+    @property
+    def level_moments(self):
+        return True
+
+
+@dataclass(frozen=True)
+class RadiusLargeLevelsStream64Algorithm(RadiusLargeStream64Algorithm):
+    id: str = "cuda_radius_large_multirow_levels_stream64"
+
+    @property
+    def level_moments(self):
+        return True
+
+
+LARGE_LEVELS = ExecutionPlan(
+    RadiusLargeLevelsAlgorithm().id, "v1", GLOBAL_ACTIVE_GRAD4_NATIVE.recipe
+)
+LARGE_LEVELS_STREAM64 = ExecutionPlan(
+    RadiusLargeLevelsStream64Algorithm().id, "v1", PACKED_RECOMPUTE.recipe
+)
+
+
 LARGE_STREAM64 = ExecutionPlan(
     RadiusLargeStream64Algorithm().id, "v1", PACKED_RECOMPUTE.recipe
 )

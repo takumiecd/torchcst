@@ -15,11 +15,15 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.algorithm import
 )
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.large_multirow import (
     LARGE_GEOMETRY,
+    LARGE_LEVELS,
+    LARGE_LEVELS_STREAM64,
     LARGE_PACKED,
     LARGE_RECOMPUTE,
     LARGE_ROW8,
     LARGE_STREAM64,
     RadiusLargeGeometryAlgorithm,
+    RadiusLargeLevelsAlgorithm,
+    RadiusLargeLevelsStream64Algorithm,
     RadiusLargePackedAlgorithm,
     RadiusLargeRecomputeAlgorithm,
     RadiusLargeRow8Algorithm,
@@ -34,6 +38,8 @@ CASES = [
     (RadiusLargeRow8Algorithm, LARGE_ROW8),
     (RadiusLargePackedAlgorithm, LARGE_PACKED),
     (RadiusLargeGeometryAlgorithm, LARGE_GEOMETRY),
+    (RadiusLargeLevelsAlgorithm, LARGE_LEVELS),
+    (RadiusLargeLevelsStream64Algorithm, LARGE_LEVELS_STREAM64),
     (RadiusLargeStream64Algorithm, LARGE_STREAM64),
     (RadiusLargeRecomputeAlgorithm, LARGE_RECOMPUTE),
 ]
@@ -173,7 +179,9 @@ def test_multirow_case_snapshot_and_linear_atom_count(n):
 
 @GPU
 @pytest.mark.parametrize("freeze", [None, "input", "atoms"])
-@pytest.mark.parametrize("candidate", [LARGE_GEOMETRY, LARGE_STREAM64])
+@pytest.mark.parametrize(
+    "candidate", [LARGE_GEOMETRY, LARGE_STREAM64, LARGE_LEVELS, LARGE_LEVELS_STREAM64]
+)
 def test_cached_geometry_preserves_autograd_lifetime_and_gradient_branches(
     freeze, candidate
 ):
@@ -205,7 +213,7 @@ def test_cached_geometry_preserves_autograd_lifetime_and_gradient_branches(
         if plan == candidate:
             assert ((4096, 25), torch.float32) in saved
             assert all(dtype != torch.float64 for _, dtype in saved)
-            if candidate == LARGE_STREAM64:
+            if not candidate.recipe.save_response:
                 assert not any(shape == (9, 4096) for shape, _ in saved)
         values.append((y, *gradients))
         y = model(xx)  # version checking without hooks

@@ -42,24 +42,49 @@ void packed_check_scope(Tensor x, Tensor p, Config ci, Config co) {
         "packed pilot requires Polar M8/base1/merge2/spacing1/radius[.5,50]");
 }
 
-Tensor packed_moments(Tensor x, Tensor p, Config config) {
+// Index only the two banks of this level; write the unchanged compact Z layout.
+__global__ void packed_level_moments_kernel(const float *signal, float *z, int batch,
+    Axis axis, int start, int level, const uint32_t *required_banks) {
+    if (!(*required_banks & (3u << (2 * level)))) return;
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    int level_nodes = 2 * axis.banks[2 * level].tile_count, F = axis.basis_count();
+    if (index >= batch * level_nodes * F) return;
+    int local = (index / F) % level_nodes;
+    int bank = 2 * level + int(local >= axis.banks[2 * level].tile_count);
+    if (!(*required_banks & (uint32_t(1) << bank))) return;
+    int node = axis.banks[2 * level].node_offset + local;
+    int row = index / (level_nodes * F), basis = index % F;
+    int64_t slot = (int64_t(row) * (axis.node_count - prefix_nodes(axis, start)) +
+        node - prefix_nodes(axis, start)) * F + basis;
+    z[slot] = compact_moment_element(signal, z, row, node, basis, axis, start, true);
+}
+
+Tensor packed_moments(Tensor x, Tensor p, Config config, bool level_launch) {
     Axis a = parse_axis(config); check_hybrid_signal(x, p, a);
     int nodes = a.node_count - checked_start(a, 2), f = a.basis_count();
     auto z = torch::empty({x.size(0), nodes, f}, x.options());
     auto mask = torch::zeros({1}, p.options().dtype(torch::kUInt32));
     active_moment_banks_kernel<float, float><<<(p.size(0)+THREADS-1)/THREADS,THREADS,0,
         at::cuda::getCurrentCUDAStream()>>>(p.data_ptr<float>(),mask.data_ptr<uint32_t>(),p.size(0),a,2,true);
-    for (int level = 2; level < a.bank_count / 2; ++level)
+    for (int level = 2; level < a.bank_count / 2; ++level) {
+        if (level_launch) {
+            int64_t work = x.size(0) * 2 * a.banks[2 * level].tile_count * f;
+            packed_level_moments_kernel<<<(work + THREADS - 1) / THREADS, THREADS, 0,
+                at::cuda::getCurrentCUDAStream()>>>(x.data_ptr<float>(), z.data_ptr<float>(),
+                x.size(0), a, 2, level, mask.data_ptr<uint32_t>());
+        } else {
         compact_moments_kernel<float, float><<<(z.numel() + THREADS - 1) / THREADS,
             THREADS, 0, at::cuda::getCurrentCUDAStream()>>>(x.data_ptr<float>(),
             z.data_ptr<float>(), x.size(0), a, 2, level, true, mask.data_ptr<uint32_t>());
+        }
+    }
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return z;
 }
 
-std::vector<Tensor> packed_project(Tensor x, Tensor p, Config config, bool output_side, Tensor geometry) {
+std::vector<Tensor> packed_project(Tensor x, Tensor p, Config config, bool output_side, Tensor geometry, bool level_launch) {
     c10::cuda::CUDAGuard guard(x.device());
-    auto z = packed_moments(x, p, config);
+    auto z = packed_moments(x, p, config, level_launch);
     auto h = torch::empty({x.size(0), p.size(0)}, x.options());
     Axis a = parse_axis(config);
     dim3 grid((p.size(0) + PARALLEL_RESPONSE_THREADS - 1) / PARALLEL_RESPONSE_THREADS,
@@ -79,9 +104,9 @@ std::vector<Tensor> packed_project(Tensor x, Tensor p, Config config, bool outpu
 }
 
 std::vector<Tensor> packed_transform(Tensor x, Tensor p, Tensor rows, Tensor offsets,
-    Config source, Config destination, bool output_side, Tensor geometry) {
+    Config source, Config destination, bool output_side, Tensor geometry, bool level_launch) {
     c10::cuda::CUDAGuard guard(x.device());
-    auto projection = packed_project(x, p, source, output_side, geometry);
+    auto projection = packed_project(x, p, source, output_side, geometry, level_launch);
     Axis a = parse_axis(destination); check_ranges(rows, offsets, p, a);
     auto y = torch::empty({x.size(0), a.sites}, x.options());
     auto layout = batched_coefficient_layout<float>(a, 2, 32);

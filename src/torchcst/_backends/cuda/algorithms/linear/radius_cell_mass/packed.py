@@ -18,6 +18,10 @@ class RadiusPackedAlgorithm(RadiusRow8Algorithm):
     id: str = "cuda_radius_cell_mass_packed"
 
     @property
+    def level_moments(self):
+        return False
+
+    @property
     def stream_rows(self):
         return 0
 
@@ -62,14 +66,21 @@ class RadiusPackedAlgorithm(RadiusRow8Algorithm):
             )
         extension = _extension(8)
         if self.stream_rows:
-            return extension.packed_stream64_linear(
+            streamed = (
+                extension.packed_levels_stream64_linear
+                if self.level_moments
+                else extension.packed_stream64_linear
+            )
+            return streamed(
                 x.contiguous(),
                 parameters.contiguous(),
                 state.layout.input.native_config(),
                 state.layout.output.native_config(),
             )
         entry = (
-            extension.packed_geometry_linear
+            extension.packed_levels_linear
+            if self.level_moments
+            else extension.packed_geometry_linear
             if self.cache_geometry
             else extension.packed_rows_linear
         )
