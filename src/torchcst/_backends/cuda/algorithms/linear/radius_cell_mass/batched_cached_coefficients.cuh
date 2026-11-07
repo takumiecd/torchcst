@@ -158,7 +158,7 @@ __global__ void batched_cached_expand_kernel(
         int destinations = (end_site - 1) / bank.tile_sites - first_tile + 1;
         if (bank.level >= start)
             for (int i = threadIdx.x; i < destinations * EXPANSION_BATCH * features; i += blockDim.x)
-                scratch[i] = 0;
+                work[i] = 0;
         __syncthreads();
         // Owner segments are disjoint even when K exceeds the chart tile count.
         // The repeated images are summed by the consumer, never duplicated here.
@@ -196,7 +196,7 @@ __global__ void batched_cached_expand_kernel(
                     if (warp < warps)
                         for (int local = warp; local < destinations; local += warps)
                             batched_coefficient_tile(cache, first_tiles, offsets,
-                                scratch + local * EXPANSION_BATCH * features,
+                                work + local * EXPANSION_BATCH * features,
                                 columns + warp * features * BLOCK_LOCAL_C_STRIDE,
                                 chunk, retained, bank.node_offset + first_tile + local, axis, bank, stride);
                 } else if (site < end_site) {
@@ -208,7 +208,7 @@ __global__ void batched_cached_expand_kernel(
         }
         if (bank.level >= start && site < end_site) {
             int local = site % bank.tile_sites;
-            const Storage *node = scratch + (site / bank.tile_sites - first_tile) * EXPANSION_BATCH * features;
+            const Storage *node = work + (site / bank.tile_sites - first_tile) * EXPANSION_BATCH * features;
             #pragma unroll
             for (int r = 0; r < EXPANSION_BATCH; ++r) value[r] += Storage(axis.spacing) * node[r * features];
             Storage half_cell = Storage(PI) * Storage(axis.spacing) / Storage(bank.period);
