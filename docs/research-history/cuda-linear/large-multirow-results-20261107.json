@@ -1,0 +1,369 @@
+{
+  "schema_version": 1,
+  "status": "completed_research_only",
+  "numeric_commit": "3dd8115d09251146d9fbdc8876f9a7dc99b61f01",
+  "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+  "torch": "2.6.0+cu126",
+  "cuda": "12.6",
+  "protocol": "large-multirow-20261107.md",
+  "comparison": {
+    "state": "passed",
+    "rows": {
+      "A-8192-row8": {
+        "width": 8192,
+        "rows": 256,
+        "atoms": 65536,
+        "arm": "row8",
+        "order": "A",
+        "median_ms": 82.98654481768608,
+        "mean_ms": 82.98270459122517,
+        "peak_allocated_bytes": 886582784,
+        "peak_reserved_bytes": 931135488,
+        "setup_seconds_including_initial_proof": 27.799845319241285,
+        "parameter_payload_bytes": 1048576,
+        "optimizer_payload_bytes": 2097156,
+        "initial_effective_dense_weight_sha256": null,
+        "source_result_sha256": "1cd81e3b668e955b49f02aad24e10771d7eb7f7ec1ea06c54f584a6302b9d87b"
+      },
+      "A-8192-fp32": {
+        "width": 8192,
+        "rows": 256,
+        "atoms": 65536,
+        "arm": "fp32",
+        "order": "A",
+        "median_ms": 50.05543306469917,
+        "mean_ms": 50.042903160347656,
+        "peak_allocated_bytes": 498871808,
+        "peak_reserved_bytes": 536870912,
+        "setup_seconds_including_initial_proof": 27.131642788648605,
+        "parameter_payload_bytes": 1048576,
+        "optimizer_payload_bytes": 2097156,
+        "initial_effective_dense_weight_sha256": null,
+        "source_result_sha256": "abe37bbd900c917d1110b91d3bdf092d9ba3b6c5bf78e1909aef3109c3a8ffa3"
+      },
+      "A-8192-dense": {
+        "width": 8192,
+        "rows": 256,
+        "atoms": 65536,
+        "arm": "dense",
+        "order": "A",
+        "median_ms": 17.844747751951218,
+        "mean_ms": 17.84468785512681,
+        "peak_allocated_bytes": 1132725760,
+        "peak_reserved_bytes": 1180696576,
+        "setup_seconds_including_initial_proof": 11.55494480021298,
+        "parameter_payload_bytes": 268435456,
+        "optimizer_payload_bytes": 536870916,
+        "initial_effective_dense_weight_sha256": "87ce78ed0db628aea0779a47df3798caf7a09f976a4c22d03327c2f35f488e0e",
+        "source_result_sha256": "69f80da2fcfa6181c68b11fc11ef89874a3749ebbbd172418d8934df073eb9c3"
+      },
+      "B-8192-row8": {
+        "width": 8192,
+        "rows": 256,
+        "atoms": 65536,
+        "arm": "row8",
+        "order": "B",
+        "median_ms": 82.93207921087742,
+        "mean_ms": 82.98868211168869,
+        "peak_allocated_bytes": 886582784,
+        "peak_reserved_bytes": 931135488,
+        "setup_seconds_including_initial_proof": 25.966686856001616,
+        "parameter_payload_bytes": 1048576,
+        "optimizer_payload_bytes": 2097156,
+        "initial_effective_dense_weight_sha256": null,
+        "source_result_sha256": "ed48d01dbd1166b837c3af9120bb3d0340b3982c87ec20ab684fd67b34deabaf"
+      },
+      "B-8192-fp32": {
+        "width": 8192,
+        "rows": 256,
+        "atoms": 65536,
+        "arm": "fp32",
+        "order": "B",
+        "median_ms": 50.0397477298975,
+        "mean_ms": 50.04736572942313,
+        "peak_allocated_bytes": 498871808,
+        "peak_reserved_bytes": 536870912,
+        "setup_seconds_including_initial_proof": 26.3066127859056,
+        "parameter_payload_bytes": 1048576,
+        "optimizer_payload_bytes": 2097156,
+        "initial_effective_dense_weight_sha256": null,
+        "source_result_sha256": "48dea96a47ecf1c464a0e3542d95fe02600db7bc6320524d32ef454f4b91edc9"
+      },
+      "B-8192-dense": {
+        "width": 8192,
+        "rows": 256,
+        "atoms": 65536,
+        "arm": "dense",
+        "order": "B",
+        "median_ms": 17.849747091531754,
+        "mean_ms": 17.852727433337886,
+        "peak_allocated_bytes": 1132725760,
+        "peak_reserved_bytes": 1180696576,
+        "setup_seconds_including_initial_proof": 11.606244280934334,
+        "parameter_payload_bytes": 268435456,
+        "optimizer_payload_bytes": 536870916,
+        "initial_effective_dense_weight_sha256": "87ce78ed0db628aea0779a47df3798caf7a09f976a4c22d03327c2f35f488e0e",
+        "source_result_sha256": "59bf28794205101a043ba65adab6ce9cde78ce049494f0c62d9f214e45c026e2"
+      },
+      "A-16384-row8": {
+        "width": 16384,
+        "rows": 256,
+        "atoms": 131072,
+        "arm": "row8",
+        "order": "A",
+        "median_ms": 165.9908965229988,
+        "mean_ms": 166.02227131963946,
+        "peak_allocated_bytes": 1773153792,
+        "peak_reserved_bytes": 2399141888,
+        "setup_seconds_including_initial_proof": 91.15200116671622,
+        "parameter_payload_bytes": 2097152,
+        "optimizer_payload_bytes": 4194308,
+        "initial_effective_dense_weight_sha256": null,
+        "source_result_sha256": "ccf7131a67a5f2fd3e981a89ec658c7479330498172e6419987a68576aeb8ca7"
+      },
+      "A-16384-fp32": {
+        "width": 16384,
+        "rows": 256,
+        "atoms": 131072,
+        "arm": "fp32",
+        "order": "A",
+        "median_ms": 100.71334801614285,
+        "mean_ms": 100.7557459832991,
+        "peak_allocated_bytes": 997731840,
+        "peak_reserved_bytes": 1090519040,
+        "setup_seconds_including_initial_proof": 88.89157145284116,
+        "parameter_payload_bytes": 2097152,
+        "optimizer_payload_bytes": 4194308,
+        "initial_effective_dense_weight_sha256": null,
+        "source_result_sha256": "c097f38a92f7c62c2f6913c69dc0fb8d0c2190d42a8b0ac3f57035b28c6f4cd6"
+      },
+      "A-16384-dense": {
+        "width": 16384,
+        "rows": 256,
+        "atoms": 131072,
+        "arm": "dense",
+        "order": "A",
+        "median_ms": 68.27792897820473,
+        "mean_ms": 68.30208076565873,
+        "peak_allocated_bytes": 4395894272,
+        "peak_reserved_bytes": 4452253696,
+        "setup_seconds_including_initial_proof": 24.647855466231704,
+        "parameter_payload_bytes": 1073741824,
+        "optimizer_payload_bytes": 2147483652,
+        "initial_effective_dense_weight_sha256": "a1bfc2bfd45a6ffb02603e5f1bd6bf0220667356bb442c5efbc9ebb20c02eb12",
+        "source_result_sha256": "3cac3bc94b37ad65fecd478a43736f9ed858c810fb2b9d7403205887326b3c0f"
+      },
+      "B-16384-row8": {
+        "width": 16384,
+        "rows": 256,
+        "atoms": 131072,
+        "arm": "row8",
+        "order": "B",
+        "median_ms": 166.0303957760334,
+        "mean_ms": 166.08612447538798,
+        "peak_allocated_bytes": 1773153792,
+        "peak_reserved_bytes": 2399141888,
+        "setup_seconds_including_initial_proof": 91.41444213874638,
+        "parameter_payload_bytes": 2097152,
+        "optimizer_payload_bytes": 4194308,
+        "initial_effective_dense_weight_sha256": null,
+        "source_result_sha256": "679cae9fcc223008d631c44300fefa668e08897108303a9fc06c3982e8a868f2"
+      },
+      "B-16384-fp32": {
+        "width": 16384,
+        "rows": 256,
+        "atoms": 131072,
+        "arm": "fp32",
+        "order": "B",
+        "median_ms": 100.7728036493063,
+        "mean_ms": 100.80322436988354,
+        "peak_allocated_bytes": 997731840,
+        "peak_reserved_bytes": 1090519040,
+        "setup_seconds_including_initial_proof": 89.41320567950606,
+        "parameter_payload_bytes": 2097152,
+        "optimizer_payload_bytes": 4194308,
+        "initial_effective_dense_weight_sha256": null,
+        "source_result_sha256": "e8f6e97c987c78368ea739748c4b19c039bb7f884d6a6299248084341ad5344e"
+      },
+      "B-16384-dense": {
+        "width": 16384,
+        "rows": 256,
+        "atoms": 131072,
+        "arm": "dense",
+        "order": "B",
+        "median_ms": 68.31648573279381,
+        "mean_ms": 68.37042483190696,
+        "peak_allocated_bytes": 4395894272,
+        "peak_reserved_bytes": 4452253696,
+        "setup_seconds_including_initial_proof": 26.11441850848496,
+        "parameter_payload_bytes": 1073741824,
+        "optimizer_payload_bytes": 2147483652,
+        "initial_effective_dense_weight_sha256": "a1bfc2bfd45a6ffb02603e5f1bd6bf0220667356bb442c5efbc9ebb20c02eb12",
+        "source_result_sha256": "821ac5803a78db373c578fc2302b84ac1eaff7b0e5918543700d42d0a247603d"
+      }
+    },
+    "ratios": {
+      "8192": {
+        "A": {
+          "fp32_over_dense": 2.8050513103625074,
+          "fp32_over_row8": 0.603175287929705,
+          "allocated_over_dense": 0.44041711208192175
+        },
+        "B": {
+          "fp32_over_dense": 2.8033869316634337,
+          "fp32_over_row8": 0.6033822883260626,
+          "allocated_over_dense": 0.44041711208192175
+        }
+      },
+      "16384": {
+        "A": {
+          "fp32_over_dense": 1.4750498370899907,
+          "fp32_over_row8": 0.6067401895271319,
+          "allocated_over_dense": 0.22696902570089839
+        },
+        "B": {
+          "fp32_over_dense": 1.4750876390723442,
+          "fp32_over_row8": 0.6069539446574813,
+          "allocated_over_dense": 0.22696902570089839
+        }
+      }
+    },
+    "same_kind_final_tensor_hashes_exact": {
+      "8192": {
+        "row8": true,
+        "fp32": true,
+        "dense": true
+      },
+      "16384": {
+        "row8": true,
+        "fp32": true,
+        "dense": true
+      }
+    },
+    "initial_inputs_and_parameters_exact": true,
+    "clocks_all_61": true,
+    "scope": "One A100 MIG allocation, two fresh processes per arm/width; isolated Linear, not LM or convergence"
+  },
+  "evidence_verification": {
+    "state": "passed",
+    "archives": {
+      "evidence.tar.gz": {
+        "sha256": "6c8ddfde81e67bfe38ae2b43ab55ca5edfe5408b3e0b180b4ad6e80ec7786b2b",
+        "bytes": 32354385
+      },
+      "inputs.tar.gz": {
+        "sha256": "cd462b632bb46a55cafb45817e9f232fe2e371d852b073083230b79ed9d12e5e",
+        "bytes": 78399146
+      }
+    },
+    "verified_files": 44,
+    "all_18_owned_pids_inactive": true,
+    "initial_tensor_payloads_restored_and_verified": true,
+    "reader_torch": "2.13.0"
+  },
+  "postflight": {
+    "owned_processes": [
+      {
+        "pid": 1366203,
+        "owned_command_active": false
+      },
+      {
+        "pid": 1366551,
+        "owned_command_active": false
+      },
+      {
+        "pid": 1367435,
+        "owned_command_active": false
+      },
+      {
+        "pid": 1368648,
+        "owned_command_active": false
+      },
+      {
+        "pid": 1369845,
+        "owned_command_active": false
+      },
+      {
+        "pid": 1371375,
+        "owned_command_active": false
+      },
+      {
+        "pid": 1372876,
+        "owned_command_active": false
+      },
+      {
+        "pid": 1373664,
+        "owned_command_active": false
+      },
+      {
+        "pid": 1376576,
+        "owned_command_active": false
+      },
+      {
+        "pid": 1379479,
+        "owned_command_active": false
+      },
+      {
+        "pid": 1380944,
+        "owned_command_active": false
+      },
+      {
+        "pid": 1382417,
+        "owned_command_active": false
+      },
+      {
+        "pid": 1385332,
+        "owned_command_active": false
+      },
+      {
+        "pid": 1388234,
+        "owned_command_active": false
+      },
+      {
+        "pid": 1389022,
+        "owned_command_active": false
+      },
+      {
+        "pid": 1390527,
+        "owned_command_active": false
+      },
+      {
+        "pid": 1392031,
+        "owned_command_active": false
+      },
+      {
+        "pid": 1366108,
+        "owned_command_active": false
+      }
+    ],
+    "source_files_verified": 1252,
+    "binary_sha256": {
+      "torchcst_read_lease_58d13d189e63/torchcst_read_lease_58d13d189e63.so": "1c5d4400095c12668d578a35193e5f93e64cf217137838bfd78a32eed49ea4af",
+      "torchcst_radius_cell_mass_78acca48bcfd_row8/torchcst_radius_cell_mass_78acca48bcfd_row8.so": "8339525c694fea8188469d70888a1f9b420dcb7df4eab1bfca96db9df1a063a2",
+      "torchcst_radius_cell_mass_78acca48bcfd/torchcst_radius_cell_mass_78acca48bcfd.so": "b42cad5a8a2d37f93248233f6fe3beb36b9292e4c32bbd78e76c8ddf09c47dfb",
+      "torchcst_polar_host_guard_0f2bbbb4c2c2/torchcst_polar_host_guard_0f2bbbb4c2c2.so": "b4b62646ee2f38b50ab9e1c0d772bb46735ae0a7020b4b51338a890e085208f6"
+    },
+    "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+    "torch": "2.6.0+cu126",
+    "cuda": "12.6",
+    "python": "3.12.9",
+    "free_total_bytes": [
+      41841197056,
+      42144366592
+    ],
+    "final_state_scope": "Tensor-byte hashes only; final optimizer payloads not saved. Actual initial P/x/target/dY are preserved in inputs-N.pt."
+  },
+  "limitations": [
+    "Isolated square Linear, resident random input/MSE; not a whole LM or a quality study.",
+    "R256, A8N, FP32 IEEE/TF32 off, two orders on one A100 MIG allocation; no hardware replication.",
+    "All61 training steps enter allocator peaks; 51 timed samples are not51 independent runs.",
+    "Dense starts from an FP32 local scatter export of the same initial CST operator.",
+    "Actual initial P/x/target/dY restored locally; final Parameter/gradient/Adam/clock hashes only. Raw oracle Y/dX/dP payloads are not preserved.",
+    "CPU oracle and export/setup are outside the synchronized complete-step clock. Total process GPU memory unmeasured.",
+    "No production registration, public default, Graph, mixed precision or other-device adoption."
+  ],
+  "figures": {
+    "assets/large-multirow-20261107/performance.svg": "b6773fdea9bcb2c79ccda449b529e805f5a1a3b3f19d39472cddcbf6a6b2c418",
+    "assets/large-multirow-20261107/performance.png": "1c6242baa549cc338df302a96df7cca7bfad26d8588a527485c84f77c723b9d1"
+  }
+}

@@ -45,4 +45,37 @@ allocated/reserved peakは61更新全部を含み、GPU process全使用量は�
 両順序と初期検証込みsetupを分けて報告し、単独Linearの時計をLM全体の時計と接合しない。
 この更新は収束や大規模モデルの精度優位性を示す実験ではない。
 
-本書は準備と事前protocolで、大規模の完了結果ではない。
+## 監査済み結果
+
+数値計算コミット：`3dd8115d09251146d9fbdc8876f9a7dc99b61f01`。
+12観測すべてが初期・更新後の全VJP検証に合格し、N2048の検証と152件の
+CPU/CUDA回帰も合格した。同条件の最終Parameter・勾配・Adam moment・clock
+ハッシュは両実行順で完全一致した。
+
+| N | Implementation | Step ms A / B | Allocated MiB A / B | Reserved MiB A / B | Setup s A / B |
+| ---: | --- | ---: | ---: | ---: | ---: |
+| 8192 | FP64 row8 | 82.987 / 82.932 | 845.511 / 845.511 | 888 / 888 | 27.80 / 25.97 |
+| 8192 | FP32 saved | 50.055 / 50.040 | 475.761 / 475.761 | 512 / 512 | 27.13 / 26.31 |
+| 8192 | Dense | 17.845 / 17.850 | 1080.251 / 1080.251 | 1126 / 1126 | 11.55 / 11.61 |
+| 16384 | FP64 row8 | 165.991 / 166.030 | 1691.011 / 1691.011 | 2288 / 2288 | 91.15 / 91.41 |
+| 16384 | FP32 saved | 100.713 / 100.773 | 951.511 / 951.511 | 1040 / 1040 | 88.89 / 89.41 |
+| 16384 | Dense | 68.278 / 68.316 | 4192.251 / 4192.251 | 4246 / 4246 | 24.65 / 26.11 |
+
+R256ではFP32がFP64 row8より約39.3〜39.7%短時間になった。一方、Dense比では
+N8192で2.80倍、N16384で1.475倍の時間が必要である。allocated peakはDenseの
+44.0%・22.7%。Nを倍にするとCSTの時間は約2倍、Denseは約3.83倍だった。
+固定R・A8Nでの幅スケールの観測であり、漸近的な下限や精度保証ではない。
+Rの効果は別の対照実験で確認する。
+
+![両順序のstep時間とallocatorピーク](assets/large-multirow-20261107/performance.png)
+
+[機械可読集計](large-multirow-results-20261107.json)に両順序と元結果のハッシュを残した。
+ローカル証拠はownerのcanonical checkoutの`output/large-multirow-20261107-01`。
+証拠archive SHA256は
+`6c8ddfde81e67bfe38ae2b43ab55ca5edfe5408b3e0b180b4ad6e80ec7786b2b`で、
+44ファイルの原本を照合した。実際の初期Tensorも独立復元した。入力archive SHA256：
+`cd462b632bb46a55cafb45817e9f232fe2e371d852b073083230b79ed9d12e5e`。
+最終状態はTensorハッシュを保全したもので、最終model/optimizer payloadや
+生のoracle Tensorはarchiveしていない。所有するcontroller/workerの18 PIDの
+終了とsource・extensionハッシュを確認した。サーバーや無関係なjobには触れていない。
+公開既定値・dispatcherへの採用は含まない。

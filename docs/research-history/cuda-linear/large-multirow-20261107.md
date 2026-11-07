@@ -62,4 +62,39 @@ hashes and initial conditions. Report both orders and setup including initial
 proof separately. Do not join these isolated-Linear timings to whole-LM timings.
 These updates do not establish convergence or a large-model accuracy advantage.
 
-This is preparation and a fixed protocol, not a completed large-width result.
+## Audited results
+
+Numeric commit: `3dd8115d09251146d9fbdc8876f9a7dc99b61f01`.
+All12 observations passed initial and updated full VJP checks; N2048 qualification
+and152 CPU/CUDA regressions passed. Corresponding final Parameters, gradients,
+Adam moments and clock hashes matched exactly between the two orders.
+
+| N | Implementation | Step ms A / B | Allocated MiB A / B | Reserved MiB A / B | Setup s A / B |
+| ---: | --- | ---: | ---: | ---: | ---: |
+| 8192 | FP64 row8 | 82.987 / 82.932 | 845.511 / 845.511 | 888 / 888 | 27.80 / 25.97 |
+| 8192 | FP32 saved | 50.055 / 50.040 | 475.761 / 475.761 | 512 / 512 | 27.13 / 26.31 |
+| 8192 | Dense | 17.845 / 17.850 | 1080.251 / 1080.251 | 1126 / 1126 | 11.55 / 11.61 |
+| 16384 | FP64 row8 | 165.991 / 166.030 | 1691.011 / 1691.011 | 2288 / 2288 | 91.15 / 91.41 |
+| 16384 | FP32 saved | 100.713 / 100.773 | 951.511 / 951.511 | 1040 / 1040 | 88.89 / 89.41 |
+| 16384 | Dense | 68.278 / 68.316 | 4192.251 / 4192.251 | 4246 / 4246 | 24.65 / 26.11 |
+
+At R256, FP32 cuts time about39.3–39.7% versus FP64 row8. It remains2.80× Dense
+at N8192 and1.475× Dense at N16384. Allocated peaks are44.0% and22.7% of Dense.
+Doubling N doubles CST time, while Dense time grows about3.83× in this cohort.
+This is favorable width scaling at fixed R and A8N, not a measured asymptotic
+bound or accuracy guarantee. Changing R requires its own controlled comparison.
+
+![Both orders, step time and allocator peaks](assets/large-multirow-20261107/performance.png)
+
+[Machine-readable aggregate](large-multirow-results-20261107.json) retains both
+orders and raw-result hashes. Local evidence root:
+`output/large-multirow-20261107-01` in the owner's canonical checkout.
+Evidence archive SHA256:
+`6c8ddfde81e67bfe38ae2b43ab55ca5edfe5408b3e0b180b4ad6e80ec7786b2b`;
+44 compact originals verified. Actual initial tensors were independently restored
+from archive SHA256
+`cd462b632bb46a55cafb45817e9f232fe2e371d852b073083230b79ed9d12e5e`.
+Final-state Tensor hashes, not final model/optimizer payloads, were preserved;
+raw oracle tensors were not archived. All18 owned controller/worker PIDs ended;
+source and extension hashes were checked. The server and unrelated jobs remain
+untouched. No public default or dispatcher adoption is included.
