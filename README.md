@@ -116,6 +116,9 @@ For the experimental `radius_envelope="closed_polynomial"` option and its
 `closed_lower_power` / `closed_upper_power` controls, see
 [closed radius envelopes](docs/closed-radius-envelope.md). This research opt-in
 requires its own initialization and native-workload qualification.
+The separate `radius_envelope="rational_zero_opening"` option uses positive
+`zero_opening_scale=tau` to open gradually away from zero while retaining the
+rational upper envelope; see the same guide for the formula and saved contract.
 
 ## Recommended CUDA configuration for the public API
 

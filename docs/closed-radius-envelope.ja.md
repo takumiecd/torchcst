@@ -55,3 +55,15 @@ closed powers を省く例です。tau は保存される固定スカラーで�
 CPU/CUDA は数値的に安定な等価式と端点補間を使います。同じ native schedule 制限、
 分散校正、検証規則を適用します。既存の rational / closed-polynomial の
 optimizer checkpoint manifest は保持します。
+
+## FFN短期実験の証拠
+
+RTX4090上の凍結operator `f864e3c9e57f5214462212e3fc05b898577438a8` で、
+zero-opening tau=.01/.03/.1・初期q0についてnative端点25件、実FFN256↔1024の
+全Atom VJP、optimizerと4ブロック実タスク/再開の検証が通りました。
+各条件976更新/999424トークンを終え、学習後VJP・DEV厳密再計算・再開更新の
+監査も通りました。[研究結果と曲線](https://github.com/takumiecd/cst-research/blob/feat/ffn-closed-envelope/docs/ffn-zero-opening-results-20261107.ja.md)
+にソース・データ・証拠ハッシュと過去対照の再利用を残しています。
+DEV CEは3.69173/3.69918/3.75535で、再利用した従来q0は3.67351、Denseは3.58196でした。
+この1seed短期実験では弱振幅の支持域が広がりましたが、精度・速度・メモリ優位や
+推奨の半径既定値を確立したものではありません。

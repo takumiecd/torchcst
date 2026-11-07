@@ -61,3 +61,16 @@ closed powers. Tau is a fixed saved scalar, not a trainable q coordinate.
 CPU/CUDA use a stable equivalent blend and endpoint interpolation. The same
 native schedule restrictions, variance calibration and qualification rules
 apply. Existing rational and closed-polynomial checkpoint manifests are preserved.
+
+## Short FFN evidence
+
+On RTX4090, frozen operator `f864e3c9e57f5214462212e3fc05b898577438a8`
+passed25 native endpoint tests, actual256↔1024 FFN/all-Atom VJPs, optimizer and
+four-block task/resume gates for zero-opening tau=.01/.03/.1 at initial q0.
+Each learner completed976 updates/999424 tokens, followed by trained VJP,
+exact DEV recomputation and restored-update audits. The
+[research results and curves](https://github.com/takumiecd/cst-research/blob/feat/ffn-closed-envelope/docs/ffn-zero-opening-results-20261107.md)
+retain source/data/evidence hashes and historical-control reuse. DEV CE was
+3.69173/3.69918/3.75535 versus reused rational-q0=3.67351 and Dense=3.58196.
+This one-seed short pilot broadens weak support but does not establish an
+accuracy, speed or memory advantage, nor a recommended radius default.
