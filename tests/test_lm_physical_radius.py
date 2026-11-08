@@ -93,16 +93,27 @@ def test_full_physical_radius_vjp_and_retained_backward(ni, no, rows):
     dy = torch.randn(rows, no, device="cuda")
     results = []
     for plan in [None, LM_PHYSICAL_LEVELS]:
-        layer = copy.deepcopy(base).cuda()
+        layer = (
+            copy.deepcopy(base).double() if plan is None else copy.deepcopy(base).cuda()
+        )
         if plan is not None:
             layer.selector = FixedSelector(plan, registry=registry)
-        x = raw[:, ::2].detach().requires_grad_()
+        x = (
+            (raw.cpu().double() if plan is None else raw)[:, ::2]
+            .detach()
+            .requires_grad_()
+        )
+        cotangent = dy.cpu().double() if plan is None else dy
         y = layer(x)
-        gradients = torch.autograd.grad(y, (x, layer.atoms.p), dy, retain_graph=True)
-        again = torch.autograd.grad(y, (x, layer.atoms.p), dy)
+        gradients = torch.autograd.grad(
+            y, (x, layer.atoms.p), cotangent, retain_graph=True
+        )
+        again = torch.autograd.grad(y, (x, layer.atoms.p), cotangent)
         for a, b in zip(gradients, again):
             torch.testing.assert_close(a, b, atol=0, rtol=0)
         assert gradients[1][:, 1].abs().max() > 0
         results.append((y, *gradients))
     for a, b in zip(*results):
-        torch.testing.assert_close(a, b, atol=3e-5, rtol=3e-4)
+        torch.testing.assert_close(
+            a.cpu().double(), b.cpu().double(), atol=3e-5, rtol=3e-4
+        )
