@@ -139,7 +139,9 @@ def test_actual_host_autograd_compiles_against_installed_torch_headers():
     source = Path(ex.__file__).with_name("host_autograd.cpp")
     command = [
         *compiler,
-        "-std=c++17",
+        # Recent Torch headers require C++20. This syntax-only check must not
+        # force C++17 while cpp_extension correctly selects the newer dialect.
+        "-std=c++20",
         "-fsyntax-only",
         "-DTORCH_EXTENSION_NAME=radius_host_syntax",
         str(source),
