@@ -25,7 +25,7 @@ class InitializationReport:
     """Conditional sign-energy admission and amplitude clipping diagnostics."""
 
     scheme: str
-    q: float
+    radius_fraction: float
     variance: float
     target_energy: float
     expected_energy: float
@@ -36,21 +36,8 @@ class InitializationReport:
     atom_count: int
     evaluations: int
 
-    @property
-    def radius_fraction(self):
-        """Log-radius interval fraction; q is the historical report field."""
-        return self.q
 
-
-def _fraction(q, radius_fraction):
-    if radius_fraction is None:
-        return q
-    if q != 0.0:
-        raise ValueError("use radius_fraction or the legacy q argument, not both")
-    return radius_fraction
-
-
-def variance_scaling_(module, variance, *, radius_fraction=None, q=0.0, generator=None):
+def variance_scaling_(module, variance, *, radius_fraction=0.0, generator=None):
     """Match the average operator second moment of Dense weight variance.
 
     This is the extension point for new initialization presets. Centers, Atom
@@ -58,13 +45,12 @@ def variance_scaling_(module, variance, *, radius_fraction=None, q=0.0, generato
     module values unchanged (the random generator can still advance).
 
     Initially supported: CPU FP32/FP64 CSTLinear, two-chart Polar/envelope radius cell
-    mass. ``q`` selects the logarithmic position between amplitude-dependent
+    mass. ``radius_fraction`` selects the logarithmic position between amplitude-dependent
     radius bounds. Independent symmetric amplitude signs define the expected
     energy; no dataset, Dense model or dense W is required. The bounded scale
     search includes amplitude-dependent radii and symmetric clipping. Thus the
     physical amplitude distribution can differ from an unbounded Gaussian.
     """
-    q = _fraction(q, radius_fraction)
     _fans(module)
     if (
         isinstance(variance, bool)
@@ -74,12 +60,12 @@ def variance_scaling_(module, variance, *, radius_fraction=None, q=0.0, generato
     ):
         raise ValueError("positive finite Dense weight variance required")
     if (
-        isinstance(q, bool)
-        or not isinstance(q, (int, float))
-        or not math.isfinite(q)
-        or not 0 <= q <= 1
+        isinstance(radius_fraction, bool)
+        or not isinstance(radius_fraction, (int, float))
+        or not math.isfinite(radius_fraction)
+        or not 0 <= radius_fraction <= 1
     ):
-        raise ValueError("q must be a finite fraction in [0,1]")
+        raise ValueError("radius_fraction must be a finite fraction in [0,1]")
     if module.atoms.p.grad is not None:
         raise ValueError("initialize before backward and optimizer construction")
     from ._backends.torch.initialization import match_variance
@@ -89,13 +75,16 @@ def variance_scaling_(module, variance, *, radius_fraction=None, q=0.0, generato
         module.cst_charts(),
         module.atoms.p,
         variance=float(variance),
-        q=float(q),
+        q=float(radius_fraction),
         generator=generator,
     )
     with torch.no_grad():
         module.atoms.p.copy_(values)
     return InitializationReport(
-        scheme="variance_scaling", q=float(q), variance=float(variance), **measured
+        scheme="variance_scaling",
+        radius_fraction=float(radius_fraction),
+        variance=float(variance),
+        **measured,
     )
 
 
@@ -105,8 +94,7 @@ def kaiming_normal_(
     mode="fan_in",
     nonlinearity="leaky_relu",
     *,
-    radius_fraction=None,
-    q=0.0,
+    radius_fraction=0.0,
     generator=None,
 ):
     """Use PyTorch's He/Kaiming gain and logical fan, with CST moment matching.
@@ -120,12 +108,12 @@ def kaiming_normal_(
     gain = torch.nn.init.calculate_gain(nonlinearity, a)
     fan = fan_in if mode == "fan_in" else fan_out
     report = variance_scaling_(
-        module, gain**2 / fan, q=q, radius_fraction=radius_fraction, generator=generator
+        module, gain**2 / fan, radius_fraction=radius_fraction, generator=generator
     )
     return replace(report, scheme="kaiming_normal")
 
 
-def xavier_normal_(module, gain=1.0, *, radius_fraction=None, q=0.0, generator=None):
+def xavier_normal_(module, gain=1.0, *, radius_fraction=0.0, generator=None):
     """Use Xavier's logical fan average; returns InitializationReport."""
     if (
         isinstance(gain, bool)
@@ -137,7 +125,7 @@ def xavier_normal_(module, gain=1.0, *, radius_fraction=None, q=0.0, generator=N
     fan_in, fan_out = _fans(module)
     variance = gain**2 * 2 / (fan_in + fan_out)
     report = variance_scaling_(
-        module, variance, q=q, radius_fraction=radius_fraction, generator=generator
+        module, variance, radius_fraction=radius_fraction, generator=generator
     )
     return replace(report, scheme="xavier_normal")
 

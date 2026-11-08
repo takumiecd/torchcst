@@ -102,8 +102,8 @@ initialize before moving it to CUDA or creating its optimizer:
 ```python
 from torchcst import init as cst_init
 
-report = cst_init.kaiming_normal_(layer, nonlinearity="relu", q=0.0)
-# Or: cst_init.xavier_normal_(layer, gain=1.0, q=0.25)
+report = cst_init.kaiming_normal_(layer, nonlinearity="relu", radius_fraction=0.0)
+# Or: cst_init.xavier_normal_(layer, gain=1.0, radius_fraction=0.25)
 ```
 
 `q` selects the initial logarithmic position between amplitude-dependent radius

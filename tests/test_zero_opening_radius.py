@@ -5,9 +5,10 @@ from dataclasses import replace
 
 import pytest
 import torch
+
 from torchcst import (
-    CSTLinear,
     ChebyshevSpec,
+    CSTLinear,
     RadiusBounds,
     chart_presets,
     init,
@@ -76,7 +77,7 @@ def test_independent_bounds_and_checkpoint(tau):
 def test_zero_opening_variance_initialization(tau):
     m = layer(tau, dtype=torch.float32, atoms=512)
     report = init.variance_scaling_(
-        m, 0.001**2, q=0.0, generator=torch.Generator().manual_seed(17)
+        m, 0.001**2, radius_fraction=0.0, generator=torch.Generator().manual_seed(17)
     )
     assert report.relative_error <= 0.005
 

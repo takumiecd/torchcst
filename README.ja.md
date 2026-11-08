@@ -99,8 +99,8 @@ optimizerを作成したりする前に、明示的に初期化できます。
 ```python
 from torchcst import init as cst_init
 
-report = cst_init.kaiming_normal_(layer, nonlinearity="relu", q=0.0)
-# または cst_init.xavier_normal_(layer, gain=1.0, q=0.25)
+report = cst_init.kaiming_normal_(layer, nonlinearity="relu", radius_fraction=0.0)
+# または cst_init.xavier_normal_(layer, gain=1.0, radius_fraction=0.25)
 ```
 
 `q`は振幅依存の半径上下限の間で初期の対数的な位置を選びます。

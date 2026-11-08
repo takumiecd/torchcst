@@ -75,9 +75,8 @@ amplitude cap. Initialization presets `variance_scaling_`, `kaiming_normal_` and
 Their unchanged tolerance/admission rules apply; a failed search leaves the
 model unchanged. These presets preserve centers and initialize q to their
 explicit radius_fraction argument, which supersedes constructor radius_fraction_init.
-The existing initialization presets retain their legacy q keyword; supplying both
-a nondefault q and radius_fraction is rejected. The report exposes radius_fraction
-as a property of its historical q field.
+Initialization functions and reports use radius_fraction. There is no legacy q
+keyword or alias.
 
 `CSTAdamW`/`CSTOptimizer` projects proposals to |a|<=amplitude_max and q in[0,1]
 and uses the existing geometry update for centers. `radius_fraction` is the semantic

@@ -71,7 +71,9 @@ def fixture(case):
 
         model.initialization_report = asdict(
             init.xavier_normal_(
-                model, q=0, generator=torch.Generator().manual_seed(case.seed + 1)
+                model,
+                radius_fraction=0,
+                generator=torch.Generator().manual_seed(case.seed + 1),
             )
         )
     # Public initialization, including its decoded radius distribution, is retained.

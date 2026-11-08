@@ -94,7 +94,7 @@ def test_large_public_initializer_does_not_construct_full_factors(monkeypatch):
     monkeypatch.setattr(initialization.execution, "factors", reject)
     m = layer(2048, 2048, atoms=32)
     report = init.variance_scaling_(
-        m, 1e-6, q=0, generator=torch.Generator().manual_seed(31)
+        m, 1e-6, radius_fraction=0, generator=torch.Generator().manual_seed(31)
     )
     assert report.relative_error <= 0.005
     x, y = factors(m.kernel, *m.cst_charts(), m.atoms.p.detach())

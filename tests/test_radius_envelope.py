@@ -353,14 +353,14 @@ def test_encoded_radius_branch_is_not_invariant_under_double_conversion():
     assert values(p.double())[0, 1].item() > 0.5
 
 
-def test_named_fraction_initializer_matches_legacy_keyword():
+def test_old_q_initializer_keyword_is_rejected():
+    from dataclasses import asdict
+
+    m = make(atoms=256)
     for name in ("variance_scaling_", "kaiming_normal_", "xavier_normal_"):
-        a = make(atoms=256)
-        b = copy.deepcopy(a)
-        fn = getattr(init, name)
         args = (0.01,) if name == "variance_scaling_" else ()
-        fn(a, *args, radius_fraction=0.25, generator=torch.Generator().manual_seed(19))
-        fn(b, *args, q=0.25, generator=torch.Generator().manual_seed(19))
-        torch.testing.assert_close(a.atoms.p, b.atoms.p, atol=0, rtol=0)
-        with pytest.raises(ValueError, match="not both"):
-            fn(a, *args, q=0.5, radius_fraction=0.25)
+        with pytest.raises(TypeError, match="q"):
+            getattr(init, name)(m, *args, q=0.25)
+    report = init.xavier_normal_(m, radius_fraction=0.25)
+    assert report.radius_fraction == 0.25
+    assert "q" not in asdict(report)

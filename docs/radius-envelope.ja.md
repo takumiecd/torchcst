@@ -71,8 +71,7 @@ r_input, r_output = model.support_radii()
 新しい境界を含めて計算します。許容差と判定規則は従来どおりで、到達できない場合は
 modelを変更せず失敗します。中心を保ち、初期化関数へ明示したqで初期化するため、
 このradius_fractionがconstructorのradius_fraction_initより優先します。
-既存の初期化関数は従来のq引数も維持します。非標準のqとradius_fractionの同時指定は拒否します。
-初期化reportのradius_fractionプロパティは、従来のqフィールドを参照します。
+初期化関数・reportともにradius_fractionを使います。旧q引数・別名は用意しません。
 
 `CSTAdamW`/`CSTOptimizer`は更新提案を|a|<=amplitude_max、q∈[0,1]へ射影し、
 中心には既存の幾何更新を適用します。列1の学習率フィールドは`radius_fraction`です。
