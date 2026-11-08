@@ -40,9 +40,12 @@ class FactoredAlgorithm(Algorithm[DefaultRecipe]):
         kernel = op.kernel
         while kernel.composition == "amplitude":
             kernel = kernel.inner
-        if kernel.revision == 7 and context.device.type != "cpu":
+        if kernel.revision in (7, 8) and context.device.type != "cpu":
             return SupportResult(("radius cell-mass reference currently requires CPU",))
-        if kernel.revision == 7 and context.dtype not in (torch.float32, torch.float64):
+        if kernel.revision in (7, 8) and context.dtype not in (
+            torch.float32,
+            torch.float64,
+        ):
             return SupportResult(("radius reference requires float32 or float64",))
         if len(op.charts) != 2:
             return SupportResult(("requires factorized input/output charts",))

@@ -15,12 +15,16 @@ def family(state):
         PhysicalAmpRadiusSpec,
         PolarAmpRadiusSpec,
         PolarAmpWidthSpec,
+        RadiusEnvelopeSpec,
     )
 
     spec = state.spec
     radius_contract = spec.revision == 7 and type(spec.parameterization) in (
         PhysicalAmpRadiusSpec,
         PolarAmpRadiusSpec,
+    )
+    radius_contract |= (
+        spec.revision == 8 and type(spec.parameterization) is RadiusEnvelopeSpec
     )
     if spec.revision != 1 and not radius_contract:
         raise ValueError("unsupported kernel revision")
@@ -62,6 +66,15 @@ def family(state):
                 ),
             ),
             LogWidthSpec: ("log_width", ("provided_atoms", "euclidean", (), ())),
+            RadiusEnvelopeSpec: (
+                "radius_envelope_cell_mass",
+                (
+                    "radius_envelope_centers",
+                    "radius_envelope",
+                    ("q_init", "amplitude_std"),
+                    (),
+                ),
+            ),
             PhysicalAmpRadiusSpec: (
                 "radius_cell_mass",
                 (
@@ -127,8 +140,14 @@ def family(state):
 
 def _operation(state, operation, area="kernels"):
     name = family(state)
+    if name == "radius_envelope_cell_mass":
+        name = "radius_envelope" if area == "updates" else "radius_cell_mass"
     polar_radius = name == "polar_radius_cell_mass"
-    if name in ("radius_cell_mass", "polar_radius_cell_mass"):
+    if name in (
+        "radius_cell_mass",
+        "polar_radius_cell_mass",
+        "radius_envelope_cell_mass",
+    ):
         name = "radius_cell_mass"
     path = (
         "algorithms.polar_update.executor"
@@ -148,7 +167,11 @@ def validate_layout(state, charts):
     ):
         raise ValueError("kernel composition differs from chart layout")
     name = family(state)
-    if name in ("radius_cell_mass", "polar_radius_cell_mass"):
+    if name in (
+        "radius_cell_mass",
+        "polar_radius_cell_mass",
+        "radius_envelope_cell_mass",
+    ):
         import torch
 
         from torchcst.kernels.radius_cell_mass import radius_cell_mass_axes
@@ -214,6 +237,7 @@ def parameter_dim(state, *charts):
         "log_width": 2,
         "radius_cell_mass": 2,
         "polar_radius_cell_mass": 2,
+        "radius_envelope_cell_mass": 2,
     }.get(family(state), 0)
     return prefix + sum(c.center_parameter_dim for c in charts)
 
@@ -229,6 +253,7 @@ def parameter_dof(state, *charts):
         "log_width": 2,
         "radius_cell_mass": 2,
         "polar_radius_cell_mass": 2,
+        "radius_envelope_cell_mass": 2,
     }.get(family(state), 0)
     return prefix + sum(c.intrinsic_dim for c in charts)
 

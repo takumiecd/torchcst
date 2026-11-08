@@ -10,6 +10,7 @@ from .parameterizations import (
     ParameterizationSpec,
     PhysicalAmpRadiusSpec,
     PolarAmpRadiusSpec,
+    RadiusEnvelopeSpec,
 )
 from .profiles import ProfileSpec
 
@@ -153,6 +154,7 @@ class KernelSpec:
         radius_coordinates = type(self.parameterization) in (
             PhysicalAmpRadiusSpec,
             PolarAmpRadiusSpec,
+            RadiusEnvelopeSpec,
         )
         radius_profile = any(
             isinstance(p.profile, ChebyshevSpec) for p in self.profiles
@@ -161,17 +163,18 @@ class KernelSpec:
             radius_coordinates
             or any(radius_bindings)
             or radius_profile
-            or self.revision == 7
+            or self.revision in (7, 8)
         ) and (
             not radius_coordinates
             or self.composition != "separable"
-            or self.revision != 7
+            or self.revision
+            != (8 if type(self.parameterization) is RadiusEnvelopeSpec else 7)
             or len(radius_bindings) != 2
             or not all(radius_bindings)
         ):
             raise ValueError(
-                "radius cell masses require revision 7, two radius-integrated factors "
-                "and physical or Polar radius coordinates"
+                "radius cell masses require their coordinate revision, two radius-integrated factors "
+                "and physical, Polar or envelope radius coordinates"
             )
         if self.parameterization is not None and not isinstance(
             self.parameterization, ParameterizationSpec

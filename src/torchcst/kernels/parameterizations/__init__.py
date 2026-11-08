@@ -5,12 +5,13 @@ from .amp_width import AmpWidthSpec
 from .base import (
     BandwidthBounds,
     FixedWidthSpec,
-    ParameterizationSpec,
     ParameterFieldSpec,
+    ParameterizationSpec,
     PhysicalAmpRadiusSpec,
     RadiusBounds,
 )
 from .log_width import LogWidthSpec
+from .radius_envelope import RadiusEnvelopeSpec
 
 __all__ = [
     "AmpWidthSpec",
@@ -18,10 +19,11 @@ __all__ = [
     "DirectAmpWidthSpec",
     "FixedWidthSpec",
     "LogWidthSpec",
-    "ParameterizationSpec",
     "ParameterFieldSpec",
+    "ParameterizationSpec",
     "PhysicalAmpRadiusSpec",
     "PolarAmpRadiusSpec",
     "PolarAmpWidthSpec",
     "RadiusBounds",
+    "RadiusEnvelopeSpec",
 ]

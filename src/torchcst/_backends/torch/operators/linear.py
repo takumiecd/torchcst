@@ -21,6 +21,7 @@ def weight(operator, p):
         "polar_cell_mass",
         "radius_cell_mass",
         "polar_radius_cell_mass",
+        "radius_envelope_cell_mass",
     ):
         return _kernel.weight(operator.kernel, *operator.charts, p)
     if len(operator.charts) == 1:

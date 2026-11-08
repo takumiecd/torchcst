@@ -7,7 +7,7 @@ import math
 
 import torch
 
-from torchcst.kernels.parameterizations import PolarAmpRadiusSpec
+from torchcst.kernels.parameterizations import PolarAmpRadiusSpec, RadiusEnvelopeSpec
 
 from .kernels import execution
 from .parameterizations.radius_cell_mass import decoded_values
@@ -15,14 +15,15 @@ from .parameterizations.radius_cell_mass import decoded_values
 
 def match_variance(kernel, charts, original, *, variance, q, generator):
     if (
-        kernel.spec.revision != 7
-        or type(kernel.spec.parameterization) is not PolarAmpRadiusSpec
+        kernel.spec.revision not in (7, 8)
+        or type(kernel.spec.parameterization)
+        not in (PolarAmpRadiusSpec, RadiusEnvelopeSpec)
         or len(charts) != 2
         or original.ndim != 2
         or original.shape[1] != 4
     ):
         raise NotImplementedError(
-            "variance initialization currently supports two-chart Polar radius cell-mass Linear only"
+            "variance initialization supports two-chart Polar/envelope radius cell-mass Linear only"
         )
     if original.device.type != "cpu" or original.dtype not in (
         torch.float32,
@@ -52,7 +53,11 @@ def match_variance(kernel, charts, original, *, variance, q, generator):
         ratio_unclipped = noise * (scale / maximum)
         ratio = ratio_unclipped.clamp(-1 + 1e-6, 1 - 1e-6)
         p = original.detach().clone()
-        p[:, :2] = torch.stack((ratio, (1 - ratio.square()).sqrt()), -1) * rho
+        if type(kernel.spec.parameterization) is RadiusEnvelopeSpec:
+            p[:, 0] = ratio * maximum
+            p[:, 1] = q
+        else:
+            p[:, :2] = torch.stack((ratio, (1 - ratio.square()).sqrt()), -1) * rho
         energy = 0.0
         if max(c.features for c in axes) > 1024:
             # Preserve the sign-energy target while bounding large-width setup
@@ -122,13 +127,13 @@ def match_variance(kernel, charts, original, *, variance, q, generator):
             )
         scale, (p, energy, error, clipped) = accepted
         amplitude, _, _ = decoded_values(reference, p.double())
-    return p, dict(
-        target_energy=target,
-        expected_energy=energy,
-        relative_error=error,
-        amplitude_scale=scale,
-        amplitude_rms=float(amplitude.square().mean().sqrt()),
-        clipped_atoms=clipped,
-        atom_count=len(p),
-        evaluations=len(history),
-    )
+    return p, {
+        "target_energy": target,
+        "expected_energy": energy,
+        "relative_error": error,
+        "amplitude_scale": scale,
+        "amplitude_rms": float(amplitude.square().mean().sqrt()),
+        "clipped_atoms": clipped,
+        "atom_count": len(p),
+        "evaluations": len(history),
+    }

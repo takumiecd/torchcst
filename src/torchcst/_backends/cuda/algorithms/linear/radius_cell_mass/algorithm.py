@@ -19,6 +19,10 @@ from .recipe import RadiusCellMassRecipe
 def hierarchy_from_operator(operator):
     from .plan import AxisPlan, HierarchyPlan
 
+    if operator.kernel.revision != 7:
+        raise ValueError(
+            "native radius kernels require physical or original Polar coordinates"
+        )
     axes = radius_cell_mass_axes(operator.charts, operator.kernel)
     parameterization = operator.kernel.parameterization
 

@@ -2,12 +2,17 @@
 
 import torch
 
-from torchcst.kernels.parameterizations import PhysicalAmpRadiusSpec
+from torchcst.kernels.parameterizations import PhysicalAmpRadiusSpec, RadiusEnvelopeSpec
 
 from .polar_amp_width import _amplitude_and_alpha, _split, _width_bounds
 
 
 def decoded_values(state, p):
+    if type(state.spec.parameterization) is RadiusEnvelopeSpec:
+        from .radius_envelope import from_state
+
+        physical = from_state(state, p)
+        return physical[:, 0].double(), physical[:, 1].double(), physical[:, 1].double()
     if type(state.spec.parameterization) is PhysicalAmpRadiusSpec:
         return p[:, 0].double(), p[:, 1].double(), p[:, 1].double()
     amplitude, alpha = _amplitude_and_alpha(

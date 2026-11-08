@@ -282,6 +282,14 @@ L2 uses stable log normalization without a floor.
 See the [kernel reference](src/torchcst/kernels/README.md) for coordinate laws,
 normalization and composition details.
 
+## Learned radius inside an amplitude envelope
+
+`kernels.radius_envelope(radius_min=0.5, radius_max=50.0, tau=0.03, q_init=0.0)`
+keeps U at the maximum and raises L toward it near zero amplitude. Each Atom
+learns its own q with the full radius chain rule. `radius_ratio` is a separate
+optimizer field. This revision8 opt-in preserves existing Polar behavior.
+See [equations, CPU example, initialization and explicit CUDA scope](docs/radius-envelope.md).
+
 ## Charts and weight axes
 
 `charts=(output_chart, input_chart)` gives weight shape
