@@ -199,7 +199,7 @@ def radius_envelope(
     radius_min=0.5,
     radius_max=50.0,
     tau=0.03,
-    q_init=0.0,
+    radius_fraction_init=0.0,
     amplitude_max=1.0,
     amplitude_std=0.1,
 ) -> CoordinateSpec:
@@ -210,11 +210,11 @@ def radius_envelope(
     clock. Use CSTAdamW/CSTOptimizer to project a/q proposals to their bounds.
     """
     if (
-        type(q_init) not in (float, int)
-        or not math.isfinite(q_init)
-        or not 0 <= q_init <= 1
+        type(radius_fraction_init) not in (float, int)
+        or not math.isfinite(radius_fraction_init)
+        or not 0 <= radius_fraction_init <= 1
     ):
-        raise ValueError("q_init must be a finite fraction in [0,1]")
+        raise ValueError("radius_fraction_init must be a finite fraction in [0,1]")
     if (
         type(amplitude_std) not in (float, int)
         or not math.isfinite(amplitude_std)
@@ -230,7 +230,7 @@ def radius_envelope(
         ),
         initialization=StatePolicySpec(
             id="radius_envelope_centers",
-            settings=(("q_init", q_init), ("amplitude_std", amplitude_std)),
+            settings=(("radius_fraction_init", radius_fraction_init), ("amplitude_std", amplitude_std)),
         ),
         update=StatePolicySpec(id="radius_envelope"),
     )

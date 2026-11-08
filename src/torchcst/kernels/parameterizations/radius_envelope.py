@@ -20,7 +20,7 @@ class RadiusEnvelopeSpec(ParameterizationSpec):
     tau: float = 0.03
     amplitude_max: float = 1.0
     id: str = field(default="radius_envelope", init=False)
-    optimizer_prefix: ClassVar = (("amplitude", 1), ("radius_ratio", 1))
+    optimizer_prefix: ClassVar = (("amplitude", 1), ("radius_fraction", 1))
 
     def __post_init__(self):
         super().__post_init__()

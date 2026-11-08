@@ -71,7 +71,7 @@ def family(state):
                 (
                     "radius_envelope_centers",
                     "radius_envelope",
-                    ("q_init", "amplitude_std"),
+                    ("radius_fraction_init", "amplitude_std"),
                     (),
                 ),
             ),

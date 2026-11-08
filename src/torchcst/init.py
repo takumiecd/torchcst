@@ -36,8 +36,21 @@ class InitializationReport:
     atom_count: int
     evaluations: int
 
+    @property
+    def radius_fraction(self):
+        """Log-radius interval fraction; q is the historical report field."""
+        return self.q
 
-def variance_scaling_(module, variance, *, q=0.0, generator=None):
+
+def _fraction(q, radius_fraction):
+    if radius_fraction is None:
+        return q
+    if q != 0.0:
+        raise ValueError("use radius_fraction or the legacy q argument, not both")
+    return radius_fraction
+
+
+def variance_scaling_(module, variance, *, radius_fraction=None, q=0.0, generator=None):
     """Match the average operator second moment of Dense weight variance.
 
     This is the extension point for new initialization presets. Centers, Atom
@@ -51,6 +64,7 @@ def variance_scaling_(module, variance, *, q=0.0, generator=None):
     search includes amplitude-dependent radii and symmetric clipping. Thus the
     physical amplitude distribution can differ from an unbounded Gaussian.
     """
+    q = _fraction(q, radius_fraction)
     _fans(module)
     if (
         isinstance(variance, bool)
@@ -86,7 +100,14 @@ def variance_scaling_(module, variance, *, q=0.0, generator=None):
 
 
 def kaiming_normal_(
-    module, a=0.0, mode="fan_in", nonlinearity="leaky_relu", *, q=0.0, generator=None
+    module,
+    a=0.0,
+    mode="fan_in",
+    nonlinearity="leaky_relu",
+    *,
+    radius_fraction=None,
+    q=0.0,
+    generator=None,
 ):
     """Use PyTorch's He/Kaiming gain and logical fan, with CST moment matching.
 
@@ -98,11 +119,13 @@ def kaiming_normal_(
     fan_in, fan_out = _fans(module)
     gain = torch.nn.init.calculate_gain(nonlinearity, a)
     fan = fan_in if mode == "fan_in" else fan_out
-    report = variance_scaling_(module, gain**2 / fan, q=q, generator=generator)
+    report = variance_scaling_(
+        module, gain**2 / fan, q=q, radius_fraction=radius_fraction, generator=generator
+    )
     return replace(report, scheme="kaiming_normal")
 
 
-def xavier_normal_(module, gain=1.0, *, q=0.0, generator=None):
+def xavier_normal_(module, gain=1.0, *, radius_fraction=None, q=0.0, generator=None):
     """Use Xavier's logical fan average; returns InitializationReport."""
     if (
         isinstance(gain, bool)
@@ -113,7 +136,9 @@ def xavier_normal_(module, gain=1.0, *, q=0.0, generator=None):
         raise ValueError("positive finite gain required")
     fan_in, fan_out = _fans(module)
     variance = gain**2 * 2 / (fan_in + fan_out)
-    report = variance_scaling_(module, variance, q=q, generator=generator)
+    report = variance_scaling_(
+        module, variance, q=q, radius_fraction=radius_fraction, generator=generator
+    )
     return replace(report, scheme="xavier_normal")
 
 

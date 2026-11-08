@@ -153,13 +153,13 @@ def optimizer(model):
         model=model,
         lr=0.002,
         weight_decay=0,
-        field_lrs={"radius_ratio": 0.001},
+        field_lrs={"radius_fraction": 0.001},
     )
 
 
 def test_q_learns_and_serialized_adam_resume_preserves_next_update():
     torch.manual_seed(92)
-    m = make(atoms=7, q_init=0.25)
+    m = make(atoms=7, radius_fraction_init=0.25)
     o = optimizer(m)
     x = torch.randn(4, 16, dtype=torch.float64)
     target = torch.randn(4, 32, dtype=torch.float64)
@@ -170,7 +170,7 @@ def test_q_learns_and_serialized_adam_resume_preserves_next_update():
         o.step()
     assert not torch.equal(m.atoms.p[:, 1], initial)
     assert ((m.atoms.p[:, 1] >= 0) & (m.atoms.p[:, 1] <= 1)).all()
-    other = make(atoms=7, q_init=0.25)
+    other = make(atoms=7, radius_fraction_init=0.25)
     other.load_state_dict(copy.deepcopy(m.state_dict()))
     oo = optimizer(other)
     oo.load_state_dict(copy.deepcopy(o.state_dict()))
@@ -208,8 +208,8 @@ def test_projection_and_fixed_scalar_precision():
         {"tau": 0},
         {"tau": float("nan")},
         {"tau": True},
-        {"q_init": -1},
-        {"q_init": float("inf")},
+        {"radius_fraction_init": -1},
+        {"radius_fraction_init": float("inf")},
         {"amplitude_std": -1},
     ],
 )
@@ -222,8 +222,9 @@ def test_moment_initializer_preserves_centers_and_requested_q():
     torch.manual_seed(318)
     m = make(atoms=64)
     centers = m.atoms.p[:, 2:].detach().clone()
-    report = init.xavier_normal_(m, q=0.25)
+    report = init.xavier_normal_(m, radius_fraction=0.25)
     assert report.relative_error <= 0.005
+    assert report.radius_fraction == 0.25
     assert torch.equal(m.atoms.p[:, 2:], centers)
     assert torch.equal(m.atoms.p[:, 1], torch.full((64,), 0.25, dtype=torch.float64))
 
@@ -268,7 +269,12 @@ def test_native_admission_is_separate_and_plan_roundtrips(ni, no):
 def test_cuda_complete_envelope_vjp_and_retained_backward(ni, no, rows, radius_max):
     torch.manual_seed(434)
     base = make(
-        ni, no, atoms=8192, dtype=torch.float32, q_init=0.25, radius_max=radius_max
+        ni,
+        no,
+        atoms=8192,
+        dtype=torch.float32,
+        radius_fraction_init=0.25,
+        radius_max=radius_max,
     )
     with torch.no_grad():
         base.atoms.p[:, 0].uniform_(-0.3, 0.3)
@@ -345,3 +351,16 @@ def test_encoded_radius_branch_is_not_invariant_under_double_conversion():
     p = torch.tensor([[0.15, 0.0, 2.3, 3.7]], dtype=torch.float32)
     assert values(p)[0, 1].item() == 0.5
     assert values(p.double())[0, 1].item() > 0.5
+
+
+def test_named_fraction_initializer_matches_legacy_keyword():
+    for name in ("variance_scaling_", "kaiming_normal_", "xavier_normal_"):
+        a = make(atoms=256)
+        b = copy.deepcopy(a)
+        fn = getattr(init, name)
+        args = (0.01,) if name == "variance_scaling_" else ()
+        fn(a, *args, radius_fraction=0.25, generator=torch.Generator().manual_seed(19))
+        fn(b, *args, q=0.25, generator=torch.Generator().manual_seed(19))
+        torch.testing.assert_close(a.atoms.p, b.atoms.p, atol=0, rtol=0)
+        with pytest.raises(ValueError, match="not both"):
+            fn(a, *args, q=0.5, radius_fraction=0.25)

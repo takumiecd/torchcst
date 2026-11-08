@@ -10,7 +10,7 @@ updates, checkpoints and default selectors retain their original contracts.
 ## Contract
 
 Each Atom stores `[a, q, output_center, input_center]`. The signed amplitude is a;
-q lies in[0,1]. The physical radius shared by the two factors is
+q, named `radius_fraction` in the API, lies in[0,1]. The physical radius shared by the two factors is
 
 \[
 U=r_{\max},\qquad
@@ -51,16 +51,16 @@ model = CSTLinear(
     kernel=kernels.product(
         kernels.cell_mass(ChebyshevSpec(modes=8)),
         coordinates=kernels.radius_envelope(
-            radius_min=0.5, radius_max=50.0, tau=0.03, q_init=0.0,
+            radius_min=0.5, radius_max=50.0, tau=0.03, radius_fraction_init=0.0,
             amplitude_max=1.0, amplitude_std=0.1,
         ),
     ),
 )
 # Optional existing Dense-moment bridge, performed on CPU before the optimizer.
-report = init.xavier_normal_(model, q=0.0)
+report = init.xavier_normal_(model, radius_fraction=0.0)
 optimizer = CSTAdamW(
     model.parameters(), model=model, lr=1e-3, weight_decay=0,
-    field_lrs={"radius_ratio": 1e-3},
+    field_lrs={"radius_fraction": 1e-3},
 )
 x = torch.randn(8, 128)
 model(x).square().mean().backward()
@@ -74,10 +74,13 @@ amplitude cap. Initialization presets `variance_scaling_`, `kaiming_normal_` and
 `xavier_normal_` include the new envelope in their bounded energy search.
 Their unchanged tolerance/admission rules apply; a failed search leaves the
 model unchanged. These presets preserve centers and initialize q to their
-explicit q argument, which supersedes constructor q_init.
+explicit radius_fraction argument, which supersedes constructor radius_fraction_init.
+The existing initialization presets retain their legacy q keyword; supplying both
+a nondefault q and radius_fraction is rejected. The report exposes radius_fraction
+as a property of its historical q field.
 
 `CSTAdamW`/`CSTOptimizer` projects proposals to |a|<=amplitude_max and q in[0,1]
-and uses the existing geometry update for centers. `radius_ratio` is the semantic
+and uses the existing geometry update for centers. `radius_fraction` is the semantic
 LR field for column1; `amplitude`, `output_center` and `input_center` remain
 separate fields. Adam moments and counters retain their ordinary meanings;
 projection does not reset them. Plain torch.optim.AdamW alone does not enforce

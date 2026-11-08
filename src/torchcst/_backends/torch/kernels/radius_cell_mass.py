@@ -140,7 +140,7 @@ def initialize(state, output_chart, input_chart, atoms, *, mode):
         if cap.double() > state.scalar("amplitude_max"):
             cap = torch.nextafter(cap, torch.zeros_like(cap))
         p[:, 0].clamp_(-cap, cap)
-        p[:, 1].fill_(float(state.scalar("q_init")))
+        p[:, 1].fill_(float(state.scalar("radius_fraction_init")))
         p[:, 2].uniform_(axes[0].origin, axes[0].origin + axes[0].period)
         p[:, 3].uniform_(axes[1].origin, axes[1].origin + axes[1].period)
         return p

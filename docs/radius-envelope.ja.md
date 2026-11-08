@@ -48,16 +48,16 @@ model = CSTLinear(
     kernel=kernels.product(
         kernels.cell_mass(ChebyshevSpec(modes=8)),
         coordinates=kernels.radius_envelope(
-            radius_min=0.5, radius_max=50.0, tau=0.03, q_init=0.0,
+            radius_min=0.5, radius_max=50.0, tau=0.03, radius_fraction_init=0.0,
             amplitude_max=1.0, amplitude_std=0.1,
         ),
     ),
 )
 # 既存のDenseモーメントとの橋渡し。CPU上でoptimizer作成前に行う任意の初期化。
-report = init.xavier_normal_(model, q=0.0)
+report = init.xavier_normal_(model, radius_fraction=0.0)
 optimizer = CSTAdamW(
     model.parameters(), model=model, lr=1e-3, weight_decay=0,
-    field_lrs={"radius_ratio": 1e-3},
+    field_lrs={"radius_fraction": 1e-3},
 )
 x = torch.randn(8, 128)
 model(x).square().mean().backward()
@@ -70,10 +70,12 @@ r_input, r_output = model.support_radii()
 `variance_scaling_`・`kaiming_normal_`・`xavier_normal_`の既存の制約付きエネルギー探索も
 新しい境界を含めて計算します。許容差と判定規則は従来どおりで、到達できない場合は
 modelを変更せず失敗します。中心を保ち、初期化関数へ明示したqで初期化するため、
-このqがconstructorのq_initより優先します。
+このradius_fractionがconstructorのradius_fraction_initより優先します。
+既存の初期化関数は従来のq引数も維持します。非標準のqとradius_fractionの同時指定は拒否します。
+初期化reportのradius_fractionプロパティは、従来のqフィールドを参照します。
 
 `CSTAdamW`/`CSTOptimizer`は更新提案を|a|<=amplitude_max、q∈[0,1]へ射影し、
-中心には既存の幾何更新を適用します。列1の学習率フィールドは`radius_ratio`です。
+中心には既存の幾何更新を適用します。列1の学習率フィールドは`radius_fraction`です。
 `amplitude`・`output_center`・`input_center`も独立です。
 Adamのモーメントとcounterは通常の意味を保ち、射影ではリセットしません。
 通常のtorch.optim.AdamWだけでは座標の範囲を保証しません。不正な行は評価時に拒否します。

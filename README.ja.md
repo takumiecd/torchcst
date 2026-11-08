@@ -273,9 +273,9 @@ Gaussian L2 は下限を設けず、安定な対数正規化を使う。
 
 ## 振幅に依存する範囲内で半径を学習する
 
-`kernels.radius_envelope(radius_min=0.5, radius_max=50.0, tau=0.03, q_init=0.0)`
+`kernels.radius_envelope(radius_min=0.5, radius_max=50.0, tau=0.03, radius_fraction_init=0.0)`
 はUを最大半径に保ち、振幅0付近でLをUへ上げます。各Atomのqを、半径の完全な
-連鎖律で学習します。optimizerの独立フィールドは`radius_ratio`です。
+連鎖律で学習します。optimizerの独立フィールドは`radius_fraction`です。
 revision8の明示的な追加方式で、従来Polarの挙動は維持します。
 [数式・CPU例・初期化と明示的なCUDA対応範囲](docs/radius-envelope.ja.md)を参照してください。
 
