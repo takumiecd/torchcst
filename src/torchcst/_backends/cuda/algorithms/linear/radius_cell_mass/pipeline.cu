@@ -413,6 +413,7 @@ Tensor parameter_grad(Tensor p, Tensor zx, Tensor zy, Tensor h, Tensor g, Config
 #include "owner_window.cuh"
 #include "owner_window_fp32.cuh"
 #include "local_tile_entry.cuh"
+#include "packed_rows.cuh"
 
 namespace radius_cell_mass {
 void bind_host_autograd(pybind11::module_ &);
@@ -541,7 +542,11 @@ void bind_owner_window_fp32_autograd(pybind11::module_ &); }
 
 namespace radius_cell_mass { void bind_local_tile_autograd(pybind11::module_ &); }
 
+namespace radius_cell_mass { void bind_packed_rows(pybind11::module_ &);
+void bind_packed_stream(pybind11::module_ &); }
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+    radius_cell_mass::bind_packed_rows(m);
+    radius_cell_mass::bind_packed_stream(m);
     radius_cell_mass::bind_local_tile_autograd(m);
     radius_cell_mass::bind_owner_compact_keyed_autograd(m);
     radius_cell_mass::bind_owner_window_autograd(m);

@@ -146,6 +146,69 @@ def initialize(state, output_chart, input_chart, atoms, *, mode):
     return p
 
 
+def _axis_energy(axis, radius, centers):
+    """Preparatory FP64 squared mass norm without a full sites-by-atoms array.
+
+    A wrapped local period has unique chart sites when its length is <= N.
+    Longer periods must first add repeated chart images, then square: dropping
+    those cross terms would change the initialization target.
+    """
+    routing = radius.detach().double()
+    if not bool(torch.isfinite(routing).all() and torch.isfinite(centers).all()):
+        raise ValueError("radius and centers must be finite")
+    if bool(((routing <= 0) | (routing > axis.period / 2)).any()):
+        raise ValueError("radius must lie in (0, chart period/2]")
+    result = routing.new_zeros(len(radius))
+    remaining = torch.ones_like(radius, dtype=torch.bool)
+    tile = axis.binding.base_tile_sites
+    while tile <= axis.site_count:
+        width = tile * axis.spacing
+        selected = remaining & (routing <= width)
+        counts = (2 * routing / width).ceil().long() + 1
+        for count in counts[selected].unique().tolist():
+            rows = (selected & (counts == count)).nonzero().flatten()
+            local = _relative_centers(centers[rows], axis.origin, axis.period)
+            first = (
+                ((local + axis.spacing / 2) / width - (count - 1) / 2).floor().long()
+            )
+            sites = first[:, None] * tile + torch.arange(count * tile)
+            values = integrated_cells(
+                axis.binding.profile,
+                radius[rows],
+                local,
+                count * width,
+                sites,
+                axis.spacing,
+            )
+            if count * tile > axis.site_count:
+                values = values.new_zeros((len(rows), axis.site_count)).scatter_add(
+                    1, sites.remainder(axis.site_count), values
+                )
+            result[rows] = values.square().sum(-1)
+        remaining &= ~selected
+        tile *= axis.binding.merge_factor
+    if bool(remaining.any()):
+        raise ValueError("radius does not fit the declared hierarchy")
+    return result
+
+
+def atom_energies(state, output_chart, input_chart, p):
+    """CPU initialization helper; per-Atom operator Frobenius energy only."""
+    if p.device.type != "cpu" or p.dtype != torch.float64:
+        raise ValueError("bounded initialization energy requires CPU FP64")
+    from ..parameterizations.radius_cell_mass import decoded_values
+
+    output, input_ = radius_cell_mass_axes(
+        (output_chart.declaration(), input_chart.declaration()), state.declaration()
+    )
+    amplitude, ri, ro = decoded_values(state, p)
+    return (
+        amplitude.square()
+        * _axis_energy(input_, ri, p[:, 3])
+        * _axis_energy(output, ro, p[:, 2])
+    )
+
+
 def factors(state, output_chart, input_chart, p):
     if p.device.type != "cpu":
         raise ValueError("radius cell-mass reference currently requires CPU tensors")

@@ -29,6 +29,7 @@ from benchmarks.cuda.linear import reference
 from benchmarks.cuda.linear.fixtures import operator_spec
 from benchmarks.cuda.linear.manifest import (
     DEFAULT_PLANS,
+    RADIUS_FIXTURES,
     REGISTRY,
     decode_catalog,
     load_run,
@@ -78,9 +79,7 @@ class PlanLinear(nn.Module):
 
     def forward(self, x):
         flat = x.reshape(-1, self.operator.in_features).contiguous()
-        y = Dispatcher(registry=REGISTRY).run(
-            self, LinearInputs(flat), plan=self.plan
-        )
+        y = Dispatcher(registry=REGISTRY).run(self, LinearInputs(flat), plan=self.plan)
         return y.reshape(*x.shape[:-1], self.operator.out_features)
 
 
@@ -102,6 +101,8 @@ def _metadata(args, run):
         Path(__file__).with_name("check_normalized.py"),
         Path(__file__).with_name("manifest.py"),
         Path(__file__).with_name("radius_cell_mass.py"),
+        Path(__file__).with_name("protocol.py"),
+        Path(__file__).parents[2] / "training" / "radius_local_reference.py",
         Path(__file__).parent.parent / "polar_update.py",
     ]
     return {
@@ -141,7 +142,7 @@ def _metadata(args, run):
 
 
 def correctness(args, run):
-    if run.case.fixture == "polar_radius_cell_mass":
+    if run.case.fixture in RADIUS_FIXTURES:
         from .radius_cell_mass import correctness as radius_correctness
 
         return radius_correctness(args, run)
@@ -182,7 +183,7 @@ def correctness(args, run):
 
 
 def measure(args, run):
-    if run.case.fixture == "polar_radius_cell_mass":
+    if run.case.fixture in RADIUS_FIXTURES:
         from .radius_cell_mass import measure_case
 
         return measure_case(args, run)
@@ -407,9 +408,7 @@ def main():
         if args.validate_only:
             print(json.dumps(run.snapshot(), indent=2))
             return
-    if (run.case.fixture == "polar_radius_cell_mass") != (
-        args.polar_update == "radius"
-    ):
+    if (run.case.fixture in RADIUS_FIXTURES) != (args.polar_update == "radius"):
         ap.error(
             "the radius fixture requires --polar-update radius, and other fixtures reject it"
         )

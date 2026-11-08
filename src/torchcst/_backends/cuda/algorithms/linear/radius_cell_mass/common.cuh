@@ -248,6 +248,80 @@ __device__ inline int positive_mod(int value, int count) {
     int result = value % count;
     return result < 0 ? result + count : result;
 }
+
+// Explicit FP32 arithmetic for the packed pilot. Double specializations below
+// delegate to the original implementation, preserving existing routes.
+template<class Calc, class T>
+__device__ inline Calc signal_amplitude(const T *p, int atom, const Axis &a) {
+    if constexpr (std::is_same<Calc, double>::value) return amplitude(p, atom, a);
+    else {
+        float s = p[4 * atom], t = p[4 * atom + 1];
+        return float(a.amplitude_max) * s / sqrtf(fmaxf(s*s+t*t, FLT_MIN));
+    }
+}
+template<class Calc> __device__ inline Calc signal_sin(Calc x) {
+    if constexpr(std::is_same<Calc,float>::value)return sinf(x);else return sin(x);
+}
+template<class Calc> __device__ inline Calc signal_cos(Calc x) {
+    if constexpr(std::is_same<Calc,float>::value)return cosf(x);else return cos(x);
+}
+template<class Calc, class T>
+__device__ inline Calc signal_radius(const T *p, int atom, const Axis &a) {
+    if constexpr (std::is_same<Calc, double>::value) return radius(p, atom, a);
+    else {
+        float s=p[4*atom], t=p[4*atom+1], amp=signal_amplitude<float>(p,atom,a);
+        float alpha=fminf(1, fmaxf(0,(s*s+t*t-1)/3));
+        float ratio=amp/float(a.w_c), x=ratio*ratio;
+        float lo=float(a.radius_min)+(float(a.radius_birth)-float(a.radius_min))/(1+float(a.lower_kappa)*x);
+        float hi=float(a.radius_min)+(float(a.radius_max)-float(a.radius_min))*float(a.kappa)/(float(a.kappa)+powf(x,float(a.upper_decay_power)));
+        if (a.closed_envelope) {
+            float base=fminf(1,fmaxf(0,1-(amp/float(a.amplitude_max))*(amp/float(a.amplitude_max))));
+            lo=float(a.radius_min)+(float(a.radius_max)-float(a.radius_min))*powf(base,float(a.closed_lower_power));
+            hi=float(a.radius_min)+(float(a.radius_max)-float(a.radius_min))*powf(base,float(a.closed_upper_power));
+        }
+        hi=fmaxf(lo,fmaxf(hi,float(a.upper_floor)));
+        if (a.zero_opening) {
+            float scale=float(a.zero_opening_scale), h=scale/hypotf(amp,scale);
+            lo=amp==0 ? hi : fminf(hi,lo+h*h*(hi-lo));
+        }
+        float value;
+        if (a.closed_envelope || a.zero_opening)
+            value=alpha>=1 ? hi : lo+lo*expm1f(alpha*log1pf((hi-lo)/lo));
+        else value=expf((1-alpha)*logf(lo)+alpha*logf(hi));
+        return fminf(hi,fmaxf(lo,value));
+    }
+}
+template<class Calc>
+__device__ inline Calc signal_wrapped(Calc mu, const Axis &a) {
+    if constexpr (std::is_same<Calc,double>::value) return wrapped_center(mu,a);
+    else {
+        float period=float(a.period);
+        float v=fmodf(fmodf(mu,period)-fmodf(float(a.origin),period),period);
+        return v<0 ? v+period : v;
+    }
+}
+template<class Calc>
+__device__ inline Membership signal_classify(Calc R, Calc mu, const Axis &a) {
+    if constexpr (std::is_same<Calc,double>::value) return classify(R,mu,a);
+    else {
+        int bank=0;
+        while(bank+2<a.bank_count && R>float(a.banks[bank].tile_sites)*float(a.spacing))bank+=2;
+        float tile=float(a.banks[bank].tile_sites)*float(a.spacing);
+        int count=int(ceilf(2*R/tile))+1;bank+=count-2;
+        return {bank,int(floorf((signal_wrapped(mu,a)+float(a.spacing)/2)/tile-float(count-1)/2))};
+    }
+}
+template<class Calc, class T>
+__device__ inline void signal_store_gradient(const T *p,T *g,int atom,const Axis &a,
+    Calc da,Calc dr,Calc dmi,Calc dmo) {
+    if constexpr (std::is_same<Calc,double>::value) store_gradient(p,g,atom,a,da,dr,dmi,dmo);
+    else {
+        float s=p[4*atom],t=p[4*atom+1],q=s*s+t*t,safe=fmaxf(q,FLT_MIN),inverse=1/sqrtf(safe);
+        float ds=float(a.amplitude_max)*inverse*(q>=FLT_MIN ? 1-s*s/safe : 1);
+        float dt=q>=FLT_MIN ? -float(a.amplitude_max)*inverse*s*t/safe : 0;
+        g[4*atom]=da*ds;g[4*atom+1]=da*dt;g[4*atom+2]=dmo;g[4*atom+3]=dmi;
+    }
+}
 } // namespace radius_cell_mass
 
 // Definitions above are complete before the value-only helper is included.

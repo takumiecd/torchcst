@@ -121,3 +121,10 @@ The exploratory HIGGS pilot in
 principle. Its frozen consumer and Gaussian draws are separate from this public
 API; moving the method here does not rerun or revalidate that history. Initial
 signal scaling and downstream accuracy are separate claims.
+
+For widths above 1024, calibration evaluates squared cell-mass norms over each
+Atom's local period rather than materializing full site-by-Atom factors.
+Repeated periodic images are added before squaring when a local period exceeds
+the chart. This bounds setup by actual support while preserving the same
+conditional-sign energy target; reduction order can change FP64 last bits.
+Widths up to 1024 retain their existing factor-norm calculation.

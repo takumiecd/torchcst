@@ -1,0 +1,333 @@
+{
+  "schema_version": 1,
+  "status": "completed_research_only",
+  "numeric_commit": "095684f01f8527e190459529d05978abfd3f95be",
+  "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+  "torch": "2.6.0+cu126",
+  "cuda": "12.6",
+  "comparison": {
+    "state": "passed",
+    "rows": {
+      "A-8192-saved": {
+        "width": 8192,
+        "rows": 256,
+        "atoms": 65536,
+        "order": "A",
+        "arm": "saved",
+        "median_ms": 50.782348960638046,
+        "peak_allocated_bytes": 498871808,
+        "peak_reserved_bytes": 536870912,
+        "setup_seconds_including_initial_proof": 24.32001489214599,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "5a579409530fffcd339111c716545d6931f46498398c5426ed11a59634603920"
+      },
+      "A-8192-levels": {
+        "width": 8192,
+        "rows": 256,
+        "atoms": 65536,
+        "order": "A",
+        "arm": "levels",
+        "median_ms": 33.67532044649124,
+        "peak_allocated_bytes": 498871808,
+        "peak_reserved_bytes": 557842432,
+        "setup_seconds_including_initial_proof": 24.232093958184123,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "006d5a11964ad4cd308e0746eedab0b7a4f2c4c88c19b2fb5a27b05a277b1d48"
+      },
+      "A-8192-levels_stream64": {
+        "width": 8192,
+        "rows": 256,
+        "atoms": 65536,
+        "order": "A",
+        "arm": "levels_stream64",
+        "median_ms": 39.9714894592762,
+        "peak_allocated_bytes": 184036864,
+        "peak_reserved_bytes": 216006656,
+        "setup_seconds_including_initial_proof": 23.99482018314302,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "496c0795eea41cb66082412d0b7a74e53e4924739172da3e0b70986826e5da75"
+      },
+      "A-8192-dense": {
+        "width": 8192,
+        "rows": 256,
+        "atoms": 65536,
+        "order": "A",
+        "arm": "dense",
+        "median_ms": 17.846358940005302,
+        "peak_allocated_bytes": 1132725760,
+        "peak_reserved_bytes": 1180696576,
+        "setup_seconds_including_initial_proof": 11.398228861391544,
+        "initial_dense_weight_sha256": "87ce78ed0db628aea0779a47df3798caf7a09f976a4c22d03327c2f35f488e0e",
+        "source_result_sha256": "d57b07a792723cc62b78d477250d97005edae6aa87601936312c9eac6d3d804d"
+      },
+      "B-8192-saved": {
+        "width": 8192,
+        "rows": 256,
+        "atoms": 65536,
+        "order": "B",
+        "arm": "saved",
+        "median_ms": 50.76663754880428,
+        "peak_allocated_bytes": 498871808,
+        "peak_reserved_bytes": 536870912,
+        "setup_seconds_including_initial_proof": 24.25391568802297,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "51257e5fdb9a600894be47b9db264760e7ec8b45a223012968f0139020e772f0"
+      },
+      "B-8192-levels": {
+        "width": 8192,
+        "rows": 256,
+        "atoms": 65536,
+        "order": "B",
+        "arm": "levels",
+        "median_ms": 33.79111923277378,
+        "peak_allocated_bytes": 498871808,
+        "peak_reserved_bytes": 557842432,
+        "setup_seconds_including_initial_proof": 24.87882879190147,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "c8f29b5868535a7db1159c1529a310c631b5388569288c8f5dd5584166f0eba0"
+      },
+      "B-8192-levels_stream64": {
+        "width": 8192,
+        "rows": 256,
+        "atoms": 65536,
+        "order": "B",
+        "arm": "levels_stream64",
+        "median_ms": 39.987316355109215,
+        "peak_allocated_bytes": 184036864,
+        "peak_reserved_bytes": 216006656,
+        "setup_seconds_including_initial_proof": 25.745124522596598,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "7c8cdde5eb887d815b7f1b98b109f15eb84bea458dcbdf1f142a0eb773a9cb2e"
+      },
+      "B-8192-dense": {
+        "width": 8192,
+        "rows": 256,
+        "atoms": 65536,
+        "order": "B",
+        "arm": "dense",
+        "median_ms": 17.846425995230675,
+        "peak_allocated_bytes": 1132725760,
+        "peak_reserved_bytes": 1180696576,
+        "setup_seconds_including_initial_proof": 11.858227159827948,
+        "initial_dense_weight_sha256": "87ce78ed0db628aea0779a47df3798caf7a09f976a4c22d03327c2f35f488e0e",
+        "source_result_sha256": "408342b8b84ad6096a10f7fde13eff7d98581a575d0df90076bc830975ccdae4"
+      },
+      "A-16384-saved": {
+        "width": 16384,
+        "rows": 256,
+        "atoms": 131072,
+        "order": "A",
+        "arm": "saved",
+        "median_ms": 102.14359313249588,
+        "peak_allocated_bytes": 997731840,
+        "peak_reserved_bytes": 1090519040,
+        "setup_seconds_including_initial_proof": 87.78284742310643,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "816219af61554848d6433dc9808c0ed561626de46ef137385d68d3764ddeb458"
+      },
+      "A-16384-levels": {
+        "width": 16384,
+        "rows": 256,
+        "atoms": 131072,
+        "order": "A",
+        "arm": "levels",
+        "median_ms": 67.36882776021957,
+        "peak_allocated_bytes": 997731840,
+        "peak_reserved_bytes": 1107296256,
+        "setup_seconds_including_initial_proof": 89.53817250020802,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "98e66f07ddbe04fe8b4a133b86d98fcfa940a3f748085cac626ae0623be92691"
+      },
+      "A-16384-levels_stream64": {
+        "width": 16384,
+        "rows": 256,
+        "atoms": 131072,
+        "order": "A",
+        "arm": "levels_stream64",
+        "median_ms": 78.7328165024519,
+        "peak_allocated_bytes": 368061952,
+        "peak_reserved_bytes": 415236096,
+        "setup_seconds_including_initial_proof": 89.8140123989433,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "fa4305d1fced6430d8f4c3a228fc7fbd9bb1a749eed7ede34d5bab346455e18e"
+      },
+      "A-16384-dense": {
+        "width": 16384,
+        "rows": 256,
+        "atoms": 131072,
+        "order": "A",
+        "arm": "dense",
+        "median_ms": 68.27414967119694,
+        "peak_allocated_bytes": 4395894272,
+        "peak_reserved_bytes": 4452253696,
+        "setup_seconds_including_initial_proof": 24.19999804906547,
+        "initial_dense_weight_sha256": "a1bfc2bfd45a6ffb02603e5f1bd6bf0220667356bb442c5efbc9ebb20c02eb12",
+        "source_result_sha256": "b759dde7827af6804631d9a94ef13f3f8edd4a65b31f3f4a98ce507d6b0100e5"
+      },
+      "B-16384-saved": {
+        "width": 16384,
+        "rows": 256,
+        "atoms": 131072,
+        "order": "B",
+        "arm": "saved",
+        "median_ms": 102.13623940944672,
+        "peak_allocated_bytes": 997731840,
+        "peak_reserved_bytes": 1090519040,
+        "setup_seconds_including_initial_proof": 90.58780668489635,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "ca619a554e4d67c24ce3676ccab6fe836cdd44cdf080e82e66d4371f15f11faa"
+      },
+      "B-16384-levels": {
+        "width": 16384,
+        "rows": 256,
+        "atoms": 131072,
+        "order": "B",
+        "arm": "levels",
+        "median_ms": 67.29230657219887,
+        "peak_allocated_bytes": 997731840,
+        "peak_reserved_bytes": 1107296256,
+        "setup_seconds_including_initial_proof": 91.32284596562386,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "ec266b1447d276e437f8e93e571fc16f31d65bdb6951cd1a909f01b1fc8b3b63"
+      },
+      "B-16384-levels_stream64": {
+        "width": 16384,
+        "rows": 256,
+        "atoms": 131072,
+        "order": "B",
+        "arm": "levels_stream64",
+        "median_ms": 78.82915064692497,
+        "peak_allocated_bytes": 368061952,
+        "peak_reserved_bytes": 415236096,
+        "setup_seconds_including_initial_proof": 91.72600882127881,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "b0ea3f1977f14a6697f5ff279740823268c8900dfe1203f92d25194713c1c258"
+      },
+      "B-16384-dense": {
+        "width": 16384,
+        "rows": 256,
+        "atoms": 131072,
+        "order": "B",
+        "arm": "dense",
+        "median_ms": 68.29908676445484,
+        "peak_allocated_bytes": 4395894272,
+        "peak_reserved_bytes": 4452253696,
+        "setup_seconds_including_initial_proof": 25.579218888655305,
+        "initial_dense_weight_sha256": "a1bfc2bfd45a6ffb02603e5f1bd6bf0220667356bb442c5efbc9ebb20c02eb12",
+        "source_result_sha256": "4e4a01cd1845a99a9a491fd9eb845369127a51afc3e5f91c06bdb54f5d64261d"
+      }
+    },
+    "candidate_over_saved": {
+      "8192": {
+        "A": {
+          "levels": {
+            "median_ms": 0.6631304210168252,
+            "peak_allocated_bytes": 1.0,
+            "peak_reserved_bytes": 1.0390625
+          },
+          "levels_stream64": {
+            "median_ms": 0.7871138353654837,
+            "peak_allocated_bytes": 0.36890612187089156,
+            "peak_reserved_bytes": 0.40234375
+          }
+        },
+        "B": {
+          "levels": {
+            "median_ms": 0.665616650310725,
+            "peak_allocated_bytes": 1.0,
+            "peak_reserved_bytes": 1.0390625
+          },
+          "levels_stream64": {
+            "median_ms": 0.7876691915368156,
+            "peak_allocated_bytes": 0.36890612187089156,
+            "peak_reserved_bytes": 0.40234375
+          }
+        }
+      },
+      "16384": {
+        "A": {
+          "levels": {
+            "median_ms": 0.6595502047086976,
+            "peak_allocated_bytes": 1.0,
+            "peak_reserved_bytes": 1.0153846153846153
+          },
+          "levels_stream64": {
+            "median_ms": 0.7708052369013824,
+            "peak_allocated_bytes": 0.36889867321463854,
+            "peak_reserved_bytes": 0.38076923076923075
+          }
+        },
+        "B": {
+          "levels": {
+            "median_ms": 0.6588484847423794,
+            "peak_allocated_bytes": 1.0,
+            "peak_reserved_bytes": 1.0153846153846153
+          },
+          "levels_stream64": {
+            "median_ms": 0.7718039268208455,
+            "peak_allocated_bytes": 0.36889867321463854,
+            "peak_reserved_bytes": 0.38076923076923075
+          }
+        }
+      }
+    },
+    "same_kind_final_state_hashes_exact": {
+      "8192": {
+        "saved": true,
+        "levels": true,
+        "levels_stream64": true,
+        "dense": true
+      },
+      "16384": {
+        "saved": true,
+        "levels": true,
+        "levels_stream64": true,
+        "dense": true
+      }
+    },
+    "candidate_saved_final_state_hashes_exact": {
+      "8192": {
+        "A": {
+          "levels": true,
+          "levels_stream64": true
+        },
+        "B": {
+          "levels": true,
+          "levels_stream64": true
+        }
+      },
+      "16384": {
+        "A": {
+          "levels": true,
+          "levels_stream64": true
+        },
+        "B": {
+          "levels": true,
+          "levels_stream64": true
+        }
+      }
+    },
+    "scope": "Isolated Linear,R256,A8N,61 complete steps per process; no LM quality claim"
+  },
+  "evidence_verification": {
+    "state": "passed",
+    "archive_sha256": "8d80e920729153fcd71fa8ce71e6ec01c3d25ec791729785fa411f1b900ef357",
+    "verified_files": 52,
+    "all_owned_pids_inactive": true
+  },
+  "regression_tests_passed": 187,
+  "protocol": "multirow-levels-20261108.md",
+  "limitations": [
+    "Isolated square Linear,R256,A8N,FP32 IEEE/TF32 off; not a whole LM or a convergence/quality result.",
+    "Two orders on one A100 MIG allocation; no hardware replication.",
+    "All61 steps enter allocator peaks,51 complete synchronized primary samples. Setup/CPU proofs/export/compilation are outside the step timer.",
+    "Allocator allocated/reserved, not total process GPU memory.",
+    "Actual initial tensor payloads restored in parent study; final state hashes only. No archived raw oracle tensors.",
+    "No public/default selector adoption, Graph, other GPU or dtype claim."
+  ],
+  "renderer_sha256": "6d1978f1f9d3b68e07d6d665f8399160b4c2af8b0a1f1fce08081a3410559c45",
+  "figures": {
+    "assets/multirow-levels-20261108/performance.svg": "9e6bb75cec79241f6acbd3f42485ef168dc6bdd523f0457db7cc5004562aeded",
+    "assets/multirow-levels-20261108/performance.png": "6655c7b8a455ea736c39acac76ed8542b5f5093b1b30860e53030515a6c53b55"
+  }
+}

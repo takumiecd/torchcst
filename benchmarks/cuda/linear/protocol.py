@@ -1,7 +1,7 @@
 """CPU reconstruction of the benchmark fixtures' mathematical contracts."""
 
 from benchmarks.cuda.linear.fixtures import operator_spec
-from benchmarks.cuda.linear.manifest import _case
+from benchmarks.cuda.linear.manifest import RADIUS_FIXTURES, _case
 
 LOCAL_ORACLE_SCOPE = (
     "independent FP64 scalar Y/dX/all atom gradients; production polar update"
@@ -22,7 +22,7 @@ LOCAL_OPTIMIZER_POLICY = (
 def measurement_operator(case):
     """Rebuild from a validated Case, never from arbitrary serialized types."""
     case = _case({"id": "stored-case", **case})
-    if case.fixture == "polar_radius_cell_mass":
+    if case.fixture in RADIUS_FIXTURES:
         from .radius_cell_mass import fixture
 
         model, *_ = fixture(case)

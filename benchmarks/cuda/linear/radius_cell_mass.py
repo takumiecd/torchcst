@@ -32,23 +32,48 @@ def error(actual, expected):
 
 def tensor_hash(tensor):
     cpu = tensor.detach().cpu().contiguous().reshape(-1)
-    return hashlib.sha256(bytes(cpu.view(torch.uint8).tolist())).hexdigest()
+    # A Python byte list would use tens of GiB for a large dense weight.
+    return hashlib.sha256(memoryview(cpu.view(torch.uint8).numpy())).hexdigest()
 
 
 def fixture(case):
     torch.manual_seed(case.seed)
     chart = chart_presets.regular_grid(case.size, spacing=1.0, geometry="flat_torus")
+    multirow = (
+        getattr(case, "fixture", "polar_radius_cell_mass")
+        == "polar_radius_cell_mass_multirow"
+    )
     kernel = kernels.product(
         kernels.cell_mass(ChebyshevSpec(modes=8), merge_factor=2),
         coordinates=kernels.polar(
             amplitude_max=1.0,
             w_c=0.3,
             input_bounds=RadiusBounds(
-                minimum=0.5, birth=4.0, maximum=50.0, upper_floor=1.0
+                minimum=0.5,
+                birth=0.5 if multirow else 4.0,
+                maximum=50.0,
+                upper_floor=1.0,
+            ),
+            **(
+                {
+                    "radius_envelope": "rational_zero_opening",
+                    "zero_opening_scale": 0.001,
+                }
+                if multirow
+                else {}
             ),
         ),
     )
     model = CSTLinear(chart, chart, atoms=case.atoms, kernel=kernel, backend="factored")
+    if multirow:
+        model._bounded_reference = True
+        from torchcst import init
+
+        model.initialization_report = asdict(
+            init.xavier_normal_(
+                model, q=0, generator=torch.Generator().manual_seed(case.seed + 1)
+            )
+        )
     # Public initialization, including its decoded radius distribution, is retained.
     x, target, dy = (torch.randn(case.rows, case.size) for _ in range(3))
     return model, x, target, dy
@@ -66,6 +91,16 @@ def oracle_factors(model, p):
     upper = (0.5 + 49.5 * 3 / (3 + z)).clamp_min(1)
     upper = torch.maximum(upper, lower)
     radius = torch.exp((1 - alpha) * lower.log() + alpha * upper.log()).detach()
+    if model.kernel.spec.parameterization.radius_envelope == "rational_zero_opening":
+        # Independent quadrature qualifies the cell profile; public CPU decode
+        # supplies the newer envelope. Full native VJPs separately check decode.
+        from torchcst._backends.torch.parameterizations.radius_cell_mass import (
+            decoded_values,
+        )
+
+        amplitude, ri, ro = decoded_values(model.kernel, p)
+        assert torch.equal(ri, ro)  # This fixture is square with shared bounds.
+        radius = ri.detach()
     nodes, weights = np.polynomial.legendre.leggauss(48)
     nodes, weights = p.new_tensor(nodes), p.new_tensor(weights)
     factors = []
@@ -113,6 +148,7 @@ def oracle(model, x, p=None):
 
 
 REFERENCE_CHUNK_ATOMS = 256
+MULTIROW_REFERENCE_CHUNK_ATOMS = 64
 
 
 def _reference_model(model, parameters):
@@ -139,6 +175,9 @@ def chunked_reference(model, x, dy=None, *, chunk_atoms=REFERENCE_CHUNK_ATOMS):
         raise ValueError("chunked reference requires a CPU model and inputs")
     if dy is not None and (dy.shape != x.shape or dy.dtype != x.dtype):
         raise ValueError("reference dy must have the input shape and dtype")
+    if getattr(model, "_bounded_reference", False):
+        # Limit padding when a rare near-zero amplitude has a broad support.
+        chunk_atoms = min(chunk_atoms, MULTIROW_REFERENCE_CHUNK_ATOMS)
     tx = x.detach().requires_grad_(dy is not None)
     y = x.new_zeros((x.shape[0], model.out_features))
     dx = torch.zeros_like(x) if dy is not None else None
@@ -152,7 +191,12 @@ def chunked_reference(model, x, dy=None, *, chunk_atoms=REFERENCE_CHUNK_ATOMS):
             with torch.no_grad():
                 part.atoms.p.copy_(parameters)
         with torch.set_grad_enabled(dy is not None):
-            value = part(tx)
+            if getattr(model, "_bounded_reference", False):
+                from benchmarks.training.radius_local_reference import local_reference
+
+                value = local_reference(part, tx)
+            else:
+                value = part(tx)
             if dy is not None:
                 gx, gp = torch.autograd.grad(value, (tx, part.atoms.p), dy.detach())
                 dx.add_(gx.detach())
@@ -215,7 +259,15 @@ def check(model, x, dy, *, independent=False):
             else "full sites/all atoms; FP64 public Torch Fourier reference (separately quadrature-qualified)"
         ),
         "errors": errors,
-        **({"reference_chunk_atoms": REFERENCE_CHUNK_ATOMS} if chunked else {}),
+        **(
+            {
+                "reference_chunk_atoms": MULTIROW_REFERENCE_CHUNK_ATOMS
+                if getattr(cpu, "_bounded_reference", False)
+                else REFERENCE_CHUNK_ATOMS
+            }
+            if chunked
+            else {}
+        ),
     }
 
 
@@ -436,7 +488,25 @@ def matched_steps(base, case, plan):
         failures = ["preupdate_all_dP"] if pre_grad_error["max_abs"] > 5e-4 else []
         for name, (actual, expected) in pairs.items():
             quantization = (
-                parameter_quantization_gate(actual, expected, large=case.size > 128)
+                (
+                    {
+                        "status": "PASS"
+                        if torch.allclose(
+                            actual.detach().cpu(),
+                            expected.detach().cpu(),
+                            atol=3e-5,
+                            rtol=3e-4,
+                        )
+                        else "FAIL",
+                        "policy": "user-authorized FP32 Parameter atol3e-5/rtol3e-4",
+                        "atol": 3e-5,
+                        "rtol": 3e-4,
+                    }
+                    if case.fixture == "polar_radius_cell_mass_multirow"
+                    else parameter_quantization_gate(
+                        actual, expected, large=case.size > 128
+                    )
+                )
                 if name == "parameters"
                 else None
             )
@@ -597,6 +667,7 @@ def distribution(model):
 
 
 def measure_case(args, run):
+    began = time.monotonic()
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
     torch.set_float32_matmul_precision("highest")
@@ -606,17 +677,36 @@ def measure_case(args, run):
         "p": tensor_hash(base.atoms.p),
         "x": tensor_hash(xx),
         "target": tensor_hash(target),
+        **(
+            {"dy": tensor_hash(dy)}
+            if case.fixture == "polar_radius_cell_mass_multirow"
+            else {}
+        ),
     }
     initial_distribution = distribution(base)
     dense = args.worker == "dense"
+    dense_initial_hash = None
     if dense:
         model = torch.nn.Linear(case.size, case.size, bias=False)
         with torch.no_grad():
-            identity = torch.eye(case.size)
-            weight = (
-                chunked_reference(base, identity) if case.size > 128 else base(identity)
-            )
-            model.weight.copy_(weight.T)
+            if case.fixture == "polar_radius_cell_mass_multirow":
+                from benchmarks.training.radius_local_reference import (
+                    local_dense_weight,
+                )
+
+                weight = local_dense_weight(
+                    base, chunk_atoms=MULTIROW_REFERENCE_CHUNK_ATOMS
+                )
+                dense_initial_hash = tensor_hash(weight)
+                model.weight.copy_(weight)
+            else:
+                identity = torch.eye(case.size)
+                weight = (
+                    chunked_reference(base, identity)
+                    if case.size > 128
+                    else base(identity)
+                )
+                model.weight.copy_(weight.T)
         model = model.cuda()
         opt = torch.optim.AdamW(
             model.parameters(),
@@ -630,6 +720,7 @@ def measure_case(args, run):
         opt = optimizer(model, case)
     x, target = xx.cuda().requires_grad_(), target.cuda()
     proof = None if dense else check(model, x, dy.cuda())
+    setup_seconds = time.monotonic() - began
     torch.cuda.empty_cache()
     torch.cuda.reset_peak_memory_stats()
     for _ in range(case.warmup):
@@ -644,6 +735,19 @@ def measure_case(args, run):
     peak = (torch.cuda.max_memory_allocated(), torch.cuda.max_memory_reserved())
     post = None if dense else check(model, x, dy.cuda())
     updated_distribution = None if dense else distribution(model)
+    state_hashes = {}
+    if case.fixture == "polar_radius_cell_mass_multirow":
+        for index, p in enumerate(model.parameters()):
+            values = {"parameter": p, "gradient": p.grad, **opt.state[p]}
+            for name, value in values.items():
+                if isinstance(value, torch.Tensor):
+                    if not bool(torch.isfinite(value).all()):
+                        raise AssertionError("nonfinite final benchmark state")
+                    state_hashes[f"p{index}/{name}"] = {
+                        "shape": list(value.shape),
+                        "dtype": str(value.dtype),
+                        "sha256": tensor_hash(value),
+                    }
     phases = None
     if args.phase_diagnostics:
         phases = {"forward_loss": [], "backward": [], "optimizer": []}
@@ -673,7 +777,27 @@ def measure_case(args, run):
         "eager": {"median_ms": statistics.median(samples), "samples_ms": samples},
         "graph": None,
         "initial_p_sha256": hashes["p"],
-        "initial_inputs": {"x_sha256": hashes["x"], "target_sha256": hashes["target"]},
+        "initial_inputs": {
+            "x_sha256": hashes["x"],
+            "target_sha256": hashes["target"],
+            **({"dy_sha256": hashes["dy"]} if "dy" in hashes else {}),
+        },
+        **(
+            {
+                "fixture_initialization": base.initialization_report,
+                "setup_seconds_including_initial_proof": setup_seconds,
+                "initial_effective_dense_weight_sha256": dense_initial_hash,
+                "final_state_tensor_hashes": state_hashes,
+                "dense_export_policy": {
+                    "method": "bounded_public_CPU_Fourier_local_outer_scatter/v1",
+                    "chunk_atoms": MULTIROW_REFERENCE_CHUNK_ATOMS,
+                    "maximum_outer_product_values": 1048576,
+                },
+                "reference_policy": "bounded public CPU local Fourier VJP, all atoms/sites",
+            }
+            if case.fixture == "polar_radius_cell_mass_multirow"
+            else {}
+        ),
         "peak_allocated_training_bytes": peak[0],
         "peak_reserved_training_bytes": peak[1],
         "total_gpu_process_bytes": None,

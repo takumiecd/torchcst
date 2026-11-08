@@ -461,8 +461,8 @@ def test_actual_local_tile_math_and_owner_kernel_syntax_on_cpu(tmp_path):
     ]
     moments = hybrid[
         hybrid.index(
-            "template<class T>\n__device__ inline double compact_moment_element"
-        ) : hybrid.index("template<class T>\n__global__ void compact_moments_kernel")
+            "template<class T, class Storage = double>\n__device__ inline Storage compact_moment_element"
+        ) : hybrid.index("template<class T, class Storage = double>\n__global__ void compact_moments_kernel")
     ]
     project = hybrid[
         hybrid.index("template<bool Derivatives = true>") : hybrid.index(

@@ -1,0 +1,662 @@
+{
+  "schema_version": 1,
+  "status": "completed_research_only",
+  "numeric_commit": "095684f01f8527e190459529d05978abfd3f95be",
+  "gpu": "NVIDIA GeForce RTX 4090",
+  "torch": "2.6.0+cu126",
+  "cuda": "12.6",
+  "comparison": {
+    "state": "passed",
+    "rows": {
+      "A-8192-saved": {
+        "width": 8192,
+        "rows": 256,
+        "atoms": 65536,
+        "order": "A",
+        "arm": "saved",
+        "median_ms": 11.431940831243992,
+        "peak_allocated_bytes": 498871808,
+        "peak_reserved_bytes": 536870912,
+        "setup_seconds_including_initial_proof": 14.030986782163382,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "2944f60eb97accae7a45c7ba6b5ea52abfbd28ab7758fc55be3cc8c001def17b"
+      },
+      "A-8192-levels": {
+        "width": 8192,
+        "rows": 256,
+        "atoms": 65536,
+        "order": "A",
+        "arm": "levels",
+        "median_ms": 7.55704939365387,
+        "peak_allocated_bytes": 498871808,
+        "peak_reserved_bytes": 557842432,
+        "setup_seconds_including_initial_proof": 14.051501460373402,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "12fda6fbb37845c285115f364f70cdb44daf9502e27e56607f472bbd90f5eacd"
+      },
+      "A-8192-levels_stream64": {
+        "width": 8192,
+        "rows": 256,
+        "atoms": 65536,
+        "order": "A",
+        "arm": "levels_stream64",
+        "median_ms": 9.40666627138853,
+        "peak_allocated_bytes": 184036864,
+        "peak_reserved_bytes": 216006656,
+        "setup_seconds_including_initial_proof": 13.977739933878183,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "1a8f802e1758d95a8a4f37474ee1f4329c763cf65b90c0cc24956f24241538ba"
+      },
+      "A-8192-dense": {
+        "width": 8192,
+        "rows": 256,
+        "atoms": 65536,
+        "order": "A",
+        "arm": "dense",
+        "median_ms": 5.014805123209953,
+        "peak_allocated_bytes": 1132725760,
+        "peak_reserved_bytes": 1180696576,
+        "setup_seconds_including_initial_proof": 4.904029172845185,
+        "initial_dense_weight_sha256": "2a5b1d3bc921802cfa42ae5fef612bec5c7b308d0b1df67dad88b274d2006229",
+        "source_result_sha256": "34973f5c58de54ce73efa2f8df1800188247d3be2db720fd6f8f93cc7bb3dcd9"
+      },
+      "B-8192-saved": {
+        "width": 8192,
+        "rows": 256,
+        "atoms": 65536,
+        "order": "B",
+        "arm": "saved",
+        "median_ms": 11.43010426312685,
+        "peak_allocated_bytes": 498871808,
+        "peak_reserved_bytes": 536870912,
+        "setup_seconds_including_initial_proof": 13.852079753763974,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "f3a25e343e9afa6e14aca292abb50a174e6884339bd1b3b30b221dd520146446"
+      },
+      "B-8192-levels": {
+        "width": 8192,
+        "rows": 256,
+        "atoms": 65536,
+        "order": "B",
+        "arm": "levels",
+        "median_ms": 7.554369978606701,
+        "peak_allocated_bytes": 498871808,
+        "peak_reserved_bytes": 557842432,
+        "setup_seconds_including_initial_proof": 13.924685705453157,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "a6b8ca12bcb69836d3f2d04e42f78d933cf888b55aebd8d313b17b3f67ee9b4b"
+      },
+      "B-8192-levels_stream64": {
+        "width": 8192,
+        "rows": 256,
+        "atoms": 65536,
+        "order": "B",
+        "arm": "levels_stream64",
+        "median_ms": 9.387806057929993,
+        "peak_allocated_bytes": 184036864,
+        "peak_reserved_bytes": 216006656,
+        "setup_seconds_including_initial_proof": 13.968335123732686,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "2535abcc57279ec83b771a15a0542b1b75ec160fb496d959cc4bae726b7330b0"
+      },
+      "B-8192-dense": {
+        "width": 8192,
+        "rows": 256,
+        "atoms": 65536,
+        "order": "B",
+        "arm": "dense",
+        "median_ms": 4.859304055571556,
+        "peak_allocated_bytes": 1132725760,
+        "peak_reserved_bytes": 1180696576,
+        "setup_seconds_including_initial_proof": 4.879708179272711,
+        "initial_dense_weight_sha256": "2a5b1d3bc921802cfa42ae5fef612bec5c7b308d0b1df67dad88b274d2006229",
+        "source_result_sha256": "eb0d8f1096aa1ac7fbf47592b77b58345b4f33ee9ea0e68c00677af4aaf3d419"
+      },
+      "A-16384-saved": {
+        "width": 16384,
+        "rows": 256,
+        "atoms": 131072,
+        "order": "A",
+        "arm": "saved",
+        "median_ms": 22.63105195015669,
+        "peak_allocated_bytes": 997731840,
+        "peak_reserved_bytes": 1090519040,
+        "setup_seconds_including_initial_proof": 51.985998566262424,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "efec123112f6d29abb02f5dfde82e4007c534779b2b2cd0d49f6dc7392b61d29"
+      },
+      "A-16384-levels": {
+        "width": 16384,
+        "rows": 256,
+        "atoms": 131072,
+        "order": "A",
+        "arm": "levels",
+        "median_ms": 14.330674894154072,
+        "peak_allocated_bytes": 997731840,
+        "peak_reserved_bytes": 1107296256,
+        "setup_seconds_including_initial_proof": 49.875125146470964,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "9bbeffdcba0d818774a2fc77c9ce4d6c48b1cf678628df8edb4ca377f6d8f9a9"
+      },
+      "A-16384-levels_stream64": {
+        "width": 16384,
+        "rows": 256,
+        "atoms": 131072,
+        "order": "A",
+        "arm": "levels_stream64",
+        "median_ms": 17.338819801807404,
+        "peak_allocated_bytes": 368061952,
+        "peak_reserved_bytes": 415236096,
+        "setup_seconds_including_initial_proof": 51.3062391737476,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "a493310607a9ff4f2b5cbfeab46eec176dd982f11267c04f99d3603cf07ebe70"
+      },
+      "A-16384-dense": {
+        "width": 16384,
+        "rows": 256,
+        "atoms": 131072,
+        "order": "A",
+        "arm": "dense",
+        "median_ms": 18.12756061553955,
+        "peak_allocated_bytes": 4395894272,
+        "peak_reserved_bytes": 4452253696,
+        "setup_seconds_including_initial_proof": 10.302769315429032,
+        "initial_dense_weight_sha256": "e240eb21293e1cde190c0322d96a90e30b69d57fbbf05c9b3ab4cf83c2a0df59",
+        "source_result_sha256": "cb5db88828a2193a5b484d79703af5c7c506bd14b6ca10432e5d529725b611f9"
+      },
+      "B-16384-saved": {
+        "width": 16384,
+        "rows": 256,
+        "atoms": 131072,
+        "order": "B",
+        "arm": "saved",
+        "median_ms": 22.543013095855713,
+        "peak_allocated_bytes": 997731840,
+        "peak_reserved_bytes": 1090519040,
+        "setup_seconds_including_initial_proof": 50.70407220348716,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "d736865fe689878cfc002553161fa516588f8e00ee838082b31163afedd69b3e"
+      },
+      "B-16384-levels": {
+        "width": 16384,
+        "rows": 256,
+        "atoms": 131072,
+        "order": "B",
+        "arm": "levels",
+        "median_ms": 14.39869124442339,
+        "peak_allocated_bytes": 997731840,
+        "peak_reserved_bytes": 1107296256,
+        "setup_seconds_including_initial_proof": 49.706612335518,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "ef0146f9fa38f0351c2ad4895adad94fa923ac575d3c589195bfcd8dc9de66c3"
+      },
+      "B-16384-levels_stream64": {
+        "width": 16384,
+        "rows": 256,
+        "atoms": 131072,
+        "order": "B",
+        "arm": "levels_stream64",
+        "median_ms": 17.36217550933361,
+        "peak_allocated_bytes": 368061952,
+        "peak_reserved_bytes": 415236096,
+        "setup_seconds_including_initial_proof": 49.782624390907586,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "17fc186f98e96780ed2466e52c3619fc5a1ccbe6a8e15ce47aa0b23db29cb65d"
+      },
+      "B-16384-dense": {
+        "width": 16384,
+        "rows": 256,
+        "atoms": 131072,
+        "order": "B",
+        "arm": "dense",
+        "median_ms": 18.139343708753586,
+        "peak_allocated_bytes": 4395894272,
+        "peak_reserved_bytes": 4452253696,
+        "setup_seconds_including_initial_proof": 10.251462203450501,
+        "initial_dense_weight_sha256": "e240eb21293e1cde190c0322d96a90e30b69d57fbbf05c9b3ab4cf83c2a0df59",
+        "source_result_sha256": "cced80038039aaedfb3623295090481af52f7da11962b8784c93b2b3b403ae48"
+      }
+    },
+    "candidate_over_saved": {
+      "8192": {
+        "A": {
+          "levels": {
+            "median_ms": 0.6610469302815253,
+            "peak_allocated_bytes": 1.0,
+            "peak_reserved_bytes": 1.0390625
+          },
+          "levels_stream64": {
+            "median_ms": 0.8228407065998542,
+            "peak_allocated_bytes": 0.36890612187089156,
+            "peak_reserved_bytes": 0.40234375
+          }
+        },
+        "B": {
+          "levels": {
+            "median_ms": 0.6609187287098383,
+            "peak_allocated_bytes": 1.0,
+            "peak_reserved_bytes": 1.0390625
+          },
+          "levels_stream64": {
+            "median_ms": 0.8213228717619623,
+            "peak_allocated_bytes": 0.36890612187089156,
+            "peak_reserved_bytes": 0.40234375
+          }
+        }
+      },
+      "16384": {
+        "A": {
+          "levels": {
+            "median_ms": 0.6332306127755962,
+            "peak_allocated_bytes": 1.0,
+            "peak_reserved_bytes": 1.0153846153846153
+          },
+          "levels_stream64": {
+            "median_ms": 0.7661517387700291,
+            "peak_allocated_bytes": 0.36889867321463854,
+            "peak_reserved_bytes": 0.38076923076923075
+          }
+        },
+        "B": {
+          "levels": {
+            "median_ms": 0.6387207949176249,
+            "peak_allocated_bytes": 1.0,
+            "peak_reserved_bytes": 1.0153846153846153
+          },
+          "levels_stream64": {
+            "median_ms": 0.7701798972261369,
+            "peak_allocated_bytes": 0.36889867321463854,
+            "peak_reserved_bytes": 0.38076923076923075
+          }
+        }
+      }
+    },
+    "same_kind_final_state_hashes_exact": {
+      "8192": {
+        "saved": true,
+        "levels": true,
+        "levels_stream64": true,
+        "dense": true
+      },
+      "16384": {
+        "saved": true,
+        "levels": true,
+        "levels_stream64": true,
+        "dense": true
+      }
+    },
+    "candidate_saved_final_state_hashes_exact": {
+      "8192": {
+        "A": {
+          "levels": true,
+          "levels_stream64": true
+        },
+        "B": {
+          "levels": true,
+          "levels_stream64": true
+        }
+      },
+      "16384": {
+        "A": {
+          "levels": true,
+          "levels_stream64": true
+        },
+        "B": {
+          "levels": true,
+          "levels_stream64": true
+        }
+      }
+    },
+    "scope": "Isolated Linear,R256,A8N,61 complete steps per process; no LM quality claim"
+  },
+  "evidence_verification": {
+    "status": "pass",
+    "archive_sha256": "af2cd7954e02e2b039172ba8374f430ed01f8efef5192601e8f3d1a1fa69fa05",
+    "archive_bytes": 45261941,
+    "verified_files": 57,
+    "owned_inactive": 23,
+    "source_files_verified": 1274
+  },
+  "regression_tests_passed": 187,
+  "protocol": "multirow-4090-20261108.md",
+  "limitations": [
+    "Isolated square Linear,R256,A8N,FP32 IEEE/TF32 off; not a whole LM or a convergence/quality result.",
+    "Two orders on one RTX 4090 allocation; no hardware replication.",
+    "All61 steps enter allocator peaks,51 complete synchronized primary samples. Setup/CPU proofs/export/compilation are outside the step timer.",
+    "Allocator allocated/reserved, not total process GPU memory.",
+    "Actual initial tensor payloads restored in parent study; final state hashes only. No archived raw oracle tensors.",
+    "No public/default selector adoption, Graph, untested hardware or dtype claim."
+  ],
+  "renderer_sha256": "c8f15f0ddc090ea95095f39eac39854d277a2ed94f60632a9f45544637c8b838",
+  "figures": {
+    "assets/multirow-4090-20261108/performance.svg": "8db7fa69098dd6228f2b3e4d7e2bac5e16d8726d5250ca675d4016db2665868a",
+    "assets/multirow-4090-20261108/performance.png": "d23f59a420b68561e3d9ce43f916d2cd5a9356c6c8b3385b11cd60c445a8ae15"
+  },
+  "cross_device_audit": {
+    "status": "pass",
+    "interpretation": "Actual initial P/x/target/dY and frozen initialization reports match. Dense W export byte equality and final tensor hashes are recorded separately. Cross-device final bit equality is descriptive, not a qualification requirement. Within-device optimizer/operator gates unchanged.",
+    "observations": {
+      "A-8192-saved": {
+        "initial_exact": {
+          "initial_p_sha256": true,
+          "initial_inputs": true,
+          "fixture_initialization": true,
+          "initial_effective_dense_weight_sha256": true
+        },
+        "final_tensor_hashes_exact": {
+          "p0/parameter": true,
+          "p0/gradient": true,
+          "p0/step": true,
+          "p0/exp_avg": true,
+          "p0/exp_avg_sq": true
+        },
+        "fresh_host_regeneration_matches_frozen": false,
+        "source_result_sha256": {
+          "A100_MIG": "5a579409530fffcd339111c716545d6931f46498398c5426ed11a59634603920",
+          "RTX4090": "2944f60eb97accae7a45c7ba6b5ea52abfbd28ab7758fc55be3cc8c001def17b"
+        }
+      },
+      "A-8192-levels": {
+        "initial_exact": {
+          "initial_p_sha256": true,
+          "initial_inputs": true,
+          "fixture_initialization": true,
+          "initial_effective_dense_weight_sha256": true
+        },
+        "final_tensor_hashes_exact": {
+          "p0/parameter": true,
+          "p0/gradient": true,
+          "p0/step": true,
+          "p0/exp_avg": true,
+          "p0/exp_avg_sq": true
+        },
+        "fresh_host_regeneration_matches_frozen": false,
+        "source_result_sha256": {
+          "A100_MIG": "006d5a11964ad4cd308e0746eedab0b7a4f2c4c88c19b2fb5a27b05a277b1d48",
+          "RTX4090": "12fda6fbb37845c285115f364f70cdb44daf9502e27e56607f472bbd90f5eacd"
+        }
+      },
+      "A-8192-levels_stream64": {
+        "initial_exact": {
+          "initial_p_sha256": true,
+          "initial_inputs": true,
+          "fixture_initialization": true,
+          "initial_effective_dense_weight_sha256": true
+        },
+        "final_tensor_hashes_exact": {
+          "p0/parameter": true,
+          "p0/gradient": true,
+          "p0/step": true,
+          "p0/exp_avg": true,
+          "p0/exp_avg_sq": true
+        },
+        "fresh_host_regeneration_matches_frozen": false,
+        "source_result_sha256": {
+          "A100_MIG": "496c0795eea41cb66082412d0b7a74e53e4924739172da3e0b70986826e5da75",
+          "RTX4090": "1a8f802e1758d95a8a4f37474ee1f4329c763cf65b90c0cc24956f24241538ba"
+        }
+      },
+      "A-8192-dense": {
+        "initial_exact": {
+          "initial_p_sha256": true,
+          "initial_inputs": true,
+          "fixture_initialization": true,
+          "initial_effective_dense_weight_sha256": false
+        },
+        "final_tensor_hashes_exact": {
+          "p0/parameter": false,
+          "p0/gradient": false,
+          "p0/step": true,
+          "p0/exp_avg": false,
+          "p0/exp_avg_sq": false
+        },
+        "fresh_host_regeneration_matches_frozen": false,
+        "source_result_sha256": {
+          "A100_MIG": "d57b07a792723cc62b78d477250d97005edae6aa87601936312c9eac6d3d804d",
+          "RTX4090": "34973f5c58de54ce73efa2f8df1800188247d3be2db720fd6f8f93cc7bb3dcd9"
+        }
+      },
+      "B-8192-saved": {
+        "initial_exact": {
+          "initial_p_sha256": true,
+          "initial_inputs": true,
+          "fixture_initialization": true,
+          "initial_effective_dense_weight_sha256": true
+        },
+        "final_tensor_hashes_exact": {
+          "p0/parameter": true,
+          "p0/gradient": true,
+          "p0/step": true,
+          "p0/exp_avg": true,
+          "p0/exp_avg_sq": true
+        },
+        "fresh_host_regeneration_matches_frozen": false,
+        "source_result_sha256": {
+          "A100_MIG": "51257e5fdb9a600894be47b9db264760e7ec8b45a223012968f0139020e772f0",
+          "RTX4090": "f3a25e343e9afa6e14aca292abb50a174e6884339bd1b3b30b221dd520146446"
+        }
+      },
+      "B-8192-levels": {
+        "initial_exact": {
+          "initial_p_sha256": true,
+          "initial_inputs": true,
+          "fixture_initialization": true,
+          "initial_effective_dense_weight_sha256": true
+        },
+        "final_tensor_hashes_exact": {
+          "p0/parameter": true,
+          "p0/gradient": true,
+          "p0/step": true,
+          "p0/exp_avg": true,
+          "p0/exp_avg_sq": true
+        },
+        "fresh_host_regeneration_matches_frozen": false,
+        "source_result_sha256": {
+          "A100_MIG": "c8f29b5868535a7db1159c1529a310c631b5388569288c8f5dd5584166f0eba0",
+          "RTX4090": "a6b8ca12bcb69836d3f2d04e42f78d933cf888b55aebd8d313b17b3f67ee9b4b"
+        }
+      },
+      "B-8192-levels_stream64": {
+        "initial_exact": {
+          "initial_p_sha256": true,
+          "initial_inputs": true,
+          "fixture_initialization": true,
+          "initial_effective_dense_weight_sha256": true
+        },
+        "final_tensor_hashes_exact": {
+          "p0/parameter": true,
+          "p0/gradient": true,
+          "p0/step": true,
+          "p0/exp_avg": true,
+          "p0/exp_avg_sq": true
+        },
+        "fresh_host_regeneration_matches_frozen": false,
+        "source_result_sha256": {
+          "A100_MIG": "7c8cdde5eb887d815b7f1b98b109f15eb84bea458dcbdf1f142a0eb773a9cb2e",
+          "RTX4090": "2535abcc57279ec83b771a15a0542b1b75ec160fb496d959cc4bae726b7330b0"
+        }
+      },
+      "B-8192-dense": {
+        "initial_exact": {
+          "initial_p_sha256": true,
+          "initial_inputs": true,
+          "fixture_initialization": true,
+          "initial_effective_dense_weight_sha256": false
+        },
+        "final_tensor_hashes_exact": {
+          "p0/parameter": false,
+          "p0/gradient": false,
+          "p0/step": true,
+          "p0/exp_avg": false,
+          "p0/exp_avg_sq": false
+        },
+        "fresh_host_regeneration_matches_frozen": false,
+        "source_result_sha256": {
+          "A100_MIG": "408342b8b84ad6096a10f7fde13eff7d98581a575d0df90076bc830975ccdae4",
+          "RTX4090": "eb0d8f1096aa1ac7fbf47592b77b58345b4f33ee9ea0e68c00677af4aaf3d419"
+        }
+      },
+      "A-16384-saved": {
+        "initial_exact": {
+          "initial_p_sha256": true,
+          "initial_inputs": true,
+          "fixture_initialization": true,
+          "initial_effective_dense_weight_sha256": true
+        },
+        "final_tensor_hashes_exact": {
+          "p0/parameter": true,
+          "p0/gradient": true,
+          "p0/step": true,
+          "p0/exp_avg": true,
+          "p0/exp_avg_sq": true
+        },
+        "fresh_host_regeneration_matches_frozen": false,
+        "source_result_sha256": {
+          "A100_MIG": "816219af61554848d6433dc9808c0ed561626de46ef137385d68d3764ddeb458",
+          "RTX4090": "efec123112f6d29abb02f5dfde82e4007c534779b2b2cd0d49f6dc7392b61d29"
+        }
+      },
+      "A-16384-levels": {
+        "initial_exact": {
+          "initial_p_sha256": true,
+          "initial_inputs": true,
+          "fixture_initialization": true,
+          "initial_effective_dense_weight_sha256": true
+        },
+        "final_tensor_hashes_exact": {
+          "p0/parameter": true,
+          "p0/gradient": true,
+          "p0/step": true,
+          "p0/exp_avg": true,
+          "p0/exp_avg_sq": true
+        },
+        "fresh_host_regeneration_matches_frozen": false,
+        "source_result_sha256": {
+          "A100_MIG": "98e66f07ddbe04fe8b4a133b86d98fcfa940a3f748085cac626ae0623be92691",
+          "RTX4090": "9bbeffdcba0d818774a2fc77c9ce4d6c48b1cf678628df8edb4ca377f6d8f9a9"
+        }
+      },
+      "A-16384-levels_stream64": {
+        "initial_exact": {
+          "initial_p_sha256": true,
+          "initial_inputs": true,
+          "fixture_initialization": true,
+          "initial_effective_dense_weight_sha256": true
+        },
+        "final_tensor_hashes_exact": {
+          "p0/parameter": true,
+          "p0/gradient": true,
+          "p0/step": true,
+          "p0/exp_avg": true,
+          "p0/exp_avg_sq": true
+        },
+        "fresh_host_regeneration_matches_frozen": false,
+        "source_result_sha256": {
+          "A100_MIG": "fa4305d1fced6430d8f4c3a228fc7fbd9bb1a749eed7ede34d5bab346455e18e",
+          "RTX4090": "a493310607a9ff4f2b5cbfeab46eec176dd982f11267c04f99d3603cf07ebe70"
+        }
+      },
+      "A-16384-dense": {
+        "initial_exact": {
+          "initial_p_sha256": true,
+          "initial_inputs": true,
+          "fixture_initialization": true,
+          "initial_effective_dense_weight_sha256": false
+        },
+        "final_tensor_hashes_exact": {
+          "p0/parameter": false,
+          "p0/gradient": false,
+          "p0/step": true,
+          "p0/exp_avg": false,
+          "p0/exp_avg_sq": false
+        },
+        "fresh_host_regeneration_matches_frozen": false,
+        "source_result_sha256": {
+          "A100_MIG": "b759dde7827af6804631d9a94ef13f3f8edd4a65b31f3f4a98ce507d6b0100e5",
+          "RTX4090": "cb5db88828a2193a5b484d79703af5c7c506bd14b6ca10432e5d529725b611f9"
+        }
+      },
+      "B-16384-saved": {
+        "initial_exact": {
+          "initial_p_sha256": true,
+          "initial_inputs": true,
+          "fixture_initialization": true,
+          "initial_effective_dense_weight_sha256": true
+        },
+        "final_tensor_hashes_exact": {
+          "p0/parameter": true,
+          "p0/gradient": true,
+          "p0/step": true,
+          "p0/exp_avg": true,
+          "p0/exp_avg_sq": true
+        },
+        "fresh_host_regeneration_matches_frozen": false,
+        "source_result_sha256": {
+          "A100_MIG": "ca619a554e4d67c24ce3676ccab6fe836cdd44cdf080e82e66d4371f15f11faa",
+          "RTX4090": "d736865fe689878cfc002553161fa516588f8e00ee838082b31163afedd69b3e"
+        }
+      },
+      "B-16384-levels": {
+        "initial_exact": {
+          "initial_p_sha256": true,
+          "initial_inputs": true,
+          "fixture_initialization": true,
+          "initial_effective_dense_weight_sha256": true
+        },
+        "final_tensor_hashes_exact": {
+          "p0/parameter": true,
+          "p0/gradient": true,
+          "p0/step": true,
+          "p0/exp_avg": true,
+          "p0/exp_avg_sq": true
+        },
+        "fresh_host_regeneration_matches_frozen": false,
+        "source_result_sha256": {
+          "A100_MIG": "ec266b1447d276e437f8e93e571fc16f31d65bdb6951cd1a909f01b1fc8b3b63",
+          "RTX4090": "ef0146f9fa38f0351c2ad4895adad94fa923ac575d3c589195bfcd8dc9de66c3"
+        }
+      },
+      "B-16384-levels_stream64": {
+        "initial_exact": {
+          "initial_p_sha256": true,
+          "initial_inputs": true,
+          "fixture_initialization": true,
+          "initial_effective_dense_weight_sha256": true
+        },
+        "final_tensor_hashes_exact": {
+          "p0/parameter": true,
+          "p0/gradient": true,
+          "p0/step": true,
+          "p0/exp_avg": true,
+          "p0/exp_avg_sq": true
+        },
+        "fresh_host_regeneration_matches_frozen": false,
+        "source_result_sha256": {
+          "A100_MIG": "b0ea3f1977f14a6697f5ff279740823268c8900dfe1203f92d25194713c1c258",
+          "RTX4090": "17fc186f98e96780ed2466e52c3619fc5a1ccbe6a8e15ce47aa0b23db29cb65d"
+        }
+      },
+      "B-16384-dense": {
+        "initial_exact": {
+          "initial_p_sha256": true,
+          "initial_inputs": true,
+          "fixture_initialization": true,
+          "initial_effective_dense_weight_sha256": false
+        },
+        "final_tensor_hashes_exact": {
+          "p0/parameter": false,
+          "p0/gradient": false,
+          "p0/step": true,
+          "p0/exp_avg": false,
+          "p0/exp_avg_sq": false
+        },
+        "fresh_host_regeneration_matches_frozen": false,
+        "source_result_sha256": {
+          "A100_MIG": "4e4a01cd1845a99a9a491fd9eb845369127a51afc3e5f91c06bdb54f5d64261d",
+          "RTX4090": "cced80038039aaedfb3623295090481af52f7da11962b8784c93b2b3b403ae48"
+        }
+      }
+    }
+  },
+  "replay_driver_protocol_commit": "de90ad200d5b35d839c19f3e3e02b4284dfe4b9f"
+}

@@ -1,0 +1,239 @@
+{
+  "schema_version": 1,
+  "status": "completed_research_only",
+  "numeric_commit": "73e6a51cb0ec92bf26f254d25e71c2f1300febf3",
+  "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+  "torch": "2.6.0+cu126",
+  "cuda": "12.6",
+  "comparison": {
+    "state": "passed",
+    "rows": {
+      "A-8192-saved": {
+        "width": 8192,
+        "rows": 256,
+        "atoms": 65536,
+        "order": "A",
+        "arm": "saved",
+        "median_ms": 50.05575343966484,
+        "peak_allocated_bytes": 498871808,
+        "peak_reserved_bytes": 536870912,
+        "setup_seconds_including_initial_proof": 24.265761200338602,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "c5055965da447bc66ba5d7aab4b03248ac9af9270592dec46110eea5eed4bac7"
+      },
+      "A-8192-recompute": {
+        "width": 8192,
+        "rows": 256,
+        "atoms": 65536,
+        "order": "A",
+        "arm": "recompute",
+        "median_ms": 61.67966686189175,
+        "peak_allocated_bytes": 498871808,
+        "peak_reserved_bytes": 536870912,
+        "setup_seconds_including_initial_proof": 24.238884277641773,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "8e4f9cd293bd110d0505f8fe87a2bed7c7466c8b03b097c7ba36dbde38445547"
+      },
+      "A-8192-dense": {
+        "width": 8192,
+        "rows": 256,
+        "atoms": 65536,
+        "order": "A",
+        "arm": "dense",
+        "median_ms": 17.85845495760441,
+        "peak_allocated_bytes": 1132725760,
+        "peak_reserved_bytes": 1180696576,
+        "setup_seconds_including_initial_proof": 12.422021301463246,
+        "initial_dense_weight_sha256": "87ce78ed0db628aea0779a47df3798caf7a09f976a4c22d03327c2f35f488e0e",
+        "source_result_sha256": "cd11b6fdf2bc9db5003ef211d775340fb5baff405887735e2621caa05f9bc194"
+      },
+      "B-8192-saved": {
+        "width": 8192,
+        "rows": 256,
+        "atoms": 65536,
+        "order": "B",
+        "arm": "saved",
+        "median_ms": 50.067536532878876,
+        "peak_allocated_bytes": 498871808,
+        "peak_reserved_bytes": 536870912,
+        "setup_seconds_including_initial_proof": 23.59712596051395,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "0ef59afa6289f7680e3c8a3eb8944b146a477c629e486c34d4330c3ef656f956"
+      },
+      "B-8192-recompute": {
+        "width": 8192,
+        "rows": 256,
+        "atoms": 65536,
+        "order": "B",
+        "arm": "recompute",
+        "median_ms": 61.68051436543465,
+        "peak_allocated_bytes": 498871808,
+        "peak_reserved_bytes": 536870912,
+        "setup_seconds_including_initial_proof": 23.958273231983185,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "77314b9f8bfa28721a14cbd50e2b336cecfa9663afcdbeba8d937de30e7977af"
+      },
+      "B-8192-dense": {
+        "width": 8192,
+        "rows": 256,
+        "atoms": 65536,
+        "order": "B",
+        "arm": "dense",
+        "median_ms": 17.852960154414177,
+        "peak_allocated_bytes": 1132725760,
+        "peak_reserved_bytes": 1180696576,
+        "setup_seconds_including_initial_proof": 11.883032884448767,
+        "initial_dense_weight_sha256": "87ce78ed0db628aea0779a47df3798caf7a09f976a4c22d03327c2f35f488e0e",
+        "source_result_sha256": "75768efb7d32ec0c7beb4f6fd28b010aaf37fb3871b200251c4fed5fb615a35a"
+      },
+      "A-16384-saved": {
+        "width": 16384,
+        "rows": 256,
+        "atoms": 131072,
+        "order": "A",
+        "arm": "saved",
+        "median_ms": 100.64107552170753,
+        "peak_allocated_bytes": 997731840,
+        "peak_reserved_bytes": 1090519040,
+        "setup_seconds_including_initial_proof": 90.56033062003553,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "ba4f3f284d09978bf7b7edb5af37d7de63acdf796d8710852ef5bf8038db3fca"
+      },
+      "A-16384-recompute": {
+        "width": 16384,
+        "rows": 256,
+        "atoms": 131072,
+        "order": "A",
+        "arm": "recompute",
+        "median_ms": 124.52633120119572,
+        "peak_allocated_bytes": 997731840,
+        "peak_reserved_bytes": 1040187392,
+        "setup_seconds_including_initial_proof": 90.89983617141843,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "ade878416420bf128fd3c5b8ea740586a7853c419b482eb290267746c946c5f8"
+      },
+      "A-16384-dense": {
+        "width": 16384,
+        "rows": 256,
+        "atoms": 131072,
+        "order": "A",
+        "arm": "dense",
+        "median_ms": 68.2842917740345,
+        "peak_allocated_bytes": 4395894272,
+        "peak_reserved_bytes": 4452253696,
+        "setup_seconds_including_initial_proof": 25.822254959493876,
+        "initial_dense_weight_sha256": "a1bfc2bfd45a6ffb02603e5f1bd6bf0220667356bb442c5efbc9ebb20c02eb12",
+        "source_result_sha256": "5a39a26aae574edbcaa59950a3b71d48233d7f15d3b1e280e868a3f3858106e8"
+      },
+      "B-16384-saved": {
+        "width": 16384,
+        "rows": 256,
+        "atoms": 131072,
+        "order": "B",
+        "arm": "saved",
+        "median_ms": 100.63961334526539,
+        "peak_allocated_bytes": 997731840,
+        "peak_reserved_bytes": 1090519040,
+        "setup_seconds_including_initial_proof": 90.28807902149856,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "c37fe9da75acbd307545740fab6a681812b40e8a2f44d6921c3ee86952240a9e"
+      },
+      "B-16384-recompute": {
+        "width": 16384,
+        "rows": 256,
+        "atoms": 131072,
+        "order": "B",
+        "arm": "recompute",
+        "median_ms": 124.5452519506216,
+        "peak_allocated_bytes": 997731840,
+        "peak_reserved_bytes": 1040187392,
+        "setup_seconds_including_initial_proof": 92.8561604321003,
+        "initial_dense_weight_sha256": null,
+        "source_result_sha256": "f5758403aeea14543bc0fb453eeaee173f70b45272cbc72fd8a4a02fc7724772"
+      },
+      "B-16384-dense": {
+        "width": 16384,
+        "rows": 256,
+        "atoms": 131072,
+        "order": "B",
+        "arm": "dense",
+        "median_ms": 68.27479600906372,
+        "peak_allocated_bytes": 4395894272,
+        "peak_reserved_bytes": 4452253696,
+        "setup_seconds_including_initial_proof": 23.431702448055148,
+        "initial_dense_weight_sha256": "a1bfc2bfd45a6ffb02603e5f1bd6bf0220667356bb442c5efbc9ebb20c02eb12",
+        "source_result_sha256": "81a8808308e0eb3b1ed956bd47b5b4b92aa098e7355fc6a60606825092f54d81"
+      }
+    },
+    "recompute_over_saved": {
+      "8192": {
+        "A": {
+          "median_ms": 1.2322193279187754,
+          "peak_allocated_bytes": 1.0,
+          "peak_reserved_bytes": 1.0
+        },
+        "B": {
+          "median_ms": 1.2319462597271915,
+          "peak_allocated_bytes": 1.0,
+          "peak_reserved_bytes": 1.0
+        }
+      },
+      "16384": {
+        "A": {
+          "median_ms": 1.2373310853016104,
+          "peak_allocated_bytes": 1.0,
+          "peak_reserved_bytes": 0.9538461538461539
+        },
+        "B": {
+          "median_ms": 1.2375370672713426,
+          "peak_allocated_bytes": 1.0,
+          "peak_reserved_bytes": 0.9538461538461539
+        }
+      }
+    },
+    "same_kind_final_state_hashes_exact": {
+      "8192": {
+        "saved": true,
+        "recompute": true,
+        "dense": true
+      },
+      "16384": {
+        "saved": true,
+        "recompute": true,
+        "dense": true
+      }
+    },
+    "saved_recompute_final_state_hashes_exact": {
+      "8192": {
+        "A": true,
+        "B": true
+      },
+      "16384": {
+        "A": true,
+        "B": true
+      }
+    },
+    "scope": "Isolated Linear,R256,A8N,61 complete steps per process; no LM quality claim"
+  },
+  "evidence_verification": {
+    "state": "passed",
+    "archive_sha256": "a09708ca61cb0479cf09ca276681e6df5c01bd22d04c96a63c5457e0e4fcd078",
+    "verified_files": 43,
+    "all_owned_pids_inactive": true
+  },
+  "regression_tests_passed": 156,
+  "protocol": "large-recompute-20261108.md",
+  "limitations": [
+    "Isolated square Linear,R256,A8N,FP32 IEEE/TF32 off; not a whole LM or a convergence/quality result.",
+    "Two orders on one A100 MIG allocation; no hardware replication.",
+    "All61 steps enter allocator peaks,51 complete synchronized primary samples. Setup/CPU proofs/export/compilation are outside the step timer.",
+    "Allocator allocated/reserved, not total process GPU memory.",
+    "Actual initial tensor payloads restored in parent study; final state hashes only. No archived raw oracle tensors.",
+    "No public/default selector adoption, Graph, other GPU or dtype claim."
+  ],
+  "renderer_sha256": "609d87477b36605592e6389a9f47df0fff1065e662eab6141e9e8a7ffffa66d7",
+  "figures": {
+    "assets/large-recompute-20261108/performance.svg": "e5efee01f2104146445d6c27e9000c403a3e848961df40975f289e88ce44b2e3",
+    "assets/large-recompute-20261108/performance.png": "5788dc0fc39af85bd659355f3db22a91d56ee04e7a1384a49354129e9507a073"
+  }
+}

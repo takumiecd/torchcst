@@ -4,7 +4,7 @@
 namespace radius_cell_mass {
 // This is integer execution metadata only. Original Parameter rows stay put;
 // no response/gradient reduction or atom-value table is introduced.
-template<class T>
+template<class T, class Calc = double>
 __global__ void active_moment_banks_kernel(const T *p, uint32_t *required,
     int atoms, Axis axis, int start, bool merge) {
     int atom = blockIdx.x * blockDim.x + threadIdx.x;
@@ -13,7 +13,7 @@ __global__ void active_moment_banks_kernel(const T *p, uint32_t *required,
         bool valid = true;
         for (int column = 0; column < 4; ++column)
             valid &= isfinite(double(p[4 * atom + column]));
-        double R = radius(p, atom, axis);
+        Calc R = signal_radius<Calc>(p, atom, axis);
         valid &= isfinite(R) && R > 0 && R <= axis.period / 2 &&
             (2 * R / (axis.base_tile_sites * axis.spacing)) > 0;
         CUDA_KERNEL_ASSERT_MSG(valid, "invalid radius atom: finite coordinates and representable supported radii required");
@@ -21,7 +21,7 @@ __global__ void active_moment_banks_kernel(const T *p, uint32_t *required,
             // Only the radius selects a bank. This neutral center's tile is
             // unused; classification and its radius/period convention agree
             // with the unchanged caller's validated current-P layout.
-            int bank = classify(R, 0., axis).bank;
+            int bank = signal_classify<Calc>(R, Calc(0), axis).bank;
             bits = moment_bank_dependencies(bank, start, merge);
         }
     }

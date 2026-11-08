@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "plans": [
+    {
+      "id": "radius-active-native-row4",
+      "plan": {
+        "algorithm_id": "cuda_radius_cell_mass",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "input_direct_levels": 2,
+          "moment_method": "merge",
+          "native_autograd": true,
+          "native_entry": true,
+          "output_direct_levels": 2,
+          "output_tile_sites": 32,
+          "save_response": true,
+          "schedule": "global_batched_cached_active_moments_grad4_native"
+        },
+        "schema_version": 1
+      }
+    },
+    {
+      "id": "radius-active-native-row8",
+      "plan": {
+        "algorithm_id": "cuda_radius_cell_mass_row8",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "input_direct_levels": 2,
+          "moment_method": "merge",
+          "native_autograd": true,
+          "native_entry": true,
+          "output_direct_levels": 2,
+          "output_tile_sites": 32,
+          "save_response": true,
+          "schedule": "global_batched_cached_active_moments_grad4_native"
+        },
+        "schema_version": 1
+      }
+    }
+  ]
+}
