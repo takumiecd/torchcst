@@ -48,3 +48,52 @@ def from_state(state, p):
             for name in ("radius_min", "radius_max", "tau", "amplitude_max")
         },
     )
+
+
+def prepare_constants(p, *, radius_min, radius_max, tau, amplitude_max):
+    """Read-only declaration/placement constants; never cache trainable rows.
+
+    Encoding limits are computed on CPU once. The reference above intentionally
+    keeps its independent per-call construction for value/Jacobian comparisons.
+    """
+    bounds = torch.tensor([radius_min, radius_max], dtype=torch.float64)
+    encoded = bounds.to(dtype=p.dtype)
+    lo, hi = encoded.unbind()
+    if lo.double() < bounds[0]:
+        lo = torch.nextafter(lo, torch.full_like(lo, float("inf")))
+    if hi.double() > bounds[1]:
+        hi = torch.nextafter(hi, torch.zeros_like(hi))
+    if lo > hi:
+        raise ValueError(
+            "radius interval has no representable value in parameter dtype"
+        )
+    packed = torch.tensor(
+        [radius_min, radius_max, tau, amplitude_max, lo.item(), hi.item()],
+        dtype=torch.float64,
+        device=p.device,
+    )
+    low, high, scale, cap, lo64, hi64 = packed.unbind()
+    return (low, high, scale, cap, lo64.to(p), hi64.to(p), 32 * scale, high.log())
+
+
+def prepared_physical_parameters(p, constants):
+    """Same FP64 map/VJP, with one synchronous domain check per invocation."""
+    if p.ndim != 2 or p.shape[1] != 4 or p.dtype not in (torch.float32, torch.float64):
+        raise ValueError("radius envelope needs float32/float64 [atom,4] rows")
+    low, high, scale, cap, lo, hi, clip, log_high = constants
+    a, fraction = p[:, :2].double().unbind(dim=1)
+    invalid = (~torch.isfinite(p)).any() | (
+        (fraction < 0) | (fraction > 1) | (a.abs() > cap)
+    ).any()
+    if bool(invalid):
+        raise ValueError(
+            "radius envelope requires finite rows, fraction in [0,1] and bounded amplitude"
+        )
+    z = a.clamp(-clip, clip) / scale
+    lower = low + (high - low) * (-z.square()).exp()
+    raw = ((1 - fraction) * lower.log() + fraction * log_high).exp()
+    value = torch.where(fraction == 0, lower, torch.where(fraction == 1, high, raw))
+    raw = raw + (value - raw).detach()
+    encoded = raw.to(p)
+    radius = encoded + (encoded.clamp(lo, hi) - encoded).detach()
+    return torch.stack((p[:, 0], radius, p[:, 2], p[:, 3]), dim=1)
