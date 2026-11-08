@@ -81,11 +81,51 @@ class RadiusLMLevelsStream64Algorithm(RadiusLMLevelsAlgorithm):
         return 64
 
 
+@dataclass(frozen=True)
+class RadiusLMPhysicalLevelsAlgorithm(RadiusLMLevelsAlgorithm):
+    """Explicit FFN physical-radius cohort, with the full radius VJP."""
+
+    id: str = "cuda_radius_lm_physical_levels"
+
+    def supports(self, context, recipe):
+        result = RadiusCellMassAlgorithm.supports(self, context, recipe)
+        if result.reasons:
+            return result
+        plan = hierarchy_from_operator(context.operator)
+        reasons = []
+        if (
+            (plan.input.site_count, plan.output.site_count)
+            not in ((512, 2048), (2048, 512))
+            or context.atom_count != 8192
+            or not 1 <= context.m <= 256
+            or context.dtype != torch.float32
+        ):
+            reasons.append(
+                "physical LM requires width512/expansion4, c8, R1..256, FP32"
+            )
+        if any(
+            a.polar is not None
+            or a.modes != 8
+            or a.base_tile_sites != 1
+            or a.merge_factor != 2
+            or a.spacing != 1
+            or a.origin != 0
+            for a in (plan.input, plan.output)
+        ):
+            reasons.append(
+                "physical LM requires physical M8/base1/merge2/origin0/spacing1"
+            )
+        return SupportResult(tuple(reasons))
+
+
 LM_LEVELS = ExecutionPlan(
     RadiusLMLevelsAlgorithm().id, "v1", GLOBAL_ACTIVE_GRAD4_NATIVE.recipe
 )
 LM_LEVELS_STREAM64 = ExecutionPlan(
     RadiusLMLevelsStream64Algorithm().id, "v1", PACKED_RECOMPUTE.recipe
+)
+LM_PHYSICAL_LEVELS = ExecutionPlan(
+    RadiusLMPhysicalLevelsAlgorithm().id, "v1", GLOBAL_ACTIVE_GRAD4_NATIVE.recipe
 )
 
 _seal_functions(globals())
