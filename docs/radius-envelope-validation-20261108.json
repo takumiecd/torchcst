@@ -1,0 +1,86 @@
+{
+  "verification_complete": true,
+  "archive_sha256": "99d6f25b5295642b011a60387345bb399ef4fd917c0aeee9d523e8af28a1c24e",
+  "verified_compact_files": 28,
+  "verified_source_files_per_attempt": 1306,
+  "attempts": 5,
+  "controllers_inactive": 5,
+  "runtime_unchanged_since": "ee9c89556e99b09ed993e3a1a8aff874e3a1ee99",
+  "final_source": "40e120c9f1b7260364f08bf6723185f62bf31ac6",
+  "final_source_archive_sha256": "c9e11d23d94a8e83f1d257af35f380a58d78076ec6c46828f18940ff0d3aedcf",
+  "gpu": "NVIDIA RTX 6000 Ada Generation",
+  "python": "3.13.11",
+  "torch": "2.9.1+cu128",
+  "cuda": "12.8",
+  "local_targeted_cpu": {
+    "passed": 24,
+    "skipped": 8
+  },
+  "local_full_cpu": {
+    "source": "a86db78dc4fab6ad35c782d619a46b7bd3bfdcd6",
+    "passed": 2433,
+    "skipped": 2408
+  },
+  "research_unittest": {
+    "total": 234,
+    "passed": 173,
+    "skipped": 61
+  },
+  "gpu_idle_after": true,
+  "diagnosis": [
+    {
+      "ni": 512,
+      "no": 2048,
+      "changed_half_radius_branches": 470,
+      "physical_map_cpu_gpu_exact": true,
+      "maximum_abs_Y_dX_dP": [
+        3.2981720976543727e-07,
+        9.085575887191055e-07,
+        2.86102294921875e-06
+      ],
+      "encoded_reference_passed": true
+    },
+    {
+      "ni": 2048,
+      "no": 512,
+      "changed_half_radius_branches": 470,
+      "physical_map_cpu_gpu_exact": true,
+      "maximum_abs_Y_dX_dP": [
+        5.543482899383889e-07,
+        3.885186870000723e-07,
+        2.86102294921875e-06
+      ],
+      "encoded_reference_passed": true
+    }
+  ],
+  "attempt_status": [
+    {
+      "job": "radius-envelope-6000ada-20261108-01",
+      "status": "failed",
+      "source": "ee9c89556e99b09ed993e3a1a8aff874e3a1ee99"
+    },
+    {
+      "job": "radius-envelope-6000ada-20261108-02",
+      "status": "failed",
+      "source": "ee9c89556e99b09ed993e3a1a8aff874e3a1ee99"
+    },
+    {
+      "job": "radius-envelope-6000ada-20261108-03",
+      "status": "failed",
+      "source": "ee9c89556e99b09ed993e3a1a8aff874e3a1ee99"
+    },
+    {
+      "job": "radius-envelope-6000ada-20261108-04",
+      "status": "passed",
+      "source": "a86db78dc4fab6ad35c782d619a46b7bd3bfdcd6"
+    },
+    {
+      "job": "radius-envelope-6000ada-20261108-05",
+      "status": "passed",
+      "source": "40e120c9f1b7260364f08bf6723185f62bf31ac6"
+    }
+  ],
+  "gpu_host_tests_passed": 40,
+  "actual_cuda_tests_passed": 14,
+  "gpu_host_cpu_metadata_tests": 26
+}

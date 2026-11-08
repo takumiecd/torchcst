@@ -121,4 +121,4 @@ model.selector = FixedSelector(RADIUS_ENVELOPE_LM, registry=registry)
 Registration and selector choice are explicit; this example does not qualify the
 128-square CPU model above for the FFN-only Plan. Graph capture and other GPU
 shapes are unsupported. Metadata-only Plan tests do not establish GPU correctness
-or performance. See the accompanying validation record for what actually ran.
+or performance. See the [validation record](radius-envelope-validation-20261108.md) for what actually ran.

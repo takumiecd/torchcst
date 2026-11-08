@@ -113,4 +113,4 @@ model.selector = FixedSelector(RADIUS_ENVELOPE_LM, registry=registry)
 登録とselectorの指定は明示的に行います。上の128正方CPUモデルがFFN専用Planの
 対象になるわけではありません。Graph captureと他のGPU形状は未対応です。
 メタデータだけのPlanテストではGPUの正しさ・性能は分かりません。
-実際に実施した検証は、対応する検証記録を参照してください。
+実際に実施した検証は、[検証記録](radius-envelope-validation-20261108.ja.md)を参照してください。
