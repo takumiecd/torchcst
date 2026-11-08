@@ -24,3 +24,13 @@ checkpoint復元も確認する。CPU検査をGPU検証として扱わない。
 protocolと結果はcst-researchのstudy `ffn-independent-radius-20261108` に記録する。
 演算子source凍結後にsource/runtime/result hashを残す。公開physical宣言は既存の
 ものであり、この予備比較は公開APIやselectorへの採用を行わない。
+
+その後、Ada比較を演算子 `88c2e8a7c4aa312f4f096c5169d712ace49ac979`、
+consumer `40df1a94349fccb5134413a5659eed69c83f108c` で完了した。
+CPU/CUDA回帰231件、3条件の新規モデル検査、学習後checkpoint監査3件に合格。
+各976更新・999424tokenで、DEV CEはPolar3.42441、物理半径学習3.42438、
+物理半径固定3.42865。38ファイルのcompact archiveを独立にhash照合した。
+SHA256は `dcae47ec745b72c548b35c4cccdf849f6de103d48b018eadba2994263d6b8c3f`。
+[日英の結果・半径と勾配の曲線](https://github.com/takumiecd/cst-research/blob/feat/lm-attention-output/docs/ffn-independent-radius-20261108-results.ja.md)
+を参照。短期1seedの開発実験であり、収束・非劣性・採用は主張しない。
+今回の実装の物理更新時間は、観測されたPolar更新の1.71倍だった。
