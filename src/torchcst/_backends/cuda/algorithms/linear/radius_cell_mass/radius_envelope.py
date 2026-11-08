@@ -6,6 +6,7 @@ stored q rows are never passed to a native physical-radius entrypoint.
 
 from dataclasses import dataclass, replace
 from functools import cache
+from typing import ClassVar
 
 from torchcst._backends.algorithm import Algorithm
 from torchcst._backends.schema import DefaultRecipe, ExecutionPlan, SupportResult
@@ -49,6 +50,7 @@ class RadiusEnvelopeLMAlgorithm(Algorithm[DefaultRecipe]):
     semantics_id: str = "kernel-atom-sum-v1"
     recipe_type: type = DefaultRecipe
     input_type: type = LinearInputs
+    amplitude_limit: ClassVar[float] = 1.0
 
     def validate_recipe(self, recipe):
         if type(recipe) is not DefaultRecipe:
@@ -63,9 +65,15 @@ class RadiusEnvelopeLMAlgorithm(Algorithm[DefaultRecipe]):
             self.validate_recipe(recipe)
             operator = physical_operator(context.operator)
             spec = context.operator.kernel.parameterization
-            if spec.radius_min < 0.5 or spec.radius_max > 50 or spec.amplitude_max > 1:
+            if (
+                spec.radius_min < 0.5
+                or spec.radius_max > 50
+                or spec.amplitude_max > self.amplitude_limit
+            ):
                 return SupportResult(
-                    ("envelope LM requires radius[.5,50], amplitude_max<=1",)
+                    (
+                        f"envelope LM requires radius[.5,50], amplitude_max<={self.amplitude_limit:g}",
+                    )
                 )
         except (ValueError, TypeError) as error:
             return SupportResult((str(error),))
@@ -143,4 +151,17 @@ class RadiusEnvelopeCachedLMAlgorithm(RadiusEnvelopeLMAlgorithm):
 
 RADIUS_ENVELOPE_CACHED_LM = ExecutionPlan(
     RadiusEnvelopeCachedLMAlgorithm().id, "v1", DefaultRecipe()
+)
+
+
+@dataclass(frozen=True)
+class RadiusEnvelopeWideAmplitudeLMAlgorithm(RadiusEnvelopeCachedLMAlgorithm):
+    """Separate opt-in cohort for broad-radius initialization, |a|<=32."""
+
+    id: str = "cuda_radius_envelope_wide_amplitude_lm"
+    amplitude_limit: ClassVar[float] = 32.0
+
+
+RADIUS_ENVELOPE_WIDE_AMPLITUDE_LM = ExecutionPlan(
+    RadiusEnvelopeWideAmplitudeLMAlgorithm().id, "v1", DefaultRecipe()
 )
