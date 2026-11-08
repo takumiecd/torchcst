@@ -26,6 +26,8 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.lm_multirow impo
 )
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.radius_envelope import (
     RADIUS_ENVELOPE_CACHED_LM,
+    RADIUS_ENVELOPE_WIDE_AMPLITUDE_LM,
+    RadiusEnvelopeWideAmplitudeLMAlgorithm,
     RADIUS_ENVELOPE_LM,
     RadiusEnvelopeCachedLMAlgorithm,
     RadiusEnvelopeLMAlgorithm,
@@ -270,9 +272,9 @@ def test_native_admission_is_separate_and_plan_roundtrips(ni, no):
 @pytest.mark.parametrize("ni,no", [(512, 2048), (2048, 512)])
 @pytest.mark.parametrize("rows", [7, 256])
 @pytest.mark.parametrize("radius_max", [4.7, 50.0])
-@pytest.mark.parametrize("cached", [False, True])
+@pytest.mark.parametrize("route", ["reference", "cached", "wide"])
 def test_cuda_complete_envelope_vjp_and_retained_backward(
-    ni, no, rows, radius_max, cached
+    ni, no, rows, radius_max, route
 ):
     torch.manual_seed(434)
     base = make(
@@ -282,9 +284,11 @@ def test_cuda_complete_envelope_vjp_and_retained_backward(
         dtype=torch.float32,
         radius_fraction_init=0.25,
         radius_max=radius_max,
+        amplitude_max=32.0 if route == "wide" else 1.0,
     )
     with torch.no_grad():
-        base.atoms.p[:, 0].uniform_(-0.3, 0.3)
+        limit = 32.0 if route == "wide" else 0.3
+        base.atoms.p[:, 0].uniform_(-limit, limit)
         base.atoms.p[::11, 0] = 0
         base.atoms.p[::3, 1] = 0
         base.atoms.p[1::3, 1] = 1
@@ -318,9 +322,13 @@ def test_cuda_complete_envelope_vjp_and_retained_backward(
     reg = make_algorithm_registry()
     reg.register(RadiusEnvelopeLMAlgorithm())
     reg.register(RadiusEnvelopeCachedLMAlgorithm())
-    gpu.selector = FixedSelector(
-        RADIUS_ENVELOPE_CACHED_LM if cached else RADIUS_ENVELOPE_LM, registry=reg
-    )
+    reg.register(RadiusEnvelopeWideAmplitudeLMAlgorithm())
+    plan = {
+        "reference": RADIUS_ENVELOPE_LM,
+        "cached": RADIUS_ENVELOPE_CACHED_LM,
+        "wide": RADIUS_ENVELOPE_WIDE_AMPLITUDE_LM,
+    }[route]
+    gpu.selector = FixedSelector(plan, registry=reg)
     gx = x.cuda()[:, ::2].requires_grad_()
     gy = gpu(gx)
     gg = torch.autograd.grad(gy, (gx, gpu.atoms.p), dy.cuda(), retain_graph=True)
@@ -407,3 +415,27 @@ def test_prepared_map_values_and_full_vjp_equal_reference(dtype, tau):
         bad[0, col] = value
         with pytest.raises(ValueError):
             prepared_physical_parameters(bad, constants)
+
+
+@pytest.mark.parametrize("cap,supported", [(1.0, True), (32.0, True), (32.01, False)])
+def test_wide_amplitude_route_has_explicit_domain_and_old_route_unchanged(
+    cap, supported
+):
+    m = make(512, 2048, atoms=1, dtype=torch.float32, amplitude_max=cap)
+    c = m.build_context(LinearInputs(torch.zeros(1, 512)))
+    c = replace(c, atom_count=8192, device=DeviceInfo("cuda", 0, "metadata-only"))
+    assert (
+        RadiusEnvelopeWideAmplitudeLMAlgorithm()
+        .supports(c, RADIUS_ENVELOPE_WIDE_AMPLITUDE_LM.recipe)
+        .supported
+        is supported
+    )
+    assert RadiusEnvelopeCachedLMAlgorithm().supports(
+        c, RADIUS_ENVELOPE_CACHED_LM.recipe
+    ).supported is (cap <= 1.0)
+    reg = make_algorithm_registry()
+    reg.register(RadiusEnvelopeWideAmplitudeLMAlgorithm())
+    assert (
+        reg.loads_plan(reg.dumps_plan(RADIUS_ENVELOPE_WIDE_AMPLITUDE_LM))
+        == RADIUS_ENVELOPE_WIDE_AMPLITUDE_LM
+    )
