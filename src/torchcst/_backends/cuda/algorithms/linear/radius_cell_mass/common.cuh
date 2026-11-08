@@ -255,6 +255,7 @@ template<class Calc, class T>
 __device__ inline Calc signal_amplitude(const T *p, int atom, const Axis &a) {
     if constexpr (std::is_same<Calc, double>::value) return amplitude(p, atom, a);
     else {
+        if (!a.polar) return float(p[4 * atom]);
         float s = p[4 * atom], t = p[4 * atom + 1];
         return float(a.amplitude_max) * s / sqrtf(fmaxf(s*s+t*t, FLT_MIN));
     }
@@ -269,6 +270,7 @@ template<class Calc, class T>
 __device__ inline Calc signal_radius(const T *p, int atom, const Axis &a) {
     if constexpr (std::is_same<Calc, double>::value) return radius(p, atom, a);
     else {
+        if (!a.polar) return float(p[4 * atom + 1]);
         float s=p[4*atom], t=p[4*atom+1], amp=signal_amplitude<float>(p,atom,a);
         float alpha=fminf(1, fmaxf(0,(s*s+t*t-1)/3));
         float ratio=amp/float(a.w_c), x=ratio*ratio;
@@ -320,6 +322,10 @@ __device__ inline void signal_store_gradient(const T *p,T *g,int atom,const Axis
     Calc da,Calc dr,Calc dmi,Calc dmo) {
     if constexpr (std::is_same<Calc,double>::value) store_gradient(p,g,atom,a,da,dr,dmi,dmo);
     else {
+        if (!a.polar) {
+            g[4*atom]=da;g[4*atom+1]=dr;g[4*atom+2]=dmo;g[4*atom+3]=dmi;
+            return;
+        }
         float s=p[4*atom],t=p[4*atom+1],q=s*s+t*t,safe=fmaxf(q,FLT_MIN),inverse=1/sqrtf(safe);
         float ds=float(a.amplitude_max)*inverse*(q>=FLT_MIN ? 1-s*s/safe : 1);
         float dt=q>=FLT_MIN ? -float(a.amplitude_max)*inverse*s*t/safe : 0;
