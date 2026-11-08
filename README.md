@@ -102,8 +102,8 @@ initialize before moving it to CUDA or creating its optimizer:
 ```python
 from torchcst import init as cst_init
 
-report = cst_init.kaiming_normal_(layer, nonlinearity="relu", q=0.0)
-# Or: cst_init.xavier_normal_(layer, gain=1.0, q=0.25)
+report = cst_init.kaiming_normal_(layer, nonlinearity="relu", radius_fraction=0.0)
+# Or: cst_init.xavier_normal_(layer, gain=1.0, radius_fraction=0.25)
 ```
 
 `q` selects the initial logarithmic position between amplitude-dependent radius
@@ -281,6 +281,14 @@ L2 uses stable log normalization without a floor.
 
 See the [kernel reference](src/torchcst/kernels/README.md) for coordinate laws,
 normalization and composition details.
+
+## Learned radius inside an amplitude envelope
+
+`kernels.radius_envelope(radius_min=0.5, radius_max=50.0, tau=0.03, radius_fraction_init=0.0)`
+keeps U at the maximum and raises L toward it near zero amplitude. Each Atom
+learns its own q with the full radius chain rule. `radius_fraction` is a separate
+optimizer field. This revision8 opt-in preserves existing Polar behavior.
+See [equations, CPU example, initialization and explicit CUDA scope](docs/radius-envelope.md).
 
 ## Charts and weight axes
 

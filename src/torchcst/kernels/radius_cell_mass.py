@@ -5,7 +5,11 @@ from dataclasses import dataclass
 from torchcst.charts.regular_grid import RegularGridChartSpec
 from torchcst.geometry.spec import FlatTorusGeometrySpec
 
-from .parameterizations import PhysicalAmpRadiusSpec, PolarAmpRadiusSpec
+from .parameterizations import (
+    PhysicalAmpRadiusSpec,
+    PolarAmpRadiusSpec,
+    RadiusEnvelopeSpec,
+)
 from .spec import RadiusIntegratedProfileBinding
 
 
@@ -26,12 +30,15 @@ def radius_cell_mass_axes(charts, kernel):
     """Validate declarations without importing Torch or creating buffers."""
     if (
         len(charts) != 2
-        or kernel.revision != 7
+        or kernel.revision
+        != (8 if type(kernel.parameterization) is RadiusEnvelopeSpec else 7)
         or kernel.composition != "separable"
         or type(kernel.parameterization)
-        not in (PhysicalAmpRadiusSpec, PolarAmpRadiusSpec)
+        not in (PhysicalAmpRadiusSpec, PolarAmpRadiusSpec, RadiusEnvelopeSpec)
     ):
-        raise ValueError("radius cell masses require revision7 radius coordinates")
+        raise ValueError(
+            "radius cell masses require the matching radius coordinate revision"
+        )
     axes = []
     for chart, binding in zip(charts, kernel.profiles):
         if (
@@ -57,7 +64,10 @@ def radius_cell_mass_axes(charts, kernel):
         if chart.geometry.periods != (axis.period,):
             raise ValueError("chart period must equal site_count * spacing")
         axes.append(axis)
-    if type(kernel.parameterization) is PolarAmpRadiusSpec:
+    if type(kernel.parameterization) is RadiusEnvelopeSpec:
+        if any(kernel.parameterization.radius_max > axis.period / 2 for axis in axes):
+            raise ValueError("radius bounds must fit each chart half-period")
+    elif type(kernel.parameterization) is PolarAmpRadiusSpec:
         for axis, bounds in zip(
             axes,
             (

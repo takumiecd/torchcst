@@ -22,7 +22,7 @@ report = cst_init.kaiming_normal_(
     layer,
     mode="fan_in",
     nonlinearity="relu",
-    q=0.0,
+    radius_fraction=0.0,
     generator=torch.Generator().manual_seed(17),
 )
 print(report.relative_error, report.clipped_atoms, report.atom_count)
@@ -33,9 +33,9 @@ layer = layer.cuda()
 Alternative presets and the extension point:
 
 ```python
-report = cst_init.xavier_normal_(layer, gain=1.0, q=0.25)
+report = cst_init.xavier_normal_(layer, gain=1.0, radius_fraction=0.25)
 # Example target for a new preset: Dense weights of standard deviation 0.02.
-report = cst_init.variance_scaling_(layer, variance=0.02**2, q=0.0)
+report = cst_init.variance_scaling_(layer, variance=0.02**2, radius_fraction=0.0)
 ```
 
 These alternatives must also be called while the layer is on the CPU, before

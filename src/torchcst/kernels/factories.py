@@ -27,6 +27,7 @@ from .parameterizations import (
     PolarAmpRadiusSpec,
     PolarAmpWidthSpec,
     RadiusBounds,
+    RadiusEnvelopeSpec,
 )
 from .profiles import (
     GaussianSpec,
@@ -113,7 +114,11 @@ def _compose(composition, profiles, coordinates):
         parameterization=coordinates.parameterization,
         initialization=coordinates.initialization,
         update=coordinates.update,
-        revision=7 if radius else 1,
+        revision=8
+        if type(coordinates.parameterization) is RadiusEnvelopeSpec
+        else 7
+        if radius
+        else 1,
     )
 
 
@@ -186,6 +191,48 @@ def amplitude_width(
         ),
         initialization=StatePolicySpec(id="signed_amplitude_centers"),
         update=StatePolicySpec(id="amplitude_and_geometry"),
+    )
+
+
+def radius_envelope(
+    *,
+    radius_min=0.5,
+    radius_max=50.0,
+    tau=0.03,
+    radius_fraction_init=0.0,
+    amplitude_max=1.0,
+    amplitude_std=0.1,
+) -> CoordinateSpec:
+    """Learn [a, q, centers] inside an amplitude-dependent physical-radius envelope.
+
+    U=radius_max, L=radius_min+(U-radius_min)*exp(-(a/tau)**2),
+    r=L**(1-q)*U**q. q is an ordinary task-loss coordinate, not an activity
+    clock. Use CSTAdamW/CSTOptimizer to project a/q proposals to their bounds.
+    """
+    if (
+        type(radius_fraction_init) not in (float, int)
+        or not math.isfinite(radius_fraction_init)
+        or not 0 <= radius_fraction_init <= 1
+    ):
+        raise ValueError("radius_fraction_init must be a finite fraction in [0,1]")
+    if (
+        type(amplitude_std) not in (float, int)
+        or not math.isfinite(amplitude_std)
+        or amplitude_std < 0
+    ):
+        raise ValueError("amplitude_std must be finite and nonnegative")
+    return CoordinateSpec(
+        parameterization=RadiusEnvelopeSpec(
+            radius_min=radius_min,
+            radius_max=radius_max,
+            tau=tau,
+            amplitude_max=amplitude_max,
+        ),
+        initialization=StatePolicySpec(
+            id="radius_envelope_centers",
+            settings=(("radius_fraction_init", radius_fraction_init), ("amplitude_std", amplitude_std)),
+        ),
+        update=StatePolicySpec(id="radius_envelope"),
     )
 
 
@@ -276,12 +323,12 @@ def _activity(
         lower_kappa=kappa if lower_kappa is None else lower_kappa,
         upper_decay_power=upper_decay_power,
         **(
-            dict(
-                radius_envelope=radius_envelope,
-                closed_lower_power=closed_lower_power,
-                closed_upper_power=closed_upper_power,
-                zero_opening_scale=zero_opening_scale,
-            )
+            {
+                "radius_envelope": radius_envelope,
+                "closed_lower_power": closed_lower_power,
+                "closed_upper_power": closed_upper_power,
+                "zero_opening_scale": zero_opening_scale,
+            }
             if coordinate == "polar_radius"
             else {}
         ),

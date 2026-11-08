@@ -20,7 +20,7 @@ report = cst_init.kaiming_normal_(
     layer,
     mode="fan_in",
     nonlinearity="relu",
-    q=0.0,
+    radius_fraction=0.0,
     generator=torch.Generator().manual_seed(17),
 )
 print(report.relative_error, report.clipped_atoms, report.atom_count)
@@ -31,9 +31,9 @@ layer = layer.cuda()
 別のpresetと拡張用の共通入口は次のとおりです。
 
 ```python
-report = cst_init.xavier_normal_(layer, gain=1.0, q=0.25)
+report = cst_init.xavier_normal_(layer, gain=1.0, radius_fraction=0.25)
 # 新presetの例：Dense重みの標準偏差0.02に対応する目標。
-report = cst_init.variance_scaling_(layer, variance=0.02**2, q=0.0)
+report = cst_init.variance_scaling_(layer, variance=0.02**2, radius_fraction=0.0)
 ```
 
 これらの呼び出しもCPU上・optimizer作成前に行います。毎回新たに初期化します。

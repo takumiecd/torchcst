@@ -8,7 +8,7 @@ from torch import nn
 from torchcst._builtin_callbacks import seal_functions as _seal_functions
 
 from .options import KernelOptions
-from .parameterizations import FixedWidthSpec, LogWidthSpec
+from .parameterizations import FixedWidthSpec, LogWidthSpec, RadiusEnvelopeSpec
 from .parameterizations.activity_width import ActivityWidthSpec
 from .spec import (
     KernelSpec,
@@ -118,18 +118,18 @@ class KernelState(nn.Module):
                     float(value),
                     dtype=(
                         torch.float64
-                        if type(parameterization) is LogWidthSpec
+                        if type(parameterization) in (LogWidthSpec, RadiusEnvelopeSpec)
                         else None
                     ),
                 ),
             )
 
     def _apply(self, fn, recurse=True):
-        # Log-width endpoints must survive float()/double() without quantizing
+        # Log-width/envelope constants must survive float()/double() without quantizing
         # the declared bounds; evaluation casts them to the parameter dtype.
         preserved = (
             {name: value.detach().clone() for name, value in self._buffers.items()}
-            if type(self.spec.parameterization) is LogWidthSpec
+            if type(self.spec.parameterization) in (LogWidthSpec, RadiusEnvelopeSpec)
             else {}
         )
         result = super()._apply(fn, recurse=recurse)

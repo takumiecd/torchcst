@@ -8,7 +8,7 @@ import math
 
 import torch
 
-from torchcst.kernels.parameterizations import PhysicalAmpRadiusSpec
+from torchcst.kernels.parameterizations import PhysicalAmpRadiusSpec, RadiusEnvelopeSpec
 from torchcst.kernels.radius_cell_mass import radius_cell_mass_axes
 
 from ..profiles.radius_fourier import integrated_cells
@@ -131,6 +131,19 @@ def initialize(state, output_chart, input_chart, atoms, *, mode):
     )
     if atoms == 0:
         return torch.empty((0, 4), device=output_chart.device, dtype=output_chart.dtype)
+    if type(state.spec.parameterization) is RadiusEnvelopeSpec:
+        p = torch.empty(
+            (atoms, 4), device=output_chart.device, dtype=output_chart.dtype
+        )
+        p[:, 0].normal_(0, float(state.scalar("amplitude_std")))
+        cap = state.scalar("amplitude_max").to(p)
+        if cap.double() > state.scalar("amplitude_max"):
+            cap = torch.nextafter(cap, torch.zeros_like(cap))
+        p[:, 0].clamp_(-cap, cap)
+        p[:, 1].fill_(float(state.scalar("radius_fraction_init")))
+        p[:, 2].uniform_(axes[0].origin, axes[0].origin + axes[0].period)
+        p[:, 3].uniform_(axes[1].origin, axes[1].origin + axes[1].period)
+        return p
     if type(state.spec.parameterization) is not PhysicalAmpRadiusSpec:
         from .polar_amp_width import initialize as initialize_polar
 
@@ -226,7 +239,8 @@ def factors(state, output_chart, input_chart, p):
         from ..parameterizations.radius_cell_mass import decoded_values
 
         amplitude, input_radius, output_radius = decoded_values(state, p)
-        input_radius, output_radius = input_radius.detach(), output_radius.detach()
+        if type(state.spec.parameterization) is not RadiusEnvelopeSpec:
+            input_radius, output_radius = input_radius.detach(), output_radius.detach()
     output_center, input_center = p[:, 2], p[:, 3]
     output_mass = axis_masses(axes[0], output_radius, output_center)
     input_mass = axis_masses(axes[1], input_radius, input_center)

@@ -9,8 +9,8 @@ import torch
 
 from torchcst import (
     BandwidthBounds,
-    CSTLinear,
     ChebyshevSpec,
+    CSTLinear,
     GaussianSpec,
     RadiusBounds,
     chart_presets,
@@ -46,7 +46,7 @@ def test_logical_rectangular_dense_target_and_actual_atom_energy(scheme, expecte
     m = layer()
     p = m.atoms.p
     before = p.detach().clone()
-    kwargs = dict(q=0.0, generator=torch.Generator().manual_seed(87))
+    kwargs = {"radius_fraction": 0.0, "generator": torch.Generator().manual_seed(87)}
     if scheme.startswith("he"):
         report = init.kaiming_normal_(
             m,
@@ -74,10 +74,10 @@ def test_q_encoding_repeatability_and_exact_center_preservation(q, dtype):
     other = copy.deepcopy(m)
     centers = m.atoms.p[:, 2:].detach().clone()
     report = init.variance_scaling_(
-        m, 0.0001, q=q, generator=torch.Generator().manual_seed(91)
+        m, 0.0001, radius_fraction=q, generator=torch.Generator().manual_seed(91)
     )
     again = init.variance_scaling_(
-        other, 0.0001, q=q, generator=torch.Generator().manual_seed(91)
+        other, 0.0001, radius_fraction=q, generator=torch.Generator().manual_seed(91)
     )
     assert torch.equal(m.atoms.p, other.atoms.p) and report == again
     assert torch.equal(m.atoms.p[:, 2:], centers)
@@ -130,7 +130,7 @@ def test_invalid_or_unreached_target_leaves_complete_state_unchanged(variance, q
     m = layer(atoms=3)
     before = copy.deepcopy(m.state_dict())
     with pytest.raises(ValueError):
-        init.variance_scaling_(m, variance, q=q)
+        init.variance_scaling_(m, variance, radius_fraction=q)
     for n, p in m.state_dict().items():
         if isinstance(p, torch.Tensor):
             assert torch.equal(p, before[n])
@@ -172,9 +172,11 @@ def test_initialized_public_parameters_native_rectangular_full_vjp(scheme, q):
     model = layer(dtype=torch.float32)
     generator = torch.Generator().manual_seed(71)
     if scheme == "he":
-        init.kaiming_normal_(model, nonlinearity="relu", q=q, generator=generator)
+        init.kaiming_normal_(
+            model, nonlinearity="relu", radius_fraction=q, generator=generator
+        )
     else:
-        init.xavier_normal_(model, q=q, generator=generator)
+        init.xavier_normal_(model, radius_fraction=q, generator=generator)
     reference = copy.deepcopy(model).double()
     x = torch.randn(4, 16, generator=torch.Generator().manual_seed(81))
     dy = torch.randn(4, 32, generator=torch.Generator().manual_seed(82))

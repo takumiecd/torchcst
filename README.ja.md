@@ -99,8 +99,8 @@ optimizerを作成したりする前に、明示的に初期化できます。
 ```python
 from torchcst import init as cst_init
 
-report = cst_init.kaiming_normal_(layer, nonlinearity="relu", q=0.0)
-# または cst_init.xavier_normal_(layer, gain=1.0, q=0.25)
+report = cst_init.kaiming_normal_(layer, nonlinearity="relu", radius_fraction=0.0)
+# または cst_init.xavier_normal_(layer, gain=1.0, radius_fraction=0.25)
 ```
 
 `q`は振幅依存の半径上下限の間で初期の対数的な位置を選びます。
@@ -270,6 +270,14 @@ Gaussian L2 は下限を設けず、安定な対数正規化を使う。
   完全な例、階層の数式、CUDA Plan は[半径セル質量ガイド](docs/radius-cell-mass.ja.md)を参照する。
 
 座標則・正規化・結合の詳細は [Kernel reference](src/torchcst/kernels/README.md)を参照する。
+
+## 振幅に依存する範囲内で半径を学習する
+
+`kernels.radius_envelope(radius_min=0.5, radius_max=50.0, tau=0.03, radius_fraction_init=0.0)`
+はUを最大半径に保ち、振幅0付近でLをUへ上げます。各Atomのqを、半径の完全な
+連鎖律で学習します。optimizerの独立フィールドは`radius_fraction`です。
+revision8の明示的な追加方式で、従来Polarの挙動は維持します。
+[数式・CPU例・初期化と明示的なCUDA対応範囲](docs/radius-envelope.ja.md)を参照してください。
 
 ## Chart と重みの軸
 
