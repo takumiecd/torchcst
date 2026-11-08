@@ -29,13 +29,18 @@ void packed_check_scope(Tensor x, Tensor p, Config ci, Config co) {
         "packed rows require the distinct row8 build");
     bool ffn = p.size(0) == 4096 &&
         ((ai.sites == 256 && ao.sites == 1024) || (ai.sites == 1024 && ao.sites == 256));
+    bool lm = ai.origin == 0 && ao.origin == 0 && (
+        (ai.sites == ao.sites && (ai.sites == 256 || ai.sites == 512) &&
+         p.size(0) == 8 * ai.sites) ||
+        (((ai.sites == 512 && ao.sites == 2048) ||
+          (ai.sites == 2048 && ao.sites == 512)) && p.size(0) == 8192));
     bool large = ai.sites == ao.sites &&
         (ai.sites == 2048 || ai.sites == 8192 || ai.sites == 16384) &&
         p.size(0) >= 4 && p.size(0) <= 8 * ai.sites && ai.origin == 0 && ao.origin == 0;
     TORCH_CHECK(x.device() == p.device() && x.size(1) == ai.sites &&
         x.scalar_type() == torch::kFloat && p.scalar_type() == torch::kFloat &&
-        x.size(0) >= 1 && x.size(0) <= 256 && (ffn || large),
-        "packed pilot requires admitted FP32 FFN or square large-multirow cohort");
+        x.size(0) >= 1 && x.size(0) <= 256 && (ffn || lm || large),
+        "packed pilot requires admitted FP32 FFN, LM or square large-multirow cohort");
     for (auto a : {ai, ao}) TORCH_CHECK(a.polar && a.modes == 8 &&
         a.base_tile_sites == 1 && a.merge_factor == 2 && a.spacing == 1 &&
         a.amplitude_max <= 1 && a.radius_min >= .5 && a.radius_max <= 50,
