@@ -100,3 +100,47 @@ class RadiusEnvelopeLMAlgorithm(Algorithm[DefaultRecipe]):
 RADIUS_ENVELOPE_LM = ExecutionPlan(
     RadiusEnvelopeLMAlgorithm().id, "v1", DefaultRecipe()
 )
+
+
+@dataclass(frozen=True)
+class RadiusEnvelopeCachedLMAlgorithm(RadiusEnvelopeLMAlgorithm):
+    """Explicit candidate caching only immutable map/physical declarations."""
+
+    id: str = "cuda_radius_envelope_cached_lm"
+
+    def prepare(self, state):
+        from torchcst._backends.torch.parameterizations.radius_envelope import (
+            prepare_constants,
+        )
+
+        state.invalidate()
+        parameters = state.binding.atom_state.atoms.p
+        operator = state.context.operator
+        spec = operator.kernel.parameterization
+        state.buffers["constants"] = prepare_constants(
+            parameters,
+            **{
+                name: getattr(spec, name)
+                for name in ("radius_min", "radius_max", "tau", "amplitude_max")
+            },
+        )
+        state.layout = physical_operator(operator)
+        state.mark_current()
+
+    def execute(self, state, inputs):
+        from torchcst._backends.torch.parameterizations.radius_envelope import (
+            prepared_physical_parameters,
+        )
+        from torchcst.operators.execution import LinearBinding
+
+        from .lm_multirow import LM_PHYSICAL_LEVELS
+
+        _, parameters, _, _ = linear_execution(state, inputs)
+        physical = prepared_physical_parameters(parameters, state.buffers["constants"])
+        binding = LinearBinding(state.layout, physical)
+        return _physical_dispatcher().run(binding, inputs, plan=LM_PHYSICAL_LEVELS)
+
+
+RADIUS_ENVELOPE_CACHED_LM = ExecutionPlan(
+    RadiusEnvelopeCachedLMAlgorithm().id, "v1", DefaultRecipe()
+)

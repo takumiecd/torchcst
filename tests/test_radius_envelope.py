@@ -25,13 +25,17 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.lm_multirow impo
     RadiusLMPhysicalLevelsAlgorithm,
 )
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.radius_envelope import (
+    RADIUS_ENVELOPE_CACHED_LM,
     RADIUS_ENVELOPE_LM,
+    RadiusEnvelopeCachedLMAlgorithm,
     RadiusEnvelopeLMAlgorithm,
 )
 from torchcst._backends.schema import DeviceInfo
 from torchcst._backends.torch.parameterizations.radius_envelope import (
     from_state,
     physical_parameters,
+    prepare_constants,
+    prepared_physical_parameters,
 )
 from torchcst.kernels.radius_cell_mass import radius_cell_mass_axes
 from torchcst.operators.execution import LinearInputs
@@ -266,7 +270,10 @@ def test_native_admission_is_separate_and_plan_roundtrips(ni, no):
 @pytest.mark.parametrize("ni,no", [(512, 2048), (2048, 512)])
 @pytest.mark.parametrize("rows", [7, 256])
 @pytest.mark.parametrize("radius_max", [4.7, 50.0])
-def test_cuda_complete_envelope_vjp_and_retained_backward(ni, no, rows, radius_max):
+@pytest.mark.parametrize("cached", [False, True])
+def test_cuda_complete_envelope_vjp_and_retained_backward(
+    ni, no, rows, radius_max, cached
+):
     torch.manual_seed(434)
     base = make(
         ni,
@@ -310,7 +317,10 @@ def test_cuda_complete_envelope_vjp_and_retained_backward(ni, no, rows, radius_m
     )
     reg = make_algorithm_registry()
     reg.register(RadiusEnvelopeLMAlgorithm())
-    gpu.selector = FixedSelector(RADIUS_ENVELOPE_LM, registry=reg)
+    reg.register(RadiusEnvelopeCachedLMAlgorithm())
+    gpu.selector = FixedSelector(
+        RADIUS_ENVELOPE_CACHED_LM if cached else RADIUS_ENVELOPE_LM, registry=reg
+    )
     gx = x.cuda()[:, ::2].requires_grad_()
     gy = gpu(gx)
     gg = torch.autograd.grad(gy, (gx, gpu.atoms.p), dy.cuda(), retain_graph=True)
@@ -364,3 +374,36 @@ def test_old_q_initializer_keyword_is_rejected():
     report = init.xavier_normal_(m, radius_fraction=0.25)
     assert report.radius_fraction == 0.25
     assert "q" not in asdict(report)
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("tau", [1e-300, 0.003, 0.03, 0.3])
+def test_prepared_map_values_and_full_vjp_equal_reference(dtype, tau):
+    settings = dict(radius_min=0.50001, radius_max=2.96, tau=tau, amplitude_max=1.0)
+    p = torch.tensor(
+        [[0.0, 0.0, 2.0, 3.0], [0.01, 0.25, 4.0, 5.0], [-0.3, 1.0, 6.0, 7.0]],
+        dtype=dtype,
+        requires_grad=True,
+    )
+    constants = prepare_constants(p, **settings)
+    expected = physical_parameters(p, **settings)
+    actual = prepared_physical_parameters(p, constants)
+    torch.testing.assert_close(actual, expected, atol=0, rtol=0)
+    for result in (expected, actual):
+        grad = torch.autograd.grad(result.square().sum(), p, retain_graph=True)[0]
+        if result is expected:
+            expected_grad = grad
+        else:
+            torch.testing.assert_close(grad, expected_grad, atol=0, rtol=0)
+    assert all(not t.requires_grad for t in constants)
+    for col, value in [
+        (0, float("nan")),
+        (1, -0.01),
+        (1, 1.01),
+        (0, 1.01),
+        (3, float("inf")),
+    ]:
+        bad = p.detach().clone()
+        bad[0, col] = value
+        with pytest.raises(ValueError):
+            prepared_physical_parameters(bad, constants)

@@ -29,6 +29,8 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.lm_multirow impo
 )
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.radius_envelope import (
     RADIUS_ENVELOPE_LM,
+    RADIUS_ENVELOPE_CACHED_LM,
+    RadiusEnvelopeCachedLMAlgorithm,
     RadiusEnvelopeLMAlgorithm,
 )
 from torchcst._backends.torch.parameterizations.radius_envelope import from_state
@@ -42,7 +44,14 @@ def main():
     p = argparse.ArgumentParser(__doc__)
     p.add_argument(
         "--arm",
-        choices=["dense", "physical", "envelope", "envelope_cst"],
+        choices=[
+            "dense",
+            "physical",
+            "envelope",
+            "envelope_cst",
+            "cached",
+            "cached_cst",
+        ],
         required=True,
     )
     p.add_argument("--ni", type=int, required=True)
@@ -105,9 +114,14 @@ def main():
     registry = make_algorithm_registry()
     registry.register(RadiusLMPhysicalLevelsAlgorithm())
     registry.register(RadiusEnvelopeLMAlgorithm())
+    registry.register(RadiusEnvelopeCachedLMAlgorithm())
     if args.arm != "dense":
         model.selector = FixedSelector(
-            LM_PHYSICAL_LEVELS if args.arm == "physical" else RADIUS_ENVELOPE_LM,
+            LM_PHYSICAL_LEVELS
+            if args.arm == "physical"
+            else RADIUS_ENVELOPE_CACHED_LM
+            if args.arm.startswith("cached")
+            else RADIUS_ENVELOPE_LM,
             registry=registry,
         )
     model = model.cuda()
@@ -115,7 +129,7 @@ def main():
     target = target_cpu.cuda()
     # Core controls use LR0; the public CST policy uses a positive sub-ULP LR
     # to execute projection/transport while preserving the physical workload.
-    rate = 1e-20 if args.arm == "envelope_cst" else 0.0
+    rate = 1e-20 if args.arm.endswith("_cst") else 0.0
     opt = (
         CSTAdamW(
             model.parameters(),
@@ -125,7 +139,7 @@ def main():
             foreach=False,
             field_lrs={"radius_fraction": rate},
         )
-        if args.arm == "envelope_cst"
+        if args.arm.endswith("_cst")
         else torch.optim.AdamW(
             model.parameters(), lr=rate, weight_decay=0, foreach=False
         )
