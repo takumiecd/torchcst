@@ -35,3 +35,28 @@ belongs here; task/qualification/configuration belongs in cst-research. Source,
 inputs, protocol, binary and result hashes and original evidence are preserved.
 Vocabulary embedding/output and learned position embedding remain later staged
 work requiring direct lookup, exact sharing and dedicated operator qualification.
+
+## Pretraining failure and signed-center correction
+
+Attempt02 (numeric b14db87d, consumer d0cd30b) stopped after32 passing tests
+and one failure at512→2048/A8192/R65, before any qualification or training.
+The existing atol3e-5/rtol3e-4 all-Atom gradient gate rejected two entries,
+maximum failed difference2.3877e-4. Independent FP64 per-Atom VJPs agree with
+the old native route (max4.90e-7 over six selected boundary/interior Atoms).
+FP32 levels/stream64 differ by up to1.73e-3 in that subset.
+
+The input center−.3747405708 became511.6252746582 when a positive periodic
+representative was stored in FP32, losing1.5229e-5 in position. Reproducing
+that rounding in the independent CPU oracle explains the observed gradient
+difference; remaining subset errors are≤5.1e-6. Keep signed fmod representatives
+in FP32 instead of adding the large chart period. Classification and all local
+phases then use the same signed center/first tile; positive_mod still maps owners
+and sites to the correct torus cells. No response/geometry buffer changes toFP64
+and no tolerance changes. Original failed source/logs and diagnostic tensors
+are retained in attention-output-20261108-02; a fresh03 attempt is required.
+
+This changes the FP32 periodic reduction in common.cuh, including older FP32
+routes; their original source-scoped evidence is not rewritten. Before learning,
+repeat the existing187 multirow regressions plus36 new LM cases on4090, then
+the complete prospective LM qualifications. New-source performance is scoped
+to the new measurements, not assumed from the prior wide-Linear table.

@@ -297,7 +297,11 @@ __device__ inline Calc signal_wrapped(Calc mu, const Axis &a) {
     else {
         float period=float(a.period);
         float v=fmodf(fmodf(mu,period)-fmodf(float(a.origin),period),period);
-        return v<0 ? v+period : v;
+        // Keep a signed representative. Adding a large period to a small
+        // negative FP32 center discards fractional-cell bits; classification
+        // and Fourier phases need only a consistent periodic representative.
+        // first_tile may be negative: all owner addressing uses positive_mod.
+        return v;
     }
 }
 template<class Calc>
