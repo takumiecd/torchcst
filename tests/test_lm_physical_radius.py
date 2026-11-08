@@ -20,9 +20,6 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.lm_multirow impo
     RadiusLMLevelsAlgorithm,
     RadiusLMPhysicalLevelsAlgorithm,
 )
-from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plans import (
-    GLOBAL_ACTIVE_GRAD4_NATIVE_RECTANGULAR_2048,
-)
 from torchcst._backends.schema import DeviceInfo
 from torchcst.operators.execution import LinearInputs
 
@@ -95,9 +92,10 @@ def test_full_physical_radius_vjp_and_retained_backward(ni, no, rows):
     raw = torch.randn(rows, ni * 2, device="cuda")
     dy = torch.randn(rows, no, device="cuda")
     results = []
-    for plan in [GLOBAL_ACTIVE_GRAD4_NATIVE_RECTANGULAR_2048, LM_PHYSICAL_LEVELS]:
+    for plan in [None, LM_PHYSICAL_LEVELS]:
         layer = copy.deepcopy(base).cuda()
-        layer.selector = FixedSelector(plan, registry=registry)
+        if plan is not None:
+            layer.selector = FixedSelector(plan, registry=registry)
         x = raw[:, ::2].detach().requires_grad_()
         y = layer(x)
         gradients = torch.autograd.grad(y, (x, layer.atoms.p), dy, retain_graph=True)
