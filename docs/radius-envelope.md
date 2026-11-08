@@ -90,6 +90,12 @@ reference envelope map uses FP64 arithmetic/autograd intermediates, then casts
 the physical row to the Atom dtype. Encoded radii are bounded inward when an
 endpoint is not representable. This map is not an all-FP32 performance kernel.
 
+Precision matters at hierarchy boundaries: a FP32 radius of exactly0.5 can
+become0.5+epsilon when a latent model is converted to double, selecting a
+different local period. CUDA comparisons therefore keep the FP32 encoded
+physical row and accumulate the physical reference in FP64. Merely calling
+model.double() is not a matched reference at those boundaries.
+
 ## Explicit CUDA FFN composition
 
 The initial GPU route composes the differentiable map with the existing physical

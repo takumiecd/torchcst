@@ -30,6 +30,7 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.radius_envelope 
 )
 from torchcst._backends.schema import DeviceInfo
 from torchcst._backends.torch.parameterizations.radius_envelope import (
+    from_state,
     physical_parameters,
 )
 from torchcst.kernels.radius_cell_mass import radius_cell_mass_axes
@@ -262,7 +263,8 @@ def test_native_admission_is_separate_and_plan_roundtrips(ni, no):
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="actual CUDA required")
 @pytest.mark.parametrize("ni,no", [(512, 2048), (2048, 512)])
-def test_cuda_complete_envelope_vjp_and_retained_backward(ni, no):
+@pytest.mark.parametrize("rows", [7, 256])
+def test_cuda_complete_envelope_vjp_and_retained_backward(ni, no, rows):
     torch.manual_seed(434)
     base = make(ni, no, atoms=8192, dtype=torch.float32, q_init=0.25)
     with torch.no_grad():
@@ -270,13 +272,31 @@ def test_cuda_complete_envelope_vjp_and_retained_backward(ni, no):
         base.atoms.p[::11, 0] = 0
         base.atoms.p[::3, 1] = 0
         base.atoms.p[1::3, 1] = 1
-    x = torch.randn(7, ni * 2)
-    dy = torch.randn(7, no)
-    cpu = copy.deepcopy(base).double()
+    x = torch.randn(rows, ni * 2)
+    dy = torch.randn(rows, no)
+    # Keep FP32 physical-row encoding. A double latent model can turn .5
+    # into .5+epsilon and choose a different ceil/window branch. Accumulate
+    # the physical reference in FP64, preserving the full map's VJP.
+    physical = from_state(base.kernel, base.atoms.p)
+    operator = base.execution_declaration()
+    reference = CSTLinear(
+        *operator.charts,
+        atoms=1,
+        dtype=torch.float64,
+        backend="factored",
+        kernel=kernels.product(
+            *operator.kernel.profiles,
+            coordinates=kernels.physical(radius_init=(0.5, 4.7), radius_floor=0.5),
+        ),
+    )
+    vi, uo = reference.operator.factors(physical.double())
     cx = x.double()[:, ::2].requires_grad_()
-    cy = cpu(cx)
-    cg = torch.autograd.grad(cy, (cx, cpu.atoms.p), dy.double())
-    gpu = base.cuda()
+    cy = (cx @ vi) @ uo.T
+    cg = torch.autograd.grad(cy, (cx, base.atoms.p), dy.double())
+    gpu = copy.deepcopy(base).cuda()
+    torch.testing.assert_close(
+        from_state(gpu.kernel, gpu.atoms.p).cpu(), physical.detach(), atol=0, rtol=0
+    )
     reg = make_algorithm_registry()
     reg.register(RadiusEnvelopeLMAlgorithm())
     gpu.selector = FixedSelector(RADIUS_ENVELOPE_LM, registry=reg)
@@ -286,7 +306,7 @@ def test_cuda_complete_envelope_vjp_and_retained_backward(ni, no):
     again = torch.autograd.grad(gy, (gx, gpu.atoms.p), dy.cuda())
     for actual, expected in zip((gy, *gg), (cy, *cg)):
         torch.testing.assert_close(
-            actual.cpu().double(), expected, atol=1e-4, rtol=4e-3
+            actual.cpu().double(), expected.double(), atol=1e-4, rtol=4e-3
         )
     for a, b in zip(gg, again):
         torch.testing.assert_close(a, b, atol=0, rtol=0)
@@ -314,3 +334,9 @@ def test_cuda_complete_envelope_vjp_and_retained_backward(ni, no):
             torch.testing.assert_close(
                 value, restored_opt.state[restored.atoms.p][key], atol=0, rtol=0
             )
+
+
+def test_encoded_radius_branch_is_not_invariant_under_double_conversion():
+    p = torch.tensor([[0.15, 0.0, 2.3, 3.7]], dtype=torch.float32)
+    assert values(p)[0, 1].item() == 0.5
+    assert values(p.double())[0, 1].item() > 0.5
