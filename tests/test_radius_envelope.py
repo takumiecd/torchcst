@@ -37,7 +37,7 @@ from torchcst.kernels.radius_cell_mass import radius_cell_mass_axes
 from torchcst.operators.execution import LinearInputs
 
 
-def make(ni=16, no=32, atoms=2, dtype=torch.float64, **kwargs):
+def make(ni=16, no=32, atoms=2, dtype=torch.float64, radius_max=4.7, **kwargs):
     return CSTLinear(
         chart_presets.regular_grid(no, spacing=1.0, geometry="flat_torus"),
         chart_presets.regular_grid(ni, spacing=1.0, geometry="flat_torus"),
@@ -46,7 +46,7 @@ def make(ni=16, no=32, atoms=2, dtype=torch.float64, **kwargs):
         backend="factored",
         kernel=kernels.product(
             kernels.cell_mass(ChebyshevSpec(modes=8)),
-            coordinates=kernels.radius_envelope(radius_max=4.7, **kwargs),
+            coordinates=kernels.radius_envelope(radius_max=radius_max, **kwargs),
         ),
     )
 
@@ -264,9 +264,12 @@ def test_native_admission_is_separate_and_plan_roundtrips(ni, no):
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="actual CUDA required")
 @pytest.mark.parametrize("ni,no", [(512, 2048), (2048, 512)])
 @pytest.mark.parametrize("rows", [7, 256])
-def test_cuda_complete_envelope_vjp_and_retained_backward(ni, no, rows):
+@pytest.mark.parametrize("radius_max", [4.7, 50.0])
+def test_cuda_complete_envelope_vjp_and_retained_backward(ni, no, rows, radius_max):
     torch.manual_seed(434)
-    base = make(ni, no, atoms=8192, dtype=torch.float32, q_init=0.25)
+    base = make(
+        ni, no, atoms=8192, dtype=torch.float32, q_init=0.25, radius_max=radius_max
+    )
     with torch.no_grad():
         base.atoms.p[:, 0].uniform_(-0.3, 0.3)
         base.atoms.p[::11, 0] = 0
@@ -286,7 +289,9 @@ def test_cuda_complete_envelope_vjp_and_retained_backward(ni, no, rows):
         backend="factored",
         kernel=kernels.product(
             *operator.kernel.profiles,
-            coordinates=kernels.physical(radius_init=(0.5, 4.7), radius_floor=0.5),
+            coordinates=kernels.physical(
+                radius_init=(0.5, radius_max), radius_floor=0.5
+            ),
         ),
     )
     vi, uo = reference.operator.factors(physical.double())
