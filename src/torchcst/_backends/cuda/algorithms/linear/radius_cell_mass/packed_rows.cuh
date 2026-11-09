@@ -37,11 +37,22 @@ void packed_check_scope(Tensor x, Tensor p, Config ci, Config co) {
     bool large = ai.sites == ao.sites &&
         (ai.sites == 2048 || ai.sites == 8192 || ai.sites == 16384) &&
         p.size(0) >= 4 && p.size(0) <= 8 * ai.sites && ai.origin == 0 && ao.origin == 0;
+#ifdef RADIUS_CONNECTED_CONTROL
+    // Separate research build only. Unchanged arithmetic is admitted to the
+    // matched physical square controls; ordinary binaries retain old guards.
+    bool physical_control = !ai.polar && !ao.polar && ai.origin == 0 && ao.origin == 0 &&
+        ai.sites == ao.sites && ai.sites >= 16 && ai.sites <= 16384 &&
+        p.size(0) >= 1 && p.size(0) <= 8 * ai.sites;
+    large = large || physical_control;
+#endif
     TORCH_CHECK(x.device() == p.device() && x.size(1) == ai.sites &&
         x.scalar_type() == torch::kFloat && p.scalar_type() == torch::kFloat &&
         x.size(0) >= 1 && x.size(0) <= 256 && (ffn || lm || large),
         "packed pilot requires admitted FP32 FFN, LM or square large-multirow cohort");
     bool physical_lm = lm && !ai.polar && !ao.polar;
+#ifdef RADIUS_CONNECTED_CONTROL
+    physical_lm = physical_lm || physical_control;
+#endif
     for (auto a : {ai, ao}) TORCH_CHECK((a.polar || physical_lm) && a.modes == 8 &&
         a.base_tile_sites == 1 && a.merge_factor == 2 && a.spacing == 1 &&
         (physical_lm || (a.amplitude_max <= 1 && a.radius_min >= .5 && a.radius_max <= 50)),

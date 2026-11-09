@@ -123,6 +123,15 @@ class OptimizedM8Control(ConnectedAlgorithm):
         if recipe.modes != 8 or recipe.connected:
             raise ValueError("optimized control requires legacy M8")
 
+    def supports(self, context, recipe):
+        result = super().supports(context, recipe)
+        if result.reasons:
+            return result
+        op = context.operator
+        if op.in_features != op.out_features or context.atom_count > 8 * op.in_features:
+            return SupportResult(("optimized control requires square A<=8N",))
+        return result
+
     def prepare(self, state):
         from ..radius_cell_mass.algorithm import hierarchy_from_operator
 
@@ -133,8 +142,8 @@ class OptimizedM8Control(ConnectedAlgorithm):
 
     def execute(self, state, inputs):
         x, p, _, _ = linear_execution(state, inputs)
-        from ..radius_cell_mass.executor import _extension
+        from .executor import control_extension
 
-        return _extension(8).packed_levels_linear(
+        return control_extension().packed_levels_linear(
             x.contiguous(), p.contiguous(), *state.layout, False, True
         )

@@ -54,3 +54,29 @@ def linear(x, p, layout, recipe):
         else (ci.position_half_width, ci.scale_upper, ci.scale_ratio)
     )
     return _Linear.apply(x, p, ni, no, recipe.modes, recipe.connected, settings)
+
+
+@cache
+def control_extension():
+    """Independent macro build; old native guards/defaults stay unchanged."""
+    from torch.utils.cpp_extension import load
+
+    directory = Path(__file__).parent.parent / "radius_cell_mass"
+    source, host = directory / "pipeline.cu", directory / "host_autograd.cpp"
+    digest = hashlib.sha256(
+        b"".join(
+            p.read_bytes() for p in [source, host, *sorted(directory.glob("*.cuh"))]
+        )
+    ).hexdigest()[:12]
+    return load(
+        name=f"torchcst_connected_control_{digest}",
+        sources=[str(source), str(host)],
+        extra_cflags=["-O2"],
+        extra_cuda_cflags=[
+            "-O2",
+            "--ftz=false",
+            "-DRADIUS_ROW_BATCH=8",
+            "-DRADIUS_CONNECTED_CONTROL=1",
+        ],
+        verbose=False,
+    )
