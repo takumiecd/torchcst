@@ -56,8 +56,8 @@ class _Linear(torch.autograd.Function):
         return dx, dp, None, None, None
 
 
-def linear(x, p, layout, recipe):
+def linear(x, p, layout, recipe, *, ordered=False):
     (no, co), (ni, ci) = layout
     if ci != co:
         raise ValueError("requires identical connection declarations")
-    return _Linear.apply(x, p, ni, no, 0)
+    return _Linear.apply(x, p, ni, no, int(ordered))

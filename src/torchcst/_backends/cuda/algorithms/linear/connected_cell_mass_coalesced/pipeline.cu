@@ -178,7 +178,7 @@ __global__ void owner_keys(const float*g,int64_t*keys,int atoms,Conf c) {
     const float *p=g+int64_t(v)*G;int t=int(p[0]);
     keys[v]=t?c.a.banks[int(p[2])].node_offset+positive_mod(int(p[1]),c.a.sites/t):c.a.node_count;
 }
-__global__ void owner_expand(const float*p,const float*g,const float*h,const int64_t*rows,const int64_t*offsets,float*y,float*C,const uint32_t*mask,int atoms,int batch,Conf c) {
+__global__ void owner_expand(const float*p,const float*g,const float*h,const int64_t*rows,const int64_t*offsets,float*y,float*C,float*direct,const uint32_t*mask,int atoms,int batch,Conf c) {
     int node=blockIdx.x,b0=blockIdx.y*8,bi=0;
     while(bi+1<c.a.bank_count&&node>=c.a.banks[bi+1].node_offset)++bi;
     auto bank=c.a.banks[bi];int t=bank.tile_sites,tile=node-bank.node_offset;
@@ -199,11 +199,15 @@ __global__ void owner_expand(const float*p,const float*g,const float*h,const int
                 value+=(p[4*a]*h[int64_t(a)*batch+b])*cc;
             }
         }
-        if(t<16)atomicAdd(y+int64_t(b)*c.a.sites+tile*t+f,value);
+        if(t<16){
+            int64_t index=int64_t(b)*c.a.sites+tile*t+f;
+            if(direct)direct[int64_t(bank.level)*batch*c.a.sites+index]=value;
+            else atomicAdd(y+index,value);
+        }
         else C[(int64_t(b)*c.nodes+node-c.prefix)*33+f]=value;
     }
 }
-__global__ void expand(const float*C,float*y,const uint32_t*mask,int batch,Conf c) {
+__global__ void expand(const float*C,float*y,const float*direct,const uint32_t*mask,int batch,Conf c) {
     int idx=blockIdx.x*blockDim.x+threadIdx.x;if(idx>=batch*c.a.sites)return;
     int b=idx/c.a.sites,site=idx%c.a.sites,F=c.a.basis_count();float sum=0;
     for(int bi=START*2;bi<c.a.bank_count;++bi) {
@@ -216,7 +220,8 @@ __global__ void expand(const float*C,float*y,const uint32_t*mask,int batch,Conf 
             sum+=filter*(coef[2*k-1]*cosf(angle)+coef[2*k]*sinf(angle));
         }
     }
-    y[idx]+=sum;
+    if(direct){for(int level=0;level<START;++level)sum+=direct[int64_t(level)*batch*c.a.sites+idx];y[idx]=sum;}
+    else y[idx]+=sum;
 }
 void check(Tensor x,Tensor p,int ni,int no,int m) {
     TORCH_CHECK(x.is_cuda()&&p.is_cuda()&&x.device()==p.device()&&x.scalar_type()==torch::kFloat&&p.scalar_type()==torch::kFloat&&x.is_contiguous()&&p.is_contiguous(),"CUDA contiguous FP32 required");
@@ -244,14 +249,18 @@ Tensor get_response(Tensor xt,Tensor z,Tensor geometry,int atoms,Conf c){
     response<<<atoms,256,0,at::cuda::getCurrentCUDAStream()>>>(xt.data_ptr<float>(),z.data_ptr<float>(),geometry.data_ptr<float>(),h.data_ptr<float>(),atoms,batch,c);
     return h;
 }
-Tensor expansion(Tensor p,Tensor g,Tensor h,Tensor mask,Tensor rows,Tensor offsets,Conf c){
+Tensor expansion(Tensor p,Tensor g,Tensor h,Tensor mask,Tensor rows,Tensor offsets,Conf c,int stage){
     int batch=h.size(1);auto y=torch::zeros({batch,c.a.sites},h.options()),C=torch::empty({batch,c.nodes,33},h.options());
-    owner_expand<<<dim3(c.a.node_count,(batch+7)/8),128,0,at::cuda::getCurrentCUDAStream()>>>(p.data_ptr<float>(),g.data_ptr<float>(),h.data_ptr<float>(),rows.data_ptr<int64_t>(),offsets.data_ptr<int64_t>(),y.data_ptr<float>(),C.data_ptr<float>(),mask.data_ptr<uint32_t>(),p.size(0),batch,c);
-    expand<<<(y.numel()+127)/128,128,0,at::cuda::getCurrentCUDAStream()>>>(C.data_ptr<float>(),y.data_ptr<float>(),mask.data_ptr<uint32_t>(),batch,c);
+    // A separate opt-in schedule assigns one direct value per level/site.
+    // The final site owner adds levels in order, with no floating atomic race.
+    auto direct=stage?torch::zeros({START,batch,c.a.sites},h.options()):torch::empty({0},h.options());
+    float* scratch=stage?direct.data_ptr<float>():nullptr;
+    owner_expand<<<dim3(c.a.node_count,(batch+7)/8),128,0,at::cuda::getCurrentCUDAStream()>>>(p.data_ptr<float>(),g.data_ptr<float>(),h.data_ptr<float>(),rows.data_ptr<int64_t>(),offsets.data_ptr<int64_t>(),y.data_ptr<float>(),C.data_ptr<float>(),scratch,mask.data_ptr<uint32_t>(),p.size(0),batch,c);
+    expand<<<(y.numel()+127)/128,128,0,at::cuda::getCurrentCUDAStream()>>>(C.data_ptr<float>(),y.data_ptr<float>(),scratch,mask.data_ptr<uint32_t>(),batch,c);
     return y;
 }
 std::vector<Tensor> forward(Tensor x,Tensor p,int ni,int no,int m,bool connected,std::vector<double>s,int stage){
-    check(x,p,ni,no,m);TORCH_CHECK(stage==0&&m==16&&connected&&s==std::vector<double>({.1,.9,1.25}),"requires default coalesced M16");
+    check(x,p,ni,no,m);TORCH_CHECK((stage==0||stage==1)&&m==16&&connected&&s==std::vector<double>({.1,.9,1.25}),"requires default coalesced M16");
     c10::cuda::CUDAGuard guard(x.device());auto ci=config(ni,m,connected,s),co=config(no,m,connected,s);
     auto gi=torch::empty({p.size(0),4,G},p.options()),go=torch::empty_like(gi),mi=torch::zeros({1},p.options().dtype(torch::kUInt32)),mo=torch::zeros_like(mi);
     auto stream=at::cuda::getCurrentCUDAStream();
@@ -259,14 +268,14 @@ std::vector<Tensor> forward(Tensor x,Tensor p,int ni,int no,int m,bool connected
     close_mask<<<1,1,0,stream>>>(mi.data_ptr<uint32_t>(),ci);close_mask<<<1,1,0,stream>>>(mo.data_ptr<uint32_t>(),co);
     auto ri=ranges(gi,p.size(0),ci),ro=ranges(go,p.size(0),co);
     auto xt=x.transpose(0,1).contiguous();auto z=moments(xt,mi,ci),h=get_response(xt,z,gi,p.size(0),ci);
-    auto y=expansion(p,go,h,mo,ro[0],ro[1],co);
+    auto y=expansion(p,go,h,mo,ro[0],ro[1],co,stage);
     C10_CUDA_KERNEL_LAUNCH_CHECK();return {y,gi,go,mi,mo,ri[0],ri[1],ro[0],ro[1]};
 }
 std::vector<Tensor> backward(Tensor x,Tensor p,Tensor dy,Tensor gi,Tensor go,Tensor mi,Tensor mo,Tensor rowsi,Tensor offsetsi,Tensor rowso,Tensor offsetso,int ni,int no,int m,bool connected,std::vector<double>s,int stage){
     check(x,p,ni,no,m);c10::cuda::CUDAGuard guard(x.device());auto ci=config(ni,m,connected,s),co=config(no,m,connected,s);
     auto xt=x.transpose(0,1).contiguous(),yt=dy.transpose(0,1).contiguous();
     auto zx=moments(xt,mi,ci),zy=moments(yt,mo,co),g=get_response(yt,zy,go,p.size(0),co);
-    auto dx=expansion(p,gi,g,mi,rowsi,offsetsi,ci),dp=torch::empty_like(p);
+    auto dx=expansion(p,gi,g,mi,rowsi,offsetsi,ci,stage),dp=torch::empty_like(p);
     gradients<<<p.size(0),256,0,at::cuda::getCurrentCUDAStream()>>>(p.data_ptr<float>(),xt.data_ptr<float>(),yt.data_ptr<float>(),zx.data_ptr<float>(),zy.data_ptr<float>(),gi.data_ptr<float>(),go.data_ptr<float>(),g.data_ptr<float>(),dp.data_ptr<float>(),p.size(0),x.size(0),ci,co);
     C10_CUDA_KERNEL_LAUNCH_CHECK();return {dx,dp};
 }

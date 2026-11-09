@@ -7,13 +7,18 @@ on every call. No production registration or default selection is added.
 
 from dataclasses import dataclass, replace
 from functools import cache
+from typing import ClassVar
 
 from torchcst._backends.schema import ExecutionPlan, SupportResult
 from torchcst.kernels.parameterizations import RadiusEnvelopeSpec
 from torchcst.operators.context import LinearContext
 from torchcst.operators.execution import LinearBinding, linear_execution
 
-from .algorithm import CoalescedRecipe, ConnectedCoalescedAlgorithm
+from .algorithm import (
+    CoalescedRecipe,
+    ConnectedCoalescedAlgorithm,
+    ConnectedOrderedAlgorithm,
+)
 
 
 def physical_operator(operator):
@@ -41,12 +46,14 @@ def _dispatcher():
 
     registry = Registry()
     registry.register(ConnectedCoalescedAlgorithm())
+    registry.register(ConnectedOrderedAlgorithm())
     return Dispatcher(registry=registry)
 
 
 @dataclass(frozen=True)
 class ConnectedEnvelopeAlgorithm(ConnectedCoalescedAlgorithm):
     id: str = "cuda_connected_m16_coalesced_envelope"
+    physical_algorithm: ClassVar[type] = ConnectedCoalescedAlgorithm
 
     def supports(self, context, recipe):
         if not isinstance(context, LinearContext):
@@ -89,7 +96,7 @@ class ConnectedEnvelopeAlgorithm(ConnectedCoalescedAlgorithm):
 
         _, p, _, _ = linear_execution(state, inputs)
         physical = prepared_physical_parameters(p, state.buffers["constants"])
-        plan = ExecutionPlan(ConnectedCoalescedAlgorithm().id, "v1", state.recipe)
+        plan = ExecutionPlan(self.physical_algorithm().id, "v1", state.recipe)
         return _dispatcher().run(
             LinearBinding(state.layout, physical), inputs, plan=plan
         )
@@ -97,4 +104,15 @@ class ConnectedEnvelopeAlgorithm(ConnectedCoalescedAlgorithm):
 
 CONNECTED_ENVELOPE = ExecutionPlan(
     ConnectedEnvelopeAlgorithm().id, "v1", CoalescedRecipe()
+)
+
+
+@dataclass(frozen=True)
+class ConnectedOrderedEnvelopeAlgorithm(ConnectedEnvelopeAlgorithm):
+    id: str = "cuda_connected_m16_ordered_envelope"
+    physical_algorithm: ClassVar[type] = ConnectedOrderedAlgorithm
+
+
+CONNECTED_ORDERED_ENVELOPE = ExecutionPlan(
+    ConnectedOrderedEnvelopeAlgorithm().id, "v1", CoalescedRecipe()
 )

@@ -37,3 +37,16 @@ class ConnectedCoalescedAlgorithm(ConnectedAlgorithm):
         from .executor import linear
 
         return linear(x, p, state.layout, state.recipe)
+
+
+@dataclass(frozen=True)
+class ConnectedOrderedAlgorithm(ConnectedCoalescedAlgorithm):
+    """Separate schedule: direct banks are accumulated by one site owner."""
+
+    id: str = "cuda_connected_m16_coalesced_ordered"
+
+    def execute(self, state, inputs):
+        x, p, _, _ = linear_execution(state, inputs)
+        from .executor import linear
+
+        return linear(x, p, state.layout, state.recipe, ordered=True)

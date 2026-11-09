@@ -20,3 +20,15 @@ connected宣言のrevision10 checkpoint guardを維持する。
 Adam moment/counterを含むタスクモデルの直列化・再開、次の更新を変えない観測hookを
 要求する。短期LM品質と幾何診断は別のcst-research研究で扱い、推奨recipeや公開既定値は
 ここでは採用しない。
+
+## direct階層の順序固定経路
+
+最初の包絡タスク検証では全Aの数値oracleを通過したが、次更新のbit一致に失敗した。
+最初に報告された埋め込みParameterの最大差は7.451e-9。physical実装には、異なる
+小さいtile階層から同じsiteへ浮動小数atomic加算する部分があった。
+別の`ConnectedOrderedAlgorithm`と`ConnectedOrderedEnvelopeAlgorithm`で、
+level/row/siteごとのscratchを持ち、最終siteの担当が4つのdirect階層を固定順で加算する。
+profile、包絡、optimizer、既存Planの識別子は維持する。
+新経路はexpansionごとに`4*B*N`個のFP32 scratchを追加し、実タスクの時間・allocator peakは
+別途測定する。公開deterministic/Graph modeは引き続き保証しない。
+新しい明示選択経路の数値・bit一致・再開検証は未完了であり、以前の速度測定は直前の実装の結果。

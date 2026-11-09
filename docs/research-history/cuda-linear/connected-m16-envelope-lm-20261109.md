@@ -22,3 +22,18 @@ chain, actual FFN dimensions/Atom counts, task-model serialized resume including
 Adam moments/counters, and observational hooks that preserve the next update.
 Short LM quality and geometry diagnostics are a separate cst-research study;
 no recommended recipe or public default is adopted here.
+
+## Ordered direct-level schedule
+
+The initial envelope task qualification passed its full-A numerical oracle but
+failed bitwise next-update equality: the largest first reported embedding
+Parameter difference was 7.451e-9. The physical executor allowed floating atomic
+addition from different direct tile levels into the same site. A separate
+`ConnectedOrderedAlgorithm` and `ConnectedOrderedEnvelopeAlgorithm` now assign
+one scratch slot per level/row/site and let the final site owner add four direct
+levels in a fixed order. The profile, envelope, optimizer and existing Plan
+identities are unchanged. The new schedule uses additional `4*B*N` FP32 scratch
+per expansion; actual task time and allocator peaks must be measured separately.
+It still does not promise the public deterministic/Graph modes. Numerical and
+bitwise repeat/resume qualification are pending for this new opt-in schedule;
+the earlier speed measurements belong to the preceding executor.

@@ -12,7 +12,9 @@ from torchcst import (
 )
 from torchcst._backends.cuda.algorithms.linear.connected_cell_mass_coalesced.envelope import (
     CONNECTED_ENVELOPE,
+    CONNECTED_ORDERED_ENVELOPE,
     ConnectedEnvelopeAlgorithm,
+    ConnectedOrderedEnvelopeAlgorithm,
 )
 from torchcst._backends.schema import DeviceInfo
 from torchcst._backends.torch.parameterizations.radius_envelope import (
@@ -72,13 +74,17 @@ def test_envelope_admission_is_metadata_only():
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="actual CUDA required")
 @pytest.mark.parametrize("rows", [1, 7, 65, 256])
-def test_rectangular_envelope_full_chain_rule(rows):
+@pytest.mark.parametrize("ordered", [False, True])
+def test_rectangular_envelope_full_chain_rule(rows, ordered):
     from benchmarks.cuda.linear.connected_cell_mass import error, scalar_axis
 
     m = layer().cuda()
     registry = make_algorithm_registry()
     registry.register(ConnectedEnvelopeAlgorithm())
-    m.selector = FixedSelector(CONNECTED_ENVELOPE, registry=registry)
+    registry.register(ConnectedOrderedEnvelopeAlgorithm())
+    m.selector = FixedSelector(
+        CONNECTED_ORDERED_ENVELOPE if ordered else CONNECTED_ENVELOPE, registry=registry
+    )
     p = torch.tensor([[0.3, 0, 7.5, 13.5]] * 10)
     radius = torch.tensor([0.5, 0.72, 0.8, 0.9, 1.44, 1.8, 7, 16, 31.9, 50])
     p[:, 1] = torch.log(radius / 0.5) / torch.log(torch.tensor(100.0))
@@ -103,3 +109,28 @@ def test_rectangular_envelope_full_chain_rule(rows):
     for actual, expected in ((y.cpu(), ry), (dx.cpu(), ex), (dp.cpu(), ep)):
         err = error(actual, expected)
         assert err["max_abs"] < 3e-4 and err["relative_l2"] < 3e-4, err
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="actual CUDA required")
+def test_ordered_repeats_are_bitwise_for_direct_scale_mixture():
+    from benchmarks.cuda.linear.connected_cell_mass import parameters
+
+    m = layer().cuda()
+    registry = make_algorithm_registry()
+    registry.register(ConnectedOrderedEnvelopeAlgorithm())
+    m.selector = FixedSelector(CONNECTED_ORDERED_ENVELOPE, registry=registry)
+    raw = parameters(128, 10, 3)
+    raw[:, 1] = torch.linspace(0, 1, 10)
+    with torch.no_grad():
+        m.atoms.p.copy_(raw.cuda())
+    x = torch.randn(256, 128, device="cuda", requires_grad=True)
+    dy = torch.randn(256, 256, device="cuda")
+    results = []
+    for _ in range(3):
+        y = m(x)
+        dx, dp = torch.autograd.grad(y, (x, m.atoms.p), dy)
+        results.append((y, dx, dp))
+    for a, b in zip(results[0], results[1]):
+        assert torch.equal(a, b)
+    for a, b in zip(results[0], results[2]):
+        assert torch.equal(a, b)
