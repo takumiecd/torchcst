@@ -2,7 +2,8 @@
 
 [English](connected-m16-reuse-20261109.md)
 
-状態：準備段階でありGPU結果ではない。基準は5ade3859/PR159の固定した接続M16。
+完了：[実測結果](connected-m16-reuse-results-20261109.ja.md)を参照。
+基準は5ade3859/PR159の固定した接続M16。
 数学的revision9、セル全体のK3窓、半径/座標の五次混合、正規化と混合比の全微分を維持。
 公開登録・既定値・optimizerは変更しない。
 
@@ -35,3 +36,6 @@ B256,A8N、P/X/targetのhash一致、physical半径[.5,32]の対数一様、FP32
 fused AdamW/射影。5回準備し、同期した15回のeager step全体を測る。
 allocated/reservedは常駐Parameter/勾配/Adamと一時幾何/layout/momentを含む。
 profileは別計測。標本数を独立実験数と数えない。有望なら別実験で再確認し、失敗とsourceも保存する。
+
+追加の`connected16-owner`比較はタイル所有/結合モーメントを維持し、行単位responseと
+通常の勾配照会を使う。row8/高速勾配照会の組との違い、実行sourceは結果に記録する。

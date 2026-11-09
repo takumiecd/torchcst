@@ -2,7 +2,8 @@
 
 [日本語](connected-m16-reuse-20261109.ja.md)
 
-Status: prepared, not a GPU result. Baseline is the frozen C2-connected M16
+Completed: see the [measured results](connected-m16-reuse-results-20261109.md).
+Baseline is the frozen C2-connected M16
 implementation from5ade3859/PR159. Mathematical revision9, whole-cell K3 windows,
 quintic radius/position mixtures, normalization and every blend derivative stay
 unchanged. There is no public registration, default or optimizer change.
@@ -42,3 +43,7 @@ radii log-uniform[.5,32], FP32 IEEE, common fused AdamW/projection.5 warmups,
 resident Parameters/gradients/Adam and transient geometry/layout/moments.
 Measure profiling separately. A run's timing samples are not independent jobs.
 Repeat a promising result in an independent run; preserve failures and sources.
+
+A later `connected16-owner` ablation retains tile ownership/merged moments but
+uses per-row responses and the ordinary gradient query. Its contrast to the
+row8/fast-gradient bundle and exact measurement sources are in the result note.
