@@ -15,7 +15,7 @@ from .parameterizations.radius_cell_mass import decoded_values
 
 def match_variance(kernel, charts, original, *, variance, q, generator):
     if (
-        kernel.spec.revision not in (7, 8)
+        kernel.spec.revision not in (7, 8, 9, 10)
         or type(kernel.spec.parameterization)
         not in (PolarAmpRadiusSpec, RadiusEnvelopeSpec)
         or len(charts) != 2

@@ -101,6 +101,7 @@ def _metadata(args, run):
         Path(__file__).with_name("check_normalized.py"),
         Path(__file__).with_name("manifest.py"),
         Path(__file__).with_name("radius_cell_mass.py"),
+        Path(__file__).with_name("connected_cell_mass.py"),
         Path(__file__).with_name("protocol.py"),
         Path(__file__).parents[2] / "training" / "radius_local_reference.py",
         Path(__file__).parent.parent / "polar_update.py",
@@ -142,6 +143,9 @@ def _metadata(args, run):
 
 
 def correctness(args, run):
+    if run.case.fixture == "connected_radius_multirow":
+        from .connected_cell_mass import correctness
+        return correctness(args, run)
     if run.case.fixture in RADIUS_FIXTURES:
         from .radius_cell_mass import correctness as radius_correctness
 
@@ -183,6 +187,9 @@ def correctness(args, run):
 
 
 def measure(args, run):
+    if run.case.fixture == "connected_radius_multirow":
+        from .connected_cell_mass import measure_case
+        return measure_case(args, run)
     if run.case.fixture in RADIUS_FIXTURES:
         from .radius_cell_mass import measure_case
 

@@ -19,12 +19,12 @@ def family(state):
     )
 
     spec = state.spec
-    radius_contract = spec.revision == 7 and type(spec.parameterization) in (
+    radius_contract = spec.revision in (7, 9) and type(spec.parameterization) in (
         PhysicalAmpRadiusSpec,
         PolarAmpRadiusSpec,
     )
     radius_contract |= (
-        spec.revision == 8 and type(spec.parameterization) is RadiusEnvelopeSpec
+        spec.revision in (8, 10) and type(spec.parameterization) is RadiusEnvelopeSpec
     )
     if spec.revision != 1 and not radius_contract:
         raise ValueError("unsupported kernel revision")

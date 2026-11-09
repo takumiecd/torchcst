@@ -22,6 +22,9 @@ LOCAL_OPTIMIZER_POLICY = (
 def measurement_operator(case):
     """Rebuild from a validated Case, never from arbitrary serialized types."""
     case = _case({"id": "stored-case", **case})
+    if case.fixture == "connected_radius_multirow":
+        from .connected_cell_mass import operator
+        return operator(case.size, 16, True)
     if case.fixture in RADIUS_FIXTURES:
         from .radius_cell_mass import fixture
 

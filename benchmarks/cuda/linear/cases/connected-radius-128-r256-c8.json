@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "case": {
+    "id": "connected-radius-128-r256-c8",
+    "fixture": "connected_radius_multirow",
+    "size": 128,
+    "rows": 256,
+    "atoms": 1024,
+    "profile": "initial",
+    "dtype": "float32",
+    "seed": 41,
+    "warmup": 3,
+    "rounds": 9,
+    "optimizer": {
+      "name": "AdamW",
+      "lr": 0.0001,
+      "weight_decay": 0.0,
+      "fused": true,
+      "capturable": false
+    }
+  },
+  "plans": [
+    "legacy8",
+    "legacy16",
+    "connected16"
+  ],
+  "baseline": "legacy8",
+  "dense": true
+}

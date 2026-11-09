@@ -38,6 +38,26 @@ class ProfileBinding:
 
 
 @dataclass(frozen=True, kw_only=True)
+class RadiusConnectionSpec:
+    """C2 blending of K=3 scale banks and adjacent whole-tile windows.
+
+    Mathematical settings, not launch tuning. The previous hard routing remains
+    the default when a binding has no connection. See the research contract.
+    """
+
+    position_half_width: float = 0.1
+    scale_upper: float = 0.9
+    scale_ratio: float = 1.25
+
+    def __post_init__(self):
+        d, b, k = self.position_half_width, self.scale_upper, self.scale_ratio
+        if any(type(x) not in (int, float) or not math.isfinite(x) for x in (d, b, k)):
+            raise ValueError("connection settings must be finite numbers")
+        if not 0 < d < 0.5 or not 0 < b <= 1 - d or not 1 < k < 2:
+            raise ValueError("need 0<delta<.5, 0<upper<=1-delta, 1<ratio<2")
+
+
+@dataclass(frozen=True, kw_only=True)
 class RadiusIntegratedProfileBinding(ProfileBinding):
     """Whole-cell masses with physical support radius and integer hierarchy.
 
@@ -48,6 +68,7 @@ class RadiusIntegratedProfileBinding(ProfileBinding):
 
     base_tile_sites: int = 1
     merge_factor: int = 2
+    connection: RadiusConnectionSpec | None = None
 
     def __post_init__(self):
         from .profiles.fourier import ChebyshevSpec
@@ -60,6 +81,12 @@ class RadiusIntegratedProfileBinding(ProfileBinding):
             raise ValueError("cell mass is normalized by definition")
         if type(self.base_tile_sites) is not int or self.base_tile_sites < 1:
             raise ValueError("base_tile_sites must be a positive integer")
+        if self.connection is not None and (
+            type(self.connection) is not RadiusConnectionSpec or self.merge_factor != 2
+        ):
+            raise ValueError(
+                "connected cell masses require a RadiusConnectionSpec and merge2"
+            )
         if type(self.merge_factor) is not int or self.merge_factor < 2:
             raise ValueError("merge_factor must be an integer at least two")
 
@@ -151,6 +178,11 @@ class KernelSpec:
         radius_bindings = tuple(
             type(p) is RadiusIntegratedProfileBinding for p in self.profiles
         )
+        connected = any(
+            p.connection is not None
+            for p in self.profiles
+            if type(p) is RadiusIntegratedProfileBinding
+        )
         radius_coordinates = type(self.parameterization) in (
             PhysicalAmpRadiusSpec,
             PolarAmpRadiusSpec,
@@ -163,18 +195,28 @@ class KernelSpec:
             radius_coordinates
             or any(radius_bindings)
             or radius_profile
-            or self.revision in (7, 8)
+            or self.revision in (7, 8, 9, 10)
         ) and (
             not radius_coordinates
             or self.composition != "separable"
             or self.revision
-            != (8 if type(self.parameterization) is RadiusEnvelopeSpec else 7)
+            != (
+                (8 if type(self.parameterization) is RadiusEnvelopeSpec else 7)
+                + (2 if connected else 0)
+            )
             or len(radius_bindings) != 2
             or not all(radius_bindings)
         ):
             raise ValueError(
                 "radius cell masses require their coordinate revision, two radius-integrated factors "
                 "and physical, Polar or envelope radius coordinates"
+            )
+        if connected and (
+            not all(p.connection is not None for p in self.profiles)
+            or type(self.parameterization) is PolarAmpRadiusSpec
+        ):
+            raise ValueError(
+                "connection currently requires two connected factors and physical/envelope coordinates"
             )
         if self.parameterization is not None and not isinstance(
             self.parameterization, ParameterizationSpec

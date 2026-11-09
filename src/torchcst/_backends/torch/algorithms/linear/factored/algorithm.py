@@ -40,9 +40,9 @@ class FactoredAlgorithm(Algorithm[DefaultRecipe]):
         kernel = op.kernel
         while kernel.composition == "amplitude":
             kernel = kernel.inner
-        if kernel.revision in (7, 8) and context.device.type != "cpu":
+        if kernel.revision in (7, 8, 9, 10) and context.device.type != "cpu":
             return SupportResult(("radius cell-mass reference currently requires CPU",))
-        if kernel.revision in (7, 8) and context.dtype not in (
+        if kernel.revision in (7, 8, 9, 10) and context.dtype not in (
             torch.float32,
             torch.float64,
         ):

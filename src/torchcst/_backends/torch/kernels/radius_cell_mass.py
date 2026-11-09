@@ -70,6 +70,9 @@ def axis_masses(axis, radius, centers):
     to the higher first tile. Cells wrap onto the chart; if P exceeds Q, repeated
     chart images are added rather than clipping P or renormalizing chart cells.
     """
+    if axis.binding.connection is not None:
+        from .connected_cell_mass import axis_masses as connected_masses
+        return connected_masses(axis, radius, centers)
     if radius.device.type != "cpu" or centers.device.type != "cpu":
         raise ValueError("radius cell-mass reference currently requires CPU tensors")
     if radius.ndim != 1 or centers.shape != radius.shape:
@@ -166,6 +169,8 @@ def _axis_energy(axis, radius, centers):
     Longer periods must first add repeated chart images, then square: dropping
     those cross terms would change the initialization target.
     """
+    if axis.binding.connection is not None:
+        return axis_masses(axis, radius, centers).square().sum(-1)
     routing = radius.detach().double()
     if not bool(torch.isfinite(routing).all() and torch.isfinite(centers).all()):
         raise ValueError("radius and centers must be finite")

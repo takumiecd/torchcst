@@ -45,6 +45,8 @@ class ProfileState(nn.Module):
         if type(self.binding) is RadiusIntegratedProfileBinding:
             result["radius_cell_mass_base_tile_sites"] = self.binding.base_tile_sites
             result["radius_cell_mass_merge_factor"] = self.binding.merge_factor
+            if self.binding.connection is not None:
+                result["radius_cell_mass_connection"] = asdict(self.binding.connection)
         return result
 
     def set_extra_state(self, state):

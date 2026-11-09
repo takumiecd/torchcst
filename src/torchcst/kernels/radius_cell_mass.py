@@ -31,7 +31,16 @@ def radius_cell_mass_axes(charts, kernel):
     if (
         len(charts) != 2
         or kernel.revision
-        != (8 if type(kernel.parameterization) is RadiusEnvelopeSpec else 7)
+        != (
+            (8 if type(kernel.parameterization) is RadiusEnvelopeSpec else 7)
+            + (
+                2
+                if any(
+                    getattr(p, "connection", None) is not None for p in kernel.profiles
+                )
+                else 0
+            )
+        )
         or kernel.composition != "separable"
         or type(kernel.parameterization)
         not in (PhysicalAmpRadiusSpec, PolarAmpRadiusSpec, RadiusEnvelopeSpec)

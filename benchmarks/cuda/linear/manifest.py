@@ -42,7 +42,10 @@ from torchcst._backends.torch.algorithms.linear.normalized_radial.layout import 
 )
 
 # This catalog is benchmark-local. Production registration/selection is unchanged.
+from torchcst._backends.cuda.algorithms.linear.connected_cell_mass.algorithm import ConnectedAlgorithm
+
 REGISTRY = Registry()
+REGISTRY.register(ConnectedAlgorithm())
 REGISTRY.register(RadiusCellMassAlgorithm())
 REGISTRY.register(RadiusRow8Algorithm())
 REGISTRY.register(RadiusLargeRow8Algorithm())
@@ -59,7 +62,7 @@ REGISTRY.register(FactoredAlgorithm())
 REGISTRY.register(NormalizedFullAlgorithm())
 REGISTRY.register(NormalizedWindowAlgorithm())
 
-RADIUS_FIXTURES = ("polar_radius_cell_mass", "polar_radius_cell_mass_multirow")
+RADIUS_FIXTURES = ("polar_radius_cell_mass", "polar_radius_cell_mass_multirow", "connected_radius_multirow")
 
 DEFAULT_PLANS = Path(__file__).with_name("plans.json")
 
