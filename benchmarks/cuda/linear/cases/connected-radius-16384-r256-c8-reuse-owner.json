@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "case": {
+    "id": "connected-radius-16384-r256-c8-reuse-owner",
+    "fixture": "connected_radius_multirow",
+    "size": 16384,
+    "rows": 256,
+    "atoms": 131072,
+    "profile": "initial",
+    "dtype": "float32",
+    "seed": 41,
+    "warmup": 5,
+    "rounds": 15,
+    "optimizer": {
+      "name": "AdamW",
+      "lr": 0.0001,
+      "weight_decay": 0.0,
+      "fused": true,
+      "capturable": false
+    }
+  },
+  "plans": [
+    "connected16-reuse",
+    "connected16-owner"
+  ],
+  "baseline": "connected16-reuse",
+  "dense": true
+}

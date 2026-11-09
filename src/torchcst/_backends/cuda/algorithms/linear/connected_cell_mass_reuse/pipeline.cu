@@ -363,7 +363,8 @@ Tensor expansion_reuse(Tensor p,Tensor g,Tensor h,Tensor mask,Tensor rows,Tensor
     expand<<<(y.numel()+127)/128,128,0,at::cuda::getCurrentCUDAStream()>>>(C.data_ptr<float>(),y.data_ptr<float>(),mask.data_ptr<uint32_t>(),h.size(0),c);
     return y;
 }
-std::vector<Tensor> forward(Tensor x,Tensor p,int ni,int no,int m,bool connected,std::vector<double>s,bool reuse) {
+std::vector<Tensor> forward(Tensor x,Tensor p,int ni,int no,int m,bool connected,std::vector<double>s,int stage) {
+    bool reuse=stage!=0;TORCH_CHECK(stage>=0&&stage<=2,"invalid schedule");
     check(x,p,ni,no,m);TORCH_CHECK(m==16&&connected&&s==std::vector<double>({.1,.9,1.25}),"requires default connected M16");
     c10::cuda::CUDAGuard guard(x.device());auto ci=config(ni,m,connected,s),co=config(no,m,connected,s);
     auto gi=torch::empty({p.size(0),4,G},p.options()),go=torch::empty_like(gi),mi=torch::zeros({1},p.options().dtype(torch::kUInt32)),mo=torch::zeros_like(mi);
@@ -374,16 +375,17 @@ std::vector<Tensor> forward(Tensor x,Tensor p,int ni,int no,int m,bool connected
     if(reuse){
         close_mask<<<1,1,0,stream>>>(mi.data_ptr<uint32_t>(),ci);close_mask<<<1,1,0,stream>>>(mo.data_ptr<uint32_t>(),co);
         auto ri=ranges(gi,p.size(0),ci),ro=ranges(go,p.size(0),co);rowsi=ri[0];offsetsi=ri[1];rowso=ro[0];offsetso=ro[1];
-        z=moments_reuse(x,mi,ci);h=response_reuse(x,z,gi,p.size(0),ci);y=expansion_reuse(p,go,h,mo,rowso,offsetso,co);
+        z=moments_reuse(x,mi,ci);h=stage==1?response_reuse(x,z,gi,p.size(0),ci):get_response(x,z,gi,p.size(0),ci);y=expansion_reuse(p,go,h,mo,rowso,offsetso,co);
     }else{z=make_moments(x,mi,ci);h=get_response(x,z,gi,p.size(0),ci);y=expansion(p,go,h,mo,co);}
     C10_CUDA_KERNEL_LAUNCH_CHECK();return {y,gi,go,mi,mo,rowsi,offsetsi,rowso,offsetso};
 }
-std::vector<Tensor> backward(Tensor x,Tensor p,Tensor dy,Tensor gi,Tensor go,Tensor mi,Tensor mo,Tensor rowsi,Tensor offsetsi,Tensor rowso,Tensor offsetso,int ni,int no,int m,bool connected,std::vector<double>s,bool reuse) {
+std::vector<Tensor> backward(Tensor x,Tensor p,Tensor dy,Tensor gi,Tensor go,Tensor mi,Tensor mo,Tensor rowsi,Tensor offsetsi,Tensor rowso,Tensor offsetso,int ni,int no,int m,bool connected,std::vector<double>s,int stage) {
+    bool reuse=stage!=0;
     check(x,p,ni,no,m);c10::cuda::CUDAGuard guard(x.device());auto ci=config(ni,m,connected,s),co=config(no,m,connected,s);
     auto zx=reuse?moments_reuse(x,mi,ci):make_moments(x,mi,ci),zy=reuse?moments_reuse(dy,mo,co):make_moments(dy,mo,co);
-    auto g=reuse?response_reuse(dy,zy,go,p.size(0),co):get_response(dy,zy,go,p.size(0),co);
+    auto g=stage==1?response_reuse(dy,zy,go,p.size(0),co):get_response(dy,zy,go,p.size(0),co);
     auto dx=reuse?expansion_reuse(p,gi,g,mi,rowsi,offsetsi,ci):expansion(p,gi,g,mi,ci),dp=torch::empty_like(p);
-    if(reuse)gradients_reuse<<<p.size(0),256,0,at::cuda::getCurrentCUDAStream()>>>(p.data_ptr<float>(),x.data_ptr<float>(),dy.data_ptr<float>(),zx.data_ptr<float>(),zy.data_ptr<float>(),gi.data_ptr<float>(),go.data_ptr<float>(),dp.data_ptr<float>(),p.size(0),x.size(0),ci,co);
+    if(stage==1)gradients_reuse<<<p.size(0),256,0,at::cuda::getCurrentCUDAStream()>>>(p.data_ptr<float>(),x.data_ptr<float>(),dy.data_ptr<float>(),zx.data_ptr<float>(),zy.data_ptr<float>(),gi.data_ptr<float>(),go.data_ptr<float>(),dp.data_ptr<float>(),p.size(0),x.size(0),ci,co);
     else gradients<<<p.size(0),256,0,at::cuda::getCurrentCUDAStream()>>>(p.data_ptr<float>(),x.data_ptr<float>(),dy.data_ptr<float>(),zx.data_ptr<float>(),zy.data_ptr<float>(),gi.data_ptr<float>(),go.data_ptr<float>(),dp.data_ptr<float>(),p.size(0),x.size(0),ci,co);
     C10_CUDA_KERNEL_LAUNCH_CHECK();return {dx,dp};
 }

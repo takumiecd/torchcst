@@ -31,10 +31,10 @@ class ConnectedReuseAlgorithm(ConnectedAlgorithm):
             or type(recipe.direct_tile_limit) is not int
             or recipe.direct_tile_limit != 16
             or type(recipe.stage) is not str
-            or recipe.stage not in ("fp32", "reuse")
+            or recipe.stage not in ("fp32", "reuse", "owner")
         ):
             raise ValueError(
-                "requires connected M16/default direct cutoff and fp32/reuse stage"
+                "requires connected M16/default direct cutoff and fp32/reuse/owner stage"
             )
 
     def execute(self, state, inputs):

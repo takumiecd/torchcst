@@ -32,16 +32,16 @@ def extension():
 
 class _Linear(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, x, p, ni, no, reuse):
-        y, *saved = extension().forward(x, p, ni, no, 16, True, [0.1, 0.9, 1.25], reuse)
+    def forward(ctx, x, p, ni, no, stage):
+        y, *saved = extension().forward(x, p, ni, no, 16, True, [0.1, 0.9, 1.25], stage)
         ctx.save_for_backward(x, p, *saved)
-        ctx.config = ni, no, reuse
+        ctx.config = ni, no, stage
         return y
 
     @staticmethod
     @once_differentiable
     def backward(ctx, dy):
-        ni, no, reuse = ctx.config
+        ni, no, stage = ctx.config
         dx, dp = extension().backward(
             *ctx.saved_tensors[:2],
             dy.contiguous(),
@@ -51,7 +51,7 @@ class _Linear(torch.autograd.Function):
             16,
             True,
             [0.1, 0.9, 1.25],
-            reuse,
+            stage,
         )
         return dx, dp, None, None, None
 
@@ -60,4 +60,6 @@ def linear(x, p, layout, recipe):
     (no, co), (ni, ci) = layout
     if ci != co:
         raise ValueError("requires identical connection declarations")
-    return _Linear.apply(x, p, ni, no, recipe.stage == "reuse")
+    return _Linear.apply(
+        x, p, ni, no, {"fp32": 0, "reuse": 1, "owner": 2}[recipe.stage]
+    )

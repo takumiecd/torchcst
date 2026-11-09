@@ -80,6 +80,20 @@
           "stage": "reuse"
         }
       }
+    },
+    {
+      "id": "connected16-owner",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_connected_m16_fp32_reuse",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "modes": 16,
+          "connected": true,
+          "direct_tile_limit": 16,
+          "stage": "owner"
+        }
+      }
     }
   ]
 }

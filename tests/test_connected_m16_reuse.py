@@ -88,7 +88,7 @@ def test_reuse_plan_roundtrip_and_invalid_settings():
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="actual CUDA required")
-@pytest.mark.parametrize("stage", ["fp32", "reuse"])
+@pytest.mark.parametrize("stage", ["fp32", "reuse", "owner"])
 @pytest.mark.parametrize("rows", [1, 7, 65, 256])
 def test_cuda_independent_vjp_retained_and_multiple_forwards(stage, rows):
     from benchmarks.cuda.linear.connected_cell_mass import (
