@@ -92,10 +92,10 @@ def test_reuse_plan_roundtrip_and_invalid_settings():
 @pytest.mark.parametrize("rows", [1, 7, 65, 256])
 def test_cuda_independent_vjp_retained_and_multiple_forwards(stage, rows):
     from benchmarks.cuda.linear.connected_cell_mass import (
-        parameters,
+        error,
         operator,
         oracle,
-        error,
+        parameters,
     )
     from benchmarks.cuda.linear.manifest import REGISTRY
     from benchmarks.cuda.linear.run import PlanLinear
