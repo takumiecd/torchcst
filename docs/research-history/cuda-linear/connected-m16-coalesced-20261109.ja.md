@@ -19,4 +19,5 @@ fused AdamW、物理領域への復元を含む完全stepとallocated/reserved�
 速度を評価する前に、独立FP64 oracleによるY/dX/全物理勾配、fixtureの
 optimizer状態ゲート、複数forward・retain・version guardテストを通し、
 その後に直前の検証済み方式と実規模A/Bで比較する。
-結果は未取得。学習品質、CUDA Graph、本番既定への採用は主張しない。
+[結果は別記録](connected-m16-coalesced-results-20261109.ja.md)に保存した。
+学習品質、CUDA Graph、本番既定への採用は主張しない。

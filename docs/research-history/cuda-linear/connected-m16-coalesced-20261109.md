@@ -21,4 +21,5 @@ steps, with allocated and reserved memory peaks. Cold compilation is excluded.
 Before interpreting speed, run independent FP64 oracle Y/dX/all physical gradients,
 optimizer-state gates from the fixture, retained/multiple forwards and version-guard
 tests, then full A/B comparisons against the preceding qualified schedule.
-Results are pending; no training quality, CUDA Graph, or default adoption claim.
+[Results are recorded separately](connected-m16-coalesced-results-20261109.md).
+No training quality, CUDA Graph, or default adoption claim.
