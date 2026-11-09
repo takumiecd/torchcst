@@ -118,11 +118,12 @@ def correctness(args, run):
     from .run import PlanLinear
 
     reports = []
+    size = run.case.size
     for entry in run.plans:
         if getattr(args, "plan_id", None) not in (None, entry.id):
             continue
         recipe = entry.plan.recipe
-        p = parameters(128, 20, 83).double()
+        p = parameters(size, 20, 83).double()
         p[:, 1] = p.new_tensor(
             [
                 0.5,
@@ -152,14 +153,14 @@ def correctness(args, run):
         # Exact FP32 input state is promoted to the independent FP64 oracle.
         p = p.float().double().requires_grad_()
         torch.manual_seed(73)
-        x = torch.randn(3, 128).double().requires_grad_()
+        x = torch.randn(3, size).double().requires_grad_()
         dy = torch.randn_like(x)
         expected = oracle(x, p, recipe.modes, recipe.connected)
         ex, ep = torch.autograd.grad(expected, (x, p), dy)
         tx = x.detach().float().cuda().requires_grad_()
         model = PlanLinear(
             p.detach().float().cuda(),
-            operator(128, recipe.modes, recipe.connected),
+            operator(size, recipe.modes, recipe.connected),
             entry.plan,
         )
         actual = model(tx)
@@ -181,7 +182,7 @@ def correctness(args, run):
         cp = torch.nn.Parameter(p.detach().float()[:6].clone())
         gm = PlanLinear(
             cp.detach().cuda(),
-            operator(128, recipe.modes, recipe.connected),
+            operator(size, recipe.modes, recipe.connected),
             entry.plan,
         )
         cop = torch.optim.AdamW([cp], lr=1e-4, weight_decay=0, fused=False)
