@@ -32,3 +32,5 @@ profile、包絡、optimizer、既存Planの識別子は維持する。
 新経路はexpansionごとに`4*B*N`個のFP32 scratchを追加し、実タスクの時間・allocator peakは
 別途測定する。公開deterministic/Graph modeは引き続き保証しない。
 新しい明示選択経路の数値・bit一致・再開検証は未完了であり、以前の速度測定は直前の実装の結果。
+
+[完了した検証とコスト](connected-m16-envelope-lm-results-20261109.ja.md)を別記した。

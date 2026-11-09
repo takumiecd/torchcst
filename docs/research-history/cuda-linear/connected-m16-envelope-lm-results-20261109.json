@@ -1,0 +1,140 @@
+{
+  "source_commit": "752240cd94ab8f9cc8b95ff3d4c9cebc389cd8c8",
+  "task_runtime_commit": "00aae6afaf3615da6bccd986c75c14cd7b2ca64b",
+  "identical_runtime_tree": "0fe7b7214529217e257df8c0369f31a2905dbe77",
+  "gpu": "NVIDIA GeForce RTX4090",
+  "torch": "2.9.1+cu128",
+  "cuda": "12.8",
+  "B": 256,
+  "N": 8192,
+  "A": 65536,
+  "dtype": "FP32 IEEE",
+  "scope": "complete eager forward/loss/backward/dX/fused AdamW/physical-domain restoration, no Graph, warmup5/rounds15",
+  "independent_runs": 1,
+  "measurements": [
+    {
+      "plan": "connected16-coalesced",
+      "median_ms": 12.810782995074987,
+      "peak_allocated_MiB": 525.5029296875,
+      "peak_reserved_MiB": 560.0
+    },
+    {
+      "plan": "connected16-ordered",
+      "median_ms": 12.922910995257553,
+      "peak_allocated_MiB": 557.5029296875,
+      "peak_reserved_MiB": 592.0
+    },
+    {
+      "plan": "dense",
+      "median_ms": 4.9081389952334575,
+      "peak_allocated_MiB": 1072.251953125,
+      "peak_reserved_MiB": 1342.0
+    }
+  ],
+  "large_vjp": {
+    "status": "PASS",
+    "source": "752240cd94ab8f9cc8b95ff3d4c9cebc389cd8c8",
+    "scope": "full A/B ordered direct-level comparison to coalesced; independent FP64 primitive oracle is separate",
+    "reports": [
+      {
+        "N": 8192,
+        "A": 65536,
+        "B": 256,
+        "plan": "connected16-ordered",
+        "errors": {
+          "Y": {
+            "max_abs": 1.1920928955078125e-07,
+            "relative_l2": 5.376104550778966e-08
+          },
+          "dX": {
+            "max_abs": 1.1920928955078125e-07,
+            "relative_l2": 5.341923751284806e-08
+          },
+          "dP": {
+            "max_abs": 0.0,
+            "relative_l2": 0.0
+          },
+          "amplitude": {
+            "max_abs": 0.0,
+            "relative_l2": 0.0
+          },
+          "radius": {
+            "max_abs": 0.0,
+            "relative_l2": 0.0
+          },
+          "mu_out": {
+            "max_abs": 0.0,
+            "relative_l2": 0.0
+          },
+          "mu_in": {
+            "max_abs": 0.0,
+            "relative_l2": 0.0
+          }
+        }
+      }
+    ]
+  },
+  "source_archive_sha256": "da4490ecd41b2526241314c141d3198dabdfab7ae8ab4cf1e2191fa43873a5fd",
+  "result_archive_sha256": "6ec0c5e958cb6c1b9163cf8b49ae064ea1a9010320d807bb2d1f08bd827d97c1",
+  "verified_source_hash_comparisons": 1370,
+  "native_tests_passed": 83,
+  "full_model_resume_and_observer_equality_passed": true,
+  "checkpoint_audit": {
+    "state": "passed",
+    "script_sha256": "8176ec960fe82ca19421ac0d17830bd41eea80799b99c756c1ca6466bba00ec4",
+    "arms": {
+      "dense": {
+        "checkpoint_sha256": {
+          "checkpoint-256.pt": "d2de037a27a9d0366fca6458d4f036d0ed2202a0d2cdb78808b4a9dd6d1465cb",
+          "checkpoint-976.pt": "85950f4daf6f17b08ccdefe418c81a6c85f91d21e427197c2ca4a33b928044fc"
+        },
+        "final_parameter_digest_matches": true,
+        "parameter_sha256": "7b7efa11b10a630f026c44081b4dced37a6febc8998c5debef33d403d445bb06",
+        "optimizer_clocks": [
+          976
+        ],
+        "moment_dtype": "float32",
+        "moments_finite": true
+      },
+      "dst-all": {
+        "checkpoint_sha256": {
+          "checkpoint-256.pt": "d939378caa9b26153f5dabd21177506a3fc52fc121fe5db682cf6611e4a45422",
+          "checkpoint-976.pt": "c71537bf5b872c813e5883515a662e104ad1b8e4a7b5652f7aade3801a699753"
+        },
+        "final_parameter_digest_matches": true,
+        "parameter_sha256": "44ca9940315af0c07e550f0dcb547970607530ae00436d64fd193c6f7f71dcfa",
+        "optimizer_clocks": [
+          973
+        ],
+        "moment_dtype": "float32",
+        "moments_finite": true
+      },
+      "legacy-m8": {
+        "checkpoint_sha256": {
+          "checkpoint-256.pt": "0a0d1c1a1f08f9af5dfb0300a343a3f6f158a84e2466a1f619f1dfda6f126adb",
+          "checkpoint-976.pt": "b35669c236fb8b4579e7eb4a9d89550730191b2a1c0860cfaea94bbb46b686e7"
+        },
+        "final_parameter_digest_matches": true,
+        "parameter_sha256": "9b80a605cf9cc0a651badbf680241025041da5f432163e8b6c52e58e50c92985",
+        "optimizer_clocks": [
+          976
+        ],
+        "moment_dtype": "float32",
+        "moments_finite": true
+      },
+      "connected-m16": {
+        "checkpoint_sha256": {
+          "checkpoint-256.pt": "e811847be4e89a5dcfe55bd58917e4be482e378bcf5d239667ed1b408d440c5c",
+          "checkpoint-976.pt": "72ed340c824f0211b238a5802790e16810977360b7387a005f8c314e594ca0cb"
+        },
+        "final_parameter_digest_matches": true,
+        "parameter_sha256": "341b457288c99f124481323f3c621688f8409a339987a570d665d80ab467a91c",
+        "optimizer_clocks": [
+          976
+        ],
+        "moment_dtype": "float32",
+        "moments_finite": true
+      }
+    }
+  }
+}

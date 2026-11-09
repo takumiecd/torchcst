@@ -37,3 +37,5 @@ per expansion; actual task time and allocator peaks must be measured separately.
 It still does not promise the public deterministic/Graph modes. Numerical and
 bitwise repeat/resume qualification are pending for this new opt-in schedule;
 the earlier speed measurements belong to the preceding executor.
+
+[Completed qualification and cost](connected-m16-envelope-lm-results-20261109.md) are recorded separately.
