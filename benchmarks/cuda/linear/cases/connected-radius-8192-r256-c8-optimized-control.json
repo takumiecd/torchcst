@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "case": {
+    "id": "connected-radius-8192-r256-c8-optimized-control",
+    "fixture": "connected_radius_multirow",
+    "size": 8192,
+    "rows": 256,
+    "atoms": 65536,
+    "profile": "initial",
+    "dtype": "float32",
+    "seed": 41,
+    "warmup": 3,
+    "rounds": 9,
+    "optimizer": {
+      "name": "AdamW",
+      "lr": 0.0001,
+      "weight_decay": 0.0,
+      "fused": true,
+      "capturable": false
+    }
+  },
+  "plans": [
+    "optimized8"
+  ],
+  "baseline": "optimized8",
+  "dense": true
+}

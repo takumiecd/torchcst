@@ -39,6 +39,19 @@
           "direct_tile_limit": 16
         }
       }
+    },
+    {
+      "id": "optimized8",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_connected_control_optimized_m8",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "modes": 8,
+          "connected": false,
+          "direct_tile_limit": 16
+        }
+      }
     }
   ]
 }

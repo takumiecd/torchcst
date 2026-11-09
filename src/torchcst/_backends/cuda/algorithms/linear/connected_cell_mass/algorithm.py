@@ -34,6 +34,7 @@ class ConnectedAlgorithm(Algorithm[ConnectedRecipe]):
             or type(recipe.modes) is not int
             or recipe.modes not in (8, 16)
             or type(recipe.connected) is not bool
+            or type(recipe.direct_tile_limit) is not int
             or recipe.direct_tile_limit != 16
         ):
             raise ValueError(
@@ -60,7 +61,7 @@ class ConnectedAlgorithm(Algorithm[ConnectedRecipe]):
                     or a.binding.base_tile_sites != 1
                     or a.binding.merge_factor != 2
                     or a.binding.profile.modes != recipe.modes
-                    or a.site_count > 16384
+                    or not 16 <= a.site_count <= 16384
                 ):
                     raise ValueError(
                         "requires origin0/spacing1 power2 charts<=16384, matching M, base1/merge2"
@@ -105,3 +106,35 @@ class ConnectedAlgorithm(Algorithm[ConnectedRecipe]):
         from .executor import linear
 
         return linear(x, p, state.layout, state.recipe)
+
+
+@dataclass(frozen=True)
+class OptimizedM8Control(ConnectedAlgorithm):
+    """Unchanged optimized M8 code, separately admitted to this physical fixture.
+
+    Admission and benchmark registration are local to this study; no previous
+    Algorithm's support scope or implementation contract is broadened.
+    """
+
+    id: str = "cuda_connected_control_optimized_m8"
+
+    def validate_recipe(self, recipe):
+        super().validate_recipe(recipe)
+        if recipe.modes != 8 or recipe.connected:
+            raise ValueError("optimized control requires legacy M8")
+
+    def prepare(self, state):
+        from ..radius_cell_mass.algorithm import hierarchy_from_operator
+
+        state.invalidate()
+        plan = hierarchy_from_operator(state.binding.execution_declaration())
+        state.layout = (plan.input.native_config(), plan.output.native_config())
+        state.mark_current()
+
+    def execute(self, state, inputs):
+        x, p, _, _ = linear_execution(state, inputs)
+        from ..radius_cell_mass.executor import _extension
+
+        return _extension(8).packed_levels_linear(
+            x.contiguous(), p.contiguous(), *state.layout, False, True
+        )
