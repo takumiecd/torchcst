@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "plans": [
+    {
+      "id": "legacy8",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_connected_cell_mass",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "modes": 8,
+          "connected": false,
+          "direct_tile_limit": 16
+        }
+      }
+    },
+    {
+      "id": "legacy16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_connected_cell_mass",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "modes": 16,
+          "connected": false,
+          "direct_tile_limit": 16
+        }
+      }
+    },
+    {
+      "id": "connected16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_connected_cell_mass",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "modes": 16,
+          "connected": true,
+          "direct_tile_limit": 16
+        }
+      }
+    },
+    {
+      "id": "optimized8",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_connected_control_optimized_m8",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "modes": 8,
+          "connected": false,
+          "direct_tile_limit": 16
+        }
+      }
+    },
+    {
+      "id": "connected16-fp32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_connected_m16_fp32_reuse",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "modes": 16,
+          "connected": true,
+          "direct_tile_limit": 16,
+          "stage": "fp32"
+        }
+      }
+    },
+    {
+      "id": "connected16-reuse",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_connected_m16_fp32_reuse",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "modes": 16,
+          "connected": true,
+          "direct_tile_limit": 16,
+          "stage": "reuse"
+        }
+      }
+    },
+    {
+      "id": "connected16-owner",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_connected_m16_fp32_reuse",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "modes": 16,
+          "connected": true,
+          "direct_tile_limit": 16,
+          "stage": "owner"
+        }
+      }
+    },
+    {
+      "id": "connected16-coalesced",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_connected_m16_coalesced",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "modes": 16,
+          "connected": true,
+          "direct_tile_limit": 16
+        }
+      }
+    },
+    {
+      "id": "connected16-ordered",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_connected_m16_coalesced_ordered",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "modes": 16,
+          "connected": true,
+          "direct_tile_limit": 16
+        }
+      }
+    }
+  ]
+}

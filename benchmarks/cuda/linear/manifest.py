@@ -15,6 +15,7 @@ from torchcst._backends.cuda.algorithms.linear.connected_cell_mass.algorithm imp
 )
 from torchcst._backends.cuda.algorithms.linear.connected_cell_mass_coalesced.algorithm import (
     ConnectedCoalescedAlgorithm,
+    ConnectedOrderedAlgorithm,
 )
 from torchcst._backends.cuda.algorithms.linear.connected_cell_mass_reuse.algorithm import (
     ConnectedReuseAlgorithm,
@@ -55,6 +56,7 @@ from torchcst._backends.torch.algorithms.linear.normalized_radial.layout import 
 REGISTRY = Registry()
 REGISTRY.register(ConnectedReuseAlgorithm())
 REGISTRY.register(ConnectedCoalescedAlgorithm())
+REGISTRY.register(ConnectedOrderedAlgorithm())
 REGISTRY.register(ConnectedAlgorithm())
 REGISTRY.register(OptimizedM8Control())
 REGISTRY.register(RadiusCellMassAlgorithm())

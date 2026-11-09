@@ -134,3 +134,14 @@ def test_ordered_repeats_are_bitwise_for_direct_scale_mixture():
         assert torch.equal(a, b)
     for a, b in zip(results[0], results[2]):
         assert torch.equal(a, b)
+
+
+def test_ordered_plan_catalog_roundtrip():
+    from benchmarks.cuda.linear.manifest import REGISTRY, load_run
+
+    run = load_run(
+        "benchmarks/cuda/linear/cases/connected-radius-8192-r256-c8-ordered.json",
+        "benchmarks/cuda/linear/plans-connected-radius-ordered.json",
+    )
+    for entry in run.plans:
+        assert REGISTRY.loads_plan(REGISTRY.dumps_plan(entry.plan)) == entry.plan
