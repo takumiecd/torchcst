@@ -67,3 +67,43 @@ def test_registry_roundtrip():
     )
     for entry in run.plans:
         assert REGISTRY.loads_plan(REGISTRY.dumps_plan(entry.plan)) == entry.plan
+
+
+def test_admission_uses_declarations_and_rejects_unimplemented_contracts():
+    from torchcst._backends.cuda.algorithms.linear.connected_cell_mass.algorithm import (
+        ConnectedAlgorithm,
+        ConnectedRecipe,
+    )
+    from torchcst._backends.schema import DeviceInfo
+    from torchcst.operators.execution import LinearInputs
+
+    m = model()
+    c = m.build_context(LinearInputs(torch.zeros(2, 128, dtype=torch.float64)))
+    c = replace(c, dtype=torch.float32, device=DeviceInfo("cuda", 0, "metadata-only"))
+    algorithm, recipe = ConnectedAlgorithm(), ConnectedRecipe()
+    assert algorithm.supports(c, recipe).supported
+    for fields in (
+        {"dtype": torch.float64},
+        {"execution_mode": "cuda_graph"},
+        {"deterministic": True},
+        {"input_shape": (257, 128)},
+    ):
+        assert not algorithm.supports(replace(c, **fields), recipe).supported
+    spec = c.operator.kernel
+    other = replace(
+        spec.profiles[1], connection=RadiusConnectionSpec(position_half_width=0.05)
+    )
+    mismatch = replace(
+        c.operator, kernel=replace(spec, profiles=(spec.profiles[0], other))
+    )
+    assert not algorithm.supports(replace(c, operator=mismatch), recipe).supported
+
+    # Small lower scale ratios can require banks beyond the finite chart
+    # hierarchy; only the measured default connection is admitted initially.
+    unqualified = RadiusConnectionSpec(scale_ratio=1.9)
+    changed = replace(
+        spec, profiles=tuple(replace(p, connection=unqualified) for p in spec.profiles)
+    )
+    assert not algorithm.supports(
+        replace(c, operator=replace(c.operator, kernel=changed)), recipe
+    ).supported

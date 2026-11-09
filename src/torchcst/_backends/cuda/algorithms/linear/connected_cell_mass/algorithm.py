@@ -8,6 +8,7 @@ from torchcst._backends.algorithm import Algorithm
 from torchcst._backends.schema import SupportResult
 from torchcst.kernels.parameterizations import PhysicalAmpRadiusSpec
 from torchcst.kernels.radius_cell_mass import radius_cell_mass_axes
+from torchcst.kernels.spec import RadiusConnectionSpec
 from torchcst.operators.context import LinearContext
 from torchcst.operators.execution import LinearInputs, linear_execution
 
@@ -68,6 +69,15 @@ class ConnectedAlgorithm(Algorithm[ConnectedRecipe]):
                     )
                 if (a.binding.connection is not None) != recipe.connected:
                     raise ValueError("connection declaration differs from recipe")
+            if recipe.connected and (
+                recipe.modes != 16
+                or axes[0].binding.connection != RadiusConnectionSpec()
+            ):
+                raise ValueError(
+                    "GPU connection qualification currently requires M16 and the default mathematical settings"
+                )
+            if axes[0].binding.connection != axes[1].binding.connection:
+                raise ValueError("first candidate requires equal connection settings")
             if (
                 context.device.type != "cuda"
                 or context.dtype != torch.float32

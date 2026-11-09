@@ -2,8 +2,9 @@
 
 [日本語](connected-m16-qualification-20261109.ja.md)
 
-Status: implementation prepared; GPU correctness, performance and learning are
-not yet established. No production registration or default changes.
+Prespecified protocol. The [completed screen](connected-m16-results-20261109.md)
+passes correctness but fails the performance gate. No learning or production
+adoption. The GPU connection is admitted only at measured default M16 settings.
 
 The connected definition uses K=3, T=2^l, P=3T. Its radius bank is the smallest
 T with R<=bT, b=.9. Between aT and bT, a=b/1.25=.72, blend T and 2T with
