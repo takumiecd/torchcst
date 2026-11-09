@@ -176,7 +176,38 @@ def correctness(args, run):
             errors[n] = error(gp[:, col].cpu(), ep[:, col])
         if any(e["relative_l2"] > 3e-4 or e["max_abs"] > 3e-4 for e in errors.values()):
             raise AssertionError(errors)
-        reports.append({"plan": entry.id, "errors": errors})
+        # Compare full AdamW trajectories, including moments/counters. Both
+        # references start from identical FP32 rows (oracle promotes locally).
+        cp = torch.nn.Parameter(p.detach().float()[:6].clone())
+        gm = PlanLinear(
+            cp.detach().cuda(),
+            operator(128, recipe.modes, recipe.connected),
+            entry.plan,
+        )
+        cop = torch.optim.AdamW([cp], lr=1e-4, weight_decay=0, fused=False)
+        gop = torch.optim.AdamW(gm.parameters(), lr=1e-4, weight_decay=0, fused=True)
+        for _ in range(4):
+            cop.zero_grad(set_to_none=True)
+            gop.zero_grad(set_to_none=True)
+            cy = oracle(x.detach(), cp.double(), recipe.modes, recipe.connected)
+            gy = gm(tx.detach())
+            cy.square().mean().backward()
+            gy.square().mean().backward()
+            cop.step()
+            gop.step()
+        trajectory = {"parameter": error(gm.p.cpu(), cp)}
+        for name in ("exp_avg", "exp_avg_sq", "step"):
+            trajectory[name] = error(gop.state[gm.p][name].cpu(), cop.state[cp][name])
+        if (
+            trajectory["parameter"]["max_abs"] > 2e-4
+            or trajectory["exp_avg"]["relative_l2"] > 5e-4
+            or trajectory["exp_avg_sq"]["relative_l2"] > 1e-3
+            or trajectory["step"]["max_abs"] != 0
+        ):
+            raise AssertionError(trajectory)
+        reports.append(
+            {"plan": entry.id, "errors": errors, "AdamW_4_steps": trajectory}
+        )
     return {
         "status": "PASS",
         "scope": "independent FP64 Chebyshev quadrature Y/dX/all physical gradients, 20 boundary/wide/repeated-image atoms, FP32-encoded state",

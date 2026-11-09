@@ -7,6 +7,9 @@ from torchcst._builtin_callbacks import seal_functions as _seal_functions
 
 def kernel_manifest(declaration):
     result = asdict(declaration)
+    for profile in result.get("profiles", ()):
+        if profile.get("connection") is None:
+            profile.pop("connection", None)
     parameterization = result.get("parameterization")
     if (
         isinstance(parameterization, dict)
