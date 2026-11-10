@@ -55,9 +55,9 @@ attention/embedding/tied-vocabulary maps. Final validation CE:
 
 Fresh Dense is3.308981. No CST count meets the fixed+.01 CE and-.5pp Top1 pilot
 margins,so no midpoint was triggered and selected_coefficient remains null.
-65536 is only a descriptive follow-up compromise:Top137.280% vs Dense37.451%,
+65536 is only a descriptive follow-up compromise:Top1 37.280% vs Dense37.451%,
 CE gap.022690,step459.236ms,allocated1622.90MiB,reserved2114MiB. Increasing to131072
-yields only.001435 lower CE and observedTop136.780%. No convergence,formal
+yields only.001435 lower CE and observed Top1 36.780%. No convergence,formal
 equivalence,optimum or unique-cause claim. Same initialization policy changes
 radius distributions with A;this does not isolate pure representation capacity.
 The small LM shows no actual speed/allocated-memory advantage over Dense

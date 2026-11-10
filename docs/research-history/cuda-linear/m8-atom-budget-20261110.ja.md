@@ -47,7 +47,7 @@ DEVはvalidationを意味し、TRAINとstory単位で分離した8192 targetをm
 
 新Denseは3.308981。固定pilot基準のCE+.01/Top1-.5ポイント以内を満たすCSTはなく、中間点は実行せず、
 selected_coefficientはnullのまま。65536は記述的な次の折衷候補に限る。
-Top137.280%対Dense37.451%、CE差.022690、step459.236ms・allocated1622.90MiB・reserved2114MiB。
+Top1 37.280%対Dense37.451%、CE差.022690、step459.236ms・allocated1622.90MiB・reserved2114MiB。
 131072への増加はCEを.001435下げる一方、観測Top1は36.780%。収束・正式な同等性・最適値・唯一原因の主張はしない。
 同じ初期化方針でもAで半径分布が変わるため、純粋な表現容量の分離ではない。
 この小型LMではDense（18.194ms・allocated948.74MiB）への速度/allocatedメモリ優位はない。
