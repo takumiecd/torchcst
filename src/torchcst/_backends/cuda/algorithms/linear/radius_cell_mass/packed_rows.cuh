@@ -37,6 +37,13 @@ void packed_check_scope(Tensor x, Tensor p, Config ci, Config co) {
     bool large = ai.sites == ao.sites &&
         (ai.sites == 2048 || ai.sites == 8192 || ai.sites == 16384) &&
         p.size(0) >= 4 && p.size(0) <= 8 * ai.sites && ai.origin == 0 && ao.origin == 0;
+#ifdef RADIUS_LM_C16
+    // Separate physical c16 build; ordinary builds retain their old guards.
+    ffn = false; large = false;
+    lm = !ai.polar && !ao.polar && ai.origin == 0 && ao.origin == 0 &&
+        ((ai.sites == 512 && ao.sites == 2048) ||
+         (ai.sites == 2048 && ao.sites == 512)) && p.size(0) == 16384;
+#endif
 #ifdef RADIUS_CONNECTED_CONTROL
     // Separate research build only. Unchanged arithmetic is admitted to the
     // matched physical square controls; ordinary binaries retain old guards.
