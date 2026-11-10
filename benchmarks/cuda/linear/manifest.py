@@ -32,6 +32,10 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.lm_c16 import (
     RadiusEnvelopeWideAmplitudeC16LMAlgorithm,
     RadiusLMPhysicalC16LevelsAlgorithm,
 )
+from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.lm_width import (
+    RadiusEnvelopeWideAmplitudeWidthLMAlgorithm,
+    RadiusLMPhysicalWidthLevelsAlgorithm,
+)
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.packed import (
     RadiusPackedAlgorithm,
     RadiusPackedParallelAlgorithm,
@@ -51,6 +55,8 @@ from torchcst._backends.torch.algorithms.linear.normalized_radial.layout import 
 
 # This catalog is benchmark-local. Production registration/selection is unchanged.
 REGISTRY = Registry()
+REGISTRY.register(RadiusLMPhysicalWidthLevelsAlgorithm())
+REGISTRY.register(RadiusEnvelopeWideAmplitudeWidthLMAlgorithm())
 REGISTRY.register(RadiusLMPhysicalBudgetLevelsAlgorithm())
 REGISTRY.register(RadiusEnvelopeWideAmplitudeBudgetLMAlgorithm())
 REGISTRY.register(RadiusLMPhysicalC16LevelsAlgorithm())
