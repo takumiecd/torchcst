@@ -44,6 +44,16 @@ void packed_check_scope(Tensor x, Tensor p, Config ci, Config co) {
         ((ai.sites == 512 && ao.sites == 2048) ||
          (ai.sites == 2048 && ao.sites == 512)) && p.size(0) == 16384;
 #endif
+#ifdef RADIUS_LM_BUDGET
+    // Separate M8 capacity build; the ordinary and c16 guards stay unchanged.
+    ffn = false; large = false;
+    lm = !ai.polar && !ao.polar && ai.origin == 0 && ao.origin == 0 &&
+        ((ai.sites == 512 && ao.sites == 2048) ||
+         (ai.sites == 2048 && ao.sites == 512)) &&
+        (p.size(0) == 16384 || p.size(0) == 24576 || p.size(0) == 32768 ||
+         p.size(0) == 49152 || p.size(0) == 65536 ||
+         p.size(0) == 98304 || p.size(0) == 131072);
+#endif
 #ifdef RADIUS_CONNECTED_CONTROL
     // Separate research build only. Unchanged arithmetic is admitted to the
     // matched physical square controls; ordinary binaries retain old guards.
