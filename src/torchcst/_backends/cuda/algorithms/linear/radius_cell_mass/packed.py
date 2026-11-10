@@ -37,6 +37,11 @@ class RadiusPackedAlgorithm(RadiusRow8Algorithm):
     def parallel(self):
         return False
 
+    def _packed_extension(self):
+        from .executor import _extension
+
+        return _extension(8)
+
     def validate_recipe(self, recipe):
         RadiusCellMassAlgorithm.validate_recipe(
             self, replace(recipe, save_response=True)
@@ -49,7 +54,7 @@ class RadiusPackedAlgorithm(RadiusRow8Algorithm):
 
     def execute(self, state, inputs):
         x, parameters, _, _ = linear_execution(state, inputs)
-        from .executor import _extension, checked_radius_linear
+        from .executor import checked_radius_linear
 
         if (
             type(x) not in (torch.Tensor, torch.nn.Parameter)
@@ -64,7 +69,7 @@ class RadiusPackedAlgorithm(RadiusRow8Algorithm):
             return checked_radius_linear(
                 state.layout, x, parameters, recipe=GLOBAL_ACTIVE_GRAD4_NATIVE.recipe
             )
-        extension = _extension(8)
+        extension = self._packed_extension()
         if self.stream_rows:
             streamed = (
                 extension.packed_levels_stream64_linear

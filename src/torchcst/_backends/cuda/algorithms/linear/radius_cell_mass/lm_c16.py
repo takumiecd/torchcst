@@ -1,7 +1,9 @@
 """Explicit c16 M8 FFN cohort; reuse the unchanged c8 arithmetic/executor."""
 
+import hashlib
 from dataclasses import dataclass, replace
 from functools import cache
+from pathlib import Path
 
 import torch
 
@@ -21,6 +23,9 @@ from .radius_envelope import (
 @dataclass(frozen=True)
 class RadiusLMPhysicalC16LevelsAlgorithm(RadiusLMPhysicalLevelsAlgorithm):
     id: str = "cuda_radius_lm_physical_c16_levels"
+
+    def _packed_extension(self):
+        return c16_extension()
 
     def supports(self, context, recipe):
         result = RadiusCellMassAlgorithm.supports(self, context, recipe)
@@ -56,6 +61,29 @@ LM_PHYSICAL_C16_LEVELS = ExecutionPlan(
     "v1",
     GLOBAL_ACTIVE_GRAD4_NATIVE.recipe,
 )
+
+
+@cache
+def c16_extension():
+    """Dedicated host admission; all mathematical kernels remain shared."""
+    from torch.utils.cpp_extension import load
+
+    directory = Path(__file__).parent
+    source, host = directory / "pipeline.cu", directory / "host_autograd.cpp"
+    inputs = [source, host, *sorted(directory.glob("*.cuh"))]
+    digest = hashlib.sha256(b"".join(p.read_bytes() for p in inputs)).hexdigest()[:12]
+    return load(
+        name=f"torchcst_radius_lm_c16_{digest}",
+        sources=[str(source), str(host)],
+        extra_cflags=["-O2"],
+        extra_cuda_cflags=[
+            "-O2",
+            "--ftz=false",
+            "-DRADIUS_ROW_BATCH=8",
+            "-DRADIUS_LM_C16=1",
+        ],
+        verbose=False,
+    )
 
 
 @cache

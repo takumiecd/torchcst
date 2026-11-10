@@ -100,3 +100,28 @@ def test_c16_outstanding_and_retained_gradients(ni, no, rows):
         torch.testing.assert_close(a, b, atol=2e-6, rtol=2e-5)
     assert first[1][:, 1].abs().max() > 0
     later.sum().backward()
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="actual CUDA required")
+@pytest.mark.parametrize("ni,no", [(512, 2048), (2048, 512)])
+def test_native_builds_keep_distinct_atom_admission(ni, no):
+    from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.algorithm import (
+        hierarchy_from_operator,
+    )
+    from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.executor import (
+        _extension,
+    )
+    from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.lm_c16 import (
+        c16_extension,
+    )
+
+    m = physical(ni, no, 16384).cuda()
+    plan = hierarchy_from_operator(m.execution_declaration())
+    config = (plan.input.native_config(), plan.output.native_config())
+    x = torch.zeros(1, ni, device="cuda")
+    with pytest.raises(RuntimeError, match="packed pilot requires admitted"):
+        _extension(8).packed_levels_linear(x, m.atoms.p, *config, False, True)
+    with pytest.raises(RuntimeError, match="packed pilot requires admitted"):
+        c16_extension().packed_levels_linear(
+            x, m.atoms.p[:8192].contiguous(), *config, False, True
+        )
