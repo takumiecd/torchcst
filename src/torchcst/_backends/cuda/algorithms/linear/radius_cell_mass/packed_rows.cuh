@@ -37,6 +37,31 @@ void packed_check_scope(Tensor x, Tensor p, Config ci, Config co) {
     bool large = ai.sites == ao.sites &&
         (ai.sites == 2048 || ai.sites == 8192 || ai.sites == 16384) &&
         p.size(0) >= 4 && p.size(0) <= 8 * ai.sites && ai.origin == 0 && ao.origin == 0;
+#ifdef RADIUS_LM_C16
+    // Separate physical c16 build; ordinary builds retain their old guards.
+    ffn = false; large = false;
+    lm = !ai.polar && !ao.polar && ai.origin == 0 && ao.origin == 0 &&
+        ((ai.sites == 512 && ao.sites == 2048) ||
+         (ai.sites == 2048 && ao.sites == 512)) && p.size(0) == 16384;
+#endif
+#ifdef RADIUS_LM_BUDGET
+    // Separate M8 capacity build; the ordinary and c16 guards stay unchanged.
+    ffn = false; large = false;
+    lm = !ai.polar && !ao.polar && ai.origin == 0 && ao.origin == 0 &&
+        ((ai.sites == 512 && ao.sites == 2048) ||
+         (ai.sites == 2048 && ao.sites == 512)) &&
+        (p.size(0) == 16384 || p.size(0) == 24576 || p.size(0) == 32768 ||
+         p.size(0) == 49152 || p.size(0) == 65536 ||
+         p.size(0) == 98304 || p.size(0) == 131072);
+#endif
+#ifdef RADIUS_LM_WIDTH
+    // Fixed-c64 width study; old builds retain their exact shape admission.
+    ffn = false; large = false;
+    int width = std::min(ai.sites, ao.sites);
+    lm = !ai.polar && !ao.polar && ai.origin == 0 && ao.origin == 0 &&
+        (width == 512 || width == 1024 || width == 2048) &&
+        std::max(ai.sites, ao.sites) == 4 * width && p.size(0) == 128 * width;
+#endif
     TORCH_CHECK(x.device() == p.device() && x.size(1) == ai.sites &&
         x.scalar_type() == torch::kFloat && p.scalar_type() == torch::kFloat &&
         x.size(0) >= 1 && x.size(0) <= 256 && (ffn || lm || large),
