@@ -183,7 +183,9 @@ Tensor packed_make_dense_weight(Tensor p, Tensor geometry, Config ci, Config co)
         auto output_expansion = at::mm(shifted.view({-1, F}), basis.t());
         auto input_features = output_expansion.view({no, ni * F, sites})
             .transpose(1, 2).contiguous().view({-1, F});
-        weight.add_(at::mm(input_features, basis.t()).view_as(weight));
+        // The contraction writes consecutive sites of one input tile.
+        // Accumulate directly into W to avoid a full-sized level matrix.
+        weight.view({-1, sites}).addmm_(input_features, basis.t());
     }
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return weight;
