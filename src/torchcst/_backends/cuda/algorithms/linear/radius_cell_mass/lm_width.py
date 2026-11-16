@@ -105,6 +105,27 @@ LM_PHYSICAL_SHARED_WIDE = ExecutionPlan(
 )
 
 
+@dataclass(frozen=True)
+class RadiusLMPhysicalDenseFourierWeightAlgorithm(RadiusLMPhysicalSharedWideAlgorithm):
+    id: str = "cuda_radius_lm_physical_dense_fourier_weight"
+
+    @property
+    def recompute(self):
+        # The recipe disables retained per-Atom response tensors.
+        return True
+
+    @property
+    def packed_levels_entry(self):
+        return "packed_dense_fourier_weight_linear"
+
+
+LM_PHYSICAL_DENSE_FOURIER_WEIGHT = ExecutionPlan(
+    RadiusLMPhysicalDenseFourierWeightAlgorithm().id,
+    "v1",
+    replace(GLOBAL_ACTIVE_GRAD4_NATIVE.recipe, save_response=False),
+)
+
+
 @cache
 def width_extension():
     """Dedicated host admission; all mathematical kernels remain shared."""
@@ -136,6 +157,7 @@ def _physical_dispatcher():
     registry = Registry()
     registry.register(RadiusLMPhysicalWidthLevelsAlgorithm())
     registry.register(RadiusLMPhysicalSharedWideAlgorithm())
+    registry.register(RadiusLMPhysicalDenseFourierWeightAlgorithm())
     return Dispatcher(registry=registry)
 
 
@@ -195,4 +217,18 @@ class RadiusEnvelopeSharedWideLMAlgorithm(RadiusEnvelopeWideAmplitudeWidthLMAlgo
 
 RADIUS_ENVELOPE_SHARED_WIDE_LM = ExecutionPlan(
     RadiusEnvelopeSharedWideLMAlgorithm().id, "v1", DefaultRecipe()
+)
+
+
+@dataclass(frozen=True)
+class RadiusEnvelopeDenseFourierWeightLMAlgorithm(RadiusEnvelopeSharedWideLMAlgorithm):
+    id: str = "cuda_radius_envelope_dense_fourier_weight_lm"
+    physical_plan: ClassVar[ExecutionPlan] = LM_PHYSICAL_DENSE_FOURIER_WEIGHT
+    physical_algorithm: ClassVar[type[RadiusLMPhysicalWidthLevelsAlgorithm]] = (
+        RadiusLMPhysicalDenseFourierWeightAlgorithm
+    )
+
+
+RADIUS_ENVELOPE_DENSE_FOURIER_WEIGHT_LM = ExecutionPlan(
+    RadiusEnvelopeDenseFourierWeightLMAlgorithm().id, "v1", DefaultRecipe()
 )

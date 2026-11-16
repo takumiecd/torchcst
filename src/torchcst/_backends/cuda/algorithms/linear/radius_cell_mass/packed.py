@@ -26,6 +26,12 @@ class RadiusPackedAlgorithm(RadiusRow8Algorithm):
         return False
 
     @property
+    def packed_levels_entry(self):
+        return (
+            "packed_shared_wide_linear" if self.shared_wide else "packed_levels_linear"
+        )
+
+    @property
     def stream_rows(self):
         return 0
 
@@ -87,9 +93,7 @@ class RadiusPackedAlgorithm(RadiusRow8Algorithm):
                 state.layout.output.native_config(),
             )
         entry = (
-            extension.packed_shared_wide_linear
-            if self.shared_wide
-            else extension.packed_levels_linear
+            getattr(extension, self.packed_levels_entry)
             if self.level_moments
             else extension.packed_geometry_linear
             if self.cache_geometry

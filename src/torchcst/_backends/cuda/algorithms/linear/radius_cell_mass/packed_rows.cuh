@@ -1,11 +1,14 @@
 #pragma once
+#include "dense_pair_cotangent.cuh"
+#include "dense_fourier_weight.cuh"
 // FP32 Linear arithmetic and Z/H/G, with optional recomputation.
 // Host configuration scalars retain the common metadata representation.
 namespace radius_cell_mass {
-__global__ void packed_classify_kernel(const float *p,int64_t *keys,int atoms,Axis ai,Axis ao) {
+__global__ void packed_classify_kernel(const float *p,int64_t *keys,int atoms,Axis ai,Axis ao,float radius_limit) {
     int a=blockIdx.x*blockDim.x+threadIdx.x;if(a>=atoms)return;
     float ri=signal_radius<float>(p,a,ai),ro=signal_radius<float>(p,a,ao);
     bool valid=isfinite(ri)&&isfinite(ro)&&ri>0&&ro>0;
+    if (radius_limit > 0) valid &= ri <= radius_limit && ro <= radius_limit;
     for(int c=0;c<4;++c)valid &= isfinite(p[4*a+c]);
     valid &= isfinite(p[4*a]*p[4*a]+p[4*a+1]*p[4*a+1]);
     CUDA_KERNEL_ASSERT_MSG(valid,"invalid FP32 packed geometry");
@@ -15,11 +18,11 @@ __global__ void packed_classify_kernel(const float *p,int64_t *keys,int atoms,Ax
     int ni=bi.node_offset+positive_mod(mi.first_tile,bi.tile_count),no=bo.node_offset+positive_mod(mo.first_tile,bo.tile_count);
     keys[a]=int64_t(no)*ai.node_count+ni;
 }
-Tensor packed_classify(Tensor p,Config ci,Config co) {
+Tensor packed_classify(Tensor p,Config ci,Config co,float radius_limit) {
     c10::cuda::CUDAGuard guard(p.device());
     auto keys=torch::empty({p.size(0)},p.options().dtype(torch::kLong));
     packed_classify_kernel<<<(p.size(0)+THREADS-1)/THREADS,THREADS,0,at::cuda::getCurrentCUDAStream()>>>(
-        p.data_ptr<float>(),keys.data_ptr<int64_t>(),p.size(0),parse_axis(ci),parse_axis(co));
+        p.data_ptr<float>(),keys.data_ptr<int64_t>(),p.size(0),parse_axis(ci),parse_axis(co),radius_limit);
     C10_CUDA_KERNEL_LAUNCH_CHECK();return keys;
 }
 void packed_check_scope(Tensor x, Tensor p, Config ci, Config co) {

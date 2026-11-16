@@ -45,7 +45,11 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.lm_c16 import (
     RadiusLMPhysicalC16LevelsAlgorithm,
 )
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.lm_width import (
+    RadiusEnvelopeDenseFourierWeightLMAlgorithm,
+    RadiusEnvelopeSharedWideLMAlgorithm,
     RadiusEnvelopeWideAmplitudeWidthLMAlgorithm,
+    RadiusLMPhysicalDenseFourierWeightAlgorithm,
+    RadiusLMPhysicalSharedWideAlgorithm,
     RadiusLMPhysicalWidthLevelsAlgorithm,
 )
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.packed import (
@@ -68,6 +72,10 @@ from torchcst._backends.torch.algorithms.linear.normalized_radial.layout import 
 REGISTRY = Registry()
 REGISTRY.register(RadiusLMPhysicalWidthLevelsAlgorithm())
 REGISTRY.register(RadiusEnvelopeWideAmplitudeWidthLMAlgorithm())
+REGISTRY.register(RadiusLMPhysicalSharedWideAlgorithm())
+REGISTRY.register(RadiusEnvelopeSharedWideLMAlgorithm())
+REGISTRY.register(RadiusLMPhysicalDenseFourierWeightAlgorithm())
+REGISTRY.register(RadiusEnvelopeDenseFourierWeightLMAlgorithm())
 REGISTRY.register(RadiusLMPhysicalBudgetLevelsAlgorithm())
 REGISTRY.register(RadiusEnvelopeWideAmplitudeBudgetLMAlgorithm())
 REGISTRY.register(RadiusLMPhysicalC16LevelsAlgorithm())
