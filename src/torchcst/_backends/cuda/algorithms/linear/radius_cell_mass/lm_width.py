@@ -109,6 +109,12 @@ LM_PHYSICAL_SHARED_WIDE = ExecutionPlan(
 class RadiusLMPhysicalDenseFourierWeightAlgorithm(RadiusLMPhysicalSharedWideAlgorithm):
     id: str = "cuda_radius_lm_physical_dense_fourier_weight"
 
+    def supports(self, context, recipe):
+        result = super().supports(context, recipe)
+        if result.supported and context.precision.allow_tf32:
+            return SupportResult(("dense Fourier weights require IEEE FP32 matmul",))
+        return result
+
     @property
     def recompute(self):
         # The recipe disables retained per-Atom response tensors.

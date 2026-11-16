@@ -134,6 +134,7 @@ def test_dense_fourier_weight_is_an_explicit_down_only_plan():
         {"atom_count": 131072},
         {"dtype": torch.float64},
         {"execution_mode": "cuda_graph"},
+        {"precision": replace(context.precision, allow_tf32=True)},
     ):
         assert not algorithm.supports(
             replace(context, **changed), plan.recipe
