@@ -43,7 +43,7 @@ report = cst_init.variance_scaling_(layer, variance=0.02**2, q=0.0)
 名目振幅scale・物理振幅RMS・クリップ数・Atom数・評価回数を記録します。
 実験metadataと一緒に保存してください。moduleのstate dictへは追加しません。
 
-現時点の対象はCPU FP32/FP64の`CSTLinear`、2-chart Polar radius cell-mass productです。
+現時点の対象はCPU FP32/FP64の`CSTLinear`、2-chartのPolarまたは有理式の半径セル質量productです。
 非対応kernelとGPU上での初期化はエラーにします。Dense W・Denseモデル・TRAIN特徴・
 ラベルは不要です。中心・宣言・Atom数・Parameter形状とidentityを保持します。
 探索失敗時はmodule状態を変更しませんが、乱数generatorは進む場合があります。
@@ -79,7 +79,8 @@ rho=sqrt(1+3q)、s=rho*a/a_max、t=rho*sqrt(1-(a/a_max)²)と符号化します�
 q=0は下限、q=0.5は幾何平均、q=1は上限です。qはAtom密度alpha=A/(d_in*d_out)と
 区別します。初期条件の指定であり、学習中のradial activityを固定する拘束ではありません。
 
-Polarでは半径と因子エネルギーも振幅の絶対値に依存します。その依存を含めて
+有理式の座標は `(a, q)` を直接保持し、有理式の下限と固定の上限の間で同じ初期割合を使います。
+両方の座標系で、半径と因子エネルギーは振幅の絶対値に依存します。その依存を含めて
 二乗平均目標を解きます。標準正規乱数zを生成し、scale*zを
 a_max*(-1+1e-6,1-1e-6)へ対称クリップします。実際のmodule dtypeでAtomsを符号化し、
 CPU FP64で因子エネルギーを評価します。絶対値と中心を固定した独立符号の期待値は、

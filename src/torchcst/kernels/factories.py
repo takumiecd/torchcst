@@ -27,6 +27,7 @@ from .parameterizations import (
     PolarAmpRadiusSpec,
     PolarAmpWidthSpec,
     RadiusBounds,
+    RationalRadiusSpec,
 )
 from .profiles import (
     GaussianSpec,
@@ -113,7 +114,11 @@ def _compose(composition, profiles, coordinates):
         parameterization=coordinates.parameterization,
         initialization=coordinates.initialization,
         update=coordinates.update,
-        revision=7 if radius else 1,
+        revision=8
+        if type(coordinates.parameterization) is RationalRadiusSpec
+        else 7
+        if radius
+        else 1,
     )
 
 
@@ -186,6 +191,51 @@ def amplitude_width(
         ),
         initialization=StatePolicySpec(id="signed_amplitude_centers"),
         update=StatePolicySpec(id="amplitude_and_geometry"),
+    )
+
+
+def rational_radius(
+    *,
+    radius_min=0.5,
+    radius_birth=4.0,
+    radius_max=50.0,
+    radius_fraction=0.0,
+    amplitude_max=32.0,
+    amplitude_std=0.1,
+) -> CoordinateSpec:
+    """Learn [a, q, centers] inside an amplitude-dependent physical-radius envelope.
+
+    U = radius_max and L = radius_min + (radius_birth-radius_min)/(1+3*(a/.3)**2).
+    The task loss differentiates through r = L**(1-q)*U**q. Use
+    CSTAdamW/CSTOptimizer to project amplitude and q proposals to their bounds.
+    """
+    if (
+        type(radius_fraction) not in (float, int)
+        or not math.isfinite(radius_fraction)
+        or not 0 <= radius_fraction <= 1
+    ):
+        raise ValueError("radius_fraction must be a finite fraction in [0,1]")
+    if (
+        type(amplitude_std) not in (float, int)
+        or not math.isfinite(amplitude_std)
+        or amplitude_std < 0
+    ):
+        raise ValueError("amplitude_std must be finite and nonnegative")
+    return CoordinateSpec(
+        parameterization=RationalRadiusSpec(
+            radius_min=radius_min,
+            radius_birth=radius_birth,
+            radius_max=radius_max,
+            amplitude_max=amplitude_max,
+        ),
+        initialization=StatePolicySpec(
+            id="rational_radius_centers",
+            settings=(
+                ("radius_fraction", radius_fraction),
+                ("amplitude_std", amplitude_std),
+            ),
+        ),
+        update=StatePolicySpec(id="rational_radius"),
     )
 
 
@@ -276,12 +326,12 @@ def _activity(
         lower_kappa=kappa if lower_kappa is None else lower_kappa,
         upper_decay_power=upper_decay_power,
         **(
-            dict(
-                radius_envelope=radius_envelope,
-                closed_lower_power=closed_lower_power,
-                closed_upper_power=closed_upper_power,
-                zero_opening_scale=zero_opening_scale,
-            )
+            {
+                "radius_envelope": radius_envelope,
+                "closed_lower_power": closed_lower_power,
+                "closed_upper_power": closed_upper_power,
+                "zero_opening_scale": zero_opening_scale,
+            }
             if coordinate == "polar_radius"
             else {}
         ),

@@ -480,7 +480,7 @@ def test_all_real_algorithm_checked_radius_entries_reach_correct_native_leaf(
         ),
     )
     if entry == "algorithm":
-        state = SimpleNamespace(layout=layout, recipe=recipe)
+        state = SimpleNamespace(layout=layout, recipe=recipe, buffers={})
         inputs = LinearInputs(x)
 
         def execution(st, ins):

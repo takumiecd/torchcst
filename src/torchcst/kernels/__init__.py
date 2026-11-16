@@ -12,6 +12,7 @@ from .factories import (
     polar,
     product,
     radial,
+    rational_radius,
 )
 from .normalization import NormalizationSpec
 from .options import KernelOptions
@@ -21,12 +22,13 @@ from .parameterizations import (
     DirectAmpWidthSpec,
     FixedWidthSpec,
     LogWidthSpec,
-    ParameterizationSpec,
     ParameterFieldSpec,
+    ParameterizationSpec,
     PhysicalAmpRadiusSpec,
     PolarAmpRadiusSpec,
     PolarAmpWidthSpec,
     RadiusBounds,
+    RationalRadiusSpec,
 )
 from .profiles import (
     BiweightSpec,
@@ -61,8 +63,8 @@ __all__ = [
     "KernelSpec",
     "LogWidthSpec",
     "NormalizationSpec",
-    "ParameterizationSpec",
     "ParameterFieldSpec",
+    "ParameterizationSpec",
     "PhysicalAmpRadiusSpec",
     "PolarAmpRadiusSpec",
     "PolarAmpWidthSpec",
@@ -70,6 +72,7 @@ __all__ = [
     "ProfileSpec",
     "RadiusBounds",
     "RadiusIntegratedProfileBinding",
+    "RationalRadiusSpec",
     "StatePolicySpec",
     "TriangleSpec",
     "TriweightSpec",
@@ -84,4 +87,5 @@ __all__ = [
     "polar",
     "product",
     "radial",
+    "rational_radius",
 ]

@@ -6,8 +6,8 @@ The returned report describes an applied initialization, not a quality guarantee
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
 import math
+from dataclasses import dataclass, replace
 
 import torch
 
@@ -44,8 +44,8 @@ def variance_scaling_(module, variance, *, q=0.0, generator=None):
     count, Parameter identity and declarations are preserved. A failure leaves
     module values unchanged (the random generator can still advance).
 
-    Initially supported: CPU FP32/FP64 CSTLinear, two-chart Polar radius cell
-    mass. ``q`` selects the logarithmic position between amplitude-dependent
+    Supports CPU FP32/FP64 CSTLinear with two-chart Polar or rational radius
+    cell masses. ``q`` selects the logarithmic position between amplitude-dependent
     radius bounds. Independent symmetric amplitude signs define the expected
     energy; no dataset, Dense model or dense W is required. The bounded scale
     search includes amplitude-dependent radii and symmetric clipping. Thus the

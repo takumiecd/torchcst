@@ -93,7 +93,7 @@ Polarの`amplitude`は`(s,t)`をまとめた提案更新量を調整する。
 
 ## He・Xavier 初期化
 
-2-chart Polar radius cell-mass kernelを持つCPUの`CSTLinear`を、CUDAへ移動したり
+2-chartのPolarまたは有理式の半径セル質量カーネルを持つCPUの`CSTLinear`を、CUDAへ移動したり
 optimizerを作成したりする前に、明示的に初期化できます。
 
 ```python
@@ -114,6 +114,32 @@ constructorの既定は保持します。対応範囲・数式・新preset用の
 この研究用opt-inは、それぞれの初期化とnative実行条件の検証が必要です。
 別の `radius_envelope="rational_zero_opening"` は正の `zero_opening_scale=tau`
 でゼロから徐々に境界を開き、従来の有理式上限を保持します。数式と保存契約は同じガイドを参照してください。
+
+## 有理式の下限と学習可能な半径割合
+
+半径セル質量のLinearで、座標の宣言に `kernels.rational_radius` を指定します。
+既定の半径下限は `L(a) = 0.5 + 3.5 / (1 + 3 * (a / 0.3)**2)` です。
+固定上限は `U = radius_max`、物理半径は `r = L(a)**(1-q) * U**q` です。
+
+```python
+from torchcst import CSTAdamW, CSTLinear, ChebyshevSpec, chart_presets, kernels
+
+grid = chart_presets.regular_grid(1024, geometry="flat_torus")
+layer = CSTLinear(
+    charts=(grid, grid), atoms=65536, backend="factored",
+    kernel=kernels.product(
+        kernels.cell_mass(ChebyshevSpec(modes=8)),
+        coordinates=kernels.rational_radius(radius_max=512.0, radius_fraction=0.0),
+    ),
+)
+optimizer = CSTAdamW(layer.parameters(), model=layer, lr=1e-3)
+```
+
+`radius_fraction` は学習可能なAtomの座標 `q` の初期値です。
+タスク損失の勾配は振幅と `q` の両方に流れます。`CSTAdamW` は更新後の
+`q` を `[0, 1]` に収めます。`field_lrs={"radius_fraction": ...}` で個別に学習率を指定できます。
+対応する形状でCUDAネイティブ実行を使うには `GLOBAL_ACTIVE_GRAD4_NATIVE` を明示します。
+[半径セル質量ガイド](docs/radius-cell-mass.ja.md#学習可能な半径割合をcudaで使う)を参照してください。
 
 ## 公開 API で推奨する CUDA 構成
 

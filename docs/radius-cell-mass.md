@@ -66,6 +66,7 @@ and window choices remain fixed within each backward branch.
 | Coordinate rule | Atom columns | Radius update |
 | --- | --- | --- |
 | `kernels.polar(...)` | `[s, t, output_center, input_center]` | Derived from Polar activity; task gradients through the radius are detached |
+| `kernels.rational_radius(...)` | `[amplitude, q, output_center, input_center]` | Interpolate log-radius between a rational lower bound and a fixed upper bound. Learn `q` from the task loss. |
 | `kernels.physical(...)` | `[amplitude, support_radius, output_center, input_center]` | Differentiate the physical radius directly; `radius_init` / `radius_floor` declare initialization and the lower bound |
 
 Polar uses the existing update law and moment transport. Radius bounds and
@@ -182,3 +183,28 @@ N1024 compact Plans construct complete responses and center Jacobians once,
 then release temporary moments after projection. Backward completes dX before
 reusing those same saved values for atom gradients. These storage choices do
 not change the mathematical Profile or Polar update law.
+
+## Using the learned radius fraction on CUDA
+
+Start with the [rational radius example](../README.md#rational-lower-bound-with-a-learned-radius-fraction)
+and move the layer to CUDA before creating its optimizer.
+
+```python
+from torchcst import FixedSelector, make_algorithm_registry
+from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plans import (
+    GLOBAL_ACTIVE_GRAD4_NATIVE,
+)
+
+layer = layer.cuda()
+layer.selector = FixedSelector(
+    GLOBAL_ACTIVE_GRAD4_NATIVE, registry=make_algorithm_registry()
+)
+optimizer = CSTAdamW(layer.parameters(), model=layer, lr=1e-3)
+```
+
+This path applies the same differentiable radius conversion as the CPU
+reference and passes physical rows to the existing native Linear. It requires
+eager FP32/FP64, at most 1024 sites per axis and at most 65,536 Atoms. The
+existing Plan's other support conditions apply. The usual Torch coordinate
+update projects the optimizer proposal. The public native path does not yet
+cover 1024×4096 FFN projections.
