@@ -40,7 +40,7 @@ class RadiusLMPhysicalWidthLevelsAlgorithm(RadiusLMPhysicalLevelsAlgorithm):
         plan = hierarchy_from_operator(context.operator)
         if (
             (plan.input.site_count, plan.output.site_count, context.atom_count)
-            not in WIDTH_COHORTS
+            not in (*WIDTH_COHORTS, (1024, 1024, 65536))
             or not 1 <= context.m <= 256
             or context.dtype != torch.float32
             or any(
@@ -54,7 +54,7 @@ class RadiusLMPhysicalWidthLevelsAlgorithm(RadiusLMPhysicalLevelsAlgorithm):
             )
         ):
             reason = (
-                "width physical LM requires width512/1024/2048, expansion4, A=128*width, R1..256, "
+                "width physical LM requires an admitted FFN or square N1024/A65536 QKV, R1..256, "
                 "FP32, physical M8/base1/merge2/origin0/spacing1"
             )
             return SupportResult((reason,))
@@ -114,8 +114,8 @@ class RadiusEnvelopeWideAmplitudeWidthLMAlgorithm(
             self.validate_recipe(recipe)
             operator = physical_operator(context.operator)
             spec = context.operator.kernel.parameterization
-            if spec.radius_min < 0.5 or spec.radius_max > 50 or spec.amplitude_max > 32:
-                raise ValueError("requires radius[.5,50], amplitude_max<=32")
+            if spec.radius_min < 0.5 or spec.radius_max > 512 or spec.amplitude_max > 32:
+                raise ValueError("requires radius[.5,512], amplitude_max<=32")
         except (ValueError, TypeError) as error:
             return SupportResult((str(error),))
         return RadiusLMPhysicalWidthLevelsAlgorithm().supports(

@@ -58,9 +58,10 @@ void packed_check_scope(Tensor x, Tensor p, Config ci, Config co) {
     // Fixed-c64 width study; old builds retain their exact shape admission.
     ffn = false; large = false;
     int width = std::min(ai.sites, ao.sites);
-    lm = !ai.polar && !ao.polar && ai.origin == 0 && ao.origin == 0 &&
-        (width == 512 || width == 1024 || width == 2048) &&
+    bool width_ffn = (width == 512 || width == 1024 || width == 2048) &&
         std::max(ai.sites, ao.sites) == 4 * width && p.size(0) == 128 * width;
+    bool square_qkv = ai.sites == 1024 && ao.sites == 1024 && p.size(0) == 65536;
+    lm = !ai.polar && !ao.polar && ai.origin == 0 && ao.origin == 0 && (width_ffn || square_qkv);
 #endif
 #ifdef RADIUS_CONNECTED_CONTROL
     // Separate research build only. Unchanged arithmetic is admitted to the
