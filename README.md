@@ -96,7 +96,7 @@ Use separate parameter groups for different ordinary/Atom base rates. See
 
 ## He and Xavier initialization
 
-For a CPU `CSTLinear` with a two-chart Polar radius cell-mass kernel, explicitly
+For a CPU `CSTLinear` with a two-chart Polar or rational radius cell-mass kernel,
 initialize before moving it to CUDA or creating its optimizer:
 
 ```python
@@ -119,6 +119,33 @@ requires its own initialization and native-workload qualification.
 The separate `radius_envelope="rational_zero_opening"` option uses positive
 `zero_opening_scale=tau` to open gradually away from zero while retaining the
 rational upper envelope; see the same guide for the formula and saved contract.
+
+## Rational lower bound with a learned radius fraction
+
+Pass `kernels.rational_radius` as the coordinate declaration of a radius
+cell-mass Linear. With the defaults, the lower radius is
+`L(a) = 0.5 + 3.5 / (1 + 3 * (a / 0.3)**2)`. The fixed upper radius is
+`U = radius_max` and the physical radius is `r = L(a)**(1-q) * U**q`.
+
+```python
+from torchcst import CSTAdamW, CSTLinear, ChebyshevSpec, chart_presets, kernels
+
+grid = chart_presets.regular_grid(1024, geometry="flat_torus")
+layer = CSTLinear(
+    charts=(grid, grid), atoms=65536, backend="factored",
+    kernel=kernels.product(
+        kernels.cell_mass(ChebyshevSpec(modes=8)),
+        coordinates=kernels.rational_radius(radius_max=512.0, radius_fraction=0.0),
+    ),
+)
+optimizer = CSTAdamW(layer.parameters(), model=layer, lr=1e-3)
+```
+
+`radius_fraction` sets the initial value of the trainable Atom coordinate `q`.
+Task gradients flow into both amplitude and `q`. `CSTAdamW` projects the updated
+`q` to `[0, 1]` and accepts a `field_lrs={"radius_fraction": ...}` override.
+For native CUDA, select `GLOBAL_ACTIVE_GRAD4_NATIVE` explicitly within its
+supported shapes. See the [radius cell-mass guide](docs/radius-cell-mass.md#using-the-learned-radius-fraction-on-cuda).
 
 ## Recommended CUDA configuration for the public API
 

@@ -175,7 +175,7 @@ def test_all_real_entry_boundaries_preserve_local4_and_primary_legacy_modes(
         ),
     )
     if entry == "algorithm":
-        state = SimpleNamespace(layout=layout, recipe=recipe)
+        state = SimpleNamespace(layout=layout, recipe=recipe, buffers={})
         inputs = LinearInputs(x)
 
         def execution(actual_state, actual_inputs):

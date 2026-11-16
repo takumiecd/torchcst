@@ -47,8 +47,8 @@ q, Dense variance, target/expected energy, relative error, nominal amplitude
 scale, physical amplitude RMS, clipping count, Atom count and evaluation count.
 Save it with experiment metadata; it is not added to the module state dict.
 
-Currently supported: CPU FP32/FP64 `CSTLinear`, two-chart Polar radius cell-mass
-products. Unsupported kernels and GPU initialization raise errors. No dense W,
+Currently supported: CPU FP32/FP64 `CSTLinear`, two-chart Polar or rational radius
+cell-mass products. Unsupported kernels and GPU initialization raise errors. No dense W,
 Dense model, training features or labels are needed. Initialization preserves
 centers, declarations, Atom count, parameter shape and Parameter identity.
 A failed search leaves the complete module state unchanged; its random
@@ -88,7 +88,9 @@ q=0.5 the geometric midpoint and q=1 the upper bound. q differs from Atom
 density alpha=A/(d_in*d_out). It selects an initial condition, not a constraint
 fixing radial activity during training.
 
-For Polar kernels, radius and factor energy also depend on amplitude magnitude.
+The rational coordinates store `(a, q)` directly. They use the same initial
+radius fraction between their rational lower and fixed upper bounds. In both
+coordinate systems, radius and factor energy depend on amplitude magnitude.
 The implementation therefore solves the moment target with that dependency
 included. It samples a standard normal proposal z, symmetrically clips scale*z
 to a_max*(-1+1e-6,1-1e-6), encodes actual module-dtype Atoms, and evaluates their

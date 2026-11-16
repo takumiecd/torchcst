@@ -61,6 +61,7 @@ P = \left(\left\lceil \frac{2R}{T}\right\rceil + 1\right)T = 2L.
 | 座標則 | atom の列 | 半径の更新 |
 | --- | --- | --- |
 | `kernels.polar(...)` | `[s, t, output_center, input_center]` | Polar activity から導出し、半径を通る task 勾配は detach |
+| `kernels.rational_radius(...)` | `[amplitude, q, output_center, input_center]` | 有理式の下限と固定上限の間を対数補間し、タスク損失から `q` を学習 |
 | `kernels.physical(...)` | `[amplitude, support_radius, output_center, input_center]` | 物理半径を直接微分し、`radius_init` / `radius_floor` で初期化・下限を宣言 |
 
 Polar は既存の更新則と moment transport を使う。半径の境界・初期値は各 Chart の
@@ -167,3 +168,26 @@ hybrid は直接計算する低階層の buffer を省く。
 N1024 compact Plan は完全 response と中心 Jacobian を一度構築し、射影後に一時 moment
 を解放する。backward は dX を完成させてから、同じ保存値を atom 勾配で再利用する。
 これらの保存方針は数学的な Profile や Polar 更新則を変更しない。
+
+## 学習可能な半径割合をCUDAで使う
+
+[有理式の半径の例](../README.ja.md#有理式の下限と学習可能な半径割合)から、
+層をCUDAに移してからoptimizerを作ります。
+
+```python
+from torchcst import FixedSelector, make_algorithm_registry
+from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plans import (
+    GLOBAL_ACTIVE_GRAD4_NATIVE,
+)
+
+layer = layer.cuda()
+layer.selector = FixedSelector(
+    GLOBAL_ACTIVE_GRAD4_NATIVE, registry=make_algorithm_registry()
+)
+optimizer = CSTAdamW(layer.parameters(), model=layer, lr=1e-3)
+```
+
+この経路はCPU参照実装と同じ微分可能な半径変換を適用し、既存のネイティブLinearに
+物理座標を渡します。eagerのFP32/FP64、各軸1024サイト以下、65,536 Atom以下が対象です。
+既存Planの他の動作条件も適用されます。optimizerの更新案は通常のTorchの座標更新で
+範囲内に収めます。1024×4096のFFN投影は公開ネイティブ経路ではまだ対象外です。

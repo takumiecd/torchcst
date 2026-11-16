@@ -471,7 +471,7 @@ def test_checked_route_enums_reach_native_api_through_each_real_python_boundary(
         ),
     )
     if entry == "algorithm":
-        state = SimpleNamespace(layout=layout, recipe=recipe)
+        state = SimpleNamespace(layout=layout, recipe=recipe, buffers={})
         inputs = LinearInputs(x)
 
         def execution(actual_state, actual_inputs):

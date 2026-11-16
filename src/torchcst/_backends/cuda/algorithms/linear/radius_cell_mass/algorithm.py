@@ -7,7 +7,7 @@ import torch
 from torchcst._backends.algorithm import Algorithm
 from torchcst._backends.schema import SupportResult
 from torchcst._builtin_callbacks import seal_functions as _seal_functions
-from torchcst.kernels.parameterizations import PolarAmpRadiusSpec
+from torchcst.kernels.parameterizations import PolarAmpRadiusSpec, RationalRadiusSpec
 from torchcst.kernels.radius_cell_mass import radius_cell_mass_axes
 from torchcst.operators.context import LinearContext
 from torchcst.operators.execution import LinearInputs, linear_execution
@@ -229,6 +229,12 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
         except (ValueError, TypeError) as error:
             return SupportResult((str(error),))
         reasons = []
+        parameterization = context.operator.kernel.parameterization
+        if type(parameterization) is RationalRadiusSpec and (
+            recipe.schedule != "global_batched_cached_active_moments_grad4_native"
+            or not recipe.native_entry
+        ):
+            reasons.append("rational radius CUDA requires GLOBAL_ACTIVE_GRAD4_NATIVE")
         if (
             plan.input.polar is not None
             and len(plan.input.polar) != 9
@@ -433,12 +439,33 @@ class RadiusCellMassAlgorithm(Algorithm[RadiusCellMassRecipe]):
 
         prepare()
         state.invalidate()
-        state.layout = hierarchy_from_operator(state.binding.execution_declaration())
+        operator = state.binding.execution_declaration()
+        state.layout = hierarchy_from_operator(operator)
+        spec = operator.kernel.parameterization
+        if type(spec) is RationalRadiusSpec:
+            parameters = state.binding.execution_parameters()
+            state.buffers["rational_radius_constants"] = parameters.new_tensor(
+                (
+                    spec.radius_min,
+                    spec.radius_birth,
+                    spec.radius_max,
+                    spec.amplitude_max,
+                ),
+                dtype=torch.float64,
+            ).unbind()
         state.mark_current()
 
     def execute(self, state, inputs):
         x, parameters, _, _ = linear_execution(state, inputs)
         from .executor import checked_radius_linear, radius_linear
+
+        constants = state.buffers.get("rational_radius_constants")
+        if constants is not None:
+            from torchcst._backends.torch.parameterizations.rational_radius import (
+                physical_parameters,
+            )
+
+            parameters = physical_parameters(parameters, *constants)
 
         # Only immutable geometry is cached; routing follows current radius values.
         # Initialization remains on the CPU reference before the module moves to CUDA.

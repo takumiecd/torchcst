@@ -127,7 +127,7 @@ class CSTModule(nn.Module):
         """
         from torchcst._backends.torch.kernels import execution as _kernel
 
-        if self.kernel.spec.revision != 7:
+        if self.kernel.spec.revision not in (7, 8):
             raise ValueError("support_radii requires a radius-native kernel")
         return _kernel.coordinate(
             self.kernel,
