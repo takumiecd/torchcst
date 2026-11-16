@@ -24,6 +24,11 @@ WIDTH_COHORTS = tuple(
     for width in (512, 1024, 2048)
     for ni, no in ((width, 4 * width), (4 * width, width))
 )
+PROJECTION_COHORTS = (
+    (1024, 1024, 65536),  # Historical QKV
+    (1024, 1024, 49152),  # O only
+    (4096, 1024, 196608),  # FFN down only
+)
 
 
 @dataclass(frozen=True)
@@ -40,7 +45,7 @@ class RadiusLMPhysicalWidthLevelsAlgorithm(RadiusLMPhysicalLevelsAlgorithm):
         plan = hierarchy_from_operator(context.operator)
         if (
             (plan.input.site_count, plan.output.site_count, context.atom_count)
-            not in (*WIDTH_COHORTS, (1024, 1024, 65536))
+            not in (*WIDTH_COHORTS, *PROJECTION_COHORTS)
             or not 1 <= context.m <= 256
             or context.dtype != torch.float32
             or any(
@@ -54,7 +59,7 @@ class RadiusLMPhysicalWidthLevelsAlgorithm(RadiusLMPhysicalLevelsAlgorithm):
             )
         ):
             reason = (
-                "width physical LM requires an admitted FFN or square N1024/A65536 QKV, R1..256, "
+                "width physical LM requires an admitted FFN, QKV or O shape, R1..256, "
                 "FP32, physical M8/base1/merge2/origin0/spacing1"
             )
             return SupportResult((reason,))

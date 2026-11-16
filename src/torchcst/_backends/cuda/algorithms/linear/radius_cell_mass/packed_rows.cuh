@@ -60,8 +60,11 @@ void packed_check_scope(Tensor x, Tensor p, Config ci, Config co) {
     int width = std::min(ai.sites, ao.sites);
     bool width_ffn = (width == 512 || width == 1024 || width == 2048) &&
         std::max(ai.sites, ao.sites) == 4 * width && p.size(0) == 128 * width;
-    bool square_qkv = ai.sites == 1024 && ao.sites == 1024 && p.size(0) == 65536;
-    lm = !ai.polar && !ao.polar && ai.origin == 0 && ao.origin == 0 && (width_ffn || square_qkv);
+    bool square_projection = ai.sites == 1024 && ao.sites == 1024 &&
+        (p.size(0) == 65536 || p.size(0) == 49152);
+    bool down_projection = ai.sites == 4096 && ao.sites == 1024 && p.size(0) == 196608;
+    lm = !ai.polar && !ao.polar && ai.origin == 0 && ao.origin == 0 &&
+        (width_ffn || square_projection || down_projection);
 #endif
 #ifdef RADIUS_CONNECTED_CONTROL
     // Separate research build only. Unchanged arithmetic is admitted to the
