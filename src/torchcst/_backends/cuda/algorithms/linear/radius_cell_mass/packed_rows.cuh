@@ -150,13 +150,36 @@ std::vector<Tensor> packed_project(Tensor x, Tensor p, Config config, bool outpu
 }
 
 std::vector<Tensor> packed_transform(Tensor x, Tensor p, Tensor rows, Tensor offsets,
-    Config source, Config destination, bool output_side, Tensor geometry, bool level_launch) {
+    Config source, Config destination, bool output_side, Tensor geometry, bool level_launch, bool shared_wide) {
     c10::cuda::CUDAGuard guard(x.device());
     auto projection = packed_project(x, p, source, output_side, geometry, level_launch);
     Axis a = parse_axis(destination); check_ranges(rows, offsets, p, a);
     auto y = torch::empty({x.size(0), a.sites}, x.options());
     auto layout = batched_coefficient_layout<float>(a, 2, 32);
     dim3 grid((a.sites + 31) / 32, (x.size(0) + 7) / 8);
+#ifdef RADIUS_LM_WIDTH
+    if (shared_wide) {
+        int prefix = prefix_nodes(a, SHARED_WIDE_LEVEL), nodes = a.node_count - prefix;
+        int features = a.basis_count();
+        auto wide = torch::empty({grid.y, nodes, EXPANSION_BATCH, features}, x.options());
+        size_t scratch = sizeof(float) * (EXPANSION_BATCH * features +
+            features * BLOCK_LOCAL_C_STRIDE + layout.capacity * (a.modes + 2 + EXPANSION_BATCH)) +
+            sizeof(int) * layout.capacity;
+        auto stream = at::cuda::getCurrentCUDAStream();
+        batched_wide_tile_coefficients<<<dim3(nodes, grid.y), THREADS, scratch, stream>>>(
+            p.data_ptr<float>(), rows.data_ptr<int64_t>(), offsets.data_ptr<int64_t>(),
+            projection[1].data_ptr<float>(), geometry.data_ptr<float>(), wide.data_ptr<float>(),
+            p.size(0), x.size(0), a, prefix, layout.capacity, !output_side);
+        C10_CUDA_KERNEL_LAUNCH_CHECK();
+        batched_cached_expand_kernel<float, false, float, true, true><<<grid, THREADS, layout.bytes, stream>>>(
+            p.data_ptr<float>(), rows.data_ptr<int64_t>(), offsets.data_ptr<int64_t>(),
+            projection[1].data_ptr<float>(), y.data_ptr<float>(), p.size(0), x.size(0), a, 2, 32,
+            layout.capacity, layout.warps, layout.destinations, !output_side,
+            nullptr, geometry.data_ptr<float>(), wide.data_ptr<float>());
+        C10_CUDA_KERNEL_LAUNCH_CHECK();
+        return {y, projection[0], projection[1]};
+    }
+#endif
     if (geometry.defined()) {
         batched_cached_expand_kernel<float, false, float, true><<<grid, THREADS, layout.bytes,
             at::cuda::getCurrentCUDAStream()>>>(p.data_ptr<float>(), rows.data_ptr<int64_t>(),
