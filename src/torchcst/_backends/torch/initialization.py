@@ -13,7 +13,24 @@ from .kernels import execution
 from .parameterizations.radius_cell_mass import decoded_values
 
 
-def match_variance(kernel, charts, original, *, variance, q, generator):
+def _operator_energy(kernel, charts, parameters):
+    energy = 0.0
+    if max(chart.features for chart in charts) > 1024:
+        # Local Fourier support bounds the large-width setup cost.
+        from .kernels.radius_cell_mass import atom_energies
+
+        for chunk in parameters.split(4096):
+            energy += float(atom_energies(kernel, *charts, chunk.double()).sum())
+    else:
+        for chunk in parameters.split(128):
+            x, y = execution.factors(kernel, *charts, chunk.double())
+            energy += float((x.square().sum(0) * y.square().sum(0)).sum())
+    return energy
+
+
+def match_variance(
+    kernel, charts, original, *, variance, q, generator, energy_evaluator=None
+):
     if (
         kernel.spec.revision not in (7, 8, 9, 10)
         or type(kernel.spec.parameterization)
@@ -48,6 +65,8 @@ def match_variance(kernel, charts, original, *, variance, q, generator):
     rho = math.sqrt(1 + 3 * q)
     tolerance = 0.005
     history = []
+    if energy_evaluator is None:
+        energy_evaluator = _operator_energy
 
     def trial(scale):
         ratio_unclipped = noise * (scale / maximum)
@@ -58,24 +77,7 @@ def match_variance(kernel, charts, original, *, variance, q, generator):
             p[:, 1] = q
         else:
             p[:, :2] = torch.stack((ratio, (1 - ratio.square()).sqrt()), -1) * rho
-        energy = 0.0
-        if max(c.features for c in axes) > 1024:
-            # Preserve the sign-energy target while bounding large-width setup
-            # by the local Fourier support, rather than chart sites per Atom.
-            from .kernels.radius_cell_mass import atom_energies
-
-            for start in range(0, len(p), 4096):
-                energy += float(
-                    atom_energies(
-                        reference, *axes, p[start : start + 4096].double()
-                    ).sum()
-                )
-        else:
-            for start in range(0, len(p), 128):
-                x, y = execution.factors(
-                    reference, *axes, p[start : start + 128].double()
-                )
-                energy += float((x.square().sum(0) * y.square().sum(0)).sum())
+        energy = energy_evaluator(reference, axes, p)
         if not math.isfinite(energy) or energy < 0:
             raise ValueError("nonfinite initial Atom energy")
         error = abs(energy / target - 1)
