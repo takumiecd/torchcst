@@ -208,6 +208,48 @@ def test_projection_and_fixed_scalar_precision():
     assert result[:, 0].tolist() == [-1.0, 1.0] and result[:, 1].tolist() == [0.0, 1.0]
 
 
+@pytest.mark.parametrize("cap", [0.1, 0.7, 32.0, 1e-50, 1e40])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_amplitude_cap_rounds_toward_zero_on_cpu(cap, dtype):
+    from torchcst._backends.torch.updates.radius_envelope import _rounded_amplitude_max
+
+    exact = torch.tensor(cap, dtype=torch.float64)
+    nearest = exact.to(dtype)
+    expected = torch.where(
+        nearest.double() > exact,
+        torch.nextafter(nearest, torch.zeros_like(nearest)),
+        nearest,
+    )
+    assert _rounded_amplitude_max(cap, dtype) == float(expected)
+
+
+def test_adam_update_reads_live_amplitude_cap_after_mutation_and_restore():
+    m = make(atoms=2, dtype=torch.float32, amplitude_max=0.1)
+    opt = optimizer(m)
+    opt.param_groups[0]["lr"] = 2.0
+    with torch.no_grad():
+        m.atoms.p[:, :2].zero_()
+    original = copy.deepcopy(m.state_dict())
+
+    def clip_next_proposal(cap):
+        p = m.atoms.p
+        p.grad = torch.zeros_like(p)
+        p.grad[:, 0] = torch.tensor([-1.0, 1.0])
+        opt.step()
+        bound = torch.tensor(cap, dtype=p.dtype)
+        if float(bound) > cap:
+            bound = torch.nextafter(bound, torch.zeros_like(bound))
+        torch.testing.assert_close(
+            p[:, 0], torch.stack((bound, -bound)), atol=0, rtol=0
+        )
+
+    clip_next_proposal(0.1)
+    m.kernel.scalar("amplitude_max").fill_(0.05)
+    clip_next_proposal(0.05)
+    m.load_state_dict(original)
+    clip_next_proposal(0.1)
+
+
 @pytest.mark.parametrize(
     "bad",
     [

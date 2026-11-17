@@ -1,5 +1,7 @@
 """Projected a/q proposals; Adam moments retain their ordinary meaning."""
 
+from functools import lru_cache
+
 import torch
 
 
@@ -7,17 +9,21 @@ def project_parameter_gradient(state, output_chart, input_chart, p, gradient):
     return gradient
 
 
+@lru_cache(maxsize=128)
+def _rounded_amplitude_max(cap, dtype):
+    rounded = torch.tensor(cap, dtype=dtype, device="cpu")
+    if float(rounded) > cap:
+        rounded = torch.nextafter(rounded, torch.zeros_like(rounded))
+    return float(rounded)
+
+
 def apply_parameter_update(
-    state, output_chart, input_chart, p, displacement, *, step_size
+    state, output_chart, input_chart, p, displacement, *, step_size, amplitude_max=None
 ):
+    if amplitude_max is None:
+        amplitude_max = float(state.scalar("amplitude_max"))
+    encoded = _rounded_amplitude_max(amplitude_max, p.dtype)
     proposal = p + displacement
-    cap = state.scalar("amplitude_max")
-    encoded = cap.to(p)
-    encoded = torch.where(
-        encoded.double() > cap,
-        torch.nextafter(encoded, torch.zeros_like(encoded)),
-        encoded,
-    )
     return torch.stack(
         (
             proposal[:, 0].clamp(-encoded, encoded),
