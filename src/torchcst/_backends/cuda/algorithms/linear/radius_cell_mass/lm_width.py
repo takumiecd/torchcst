@@ -25,10 +25,13 @@ WIDTH_COHORTS = tuple(
     for width in (512, 1024, 2048)
     for ni, no in ((width, 4 * width), (4 * width, width))
 )
+QKV_2048_COHORTS = ((2048, 2048, 131072), (2048, 2048, 262144))
+SHARED_WIDE_DOWN_COHORT = (4096, 1024, 196608)
+DENSE_FOURIER_COHORTS = (SHARED_WIDE_DOWN_COHORT, *QKV_2048_COHORTS)
 PROJECTION_COHORTS = (
     (1024, 1024, 65536),  # Historical QKV
     (1024, 1024, 49152),  # O only
-    (4096, 1024, 196608),  # FFN down only
+    *DENSE_FOURIER_COHORTS,
 )
 
 
@@ -89,11 +92,11 @@ class RadiusLMPhysicalSharedWideAlgorithm(RadiusLMPhysicalWidthLevelsAlgorithm):
         if result.reasons:
             return result
         plan = hierarchy_from_operator(context.operator)
-        if (plan.input.site_count, plan.output.site_count, context.atom_count) != (
-            4096,
-            1024,
-            196608,
-        ):
+        if (
+            plan.input.site_count,
+            plan.output.site_count,
+            context.atom_count,
+        ) != SHARED_WIDE_DOWN_COHORT:
             return SupportResult(
                 ("shared wide tiles require the width-1024 down cohort",)
             )
@@ -106,12 +109,23 @@ LM_PHYSICAL_SHARED_WIDE = ExecutionPlan(
 
 
 @dataclass(frozen=True)
-class RadiusLMPhysicalDenseFourierWeightAlgorithm(RadiusLMPhysicalSharedWideAlgorithm):
+class RadiusLMPhysicalDenseFourierWeightAlgorithm(RadiusLMPhysicalWidthLevelsAlgorithm):
     id: str = "cuda_radius_lm_physical_dense_fourier_weight"
 
     def supports(self, context, recipe):
         result = super().supports(context, recipe)
-        if result.supported and context.precision.allow_tf32:
+        if not result.supported:
+            return result
+        plan = hierarchy_from_operator(context.operator)
+        if (
+            plan.input.site_count,
+            plan.output.site_count,
+            context.atom_count,
+        ) not in DENSE_FOURIER_COHORTS:
+            return SupportResult(
+                ("dense Fourier weights require an admitted FFN down or width-2048 QKV cohort",)
+            )
+        if context.precision.allow_tf32:
             return SupportResult(("dense Fourier weights require IEEE FP32 matmul",))
         return result
 
@@ -227,7 +241,7 @@ RADIUS_ENVELOPE_SHARED_WIDE_LM = ExecutionPlan(
 
 
 @dataclass(frozen=True)
-class RadiusEnvelopeDenseFourierWeightLMAlgorithm(RadiusEnvelopeSharedWideLMAlgorithm):
+class RadiusEnvelopeDenseFourierWeightLMAlgorithm(RadiusEnvelopeWideAmplitudeWidthLMAlgorithm):
     id: str = "cuda_radius_envelope_dense_fourier_weight_lm"
     physical_plan: ClassVar[ExecutionPlan] = LM_PHYSICAL_DENSE_FOURIER_WEIGHT
     physical_algorithm: ClassVar[type[RadiusLMPhysicalWidthLevelsAlgorithm]] = (

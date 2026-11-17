@@ -1,6 +1,18 @@
 #pragma once
 namespace radius_cell_mass {
 void packed_check_scope(Tensor, Tensor, Config, Config);
+#ifdef RADIUS_LM_WIDTH
+bool width_qkv_cohort(double, double, int64_t);
+
+void check_dense_fourier_cohort(const Tensor &p, const Config &ci, const Config &co) {
+    constexpr const char *message =
+        "dense Fourier weights require an admitted FFN down or width-2048 QKV cohort";
+    TORCH_CHECK(!ci.empty() && !co.empty() && p.dim() == 2, message);
+    TORCH_CHECK(
+        (ci[0] == 4096 && co[0] == 1024 && p.size(0) == 196608) ||
+        width_qkv_cohort(ci[0], co[0], p.size(0)), message);
+}
+#endif
 Tensor packed_classify(Tensor, Config, Config, float = 0);
 void packed_check_tensor(Tensor, Tensor, std::vector<int64_t>);
 Tensor packed_make_geometry(Tensor, Config, Config);
@@ -185,17 +197,14 @@ void bind_packed_rows(pybind11::module_ &module) {
         bool recompute, bool) {
         check_autograd_entry(x, p, ci, co, 2, 2, 32, 5);
         packed_check_scope(x, p, ci, co);
-        TORCH_CHECK(ci[0] == 4096 && co[0] == 1024 && p.size(0) == 196608,
-            "dense Fourier weights require the admitted 4096-to-1024 FFN down cohort");
+        check_dense_fourier_cohort(p, ci, co);
         TORCH_CHECK(recompute && !at::globalContext().allowTF32CuBLAS(),
             "dense tiles require IEEE FP32 matmul and no retained responses");
         return PackedDenseTiles::apply(x, p, ci, co);
     }, pybind11::call_guard<pybind11::gil_scoped_release>());
     module.def("packed_dense_fourier_weight_from_atoms", [](Tensor p, Config ci, Config co) {
-        TORCH_CHECK(ci.size() >= 1 && co.size() >= 1 && ci[0] == 4096 && co[0] == 1024 &&
-            p.dim() == 2 && p.size(0) == 196608,
-            "dense Fourier weights require the admitted 4096-to-1024 FFN down cohort");
-        auto shape_check = torch::empty({1, 4096}, p.options());
+        check_dense_fourier_cohort(p, ci, co);
+        auto shape_check = torch::empty({1, int64_t(ci[0])}, p.options());
         check_autograd_entry(shape_check, p, ci, co, 2, 2, 32, 5);
         packed_check_scope(shape_check, p, ci, co);
         TORCH_CHECK(!at::globalContext().allowTF32CuBLAS(), "dense tiles require IEEE FP32 matmul");
