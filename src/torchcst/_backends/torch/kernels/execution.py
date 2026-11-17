@@ -6,6 +6,10 @@ from torchcst._builtin_callbacks import seal_functions as _seal_functions
 from torchcst.geometry.spec import EuclideanGeometrySpec
 from torchcst.kernels.options import KernelOptions
 
+from ..updates.radius_envelope import (
+    apply_parameter_update as _builtin_radius_envelope_update,
+)
+
 
 def family(state):
     from torchcst.kernels.parameterizations import (
@@ -294,10 +298,17 @@ def project_parameter_gradient(state, *charts_p_gradient):
     )
 
 
-def apply_parameter_update(state, *charts_p_displacement, step_size):
-    return _operation(state, "apply_parameter_update", "updates")(
-        state, *charts_p_displacement, step_size=step_size
-    )
+def apply_parameter_update(state, *charts_p_displacement, step_size, declaration=None):
+    update = _operation(state, "apply_parameter_update", "updates")
+    if declaration is not None and update is _builtin_radius_envelope_update:
+        # The validated declaration already holds the live, exact host scalar.
+        return update(
+            state,
+            *charts_p_displacement,
+            step_size=step_size,
+            amplitude_max=declaration.parameterization.amplitude_max,
+        )
+    return update(state, *charts_p_displacement, step_size=step_size)
 
 
 def transport_parameter_state(state, *charts_old_new_state):

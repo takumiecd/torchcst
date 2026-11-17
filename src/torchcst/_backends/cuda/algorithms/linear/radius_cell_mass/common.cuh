@@ -188,29 +188,36 @@ __device__ __constant__ double profile_m8_terms[8][8] = {
     {15},
 };
 
-__device__ __noinline__ void profile_coefficients_m8(double R, double P, double *c, double *dr) {
-    double angle = PI * (R / P), cb = cos(angle), sb = sin(angle);
-    double z = cb * cb, u = 1 - z;
-    double dz = -(2 * PI / P) * cb * sb;
-    double zp[9], up[9];
+template<class Calc>
+__device__ __noinline__ void profile_coefficients_m8(Calc R, Calc P, Calc *c, Calc *dr) {
+    Calc angle = Calc(PI) * (R / P), cb, sb;
+    if constexpr (std::is_same<Calc, float>::value)
+        sincosf(angle, &sb, &cb);
+    else {
+        cb = cos(angle);
+        sb = sin(angle);
+    }
+    Calc z = cb * cb, u = 1 - z;
+    Calc dz = -(2 * Calc(PI) / P) * cb * sb;
+    Calc zp[9], up[9];
     zp[0] = up[0] = 1;
     for (int j = 1; j <= 8; ++j) { zp[j] = zp[j - 1] * z; up[j] = up[j - 1] * u; }
     // Homogenization cancels the common z^-8 before it can overflow.
     // Differentiate the same polynomial with du/dz=-1, without division by z/u.
-    double zero = 0, dzero = 0;
+    Calc zero = 0, dzero = 0;
     for (int k = 0; k < 8; ++k) {
         int degree = 8 - k;
-        double raw = k == 0 ? 0.5 * zp[8] : 0;
-        double draw = k == 0 ? 4 * zp[7] : 0;
-        double value = 0, slope = 0;
+        Calc raw = k == 0 ? Calc(0.5) * zp[8] : 0;
+        Calc draw = k == 0 ? 4 * zp[7] : 0;
+        Calc value = 0, slope = 0;
         for (int j = 1; j <= degree; ++j) {
             int power = degree - j;
-            double coefficient = profile_m8_terms[k][j - 1];
+            Calc coefficient = Calc(profile_m8_terms[k][j - 1]);
             value += coefficient * zp[power] * up[j];
             slope += coefficient * ((power ? power * zp[power - 1] * up[j] : 0) -
                                     j * zp[power] * up[j - 1]);
         }
-        double factor = 4.0 / (8 + k);
+        Calc factor = Calc(4) / (8 + k);
         raw += factor * value; draw += factor * slope;
         if (k == 0) { zero = raw; dzero = draw; c[0] = 1 / P; dr[0] = 0; }
         else {
@@ -218,8 +225,8 @@ __device__ __noinline__ void profile_coefficients_m8(double R, double P, double 
             dr[k] = ((draw - raw * (dzero / zero)) / zero) * (dz / P);
         }
     }
-    c[8] = (0.25 / zero) / P;
-    dr[8] = ((-0.25 * (dzero / zero)) / zero) * (dz / P);
+    c[8] = (Calc(0.25) / zero) / P;
+    dr[8] = ((Calc(-0.25) * (dzero / zero)) / zero) * (dz / P);
 }
 
 __device__ inline void profile_coefficients(double R, double P, int M, double *c, double *dr) {

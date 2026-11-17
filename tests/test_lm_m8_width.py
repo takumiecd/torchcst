@@ -9,9 +9,13 @@ from test_radius_envelope import make
 
 from torchcst import FixedSelector, make_algorithm_registry
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.lm_width import (
+    LM_PHYSICAL_DENSE_FOURIER_WEIGHT,
     LM_PHYSICAL_WIDTH_LEVELS,
+    RADIUS_ENVELOPE_DENSE_FOURIER_WEIGHT_LM,
     RADIUS_ENVELOPE_WIDE_AMPLITUDE_WIDTH_LM,
+    RadiusEnvelopeDenseFourierWeightLMAlgorithm,
     RadiusEnvelopeWideAmplitudeWidthLMAlgorithm,
+    RadiusLMPhysicalDenseFourierWeightAlgorithm,
     RadiusLMPhysicalWidthLevelsAlgorithm,
     width_extension,
 )
@@ -110,3 +114,71 @@ def test_width_cpp_does_not_admit_c8():
             False,
             True,
         )
+
+
+def test_dense_fourier_weight_is_an_explicit_down_only_plan():
+    layer = make(
+        4096, 1024, atoms=1, dtype=torch.float32, radius_max=512, amplitude_max=32
+    )
+    context = replace(
+        layer.build_context(LinearInputs(torch.zeros(1, 4096))),
+        atom_count=196608,
+        input_shape=(256, 4096),
+        input_strides=(4096, 1),
+        device=DeviceInfo("cuda", 0, "metadata-only"),
+    )
+    algorithm = RadiusEnvelopeDenseFourierWeightLMAlgorithm()
+    plan = RADIUS_ENVELOPE_DENSE_FOURIER_WEIGHT_LM
+    assert algorithm.supports(context, plan.recipe).supported
+    for changed in (
+        {"atom_count": 131072},
+        {"dtype": torch.float64},
+        {"execution_mode": "cuda_graph"},
+        {"precision": replace(context.precision, allow_tf32=True)},
+    ):
+        assert not algorithm.supports(
+            replace(context, **changed), plan.recipe
+        ).supported
+    registry = make_algorithm_registry()
+    with pytest.raises((KeyError, ValueError)):
+        registry.validate_plan(plan)
+    registry.register(algorithm)
+    assert registry.loads_plan(registry.dumps_plan(plan)) == plan
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="actual CUDA required")
+@pytest.mark.parametrize(
+    "atom_grad,input_grad", [(True, True), (True, False), (False, True)]
+)
+def test_dense_fourier_weight_at_tile_boundaries_and_row_tail(
+    atom_grad, input_grad, monkeypatch
+):
+    monkeypatch.setattr(torch.backends.cuda.matmul, "allow_tf32", False)
+    ni, no, atoms, rows = 4096, 1024, 196608, 9
+    model = physical(ni, no, atoms).cuda()
+    seed = torch.Generator(device="cuda").manual_seed(17)
+    p = model.atoms.p
+    radii = p.new_tensor([0.5, 1, 1.01, 2, 4, 8, 16, 64, 64.01, 512])
+    with torch.no_grad():
+        p[:, 0].uniform_(-0.04, 0.04, generator=seed)
+        p[:, 1].copy_(radii[torch.arange(atoms, device=p.device) % len(radii)])
+        p[:, 2].uniform_(-0.37, no + 0.23, generator=seed)
+        p[:, 3].uniform_(-0.37, ni + 0.23, generator=seed)
+    registry = make_algorithm_registry()
+    registry.register(RadiusLMPhysicalWidthLevelsAlgorithm())
+    registry.register(RadiusLMPhysicalDenseFourierWeightAlgorithm())
+    x = torch.randn(rows, ni, device=p.device, generator=seed).requires_grad_(
+        input_grad
+    )
+    p.requires_grad_(atom_grad)
+    inputs = tuple(t for t in (x, p) if t.requires_grad)
+    dy = torch.randn(rows, no, device=p.device, generator=seed)
+    model.selector = FixedSelector(LM_PHYSICAL_WIDTH_LEVELS, registry=registry)
+    expected = model(x)
+    expected_grads = torch.autograd.grad(expected, inputs, dy)
+    model.selector = FixedSelector(LM_PHYSICAL_DENSE_FOURIER_WEIGHT, registry=registry)
+    actual = model(x)
+    actual_grads = torch.autograd.grad(actual, inputs, dy)
+    for a, b in zip((actual, *actual_grads), (expected, *expected_grads), strict=True):
+        torch.testing.assert_close(a, b, atol=1e-4, rtol=4e-3)
+        assert (a - b).abs().max() <= 3e-4

@@ -69,6 +69,7 @@ class AtomUpdateAlgorithm(Algorithm[DefaultRecipe]):
             inputs.previous,
             proposal - inputs.previous,
             step_size=inputs.step_size,
+            declaration=state.context.kernel,
         )
         from torchcst._backends.torch.algorithms.polar_update.executor import (
             decay_amplitude,
