@@ -26,6 +26,11 @@ Tensor packed_classify(Tensor p,Config ci,Config co,float radius_limit) {
     C10_CUDA_KERNEL_LAUNCH_CHECK();return keys;
 }
 #ifdef RADIUS_LM_WIDTH
+bool width_down_cohort(double input, double output, int64_t atoms) {
+    return (input == 4096 && output == 1024 && atoms == 196608) ||
+           (input == 8192 && output == 2048 && atoms == 393216);
+}
+
 bool width_qkv_cohort(double input, double output, int64_t atoms) {
     if (input != 2048 || output != 2048) return false;
     switch (atoms) {
@@ -82,9 +87,8 @@ void packed_check_scope(Tensor x, Tensor p, Config ci, Config co) {
         std::max(ai.sites, ao.sites) == 4 * width && p.size(0) == 128 * width;
     bool square_projection = ai.sites == 1024 && ao.sites == 1024 &&
         (p.size(0) == 65536 || p.size(0) == 49152);
-    bool down_projection = ai.sites == 4096 && ao.sites == 1024 && p.size(0) == 196608;
     lm = !ai.polar && !ao.polar && ai.origin == 0 && ao.origin == 0 &&
-        (width_ffn || square_projection || down_projection ||
+        (width_ffn || square_projection || width_down_cohort(ai.sites, ao.sites, p.size(0)) ||
          width_qkv_cohort(ai.sites, ao.sites, p.size(0)));
 #endif
 #ifdef RADIUS_CONNECTED_CONTROL

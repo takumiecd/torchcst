@@ -82,13 +82,16 @@ def physical_rows_and_banks(kernel, raw, boundaries):
 
 def gpu_evaluator(native, layer):
     op = physical_operator(layer.execution_declaration())
-    axis = hierarchy_from_operator(op).input.native_config()
+    hierarchy = hierarchy_from_operator(op)
+    axes = (hierarchy.input.native_config(),)
+    if hierarchy.input.site_count != hierarchy.output.site_count:
+        axes += (hierarchy.output.native_config(),)
     boundaries = torch.tensor([1 << level for level in range(9)], dtype=torch.float64)
 
     def energies(kernel, p):
         physical, banks = physical_rows_and_banks(kernel, p, boundaries)
         return native.packed_initialization_energies(
-            physical.to(device="cuda", dtype=torch.float32), banks.cuda(), axis
+            physical.to(device="cuda", dtype=torch.float32), banks.cuda(), *axes
         )
 
     def evaluate(kernel, _charts, p):
