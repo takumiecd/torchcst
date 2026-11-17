@@ -54,6 +54,68 @@ __device__ inline void dense_weight_cell_masses(const float *c, float mu, Bank b
     }
 }
 
+// On a complete period longer than twice the highest harmonic, the sampled
+// Fourier modes are orthogonal. Square the mass coefficients in that case.
+// Short periods can alias, so evaluate the actual cells including their phase.
+__device__ inline float initialization_axis_energy(const float *c, float center, Bank bank) {
+    constexpr int direct_limit = 16;
+    const int cells = bank.count * bank.tile_sites;
+    if (cells > direct_limit) {
+        const float half_omega = float(PI) / float(cells);
+        float energy = c[0] * c[0];
+        SignalPhase<float> phase(half_omega);
+        #pragma unroll
+        for (int k = 1; k <= 8; ++k) {
+            float cosine, sine;
+            phase.next(cosine, sine);
+            const float coefficient = 2 * c[k] * sine / (half_omega * k);
+            energy += 0.5f * coefficient * coefficient;
+        }
+        return cells * energy;
+    }
+    // The energy covers one complete discrete period, so rotating the window
+    // over integer sites preserves it. Reduce the center before phase arithmetic.
+    const float mu = fmodf(center, float(cells));
+    float masses[direct_limit];
+    dense_weight_cell_masses(c, mu, bank, 0, masses);
+    float energy = 0;
+    for (int j = 0; j < cells; ++j) energy += masses[j] * masses[j];
+    return energy;
+}
+
+__global__ void initialization_energies(const float *p, const int32_t *banks, float *energies,
+    int atoms, Axis axis) {
+    const int atom = blockIdx.x * blockDim.x + threadIdx.x;
+    if (atom >= atoms) return;
+    const float amplitude = p[4 * atom];
+    const float radius = p[4 * atom + 1];
+    const float co = p[4 * atom + 2], ci = p[4 * atom + 3];
+    const int bank_index = banks[atom];
+    const bool valid = fabsf(amplitude) <= 32 && radius >= 0.5f && radius <= 512.f &&
+        isfinite(co) && isfinite(ci) && bank_index >= 0 && bank_index <= 19;
+    CUDA_KERNEL_ASSERT_MSG(valid, "initial energy requires bounded physical rows and valid banks");
+    if (!valid) return;
+    const Bank bank = axis.banks[bank_index];
+    float coefficients[9];
+    profile_values(radius, float(bank.period), 8, coefficients);
+    const float ei = initialization_axis_energy(coefficients, ci, bank);
+    const float eo = bank.count * bank.tile_sites > 16
+        ? ei : initialization_axis_energy(coefficients, co, bank);
+    energies[atom] = amplitude * amplitude * ei * eo;
+}
+
+Tensor packed_initialization_energies(Tensor p, Tensor banks, Config config) {
+    c10::cuda::CUDAGuard guard(p.device());
+    Axis axis = parse_axis(config);
+    auto energies = torch::empty({p.size(0)}, p.options());
+    const auto stream = at::cuda::getCurrentCUDAStream();
+    initialization_energies<<<(p.size(0) + THREADS - 1) / THREADS,
+        THREADS, 0, stream>>>(p.data_ptr<float>(), banks.data_ptr<int32_t>(), energies.data_ptr<float>(),
+        p.size(0), axis);
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+    return energies;
+}
+
 __global__ void dense_weight_direct(const float *geometry, const int64_t *order,
     const int64_t *offsets, float *weight, Axis ai, Axis ao) {
     int position = blockIdx.x * blockDim.x + threadIdx.x;

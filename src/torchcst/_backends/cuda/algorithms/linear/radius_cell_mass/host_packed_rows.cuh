@@ -3,6 +3,7 @@ namespace radius_cell_mass {
 void packed_check_scope(Tensor, Tensor, Config, Config);
 #ifdef RADIUS_LM_WIDTH
 bool width_qkv_cohort(double, double, int64_t);
+Tensor packed_initialization_energies(Tensor, Tensor, Config);
 
 void check_dense_fourier_cohort(const Tensor &p, const Config &ci, const Config &co) {
     constexpr const char *message =
@@ -209,6 +210,17 @@ void bind_packed_rows(pybind11::module_ &module) {
         packed_check_scope(shape_check, p, ci, co);
         TORCH_CHECK(!at::globalContext().allowTF32CuBLAS(), "dense tiles require IEEE FP32 matmul");
         return PackedDenseTileWeight::apply(p, ci, co);
+    }, pybind11::call_guard<pybind11::gil_scoped_release>());
+    module.def("packed_initialization_energies", [](Tensor p, Tensor banks, Config axis) {
+        TORCH_CHECK(!axis.empty() && p.dim() == 2 && width_qkv_cohort(axis[0], axis[0], p.size(0)),
+            "initial energies require a width-2048 QKV cohort");
+        TORCH_CHECK(banks.device() == p.device() && banks.scalar_type() == torch::kInt32 &&
+            banks.dim() == 1 && banks.size(0) == p.size(0) && banks.is_contiguous(),
+            "initial energies require contiguous int32 banks on the Atom device");
+        auto input = torch::empty({1, int64_t(axis[0])}, p.options());
+        check_autograd_entry(input, p, axis, axis, 2, 2, 32, 5);
+        packed_check_scope(input, p, axis, axis);
+        return packed_initialization_energies(p, banks, axis);
     }, pybind11::call_guard<pybind11::gil_scoped_release>());
 #endif
 }
