@@ -117,7 +117,9 @@ def test_width_cpp_does_not_admit_c8():
 
 
 @pytest.mark.parametrize(
-    "ni,no,atoms", [(4096, 1024, 196608), (2048, 2048, 131072), (2048, 2048, 262144)]
+    "ni,no,atoms",
+    [(4096, 1024, 196608)]
+    + [(2048, 2048, coefficient * 2048) for coefficient in (48, 56, 64, 72, 80, 128)],
 )
 def test_dense_fourier_weight_is_an_explicit_projection_plan(ni, no, atoms):
     layer = make(

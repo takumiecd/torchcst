@@ -27,7 +27,18 @@ Tensor packed_classify(Tensor p,Config ci,Config co,float radius_limit) {
 }
 #ifdef RADIUS_LM_WIDTH
 bool width_qkv_cohort(double input, double output, int64_t atoms) {
-    return input == 2048 && output == 2048 && (atoms == 131072 || atoms == 262144);
+    if (input != 2048 || output != 2048) return false;
+    switch (atoms) {
+        case 2048 * 48:
+        case 2048 * 56:
+        case 2048 * 64:
+        case 2048 * 72:
+        case 2048 * 80:
+        case 2048 * 128:
+            return true;
+        default:
+            return false;
+    }
 }
 #endif
 

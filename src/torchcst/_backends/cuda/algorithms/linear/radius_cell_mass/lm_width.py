@@ -25,7 +25,9 @@ WIDTH_COHORTS = tuple(
     for width in (512, 1024, 2048)
     for ni, no in ((width, 4 * width), (4 * width, width))
 )
-QKV_2048_COHORTS = ((2048, 2048, 131072), (2048, 2048, 262144))
+QKV_2048_COHORTS = tuple(
+    (2048, 2048, 2048 * coefficient) for coefficient in (48, 56, 64, 72, 80, 128)
+)
 SHARED_WIDE_DOWN_COHORT = (4096, 1024, 196608)
 DENSE_FOURIER_COHORTS = (SHARED_WIDE_DOWN_COHORT, *QKV_2048_COHORTS)
 PROJECTION_COHORTS = (
