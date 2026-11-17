@@ -25,6 +25,12 @@ Tensor packed_classify(Tensor p,Config ci,Config co,float radius_limit) {
         p.data_ptr<float>(),keys.data_ptr<int64_t>(),p.size(0),parse_axis(ci),parse_axis(co),radius_limit);
     C10_CUDA_KERNEL_LAUNCH_CHECK();return keys;
 }
+#ifdef RADIUS_LM_WIDTH
+bool width_qkv_cohort(double input, double output, int64_t atoms) {
+    return input == 2048 && output == 2048 && (atoms == 131072 || atoms == 262144);
+}
+#endif
+
 void packed_check_scope(Tensor x, Tensor p, Config ci, Config co) {
     check_atoms(p); check_matrix(x);
     Axis ai = parse_axis(ci), ao = parse_axis(co);
@@ -67,7 +73,8 @@ void packed_check_scope(Tensor x, Tensor p, Config ci, Config co) {
         (p.size(0) == 65536 || p.size(0) == 49152);
     bool down_projection = ai.sites == 4096 && ao.sites == 1024 && p.size(0) == 196608;
     lm = !ai.polar && !ao.polar && ai.origin == 0 && ao.origin == 0 &&
-        (width_ffn || square_projection || down_projection);
+        (width_ffn || square_projection || down_projection ||
+         width_qkv_cohort(ai.sites, ao.sites, p.size(0)));
 #endif
 #ifdef RADIUS_CONNECTED_CONTROL
     // Separate research build only. Unchanged arithmetic is admitted to the

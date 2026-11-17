@@ -116,22 +116,25 @@ def test_width_cpp_does_not_admit_c8():
         )
 
 
-def test_dense_fourier_weight_is_an_explicit_down_only_plan():
+@pytest.mark.parametrize(
+    "ni,no,atoms", [(4096, 1024, 196608), (2048, 2048, 131072), (2048, 2048, 262144)]
+)
+def test_dense_fourier_weight_is_an_explicit_projection_plan(ni, no, atoms):
     layer = make(
-        4096, 1024, atoms=1, dtype=torch.float32, radius_max=512, amplitude_max=32
+        ni, no, atoms=1, dtype=torch.float32, radius_max=512, amplitude_max=32
     )
     context = replace(
-        layer.build_context(LinearInputs(torch.zeros(1, 4096))),
-        atom_count=196608,
-        input_shape=(256, 4096),
-        input_strides=(4096, 1),
+        layer.build_context(LinearInputs(torch.zeros(1, ni))),
+        atom_count=atoms,
+        input_shape=(256, ni),
+        input_strides=(ni, 1),
         device=DeviceInfo("cuda", 0, "metadata-only"),
     )
     algorithm = RadiusEnvelopeDenseFourierWeightLMAlgorithm()
     plan = RADIUS_ENVELOPE_DENSE_FOURIER_WEIGHT_LM
     assert algorithm.supports(context, plan.recipe).supported
     for changed in (
-        {"atom_count": 131072},
+        {"atom_count": atoms + 1},
         {"dtype": torch.float64},
         {"execution_mode": "cuda_graph"},
         {"precision": replace(context.precision, allow_tf32=True)},
@@ -150,11 +153,14 @@ def test_dense_fourier_weight_is_an_explicit_down_only_plan():
 @pytest.mark.parametrize(
     "atom_grad,input_grad", [(True, True), (True, False), (False, True)]
 )
+@pytest.mark.parametrize(
+    "ni,no,atoms", [(4096, 1024, 196608), (2048, 2048, 131072), (2048, 2048, 262144)]
+)
 def test_dense_fourier_weight_at_tile_boundaries_and_row_tail(
-    atom_grad, input_grad, monkeypatch
+    ni, no, atoms, atom_grad, input_grad, monkeypatch
 ):
     monkeypatch.setattr(torch.backends.cuda.matmul, "allow_tf32", False)
-    ni, no, atoms, rows = 4096, 1024, 196608, 9
+    rows = 9
     model = physical(ni, no, atoms).cuda()
     seed = torch.Generator(device="cuda").manual_seed(17)
     p = model.atoms.p
