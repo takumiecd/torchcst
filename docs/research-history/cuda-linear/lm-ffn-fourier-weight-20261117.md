@@ -148,3 +148,34 @@ isolated a reversed owner-neighbor lookup in the transpose Fourier fold.
 The final periodic-boundary tests exercise the corrected direction.
 The failed replay and sweep remain in lm-shared-step-fourier-weight-20261117-01
 and lm-dense-weight-debug-20261117-01 respectively.
+
+## CPU rounding for the amplitude cap
+
+The reference Atom update uses the live cap from the validated host
+declaration. It rounds the cap toward zero on CPU and caches the result by
+cap value and parameter dtype. The device clamp receives the rounded scalar.
+The fixed-state metadata refreshes after a cap mutation or checkpoint restore.
+
+On the RTX 4090, both arms used the FP32 rational-radius prototype, the
+checkpoint at step 4882 and the same 1,024 tokens for update 4883. The timed
+eager run restored the model, AdamW and RNG state before each sample.
+The median uses 36 full-update and 40 optimizer-only observations per arm
+in reversed blocks. Optimizer-only timing replays the same captured gradients.
+
+| Cap handling | Full update ms | Optimizer ms | Full update peak allocated MiB |
+| --- | ---: | ---: | ---: |
+| GPU FP64 comparison | 44.953 | 7.524 | 2234.34 |
+| CPU-rounded cap | 44.857 | 7.454 | 2235.09 |
+
+All 52 parameter tensors and their AdamW state matched bitwise with fixed
+gradients. In the full replay the loss differed by 5.96e-8 and the largest
+relative L2 difference for Atom updates or moments was 3.59e-5. An optimizer
+operator trace counted four GPU FP64 comparisons in the baseline and zero
+with the CPU-rounded cap. It recorded 24 reads of FP64 declaration scalars
+in each arm.
+
+Sources use commit 421f90073631e39bd7a6704418ef5703ebde053f.
+The retained run lm-radius-cpu-cap-20261117-01 contains the source patch,
+compare_cap.py, the rebuild and run logs, and the result JSON with SHA-256
+f13add958ae086231542bdb49a3760f739161bc8a6204516a45677d32a988a8f.
+The CPU suite passed 2312 tests.
