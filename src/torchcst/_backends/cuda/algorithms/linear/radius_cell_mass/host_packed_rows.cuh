@@ -8,7 +8,7 @@ Tensor packed_initialization_energies(Tensor, Tensor, Config);
 
 void check_dense_fourier_cohort(const Tensor &p, const Config &ci, const Config &co) {
     constexpr const char *message =
-        "dense Fourier weights require an admitted FFN down or width-2048 QKV cohort";
+        "dense Fourier weights require an admitted FFN down or QKV cohort";
     TORCH_CHECK(!ci.empty() && !co.empty() && p.dim() == 2, message);
     TORCH_CHECK(
         width_down_cohort(ci[0], co[0], p.size(0)) ||
@@ -217,7 +217,7 @@ void bind_packed_rows(pybind11::module_ &module) {
         TORCH_CHECK(!axis.empty() && p.dim() == 2 &&
             (width_qkv_cohort(axis[0], co[0], p.size(0)) ||
              (axis[0] == 8192 && width_down_cohort(axis[0], co[0], p.size(0)))),
-            "initial energies require an admitted width-2048 QKV or FFN down cohort");
+            "initial energies require an admitted QKV or width-2048 FFN down cohort");
         TORCH_CHECK(banks.device() == p.device() && banks.scalar_type() == torch::kInt32 &&
             banks.dim() == 1 && banks.size(0) == p.size(0) && banks.is_contiguous(),
             "initial energies require contiguous int32 banks on the Atom device");

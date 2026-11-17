@@ -32,13 +32,19 @@ bool width_down_cohort(double input, double output, int64_t atoms) {
 }
 
 bool width_qkv_cohort(double input, double output, int64_t atoms) {
-    if (input != 2048 || output != 2048) return false;
+    if (input != output) return false;
+    if (input == 4096)
+        return atoms == 4096 * 32 || atoms == 4096 * 48 ||
+               atoms == 4096 * 64 || atoms == 4096 * 96;
+    if (input != 2048) return false;
     switch (atoms) {
+        case 2048 * 32:
         case 2048 * 48:
         case 2048 * 56:
         case 2048 * 64:
         case 2048 * 72:
         case 2048 * 80:
+        case 2048 * 96:
         case 2048 * 128:
             return true;
         default:

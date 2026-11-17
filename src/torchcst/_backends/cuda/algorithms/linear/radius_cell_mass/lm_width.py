@@ -26,13 +26,18 @@ WIDTH_COHORTS = tuple(
     for ni, no in ((width, 4 * width), (4 * width, width))
 )
 QKV_2048_COHORTS = tuple(
-    (2048, 2048, 2048 * coefficient) for coefficient in (48, 56, 64, 72, 80, 128)
+    (2048, 2048, 2048 * coefficient)
+    for coefficient in (32, 48, 56, 64, 72, 80, 96, 128)
+)
+QKV_4096_COHORTS = tuple(
+    (4096, 4096, 4096 * coefficient) for coefficient in (32, 48, 64, 96)
 )
 SHARED_WIDE_DOWN_COHORT = (4096, 1024, 196608)
 DENSE_FOURIER_COHORTS = (
     SHARED_WIDE_DOWN_COHORT,
     (8192, 2048, 393216),
     *QKV_2048_COHORTS,
+    *QKV_4096_COHORTS,
 )
 PROJECTION_COHORTS = (
     (1024, 1024, 65536),  # Historical QKV
@@ -129,7 +134,7 @@ class RadiusLMPhysicalDenseFourierWeightAlgorithm(RadiusLMPhysicalWidthLevelsAlg
             context.atom_count,
         ) not in DENSE_FOURIER_COHORTS:
             return SupportResult(
-                ("dense Fourier weights require an admitted FFN down or width-2048 QKV cohort",)
+                ("dense Fourier weights require an admitted FFN down or QKV cohort",)
             )
         if context.precision.allow_tf32:
             return SupportResult(("dense Fourier weights require IEEE FP32 matmul",))
