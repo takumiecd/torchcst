@@ -1,6 +1,7 @@
 """Compare CPU and GPU variance calibration for the width-2048 QKV study."""
 
 import argparse
+import copy
 import hashlib
 import json
 import time
@@ -69,16 +70,31 @@ def calibrated(layer, seed, *, energy_evaluator=None):
     )
 
 
+def physical_rows_and_banks(kernel, raw, boundaries):
+    # R = 0.5 belongs to the two-cell bank. A radius just above 0.5 can
+    # round to it in FP32, so classify before converting the physical rows.
+    physical = radius_envelope.from_state(kernel, raw.double())
+    radius = physical[:, 1].contiguous()
+    level = torch.bucketize(radius, boundaries, out_int32=True)
+    banks = 2 * level + (radius > 0.5).to(torch.int32)
+    return physical, banks
+
+
 def gpu_evaluator(native, layer):
     op = physical_operator(layer.execution_declaration())
     axis = hierarchy_from_operator(op).input.native_config()
+    boundaries = torch.tensor([1 << level for level in range(9)], dtype=torch.float64)
 
-    def evaluate(_kernel, _charts, p):
-        return float(
-            native.packed_exponential_initialization_energies(p.cuda(), axis, TAU).sum()
+    def energies(kernel, p):
+        physical, banks = physical_rows_and_banks(kernel, p, boundaries)
+        return native.packed_initialization_energies(
+            physical.to(device="cuda", dtype=torch.float32), banks.cuda(), axis
         )
 
-    return axis, evaluate
+    def evaluate(kernel, _charts, p):
+        return float(energies(kernel, p).sum())
+
+    return energies, evaluate
 
 
 def timed_calibration(layer, seed, *, energy_evaluator=None):
@@ -102,25 +118,24 @@ def reconstruct_original(layer, seed, report):
     return raw
 
 
-def projection_energy_error(native, layer, axis, raw):
+def projection_energy_error(energies, layer, raw):
     sample = 4096
+    state = copy.deepcopy(layer.kernel).double()
     expected = atom_energies(
-        layer.kernel.double(),
-        *(chart.double() for chart in layer.cst_charts()),
+        state,
+        *(copy.deepcopy(chart).double() for chart in layer.cst_charts()),
         raw[:sample].double(),
     )
-    actual = (
-        native.packed_exponential_initialization_energies(raw.cuda(), axis, TAU)[
-            :sample
-        ]
-        .cpu()
-        .double()
-    )
+    actual = energies(state, raw)[:sample].cpu().double()
+    radius = radius_envelope.from_state(state, raw.double())[:, 1]
     difference = actual - expected
     return {
         "sample_atoms": sample,
         "relative_l2": float(difference.norm() / expected.norm()),
         "max_abs": float(difference.abs().max()),
+        "radii_rounded_to_half_from_above": int(
+            ((radius > 0.5) & (radius.float() == 0.5)).sum()
+        ),
     }
 
 
@@ -160,13 +175,13 @@ def main(args):
     for arm, count in ATOM_COUNTS.items():
         seed = site_seed(17, "0.query")
         layer = make_layer(count, seed)
-        axis, evaluate = gpu_evaluator(native, layer)
-        evaluate(None, None, layer.atoms.p.detach())
+        energies, evaluate = gpu_evaluator(native, layer)
+        evaluate(layer.kernel, None, layer.atoms.p.detach())
         cpu, cpu_report, cpu_seconds = timed_calibration(layer, seed)
         gpu, gpu_report, gpu_seconds = timed_calibration(
             layer, seed, energy_evaluator=evaluate
         )
-        check = projection_energy_error(native, layer, axis, gpu)
+        check = projection_energy_error(energies, layer, gpu)
         result["controlled_timings"][arm] = {
             "cpu_seconds": cpu_seconds,
             "gpu_seconds": gpu_seconds,
