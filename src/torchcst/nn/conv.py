@@ -52,10 +52,7 @@ class CSTConv2d(CSTModule):
 
     def __init__(
         self,
-        output_chart: ChartSpec
-        | ChartState
-        | tuple[ChartSpec | ChartState, ...]
-        | None = None,
+        output_chart: ChartSpec | ChartState | tuple[ChartSpec | ChartState, ...] | None = None,
         input_chart: ChartSpec | ChartState | None = None,
         *,
         charts: tuple[ChartSpec | ChartState, ...] | None = None,
@@ -79,19 +76,13 @@ class CSTConv2d(CSTModule):
         super().__init__()
         if charts is not None:
             if output_chart is not None or input_chart is not None:
-                raise ValueError(
-                    "charts cannot be combined with output_chart or input_chart"
-                )
+                raise ValueError("charts cannot be combined with output_chart or input_chart")
             if not isinstance(charts, tuple) or len(charts) != 2:
-                raise TypeError(
-                    "output_chart and input_chart must be ChartSpec or ChartState instances"
-                )
+                raise TypeError("output_chart and input_chart must be ChartSpec or ChartState instances")
             output_chart, input_chart = charts
         elif isinstance(output_chart, tuple):
             if input_chart is not None or len(output_chart) != 2:
-                raise TypeError(
-                    "output_chart and input_chart must be ChartSpec or ChartState instances"
-                )
+                raise TypeError("output_chart and input_chart must be ChartSpec or ChartState instances")
             output_chart, input_chart = output_chart
         if isinstance(output_chart, ChartSpec):
             output_chart = compile_chart(output_chart, device=device, dtype=dtype)

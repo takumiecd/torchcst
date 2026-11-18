@@ -220,3 +220,75 @@ def test_charts_keyword_accepts_output_input_pair() -> None:
     assert model.charts == (model.output_chart, model.input_chart)
     assert (model.output_chart.ncs, model.input_chart.ncs) == (4, 12)
     assert model.dense_weight().shape == (4, 2, 2, 3)
+
+
+@pytest.mark.parametrize(
+    "settings",
+    [
+        {"kernel_size": (3, 1)},
+        {"padding": (1, 0)},
+        {"groups": 2},
+        {"out_channels": 129},
+    ],
+)
+def test_streamed_rejects_unsupported_geometry(settings) -> None:
+    config = {"kernel_size": (1, 1), "padding": (0, 0), **settings}
+    with pytest.raises(ValueError, match="streamed CSTConv2d requires 1x1"):
+        make_model(backend="streamed", **config)
+
+
+def test_streamed_requires_cuda() -> None:
+    model = make_model(backend="streamed", kernel_size=(1, 1), padding=(0, 0))
+    with pytest.raises(ValueError, match="requires CUDA FP32"):
+        model(torch.randn(2, 2, 7, 9, dtype=torch.float64))
+
+
+@pytest.mark.parametrize(
+    ("layout", "batch", "stride", "grad_x", "grad_p"),
+    [
+        ("contiguous", 2, (2, 3), True, True),
+        ("channels_last", 2, (2, 3), True, True),
+        ("transposed", 2, (1, 1), True, False),
+        ("contiguous", 2, (1, 1), False, True),
+        ("contiguous", 0, (2, 3), True, True),
+    ],
+)
+def test_streamed_pointwise_cuda(layout, batch, stride, grad_x, grad_p) -> None:
+    if not torch.cuda.is_available() or torch.cuda.get_device_capability()[0] < 8:
+        pytest.skip("requires NVIDIA compute capability 8.0+")
+    pytest.importorskip("triton")
+    model = make_model(
+        backend="streamed",
+        kernel_size=(1, 1),
+        padding=(0, 0),
+        stride=stride,
+    )
+    reference = copy.deepcopy(model)
+    reference.backend = "factored"
+    model = model.cuda().float()
+    model.atoms.p.requires_grad_(grad_p)
+    inputs = torch.randn(batch, 2, 7, 9, device="cuda")
+    if layout == "channels_last":
+        inputs = inputs.contiguous(memory_format=torch.channels_last)
+    elif layout == "transposed":
+        inputs = inputs.transpose(-2, -1)
+    inputs.requires_grad_(grad_x)
+    expected_inputs = inputs.detach().double().cpu().requires_grad_(grad_x)
+    with torch.no_grad():
+        reference.atoms.p.copy_(model.atoms.p.double().cpu())
+    reference.atoms.p.requires_grad_(grad_p)
+    actual = model(inputs)
+    expected = reference(expected_inputs)
+    if layout == "channels_last":
+        assert actual.is_contiguous(memory_format=torch.channels_last)
+    values = torch.randn_like(actual)
+    variables = tuple(v for v in (inputs, model.atoms.p) if v.requires_grad)
+    ref_variables = tuple(
+        v for v in (expected_inputs, reference.atoms.p) if v.requires_grad
+    )
+    grads = torch.autograd.grad(actual, variables, values)
+    ref_grads = torch.autograd.grad(expected, ref_variables, values.double().cpu())
+    for got, want in zip((actual, *grads), (expected, *ref_grads), strict=True):
+        torch.testing.assert_close(
+            got.detach().double().cpu(), want, atol=1e-5, rtol=2e-4
+        )
