@@ -358,6 +358,14 @@ opt-in かつ eager 専用。Linear Plan を選んでも optimizer の更新 Pla
 本パッケージは研究用 API。過去の測定は記録された source・workload・hardware の結果であり、
 異なる revision や実装の性能を示すものではない。
 
+### CUDA の 1×1 CSTConv2d
+
+`CSTConv2d` に `backend="streamed"` を指定すると、1×1 CUDA 経路を試せる。
+因子化可能なカーネル、1×1、padding 0、groups 1、入出力それぞれ128チャネル以下が必要。
+stride に沿って画素を抽出し、Triton を導入した compute capability 8.0 以上の NVIDIA GPU で、
+CUDA autocast を無効にして FP32 で実行する。各内積には3回の TF32 積を使って FP32 相当の
+精度を目指す。一階微分に対応する。
+
 ## CST の研究
 
 研究計画、モデル単位の実験 protocol、結果一覧は

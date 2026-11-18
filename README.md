@@ -376,6 +376,15 @@ This package is a research API. Historical measurements describe their recorded
 source, workload and hardware; they do not establish performance of a different
 revision or implementation.
 
+### Pointwise CSTConv2d on CUDA
+
+Set `backend="streamed"` on `CSTConv2d` to try the pointwise CUDA path.
+It requires a factorizable kernel, a 1×1 kernel with zero padding, one group,
+and at most 128 channels per axis. It accepts strided spatial sampling and
+runs in FP32 on NVIDIA compute capability 8.0 or newer with CUDA autocast
+disabled and Triton installed. It uses three TF32 products per dot to target
+FP32 accuracy and supports first-order differentiation.
+
 ## CST research
 
 Follow [cst-research](https://github.com/takumiecd/cst-research) for the research

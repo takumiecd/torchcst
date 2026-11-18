@@ -299,3 +299,38 @@ def test_streamed_revalidates_geometry_when_selected_after_construction() -> Non
     model.backend = "streamed"
     with pytest.raises(ValueError, match="streamed CSTConv2d requires 1x1"):
         model(torch.randn(2, 2, 7, 9, dtype=torch.float64))
+
+
+def test_streamed_pointwise_replays_with_changed_prepared_factors() -> None:
+    if not torch.cuda.is_available() or torch.cuda.get_device_capability()[0] < 8:
+        pytest.skip("requires NVIDIA compute capability 8.0+")
+    pytest.importorskip("triton")
+    from torchcst._backends.cuda.algorithms.conv2d.streamed import streamed_pointwise
+
+    inputs = torch.randn(2, 5, 5, 7, device="cuda", requires_grad=True)
+    left = torch.randn(5, 277, device="cuda", requires_grad=True)
+    right = torch.randn(7, 277, device="cuda", requires_grad=True)
+    args = (inputs, left, right)
+    cotangent = torch.randn(2, 7, 3, 4, device="cuda")
+
+    def vjp(output):
+        return (output, *torch.autograd.grad(output, args, cotangent))
+
+    warmup = torch.cuda.Stream()
+    warmup.wait_stream(torch.cuda.current_stream())
+    with torch.cuda.stream(warmup):
+        vjp(streamed_pointwise(*args, (2, 2)))
+    torch.cuda.current_stream().wait_stream(warmup)
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        actual = vjp(streamed_pointwise(*args, (2, 2)))
+
+    for _ in range(2):
+        graph.replay()
+        expected = vjp(F.conv2d(inputs, (right @ left.T)[:, :, None, None], stride=2))
+        for got, want in zip(actual, expected, strict=True):
+            torch.testing.assert_close(got, want, atol=3e-4, rtol=3e-4)
+        with torch.no_grad():
+            inputs.add_(0.25)
+            left.mul_(0.5)
+            right.add_(0.125)
