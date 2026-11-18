@@ -127,16 +127,8 @@ class CSTConv2d(CSTModule):
         self.dilation = _pair(dilation, name="dilation")
         self.groups = groups
 
-        if backend == "streamed" and (
-            groups != 1
-            or self.kernel_size != (1, 1)
-            or self.padding != (0, 0)
-            or max(in_channels, out_channels) > 128
-        ):
-            raise ValueError(
-                "streamed CSTConv2d requires 1x1, padding=0, groups=1 "
-                "and at most 128 input and output channels"
-            )
+        if backend == "streamed":
+            self._validate_streamed_geometry()
 
         patch_features = (in_channels // groups) * math.prod(self.kernel_size)
         if input_chart.features != patch_features:
@@ -289,6 +281,18 @@ class CSTConv2d(CSTModule):
             atoms = atoms.abs()
         return atoms.sum(dim=0), atoms.square().sum()
 
+    def _validate_streamed_geometry(self) -> None:
+        if (
+            self.groups != 1
+            or self.kernel_size != (1, 1)
+            or self.padding != (0, 0)
+            or max(self.in_channels, self.out_channels) > 128
+        ):
+            raise ValueError(
+                "streamed CSTConv2d requires 1x1, padding=0, groups=1 "
+                "and at most 128 input and output channels"
+            )
+
     def _resolved_backend(self) -> Literal["factored", "materialized", "streamed"]:
         from torchcst._backends.torch.kernels import execution as _kernel
 
@@ -321,6 +325,8 @@ class CSTConv2d(CSTModule):
                 groups=self.groups,
             )
 
+        if backend == "streamed":
+            self._validate_streamed_geometry()
         phi_input, phi_output = _kernel.factors(
             self.kernel, self.output_chart, self.input_chart, p
         )

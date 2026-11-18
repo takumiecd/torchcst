@@ -292,3 +292,10 @@ def test_streamed_pointwise_cuda(layout, batch, stride, grad_x, grad_p) -> None:
         torch.testing.assert_close(
             got.detach().double().cpu(), want, atol=1e-5, rtol=2e-4
         )
+
+
+def test_streamed_revalidates_geometry_when_selected_after_construction() -> None:
+    model = make_model()
+    model.backend = "streamed"
+    with pytest.raises(ValueError, match="streamed CSTConv2d requires 1x1"):
+        model(torch.randn(2, 2, 7, 9, dtype=torch.float64))
