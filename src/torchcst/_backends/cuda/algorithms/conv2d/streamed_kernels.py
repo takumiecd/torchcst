@@ -61,8 +61,10 @@ def project(rows, left, right):
         return rows.new_empty((0, outputs))
     rows_per_block = 32
     atoms_per_tile = 32
-    tiles_per_split = 8
-    splits = tr.cdiv(atoms, atoms_per_tile * tiles_per_split)
+    atom_tiles = tr.cdiv(atoms, atoms_per_tile)
+    # Bound the number of partial outputs independently of the atom count.
+    tiles_per_split = max(8, tr.cdiv(atom_tiles, 8))
+    splits = tr.cdiv(atom_tiles, tiles_per_split)
     partial = rows.new_empty((splits, row_count, outputs))
     _project_tiles[(tr.cdiv(row_count, rows_per_block), splits)](
         rows,
@@ -81,5 +83,6 @@ def project(rows, left, right):
         atoms_per_tile,
         tiles_per_split,
         num_warps=4,
+        num_stages=1,
     )
     return partial[0] if splits == 1 else partial.sum(dim=0)
