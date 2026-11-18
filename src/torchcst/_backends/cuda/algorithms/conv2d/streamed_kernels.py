@@ -62,8 +62,9 @@ def project(rows, left, right):
     rows_per_block = 32
     atoms_per_tile = 32
     atom_tiles = tr.cdiv(atoms, atoms_per_tile)
-    # Bound the number of partial outputs independently of the atom count.
-    tiles_per_split = max(8, tr.cdiv(atom_tiles, 8))
+    # The 4096-row shortcut favors four splits over seven. Cap the split
+    # count so the global partial outputs do not grow with the atom count.
+    tiles_per_split = max(14, tr.cdiv(atom_tiles, 4))
     splits = tr.cdiv(atom_tiles, tiles_per_split)
     partial = rows.new_empty((splits, row_count, outputs))
     _project_tiles[(tr.cdiv(row_count, rows_per_block), splits)](

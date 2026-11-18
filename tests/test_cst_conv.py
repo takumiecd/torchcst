@@ -308,8 +308,8 @@ def test_streamed_pointwise_replays_with_changed_prepared_factors() -> None:
     from torchcst._backends.cuda.algorithms.conv2d.streamed import streamed_pointwise
 
     inputs = torch.randn(2, 5, 5, 7, device="cuda", requires_grad=True)
-    left = torch.randn(5, 277, device="cuda", requires_grad=True)
-    right = torch.randn(7, 277, device="cuda", requires_grad=True)
+    left = torch.randn(5, 513, device="cuda", requires_grad=True)
+    right = torch.randn(7, 513, device="cuda", requires_grad=True)
     args = (inputs, left, right)
     cotangent = torch.randn(2, 7, 3, 4, device="cuda")
 
