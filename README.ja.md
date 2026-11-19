@@ -341,6 +341,37 @@ checkpoint は Kernel / 座標の契約、Chart の順序、固定の格子・ge
 atom Parameter を置き換えた場合は optimizer も作り直す。
 state の所有は [checkpoint 契約](docs/atom-state.ja.md#checkpoint)を参照する。
 
+## Hugging Faceで公開された重みを読み込む
+
+torchcstのチェックアウトで `python -m pip install -e '.[hub]'` を実行し、Hub用の
+追加依存関係を入れる。モデルのソースリポジトリで定義されたコンストラクタを指定する。
+以下の例は、CUDA対応PyTorchを用意し、[CST Swin MLPのチェックアウト](https://github.com/takumiecd/cst-swin-mlp-cifar10)
+で実行する。
+
+```python
+from infer import build_model
+from torchcst.hub import from_pretrained
+
+model = from_pretrained(
+    "takumiecd/cst-swin-mlp-cifar10",
+    model_factory=lambda: build_model("cst-256"),
+    filename="cst-256.safetensors",
+    revision="e6bcd53c4382f81cd941d90cf1b048dbb6763180",
+    device="cuda",
+    token=False,
+)
+```
+
+コンストラクタがモデル構成、Chart、カーネルなどの非Tensor状態を用意する。
+Safetensorsファイルには、そのモデルの `state_dict()` にある全Tensorを含める。
+ローダーはTensorの名前・形状・dtypeを確認して読み込み、指定したデバイスへ配置して評価モードにする。
+推論時は `torch.inference_mode()` を使い、入力も同じデバイスに置く。実行バックエンドは
+モデルのコンストラクタで選択する。
+
+手元のファイルには
+`torchcst.hub.load_safetensors(path, model_factory=make_model, device="cuda")` を使う。
+オプティマイザの状態を復元して学習を再開する場合は、前節のPyTorchチェックポイントを使う。
+
 ## 実行と制約
 
 Kernel の宣言は実装と独立して演算子を定める。`backend=` は組み込み Plan の alias、
