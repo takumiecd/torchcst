@@ -17,6 +17,7 @@ dependencies = ["torch>=2.0"]
 dev = ["build", "numpy>=1.24", "pytest", "ruff"]
 cuda = ["torch>=2.6", "triton>=3.2; sys_platform == 'linux'", "ninja"]
 benchmark-db = ["psycopg[binary]>=3.2,<4"]
+hub = ["huggingface-hub>=0.36", "safetensors>=0.6"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/torchcst"]

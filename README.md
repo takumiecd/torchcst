@@ -356,6 +356,40 @@ formats are rejected; they are not reinterpreted. Algorithm workspace is rebuilt
 Rebuild the optimizer after replacing an atom Parameter. See the
 [checkpoint contract](docs/atom-state.md#checkpoint) for state ownership.
 
+## Load published weights from Hugging Face
+
+Install the optional Hub dependencies from the torchcst checkout with
+`python -m pip install -e '.[hub]'`. Provide the model's constructor from its
+source repository. For example, run this from the
+[CST Swin MLP checkout](https://github.com/takumiecd/cst-swin-mlp-cifar10)
+with a CUDA-enabled PyTorch installation.
+
+```python
+from infer import build_model
+from torchcst.hub import from_pretrained
+
+model = from_pretrained(
+    "takumiecd/cst-swin-mlp-cifar10",
+    model_factory=lambda: build_model("cst-256"),
+    filename="cst-256.safetensors",
+    revision="e6bcd53c4382f81cd941d90cf1b048dbb6763180",
+    device="cuda",
+    token=False,
+)
+```
+
+The factory supplies the architecture, Charts, kernels and other non-tensor
+state. The file supplies every tensor in its `state_dict()`. The loader checks
+tensor names, shapes and dtypes before loading, then moves the model to the
+requested device and sets evaluation mode. Use `torch.inference_mode()` and
+put inputs on that device when running inference. The model's constructor
+selects the execution backend.
+
+With a local file, use
+`torchcst.hub.load_safetensors(path, model_factory=make_model, device="cuda")`.
+Use the full PyTorch checkpoint above to restore optimizer state and resume
+training.
+
 ## Execution and constraints
 
 Kernel declarations define the operator independently of its implementation.
