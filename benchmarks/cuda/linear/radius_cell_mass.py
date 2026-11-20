@@ -66,7 +66,7 @@ def fixture(case):
                 if multirow
                 else {}
             ),
-        ),
+        )
     )
     kernel = kernels.product(
         kernels.cell_mass(ChebyshevSpec(modes=8), merge_factor=2),
