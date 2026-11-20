@@ -188,29 +188,36 @@ __device__ __constant__ double profile_m8_terms[8][8] = {
     {15},
 };
 
-__device__ __noinline__ void profile_coefficients_m8(double R, double P, double *c, double *dr) {
-    double angle = PI * (R / P), cb = cos(angle), sb = sin(angle);
-    double z = cb * cb, u = 1 - z;
-    double dz = -(2 * PI / P) * cb * sb;
-    double zp[9], up[9];
+template<class Calc>
+__device__ __noinline__ void profile_coefficients_m8(Calc R, Calc P, Calc *c, Calc *dr) {
+    Calc angle = Calc(PI) * (R / P), cb, sb;
+    if constexpr (std::is_same<Calc, float>::value)
+        sincosf(angle, &sb, &cb);
+    else {
+        cb = cos(angle);
+        sb = sin(angle);
+    }
+    Calc z = cb * cb, u = 1 - z;
+    Calc dz = -(2 * Calc(PI) / P) * cb * sb;
+    Calc zp[9], up[9];
     zp[0] = up[0] = 1;
     for (int j = 1; j <= 8; ++j) { zp[j] = zp[j - 1] * z; up[j] = up[j - 1] * u; }
     // Homogenization cancels the common z^-8 before it can overflow.
     // Differentiate the same polynomial with du/dz=-1, without division by z/u.
-    double zero = 0, dzero = 0;
+    Calc zero = 0, dzero = 0;
     for (int k = 0; k < 8; ++k) {
         int degree = 8 - k;
-        double raw = k == 0 ? 0.5 * zp[8] : 0;
-        double draw = k == 0 ? 4 * zp[7] : 0;
-        double value = 0, slope = 0;
+        Calc raw = k == 0 ? Calc(0.5) * zp[8] : 0;
+        Calc draw = k == 0 ? 4 * zp[7] : 0;
+        Calc value = 0, slope = 0;
         for (int j = 1; j <= degree; ++j) {
             int power = degree - j;
-            double coefficient = profile_m8_terms[k][j - 1];
+            Calc coefficient = Calc(profile_m8_terms[k][j - 1]);
             value += coefficient * zp[power] * up[j];
             slope += coefficient * ((power ? power * zp[power - 1] * up[j] : 0) -
                                     j * zp[power] * up[j - 1]);
         }
-        double factor = 4.0 / (8 + k);
+        Calc factor = Calc(4) / (8 + k);
         raw += factor * value; draw += factor * slope;
         if (k == 0) { zero = raw; dzero = draw; c[0] = 1 / P; dr[0] = 0; }
         else {
@@ -218,8 +225,8 @@ __device__ __noinline__ void profile_coefficients_m8(double R, double P, double 
             dr[k] = ((draw - raw * (dzero / zero)) / zero) * (dz / P);
         }
     }
-    c[8] = (0.25 / zero) / P;
-    dr[8] = ((-0.25 * (dzero / zero)) / zero) * (dz / P);
+    c[8] = (Calc(0.25) / zero) / P;
+    dr[8] = ((Calc(-0.25) * (dzero / zero)) / zero) * (dz / P);
 }
 
 __device__ inline void profile_coefficients(double R, double P, int M, double *c, double *dr) {
@@ -255,6 +262,7 @@ template<class Calc, class T>
 __device__ inline Calc signal_amplitude(const T *p, int atom, const Axis &a) {
     if constexpr (std::is_same<Calc, double>::value) return amplitude(p, atom, a);
     else {
+        if (!a.polar) return float(p[4 * atom]);
         float s = p[4 * atom], t = p[4 * atom + 1];
         return float(a.amplitude_max) * s / sqrtf(fmaxf(s*s+t*t, FLT_MIN));
     }
@@ -269,6 +277,7 @@ template<class Calc, class T>
 __device__ inline Calc signal_radius(const T *p, int atom, const Axis &a) {
     if constexpr (std::is_same<Calc, double>::value) return radius(p, atom, a);
     else {
+        if (!a.polar) return float(p[4 * atom + 1]);
         float s=p[4*atom], t=p[4*atom+1], amp=signal_amplitude<float>(p,atom,a);
         float alpha=fminf(1, fmaxf(0,(s*s+t*t-1)/3));
         float ratio=amp/float(a.w_c), x=ratio*ratio;
@@ -297,7 +306,11 @@ __device__ inline Calc signal_wrapped(Calc mu, const Axis &a) {
     else {
         float period=float(a.period);
         float v=fmodf(fmodf(mu,period)-fmodf(float(a.origin),period),period);
-        return v<0 ? v+period : v;
+        // Keep a signed representative. Adding a large period to a small
+        // negative FP32 center discards fractional-cell bits; classification
+        // and Fourier phases need only a consistent periodic representative.
+        // first_tile may be negative: all owner addressing uses positive_mod.
+        return a.polar && v < 0 ? v + period : v;
     }
 }
 template<class Calc>
@@ -316,6 +329,10 @@ __device__ inline void signal_store_gradient(const T *p,T *g,int atom,const Axis
     Calc da,Calc dr,Calc dmi,Calc dmo) {
     if constexpr (std::is_same<Calc,double>::value) store_gradient(p,g,atom,a,da,dr,dmi,dmo);
     else {
+        if (!a.polar) {
+            g[4*atom]=da;g[4*atom+1]=dr;g[4*atom+2]=dmo;g[4*atom+3]=dmi;
+            return;
+        }
         float s=p[4*atom],t=p[4*atom+1],q=s*s+t*t,safe=fmaxf(q,FLT_MIN),inverse=1/sqrtf(safe);
         float ds=float(a.amplitude_max)*inverse*(q>=FLT_MIN ? 1-s*s/safe : 1);
         float dt=q>=FLT_MIN ? -float(a.amplitude_max)*inverse*s*t/safe : 0;

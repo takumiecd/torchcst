@@ -17,6 +17,7 @@ from torch.nn.functional import pad
 from torchcst._backends.torch.kernels.radius_cell_mass import _relative_centers
 from torchcst._backends.torch.parameterizations.radius_cell_mass import decoded_values
 from torchcst._backends.torch.profiles.radius_fourier import integrated_cells
+from torchcst.kernels.parameterizations import RationalRadiusSpec
 from torchcst.kernels.radius_cell_mass import radius_cell_mass_axes
 
 LOCAL_EXPORT_POLICY = {
@@ -99,8 +100,8 @@ def _axis_windows(axis, radii, centers):
 def bounded_local_factors(model, parameters=None):
     """Differentiable local public factors for one caller-bounded atom chunk.
 
-    Polar radius/routing is detached, as in the public task VJP. Amplitude and both
-    centers remain live. Caller chunking bounds memory and autograd lifetime.
+    Routing is detached. The radius remains differentiable for rational
+    coordinates, while the Polar VJP detaches it. Caller chunking bounds memory.
     """
     p = model.atoms.p if parameters is None else parameters
     if p.device.type != "cpu" or p.ndim != 2 or p.shape[1] != 4:
@@ -113,8 +114,10 @@ def bounded_local_factors(model, parameters=None):
         tuple(c.declaration() for c in model.cst_charts()), model.kernel.declaration()
     )
     amplitude, ri, ro = decoded_values(model.kernel, p)
-    input_sites, input_mass = _axis_windows(input_axis, ri.detach(), p[:, 3])
-    output_sites, output_mass = _axis_windows(output_axis, ro.detach(), p[:, 2])
+    if type(model.kernel.spec.parameterization) is not RationalRadiusSpec:
+        ri, ro = ri.detach(), ro.detach()
+    input_sites, input_mass = _axis_windows(input_axis, ri, p[:, 3])
+    output_sites, output_mass = _axis_windows(output_axis, ro, p[:, 2])
     return LocalFactors(
         input_sites,
         input_mass.to(p.dtype),

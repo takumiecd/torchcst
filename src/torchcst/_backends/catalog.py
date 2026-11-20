@@ -13,6 +13,9 @@ def make_registry():
     from .cuda.algorithms.linear.radius_cell_mass.algorithm import (
         RadiusCellMassAlgorithm,
     )
+    from .cuda.algorithms.linear.radius_cell_mass.rational_wide import (
+        RationalWideAlgorithm,
+    )
     from .cuda.algorithms.polar_update import FusedPolarUpdateAlgorithm
     from .cuda.algorithms.polar_update.algorithm import (
         FlatTorusPolarUpdateAlgorithm,
@@ -27,6 +30,7 @@ def make_registry():
     registry = Registry()
     for algorithm in (
         RadiusCellMassAlgorithm(),
+        RationalWideAlgorithm(),
         MaterializedAlgorithm(),
         FactoredAlgorithm(),
         NormalizedRadialAlgorithm(),

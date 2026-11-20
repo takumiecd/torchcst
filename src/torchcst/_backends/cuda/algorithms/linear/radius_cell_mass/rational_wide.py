@@ -1,0 +1,118 @@
+"""Explicit CUDA plans for square rational-radius M8 projections."""
+
+from dataclasses import dataclass
+
+import torch
+
+from torchcst._backends.schema import ExecutionPlan, SupportResult
+from torchcst._builtin_callbacks import seal_functions as _seal_functions
+from torchcst.kernels.parameterizations import RationalRadiusSpec
+from torchcst.operators.context import LinearContext
+from torchcst.operators.execution import linear_execution
+
+from .algorithm import RadiusCellMassAlgorithm, hierarchy_from_operator
+
+
+@dataclass(frozen=True)
+class RationalWideRecipe:
+    materialize_weight: bool
+
+
+@dataclass(frozen=True)
+class RationalWideAlgorithm(RadiusCellMassAlgorithm):
+    id: str = "cuda_rational_radius_wide"
+    recipe_type: type = RationalWideRecipe
+
+    def validate_recipe(self, recipe):
+        if (
+            type(recipe) is not RationalWideRecipe
+            or type(recipe.materialize_weight) is not bool
+        ):
+            raise ValueError(
+                "expected a rational wide recipe with a boolean weight policy"
+            )
+
+    def supports(self, context, recipe):
+        try:
+            self.validate_recipe(recipe)
+            if not isinstance(context, LinearContext):
+                raise TypeError("requires a LinearContext")
+            spec = context.operator.kernel.parameterization
+            if type(spec) is not RationalRadiusSpec:
+                raise ValueError("requires kernels.rational_radius coordinates")
+            layout = hierarchy_from_operator(context.operator)
+        except (TypeError, ValueError) as error:
+            return SupportResult((str(error),))
+
+        n = layout.input.site_count
+        if (
+            n not in (2048, 4096)
+            or layout.output != layout.input
+            or context.atom_count not in (32 * n, 48 * n)
+            or context.parameter_dim != 4
+            or layout.input.modes != 8
+            or layout.input.base_tile_sites != 1
+            or layout.input.merge_factor != 2
+            or layout.input.spacing != 1
+            or layout.input.origin != 0
+        ):
+            return SupportResult(
+                (
+                    "requires square width 2048/4096, 32N/48N Atoms, origin-0 unit grid, M8/base1/merge2",
+                )
+            )
+        if not (
+            0.5 <= spec.radius_min <= spec.radius_max <= 512
+            and spec.amplitude_max <= 32
+        ):
+            return SupportResult(
+                ("requires radius within [0.5, 512] and amplitude_max <= 32",)
+            )
+        if (
+            context.device.type != "cuda"
+            or context.dtype != torch.float32
+            or not 1 <= context.m <= 256
+            or context.execution_mode != "eager"
+            or context.precision.autocast
+            or context.precision.allow_tf32
+            or context.deterministic
+            or context.workspace_limit_bytes is not None
+        ):
+            return SupportResult(
+                (
+                    "requires CUDA FP32, 1..256 rows, eager, autocast/TF32/deterministic off, and no workspace limit",
+                )
+            )
+        return SupportResult(())
+
+    def execute(self, state, inputs):
+        from torchcst._backends.torch.parameterizations.rational_radius import (
+            physical_parameters,
+        )
+
+        from .executor import _extension
+
+        x, atom_rows, _, _ = linear_execution(state, inputs)
+        physical = physical_parameters(
+            atom_rows, *state.buffers["rational_radius_constants"]
+        )
+        native = _extension(8, rational_wide=True)
+        ci = state.layout.input.native_config()
+        co = state.layout.output.native_config()
+        if state.recipe.materialize_weight:
+            return native.packed_dense_fourier_weight_linear(x, physical, ci, co)
+        return native.packed_levels_linear(x, physical, ci, co, True, True)
+
+    def prepare_execution_program(self, dispatcher, cached, inputs, *, plan=None):
+        return None
+
+
+RATIONAL_WIDE_FOURIER_WEIGHT = ExecutionPlan(
+    "cuda_rational_radius_wide", "v1", RationalWideRecipe(materialize_weight=True)
+)
+RATIONAL_WIDE_FOURIER_DIRECT = ExecutionPlan(
+    "cuda_rational_radius_wide", "v1", RationalWideRecipe(materialize_weight=False)
+)
+
+
+_seal_functions(globals())

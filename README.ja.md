@@ -28,27 +28,22 @@ CUDA 実装には device と精度の個別制約もある。
 
 以下は16入力を8出力へ写し、CPU で1回の学習 step を実行する完全な例。
 
+新規モデルで半径をタスク損失から学習する場合は、`kernels.rational_radius` を使います。
+Polar 座標は既存のモデル・チェックポイントと、Polar 専用 CUDA Plan の互換用です。
+
 ```python
 import torch
-from torchcst import (
-    BandwidthBounds, CSTAdamW, CSTLinear, GaussianSpec, chart_presets, kernels,
-)
+from torchcst import CSTAdamW, CSTLinear, ChebyshevSpec, chart_presets, kernels
 
 model = CSTLinear(
     charts=(
-        chart_presets.regular_grid(8, spacing=0.3),   # output sites
-        chart_presets.regular_grid(16, spacing=0.2),  # input sites
-    ),
+        chart_presets.regular_grid(8, geometry="flat_torus"),
+        chart_presets.regular_grid(16, geometry="flat_torus"),
+    ),  # output, input
     atoms=12,
     kernel=kernels.product(
-        kernels.l2(GaussianSpec()),
-        coordinates=kernels.polar(
-            amplitude_max=1.0, w_c=0.1,
-            bounds=BandwidthBounds(
-                minimum=0.1, birth=2.0, maximum=2.0, upper_floor=0.1,
-            ),
-            radial_regularization=0.2,
-        ),
+        kernels.cell_mass(ChebyshevSpec(modes=8)),
+        coordinates=kernels.rational_radius(radius_max=4.0, radius_fraction=0.0),
     ),
     backend="factored",
 )
@@ -79,8 +74,7 @@ Atomの宣言済みフィールドに絶対値の初期学習率を指定する�
 ```python
 optimizer = CSTAdamW(
     model.parameters(), model=model, lr=4.8e-3,
-    field_lrs={"amplitude": 2.4e-3, "input_center": 4.8e-3,
-               "output_center": 4.8e-3},
+    field_lrs={"amplitude": 2.4e-3, "radius_fraction": 9.6e-3},
 )
 ```
 
@@ -141,9 +135,57 @@ optimizer = CSTAdamW(layer.parameters(), model=layer, lr=1e-3)
 対応する形状でCUDAネイティブ実行を使うには `GLOBAL_ACTIVE_GRAD4_NATIVE` を明示します。
 [半径セル質量ガイド](docs/radius-cell-mass.ja.md#学習可能な半径割合をcudaで使う)を参照してください。
 
-## 公開 API で推奨する CUDA 構成
+### 有理式半径の大幅 CUDA Plan
 
-現在検証済みの **FP32・小バッチの半径セル質量** workload では、Linear の明示的 Plan
+2048または4096の正方射影では、`FixedSelector` で以下を明示選択できます。
+対応する Atom 数は幅の32倍または48倍です。
+
+| Plan | 計算経路 |
+| --- | --- |
+| `RATIONAL_WIDE_FOURIER_WEIGHT` | フーリエ係数から一時的な重み行列を作り、行列積を実行 |
+| `RATIONAL_WIDE_FOURIER_DIRECT` | 階層フーリエ係数から直接出力を計算 |
+
+両方とも FP32、TF32 無効、入力1〜256行、eager 実行、autocast 無効に対応します。
+入出力は同じ origin=0、spacing=1 の1次元 FlatTorus 格子で、M8、base tile 1、
+merge factor 2、半径範囲 [0.5, 512]、amplitude_max ≤ 32 を使います。
+
+```python
+import torch
+from torchcst import (
+    CSTLinear, ChebyshevSpec, FixedSelector, chart_presets, kernels,
+    make_algorithm_registry,
+)
+from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.rational_wide import (
+    RATIONAL_WIDE_FOURIER_DIRECT, RATIONAL_WIDE_FOURIER_WEIGHT,
+)
+
+torch.backends.cuda.matmul.allow_tf32 = False
+n = 4096
+grid = chart_presets.regular_grid(n, geometry="flat_torus")
+plan = RATIONAL_WIDE_FOURIER_WEIGHT
+registry = make_algorithm_registry()
+layer = CSTLinear(
+    charts=(grid, grid), atoms=32 * n, dtype=torch.float32,
+    kernel=kernels.product(
+        kernels.cell_mass(ChebyshevSpec(modes=8)),
+        coordinates=kernels.rational_radius(radius_max=512.0),
+    ),
+    selector=FixedSelector(plan, registry=registry),
+).cuda()
+x = torch.randn(128, n, device="cuda")
+y = layer(x)
+layer.selector = FixedSelector(RATIONAL_WIDE_FOURIER_DIRECT, registry=registry)
+y_direct = layer(x)
+```
+
+例では展開経路を選んでいます。`plan` に `RATIONAL_WIDE_FOURIER_DIRECT`
+を指定すると、同じ `layer(x)` で直接経路を使えます。
+
+[RTX 4090の測定結果](docs/research-history/cuda-linear/rational-wide-fourier-4090-20261120.ja.md)
+
+## 互換用の Polar CUDA 構成
+
+互換性が必要な **FP32・小バッチの Polar 半径セル質量**では、Linear の明示的 Plan
 `GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32_FLAT_C` と、独立した座標更新 Plan
 `RADIUS_FLAT_TORUS_FUSED` を指定した `CSTAdamW` を出発点とする。
 これらの opt-in Plan は `main` にあり、自動選択の既定は変更していない。
@@ -247,7 +289,7 @@ Kernel の宣言には独立した三つの要素がある。
 | --- | --- | --- |
 | Profile | `GaussianSpec`, `TriweightSpec`, `ChebyshevSpec` | 関数の形 |
 | Factor | `kernels.point`, `kernels.l2`, `kernels.cell_mass` | 点評価・離散 L2 正規化・セル積分 |
-| Coordinates | `kernels.polar`, `kernels.direct`, `kernels.physical` | atom の座標・初期化・更新則 |
+| Coordinates | `kernels.rational_radius`, `kernels.polar`, `kernels.direct`, `kernels.physical` | atom の座標・初期化・更新則 |
 
 これらを Tensor を持たない `KernelSpec` へ組み立てる。
 

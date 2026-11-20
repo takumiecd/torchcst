@@ -22,8 +22,8 @@ from .plan import MAX_ATOMS, SHARED_MAX_ATOMS, SHARED_MAX_SITES, HierarchyPlan
 from .recipe import RadiusCellMassRecipe
 
 
-@lru_cache(maxsize=2)
-def _extension(row_batch=4):
+@lru_cache(maxsize=3)
+def _extension(row_batch=4, *, rational_wide=False):
     """Compile only this radius implementation; never load the sigma binary."""
     from torch.utils.cpp_extension import load
 
@@ -36,10 +36,18 @@ def _extension(row_batch=4):
     digest = hashlib.sha256(b"".join(p.read_bytes() for p in sources)).hexdigest()[:12]
     suffix = "" if row_batch == 4 else "_row8"
     flags = [] if row_batch == 4 else ["-DRADIUS_ROW_BATCH=8"]
+    host_flags = ["-O2"]
+    if rational_wide:
+        if row_batch != 8:
+            raise ValueError("wide rational radius requires the row8 build")
+        suffix += "_rational_wide"
+        define = "-DRADIUS_RATIONAL_WIDE=1"
+        flags.append(define)
+        host_flags.append(define)
     return load(
         name=f"torchcst_radius_cell_mass_{digest}{suffix}",
         sources=[str(source), str(host)],
-        extra_cflags=["-O2"],
+        extra_cflags=host_flags,
         extra_cuda_cflags=["-O2", "--ftz=false", *flags],
         verbose=False,
     )

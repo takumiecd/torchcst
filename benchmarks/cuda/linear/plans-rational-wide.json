@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "plans": [
+    {
+      "id": "rational-wide-fourier-weight",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_rational_radius_wide",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "materialize_weight": true
+        }
+      }
+    },
+    {
+      "id": "rational-wide-fourier-direct",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_rational_radius_wide",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "materialize_weight": false
+        }
+      }
+    }
+  ]
+}
