@@ -33,6 +33,17 @@
           "materialize_weight": false
         }
       }
+    },
+    {
+      "id": "rational-wide-scale-weight",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_rational_radius_wide_scale_weight",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "materialize_weight": true
+        }
+      }
     }
   ]
 }

@@ -25,6 +25,14 @@ Tensor packed_classify(Tensor p,Config ci,Config co,float radius_limit) {
         p.data_ptr<float>(),keys.data_ptr<int64_t>(),p.size(0),parse_axis(ci),parse_axis(co),radius_limit);
     C10_CUDA_KERNEL_LAUNCH_CHECK();return keys;
 }
+#ifdef RADIUS_RATIONAL_WIDE
+bool packed_scale_cohort(double input, double output, int64_t atoms) {
+    return input == output && ((input == 4096 && atoms == 4096 * 32) ||
+        (input == 8192 && (atoms == 8192 * 16 || atoms == 8192 * 32)) ||
+        (input == 16384 && atoms == 16384 * 32));
+}
+#endif
+
 void packed_check_scope(Tensor x, Tensor p, Config ci, Config co) {
     check_atoms(p); check_matrix(x);
     Axis ai = parse_axis(ci), ao = parse_axis(co);
@@ -38,9 +46,10 @@ void packed_check_scope(Tensor x, Tensor p, Config ci, Config co) {
     bool physical = false;
 #ifdef RADIUS_RATIONAL_WIDE
     physical = !ai.polar && !ao.polar && ai.sites == ao.sites &&
-        (ai.sites == 2048 || ai.sites == 4096) &&
         ai.origin == 0 && ao.origin == 0 &&
-        (p.size(0) == 32 * ai.sites || p.size(0) == 48 * ai.sites);
+        (packed_scale_cohort(ai.sites, ao.sites, p.size(0)) ||
+            ((ai.sites == 2048 || ai.sites == 4096) &&
+                (p.size(0) == 32 * ai.sites || p.size(0) == 48 * ai.sites)));
 #endif
     TORCH_CHECK(x.device() == p.device() && x.size(1) == ai.sites &&
         x.scalar_type() == torch::kFloat && p.scalar_type() == torch::kFloat &&

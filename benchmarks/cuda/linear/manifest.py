@@ -30,7 +30,10 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.packed import (
     RadiusPackedRecomputeAlgorithm,
 )
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.rational_wide import (
+    RATIONAL_WIDE_COHORTS,
+    RATIONAL_WIDE_SCALE_COHORTS,
     RationalWideAlgorithm,
+    RationalWideScaleWeightAlgorithm,
     RationalWideSharedAlgorithm,
 )
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.row8 import (
@@ -50,6 +53,7 @@ REGISTRY = Registry()
 REGISTRY.register(RadiusCellMassAlgorithm())
 REGISTRY.register(RationalWideAlgorithm())
 REGISTRY.register(RationalWideSharedAlgorithm())
+REGISTRY.register(RationalWideScaleWeightAlgorithm())
 REGISTRY.register(RadiusRow8Algorithm())
 REGISTRY.register(RadiusLargeRow8Algorithm())
 REGISTRY.register(RadiusLargePackedAlgorithm())
@@ -227,13 +231,11 @@ class BenchmarkCase:
             self.size not in (2048, 8192, 16384) or self.atoms != 8 * self.size
         ):
             raise ValueError("multirow fixture requires N2048/8192/16384 with A=8N")
-        if self.fixture == RATIONAL_WIDE_FIXTURE and (
-            self.size not in (2048, 4096)
-            or self.atoms not in (32 * self.size, 48 * self.size)
+        if self.fixture == RATIONAL_WIDE_FIXTURE and not any(
+            self.size == width and self.atoms == coefficient * width
+            for width, coefficient in (*RATIONAL_WIDE_COHORTS, *RATIONAL_WIDE_SCALE_COHORTS)
         ):
-            raise ValueError(
-                "wide rational fixture requires N2048/4096 with A=32N or 48N"
-            )
+            raise ValueError("width and Atom count are outside the rational-wide cohorts")
         for name in ["rows", "atoms", "warmup", "rounds"]:
             _integer(getattr(self, name), name)
         if self.fixture in RADIUS_FIXTURES and self.atoms > 1 << 24:

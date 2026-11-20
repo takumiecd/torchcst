@@ -1,6 +1,9 @@
 #pragma once
 namespace radius_cell_mass {
 void packed_check_scope(Tensor, Tensor, Config, Config);
+#ifdef RADIUS_RATIONAL_WIDE
+bool packed_scale_cohort(double, double, int64_t);
+#endif
 Tensor packed_classify(Tensor, Config, Config, float = 0);
 void packed_check_tensor(Tensor, Tensor, std::vector<int64_t>);
 Tensor packed_make_geometry(Tensor, Config, Config);
@@ -124,8 +127,8 @@ void bind_packed_rows(pybind11::module_ &module) {
         check_autograd_entry(x, p, ci, co, 2, 2, 32, 5);
         packed_check_scope(x, p, ci, co);
         TORCH_CHECK(ci.size() == 6 && co.size() == 6 &&
-            ci[0] == 4096 && co[0] == 4096 && p.size(0) == 4096 * 32,
-            "shared wide tiles require the physical 4096 square projection with 32N atoms");
+            packed_scale_cohort(ci[0], co[0], p.size(0)),
+            "shared wide tiles require an admitted square physical scaling cohort");
         return PackedRows::apply(x, p, ci, co, true, true, true, true, true);
     }, pybind11::call_guard<pybind11::gil_scoped_release>());
     module.def("packed_dense_fourier_weight_linear", [](Tensor x, Tensor p, Config ci, Config co) {

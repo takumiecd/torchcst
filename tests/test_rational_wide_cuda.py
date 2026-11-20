@@ -16,7 +16,10 @@ from torchcst import (
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.rational_wide import (
     RATIONAL_WIDE_FOURIER_DIRECT,
     RATIONAL_WIDE_FOURIER_WEIGHT,
+    RATIONAL_WIDE_SCALE_COHORTS,
+    RATIONAL_WIDE_SCALE_WEIGHT,
     RATIONAL_WIDE_SHARED,
+    RationalWideScaleWeightAlgorithm,
     RationalWideSharedAlgorithm,
 )
 from torchcst._backends.schema import DeviceInfo, PrecisionPolicy
@@ -72,9 +75,32 @@ def test_wide_rational_plans_are_explicit_and_check_metadata():
             assert not algo.supports(replace(context, atom_count=4096 * 48), plan.recipe).supported
 
 
+@pytest.mark.parametrize(("width", "coefficient"), RATIONAL_WIDE_SCALE_COHORTS[1:])
+def test_wide_scaling_has_only_research_admission(width, coefficient):
+    from benchmarks.cuda.linear.manifest import REGISTRY
+
+    atoms = width * coefficient
+    op = layer(width, atoms).execution_declaration()
+    context = LinearContext(
+        operator=op, input_shape=(128, width), input_strides=(width, 1),
+        dtype=torch.float32, atom_count=atoms, parameter_dim=4,
+        device=DeviceInfo("cuda", 0),
+        precision=PrecisionPolicy(autocast=False, allow_tf32=False),
+    )
+    public = make_algorithm_registry()
+    for plan in PLANS:
+        assert not public.validate_plan(plan).supports(context, plan.recipe).supported
+    for plan in (RATIONAL_WIDE_SCALE_WEIGHT, RATIONAL_WIDE_SHARED):
+        algo = REGISTRY.validate_plan(plan)
+        assert REGISTRY.load_plan(REGISTRY.dump_plan(plan)) == plan
+        assert algo.supports(context, plan.recipe).supported
+        assert not algo.supports(replace(context, atom_count=atoms + 1), plan.recipe).supported
+
+
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA")
 @pytest.mark.parametrize(
-    ("width", "coefficient"), [(2048, 32), (2048, 48), (4096, 32), (4096, 48)]
+    ("width", "coefficient"),
+    ((2048, 32), (2048, 48), (4096, 32), (4096, 48), *RATIONAL_WIDE_SCALE_COHORTS[1:]),
 )
 def test_wide_rational_matches_cpu_for_admitted_plans(width, coefficient):
     initial_precision = torch.get_float32_matmul_precision()
@@ -110,6 +136,10 @@ def _check_wide_gradients(width, coefficient):
     if (width, coefficient) == (4096, 32):
         registry.register(RationalWideSharedAlgorithm())
         plans = (*plans, RATIONAL_WIDE_SHARED)
+    if width >= 8192:
+        registry.register(RationalWideSharedAlgorithm())
+        registry.register(RationalWideScaleWeightAlgorithm())
+        plans = (RATIONAL_WIDE_SCALE_WEIGHT, RATIONAL_WIDE_SHARED)
     for plan in plans:
         model.selector = FixedSelector(plan, registry=registry)
         x = host_x.cuda().requires_grad_()

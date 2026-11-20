@@ -1,6 +1,7 @@
 """Explicit CUDA plans for square rational-radius M8 projections."""
 
 from dataclasses import dataclass
+from typing import ClassVar
 
 import torch
 
@@ -13,6 +14,10 @@ from torchcst.operators.execution import linear_execution
 from .algorithm import RadiusCellMassAlgorithm, hierarchy_from_operator
 
 
+RATIONAL_WIDE_COHORTS = ((2048, 32), (2048, 48), (4096, 32), (4096, 48))
+RATIONAL_WIDE_SCALE_COHORTS = ((4096, 32), (8192, 16), (8192, 32), (16384, 32))
+
+
 @dataclass(frozen=True)
 class RationalWideRecipe:
     materialize_weight: bool
@@ -22,6 +27,7 @@ class RationalWideRecipe:
 class RationalWideAlgorithm(RadiusCellMassAlgorithm):
     id: str = "cuda_rational_radius_wide"
     recipe_type: type = RationalWideRecipe
+    cohorts: ClassVar[tuple[tuple[int, int], ...]] = RATIONAL_WIDE_COHORTS
 
     def validate_recipe(self, recipe):
         if (
@@ -45,10 +51,10 @@ class RationalWideAlgorithm(RadiusCellMassAlgorithm):
             return SupportResult((str(error),))
 
         n = layout.input.site_count
+        if (n, context.atom_count // n) not in self.cohorts or context.atom_count % n:
+            return SupportResult(("width and Atom count are outside the admitted cohorts",))
         if (
-            n not in (2048, 4096)
-            or layout.output != layout.input
-            or context.atom_count not in (32 * n, 48 * n)
+            layout.output != layout.input
             or context.parameter_dim != 4
             or layout.input.modes != 8
             or layout.input.base_tile_sites != 1
@@ -58,7 +64,7 @@ class RationalWideAlgorithm(RadiusCellMassAlgorithm):
         ):
             return SupportResult(
                 (
-                    "requires square width 2048/4096, 32N/48N Atoms, origin-0 unit grid, M8/base1/merge2",
+                    "requires a square origin-0 unit grid with M8/base1/merge2",
                 )
             )
         if not (
@@ -123,17 +129,12 @@ class RationalWideSharedAlgorithm(RationalWideAlgorithm):
     """Research-only shared output aggregation for the square Q cohort."""
 
     id: str = "cuda_rational_radius_wide_shared"
+    cohorts = RATIONAL_WIDE_SCALE_COHORTS
 
     def validate_recipe(self, recipe):
         super().validate_recipe(recipe)
         if recipe.materialize_weight:
             raise ValueError("shared wide tiles require a direct recipe")
-
-    def supports(self, context, recipe):
-        supported = super().supports(context, recipe)
-        if supported.supported and context.atom_count != 4096 * 32:
-            return SupportResult(("requires a square width-4096 grid and 32N Atoms",))
-        return supported
 
     def _execute_native(self, native, x, physical, ci, co, recipe):
         return native.packed_shared_wide_linear(x, physical, ci, co)
@@ -142,5 +143,25 @@ class RationalWideSharedAlgorithm(RationalWideAlgorithm):
 RATIONAL_WIDE_SHARED = ExecutionPlan(
     "cuda_rational_radius_wide_shared", "v1", RationalWideRecipe(materialize_weight=False)
 )
+
+
+
+@dataclass(frozen=True)
+class RationalWideScaleWeightAlgorithm(RationalWideAlgorithm):
+    """Research-only dense Fourier comparator for the width sweep."""
+
+    id: str = "cuda_rational_radius_wide_scale_weight"
+    cohorts = RATIONAL_WIDE_SCALE_COHORTS
+
+    def validate_recipe(self, recipe):
+        super().validate_recipe(recipe)
+        if not recipe.materialize_weight:
+            raise ValueError("the scaling comparator requires materialized weight")
+
+
+RATIONAL_WIDE_SCALE_WEIGHT = ExecutionPlan(
+    "cuda_rational_radius_wide_scale_weight", "v1", RationalWideRecipe(materialize_weight=True)
+)
+
 
 _seal_functions(globals())
