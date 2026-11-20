@@ -35,10 +35,11 @@ allocated memory. These peaks are from the PyTorch allocator.
 In separate CUDA traces, the sum of coefficient aggregation and expansion
 kernels dropped from 17.74 to 4.98 ms per forward/backward pair. The response
 kernel remained near 12.5 ms. The all-Atom replay matched the direct Plan in
-Y, dX and all four Atom-gradient fields exactly. The weight Plan had a
+Y, dX and all four Atom-gradient fields byte-for-byte (verified by tensor SHA-256). The weight Plan had a
 relative L2 difference of 3.29e-6 in q and one q element outside the diagnostic
 elementwise tolerance. All eight targeted tests on the 4090 passed, including
-the CPU FP64 comparison at all sites with 128 effective Atoms.
+the CPU FP64 comparison at all sites with 128 effective Atoms. The full CPU
+suite passed 2,203 tests with 2,582 skips.
 
 ## Reproduction and evidence
 
@@ -61,5 +62,6 @@ for plan in weight direct shared; do python isolated_peaks.py "$plan"; done
 The timing JSON has SHA-256
 `f829f8500447750e92c199587d399f53c2dd04e1c8a4881c588f14f7a947f2e2`.
 The three `isolated-*.json` files retain the fresh-process measurements.
+`byte-parity.json` contains the matching tensor hashes.
 Qualification covers the eager projection. CUDA Graph and a full training run
 were outside this experiment.
