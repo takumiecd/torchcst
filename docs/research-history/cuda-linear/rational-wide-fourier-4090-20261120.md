@@ -51,3 +51,15 @@ python -m benchmarks.cuda.linear.run \
 Job 3519 and the matching snapshot, launch command, and result are retained under
 `output/public-rational-wide-20261120-01/`. The result SHA-256 is `6d1b75bb41769ab999faf4d8b7873217c5094751b424d3037d8d964b3fc07808`.
 The native binary SHA-256 is `8ce5072201c1e7110ccc8d325198c9ce56bc187de84460ab8d2f734939c0ab4f`.
+
+## Dispatcher evidence in Neon
+
+Two separate catalog runs used initialized 32N Atoms and 128 input rows, one
+at each width. The adapter records eager complete-step time and allocator peaks.
+The existing Neon schema stored both original artifacts, and exporting each run
+reproduced its bytes. The fixed [generation request](../../../benchmarks/dispatch/requests/rational-wide-rtx4090.json)
+uses speed scoring revision v2 and source ID `776ab9f3c319b47db3460db5f2a7345e9bfa9099ab5384bd7732264e74486675`.
+The read-only dataset snapshot is `55209bb127959b447d6c8f5fe22f90886673e8008bc72addbf7e3d2d55f53764`. Offline replay reproduced both
+entries. On the RTX 4090, the default API picked the weight Plan at both widths
+and matched explicit Plan outputs and gradients. The bundled table targets
+Torch 2.9.1+cu128 and Triton 3.5.1.

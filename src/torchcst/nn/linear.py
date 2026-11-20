@@ -46,11 +46,14 @@ def _default_selector():
     from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip.plans import (
         FULL,
     )
+    from torchcst._backends.dispatch.exact import bundled_rational_wide_selector
 
+    registry = get_registry()
     return OrderedSelector(
         (FULL, _PLANS["normalized"], _PLANS["factored"], _PLANS["materialized"]),
-        registry=get_registry(),
-        revision="linear-bootstrap-v1",
+        registry=registry,
+        revision="linear-bootstrap-v2",
+        preferred=bundled_rational_wide_selector(registry),
     )
 
 
@@ -83,11 +86,7 @@ class CSTLinear(CSTModule):
 
         super().__init__()
         if charts is not None:
-            if (
-                output_chart is not None
-                or input_chart is not None
-                or chart is not None
-            ):
+            if output_chart is not None or input_chart is not None or chart is not None:
                 raise ValueError(
                     "charts cannot be combined with output_chart, input_chart, or chart"
                 )
@@ -102,9 +101,7 @@ class CSTLinear(CSTModule):
             raw_charts = (chart,)
         elif isinstance(output_chart, tuple):
             if input_chart is not None:
-                raise ValueError(
-                    "charts tuple cannot be combined with input_chart"
-                )
+                raise ValueError("charts tuple cannot be combined with input_chart")
             raw_charts = output_chart
         elif output_chart is not None and input_chart is None:
             raw_charts = (output_chart,)

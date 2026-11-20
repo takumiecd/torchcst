@@ -35,7 +35,9 @@ JSONB は検索用であり、元のバイト列を復元する役割は `artifa
 ## 現在の指標と検証
 
 adapter は `cuda.linear.complete-step`、normalized Strip は revision 2、
-研究用 local product は revision 3。入力は
+研究用 local product は revision 3。正方の有理式半径 Linear は revision 9 で、
+既存の schema v1 runner から計測した eager の速度と CUDA アロケータの学習ピークを保存する。
+有理式半径の比較では、展開・直接の両方の Plan と、全サイト・全 Atom の FP64 参照照合を検査する。入力は
 [`benchmarks.cuda.linear.run`](../cuda/linear/README.md) の完成した schema v1 JSON。
 Strip/Torus 診断、wheel driver の別形式はこの入口では受け付けない。
 
@@ -61,7 +63,9 @@ protocol は CPU 初期値生成 (`torch.cpu.v1`、CPU capability を記録) と
 | `memory.reserved` | `capture_replay` | bytes / peak |
 | `error.w`, `error.y`, `error.dx`, `error.dp` | `small_oracle` | dimensionless / max, rel_l2 |
 
-メモリは warmed model・勾配・AdamW 状態を含む Graph capture/replay の測定。
+revision 9 の `memory.allocated` と `memory.reserved` は scope `eager`、unit `bytes`、
+statistic `peak` として記録する。eager のウォームアップと同期した学習ステップのピークを使う。
+従来の adapter のメモリは warmed model・勾配・AdamW 状態を含む Graph capture/replay の測定。
 eager の peak として流用しない。GPU process usage は未測定なので指標を作らない。
 dense は Plan を持たない別の性能参照として保存する。
 
