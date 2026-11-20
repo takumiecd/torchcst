@@ -1,6 +1,9 @@
 #pragma once
 #include "dense_pair_cotangent.cuh"
 #include "dense_fourier_weight.cuh"
+#ifdef RADIUS_RATIONAL_WIDE
+#include "axis_parameter_grad.cuh"
+#endif
 // FP32 Linear arithmetic and Z/H/G, with optional recomputation.
 // Host configuration scalars retain the common metadata representation.
 namespace radius_cell_mass {
@@ -261,7 +264,7 @@ void packed_check_tensor(Tensor t, Tensor x, std::vector<int64_t> shape) {
 }
 
 Tensor packed_parameter_grad(Tensor p, Tensor x, Tensor dy, Tensor zx, Tensor zy,
-    Tensor h, Tensor g, Config ci, Config co, bool parallel, Tensor geometry) {
+    Tensor h, Tensor g, Config ci, Config co, bool parallel, Tensor geometry, Tensor gradient_order) {
     c10::cuda::CUDAGuard guard(p.device());
     Axis ai = parse_axis(ci), ao = parse_axis(co);
     packed_check_tensor(zx, x, {x.size(0), ai.node_count - checked_start(ai, 2), ai.basis_count()});
@@ -270,7 +273,25 @@ Tensor packed_parameter_grad(Tensor p, Tensor x, Tensor dy, Tensor zx, Tensor zy
     packed_check_tensor(g, x, {x.size(0), p.size(0)});
     auto grad = torch::empty_like(p);
 #ifdef RADIUS_RATIONAL_WIDE
-    if (!ai.polar) {
+    if (gradient_order.defined()) {
+        TORCH_CHECK(!ai.polar && !ao.polar && gradient_order.device() == p.device() &&
+            gradient_order.scalar_type() == at::kLong && gradient_order.is_contiguous() &&
+            gradient_order.dim() == 1 && gradient_order.size(0) == p.size(0),
+            "invalid physical gradient order");
+        auto partial = torch::empty({2, p.size(0)}, p.options());
+        constexpr int threads = 128;
+        int blocks = (p.size(0) + threads - 1) / threads;
+        auto stream = at::cuda::getCurrentCUDAStream();
+        axis_parameter_gradient<true><<<blocks, threads, 0, stream>>>(
+            p.data_ptr<float>(), dy.data_ptr<float>(), zy.data_ptr<float>(), h.data_ptr<float>(),
+            g.data_ptr<float>(), gradient_order.data_ptr<int64_t>(), partial.data_ptr<float>(),
+            nullptr, p.size(0), x.size(0), ao);
+        C10_CUDA_KERNEL_LAUNCH_CHECK();
+        axis_parameter_gradient<false><<<blocks, threads, 0, stream>>>(
+            p.data_ptr<float>(), x.data_ptr<float>(), zx.data_ptr<float>(), h.data_ptr<float>(),
+            g.data_ptr<float>(), nullptr, partial.data_ptr<float>(), grad.data_ptr<float>(),
+            p.size(0), x.size(0), ai);
+    } else if (!ai.polar) {
         // Reuse the complete physical-radius derivative. The packed Polar
         // reduction intentionally has no radius channel and must not be used.
         batched_parameter_kernel<float, true, float><<<(p.size(0) + 31) / 32, 32, 0,

@@ -164,6 +164,7 @@ class RationalWideOrderedAlgorithm(RationalWideSavedAlgorithm):
 
     id: str = "cuda_rational_radius_wide_ordered"
     reverse_ordered: ClassVar[bool] = False
+    axis_gradient: ClassVar[bool] = False
 
     def _execute_native(self, native, x, physical, ci, co, recipe):
         width = x.shape[1]
@@ -185,7 +186,8 @@ class RationalWideOrderedAlgorithm(RationalWideSavedAlgorithm):
         # ownership to the same Atom rows through its backward.
         packed = physical.index_select(0, order)
         return native.packed_shared_wide_linear(
-            x, packed, ci, co, recompute=False, reverse_ordered=self.reverse_ordered
+            x, packed, ci, co, recompute=False, reverse_ordered=self.reverse_ordered,
+            axis_gradient=self.axis_gradient,
         )
 
 
@@ -221,6 +223,20 @@ class RationalWideScaleWeightAlgorithm(RationalWideAlgorithm):
 
 RATIONAL_WIDE_SCALE_WEIGHT = ExecutionPlan(
     "cuda_rational_radius_wide_scale_weight", "v1", RationalWideRecipe(materialize_weight=True)
+)
+
+
+@dataclass(frozen=True)
+class RationalWideAxisGradientAlgorithm(RationalWideReverseOrderedAlgorithm):
+    """Traverse each side of the Atom adjoint in its own tile order."""
+
+    id: str = "cuda_rational_radius_wide_axis_gradient"
+    axis_gradient = True
+
+
+RATIONAL_WIDE_AXIS_GRADIENT = ExecutionPlan(
+    "cuda_rational_radius_wide_axis_gradient", "v1",
+    RationalWideRecipe(materialize_weight=False),
 )
 
 
