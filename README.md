@@ -144,15 +144,17 @@ supported shapes. See the [radius cell-mass guide](docs/radius-cell-mass.md#usin
 
 ### Wide CUDA plans for rational radius
 
-Use a `FixedSelector` to select either plan for square width-2048 or width-4096
-projections with 32 or 48 Atoms per site.
+Use a `FixedSelector` to choose a Plan for a square projection. For width N,
+the Atom budget is specified as a multiple of N.
 
-| Plan | Execution |
-| --- | --- |
-| `RATIONAL_WIDE_FOURIER_WEIGHT` | Build a transient weight matrix from Fourier coefficients and apply a matrix product |
-| `RATIONAL_WIDE_FOURIER_DIRECT` | Compute outputs directly from hierarchical Fourier coefficients |
+| Plan | Width and Atom count | Execution |
+| --- | --- | --- |
+| `RATIONAL_WIDE_FOURIER_WEIGHT` | 2048 and 4096, 32N or 48N | Build a transient Fourier weight matrix and apply a matrix product |
+| `RATIONAL_WIDE_FOURIER_DIRECT` | 2048 and 4096, 32N or 48N | Compute outputs directly from hierarchical Fourier coefficients |
+| `RATIONAL_WIDE_AXIS_GRADIENT` | 4096 and 16384 with 32N, 8192 with 16N or 32N | Evaluate directly and compute Atom gradients in input- and output-tile order |
+| `RATIONAL_WIDE_SCALE_WEIGHT` | Same conditions as `RATIONAL_WIDE_AXIS_GRADIENT` | Build a transient Fourier weight matrix and apply a matrix product |
 
-Both plans require FP32 with TF32 disabled, 1–256 input rows, eager execution,
+These Plans require FP32 with TF32 disabled, 1–256 input rows, eager execution,
 and autocast disabled. They use identical one-dimensional FlatTorus grids with
 origin 0 and spacing 1, M8, base tile 1, merge factor 2, radii in [0.5, 512],
 and amplitude_max ≤ 32.
@@ -189,7 +191,8 @@ y_direct = layer(x)
 The example selects the weight-building path. Set `plan` to
 `RATIONAL_WIDE_FOURIER_DIRECT` to use the same `layer(x)` call for the direct path.
 
-[RTX 4090 measurements](docs/research-history/cuda-linear/rational-wide-fourier-4090-20261120.md)
+[Original Fourier Plans on RTX 4090](docs/research-history/cuda-linear/rational-wide-fourier-4090-20261120.md) ·
+[Tile-ordered Atom gradients on RTX 4090](docs/research-history/cuda-linear/rational-q-axis-gradient-4090-20261120.md)
 
 ### Automatic selection on RTX 4090
 

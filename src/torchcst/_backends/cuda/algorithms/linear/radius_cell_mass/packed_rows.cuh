@@ -1,6 +1,9 @@
 #pragma once
 #include "dense_pair_cotangent.cuh"
 #include "dense_fourier_weight.cuh"
+#ifdef RADIUS_RATIONAL_WIDE
+#include "axis_parameter_grad.cuh"
+#endif
 // FP32 Linear arithmetic and Z/H/G, with optional recomputation.
 // Host configuration scalars retain the common metadata representation.
 namespace radius_cell_mass {
@@ -25,6 +28,14 @@ Tensor packed_classify(Tensor p,Config ci,Config co,float radius_limit) {
         p.data_ptr<float>(),keys.data_ptr<int64_t>(),p.size(0),parse_axis(ci),parse_axis(co),radius_limit);
     C10_CUDA_KERNEL_LAUNCH_CHECK();return keys;
 }
+#ifdef RADIUS_RATIONAL_WIDE
+bool packed_scale_cohort(double input, double output, int64_t atoms) {
+    return input == output && ((input == 4096 && atoms == 4096 * 32) ||
+        (input == 8192 && (atoms == 8192 * 16 || atoms == 8192 * 32)) ||
+        (input == 16384 && atoms == 16384 * 32));
+}
+#endif
+
 void packed_check_scope(Tensor x, Tensor p, Config ci, Config co) {
     check_atoms(p); check_matrix(x);
     Axis ai = parse_axis(ci), ao = parse_axis(co);
@@ -38,9 +49,10 @@ void packed_check_scope(Tensor x, Tensor p, Config ci, Config co) {
     bool physical = false;
 #ifdef RADIUS_RATIONAL_WIDE
     physical = !ai.polar && !ao.polar && ai.sites == ao.sites &&
-        (ai.sites == 2048 || ai.sites == 4096) &&
         ai.origin == 0 && ao.origin == 0 &&
-        (p.size(0) == 32 * ai.sites || p.size(0) == 48 * ai.sites);
+        (packed_scale_cohort(ai.sites, ao.sites, p.size(0)) ||
+            ((ai.sites == 2048 || ai.sites == 4096) &&
+                (p.size(0) == 32 * ai.sites || p.size(0) == 48 * ai.sites)));
 #endif
     TORCH_CHECK(x.device() == p.device() && x.size(1) == ai.sites &&
         x.scalar_type() == torch::kFloat && p.scalar_type() == torch::kFloat &&
@@ -92,13 +104,28 @@ Tensor packed_moments(Tensor x, Tensor p, Config config, bool level_launch) {
     return z;
 }
 
-std::vector<Tensor> packed_project(Tensor x, Tensor p, Config config, bool output_side, Tensor geometry, bool level_launch) {
+std::vector<Tensor> packed_project(Tensor x, Tensor p, Config config, bool output_side, Tensor geometry, bool level_launch, Tensor response_order) {
     c10::cuda::CUDAGuard guard(x.device());
     auto z = packed_moments(x, p, config, level_launch);
     auto h = torch::empty({x.size(0), p.size(0)}, x.options());
     Axis a = parse_axis(config);
     dim3 grid((p.size(0) + PARALLEL_RESPONSE_THREADS - 1) / PARALLEL_RESPONSE_THREADS,
         (x.size(0) + 7) / 8);
+#ifdef RADIUS_RATIONAL_WIDE
+    if (response_order.defined()) {
+        TORCH_CHECK(geometry.defined() && response_order.device() == p.device() &&
+            response_order.scalar_type() == at::kLong && response_order.is_contiguous() &&
+            response_order.dim() == 1 && response_order.size(0) == p.size(0),
+            "invalid packed response order");
+        parallel_response_kernel<float, float, 8, true, true><<<grid,
+            PARALLEL_RESPONSE_THREADS, 0, at::cuda::getCurrentCUDAStream()>>>(
+            x.data_ptr<float>(), p.data_ptr<float>(), z.data_ptr<float>(), h.data_ptr<float>(),
+            p.size(0), x.size(0), a, 2, output_side, geometry.data_ptr<float>(),
+            response_order.data_ptr<int64_t>());
+        C10_CUDA_KERNEL_LAUNCH_CHECK();
+        return {z, h};
+    }
+#endif
     if (geometry.defined()) {
         parallel_response_kernel<float, float, 8, true><<<grid, PARALLEL_RESPONSE_THREADS, 0,
             at::cuda::getCurrentCUDAStream()>>>(x.data_ptr<float>(), p.data_ptr<float>(),
@@ -114,13 +141,36 @@ std::vector<Tensor> packed_project(Tensor x, Tensor p, Config config, bool outpu
 }
 
 std::vector<Tensor> packed_transform(Tensor x, Tensor p, Tensor rows, Tensor offsets,
-    Config source, Config destination, bool output_side, Tensor geometry, bool level_launch) {
+    Config source, Config destination, bool output_side, Tensor geometry, bool level_launch, bool shared_wide, Tensor response_order) {
     c10::cuda::CUDAGuard guard(x.device());
-    auto projection = packed_project(x, p, source, output_side, geometry, level_launch);
+    auto projection = packed_project(x, p, source, output_side, geometry, level_launch, response_order);
     Axis a = parse_axis(destination); check_ranges(rows, offsets, p, a);
     auto y = torch::empty({x.size(0), a.sites}, x.options());
     auto layout = batched_coefficient_layout<float>(a, 2, 32);
     dim3 grid((a.sites + 31) / 32, (x.size(0) + 7) / 8);
+#ifdef RADIUS_RATIONAL_WIDE
+    if (shared_wide) {
+        int prefix = prefix_nodes(a, SHARED_WIDE_LEVEL), nodes = a.node_count - prefix;
+        int features = a.basis_count();
+        auto wide = torch::empty({grid.y, nodes, EXPANSION_BATCH, features}, x.options());
+        size_t scratch = sizeof(float) * (EXPANSION_BATCH * features +
+            features * BLOCK_LOCAL_C_STRIDE + layout.capacity * (a.modes + 2 + EXPANSION_BATCH)) +
+            sizeof(int) * layout.capacity;
+        auto stream = at::cuda::getCurrentCUDAStream();
+        batched_wide_tile_coefficients<<<dim3(nodes, grid.y), THREADS, scratch, stream>>>(
+            p.data_ptr<float>(), rows.data_ptr<int64_t>(), offsets.data_ptr<int64_t>(),
+            projection[1].data_ptr<float>(), geometry.data_ptr<float>(), wide.data_ptr<float>(),
+            p.size(0), x.size(0), a, prefix, layout.capacity, !output_side);
+        C10_CUDA_KERNEL_LAUNCH_CHECK();
+        batched_cached_expand_kernel<float, false, float, true, true><<<grid, THREADS, layout.bytes, stream>>>(
+            p.data_ptr<float>(), rows.data_ptr<int64_t>(), offsets.data_ptr<int64_t>(),
+            projection[1].data_ptr<float>(), y.data_ptr<float>(), p.size(0), x.size(0), a, 2, 32,
+            layout.capacity, layout.warps, layout.destinations, !output_side,
+            nullptr, geometry.data_ptr<float>(), wide.data_ptr<float>());
+        C10_CUDA_KERNEL_LAUNCH_CHECK();
+        return {y, projection[0], projection[1]};
+    }
+#endif
     if (geometry.defined()) {
         batched_cached_expand_kernel<float, false, float, true><<<grid, THREADS, layout.bytes,
             at::cuda::getCurrentCUDAStream()>>>(p.data_ptr<float>(), rows.data_ptr<int64_t>(),
@@ -214,7 +264,7 @@ void packed_check_tensor(Tensor t, Tensor x, std::vector<int64_t> shape) {
 }
 
 Tensor packed_parameter_grad(Tensor p, Tensor x, Tensor dy, Tensor zx, Tensor zy,
-    Tensor h, Tensor g, Config ci, Config co, bool parallel, Tensor geometry) {
+    Tensor h, Tensor g, Config ci, Config co, bool parallel, Tensor geometry, Tensor gradient_order) {
     c10::cuda::CUDAGuard guard(p.device());
     Axis ai = parse_axis(ci), ao = parse_axis(co);
     packed_check_tensor(zx, x, {x.size(0), ai.node_count - checked_start(ai, 2), ai.basis_count()});
@@ -223,7 +273,25 @@ Tensor packed_parameter_grad(Tensor p, Tensor x, Tensor dy, Tensor zx, Tensor zy
     packed_check_tensor(g, x, {x.size(0), p.size(0)});
     auto grad = torch::empty_like(p);
 #ifdef RADIUS_RATIONAL_WIDE
-    if (!ai.polar) {
+    if (gradient_order.defined()) {
+        TORCH_CHECK(!ai.polar && !ao.polar && gradient_order.device() == p.device() &&
+            gradient_order.scalar_type() == at::kLong && gradient_order.is_contiguous() &&
+            gradient_order.dim() == 1 && gradient_order.size(0) == p.size(0),
+            "invalid physical gradient order");
+        auto partial = torch::empty({2, p.size(0)}, p.options());
+        constexpr int threads = 128;
+        int blocks = (p.size(0) + threads - 1) / threads;
+        auto stream = at::cuda::getCurrentCUDAStream();
+        axis_parameter_gradient<true><<<blocks, threads, 0, stream>>>(
+            p.data_ptr<float>(), dy.data_ptr<float>(), zy.data_ptr<float>(), h.data_ptr<float>(),
+            g.data_ptr<float>(), gradient_order.data_ptr<int64_t>(), partial.data_ptr<float>(),
+            nullptr, p.size(0), x.size(0), ao);
+        C10_CUDA_KERNEL_LAUNCH_CHECK();
+        axis_parameter_gradient<false><<<blocks, threads, 0, stream>>>(
+            p.data_ptr<float>(), x.data_ptr<float>(), zx.data_ptr<float>(), h.data_ptr<float>(),
+            g.data_ptr<float>(), nullptr, partial.data_ptr<float>(), grad.data_ptr<float>(),
+            p.size(0), x.size(0), ai);
+    } else if (!ai.polar) {
         // Reuse the complete physical-radius derivative. The packed Polar
         // reduction intentionally has no radius channel and must not be used.
         batched_parameter_kernel<float, true, float><<<(p.size(0) + 31) / 32, 32, 0,

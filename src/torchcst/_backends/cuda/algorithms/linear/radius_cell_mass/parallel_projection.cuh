@@ -8,13 +8,15 @@ namespace radius_cell_mass {
 constexpr int PARALLEL_RESPONSE_THREADS = 32;
 constexpr int PARALLEL_RESPONSE_BATCH = 4;
 
-template<class T, class Storage = double, int RowBatch = PARALLEL_RESPONSE_BATCH, bool CachedGeometry = false>
+template<class T, class Storage = double, int RowBatch = PARALLEL_RESPONSE_BATCH,
+    bool CachedGeometry = false, bool Indexed = false>
 __global__ void parallel_response_kernel(
     const T *signal, const T *p, const Storage *moments, Storage *response,
     int atoms, int batch, Axis axis, int start, bool output_side,
-    const Storage *geometry = nullptr) {
-    int atom = blockIdx.x * blockDim.x + threadIdx.x;
-    if (atom >= atoms) return;
+    const Storage *geometry = nullptr, const int64_t *order = nullptr) {
+    int position = blockIdx.x * blockDim.x + threadIdx.x;
+    if (position >= atoms) return;
+    int atom = Indexed ? int(order[position]) : position;
     int first_batch = blockIdx.y * RowBatch;
     int features = axis.basis_count();
     int elements = (axis.node_count - prefix_nodes(axis, start)) * features;

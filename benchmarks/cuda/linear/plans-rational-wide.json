@@ -22,6 +22,72 @@
           "materialize_weight": false
         }
       }
+    },
+    {
+      "id": "rational-wide-fourier-shared",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_rational_radius_wide_shared",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "materialize_weight": false
+        }
+      }
+    },
+    {
+      "id": "rational-wide-scale-weight",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_rational_radius_wide_scale_weight",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "materialize_weight": true
+        }
+      }
+    },
+    {
+      "id": "rational-wide-fourier-saved",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_rational_radius_wide_saved",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "materialize_weight": false
+        }
+      }
+    },
+    {
+      "id": "rational-wide-fourier-ordered",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_rational_radius_wide_ordered",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "materialize_weight": false
+        }
+      }
+    },
+    {
+      "id": "rational-wide-fourier-reverse-ordered",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_rational_radius_wide_reverse_ordered",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "materialize_weight": false
+        }
+      }
+    },
+    {
+      "id": "rational-wide-fourier-axis-gradient",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_rational_radius_wide_axis_gradient",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "materialize_weight": false
+        }
+      }
     }
   ]
 }
