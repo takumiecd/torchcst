@@ -16,6 +16,8 @@ from torchcst import (
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.rational_wide import (
     RATIONAL_WIDE_FOURIER_DIRECT,
     RATIONAL_WIDE_FOURIER_WEIGHT,
+    RATIONAL_WIDE_SHARED,
+    RationalWideSharedAlgorithm,
 )
 from torchcst._backends.schema import DeviceInfo, PrecisionPolicy
 from torchcst.operators.context import LinearContext
@@ -51,7 +53,8 @@ def test_wide_rational_plans_are_explicit_and_check_metadata():
         precision=PrecisionPolicy(autocast=False, allow_tf32=False),
     )
     registry = make_algorithm_registry()
-    for plan in PLANS:
+    registry.register(RationalWideSharedAlgorithm())
+    for plan in (*PLANS, RATIONAL_WIDE_SHARED):
         assert registry.load_plan(registry.dump_plan(plan)) == plan
         algo = registry.validate_plan(plan)
         assert algo.supports(context, plan.recipe).supported
@@ -65,13 +68,15 @@ def test_wide_rational_plans_are_explicit_and_check_metadata():
             replace(context, input_shape=(257, width)),
         ):
             assert not algo.supports(changed, plan.recipe).supported
+        if plan == RATIONAL_WIDE_SHARED:
+            assert not algo.supports(replace(context, atom_count=4096 * 48), plan.recipe).supported
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA")
 @pytest.mark.parametrize(
     ("width", "coefficient"), [(2048, 32), (2048, 48), (4096, 32), (4096, 48)]
 )
-def test_wide_rational_matches_cpu_for_both_plans(width, coefficient):
+def test_wide_rational_matches_cpu_for_admitted_plans(width, coefficient):
     initial_precision = torch.get_float32_matmul_precision()
     torch.set_float32_matmul_precision("highest")
     try:
@@ -101,7 +106,11 @@ def _check_wide_gradients(width, coefficient):
     ref_dx, ref_dp = torch.autograd.grad(ref_y, (x, cpu.atoms.p), host_dy.double())
     expected = (ref_y.detach(), ref_dx, *ref_dp.unbind(1))
     registry = make_algorithm_registry()
-    for plan in PLANS:
+    plans = PLANS
+    if (width, coefficient) == (4096, 32):
+        registry.register(RationalWideSharedAlgorithm())
+        plans = (*plans, RATIONAL_WIDE_SHARED)
+    for plan in plans:
         model.selector = FixedSelector(plan, registry=registry)
         x = host_x.cuda().requires_grad_()
         output = model(x)

@@ -31,6 +31,7 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.packed import (
 )
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.rational_wide import (
     RationalWideAlgorithm,
+    RationalWideSharedAlgorithm,
 )
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.row8 import (
     RadiusRow8Algorithm,
@@ -48,6 +49,7 @@ from torchcst._backends.torch.algorithms.linear.normalized_radial.layout import 
 REGISTRY = Registry()
 REGISTRY.register(RadiusCellMassAlgorithm())
 REGISTRY.register(RationalWideAlgorithm())
+REGISTRY.register(RationalWideSharedAlgorithm())
 REGISTRY.register(RadiusRow8Algorithm())
 REGISTRY.register(RadiusLargeRow8Algorithm())
 REGISTRY.register(RadiusLargePackedAlgorithm())

@@ -99,7 +99,10 @@ class RationalWideAlgorithm(RadiusCellMassAlgorithm):
         native = _extension(8, rational_wide=True)
         ci = state.layout.input.native_config()
         co = state.layout.output.native_config()
-        if state.recipe.materialize_weight:
+        return self._execute_native(native, x, physical, ci, co, state.recipe)
+
+    def _execute_native(self, native, x, physical, ci, co, recipe):
+        if recipe.materialize_weight:
             return native.packed_dense_fourier_weight_linear(x, physical, ci, co)
         return native.packed_levels_linear(x, physical, ci, co, True, True)
 
@@ -114,5 +117,30 @@ RATIONAL_WIDE_FOURIER_DIRECT = ExecutionPlan(
     "cuda_rational_radius_wide", "v1", RationalWideRecipe(materialize_weight=False)
 )
 
+
+@dataclass(frozen=True)
+class RationalWideSharedAlgorithm(RationalWideAlgorithm):
+    """Research-only shared output aggregation for the square Q cohort."""
+
+    id: str = "cuda_rational_radius_wide_shared"
+
+    def validate_recipe(self, recipe):
+        super().validate_recipe(recipe)
+        if recipe.materialize_weight:
+            raise ValueError("shared wide tiles require a direct recipe")
+
+    def supports(self, context, recipe):
+        supported = super().supports(context, recipe)
+        if supported.supported and context.atom_count != 4096 * 32:
+            return SupportResult(("requires a square width-4096 grid and 32N Atoms",))
+        return supported
+
+    def _execute_native(self, native, x, physical, ci, co, recipe):
+        return native.packed_shared_wide_linear(x, physical, ci, co)
+
+
+RATIONAL_WIDE_SHARED = ExecutionPlan(
+    "cuda_rational_radius_wide_shared", "v1", RationalWideRecipe(materialize_weight=False)
+)
 
 _seal_functions(globals())
