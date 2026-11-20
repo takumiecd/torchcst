@@ -33,6 +33,7 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.rational_wide im
     RATIONAL_WIDE_COHORTS,
     RATIONAL_WIDE_SCALE_COHORTS,
     RationalWideAlgorithm,
+    RationalWideSavedAlgorithm,
     RationalWideScaleWeightAlgorithm,
     RationalWideSharedAlgorithm,
 )
@@ -53,6 +54,7 @@ REGISTRY = Registry()
 REGISTRY.register(RadiusCellMassAlgorithm())
 REGISTRY.register(RationalWideAlgorithm())
 REGISTRY.register(RationalWideSharedAlgorithm())
+REGISTRY.register(RationalWideSavedAlgorithm())
 REGISTRY.register(RationalWideScaleWeightAlgorithm())
 REGISTRY.register(RadiusRow8Algorithm())
 REGISTRY.register(RadiusLargeRow8Algorithm())

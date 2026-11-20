@@ -44,6 +44,17 @@
           "materialize_weight": true
         }
       }
+    },
+    {
+      "id": "rational-wide-fourier-saved",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "cuda_rational_radius_wide_saved",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "materialize_weight": false
+        }
+      }
     }
   ]
 }

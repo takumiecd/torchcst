@@ -143,6 +143,19 @@ RATIONAL_WIDE_SHARED = ExecutionPlan(
     "cuda_rational_radius_wide_shared", "v1", RationalWideRecipe(materialize_weight=False)
 )
 
+@dataclass(frozen=True)
+class RationalWideSavedAlgorithm(RationalWideSharedAlgorithm):
+    """Keep the input projection for reuse in the first-order Atom adjoint."""
+
+    id: str = "cuda_rational_radius_wide_saved"
+
+    def _execute_native(self, native, x, physical, ci, co, recipe):
+        return native.packed_shared_wide_linear(x, physical, ci, co, recompute=False)
+
+
+RATIONAL_WIDE_SAVED = ExecutionPlan(
+    "cuda_rational_radius_wide_saved", "v1", RationalWideRecipe(materialize_weight=False)
+)
 
 
 @dataclass(frozen=True)
