@@ -92,7 +92,7 @@ Tensor packed_moments(Tensor x, Tensor p, Config config, bool level_launch) {
     return z;
 }
 
-std::vector<Tensor> packed_project(Tensor x, Tensor p, Config config, bool output_side, Tensor geometry, bool level_launch, bool shared_wide) {
+std::vector<Tensor> packed_project(Tensor x, Tensor p, Config config, bool output_side, Tensor geometry, bool level_launch) {
     c10::cuda::CUDAGuard guard(x.device());
     auto z = packed_moments(x, p, config, level_launch);
     auto h = torch::empty({x.size(0), p.size(0)}, x.options());
