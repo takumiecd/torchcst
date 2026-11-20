@@ -1,9 +1,9 @@
 {
-  "dataset_snapshot": "55209bb127959b447d6c8f5fe22f90886673e8008bc72addbf7e3d2d55f53764",
+  "dataset_snapshot": "21cf0cc405ba7bfd09d4217ac36b6bded4db5419cb8f92b9b7800b52fc7bf6af",
   "entries": [
     {
       "condition": {
-        "atom_count": 65536,
+        "atom_count": 524288,
         "deterministic": false,
         "device": {
           "compute_capability": [
@@ -18,10 +18,10 @@
         "execution_mode": "eager",
         "input_shape": [
           128,
-          2048
+          16384
         ],
         "input_strides": [
-          2048,
+          16384,
           1
         ],
         "operator": {
@@ -130,14 +130,14 @@
                         "intrinsic_dim": 1,
                         "metric": "periodic_euclidean",
                         "periods": [
-                          2048.0
+                          16384.0
                         ],
                         "revision": 1
                       },
                       "type": "torchcst.geometry.spec.FlatTorusGeometrySpec"
                     },
                     "grid_shape": [
-                      2048
+                      16384
                     ],
                     "kind": "regular_grid",
                     "origin": [
@@ -145,7 +145,7 @@
                     ],
                     "revision": 1,
                     "shape": [
-                      2048
+                      16384
                     ],
                     "spacing": [
                       1.0
@@ -163,14 +163,14 @@
                         "intrinsic_dim": 1,
                         "metric": "periodic_euclidean",
                         "periods": [
-                          2048.0
+                          16384.0
                         ],
                         "revision": 1
                       },
                       "type": "torchcst.geometry.spec.FlatTorusGeometrySpec"
                     },
                     "grid_shape": [
-                      2048
+                      16384
                     ],
                     "kind": "regular_grid",
                     "origin": [
@@ -178,7 +178,7 @@
                     ],
                     "revision": 1,
                     "shape": [
-                      2048
+                      16384
                     ],
                     "spacing": [
                       1.0
@@ -206,9 +206,220 @@
         "workspace_limit_bytes": null
       },
       "evidence_ids": [
-        "e2cf4a050869fa81fc2046e44dff06d0db940d8c25594c091957a1ec63b6178b:2"
+        "bf344f15c652765005586d809cc644aa51af883c78d3e37d556f4bdbfee11b90:3",
+        "793652f09f877cdf480f179b21003ae0645cfd207dab3e9262ad5c9554cbfcbe:3"
       ],
-      "plan_id": "35d2782ea09b767fbca874d43b85e582d7cc7a8e3c008a4106c6da1fc9b49c0f"
+      "plan_id": "654b1e18155763772eb578db2f1302262f6abe564f9709a9d6d97870b3467d08"
+    },
+    {
+      "condition": {
+        "atom_count": 262144,
+        "deterministic": false,
+        "device": {
+          "compute_capability": [
+            8,
+            9
+          ],
+          "name": "NVIDIA GeForce RTX 4090",
+          "sm_count": 128,
+          "type": "cuda"
+        },
+        "dtype": "torch.float32",
+        "execution_mode": "eager",
+        "input_shape": [
+          128,
+          8192
+        ],
+        "input_strides": [
+          8192,
+          1
+        ],
+        "operator": {
+          "fields": {
+            "kernel": {
+              "fields": {
+                "center_order": "charts",
+                "composition": "separable",
+                "initialization": {
+                  "fields": {
+                    "id": "rational_radius_centers",
+                    "settings": [
+                      [
+                        "radius_fraction",
+                        0.0
+                      ],
+                      [
+                        "amplitude_std",
+                        0.1
+                      ]
+                    ]
+                  },
+                  "type": "torchcst.kernels.spec.StatePolicySpec"
+                },
+                "inner": null,
+                "parameterization": {
+                  "fields": {
+                    "amplitude_max": 32.0,
+                    "id": "rational_radius",
+                    "radius_birth": 4.0,
+                    "radius_max": 512.0,
+                    "radius_min": 0.5
+                  },
+                  "type": "torchcst.kernels.parameterizations.rational_radius.RationalRadiusSpec"
+                },
+                "profiles": [
+                  {
+                    "fields": {
+                      "base_tile_sites": 1,
+                      "merge_factor": 2,
+                      "normalization": {
+                        "fields": {
+                          "domain": "none",
+                          "floor": null,
+                          "kind": "none"
+                        },
+                        "type": "torchcst.kernels.normalization.NormalizationSpec"
+                      },
+                      "parameterization": null,
+                      "profile": {
+                        "fields": {
+                          "id": "chebyshev",
+                          "modes": 8,
+                          "revision": 1
+                        },
+                        "type": "torchcst.kernels.profiles.fourier.ChebyshevSpec"
+                      }
+                    },
+                    "type": "torchcst.kernels.spec.RadiusIntegratedProfileBinding"
+                  },
+                  {
+                    "fields": {
+                      "base_tile_sites": 1,
+                      "merge_factor": 2,
+                      "normalization": {
+                        "fields": {
+                          "domain": "none",
+                          "floor": null,
+                          "kind": "none"
+                        },
+                        "type": "torchcst.kernels.normalization.NormalizationSpec"
+                      },
+                      "parameterization": null,
+                      "profile": {
+                        "fields": {
+                          "id": "chebyshev",
+                          "modes": 8,
+                          "revision": 1
+                        },
+                        "type": "torchcst.kernels.profiles.fourier.ChebyshevSpec"
+                      }
+                    },
+                    "type": "torchcst.kernels.spec.RadiusIntegratedProfileBinding"
+                  }
+                ],
+                "revision": 8,
+                "update": {
+                  "fields": {
+                    "id": "rational_radius",
+                    "settings": []
+                  },
+                  "type": "torchcst.kernels.spec.StatePolicySpec"
+                }
+              },
+              "type": "torchcst.kernels.spec.KernelSpec"
+            },
+            "layout": {
+              "fields": {
+                "input_chart": {
+                  "fields": {
+                    "geometry": {
+                      "fields": {
+                        "center_parameter_dim": 1,
+                        "embedding_dim": 1,
+                        "id": "flat_torus",
+                        "intrinsic_dim": 1,
+                        "metric": "periodic_euclidean",
+                        "periods": [
+                          8192.0
+                        ],
+                        "revision": 1
+                      },
+                      "type": "torchcst.geometry.spec.FlatTorusGeometrySpec"
+                    },
+                    "grid_shape": [
+                      8192
+                    ],
+                    "kind": "regular_grid",
+                    "origin": [
+                      0.0
+                    ],
+                    "revision": 1,
+                    "shape": [
+                      8192
+                    ],
+                    "spacing": [
+                      1.0
+                    ]
+                  },
+                  "type": "torchcst.charts.regular_grid.RegularGridChartSpec"
+                },
+                "output_chart": {
+                  "fields": {
+                    "geometry": {
+                      "fields": {
+                        "center_parameter_dim": 1,
+                        "embedding_dim": 1,
+                        "id": "flat_torus",
+                        "intrinsic_dim": 1,
+                        "metric": "periodic_euclidean",
+                        "periods": [
+                          8192.0
+                        ],
+                        "revision": 1
+                      },
+                      "type": "torchcst.geometry.spec.FlatTorusGeometrySpec"
+                    },
+                    "grid_shape": [
+                      8192
+                    ],
+                    "kind": "regular_grid",
+                    "origin": [
+                      0.0
+                    ],
+                    "revision": 1,
+                    "shape": [
+                      8192
+                    ],
+                    "spacing": [
+                      1.0
+                    ]
+                  },
+                  "type": "torchcst.charts.regular_grid.RegularGridChartSpec"
+                }
+              },
+              "type": "torchcst.operators.spec.ChartPairSpec"
+            },
+            "operation_id": "linear",
+            "revision": 1
+          },
+          "type": "torchcst.operators.spec.OperatorSpec"
+        },
+        "parameter_dim": 4,
+        "precision": {
+          "allow_tf32": false,
+          "autocast": false
+        },
+        "required_grads": {
+          "inputs": true,
+          "parameters": true
+        },
+        "workspace_limit_bytes": null
+      },
+      "evidence_ids": [
+        "ab6f4ec5ef9ebb217377b8536ca18a2ba5196bc4226fd67272b4a7bde19f2905:3",
+        "a92a2b8419c7f2125281171140ce738ad1590181ac397d56957063fd339c50df:3"
+      ],
+      "plan_id": "654b1e18155763772eb578db2f1302262f6abe564f9709a9d6d97870b3467d08"
     },
     {
       "condition": {
@@ -415,9 +626,430 @@
         "workspace_limit_bytes": null
       },
       "evidence_ids": [
-        "f7b51af05a8a0bb858a94b0abf6a18a9d44ca9cb3b6608737929070e33715c43:2"
+        "b07baa7a3288ed7ba30dc95647f4135fc1093757f9f26b50cd4b11cdd3bdc626:5",
+        "deff63bc775707414e538ae44cf6eccad0a0b787ca953809a549da01a865a468:5"
+      ],
+      "plan_id": "654b1e18155763772eb578db2f1302262f6abe564f9709a9d6d97870b3467d08"
+    },
+    {
+      "condition": {
+        "atom_count": 65536,
+        "deterministic": false,
+        "device": {
+          "compute_capability": [
+            8,
+            9
+          ],
+          "name": "NVIDIA GeForce RTX 4090",
+          "sm_count": 128,
+          "type": "cuda"
+        },
+        "dtype": "torch.float32",
+        "execution_mode": "eager",
+        "input_shape": [
+          128,
+          2048
+        ],
+        "input_strides": [
+          2048,
+          1
+        ],
+        "operator": {
+          "fields": {
+            "kernel": {
+              "fields": {
+                "center_order": "charts",
+                "composition": "separable",
+                "initialization": {
+                  "fields": {
+                    "id": "rational_radius_centers",
+                    "settings": [
+                      [
+                        "radius_fraction",
+                        0.0
+                      ],
+                      [
+                        "amplitude_std",
+                        0.1
+                      ]
+                    ]
+                  },
+                  "type": "torchcst.kernels.spec.StatePolicySpec"
+                },
+                "inner": null,
+                "parameterization": {
+                  "fields": {
+                    "amplitude_max": 32.0,
+                    "id": "rational_radius",
+                    "radius_birth": 4.0,
+                    "radius_max": 512.0,
+                    "radius_min": 0.5
+                  },
+                  "type": "torchcst.kernels.parameterizations.rational_radius.RationalRadiusSpec"
+                },
+                "profiles": [
+                  {
+                    "fields": {
+                      "base_tile_sites": 1,
+                      "merge_factor": 2,
+                      "normalization": {
+                        "fields": {
+                          "domain": "none",
+                          "floor": null,
+                          "kind": "none"
+                        },
+                        "type": "torchcst.kernels.normalization.NormalizationSpec"
+                      },
+                      "parameterization": null,
+                      "profile": {
+                        "fields": {
+                          "id": "chebyshev",
+                          "modes": 8,
+                          "revision": 1
+                        },
+                        "type": "torchcst.kernels.profiles.fourier.ChebyshevSpec"
+                      }
+                    },
+                    "type": "torchcst.kernels.spec.RadiusIntegratedProfileBinding"
+                  },
+                  {
+                    "fields": {
+                      "base_tile_sites": 1,
+                      "merge_factor": 2,
+                      "normalization": {
+                        "fields": {
+                          "domain": "none",
+                          "floor": null,
+                          "kind": "none"
+                        },
+                        "type": "torchcst.kernels.normalization.NormalizationSpec"
+                      },
+                      "parameterization": null,
+                      "profile": {
+                        "fields": {
+                          "id": "chebyshev",
+                          "modes": 8,
+                          "revision": 1
+                        },
+                        "type": "torchcst.kernels.profiles.fourier.ChebyshevSpec"
+                      }
+                    },
+                    "type": "torchcst.kernels.spec.RadiusIntegratedProfileBinding"
+                  }
+                ],
+                "revision": 8,
+                "update": {
+                  "fields": {
+                    "id": "rational_radius",
+                    "settings": []
+                  },
+                  "type": "torchcst.kernels.spec.StatePolicySpec"
+                }
+              },
+              "type": "torchcst.kernels.spec.KernelSpec"
+            },
+            "layout": {
+              "fields": {
+                "input_chart": {
+                  "fields": {
+                    "geometry": {
+                      "fields": {
+                        "center_parameter_dim": 1,
+                        "embedding_dim": 1,
+                        "id": "flat_torus",
+                        "intrinsic_dim": 1,
+                        "metric": "periodic_euclidean",
+                        "periods": [
+                          2048.0
+                        ],
+                        "revision": 1
+                      },
+                      "type": "torchcst.geometry.spec.FlatTorusGeometrySpec"
+                    },
+                    "grid_shape": [
+                      2048
+                    ],
+                    "kind": "regular_grid",
+                    "origin": [
+                      0.0
+                    ],
+                    "revision": 1,
+                    "shape": [
+                      2048
+                    ],
+                    "spacing": [
+                      1.0
+                    ]
+                  },
+                  "type": "torchcst.charts.regular_grid.RegularGridChartSpec"
+                },
+                "output_chart": {
+                  "fields": {
+                    "geometry": {
+                      "fields": {
+                        "center_parameter_dim": 1,
+                        "embedding_dim": 1,
+                        "id": "flat_torus",
+                        "intrinsic_dim": 1,
+                        "metric": "periodic_euclidean",
+                        "periods": [
+                          2048.0
+                        ],
+                        "revision": 1
+                      },
+                      "type": "torchcst.geometry.spec.FlatTorusGeometrySpec"
+                    },
+                    "grid_shape": [
+                      2048
+                    ],
+                    "kind": "regular_grid",
+                    "origin": [
+                      0.0
+                    ],
+                    "revision": 1,
+                    "shape": [
+                      2048
+                    ],
+                    "spacing": [
+                      1.0
+                    ]
+                  },
+                  "type": "torchcst.charts.regular_grid.RegularGridChartSpec"
+                }
+              },
+              "type": "torchcst.operators.spec.ChartPairSpec"
+            },
+            "operation_id": "linear",
+            "revision": 1
+          },
+          "type": "torchcst.operators.spec.OperatorSpec"
+        },
+        "parameter_dim": 4,
+        "precision": {
+          "allow_tf32": false,
+          "autocast": false
+        },
+        "required_grads": {
+          "inputs": true,
+          "parameters": true
+        },
+        "workspace_limit_bytes": null
+      },
+      "evidence_ids": [
+        "257ecf68c62043bc67cabc507ffdc5f6171bf49dccf1e0ea068ac83c53d2b967:2",
+        "de0d589dd13e18916123d5bab0606e2634b845d0a88b5a34ff8a2d45add354b9:2"
       ],
       "plan_id": "35d2782ea09b767fbca874d43b85e582d7cc7a8e3c008a4106c6da1fc9b49c0f"
+    },
+    {
+      "condition": {
+        "atom_count": 131072,
+        "deterministic": false,
+        "device": {
+          "compute_capability": [
+            8,
+            9
+          ],
+          "name": "NVIDIA GeForce RTX 4090",
+          "sm_count": 128,
+          "type": "cuda"
+        },
+        "dtype": "torch.float32",
+        "execution_mode": "eager",
+        "input_shape": [
+          128,
+          8192
+        ],
+        "input_strides": [
+          8192,
+          1
+        ],
+        "operator": {
+          "fields": {
+            "kernel": {
+              "fields": {
+                "center_order": "charts",
+                "composition": "separable",
+                "initialization": {
+                  "fields": {
+                    "id": "rational_radius_centers",
+                    "settings": [
+                      [
+                        "radius_fraction",
+                        0.0
+                      ],
+                      [
+                        "amplitude_std",
+                        0.1
+                      ]
+                    ]
+                  },
+                  "type": "torchcst.kernels.spec.StatePolicySpec"
+                },
+                "inner": null,
+                "parameterization": {
+                  "fields": {
+                    "amplitude_max": 32.0,
+                    "id": "rational_radius",
+                    "radius_birth": 4.0,
+                    "radius_max": 512.0,
+                    "radius_min": 0.5
+                  },
+                  "type": "torchcst.kernels.parameterizations.rational_radius.RationalRadiusSpec"
+                },
+                "profiles": [
+                  {
+                    "fields": {
+                      "base_tile_sites": 1,
+                      "merge_factor": 2,
+                      "normalization": {
+                        "fields": {
+                          "domain": "none",
+                          "floor": null,
+                          "kind": "none"
+                        },
+                        "type": "torchcst.kernels.normalization.NormalizationSpec"
+                      },
+                      "parameterization": null,
+                      "profile": {
+                        "fields": {
+                          "id": "chebyshev",
+                          "modes": 8,
+                          "revision": 1
+                        },
+                        "type": "torchcst.kernels.profiles.fourier.ChebyshevSpec"
+                      }
+                    },
+                    "type": "torchcst.kernels.spec.RadiusIntegratedProfileBinding"
+                  },
+                  {
+                    "fields": {
+                      "base_tile_sites": 1,
+                      "merge_factor": 2,
+                      "normalization": {
+                        "fields": {
+                          "domain": "none",
+                          "floor": null,
+                          "kind": "none"
+                        },
+                        "type": "torchcst.kernels.normalization.NormalizationSpec"
+                      },
+                      "parameterization": null,
+                      "profile": {
+                        "fields": {
+                          "id": "chebyshev",
+                          "modes": 8,
+                          "revision": 1
+                        },
+                        "type": "torchcst.kernels.profiles.fourier.ChebyshevSpec"
+                      }
+                    },
+                    "type": "torchcst.kernels.spec.RadiusIntegratedProfileBinding"
+                  }
+                ],
+                "revision": 8,
+                "update": {
+                  "fields": {
+                    "id": "rational_radius",
+                    "settings": []
+                  },
+                  "type": "torchcst.kernels.spec.StatePolicySpec"
+                }
+              },
+              "type": "torchcst.kernels.spec.KernelSpec"
+            },
+            "layout": {
+              "fields": {
+                "input_chart": {
+                  "fields": {
+                    "geometry": {
+                      "fields": {
+                        "center_parameter_dim": 1,
+                        "embedding_dim": 1,
+                        "id": "flat_torus",
+                        "intrinsic_dim": 1,
+                        "metric": "periodic_euclidean",
+                        "periods": [
+                          8192.0
+                        ],
+                        "revision": 1
+                      },
+                      "type": "torchcst.geometry.spec.FlatTorusGeometrySpec"
+                    },
+                    "grid_shape": [
+                      8192
+                    ],
+                    "kind": "regular_grid",
+                    "origin": [
+                      0.0
+                    ],
+                    "revision": 1,
+                    "shape": [
+                      8192
+                    ],
+                    "spacing": [
+                      1.0
+                    ]
+                  },
+                  "type": "torchcst.charts.regular_grid.RegularGridChartSpec"
+                },
+                "output_chart": {
+                  "fields": {
+                    "geometry": {
+                      "fields": {
+                        "center_parameter_dim": 1,
+                        "embedding_dim": 1,
+                        "id": "flat_torus",
+                        "intrinsic_dim": 1,
+                        "metric": "periodic_euclidean",
+                        "periods": [
+                          8192.0
+                        ],
+                        "revision": 1
+                      },
+                      "type": "torchcst.geometry.spec.FlatTorusGeometrySpec"
+                    },
+                    "grid_shape": [
+                      8192
+                    ],
+                    "kind": "regular_grid",
+                    "origin": [
+                      0.0
+                    ],
+                    "revision": 1,
+                    "shape": [
+                      8192
+                    ],
+                    "spacing": [
+                      1.0
+                    ]
+                  },
+                  "type": "torchcst.charts.regular_grid.RegularGridChartSpec"
+                }
+              },
+              "type": "torchcst.operators.spec.ChartPairSpec"
+            },
+            "operation_id": "linear",
+            "revision": 1
+          },
+          "type": "torchcst.operators.spec.OperatorSpec"
+        },
+        "parameter_dim": 4,
+        "precision": {
+          "allow_tf32": false,
+          "autocast": false
+        },
+        "required_grads": {
+          "inputs": true,
+          "parameters": true
+        },
+        "workspace_limit_bytes": null
+      },
+      "evidence_ids": [
+        "35196fd0e68f874637b159c7b1a36ac03f619bd8bfdb321b69a68e1eb6e3119a:3",
+        "d512ef5fd72ef9d0335c3243205ad79b243b30d5305f4771748e7c0a4166235a:3"
+      ],
+      "plan_id": "654b1e18155763772eb578db2f1302262f6abe564f9709a9d6d97870b3467d08"
     }
   ],
   "fallback_plan_id": "35d2782ea09b767fbca874d43b85e582d7cc7a8e3c008a4106c6da1fc9b49c0f",
@@ -427,6 +1059,14 @@
       "algorithm_revision": "v1",
       "recipe": {
         "materialize_weight": true
+      },
+      "schema_version": 1
+    },
+    "654b1e18155763772eb578db2f1302262f6abe564f9709a9d6d97870b3467d08": {
+      "algorithm_id": "cuda_rational_radius_wide_axis_gradient",
+      "algorithm_revision": "v1",
+      "recipe": {
+        "materialize_weight": false
       },
       "schema_version": 1
     }
@@ -443,6 +1083,6 @@
   },
   "selector": {
     "kind": "exact_table",
-    "revision": "rational-wide-rtx4090-eager-speed-v1"
+    "revision": "rational-wide-rtx4090-eager-speed-v2"
   }
 }

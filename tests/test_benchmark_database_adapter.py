@@ -1,9 +1,13 @@
 import copy
+import hashlib
+import json
 from dataclasses import replace
 
 import pytest
 
-from benchmarks.database.adapters.linear import project
+from benchmarks.cuda.linear.manifest import DEFAULT_PLANS, load_run
+from benchmarks.cuda.linear.protocol import RATIONAL_WIDE_ORACLE_SCOPE
+from benchmarks.database.adapters.linear import RATIONAL_WIDE_REVISION, project
 from benchmarks.database.model import Metric, digest
 from tests.benchmark_database_fixtures import artifact
 
@@ -24,6 +28,62 @@ def test_projection_separates_oracle_time_and_memory_scopes():
     assert all(m.scope != "eager" for m in measure.metrics if m.unit == "bytes")
     assert p.records[-1].kind == "dense" and p.records[-1].plan_alias is None
     assert p.records[-1].metrics
+
+
+def test_rational_projection_keeps_three_plans_and_the_dense_control():
+    root = DEFAULT_PLANS.parent
+    run = load_run(
+        root / "cases/rational-wide-4096-r128-c32-dispatch.json",
+        root / "plans-rational-wide.json",
+    )
+    snapshot = run.snapshot()
+    snapshot["case"]["rounds"] = 3
+    snapshot_sha = hashlib.sha256((json.dumps(snapshot, indent=2) + "\n").encode()).hexdigest()
+    data = artifact()
+    meta = data["records"][0]["metadata"] | {
+        "case": snapshot["case"],
+        "input_hashes": snapshot["input_hashes"],
+        "snapshot_sha256": snapshot_sha,
+        "seed": run.case.seed,
+        "polar_update": "torch",
+    }
+    measure = data["records"][2]["result"] | {
+        "initial_inputs": data["records"][2]["result"]["initial_inputs"] | {"dy_sha256": "1" * 64},
+        "optimizer": snapshot["case"]["optimizer"],
+        "graph": None,
+        "peak_allocated_training_bytes": 1024,
+        "peak_reserved_training_bytes": 2048,
+        "optimizer_implementation": "torchcst.optim.adamw.CSTAdamW",
+    }
+    oracle = {"status": "PASS", "scope": RATIONAL_WIDE_ORACLE_SCOPE, "errors": {
+        name: {"max_abs": 1e-6, "relative_l2": 1e-7} for name in ("Y", "dX", "all_dP")
+    }}
+    records = []
+    for entry in snapshot["plans"]:
+        selected = meta | {"plan_id": entry["id"], "plan": entry["plan"]}
+        records += [
+            {"metadata": selected | {"worker": "correctness"}, "result": oracle},
+            {"metadata": selected | {"worker": "measure"}, "result": measure | {"reference": entry["id"]}},
+        ]
+    dense = measure | {
+        "reference": "dense_linear",
+        "optimizer_implementation": "torch.optim.adamw.AdamW",
+        "initial_effective_dense_weight_sha256": "2" * 64,
+    }
+    records.append({
+        "metadata": meta | {"worker": "dense", "plan_id": None, "plan": None},
+        "result": dense,
+    })
+    data.update(run=snapshot, snapshot_sha256=snapshot_sha, records=records)
+    projection = project(data)
+    assert projection.revision == RATIONAL_WIDE_REVISION
+    assert len(projection.plans) == 3
+    assert projection.records[-1].plan_alias is None
+    assert {metric.scope for metric in projection.records[-1].metrics} == {"eager"}
+
+    dense["initial_p_sha256"] = "3" * 64
+    with pytest.raises(ValueError, match="candidate parameters differ"):
+        project(data)
 
 
 def test_initialization_protocol_distinguishes_legacy_gpu_and_cpu_batches():
