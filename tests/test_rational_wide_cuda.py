@@ -16,10 +16,12 @@ from torchcst import (
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.rational_wide import (
     RATIONAL_WIDE_FOURIER_DIRECT,
     RATIONAL_WIDE_FOURIER_WEIGHT,
+    RATIONAL_WIDE_ORDERED,
     RATIONAL_WIDE_SAVED,
     RATIONAL_WIDE_SCALE_COHORTS,
     RATIONAL_WIDE_SCALE_WEIGHT,
     RATIONAL_WIDE_SHARED,
+    RationalWideOrderedAlgorithm,
     RationalWideSavedAlgorithm,
     RationalWideScaleWeightAlgorithm,
     RationalWideSharedAlgorithm,
@@ -92,7 +94,7 @@ def test_wide_scaling_has_only_research_admission(width, coefficient):
     public = make_algorithm_registry()
     for plan in PLANS:
         assert not public.validate_plan(plan).supports(context, plan.recipe).supported
-    for plan in (RATIONAL_WIDE_SCALE_WEIGHT, RATIONAL_WIDE_SHARED, RATIONAL_WIDE_SAVED):
+    for plan in (RATIONAL_WIDE_SCALE_WEIGHT, RATIONAL_WIDE_SHARED, RATIONAL_WIDE_SAVED, RATIONAL_WIDE_ORDERED):
         algo = REGISTRY.validate_plan(plan)
         assert REGISTRY.load_plan(REGISTRY.dump_plan(plan)) == plan
         assert algo.supports(context, plan.recipe).supported
@@ -138,12 +140,14 @@ def _check_wide_gradients(width, coefficient):
     if (width, coefficient) == (4096, 32):
         registry.register(RationalWideSharedAlgorithm())
         registry.register(RationalWideSavedAlgorithm())
-        plans = (*plans, RATIONAL_WIDE_SHARED, RATIONAL_WIDE_SAVED)
+        registry.register(RationalWideOrderedAlgorithm())
+        plans = (*plans, RATIONAL_WIDE_SHARED, RATIONAL_WIDE_SAVED, RATIONAL_WIDE_ORDERED)
     if width >= 8192:
         registry.register(RationalWideSharedAlgorithm())
         registry.register(RationalWideScaleWeightAlgorithm())
         registry.register(RationalWideSavedAlgorithm())
-        plans = (RATIONAL_WIDE_SCALE_WEIGHT, RATIONAL_WIDE_SHARED, RATIONAL_WIDE_SAVED)
+        registry.register(RationalWideOrderedAlgorithm())
+        plans = (RATIONAL_WIDE_SCALE_WEIGHT, RATIONAL_WIDE_SHARED, RATIONAL_WIDE_SAVED, RATIONAL_WIDE_ORDERED)
     for plan in plans:
         model.selector = FixedSelector(plan, registry=registry)
         x = host_x.cuda().requires_grad_()

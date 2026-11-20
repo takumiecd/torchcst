@@ -159,6 +159,38 @@ RATIONAL_WIDE_SAVED = ExecutionPlan(
 
 
 @dataclass(frozen=True)
+class RationalWideOrderedAlgorithm(RationalWideSavedAlgorithm):
+    """Keep neighboring Atoms together within each physical radius bank."""
+
+    id: str = "cuda_rational_radius_wide_ordered"
+
+    def _execute_native(self, native, x, physical, ci, co, recipe):
+        width = x.shape[1]
+        with torch.no_grad():
+            radius = physical[:, 1].contiguous()
+            limits = (1 << torch.arange(10, device=physical.device)).to(radius)
+            levels = torch.bucketize(radius, limits, out_int32=True)
+            tile = 1 << levels
+            count = (2 * radius / tile).ceil().to(torch.int32) + 1
+            bank = (2 * levels + count - 2).long()
+            centers = physical[:, 2:].fmod(width)
+            owners = ((centers + 0.5) / tile[:, None] - (count[:, None] - 1) / 2)
+            out_tile, in_tile = owners.floor().to(torch.int32).remainder(
+                (width // tile)[:, None]
+            ).unbind(1)
+            key = (bank * width + in_tile) * width + out_tile
+            order = torch.argsort(key, stable=True)
+        # Keep the module Parameter order. index_select restores gradient
+        # ownership to the same Atom rows through its backward.
+        packed = physical.index_select(0, order)
+        return native.packed_shared_wide_linear(x, packed, ci, co, recompute=False)
+
+
+RATIONAL_WIDE_ORDERED = ExecutionPlan(
+    "cuda_rational_radius_wide_ordered", "v1", RationalWideRecipe(materialize_weight=False)
+)
+
+@dataclass(frozen=True)
 class RationalWideScaleWeightAlgorithm(RationalWideAlgorithm):
     """Research-only dense Fourier comparator for the width sweep."""
 
