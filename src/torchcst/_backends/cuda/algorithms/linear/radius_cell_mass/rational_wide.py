@@ -13,7 +13,6 @@ from torchcst.operators.execution import linear_execution
 
 from .algorithm import RadiusCellMassAlgorithm, hierarchy_from_operator
 
-
 RATIONAL_WIDE_COHORTS = ((2048, 32), (2048, 48), (4096, 32), (4096, 48))
 RATIONAL_WIDE_SCALE_COHORTS = ((4096, 32), (8192, 16), (8192, 32), (16384, 32))
 
