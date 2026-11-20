@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "case": {
+    "id": "rational-wide-16384-r128-c32-dispatch",
+    "fixture": "rational_radius_cell_mass_multirow",
+    "size": 16384,
+    "rows": 128,
+    "atoms": 524288,
+    "profile": "initial",
+    "dtype": "float32",
+    "seed": 41,
+    "warmup": 8,
+    "rounds": 24,
+    "optimizer": {
+      "name": "AdamW",
+      "lr": 0.003,
+      "weight_decay": 0,
+      "fused": true,
+      "capturable": false
+    }
+  },
+  "plans": [
+    "rational-wide-scale-weight",
+    "rational-wide-fourier-axis-gradient"
+  ],
+  "baseline": "rational-wide-scale-weight",
+  "dense": true
+}

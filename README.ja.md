@@ -137,15 +137,16 @@ optimizer = CSTAdamW(layer.parameters(), model=layer, lr=1e-3)
 
 ### 有理式半径の大幅 CUDA Plan
 
-2048または4096の正方射影では、`FixedSelector` で以下を明示選択できます。
-対応する Atom 数は幅の32倍または48倍です。
+正方射影では `FixedSelector` でPlanを明示選択できます。Atom数は幅Nの倍数で表します。
 
-| Plan | 計算経路 |
-| --- | --- |
-| `RATIONAL_WIDE_FOURIER_WEIGHT` | フーリエ係数から一時的な重み行列を作り、行列積を実行 |
-| `RATIONAL_WIDE_FOURIER_DIRECT` | 階層フーリエ係数から直接出力を計算 |
+| Plan | 幅とAtom数 | 計算経路 |
+| --- | --- | --- |
+| `RATIONAL_WIDE_FOURIER_WEIGHT` | 幅2048・4096、32Nまたは48N | 一時的なフーリエ重み行列を作り、行列積を実行 |
+| `RATIONAL_WIDE_FOURIER_DIRECT` | 幅2048・4096、32Nまたは48N | 階層フーリエ係数から直接出力を計算 |
+| `RATIONAL_WIDE_AXIS_GRADIENT` | 幅4096・16384は32N、幅8192は16Nまたは32N | 直接計算し、Atom勾配を入出力それぞれのタイル順で算出 |
+| `RATIONAL_WIDE_SCALE_WEIGHT` | `RATIONAL_WIDE_AXIS_GRADIENT` と同じ条件 | 一時的なフーリエ重み行列を作り、行列積を実行 |
 
-両方とも FP32、TF32 無効、入力1〜256行、eager 実行、autocast 無効に対応します。
+各Planは FP32、TF32 無効、入力1〜256行、eager 実行、autocast 無効に対応します。
 入出力は同じ origin=0、spacing=1 の1次元 FlatTorus 格子で、M8、base tile 1、
 merge factor 2、半径範囲 [0.5, 512]、amplitude_max ≤ 32 を使います。
 
@@ -181,7 +182,8 @@ y_direct = layer(x)
 例では展開経路を選んでいます。`plan` に `RATIONAL_WIDE_FOURIER_DIRECT`
 を指定すると、同じ `layer(x)` で直接経路を使えます。
 
-[RTX 4090の測定結果](docs/research-history/cuda-linear/rational-wide-fourier-4090-20261120.ja.md)
+[従来のフーリエPlanの測定結果](docs/research-history/cuda-linear/rational-wide-fourier-4090-20261120.ja.md) ·
+[Atom勾配のタイル順最適化の測定結果](docs/research-history/cuda-linear/rational-q-axis-gradient-4090-20261120.ja.md)
 
 ### RTX 4090での自動選択
 

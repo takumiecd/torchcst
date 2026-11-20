@@ -23,11 +23,9 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.rational_wide im
     RATIONAL_WIDE_SCALE_COHORTS,
     RATIONAL_WIDE_SCALE_WEIGHT,
     RATIONAL_WIDE_SHARED,
-    RationalWideAxisGradientAlgorithm,
     RationalWideOrderedAlgorithm,
     RationalWideReverseOrderedAlgorithm,
     RationalWideSavedAlgorithm,
-    RationalWideScaleWeightAlgorithm,
     RationalWideSharedAlgorithm,
 )
 from torchcst._backends.schema import DeviceInfo, PrecisionPolicy
@@ -84,7 +82,7 @@ def test_wide_rational_plans_are_explicit_and_check_metadata():
 
 
 @pytest.mark.parametrize(("width", "coefficient"), RATIONAL_WIDE_SCALE_COHORTS[1:])
-def test_wide_scaling_has_only_research_admission(width, coefficient):
+def test_wide_scaling_separates_public_and_research_plans(width, coefficient):
     from benchmarks.cuda.linear.manifest import REGISTRY
 
     atoms = width * coefficient
@@ -98,6 +96,9 @@ def test_wide_scaling_has_only_research_admission(width, coefficient):
     public = make_algorithm_registry()
     for plan in PLANS:
         assert not public.validate_plan(plan).supports(context, plan.recipe).supported
+    for plan in (RATIONAL_WIDE_SCALE_WEIGHT, RATIONAL_WIDE_AXIS_GRADIENT):
+        assert public.load_plan(public.dump_plan(plan)) == plan
+        assert public.validate_plan(plan).supports(context, plan.recipe).supported
     for plan in (RATIONAL_WIDE_SCALE_WEIGHT, RATIONAL_WIDE_SHARED, RATIONAL_WIDE_SAVED,
                  RATIONAL_WIDE_ORDERED, RATIONAL_WIDE_REVERSE_ORDERED, RATIONAL_WIDE_AXIS_GRADIENT):
         algo = REGISTRY.validate_plan(plan)
@@ -143,14 +144,12 @@ def _check_wide_gradients(width, coefficient):
     registry = make_algorithm_registry()
     plans = PLANS
     if width >= 8192:
-        registry.register(RationalWideScaleWeightAlgorithm())
         plans = (RATIONAL_WIDE_SCALE_WEIGHT,)
     if (width, coefficient) in RATIONAL_WIDE_SCALE_COHORTS:
         registry.register(RationalWideSharedAlgorithm())
         registry.register(RationalWideSavedAlgorithm())
         registry.register(RationalWideOrderedAlgorithm())
         registry.register(RationalWideReverseOrderedAlgorithm())
-        registry.register(RationalWideAxisGradientAlgorithm())
         plans = (*plans, RATIONAL_WIDE_SHARED, RATIONAL_WIDE_SAVED, RATIONAL_WIDE_ORDERED,
                  RATIONAL_WIDE_REVERSE_ORDERED, RATIONAL_WIDE_AXIS_GRADIENT)
     for plan in plans:

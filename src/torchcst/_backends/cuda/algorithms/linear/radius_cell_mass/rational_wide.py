@@ -210,7 +210,7 @@ RATIONAL_WIDE_REVERSE_ORDERED = ExecutionPlan(
 
 @dataclass(frozen=True)
 class RationalWideScaleWeightAlgorithm(RationalWideAlgorithm):
-    """Research-only dense Fourier comparator for the width sweep."""
+    """Extend the weight path to the qualified wide scaling cohorts."""
 
     id: str = "cuda_rational_radius_wide_scale_weight"
     cohorts = RATIONAL_WIDE_SCALE_COHORTS
