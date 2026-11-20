@@ -1,4 +1,4 @@
-"""Normalized v2 and local-product v3 projections of complete-step schema v1.
+"""Versioned projections of complete-step schema v1.
 
 Validation checks internal consistency, not the submitter's authenticity or a
 full-shape correctness certification. Failed runs retain evidence, no metrics.
@@ -11,12 +11,19 @@ import re
 import statistics
 from dataclasses import asdict
 
-from benchmarks.cuda.linear.manifest import RADIUS_FIXTURES, REGISTRY, decode_snapshot
+from benchmarks.cuda.linear.manifest import (
+    RADIUS_FIXTURES,
+    RATIONAL_WIDE_FIXTURE,
+    REGISTRY,
+    decode_snapshot,
+)
 from benchmarks.cuda.linear.protocol import (
     GLOBAL_PRODUCT_ORACLE_SCOPE,
     LOCAL_OPTIMIZER_POLICY,
     LOCAL_ORACLE_SCOPE,
     PRODUCT_ORACLE_SCOPE,
+    RATIONAL_WIDE_OPTIMIZER_POLICY,
+    RATIONAL_WIDE_ORACLE_SCOPE,
     SQUARE_STRIP_PRODUCT_ORACLE_SCOPE,
     STRIP_PRODUCT_ORACLE_SCOPE,
     TORUS_OPTIMIZER_POLICY,
@@ -34,6 +41,7 @@ from benchmarks.database.model import (
 ADAPTER = "cuda.linear.complete-step"
 REVISION = 2
 LOCAL_REVISION = 3
+RATIONAL_WIDE_REVISION = 9
 
 
 def _hash(value):
@@ -117,9 +125,9 @@ def _environment(meta):
     return result
 
 
-def _metrics(result, rounds):
+def _metrics(result, rounds, *, eager_only=False):
     metrics = []
-    for mode in ("eager", "graph"):
+    for mode in ("eager",) if eager_only else ("eager", "graph"):
         times = result[mode]
         samples = times["samples_ms"]
         if type(samples) is not list or len(samples) != rounds:
@@ -130,6 +138,24 @@ def _metrics(result, rounds):
         if not math.isclose(metric.value, statistics.median(samples), rel_tol=1e-12):
             raise ValueError("reported median differs from samples")
         metrics.append(metric)
+    if eager_only:
+        allocated, reserved = (
+            result["peak_allocated_training_bytes"],
+            result["peak_reserved_training_bytes"],
+        )
+        if (
+            type(allocated) is not int
+            or type(reserved) is not int
+            or not 0 < allocated <= reserved
+            or result.get("graph") is not None
+            or result.get("total_gpu_process_bytes") is not None
+        ):
+            raise ValueError("invalid eager allocator peak or unmeasured scope")
+        return (
+            *metrics,
+            Metric("memory.allocated", "eager", "bytes", "peak", allocated),
+            Metric("memory.reserved", "eager", "bytes", "peak", reserved),
+        )
     for field, name, statistic in (
         ("allocated_before_capture_bytes", "memory.allocated", "current"),
         ("peak_allocated_capture_replay_bytes", "memory.allocated", "peak"),
@@ -177,7 +203,10 @@ def project(value):
         raise ValueError("run must be completed with a record list")
     execution_identity(value)
     run = decode_snapshot(value["run"])
-    if run.case.fixture in RADIUS_FIXTURES:
+    rational = run.case.fixture == RATIONAL_WIDE_FIXTURE
+    if rational and run.dense:
+        raise ValueError("rational wide evidence requires the two CST projections only")
+    if run.case.fixture in RADIUS_FIXTURES and not rational:
         raise ValueError(
             f"{run.case.fixture} is research-only; submission/database projection is unsupported"
         )
@@ -199,7 +228,9 @@ def project(value):
     global_product = run.case.fixture == "polar_profile_product_global"
     square_strip = run.case.fixture == "polar_profile_product_square_strip"
     revision = (
-        8
+        RATIONAL_WIDE_REVISION
+        if rational
+        else 8
         if torus
         else 7
         if square_strip
@@ -241,6 +272,20 @@ def project(value):
     if local:
         protocol["correctness"] = oracle_scope
         protocol["optimizer_policy"] = optimizer_policy
+    if rational:
+        if {
+            p.plan.recipe.materialize_weight
+            for p in run.plans
+            if p.plan.algorithm_id == "cuda_rational_radius_wide"
+        } != {False, True} or len(run.plans) != 2:
+            raise ValueError(
+                "rational wide evidence requires both native weight policies"
+            )
+        protocol.update(
+            correctness=RATIONAL_WIDE_ORACLE_SCOPE,
+            optimizer_policy=RATIONAL_WIDE_OPTIMIZER_POLICY,
+            memory="eager allocated/reserved peak over warmup and synchronized training",
+        )
     _hash(value["snapshot_sha256"])
     historical = (json.dumps(run.snapshot(), indent=2, allow_nan=False) + "\n").encode()
     # Older producer revisions used different dictionary order in Plan JSON.
@@ -358,7 +403,29 @@ def project(value):
         if common is not None and identity != common:
             raise ValueError("workers have different source/runtime/GPU")
         common = identity
-        if record.kind == "correctness":
+        if rational and meta.get("polar_update") != "torch":
+            raise ValueError(
+                "rational wide requires the standard Torch coordinate update"
+            )
+        if rational and record.kind == "correctness":
+            if result.get("scope") != RATIONAL_WIDE_ORACLE_SCOPE or set(
+                result["errors"]
+            ) != {"Y", "dX", "all_dP"}:
+                raise ValueError("unknown rational wide correctness scope")
+            metrics = tuple(
+                Metric(
+                    f"error.{name}",
+                    "full_oracle",
+                    "dimensionless",
+                    statistic,
+                    result["errors"][key][field],
+                )
+                for name, key in (("y", "Y"), ("dx", "dX"), ("dp", "all_dP"))
+                for statistic, field in (("max", "max_abs"), ("rel_l2", "relative_l2"))
+            )
+            if any(metric.value > 5e-4 for metric in metrics):
+                raise ValueError("rational wide oracle exceeds the declared tolerance")
+        elif record.kind == "correctness":
             if not local and (
                 result.get("fixture_sizes") != [1024, 4, 4]
                 or result.get("fixture_atoms") != 8
@@ -383,10 +450,12 @@ def project(value):
                 for key in ("max", "rel_l2")
             )
         else:
-            if (
-                result.get("operator") != operator
-                or result.get("rows") != case["rows"]
-                or result.get("optimizer") != case["optimizer"]
+            if result.get("optimizer") != case["optimizer"] or (
+                not rational
+                and (
+                    result.get("operator") != operator
+                    or result.get("rows") != case["rows"]
+                )
             ):
                 raise ValueError("measurement operator/optimizer differs")
             dense = record.kind == "dense"
@@ -398,15 +467,22 @@ def project(value):
                 "dense_linear" if dense else record.plan_alias
             ):
                 raise ValueError("measurement reference differs")
-            if result.get("atoms") != (None if dense else case["atoms"]) or result.get(
-                "profile"
-            ) != (None if dense else case["profile"]):
+            if not rational and (
+                result.get("atoms") != (None if dense else case["atoms"])
+                or result.get("profile") != (None if dense else case["profile"])
+            ):
                 raise ValueError("measurement initialization differs")
+            if (
+                rational
+                and result.get("optimizer_implementation")
+                != "torchcst.optim.adamw.CSTAdamW"
+            ):
+                raise ValueError("measurement rational optimizer contract differs")
             initial = result["initial_inputs"]
-            if type(initial) is not dict or set(initial) != {
-                "x_sha256",
-                "target_sha256",
-            }:
+            expected_hashes = {"x_sha256", "target_sha256"}
+            if rational:
+                expected_hashes.add("dy_sha256")
+            if type(initial) is not dict or set(initial) != expected_hashes:
                 raise ValueError("missing input hashes")
             for sha in initial.values():
                 _hash(sha)
@@ -422,7 +498,7 @@ def project(value):
                 if parameters is not None and parameters != initial_p:
                     raise ValueError("candidate parameters differ")
                 parameters = initial_p
-            metrics = _metrics(result, case["rounds"])
+            metrics = _metrics(result, case["rounds"], eager_only=rational)
         validated.append(
             Record(
                 record.kind,

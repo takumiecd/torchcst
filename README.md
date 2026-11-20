@@ -191,6 +191,19 @@ The example selects the weight-building path. Set `plan` to
 
 [RTX 4090 measurements](docs/research-history/cuda-linear/rational-wide-fourier-4090-20261120.md)
 
+### Automatic selection on RTX 4090
+
+With the default `backend="auto"`, the dispatcher uses a bundled selection
+table generated from the existing Neon benchmark database. For the measured
+FP32 training cases, it selects the temporary-weight plan at widths 2048 and
+4096 with 32 Atoms per site and 128 input rows. It checks the operator,
+both gradient requirements, GPU, and recorded Torch/Triton versions.
+Other conditions follow the usual ordered fallback. Use the explicit Plan
+above to request direct evaluation for a supported configuration.
+
+The database is used to generate the table offline. Forward and backward use
+the local table and run without a database connection.
+
 ## Legacy Polar CUDA configuration
 
 For existing **FP32, small-batch Polar radius cell-mass** workloads,

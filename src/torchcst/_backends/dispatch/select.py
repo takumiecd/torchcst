@@ -24,15 +24,34 @@ class FixedSelector(Selector):
 class OrderedSelector(Selector):
     """An explicit ordered policy; eligibility and support remain Algorithm-owned."""
 
-    def __init__(self, plans, *, registry, revision="ordered-v1", fallback_plan=None):
+    def __init__(
+        self,
+        plans,
+        *,
+        registry,
+        revision="ordered-v1",
+        fallback_plan=None,
+        preferred=None,
+    ):
         super().__init__(
             revision=revision, registry=registry, fallback_plan=fallback_plan
         )
+        if preferred is not None and (
+            not isinstance(preferred, Selector) or preferred.registry is not registry
+        ):
+            raise ValueError("preferred selector must use the same Registry")
+        self._preferred = preferred
         self._plans = tuple(plans)
         for plan in self._plans:
             registry.validate_plan(plan)
 
     def _match(self, context):
+        if self._preferred is not None:
+            match = self._preferred._match(context)
+            if match is not None:
+                algorithm = self._registry.validate_plan(match.plan)
+                if algorithm.matches(context, match.plan.recipe):
+                    return match
         for plan in self._plans:
             algorithm = self._registry.validate_plan(plan)
             if algorithm.matches(context, plan.recipe):

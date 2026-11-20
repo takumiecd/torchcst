@@ -48,3 +48,14 @@ python -m benchmarks.cuda.linear.run \
 ジョブ3519と対応するスナップショット、実行コマンド、測定結果は
 `output/public-rational-wide-20261120-01/` に保存した。測定結果のSHA-256は `6d1b75bb41769ab999faf4d8b7873217c5094751b424d3037d8d964b3fc07808`。
 ネイティブバイナリのSHA-256は `8ce5072201c1e7110ccc8d325198c9ce56bc187de84460ab8d2f734939c0ab4f`。
+
+## Neonのdispatcher用計測記録
+
+初期化済みの32N Atomと入力128行を使い、各幅で既存runnerによる測定を一件ずつ行った。
+adapterはeagerの学習ステップ全体の時間とアロケータのピークを保存する。
+既存Neonスキーマに元の結果二件を格納し、各結果のエクスポートが原本とバイト一致した。
+固定の[生成依頼](../../../benchmarks/dispatch/requests/rational-wide-rtx4090.json)は速度優先のv2とソースID
+`776ab9f3c319b47db3460db5f2a7345e9bfa9099ab5384bd7732264e74486675`を指定する。読み取り専用データセットのIDは
+`55209bb127959b447d6c8f5fe22f90886673e8008bc72addbf7e3d2d55f53764`。オフライン再生成でも両エントリを再現した。
+RTX 4090で両幅とも通常のAPIが展開Planを選び、明示した展開Planと出力・勾配が一致した。
+同梱の選択表はTorch 2.9.1+cu128とTriton 3.5.1を対象とする。

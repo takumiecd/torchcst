@@ -8,11 +8,14 @@ from dataclasses import asdict, dataclass
 
 import torch
 
+from benchmarks.cuda.linear.manifest import RATIONAL_WIDE_FIXTURE
 from benchmarks.cuda.linear.protocol import (
     LOCAL_OPTIMIZER_POLICY,
+    RATIONAL_WIDE_OPTIMIZER_POLICY,
     TORUS_OPTIMIZER_POLICY,
     measurement_operator,
 )
+from benchmarks.database.adapters.linear import RATIONAL_WIDE_REVISION
 from benchmarks.database.model import digest
 from torchcst._backends.dispatch.conditions import condition_key, dump_condition
 from torchcst._backends.dispatch.exact import validate_selector_artifact
@@ -40,7 +43,7 @@ class ScorePolicy:
 
 def preset_policy(declaration, mode):
     name, revision, params = (declaration[k] for k in ("id", "revision", "parameters"))
-    if revision != "v1" or name not in ("speed", "memory"):
+    if revision not in ("v1", "v2") or name not in ("speed", "memory"):
         raise ValueError(
             "unknown preset; custom functions use the Python ScorePolicy API"
         )
@@ -51,10 +54,11 @@ def preset_policy(declaration, mode):
         if type(value) not in (int, float) or not math.isfinite(value) or value <= 0:
             raise ValueError("preset limits must be finite and positive")
     scope = "graph" if mode == "cuda_graph" else "eager"
+    memory_scope = "eager" if revision == "v2" and mode == "eager" else "capture_replay"
 
     def score(candidate):
         time = candidate.metric("step.time", scope, "ms", "median")
-        memory = candidate.metric("memory.allocated", "capture_replay", "bytes", "peak")
+        memory = candidate.metric("memory.allocated", memory_scope, "bytes", "peak")
         if time is None or memory is None:
             return None
         if memory.maximum > params.get(
@@ -70,6 +74,7 @@ def _context(row, mode):
     """Protocol-specific reconstruction, never an arbitrary JSON type loader."""
     case, env = row["case_declaration"], row["environment"]
     n = case["size"]
+    rational = case["fixture"] == RATIONAL_WIDE_FIXTURE
     strip = case["fixture"] in (
         "polar_profile_product_strip",
         "polar_profile_product_square_strip",
@@ -86,7 +91,9 @@ def _context(row, mode):
     local = product or case["fixture"] == "local_polar_product"
     global_product = case["fixture"] == "polar_profile_product_global"
     if row["adapter_revision"] != (
-        8
+        RATIONAL_WIDE_REVISION
+        if rational
+        else 8
         if torus
         else 7
         if case["fixture"] == "polar_profile_product_square_strip"
@@ -103,7 +110,7 @@ def _context(row, mode):
         raise ValueError("generation fixture/adapter revision differs")
     operator = measurement_operator(case)
     result = row["payload"]["result"]
-    if (
+    if not rational and (
         result["operator"] != json.loads(json.dumps(asdict(operator), allow_nan=False))
         or result["rows"] != case["rows"]
         or result["atoms"] != case["atoms"]
@@ -118,6 +125,13 @@ def _context(row, mode):
         or result.get("optimizer_policy") != optimizer_policy
     ):
         raise ValueError("stored polar optimizer contract differs")
+    if rational and (
+        mode != "eager"
+        or result.get("graph") is not None
+        or row["protocol"].get("optimizer_policy") != RATIONAL_WIDE_OPTIMIZER_POLICY
+        or row["payload"]["metadata"].get("polar_update") != "torch"
+    ):
+        raise ValueError("stored rational update differs from eager CSTAdamW")
     if env["dtype"] != "float32" or env["tf32"] is not False:
         raise ValueError("unsupported fixture precision")
     return DispatchContext(
@@ -126,7 +140,7 @@ def _context(row, mode):
         input_strides=(n, 1),
         dtype=torch.float32,
         atom_count=case["atoms"],
-        parameter_dim=5 if torus else 4 if local else 5,
+        parameter_dim=4 if rational or (local and not torus) else 5,
         device=DeviceInfo(
             "cuda", None, env["gpu"], tuple(env["compute_capability"]), env["sm_count"]
         ),

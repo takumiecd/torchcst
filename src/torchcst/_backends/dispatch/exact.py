@@ -3,6 +3,7 @@
 import hashlib
 from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
+from importlib.resources import files
 from types import MappingProxyType
 
 import torch
@@ -212,6 +213,20 @@ class ExactSelector(Selector):
 def load_selector(text, *, registry):
     """Versioned artifact entry point; unimplemented kinds fail explicitly."""
     return ExactSelector.loads(text, registry=registry)
+
+
+def bundled_rational_wide_selector(registry):
+    """Load the measured RTX 4090 cohort if its runtime matches this install."""
+    resource = files(__package__).joinpath("rational-wide-rtx4090.json")
+    document = decode_json(resource.read_bytes())
+    for name, expected in document["runtime_versions"].items():
+        try:
+            actual = str(torch.__version__) if name == "torch" else version(name)
+        except PackageNotFoundError:
+            return None
+        if actual != expected:
+            return None
+    return ExactSelector.load(document, registry=registry)
 
 
 def validate_selector_artifact(data, *, registry):

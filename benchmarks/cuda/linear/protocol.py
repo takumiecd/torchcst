@@ -19,6 +19,12 @@ LOCAL_OPTIMIZER_POLICY = (
 )
 
 
+RATIONAL_WIDE_ORACLE_SCOPE = "full sites/all atoms; FP64 public Torch Fourier reference (separately quadrature-qualified)"
+RATIONAL_WIDE_OPTIMIZER_POLICY = (
+    "CSTAdamW eager proposal and rational-radius amplitude/q projection"
+)
+
+
 def measurement_operator(case):
     """Rebuild from a validated Case, never from arbitrary serialized types."""
     case = _case({"id": "stored-case", **case})

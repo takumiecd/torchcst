@@ -61,7 +61,11 @@ case_id / environment_id / protocol_idで対象を絞るか、除外対象を指
 | speed / v1 | 指定モードのstep.timeの中央値 | max_peak_allocated_bytes：観測された最大capture/replay allocated peakの上限 |
 | memory / v1 | capture/replay allocated peakの中央値 | max_time_ms：指定モードの時間中央値の上限 |
 
-メモリはGraph capture/replayを含む測定範囲。eagerのpeakやGPUプロセス全体の使用量に読み替えない。
+`speed / v2` と `memory / v2` は eager 選択で scope `eager` の
+アロケータピークを使う。正方の有理式半径 Linear は adapter revision 9 で、
+`RequiredGrads(True, True)` の観測済み条件だけを生成する。
+`cuda_graph` を指定する v2 と既存の v1 は Graph の `capture_replay` を使う。
+アロケータピークとGPUプロセス全体の使用量は別の指標。
 同点はPlan内容IDの辞書順で決める。同点の勝者に統計的な優位性を主張しない。
 自動外れ値除去、信頼ポイントの自動重み付け、認証の閾値はこのプリセットに含めない。
 提出者・ポイント・全指標・原workerを含む観測を独自評価関数から参照できる。
