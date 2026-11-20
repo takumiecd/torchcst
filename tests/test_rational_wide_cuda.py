@@ -94,9 +94,9 @@ def test_wide_scaling_separates_public_and_research_plans(width, coefficient):
         precision=PrecisionPolicy(autocast=False, allow_tf32=False),
     )
     public = make_algorithm_registry()
-    for plan in PLANS:
-        assert not public.validate_plan(plan).supports(context, plan.recipe).supported
-    for plan in (RATIONAL_WIDE_SCALE_WEIGHT, RATIONAL_WIDE_AXIS_GRADIENT):
+    direct = RATIONAL_WIDE_FOURIER_DIRECT
+    assert not public.validate_plan(direct).supports(context, direct.recipe).supported
+    for plan in (RATIONAL_WIDE_FOURIER_WEIGHT, RATIONAL_WIDE_SCALE_WEIGHT, RATIONAL_WIDE_AXIS_GRADIENT):
         assert public.load_plan(public.dump_plan(plan)) == plan
         assert public.validate_plan(plan).supports(context, plan.recipe).supported
     for plan in (RATIONAL_WIDE_SCALE_WEIGHT, RATIONAL_WIDE_SHARED, RATIONAL_WIDE_SAVED,
@@ -144,7 +144,7 @@ def _check_wide_gradients(width, coefficient):
     registry = make_algorithm_registry()
     plans = PLANS
     if width >= 8192:
-        plans = (RATIONAL_WIDE_SCALE_WEIGHT,)
+        plans = (RATIONAL_WIDE_FOURIER_WEIGHT, RATIONAL_WIDE_SCALE_WEIGHT)
     if (width, coefficient) in RATIONAL_WIDE_SCALE_COHORTS:
         registry.register(RationalWideSharedAlgorithm())
         registry.register(RationalWideSavedAlgorithm())

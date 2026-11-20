@@ -149,7 +149,7 @@ the Atom budget is specified as a multiple of N.
 
 | Plan | Width and Atom count | Execution |
 | --- | --- | --- |
-| `RATIONAL_WIDE_FOURIER_WEIGHT` | 2048 and 4096, 32N or 48N | Build a transient Fourier weight matrix and apply a matrix product |
+| `RATIONAL_WIDE_FOURIER_WEIGHT` | 2048 and 4096 with 32N or 48N, 8192 with 16N or 32N, 16384 with 32N | Build a transient Fourier weight matrix and apply a matrix product |
 | `RATIONAL_WIDE_FOURIER_DIRECT` | 2048 and 4096, 32N or 48N | Compute outputs directly from hierarchical Fourier coefficients |
 | `RATIONAL_WIDE_AXIS_GRADIENT` | 4096 and 16384 with 32N, 8192 with 16N or 32N | Evaluate directly and compute Atom gradients in input- and output-tile order |
 | `RATIONAL_WIDE_SCALE_WEIGHT` | Same conditions as `RATIONAL_WIDE_AXIS_GRADIENT` | Build a transient Fourier weight matrix and apply a matrix product |

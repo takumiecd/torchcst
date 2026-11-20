@@ -27,6 +27,10 @@ class RationalWideAlgorithm(RadiusCellMassAlgorithm):
     id: str = "cuda_rational_radius_wide"
     recipe_type: type = RationalWideRecipe
     cohorts: ClassVar[tuple[tuple[int, int], ...]] = RATIONAL_WIDE_COHORTS
+    weight_cohorts: ClassVar[tuple[tuple[int, int], ...]] = (
+        *RATIONAL_WIDE_COHORTS,
+        *RATIONAL_WIDE_SCALE_COHORTS[1:],
+    )
 
     def validate_recipe(self, recipe):
         if (
@@ -50,7 +54,8 @@ class RationalWideAlgorithm(RadiusCellMassAlgorithm):
             return SupportResult((str(error),))
 
         n = layout.input.site_count
-        if (n, context.atom_count // n) not in self.cohorts or context.atom_count % n:
+        cohorts = self.weight_cohorts if recipe.materialize_weight else self.cohorts
+        if (n, context.atom_count // n) not in cohorts or context.atom_count % n:
             return SupportResult(("width and Atom count are outside the admitted cohorts",))
         if (
             layout.output != layout.input
@@ -213,7 +218,7 @@ class RationalWideScaleWeightAlgorithm(RationalWideAlgorithm):
     """Extend the weight path to the qualified wide scaling cohorts."""
 
     id: str = "cuda_rational_radius_wide_scale_weight"
-    cohorts = RATIONAL_WIDE_SCALE_COHORTS
+    weight_cohorts = RATIONAL_WIDE_SCALE_COHORTS
 
     def validate_recipe(self, recipe):
         super().validate_recipe(recipe)

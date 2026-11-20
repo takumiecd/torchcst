@@ -141,7 +141,7 @@ optimizer = CSTAdamW(layer.parameters(), model=layer, lr=1e-3)
 
 | Plan | 幅とAtom数 | 計算経路 |
 | --- | --- | --- |
-| `RATIONAL_WIDE_FOURIER_WEIGHT` | 幅2048・4096、32Nまたは48N | 一時的なフーリエ重み行列を作り、行列積を実行 |
+| `RATIONAL_WIDE_FOURIER_WEIGHT` | 幅2048・4096は32Nまたは48N、幅8192は16Nまたは32N、幅16384は32N | 一時的なフーリエ重み行列を作り、行列積を実行 |
 | `RATIONAL_WIDE_FOURIER_DIRECT` | 幅2048・4096、32Nまたは48N | 階層フーリエ係数から直接出力を計算 |
 | `RATIONAL_WIDE_AXIS_GRADIENT` | 幅4096・16384は32N、幅8192は16Nまたは32N | 直接計算し、Atom勾配を入出力それぞれのタイル順で算出 |
 | `RATIONAL_WIDE_SCALE_WEIGHT` | `RATIONAL_WIDE_AXIS_GRADIENT` と同じ条件 | 一時的なフーリエ重み行列を作り、行列積を実行 |
