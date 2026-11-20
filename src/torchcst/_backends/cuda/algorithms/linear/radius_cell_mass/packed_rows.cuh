@@ -101,13 +101,28 @@ Tensor packed_moments(Tensor x, Tensor p, Config config, bool level_launch) {
     return z;
 }
 
-std::vector<Tensor> packed_project(Tensor x, Tensor p, Config config, bool output_side, Tensor geometry, bool level_launch) {
+std::vector<Tensor> packed_project(Tensor x, Tensor p, Config config, bool output_side, Tensor geometry, bool level_launch, Tensor response_order) {
     c10::cuda::CUDAGuard guard(x.device());
     auto z = packed_moments(x, p, config, level_launch);
     auto h = torch::empty({x.size(0), p.size(0)}, x.options());
     Axis a = parse_axis(config);
     dim3 grid((p.size(0) + PARALLEL_RESPONSE_THREADS - 1) / PARALLEL_RESPONSE_THREADS,
         (x.size(0) + 7) / 8);
+#ifdef RADIUS_RATIONAL_WIDE
+    if (response_order.defined()) {
+        TORCH_CHECK(geometry.defined() && response_order.device() == p.device() &&
+            response_order.scalar_type() == at::kLong && response_order.is_contiguous() &&
+            response_order.dim() == 1 && response_order.size(0) == p.size(0),
+            "invalid packed response order");
+        parallel_response_kernel<float, float, 8, true, true><<<grid,
+            PARALLEL_RESPONSE_THREADS, 0, at::cuda::getCurrentCUDAStream()>>>(
+            x.data_ptr<float>(), p.data_ptr<float>(), z.data_ptr<float>(), h.data_ptr<float>(),
+            p.size(0), x.size(0), a, 2, output_side, geometry.data_ptr<float>(),
+            response_order.data_ptr<int64_t>());
+        C10_CUDA_KERNEL_LAUNCH_CHECK();
+        return {z, h};
+    }
+#endif
     if (geometry.defined()) {
         parallel_response_kernel<float, float, 8, true><<<grid, PARALLEL_RESPONSE_THREADS, 0,
             at::cuda::getCurrentCUDAStream()>>>(x.data_ptr<float>(), p.data_ptr<float>(),
@@ -123,9 +138,9 @@ std::vector<Tensor> packed_project(Tensor x, Tensor p, Config config, bool outpu
 }
 
 std::vector<Tensor> packed_transform(Tensor x, Tensor p, Tensor rows, Tensor offsets,
-    Config source, Config destination, bool output_side, Tensor geometry, bool level_launch, bool shared_wide) {
+    Config source, Config destination, bool output_side, Tensor geometry, bool level_launch, bool shared_wide, Tensor response_order) {
     c10::cuda::CUDAGuard guard(x.device());
-    auto projection = packed_project(x, p, source, output_side, geometry, level_launch);
+    auto projection = packed_project(x, p, source, output_side, geometry, level_launch, response_order);
     Axis a = parse_axis(destination); check_ranges(rows, offsets, p, a);
     auto y = torch::empty({x.size(0), a.sites}, x.options());
     auto layout = batched_coefficient_layout<float>(a, 2, 32);

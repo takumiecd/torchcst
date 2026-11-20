@@ -34,6 +34,7 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.rational_wide im
     RATIONAL_WIDE_SCALE_COHORTS,
     RationalWideAlgorithm,
     RationalWideOrderedAlgorithm,
+    RationalWideReverseOrderedAlgorithm,
     RationalWideSavedAlgorithm,
     RationalWideScaleWeightAlgorithm,
     RationalWideSharedAlgorithm,
@@ -57,6 +58,7 @@ REGISTRY.register(RationalWideAlgorithm())
 REGISTRY.register(RationalWideSharedAlgorithm())
 REGISTRY.register(RationalWideSavedAlgorithm())
 REGISTRY.register(RationalWideOrderedAlgorithm())
+REGISTRY.register(RationalWideReverseOrderedAlgorithm())
 REGISTRY.register(RationalWideScaleWeightAlgorithm())
 REGISTRY.register(RadiusRow8Algorithm())
 REGISTRY.register(RadiusLargeRow8Algorithm())
