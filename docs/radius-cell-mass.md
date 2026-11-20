@@ -7,7 +7,7 @@ API. This guide covers `cell_mass`, the hierarchy equations and explicit CUDA
 Plan selection. Measurement and implementation history remains in the
 [research record](cell-mass-kernel-flow.ja.md).
 For the current optimized public eager configuration, see the
-[recommended CUDA configuration](../README.md#recommended-cuda-configuration-for-the-public-api).
+[legacy Polar CUDA configuration](../README.md#legacy-polar-cuda-configuration).
 
 ## Running on CPU
 
@@ -202,9 +202,11 @@ layer.selector = FixedSelector(
 optimizer = CSTAdamW(layer.parameters(), model=layer, lr=1e-3)
 ```
 
-This path applies the same differentiable radius conversion as the CPU
+`GLOBAL_ACTIVE_GRAD4_NATIVE` applies the same differentiable radius conversion as the CPU
 reference and passes physical rows to the existing native Linear. It requires
 eager FP32/FP64, at most 1024 sites per axis and at most 65,536 Atoms. The
 existing Plan's other support conditions apply. The usual Torch coordinate
-update projects the optimizer proposal. The public native path does not yet
-cover 1024×4096 FFN projections.
+update projects the optimizer proposal. Square width-2048 and width-4096 projections
+use the explicit
+[wide rational-radius plans](../README.md#wide-cuda-plans-for-rational-radius).
+The rectangular 1024×4096 FFN projection requires separate support.

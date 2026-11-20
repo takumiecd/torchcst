@@ -9,14 +9,26 @@ static_assert(RADIUS_ROW_BATCH == 4 || RADIUS_ROW_BATCH == 8,
 constexpr int PARAMETER_BATCH = RADIUS_ROW_BATCH;
 
 // Empty specializations ensure Polar allocates no radius-derivative scratch.
-template<bool LearnRadius> struct RadiusScalar {};
-template<> struct RadiusScalar<true> { double value = 0; };
-template<bool LearnRadius> struct RadiusCoefficients {};
-template<> struct RadiusCoefficients<true> { double input[17], output[17]; };
-template<bool LearnRadius> struct RadiusRows {};
-template<> struct RadiusRows<true> {
-    double input[PARAMETER_BATCH] = {}, output[PARAMETER_BATCH] = {};
+template<bool LearnRadius, class Storage = double> struct RadiusScalar {};
+template<class Storage> struct RadiusScalar<true, Storage> { Storage value = 0; };
+template<bool LearnRadius, class Storage = double> struct RadiusCoefficients {};
+template<class Storage> struct RadiusCoefficients<true, Storage> { Storage input[17], output[17]; };
+template<bool LearnRadius, class Storage = double> struct RadiusRows {};
+template<class Storage> struct RadiusRows<true, Storage> {
+    Storage input[PARAMETER_BATCH] = {}, output[PARAMETER_BATCH] = {};
 };
+
+// Stable profile construction remains FP64 in thread-local arrays; retained
+// moments/responses and their radius reductions use the selected Storage.
+template<class Storage>
+__device__ inline void physical_profile_coefficients(
+    Storage radius, double period, int modes, Storage *c, Storage *dr) {
+    double values[17], derivatives[17];
+    profile_coefficients(double(radius), period, modes, values, derivatives);
+    for (int k = 0; k <= modes; ++k) {
+        c[k] = Storage(values[k]); dr[k] = Storage(derivatives[k]);
+    }
+}
 
 // A row group shares each tile phase (four normally; eight in the opt-in build).
 // For each individual
@@ -66,7 +78,7 @@ __device__ inline void direct_derivatives_batch4(
     for (int part = 0; part < bank.count; ++part) {
         for (int local = 0; local < bank.tile_sites; ++local) {
             int site = (member.first_tile + part) * bank.tile_sites + local;
-            RadiusScalar<LearnRadius> mr;
+            RadiusScalar<LearnRadius, Storage> mr;
             Storage mm = 0;
             SignalPhase<Storage> phase(2 * Storage(PI) / Storage(bank.period) * (mu - site * Storage(axis.spacing)));
             Storage half_cell = Storage(PI) * Storage(axis.spacing) / Storage(bank.period);
@@ -109,21 +121,21 @@ __global__ void batched_parameter_kernel(
     Membership mi = signal_classify<Storage>(ri, Storage(center(p, atom, input, false)), input);
     Membership mo = signal_classify<Storage>(ro, Storage(center(p, atom, output, true)), output);
     Storage ci[17], co[17];
-    RadiusCoefficients<LearnRadius> derivatives;
+    RadiusCoefficients<LearnRadius, Storage> derivatives;
     const Storage *di = nullptr, *dout = nullptr;
     if constexpr (LearnRadius) {
-        profile_coefficients(ri, input.banks[mi.bank].period, input.modes, ci, derivatives.input);
-        profile_coefficients(ro, output.banks[mo.bank].period, output.modes, co, derivatives.output);
+        physical_profile_coefficients(ri, input.banks[mi.bank].period, input.modes, ci, derivatives.input);
+        physical_profile_coefficients(ro, output.banks[mo.bank].period, output.modes, co, derivatives.output);
         di = derivatives.input; dout = derivatives.output;
     } else {
         profile_values(ri, input.banks[mi.bank].period, input.modes, ci);
         profile_values(ro, output.banks[mo.bank].period, output.modes, co);
     }
-    RadiusScalar<LearnRadius> dR;
+    RadiusScalar<LearnRadius, Storage> dR;
     Storage da = 0, dmi = 0, dmo = 0, amp = signal_amplitude<Storage>(p, atom, input);
     for (int first = 0; first < batch; first += PARAMETER_BATCH) {
         Storage dci[PARAMETER_BATCH] = {}, dco[PARAMETER_BATCH] = {};
-        RadiusRows<LearnRadius> rows;
+        RadiusRows<LearnRadius, Storage> rows;
         Storage *dri = nullptr, *dro = nullptr;
         if constexpr (LearnRadius) { dri = rows.input; dro = rows.output; }
         if (input.banks[mi.bank].level < input_start)

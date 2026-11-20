@@ -6,7 +6,7 @@
 このガイドは `cell_mass` の利用、階層の数式、明示的な CUDA Plan 選択を扱う。
 測定・実装の経緯は [研究記録](cell-mass-kernel-flow.ja.md) に残す。
 現在の最適化された公開 eager 構成は
-[推奨 CUDA 構成](../README.ja.md#公開-api-で推奨する-cuda-構成)を参照する。
+[互換用の Polar CUDA 構成](../README.ja.md#互換用の-polar-cuda-構成)を参照する。
 
 ## CPU で動かす
 
@@ -187,7 +187,8 @@ layer.selector = FixedSelector(
 optimizer = CSTAdamW(layer.parameters(), model=layer, lr=1e-3)
 ```
 
-この経路はCPU参照実装と同じ微分可能な半径変換を適用し、既存のネイティブLinearに
+`GLOBAL_ACTIVE_GRAD4_NATIVE` はCPU参照実装と同じ微分可能な半径変換を適用し、既存のネイティブLinearに
 物理座標を渡します。eagerのFP32/FP64、各軸1024サイト以下、65,536 Atom以下が対象です。
 既存Planの他の動作条件も適用されます。optimizerの更新案は通常のTorchの座標更新で
-範囲内に収めます。1024×4096のFFN投影は公開ネイティブ経路ではまだ対象外です。
+範囲内に収めます。幅2048・4096の正方射影は、明示的な[大幅の有理式半径 Plan](../README.ja.md#有理式半径の大幅-cuda-plan)で使えます。
+1024×4096の矩形FFN射影には、別途対応が必要です。

@@ -43,9 +43,13 @@ def fixture(case):
         getattr(case, "fixture", "polar_radius_cell_mass")
         == "polar_radius_cell_mass_multirow"
     )
-    kernel = kernels.product(
-        kernels.cell_mass(ChebyshevSpec(modes=8), merge_factor=2),
-        coordinates=kernels.polar(
+    from .manifest import RATIONAL_WIDE_FIXTURE
+
+    rational = getattr(case, "fixture", None) == RATIONAL_WIDE_FIXTURE
+    coordinates = (
+        kernels.rational_radius(radius_max=512.0)
+        if rational
+        else kernels.polar(
             amplitude_max=1.0,
             w_c=0.3,
             input_bounds=RadiusBounds(
@@ -64,9 +68,14 @@ def fixture(case):
             ),
         ),
     )
+    kernel = kernels.product(
+        kernels.cell_mass(ChebyshevSpec(modes=8), merge_factor=2),
+        coordinates=coordinates,
+    )
     model = CSTLinear(chart, chart, atoms=case.atoms, kernel=kernel, backend="factored")
-    if multirow:
+    if multirow or rational:
         model._bounded_reference = True
+    if multirow:
         from torchcst import init
 
         model.initialization_report = asdict(
@@ -281,7 +290,19 @@ def configure(model, plan):
 
 
 def optimizer(model, case, *, gpu=True, compatibility=False):
+    from .manifest import RATIONAL_WIDE_FIXTURE
+
     kwargs = {}
+    if getattr(case, "fixture", None) == RATIONAL_WIDE_FIXTURE:
+        return CSTAdamW(
+            model.parameters(),
+            model=model,
+            lr=case.optimizer.lr,
+            weight_decay=0.0,
+            amplitude_weight_decay=case.optimizer.weight_decay,
+            fused=case.optimizer.fused,
+            capturable=False,
+        )
     if gpu:
         from torchcst._backends.catalog import get_registry
         from torchcst._backends.cuda.algorithms.polar_update.plans import (
@@ -602,7 +623,12 @@ def matched_steps(base, case, plan):
 
 
 def correctness(args, run):
+    from .manifest import RATIONAL_WIDE_FIXTURE
+
     plan = run.entry(args.plan_id).plan
+    if run.case.fixture == RATIONAL_WIDE_FIXTURE:
+        base, x, _, dy = fixture(run.case)
+        return check(configure(base.cuda(), plan), x.cuda(), dy.cuda())
     if run.case.size > 128:
         base, x, _, dy = fixture(run.case)
         small, indices = stratified_subset(base)
@@ -671,17 +697,19 @@ def measure_case(args, run):
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
     torch.set_float32_matmul_precision("highest")
+    from .manifest import RATIONAL_WIDE_FIXTURE
+
     case = run.case
+    multirow = case.fixture in (
+        "polar_radius_cell_mass_multirow",
+        RATIONAL_WIDE_FIXTURE,
+    )
     base, xx, target, dy = fixture(case)
     hashes = {
         "p": tensor_hash(base.atoms.p),
         "x": tensor_hash(xx),
         "target": tensor_hash(target),
-        **(
-            {"dy": tensor_hash(dy)}
-            if case.fixture == "polar_radius_cell_mass_multirow"
-            else {}
-        ),
+        **({"dy": tensor_hash(dy)} if multirow else {}),
     }
     initial_distribution = distribution(base)
     dense = args.worker == "dense"
@@ -689,7 +717,7 @@ def measure_case(args, run):
     if dense:
         model = torch.nn.Linear(case.size, case.size, bias=False)
         with torch.no_grad():
-            if case.fixture == "polar_radius_cell_mass_multirow":
+            if multirow:
                 from benchmarks.training.radius_local_reference import (
                     local_dense_weight,
                 )
@@ -736,7 +764,7 @@ def measure_case(args, run):
     post = None if dense else check(model, x, dy.cuda())
     updated_distribution = None if dense else distribution(model)
     state_hashes = {}
-    if case.fixture == "polar_radius_cell_mass_multirow":
+    if multirow:
         for index, p in enumerate(model.parameters()):
             values = {"parameter": p, "gradient": p.grad, **opt.state[p]}
             for name, value in values.items():
@@ -784,7 +812,7 @@ def measure_case(args, run):
         },
         **(
             {
-                "fixture_initialization": base.initialization_report,
+                "fixture_initialization": getattr(base, "initialization_report", None),
                 "setup_seconds_including_initial_proof": setup_seconds,
                 "initial_effective_dense_weight_sha256": dense_initial_hash,
                 "final_state_tensor_hashes": state_hashes,
@@ -795,7 +823,7 @@ def measure_case(args, run):
                 },
                 "reference_policy": "bounded public CPU local Fourier VJP, all atoms/sites",
             }
-            if case.fixture == "polar_radius_cell_mass_multirow"
+            if multirow
             else {}
         ),
         "peak_allocated_training_bytes": peak[0],

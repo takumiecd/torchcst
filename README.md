@@ -30,27 +30,23 @@ CUDA / Triton implementations, which also have device and precision constraints.
 This complete CPU example maps 16 input features to 8 output features and takes
 one training step:
 
+For new models that learn the radius from the task loss, start with
+`kernels.rational_radius`. Use Polar coordinates for existing models,
+checkpoints, and the dedicated Polar CUDA Plans.
+
 ```python
 import torch
-from torchcst import (
-    BandwidthBounds, CSTAdamW, CSTLinear, GaussianSpec, chart_presets, kernels,
-)
+from torchcst import CSTAdamW, CSTLinear, ChebyshevSpec, chart_presets, kernels
 
 model = CSTLinear(
     charts=(
-        chart_presets.regular_grid(8, spacing=0.3),   # output sites
-        chart_presets.regular_grid(16, spacing=0.2),  # input sites
-    ),
+        chart_presets.regular_grid(8, geometry="flat_torus"),
+        chart_presets.regular_grid(16, geometry="flat_torus"),
+    ),  # output, input
     atoms=12,
     kernel=kernels.product(
-        kernels.l2(GaussianSpec()),
-        coordinates=kernels.polar(
-            amplitude_max=1.0, w_c=0.1,
-            bounds=BandwidthBounds(
-                minimum=0.1, birth=2.0, maximum=2.0, upper_floor=0.1,
-            ),
-            radial_regularization=0.2,
-        ),
+        kernels.cell_mass(ChebyshevSpec(modes=8)),
+        coordinates=kernels.rational_radius(radius_max=4.0, radius_fraction=0.0),
     ),
     backend="factored",
 )
@@ -82,8 +78,7 @@ Use `field_lrs` for absolute initial rates of declared Atom fields:
 ```python
 optimizer = CSTAdamW(
     model.parameters(), model=model, lr=4.8e-3,
-    field_lrs={"amplitude": 2.4e-3, "input_center": 4.8e-3,
-               "output_center": 4.8e-3},
+    field_lrs={"amplitude": 2.4e-3, "radius_fraction": 9.6e-3},
 )
 ```
 
@@ -147,9 +142,58 @@ Task gradients flow into both amplitude and `q`. `CSTAdamW` projects the updated
 For native CUDA, select `GLOBAL_ACTIVE_GRAD4_NATIVE` explicitly within its
 supported shapes. See the [radius cell-mass guide](docs/radius-cell-mass.md#using-the-learned-radius-fraction-on-cuda).
 
-## Recommended CUDA configuration for the public API
+### Wide CUDA plans for rational radius
 
-For the currently qualified **FP32, small-batch radius cell-mass** workload,
+Use a `FixedSelector` to select either plan for square width-2048 or width-4096
+projections with 32 or 48 Atoms per site.
+
+| Plan | Execution |
+| --- | --- |
+| `RATIONAL_WIDE_FOURIER_WEIGHT` | Build a transient weight matrix from Fourier coefficients and apply a matrix product |
+| `RATIONAL_WIDE_FOURIER_DIRECT` | Compute outputs directly from hierarchical Fourier coefficients |
+
+Both plans require FP32 with TF32 disabled, 1–256 input rows, eager execution,
+and autocast disabled. They use identical one-dimensional FlatTorus grids with
+origin 0 and spacing 1, M8, base tile 1, merge factor 2, radii in [0.5, 512],
+and amplitude_max ≤ 32.
+
+```python
+import torch
+from torchcst import (
+    CSTLinear, ChebyshevSpec, FixedSelector, chart_presets, kernels,
+    make_algorithm_registry,
+)
+from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.rational_wide import (
+    RATIONAL_WIDE_FOURIER_DIRECT, RATIONAL_WIDE_FOURIER_WEIGHT,
+)
+
+torch.backends.cuda.matmul.allow_tf32 = False
+n = 4096
+grid = chart_presets.regular_grid(n, geometry="flat_torus")
+plan = RATIONAL_WIDE_FOURIER_WEIGHT
+registry = make_algorithm_registry()
+layer = CSTLinear(
+    charts=(grid, grid), atoms=32 * n, dtype=torch.float32,
+    kernel=kernels.product(
+        kernels.cell_mass(ChebyshevSpec(modes=8)),
+        coordinates=kernels.rational_radius(radius_max=512.0),
+    ),
+    selector=FixedSelector(plan, registry=registry),
+).cuda()
+x = torch.randn(128, n, device="cuda")
+y = layer(x)
+layer.selector = FixedSelector(RATIONAL_WIDE_FOURIER_DIRECT, registry=registry)
+y_direct = layer(x)
+```
+
+The example selects the weight-building path. Set `plan` to
+`RATIONAL_WIDE_FOURIER_DIRECT` to use the same `layer(x)` call for the direct path.
+
+[RTX 4090 measurements](docs/research-history/cuda-linear/rational-wide-fourier-4090-20261120.md)
+
+## Legacy Polar CUDA configuration
+
+For existing **FP32, small-batch Polar radius cell-mass** workloads,
 start with the explicit `GLOBAL_OWNER_WINDOW_FP32_GEOMETRY_SORT32_FLAT_C` Linear Plan and
 `CSTAdamW` with the separate `RADIUS_FLAT_TORUS_FUSED` coordinate-update Plan.
 These opt-in Plans are present on `main`; automatic selection is unchanged.
@@ -256,7 +300,7 @@ Kernel declarations have three independent parts:
 | --- | --- | --- |
 | Profile | `GaussianSpec`, `TriweightSpec`, `ChebyshevSpec` | Function shape |
 | Factor | `kernels.point`, `kernels.l2`, `kernels.cell_mass` | Point evaluation, discrete L2 normalization or cell integration |
-| Coordinates | `kernels.polar`, `kernels.direct`, `kernels.physical` | Atom coordinates, initialization and update rules |
+| Coordinates | `kernels.rational_radius`, `kernels.polar`, `kernels.direct`, `kernels.physical` | Atom coordinates, initialization and update rules |
 
 Combine these into a tensor-free `KernelSpec`:
 

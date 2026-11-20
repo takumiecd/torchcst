@@ -29,6 +29,9 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.packed import (
     RadiusPackedParallelAlgorithm,
     RadiusPackedRecomputeAlgorithm,
 )
+from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.rational_wide import (
+    RationalWideAlgorithm,
+)
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.row8 import (
     RadiusRow8Algorithm,
 )
@@ -44,6 +47,7 @@ from torchcst._backends.torch.algorithms.linear.normalized_radial.layout import 
 # This catalog is benchmark-local. Production registration/selection is unchanged.
 REGISTRY = Registry()
 REGISTRY.register(RadiusCellMassAlgorithm())
+REGISTRY.register(RationalWideAlgorithm())
 REGISTRY.register(RadiusRow8Algorithm())
 REGISTRY.register(RadiusLargeRow8Algorithm())
 REGISTRY.register(RadiusLargePackedAlgorithm())
@@ -59,7 +63,12 @@ REGISTRY.register(FactoredAlgorithm())
 REGISTRY.register(NormalizedFullAlgorithm())
 REGISTRY.register(NormalizedWindowAlgorithm())
 
-RADIUS_FIXTURES = ("polar_radius_cell_mass", "polar_radius_cell_mass_multirow")
+RATIONAL_WIDE_FIXTURE = "rational_radius_cell_mass_multirow"
+RADIUS_FIXTURES = (
+    "polar_radius_cell_mass",
+    "polar_radius_cell_mass_multirow",
+    RATIONAL_WIDE_FIXTURE,
+)
 
 DEFAULT_PLANS = Path(__file__).with_name("plans.json")
 
@@ -216,6 +225,13 @@ class BenchmarkCase:
             self.size not in (2048, 8192, 16384) or self.atoms != 8 * self.size
         ):
             raise ValueError("multirow fixture requires N2048/8192/16384 with A=8N")
+        if self.fixture == RATIONAL_WIDE_FIXTURE and (
+            self.size not in (2048, 4096)
+            or self.atoms not in (32 * self.size, 48 * self.size)
+        ):
+            raise ValueError(
+                "wide rational fixture requires N2048/4096 with A=32N or 48N"
+            )
         for name in ["rows", "atoms", "warmup", "rounds"]:
             _integer(getattr(self, name), name)
         if self.fixture in RADIUS_FIXTURES and self.atoms > 1 << 24:

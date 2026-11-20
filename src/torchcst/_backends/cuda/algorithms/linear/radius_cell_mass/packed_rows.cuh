@@ -1,11 +1,14 @@
 #pragma once
+#include "dense_pair_cotangent.cuh"
+#include "dense_fourier_weight.cuh"
 // FP32 Linear arithmetic and Z/H/G, with optional recomputation.
 // Host configuration scalars retain the common metadata representation.
 namespace radius_cell_mass {
-__global__ void packed_classify_kernel(const float *p,int64_t *keys,int atoms,Axis ai,Axis ao) {
+__global__ void packed_classify_kernel(const float *p,int64_t *keys,int atoms,Axis ai,Axis ao,float radius_limit) {
     int a=blockIdx.x*blockDim.x+threadIdx.x;if(a>=atoms)return;
     float ri=signal_radius<float>(p,a,ai),ro=signal_radius<float>(p,a,ao);
     bool valid=isfinite(ri)&&isfinite(ro)&&ri>0&&ro>0;
+    if (radius_limit > 0) valid &= ri <= radius_limit && ro <= radius_limit;
     for(int c=0;c<4;++c)valid &= isfinite(p[4*a+c]);
     valid &= isfinite(p[4*a]*p[4*a]+p[4*a+1]*p[4*a+1]);
     CUDA_KERNEL_ASSERT_MSG(valid,"invalid FP32 packed geometry");
@@ -15,11 +18,11 @@ __global__ void packed_classify_kernel(const float *p,int64_t *keys,int atoms,Ax
     int ni=bi.node_offset+positive_mod(mi.first_tile,bi.tile_count),no=bo.node_offset+positive_mod(mo.first_tile,bo.tile_count);
     keys[a]=int64_t(no)*ai.node_count+ni;
 }
-Tensor packed_classify(Tensor p,Config ci,Config co) {
+Tensor packed_classify(Tensor p,Config ci,Config co,float radius_limit) {
     c10::cuda::CUDAGuard guard(p.device());
     auto keys=torch::empty({p.size(0)},p.options().dtype(torch::kLong));
     packed_classify_kernel<<<(p.size(0)+THREADS-1)/THREADS,THREADS,0,at::cuda::getCurrentCUDAStream()>>>(
-        p.data_ptr<float>(),keys.data_ptr<int64_t>(),p.size(0),parse_axis(ci),parse_axis(co));
+        p.data_ptr<float>(),keys.data_ptr<int64_t>(),p.size(0),parse_axis(ci),parse_axis(co),radius_limit);
     C10_CUDA_KERNEL_LAUNCH_CHECK();return keys;
 }
 void packed_check_scope(Tensor x, Tensor p, Config ci, Config co) {
@@ -32,14 +35,21 @@ void packed_check_scope(Tensor x, Tensor p, Config ci, Config co) {
     bool large = ai.sites == ao.sites &&
         (ai.sites == 2048 || ai.sites == 8192 || ai.sites == 16384) &&
         p.size(0) >= 4 && p.size(0) <= 8 * ai.sites && ai.origin == 0 && ao.origin == 0;
+    bool physical = false;
+#ifdef RADIUS_RATIONAL_WIDE
+    physical = !ai.polar && !ao.polar && ai.sites == ao.sites &&
+        (ai.sites == 2048 || ai.sites == 4096) &&
+        ai.origin == 0 && ao.origin == 0 &&
+        (p.size(0) == 32 * ai.sites || p.size(0) == 48 * ai.sites);
+#endif
     TORCH_CHECK(x.device() == p.device() && x.size(1) == ai.sites &&
         x.scalar_type() == torch::kFloat && p.scalar_type() == torch::kFloat &&
-        x.size(0) >= 1 && x.size(0) <= 256 && (ffn || large),
-        "packed pilot requires admitted FP32 FFN or square large-multirow cohort");
-    for (auto a : {ai, ao}) TORCH_CHECK(a.polar && a.modes == 8 &&
+        x.size(0) >= 1 && x.size(0) <= 256 && (ffn || large || physical),
+        "packed rows require an admitted FP32 projection");
+    for (auto a : {ai, ao}) TORCH_CHECK((a.polar || physical) && a.modes == 8 &&
         a.base_tile_sites == 1 && a.merge_factor == 2 && a.spacing == 1 &&
-        a.amplitude_max <= 1 && a.radius_min >= .5 && a.radius_max <= 50,
-        "packed pilot requires Polar M8/base1/merge2/spacing1/radius[.5,50]");
+        (physical || (a.amplitude_max <= 1 && a.radius_min >= .5 && a.radius_max <= 50)),
+        "packed rows require admitted M8/base1/merge2/spacing1 coordinates");
 }
 
 // Index only the two banks of this level; write the unchanged compact Z layout.
@@ -212,6 +222,17 @@ Tensor packed_parameter_grad(Tensor p, Tensor x, Tensor dy, Tensor zx, Tensor zy
     packed_check_tensor(h, x, {x.size(0), p.size(0)});
     packed_check_tensor(g, x, {x.size(0), p.size(0)});
     auto grad = torch::empty_like(p);
+#ifdef RADIUS_RATIONAL_WIDE
+    if (!ai.polar) {
+        // Reuse the complete physical-radius derivative. The packed Polar
+        // reduction intentionally has no radius channel and must not be used.
+        batched_parameter_kernel<float, true, float><<<(p.size(0) + 31) / 32, 32, 0,
+            at::cuda::getCurrentCUDAStream()>>>(p.data_ptr<float>(), x.data_ptr<float>(),
+            dy.data_ptr<float>(), zx.data_ptr<float>(), zy.data_ptr<float>(),
+            h.data_ptr<float>(), g.data_ptr<float>(), grad.data_ptr<float>(),
+            p.size(0), x.size(0), ai, ao, 2, 2);
+    } else
+#endif
     if (parallel) {
         if (!geometry.defined()) geometry = packed_make_geometry(p, ci, co);
         packed_check_tensor(geometry, x, {p.size(0), PACKED_GEOMETRY_FIELDS});

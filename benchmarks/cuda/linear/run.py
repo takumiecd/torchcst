@@ -30,6 +30,7 @@ from benchmarks.cuda.linear.fixtures import operator_spec
 from benchmarks.cuda.linear.manifest import (
     DEFAULT_PLANS,
     RADIUS_FIXTURES,
+    RATIONAL_WIDE_FIXTURE,
     REGISTRY,
     decode_catalog,
     load_run,
@@ -408,9 +409,13 @@ def main():
         if args.validate_only:
             print(json.dumps(run.snapshot(), indent=2))
             return
-    if (run.case.fixture in RADIUS_FIXTURES) != (args.polar_update == "radius"):
+    polar_radius_fixture = (
+        run.case.fixture in RADIUS_FIXTURES
+        and run.case.fixture != RATIONAL_WIDE_FIXTURE
+    )
+    if polar_radius_fixture != (args.polar_update == "radius"):
         ap.error(
-            "the radius fixture requires --polar-update radius, and other fixtures reject it"
+            "Polar radius fixtures require --polar-update radius; other fixtures reject it"
         )
     if args.core_diagnostics:
         ap.error("--core-diagnostics is unsupported for this fixture")
