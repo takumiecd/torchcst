@@ -37,6 +37,12 @@ from benchmarks.database.model import (
     digest,
     execution_identity,
 )
+from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.rational_wide import (
+    RATIONAL_WIDE_AXIS_GRADIENT,
+    RATIONAL_WIDE_FOURIER_DIRECT,
+    RATIONAL_WIDE_FOURIER_WEIGHT,
+    RATIONAL_WIDE_SCALE_WEIGHT,
+)
 
 ADAPTER = "cuda.linear.complete-step"
 REVISION = 2
@@ -204,8 +210,6 @@ def project(value):
     execution_identity(value)
     run = decode_snapshot(value["run"])
     rational = run.case.fixture == RATIONAL_WIDE_FIXTURE
-    if rational and run.dense:
-        raise ValueError("rational wide evidence requires the two CST projections only")
     if run.case.fixture in RADIUS_FIXTURES and not rational:
         raise ValueError(
             f"{run.case.fixture} is research-only; submission/database projection is unsupported"
@@ -273,13 +277,17 @@ def project(value):
         protocol["correctness"] = oracle_scope
         protocol["optimizer_policy"] = optimizer_policy
     if rational:
-        if {
-            p.plan.recipe.materialize_weight
-            for p in run.plans
-            if p.plan.algorithm_id == "cuda_rational_radius_wide"
-        } != {False, True} or len(run.plans) != 2:
+        wide_plans = {entry.plan for entry in run.plans}
+        weight = {RATIONAL_WIDE_FOURIER_WEIGHT, RATIONAL_WIDE_SCALE_WEIGHT}
+        direct = {RATIONAL_WIDE_FOURIER_DIRECT, RATIONAL_WIDE_AXIS_GRADIENT}
+        if (
+            not wide_plans <= weight | direct
+            or not wide_plans & weight
+            or not wide_plans & direct
+            or len(wide_plans) != len(run.plans)
+        ):
             raise ValueError(
-                "rational wide evidence requires both native weight policies"
+                "rational wide evidence requires distinct supported weight and direct Plans"
             )
         protocol.update(
             correctness=RATIONAL_WIDE_ORACLE_SCOPE,
@@ -475,9 +483,11 @@ def project(value):
             if (
                 rational
                 and result.get("optimizer_implementation")
-                != "torchcst.optim.adamw.CSTAdamW"
+                != ("torch.optim.adamw.AdamW" if dense else "torchcst.optim.adamw.CSTAdamW")
             ):
                 raise ValueError("measurement rational optimizer contract differs")
+            if rational and dense:
+                _hash(result.get("initial_effective_dense_weight_sha256"))
             initial = result["initial_inputs"]
             expected_hashes = {"x_sha256", "target_sha256"}
             if rational:
@@ -490,10 +500,11 @@ def project(value):
                 raise ValueError("worker inputs differ")
             inputs = initial
             initial_p = result.get("initial_p_sha256")
-            if dense:
+            if dense and not rational:
                 if initial_p is not None:
                     raise ValueError("dense reference has no atom parameters")
             else:
+                # The rational Dense worker hashes the Atom tensor it expands.
                 _hash(initial_p)
                 if parameters is not None and parameters != initial_p:
                     raise ValueError("candidate parameters differ")
