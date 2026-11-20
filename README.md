@@ -166,7 +166,7 @@ from torchcst import (
     make_algorithm_registry,
 )
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.rational_wide import (
-    RATIONAL_WIDE_FOURIER_DIRECT, RATIONAL_WIDE_FOURIER_WEIGHT,
+    RATIONAL_WIDE_AXIS_GRADIENT, RATIONAL_WIDE_FOURIER_WEIGHT,
 )
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -184,25 +184,25 @@ layer = CSTLinear(
 ).cuda()
 x = torch.randn(128, n, device="cuda")
 y = layer(x)
-layer.selector = FixedSelector(RATIONAL_WIDE_FOURIER_DIRECT, registry=registry)
+layer.selector = FixedSelector(RATIONAL_WIDE_AXIS_GRADIENT, registry=registry)
 y_direct = layer(x)
 ```
 
-The example selects the weight-building path. Set `plan` to
-`RATIONAL_WIDE_FOURIER_DIRECT` to use the same `layer(x)` call for the direct path.
+Use `RATIONAL_WIDE_AXIS_GRADIENT` to request the optimized direct path for
+an admitted width and Atom count. The call remains `layer(x)`.
 
 [Original Fourier Plans on RTX 4090](docs/research-history/cuda-linear/rational-wide-fourier-4090-20261120.md) ·
 [Tile-ordered Atom gradients on RTX 4090](docs/research-history/cuda-linear/rational-q-axis-gradient-4090-20261120.md)
 
 ### Automatic selection on RTX 4090
 
-With the default `backend="auto"`, the dispatcher uses a bundled selection
-table generated from the existing Neon benchmark database. For the measured
-FP32 training cases, it selects the temporary-weight plan at widths 2048 and
-4096 with 32 Atoms per site and 128 input rows. It checks the operator,
-both gradient requirements, GPU, and recorded Torch/Triton versions.
-Other conditions follow the usual ordered fallback. Use the explicit Plan
-above to request direct evaluation for a supported configuration.
+With `backend="auto"`, the dispatcher looks up a bundled table generated from
+the Neon benchmark database. For measured training with 128 rows, it selects
+Fourier weight materialization at width 2048 with 32N Atoms and the optimized
+direct Plan at widths 4096 and 16384 with 32N, and 8192 with 16N or 32N.
+The table matches the operator, FP32 precision settings, both gradient
+requirements, GPU, and Torch/Triton versions. Other conditions follow the
+usual ordered fallback.
 
 The database is used to generate the table offline. Forward and backward use
 the local table and run without a database connection.

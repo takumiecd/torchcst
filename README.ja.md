@@ -157,7 +157,7 @@ from torchcst import (
     make_algorithm_registry,
 )
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.rational_wide import (
-    RATIONAL_WIDE_FOURIER_DIRECT, RATIONAL_WIDE_FOURIER_WEIGHT,
+    RATIONAL_WIDE_AXIS_GRADIENT, RATIONAL_WIDE_FOURIER_WEIGHT,
 )
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -175,23 +175,23 @@ layer = CSTLinear(
 ).cuda()
 x = torch.randn(128, n, device="cuda")
 y = layer(x)
-layer.selector = FixedSelector(RATIONAL_WIDE_FOURIER_DIRECT, registry=registry)
+layer.selector = FixedSelector(RATIONAL_WIDE_AXIS_GRADIENT, registry=registry)
 y_direct = layer(x)
 ```
 
-例では展開経路を選んでいます。`plan` に `RATIONAL_WIDE_FOURIER_DIRECT`
-を指定すると、同じ `layer(x)` で直接経路を使えます。
+対応する幅とAtom数で最適化済みの直接経路を使うには、
+`RATIONAL_WIDE_AXIS_GRADIENT` を指定します。呼び出しは同じ `layer(x)` です。
 
 [従来のフーリエPlanの測定結果](docs/research-history/cuda-linear/rational-wide-fourier-4090-20261120.ja.md) ·
 [Atom勾配のタイル順最適化の測定結果](docs/research-history/cuda-linear/rational-q-axis-gradient-4090-20261120.ja.md)
 
 ### RTX 4090での自動選択
 
-既定の `backend="auto"` は、既存のNeon測定データベースから生成した選択表を使います。
-計測済みのFP32学習条件では、2048・4096幅、幅の32倍のAtom、入力128行に対して
-重み展開Planを選びます。演算の宣言、入力とAtomの両方の勾配要件、GPU、
-記録したTorchとTritonのバージョンを照合します。その他の条件は通常の選択順序に戻ります。
-対応条件で直接計算を指定する場合は、上記の明示的なPlanを使います。
+`backend="auto"` は、Neonの測定データベースから生成した選択表を参照します。
+計測済みの入力128行の学習では、幅2048・32N Atomでフーリエ重み展開を選びます。
+幅4096・16384の32N Atomと、幅8192の16N・32N Atomでは最適化済みの直接Planを選びます。
+演算の宣言、FP32の精度設定、入力とAtomの両方の勾配要件、GPU、
+TorchとTritonのバージョンを照合します。その他の条件は通常の選択順序に戻ります。
 
 データベースは選択表のオフライン生成に使います。順伝播と逆伝播ではローカルの選択表を使い、
 データベース接続は不要です。

@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "revision": "rational-wide-rtx4090-eager-speed-v2",
+  "dataset": {
+    "adapter": "cuda.linear.complete-step",
+    "adapter_revision": 9,
+    "gpu": "NVIDIA GeForce RTX 4090",
+    "source_id": "b73f44c8dd82c6edd64dfc07f110533213833372e7030a9145c258425385809d"
+  },
+  "excluded_run_ids": [],
+  "execution_mode": "eager",
+  "min_runs": 2,
+  "fallback_plan": {
+    "algorithm_id": "cuda_rational_radius_wide",
+    "algorithm_revision": "v1",
+    "recipe": {
+      "materialize_weight": true
+    },
+    "schema_version": 1
+  },
+  "score_policy": {
+    "id": "speed",
+    "revision": "v2",
+    "parameters": {}
+  }
+}
