@@ -24,6 +24,8 @@ def test_channel_weight_rejects_unsupported_metadata_before_compiling():
         channel_weights(p, 96, first_fourier_level=4)
     with pytest.raises(ValueError, match="sort_owners"):
         channel_fourier_weights(p, 96, sort_owners=1)
+    with pytest.raises(ValueError, match="active_banks_only"):
+        channel_fourier_weights(p, 96, active_banks_only=1)
 
 
 @pytest.fixture
@@ -70,16 +72,31 @@ def conv(x, weights, k):
 
 
 def assemble(p, input_sites, method):
-    if method in ("fourier", "fourier-sorted"):
+    if isinstance(method, str):
         return channel_fourier_weights(
-            p, input_sites, sort_owners=method == "fourier-sorted"
+            p,
+            input_sites,
+            sort_owners=method.endswith("-sorted"),
+            active_banks_only="active" in method,
         )
     return channel_weights(p, input_sites, first_fourier_level=method)
 
 
 @pytest.mark.parametrize("k", [1, 3])
 @pytest.mark.parametrize("input_sites", [96, 128])
-@pytest.mark.parametrize("method", [3, 4, 5, 6, "fourier", "fourier-sorted"])
+@pytest.mark.parametrize(
+    "method",
+    [
+        3,
+        4,
+        5,
+        6,
+        "fourier",
+        "fourier-sorted",
+        "fourier-active",
+        "fourier-active-sorted",
+    ],
+)
 def test_channel_weight_and_adjoint(ieee_cuda, k, input_sites, method):
     binding = kernels.cell_mass(ChebyshevSpec(modes=8))
     ai = RadiusCellMassGrid(input_sites, 1.0, 0.0, binding)
@@ -167,4 +184,29 @@ def test_channel_fourier_center_shifts_follow_the_torus(ieee_cuda, sort_owners):
         return weight, dp
 
     for have, want in zip(weight_and_grad(rows), weight_and_grad(shifted), strict=True):
+        torch.testing.assert_close(have, want, atol=2e-5, rtol=5e-4)
+
+
+@pytest.mark.parametrize("sort_owners", [False, True])
+def test_channel_fourier_active_banks_follow_the_saved_geometry(ieee_cuda, sort_owners):
+    inputs = tuple(atoms(9).cuda() for _ in range(2))
+    inputs[0][..., 1].fill_(0.34)
+    inputs[1][..., 1].fill_(22)
+    generator = torch.Generator(device="cuda").manual_seed(42)
+    dws = tuple(
+        torch.randn(9, 128, 96, device="cuda", generator=generator) for _ in inputs
+    )
+
+    def two_forwards(active):
+        operands = tuple(p.clone().requires_grad_() for p in inputs)
+        weights = tuple(
+            channel_fourier_weights(
+                p, 96, sort_owners=sort_owners, active_banks_only=active
+            )
+            for p in operands
+        )
+        gradients = torch.autograd.grad(weights, operands, dws)
+        return (*weights, *gradients)
+
+    for have, want in zip(two_forwards(True), two_forwards(False), strict=True):
         torch.testing.assert_close(have, want, atol=2e-5, rtol=5e-4)
