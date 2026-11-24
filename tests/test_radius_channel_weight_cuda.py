@@ -55,17 +55,22 @@ def atoms(taps):
 
 def conv(x, weights, k):
     return F.conv2d(
-        x, weights.permute(1, 2, 0).reshape(128, 96, k, k), stride=2, padding=k // 2
+        x,
+        weights.permute(1, 2, 0).reshape(128, x.size(1), k, k),
+        stride=2,
+        padding=k // 2,
     )
 
 
 @pytest.mark.parametrize("k", [1, 3])
+@pytest.mark.parametrize("input_sites", [96, 128])
 @pytest.mark.parametrize("first_level", [3, 4, 5, 6])
-def test_channel_weight_and_adjoint(ieee_cuda, k, first_level):
+def test_channel_weight_and_adjoint(ieee_cuda, k, input_sites, first_level):
     binding = kernels.cell_mass(ChebyshevSpec(modes=8))
-    ai = RadiusCellMassGrid(96, 1.0, 0.0, binding)
+    ai = RadiusCellMassGrid(input_sites, 1.0, 0.0, binding)
     ao = RadiusCellMassGrid(128, 1.0, 0.0, binding)
     p = atoms(k * k)
+    p[:, (0, 4, 6), 3] += input_sites - 96
     pref = p.double().requires_grad_()
     references = []
     quadrature = []
@@ -87,7 +92,7 @@ def test_channel_weight_and_adjoint(ieee_cuda, k, first_level):
     torch.testing.assert_close(weights_ref, weights_quad, atol=1e-12, rtol=3e-12)
 
     g = torch.Generator().manual_seed(17)
-    x = torch.randn(2, 96, 6, 7, generator=g)
+    x = torch.randn(2, input_sites, 6, 7, generator=g)
     x_ref = x.double().requires_grad_()
     y_ref = conv(x_ref, weights_ref, k)
     dy = torch.randn(y_ref.shape, generator=g)
@@ -95,7 +100,7 @@ def test_channel_weight_and_adjoint(ieee_cuda, k, first_level):
 
     p = p.cuda().requires_grad_()
     x = x.cuda().requires_grad_()
-    weights = channel_weights(p, 96, first_fourier_level=first_level)
+    weights = channel_weights(p, input_sites, first_fourier_level=first_level)
     y = conv(x, weights, k)
     dx, dp = torch.autograd.grad(y, (x, p), dy.cuda())
     for have, want in ((weights, weights_quad), (y, y_ref), (dx, dx_ref), (dp, dp_ref)):
@@ -122,6 +127,7 @@ def test_channel_physical_weight_graph_replay(ieee_cuda, first_level):
     with torch.cuda.graph(graph):
         captured = forward_and_grad()
     with torch.no_grad():
+        p[..., 1].copy_(p[..., 1].roll(1, dims=1))
         p[:, :, 3].add_(0.31)
         x.add_(0.1)
     graph.replay()
