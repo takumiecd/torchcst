@@ -1,4 +1,4 @@
-"""Two-dimensional convolution from a flattened local CST operator."""
+"""Two-dimensional convolution from a CST patch or channel-tap operator."""
 
 from __future__ import annotations
 
@@ -10,17 +10,24 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
+from torchcst._backends.catalog import get_registry
+from torchcst._backends.dispatch import Dispatcher, Selector
 from torchcst._derivatives import AtomDerivatives, AutogradFrameGeometry
 from torchcst.atoms import Atoms
 from torchcst.charts import ChartSpec, ChartState, compile_chart
 from torchcst.kernels import AtomInit, KernelSpec
 from torchcst.kernels.options import KernelOptions
 from torchcst.kernels.state import KernelState
+from torchcst.operators.conv2d import Conv2dInputs, conv2d_context
+from torchcst.operators.spec import ChartPairSpec, OperatorSpec
 
 from .module import CSTModule, RepulsionKind
 
-ResolvedBackend = Literal["factored", "materialized", "composed"]
+ResolvedBackend = Literal[
+    "factored", "materialized", "composed", "fourier", "fourier_active"
+]
 Backend = Literal["auto", ResolvedBackend]
+AtomLayout = Literal["patch", "channel_taps"]
 
 
 def _pair(
@@ -43,17 +50,22 @@ def _pair(
 
 
 class CSTConv2d(CSTModule):
-    r"""Apply one flattened CST patch operator as a 2-D convolution.
+    r"""Apply a local CST operator as a 2-D convolution.
 
-    The kernel-defined operator has shape ``[out_channels, patch_features]``,
-    where ``patch_features = (in_channels / groups) * kernel_height *
-    kernel_width``. The module reshapes that local matrix to the conventional
-    Conv2d weight only at the execution boundary.
+    The default patch layout uses a single flattened input Chart. The
+    channel-tap layout uses channel Charts and assigns equal blocks of Atom
+    IDs to the spatial offsets in row-major order.
     """
+
+    input_type = Conv2dInputs
+    selector: Selector | None = None
 
     def __init__(
         self,
-        output_chart: ChartSpec | ChartState | tuple[ChartSpec | ChartState, ...] | None = None,
+        output_chart: ChartSpec
+        | ChartState
+        | tuple[ChartSpec | ChartState, ...]
+        | None = None,
         input_chart: ChartSpec | ChartState | None = None,
         *,
         charts: tuple[ChartSpec | ChartState, ...] | None = None,
@@ -69,6 +81,8 @@ class CSTConv2d(CSTModule):
         groups: int = 1,
         atom_init: AtomInit = "balanced",
         backend: Backend = "auto",
+        atom_layout: AtomLayout = "patch",
+        selector: Selector | None = None,
         device: torch.device | str | None = None,
         dtype: torch.dtype | None = None,
     ) -> None:
@@ -77,13 +91,19 @@ class CSTConv2d(CSTModule):
         super().__init__()
         if charts is not None:
             if output_chart is not None or input_chart is not None:
-                raise ValueError("charts cannot be combined with output_chart or input_chart")
+                raise ValueError(
+                    "charts cannot be combined with output_chart or input_chart"
+                )
             if not isinstance(charts, tuple) or len(charts) != 2:
-                raise TypeError("output_chart and input_chart must be ChartSpec or ChartState instances")
+                raise TypeError(
+                    "output_chart and input_chart must be ChartSpec or ChartState instances"
+                )
             output_chart, input_chart = charts
         elif isinstance(output_chart, tuple):
             if input_chart is not None or len(output_chart) != 2:
-                raise TypeError("output_chart and input_chart must be ChartSpec or ChartState instances")
+                raise TypeError(
+                    "output_chart and input_chart must be ChartSpec or ChartState instances"
+                )
             output_chart, input_chart = output_chart
         if isinstance(output_chart, ChartSpec):
             output_chart = compile_chart(output_chart, device=device, dtype=dtype)
@@ -113,10 +133,21 @@ class CSTConv2d(CSTModule):
             raise TypeError("kernel must be a KernelSpec")
         if atom_init not in ("balanced", "uniform"):
             raise ValueError("atom_init must be 'balanced' or 'uniform'")
-        if backend not in ("auto", "factored", "materialized", "composed"):
+        if backend not in (
+            "auto",
+            "factored",
+            "materialized",
+            "composed",
+            "fourier",
+            "fourier_active",
+        ):
             raise ValueError(
-                "backend must be 'auto', 'factored', 'materialized', or 'composed'"
+                "backend must be 'auto', 'factored', 'materialized', 'composed', 'fourier', or 'fourier_active'"
             )
+        if atom_layout not in ("patch", "channel_taps"):
+            raise ValueError("atom_layout must be 'patch' or 'channel_taps'")
+        if selector is not None and not isinstance(selector, Selector):
+            raise TypeError("selector must implement Selector")
         if backend == "factored" and groups != 1:
             raise ValueError("factorized CSTConv2d currently requires groups=1")
 
@@ -127,12 +158,34 @@ class CSTConv2d(CSTModule):
         self.padding = _pair(padding, name="padding", allow_zero=True)
         self.dilation = _pair(dilation, name="dilation")
         self.groups = groups
+        self._atom_layout = atom_layout
+        self.selector = selector
 
-        patch_features = (in_channels // groups) * math.prod(self.kernel_size)
-        if input_chart.features != patch_features:
+        taps = math.prod(self.kernel_size)
+        is_channel_taps = atom_layout == "channel_taps"
+        if is_channel_taps and (atoms % taps or backend == "factored"):
             raise ValueError(
-                "input_chart must describe the flattened local patch: "
-                f"expected {patch_features} features, got {input_chart.features}"
+                "channel_taps requires an equal number of Atoms per spatial tap "
+                "and a composed, materialized, or Fourier backend"
+            )
+        if (
+            backend in ("fourier", "fourier_active")
+            and not is_channel_taps
+            and taps != 1
+        ):
+            raise ValueError(
+                "Fourier Conv2d requires atom_layout='channel_taps' for multiple taps"
+            )
+        input_features = in_channels // groups * (1 if is_channel_taps else taps)
+        if input_chart.features != input_features:
+            layout = (
+                "local input channels"
+                if is_channel_taps
+                else "the flattened local patch"
+            )
+            raise ValueError(
+                f"input_chart must describe {layout}: "
+                f"expected {input_features} features, got {input_chart.features}"
             )
         if output_chart.features != out_channels:
             raise ValueError(
@@ -144,9 +197,9 @@ class CSTConv2d(CSTModule):
         self.input_chart = input_chart
         self.kernel = KernelState(kernel, options=kernel_options)
         kernel = self.kernel
-        if backend in ("factored", "composed") and not _kernel.supports_factorization(
-            kernel
-        ):
+        if (
+            is_channel_taps or backend in ("factored", "composed")
+        ) and not _kernel.supports_factorization(kernel):
             raise ValueError(
                 "the selected kernel does not support factorized execution"
             )
@@ -179,7 +232,7 @@ class CSTConv2d(CSTModule):
         self._bind_atoms(Atoms(p))
 
     def _checkpoint_layout(self) -> dict[str, object]:
-        return {
+        layout = {
             "in_channels": self.in_channels,
             "out_channels": self.out_channels,
             "kernel_size": self.kernel_size,
@@ -188,10 +241,19 @@ class CSTConv2d(CSTModule):
             "dilation": self.dilation,
             "groups": self.groups,
         }
+        if self.atom_layout == "channel_taps":
+            layout["atom_layout"] = self.atom_layout
+        return layout
+
+    @property
+    def atom_layout(self) -> AtomLayout:
+        return getattr(self, "_atom_layout", "patch")
 
     @property
     def patch_features(self) -> int:
-        return self.input_chart.features
+        if self.atom_layout == "patch":
+            return self.input_chart.features
+        return self.input_chart.features * math.prod(self.kernel_size)
 
     @property
     def atom_count(self) -> int:
@@ -200,16 +262,25 @@ class CSTConv2d(CSTModule):
     def _materialize_flat_atoms(self, p: Tensor) -> Tensor:
         from torchcst._backends.torch.kernels import execution as _kernel
 
+        if p.ndim != 2 or p.shape[1] != self.atoms.parameter_dim:
+            raise ValueError(f"p must have shape [atoms, {self.atoms.parameter_dim}]")
         represented = _kernel.materialize_atoms(
             self.kernel, self.output_chart, self.input_chart, p
         )
-        if p.ndim != 2 or p.shape[1] != self.atoms.parameter_dim:
-            raise ValueError(f"p must have shape [atoms, {self.atoms.parameter_dim}]")
-        expected_shape = (p.shape[0], self.out_channels, self.patch_features)
+        expected_shape = (p.shape[0], self.out_channels, self.input_chart.features)
         if represented.shape != expected_shape:
             raise ValueError(
                 f"kernel.materialize_atoms must return shape {list(expected_shape)}"
             )
+        taps = math.prod(self.kernel_size)
+        if self.atom_layout == "channel_taps" and taps > 1:
+            if p.shape[0] != self.atom_count:
+                raise ValueError(
+                    "channel_taps materialization requires the full Atom table"
+                )
+            tap_ids = self.atom_state.row_to_id // (self.atom_count // taps)
+            mask = tap_ids[:, None] == torch.arange(taps, device=p.device)
+            represented = (represented[..., None] * mask[:, None, None, :]).flatten(2)
         return represented
 
     def materialized_atoms(self) -> Tensor:
@@ -245,7 +316,8 @@ class CSTConv2d(CSTModule):
             self.atoms,
             self._materialize_flat_atoms,
             factor_atoms=self._factor_atoms
-            if _kernel.supports_factorization(self.kernel)
+            if (self.atom_layout == "patch" or self.kernel_size == (1, 1))
+            and _kernel.supports_factorization(self.kernel)
             else None,
         )
 
@@ -263,6 +335,41 @@ class CSTConv2d(CSTModule):
 
     def cst_charts(self) -> tuple[ChartState, ...]:
         return (self.output_chart, self.input_chart)
+
+    def declaration(self):
+        return OperatorSpec(
+            layout=ChartPairSpec(
+                output_chart=self.output_chart.declaration(),
+                input_chart=self.input_chart.declaration(),
+            ),
+            kernel=self.kernel.declaration(),
+        )
+
+    def validate_inputs(self, inputs):
+        if not isinstance(inputs.x, Tensor):
+            raise TypeError("Conv2dInputs requires a Tensor x")
+        x, p = inputs.x, self.execution_parameters()
+        if x.ndim != 4 or x.shape[1] != self.in_channels:
+            raise ValueError(f"expected input shape [N, {self.in_channels}, H, W]")
+        if x.device != p.device or x.dtype != p.dtype:
+            raise ValueError("input and parameters must have the same device and dtype")
+        taps = math.prod(self.kernel_size) if self.atom_layout == "patch" else 1
+        if (
+            self.input_chart.features != self.in_channels // self.groups * taps
+            or self.output_chart.features != self.out_channels
+        ):
+            raise ValueError("live Chart features differ from the Conv2d layout")
+
+    def build_context(self, inputs):
+        return conv2d_context(self, inputs)
+
+    def channel_tap_rows(self) -> Tensor:
+        p = self.atom_state.parameters_for_execution()
+        taps = math.prod(self.kernel_size)
+        if taps > 1:
+            # Tap ownership belongs to stable IDs, including across relayout.
+            p = p.index_select(0, self.atom_state.id_to_row)
+        return p.reshape(taps, -1, p.size(1))
 
     def repulsion_terms(
         self, *, kind: RepulsionKind = "cosine"
@@ -284,6 +391,8 @@ class CSTConv2d(CSTModule):
 
         if self.backend != "auto":
             return self.backend
+        if self.atom_layout == "channel_taps":
+            return "composed"
         if not _kernel.supports_factorization(self.kernel) or self.groups != 1:
             return "materialized"
         factor_size = self.atom_count * (self.patch_features + self.out_channels)
@@ -343,11 +452,39 @@ class CSTConv2d(CSTModule):
                 f"expected input shape [N, {self.in_channels}, H, W], "
                 f"got {tuple(inputs.shape)}"
             )
-        result = self._forward_from_p(
-            inputs,
-            self.atom_state.parameters_for_execution(),
-            backend=self._resolved_backend(),
-        )
+        backend = self._resolved_backend()
+        if self.selector is not None:
+            result = Dispatcher(selector=self.selector).run(self, Conv2dInputs(inputs))
+        elif backend in ("fourier", "fourier_active"):
+            from torchcst._backends.cuda.algorithms.conv2d.channel_algorithm import (
+                CHANNEL_FOURIER,
+                CHANNEL_FOURIER_ACTIVE,
+            )
+
+            plan = (
+                CHANNEL_FOURIER_ACTIVE
+                if backend == "fourier_active"
+                else CHANNEL_FOURIER
+            )
+            result = Dispatcher(registry=get_registry()).run(
+                self, Conv2dInputs(inputs), plan=plan
+            )
+        elif backend == "composed" and self.atom_layout == "channel_taps":
+            from torchcst._backends.torch.algorithms.conv2d import TORCH_CHANNEL_CONV2D
+
+            result = Dispatcher(registry=get_registry()).run(
+                self,
+                Conv2dInputs(inputs),
+                plan=TORCH_CHANNEL_CONV2D,
+            )
+        else:
+            if backend == "factored" and self.atom_layout == "channel_taps":
+                raise ValueError("factored execution is unavailable for channel_taps")
+            result = self._forward_from_p(
+                inputs,
+                self.atom_state.parameters_for_execution(),
+                backend=backend,
+            )
         return self.atom_state.guard_result(result)
 
     def extra_repr(self) -> str:
@@ -356,6 +493,6 @@ class CSTConv2d(CSTModule):
             f"kernel_size={self.kernel_size}, stride={self.stride}, "
             f"padding={self.padding}, dilation={self.dilation}, "
             f"groups={self.groups}, atoms={self.atom_count}, "
-            f"parameter_dim={self.atoms.parameter_dim}, "
+            f"parameter_dim={self.atoms.parameter_dim}, atom_layout={self.atom_layout!r}, "
             f"atom_init={self.atom_init!r}, backend={self.backend!r}"
         )

@@ -6,6 +6,7 @@ from .registry import Registry
 
 
 def make_registry():
+    from .cuda.algorithms.conv2d.channel_algorithm import ChannelFourierAlgorithm
     from .cuda.algorithms.linear.normalized_euclidean_strip import (
         NormalizedFullAlgorithm,
         NormalizedWindowAlgorithm,
@@ -24,6 +25,7 @@ def make_registry():
         RadiusFlatTorusPolarUpdateAlgorithm,
     )
     from .torch.algorithms.atom_update import AtomUpdateAlgorithm
+    from .torch.algorithms.conv2d import TorchChannelConv2dAlgorithm
     from .torch.algorithms.linear.factored import FactoredAlgorithm
     from .torch.algorithms.linear.materialized import MaterializedAlgorithm
     from .torch.algorithms.linear.normalized_radial import NormalizedRadialAlgorithm
@@ -31,6 +33,8 @@ def make_registry():
 
     registry = Registry()
     for algorithm in (
+        ChannelFourierAlgorithm(),
+        TorchChannelConv2dAlgorithm(),
         RadiusCellMassAlgorithm(),
         RationalWideAlgorithm(),
         RationalWideAxisGradientAlgorithm(),
