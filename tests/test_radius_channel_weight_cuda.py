@@ -8,9 +8,13 @@ from test_radius_cell_mass import oracle_mass
 from torchcst import ChebyshevSpec, kernels
 from torchcst._backends.cuda.algorithms.conv2d.radius_channel import (
     channel_fourier_weights,
+    channel_rational_parameters,
     channel_weights,
 )
 from torchcst._backends.torch.kernels.radius_cell_mass import axis_masses
+from torchcst._backends.torch.parameterizations.rational_radius import (
+    physical_parameters,
+)
 from torchcst.kernels.radius_cell_mass import RadiusCellMassGrid
 
 
@@ -300,3 +304,66 @@ def test_wideresnet_fourier_tori_and_gradients(ieee_cuda, k, ci, co, size, strid
             torch.testing.assert_close(
                 have.cpu().double(), want, atol=1.2e-4, rtol=5e-4
             )
+
+
+@pytest.mark.parametrize(
+    "low,birth,cap", [(0.5000000001, 4, 8), (0.5, 4, 64), (1, 1, 1)]
+)
+def test_channel_rational_endpoints_and_vjp(ieee_cuda, low, birth, cap):
+    p = (
+        torch.tensor(
+            [
+                [-32, 0, -3.25, 17.125],
+                [32, 1, 9.125, -25.25],
+                [0, 0, 3.25, 7.25],
+                [0, 1, 5.25, 1.25],
+                [-0.2, 0.3761, 6.25, 7.25],
+                [0.2, 1e-6, 1.25, 3.25],
+            ],
+            device="cuda",
+        )
+        .view(1, -1, 4)
+        .requires_grad_()
+    )
+    actual = channel_rational_parameters(
+        p, radius_min=low, radius_birth=birth, radius_cap=cap, amplitude_max=32
+    )
+    expected = physical_parameters(p.view(-1, 4), low, birth, cap, 32).view_as(actual)
+    cotangent = torch.tensor([0.137, -0.238, 0.5, -4], device=p.device).expand_as(
+        actual
+    )
+    (have,) = torch.autograd.grad(actual, p, cotangent)
+    (want,) = torch.autograd.grad(expected, p, cotangent)
+    torch.testing.assert_close(actual, expected, atol=2e-7, rtol=2e-7)
+    torch.testing.assert_close(have, want, atol=2e-7, rtol=3e-7)
+    assert float(actual[0, 1, 1]) == float(actual[0, 3, 1]) == cap
+
+
+def test_wideresnet_rational_fourier_graph_reclassifies_atoms(ieee_cuda):
+    p = torch.tensor(
+        [[[0.2, 0.1, 0.31, -0.63], [-0.7, 0.3, 31.25, 15.25]]], device="cuda"
+    )
+    p.requires_grad_()
+    cotangent = torch.randn(1, 32, 16, device=p.device)
+
+    def forward_and_grad():
+        physical = channel_rational_parameters(
+            p, radius_min=0.5, radius_birth=4, radius_cap=8, amplitude_max=32
+        )
+        w = channel_fourier_weights(physical, 16, output_sites=32)
+        return w, torch.autograd.grad(w, p, cotangent)[0]
+
+    warmup = torch.cuda.Stream()
+    warmup.wait_stream(torch.cuda.current_stream())
+    with torch.cuda.stream(warmup):
+        forward_and_grad()
+    torch.cuda.current_stream().wait_stream(warmup)
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        captured = forward_and_grad()
+    with torch.no_grad():
+        p[..., 1].fill_(0.8)
+        p[..., 3].sub_(0.13)
+    graph.replay()
+    for actual, expected in zip(captured, forward_and_grad(), strict=True):
+        torch.testing.assert_close(actual, expected, atol=2e-5, rtol=5e-4)

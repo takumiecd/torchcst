@@ -434,3 +434,4 @@ Tensor packed_channel_weight_grad(Tensor p, Tensor dense, Tensor geometry,
 } // namespace radius_cell_mass
 
 #include "channel_fourier.cuh"
+#include "channel_rational.cuh"

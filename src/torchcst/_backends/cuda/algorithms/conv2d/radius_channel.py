@@ -1,9 +1,30 @@
 """Experimental weight-only CUDA path for capped M8 channel charts."""
 
+import math
+
 import torch
 from torch.autograd.function import once_differentiable
 
 from ..linear.radius_cell_mass.executor import _extension
+
+
+class _ChannelRationalParameters(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, rows, radius_min, radius_birth, radius_cap, amplitude_max):
+        native = _extension(8, rational_wide=True)
+        physical, jacobian = native.packed_channel_rational_decode(
+            rows, radius_min, radius_birth, radius_cap, amplitude_max
+        )
+        ctx.save_for_backward(jacobian)
+        return physical
+
+    @staticmethod
+    @once_differentiable
+    def backward(ctx, cotangent):
+        (jacobian,) = ctx.saved_tensors
+        native = _extension(8, rational_wide=True)
+        grad = native.packed_channel_rational_grad(cotangent.contiguous(), jacobian)
+        return grad, None, None, None, None
 
 
 class _ChannelWeight(torch.autograd.Function):
@@ -78,7 +99,28 @@ def _validate_atoms(physical):
         or not 0 < physical.shape[1] <= 4096
         or physical.shape[2] != 4
     ):
-        raise ValueError("expected CUDA FP32 physical atoms [1 or 9, 1..4096, 4]")
+        raise ValueError("expected CUDA FP32 channel Atom rows [1 or 9, 1..4096, 4]")
+
+
+def channel_rational_parameters(
+    rows, *, radius_min, radius_birth, radius_cap, amplitude_max
+):
+    """Decode CUDA rational Atom rows without a host read of their values."""
+    if (
+        type(radius_cap) is not int
+        or not 1 <= radius_cap <= 64
+        or any(
+            type(value) not in (int, float) or not math.isfinite(value)
+            for value in (radius_min, radius_birth, amplitude_max)
+        )
+        or not 0.5 <= radius_min <= radius_birth <= radius_cap
+        or not 0 < amplitude_max <= 32
+    ):
+        raise ValueError("invalid channel rational radius bounds")
+    _validate_atoms(rows)
+    return _ChannelRationalParameters.apply(
+        rows.contiguous(), radius_min, radius_birth, radius_cap, amplitude_max
+    )
 
 
 def channel_weights(physical, input_sites, *, first_fourier_level):
