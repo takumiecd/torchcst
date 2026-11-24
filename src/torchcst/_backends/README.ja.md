@@ -205,7 +205,8 @@ JSON text はキーをソートして決定的に出力する。
 
 [Selector の契約と完全一致 artifact](dispatch/README.ja.md)を参照。
 full / window の専用選択 API は廃止し、両者を通常の Algorithm 候補にする。
-選択器は `CSTLinear(selector=...)` に渡し、数学的宣言・checkpoint から分離する。
+`CSTLinear` と `CSTConv2d` は、数学的宣言やチェックポイントとは独立した実行設定として
+`selector=` を受け取る。
 
 
 ## 固定グリッド・幾何 metadata

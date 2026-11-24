@@ -5,9 +5,8 @@
 This contract implements the boundary policy established on 2026-10-05. See the
 [README](../README.md) for the public API and [Atom and Algorithm state
 ownership](atom-state.md) for ownership. Dispatcher and ExecutionBinding are
-backend-wide interfaces; LinearInputs and LinearBinding belong to the operation.
-Linear and atom-coordinate updates have separate Inputs/Context types and use the
-same Registry and Dispatcher.
+backend-wide interfaces. Linear, Conv2d and atom-coordinate updates have their
+own Inputs and Context types and share the Registry and Dispatcher.
 
 ## Selecting a Plan or executing one directly
 
@@ -121,6 +120,8 @@ The shared boundary contains only `operation_id` and `workspace_limit_bytes`.
 Other metadata is operation-specific. LinearContext describes the Operator
 declaration, input shape/stride, dtype, device, atom count, coordinate width,
 required gradients, precision, determinism and eager/Graph settings.
+Conv2dContext also describes the patch or channel-tap layout and convolution
+parameters, including groups, stride, padding and dilation.
 AtomUpdateContext describes the Kernel, center Geometry, Parameter layout and
 scalar placement. It requires neither Linear input shapes nor Linear gradient
 requirements, and its execution `operation_id` is `atom_update`.

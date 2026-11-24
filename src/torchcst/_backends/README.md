@@ -227,8 +227,8 @@ requires source commits/hashes and execution conditions, as in benchmarks.
 
 See the [selector contract and exact-match artifacts](dispatch/README.md).
 Dedicated full/window selection APIs were removed; both are ordinary Algorithm
-candidates. Pass a selector to `CSTLinear(selector=...)`, separately from
-mathematical declarations and checkpoints.
+candidates. `CSTLinear` and `CSTConv2d` accept `selector=` as execution
+configuration independent of the mathematical declaration and checkpoint.
 
 ## Fixed grid and geometry metadata
 
