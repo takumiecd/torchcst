@@ -30,7 +30,7 @@ struct Axis {
     __host__ __device__ int basis_count() const { return 2 * modes + 1; }
 };
 
-inline Axis parse_axis(const std::vector<double> &config) {
+inline Axis parse_axis(const std::vector<double> &config, int tile_limit = 0) {
     TORCH_CHECK(config.size() == 6 || config.size() == 15 || config.size() == 16 || config.size() == 17, "radius axis requires 6, 15, 16 or 17 scalars");
     for (double v : config) TORCH_CHECK(std::isfinite(v), "axis scalars must be finite");
     TORCH_CHECK(config[0] >= 1 && config[0] <= MAX_SITES && config[0] == floor(config[0]), "invalid sites");
@@ -42,10 +42,12 @@ inline Axis parse_axis(const std::vector<double> &config) {
     a.origin = config[3]; a.modes = int(config[4]); a.merge_factor = int(config[5]);
     a.period = a.sites * a.spacing;
     TORCH_CHECK(a.spacing > 0 && std::isfinite(3 * a.period) && a.period > 0, "invalid chart period");
-    TORCH_CHECK(a.sites % a.base_tile_sites == 0, "base tile must divide chart");
-    int ratio = a.sites / a.base_tile_sites;
+    int final_tile = tile_limit == 0 ? a.sites : tile_limit;
+    TORCH_CHECK(final_tile >= a.base_tile_sites && a.sites % final_tile == 0 &&
+        final_tile % a.base_tile_sites == 0, "hierarchy tiles must divide chart");
+    int ratio = final_tile / a.base_tile_sites;
     while (ratio > 1) {
-        TORCH_CHECK(ratio % a.merge_factor == 0, "chart/base tile ratio must be an exact merge power");
+        TORCH_CHECK(ratio % a.merge_factor == 0, "final/base tile ratio must be an exact merge power");
         ratio /= a.merge_factor;
     }
     for (int tile = a.base_tile_sites, level = 0;; tile *= a.merge_factor, ++level) {
@@ -56,7 +58,7 @@ inline Axis parse_axis(const std::vector<double> &config) {
             a.banks[a.bank_count++] = {tile, a.sites / tile, a.node_count, count, period, level};
             a.node_count += a.sites / tile;
         }
-        if (tile == a.sites) break;
+        if (tile == final_tile) break;
     }
     a.polar = config.size() >= 15;
     if (a.polar) {

@@ -127,17 +127,19 @@ __device__ inline void cotangent_store(float *gradient, int atom, float amp, con
     for (int f = 1; f < 4; ++f) gradient[4 * atom + f] = amp * sum[f];
 }
 
+template<int MaxSites>
 __global__ void cotangent_direct_atoms(const float *p, const float *geometry, const float *dense,
-    float *gradient, int atoms, Axis input, Axis output) {
+    float *gradient, int atoms, Axis input, Axis output, int first_level, int tap_atoms) {
     int atom = blockIdx.x * blockDim.x + threadIdx.x;
     if (atom >= atoms) return;
     const float *v = geometry + int64_t(atom) * 25;
     int bank = int(v[20]);
-    if (bank >= 2 * COTANGENT_FIRST_LEVEL) return;
+    if (bank >= 2 * first_level) return;
+    dense += int64_t(atom / tap_atoms) * input.sites * output.sites;
     Bank bi = input.banks[bank], bo = output.banks[int(v[22])];
     int first_i = int(v[21]) * bi.tile_sites, first_o = int(v[23]) * bo.tile_sites;
     float radius = p[4 * atom + 1];
-    CotangentFactor ci[COTANGENT_MAX_DIRECT_SITES], co[COTANGENT_MAX_DIRECT_SITES];
+    CotangentFactor ci[MaxSites], co[MaxSites];
     cotangent_sites(radius, v[18], bi, first_i, ci);
     cotangent_sites(radius, v[19], bo, first_o, co);
     float sum[4] = {};
@@ -181,20 +183,38 @@ __global__ void cotangent_wide_atoms(const float *p, const float *geometry,
     cotangent_store(gradient, atom, v[24], sum);
 }
 
+Tensor packed_direct_channel_weight_grad(Tensor p, Tensor dense, Tensor geometry,
+    Axis input, Axis output) {
+    c10::cuda::CUDAGuard guard(p.device());
+    const auto stream = at::cuda::getCurrentCUDAStream();
+    auto grad = torch::empty_like(p);
+    int tap_atoms = p.size(1), atoms = p.size(0) * tap_atoms;
+    cotangent_direct_atoms<96><<<(atoms + THREADS - 1) / THREADS, THREADS, 0, stream>>>(
+        p.data_ptr<float>(), geometry.data_ptr<float>(), dense.data_ptr<float>(),
+        grad.data_ptr<float>(), atoms, input, output, input.bank_count / 2, tap_atoms);
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+    return grad;
+}
+
 Tensor packed_dense_weight_grad(Tensor p, Tensor dense, Tensor geometry,
-    Config ci, Config co) {
+    Axis input, Axis output, int first_level, int last_level) {
     c10::cuda::CUDAGuard guard(p.device());
     TORCH_CHECK(!at::globalContext().allowTF32CuBLAS(),
         "pair cotangents require IEEE FP32 matmul");
-    Axis input = parse_axis(ci), output = parse_axis(co);
     constexpr int F = COTANGENT_FEATURES;
     const auto stream = at::cuda::getCurrentCUDAStream();
     auto grad = torch::empty_like(p);
     int atom_blocks = (p.size(0) + THREADS - 1) / THREADS;
-    cotangent_direct_atoms<<<atom_blocks, THREADS, 0, stream>>>(p.data_ptr<float>(),
-        geometry.data_ptr<float>(), dense.data_ptr<float>(), grad.data_ptr<float>(),
-        p.size(0), input, output);
-    for (int level = COTANGENT_FIRST_LEVEL; level <= COTANGENT_LAST_LEVEL; ++level) {
+    if (first_level == 5) {
+        cotangent_direct_atoms<48><<<atom_blocks, THREADS, 0, stream>>>(p.data_ptr<float>(),
+            geometry.data_ptr<float>(), dense.data_ptr<float>(), grad.data_ptr<float>(),
+            p.size(0), input, output, first_level, p.size(0));
+    } else {
+        cotangent_direct_atoms<COTANGENT_MAX_DIRECT_SITES><<<atom_blocks, THREADS, 0, stream>>>(p.data_ptr<float>(),
+            geometry.data_ptr<float>(), dense.data_ptr<float>(), grad.data_ptr<float>(),
+            p.size(0), input, output, first_level, p.size(0));
+    }
+    for (int level = first_level; level <= last_level; ++level) {
         int sites = 1 << level, ni = input.sites / sites, no = output.sites / sites;
         auto basis = torch::empty({sites, F}, p.options());
         cotangent_basis<<<(sites * F + THREADS - 1) / THREADS, THREADS, 0, stream>>>(
@@ -219,7 +239,8 @@ Tensor packed_dense_weight_grad(Tensor p, Tensor dense, Tensor geometry,
 
 Tensor packed_dense_cotangent_grad(Tensor p, Tensor x, Tensor dy, Tensor geometry,
     Config ci, Config co) {
-    return packed_dense_weight_grad(p, at::mm(dy.t(), x), geometry, ci, co);
+    return packed_dense_weight_grad(p, at::mm(dy.t(), x), geometry,
+        parse_axis(ci), parse_axis(co), COTANGENT_FIRST_LEVEL, COTANGENT_LAST_LEVEL);
 }
 
 } // namespace radius_cell_mass

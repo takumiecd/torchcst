@@ -8,27 +8,29 @@ constexpr int DENSE_WEIGHT_LOADING = 64;
 constexpr int DENSE_WEIGHT_THREADS = 320;
 constexpr int PAIR_FEATURES = COTANGENT_FEATURES * COTANGENT_FEATURES;
 
-__host__ __device__ inline int dense_pair_prefix(int ni, int no, int level) {
+__host__ __device__ inline int dense_pair_prefix(int ni, int no, int first_level, int level) {
     int groups = 0;
-    for (int l = COTANGENT_FIRST_LEVEL; l < level; ++l)
+    for (int l = first_level; l < level; ++l)
         groups += (ni >> l) * (no >> l);
     return groups;
 }
 
 // Group zero holds the direct atoms, then each level has a contiguous block
 // per pair of periodic owner tiles.
-__global__ void dense_weight_keys(const float *geometry, int64_t *keys, int atoms, Axis ai, Axis ao) {
+__global__ void dense_weight_keys(const float *geometry, int64_t *keys, int atoms,
+    Axis ai, Axis ao, int first_level) {
     int atom = blockIdx.x * blockDim.x + threadIdx.x;
     if (atom >= atoms) return;
     const float *v = geometry + int64_t(atom) * 25;
     int bank = int(v[20]), level = bank / 2;
-    if (level < COTANGENT_FIRST_LEVEL) {
+    if (level < first_level) {
         keys[atom] = 0;
         return;
     }
     int ni = ai.banks[bank].tile_count, no = ao.banks[bank].tile_count;
     int input_tile = positive_mod(int(v[21]), ni), output_tile = positive_mod(int(v[23]), no);
-    keys[atom] = 1 + dense_pair_prefix(ai.sites, ao.sites, level) + output_tile * ni + input_tile;
+    keys[atom] = 1 + dense_pair_prefix(ai.sites, ao.sites, first_level, level)
+        + output_tile * ni + input_tile;
 }
 
 __device__ inline void dense_weight_cell_masses(const float *c, float mu, Bank bank,
@@ -54,15 +56,17 @@ __device__ inline void dense_weight_cell_masses(const float *c, float mu, Bank b
     }
 }
 
+template<int MaxSites>
 __global__ void dense_weight_direct(const float *geometry, const int64_t *order,
-    const int64_t *offsets, float *weight, Axis ai, Axis ao) {
+    const int64_t *offsets, float *weight, Axis ai, Axis ao, int atoms, int tap_atoms) {
     int position = blockIdx.x * blockDim.x + threadIdx.x;
-    if (position >= offsets[1]) return;
-    int atom = order[position];
+    if (position >= atoms || (offsets && position >= offsets[1])) return;
+    int atom = order ? int(order[position]) : position;
+    weight += int64_t(atom / tap_atoms) * ai.sites * ao.sites;
     const float *v = geometry + int64_t(atom) * 25;
     Bank bi = ai.banks[int(v[20])], bo = ao.banks[int(v[22])];
     int first_i = int(v[21]) * bi.tile_sites, first_o = int(v[23]) * bo.tile_sites;
-    float ci[COTANGENT_MAX_DIRECT_SITES], co[COTANGENT_MAX_DIRECT_SITES];
+    float ci[MaxSites], co[MaxSites];
     dense_weight_cell_masses(v, v[18], bi, first_i, ci);
     dense_weight_cell_masses(v + 9, v[19], bo, first_o, co);
     for (int o = 0; o < bo.count * bo.tile_sites; ++o) {
@@ -143,22 +147,40 @@ __global__ void dense_weight_reduce(const int64_t *offsets, const float *partial
     owners[index] = sum;
 }
 
-Tensor packed_make_dense_weight(Tensor p, Tensor geometry, Config ci, Config co) {
+Tensor packed_make_direct_channel_weights(Tensor p, Tensor geometry, Axis ai, Axis ao) {
+    c10::cuda::CUDAGuard guard(p.device());
+    const auto stream = at::cuda::getCurrentCUDAStream();
+    int taps = p.size(0), tap_atoms = p.size(1), atoms = taps * tap_atoms;
+    auto weight = torch::zeros({taps, ao.sites, ai.sites}, p.options());
+    dense_weight_direct<96><<<(atoms + THREADS - 1) / THREADS, THREADS, 0, stream>>>(
+        geometry.data_ptr<float>(), nullptr, nullptr, weight.data_ptr<float>(),
+        ai, ao, atoms, tap_atoms);
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+    return weight;
+}
+
+Tensor packed_make_dense_weight(Tensor p, Tensor geometry, Axis ai, Axis ao,
+    int first_level, int last_level) {
     c10::cuda::CUDAGuard guard(p.device());
     TORCH_CHECK(!at::globalContext().allowTF32CuBLAS(), "dense tiles require IEEE FP32 matmul");
-    Axis ai = parse_axis(ci), ao = parse_axis(co);
     const auto stream = at::cuda::getCurrentCUDAStream();
     int atoms = p.size(0), atom_blocks = (atoms + THREADS - 1) / THREADS;
-    int groups = dense_pair_prefix(ai.sites, ao.sites, COTANGENT_LAST_LEVEL + 1);
+    int groups = dense_pair_prefix(ai.sites, ao.sites, first_level, last_level + 1);
     auto keys = torch::empty({atoms}, p.options().dtype(torch::kLong));
     dense_weight_keys<<<atom_blocks, THREADS, 0, stream>>>(
-        geometry.data_ptr<float>(), keys.data_ptr<int64_t>(), atoms, ai, ao);
+        geometry.data_ptr<float>(), keys.data_ptr<int64_t>(), atoms, ai, ao, first_level);
     auto [sorted, order] = at::sort(keys, true, 0, false);
     auto offsets = at::searchsorted(sorted, torch::arange(groups + 2, keys.options()));
     auto weight = torch::zeros({ao.sites, ai.sites}, p.options());
-    dense_weight_direct<<<atom_blocks, THREADS, 0, stream>>>(
-        geometry.data_ptr<float>(), order.data_ptr<int64_t>(), offsets.data_ptr<int64_t>(),
-        weight.data_ptr<float>(), ai, ao);
+    if (first_level == 5) {
+        dense_weight_direct<48><<<atom_blocks, THREADS, 0, stream>>>(
+            geometry.data_ptr<float>(), order.data_ptr<int64_t>(), offsets.data_ptr<int64_t>(),
+            weight.data_ptr<float>(), ai, ao, atoms, atoms);
+    } else {
+        dense_weight_direct<COTANGENT_MAX_DIRECT_SITES><<<atom_blocks, THREADS, 0, stream>>>(
+            geometry.data_ptr<float>(), order.data_ptr<int64_t>(), offsets.data_ptr<int64_t>(),
+            weight.data_ptr<float>(), ai, ao, atoms, atoms);
+    }
     int max_tasks = (atoms + DENSE_WEIGHT_CHUNK - 1) / DENSE_WEIGHT_CHUNK + groups;
     auto partials = torch::empty({max_tasks, PAIR_FEATURES}, p.options());
     dense_weight_owner_partials<<<max_tasks, DENSE_WEIGHT_THREADS, 0, stream>>>(
@@ -167,13 +189,13 @@ Tensor packed_make_dense_weight(Tensor p, Tensor geometry, Config ci, Config co)
     auto owners = torch::empty({groups, PAIR_FEATURES}, p.options());
     dense_weight_reduce<<<(owners.numel() + THREADS - 1) / THREADS, THREADS, 0, stream>>>(
         offsets.data_ptr<int64_t>(), partials.data_ptr<float>(), owners.data_ptr<float>(), groups);
-    for (int level = COTANGENT_FIRST_LEVEL; level <= COTANGENT_LAST_LEVEL; ++level) {
+    for (int level = first_level; level <= last_level; ++level) {
         constexpr int F = COTANGENT_FEATURES;
         int sites = 1 << level, ni = ai.sites / sites, no = ao.sites / sites;
         auto basis = torch::empty({sites, F}, p.options());
         cotangent_basis<<<(sites * F + THREADS - 1) / THREADS, THREADS, 0, stream>>>(
             basis.data_ptr<float>(), sites);
-        auto coefficients = owners.narrow(0, dense_pair_prefix(ai.sites, ao.sites, level), ni * no);
+        auto coefficients = owners.narrow(0, dense_pair_prefix(ai.sites, ao.sites, first_level, level), ni * no);
         auto shifted_input = torch::empty_like(coefficients), shifted = torch::empty_like(coefficients);
         int blocks = (ni * no * F * F + THREADS - 1) / THREADS;
         cotangent_fold_axis<true, true><<<blocks, THREADS, 0, stream>>>(coefficients.data_ptr<float>(),
@@ -189,6 +211,11 @@ Tensor packed_make_dense_weight(Tensor p, Tensor geometry, Config ci, Config co)
     }
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return weight;
+}
+
+Tensor packed_make_dense_weight(Tensor p, Tensor geometry, Config ci, Config co) {
+    return packed_make_dense_weight(p, geometry, parse_axis(ci), parse_axis(co),
+        COTANGENT_FIRST_LEVEL, COTANGENT_LAST_LEVEL);
 }
 
 } // namespace radius_cell_mass
