@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 import torch
+from dispatch_cases import fixed_plan
 from test_radius_cell_mass import axis
 from test_radius_cell_mass_cuda import GPU
 
@@ -21,6 +22,7 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.algorithm import
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plans import (
     GLOBAL_ACTIVE_GRAD4_NATIVE,
 )
+from torchcst._backends.torch.algorithms.linear.plans import TORCH_FACTORED_LINEAR
 from torchcst._backends.torch.kernels.radius_cell_mass import (
     _relative_centers,
     axis_masses,
@@ -195,7 +197,7 @@ def test_original_boundary_fixture_all_vjps_against_stable_public_reference():
         chart,
         atoms=129,
         dtype=torch.float64,
-        backend="factored",
+        selector=fixed_plan(TORCH_FACTORED_LINEAR),
         kernel=kernels.product(
             kernels.cell_mass(ChebyshevSpec(modes=8)),
             coordinates=kernels.polar(

@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import pytest
 import torch
+from dispatch_cases import fixed_plan
 from kernel_cases import direct_state, polar_state
 
 from torchcst import BandwidthBounds, CSTLinear, CSTOptimizer
+from torchcst._backends.torch.algorithms.linear.plans import (
+    TORCH_FACTORED_LINEAR,
+)
 from torchcst._backends.torch.charts import construction as _construction
 from torchcst._backends.torch.kernels import execution as _kernel
 from torchcst.charts import ChartState
@@ -146,7 +150,7 @@ def test_parameter_adam_moments_are_direct_w_moments() -> None:
         input_chart,
         atoms=1,
         kernel=value.declaration(),
-        backend="factored",
+        selector=fixed_plan(TORCH_FACTORED_LINEAR),
         dtype=torch.float64,
     )
     optimizer = CSTOptimizer(

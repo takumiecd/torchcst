@@ -4,9 +4,8 @@
 
 2026-10-05の境界方針を実装した契約。公開APIは[README](../README.md)、
 所有関係は[AtomとAlgorithmの状態所有](atom-state.ja.md)を参照する。
-DispatcherとExecutionBindingはbackend共通、LinearInputsとLinearBindingは
-演算側のinterfaceである。LinearとAtom座標更新はそれぞれ別のInputs/Contextを持ち、
-同じRegistryとDispatcherを使う。
+DispatcherとExecutionBindingはbackend共通のinterfaceである。
+Linear、Conv2d、Atom座標更新はそれぞれInputsとContextを持ち、RegistryとDispatcherを共有する。
 
 ## Plan を選ぶ・直接実行する
 
@@ -31,7 +30,7 @@ y_direct = Dispatcher(registry=registry).run(binding, LinearInputs(flat), plan=p
 torch.testing.assert_close(y, y_direct)
 ```
 
-`backend=` は組込み Plan の別名で、明示した `selector=` が優先する。
+通常の呼び出しは既定のSelectorを使う。実行方式を制御する場合は `selector=` を明示する。
 selector の registry は Torch / CUDA の両方に使う。既定の順序は対応する FULL、
 CPU normalized 参照、factored / materialized のサイズ方針を保つ。
 明示 Plan でも入力・精度・workspace の対応判定は省略しない。
@@ -106,6 +105,8 @@ metadataの型・範囲・整合性だけを検証できる。
 共通境界は`operation_id`と`workspace_limit_bytes`に絞る。それ以外は演算ごとの
 必要なmetadataとする。LinearContextならOperator宣言、入力shape/stride、dtype、
 device、atom数、座標幅、必要勾配、精度・決定性・eager/Graph設定を持つ。
+Conv2dContextはパッチまたはチャネルタップの構成と、groups、stride、padding、dilationを含む
+畳み込みの設定も持つ。
 AtomUpdateContextはKernel、中心のGeometry、Parameter配置とscalar配置を記述する。
 Linearの入力shapeや必要勾配を要求せず、実行Contextのoperation_idはatom_updateとする。
 

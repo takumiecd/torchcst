@@ -26,7 +26,7 @@ kernel = presets.polar_profile_product(
     w_c=0.1,
     radial_regularization=0.2,
 )
-layer = CSTLinear(chart=chart, atoms=12, kernel=kernel, backend="factored")
+layer = CSTLinear(chart=chart, atoms=12, kernel=kernel)
 optimizer = CSTOptimizer(torch.optim.AdamW(layer.parameters(), lr=1e-3), model=layer)
 optimizer.zero_grad()
 layer(torch.randn(4, 32)).square().mean().backward()

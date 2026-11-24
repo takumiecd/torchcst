@@ -6,6 +6,7 @@ from dataclasses import asdict, replace
 
 import pytest
 import torch
+from dispatch_cases import fixed_plan
 
 from torchcst import (
     BandwidthBounds,
@@ -26,6 +27,10 @@ from torchcst._backends.torch.algorithms.linear.factored.algorithm import (
 )
 from torchcst._backends.torch.algorithms.linear.materialized.algorithm import (
     MaterializedAlgorithm,
+)
+from torchcst._backends.torch.algorithms.linear.plans import (
+    TORCH_FACTORED_LINEAR,
+    TORCH_MATERIALIZED_LINEAR,
 )
 from torchcst._backends.torch.algorithms.polar_update.algorithm import (
     PolarUpdateAlgorithm,
@@ -63,7 +68,7 @@ def polar_kernel(*, radius, activity_mode="finite_chord"):
     )
 
 
-def model(kernel, *, atom_count=5, backend="factored"):
+def model(kernel, *, atom_count=5, plan=TORCH_FACTORED_LINEAR):
     chart = chart_presets.regular_grid(16, spacing=1.0, geometry="flat_torus")
     angle = torch.linspace(0.3, 2.7, atom_count, dtype=torch.float64)
     magnitude = torch.linspace(1.0, 2.0, atom_count, dtype=torch.float64)
@@ -77,7 +82,12 @@ def model(kernel, *, atom_count=5, backend="factored"):
         dim=1,
     )
     return CSTLinear(
-        chart, chart, atoms=atoms, kernel=kernel, backend=backend, dtype=torch.float64
+        chart,
+        chart,
+        atoms=atoms,
+        kernel=kernel,
+        selector=fixed_plan(plan),
+        dtype=torch.float64,
     )
 
 
@@ -449,7 +459,7 @@ def test_radius_dense_export_uses_chunked_weight_without_atom_operator_tensor(
         if polar_coordinates
         else kernels.product(kernels.cell_mass(), coordinates=kernels.physical())
     )
-    layer = model(kernel, atom_count=131, backend="materialized")
+    layer = model(kernel, atom_count=131, plan=TORCH_MATERIALIZED_LINEAR)
     if not polar_coordinates:
         with torch.no_grad():
             layer.atoms.p[:, 1].fill_(0.7)

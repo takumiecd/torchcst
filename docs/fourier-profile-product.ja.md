@@ -22,7 +22,7 @@ kernel = presets.polar_fourier_profile_product(
     bounds=BandwidthBounds(minimum=.1, birth=.1, maximum=10., upper_floor=.1),
 )
 layer = CSTLinear(chart=chart, kernel=kernel, atoms=16,
-                  dtype=torch.float64, backend="factored")
+                  dtype=torch.float64)
 x = torch.randn(2, 500, dtype=torch.float64)
 y = layer(x)  # native H² at selected sites, whole-operator L2
 

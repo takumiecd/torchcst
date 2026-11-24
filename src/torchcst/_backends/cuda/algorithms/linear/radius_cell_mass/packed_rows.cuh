@@ -191,16 +191,27 @@ std::vector<Tensor> packed_transform(Tensor x, Tensor p, Tensor rows, Tensor off
 // A small transient geometry table avoids repeating profile decode in each row
 // group. Linear arithmetic, scratch and retained tensors are FP32.
 constexpr int PACKED_GEOMETRY_FIELDS = 25;
+template<bool SharedProfile>
 __global__ void packed_gradient_geometry(const float *p, float *geometry, int atoms,
-    Axis ai, Axis ao) {
+    Axis ai, Axis ao, float radius_limit) {
     int atom = blockIdx.x * blockDim.x + threadIdx.x;
     if (atom >= atoms) return;
     float *v = geometry + int64_t(atom) * PACKED_GEOMETRY_FIELDS;
     float ri = signal_radius<float>(p, atom, ai), ro = signal_radius<float>(p, atom, ao);
+    if (radius_limit > 0) {
+        bool valid = ri > 0 && ro > 0 && ri <= radius_limit && ro <= radius_limit;
+        for (int c = 0; c < 4; ++c) valid &= isfinite(p[4 * atom + c]);
+        CUDA_KERNEL_ASSERT_MSG(valid, "invalid capped radius Atom");
+        if (!valid) {
+            for (int c = 0; c < PACKED_GEOMETRY_FIELDS; ++c) v[c] = 0;
+            return;
+        }
+    }
     Membership mi = signal_classify<float>(ri, float(center(p, atom, ai, false)), ai);
     Membership mo = signal_classify<float>(ro, float(center(p, atom, ao, true)), ao);
     profile_values(ri, float(ai.banks[mi.bank].period), 8, v);
-    profile_values(ro, float(ao.banks[mo.bank].period), 8, v + 9);
+    if constexpr (!SharedProfile)
+        profile_values(ro, float(ao.banks[mo.bank].period), 8, v + 9);
     v[18] = signal_wrapped<float>(float(center(p, atom, ai, false)), ai);
     v[19] = signal_wrapped<float>(float(center(p, atom, ao, true)), ao);
     v[20] = mi.bank; v[21] = mi.first_tile;
@@ -208,12 +219,17 @@ __global__ void packed_gradient_geometry(const float *p, float *geometry, int at
     v[24] = signal_amplitude<float>(p, atom, ai);
 }
 
-Tensor packed_make_geometry(Tensor p, Config ci, Config co) {
+template<bool SharedProfile = false>
+Tensor packed_make_geometry(Tensor p, Axis ai, Axis ao, float radius_limit = 0) {
     c10::cuda::CUDAGuard guard(p.device());
     auto geometry = torch::empty({p.size(0), PACKED_GEOMETRY_FIELDS}, p.options());
-    packed_gradient_geometry<<<(p.size(0) + 127) / 128, 128, 0, at::cuda::getCurrentCUDAStream()>>>(
-        p.data_ptr<float>(), geometry.data_ptr<float>(), p.size(0), parse_axis(ci), parse_axis(co));
+    packed_gradient_geometry<SharedProfile><<<(p.size(0) + 127) / 128, 128, 0, at::cuda::getCurrentCUDAStream()>>>(
+        p.data_ptr<float>(), geometry.data_ptr<float>(), p.size(0), ai, ao, radius_limit);
     C10_CUDA_KERNEL_LAUNCH_CHECK(); return geometry;
+}
+
+Tensor packed_make_geometry(Tensor p, Config ci, Config co) {
+    return packed_make_geometry(p, parse_axis(ci), parse_axis(co));
 }
 
 __global__ void packed_gradient_groups(const float *x, const float *dy,
@@ -354,4 +370,68 @@ Tensor packed_finish_gradient(Tensor p, Tensor partial, Config ci) {
         p.data_ptr<float>(), partial.data_ptr<float>(), gradient.data_ptr<float>(), p.size(0), partial.size(0), parse_axis(ci));
     C10_CUDA_KERNEL_LAUNCH_CHECK(); return gradient;
 }
+
+#ifdef RADIUS_RATIONAL_WIDE
+constexpr int CHANNEL_RADIUS_TILE_LIMIT = 32;
+constexpr int CHANNEL_LAST_FOURIER_LEVEL = 5;
+constexpr int CHANNEL_DIRECT_LEVEL = CHANNEL_LAST_FOURIER_LEVEL + 1;
+
+void check_channel_atoms(const Tensor &p) {
+    TORCH_CHECK(p.is_cuda() && p.is_contiguous() && p.scalar_type() == torch::kFloat &&
+        p.dim() == 3 && (p.size(0) == 1 || p.size(0) == 9) &&
+        p.size(1) > 0 && p.size(1) <= SHARED_MAX_ATOMS && p.size(2) == 4,
+        "expected contiguous CUDA FP32 [1 or 9, 1..4096, 4] channel Atoms");
+    TORCH_CHECK(!at::globalContext().allowTF32CuBLAS(),
+        "channel weights require IEEE FP32 matmul");
+}
+
+void check_legacy_channel_atoms(const Tensor &p, int input_sites, int first_level) {
+    check_channel_atoms(p);
+    TORCH_CHECK((input_sites == 96 || input_sites == 128) &&
+        3 <= first_level && first_level <= CHANNEL_DIRECT_LEVEL,
+        "expected 96 or 128 input sites and first Fourier level 3..6");
+}
+
+Axis channel_axis(int sites, int radius_cap = CHANNEL_RADIUS_TILE_LIMIT) {
+    return parse_axis({double(sites), 1., 1., 0., 8., 2.}, radius_cap);
+}
+
+std::vector<Tensor> packed_channel_weight_forward(Tensor p, int input_sites, int first_level) {
+    check_legacy_channel_atoms(p, input_sites, first_level);
+    c10::cuda::CUDAGuard guard(p.device());
+    Axis ai = channel_axis(input_sites), ao = channel_axis(128);
+    auto geometry = packed_make_geometry(p.view({-1, 4}), ai, ao, CHANNEL_RADIUS_TILE_LIMIT);
+    if (first_level == CHANNEL_DIRECT_LEVEL)
+        return {packed_make_direct_channel_weights(p, geometry, ai, ao), geometry};
+    std::vector<Tensor> weights;
+    for (int64_t tap = 0; tap < p.size(0); ++tap) {
+        auto tap_geometry = geometry.narrow(0, tap * p.size(1), p.size(1));
+        weights.push_back(packed_make_dense_weight(
+            p[tap], tap_geometry, ai, ao, first_level, CHANNEL_LAST_FOURIER_LEVEL));
+    }
+    return {torch::stack(weights), geometry};
+}
+
+Tensor packed_channel_weight_grad(Tensor p, Tensor dense, Tensor geometry,
+    int input_sites, int first_level) {
+    check_legacy_channel_atoms(p, input_sites, first_level);
+    c10::cuda::CUDAGuard guard(p.device());
+    packed_check_tensor(dense, p, {p.size(0), 128, input_sites});
+    packed_check_tensor(geometry, p, {p.size(0) * p.size(1), PACKED_GEOMETRY_FIELDS});
+    Axis ai = channel_axis(input_sites), ao = channel_axis(128);
+    if (first_level == CHANNEL_DIRECT_LEVEL)
+        return packed_direct_channel_weight_grad(p, dense, geometry, ai, ao);
+    std::vector<Tensor> grads;
+    for (int64_t tap = 0; tap < p.size(0); ++tap) {
+        auto tap_geometry = geometry.narrow(0, tap * p.size(1), p.size(1));
+        grads.push_back(packed_dense_weight_grad(
+            p[tap], dense[tap], tap_geometry, ai, ao, first_level, CHANNEL_LAST_FOURIER_LEVEL));
+    }
+    return torch::stack(grads);
+}
+#endif
+
 } // namespace radius_cell_mass
+
+#include "channel_fourier.cuh"
+#include "channel_rational.cuh"

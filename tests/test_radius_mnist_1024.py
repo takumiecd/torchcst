@@ -4,10 +4,12 @@ import copy
 
 import pytest
 import torch
+from dispatch_cases import fixed_plan
 from torch import nn
 
 from benchmarks.cuda.linear import radius_cell_mass as reference
 from benchmarks.training import cell_mass_mnist as mnist
+from torchcst._backends.torch.algorithms.linear.plans import TORCH_FACTORED_LINEAR
 
 
 @pytest.fixture
@@ -147,8 +149,7 @@ def test_bounded_full_model_backward_matches_one_global_ce_and_update(
 ):
     torch.manual_seed(41)
     middle = mnist.make_radius_cst(128, 7).double()
-    middle.selector = None
-    middle.backend = "factored"
+    middle.selector = fixed_plan(TORCH_FACTORED_LINEAR)
     full = nn.Sequential(
         nn.Linear(784, 128), nn.ReLU(), middle, nn.ReLU(), nn.Linear(128, 10)
     ).double()

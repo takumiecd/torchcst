@@ -125,12 +125,13 @@ operation_idとworkspace_limit_bytesだけで、Tensor検証や学習状態を�
 Selector.selectのmetadata検証もdispatch/validation.pyとruntime.pyの同じ処理を使う。
 Registry.validate/executeは削除し、実行の互換wrapperを置かない。
 
-CSTLinearはLinearInputs(x)とbinding interfaceを提供し、AlgorithmStateを引き続き所有する。
+CSTLinearはLinearInputs(x)、CSTConv2dはConv2dInputs(x)を提供する。
+両者がbinding interfaceを通してAlgorithmStateを所有する。
 LinearBindingはModule外で既存Operator、または宣言とParameterを結び付ける。具体的な
 演算入力はAlgorithm.input_typeで宣言し、PolarやoptimizerにLinearの入力を要求しない。
 Algorithmはbinding/RecipeからStateを作り、execute(state, inputs)で演算する。
-Atomsを使わない演算のStateも同じ経路に乗る。CSTLinearのbackend名は既存Planへのaliasで、
-実行にはselector自身のRegistryを使う。登録はcompute codeを読み込まない。
+Atomsを使わない演算のStateも同じ経路に乗る。各層は既定または明示のSelectorを使い、
+そのSelectorのRegistryを通して実行する。登録はcompute codeを読み込まない。
 
 CSTOptimizerは全siteにAtomUpdateBindingを作り、AtomUpdateInputs(previous, step_size)を
 共通Dispatcherへ渡す。operation_idは全候補でatom_update。optimizerにPolarの型判定や
@@ -204,7 +205,8 @@ JSON text はキーをソートして決定的に出力する。
 
 [Selector の契約と完全一致 artifact](dispatch/README.ja.md)を参照。
 full / window の専用選択 API は廃止し、両者を通常の Algorithm 候補にする。
-選択器は `CSTLinear(selector=...)` に渡し、数学的宣言・checkpoint から分離する。
+`CSTLinear` と `CSTConv2d` は、数学的宣言やチェックポイントとは独立した実行設定として
+`selector=` を受け取る。
 
 
 ## 固定グリッド・幾何 metadata

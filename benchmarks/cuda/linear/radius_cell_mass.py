@@ -14,10 +14,13 @@ from torchcst import (
     CSTAdamW,
     CSTLinear,
     CSTOptimizer,
+    FixedSelector,
     RadiusBounds,
     chart_presets,
     kernels,
 )
+from torchcst._backends.catalog import get_registry
+from torchcst._backends.torch.algorithms.linear.plans import TORCH_FACTORED_LINEAR
 
 
 def error(actual, expected):
@@ -72,7 +75,13 @@ def fixture(case):
         kernels.cell_mass(ChebyshevSpec(modes=8), merge_factor=2),
         coordinates=coordinates,
     )
-    model = CSTLinear(chart, chart, atoms=case.atoms, kernel=kernel, backend="factored")
+    model = CSTLinear(
+        chart,
+        chart,
+        atoms=case.atoms,
+        kernel=kernel,
+        selector=FixedSelector(TORCH_FACTORED_LINEAR, registry=get_registry()),
+    )
     if multirow or rational:
         model._bounded_reference = True
     if multirow:
@@ -166,7 +175,7 @@ def _reference_model(model, parameters):
         *model.cst_charts(),
         atoms=parameters.detach().clone(),
         kernel=model.kernel.declaration(),
-        backend="factored",
+        selector=FixedSelector(TORCH_FACTORED_LINEAR, registry=get_registry()),
     )
 
 
@@ -241,8 +250,7 @@ def check(model, x, dy, *, independent=False):
     cpu = copy.deepcopy(model).cpu().double()
     tx = x.detach().cpu().double().requires_grad_()
     # CPU reference must use its public Torch route after copying a CUDA selector.
-    cpu.selector = None
-    cpu.backend = "factored"
+    cpu.selector = FixedSelector(TORCH_FACTORED_LINEAR, registry=get_registry())
     chunked = not independent and cpu.in_features > 128
     if chunked:
         expected, *reference = chunked_reference(cpu, tx, dy.detach().cpu().double())
@@ -444,8 +452,7 @@ def matched_steps(base, case, plan):
 
     a = configure(copy.deepcopy(base).cuda(), plan)
     b = copy.deepcopy(base).float()
-    b.selector = None
-    b.backend = "factored"
+    b.selector = FixedSelector(TORCH_FACTORED_LINEAR, registry=get_registry())
     oa, ob = optimizer(a, case), optimizer(b, case, gpu=False)
     # Large-only same-device wrapper proof is separate from CPU FP32 rounding.
     c = copy.deepcopy(base).cuda() if case.size > 128 else None

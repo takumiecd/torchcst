@@ -17,7 +17,9 @@ from benchmarks.training.cell_mass_mnist import (
 from benchmarks.training.full_step_graph import tensors
 from benchmarks.training.owner_window_fp32 import adam_direction, errors, vjp_reference
 from torchcst import FixedSelector, make_algorithm_registry
+from torchcst._backends.catalog import get_registry
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass import plans
+from torchcst._backends.torch.algorithms.linear.plans import TORCH_FACTORED_LINEAR
 
 
 def load_cohort(init, checkpoint, geometry_shared=False, sort32=False, flat_c=False):
@@ -87,8 +89,7 @@ def run(args):
     cpu_net = make_model(init, "cst", execution_plan=plans.GLOBAL_OWNER_WINDOW_FP32)
     cpu_net.load_state_dict(checkpoint["model"])
     cpu_layer = cpu_net[2]
-    cpu_layer.selector = None
-    cpu_layer.backend = "factored"
+    cpu_layer.selector = FixedSelector(TORCH_FACTORED_LINEAR, registry=get_registry())
     data, info = load_mnist(args.inputs / "data")
     train = normalize_images(
         data["train_x"],

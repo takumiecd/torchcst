@@ -28,11 +28,6 @@ class MaterializedAlgorithm(Algorithm[DefaultRecipe]):
         if type(recipe) is not DefaultRecipe:
             raise ValueError("reference Algorithm has no tunable recipe")
 
-    def validate_configuration(self, site):
-        from torchcst._backends.torch.operators.dispatch import validate_materialized
-
-        validate_materialized(site.cst_charts(), site.kernel)
-
     def supports(self, context, recipe):
         if not isinstance(context, LinearContext):
             return SupportResult(("requires a LinearContext",))

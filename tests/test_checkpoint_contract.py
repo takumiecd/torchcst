@@ -4,6 +4,7 @@ import copy
 
 import pytest
 import torch
+from dispatch_cases import fixed_plan
 from kernel_cases import (
     amp_width_state,
     amplitude_state,
@@ -13,6 +14,9 @@ from kernel_cases import (
 )
 
 from torchcst import CSTConv2d, CSTLinear
+from torchcst._backends.torch.algorithms.linear.plans import (
+    TORCH_FACTORED_LINEAR,
+)
 from torchcst._backends.torch.charts import construction as _construction
 
 
@@ -30,7 +34,7 @@ def _spherical_linear(input_representation: str, output_representation: str):
                 input_profile=gaussian_state(0.4), output_profile=gaussian_state(0.5)
             )
         ).declaration(),
-        backend="factored",
+        selector=fixed_plan(TORCH_FACTORED_LINEAR),
     )
 
 
@@ -46,7 +50,7 @@ def _bandwidth_linear(profile, *, law="interpolating", couple_bandwidth=True):
             couple_bandwidth=couple_bandwidth,
             profile=profile,
         ).declaration(),
-        backend="factored",
+        selector=fixed_plan(TORCH_FACTORED_LINEAR),
     )
 
 
@@ -93,7 +97,7 @@ def test_conv_layout_is_checkpoint_contract():
                     output_profile=gaussian_state(0.5),
                 )
             ).declaration(),
-            backend="factored",
+            selector=fixed_plan(TORCH_FACTORED_LINEAR),
         )
 
     with pytest.raises(RuntimeError, match="CST site checkpoint contract"):

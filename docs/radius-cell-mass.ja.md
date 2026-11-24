@@ -24,7 +24,7 @@ spacing = 128 / n
 grid = chart_presets.regular_grid(n, spacing=spacing, geometry="flat_torus")
 layer = CSTLinear(
     charts=(grid, grid), atoms=8,
-    device="cpu", dtype=torch.float64, backend="factored",
+    device="cpu", dtype=torch.float64,
     kernel=kernels.product(
         kernels.cell_mass(ChebyshevSpec(modes=8), base_tile_sites=1, merge_factor=2),
         coordinates=kernels.polar(

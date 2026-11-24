@@ -24,7 +24,7 @@ kernel = kernels.product(
         bounds=BandwidthBounds(minimum=0.02, birth=0.4, maximum=0.8, upper_floor=0.2),
     ),
 )
-model = CSTLinear(charts=(out_chart, in_chart), atoms=8, kernel=kernel, backend="factored")
+model = CSTLinear(charts=(out_chart, in_chart), atoms=8, kernel=kernel)
 y = model(torch.randn(4, 128))
 assert y.shape == (4, 256)
 assert not tuple(model.output_chart.buffers())

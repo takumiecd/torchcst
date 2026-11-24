@@ -84,6 +84,12 @@ public:
 #ifdef RADIUS_RATIONAL_WIDE
 Tensor packed_make_dense_weight(Tensor, Tensor, Config, Config);
 Tensor packed_dense_cotangent_grad(Tensor, Tensor, Tensor, Tensor, Config, Config);
+std::vector<Tensor> packed_channel_weight_forward(Tensor, int, int);
+Tensor packed_channel_weight_grad(Tensor, Tensor, Tensor, int, int);
+std::tuple<Tensor, Tensor, Tensor, int> packed_channel_fourier_forward(Tensor, int, int, int, bool, bool);
+Tensor packed_channel_fourier_grad(Tensor, Tensor, Tensor, Tensor, int, int, int, int);
+std::vector<Tensor> packed_channel_rational_decode(Tensor, double, double, int, double);
+Tensor packed_channel_rational_grad(Tensor, Tensor);
 
 class PackedDenseTiles : public torch::autograd::Function<PackedDenseTiles> {
 public:
@@ -128,6 +134,18 @@ public:
 
 void bind_packed_rows(pybind11::module_ &module) {
 #ifdef RADIUS_RATIONAL_WIDE
+    module.def("packed_channel_weight_forward", &packed_channel_weight_forward,
+        pybind11::call_guard<pybind11::gil_scoped_release>());
+    module.def("packed_channel_weight_grad", &packed_channel_weight_grad,
+        pybind11::call_guard<pybind11::gil_scoped_release>());
+    module.def("packed_channel_fourier_forward", &packed_channel_fourier_forward,
+        pybind11::call_guard<pybind11::gil_scoped_release>());
+    module.def("packed_channel_fourier_grad", &packed_channel_fourier_grad,
+        pybind11::call_guard<pybind11::gil_scoped_release>());
+    module.def("packed_channel_rational_decode", &packed_channel_rational_decode,
+        pybind11::call_guard<pybind11::gil_scoped_release>());
+    module.def("packed_channel_rational_grad", &packed_channel_rational_grad,
+        pybind11::call_guard<pybind11::gil_scoped_release>());
     module.def("packed_shared_wide_linear", [](Tensor x, Tensor p, Config ci, Config co, bool recompute,
         bool reverse_ordered, bool axis_gradient) {
         check_autograd_entry(x, p, ci, co, 2, 2, 32, 5);

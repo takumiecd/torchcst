@@ -5,6 +5,7 @@ import itertools
 
 import pytest
 import torch
+from dispatch_cases import fixed_plan
 
 from torchcst import (
     BandwidthBounds,
@@ -21,6 +22,7 @@ from torchcst import (
 from torchcst import (
     geometry_presets as geometries,
 )
+from torchcst._backends.torch.algorithms.linear.plans import TORCH_FACTORED_LINEAR
 from torchcst._backends.torch.charts import execution as chart_ops
 
 
@@ -182,7 +184,7 @@ def test_public_optimizer_wraps_periodic_centers_and_preserves_euclidean_centers
             out_spec,
             atoms=p,
             kernel=kernel(),
-            backend="factored",
+            selector=fixed_plan(TORCH_FACTORED_LINEAR),
             dtype=p.dtype,
         )
         optimizer = CSTOptimizer(

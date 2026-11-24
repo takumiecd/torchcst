@@ -4,6 +4,7 @@ import copy
 
 import pytest
 import torch
+from dispatch_cases import fixed_plan
 from kernel_cases import (
     amplitude_state,
     direct_state,
@@ -14,11 +15,15 @@ from kernel_cases import (
 from torch import nn
 
 from torchcst import BandwidthBounds, CSTLinear, CSTOptimizer, OptimizerStateAdapter
+from torchcst._backends.torch.algorithms.linear.plans import (
+    TORCH_FACTORED_LINEAR,
+    TORCH_MATERIALIZED_LINEAR,
+)
 from torchcst._backends.torch.charts import construction as _construction
 from torchcst._backends.torch.geometry import execution as _geometry
 
 
-def site(backend="materialized", *, sphere=False, kernel=None):
+def site(plan=TORCH_MATERIALIZED_LINEAR, *, sphere=False, kernel=None):
     charts = (
         (
             _construction.sphere_chart(4, intrinsic_dim=2),
@@ -42,7 +47,7 @@ def site(backend="materialized", *, sphere=False, kernel=None):
                 )
             )
         ).declaration(),
-        backend=backend,
+        selector=fixed_plan(plan),
         dtype=torch.float64,
     )
 
@@ -65,10 +70,10 @@ def base_optimizer(kind, parameters):
     "kind",
     ["sgd", "adam", "adamw", "rmsprop", "adagrad", "adadelta", "adamax", "rprop"],
 )
-@pytest.mark.parametrize("backend", ["materialized", "factored"])
-def test_euclidean_complete_training_step_matches_base(kind, backend):
+@pytest.mark.parametrize("plan", [TORCH_MATERIALIZED_LINEAR, TORCH_FACTORED_LINEAR])
+def test_euclidean_complete_training_step_matches_base(kind, plan):
     torch.manual_seed(12)
-    model = nn.Sequential(site(backend), nn.Linear(4, 2, dtype=torch.float64))
+    model = nn.Sequential(site(plan), nn.Linear(4, 2, dtype=torch.float64))
     reference = copy.deepcopy(model)
     base = base_optimizer(kind, model.parameters())
     optimizer = CSTOptimizer(base, model=model)

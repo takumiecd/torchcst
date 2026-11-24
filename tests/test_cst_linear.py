@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+import inspect
+
 import pytest
 import torch
+from dispatch_cases import fixed_plan
 from kernel_cases import amplitude_state, gaussian_state, separable_state
 
-from torchcst import CSTLinear, GaussianSpec, kernels
+from torchcst import CSTConv2d, CSTLinear, GaussianSpec, kernels
+from torchcst._backends.dispatch import UnsupportedPlan
+from torchcst._backends.torch.algorithms.linear.plans import (
+    TORCH_FACTORED_LINEAR,
+    TORCH_MATERIALIZED_LINEAR,
+)
 from torchcst._backends.torch.charts import construction as _construction
 
 
@@ -16,13 +24,13 @@ def make_kernel() -> amplitude_state:
     )
 
 
-def make_model(*, backend: str = "factored") -> CSTLinear:
+def make_model(*, plan=TORCH_FACTORED_LINEAR) -> CSTLinear:
     return CSTLinear(
         _construction.grid((2, 2), low=-1.0, high=1.0),
         _construction.linspace(5, low=-1.0, high=1.0),
         atoms=3,
         kernel=make_kernel().declaration(),
-        backend=backend,
+        selector=fixed_plan(plan),
     )
 
 
@@ -38,6 +46,14 @@ def test_module_owns_one_opaque_fixed_shape_atom_table() -> None:
     assert not hasattr(model, "amplitude")
 
 
+@pytest.mark.parametrize("layer_type", [CSTLinear, CSTConv2d])
+def test_public_execution_option_is_selector(layer_type):
+    options = inspect.signature(layer_type).parameters
+    assert "selector" in options
+    assert "backend" not in options
+    assert not hasattr(layer_type, "backend")
+
+
 def test_dense_weight_is_the_canonical_kernel_sum() -> None:
     model = make_model()
     expected = model.materialized_atoms().sum(dim=0)
@@ -46,8 +62,8 @@ def test_dense_weight_is_the_canonical_kernel_sum() -> None:
 
 def test_factored_and_materialized_backends_are_equivalent() -> None:
     torch.manual_seed(7)
-    factored = make_model(backend="factored")
-    materialized = make_model(backend="materialized")
+    factored = make_model(plan=TORCH_FACTORED_LINEAR)
+    materialized = make_model(plan=TORCH_MATERIALIZED_LINEAR)
     materialized.load_state_dict(factored.state_dict())
     inputs = torch.randn(2, 4, factored.in_features)
     expected = torch.nn.functional.linear(inputs, factored.dense_weight())
@@ -73,7 +89,6 @@ def test_nonfactorized_kernel_uses_the_same_kernel_sum_semantics() -> None:
         ),
         atoms=2,
         kernel=kernels.radial(kernels.l2(GaussianSpec(), 1.0)),
-        backend="auto",
     )
     inputs = torch.randn(4, 3)
     torch.testing.assert_close(model.dense_weight(), model.materialized_atoms().sum(0))
@@ -82,20 +97,21 @@ def test_nonfactorized_kernel_uses_the_same_kernel_sum_semantics() -> None:
     )
 
 
-def test_factored_backend_rejects_a_kernel_without_that_capability() -> None:
-    with pytest.raises(ValueError, match="does not support factorized"):
-        CSTLinear(
-            chart=_construction.product(
-                shape=(2, 3),
-                axes=(
-                    _construction.line_pattern(2, spacing=0.5),
-                    _construction.line_pattern(3, spacing=0.5),
-                ),
+def test_factored_plan_rejects_a_kernel_without_that_capability() -> None:
+    model = CSTLinear(
+        chart=_construction.product(
+            shape=(2, 3),
+            axes=(
+                _construction.line_pattern(2, spacing=0.5),
+                _construction.line_pattern(3, spacing=0.5),
             ),
-            atoms=2,
-            kernel=kernels.radial(kernels.l2(GaussianSpec(), 1.0)),
-            backend="factored",
-        )
+        ),
+        atoms=2,
+        kernel=kernels.radial(kernels.l2(GaussianSpec(), 1.0)),
+        selector=fixed_plan(TORCH_FACTORED_LINEAR),
+    )
+    with pytest.raises(UnsupportedPlan, match="requires a separable kernel"):
+        model(torch.randn(1, 3))
 
 
 def test_constructor_dtype_covers_charts_kernel_and_atoms() -> None:

@@ -1,9 +1,14 @@
 import pytest
 import torch
+from dispatch_cases import fixed_plan
 from torch import nn
 
 from torchcst import CSTLinear, TriweightSpec, chart_presets, kernels
+from torchcst._backends.torch.algorithms.linear.plans import (
+    TORCH_FACTORED_LINEAR,
+)
 from torchcst.hub import from_pretrained, load_safetensors
+from torchcst.operators.execution import LinearInputs
 
 save_file = pytest.importorskip("safetensors.torch").save_file
 
@@ -14,7 +19,7 @@ def build_model():
         charts=(chart, chart),
         atoms=5,
         kernel=kernels.product(kernels.point(TriweightSpec(), sigma=1.5)),
-        backend="factored",
+        selector=fixed_plan(TORCH_FACTORED_LINEAR),
     )
     return nn.Sequential(layer, nn.Linear(4, 2))
 
@@ -42,7 +47,11 @@ def test_load_safetensors_rebuilds_cst_model_for_inference(weights):
     inputs = torch.rand(3, 4)
     torch.testing.assert_close(model(inputs), expected(inputs))
     assert all(not layer.training for layer in model.modules())
-    assert model[0].backend == "factored"
+    layer = model[0]
+    assert (
+        layer.selector.select(layer.build_context(LinearInputs(inputs))).plan
+        == TORCH_FACTORED_LINEAR
+    )
 
 
 @pytest.mark.parametrize("mismatch", ["missing", "extra", "shape", "dtype"])

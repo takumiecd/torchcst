@@ -1,4 +1,4 @@
-"""CPU FP64 reference for radius-input Chebyshev cell probabilities.
+"""Torch FP64 reference for radius-input Chebyshev cell probabilities.
 
 This module intentionally builds temporary coefficients for an independent
 reference. It specifies no global coefficient table for the future CUDA path.
@@ -20,8 +20,8 @@ def density_coefficients(profile, radius, period):
     """
     if type(profile) is not ChebyshevSpec:
         raise TypeError("expected ChebyshevSpec")
-    if radius.device.type != "cpu":
-        raise ValueError("radius cell-mass reference currently requires CPU tensors")
+    if radius.device.type not in ("cpu", "cuda"):
+        raise ValueError("radius cell-mass reference requires CPU or CUDA tensors")
     if radius.ndim != 1 or radius.dtype not in (torch.float32, torch.float64):
         raise ValueError("radius must be a floating-point vector")
     if not math.isfinite(period) or period <= 0:
@@ -36,7 +36,7 @@ def density_coefficients(profile, radius, period):
     theta = (
         2
         * torch.pi
-        * torch.arange(2 * modes + 1, dtype=torch.float64)
+        * torch.arange(2 * modes + 1, dtype=torch.float64, device=radius.device)
         / (2 * modes + 1)
     )
     cosine = (theta / 2).cos()[None, :]
@@ -62,7 +62,7 @@ def integrated_cells(profile, radius, centers, period, sites, spacing):
     """Integrate whole unwrapped cells, without per-cell support clipping."""
     coefficients = density_coefficients(profile, radius, period)
     modes = profile.modes
-    harmonic = torch.arange(1, modes + 1, dtype=torch.float64)
+    harmonic = torch.arange(1, modes + 1, dtype=torch.float64, device=radius.device)
     displacement = sites.double() * spacing - centers.double()[:, None]
     phase = (2 * torch.pi / period) * displacement[..., None] * harmonic
     cell_filter = torch.sinc(harmonic * spacing / period)

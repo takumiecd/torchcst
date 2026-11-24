@@ -18,6 +18,7 @@ from benchmarks.cuda.linear.radius_cell_mass import (
     fixture,
 )
 from torchcst import CSTAdamW, FixedSelector, make_algorithm_registry
+from torchcst._backends.catalog import get_registry
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.algorithm import (
     hierarchy_from_operator,
 )
@@ -30,6 +31,7 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plans import (
 from torchcst._backends.cuda.algorithms.polar_update.plans import (
     RADIUS_FLAT_TORUS_FUSED,
 )
+from torchcst._backends.torch.algorithms.linear.plans import TORCH_FACTORED_LINEAR
 
 
 def errors(actual, reference):
@@ -120,8 +122,7 @@ def quadrature(model, x, p):
 
 def vjp_reference(model, x, dy, independent=False):
     m = copy.deepcopy(model).cpu().double()
-    m.selector = None
-    m.backend = "factored"
+    m.selector = FixedSelector(TORCH_FACTORED_LINEAR, registry=get_registry())
     rx = x.double().requires_grad_()
     if not independent:
         return chunked_reference(m, rx, dy.double())
@@ -472,8 +473,9 @@ def run(args):
                     )["model"]
                 )
             full = net[2]
-            full.selector = None
-            full.backend = "factored"
+            full.selector = FixedSelector(
+                TORCH_FACTORED_LINEAR, registry=get_registry()
+            )
             add("full52428_" + state, full, x, dy, False)
     result = {
         "all_numerical_gates_pass": all(c["pass"] for c in cases),

@@ -48,7 +48,6 @@ model = CSTLinear(
         kernels.cell_mass(ChebyshevSpec(modes=8)),
         coordinates=kernels.rational_radius(radius_max=4.0, radius_fraction=0.0),
     ),
-    backend="factored",
 )
 optimizer = CSTAdamW(model.parameters(), model=model, lr=1e-3)
 
@@ -127,7 +126,7 @@ from torchcst import CSTAdamW, CSTLinear, ChebyshevSpec, chart_presets, kernels
 
 grid = chart_presets.regular_grid(1024, geometry="flat_torus")
 layer = CSTLinear(
-    charts=(grid, grid), atoms=65536, backend="factored",
+    charts=(grid, grid), atoms=65536,
     kernel=kernels.product(
         kernels.cell_mass(ChebyshevSpec(modes=8)),
         coordinates=kernels.rational_radius(radius_max=512.0, radius_fraction=0.0),
@@ -196,7 +195,7 @@ an admitted width and Atom count. The call remains `layer(x)`.
 
 ### Automatic selection on RTX 4090
 
-With `backend="auto"`, the dispatcher looks up a bundled table generated from
+The default selector looks up a bundled table generated from
 the Neon benchmark database. For measured training with 128 rows, it selects
 Fourier weight materialization at width 2048 with 32N Atoms and the optimized
 direct Plan at widths 4096 and 16384 with 32N, and 8192 with 16N or 32N.
@@ -452,14 +451,16 @@ training.
 
 ## Execution and constraints
 
-Kernel declarations define the operator independently of its implementation.
-`backend=` selects a builtin Plan alias; `selector=` selects a Plan explicitly
-and takes precedence. General Torch implementations provide factored and
-materialized evaluation. Two-Chart radial kernels use the Torch materialized
-reference and have no factored or specialized CUDA Plan.
+Kernel declarations define the operator. Both `CSTLinear` and `CSTConv2d`
+use the default Selector through the Dispatcher when you call `layer(x)`.
+For a controlled comparison, pass
+`selector=FixedSelector(plan, registry=make_algorithm_registry())`.
+The Selector proposes a Plan and the Dispatcher verifies support before
+execution. The Torch Linear selector includes factored and materialized
+evaluation, with the materialized reference for two-Chart radial kernels.
 
-CUDA Algorithms have individual shape, dtype, precision and differentiation
-limits. Radius cell-mass Plans are opt-in and eager-only. Selecting a Linear
+CUDA Algorithms have individual shape, dtype, precision, differentiation and
+Graph capture limits. Selecting a Linear
 Plan does not select an optimizer update Plan. Managed CST optimizer steps do
 not support CUDA Graph capture or differentiable steps. Trainable non-Euclidean
 observation charts require a separate update policy and are currently rejected.
@@ -469,6 +470,86 @@ and [optimizer guide](docs/cst-optimizer.md) for the supported boundaries.
 This package is a research API. Historical measurements describe their recorded
 source, workload and hardware; they do not establish performance of a different
 revision or implementation.
+
+### CSTConv2d weight composition
+
+The patch layout's input Chart indexes the flattened patch in channel,
+kernel-height, kernel-width order, with
+`(in_channels // groups) * kernel_height * kernel_width` sites.
+The default Selector chooses between factored and materialized execution.
+For a separable kernel, pin `TORCH_COMPOSED_CONV2D` from
+`torchcst._backends.torch.algorithms.conv2d` with a `FixedSelector` to evaluate
+weight composition. This Plan contracts the two factors over the Atom
+dimension and applies one PyTorch Conv2d with the composed weight. It supports
+groups, stride, padding and dilation. Under autocast, it composes the weight
+in the Atom dtype and applies ambient autocast to Conv2d.
+
+For radius cell-mass kernels, initialize the Conv2d layer on CPU with FP32 or
+FP64 Atom parameters, then move it to CUDA for eager evaluation. Each flattened
+Chart must satisfy its declared cell-mass hierarchy. For example, a 96-channel
+3×3 input has 864 sites and permits a base tile of 27 with merge factor 2.
+Use per-axis profile bindings to set the input and output hierarchies. The
+composed path uses Torch cell-mass factors on CUDA.
+
+### Fourier CSTConv2d with channel taps
+
+For 3×3 Fourier, set `atom_layout="channel_taps"`. The two Charts index
+output and local input channels. Equal blocks of Atom IDs belong to the spatial
+taps in row-major order. `atoms` is the total across all taps. The layout is
+part of the checkpoint contract. A 1×1 layer can also select Fourier with the
+default patch layout.
+
+This example uses the stride-2 32→64 WideResNet layer and pads the input at
+the bottom and right.
+
+```python
+import torch
+import torch.nn.functional as F
+from torchcst import (
+    CSTConv2d, ChebyshevSpec, FixedSelector, chart_presets, kernels,
+    make_algorithm_registry,
+)
+from torchcst._backends.cuda.algorithms.conv2d.channel_algorithm import CHANNEL_FOURIER
+
+torch.set_float32_matmul_precision("highest")
+torch.backends.cudnn.allow_tf32 = False
+
+grid = chart_presets.regular_grid
+layer = CSTConv2d(
+    charts=(grid(64, geometry="flat_torus"), grid(32, geometry="flat_torus")),
+    in_channels=32,
+    out_channels=64,
+    kernel_size=3,
+    stride=2,
+    atoms=9 * 48,
+    atom_layout="channel_taps",
+    selector=FixedSelector(CHANNEL_FOURIER, registry=make_algorithm_registry()),
+    kernel=kernels.product(
+        kernels.cell_mass(ChebyshevSpec(modes=8)),
+        coordinates=kernels.rational_radius(radius_max=16),
+    ),
+    dtype=torch.float32,
+).cuda()
+
+x = torch.randn(2, 32, 32, 32, device="cuda")
+y = layer(F.pad(x, (0, 1, 0, 1)))
+```
+
+The `CHANNEL_FOURIER` Plan uses static banks and supports capturing the
+layer's forward and backward after eager warmup. `CHANNEL_FOURIER_ACTIVE`
+processes occupied banks in eager mode. With `selector=None`, the default
+Selector picks Torch weight composition for channel taps. Forced Plans
+report unsupported conditions before execution.
+
+Fourier supports 1×1 and 3×3, groups 1, 1–4096 Atoms per tap, and 16/32/64/128
+channels per axis. Use fixed, origin-zero, unit-spaced torus Charts with
+Chebyshev M8, base tile 1 and merge factor 2. Rational radius coordinates
+require `radius_min >= 0.5`, a power-of-two `radius_max` within both Chart
+half-periods and `amplitude_max <= 32`. Use CUDA compute capability 8.0+,
+FP32, and disable autocast, TF32 and deterministic algorithms. Initialize
+the layer on CPU before moving it to CUDA. The
+[WideResNet layer measurements](docs/research-history/cuda-conv/radius-channel-fourier-wideresnet-20261124.md)
+record the kernel benchmark conditions.
 
 ## CST research
 
@@ -489,8 +570,7 @@ not extend this package's supported public API.
 The HIGGS study uses FP32 owner-window arithmetic with shared FP64 geometry,
 sorted owner windows, Flat-C storage and a guarded whole-training-step CUDA Graph.
 The explicit Linear Plan above is available on `main`; the whole-step Graph and
-private HIGGS cohort remain **benchmark-only execution paths**, not a `backend=`
-alias or Graph support for public `CSTAdamW`. Reproduction of the frozen study must use
+private HIGGS cohort remain **benchmark-only execution paths**. Reproduction of the frozen study must use
 the frozen research source [`97580582ed28c4e494bf5c2656bbe94a85c544c3`](https://github.com/takumiecd/torchcst/tree/97580582ed28c4e494bf5c2656bbe94a85c544c3),
 with its [HIGGS protocol](https://github.com/takumiecd/torchcst/blob/97580582ed28c4e494bf5c2656bbe94a85c544c3/docs/research-history/cuda-linear/higgs-alpha-confirmation-20261105.ja.md)
 and [qualification/campaign runner](https://github.com/takumiecd/torchcst/blob/97580582ed28c4e494bf5c2656bbe94a85c544c3/benchmarks/training/higgs_confirmation_campaign.py).

@@ -11,6 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 import torch
+from dispatch_cases import fixed_plan
 from test_radius_cell_mass_cuda import GPU
 
 from benchmarks.cuda.linear.manifest import decode_snapshot, load_run
@@ -36,6 +37,7 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plans import (
     GLOBAL_OWNER_RESPONSE_COEFFICIENTS as OWNER,
 )
 from torchcst._backends.schema import DeviceInfo
+from torchcst._backends.torch.algorithms.linear.plans import TORCH_FACTORED_LINEAR
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -47,7 +49,7 @@ def model(dtype=torch.float64, skew=False):
         chart,
         atoms=129 if skew else 7,
         dtype=dtype,
-        backend="factored",
+        selector=fixed_plan(TORCH_FACTORED_LINEAR),
         kernel=kernels.product(
             kernels.cell_mass(ChebyshevSpec(modes=8)),
             coordinates=kernels.polar(
@@ -240,7 +242,9 @@ def test_actual_owner_helpers_math_mapping_and_kernel_syntax_on_cpu(tmp_path):
     moment = hybrid[
         hybrid.index(
             "template<class T, class Storage = double>\n__device__ inline Storage compact_moment_element"
-        ) : hybrid.index("template<class T, class Storage = double>\n__global__ void compact_moments_kernel")
+        ) : hybrid.index(
+            "template<class T, class Storage = double>\n__global__ void compact_moments_kernel"
+        )
     ]
     owner = (directory / "owner_response_coefficients.cuh").read_text().split(
         "// Host orchestration:"
@@ -626,7 +630,7 @@ def test_owner_public_hooks_retained_read_leases_and_fresh_live_parameters():
         candidate.atoms.p[:, 2:].add_(1.25)
     reference = model(torch.float64)
     reference.load_state_dict(candidate.state_dict())
-    reference.selector, reference.backend = None, "factored"
+    reference.selector = fixed_plan(TORCH_FACTORED_LINEAR)
     rx = x.detach().cpu().double().requires_grad_()
     expected = reference(rx)
     expected_gradients = torch.autograd.grad(

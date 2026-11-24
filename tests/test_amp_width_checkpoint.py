@@ -4,9 +4,13 @@ import copy
 
 import pytest
 import torch
+from dispatch_cases import fixed_plan
 from kernel_cases import direct_state, polar_state, triweight_state
 
 from torchcst import BandwidthBounds, CSTLinear
+from torchcst._backends.torch.algorithms.linear.plans import (
+    TORCH_FACTORED_LINEAR,
+)
 from torchcst._backends.torch.charts import construction as _construction
 
 
@@ -23,7 +27,7 @@ def make_model(kernel_type, *, normalize_columns=True):
                 minimum=0.5, maximum=2.0, birth=2.0, upper_floor=0.5
             ),
         ).declaration(),
-        backend="factored",
+        selector=fixed_plan(TORCH_FACTORED_LINEAR),
     )
 
 

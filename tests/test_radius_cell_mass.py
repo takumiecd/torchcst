@@ -7,6 +7,7 @@ from itertools import pairwise
 import numpy as np
 import pytest
 import torch
+from dispatch_cases import fixed_plan
 
 from torchcst import (
     ChebyshevSpec,
@@ -15,6 +16,9 @@ from torchcst import (
     RadiusIntegratedProfileBinding,
     chart_presets,
     kernels,
+)
+from torchcst._backends.torch.algorithms.linear.plans import (
+    TORCH_FACTORED_LINEAR,
 )
 from torchcst._backends.torch.kernels.radius_cell_mass import axis_masses
 from torchcst._backends.torch.profiles.radius_fourier import (
@@ -185,7 +189,7 @@ def test_public_decimal_boundary_y_dx_and_all_atom_gradients_against_quadrature(
             coordinates=kernels.physical(),
         ),
         dtype=dtype,
-        backend="factored",
+        selector=fixed_plan(TORCH_FACTORED_LINEAR),
     )
     # Public chart buffers follow model dtype, so use their resulting physical
     # declaration in the scalar oracle rather than the pre-conversion decimals.
@@ -316,13 +320,15 @@ def test_support_eps_is_derived_for_each_m_not_a_fixed_requirement():
     assert all(a > b for a, b in pairwise(leaks))
 
 
-def physical_layer(*, backend="factored", dtype=torch.float64):
+def physical_layer(*, plan=TORCH_FACTORED_LINEAR, dtype=torch.float64):
     chart = chart_presets.regular_grid(16, spacing=1.0, geometry="flat_torus")
     p = torch.tensor([[0.3, 0.63, 2.17, 3.31], [-0.2, 1.3, 15.77, 0.23]], dtype=dtype)
     kernel = kernels.product(
         kernels.cell_mass(ChebyshevSpec(modes=5)), coordinates=kernels.physical()
     )
-    return CSTLinear(chart, chart, atoms=p, kernel=kernel, dtype=dtype, backend=backend)
+    return CSTLinear(
+        chart, chart, atoms=p, kernel=kernel, dtype=dtype, selector=fixed_plan(plan)
+    )
 
 
 def independent_y(p, x):
@@ -395,7 +401,12 @@ def test_polar_task_radius_is_detached_but_radius_query_is_live():
         [[1.0, 0.5, 2.17, 3.31], [0.5, 1.0, 15.77, 0.23]], dtype=torch.float64
     )
     model = CSTLinear(
-        chart, chart, atoms=p, kernel=kernel, dtype=torch.float64, backend="factored"
+        chart,
+        chart,
+        atoms=p,
+        kernel=kernel,
+        dtype=torch.float64,
+        selector=fixed_plan(TORCH_FACTORED_LINEAR),
     )
     radii = model.support_radii()
     assert all(r.requires_grad for r in radii)
@@ -424,7 +435,12 @@ def test_empty_atoms_and_batch(polar):
     )
     # The public CSTLinear contract requires a positive atom count.
     model = CSTLinear(
-        chart, chart, atoms=2, kernel=kernel, dtype=torch.float64, backend="factored"
+        chart,
+        chart,
+        atoms=2,
+        kernel=kernel,
+        dtype=torch.float64,
+        selector=fixed_plan(TORCH_FACTORED_LINEAR),
     )
     x = torch.randn(0, 16, dtype=torch.float64, requires_grad=True)
     y = model(x)
