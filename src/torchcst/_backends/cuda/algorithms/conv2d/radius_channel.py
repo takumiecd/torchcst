@@ -35,13 +35,26 @@ class _ChannelWeight(torch.autograd.Function):
 
 class _ChannelFourierWeight(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, physical, input_sites, sort_owners, active_banks_only):
+    def forward(
+        ctx,
+        physical,
+        input_sites,
+        output_sites,
+        radius_cap,
+        sort_owners,
+        active_banks_only,
+    ):
         native = _extension(8, rational_wide=True)
         weight, geometry, order, mask = native.packed_channel_fourier_forward(
-            physical, input_sites, sort_owners, active_banks_only
+            physical,
+            input_sites,
+            output_sites,
+            radius_cap,
+            sort_owners,
+            active_banks_only,
         )
         ctx.save_for_backward(physical, geometry, order)
-        ctx.input_sites = input_sites
+        ctx.chart = input_sites, output_sites, radius_cap
         ctx.mask = mask
         return weight
 
@@ -51,14 +64,12 @@ class _ChannelFourierWeight(torch.autograd.Function):
         physical, geometry, order = ctx.saved_tensors
         native = _extension(8, rational_wide=True)
         grad = native.packed_channel_fourier_grad(
-            physical, cotangent.contiguous(), geometry, order, ctx.input_sites, ctx.mask
+            physical, cotangent.contiguous(), geometry, order, *ctx.chart, ctx.mask
         )
-        return grad, None, None, None
+        return grad, None, None, None, None, None
 
 
-def _validate_channel_shape(physical, input_sites):
-    if type(input_sites) is not int or input_sites not in (96, 128):
-        raise ValueError("input_sites must be 96 or 128")
+def _validate_atoms(physical):
     if (
         physical.device.type != "cuda"
         or physical.dtype != torch.float32
@@ -79,25 +90,56 @@ def channel_weights(physical, input_sites, *, first_fourier_level):
     """
     if type(first_fourier_level) is not int or not 3 <= first_fourier_level <= 6:
         raise ValueError("first_fourier_level must be in [3, 6]")
-    _validate_channel_shape(physical, input_sites)
+    if type(input_sites) is not int or input_sites not in (96, 128):
+        raise ValueError("input_sites must be 96 or 128")
+    _validate_atoms(physical)
     return _ChannelWeight.apply(physical.contiguous(), input_sites, first_fourier_level)
 
 
 def channel_fourier_weights(
-    physical, input_sites, *, sort_owners=False, active_banks_only=False
+    physical,
+    input_sites,
+    *,
+    output_sites=128,
+    radius_cap=None,
+    sort_owners=False,
+    active_banks_only=False,
 ):
-    """Assemble weights in Fourier coefficients at every level, across all taps.
+    """Assemble [tap, output_sites, input_sites] using Fourier coefficients.
 
-    The Atom rows, radius cap, and charts match channel_weights. Optionally
-    sort the execution indices by tap, bank, and periodic input/output owner
-    tile. The Atom Parameter layout and gradient order follow the caller.
-    Eager active-bank selection reads a bitmask before allocating scratch.
+    The M8 channel tori use unit-spaced cells and dyadic tiles starting at one
+    cell. Physical radii must be in (0, radius_cap]. The default cap is 32 or
+    half the shorter channel period, whichever is smaller. An explicit cap
+    must be a power of two dividing both periods and at most half each.
+    Sorting changes only the execution order. Eager active-bank selection
+    reads a bitmask before allocating scratch.
     """
     if type(sort_owners) is not bool:
         raise ValueError("sort_owners must be a bool")
     if type(active_banks_only) is not bool:
         raise ValueError("active_banks_only must be a bool")
-    _validate_channel_shape(physical, input_sites)
+    for name, sites in (("input_sites", input_sites), ("output_sites", output_sites)):
+        if type(sites) is not int or sites not in (16, 32, 64, 96, 128):
+            raise ValueError(f"{name} must be 16, 32, 64, 96 or 128")
+    max_radius = min(input_sites, output_sites) // 2
+    if radius_cap is None:
+        radius_cap = min(32, max_radius)
+    if (
+        type(radius_cap) is not int
+        or radius_cap not in (1, 2, 4, 8, 16, 32, 64)
+        or radius_cap > max_radius
+        or input_sites % radius_cap
+        or output_sites % radius_cap
+    ):
+        raise ValueError(
+            "radius_cap must be a dyadic tile dividing both channel tori and at most their half-period"
+        )
+    _validate_atoms(physical)
     return _ChannelFourierWeight.apply(
-        physical.contiguous(), input_sites, sort_owners, active_banks_only
+        physical.contiguous(),
+        input_sites,
+        output_sites,
+        radius_cap,
+        sort_owners,
+        active_banks_only,
     )

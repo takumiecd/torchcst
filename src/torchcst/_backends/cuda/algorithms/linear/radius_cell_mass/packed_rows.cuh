@@ -191,6 +191,7 @@ std::vector<Tensor> packed_transform(Tensor x, Tensor p, Tensor rows, Tensor off
 // A small transient geometry table avoids repeating profile decode in each row
 // group. Linear arithmetic, scratch and retained tensors are FP32.
 constexpr int PACKED_GEOMETRY_FIELDS = 25;
+template<bool SharedProfile>
 __global__ void packed_gradient_geometry(const float *p, float *geometry, int atoms,
     Axis ai, Axis ao, float radius_limit) {
     int atom = blockIdx.x * blockDim.x + threadIdx.x;
@@ -209,7 +210,8 @@ __global__ void packed_gradient_geometry(const float *p, float *geometry, int at
     Membership mi = signal_classify<float>(ri, float(center(p, atom, ai, false)), ai);
     Membership mo = signal_classify<float>(ro, float(center(p, atom, ao, true)), ao);
     profile_values(ri, float(ai.banks[mi.bank].period), 8, v);
-    profile_values(ro, float(ao.banks[mo.bank].period), 8, v + 9);
+    if constexpr (!SharedProfile)
+        profile_values(ro, float(ao.banks[mo.bank].period), 8, v + 9);
     v[18] = signal_wrapped<float>(float(center(p, atom, ai, false)), ai);
     v[19] = signal_wrapped<float>(float(center(p, atom, ao, true)), ao);
     v[20] = mi.bank; v[21] = mi.first_tile;
@@ -217,10 +219,11 @@ __global__ void packed_gradient_geometry(const float *p, float *geometry, int at
     v[24] = signal_amplitude<float>(p, atom, ai);
 }
 
+template<bool SharedProfile = false>
 Tensor packed_make_geometry(Tensor p, Axis ai, Axis ao, float radius_limit = 0) {
     c10::cuda::CUDAGuard guard(p.device());
     auto geometry = torch::empty({p.size(0), PACKED_GEOMETRY_FIELDS}, p.options());
-    packed_gradient_geometry<<<(p.size(0) + 127) / 128, 128, 0, at::cuda::getCurrentCUDAStream()>>>(
+    packed_gradient_geometry<SharedProfile><<<(p.size(0) + 127) / 128, 128, 0, at::cuda::getCurrentCUDAStream()>>>(
         p.data_ptr<float>(), geometry.data_ptr<float>(), p.size(0), ai, ao, radius_limit);
     C10_CUDA_KERNEL_LAUNCH_CHECK(); return geometry;
 }
@@ -373,24 +376,28 @@ constexpr int CHANNEL_RADIUS_TILE_LIMIT = 32;
 constexpr int CHANNEL_LAST_FOURIER_LEVEL = 5;
 constexpr int CHANNEL_DIRECT_LEVEL = CHANNEL_LAST_FOURIER_LEVEL + 1;
 
-void check_channel_atoms(const Tensor &p, int input_sites, int first_level) {
+void check_channel_atoms(const Tensor &p) {
     TORCH_CHECK(p.is_cuda() && p.is_contiguous() && p.scalar_type() == torch::kFloat &&
         p.dim() == 3 && (p.size(0) == 1 || p.size(0) == 9) &&
         p.size(1) > 0 && p.size(1) <= SHARED_MAX_ATOMS && p.size(2) == 4,
         "expected contiguous CUDA FP32 [1 or 9, 1..4096, 4] channel Atoms");
-    TORCH_CHECK((input_sites == 96 || input_sites == 128) &&
-        3 <= first_level && first_level <= CHANNEL_DIRECT_LEVEL,
-        "expected 96 or 128 input sites and first Fourier level 3..6");
     TORCH_CHECK(!at::globalContext().allowTF32CuBLAS(),
         "channel weights require IEEE FP32 matmul");
 }
 
-Axis channel_axis(int sites) {
-    return parse_axis({double(sites), 1., 1., 0., 8., 2.}, CHANNEL_RADIUS_TILE_LIMIT);
+void check_legacy_channel_atoms(const Tensor &p, int input_sites, int first_level) {
+    check_channel_atoms(p);
+    TORCH_CHECK((input_sites == 96 || input_sites == 128) &&
+        3 <= first_level && first_level <= CHANNEL_DIRECT_LEVEL,
+        "expected 96 or 128 input sites and first Fourier level 3..6");
+}
+
+Axis channel_axis(int sites, int radius_cap = CHANNEL_RADIUS_TILE_LIMIT) {
+    return parse_axis({double(sites), 1., 1., 0., 8., 2.}, radius_cap);
 }
 
 std::vector<Tensor> packed_channel_weight_forward(Tensor p, int input_sites, int first_level) {
-    check_channel_atoms(p, input_sites, first_level);
+    check_legacy_channel_atoms(p, input_sites, first_level);
     c10::cuda::CUDAGuard guard(p.device());
     Axis ai = channel_axis(input_sites), ao = channel_axis(128);
     auto geometry = packed_make_geometry(p.view({-1, 4}), ai, ao, CHANNEL_RADIUS_TILE_LIMIT);
@@ -407,7 +414,7 @@ std::vector<Tensor> packed_channel_weight_forward(Tensor p, int input_sites, int
 
 Tensor packed_channel_weight_grad(Tensor p, Tensor dense, Tensor geometry,
     int input_sites, int first_level) {
-    check_channel_atoms(p, input_sites, first_level);
+    check_legacy_channel_atoms(p, input_sites, first_level);
     c10::cuda::CUDAGuard guard(p.device());
     packed_check_tensor(dense, p, {p.size(0), 128, input_sites});
     packed_check_tensor(geometry, p, {p.size(0) * p.size(1), PACKED_GEOMETRY_FIELDS});

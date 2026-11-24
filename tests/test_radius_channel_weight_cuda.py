@@ -26,6 +26,14 @@ def test_channel_weight_rejects_unsupported_metadata_before_compiling():
         channel_fourier_weights(p, 96, sort_owners=1)
     with pytest.raises(ValueError, match="active_banks_only"):
         channel_fourier_weights(p, 96, active_banks_only=1)
+    with pytest.raises(ValueError, match="output_sites"):
+        channel_fourier_weights(p, 32, output_sites=10)
+    with pytest.raises(ValueError, match="radius_cap"):
+        channel_fourier_weights(p, 16, output_sites=32, radius_cap=16)
+    with pytest.raises(ValueError, match="radius_cap"):
+        channel_fourier_weights(p, 32, output_sites=64, radius_cap=12)
+    with pytest.raises(ValueError, match="CUDA FP32"):
+        channel_fourier_weights(p, 16, output_sites=32)
 
 
 @pytest.fixture
@@ -210,3 +218,85 @@ def test_channel_fourier_active_banks_follow_the_saved_geometry(ieee_cuda, sort_
 
     for have, want in zip(two_forwards(True), two_forwards(False), strict=True):
         torch.testing.assert_close(have, want, atol=2e-5, rtol=5e-4)
+
+
+@pytest.mark.parametrize(
+    "k,ci,co,size,stride",
+    [
+        (1, 16, 32, 32, 1),
+        (1, 32, 64, 32, 2),
+        (1, 64, 128, 16, 2),
+        (3, 16, 32, 32, 1),
+        (3, 32, 32, 32, 1),
+        (3, 32, 64, 32, 2),
+        (3, 64, 64, 16, 1),
+        (3, 64, 128, 16, 2),
+        (3, 128, 128, 8, 1),
+    ],
+)
+def test_wideresnet_fourier_tori_and_gradients(ieee_cuda, k, ci, co, size, stride):
+    # Exercise the largest declared bank, including repeated images on the
+    # shorter torus, and all dyadic boundaries below it.
+    cap = min(ci, co) // 2
+    radius = torch.tensor([0.24, 0.5, 0.73] + [2**j for j in range(cap.bit_length())])
+    generator = torch.Generator().manual_seed(55)
+    rows = torch.randn(k * k, len(radius), 4, generator=generator) * 0.3
+    rows[..., 1] = radius
+    rows[:, ::2, 2] += co
+    rows[:, 1::2, 3] -= ci
+    rows = rows.double().requires_grad_()
+    amplitude, r, out_center, in_center = rows.reshape(-1, 4).unbind(-1)
+    binding = kernels.cell_mass(ChebyshevSpec(modes=8))
+    ao, ai = (RadiusCellMassGrid(c, 1.0, 0.0, binding) for c in (co, ci))
+    mi = axis_masses(ai, r, in_center).view(k * k, -1, ci)
+    mo = axis_masses(ao, r, out_center).view(k * k, -1, co)
+    expected = (mo * amplitude.view(k * k, -1, 1)).transpose(1, 2) @ mi
+    quadrature = [
+        a
+        * torch.outer(
+            torch.from_numpy(oracle_mass(ao, radius, o)),
+            torch.from_numpy(oracle_mass(ai, radius, i)),
+        )
+        for a, radius, o, i in rows[0].tolist()
+    ]
+    torch.testing.assert_close(expected[0], torch.stack(quadrature).sum(0))
+
+    def apply_conv(x, weights):
+        padding = k // 2
+        if k == 3 and stride == 2:
+            x = F.pad(x, (0, 1, 0, 1))
+            padding = 0
+        return F.conv2d(
+            x,
+            weights.permute(1, 2, 0).reshape(co, ci, k, k),
+            stride=stride,
+            padding=padding,
+        )
+
+    x = torch.randn(1, ci, size, size, generator=generator, dtype=torch.float64)
+    x.requires_grad_()
+    expected_y = apply_conv(x, expected)
+    dy = torch.randn(expected_y.shape, generator=generator, dtype=torch.float64)
+    expected_dx, expected_dp = torch.autograd.grad(expected_y, (x, rows), dy)
+    for active, sorted_owners in ((False, False), (True, True)):
+        p = rows.detach().to(device="cuda", dtype=torch.float32).requires_grad_()
+        gx = x.detach().to(device="cuda", dtype=torch.float32).requires_grad_()
+        w = channel_fourier_weights(
+            p,
+            ci,
+            output_sites=co,
+            radius_cap=cap,
+            sort_owners=sorted_owners,
+            active_banks_only=active,
+        )
+        y = apply_conv(gx, w)
+        dx, dp = torch.autograd.grad(y, (gx, p), dy.to(y))
+        for have, want in (
+            (w, expected),
+            (y, expected_y),
+            (dx, expected_dx),
+            (dp, expected_dp),
+        ):
+            torch.testing.assert_close(
+                have.cpu().double(), want, atol=1.2e-4, rtol=5e-4
+            )

@@ -12,24 +12,43 @@ struct CotangentFactor {
     float value, radius, center;
 };
 
-// The frequency is fixed during differentiation within a classified bank.
-__device__ inline void cotangent_series(
-    float radius, float mu, float period, CotangentFactor *factor) {
-    float c[9], dr[9];
+// Integrate each harmonic over a unit cell. The bank frequency is fixed in
+// this derivative, so the same integral multiplies the radius derivative.
+__device__ inline void cotangent_cell_coefficients(
+    float radius, float period, float *c, float *dr) {
     profile_coefficients_m8(radius, period, c, dr);
     float omega = 2 * float(PI) / period;
-    SignalPhase<float> phase(omega * mu), cell_phase(omega / 2);
+    SignalPhase<float> cell_phase(omega / 2);
+    #pragma unroll
+    for (int k = 1; k <= 8; ++k) {
+        float unused, sn;
+        cell_phase.next(unused, sn);
+        float filter = 2 * sn / (omega * k / 2);
+        c[k] *= filter;
+        dr[k] *= filter;
+    }
+}
+
+__device__ inline void cotangent_center_phase(
+    const float *c, const float *dr, float mu, float period, CotangentFactor *factor) {
+    float omega = 2 * float(PI) / period;
+    SignalPhase<float> phase(omega * mu);
     factor[0] = {c[0], 0, 0};
     #pragma unroll
     for (int k = 1; k <= 8; ++k) {
-        float cp, sp, cs, sn;
+        float cp, sp;
         phase.next(cp, sp);
-        cell_phase.next(cs, sn);
-        float frequency = omega * k, filter = 2 * sn / (frequency / 2);
-        float mass = filter * c[k], radius_derivative = filter * dr[k];
-        factor[2 * k - 1] = {mass * cp, radius_derivative * cp, -frequency * mass * sp};
-        factor[2 * k] = {mass * sp, radius_derivative * sp, frequency * mass * cp};
+        float frequency = omega * k;
+        factor[2 * k - 1] = {c[k] * cp, dr[k] * cp, -frequency * c[k] * sp};
+        factor[2 * k] = {c[k] * sp, dr[k] * sp, frequency * c[k] * cp};
     }
+}
+
+__device__ inline void cotangent_series(
+    float radius, float mu, float period, CotangentFactor *factor) {
+    float c[9], dr[9];
+    cotangent_cell_coefficients(radius, period, c, dr);
+    cotangent_center_phase(c, dr, mu, period, factor);
 }
 
 // The transpose of each local-site Fourier basis, with the cell integral
