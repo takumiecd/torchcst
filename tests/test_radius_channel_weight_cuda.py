@@ -6,7 +6,10 @@ import torch.nn.functional as F
 from test_radius_cell_mass import oracle_mass
 
 from torchcst import ChebyshevSpec, kernels
-from torchcst._backends.cuda.algorithms.conv2d.radius_channel import channel_weights
+from torchcst._backends.cuda.algorithms.conv2d.radius_channel import (
+    channel_fourier_weights,
+    channel_weights,
+)
 from torchcst._backends.torch.kernels.radius_cell_mass import axis_masses
 from torchcst.kernels.radius_cell_mass import RadiusCellMassGrid
 
@@ -19,6 +22,8 @@ def test_channel_weight_rejects_unsupported_metadata_before_compiling():
         channel_weights(p, 96, first_fourier_level=2)
     with pytest.raises(ValueError, match="CUDA FP32"):
         channel_weights(p, 96, first_fourier_level=4)
+    with pytest.raises(ValueError, match="sort_owners"):
+        channel_fourier_weights(p, 96, sort_owners=1)
 
 
 @pytest.fixture
@@ -40,8 +45,10 @@ def atoms(taps):
     rows = torch.tensor(
         [
             [0.22, 0.5, -0.19, 95.77],
+            [0.13, 0.24, -0.21, 95.79],
             [-0.31, 1, 127.81, -0.38],
             [0.73, 1.0000001192092896, 0.19, 63.83],
+            [-0.07, 1.8, 0.23, 63.91],
             [0.17, 4, 89.25, 31.78],
             [-0.5, 8.2, 0.37, 95.91],
             [0.42, 16.21, 125.69, 13.06],
@@ -62,15 +69,23 @@ def conv(x, weights, k):
     )
 
 
+def assemble(p, input_sites, method):
+    if method in ("fourier", "fourier-sorted"):
+        return channel_fourier_weights(
+            p, input_sites, sort_owners=method == "fourier-sorted"
+        )
+    return channel_weights(p, input_sites, first_fourier_level=method)
+
+
 @pytest.mark.parametrize("k", [1, 3])
 @pytest.mark.parametrize("input_sites", [96, 128])
-@pytest.mark.parametrize("first_level", [3, 4, 5, 6])
-def test_channel_weight_and_adjoint(ieee_cuda, k, input_sites, first_level):
+@pytest.mark.parametrize("method", [3, 4, 5, 6, "fourier", "fourier-sorted"])
+def test_channel_weight_and_adjoint(ieee_cuda, k, input_sites, method):
     binding = kernels.cell_mass(ChebyshevSpec(modes=8))
     ai = RadiusCellMassGrid(input_sites, 1.0, 0.0, binding)
     ao = RadiusCellMassGrid(128, 1.0, 0.0, binding)
     p = atoms(k * k)
-    p[:, (0, 4, 6), 3] += input_sites - 96
+    p[:, (0, 1, 6, 8), 3] += input_sites - 96
     pref = p.double().requires_grad_()
     references = []
     quadrature = []
@@ -100,21 +115,21 @@ def test_channel_weight_and_adjoint(ieee_cuda, k, input_sites, first_level):
 
     p = p.cuda().requires_grad_()
     x = x.cuda().requires_grad_()
-    weights = channel_weights(p, input_sites, first_fourier_level=first_level)
+    weights = assemble(p, input_sites, method)
     y = conv(x, weights, k)
     dx, dp = torch.autograd.grad(y, (x, p), dy.cuda())
     for have, want in ((weights, weights_quad), (y, y_ref), (dx, dx_ref), (dp, dp_ref)):
         torch.testing.assert_close(have.cpu().double(), want, atol=2e-5, rtol=5e-4)
 
 
-@pytest.mark.parametrize("first_level", [4, 6])
-def test_channel_physical_weight_graph_replay(ieee_cuda, first_level):
+@pytest.mark.parametrize("method", [4, 6, "fourier", "fourier-sorted"])
+def test_channel_physical_weight_graph_replay(ieee_cuda, method):
     p = atoms(9).cuda().requires_grad_()
     x = torch.randn(2, 96, 6, 7, device="cuda").requires_grad_()
     dy = torch.randn(2, 128, 3, 4, device="cuda")
 
     def forward_and_grad():
-        y = conv(x, channel_weights(p, 96, first_fourier_level=first_level), 3)
+        y = conv(x, assemble(p, 96, method), 3)
         return (y, *torch.autograd.grad(y, (x, p), dy))
 
     warmup = torch.cuda.Stream()
@@ -132,4 +147,24 @@ def test_channel_physical_weight_graph_replay(ieee_cuda, first_level):
         x.add_(0.1)
     graph.replay()
     for have, want in zip(captured, forward_and_grad(), strict=True):
+        torch.testing.assert_close(have, want, atol=2e-5, rtol=5e-4)
+
+
+@pytest.mark.parametrize("sort_owners", [False, True])
+def test_channel_fourier_center_shifts_follow_the_torus(ieee_cuda, sort_owners):
+    rows = atoms(9).cuda()
+    rows[..., 2:] = (rows[..., 2:] * 4).round() / 4
+    shifted = rows.clone()
+    shifted[..., 2] += 128
+    shifted[..., 3] -= 96
+    generator = torch.Generator(device="cuda").manual_seed(33)
+    dw = torch.randn(9, 128, 96, device="cuda", generator=generator)
+
+    def weight_and_grad(p):
+        p.requires_grad_()
+        weight = channel_fourier_weights(p, 96, sort_owners=sort_owners)
+        (dp,) = torch.autograd.grad(weight, p, dw)
+        return weight, dp
+
+    for have, want in zip(weight_and_grad(rows), weight_and_grad(shifted), strict=True):
         torch.testing.assert_close(have, want, atol=2e-5, rtol=5e-4)
