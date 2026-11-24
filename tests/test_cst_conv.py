@@ -8,7 +8,7 @@ import torch
 import torch.nn.functional as F
 from kernel_cases import amplitude_state, gaussian_state, separable_state
 
-from torchcst import CSTConv2d, CSTOptimizer
+from torchcst import CSTConv2d, CSTOptimizer, GaussianSpec, chart_presets, kernels
 from torchcst._backends.torch.charts import construction as _construction
 from torchcst._backends.torch.kernels import execution as _kernel
 
@@ -101,6 +101,114 @@ def test_factored_and_materialized_backends_match_outputs_and_gradients() -> Non
     torch.testing.assert_close(factored.atoms.p.grad, materialized.atoms.p.grad)
 
 
+@pytest.mark.parametrize("kernel_size,groups", [((1, 1), 1), ((3, 3), 1), ((3, 3), 2)])
+def test_composed_matches_independent_periodic_gaussians(kernel_size, groups) -> None:
+    in_channels, out_channels = 4, 6
+    patch_features = in_channels // groups * math.prod(kernel_size)
+    sigma = 0.75
+    model = CSTConv2d(
+        chart_presets.regular_grid(out_channels, geometry="flat_torus"),
+        chart_presets.regular_grid(patch_features, geometry="flat_torus"),
+        in_channels=in_channels,
+        out_channels=out_channels,
+        kernel_size=kernel_size,
+        stride=(2, 1),
+        padding=tuple(size // 2 for size in kernel_size),
+        dilation=(1, 2),
+        groups=groups,
+        atoms=3,
+        kernel=kernels.amplitude(kernels.product(kernels.l2(GaussianSpec(), sigma))),
+        backend="composed",
+        dtype=torch.float64,
+    )
+    # Centers on both sides of the periodic seam and interior off-grid centers.
+    with torch.no_grad():
+        model.atoms.p.copy_(
+            model.atoms.p.new_tensor(
+                [
+                    [0.7, 0.21, patch_features - 0.32],
+                    [-0.4, 5.73, 0.28],
+                    [0.2, 3.11, 1.25],
+                ]
+            )
+        )
+    generator = torch.Generator().manual_seed(41)
+    x = (
+        torch.randn(2, in_channels, 7, 9, dtype=torch.float64, generator=generator)
+        .contiguous(memory_format=torch.channels_last)
+        .requires_grad_()
+    )
+    output = model(x)
+    dy = torch.randn(output.shape, dtype=torch.float64, generator=generator)
+    dx, dp = torch.autograd.grad(output, (x, model.atoms.p), dy)
+
+    p_ref = model.atoms.p.detach().clone().requires_grad_()
+    x_ref = x.detach().clone().requires_grad_()
+
+    def gaussian(period, centers):
+        sites = torch.arange(period, dtype=torch.float64)[:, None]
+        offset = (sites - centers + period / 2).remainder(period) - period / 2
+        values = torch.exp(-0.5 * (offset / sigma).square())
+        return values / torch.linalg.vector_norm(values, dim=0)
+
+    amplitude, out_center, in_center = p_ref.unbind(dim=1)
+    terms = (
+        amplitude[:, None, None]
+        * gaussian(out_channels, out_center).T[:, :, None]
+        * gaussian(patch_features, in_center).T[:, None, :]
+    )
+    weight = terms.sum(dim=0).reshape(out_channels, in_channels // groups, *kernel_size)
+    expected = F.conv2d(
+        x_ref,
+        weight,
+        stride=model.stride,
+        padding=model.padding,
+        dilation=model.dilation,
+        groups=groups,
+    )
+    dx_ref, dp_ref = torch.autograd.grad(expected, (x_ref, p_ref), dy)
+    for actual, reference in ((output, expected), (dx, dx_ref), (dp, dp_ref)):
+        torch.testing.assert_close(actual, reference, atol=1e-12, rtol=1e-11)
+
+
+def test_composed_accumulates_weight_before_autocast(monkeypatch) -> None:
+    model = make_model(backend="materialized").float()
+    x = torch.randn(2, model.in_channels, 7, 9)
+    expected_weight = model.dense_weight().detach()
+    conv = F.conv2d
+    observed = []
+
+    def capture(inputs, weight, **settings):
+        observed.append(weight.detach())
+        return conv(inputs, weight, **settings)
+
+    def reject_materialization(_):
+        pytest.fail("composed execution materialized individual atom weights")
+
+    model.backend = "composed"
+    monkeypatch.setattr(model, "_materialize_atoms", reject_materialization)
+    monkeypatch.setattr(F, "conv2d", capture)
+    with torch.autocast("cpu", dtype=torch.bfloat16):
+        output = model(x)
+    assert output.dtype == torch.bfloat16
+    assert len(observed) == 1
+    torch.testing.assert_close(observed[0], expected_weight)
+
+
+def test_composed_rejects_a_nonseparable_kernel() -> None:
+    with pytest.raises(ValueError, match="does not support factorized execution"):
+        CSTConv2d(
+            chart_presets.regular_grid(4),
+            chart_presets.regular_grid(2),
+            in_channels=2,
+            out_channels=4,
+            kernel_size=1,
+            atoms=3,
+            kernel=kernels.radial(kernels.point(GaussianSpec(), 0.75)),
+            backend="composed",
+        )
+
+
 def test_grouped_materialized_convolution_matches_torch() -> None:
     model = make_model(
         backend="materialized",
@@ -158,8 +266,9 @@ def test_constructor_and_forward_validate_flat_patch_shape() -> None:
         model(torch.randn(2, 3, 7, 9, dtype=torch.float64))
 
 
-def test_parameter_adam_owns_factored_conv_atom_coordinates() -> None:
-    model = make_model(backend="factored")
+@pytest.mark.parametrize("backend", ["factored", "composed"])
+def test_parameter_adam_owns_conv_atom_coordinates(backend) -> None:
+    model = make_model(backend=backend)
     optimizer = CSTOptimizer(
         torch.optim.AdamW(
             model.parameters(),

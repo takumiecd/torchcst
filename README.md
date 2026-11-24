@@ -453,8 +453,8 @@ training.
 ## Execution and constraints
 
 Kernel declarations define the operator independently of its implementation.
-`backend=` selects a builtin Plan alias; `selector=` selects a Plan explicitly
-and takes precedence. General Torch implementations provide factored and
+For `CSTLinear`, `backend=` selects a builtin Plan alias. `selector=` selects a
+Plan explicitly and takes precedence. General Torch implementations provide factored and
 materialized evaluation. Two-Chart radial kernels use the Torch materialized
 reference and have no factored or specialized CUDA Plan.
 
@@ -469,6 +469,20 @@ and [optimizer guide](docs/cst-optimizer.md) for the supported boundaries.
 This package is a research API. Historical measurements describe their recorded
 source, workload and hardware; they do not establish performance of a different
 revision or implementation.
+
+### CSTConv2d weight composition
+
+For a separable kernel, set `CSTConv2d(..., backend="composed")` or assign
+`layer.backend = "composed"` on an existing layer. The input Chart indexes
+the flattened patch in channel, kernel-height, kernel-width order, with
+`(in_channels // groups) * kernel_height * kernel_width` sites.
+The backend contracts the two factors over the Atom dimension, reshapes the
+single weight matrix, and applies PyTorch Conv2d. It supports grouped
+convolution, stride, padding and dilation. Under autocast, it composes the
+weight in the Atom dtype and applies the ambient autocast policy to Conv2d.
+
+`backend="auto"` chooses between factored and materialized execution.
+`backend="composed"` is an explicit choice for performance evaluation.
 
 ## CST research
 

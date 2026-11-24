@@ -19,7 +19,8 @@ from torchcst.kernels.state import KernelState
 
 from .module import CSTModule, RepulsionKind
 
-Backend = Literal["auto", "factored", "materialized"]
+ResolvedBackend = Literal["factored", "materialized", "composed"]
+Backend = Literal["auto", ResolvedBackend]
 
 
 def _pair(
@@ -112,8 +113,10 @@ class CSTConv2d(CSTModule):
             raise TypeError("kernel must be a KernelSpec")
         if atom_init not in ("balanced", "uniform"):
             raise ValueError("atom_init must be 'balanced' or 'uniform'")
-        if backend not in ("auto", "factored", "materialized"):
-            raise ValueError("backend must be 'auto', 'factored', or 'materialized'")
+        if backend not in ("auto", "factored", "materialized", "composed"):
+            raise ValueError(
+                "backend must be 'auto', 'factored', 'materialized', or 'composed'"
+            )
         if backend == "factored" and groups != 1:
             raise ValueError("factorized CSTConv2d currently requires groups=1")
 
@@ -141,7 +144,9 @@ class CSTConv2d(CSTModule):
         self.input_chart = input_chart
         self.kernel = KernelState(kernel, options=kernel_options)
         kernel = self.kernel
-        if backend == "factored" and not _kernel.supports_factorization(kernel):
+        if backend in ("factored", "composed") and not _kernel.supports_factorization(
+            kernel
+        ):
             raise ValueError(
                 "the selected kernel does not support factorized execution"
             )
@@ -274,7 +279,7 @@ class CSTConv2d(CSTModule):
             atoms = atoms.abs()
         return atoms.sum(dim=0), atoms.square().sum()
 
-    def _resolved_backend(self) -> Literal["factored", "materialized"]:
+    def _resolved_backend(self) -> ResolvedBackend:
         from torchcst._backends.torch.kernels import execution as _kernel
 
         if self.backend != "auto":
@@ -290,12 +295,21 @@ class CSTConv2d(CSTModule):
         inputs: Tensor,
         p: Tensor,
         *,
-        backend: Literal["factored", "materialized"],
+        backend: ResolvedBackend,
     ) -> Tensor:
         from torchcst._backends.torch.kernels import execution as _kernel
 
-        if backend == "materialized":
-            weight = self._materialize_atoms(p).sum(dim=0)
+        if backend in ("materialized", "composed"):
+            if backend == "composed":
+                weight = _kernel.compose_weight(
+                    self.kernel, self.output_chart, self.input_chart, p
+                ).reshape(
+                    self.out_channels,
+                    self.in_channels // self.groups,
+                    *self.kernel_size,
+                )
+            else:
+                weight = self._materialize_atoms(p).sum(dim=0)
             return F.conv2d(
                 inputs,
                 weight,

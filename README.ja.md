@@ -429,8 +429,8 @@ Safetensorsファイルには、そのモデルの `state_dict()` にある全Te
 
 ## 実行と制約
 
-Kernel の宣言は実装と独立して演算子を定める。`backend=` は組み込み Plan の alias、
-`selector=` は明示的な Plan を選び、後者が優先する。汎用 Torch 実装には factored と
+Kernel の宣言は実装と独立して演算子を定める。`CSTLinear` の `backend=` は組み込み Plan の
+alias を選ぶ。`selector=` は明示的に Plan を選び、`backend=` より優先する。汎用 Torch 実装には factored と
 materialized の評価がある。二つの Chart を使う radial kernel は Torch materialized 参照で
 評価し、factored や専用 CUDA Plan は持たない。
 
@@ -443,6 +443,18 @@ opt-in かつ eager 専用。Linear Plan を選んでも optimizer の更新 Pla
 
 本パッケージは研究用 API。過去の測定は記録された source・workload・hardware の結果であり、
 異なる revision や実装の性能を示すものではない。
+
+### CSTConv2d の重み合成
+
+分離可能な Kernel では、`CSTConv2d(..., backend="composed")` または既存層の
+`layer.backend = "composed"` で指定できる。入力 Chart は局所パッチを channel、高さ、幅の順に
+平坦化した `(in_channels // groups) * kernel_height * kernel_width` サイトを表す。
+二つの因子を Atom 軸で縮約して一枚の重みを作り、形状を変換して PyTorch Conv2d を適用する。
+groups、stride、padding、dilation に対応する。autocast 下では Atom の dtype で重みを
+合成し、Conv2d の実行に外側の autocast 設定を適用する。
+
+`backend="auto"` は factored と materialized から選択する。
+性能評価で重み合成を使う場合は `backend="composed"` を明示する。
 
 ## CST の研究
 

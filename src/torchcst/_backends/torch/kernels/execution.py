@@ -2,6 +2,8 @@
 
 from importlib import import_module
 
+import torch
+
 from torchcst._builtin_callbacks import seal_functions as _seal_functions
 from torchcst.geometry.spec import EuclideanGeometrySpec
 from torchcst.kernels.options import KernelOptions
@@ -278,6 +280,13 @@ def factors(state, *charts_and_p):
     if not supports_factorization(state):
         raise ValueError("kernel has no input/output factors")
     return _operation(state, "factors")(state, *charts_and_p)
+
+
+def compose_weight(state, output_chart, input_chart, p):
+    # Accumulate the Atom sum in its own dtype before applying the operator.
+    with torch.autocast(device_type=p.device.type, enabled=False):
+        phi_input, phi_output = factors(state, output_chart, input_chart, p)
+        return phi_output @ phi_input.transpose(0, 1)
 
 
 def weight(state, *charts_and_p):
