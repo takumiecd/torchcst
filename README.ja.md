@@ -453,7 +453,7 @@ opt-in かつ eager 専用。Linear Plan を選んでも optimizer の更新 Pla
 groups、stride、padding、dilation に対応する。autocast 下では Atom の dtype で重みを
 合成し、Conv2d の実行に外側の autocast 設定を適用する。
 
-`backend="auto"` は factored と materialized から選択する。
+パッチ構成の `backend="auto"` は factored と materialized から選択する。
 性能評価で重み合成を使う場合は `backend="composed"` を明示する。
 
 半径セル質量 Kernel では、FP32 または FP64 の Atom Parameter を使って Conv2d 層を
@@ -461,6 +461,62 @@ CPU で初期化してから、eager 実行用に CUDA に移す。平坦化し�
 セル質量の階層条件を満たす必要がある。例えば入力96チャネルの3×3なら864サイトとなり、
 base tile 27 と merge factor 2 を指定できる。入力と出力で別の階層を使うには各軸の
 profile binding を指定する。CUDA の composed 経路では Torch のセル質量因子を使う。
+
+### チャネルタップ構成の Fourier CSTConv2d
+
+3×3でFourierを使うときは `atom_layout="channel_taps"` を指定する。2つのChartは
+出力チャネルと局所入力チャネルを指す。Atom IDを等分して空間タップへ行優先で割り当てる。
+`atoms` は全タップの合計で、レイアウトはチェックポイントに記録する。1×1では既定の
+パッチ構成でもFourierを選べる。
+
+次はWideResNetのstride 2の32→64層で、入力の下端と右端をパディングする例。
+
+```python
+import torch
+import torch.nn.functional as F
+from torchcst import CSTConv2d, ChebyshevSpec, chart_presets, kernels
+
+torch.set_float32_matmul_precision("highest")
+torch.backends.cudnn.allow_tf32 = False
+
+grid = chart_presets.regular_grid
+layer = CSTConv2d(
+    charts=(grid(64, geometry="flat_torus"), grid(32, geometry="flat_torus")),
+    in_channels=32,
+    out_channels=64,
+    kernel_size=3,
+    stride=2,
+    atoms=9 * 48,
+    atom_layout="channel_taps",
+    backend="fourier",
+    kernel=kernels.product(
+        kernels.cell_mass(ChebyshevSpec(modes=8)),
+        coordinates=kernels.rational_radius(radius_max=16),
+    ),
+    dtype=torch.float32,
+).cuda()
+
+x = torch.randn(2, 32, 32, 32, device="cuda")
+y = layer(F.pad(x, (0, 1, 0, 1)))
+```
+
+`backend="fourier"` は静的Fourierを選び、eagerのウォームアップ後に層の順伝播と逆伝播を
+キャプチャできる。`backend="fourier_active"` はeagerで占有バンクだけを処理する。
+チャネルタップ構成の `backend="composed"` と `backend="auto"` はTorch参照を使う。
+明示した `selector=` は別名指定より優先される。
+`torchcst._backends.cuda.algorithms.conv2d.channel_algorithm` の
+`CHANNEL_FOURIER` または `CHANNEL_FOURIER_ACTIVE` を
+`make_algorithm_registry()` とともに `FixedSelector` に渡せる。明示したPlanで対応できない
+条件は実行前に報告する。
+
+Fourierの対応条件は1×1または3×3、groups 1、タップあたり1〜4096 Atom、各軸16/32/64/128
+チャネル。Chartは固定の原点0・spacing 1のトーラスで、Chebyshev M8、基底タイル1、
+merge factor 2を使う。有理半径座標の条件は `radius_min >= 0.5`、両Chartの半周期以内に
+入る2のべき乗の `radius_max`、`amplitude_max <= 32`。CUDA compute capability 8.0以上、
+FP32、autocast・TF32・決定論的アルゴリズムが無効な実行環境を使う。
+層はCPUで初期化してからCUDAへ移す。
+[WideResNetの層単体計測](docs/research-history/cuda-conv/radius-channel-fourier-wideresnet-20261124.ja.md)
+にカーネルのベンチマーク条件を記録した。
 
 ## CST の研究
 

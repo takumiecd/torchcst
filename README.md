@@ -481,7 +481,7 @@ single weight matrix, and applies PyTorch Conv2d. It supports grouped
 convolution, stride, padding and dilation. Under autocast, it composes the
 weight in the Atom dtype and applies the ambient autocast policy to Conv2d.
 
-`backend="auto"` chooses between factored and materialized execution.
+In the patch layout, `backend="auto"` chooses between factored and materialized execution.
 `backend="composed"` is an explicit choice for performance evaluation.
 
 For radius cell-mass kernels, initialize the Conv2d layer on CPU with FP32 or
@@ -490,6 +490,66 @@ Chart must satisfy its declared cell-mass hierarchy. For example, a 96-channel
 3×3 input has 864 sites and permits a base tile of 27 with merge factor 2.
 Use per-axis profile bindings to set the input and output hierarchies. The
 composed path uses Torch cell-mass factors on CUDA.
+
+### Fourier CSTConv2d with channel taps
+
+For 3×3 Fourier, set `atom_layout="channel_taps"`. The two Charts index
+output and local input channels. Equal blocks of Atom IDs belong to the spatial
+taps in row-major order. `atoms` is the total across all taps. The layout is
+part of the checkpoint contract. A 1×1 layer can also select Fourier with the
+default patch layout.
+
+This example uses the stride-2 32→64 WideResNet layer and pads the input at
+the bottom and right.
+
+```python
+import torch
+import torch.nn.functional as F
+from torchcst import CSTConv2d, ChebyshevSpec, chart_presets, kernels
+
+torch.set_float32_matmul_precision("highest")
+torch.backends.cudnn.allow_tf32 = False
+
+grid = chart_presets.regular_grid
+layer = CSTConv2d(
+    charts=(grid(64, geometry="flat_torus"), grid(32, geometry="flat_torus")),
+    in_channels=32,
+    out_channels=64,
+    kernel_size=3,
+    stride=2,
+    atoms=9 * 48,
+    atom_layout="channel_taps",
+    backend="fourier",
+    kernel=kernels.product(
+        kernels.cell_mass(ChebyshevSpec(modes=8)),
+        coordinates=kernels.rational_radius(radius_max=16),
+    ),
+    dtype=torch.float32,
+).cuda()
+
+x = torch.randn(2, 32, 32, 32, device="cuda")
+y = layer(F.pad(x, (0, 1, 0, 1)))
+```
+
+`backend="fourier"` selects static Fourier and supports capturing the layer's
+forward and backward after eager warmup. `backend="fourier_active"` processes
+occupied banks in eager mode. For channel taps, `backend="composed"` and
+`backend="auto"` use the Torch reference. An explicit `selector=` takes
+precedence over the alias. `FixedSelector` accepts the `CHANNEL_FOURIER` and
+`CHANNEL_FOURIER_ACTIVE` Plans from
+`torchcst._backends.cuda.algorithms.conv2d.channel_algorithm` with
+`make_algorithm_registry()`. Forced Plans report unsupported conditions
+before execution.
+
+Fourier supports 1×1 and 3×3, groups 1, 1–4096 Atoms per tap, and 16/32/64/128
+channels per axis. Use fixed, origin-zero, unit-spaced torus Charts with
+Chebyshev M8, base tile 1 and merge factor 2. Rational radius coordinates
+require `radius_min >= 0.5`, a power-of-two `radius_max` within both Chart
+half-periods and `amplitude_max <= 32`. Use CUDA compute capability 8.0+,
+FP32, and disable autocast, TF32 and deterministic algorithms. Initialize
+the layer on CPU before moving it to CUDA. The
+[WideResNet layer measurements](docs/research-history/cuda-conv/radius-channel-fourier-wideresnet-20261124.md)
+record the kernel benchmark conditions.
 
 ## CST research
 
