@@ -33,17 +33,31 @@ class _ChannelWeight(torch.autograd.Function):
         return grad, None, None
 
 
-def channel_weights(physical, input_sites, *, first_fourier_level):
-    """Return [tap, 128, input_sites] from [tap, atoms, a/R/co/ci].
+class _ChannelFourierWeight(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, physical, input_sites, sort_owners):
+        native = _extension(8, rational_wide=True)
+        weight, geometry, order = native.packed_channel_fourier_forward(
+            physical, input_sites, sort_owners
+        )
+        ctx.save_for_backward(physical, geometry, order)
+        ctx.input_sites = input_sites
+        return weight
 
-    Radii are in (0, 32]. Channel charts use unit spacing, base tile one,
-    and merge factor two. First Fourier level 6 selects direct accumulation
-    on the entire declared hierarchy. The caller owns the rational decoder.
-    """
+    @staticmethod
+    @once_differentiable
+    def backward(ctx, cotangent):
+        physical, geometry, order = ctx.saved_tensors
+        native = _extension(8, rational_wide=True)
+        grad = native.packed_channel_fourier_grad(
+            physical, cotangent.contiguous(), geometry, order, ctx.input_sites
+        )
+        return grad, None, None
+
+
+def _validate_channel_shape(physical, input_sites):
     if type(input_sites) is not int or input_sites not in (96, 128):
         raise ValueError("input_sites must be 96 or 128")
-    if type(first_fourier_level) is not int or not 3 <= first_fourier_level <= 6:
-        raise ValueError("first_fourier_level must be in [3, 6]")
     if (
         physical.device.type != "cuda"
         or physical.dtype != torch.float32
@@ -53,4 +67,29 @@ def channel_weights(physical, input_sites, *, first_fourier_level):
         or physical.shape[2] != 4
     ):
         raise ValueError("expected CUDA FP32 physical atoms [1 or 9, 1..4096, 4]")
+
+
+def channel_weights(physical, input_sites, *, first_fourier_level):
+    """Return [tap, 128, input_sites] from [tap, atoms, a/R/co/ci].
+
+    Radii are in (0, 32]. Channel charts use unit spacing, base tile one,
+    and merge factor two. First Fourier level 6 selects direct accumulation
+    on the entire declared hierarchy. The caller owns the rational decoder.
+    """
+    if type(first_fourier_level) is not int or not 3 <= first_fourier_level <= 6:
+        raise ValueError("first_fourier_level must be in [3, 6]")
+    _validate_channel_shape(physical, input_sites)
     return _ChannelWeight.apply(physical.contiguous(), input_sites, first_fourier_level)
+
+
+def channel_fourier_weights(physical, input_sites, *, sort_owners=False):
+    """Assemble weights in Fourier coefficients at every level, across all taps.
+
+    The Atom rows, radius cap, and charts match channel_weights. Optionally
+    sort the execution indices by tap, bank, and periodic input/output owner
+    tile. The Atom Parameter layout and gradient order follow the caller.
+    """
+    if type(sort_owners) is not bool:
+        raise ValueError("sort_owners must be a bool")
+    _validate_channel_shape(physical, input_sites)
+    return _ChannelFourierWeight.apply(physical.contiguous(), input_sites, sort_owners)
