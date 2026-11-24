@@ -35,13 +35,14 @@ class _ChannelWeight(torch.autograd.Function):
 
 class _ChannelFourierWeight(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, physical, input_sites, sort_owners):
+    def forward(ctx, physical, input_sites, sort_owners, active_banks_only):
         native = _extension(8, rational_wide=True)
-        weight, geometry, order = native.packed_channel_fourier_forward(
-            physical, input_sites, sort_owners
+        weight, geometry, order, mask = native.packed_channel_fourier_forward(
+            physical, input_sites, sort_owners, active_banks_only
         )
         ctx.save_for_backward(physical, geometry, order)
         ctx.input_sites = input_sites
+        ctx.mask = mask
         return weight
 
     @staticmethod
@@ -50,9 +51,9 @@ class _ChannelFourierWeight(torch.autograd.Function):
         physical, geometry, order = ctx.saved_tensors
         native = _extension(8, rational_wide=True)
         grad = native.packed_channel_fourier_grad(
-            physical, cotangent.contiguous(), geometry, order, ctx.input_sites
+            physical, cotangent.contiguous(), geometry, order, ctx.input_sites, ctx.mask
         )
-        return grad, None, None
+        return grad, None, None, None
 
 
 def _validate_channel_shape(physical, input_sites):
@@ -82,14 +83,21 @@ def channel_weights(physical, input_sites, *, first_fourier_level):
     return _ChannelWeight.apply(physical.contiguous(), input_sites, first_fourier_level)
 
 
-def channel_fourier_weights(physical, input_sites, *, sort_owners=False):
+def channel_fourier_weights(
+    physical, input_sites, *, sort_owners=False, active_banks_only=False
+):
     """Assemble weights in Fourier coefficients at every level, across all taps.
 
     The Atom rows, radius cap, and charts match channel_weights. Optionally
     sort the execution indices by tap, bank, and periodic input/output owner
     tile. The Atom Parameter layout and gradient order follow the caller.
+    Eager active-bank selection reads a bitmask before allocating scratch.
     """
     if type(sort_owners) is not bool:
         raise ValueError("sort_owners must be a bool")
+    if type(active_banks_only) is not bool:
+        raise ValueError("active_banks_only must be a bool")
     _validate_channel_shape(physical, input_sites)
-    return _ChannelFourierWeight.apply(physical.contiguous(), input_sites, sort_owners)
+    return _ChannelFourierWeight.apply(
+        physical.contiguous(), input_sites, sort_owners, active_banks_only
+    )

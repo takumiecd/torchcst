@@ -86,8 +86,8 @@ Tensor packed_make_dense_weight(Tensor, Tensor, Config, Config);
 Tensor packed_dense_cotangent_grad(Tensor, Tensor, Tensor, Tensor, Config, Config);
 std::vector<Tensor> packed_channel_weight_forward(Tensor, int, int);
 Tensor packed_channel_weight_grad(Tensor, Tensor, Tensor, int, int);
-std::vector<Tensor> packed_channel_fourier_forward(Tensor, int, bool);
-Tensor packed_channel_fourier_grad(Tensor, Tensor, Tensor, Tensor, int);
+std::tuple<Tensor, Tensor, Tensor, int> packed_channel_fourier_forward(Tensor, int, bool, bool);
+Tensor packed_channel_fourier_grad(Tensor, Tensor, Tensor, Tensor, int, int);
 
 class PackedDenseTiles : public torch::autograd::Function<PackedDenseTiles> {
 public:

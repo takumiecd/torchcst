@@ -4,6 +4,7 @@
 namespace radius_cell_mass {
 
 constexpr int CHANNEL_FOURIER_BANKS = 12;
+constexpr int CHANNEL_ALL_FOURIER_BANKS = (1 << CHANNEL_FOURIER_BANKS) - 1;
 
 struct ChannelFourierLayout {
     int offsets[CHANNEL_FOURIER_BANKS];
@@ -19,11 +20,11 @@ __host__ __device__ inline int channel_rank(Bank bank) {
     return period < COTANGENT_FEATURES ? period : COTANGENT_FEATURES;
 }
 
-inline ChannelFourierLayout channel_fourier_layout(Axis ai, Axis ao, int taps) {
+inline ChannelFourierLayout channel_fourier_layout(Axis ai, Axis ao, int taps, int mask) {
     ChannelFourierLayout layout{};
     for (int b = 0; b < CHANNEL_FOURIER_BANKS; ++b) {
         // On a dyadic hierarchy a selected non-base tile has R > T/2.
-        if (b != 0 && ai.banks[b].count == 2) {
+        if (!(mask & (1 << b)) || (b != 0 && ai.banks[b].count == 2)) {
             layout.offsets[b] = -1;
             continue;
         }
@@ -32,6 +33,11 @@ inline ChannelFourierLayout channel_fourier_layout(Axis ai, Axis ao, int taps) {
         layout.size += taps * ai.banks[b].tile_count * ao.banks[b].tile_count * rank * rank;
     }
     return layout;
+}
+
+__global__ void channel_active_fourier_banks(const float *geometry, int *mask, int atoms) {
+    int atom = blockIdx.x * blockDim.x + threadIdx.x;
+    if (atom < atoms) atomicOr(mask, 1 << int(geometry[int64_t(atom) * 25 + 20]));
 }
 
 __device__ inline void channel_add(float &a, float b, float sign) { a += sign * b; }
@@ -211,14 +217,23 @@ __global__ void channel_fourier_parameter_grad(const float *p, const float *geom
     cotangent_store(grad, atom, v[24], sum);
 }
 
-std::vector<Tensor> packed_channel_fourier_forward(Tensor p, int input_sites, bool sorted) {
+std::tuple<Tensor, Tensor, Tensor, int> packed_channel_fourier_forward(
+    Tensor p, int input_sites, bool sorted, bool active_only) {
     check_channel_atoms(p, input_sites, CHANNEL_DIRECT_LEVEL);
     c10::cuda::CUDAGuard guard(p.device());
     const auto stream = at::cuda::getCurrentCUDAStream();
     Axis ai = channel_axis(input_sites), ao = channel_axis(128);
     int taps = p.size(0), tap_atoms = p.size(1), atoms = taps * tap_atoms;
-    auto layout = channel_fourier_layout(ai, ao, taps);
     auto geometry = packed_make_geometry(p.view({-1, 4}), ai, ao, CHANNEL_RADIUS_TILE_LIMIT);
+    int mask = CHANNEL_ALL_FOURIER_BANKS;
+    if (active_only) {
+        auto occupied = torch::zeros({1}, p.options().dtype(torch::kInt));
+        channel_active_fourier_banks<<<(atoms + THREADS - 1) / THREADS, THREADS, 0, stream>>>(
+            geometry.data_ptr<float>(), occupied.data_ptr<int>(), atoms);
+        C10_CUDA_KERNEL_LAUNCH_CHECK();
+        mask = occupied.item<int>();
+    }
+    auto layout = channel_fourier_layout(ai, ao, taps, mask);
     auto owners = torch::zeros({layout.size}, p.options());
     auto order = torch::empty({0}, p.options().dtype(torch::kLong));
     if (sorted) {
@@ -257,11 +272,11 @@ std::vector<Tensor> packed_channel_fourier_forward(Tensor p, int input_sites, bo
         weight.view({-1, tile}).addmm_(input, basis.t());
     }
     C10_CUDA_KERNEL_LAUNCH_CHECK();
-    return {weight, geometry, order};
+    return {weight, geometry, order, mask};
 }
 
 Tensor packed_channel_fourier_grad(Tensor p, Tensor dense, Tensor geometry, Tensor order,
-    int input_sites) {
+    int input_sites, int mask) {
     check_channel_atoms(p, input_sites, CHANNEL_DIRECT_LEVEL);
     c10::cuda::CUDAGuard guard(p.device());
     const auto stream = at::cuda::getCurrentCUDAStream();
@@ -272,7 +287,8 @@ Tensor packed_channel_fourier_grad(Tensor p, Tensor dense, Tensor geometry, Tens
     TORCH_CHECK(order.device() == p.device() && order.is_contiguous() &&
         order.scalar_type() == torch::kLong && order.dim() == 1 &&
         (order.numel() == 0 || order.numel() == atoms), "invalid Fourier owner order");
-    auto layout = channel_fourier_layout(ai, ao, taps);
+    TORCH_CHECK(mask > 0 && !(mask & ~CHANNEL_ALL_FOURIER_BANKS), "invalid Fourier bank mask");
+    auto layout = channel_fourier_layout(ai, ao, taps, mask);
     auto all_moments = torch::empty({layout.size}, p.options());
     for (int b = 0; b < CHANNEL_FOURIER_BANKS; ++b) {
         if (layout.offsets[b] < 0) continue;
