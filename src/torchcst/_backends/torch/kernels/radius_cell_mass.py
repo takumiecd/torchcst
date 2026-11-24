@@ -1,4 +1,4 @@
-"""Radius-native CPU cell masses and complete atom responses.
+"""Radius-native Torch cell masses and complete atom responses.
 
 The reference uses direct probability factors. It does not allocate hierarchical
 moments or expose partial responses. Routing is piecewise constant in backward.
@@ -70,8 +70,8 @@ def axis_masses(axis, radius, centers):
     to the higher first tile. Cells wrap onto the chart; if P exceeds Q, repeated
     chart images are added rather than clipping P or renormalizing chart cells.
     """
-    if radius.device.type != "cpu" or centers.device.type != "cpu":
-        raise ValueError("radius cell-mass reference currently requires CPU tensors")
+    if radius.device.type not in ("cpu", "cuda") or radius.device != centers.device:
+        raise ValueError("radius and centers must share a CPU or CUDA device")
     if radius.ndim != 1 or centers.shape != radius.shape:
         raise ValueError("radius and centers must have equal vector shapes")
     if not bool(torch.isfinite(centers).all()) or not bool(
@@ -102,7 +102,7 @@ def axis_masses(axis, radius, centers):
                 .floor()
                 .long()
             )
-            offsets = torch.arange(count * tile_sites)
+            offsets = torch.arange(count * tile_sites, device=radius.device)
             sites = first_tile[:, None] * tile_sites + offsets
             values = integrated_cells(
                 axis.binding.profile,
@@ -223,8 +223,6 @@ def atom_energies(state, output_chart, input_chart, p):
 
 
 def factors(state, output_chart, input_chart, p):
-    if p.device.type != "cpu":
-        raise ValueError("radius cell-mass reference currently requires CPU tensors")
     if p.ndim != 2 or p.shape[1] != 4 or p.dtype not in (torch.float32, torch.float64):
         raise ValueError("radius cell masses require floating-point [atom,4] rows")
     if not bool(torch.isfinite(p).all()):

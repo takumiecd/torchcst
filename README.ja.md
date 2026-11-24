@@ -456,6 +456,12 @@ groups、stride、padding、dilation に対応する。autocast 下では Atom �
 `backend="auto"` は factored と materialized から選択する。
 性能評価で重み合成を使う場合は `backend="composed"` を明示する。
 
+半径セル質量 Kernel では、FP32 または FP64 の Atom Parameter を使って Conv2d 層を
+CPU で初期化してから、eager 実行用に CUDA に移す。平坦化した各 Chart は宣言した
+セル質量の階層条件を満たす必要がある。例えば入力96チャネルの3×3なら864サイトとなり、
+base tile 27 と merge factor 2 を指定できる。入力と出力で別の階層を使うには各軸の
+profile binding を指定する。CUDA の composed 経路では Torch のセル質量因子を使う。
+
 ## CST の研究
 
 研究計画、モデル単位の実験 protocol、結果一覧は

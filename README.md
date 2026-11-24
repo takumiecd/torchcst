@@ -484,6 +484,13 @@ weight in the Atom dtype and applies the ambient autocast policy to Conv2d.
 `backend="auto"` chooses between factored and materialized execution.
 `backend="composed"` is an explicit choice for performance evaluation.
 
+For radius cell-mass kernels, initialize the Conv2d layer on CPU with FP32 or
+FP64 Atom parameters, then move it to CUDA for eager evaluation. Each flattened
+Chart must satisfy its declared cell-mass hierarchy. For example, a 96-channel
+3×3 input has 864 sites and permits a base tile of 27 with merge factor 2.
+Use per-axis profile bindings to set the input and output hierarchies. The
+composed path uses Torch cell-mass factors on CUDA.
+
 ## CST research
 
 Follow [cst-research](https://github.com/takumiecd/cst-research) for the research
