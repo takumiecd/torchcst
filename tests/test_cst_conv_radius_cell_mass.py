@@ -5,9 +5,13 @@ import math
 import pytest
 import torch
 import torch.nn.functional as F
+from dispatch_cases import fixed_plan
 from test_radius_cell_mass import oracle_mass
 
 from torchcst import ChebyshevSpec, CSTConv2d, chart_presets, kernels
+from torchcst._backends.torch.algorithms.conv2d import (
+    TORCH_COMPOSED_CONV2D,
+)
 from torchcst.kernels.radius_cell_mass import radius_cell_mass_axes
 
 
@@ -47,7 +51,7 @@ def test_composed_rational_cell_mass_matches_quadrature(kernel_size, device):
         padding=kernel_size // 2,
         atoms=3,
         kernel=kernel,
-        backend="composed",
+        selector=fixed_plan(TORCH_COMPOSED_CONV2D),
         dtype=torch.float64,
     ).to(device)
     rows = torch.tensor(

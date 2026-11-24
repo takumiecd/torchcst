@@ -4,6 +4,7 @@ from dataclasses import replace
 
 import pytest
 import torch
+from dispatch_cases import fixed_plan
 
 from torchcst import (
     ChebyshevSpec,
@@ -29,6 +30,7 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.rational_wide im
     RationalWideSharedAlgorithm,
 )
 from torchcst._backends.schema import DeviceInfo, PrecisionPolicy
+from torchcst._backends.torch.algorithms.linear.plans import TORCH_FACTORED_LINEAR
 from torchcst.operators.context import LinearContext
 
 PLANS = (RATIONAL_WIDE_FOURIER_WEIGHT, RATIONAL_WIDE_FOURIER_DIRECT)
@@ -44,7 +46,7 @@ def layer(width, atoms, *, dtype=torch.float32, coordinates=None):
             coordinates=coordinates or kernels.rational_radius(radius_max=512.0),
         ),
         dtype=dtype,
-        backend="factored",
+        selector=fixed_plan(TORCH_FACTORED_LINEAR),
     )
 
 
@@ -78,7 +80,9 @@ def test_wide_rational_plans_are_explicit_and_check_metadata():
         ):
             assert not algo.supports(changed, plan.recipe).supported
         if plan == RATIONAL_WIDE_SHARED:
-            assert not algo.supports(replace(context, atom_count=4096 * 48), plan.recipe).supported
+            assert not algo.supports(
+                replace(context, atom_count=4096 * 48), plan.recipe
+            ).supported
 
 
 @pytest.mark.parametrize(("width", "coefficient"), RATIONAL_WIDE_SCALE_COHORTS[1:])
@@ -88,23 +92,39 @@ def test_wide_scaling_separates_public_and_research_plans(width, coefficient):
     atoms = width * coefficient
     op = layer(width, atoms).execution_declaration()
     context = LinearContext(
-        operator=op, input_shape=(128, width), input_strides=(width, 1),
-        dtype=torch.float32, atom_count=atoms, parameter_dim=4,
+        operator=op,
+        input_shape=(128, width),
+        input_strides=(width, 1),
+        dtype=torch.float32,
+        atom_count=atoms,
+        parameter_dim=4,
         device=DeviceInfo("cuda", 0),
         precision=PrecisionPolicy(autocast=False, allow_tf32=False),
     )
     public = make_algorithm_registry()
     direct = RATIONAL_WIDE_FOURIER_DIRECT
     assert not public.validate_plan(direct).supports(context, direct.recipe).supported
-    for plan in (RATIONAL_WIDE_FOURIER_WEIGHT, RATIONAL_WIDE_SCALE_WEIGHT, RATIONAL_WIDE_AXIS_GRADIENT):
+    for plan in (
+        RATIONAL_WIDE_FOURIER_WEIGHT,
+        RATIONAL_WIDE_SCALE_WEIGHT,
+        RATIONAL_WIDE_AXIS_GRADIENT,
+    ):
         assert public.load_plan(public.dump_plan(plan)) == plan
         assert public.validate_plan(plan).supports(context, plan.recipe).supported
-    for plan in (RATIONAL_WIDE_SCALE_WEIGHT, RATIONAL_WIDE_SHARED, RATIONAL_WIDE_SAVED,
-                 RATIONAL_WIDE_ORDERED, RATIONAL_WIDE_REVERSE_ORDERED, RATIONAL_WIDE_AXIS_GRADIENT):
+    for plan in (
+        RATIONAL_WIDE_SCALE_WEIGHT,
+        RATIONAL_WIDE_SHARED,
+        RATIONAL_WIDE_SAVED,
+        RATIONAL_WIDE_ORDERED,
+        RATIONAL_WIDE_REVERSE_ORDERED,
+        RATIONAL_WIDE_AXIS_GRADIENT,
+    ):
         algo = REGISTRY.validate_plan(plan)
         assert REGISTRY.load_plan(REGISTRY.dump_plan(plan)) == plan
         assert algo.supports(context, plan.recipe).supported
-        assert not algo.supports(replace(context, atom_count=atoms + 1), plan.recipe).supported
+        assert not algo.supports(
+            replace(context, atom_count=atoms + 1), plan.recipe
+        ).supported
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA")
@@ -150,8 +170,14 @@ def _check_wide_gradients(width, coefficient):
         registry.register(RationalWideSavedAlgorithm())
         registry.register(RationalWideOrderedAlgorithm())
         registry.register(RationalWideReverseOrderedAlgorithm())
-        plans = (*plans, RATIONAL_WIDE_SHARED, RATIONAL_WIDE_SAVED, RATIONAL_WIDE_ORDERED,
-                 RATIONAL_WIDE_REVERSE_ORDERED, RATIONAL_WIDE_AXIS_GRADIENT)
+        plans = (
+            *plans,
+            RATIONAL_WIDE_SHARED,
+            RATIONAL_WIDE_SAVED,
+            RATIONAL_WIDE_ORDERED,
+            RATIONAL_WIDE_REVERSE_ORDERED,
+            RATIONAL_WIDE_AXIS_GRADIENT,
+        )
     for plan in plans:
         model.selector = FixedSelector(plan, registry=registry)
         x = host_x.cuda().requires_grad_()

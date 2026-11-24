@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import torch
+from dispatch_cases import fixed_plan
 from kernel_cases import amplitude_state, gaussian_state, separable_state
 
 from torchcst import CSTLinear
+from torchcst._backends.torch.algorithms.linear.plans import (
+    TORCH_FACTORED_LINEAR,
+)
 from torchcst._backends.torch.charts import construction as _construction
 from torchcst._derivatives import DenseDerivativeOracle
 
@@ -20,7 +24,7 @@ def make_site() -> CSTLinear:
             )
         ).declaration(),
         dtype=torch.float64,
-        backend="factored",
+        selector=fixed_plan(TORCH_FACTORED_LINEAR),
     )
 
 

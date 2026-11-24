@@ -33,8 +33,8 @@ y_direct = Dispatcher(registry=registry).run(binding, LinearInputs(flat), plan=p
 torch.testing.assert_close(y, y_direct)
 ```
 
-`backend=` is an alias for built-in Plans; an explicit `selector=` takes
-precedence. The selector's registry serves both Torch and CUDA. The default
+An ordinary layer call uses its default Selector. Pass an explicit `selector=`
+to control Plan selection for the call. The selector's registry serves both Torch and CUDA. The default
 ordering retains supported FULL execution, the CPU normalized reference, and the
 size policy for factored/materialized execution. An explicit Plan still undergoes
 input, precision and workspace support checks.

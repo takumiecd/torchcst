@@ -2,16 +2,21 @@
 
 import copy
 from dataclasses import replace
+
 import pytest
 import torch
+from dispatch_cases import fixed_plan
 
 from torchcst import (
-    CSTLinear,
     ChebyshevSpec,
+    CSTLinear,
     RadiusBounds,
     chart_presets,
     init,
     kernels,
+)
+from torchcst._backends.torch.algorithms.linear.plans import (
+    TORCH_FACTORED_LINEAR,
 )
 from torchcst._backends.torch.parameterizations.polar_amp_width import _width_bounds
 from torchcst.kernels.state import KernelState
@@ -25,7 +30,7 @@ def layer(*, envelope="closed_polynomial", dtype=torch.float64, atoms=64):
         chart,
         atoms=atoms,
         dtype=dtype,
-        backend="factored",
+        selector=fixed_plan(TORCH_FACTORED_LINEAR),
         kernel=kernels.product(
             kernels.cell_mass(ChebyshevSpec(modes=8)),
             coordinates=kernels.polar(
@@ -132,6 +137,7 @@ def test_old_checkpoint_structure_and_native_config_unchanged():
 def test_rational_optimizer_retains_legacy_manifest_and_resume(wrapper):
     import json
     from pathlib import Path
+
     from torchcst import CSTAdamW, CSTOptimizer
 
     m = layer(envelope="rational")

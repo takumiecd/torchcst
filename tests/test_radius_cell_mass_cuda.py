@@ -6,6 +6,7 @@ from dataclasses import replace
 import numpy as np
 import pytest
 import torch
+from dispatch_cases import fixed_plan
 from test_radius_cell_mass import axis, oracle_mass
 
 from torchcst import (
@@ -32,6 +33,9 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.recipe import (
     RadiusCellMassRecipe,
 )
 from torchcst._backends.registry import Registry
+from torchcst._backends.torch.algorithms.linear.plans import (
+    TORCH_FACTORED_LINEAR,
+)
 from torchcst._backends.torch.kernels.radius_cell_mass import axis_masses
 
 GPU = pytest.mark.skipif(not torch.cuda.is_available(), reason="actual CUDA required")
@@ -259,7 +263,12 @@ def test_public_cpu_initialization_explicit_cuda_plan_and_polar_task_gradient(po
             [[0.3, 0.63, 2.17, 3.31], [-0.2, 1.3, 15.77, 0.23]], dtype=torch.float64
         )
     cpu = CSTLinear(
-        chart, chart, atoms=p, kernel=kernel, dtype=torch.float64, backend="factored"
+        chart,
+        chart,
+        atoms=p,
+        kernel=kernel,
+        dtype=torch.float64,
+        selector=fixed_plan(TORCH_FACTORED_LINEAR),
     )
     gpu = copy.deepcopy(cpu).to("cuda")
     x = torch.randn(3, 16, dtype=torch.float64, requires_grad=True)
@@ -374,7 +383,7 @@ def test_public_integer_initialization_then_cuda_fixed_selector():
         atoms=8,
         kernel=kernels.product(kernels.cell_mass(), coordinates=kernels.physical()),
         dtype=torch.float64,
-        backend="factored",
+        selector=fixed_plan(TORCH_FACTORED_LINEAR),
     )
     gpu = copy.deepcopy(cpu).to("cuda")
     gpu.selector = FixedSelector(REFERENCE, registry=registry())

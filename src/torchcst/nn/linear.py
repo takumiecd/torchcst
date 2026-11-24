@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from functools import cache
-from typing import Literal
 
 import torch
 from torch import Tensor, nn
@@ -14,7 +13,6 @@ from torchcst._backends.dispatch import (
     OrderedSelector,
     Selector,
 )
-from torchcst._backends.schema import DefaultRecipe, ExecutionPlan
 from torchcst._builtin_callbacks import seal_functions as _seal_functions
 from torchcst._derivatives import AtomDerivatives, AutogradFrameGeometry
 from torchcst.atoms import Atoms
@@ -23,22 +21,10 @@ from torchcst.kernels import AtomInit, KernelSpec
 from torchcst.kernels.options import KernelOptions
 from torchcst.kernels.state import KernelState
 from torchcst.operators import Operator
-from torchcst.operators.context import context_from_metadata, context_from_tensors
+from torchcst.operators.context import context_from_tensors
 from torchcst.operators.execution import LinearInputs, validate_linear_inputs
 
 from .module import CSTModule, RepulsionKind
-
-Backend = Literal["auto", "factored", "materialized"]
-ResolvedBackend = Literal["factored", "materialized", "normalized"]
-
-_PLANS = {
-    name: ExecutionPlan(algorithm_id, "v1", DefaultRecipe())
-    for name, algorithm_id in (
-        ("materialized", "torch_materialized"),
-        ("factored", "torch_factored"),
-        ("normalized", "torch_normalized_radial"),
-    )
-}
 
 
 @cache
@@ -47,10 +33,20 @@ def _default_selector():
         FULL,
     )
     from torchcst._backends.dispatch.exact import bundled_rational_wide_selector
+    from torchcst._backends.torch.algorithms.linear.plans import (
+        TORCH_FACTORED_LINEAR,
+        TORCH_MATERIALIZED_LINEAR,
+        TORCH_NORMALIZED_RADIAL_LINEAR,
+    )
 
     registry = get_registry()
     return OrderedSelector(
-        (FULL, _PLANS["normalized"], _PLANS["factored"], _PLANS["materialized"]),
+        (
+            FULL,
+            TORCH_NORMALIZED_RADIAL_LINEAR,
+            TORCH_FACTORED_LINEAR,
+            TORCH_MATERIALIZED_LINEAR,
+        ),
         registry=registry,
         revision="linear-bootstrap-v2",
         preferred=bundled_rational_wide_selector(registry),
@@ -78,7 +74,6 @@ class CSTLinear(CSTModule):
         kernel_options: KernelOptions | None = None,
         selector: Selector | None = None,
         atom_init: AtomInit = "balanced",
-        backend: Backend = "auto",
         device: torch.device | str | None = None,
         dtype: torch.dtype | None = None,
     ) -> None:
@@ -145,7 +140,6 @@ class CSTLinear(CSTModule):
         self.kernel = KernelState(kernel, options=kernel_options)
         kernel = self.kernel
         self.atom_init = atom_init
-        self.backend = backend
 
         reference = (
             atoms.p
@@ -191,7 +185,7 @@ class CSTLinear(CSTModule):
             charts=self.cst_charts(), kernel=self.kernel, atoms=self.atoms
         )
         # Bind fixed metadata before Graph capture; parameters remain live.
-        self._resolved_backend()
+        self.execution_declaration()
 
     @property
     def operator(self) -> Operator:
@@ -213,21 +207,6 @@ class CSTLinear(CSTModule):
     def declaration(self):
         """Snapshot the complete linear contract outside forward/Graph capture."""
         return self.operator.declaration()
-
-    @property
-    def backend(self) -> Backend:
-        return self._backend
-
-    @backend.setter
-    def backend(self, value: Backend) -> None:
-        if value != "auto":
-            if value not in ("factored", "materialized"):
-                raise ValueError(
-                    "backend must be one of 'auto', 'factored', 'materialized'"
-                )
-            plan = _PLANS[value]
-            get_registry().validate_plan(plan).validate_configuration(self)
-        self._backend = value
 
     def _checkpoint_layout(self) -> dict[str, object]:
         layout = {
@@ -346,28 +325,6 @@ class CSTLinear(CSTModule):
         kappa = atoms.square().sum()
         return summed, kappa
 
-    def _resolved_backend(self) -> ResolvedBackend:
-        declaration = self.execution_declaration()
-        if self.backend != "auto":
-            return self.backend
-        context = context_from_metadata(
-            declaration,
-            input_shape=(1, self.in_features),
-            input_strides=(self.in_features, 1),
-            dtype=self.atoms.p.dtype,
-            device=self.atoms.p.device,
-            atom_count=self.atom_count,
-            parameter_dim=self.atoms.parameter_dim,
-        )
-        # Reporting binds configuration at construction; actual calls use their
-        # runtime context and the user's selector, including gradient requirements.
-        plan = _default_selector()._match(context).plan
-        return (
-            "normalized"
-            if plan.algorithm_id in ("normalized_full", "torch_normalized_radial")
-            else next(name for name, value in _PLANS.items() if value == plan)
-        )
-
     input_type = LinearInputs
 
     def execution_parameters(self):
@@ -403,15 +360,10 @@ class CSTLinear(CSTModule):
                 + parameters.reshape(-1)[:1].mul(0).sum()
             )
         else:
-            selector = self.selector
-            if selector is None and self.backend != "auto":
-                result = Dispatcher(registry=get_registry()).run(
-                    self, LinearInputs(flat), plan=_PLANS[self.backend]
-                )
-            else:
-                result = Dispatcher(selector=selector or _default_selector()).run(
-                    self, LinearInputs(flat)
-                )
+            selector = (
+                self.selector if self.selector is not None else _default_selector()
+            )
+            result = Dispatcher(selector=selector).run(self, LinearInputs(flat))
         return self.atom_state.guard_result(
             result.reshape(*inputs.shape[:-1], self.out_features)
         )
@@ -420,7 +372,7 @@ class CSTLinear(CSTModule):
         return (
             f"in_features={self.in_features}, out_features={self.out_features}, "
             f"atoms={self.atom_count}, parameter_dim={self.atoms.parameter_dim}, "
-            f"atom_init={self.atom_init!r}, backend={self.backend!r}"
+            f"atom_init={self.atom_init!r}"
         )
 
 

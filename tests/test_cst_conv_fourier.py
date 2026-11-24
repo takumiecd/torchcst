@@ -5,8 +5,9 @@ from dataclasses import replace
 import pytest
 import torch
 import torch.nn.functional as F
+from dispatch_cases import default_conv2d_plan, fixed_plan
 
-from torchcst import CSTConv2d, ChebyshevSpec, chart_presets, kernels
+from torchcst import ChebyshevSpec, CSTConv2d, chart_presets, kernels
 from torchcst._backends.catalog import get_registry
 from torchcst._backends.cuda.algorithms.conv2d.channel_algorithm import (
     CHANNEL_FOURIER,
@@ -14,9 +15,11 @@ from torchcst._backends.cuda.algorithms.conv2d.channel_algorithm import (
 )
 from torchcst._backends.dispatch import Dispatcher, FixedSelector, UnsupportedPlan
 from torchcst._backends.schema import DeviceInfo, PrecisionPolicy
-from torchcst._backends.torch.algorithms.conv2d import TORCH_CHANNEL_CONV2D
+from torchcst._backends.torch.algorithms.conv2d import (
+    TORCH_CHANNEL_CONV2D,
+    TORCH_MATERIALIZED_CONV2D,
+)
 from torchcst.operators.conv2d import Conv2dInputs
-
 
 LAYERS = (
     (1, 16, 32, 32, 1),
@@ -65,6 +68,7 @@ def test_channel_tap_layout_preserves_ownership_and_gradients_across_relayout():
     m = layer(dtype=torch.float64)
     initialize_rows(m)
     x = torch.randn(1, 16, 6, 7, dtype=torch.float64)
+    assert default_conv2d_plan(m, x) == TORCH_CHANNEL_CONV2D
     count = m.atom_count
     weights = m.materialized_atoms()
     assert m.patch_features == 16 * 9
@@ -85,7 +89,9 @@ def test_channel_tap_layout_preserves_ownership_and_gradients_across_relayout():
     torch.testing.assert_close(m(x), expected)
     (moved_grad,) = torch.autograd.grad(m(x).square().sum(), m.atoms.p)
     torch.testing.assert_close(moved_grad, grad[ids])
-    restored = layer(dtype=torch.float64, backend="materialized")
+    restored = layer(
+        dtype=torch.float64, selector=fixed_plan(TORCH_MATERIALIZED_CONV2D)
+    )
     restored.load_state_dict(m.state_dict())
     torch.testing.assert_close(restored(x), expected)
 
@@ -94,7 +100,7 @@ def test_conv_fourier_selection_and_rejection_use_live_context():
     registry = get_registry()
     plan = registry.loads_plan(registry.dumps_plan(CHANNEL_FOURIER))
     active = registry.loads_plan(registry.dumps_plan(CHANNEL_FOURIER_ACTIVE))
-    m = layer(backend="fourier")
+    m = layer(selector=fixed_plan(CHANNEL_FOURIER))
     inp = torch.randn(1, 16, 6, 7)
     with pytest.raises(UnsupportedPlan, match="CUDA FP32"):
         m(inp)
@@ -126,8 +132,6 @@ def test_conv_fourier_selection_and_rejection_use_live_context():
 def test_channel_tap_layout_is_a_checkpoint_contract():
     with pytest.raises(ValueError, match="equal number"):
         layer(atoms=10)
-    with pytest.raises(ValueError, match="channel_taps"):
-        layer(atom_layout="patch", backend="fourier")
     m = layer(k=1, atom_layout="patch")
     assert "atom_layout" not in m.get_extra_state()["layout"]
     with pytest.raises(RuntimeError, match="CST site checkpoint contract"):
@@ -158,10 +162,12 @@ def test_public_fourier_wideresnet_shapes(ieee_cuda, k, ci, co, size, stride):
         co,
         stride,
         dtype=torch.float64,
-        backend="materialized",
+        selector=fixed_plan(TORCH_MATERIALIZED_CONV2D),
         atom_layout=atom_layout,
     )
-    model = layer(k, ci, co, stride, backend="fourier", atom_layout=atom_layout)
+    model = layer(
+        k, ci, co, stride, selector=fixed_plan(CHANNEL_FOURIER), atom_layout=atom_layout
+    )
     initialize_rows(model)
     ref.load_state_dict(model.state_dict())
     model.cuda()
@@ -177,11 +183,8 @@ def test_public_fourier_wideresnet_shapes(ieee_cuda, k, ci, co, size, stride):
     ref_grads = torch.autograd.grad(expected, (x, ref.atoms.p), dy)
     gpu_x = x.detach().to(device="cuda", dtype=torch.float32)
     gpu_x = gpu_x.contiguous(memory_format=torch.channels_last).requires_grad_()
-    for backend, plan in (
-        ("fourier", CHANNEL_FOURIER),
-        ("fourier_active", CHANNEL_FOURIER_ACTIVE),
-    ):
-        model.backend = backend
+    for plan in (CHANNEL_FOURIER, CHANNEL_FOURIER_ACTIVE):
+        model.selector = fixed_plan(plan)
         actual = apply(model, gpu_x)
         grads = torch.autograd.grad(actual, (gpu_x, model.atoms.p), dy.to(actual))
         assert model._prepared_dispatch.decision.plan == plan
@@ -192,7 +195,7 @@ def test_public_fourier_wideresnet_shapes(ieee_cuda, k, ci, co, size, stride):
 
 
 def test_public_fourier_graph_replay_tracks_live_atom_rows(ieee_cuda):
-    m = layer(backend="fourier").cuda()
+    m = layer(selector=fixed_plan(CHANNEL_FOURIER)).cuda()
     initialize_rows(m)
     x = torch.randn(1, 16, 7, 7, device="cuda", requires_grad=True)
 

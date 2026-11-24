@@ -89,7 +89,7 @@ kernel = presets.polar_profile_product(
 )
 layer = CSTLinear(
     chart=chart_presets.regular_grid(((32,), (64,)), spacing=0.1),
-    atoms=8, kernel=kernel, backend="factored", dtype=torch.float64,
+    atoms=8, kernel=kernel, dtype=torch.float64,
 )
 x = torch.randn(4, 64, dtype=torch.float64, requires_grad=True)
 layer(x).square().mean().backward()

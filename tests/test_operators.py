@@ -7,6 +7,7 @@ from dataclasses import FrozenInstanceError, replace
 
 import pytest
 import torch
+from dispatch_cases import fixed_plan
 from kernel_cases import (
     amplitude_state,
     direct_state,
@@ -23,6 +24,10 @@ from torchcst import (
     SingleChartSpec,
 )
 from torchcst._backends.dispatch.validation import validate_plan_context
+from torchcst._backends.torch.algorithms.linear.plans import (
+    TORCH_FACTORED_LINEAR,
+    TORCH_MATERIALIZED_LINEAR,
+)
 from torchcst._backends.torch.charts import construction as _construction
 
 
@@ -49,7 +54,7 @@ def make_single():
     )
 
 
-def make_pair(*, trainable=False, backend="materialized"):
+def make_pair(*, trainable=False, plan=TORCH_MATERIALIZED_LINEAR):
     return CSTLinear(
         _construction.linspace(3, low=-0.8, high=0.8, trainable=trainable),
         _construction.linspace(4, low=-1, high=1, trainable=trainable),
@@ -59,7 +64,7 @@ def make_pair(*, trainable=False, backend="materialized"):
                 input_profile=gaussian_state(1.4), output_profile=gaussian_state(1.2)
             )
         ).declaration(),
-        backend=backend,
+        selector=fixed_plan(plan),
         dtype=torch.float64,
     )
 
@@ -154,9 +159,9 @@ def test_operator_does_not_add_checkpoint_or_parameter_ownership():
     torch.testing.assert_close(restored.operator.weight(), model.operator.weight())
 
 
-@pytest.mark.parametrize("backend", ["materialized", "factored"])
-def test_pair_execution_matches_independent_oracle_with_live_chart_gradients(backend):
-    model = make_pair(trainable=True, backend=backend)
+@pytest.mark.parametrize("plan", [TORCH_MATERIALIZED_LINEAR, TORCH_FACTORED_LINEAR])
+def test_pair_execution_matches_independent_oracle_with_live_chart_gradients(plan):
+    model = make_pair(trainable=True, plan=plan)
     p = model.atoms.p.detach().clone().requires_grad_()
     ci = model.input_chart.coordinates.detach().clone().requires_grad_()
     co = model.output_chart.coordinates.detach().clone().requires_grad_()
@@ -380,7 +385,7 @@ def test_operator_live_cuda_state_matches_cpu_values_and_gradients(maker, algori
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 def test_pair_graph_reuses_operator_without_configuration_reads(monkeypatch):
-    model = make_pair(backend="factored").float().cuda()
+    model = make_pair(plan=TORCH_FACTORED_LINEAR).float().cuda()
     bound = model.operator
     x = torch.randn(2, model.in_features, device="cuda", requires_grad=True)
     stream = torch.cuda.Stream()

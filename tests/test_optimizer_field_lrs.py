@@ -5,9 +5,13 @@ import io
 
 import pytest
 import torch
+from dispatch_cases import fixed_plan
 from test_native_cst_adamw import equal, gradients, model
 
 from torchcst import CSTAdamW, CSTOptimizer
+from torchcst._backends.torch.algorithms.linear.plans import (
+    TORCH_FACTORED_LINEAR,
+)
 from torchcst._backends.torch.kernels import execution
 from torchcst.kernels.parameterizations import FixedWidthSpec, ParameterFieldSpec
 
@@ -304,7 +308,7 @@ def test_center_field_spans_multidimensional_chart_coordinates():
             ),
         ),
         dtype=torch.float64,
-        backend="factored",
+        selector=fixed_plan(TORCH_FACTORED_LINEAR),
     )
     assert m.atoms.p.shape == (5, 6)
     with torch.no_grad():

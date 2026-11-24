@@ -5,6 +5,7 @@ import inspect
 
 import pytest
 import torch
+from dispatch_cases import default_linear_plan
 from kernel_cases import direct_state, triweight_state
 
 from torchcst import BandwidthBounds, CSTLinear, CSTOptimizer
@@ -43,12 +44,10 @@ def test_auto_keeps_the_exact_single_chart_backend() -> None:
             _construction.line_pattern(3, spacing=0.5),
         ),
     )
-    model = CSTLinear(
-        chart=chart, atoms=2, kernel=direct_kernel(1.0).declaration(), backend="auto"
-    )
-    assert model._resolved_backend() == "materialized"
+    model = CSTLinear(chart=chart, atoms=2, kernel=direct_kernel(1.0).declaration())
     expected = model.dense_weight()
     x = torch.randn(4, model.in_features)
+    assert default_linear_plan(model, x).algorithm_id == "torch_materialized"
     torch.testing.assert_close(model(x), torch.nn.functional.linear(x, expected))
 
 

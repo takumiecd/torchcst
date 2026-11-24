@@ -31,7 +31,7 @@ y_direct = Dispatcher(registry=registry).run(binding, LinearInputs(flat), plan=p
 torch.testing.assert_close(y, y_direct)
 ```
 
-`backend=` は組込み Plan の別名で、明示した `selector=` が優先する。
+通常の呼び出しは既定のSelectorを使う。実行方式を制御する場合は `selector=` を明示する。
 selector の registry は Torch / CUDA の両方に使う。既定の順序は対応する FULL、
 CPU normalized 参照、factored / materialized のサイズ方針を保つ。
 明示 Plan でも入力・精度・workspace の対応判定は省略しない。

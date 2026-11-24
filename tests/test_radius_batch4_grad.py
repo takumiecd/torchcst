@@ -4,6 +4,7 @@ from dataclasses import replace
 
 import pytest
 import torch
+from dispatch_cases import fixed_plan
 from test_radius_cell_mass_batched_cached import bounded_atoms
 from test_radius_cell_mass_cuda import GPU, axis_plan, reference
 
@@ -18,6 +19,7 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plan import (
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plans import (
     BLOCK_LOCAL_BATCHED_CACHED_PARALLEL,
 )
+from torchcst._backends.torch.algorithms.linear.plans import TORCH_FACTORED_LINEAR
 
 # N128/M8 start=0 retains 510*17 doubles (>48 KiB). Start=1 still
 # exercises compact low-level banks while fitting the real native budgets.
@@ -256,8 +258,7 @@ def test_batch4_polar_full_vjp_and_probe_match_public_cpu(dtype, start, batch):
             dtype=dtype,
         )
     plan = hierarchy_from_operator(layer.declaration())
-    layer.selector = None
-    layer.backend = "factored"
+    layer.selector = fixed_plan(TORCH_FACTORED_LINEAR)
     gen = torch.Generator().manual_seed(275)
     host_x = torch.randn(batch, 128, dtype=dtype, generator=gen).requires_grad_()
     host_dy = torch.randn(batch, 128, dtype=dtype, generator=gen)

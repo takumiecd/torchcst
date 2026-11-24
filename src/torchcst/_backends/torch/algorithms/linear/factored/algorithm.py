@@ -28,11 +28,6 @@ class FactoredAlgorithm(Algorithm[DefaultRecipe]):
         if type(recipe) is not DefaultRecipe:
             raise ValueError("reference Algorithm has no tunable recipe")
 
-    def validate_configuration(self, site):
-        from torchcst._backends.torch.operators.dispatch import validate_factored
-
-        validate_factored(site.cst_charts(), site.kernel)
-
     def supports(self, context, recipe):
         if not isinstance(context, LinearContext):
             return SupportResult(("requires a LinearContext",))
@@ -47,8 +42,10 @@ class FactoredAlgorithm(Algorithm[DefaultRecipe]):
             torch.float64,
         ):
             return SupportResult(("radius reference requires float32 or float64",))
-        if len(op.charts) != 2:
-            return SupportResult(("requires factorized input/output charts",))
+        if len(op.charts) != 2 or kernel.composition != "separable":
+            return SupportResult(
+                ("requires a separable kernel on input/output charts",)
+            )
         return SupportResult()
 
     def workspace_bound(self, context, recipe):

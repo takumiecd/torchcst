@@ -6,6 +6,7 @@ from dataclasses import replace
 
 import pytest
 import torch
+from dispatch_cases import fixed_plan
 from test_radius_cell_mass_cuda import (
     GPU,
     atoms,
@@ -33,6 +34,9 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plans import (
     HYBRID_OVERLAP,
     HYBRID_SERIAL,
     REFERENCE,
+)
+from torchcst._backends.torch.algorithms.linear.plans import (
+    TORCH_FACTORED_LINEAR,
 )
 
 VARIANTS = (HYBRID_SERIAL, HYBRID_OVERLAP, BLOCK_LOCAL, BLOCK_LOCAL_PARALLEL)
@@ -215,7 +219,12 @@ def test_hybrid_public_polar_distinct_bounds(variant):
         [[1.0, 0.5, 2.17, 3.31], [0.1, 0.1, 15.77, 0.23]], dtype=torch.float64
     )
     cpu = CSTLinear(
-        chart, chart, atoms=p, kernel=kernel, dtype=torch.float64, backend="factored"
+        chart,
+        chart,
+        atoms=p,
+        kernel=kernel,
+        dtype=torch.float64,
+        selector=fixed_plan(TORCH_FACTORED_LINEAR),
     )
     gpu = copy.deepcopy(cpu).cuda()
     x = torch.randn(3, 16, dtype=torch.float64, requires_grad=True)

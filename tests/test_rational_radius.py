@@ -5,6 +5,7 @@ import math
 
 import pytest
 import torch
+from dispatch_cases import fixed_plan
 
 from torchcst import (
     ChebyshevSpec,
@@ -20,10 +21,19 @@ from torchcst import (
 from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plans import (
     GLOBAL_ACTIVE_GRAD4_NATIVE,
 )
+from torchcst._backends.torch.algorithms.linear.plans import (
+    TORCH_FACTORED_LINEAR,
+    TORCH_MATERIALIZED_LINEAR,
+)
 
 
 def layer_for(
-    coordinates, sites=(16, 32), *, atoms=12, dtype=torch.float64, backend="factored"
+    coordinates,
+    sites=(16, 32),
+    *,
+    atoms=12,
+    dtype=torch.float64,
+    plan=TORCH_FACTORED_LINEAR,
 ):
     return CSTLinear(
         charts=tuple(
@@ -34,7 +44,7 @@ def layer_for(
         kernel=kernels.product(
             kernels.cell_mass(ChebyshevSpec(modes=8)), coordinates=coordinates
         ),
-        backend=backend,
+        selector=fixed_plan(plan),
     ).to(dtype)
 
 
@@ -85,11 +95,11 @@ def test_historical_radius_and_q_jacobian(dtype):
     assert bool((derivative > 0).all())
 
 
-@pytest.mark.parametrize("backend", ["factored", "materialized"])
-def test_task_gradient_and_optimizer_step(backend):
+@pytest.mark.parametrize("plan", [TORCH_FACTORED_LINEAR, TORCH_MATERIALIZED_LINEAR])
+def test_task_gradient_and_optimizer_step(plan):
     upper = 8.0
-    layer = layer_for(kernels.rational_radius(radius_max=upper), backend=backend)
-    physical = layer_for(kernels.physical(radius_init=(0.5, upper)), backend=backend)
+    layer = layer_for(kernels.rational_radius(radius_max=upper), plan=plan)
+    physical = layer_for(kernels.physical(radius_init=(0.5, upper)), plan=plan)
     generator = torch.Generator().manual_seed(194)
     with torch.no_grad():
         index = torch.arange(12, dtype=torch.float64)
@@ -126,7 +136,7 @@ def test_task_gradient_and_optimizer_step(backend):
     optimizer.step()
     torch.testing.assert_close(layer.atoms.p[:, 1], expected, rtol=2e-12, atol=1e-14)
     assert not torch.equal(previous, expected)
-    restored = layer_for(kernels.rational_radius(radius_max=upper), backend=backend)
+    restored = layer_for(kernels.rational_radius(radius_max=upper), plan=plan)
     restored.load_state_dict(copy.deepcopy(layer.state_dict()))
     torch.testing.assert_close(restored(x), layer(x), rtol=0, atol=0)
 

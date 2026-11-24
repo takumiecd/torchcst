@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 import torch
+from dispatch_cases import fixed_plan
 from test_radius_cell_mass_cuda import GPU
 
 from benchmarks.training.cell_mass_mnist import make_radius_cst
@@ -32,6 +33,9 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.recipe import (
     RadiusCellMassRecipe,
 )
 from torchcst._backends.schema import DeviceInfo
+from torchcst._backends.torch.algorithms.linear.plans import (
+    TORCH_FACTORED_LINEAR,
+)
 
 
 def mixed_model(dtype=torch.float64):
@@ -196,7 +200,7 @@ def test_local_tile_all_vjps_wrap_zero_amplitude_retained_and_offloaded(
     batch, offload, needs_x, needs_p, dtype
 ):
     cpu = mixed_model(dtype).double()
-    cpu.selector, cpu.backend = None, "factored"
+    cpu.selector = fixed_plan(TORCH_FACTORED_LINEAR)
     cpu.atoms.p.requires_grad_(needs_p)
     gen = torch.Generator().manual_seed(1909)
     host_x = (
@@ -262,7 +266,7 @@ def test_local_tile_all_vjps_wrap_zero_amplitude_retained_and_offloaded(
 def test_local_tile_nonexecutable_context_matches_public_reference(mode):
     cpu = mixed_model(torch.float32)
     model = copy.deepcopy(cpu).cuda()
-    cpu.selector, cpu.backend = None, "factored"
+    cpu.selector = fixed_plan(TORCH_FACTORED_LINEAR)
     model.selector = FixedSelector(
         LOCAL_TILE_MOMENTS, registry=make_algorithm_registry()
     )
@@ -462,7 +466,9 @@ def test_actual_local_tile_math_and_owner_kernel_syntax_on_cpu(tmp_path):
     moments = hybrid[
         hybrid.index(
             "template<class T, class Storage = double>\n__device__ inline Storage compact_moment_element"
-        ) : hybrid.index("template<class T, class Storage = double>\n__global__ void compact_moments_kernel")
+        ) : hybrid.index(
+            "template<class T, class Storage = double>\n__global__ void compact_moments_kernel"
+        )
     ]
     project = hybrid[
         hybrid.index("template<bool Derivatives = true>") : hybrid.index(
@@ -710,7 +716,7 @@ def test_local_tile_skewed_owner_group_covers_multiple_warp_iterations():
         images = (torch.arange(65, dtype=torch.float64).remainder(5) - 2) * 128
         cpu.atoms.p[:, 2] = images
         cpu.atoms.p[:, 3] = -images
-    cpu.selector, cpu.backend = None, "factored"
+    cpu.selector = fixed_plan(TORCH_FACTORED_LINEAR)
     model = copy.deepcopy(cpu).cuda()
     model.selector = FixedSelector(
         LOCAL_TILE_MOMENTS, registry=make_algorithm_registry()

@@ -11,12 +11,16 @@ from types import SimpleNamespace
 
 import pytest
 import torch
+from dispatch_cases import fixed_plan
 
 from benchmarks.cuda.linear.radius_cell_mass import fixture
 from benchmarks.training import cell_mass_mnist as mnist
 from torchcst import CSTAdamW
 from torchcst._backends.cuda.algorithms.polar_update.plans import (
     RADIUS_FLAT_TORUS_FUSED,
+)
+from torchcst._backends.torch.algorithms.linear.plans import (
+    TORCH_FACTORED_LINEAR,
 )
 
 
@@ -78,8 +82,7 @@ def test_radius_artifact_roundtrip_preserves_weights_outer_states_and_order(
         )
         assert torch.equal(left, right)
     # The CPU reference uses the ordinary Torch route for this numerical gate.
-    cst[2].selector = None
-    cst[2].backend = "factored"
+    cst[2].selector = fixed_plan(TORCH_FACTORED_LINEAR)
     inputs = torch.randn(4, 784)
     torch.testing.assert_close(cst(inputs), dense(inputs), atol=2e-6, rtol=2e-6)
 

@@ -45,7 +45,6 @@ model = CSTLinear(
         kernels.cell_mass(ChebyshevSpec(modes=8)),
         coordinates=kernels.rational_radius(radius_max=4.0, radius_fraction=0.0),
     ),
-    backend="factored",
 )
 optimizer = CSTAdamW(model.parameters(), model=model, lr=1e-3)
 
@@ -120,7 +119,7 @@ from torchcst import CSTAdamW, CSTLinear, ChebyshevSpec, chart_presets, kernels
 
 grid = chart_presets.regular_grid(1024, geometry="flat_torus")
 layer = CSTLinear(
-    charts=(grid, grid), atoms=65536, backend="factored",
+    charts=(grid, grid), atoms=65536,
     kernel=kernels.product(
         kernels.cell_mass(ChebyshevSpec(modes=8)),
         coordinates=kernels.rational_radius(radius_max=512.0, radius_fraction=0.0),
@@ -187,7 +186,7 @@ y_direct = layer(x)
 
 ### RTX 4090での自動選択
 
-`backend="auto"` は、Neonの測定データベースから生成した選択表を参照します。
+Selectorを省略すると、Neonの測定データベースから生成した選択表を参照します。
 計測済みの入力128行の学習では、幅2048・32N Atomでフーリエ重み展開を選びます。
 幅4096・16384の32N Atomと、幅8192の16N・32N Atomでは最適化済みの直接Planを選びます。
 演算の宣言、FP32の精度設定、入力とAtomの両方の勾配要件、GPU、
@@ -429,13 +428,15 @@ Safetensorsファイルには、そのモデルの `state_dict()` にある全Te
 
 ## 実行と制約
 
-Kernel の宣言は実装と独立して演算子を定める。`CSTLinear` の `backend=` は組み込み Plan の
-alias を選ぶ。`selector=` は明示的に Plan を選び、`backend=` より優先する。汎用 Torch 実装には factored と
-materialized の評価がある。二つの Chart を使う radial kernel は Torch materialized 参照で
-評価し、factored や専用 CUDA Plan は持たない。
+Kernelの宣言が演算子を定める。`CSTLinear` と `CSTConv2d` はどちらも
+`layer(x)` でDispatcherを経由し、既定のSelectorを使う。比較実験で実装を固定するときは
+`selector=FixedSelector(plan, registry=make_algorithm_registry())` を指定する。
+SelectorはPlanを提案し、Dispatcherは対応条件を検証して実行する。
+LinearのTorch候補にはfactoredとmaterializedがあり、2つのChartを使うradial kernelは
+materialized参照で評価する。
 
-CUDA Algorithm ごとに shape・dtype・精度・微分の制約がある。半径セル質量 Plan は
-opt-in かつ eager 専用。Linear Plan を選んでも optimizer の更新 Plan は選ばれない。
+CUDA Algorithmごとにshape・dtype・精度・微分・Graphキャプチャの制約がある。
+Linear Planとoptimizerの更新Planは独立して選ぶ。
 管理対象 CST optimizer の step は CUDA Graph capture と微分可能な step に対応しない。
 学習可能な非 Euclidean 観測 Chart は別の更新則が必要なため、現在は拒否する。
 対応範囲は[実行と selector ガイド](docs/algorithm-dispatch-boundaries.ja.md)と
@@ -446,15 +447,14 @@ opt-in かつ eager 専用。Linear Plan を選んでも optimizer の更新 Pla
 
 ### CSTConv2d の重み合成
 
-分離可能な Kernel では、`CSTConv2d(..., backend="composed")` または既存層の
-`layer.backend = "composed"` で指定できる。入力 Chart は局所パッチを channel、高さ、幅の順に
-平坦化した `(in_channels // groups) * kernel_height * kernel_width` サイトを表す。
-二つの因子を Atom 軸で縮約して一枚の重みを作り、形状を変換して PyTorch Conv2d を適用する。
-groups、stride、padding、dilation に対応する。autocast 下では Atom の dtype で重みを
-合成し、Conv2d の実行に外側の autocast 設定を適用する。
-
-パッチ構成の `backend="auto"` は factored と materialized から選択する。
-性能評価で重み合成を使う場合は `backend="composed"` を明示する。
+パッチ構成の入力Chartは、局所パッチをチャネル、高さ、幅の順に平坦化した
+`(in_channels // groups) * kernel_height * kernel_width` サイトを表す。
+既定のSelectorはfactoredとmaterializedから選ぶ。分離可能なKernelで重み合成を
+評価する場合は、`torchcst._backends.torch.algorithms.conv2d` の
+`TORCH_COMPOSED_CONV2D` を `FixedSelector` で指定する。このPlanは2つの因子を
+Atom軸で縮約して重みを作り、PyTorchのConv2dを1回実行する。groups、stride、padding、
+dilationに対応する。autocast下ではAtomのdtypeで重みを合成し、Conv2dに外側の
+autocast設定を適用する。
 
 半径セル質量 Kernel では、FP32 または FP64 の Atom Parameter を使って Conv2d 層を
 CPU で初期化してから、eager 実行用に CUDA に移す。平坦化した各 Chart は宣言した
@@ -474,7 +474,11 @@ profile binding を指定する。CUDA の composed 経路では Torch のセル
 ```python
 import torch
 import torch.nn.functional as F
-from torchcst import CSTConv2d, ChebyshevSpec, chart_presets, kernels
+from torchcst import (
+    CSTConv2d, ChebyshevSpec, FixedSelector, chart_presets, kernels,
+    make_algorithm_registry,
+)
+from torchcst._backends.cuda.algorithms.conv2d.channel_algorithm import CHANNEL_FOURIER
 
 torch.set_float32_matmul_precision("highest")
 torch.backends.cudnn.allow_tf32 = False
@@ -488,7 +492,7 @@ layer = CSTConv2d(
     stride=2,
     atoms=9 * 48,
     atom_layout="channel_taps",
-    backend="fourier",
+    selector=FixedSelector(CHANNEL_FOURIER, registry=make_algorithm_registry()),
     kernel=kernels.product(
         kernels.cell_mass(ChebyshevSpec(modes=8)),
         coordinates=kernels.rational_radius(radius_max=16),
@@ -500,14 +504,10 @@ x = torch.randn(2, 32, 32, 32, device="cuda")
 y = layer(F.pad(x, (0, 1, 0, 1)))
 ```
 
-`backend="fourier"` は静的Fourierを選び、eagerのウォームアップ後に層の順伝播と逆伝播を
-キャプチャできる。`backend="fourier_active"` はeagerで占有バンクだけを処理する。
-チャネルタップ構成の `backend="composed"` と `backend="auto"` はTorch参照を使う。
-明示した `selector=` は別名指定より優先される。
-`torchcst._backends.cuda.algorithms.conv2d.channel_algorithm` の
-`CHANNEL_FOURIER` または `CHANNEL_FOURIER_ACTIVE` を
-`make_algorithm_registry()` とともに `FixedSelector` に渡せる。明示したPlanで対応できない
-条件は実行前に報告する。
+`CHANNEL_FOURIER` Planは静的バンクを使い、eagerのウォームアップ後に層の
+順伝播と逆伝播をキャプチャできる。`CHANNEL_FOURIER_ACTIVE` はeagerで占有バンクを
+処理する。`selector=None` のとき、既定のSelectorはチャネルタップ構成にTorchの
+重み合成Planを選ぶ。明示したPlanで対応できない条件は実行前に報告する。
 
 Fourierの対応条件は1×1または3×3、groups 1、タップあたり1〜4096 Atom、各軸16/32/64/128
 チャネル。Chartは固定の原点0・spacing 1のトーラスで、Chebyshev M8、基底タイル1、
@@ -534,7 +534,7 @@ dense / dynamic sparse training との比較、最適化 step 数と経過時間
 HIGGS 研究は共有 FP64 geometry を保持する FP32 owner-window 演算、sorted owner window、
 Flat-C 保存、guard 付きの完全学習 step CUDA Graph を使う。上記の明示的 Linear Plan は
 `main` で利用できるが、完全 step Graph と非公開の HIGGS cohort は **benchmark 専用の実行経路**。
-`backend=` の alias や公開 `CSTAdamW` の Graph 対応ではない。
+公開 `CSTAdamW` の更新はeagerで実行する。
 固定済み実験の再現には研究 source
 [`97580582ed28c4e494bf5c2656bbe94a85c544c3`](https://github.com/takumiecd/torchcst/tree/97580582ed28c4e494bf5c2656bbe94a85c544c3)、
 [HIGGS protocol](https://github.com/takumiecd/torchcst/blob/97580582ed28c4e494bf5c2656bbe94a85c544c3/docs/research-history/cuda-linear/higgs-alpha-confirmation-20261105.ja.md)、

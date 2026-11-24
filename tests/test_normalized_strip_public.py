@@ -4,6 +4,7 @@ import math
 
 import pytest
 import torch
+from dispatch_cases import default_linear_plan
 
 from benchmarks.cuda.linear.fixtures import normalized_chart as chart
 from benchmarks.cuda.linear.reference import mixed, oracle
@@ -246,5 +247,5 @@ def test_replaced_metadata_buffer_refreshes_geometry_and_validates_contract():
     torch.testing.assert_close(actual, expected, atol=1e-9, rtol=1e-9)
     model.kernel.sigma_min = torch.tensor(0.01, dtype=torch.float64)
     # A changed kernel contract uses its general Torch reference, not the fixed CUDA algorithm.
-    assert model._resolved_backend() == "materialized"
+    assert default_linear_plan(model, x).algorithm_id == "torch_materialized"
     torch.testing.assert_close(model(x), model.operator.apply(x), atol=0, rtol=0)

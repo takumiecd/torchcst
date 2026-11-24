@@ -116,12 +116,7 @@ class _Function:
             if name in fn.__globals__:
                 try:
                     value = fn.__globals__[name]
-                    if fn.__module__ == "torchcst.nn.linear" and name == "_PLANS":
-                        # One explicit library-definition map, not a namespace
-                        # walker. Never retain the map or its later contents.
-                        reference = _PlanMap(value)
-                    else:
-                        reference = _Reference(value)
+                    reference = _Reference(value)
                     globals_.append((name, reference))
                 except QualificationError as error:
                     raise QualificationError(
@@ -164,22 +159,6 @@ class _Function:
 
 
 _FUNCTIONS = {}
-
-
-class _PlanMap:
-    def __init__(self, value):
-        if type(value) is not dict or any(type(key) is not str for key in value):
-            raise QualificationError("canonical CST plan definitions required")
-        self.identity = id(value)
-        self.entries = tuple((key, _Reference(item)) for key, item in value.items())
-
-    def matches(self, value):
-        return (
-            type(value) is dict
-            and id(value) == self.identity
-            and tuple(value) == tuple(key for key, _ in self.entries)
-            and all(ref.matches(value[key]) for key, ref in self.entries)
-        )
 
 
 def _global_names(code):
@@ -596,12 +575,10 @@ def _prepare_native_catalog():
         for fn, record in _FUNCTIONS.items():
             node = managers[id(fn)]
             namespace = attr(node, "__globals__", fn.__globals__)
-            for name, reference in record.globals:
+            for name, _ in record.globals:
                 value = fn.__globals__[name]
                 child = item(namespace, name, value)
                 identity(child, value)
-                if isinstance(reference, _PlanMap):
-                    child.add_dict_version_guard(value, verbose, None)
             for name, _ in record.builtins:
                 namespace.add_dict_contains_guard(False, name, verbose, None)
                 field(builtin_namespace, name, getattr(builtins, name))

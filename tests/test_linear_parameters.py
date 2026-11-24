@@ -4,6 +4,7 @@ import copy
 
 import pytest
 import torch
+from dispatch_cases import default_linear_plan
 from torch import nn
 
 from benchmarks.cuda.linear.fixtures import normalized_chart as chart
@@ -117,8 +118,8 @@ def test_product_and_strip_share_the_same_mathematical_operation():
     model = CSTLinear(
         chart=product, atoms=mixed(), kernel=kernels.NORMALIZED_RADIAL_TRIWEIGHT
     )
-    assert model._resolved_backend() == "normalized"
     x = torch.randn(2, 16, dtype=torch.float64)
+    assert default_linear_plan(model, x).algorithm_id == "torch_normalized_radial"
     torch.testing.assert_close(model(x), layer(mixed())(x), atol=0, rtol=0)
 
 
@@ -166,8 +167,8 @@ def test_non_regular_layout_uses_general_reference():
         atoms=torch.tensor([[0.5, 0.0, 0.2, 0.3]]),
         kernel=kernels.NORMALIZED_RADIAL_TRIWEIGHT,
     )
-    assert model._resolved_backend() == "materialized"
     x = torch.randn(2, 4)
+    assert default_linear_plan(model, x).algorithm_id == "torch_materialized"
     torch.testing.assert_close(model(x), model.operator.apply(x), atol=0, rtol=0)
 
 
@@ -256,10 +257,13 @@ def test_metadata_changes_require_rebinding_outside_graph_capture():
             patch("torch.cuda.is_current_stream_capturing", return_value=True),
             pytest.raises(RuntimeError, match="outside CUDA graph capture"),
         ):
-            model._resolved_backend()
+            default_linear_plan(model, x)
         model(x)
         with patch("torch.cuda.is_current_stream_capturing", return_value=True):
-            assert model._resolved_backend() == "normalized"
+            assert default_linear_plan(model, x).algorithm_id in (
+                "normalized_full",
+                "torch_normalized_radial",
+            )
     finally:
         torch.backends.cuda.matmul.allow_tf32 = previous
 
@@ -275,8 +279,8 @@ def test_cuda_without_matching_algorithm_uses_general_reference(dtype, spacing):
         atoms=mixed(dtype, "cuda"),
         kernel=kernels.NORMALIZED_RADIAL_TRIWEIGHT,
     )
-    assert model._resolved_backend() == "materialized"
     x = torch.randn(2, 16, device="cuda", dtype=dtype, requires_grad=True)
+    assert default_linear_plan(model, x).algorithm_id == "torch_materialized"
     actual = model(x)
     reference = model.operator.apply(x)
     torch.testing.assert_close(actual, reference, atol=0, rtol=0)

@@ -1,4 +1,4 @@
-"""Invocation metadata for Conv2d with independently parameterized taps."""
+"""Invocation metadata for CSTConv2d."""
 
 import math
 from dataclasses import dataclass
@@ -30,6 +30,7 @@ class Conv2dContext:
     input_shape: tuple[int, ...]
     input_strides: tuple[int, ...]
     dtype: torch.dtype
+    parameter_dtype: torch.dtype
     device: DeviceInfo
     atom_count: int
     parameter_dim: int
@@ -71,6 +72,7 @@ def conv2d_context(binding, inputs):
         input_shape=tuple(x.shape),
         input_strides=tuple(x.stride()),
         dtype=x.dtype,
+        parameter_dtype=p.dtype,
         device=device,
         atom_count=p.shape[0],
         parameter_dim=p.shape[1],

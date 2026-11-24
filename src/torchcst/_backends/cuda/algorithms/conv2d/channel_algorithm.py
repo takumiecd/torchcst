@@ -81,6 +81,7 @@ class ChannelFourierAlgorithm(Algorithm):
             or context.device.compute_capability is None
             or context.device.compute_capability < (8, 0)
             or context.dtype != torch.float32
+            or context.parameter_dtype != torch.float32
             or context.precision.autocast
             or context.precision.allow_tf32
             or context.deterministic

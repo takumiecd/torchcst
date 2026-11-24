@@ -26,7 +26,7 @@ kernel = presets.polar_periodic_profile_product(
                            maximum=0.4, upper_floor=0.05),
 )
 model = CSTLinear(chart=chart, atoms=32, kernel=kernel,
-                  dtype=torch.float64, backend="factored")
+                  dtype=torch.float64)
 y = model(torch.randn(8, 64, dtype=torch.float64))
 ```
 

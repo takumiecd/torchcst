@@ -134,13 +134,14 @@ Selector.select's metadata validation uses the same procedures in
 dispatch/validation.py and runtime.py. Registry.validate/execute were removed;
 there are no execution compatibility wrappers.
 
-CSTLinear provides LinearInputs(x) and the binding interface and continues to own
-AlgorithmState. LinearBinding connects an existing Operator, or declarations and
+CSTLinear and CSTConv2d provide LinearInputs(x) and Conv2dInputs(x), respectively,
+and own their AlgorithmState through the binding interface. LinearBinding
+connects an existing Operator, or declarations and
 Parameters, outside a Module. Algorithm.input_type declares concrete operation
 inputs; Polar and optimizers do not require Linear inputs. Algorithm creates
 State from a binding/Recipe and computes through execute(state, inputs). State
-for operations without Atoms uses the same path. CSTLinear backend names are
-aliases for existing Plans; execution uses the selector's own Registry.
+for operations without Atoms uses the same path. Each layer uses its default
+Selector or an explicit selector and executes through that selector's Registry.
 Registration does not load computation code.
 
 CSTOptimizer creates an AtomUpdateBinding for every site and sends

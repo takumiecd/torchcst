@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import torch
+from dispatch_cases import fixed_plan
 from kernel_cases import gaussian_state, polar_state, separable_state, triweight_state
 
 from torchcst import BandwidthBounds, CSTLinear, CSTOptimizer
+from torchcst._backends.torch.algorithms.linear.plans import (
+    TORCH_FACTORED_LINEAR,
+)
 from torchcst._backends.torch.charts import construction as _construction
 from torchcst._backends.torch.charts import execution as _charts
 from torchcst._backends.torch.geometry import execution as _geometry
@@ -213,7 +217,7 @@ def test_parameter_adam_retracts_spherical_centers() -> None:
         input_chart,
         atoms=3,
         kernel=kernel.declaration(),
-        backend="factored",
+        selector=fixed_plan(TORCH_FACTORED_LINEAR),
         dtype=torch.float64,
     )
     optimizer = CSTOptimizer(
@@ -282,7 +286,7 @@ def test_parameter_adam_uses_d_coordinate_spherical_centers() -> None:
         input_chart,
         atoms=3,
         kernel=kernel.declaration(),
-        backend="factored",
+        selector=fixed_plan(TORCH_FACTORED_LINEAR),
         dtype=torch.float64,
     )
     optimizer = CSTOptimizer(

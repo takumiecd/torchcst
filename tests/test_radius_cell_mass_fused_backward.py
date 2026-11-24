@@ -4,6 +4,7 @@ from dataclasses import replace
 
 import pytest
 import torch
+from dispatch_cases import fixed_plan
 from test_radius_cell_mass_cuda import GPU, atoms, axis_plan, grid, reference
 from test_radius_cell_mass_hybrid import (
     check_vjp,
@@ -20,6 +21,7 @@ from torchcst._backends.cuda.algorithms.linear.radius_cell_mass.plans import (
     BLOCK_LOCAL,
     BLOCK_LOCAL_PARALLEL,
 )
+from torchcst._backends.torch.algorithms.linear.plans import TORCH_FACTORED_LINEAR
 from torchcst._backends.torch.kernels.radius_cell_mass import axis_masses
 
 
@@ -264,7 +266,7 @@ def test_fused_skewed_owner_chunks_public_reference(dtype, modes, start, output_
         chart,
         atoms=p.double(),
         dtype=torch.float64,
-        backend="factored",
+        selector=fixed_plan(TORCH_FACTORED_LINEAR),
         kernel=kernels.product(
             kernels.cell_mass(ChebyshevSpec(modes=modes)),
             coordinates=kernels.physical(),
